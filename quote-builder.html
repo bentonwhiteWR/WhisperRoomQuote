@@ -884,7 +884,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     <button class="create-btn" onclick="emailViaHubSpot()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);margin-top:8px">
       &#x2709; Email Quote via HubSpot
     </button>
-    <button class="create-btn" id="copyLinkBtn" onclick="copyQuoteLink()" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-top:8px;opacity:.5;cursor:not-allowed" title="Push to HubSpot first to generate link">
+    <button class="create-btn" id="copyLinkBtn" onclick="copyQuoteLink()" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-top:8px;opacity:.5" title="Set a quote number to generate a link">
       &#x1F517; Copy Shareable Link
     </button>
 
@@ -2597,28 +2597,36 @@ function onStateBlur(el) {
 // ── Email PDF via Outlook ─────────────────────────────────────────
 function copyQuoteLink() {
   const quoteNum = document.getElementById('quoteNumHidden').value;
-  if (!quoteNum || !window._lastPushedDealId) {
-    showToast('Push to HubSpot first to generate a shareable link', 'error');
+  if (!quoteNum) {
+    showToast('No quote number — push to HubSpot first', 'error');
     return;
   }
   const url = 'https://whisperroomquote.up.railway.app/q/' + quoteNum;
-  navigator.clipboard.writeText(url).then(() => {
-    showToast('Quote link copied: ' + url, 'info');
-    document.getElementById('copyLinkBtn').textContent = '✓ Link Copied!';
-    setTimeout(() => { document.getElementById('copyLinkBtn').textContent = '🔗 Copy Shareable Link'; }, 3000);
-  }).catch(() => {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(() => {
+      showToast('Link copied to clipboard!', 'info');
+      const btn = document.getElementById('copyLinkBtn');
+      if (btn) { const orig = btn.innerHTML; btn.innerHTML = '&#x2713; Copied!'; setTimeout(() => btn.innerHTML = orig, 2500); }
+    }).catch(() => { prompt('Copy this link:', url); });
+  } else {
     prompt('Copy this link:', url);
-  });
+  }
 }
 
 function activateLinkBtn() {
   const btn = document.getElementById('copyLinkBtn');
-  if (btn) {
-    btn.style.opacity = '1';
-    btn.style.cursor = 'pointer';
-    btn.title = 'Copy shareable link for this quote';
-    btn.style.color = 'var(--text)';
-  }
+  if (!btn) return;
+  btn.style.opacity = '1';
+  btn.style.cursor = 'pointer';
+  btn.style.color = 'var(--text)';
+  btn.removeAttribute('title');
+  btn.onclick = copyQuoteLink;
+}
+
+// Check on load and whenever quote number changes
+function checkLinkBtnState() {
+  const quoteNum = document.getElementById('quoteNumHidden')?.value;
+  if (quoteNum) activateLinkBtn();
 }
 
 function emailPDF() { emailViaHubSpot(); }
@@ -2669,10 +2677,11 @@ function toggleBillSame() {
 document.getElementById('repSelect').addEventListener('change', function() {
   localStorage.setItem('wr_default_rep', this.value);
   updateQuoteNumber();
+  checkLinkBtnState();
 });
 
 updateSummary();
-fetchHistory().then(() => updateQuoteNumber());
+fetchHistory().then(() => { updateQuoteNumber(); checkLinkBtnState(); });
 </script>
 </body>
 </html>

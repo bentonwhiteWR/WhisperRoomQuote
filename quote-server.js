@@ -175,7 +175,7 @@ async function hsSearchDeals(query) {
   return res.body;
 }
 
-// Search contacts by name or email
+// Search contacts by name or email, with associated company
 async function hsSearchContacts(query) {
   const body = {
     query: query.trim(),
@@ -187,12 +187,95 @@ async function hsSearchContacts(query) {
     hostname: 'api.hubapi.com',
     path: '/crm/v3/objects/contacts/search',
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${HS_TOKEN}`,
-      'Content-Type': 'application/json'
-    }
+    headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
   }, body);
-  return res.body;
+
+  if (!res.body || !res.body.results) return res.body;
+
+  // For contacts missing company name, fetch associated company
+  const enriched = await Promise.all(res.body.results.map(async contact => {
+    if (contact.properties.company) return contact;
+    try {
+      const assoc = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/objects/contacts/${contact.id}/associations/companies`,
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+      });
+      if (assoc.body && assoc.body.results && assoc.body.results.length > 0) {
+        const companyId = assoc.body.results[0].id;
+        const company = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v3/objects/companies/${companyId}?properties=name`,
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+        });
+        if (company.body && company.body.properties && company.body.properties.name) {
+          contact.properties.company = company.body.properties.name;
+        }
+      }
+    } catch(e) {}
+    return contact;
+  }));
+
+  return { ...res.body, results: enriched };
+}
+
+// Get deal with associated contact and owner
+async function hsGetDealWithDetails(dealId) {
+  const deal = await httpsRequest({
+    hostname: 'api.hubapi.com',
+    path: `/crm/v3/objects/deals/${dealId}?properties=dealname,hubspot_owner_id,dealstage,amount`,
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+  });
+
+  if (!deal.body || !deal.body.id) return null;
+
+  // Get associated contacts
+  let contact = null;
+  try {
+    const assoc = await httpsRequest({
+      hostname: 'api.hubapi.com',
+      path: `/crm/v3/objects/deals/${dealId}/associations/contacts`,
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+    });
+    if (assoc.body && assoc.body.results && assoc.body.results.length > 0) {
+      const contactId = assoc.body.results[0].id;
+      const contactRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/objects/contacts/${contactId}?properties=firstname,lastname,email,phone,company,address,city,state,zip`,
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+      });
+      if (contactRes.body && contactRes.body.properties) {
+        contact = contactRes.body;
+        // Fetch company if missing
+        if (!contact.properties.company) {
+          const compAssoc = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/contacts/${contactId}/associations/companies`,
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+          });
+          if (compAssoc.body && compAssoc.body.results && compAssoc.body.results.length > 0) {
+            const compRes = await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/companies/${compAssoc.body.results[0].id}?properties=name`,
+              method: 'GET',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+            });
+            if (compRes.body && compRes.body.properties && compRes.body.properties.name) {
+              contact.properties.company = compRes.body.properties.name;
+            }
+          }
+        }
+      }
+    }
+  } catch(e) {}
+
+  return { deal: deal.body, contact };
 }
 
 async function hsCreateContact(data) {
@@ -560,6 +643,16 @@ const server = http.createServer(async (req, res) => {
         await saveQuoteNote(body.dealId, body);
       }
       json({ success: true });
+    } catch(e) { json({error: e.message}, 500); }
+    return;
+  }
+
+  // ── API: Get deal with contact details ──
+  if (pathname.startsWith('/api/deal/') && req.method === 'GET') {
+    try {
+      const dealId = pathname.split('/api/deal/')[1];
+      const data = await hsGetDealWithDetails(dealId);
+      json(data || { error: 'Deal not found' });
     } catch(e) { json({error: e.message}, 500); }
     return;
   }

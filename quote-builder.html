@@ -488,6 +488,10 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
   .sidebar { border-top: 1px solid var(--border); }
   .form-grid.cols-3, .form-grid.cols-4 { grid-template-columns: 1fr 1fr; }
 }
+
+.li-row.drag-over { border-top: 2px solid var(--accent); }
+.li-row.dragging { opacity: 0.4; }
+.li-row td:first-child:hover { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -882,7 +886,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     Download PDF Quote
   </button>
     <button class="create-btn" onclick="emailViaHubSpot()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);margin-top:8px">
-      &#x2709; Email Quote via HubSpot
+      &#x2709; Email Quote (with Link)
     </button>
     <button class="create-btn" id="copyLinkBtn" onclick="copyQuoteLink()" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-top:8px;opacity:.5" title="Set a quote number to generate a link">
       &#x1F517; Copy Shareable Link
@@ -1267,6 +1271,43 @@ function removeByIdx(btn) {
   updateSummary();
 }
 
+// ── Drag to reorder line items ───────────────────────────────────
+let _dragId = null;
+
+function liDragStart(e, id) {
+  _dragId = id;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function liDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  // Highlight the row being dragged over
+  document.querySelectorAll('.li-row').forEach(r => r.classList.remove('drag-over'));
+  e.currentTarget.classList.add('drag-over');
+}
+
+function liDrop(e, targetId) {
+  e.preventDefault();
+  if (_dragId === targetId) return;
+  const fromIdx = lineItems.findIndex(i => String(i.id) === String(_dragId));
+  const toIdx   = lineItems.findIndex(i => String(i.id) === String(targetId));
+  if (fromIdx < 0 || toIdx < 0) return;
+  // Reorder
+  const [moved] = lineItems.splice(fromIdx, 1);
+  lineItems.splice(toIdx, 0, moved);
+  renderLineItems();
+  updateSummary();
+}
+
+function liDragEnd(e) {
+  _dragId = null;
+  document.querySelectorAll('.li-row').forEach(r => {
+    r.classList.remove('dragging', 'drag-over');
+  });
+}
+
 function renderLineItems() {
   const tbody = document.getElementById('lineItemsBody');
   const table = document.getElementById('lineTable');
@@ -1281,7 +1322,12 @@ function renderLineItems() {
   empty.style.display = 'none';
 
   tbody.innerHTML = lineItems.map((item, idx) => `
-    <tr data-id="${item.id}">
+    <tr data-id="${item.id}" draggable="true" class="li-row"
+      ondragstart="liDragStart(event,'${item.id}')"
+      ondragover="liDragOver(event)"
+      ondrop="liDrop(event,'${item.id}')"
+      ondragend="liDragEnd(event)">
+      <td style="width:22px;padding:0 4px;cursor:grab;color:var(--dim);font-size:16px;user-select:none;vertical-align:middle" title="Drag to reorder">⠿</td>
       <td style="min-width:200px">
         <div class="li-name">${item.name}</div>
         <textarea class="li-input" rows="2"
@@ -2006,6 +2052,10 @@ function generatePDF() {
   .notes-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: #ee6216; font-weight: 700; margin-bottom: 4px; }
 
   @media print { body { padding: 20px; } }
+
+.li-row.drag-over { border-top: 2px solid var(--accent); }
+.li-row.dragging { opacity: 0.4; }
+.li-row td:first-child:hover { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -2595,6 +2645,22 @@ function onStateBlur(el) {
 }
 
 // ── Email PDF via Outlook ─────────────────────────────────────────
+// ── Toast notifications ──────────────────────────────────────────
+function showToast(msg, type) {
+  let toast = document.getElementById('wr-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'wr-toast';
+    toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;color:white;z-index:9999;pointer-events:none;transition:opacity .3s;opacity:0;font-family:var(--mono,monospace)';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.style.background = type === 'error' ? '#c0392b' : '#1a7a4a';
+  toast.style.opacity = '1';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { toast.style.opacity = '0'; }, 3000);
+}
+
 function copyQuoteLink() {
   const quoteNum = document.getElementById('quoteNumHidden').value;
   if (!quoteNum) {
@@ -2632,25 +2698,41 @@ function checkLinkBtnState() {
 function emailPDF() { emailViaHubSpot(); }
 
 function emailViaHubSpot() {
-  const contactId = window._lastPushedContactId;
-  const quoteNum = document.getElementById('quoteNumHidden').value || '';
+  const email = document.getElementById('email').value.trim();
+  const firstName = document.getElementById('firstName').value.trim();
   const company = document.getElementById('company').value.trim();
+  const quoteNum = document.getElementById('quoteNumHidden').value || '';
 
-  if (contactId) {
-    const subject = encodeURIComponent('WhisperRoom Quote' + (quoteNum ? ' #' + quoteNum : '') + (company ? ' — ' + company : ''));
-    const hsUrl = 'https://app.hubspot.com/contacts/5764220/contact/' + contactId + '?interaction=email';
-    window.open(hsUrl, '_blank');
-    setTimeout(generatePDF, 400);
-    showToast('Opening HubSpot email — PDF downloading to attach', 'info');
-  } else {
-    const email = document.getElementById('email').value.trim();
-    const firstName = document.getElementById('firstName').value.trim();
-    if (!email) { alert('No email address. Push to HubSpot first or add an email.'); return; }
-    const subject = encodeURIComponent('WhisperRoom Quote' + (quoteNum ? ' #' + quoteNum : '') + (company ? ' — ' + company : ''));
-    const body = encodeURIComponent('Dear ' + (firstName || 'Customer') + ',\n\nThank you for your interest in WhisperRoom. Please find your quote attached.\n\nBest regards,\nWhisperRoom, Inc.\n(865) 558-5364 | info@whisperroom.com');
-    window.open('mailto:' + email + '?subject=' + subject + '&body=' + body, '_blank');
-    setTimeout(generatePDF, 400);
-  }
+  if (!email) { alert('No email address on file.'); return; }
+
+  const quoteLink = quoteNum
+    ? 'https://whisperroomquote.up.railway.app/q/' + quoteNum
+    : null;
+
+  const subject = encodeURIComponent(
+    'WhisperRoom Quote' +
+    (quoteNum ? ' #' + quoteNum : '') +
+    (company ? ' — ' + company : '')
+  );
+
+  const bodyText = [
+    'Dear ' + (firstName || 'Customer') + ',',
+    '',
+    'Thank you for your interest in WhisperRoom. Please find your quote below.',
+    '',
+    quoteLink ? ('View Your Quote: ' + quoteLink) : '',
+    '',
+    'This quote is valid for 30 days. If you have any questions, please don't hesitate to reach out.',
+    '',
+    'Best regards,',
+    'WhisperRoom, Inc.',
+    '(865) 558-5364 | info@whisperroom.com',
+    'www.whisperroom.com',
+  ].filter(l => l !== null).join('\n');
+
+  window.location.href = 'mailto:' + encodeURIComponent(email) +
+    '?subject=' + subject +
+    '&body=' + encodeURIComponent(bodyText);
 }
 
 // ── Billing same as shipping ─────────────────────────────────────

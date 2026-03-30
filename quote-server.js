@@ -8,33 +8,75 @@ const path    = require('path');
 const url     = require('url');
 const crypto  = require('crypto');
 
-// ── Quote History Storage ─────────────────────────────────────────
-const HISTORY_FILE = path.join(__dirname, 'quote_history.json');
+// ── Quote History via HubSpot Notes ──────────────────────────────
+// Stored as notes on deals - persistent, visible in HubSpot, never wiped
 
-function readHistory() {
-  try {
-    if (fs.existsSync(HISTORY_FILE)) {
-      return JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+async function saveQuoteNote(dealId, quoteData) {
+  const noteBody = 'QUOTE_SNAPSHOT::' + JSON.stringify({
+    ...quoteData,
+    id: crypto.randomBytes(8).toString('hex'),
+    savedAt: new Date().toISOString()
+  });
+
+  // Create note
+  const note = await httpsRequest({
+    hostname: 'api.hubapi.com',
+    path: '/crm/v3/objects/notes',
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+  }, {
+    properties: {
+      hs_note_body: noteBody,
+      hs_timestamp: new Date().toISOString(),
     }
-  } catch(e) {}
-  return [];
+  });
+
+  if (note.body && note.body.id) {
+    // Associate note with deal
+    await httpsRequest({
+      hostname: 'api.hubapi.com',
+      path: `/crm/v3/objects/notes/${note.body.id}/associations/deals/${dealId}/note_to_deal`,
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+    });
+  }
+  return note.body;
 }
 
-function writeHistory(history) {
-  try {
-    fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2));
-  } catch(e) { console.error('History write error:', e.message); }
-}
+async function fetchQuoteHistory() {
+  // Search for notes that are quote snapshots
+  const res = await httpsRequest({
+    hostname: 'api.hubapi.com',
+    path: '/crm/v3/objects/notes/search',
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+  }, {
+    filterGroups: [{
+      filters: [{
+        propertyName: 'hs_note_body',
+        operator: 'CONTAINS_TOKEN',
+        value: 'QUOTE_SNAPSHOT::'
+      }]
+    }],
+    properties: ['hs_note_body', 'hs_timestamp'],
+    sorts: [{ propertyName: 'hs_timestamp', direction: 'DESCENDING' }],
+    limit: 200
+  });
 
-function addToHistory(entry) {
-  const history = readHistory();
-  history.unshift({ ...entry, id: crypto.randomBytes(8).toString('hex'), savedAt: new Date().toISOString() });
-  writeHistory(history.slice(0, 500)); // keep last 500
+  if (!res.body || !res.body.results) return [];
+
+  return res.body.results.map(note => {
+    try {
+      const body = note.properties.hs_note_body || '';
+      const jsonStr = body.replace('QUOTE_SNAPSHOT::', '');
+      return JSON.parse(jsonStr);
+    } catch(e) { return null; }
+  }).filter(Boolean);
 }
 
 const PORT         = process.env.PORT || 3457;
 const PASSWORD     = process.env.WR_PASSWORD || 'whisperroom';
-const HS_TOKEN     = process.env.HS_TOKEN || 'pat-na1-83e05d11-17f1-4333-b3cf-c64b415ae2d3';
+const HS_TOKEN     = process.env.HS_TOKEN || 'pat-na1-46b267e5-120c-42fa-95a6-14eb28460a85';
 const TAXJAR_KEY   = process.env.TAXJAR_KEY || 'a432e28eece47221d3176cfc1a7d2dae';
 const ABF_ID       = 'Q8MZK7K1';
 const ABF_ACCT     = '189059-248A';
@@ -309,7 +351,9 @@ async function calculateTaxProper(toState, toZip, toCity, amount, shipping) {
       stateRate: res.body.tax.breakdown && res.body.tax.breakdown.state_tax_rate || 0
     };
   }
-  return { tax: 0, rate: 0, inNexus: true, error: JSON.stringify(res.body) };
+  // Log the error for debugging
+  console.error('TaxJar error response:', JSON.stringify(res.body));
+  return { tax: 0, rate: 0, inNexus: true, error: typeof res.body === 'object' ? (res.body.error || res.body.detail || JSON.stringify(res.body)) : String(res.body) };
 }
 
 // ── ABF Freight ───────────────────────────────────────────────────
@@ -501,17 +545,20 @@ const server = http.createServer(async (req, res) => {
   // ── API: Get quote history ──
   if (pathname === '/api/history' && req.method === 'GET') {
     try {
-      const history = readHistory();
+      const history = await fetchQuoteHistory();
       json({ results: history });
     } catch(e) { json({error: e.message}, 500); }
     return;
   }
 
-  // ── API: Save quote to history ──
+  // ── API: Save quote to history (called after deal creation) ──
   if (pathname === '/api/history' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      addToHistory(body);
+      // Save as note on the deal if dealId provided
+      if (body.dealId) {
+        await saveQuoteNote(body.dealId, body);
+      }
       json({ success: true });
     } catch(e) { json({error: e.message}, 500); }
     return;
@@ -653,6 +700,16 @@ const server = http.createServer(async (req, res) => {
         await hsBatchAssociateLineItems(dealId, lineItemIds);
       }
 
+      // Save quote snapshot as note on the deal
+      try {
+        await saveQuoteNote(dealId, {
+          dealName, quoteNumber,
+          ownerId, total,
+          date: new Date().toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}),
+          customer, lineItems, discount, freight, tax,
+        });
+      } catch(e) { console.error('Note save error:', e.message); }
+
       json({
         success: true,
         dealId,
@@ -671,4 +728,6 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`WhisperRoom Quote Builder running on port ${PORT}`);
+  console.log(`HubSpot token: ${HS_TOKEN ? HS_TOKEN.substring(0,12) + '...' : 'NOT SET'}`);
+  console.log(`TaxJar key: ${TAXJAR_KEY ? TAXJAR_KEY.substring(0,8) + '...' : 'NOT SET'}`);
 });

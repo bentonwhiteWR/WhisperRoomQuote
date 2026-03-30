@@ -1,0 +1,1963 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WhisperRoom — Quote Builder</title>
+<style>
+@import url('https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700,800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #f4f4f4;
+  --surface: #ffffff;
+  --surface2: #eeeeee;
+  --border: #e0e0e0;
+  --accent: #ee6216;
+  --accent-dim: rgba(238,98,22,.08);
+  --accent-glow: rgba(238,98,22,.25);
+  --charcoal: #46484d;
+  --charcoal-dim: rgba(70,72,77,.06);
+  --text: #46484d;
+  --muted: #888a8e;
+  --dim: #c8cacd;
+  --green: #1a7a4a;
+  --green-dim: rgba(26,122,74,.08);
+  --red: #c0392b;
+  --yellow: #b8860b;
+  --mono: 'DM Mono', monospace;
+  --sans: 'Satoshi', sans-serif;
+}
+
+/* Dark mode */
+body.dark {
+  --bg: #111213;
+  --surface: #1a1b1e;
+  --surface2: #222428;
+  --border: #2e3035;
+  --accent: #ee6216;
+  --accent-dim: rgba(238,98,22,.12);
+  --charcoal-dim: rgba(255,255,255,.04);
+  --text: #e8e6e3;
+  --muted: #7a7c80;
+  --dim: #3a3c40;
+  --green: #3ecf8e;
+  --green-dim: rgba(62,207,142,.1);
+  --red: #e74c3c;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  min-height: 100vh;
+}
+
+/* ── Top bar ── */
+.topbar {
+  background: var(--charcoal);
+  border-bottom: 1px solid rgba(255,255,255,.1);
+  padding: 0 32px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.logo { font-family: 'Satoshi', sans-serif; font-size: 20px; font-weight: 800; color: #ffffff; }
+.logo span { color: #ee6216; }
+.topbar-right { display: flex; align-items: center; gap: 16px; }
+.topbar-badge { font-size: 10px; color: #ee6216; background: rgba(238,98,22,.15); border: 1px solid rgba(238,98,22,.4); padding: 3px 10px; border-radius: 2px; letter-spacing: .1em; text-transform: uppercase; }
+
+/* ── Layout ── */
+.layout { display: grid; grid-template-columns: 1fr 340px; gap: 0; height: calc(100vh - 56px); overflow: hidden; }
+.main-col { padding: 32px; border-right: 1px solid var(--border); overflow-y: auto; background: var(--bg); }
+.sidebar { padding: 24px; background: var(--charcoal); overflow-y: auto; position: sticky; top: 56px; height: calc(100vh - 56px); }
+
+/* ── Section ── */
+.section { margin-bottom: 28px; }
+.section-head {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--charcoal-dim);
+}
+.section-num {
+  width: 22px; height: 22px;
+  background: var(--accent); color: white;
+  font-family: var(--sans); font-size: 11px; font-weight: 700;
+  border-radius: 3px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.section-title { font-family: var(--sans); font-size: 13px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--charcoal); }
+
+/* ── Form grid ── */
+.form-grid { display: grid; gap: 14px; }
+.form-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+.form-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+.form-grid.cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
+.field input, .field select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 9px 11px;
+  width: 100%;
+  outline: none;
+  transition: border-color .15s;
+  -webkit-appearance: none;
+}
+.field input:focus, .field select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.field select { cursor: pointer; }
+.field select option { background: var(--surface); color: var(--text); }
+body.dark .field input, body.dark .field select { color-scheme: dark; }
+
+/* ── Product search ── */
+.product-search-wrap { position: relative; }
+.product-search-input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 9px 11px;
+  width: 100%;
+  outline: none;
+}
+.product-search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.product-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0; right: 0;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 50;
+  display: none;
+}
+.product-dropdown.open { display: block; }
+.product-option {
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background .1s;
+}
+.product-option:last-child { border-bottom: none; }
+.product-option:hover { background: var(--accent-dim); }
+.product-option-name { font-size: 13px; color: var(--charcoal); font-weight: 500; }
+.product-option-price { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.product-option-empty { padding: 14px; color: var(--muted); font-size: 12px; text-align: center; }
+
+/* ── Line items table ── */
+.line-items-table { width: 100%; border-collapse: collapse; }
+.line-items-table th {
+  font-size: 10px; color: var(--charcoal); text-transform: uppercase; letter-spacing: .07em;
+  text-align: left; padding: 8px 8px; border-bottom: 2px solid var(--charcoal);
+  background: var(--charcoal-dim);
+}
+.line-items-table td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.line-items-table tr:last-child td { border-bottom: none; }
+
+.li-name { font-size: 13px; color: var(--charcoal); font-weight: 500; }
+.li-desc { font-size: 10px; color: var(--muted); margin-top: 2px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.li-input {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 5px 8px;
+  width: 100%;
+  outline: none;
+}
+.li-input:focus { border-color: var(--accent); }
+
+.li-remove {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 3px;
+  width: 26px; height: 26px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .15s;
+}
+.li-remove:hover { border-color: var(--red); color: var(--red); background: rgba(231,76,60,.1); }
+
+.add-product-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 14px;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+  margin-top: 10px;
+  transition: all .15s;
+  letter-spacing: .04em;
+}
+.add-product-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Discount ── */
+.discount-row { display: flex; align-items: center; gap: 12px; }
+.disc-type-btn {
+  padding: 7px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.disc-type-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); font-weight: 600; }
+
+/* ── Freight section ── */
+.freight-result {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgba(70,72,77,.06);
+  border-radius: 4px;
+  padding: 14px;
+  margin-top: 12px;
+  display: none;
+}
+.freight-result.visible { display: block; }
+.freight-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.freight-stat label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; display: block; margin-bottom: 3px; }
+.freight-stat .val { font-size: 16px; color: var(--charcoal); font-weight: 600; }
+.freight-stat .val.green { color: var(--green); }
+.freight-warning { font-size: 11px; color: var(--yellow); margin-top: 8px; }
+
+.get-freight-btn {
+  padding: 10px 20px;
+  background: var(--accent);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .2s;
+}
+.get-freight-btn:hover { background: #d4450e; }
+.get-freight-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.accessorials { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.acc-check {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all .15s;
+  user-select: none;
+}
+.acc-check.active { border-color: var(--accent); color: var(--charcoal); background: var(--accent-dim); font-weight: 500; }
+.acc-check input { display: none; }
+.acc-box { width: 12px; height: 12px; border: 1px solid var(--dim); border-radius: 2px; display: flex; align-items: center; justify-content: center; transition: all .15s; flex-shrink: 0; }
+.acc-check.active .acc-box { background: var(--accent); border-color: var(--accent); }
+.acc-box::after { content: '✓'; font-size: 9px; color: white; display: none; }
+.acc-check.active .acc-box::after { display: block; }
+
+/* ── Tax section ── */
+.tax-result {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgba(70,72,77,.06);
+  border-radius: 4px;
+  padding: 14px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  display: none;
+}
+.tax-result.visible { display: block; }
+
+/* ── Sidebar summary ── */
+.summary-title { font-family: 'Satoshi', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 16px; color: rgba(255,255,255,.6); }
+.summary-line { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.08); font-size: 13px; }
+.summary-line:last-child { border-bottom: none; }
+.summary-line.total { font-family: 'Satoshi', sans-serif; font-weight: 700; font-size: 18px; color: #ee6216; margin-top: 8px; padding-top: 16px; border-top: 2px solid rgba(255,255,255,.15); border-bottom: none; }
+.summary-label { color: rgba(255,255,255,.6); font-size: 12px; }
+.summary-val { color: rgba(255,255,255,.9); }
+
+.create-btn {
+  width: 100%;
+  margin-top: 24px;
+  padding: 16px;
+  background: var(--accent);
+  border: none;
+  border-radius: 5px;
+  color: white;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .2s;
+  position: relative;
+}
+.create-btn:hover:not(:disabled) { background: #d4540e; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(238,98,22,.4); }
+.create-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.result-box {
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  display: none;
+}
+.result-box.success { background: rgba(26,122,74,.15); border: 1px solid rgba(26,122,74,.3); color: #6fcf97; display: block; }
+.result-box.error { background: rgba(192,57,43,.15); border: 1px solid rgba(192,57,43,.3); color: #ff8080; display: block; }
+.result-box a { color: #6fcf97; text-decoration: underline; }
+
+/* ── Tabs ── */
+.tabs { display: flex; gap: 2px; margin-bottom: 20px; background: var(--surface2); padding: 4px; border-radius: 6px; width: fit-content; }
+.tab-btn {
+  padding: 7px 16px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .15s;
+  letter-spacing: .04em;
+}
+.tab-btn.active { background: var(--accent); color: white; }
+
+/* ── Duplicate contact modal ── */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.5);
+  z-index: 300; display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(3px);
+}
+.modal-overlay.hidden { display: none; }
+.modal-box {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 28px; max-width: 460px; width: 90%;
+  box-shadow: 0 20px 60px rgba(0,0,0,.3);
+}
+.modal-title { font-family: var(--sans); font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+.modal-sub { font-size: 12px; color: var(--muted); margin-bottom: 20px; line-height: 1.6; }
+.modal-contact-card {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 14px 16px; margin-bottom: 20px;
+}
+.modal-contact-name { font-size: 14px; font-weight: 600; color: var(--text); }
+.modal-contact-detail { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.6; }
+.modal-btns { display: flex; gap: 10px; }
+.modal-btn {
+  flex: 1; padding: 11px; border-radius: 4px; font-family: var(--sans);
+  font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all .15s;
+}
+.modal-btn.primary { background: var(--accent); color: white; }
+.modal-btn.primary:hover { background: #d4540e; }
+.modal-btn.secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+.modal-btn.secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Quote history ── */
+.history-panel {
+  position: fixed; top: 56px; left: 0; bottom: 0; width: 380px;
+  background: var(--surface); border-right: 1px solid var(--border);
+  box-shadow: 4px 0 20px rgba(0,0,0,.15);
+  z-index: 200; transform: translateX(-100%); transition: transform .25s ease;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.history-panel.open { transform: translateX(0); }
+.history-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 199;
+  display: none; backdrop-filter: blur(2px);
+}
+.history-overlay.open { display: block; }
+.history-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+.history-title { font-family: var(--sans); font-size: 13px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: .05em; }
+.history-close { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 0 4px; }
+.history-close:hover { color: var(--text); }
+.history-list { flex: 1; overflow-y: auto; }
+.history-item { padding: 14px 20px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .1s; }
+.history-item:hover { background: var(--surface2); }
+.history-item-name { font-size: 13px; color: var(--text); font-weight: 500; }
+.history-item-meta { font-size: 11px; color: var(--muted); margin-top: 3px; display: flex; gap: 12px; }
+.history-item-total { font-size: 12px; color: var(--accent); font-weight: 600; margin-top: 2px; }
+.history-empty { padding: 32px 20px; text-align: center; color: var(--muted); font-size: 12px; }
+.history-btn {
+  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2);
+  border-radius: 4px; color: rgba(255,255,255,.8); font-family: var(--mono);
+  font-size: 11px; padding: 5px 12px; cursor: pointer; transition: all .15s;
+  display: flex; align-items: center; gap: 6px;
+}
+.history-btn:hover { background: rgba(255,255,255,.18); }
+
+/* ── Deal search ── */
+.deal-search-bar {
+  display: flex; gap: 12px; align-items: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(70,72,77,.05);
+  border-radius: 6px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+.deal-search-bar label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; display: block; margin-bottom: 5px; }
+.deal-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--green-dim); border: 1px solid rgba(62,207,142,.3); border-radius: 10px; font-size: 11px; color: var(--green); margin-top: 8px; }
+.deal-badge .x { cursor: pointer; opacity: .7; } .deal-badge .x:hover { opacity: 1; }
+
+/* ── Contact search ── */
+.contact-search-bar {
+  display: flex; gap: 12px; align-items: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  box-shadow: 0 1px 4px rgba(70,72,77,.06);
+  border-radius: 6px;
+  padding: 14px 16px;
+  margin-bottom: 20px;
+}
+.contact-search-bar label { font-size: 10px; color: var(--accent); text-transform: uppercase; letter-spacing: .07em; display: block; margin-bottom: 5px; }
+.contact-search-bar .wrap { flex: 1; position: relative; }
+.contact-search-bar input {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text); font-family: var(--mono); font-size: 13px; padding: 9px 11px; outline: none;
+}
+.contact-search-bar input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.contact-dropdown {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+  background: var(--surface); border: 1px solid var(--accent); border-radius: 4px;
+  max-height: 220px; overflow-y: auto; z-index: 60; display: none;
+}
+.contact-dropdown.open { display: block; }
+.contact-opt { padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--border); transition: background .1s; }
+.contact-opt:last-child { border-bottom: none; }
+.contact-opt:hover { background: var(--accent-dim); }
+.contact-opt-name { font-size: 13px; color: var(--charcoal); font-weight: 500; }
+.contact-opt-email { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.new-contact-badge { font-size: 10px; color: var(--accent); background: var(--accent-dim); border: 1px solid var(--accent); padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+
+/* ── Misc ── */
+.spinner-inline { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.3); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 6px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.empty-state { text-align: center; padding: 32px; color: var(--muted); font-size: 12px; background: var(--surface); border: 1px dashed var(--border); border-radius: 4px; }
+
+.notes-area {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 10px 12px;
+  resize: vertical;
+  min-height: 80px;
+  outline: none;
+}
+.notes-area:focus { border-color: var(--accent); }
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  .sidebar { border-top: 1px solid var(--border); }
+  .form-grid.cols-3, .form-grid.cols-4 { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">Whisper<span>Room</span></div>
+  <div class="topbar-right">
+    <button onclick="toggleHistory()" class="history-btn"><span>&#x1F4CB;</span> History</button>
+    <button id="themeToggle" onclick="toggleTheme()" style="
+      background: rgba(255,255,255,.1);
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 20px;
+      color: rgba(255,255,255,.8);
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 5px 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all .15s;
+    ">
+      <span id="themeIcon">☀️</span>
+      <span id="themeLabel">Light</span>
+    </button>
+    <div class="topbar-badge">Quote Builder</div>
+  </div>
+</div>
+
+<div class="layout">
+<div class="main-col">
+
+  <!-- DEAL SEARCH -->
+  <div class="deal-search-bar">
+    <div style="flex:1">
+      <label>Link to Existing Deal (optional)</label>
+      <div style="position:relative">
+        <input type="text" id="dealSearch" class="product-search-input" placeholder="Search deals by name..." autocomplete="off" style="background:var(--bg)">
+        <div class="contact-dropdown" id="dealDropdown"></div>
+      </div>
+      <div id="selectedDealBadge" style="display:none">
+        <div class="deal-badge">
+          <span id="selectedDealName">—</span>
+          <span class="x" onclick="clearDeal()">✕</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTACT SEARCH -->
+  <div class="contact-search-bar">
+    <div class="wrap" style="flex:1">
+      <label>Search Existing HubSpot Contact</label>
+      <div style="position:relative">
+        <input type="text" id="contactSearch" placeholder="Type name or email to search..." autocomplete="off">
+        <div class="contact-dropdown" id="contactDropdown"></div>
+      </div>
+    </div>
+    <div style="align-self:flex-end;padding-bottom:2px;font-size:11px;color:var(--muted);white-space:nowrap">
+      or fill in manually ↓
+    </div>
+  </div>
+
+  <!-- ① CUSTOMER INFO -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-num">1</div>
+      <div class="section-title">Customer Information <span id="contactBadge" class="new-contact-badge" style="display:none">New Contact</span></div>
+    </div>
+    <div class="form-grid cols-2">
+      <div class="field"><label>First Name</label><input type="text" id="firstName" placeholder="John"></div>
+      <div class="field"><label>Last Name</label><input type="text" id="lastName" placeholder="Smith"></div>
+      <div class="field"><label>Company</label><input type="text" id="company" placeholder="Acme Studios"></div>
+      <div class="field"><label>Email</label><input type="email" id="email" placeholder="john@acme.com"></div>
+      <div class="field"><label>Phone</label><input type="tel" id="phone" placeholder="(555) 123-4567"></div>
+      <div class="field"><label>Rep</label>
+        <select id="repSelect">
+          <option value="36330944">Jill Holdway</option>
+          <option value="38143901">Sarah Smith</option>
+          <option value="117442978">Travis Singleton</option>
+          <option value="36303670">Benton White</option>
+          <option value="38732178">Kim Dalton</option>
+          <option value="36320208">Gabe White</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- ② SHIP TO -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-num">2</div>
+      <div class="section-title">Ship To Address</div>
+    </div>
+    <div class="form-grid">
+      <div class="field"><label>Street Address</label><input type="text" id="shipAddress" placeholder="123 Main St"></div>
+    </div>
+    <div class="form-grid cols-3" style="margin-top:14px">
+      <div class="field"><label>City</label><input type="text" id="shipCity" placeholder="Nashville"></div>
+      <div class="field"><label>State</label><input type="text" id="shipState" placeholder="TN" maxlength="2" style="text-transform:uppercase"></div>
+      <div class="field"><label>Zip</label><input type="text" id="shipZip" placeholder="37201"></div>
+    </div>
+    <div style="margin-top:12px">
+      <label class="acc-check" id="check-canada" onclick="toggleAcc(this,'canada')">
+        <input type="checkbox" id="canada">
+        <div class="acc-box"></div>
+        Canadian Destination
+      </label>
+    </div>
+  </div>
+
+  <!-- ③ LINE ITEMS -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-num">3</div>
+      <div class="section-title">Products &amp; Line Items</div>
+    </div>
+
+    <div id="lineItemsContainer">
+      <div class="empty-state" id="emptyState">No products added yet. Search and add products below.</div>
+      <table class="line-items-table" id="lineTable" style="display:none">
+        <thead>
+          <tr>
+            <th style="width:40%">Product</th>
+            <th style="width:10%">Qty</th>
+            <th style="width:18%">Unit Price</th>
+            <th style="width:18%">Total</th>
+            <th style="width:14%"></th>
+          </tr>
+        </thead>
+        <tbody id="lineItemsBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Product search -->
+    <div class="product-search-wrap" style="margin-top:12px">
+      <input type="text" class="product-search-input" id="productSearch"
+        placeholder="Search products by name or SKU..." autocomplete="off">
+      <div class="product-dropdown" id="productDropdown"></div>
+    </div>
+    <button class="add-product-btn" onclick="document.getElementById('productSearch').focus()">
+      + Add Product / Line Item
+    </button>
+
+    <!-- Discount -->
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+      <div class="section-title" style="margin-bottom:12px;font-size:12px">Discount</div>
+      <div class="discount-row">
+        <button class="disc-type-btn active" id="discPctBtn" onclick="setDiscType('pct')">% Percent</button>
+        <button class="disc-type-btn" id="discFlatBtn" onclick="setDiscType('flat')">$ Fixed</button>
+        <div class="field" style="flex:1">
+          <input type="number" id="discountValue" placeholder="0" min="0" step="0.01" oninput="updateSummary()">
+        </div>
+        <div id="discountDisplay" style="font-size:13px;color:var(--accent);min-width:80px;text-align:right">— $0.00</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ④ FREIGHT -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-num">4</div>
+      <div class="section-title">Freight Estimate</div>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:12px">
+      Address auto-filled from ship-to. ABF LTL rate with 25% markup applied.
+    </p>
+    <div class="accessorials">
+      <label class="acc-check" id="check-residential" onclick="toggleAcc(this,'residential')">
+        <input type="checkbox" id="residential"><div class="acc-box"></div>Residential
+      </label>
+      <label class="acc-check" id="check-liftgate" onclick="toggleAcc(this,'liftgate')">
+        <input type="checkbox" id="liftgate"><div class="acc-box"></div>Liftgate
+      </label>
+      <label class="acc-check" id="check-limitedaccess" onclick="toggleAcc(this,'limitedaccess')">
+        <input type="checkbox" id="limitedaccess"><div class="acc-box"></div>Limited Access
+      </label>
+      <label class="acc-check" id="check-loadingdock" onclick="toggleAcc(this,'loadingdock')">
+        <input type="checkbox" id="loadingdock"><div class="acc-box"></div>Loading Dock
+      </label>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <button class="get-freight-btn" id="freightBtn" onclick="getFreight()">Get Freight Estimate</button>
+      <span style="font-size:11px;color:var(--muted)" id="freightStatus"></span>
+    </div>
+    <div class="freight-result" id="freightResult">
+      <div class="freight-grid">
+        <div class="freight-stat">
+          <label>ABF Base</label>
+          <div class="val" id="freightBase">—</div>
+        </div>
+        <div class="freight-stat">
+          <label>Markup (25%)</label>
+          <div class="val" id="freightMarkup">—</div>
+        </div>
+        <div class="freight-stat">
+          <label>Freight Total</label>
+          <div class="val green" id="freightTotal">—</div>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:var(--muted)">Transit: <span id="freightTransit">—</span></div>
+      <div class="freight-warning" id="freightWarning" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- ⑤ TAX -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-num">5</div>
+      <div class="section-title">Sales Tax</div>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:12px">
+      Calculated via TaxJar based on ship-to state. Only applied for nexus states.
+    </p>
+    <button class="get-freight-btn" id="taxBtn" onclick="getTax()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text)">
+      Calculate Tax
+    </button>
+    <div class="tax-result" id="taxResult"></div>
+  </div>
+
+  <!-- ⑥ NOTES -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-num">6</div>
+      <div class="section-title">Notes</div>
+    </div>
+    <textarea class="notes-area" id="notes" placeholder="Internal notes, hinge preference, foam color, delivery instructions..."></textarea>
+  </div>
+
+</div><!-- /main-col -->
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="summary-title">Quote Summary</div>
+
+  <div class="summary-line">
+    <span class="summary-label">Products Subtotal</span>
+    <span class="summary-val" id="sumSubtotal">$0.00</span>
+  </div>
+  <div class="summary-line" id="sumDiscountLine" style="display:none">
+    <span class="summary-label" id="sumDiscountLabel">Discount</span>
+    <span class="summary-val" style="color:var(--accent)" id="sumDiscount">—$0.00</span>
+  </div>
+  <div class="summary-line">
+    <span class="summary-label">Freight</span>
+    <span class="summary-val" id="sumFreight">Not quoted</span>
+  </div>
+  <div class="summary-line">
+    <span class="summary-label">Sales Tax</span>
+    <span class="summary-val" id="sumTax">Not calculated</span>
+  </div>
+  <div class="summary-line total">
+    <span>Total</span>
+    <span id="sumTotal">$0.00</span>
+  </div>
+
+  <div style="margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,.1)">
+    <div class="summary-title">Quote Number</div>
+    <div style="margin-top:8px;font-family:var(--mono);font-size:16px;font-weight:600;color:var(--accent);letter-spacing:.05em;" id="quoteNumDisplay">—</div>
+    <input type="hidden" id="quoteNumHidden" value="">
+  </div>
+
+  <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,.1)">
+    <div class="summary-title">Deal Name <span id="revisionBadge" style="font-size:10px;color:rgba(238,98,22,.8);font-weight:400;display:none"></span></div>
+    <input type="text" id="dealName" class="product-search-input" placeholder="Auto-generated if blank" style="margin-top:8px;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.15);color:rgba(255,255,255,.9);" oninput="updateRevisionBadge()">
+  </div>
+
+  <button class="create-btn" id="createBtn" onclick="createDeal()">
+    Push to HubSpot
+  </button>
+  <button class="create-btn" id="pdfBtn" onclick="generatePDF()" style="margin-top:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.85);">
+    Download PDF Quote
+  </button>
+
+  <div class="result-box" id="resultBox"></div>
+
+  <div style="margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,.1)">
+    <div class="summary-title" style="margin-bottom:10px">Quote Weight</div>
+    <div style="font-size:12px;color:rgba(255,255,255,.6)">
+      Total: <span style="color:rgba(255,255,255,.85)" id="totalWeight">0 lbs</span>
+    </div>
+    <div style="font-size:12px;color:rgba(255,255,255,.6);margin-top:4px">
+      Pallets: <span style="color:rgba(255,255,255,.85)" id="totalPallets">0</span>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- DUPLICATE CONTACT MODAL -->
+<div class="modal-overlay hidden" id="dupModal">
+  <div class="modal-box">
+    <div class="modal-title">Possible Duplicate Contact</div>
+    <div class="modal-sub" id="dupModalSub">We found an existing contact that may match. Would you like to use the existing contact or create a new one?</div>
+    <div class="modal-contact-card">
+      <div class="modal-contact-name" id="dupContactName">—</div>
+      <div class="modal-contact-detail" id="dupContactDetail">—</div>
+    </div>
+    <div class="modal-btns">
+      <button class="modal-btn primary" onclick="useDupContact()">Use Existing Contact</button>
+      <button class="modal-btn secondary" onclick="createNewContact()">Create New Contact</button>
+    </div>
+  </div>
+</div>
+
+<!-- QUOTE HISTORY PANEL -->
+<div class="history-overlay" id="historyOverlay" onclick="toggleHistory()"></div>
+<div class="history-panel" id="historyPanel">
+  <div class="history-header">
+    <div class="history-title">Quote History</div>
+    <button class="history-close" onclick="toggleHistory()">&#x2715;</button>
+  </div>
+  <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); display:flex; flex-direction:column; gap:8px;">
+    <input type="text" id="historySearch" placeholder="Search by contact, company, deal, or quote #..."
+      style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:12px;padding:8px 10px;width:100%;outline:none;"
+      oninput="renderHistory()">
+    <select id="historyRepFilter"
+      style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:12px;padding:7px 10px;width:100%;outline:none;"
+      onchange="renderHistory()">
+      <option value="">All Reps</option>
+      <option value="36303670">Benton White</option>
+      <option value="38732178">Kim Dalton</option>
+      <option value="36330944">Jill Holdway</option>
+      <option value="38143901">Sarah Smith</option>
+      <option value="117442978">Travis Singleton</option>
+      <option value="36320208">Gabe White</option>
+    </select>
+  </div>
+  <div style="padding:8px 16px;font-size:10px;color:var(--muted);border-bottom:1px solid var(--border);">
+    <span id="historyCount">Loading...</span>
+  </div>
+  <div class="history-list" id="historyList"></div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────
+let lineItems = [];
+let discountType = 'pct'; // 'pct' or 'flat'
+let freightData = null;
+let taxData = null;
+let searchTimeout = null;
+
+// ── Product Data from freight tool (pallet/weight lookup) ─────────
+const BOOTH_DATA = {
+  "Voice Over Basic":{"weight":940,"pallets":[{l:90,w:52,h:42}]},
+  "Voice Over Deluxe":{"weight":1432,"pallets":[{l:90,w:52,h:60}]},
+  "Audiology Basic":{"weight":1163,"pallets":[{l:90,w:52,h:48}]},
+  "Audiology Deluxe":{"weight":1848,"pallets":[{l:90,w:52,h:52}]},
+  "Office Booth":{"weight":854,"pallets":[{l:90,w:47,h:37}]},
+  "Work From Home Booth":{"weight":1040,"pallets":[{l:90,w:52,h:48}]},
+  "Drum Booth":{"weight":3336,"pallets":[{l:102,w:52,h:28},{l:90,w:52,h:41},{l:102,w:52,h:44}]},
+  "Audiology Basic Plus":{"weight":1418,"pallets":[{l:90,w:52,h:48}]},
+  "Audiology Compact":{"weight":978,"pallets":[{l:90,w:52,h:42}]},
+  "Audiology Ultra":{"weight":2859,"pallets":[{l:90,w:52,h:52},{l:90,w:52,h:41}]},
+  "Audiology Premium":{"weight":2102,"pallets":[{l:90,w:52,h:59}]},
+  "Creator Basic":{"weight":1506,"pallets":[{l:90,w:52,h:52}]},
+  "Creator Deluxe":{"weight":2497,"pallets":[{l:90,w:52,h:52},{l:90,w:52,h:41}]},
+  "Practice Basic":{"weight":1332,"pallets":[{l:90,w:52,h:52}]},
+  "Practice Deluxe":{"weight":2323,"pallets":[{l:90,w:52,h:52},{l:90,w:52,h:41}]},
+  "Recording Studio":{"weight":2535,"pallets":[{l:102,w:52,h:37},{l:90,w:52,h:43}]},
+  "Drum Studio":{"weight":4686,"pallets":[{l:102,w:52,h:44},{l:90,w:52,h:46},{l:102,w:52,h:54}]},
+  "Meeting Booth":{"weight":1591,"pallets":[{l:90,w:52,h:59}]},
+  "Maker Space":{"weight":2549,"pallets":[{l:102,w:52,h:28},{l:90,w:52,h:41}]},
+  "MDL 4230 E":{"weight":1237,"pallets":[{l:90,w:47,h:51}]},"MDL 4230 S":{"weight":809,"pallets":[{l:90,w:47,h:35}]},
+  "MDL 127 LP E":{"weight":1615,"pallets":[{l:90,w:54,h:62}]},"MDL 127 LP S":{"weight":1003,"pallets":[{l:90,w:54,h:40}]},
+  "MDL 4242 E":{"weight":1400,"pallets":[{l:90,w:47,h:58}]},"MDL 4242 S":{"weight":896,"pallets":[{l:90,w:47,h:37}]},
+  "MDL 4260 E":{"weight":1742,"pallets":[{l:90,w:47,h:64}]},"MDL 4260 S":{"weight":1065,"pallets":[{l:90,w:47,h:41}]},
+  "MDL 4284 E":{"weight":2313,"pallets":[{l:90,w:47,h:57},{l:90,w:47,h:38}]},"MDL 4284 S":{"weight":1318,"pallets":[{l:90,w:47,h:57}]},
+  "MDL 4848 E":{"weight":1592,"pallets":[{l:90,w:52,h:60}]},"MDL 4848 S":{"weight":1002,"pallets":[{l:90,w:52,h:42}]},
+  "MDL 4872 E":{"weight":2187,"pallets":[{l:90,w:52,h:48},{l:90,w:52,h:27}]},"MDL 4872 S":{"weight":1224,"pallets":[{l:90,w:52,h:48}]},
+  "MDL 4896 E":{"weight":2638,"pallets":[{l:102,w:52,h:48},{l:102,w:52,h:38}]},"MDL 4896 S":{"weight":1505,"pallets":[{l:102,w:52,h:48}]},
+  "MDL 6060 E":{"weight":2378,"pallets":[{l:90,w:47,h:54},{l:90,w:47,h:42}]},"MDL 6060 S":{"weight":1342,"pallets":[{l:90,w:47,h:54}]},
+  "MDL 6084 E":{"weight":2745,"pallets":[{l:90,w:47,h:60},{l:90,w:47,h:42}]},"MDL 6084 S":{"weight":1547,"pallets":[{l:90,w:47,h:60}]},
+  "MDL 7272 E":{"weight":2767,"pallets":[{l:90,w:52,h:52},{l:90,w:52,h:41}]},"MDL 7272 S":{"weight":1578,"pallets":[{l:90,w:52,h:52}]},
+  "MDL 7296 E":{"weight":3180,"pallets":[{l:90,w:52,h:59},{l:90,w:52,h:43}]},"MDL 7296 S":{"weight":1803,"pallets":[{l:90,w:52,h:59}]},
+  "MDL 8484 E":{"weight":3437,"pallets":[{l:90,w:47,h:48},{l:90,w:47,h:27},{l:90,w:47,h:46}]},"MDL 8484 S":{"weight":2053,"pallets":[{l:90,w:47,h:48},{l:90,w:47,h:27}]},
+  "MDL 9696 E":{"weight":3968,"pallets":[{l:102,w:52,h:28},{l:90,w:52,h:41},{l:102,w:52,h:44}]},"MDL 9696 S":{"weight":2360,"pallets":[{l:102,w:52,h:28},{l:90,w:52,h:41}]},
+  "MDL 10284 E":{"weight":3884,"pallets":[{l:90,w:47,h:40},{l:108,w:47,h:37},{l:102,w:52,h:44}]},"MDL 10284 S":{"weight":2277,"pallets":[{l:90,w:47,h:40},{l:108,w:47,h:37}]},
+  "MDL 84102 E":{"weight":3885,"pallets":[{l:90,w:47,h:53},{l:90,w:47,h:31},{l:90,w:47,h:50}]},"MDL 84102 S":{"weight":2297,"pallets":[{l:90,w:47,h:53},{l:90,w:47,h:31}]},
+  "MDL 84126 E":{"weight":4380,"pallets":[{l:90,w:47,h:51},{l:90,w:47,h:44},{l:90,w:47,h:57}]},"MDL 84126 S":{"weight":2610,"pallets":[{l:90,w:47,h:51},{l:90,w:47,h:44}]},
+  "MDL 96120 E":{"weight":4566,"pallets":[{l:102,w:52,h:37},{l:90,w:52,h:43},{l:102,w:52,h:50}]},"MDL 96120 S":{"weight":2689,"pallets":[{l:102,w:52,h:37},{l:90,w:52,h:43}]},
+  "MDL 96144 E":{"weight":5121,"pallets":[{l:102,w:52,h:44},{l:90,w:52,h:46},{l:102,w:52,h:54}]},"MDL 96144 S":{"weight":3024,"pallets":[{l:102,w:52,h:44},{l:90,w:52,h:46}]},
+  "MDL 96168 E":{"weight":5896,"pallets":[{l:102,w:52,h:46},{l:90,w:52,h:49},{l:102,w:52,h:30},{l:90,w:47,h:42}]},"MDL 96168 S":{"weight":3364,"pallets":[{l:102,w:52,h:46},{l:90,w:52,h:49}]},
+  "MDL 96192 E":{"weight":6546,"pallets":[{l:102,w:52,h:41},{l:90,w:52,h:49},{l:90,w:47,h:25},{l:102,w:52,h:33},{l:90,w:47,h:42}]},"MDL 96192 S":{"weight":3796,"pallets":[{l:102,w:52,h:41},{l:90,w:52,h:49},{l:90,w:47,h:25}]},
+  "MDL 102102 E":{"weight":4397,"pallets":[{l:90,w:47,h:45},{l:108,w:47,h:44},{l:90,w:47,h:40}]},"MDL 102102 S":{"weight":2552,"pallets":[{l:90,w:47,h:45},{l:108,w:47,h:44}]},
+  "MDL 102126 E":{"weight":5106,"pallets":[{l:90,w:47,h:61},{l:108,w:47,h:46},{l:108,w:47,h:48}]},"MDL 102126 S":{"weight":2891,"pallets":[{l:90,w:47,h:61},{l:108,w:47,h:46}]},
+  "MDL 102144 E":{"weight":5624,"pallets":[{l:90,w:47,h:61},{l:108,w:47,h:37},{l:90,w:47,h:40},{l:108,w:47,h:27}]},"MDL 102144 S":{"weight":3167,"pallets":[{l:90,w:47,h:61},{l:108,w:47,h:37}]},
+  "MDL 102168 E":{"weight":6266,"pallets":[{l:90,w:47,h:53},{l:108,w:47,h:43},{l:90,w:47,h:22},{l:90,w:47,h:51},{l:108,w:47,h:29}]},"MDL 102168 S":{"weight":3611,"pallets":[{l:90,w:47,h:53},{l:108,w:47,h:43},{l:90,w:47,h:22}]},
+  "MDL 102186 E":{"weight":6778,"pallets":[{l:90,w:47,h:55},{l:108,w:47,h:43},{l:90,w:47,h:22},{l:90,w:47,h:52},{l:108,w:47,h:31}]},"MDL 102186 S":{"weight":3885,"pallets":[{l:90,w:47,h:55},{l:108,w:47,h:43},{l:90,w:47,h:22}]},
+};
+
+// ── Formatting ────────────────────────────────────────────────────
+const fmt = n => '$' + parseFloat(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+// ── Accessorial toggles ───────────────────────────────────────────
+function toggleAcc(el, id) {
+  const cb = document.getElementById(id);
+  cb.checked = !cb.checked;
+  el.classList.toggle('active', cb.checked);
+}
+
+// ── Discount type ─────────────────────────────────────────────────
+function setDiscType(type) {
+  discountType = type;
+  document.getElementById('discPctBtn').classList.toggle('active', type === 'pct');
+  document.getElementById('discFlatBtn').classList.toggle('active', type === 'flat');
+  document.getElementById('discountValue').placeholder = type === 'pct' ? '0' : '0.00';
+  updateSummary();
+}
+
+// ── Line items ────────────────────────────────────────────────────
+function addLineItem(product) {
+  const item = {
+    id: Date.now() + Math.random(),
+    productId: product.id,
+    name: product.properties.name,
+    description: product.properties.description || '',
+    price: parseFloat(product.properties.price) || 0,
+    qty: 1,
+  };
+  lineItems.push(item);
+  renderLineItems();
+  updateSummary();
+  freightData = null;
+  taxData = null;
+  document.getElementById('freightResult').classList.remove('visible');
+  document.getElementById('taxResult').classList.remove('visible');
+  document.getElementById('productSearch').value = '';
+  document.getElementById('productDropdown').classList.remove('open');
+}
+
+function removeLineItem(id) {
+  lineItems = lineItems.filter(i => i.id !== id);
+  renderLineItems();
+  updateSummary();
+}
+
+function renderLineItems() {
+  const tbody = document.getElementById('lineItemsBody');
+  const table = document.getElementById('lineTable');
+  const empty = document.getElementById('emptyState');
+
+  if (lineItems.length === 0) {
+    table.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+  table.style.display = 'table';
+  empty.style.display = 'none';
+
+  tbody.innerHTML = lineItems.map(item => `
+    <tr data-id="${item.id}">
+      <td>
+        <div class="li-name">${item.name}</div>
+        <div class="li-desc">${item.description}</div>
+      </td>
+      <td>
+        <input class="li-input" type="number" value="${item.qty}" min="1" step="1"
+          style="width:60px" onchange="updateLineItem('${item.id}','qty',this.value)">
+      </td>
+      <td>
+        <input class="li-input" type="number" value="${item.price.toFixed(2)}" min="0" step="0.01"
+          style="width:90px" onchange="updateLineItem('${item.id}','price',this.value)">
+      </td>
+      <td style="color:var(--text);font-size:13px">${fmt(item.qty * item.price)}</td>
+      <td>
+        <button class="li-remove" onclick="removeLineItem('${item.id}')">×</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function updateLineItem(id, field, value) {
+  const item = lineItems.find(i => String(i.id) === String(id));
+  if (!item) return;
+  if (field === 'qty') item.qty = Math.max(1, parseInt(value) || 1);
+  if (field === 'price') item.price = parseFloat(value) || 0;
+  renderLineItems();
+  updateSummary();
+}
+
+// ── Summary ───────────────────────────────────────────────────────
+function getSubtotal() {
+  return lineItems.reduce((s, i) => s + i.qty * i.price, 0);
+}
+
+function getDiscountAmount() {
+  const val = parseFloat(document.getElementById('discountValue').value) || 0;
+  if (val <= 0) return 0;
+  if (discountType === 'pct') return getSubtotal() * (val / 100);
+  return val;
+}
+
+function getFreightTotal() {
+  return freightData ? freightData.total : 0;
+}
+
+function getTaxAmount() {
+  return taxData ? taxData.tax : 0;
+}
+
+function updateSummary() {
+  const sub = getSubtotal();
+  const disc = getDiscountAmount();
+  const freight = getFreightTotal();
+  const tax = getTaxAmount();
+  const total = sub - disc + freight + tax;
+
+  document.getElementById('sumSubtotal').textContent = fmt(sub);
+
+  const discLine = document.getElementById('sumDiscountLine');
+  if (disc > 0) {
+    discLine.style.display = 'flex';
+    const val = parseFloat(document.getElementById('discountValue').value) || 0;
+    document.getElementById('sumDiscountLabel').textContent =
+      discountType === 'pct' ? `Discount (${val}%)` : 'Discount';
+    document.getElementById('sumDiscount').textContent = `—${fmt(disc)}`;
+    document.getElementById('discountDisplay').textContent = `— ${fmt(disc)}`;
+  } else {
+    discLine.style.display = 'none';
+    document.getElementById('discountDisplay').textContent = '— $0.00';
+  }
+
+  document.getElementById('sumFreight').textContent = freight > 0 ? fmt(freight) : 'Not quoted';
+  document.getElementById('sumTax').textContent = tax > 0 ? fmt(tax) : (taxData && !taxData.inNexus ? 'No nexus' : 'Not calculated');
+  document.getElementById('sumTotal').textContent = fmt(total);
+
+  // Weight / pallets
+  let totalWeight = 0, totalPallets = 0;
+  lineItems.forEach(item => {
+    const bd = BOOTH_DATA[item.name];
+    if (bd) { totalWeight += bd.weight * item.qty; totalPallets += bd.pallets.length * item.qty; }
+  });
+  document.getElementById('totalWeight').textContent = totalWeight > 0 ? `${totalWeight.toLocaleString()} lbs` : '—';
+  document.getElementById('totalPallets').textContent = totalPallets > 0 ? totalPallets : '—';
+}
+
+// ── Product search ────────────────────────────────────────────────
+const searchInput = document.getElementById('productSearch');
+const dropdown = document.getElementById('productDropdown');
+
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchTimeout);
+  const q = searchInput.value.trim();
+  if (q.length < 2) { dropdown.classList.remove('open'); return; }
+  dropdown.innerHTML = '<div class="product-option-empty">Searching...</div>';
+  dropdown.classList.add('open');
+  searchTimeout = setTimeout(() => searchProducts(q), 300);
+});
+
+searchInput.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { dropdown.classList.remove('open'); searchInput.value = ''; }
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.product-search-wrap')) dropdown.classList.remove('open');
+});
+
+async function searchProducts(q) {
+  try {
+    const res = await fetch(`/api/products?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    const results = data.results || [];
+    if (results.length === 0) {
+      dropdown.innerHTML = '<div class="product-option-empty">No products found</div>';
+      return;
+    }
+    dropdown.innerHTML = results.slice(0, 20).map(p => `
+      <div class="product-option" onclick="addLineItem(${JSON.stringify(p).replace(/"/g, '&quot;')})">
+        <div class="product-option-name">${p.properties.name}</div>
+        <div class="product-option-price">${p.properties.hs_sku ? p.properties.hs_sku + ' · ' : ''}${fmt(p.properties.price)}</div>
+      </div>
+    `).join('');
+    dropdown.classList.add('open');
+  } catch(e) {
+    dropdown.innerHTML = '<div class="product-option-empty">Search error</div>';
+  }
+}
+
+// ── Freight ───────────────────────────────────────────────────────
+async function getFreight() {
+  const city = document.getElementById('shipCity').value.trim();
+  const state = document.getElementById('shipState').value.trim().toUpperCase();
+  const zip = document.getElementById('shipZip').value.trim();
+
+  if (!city || !state || !zip) {
+    alert('Please fill in the ship-to address first.');
+    return;
+  }
+
+  // Build pallet list from line items
+  let allPallets = [];
+  let totalWeight = 0;
+  lineItems.forEach(item => {
+    const bd = BOOTH_DATA[item.name];
+    if (bd) {
+      for (let q = 0; q < item.qty; q++) {
+        const perPallet = Math.floor(bd.weight / bd.pallets.length);
+        const rem = bd.weight % bd.pallets.length;
+        bd.pallets.forEach((pl, i) => {
+          allPallets.push({ ...pl, weight: perPallet + (i === 0 ? rem : 0) });
+        });
+        totalWeight += bd.weight;
+      }
+    }
+  });
+
+  if (allPallets.length === 0) {
+    alert('No booth/package products with pallet data found. Add a booth first.');
+    return;
+  }
+
+  const btn = document.getElementById('freightBtn');
+  const status = document.getElementById('freightStatus');
+  btn.disabled = true;
+  status.textContent = 'Fetching ABF rate...';
+
+  try {
+    const res = await fetch('/api/freight', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pallets: allPallets,
+        totalWeight,
+        city, state, zip,
+        canadian: document.getElementById('canada').checked,
+        accessories: {
+          residential: document.getElementById('residential').checked,
+          liftgate: document.getElementById('liftgate').checked,
+          limitedaccess: document.getElementById('limitedaccess').checked,
+          loadingdock: document.getElementById('loadingdock').checked,
+        }
+      })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const total = data.cost + data.markup;
+    freightData = { base: data.cost, markup: data.markup, total, transit: data.transit, dynDisc: data.dynDisc };
+
+    document.getElementById('freightBase').textContent = fmt(data.cost);
+    document.getElementById('freightMarkup').textContent = fmt(data.markup);
+    document.getElementById('freightTotal').textContent = fmt(total);
+    document.getElementById('freightTransit').textContent = data.transit;
+
+    const warn = document.getElementById('freightWarning');
+    if (data.dynDisc > 0) {
+      warn.textContent = `⚠ Dynamic discount of ${fmt(data.dynDisc)} excluded — cannot be guaranteed at booking.`;
+      warn.style.display = 'block';
+    } else { warn.style.display = 'none'; }
+
+    document.getElementById('freightResult').classList.add('visible');
+    status.textContent = '';
+    updateSummary();
+    taxData = null;
+    document.getElementById('taxResult').classList.remove('visible');
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Tax ───────────────────────────────────────────────────────────
+async function getTax() {
+  const state = document.getElementById('shipState').value.trim().toUpperCase();
+  const zip = document.getElementById('shipZip').value.trim();
+  const city = document.getElementById('shipCity').value.trim();
+
+  if (!state || !zip) { alert('Please fill in the ship-to address first.'); return; }
+
+  const subtotal = getSubtotal() - getDiscountAmount();
+  const shipping = getFreightTotal();
+
+  const btn = document.getElementById('taxBtn');
+  btn.disabled = true;
+  btn.textContent = 'Calculating...';
+
+  try {
+    const res = await fetch('/api/tax', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state, zip, city, subtotal, shipping })
+    });
+    const data = await res.json();
+    taxData = data;
+
+    const el = document.getElementById('taxResult');
+    if (!data.inNexus) {
+      el.innerHTML = `<span style="color:var(--muted)">No tax nexus in ${state} — tax not applicable.</span>`;
+    } else if (data.error) {
+      el.innerHTML = `<span style="color:var(--red)">TaxJar error: ${data.error}</span>`;
+    } else {
+      el.innerHTML = `
+        <div style="display:flex;gap:24px;flex-wrap:wrap">
+          <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Tax Rate</div><div style="font-size:16px;margin-top:2px">${(data.rate * 100).toFixed(3)}%</div></div>
+          <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Tax Amount</div><div style="font-size:16px;color:var(--green);margin-top:2px">${fmt(data.tax)}</div></div>
+          <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Freight Taxed</div><div style="font-size:16px;margin-top:2px">${data.freightTaxed ? 'Yes' : 'No'}</div></div>
+        </div>
+      `;
+    }
+    el.classList.add('visible');
+    updateSummary();
+  } catch(e) {
+    document.getElementById('taxResult').innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
+    document.getElementById('taxResult').classList.add('visible');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Calculate Tax';
+  }
+}
+
+// ── Create Deal ───────────────────────────────────────────────────
+async function createDeal() {
+  const firstName = document.getElementById('firstName').value.trim();
+  const lastName = document.getElementById('lastName').value.trim();
+  const email = document.getElementById('email').value.trim();
+
+  if (!firstName || !lastName || !email) {
+    alert('Please fill in customer first name, last name, and email.'); return;
+  }
+  if (lineItems.length === 0) {
+    alert('Please add at least one product.'); return;
+  }
+
+  const btn = document.getElementById('createBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-inline"></span>Creating in HubSpot...';
+
+  const sub = getSubtotal();
+  const disc = getDiscountAmount();
+  const total = sub - disc + getFreightTotal() + getTaxAmount();
+
+  const discountedItems = lineItems.map(item => ({
+    ...item,
+    lineDiscount: disc > 0 && discountType === 'pct'
+      ? (parseFloat(document.getElementById('discountValue').value) || 0)
+      : 0
+  }));
+
+  try {
+    const res = await fetch('/api/create-deal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customer: {
+          firstName, lastName,
+          email,
+          phone: document.getElementById('phone').value.trim(),
+          company: document.getElementById('company').value.trim(),
+          address: document.getElementById('shipAddress').value.trim(),
+          city: document.getElementById('shipCity').value.trim(),
+          state: document.getElementById('shipState').value.trim().toUpperCase(),
+          zip: document.getElementById('shipZip').value.trim(),
+        },
+        existingContactId: existingContactId || null,
+        quoteNumber: document.getElementById('quoteNumHidden').value,
+        lineItems: discountedItems,
+        freight: freightData,
+        tax: taxData,
+        discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0, amount: disc },
+        total,
+        ownerId: document.getElementById('repSelect').value,
+        dealName: document.getElementById('dealName').value.trim() ||
+          `${document.getElementById('company').value.trim() || lastName} — Quote`,
+        existingDealId: selectedDeal ? selectedDeal.id : null,
+      })
+    });
+
+    const data = await res.json();
+    const box = document.getElementById('resultBox');
+
+    if (data.success) {
+      box.className = 'result-box success';
+      box.innerHTML = `✓ Deal created in HubSpot.<br><a href="${data.dealUrl}" target="_blank">View Deal &#x2192;</a>`;
+      // Save to history
+      const repName = document.getElementById('repSelect').options[document.getElementById('repSelect').selectedIndex].text;
+      const dealNameFinal = document.getElementById('dealName').value.trim() || (document.getElementById('company').value.trim() || lastName) + ' — Quote';
+      const existingRevision = allHistory.filter(q => q.dealName === dealNameFinal).length;
+      const customerEmail = document.getElementById('email').value.trim();
+      const accessories = {
+        residential: document.getElementById('residential').checked,
+        liftgate: document.getElementById('liftgate').checked,
+        limitedaccess: document.getElementById('limitedaccess').checked,
+        loadingdock: document.getElementById('loadingdock').checked,
+      };
+      if (customerEmail) saveAccessorialPrefs(customerEmail, accessories);
+      saveQuoteToHistory({
+        dealName: dealNameFinal,
+        quoteNumber: document.getElementById('quoteNumHidden').value,
+        date: new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}),
+        rep: repName, ownerId: document.getElementById('repSelect').value,
+        revision: existingRevision + 1, total,
+        customer: { firstName: document.getElementById('firstName').value.trim(), lastName: document.getElementById('lastName').value.trim(), email: customerEmail, phone: document.getElementById('phone').value.trim(), company: document.getElementById('company').value.trim(), address: document.getElementById('shipAddress').value.trim(), city: document.getElementById('shipCity').value.trim(), state: document.getElementById('shipState').value.trim().toUpperCase(), zip: document.getElementById('shipZip').value.trim() },
+        lineItems: JSON.parse(JSON.stringify(lineItems)),
+        discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
+        freight: freightData ? {...freightData} : null,
+        tax: taxData ? {...taxData} : null,
+        accessories, notes: document.getElementById('notes').value.trim(), hubspotUrl: data.dealUrl,
+      });
+    } else {
+      box.className = 'result-box error';
+      box.innerHTML = `✕ Error: ${data.error}`;
+    }
+  } catch(e) {
+    document.getElementById('resultBox').className = 'result-box error';
+    document.getElementById('resultBox').innerHTML = `✕ ${e.message}`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Push to HubSpot';
+  }
+}
+
+// ── Deal search ──────────────────────────────────────────────────
+let selectedDeal = null;
+const dealSearchInput = document.getElementById('dealSearch');
+const dealDropdown = document.getElementById('dealDropdown');
+let dealSearchTimeout = null;
+
+dealSearchInput.addEventListener('input', () => {
+  clearTimeout(dealSearchTimeout);
+  const q = dealSearchInput.value.trim();
+  if (q.length < 2) { dealDropdown.classList.remove('open'); return; }
+  dealDropdown.innerHTML = '<div class="product-option-empty">Searching...</div>';
+  dealDropdown.classList.add('open');
+  dealSearchTimeout = setTimeout(() => searchDeals(q), 300);
+});
+
+dealSearchInput.addEventListener('keydown', e => {
+  if (e.key === 'Escape') dealDropdown.classList.remove('open');
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.deal-search-bar')) dealDropdown.classList.remove('open');
+});
+
+const DEAL_STAGES = {
+  'appointmentscheduled': 'Appointment Scheduled',
+  'qualifiedtobuy': 'Qualified to Buy',
+  'presentationscheduled': 'Presentation Scheduled',
+  'decisionmakerboughtin': 'Decision Maker Bought In',
+  'contractsent': 'Contract Sent',
+  'closedwon': 'Closed Won',
+  'closedlost': 'Closed Lost',
+};
+
+async function searchDeals(q) {
+  try {
+    const res = await fetch(`/api/deals?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    const results = data.results || [];
+    if (results.length === 0) {
+      dealDropdown.innerHTML = '<div class="product-option-empty">No deals found</div>';
+      return;
+    }
+    dealDropdown.innerHTML = results.map(d => {
+      const p = d.properties;
+      const stage = DEAL_STAGES[p.dealstage] || p.dealstage || '—';
+      const amount = p.amount ? fmt(p.amount) : '—';
+      return `<div class="contact-opt" onclick='selectDeal(${JSON.stringify({id:d.id,name:p.dealname,stage,amount}).replace(/'/g,"&#39;")})'>
+        <div class="contact-opt-name">${p.dealname}</div>
+        <div class="contact-opt-email">${stage} · ${amount}</div>
+      </div>`;
+    }).join('');
+    dealDropdown.classList.add('open');
+  } catch(e) {
+    dealDropdown.innerHTML = '<div class="product-option-empty">Search error</div>';
+  }
+}
+
+function selectDeal(deal) {
+  selectedDeal = deal;
+  document.getElementById('selectedDealName').textContent = deal.name;
+  document.getElementById('selectedDealBadge').style.display = 'block';
+  document.getElementById('dealName').value = deal.name;
+  dealSearchInput.value = '';
+  dealDropdown.classList.remove('open');
+}
+
+function clearDeal() {
+  selectedDeal = null;
+  document.getElementById('selectedDealBadge').style.display = 'none';
+  document.getElementById('dealName').value = '';
+}
+
+// ── Contact search ───────────────────────────────────────────────
+const contactSearch = document.getElementById('contactSearch');
+const contactDropdown = document.getElementById('contactDropdown');
+let contactSearchTimeout = null;
+
+contactSearch.addEventListener('input', () => {
+  clearTimeout(contactSearchTimeout);
+  const q = contactSearch.value.trim();
+  if (q.length < 2) { contactDropdown.classList.remove('open'); return; }
+  contactDropdown.innerHTML = '<div class="product-option-empty">Searching...</div>';
+  contactDropdown.classList.add('open');
+  contactSearchTimeout = setTimeout(() => searchContacts(q), 300);
+});
+
+contactSearch.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { contactDropdown.classList.remove('open'); }
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.contact-search-bar')) contactDropdown.classList.remove('open');
+});
+
+async function searchContacts(q) {
+  try {
+    const res = await fetch(`/api/contacts?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    const results = data.results || [];
+
+    if (results.length === 0) {
+      contactDropdown.innerHTML = '<div class="product-option-empty">No contacts found — will create new</div>';
+      return;
+    }
+
+    contactDropdown.innerHTML = results.map(c => {
+      const p = c.properties;
+      const name = [p.firstname, p.lastname].filter(Boolean).join(' ') || 'Unknown';
+      const company = p.company ? ` · ${p.company}` : '';
+      return `<div class="contact-opt" onclick="fillContact(${JSON.stringify(c).replace(/"/g, '&quot;')})">
+        <div class="contact-opt-name">${name}${company}</div>
+        <div class="contact-opt-email">${p.email || ''}</div>
+      </div>`;
+    }).join('');
+    contactDropdown.classList.add('open');
+  } catch(e) {
+    contactDropdown.innerHTML = '<div class="product-option-empty">Search error</div>';
+  }
+}
+
+function fillContact(contact) {
+  const p = contact.properties;
+  document.getElementById('firstName').value = p.firstname || '';
+  document.getElementById('lastName').value = p.lastname || '';
+  document.getElementById('email').value = p.email || '';
+  document.getElementById('phone').value = p.phone || '';
+  document.getElementById('company').value = p.company || '';
+  document.getElementById('shipAddress').value = p.address || '';
+  document.getElementById('shipCity').value = p.city || '';
+  document.getElementById('shipState').value = p.state || '';
+  document.getElementById('shipZip').value = p.zip || '';
+  contactSearch.value = [p.firstname, p.lastname].filter(Boolean).join(' ') || p.email;
+  contactDropdown.classList.remove('open');
+  document.getElementById('contactBadge').style.display = 'none';
+  // Load saved accessorial preferences for this contact
+  if (p.email) loadAccessorialPrefs(p.email);
+}
+
+// Show "New Contact" badge when manually typing in name fields
+['firstName','lastName','email'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    if (!contactSearch.value) {
+      document.getElementById('contactBadge').style.display = 'inline';
+    }
+  });
+});
+
+// ── PDF Generation ───────────────────────────────────────────────
+function generatePDF() {
+  const firstName = document.getElementById('firstName').value.trim();
+  const lastName  = document.getElementById('lastName').value.trim();
+  const company   = document.getElementById('company').value.trim();
+  const email     = document.getElementById('email').value.trim();
+  const phone     = document.getElementById('phone').value.trim();
+  const address   = document.getElementById('shipAddress').value.trim();
+  const city      = document.getElementById('shipCity').value.trim();
+  const state     = document.getElementById('shipState').value.trim().toUpperCase();
+  const zip       = document.getElementById('shipZip').value.trim();
+  const rep       = document.getElementById('repSelect').options[document.getElementById('repSelect').selectedIndex].text;
+  const notes     = document.getElementById('notes').value.trim();
+
+  const sub      = getSubtotal();
+  const disc     = getDiscountAmount();
+  const freight  = getFreightTotal();
+  const tax      = getTaxAmount();
+  const total    = sub - disc + freight + tax;
+  const today    = new Date().toLocaleDateString('en-US', {year:'numeric',month:'long',day:'numeric'});
+  const quoteNum = document.getElementById('quoteNumHidden').value || ('WR-' + Date.now().toString().slice(-8));
+
+  const discVal  = parseFloat(document.getElementById('discountValue').value) || 0;
+  const discPct  = discountType === 'pct' && discVal > 0;
+
+  const rows = lineItems.map(item => `
+    <tr>
+      <td class="item-name">${item.name}</td>
+      <td class="item-desc">${item.description || ''}</td>
+      <td class="num">${item.qty}</td>
+      <td class="num">${fmt(item.price)}</td>
+      <td class="num">${fmt(item.qty * item.price)}</td>
+    </tr>
+  `).join('');
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700,800&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Satoshi', 'DM Sans', sans-serif; font-size: 11px; color: #46484d; background: white; padding: 40px; }
+
+  /* Header */
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 36px; padding-bottom: 24px; border-bottom: 3px solid #46484d; }
+  .logo { font-family: 'Satoshi', sans-serif; font-size: 28px; font-weight: 800; color: #46484d; letter-spacing: -0.5px; }
+  .logo span { color: #ee6216; }
+  .logo-sub { font-size: 9px; color: #888; letter-spacing: 0.15em; text-transform: uppercase; margin-top: 3px; }
+  .header-right { text-align: right; }
+  .quote-label { font-family: 'Satoshi', sans-serif; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; color: #888; margin-bottom: 4px; }
+  .quote-num { font-family: 'Satoshi', sans-serif; font-size: 22px; font-weight: 800; color: #46484d; }
+  .quote-date { font-size: 11px; color: #888; margin-top: 4px; }
+  .valid { font-size: 10px; color: #ee6216; margin-top: 2px; }
+
+  /* Info bar */
+  .info-bar { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; margin-bottom: 32px; border: 1px solid #e8e8e8; border-radius: 6px; overflow: hidden; }
+  .info-cell { padding: 14px 18px; border-right: 1px solid #e8e8e8; }
+  .info-cell:last-child { border-right: none; }
+  .info-cell-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: #888; margin-bottom: 6px; font-weight: 600; }
+  .info-cell-val { font-size: 12px; color: #46484d; font-weight: 500; line-height: 1.5; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+  thead tr { background: #46484d; }
+  thead th { padding: 10px 14px; text-align: left; font-family: 'Satoshi', sans-serif; font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: white; }
+  thead th.num { text-align: right; }
+  tbody tr { border-bottom: 1px solid #f0f0f0; }
+  tbody tr:nth-child(even) { background: #fafafa; }
+  tbody td { padding: 11px 14px; vertical-align: top; }
+  .item-name { font-weight: 600; color: #46484d; font-size: 11px; }
+  .item-desc { font-size: 10px; color: #888; max-width: 240px; line-height: 1.4; }
+  .num { text-align: right; font-size: 11px; }
+
+  /* Totals */
+  .totals-wrap { display: flex; justify-content: flex-end; margin-bottom: 32px; }
+  .totals { width: 280px; }
+  .totals-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f0f0f0; font-size: 11px; }
+  .totals-row:last-child { border-bottom: none; }
+  .totals-label { color: #555; }
+  .totals-val { font-weight: 500; color: #46484d; }
+  .totals-row.discount .totals-val { color: #ee6216; }
+  .totals-row.grand { padding: 12px 0 0; margin-top: 6px; border-top: 2px solid #46484d !important; border-bottom: none; }
+  .totals-row.grand .totals-label { font-family: 'Satoshi', sans-serif; font-weight: 700; font-size: 13px; color: #46484d; }
+  .totals-row.grand .totals-val { font-family: 'Satoshi', sans-serif; font-weight: 800; font-size: 18px; color: #46484d; }
+
+  /* Footer */
+  .footer { border-top: 1px solid #e8e8e8; padding-top: 20px; display: flex; justify-content: space-between; align-items: flex-start; }
+  .footer-left { font-size: 10px; color: #888; line-height: 1.7; }
+  .footer-right { text-align: right; font-size: 10px; color: #888; }
+  .footer-company { font-family: 'Satoshi', sans-serif; font-size: 12px; font-weight: 700; color: #46484d; margin-bottom: 4px; }
+
+  .notes-box { background: #f8f8f8; border-left: 3px solid #ee6216; padding: 12px 16px; margin-bottom: 24px; font-size: 10px; color: #555; line-height: 1.6; }
+  .notes-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: #ee6216; font-weight: 700; margin-bottom: 4px; }
+
+  @media print { body { padding: 20px; } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="logo">Whisper<span>Room</span></div>
+    <div class="logo-sub">Sound Isolation Enclosures</div>
+  </div>
+  <div class="header-right">
+    <div class="quote-label">Quote</div>
+    <div class="quote-num">${quoteNum}</div>
+    <div class="quote-date">${today}</div>
+    <div class="valid">Valid for 30 days</div>
+  </div>
+</div>
+
+<div class="info-bar">
+  <div class="info-cell">
+    <div class="info-cell-label">Bill / Ship To</div>
+    <div class="info-cell-val">
+      <strong>${[firstName, lastName].filter(Boolean).join(' ')}</strong><br>
+      ${company ? company + '<br>' : ''}
+      ${email}<br>
+      ${phone || ''}
+    </div>
+  </div>
+  <div class="info-cell">
+    <div class="info-cell-label">Ship To Address</div>
+    <div class="info-cell-val">
+      ${address || '—'}<br>
+      ${[city, state, zip].filter(Boolean).join(', ')}
+    </div>
+  </div>
+  <div class="info-cell">
+    <div class="info-cell-label">Sales Rep</div>
+    <div class="info-cell-val">
+      <strong>${rep}</strong><br>
+      PH: (865) 558-5364<br>
+      info@whisperroom.com
+    </div>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Item</th>
+      <th>Description</th>
+      <th class="num">Qty</th>
+      <th class="num">Unit Price</th>
+      <th class="num">Total</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${rows}
+  </tbody>
+</table>
+
+<div class="totals-wrap">
+  <div class="totals">
+    <div class="totals-row"><span class="totals-label">Subtotal</span><span class="totals-val">${fmt(sub)}</span></div>
+    ${disc > 0 ? `<div class="totals-row discount"><span class="totals-label">Discount${discPct ? ` (${discVal}%)` : ''}</span><span class="totals-val">−${fmt(disc)}</span></div>` : ''}
+    ${freight > 0 ? `<div class="totals-row"><span class="totals-label">Freight${freightData && freightData.transit ? ` (${freightData.transit})` : ''}</span><span class="totals-val">${fmt(freight)}</span></div>` : '<div class="totals-row"><span class="totals-label">Freight</span><span class="totals-val" style="color:#888">TBD</span></div>'}
+    ${tax > 0 ? `<div class="totals-row"><span class="totals-label">Sales Tax${taxData ? ` (${(taxData.rate*100).toFixed(3)}%)` : ''}</span><span class="totals-val">${fmt(tax)}</span></div>` : ''}
+    <div class="totals-row grand"><span class="totals-label">Total USD</span><span class="totals-val">${fmt(total)}</span></div>
+  </div>
+</div>
+
+${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</div>` : ''}
+
+<div class="footer">
+  <div class="footer-left">
+    Shipping charges are an estimate based on the zip code provided at time of quote.<br>
+    Actual charges may vary based on delivery address accessibility.<br>
+    Standard delivery requires recipient to offload boxes from pallet.<br>
+    Quote is valid for 30 days from issue date.
+  </div>
+  <div class="footer-right">
+    <div class="footer-company">WhisperRoom, Inc.</div>
+    322 Nancy Lynn Lane, Suite 14<br>
+    Knoxville, TN 37919 USA<br>
+    PH: (865) 558-5364<br>
+    info@whisperroom.com
+  </div>
+</div>
+
+</body>
+</html>`;
+
+  // Open in new window and print
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 800);
+}
+
+// ── Quote History (server-side, shared across all reps) ──────────
+let allHistory = [];
+
+async function fetchHistory() {
+  try {
+    const res = await fetch('/api/history');
+    const data = await res.json();
+    allHistory = data.results || [];
+  } catch(e) { allHistory = []; }
+}
+
+async function saveQuoteToHistory(quoteData) {
+  try {
+    await fetch('/api/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(quoteData)
+    });
+    await fetchHistory();
+    renderHistory();
+  } catch(e) { console.error('History save error:', e); }
+}
+
+const REP_NAMES = {
+  '36303670': 'Benton White',
+  '38732178': 'Kim Dalton',
+  '36330944': 'Jill Holdway',
+  '38143901': 'Sarah Smith',
+  '117442978': 'Travis Singleton',
+  '36320208': 'Gabe White',
+};
+
+const REP_NUMBERS = {
+  '36303670': '16', // Benton White
+  '38732178': '17', // Kim Dalton
+  '36330944': '11', // Jill Holdway
+  '38143901': '18', // Sarah Smith
+  '117442978': '13', // Travis Singleton
+  '36320208': '19', // Gabe White
+};
+
+function generateQuoteNumber(ownerId) {
+  const repNum = REP_NUMBERS[ownerId] || '00';
+  const now = new Date();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const yy = String(now.getFullYear()).slice(-2);
+  const dateKey = repNum + mm + dd + yy;
+
+  // Count quotes done today by this rep using history
+  const todayStr = mm + '/' + dd + '/' + now.getFullYear();
+  const todayCount = allHistory.filter(q => {
+    return q.ownerId === ownerId && q.date && q.date.includes(now.getFullYear());
+  }).length;
+
+  const seq = String(todayCount + 1).padStart(2, '0');
+  return dateKey + seq;
+}
+
+function renderHistory() {
+  const list = document.getElementById('historyList');
+  const countEl = document.getElementById('historyCount');
+  const search = (document.getElementById('historySearch')?.value || '').toLowerCase();
+  const repFilter = document.getElementById('historyRepFilter')?.value || '';
+
+  let filtered = allHistory.filter(q => {
+    const name       = ((q.customer?.firstName || '') + ' ' + (q.customer?.lastName || '')).toLowerCase();
+    const deal       = (q.dealName || '').toLowerCase();
+    const company    = (q.customer?.company || '').toLowerCase();
+    const quoteNum   = (q.quoteNumber || '').toLowerCase();
+    const matchSearch = !search ||
+      name.includes(search) ||
+      deal.includes(search) ||
+      company.includes(search) ||
+      quoteNum.includes(search);
+    const matchRep = !repFilter || q.ownerId === repFilter;
+    return matchSearch && matchRep;
+  });
+
+  if (countEl) countEl.textContent = filtered.length + ' quote' + (filtered.length !== 1 ? 's' : '');
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="history-empty">' + (allHistory.length === 0 ? 'No saved quotes yet.<br>Quotes save automatically when pushed to HubSpot.' : 'No quotes match your search.') + '</div>';
+    return;
+  }
+
+  list.innerHTML = filtered.map((q, i) => {
+    const repName = REP_NAMES[q.ownerId] || q.rep || '—';
+    const custName = ((q.customer?.firstName || '') + ' ' + (q.customer?.lastName || '')).trim() || '—';
+    const date = q.date || (q.savedAt ? new Date(q.savedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—');
+    return `<div class="history-item" onclick="loadFromHistoryEntry('${q.id || i}')">
+      <div class="history-item-name">${q.dealName || 'Untitled Quote'}${q.revision > 1 ? ' <span style="font-size:10px;color:var(--muted)">v' + q.revision + '</span>' : ''}</div>
+      <div class="history-item-meta">
+        <span>${custName}</span>
+        ${q.customer?.company ? '<span>' + q.customer.company + '</span>' : ''}
+        <span>${date}</span>
+        <span style="color:var(--accent)">${repName}</span>
+      </div>
+      ${q.quoteNumber ? '<div style="font-size:10px;color:var(--dim);margin-top:2px;font-family:var(--mono)">' + q.quoteNumber + '</div>' : ''}
+      <div class="history-item-total">${fmt(q.total || 0)}</div>
+    </div>`;
+  }).join('');
+}
+
+function loadFromHistoryEntry(idOrIdx) {
+  const q = allHistory.find(h => h.id === idOrIdx) || allHistory[parseInt(idOrIdx)];
+  if (!q) return;
+  if (!confirm('Load "' + (q.dealName || 'Untitled Quote') + '"? This will replace your current quote.')) return;
+
+  if (q.customer) {
+    ['firstName','lastName','email','phone','company'].forEach(f => {
+      const el = document.getElementById(f); if(el) el.value = q.customer[f] || '';
+    });
+    document.getElementById('shipAddress').value = q.customer.address || '';
+    document.getElementById('shipCity').value = q.customer.city || '';
+    document.getElementById('shipState').value = q.customer.state || '';
+    document.getElementById('shipZip').value = q.customer.zip || '';
+  }
+
+  lineItems = q.lineItems ? JSON.parse(JSON.stringify(q.lineItems)) : [];
+  renderLineItems();
+
+  if (q.discount) {
+    discountType = q.discount.type || 'pct';
+    document.getElementById('discountValue').value = q.discount.value || 0;
+    setDiscType(discountType);
+  }
+
+  document.getElementById('dealName').value = q.dealName || '';
+  if (q.ownerId) document.getElementById('repSelect').value = q.ownerId;
+  if (q.notes) document.getElementById('notes').value = q.notes;
+
+  freightData = q.freight || null;
+  taxData = q.tax || null;
+
+  if (freightData) {
+    document.getElementById('freightBase').textContent = fmt(freightData.base);
+    document.getElementById('freightMarkup').textContent = fmt(freightData.markup);
+    document.getElementById('freightTotal').textContent = fmt(freightData.total);
+    document.getElementById('freightTransit').textContent = freightData.transit || '—';
+    document.getElementById('freightResult').classList.add('visible');
+  }
+
+  if (q.accessories) {
+    ['residential','liftgate','limitedaccess','loadingdock'].forEach(id => {
+      const cb = document.getElementById(id);
+      const label = document.getElementById('check-' + id);
+      if (cb && label) {
+        cb.checked = !!q.accessories[id];
+        label.classList.toggle('active', !!q.accessories[id]);
+      }
+    });
+  }
+
+  updateSummary();
+  toggleHistory();
+}
+
+function toggleHistory() {
+  const panel = document.getElementById('historyPanel');
+  const overlay = document.getElementById('historyOverlay');
+  const isOpen = panel.classList.toggle('open');
+  overlay.classList.toggle('open', isOpen);
+  if (isOpen) { fetchHistory().then(() => renderHistory()); }
+}
+
+// ── Accessorial memory ────────────────────────────────────────────
+// Save accessorials per contact email when contact is loaded
+function saveAccessorialPrefs(email, accessories) {
+  if (!email) return;
+  try {
+    const prefs = JSON.parse(localStorage.getItem('wr_acc_prefs') || '{}');
+    prefs[email.toLowerCase()] = accessories;
+    localStorage.setItem('wr_acc_prefs', JSON.stringify(prefs));
+  } catch(e) {}
+}
+
+function loadAccessorialPrefs(email) {
+  if (!email) return;
+  try {
+    const prefs = JSON.parse(localStorage.getItem('wr_acc_prefs') || '{}');
+    const saved = prefs[email.toLowerCase()];
+    if (!saved) return;
+    ['residential','liftgate','limitedaccess','loadingdock'].forEach(id => {
+      const cb = document.getElementById(id);
+      const label = document.getElementById('check-' + id);
+      if (cb && label && saved[id] !== undefined) {
+        cb.checked = !!saved[id];
+        label.classList.toggle('active', !!saved[id]);
+      }
+    });
+  } catch(e) {}
+}
+
+// ── Duplicate Contact Detection ──────────────────────────────────
+let pendingDupCheck = null; // stores resolve/reject for the promise
+let foundDupContact = null;
+
+async function checkForDuplicates(customer) {
+  // Skip if contact was loaded from HubSpot search
+  if (document.getElementById('contactBadge').style.display === 'none' && contactSearch.value) return null;
+
+  const checks = [];
+
+  // 1. Email check (most reliable)
+  if (customer.email) {
+    checks.push(fetch('/api/contacts?q=' + encodeURIComponent(customer.email))
+      .then(r => r.json()).then(d => (d.results || []).filter(c =>
+        c.properties.email && c.properties.email.toLowerCase() === customer.email.toLowerCase()
+      )));
+  }
+
+  // 2. Phone check
+  if (customer.phone) {
+    const cleanPhone = customer.phone.replace(/\D/g, '');
+    checks.push(fetch('/api/contacts?q=' + encodeURIComponent(customer.phone))
+      .then(r => r.json()).then(d => (d.results || []).filter(c => {
+        const cp = (c.properties.phone || '').replace(/\D/g, '');
+        return cp && cp === cleanPhone;
+      })));
+  }
+
+  // 3. Name + company check
+  if (customer.firstName && customer.lastName) {
+    const nameQuery = customer.firstName + ' ' + customer.lastName;
+    checks.push(fetch('/api/contacts?q=' + encodeURIComponent(nameQuery))
+      .then(r => r.json()).then(d => (d.results || []).filter(c => {
+        const fn = (c.properties.firstname || '').toLowerCase();
+        const ln = (c.properties.lastname || '').toLowerCase();
+        return fn === customer.firstName.toLowerCase() && ln === customer.lastName.toLowerCase();
+      })));
+  }
+
+  try {
+    const results = await Promise.all(checks);
+    const allMatches = results.flat();
+    if (allMatches.length === 0) return null;
+    // Return the first match (highest confidence)
+    return allMatches[0];
+  } catch(e) {
+    return null;
+  }
+}
+
+function showDupModal(contact, customer) {
+  return new Promise((resolve) => {
+    foundDupContact = contact;
+    const p = contact.properties;
+    const name = [p.firstname, p.lastname].filter(Boolean).join(' ');
+    const details = [p.email, p.phone, p.company, [p.city, p.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ');
+
+    document.getElementById('dupContactName').textContent = name || 'Unknown';
+    document.getElementById('dupContactDetail').textContent = details || '—';
+    document.getElementById('dupModalSub').textContent =
+      'We found an existing HubSpot contact that may match ' +
+      customer.firstName + ' ' + customer.lastName + '. Use existing or create new?';
+
+    document.getElementById('dupModal').classList.remove('hidden');
+    pendingDupCheck = resolve;
+  });
+}
+
+function useDupContact() {
+  document.getElementById('dupModal').classList.add('hidden');
+  if (pendingDupCheck) { pendingDupCheck({ useExisting: true, contact: foundDupContact }); pendingDupCheck = null; }
+}
+
+function createNewContact() {
+  document.getElementById('dupModal').classList.add('hidden');
+  if (pendingDupCheck) { pendingDupCheck({ useExisting: false }); pendingDupCheck = null; }
+}
+
+// ── Theme toggle ─────────────────────────────────────────────────
+function toggleTheme() {
+  const isDark = document.body.classList.toggle('dark');
+  document.getElementById('themeIcon').textContent = isDark ? '🌙' : '☀️';
+  document.getElementById('themeLabel').textContent = isDark ? 'Dark' : 'Light';
+  localStorage.setItem('wr_theme', isDark ? 'dark' : 'light');
+}
+
+// Restore saved theme
+(function() {
+  const saved = localStorage.getItem('wr_theme');
+  if (saved === 'dark') {
+    document.body.classList.add('dark');
+    document.getElementById('themeIcon').textContent = '🌙';
+    document.getElementById('themeLabel').textContent = 'Dark';
+  }
+})();
+
+function updateRevisionBadge() {
+  const name = document.getElementById('dealName').value.trim();
+  const badge = document.getElementById('revisionBadge');
+  if (!name) { badge.style.display = 'none'; return; }
+  const revisions = allHistory.filter(q => q.dealName === name).length;
+  if (revisions > 0) {
+    badge.textContent = 'v' + (revisions + 1);
+    badge.style.display = 'inline';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// Auto-update quote number when rep changes
+document.getElementById('repSelect').addEventListener('change', () => {
+  updateQuoteNumber();
+});
+
+function updateQuoteNumber() {
+  const ownerId = document.getElementById('repSelect').value;
+  const qn = generateQuoteNumber(ownerId);
+  document.getElementById('quoteNumDisplay').textContent = qn;
+  document.getElementById('quoteNumHidden').value = qn;
+}
+
+// ── Init ──────────────────────────────────────────────────────────
+updateSummary();
+fetchHistory().then(() => updateQuoteNumber()); // preload history then set quote number
+</script>
+</body>
+</html>

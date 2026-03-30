@@ -46,20 +46,17 @@ async function saveQuoteNote(dealId, quoteData) {
 }
 
 async function fetchQuoteHistory() {
-  // Search for notes that are quote snapshots
+  // Search for notes in BOTH old (QUOTE_SNAPSHOT::) and new (WR_QUOTE_DATA:) formats
   const res = await httpsRequest({
     hostname: 'api.hubapi.com',
     path: '/crm/v3/objects/notes/search',
     method: 'POST',
     headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
   }, {
-    filterGroups: [{
-      filters: [{
-        propertyName: 'hs_note_body',
-        operator: 'CONTAINS_TOKEN',
-        value: 'QUOTE_SNAPSHOT::'
-      }]
-    }],
+    filterGroups: [
+      { filters: [{ propertyName: 'hs_note_body', operator: 'CONTAINS_TOKEN', value: 'QUOTE_SNAPSHOT::' }] },
+      { filters: [{ propertyName: 'hs_note_body', operator: 'CONTAINS_TOKEN', value: 'WR_QUOTE_DATA:' }] },
+    ],
     properties: ['hs_note_body', 'hs_timestamp'],
     sorts: [{ propertyName: 'hs_timestamp', direction: 'DESCENDING' }],
     limit: 200
@@ -70,8 +67,16 @@ async function fetchQuoteHistory() {
   return res.body.results.map(note => {
     try {
       const body = note.properties.hs_note_body || '';
-      const jsonStr = body.replace('QUOTE_SNAPSHOT::', '');
-      return JSON.parse(jsonStr);
+      let parsed = null;
+      // New format: WR_QUOTE_DATA:{...}:END_WR_QUOTE
+      const newMatch = body.match(/WR_QUOTE_DATA:(.+):END_WR_QUOTE/s);
+      if (newMatch) {
+        parsed = JSON.parse(newMatch[1]);
+      } else if (body.includes('QUOTE_SNAPSHOT::')) {
+        // Old format: QUOTE_SNAPSHOT::{...}
+        parsed = JSON.parse(body.replace('QUOTE_SNAPSHOT::', ''));
+      }
+      return parsed;
     } catch(e) { return null; }
   }).filter(Boolean);
 }
@@ -1105,6 +1110,15 @@ thead th:nth-child(3),thead th:nth-child(4){text-align:right}
       res.writeHead(500, { 'Content-Type': 'text/html' });
       res.end('<h2 style="font-family:sans-serif;padding:40px">Error: ' + e.message + '</h2>');
     }
+    return;
+  }
+
+  // ── One-time property setup endpoint ─────────────────────────────
+  if (pathname === '/api/ensure-properties' && req.method === 'POST') {
+    const body = JSON.parse(await readBody(req));
+    if (body.password !== process.env.WR_PASSWORD) { json({ error: 'Unauthorized' }, 401); return; }
+    await ensureHubSpotProperties();
+    json({ ok: true, message: 'Properties ensured' });
     return;
   }
 

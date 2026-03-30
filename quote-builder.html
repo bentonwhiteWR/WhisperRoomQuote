@@ -604,6 +604,20 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
       </div>
       <div style="font-size:11px;color:var(--accent);margin-top:4px">Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.</div>
     </div>
+    <div style="margin-top:10px;display:flex;align-items:center;gap:10px">
+      <label class="acc-check" id="check-taxexempt" onclick="toggleAcc(this,'taxexempt');document.getElementById('taxExemptRow').style.display=document.getElementById('taxexempt').checked?'block':'none';if(document.getElementById('taxexempt').checked){taxData=null;document.getElementById('taxResult').classList.remove('visible');updateSummary();}">
+        <input type="checkbox" id="taxexempt">
+        <div class="acc-box"></div>
+        Tax Exempt
+      </label>
+    </div>
+    <div id="taxExemptRow" style="display:none;margin-top:8px">
+      <div class="field">
+        <label>Tax Exempt Certificate # (optional)</label>
+        <input type="text" id="taxExemptCert" placeholder="Certificate number or org name">
+      </div>
+      <div style="font-size:11px;color:var(--accent);margin-top:4px">Tax will not be calculated for this order.</div>
+    </div>
   </div>
 
   <!-- ③ LINE ITEMS -->
@@ -1491,6 +1505,13 @@ async function getFreight() {
 
 // ── Tax ───────────────────────────────────────────────────────────
 async function getTax() {
+  // Skip if tax exempt
+  if (document.getElementById('taxexempt') && document.getElementById('taxexempt').checked) {
+    document.getElementById('taxResult').classList.remove('visible');
+    taxData = null;
+    updateSummary();
+    return;
+  }
   const state = document.getElementById('shipState').value.trim().toUpperCase();
   const zip = document.getElementById('shipZip').value.trim();
   const city = document.getElementById('shipCity').value.trim();
@@ -1981,10 +2002,10 @@ ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</
         I understand that WhisperRooms are not 100% soundproof. I understand that all products manufactured by WhisperRoom, Inc. are for indoor use only. Any returns will be at the sole discretion of WhisperRoom, Inc. and are subject to a restocking fee and freight charges. Any damage that occurs during shipping or delivery must be reported to WhisperRoom, Inc. within five business days. I assume responsibility for any damage not reported to WhisperRoom, Inc. In the event that delivery is not accepted for any reason, I agree to pay in full, all shipping charges including all charges incurred for return freight and restocking charges. Compliance with local, state and national building codes and standards are my responsibility. Any alterations to the WhisperRoom will void the warranty.
       </div>
       \${(() => {
-        const canadaChecked = document.getElementById('canada') && document.getElementById('canada').checked;
-        if (!canadaChecked) return '';
-        const broker = document.getElementById('customsBroker') && document.getElementById('customsBroker').value ? document.getElementById('customsBroker').value : '';
-        return '<div style=\'margin:0 0 14px;padding:10px 14px;background:#fff8f0;border-left:3px solid #ee6216;font-size:9px;color:#46484d;line-height:1.7;\'><strong style=\'color:#ee6216;display:block;margin-bottom:3px;\'>INTERNATIONAL / CANADIAN ORDER</strong>Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.' + (broker ? '<br><strong>Customs Broker:</strong> ' + broker : '') + '</div>';
+        const el = document.getElementById('canada');
+        if (!el || !el.checked) return '';
+        const broker = (document.getElementById('customsBroker') || {value:''}).value || '';
+        return '<div style="margin:0 0 14px;padding:10px 14px;background:#fff8f0;border-left:3px solid #ee6216;font-size:9px;color:#46484d;line-height:1.7;"><strong style="color:#ee6216;display:block;margin-bottom:3px;">INTERNATIONAL / CANADIAN ORDER</strong>Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.' + (broker ? '<br><strong>Customs Broker:</strong> ' + broker : '') + '</div>';
       })()}
       <div style="margin:0 0 16px;padding:10px 14px;background:#f8f8f8;border:1px solid #ebebeb;font-size:8.5px;color:#555;line-height:1.75;">
         <strong style="font-size:9px;color:#333;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em;">Terms and Conditions</strong>

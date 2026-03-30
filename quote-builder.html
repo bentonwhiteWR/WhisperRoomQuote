@@ -590,6 +590,26 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
       <div class="field"><label>State</label><input type="text" id="shipState" placeholder="TN or Tennessee" style="text-transform:uppercase" onblur="onStateBlur(this)"></div>
       <div class="field"><label>Zip</label><input type="text" id="shipZip" placeholder="37201"></div>
     </div>
+
+    <!-- Billing Address -->
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:600;color:var(--text)">Billing Address</div>
+        <label class="acc-check" id="check-billsame" onclick="toggleBillSame()">
+          <input type="checkbox" id="billsame" checked>
+          <div class="acc-box"></div>
+          Same as shipping
+        </label>
+      </div>
+      <div id="billingFields" style="display:none">
+        <div class="field"><label>Address</label><input type="text" id="billAddress" placeholder="123 Main St"></div>
+        <div class="form-grid cols-2">
+          <div class="field"><label>City</label><input type="text" id="billCity" placeholder="Nashville"></div>
+          <div class="field"><label>State</label><input type="text" id="billState" placeholder="TN or Tennessee" onblur="onStateBlur(this)"></div>
+        </div>
+        <div class="field"><label>ZIP</label><input type="text" id="billZip" placeholder="37201"></div>
+      </div>
+    </div>
     <div style="margin-top:12px">
       <label class="acc-check" id="check-canada" onclick="toggleAcc(this,'canada');document.getElementById('customsBrokerRow').style.display=document.getElementById('canada').checked?'block':'none'">
         <input type="checkbox" id="canada">
@@ -770,6 +790,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
         <div class="freight-stat">
           <label>Freight Total</label>
           <div class="val green" id="freightTotal">—</div>
+          <span id="freightOverrideLabel" style="display:none;font-size:9px;background:#ee6216;color:white;padding:1px 5px;border-radius:3px;font-family:var(--mono);margin-top:3px;display:none">MANUAL</span>
         </div>
       </div>
       <div style="margin-top:10px;font-size:11px;color:var(--muted)">Transit: <span id="freightTransit">—</span></div>
@@ -860,6 +881,9 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
   <button class="create-btn" id="pdfBtn" onclick="generatePDF()" style="margin-top:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.85);">
     Download PDF Quote
   </button>
+    <button class="create-btn" onclick="emailPDF()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);margin-top:8px">
+      &#x2709; Email Quote via Outlook
+    </button>
 
   <div class="result-box" id="resultBox"></div>
 
@@ -1397,19 +1421,37 @@ async function searchProducts(q) {
 // ── Freight ───────────────────────────────────────────────────────
 function applyFreightOverride(val) {
   const amount = parseFloat(val) || 0;
+  const hasAbf = window._abfFreightData && window._abfFreightData.total > 0;
+
   if (amount > 0) {
-    freightData = { base: amount, markup: 0, total: amount, transit: 'Manual override', override: true };
+    // Keep ABF data intact, just flag the override
+    freightData = { ...(window._abfFreightData || {}), total: amount, override: true, overrideAmount: amount };
+    // Update display
     document.getElementById('freightBase').textContent = '$' + amount.toFixed(2);
-    document.getElementById('freightMarkup').textContent = '$0.00';
+    document.getElementById('freightMarkup').textContent = hasAbf ? '(ABF: $' + window._abfFreightData.total.toFixed(2) + ')' : '—';
     document.getElementById('freightTotal').textContent = '$' + amount.toFixed(2);
     document.getElementById('freightTransit').textContent = 'Manual override';
     document.getElementById('freightResult').classList.add('visible');
-    updateSummary();
-  } else if (val === '' || val === '0') {
-    freightData = null;
-    document.getElementById('freightResult').classList.remove('visible');
-    updateSummary();
+    // Show override indicator
+    const overrideLabel = document.getElementById('freightOverrideLabel');
+    if (overrideLabel) overrideLabel.style.display = 'inline';
+  } else {
+    // Revert to ABF estimate if available
+    if (window._abfFreightData) {
+      freightData = { ...window._abfFreightData };
+      document.getElementById('freightBase').textContent = '$' + freightData.base.toFixed(2);
+      document.getElementById('freightMarkup').textContent = '$' + freightData.markup.toFixed(2);
+      document.getElementById('freightTotal').textContent = '$' + freightData.total.toFixed(2);
+      document.getElementById('freightTransit').textContent = freightData.transit || '—';
+      document.getElementById('freightResult').classList.add('visible');
+    } else {
+      freightData = null;
+      document.getElementById('freightResult').classList.remove('visible');
+    }
+    const overrideLabel = document.getElementById('freightOverrideLabel');
+    if (overrideLabel) overrideLabel.style.display = 'none';
   }
+  updateSummary();
 }
 
 async function getFreightAndTax() {
@@ -1477,6 +1519,19 @@ async function getFreight() {
 
     const total = data.cost + data.markup;
     freightData = { base: data.cost, markup: data.markup, total, transit: data.transit, dynDisc: data.dynDisc };
+    // Always save the raw ABF result for override fallback
+    window._abfFreightData = { ...freightData };
+    // Reapply override if one is active
+    const activeOverride = parseFloat(document.getElementById('freightOverride').value) || 0;
+    if (activeOverride > 0) {
+      freightData.total = activeOverride;
+      freightData.override = true;
+      freightData.overrideAmount = activeOverride;
+      document.getElementById('freightMarkup').textContent = '(ABF: ' + fmt(total) + ')';
+      document.getElementById('freightTotal').textContent = fmt(activeOverride);
+      const ol = document.getElementById('freightOverrideLabel');
+      if (ol) ol.style.display = 'inline';
+    }
 
     document.getElementById('freightBase').textContent = fmt(data.cost);
     document.getElementById('freightMarkup').textContent = fmt(data.markup);
@@ -1623,9 +1678,19 @@ async function createDeal() {
           company: document.getElementById('company').value.trim(),
           address: document.getElementById('shipAddress').value.trim(),
           city: document.getElementById('shipCity').value.trim(),
-          state: document.getElementById('shipState').value.trim().toUpperCase(),
+          state: document.getElementById('shipState').value.trim(),
           zip: document.getElementById('shipZip').value.trim(),
         },
+        billing: (() => {
+          const same = document.getElementById('billsame') && document.getElementById('billsame').checked;
+          if (same) return null;
+          return {
+            address: (document.getElementById('billAddress') || {value:''}).value.trim(),
+            city: (document.getElementById('billCity') || {value:''}).value.trim(),
+            state: (document.getElementById('billState') || {value:''}).value.trim(),
+            zip: (document.getElementById('billZip') || {value:''}).value.trim(),
+          };
+        })(),
         existingContactId: existingContactId || null,
         quoteNumber: document.getElementById('quoteNumHidden').value,
         lineItems: discountedItems,
@@ -2521,6 +2586,48 @@ function normalizeState(val) {
 // Normalize the state field to abbreviation on blur
 function onStateBlur(el) {
   el.value = normalizeState(el.value);
+}
+
+// ── Email PDF via Outlook ─────────────────────────────────────────
+function emailPDF() {
+  const firstName = document.getElementById('firstName').value.trim();
+  const lastName = document.getElementById('lastName').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const company = document.getElementById('company').value.trim();
+  const quoteNum = document.getElementById('quoteNumHidden').value || '';
+  const dealName = document.getElementById('dealName').value.trim();
+
+  const to = email || '';
+  const subject = encodeURIComponent(`WhisperRoom Quote${quoteNum ? ' #' + quoteNum : ''}${company ? ' - ' + company : ''}`);
+  const body = encodeURIComponent(
+    `Dear ${firstName || 'Customer'},
+
+Thank you for your interest in WhisperRoom. Please find your quote attached.
+
+Quote Number: ${quoteNum}
+Customer: ${firstName} ${lastName}${company ? ' - ' + company : ''}
+
+If you have any questions, please don't hesitate to reach out.
+
+Best regards,
+WhisperRoom, Inc.
+(865) 558-5364
+info@whisperroom.com
+www.whisperroom.com`
+  );
+
+  // Open Outlook with pre-filled fields — user attaches PDF manually
+  window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
+
+  // Also trigger PDF download so rep has it ready to attach
+  setTimeout(generatePDF, 300);
+}
+
+// ── Billing same as shipping ─────────────────────────────────────
+function toggleBillSame(label) {
+  const checked = document.getElementById('billsame').checked;
+  document.getElementById('billingFields').style.display = checked ? 'none' : 'block';
+  label.classList.toggle('active', checked);
 }
 
 // ── Init ──────────────────────────────────────────────────────────

@@ -803,6 +803,7 @@ const server = http.createServer(async (req, res) => {
         const deal = await hsCreateDeal({
           dealname: dealName || `${customer.company || customer.lastName} - ${quoteNumber || 'Quote'}`,
           tax_rate: tax && tax.rate ? String((tax.rate * 100).toFixed(3)) : '',
+          quote_number: quoteNumber || '',
           freight_cost: freight && freight.total ? String(freight.total) : '',
           discount: discount && discount.value ? String(discount.value) : '',
           shipping_address: customer.address || '',
@@ -813,6 +814,7 @@ const server = http.createServer(async (req, res) => {
           billing_state: billing ? toStateFull(billing.state) || '' : toStateFull(customer.state) || '',
           shipping_zipcode: customer.zip || '',
           billing_zipcode: billing ? billing.zip || '' : customer.zip || '',
+          // quote_links set separately below
           pipeline: 'default',
           dealstage: 'appointmentscheduled',
           amount: total.toFixed(2),
@@ -865,6 +867,76 @@ const server = http.createServer(async (req, res) => {
       // Associate all line items with deal
       if (lineItemIds.length > 0) {
         await hsBatchAssociateLineItems(dealId, lineItemIds);
+      }
+
+      // Append quote link to deal (preserves all previous links)
+      if (quoteNumber) {
+        try {
+          const newLink = `https://whisperroomquote.up.railway.app/q/${quoteNumber}`;
+          const datestamp = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+
+          // Read existing links
+          const existingDeal = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/deals/${dealId}?properties=quote_link`,
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+          });
+          const existingLinks = existingDeal.body?.properties?.quote_link || '';
+          const totalFmt = total ? ' — $' + parseFloat(total).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
+          const newEntry = `${datestamp}${totalFmt} — #${quoteNumber}: ${newLink}`;
+          const updatedLinks = existingLinks
+            ? newEntry + '\n' + existingLinks   // prepend newest
+            : newEntry;
+
+          await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/deals/${dealId}`,
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, { properties: { quote_link: updatedLinks } });
+        } catch(e) { console.warn('quote_link append failed:', e.message); }
+      }
+
+      // Append quote history to contact record
+      if (quoteNumber && contactId) {
+        try {
+          const newLink = `https://whisperroomquote.up.railway.app/q/${quoteNumber}`;
+          const datestamp = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+          const totalFmt = total ? ' — $' + parseFloat(total).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
+          const dealLabel = dealName ? ` — ${dealName}` : '';
+
+          // Read existing contact quote history
+          const existingContact = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/contacts/${contactId}?properties=quote_links,all_quote_numbers`,
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+          });
+          const existingLinks = existingContact.body?.properties?.quote_links || '';
+          const existingNums  = existingContact.body?.properties?.all_quote_numbers || '';
+
+          const newEntry = `${datestamp}${totalFmt}${dealLabel} — #${quoteNumber}: ${newLink}`;
+          const updatedLinks = existingLinks ? newEntry + '\n' + existingLinks : newEntry;
+
+          // all_quote_numbers: prepend newest, comma-separated
+          const numList = existingNums
+            ? quoteNumber + ', ' + existingNums
+            : quoteNumber;
+
+          await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/contacts/${contactId}`,
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, {
+            properties: {
+              quote_links:        updatedLinks,
+              quote_number:       quoteNumber,   // latest
+              all_quote_numbers:  numList,
+            }
+          });
+        } catch(e) { console.warn('Contact quote history update failed:', e.message); }
       }
 
       // Save quote snapshot as note on the deal
@@ -1039,7 +1111,82 @@ thead th:nth-child(3),thead th:nth-child(4){text-align:right}
   res.writeHead(404); res.end('Not found');
 });
 
+// Ensure quote_link deal property exists on startup
+async function ensureHubSpotProperties() {
+  // Properties to ensure exist, keyed by objectType
+  const propsToCreate = {
+    deals: [
+      {
+        name: 'quote_link',
+        label: 'Quote Links',
+        type: 'string',
+        fieldType: 'textarea',
+        groupName: 'dealinformation',
+        description: 'All shareable customer quote links for this deal (newest first, with date and amount)'
+      },
+      {
+        name: 'quote_number',
+        label: 'Quote Number',
+        type: 'string',
+        fieldType: 'text',
+        groupName: 'dealinformation',
+        description: 'WhisperRoom internal quote number — searchable in deal pipeline'
+      },
+    ],
+    contacts: [
+      {
+        name: 'quote_links',
+        label: 'Quote History',
+        type: 'string',
+        fieldType: 'textarea',
+        groupName: 'contactinformation',
+        description: 'All WhisperRoom quotes sent to this contact across all deals (newest first)'
+      },
+      {
+        name: 'quote_number',
+        label: 'Latest Quote Number',
+        type: 'string',
+        fieldType: 'text',
+        groupName: 'contactinformation',
+        description: 'Most recent WhisperRoom quote number for this contact — searchable'
+      },
+      {
+        name: 'all_quote_numbers',
+        label: 'All Quote Numbers',
+        type: 'string',
+        fieldType: 'text',
+        groupName: 'contactinformation',
+        description: 'All WhisperRoom quote numbers for this contact, comma-separated'
+      },
+    ],
+  };
+
+  for (const [objectType, props] of Object.entries(propsToCreate)) {
+    for (const prop of props) {
+      try {
+        const check = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v3/properties/${objectType}/${prop.name}`,
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+        });
+        if (check.status === 200) { console.log(`${objectType}.${prop.name} exists`); continue; }
+        await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v3/properties/${objectType}`,
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, prop);
+        console.log(`${objectType}.${prop.name} created`);
+      } catch(e) {
+        console.log(`${objectType}.${prop.name} skipped:`, e.message);
+      }
+    }
+  }
+}
+
 server.listen(PORT, '0.0.0.0', () => {
+  ensureHubSpotProperties();
   console.log(`WhisperRoom Quote Builder running on port ${PORT}`);
   console.log(`HubSpot token: ${HS_TOKEN ? HS_TOKEN.substring(0,12) + '...' : 'NOT SET'}`);
   console.log(`TaxJar key: ${TAXJAR_KEY ? TAXJAR_KEY.substring(0,8) + '...' : 'NOT SET'}`);

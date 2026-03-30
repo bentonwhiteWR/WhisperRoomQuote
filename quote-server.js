@@ -758,7 +758,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, quoteNumber } = body;
+      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, quoteNumber, billing } = body;
 
       // Find or create contact
       let contactId;
@@ -800,6 +800,17 @@ const server = http.createServer(async (req, res) => {
       } else {
         const deal = await hsCreateDeal({
           dealname: dealName || `${customer.company || customer.lastName} - ${quoteNumber || 'Quote'}`,
+          tax_rate: tax && tax.rate ? String((tax.rate * 100).toFixed(3)) : '',
+          freight_cost: freight && freight.total ? String(freight.total) : '',
+          discount: discount && discount.value ? String(discount.value) : '',
+          shipping_address: customer.address || '',
+          shipping_city: customer.city || '',
+          shipping_state: toStateFull(customer.state) || '',
+          billing_address: billing ? billing.address || '' : customer.address || '',
+          billing_city: billing ? billing.city || '' : customer.city || '',
+          billing_state: billing ? toStateFull(billing.state) || '' : toStateFull(customer.state) || '',
+          shipping_zipcode: customer.zip || '',
+          billing_zipcode: billing ? billing.zip || '' : customer.zip || '',
           pipeline: 'default',
           dealstage: 'appointmentscheduled',
           amount: total.toFixed(2),
@@ -823,7 +834,7 @@ const server = http.createServer(async (req, res) => {
           price: String(item.price),
           hs_product_id: item.productId ? String(item.productId) : undefined,
           description: item.description || '',
-          discount: item.lineDiscount ? String(item.lineDiscount) : '0',
+          hs_discount_percentage: item.lineDiscount && item.lineDiscount > 0 ? String(item.lineDiscount) : undefined,
         });
         if (li.id) lineItemIds.push(li.id);
       }

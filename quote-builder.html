@@ -587,7 +587,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     </div>
     <div class="form-grid cols-3" style="margin-top:14px">
       <div class="field"><label>City</label><input type="text" id="shipCity" placeholder="Nashville"></div>
-      <div class="field"><label>State</label><input type="text" id="shipState" placeholder="TN" maxlength="2" style="text-transform:uppercase"></div>
+      <div class="field"><label>State</label><input type="text" id="shipState" placeholder="TN or Tennessee" style="text-transform:uppercase" onblur="onStateBlur(this)"></div>
       <div class="field"><label>Zip</label><input type="text" id="shipZip" placeholder="37201"></div>
     </div>
     <div style="margin-top:12px">
@@ -603,20 +603,6 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
         <input type="text" id="customsBroker" placeholder="Broker name, contact, reference number">
       </div>
       <div style="font-size:11px;color:var(--accent);margin-top:4px">Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.</div>
-    </div>
-    <div style="margin-top:10px;display:flex;align-items:center;gap:10px">
-      <label class="acc-check" id="check-taxexempt" onclick="toggleAcc(this,'taxexempt');document.getElementById('taxExemptRow').style.display=document.getElementById('taxexempt').checked?'block':'none';if(document.getElementById('taxexempt').checked){taxData=null;document.getElementById('taxResult').classList.remove('visible');updateSummary();}">
-        <input type="checkbox" id="taxexempt">
-        <div class="acc-box"></div>
-        Tax Exempt
-      </label>
-    </div>
-    <div id="taxExemptRow" style="display:none;margin-top:8px">
-      <div class="field">
-        <label>Tax Exempt Certificate # (optional)</label>
-        <input type="text" id="taxExemptCert" placeholder="Certificate number or org name">
-      </div>
-      <div style="font-size:11px;color:var(--accent);margin-top:4px">Tax will not be calculated for this order.</div>
     </div>
   </div>
 
@@ -805,6 +791,18 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
       <button class="get-freight-btn" id="taxBtn" onclick="getTax()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:11px;padding:7px 14px">
         Calculate Tax Only
       </button>
+      <label class="acc-check" id="check-taxexempt" onclick="toggleAcc(this,'taxexempt');document.getElementById('taxExemptRow').style.display=document.getElementById('taxexempt').checked?'block':'none';if(document.getElementById('taxexempt').checked){taxData=null;document.getElementById('taxResult').classList.remove('visible');updateSummary();}">
+        <input type="checkbox" id="taxexempt">
+        <div class="acc-box"></div>
+        Tax Exempt
+      </label>
+    </div>
+    <div id="taxExemptRow" style="display:none;margin-top:8px">
+      <div class="field">
+        <label>Tax Exempt Certificate # (optional)</label>
+        <input type="text" id="taxExemptCert" placeholder="Certificate number or org name">
+      </div>
+      <div style="font-size:11px;color:var(--accent);margin-top:4px">Tax will not be calculated for this order.</div>
     </div>
     <div class="tax-result" id="taxResult"></div>
   </div>
@@ -1861,7 +1859,18 @@ function generatePDF() {
     </tr>
   `).join('');
 
-  const html = `<!DOCTYPE html>
+  // Pre-evaluate conditional blocks
+  const canadaEl = document.getElementById('canada');
+  const isCanadian = !!(canadaEl && canadaEl.checked);
+  const brokerVal = (document.getElementById('customsBroker') || {value:''}).value || '';
+  const canadianBlock = isCanadian
+    ? '<div style="margin:0 0 14px;padding:10px 14px;background:#fff8f0;border-left:3px solid #ee6216;font-size:9px;color:#46484d;line-height:1.7;"><strong style="color:#ee6216;display:block;margin-bottom:3px;">INTERNATIONAL / CANADIAN ORDER</strong>Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.' + (brokerVal ? '<br><strong>Customs Broker:</strong> ' + brokerVal : '') + '</div>'
+    : '';
+  const taxExemptEl = document.getElementById('taxexempt');
+  const isTaxExempt = !!(taxExemptEl && taxExemptEl.checked);
+  const taxExemptCert = (document.getElementById('taxExemptCert') || {value:''}).value || '';
+
+  const html = `DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
@@ -2001,12 +2010,7 @@ ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</
         <strong style="font-size:10px;color:#46484d;display:block;margin-bottom:6px;">TERMS AND CONDITIONS:</strong>
         I understand that WhisperRooms are not 100% soundproof. I understand that all products manufactured by WhisperRoom, Inc. are for indoor use only. Any returns will be at the sole discretion of WhisperRoom, Inc. and are subject to a restocking fee and freight charges. Any damage that occurs during shipping or delivery must be reported to WhisperRoom, Inc. within five business days. I assume responsibility for any damage not reported to WhisperRoom, Inc. In the event that delivery is not accepted for any reason, I agree to pay in full, all shipping charges including all charges incurred for return freight and restocking charges. Compliance with local, state and national building codes and standards are my responsibility. Any alterations to the WhisperRoom will void the warranty.
       </div>
-      \${(() => {
-        const el = document.getElementById('canada');
-        if (!el || !el.checked) return '';
-        const broker = (document.getElementById('customsBroker') || {value:''}).value || '';
-        return '<div style="margin:0 0 14px;padding:10px 14px;background:#fff8f0;border-left:3px solid #ee6216;font-size:9px;color:#46484d;line-height:1.7;"><strong style="color:#ee6216;display:block;margin-bottom:3px;">INTERNATIONAL / CANADIAN ORDER</strong>Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.' + (broker ? '<br><strong>Customs Broker:</strong> ' + broker : '') + '</div>';
-      })()}
+      \${canadianBlock}
       <div style="margin:0 0 16px;padding:10px 14px;background:#f8f8f8;border:1px solid #ebebeb;font-size:8.5px;color:#555;line-height:1.75;">
         <strong style="font-size:9px;color:#333;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em;">Terms and Conditions</strong>
         I understand that WhisperRooms are not 100% soundproof. I understand that all products manufactured by WhisperRoom, Inc. are for indoor use only. Any returns will be at the sole discretion of WhisperRoom, Inc. and are subject to a restocking fee and freight charges. Any damage that occurs during shipping or delivery must be reported to WhisperRoom, Inc. within five business days. I assume responsibility for any damage not reported to WhisperRoom, Inc. In the event that delivery is not accepted for any reason, I agree to pay in full, all shipping charges including all charges incurred for return freight and restocking charges. Compliance with local, state and national building codes and standards are my responsibility. Any alterations to the WhisperRoom will void the warranty.
@@ -2325,7 +2329,7 @@ const LOGO_BLACK = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9Ij
 
 function setLogoForTheme(isDark) {
   const logo = document.getElementById('topbarLogo');
-  if (logo) logo.src = isDark ? LOGO_WHITE : LOGO_ORANGE;
+  if (logo) logo.src = isDark ? LOGO_ORANGE : LOGO_WHITE;
 }
 
 function toggleTheme() {
@@ -2385,10 +2389,9 @@ async function onPresetSelect(presetName) {
   const presetEl = document.getElementById('presetSelect');
   if (presetEl) presetEl.disabled = true;
 
-  // Always search for the preset name itself first (the booth model)
-  // then load the rest of the SKUs
-  const allSkus = [presetName, ...skus.filter(s => s !== presetName)];
-  await loadPreset(presetName, allSkus);
+  // Load all SKUs from the preset mapping
+  // Row 1 of mapping (skus[0]) is the MDL booth model - load all as-is
+  await loadPreset(presetName, skus);
 
   // Auto-apply 5% discount for named packages
   if (PACKAGE_DISCOUNT_NAMES.includes(presetName)) {
@@ -2481,7 +2484,10 @@ function addCustomItem() {
 }
 
 
-const STATE_ABBR = {
+// Bidirectional state lookup
+// toAbbr: "Tennessee" -> "TN", "TN" -> "TN"
+// toFull: "TN" -> "Tennessee", "Tennessee" -> "Tennessee"
+const STATE_ABBR_MAP = {
   'alabama':'AL','alaska':'AK','arizona':'AZ','arkansas':'AR','california':'CA',
   'colorado':'CO','connecticut':'CT','delaware':'DE','florida':'FL','georgia':'GA',
   'hawaii':'HI','idaho':'ID','illinois':'IL','indiana':'IN','iowa':'IA',
@@ -2492,18 +2498,29 @@ const STATE_ABBR = {
   'north dakota':'ND','ohio':'OH','oklahoma':'OK','oregon':'OR','pennsylvania':'PA',
   'rhode island':'RI','south carolina':'SC','south dakota':'SD','tennessee':'TN',
   'texas':'TX','utah':'UT','vermont':'VT','virginia':'VA','washington':'WA',
-  'west virginia':'WV','wisconsin':'WI','wyoming':'WY',
-  // Canadian provinces
+  'west virginia':'WV','wisconsin':'WI','wyoming':'WY','washington dc':'DC',
   'alberta':'AB','british columbia':'BC','manitoba':'MB','new brunswick':'NB',
-  'newfoundland':'NL','nova scotia':'NS','ontario':'ON','prince edward island':'PE',
-  'quebec':'QC','saskatchewan':'SK',
+  'newfoundland and labrador':'NL','newfoundland':'NL','nova scotia':'NS',
+  'ontario':'ON','prince edward island':'PE','quebec':'QC','saskatchewan':'SK',
 };
 
+// Build reverse map: abbr -> full name
+const STATE_FULL_MAP = {};
+Object.entries(STATE_ABBR_MAP).forEach(([full, abbr]) => {
+  if (!STATE_FULL_MAP[abbr]) STATE_FULL_MAP[abbr] = full.replace(/\b\w/g, c => c.toUpperCase());
+});
+
+// Always returns 2-letter abbreviation
 function normalizeState(val) {
   if (!val) return '';
   const trimmed = val.trim();
   if (trimmed.length === 2) return trimmed.toUpperCase();
-  return STATE_ABBR[trimmed.toLowerCase()] || trimmed.toUpperCase();
+  return STATE_ABBR_MAP[trimmed.toLowerCase()] || trimmed.toUpperCase();
+}
+
+// Normalize the state field to abbreviation on blur
+function onStateBlur(el) {
+  el.value = normalizeState(el.value);
 }
 
 // ── Init ──────────────────────────────────────────────────────────

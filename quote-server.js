@@ -175,6 +175,66 @@ async function hsSearchDeals(query) {
   return res.body;
 }
 
+// Bidirectional state lookup
+const STATE_ABBR_MAP = {
+  'alabama':'AL','alaska':'AK','arizona':'AZ','arkansas':'AR','california':'CA',
+  'colorado':'CO','connecticut':'CT','delaware':'DE','florida':'FL','georgia':'GA',
+  'hawaii':'HI','idaho':'ID','illinois':'IL','indiana':'IN','iowa':'IA',
+  'kansas':'KS','kentucky':'KY','louisiana':'LA','maine':'ME','maryland':'MD',
+  'massachusetts':'MA','michigan':'MI','minnesota':'MN','mississippi':'MS',
+  'missouri':'MO','montana':'MT','nebraska':'NE','nevada':'NV','new hampshire':'NH',
+  'new jersey':'NJ','new mexico':'NM','new york':'NY','north carolina':'NC',
+  'north dakota':'ND','ohio':'OH','oklahoma':'OK','oregon':'OR','pennsylvania':'PA',
+  'rhode island':'RI','south carolina':'SC','south dakota':'SD','tennessee':'TN',
+  'texas':'TX','utah':'UT','vermont':'VT','virginia':'VA','washington':'WA',
+  'west virginia':'WV','wisconsin':'WI','wyoming':'WY','washington dc':'DC',
+  'alberta':'AB','british columbia':'BC','manitoba':'MB','new brunswick':'NB',
+  'newfoundland and labrador':'NL','newfoundland':'NL','nova scotia':'NS',
+  'ontario':'ON','prince edward island':'PE','quebec':'QC','saskatchewan':'SK',
+};
+
+const STATE_FULL_NAME = {
+  'AL':'Alabama','AK':'Alaska','AZ':'Arizona','AR':'Arkansas','CA':'California',
+  'CO':'Colorado','CT':'Connecticut','DE':'Delaware','FL':'Florida','GA':'Georgia',
+  'HI':'Hawaii','ID':'Idaho','IL':'Illinois','IN':'Indiana','IA':'Iowa',
+  'KS':'Kansas','KY':'Kentucky','LA':'Louisiana','ME':'Maine','MD':'Maryland',
+  'MA':'Massachusetts','MI':'Michigan','MN':'Minnesota','MS':'Mississippi',
+  'MO':'Missouri','MT':'Montana','NE':'Nebraska','NV':'Nevada','NH':'New Hampshire',
+  'NJ':'New Jersey','NM':'New Mexico','NY':'New York','NC':'North Carolina',
+  'ND':'North Dakota','OH':'Ohio','OK':'Oklahoma','OR':'Oregon','PA':'Pennsylvania',
+  'RI':'Rhode Island','SC':'South Carolina','SD':'South Dakota','TN':'Tennessee',
+  'TX':'Texas','UT':'Utah','VT':'Vermont','VA':'Virginia','WA':'Washington',
+  'WV':'West Virginia','WI':'Wisconsin','WY':'Wyoming','DC':'Washington DC',
+  'AB':'Alberta','BC':'British Columbia','MB':'Manitoba','NB':'New Brunswick',
+  'NL':'Newfoundland and Labrador','NS':'Nova Scotia','ON':'Ontario',
+  'PE':'Prince Edward Island','QC':'Quebec','SK':'Saskatchewan',
+};
+
+// Always returns 2-letter abbreviation - used for freight/tax APIs
+function toStateAbbr(val) {
+  if (!val) return '';
+  const trimmed = val.trim();
+  if (trimmed.length === 2) return trimmed.toUpperCase();
+  return STATE_ABBR_MAP[trimmed.toLowerCase()] || trimmed.toUpperCase();
+}
+
+// Always returns full name - used for HubSpot contact creation
+function toStateFull(val) {
+  if (!val) return '';
+  const trimmed = val.trim();
+  // Already a full name
+  if (trimmed.length > 2) {
+    // Capitalize properly and return as-is if not in our map
+    const lower = trimmed.toLowerCase();
+    const abbr = STATE_ABBR_MAP[lower];
+    if (abbr) return STATE_FULL_NAME[abbr] || trimmed;
+    return trimmed;
+  }
+  // It's an abbreviation
+  const upper = trimmed.toUpperCase();
+  return STATE_FULL_NAME[upper] || trimmed;
+}
+
 // Search contacts by name or email, with associated company
 async function hsSearchContacts(query) {
   const body = {
@@ -368,7 +428,7 @@ async function hsBatchAssociateLineItems(dealId, lineItemIds) {
 
 // ── TaxJar API ────────────────────────────────────────────────────
 async function calculateTax(toState, toZip, toCity, amount, shipping) {
-  const stateUpper = (toState || '').toUpperCase();
+  const stateUpper = toStateAbbr(toState);
   const inNexus = NEXUS_STATES[stateUpper];
   if (!inNexus) return { tax: 0, rate: 0, inNexus: false };
 
@@ -403,7 +463,7 @@ async function calculateTax(toState, toZip, toCity, amount, shipping) {
 
 // TaxJar requires Authorization header - let's use proper request
 async function calculateTaxProper(toState, toZip, toCity, amount, shipping) {
-  const stateUpper = (toState || '').toUpperCase();
+  const stateUpper = toStateAbbr(toState);
   const inNexus = NEXUS_STATES[stateUpper];
   if (!inNexus) return { tax: 0, rate: 0, inNexus: false };
 
@@ -672,7 +732,8 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/freight' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { pallets, totalWeight, city, state, zip, canadian, accessories } = body;
+      const { pallets, totalWeight, city, state: rawFreightState, zip, canadian, accessories } = body;
+      const state = toStateAbbr(rawFreightState);
       const abfUrl = buildAbfUrl(pallets, totalWeight, city, state, zip, canadian, accessories || {});
       const res2 = await httpsGet(abfUrl);
       const result = parseAbfXml(res2.body);
@@ -685,7 +746,8 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/tax' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { state, zip, city, subtotal, shipping } = body;
+      const { state: rawState, zip, city, subtotal, shipping } = body;
+      const state = toStateAbbr(rawState);
       const result = await calculateTaxProper(state, zip, city, subtotal, shipping);
       json(result);
     } catch(e) { json({error: e.message}, 500); }
@@ -716,7 +778,7 @@ const server = http.createServer(async (req, res) => {
             company: customer.company,
             address: customer.address,
             city: customer.city,
-            state: customer.state,
+            state: toStateFull(customer.state),
             zip: customer.zip,
           });
           contactId = newContact.id;

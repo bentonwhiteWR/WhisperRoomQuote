@@ -12,11 +12,13 @@ const crypto  = require('crypto');
 // Stored as notes on deals - persistent, visible in HubSpot, never wiped
 
 async function saveQuoteNote(dealId, quoteData) {
-  const noteBody = 'QUOTE_SNAPSHOT::' + JSON.stringify({
+  const snapshotData = {
     ...quoteData,
     id: crypto.randomBytes(8).toString('hex'),
     savedAt: new Date().toISOString()
-  });
+  };
+  // WR_QUOTE_DATA markers allow the /q/:quoteNumber route to find this note
+  const noteBody = 'WR_QUOTE_DATA:' + JSON.stringify(snapshotData) + ':END_WR_QUOTE';
 
   // Create note
   const note = await httpsRequest({
@@ -816,7 +818,6 @@ const server = http.createServer(async (req, res) => {
           amount: total.toFixed(2),
           hubspot_owner_id: String(ownerId),
           closedate: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
-          description: `Ship to: ${customer.address}, ${customer.city}, ${customer.state} ${customer.zip}`
         });
         dealId = deal.id;
         if (!dealId) throw new Error('Failed to create deal: ' + JSON.stringify(deal));
@@ -885,6 +886,152 @@ const server = http.createServer(async (req, res) => {
 
     } catch(e) {
       json({error: e.message}, 500);
+    }
+    return;
+  }
+
+  // ── Shareable Quote Page ─────────────────────────────────────────
+  if (pathname.startsWith('/q/') && req.method === 'GET') {
+    const quoteId = decodeURIComponent(pathname.replace('/q/', '').trim());
+    if (!quoteId) { res.writeHead(404); res.end('Not found'); return; }
+    try {
+      const notesRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/objects/notes/search',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, {
+        filterGroups: [{ filters: [{ propertyName: 'hs_note_body', operator: 'CONTAINS_TOKEN', value: quoteId }] }],
+        properties: ['hs_note_body', 'hs_timestamp'],
+        limit: 10
+      });
+
+      const notes = notesRes.body.results || [];
+      let quoteData = null;
+      for (const note of notes) {
+        try {
+          const body = note.properties.hs_note_body || '';
+          const m = body.match(/WR_QUOTE_DATA:(.+):END_WR_QUOTE/s);
+          if (m) {
+            const parsed = JSON.parse(m[1]);
+            if (String(parsed.quoteNumber) === String(quoteId)) { quoteData = parsed; break; }
+          }
+        } catch(e) { continue; }
+      }
+
+      if (!quoteData) {
+        res.writeHead(404, { 'Content-Type': 'text/html' });
+        res.end('<!DOCTYPE html><html><head><title>Quote Not Found</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#f5f5f5}div{text-align:center}</style></head><body><div><h2 style="color:#ee6216">Quote Not Found</h2><p style="color:#888">This link may have expired or the quote number is incorrect.</p></div></body></html>');
+        return;
+      }
+
+      const q = quoteData;
+      const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+      const sub = (q.lineItems||[]).reduce((s,i)=>s+(i.price*i.qty),0);
+      const disc = q.discount && q.discount.value > 0
+        ? (q.discount.type==='pct' ? sub*q.discount.value/100 : q.discount.value) : 0;
+      const freight = q.freight ? q.freight.total : 0;
+      const tax = q.tax ? q.tax.tax : 0;
+      const total = sub - disc + freight + tax;
+      const c = q.customer || {};
+
+      const lineRows = (q.lineItems||[]).map(item =>
+        `<tr><td style="padding:10px 12px;border-bottom:1px solid #f0f0f0"><div style="font-weight:600">${item.name}</div>${item.description?`<div style="font-size:12px;color:#999;margin-top:2px">${item.description}</div>`:''}</td><td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;text-align:center;color:#666">${item.qty}</td><td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;text-align:right;color:#666">${fmt(item.price)}</td><td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:600">${fmt(item.price*item.qty)}</td></tr>`
+      ).join('');
+
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WhisperRoom Quote ${q.quoteNumber||''}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f4f4;color:#333}
+.page{max-width:760px;margin:0 auto;padding:24px 16px 60px}
+.card{background:#fff;border-radius:12px;padding:28px 32px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.07)}
+.header{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px}
+.logo h1{font-size:20px;font-weight:800;color:#1a1a1a}
+.logo p{font-size:12px;color:#999;margin-top:4px;line-height:1.6}
+.qnum{font-size:26px;font-weight:800;color:#ee6216;letter-spacing:-.5px}
+.qdate{font-size:12px;color:#bbb;margin-top:3px}
+.section-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#bbb;margin-bottom:14px}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.info-item label{font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:2px}
+.info-item span{font-size:14px;font-weight:500;color:#1a1a1a}
+table{width:100%;border-collapse:collapse}
+thead th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#bbb;padding:0 12px 10px;border-bottom:2px solid #f0f0f0;text-align:left}
+thead th:nth-child(2){text-align:center}
+thead th:nth-child(3),thead th:nth-child(4){text-align:right}
+.tot{display:flex;justify-content:space-between;padding:8px 0;font-size:14px;border-bottom:1px solid #f7f7f7;color:#666}
+.tot.grand{font-size:18px;font-weight:800;color:#1a1a1a;border:none;padding-top:16px}
+.tot.grand span:last-child{color:#ee6216}
+.terms{font-size:11px;color:#999;line-height:1.75}
+.footer{text-align:center;margin-top:32px;font-size:11px;color:#ccc;line-height:1.8}
+@media(max-width:500px){.header{flex-direction:column}.info-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="card">
+    <div class="header">
+      <div class="logo">
+        <h1>WhisperRoom, Inc.</h1>
+        <p>322 Nancy Lynn Lane, Suite 14<br>Knoxville, TN 37919 USA<br>(865) 558-5364 · info@whisperroom.com</p>
+      </div>
+      <div style="text-align:right">
+        <div class="qnum">${q.quoteNumber||'QUOTE'}</div>
+        <div class="qdate">Issued ${q.date||new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+        <div class="qdate" style="color:#ee6216;font-weight:600">Valid 30 days</div>
+      </div>
+    </div>
+  </div>
+
+  ${c.firstName ? `<div class="card">
+    <div class="section-label">Prepared For</div>
+    <div class="info-grid">
+      <div class="info-item"><label>Name</label><span>${c.firstName} ${c.lastName}</span></div>
+      ${c.company?`<div class="info-item"><label>Company</label><span>${c.company}</span></div>`:''}
+      ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
+      ${c.address?`<div class="info-item"><label>Ship To</label><span>${c.address}, ${c.city}, ${c.state} ${c.zip}</span></div>`:''}
+    </div>
+  </div>` : ''}
+
+  <div class="card">
+    <div class="section-label">Products &amp; Services</div>
+    <table>
+      <thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
+      <tbody>${lineRows}</tbody>
+    </table>
+    <div style="max-width:320px;margin-left:auto;margin-top:20px;padding-top:4px;border-top:2px solid #f0f0f0">
+      <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
+      ${disc>0?`<div class="tot"><span>Discount${q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span style="color:#1a7a4a">-${fmt(disc)}</span></div>`:''}
+      ${freight>0?`<div class="tot"><span>Freight Estimate</span><span>${fmt(freight)}</span></div>`:''}
+      ${tax>0?`<div class="tot"><span>Sales Tax</span><span>${fmt(tax)}</span></div>`:''}
+      <div class="tot grand"><span>Total</span><span>${fmt(total)}</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-label">Terms &amp; Conditions</div>
+    <p class="terms">I understand that WhisperRooms are not 100% soundproof. I understand that all products manufactured by WhisperRoom, Inc. are for indoor use only. Any returns will be at the sole discretion of WhisperRoom, Inc. and are subject to a restocking fee and freight charges. Any damage during shipping must be reported within five business days. Compliance with local, state and national building codes is my responsibility. Any alterations to the WhisperRoom will void the warranty.</p>
+  </div>
+
+  <div class="footer">
+    WhisperRoom, Inc. · 322 Nancy Lynn Lane, Suite 14 · Knoxville, TN 37919<br>
+    (865) 558-5364 · info@whisperroom.com · <a href="https://www.whisperroom.com" style="color:#ee6216">whisperroom.com</a><br><br>
+    Shipping charges are estimated based on the zip code provided. Quote valid 30 days from issue date.
+  </div>
+
+</div>
+</body>
+</html>`;
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(html);
+    } catch(e) {
+      res.writeHead(500, { 'Content-Type': 'text/html' });
+      res.end('<h2 style="font-family:sans-serif;padding:40px">Error: ' + e.message + '</h2>');
     }
     return;
   }

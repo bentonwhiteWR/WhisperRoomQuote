@@ -79,6 +79,71 @@ body {
 .main-col { padding: 32px; border-right: 1px solid var(--border); overflow-y: auto; background: var(--bg); }
 .sidebar { padding: 24px; background: var(--charcoal); overflow-y: auto; position: sticky; top: 56px; height: calc(100vh - 56px); }
 
+/* ── Mobile responsive ── */
+@media (max-width: 768px) {
+  .layout {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
+  }
+  .main-col {
+    padding: 16px;
+    overflow-y: visible;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar {
+    position: static;
+    height: auto;
+    padding: 16px;
+    top: 0;
+  }
+  .topbar { padding: 0 12px; }
+  .topbar-title { font-size: 12px; }
+  .section { margin-bottom: 20px; }
+  .section-head { padding: 10px 14px; }
+  .form-grid.cols-2 { grid-template-columns: 1fr; }
+  .form-grid.cols-3 { grid-template-columns: 1fr; }
+  table { font-size: 12px; }
+  .create-btn { padding: 13px 16px; font-size: 12px; }
+  /* Line items — hide weight on mobile */
+  thead th:nth-child(5),
+  tbody td:nth-child(5) { display: none; }
+  /* Summary card */
+  .summary-total { font-size: 22px; }
+  /* History panel */
+  .history-panel { width: 100vw; }
+  /* Quote number — smaller */
+  #quoteNumDisplay { font-size: 18px; }
+}
+.mobile-summary-toggle {
+  display: none;
+  padding: 10px 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  text-align: center;
+  user-select: none;
+}
+@media (max-width: 768px) {
+  .mobile-summary-toggle { display: block; }
+  .sidebar.collapsed #summaryContent { display: none; }
+  #mobileSummaryLabel { }
+}
+@media (max-width: 480px) {
+  .main-col { padding: 12px; }
+  .sidebar { padding: 12px; }
+  .topbar-logo { height: 20px; }
+  thead th:nth-child(4),
+  tbody td:nth-child(4) { display: none; }
+}
+
 /* ── Section ── */
 .section { margin-bottom: 28px; }
 .section-head {
@@ -845,7 +910,11 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
 </div><!-- /main-col -->
 
 <!-- SIDEBAR -->
-<div class="sidebar">
+<div class="sidebar" id="summarySidebar">
+  <div class="mobile-summary-toggle" onclick="toggleSummary()" style="display:none">
+    <span id="mobileSummaryLabel">&#9660; Show Quote Summary</span>
+  </div>
+  <div id="summaryContent">
   <div class="summary-title">Quote Summary</div>
 
   <div class="summary-line">
@@ -2734,6 +2803,14 @@ function emailViaHubSpot() {
   window.location.href = 'mailto:' + encodeURIComponent(email) +
     '?subject=' + subject +
     '&body=' + encodeURIComponent(bodyText);
+}
+
+// ── Mobile summary toggle ────────────────────────────────────────
+function toggleSummary() {
+  const sidebar = document.getElementById('summarySidebar');
+  const label = document.getElementById('mobileSummaryLabel');
+  const collapsed = sidebar.classList.toggle('collapsed');
+  label.innerHTML = collapsed ? '&#9654; Show Quote Summary' : '&#9660; Hide Quote Summary';
 }
 
 // ── Billing same as shipping ─────────────────────────────────────

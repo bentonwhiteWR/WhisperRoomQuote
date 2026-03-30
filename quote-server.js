@@ -696,7 +696,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId } = body;
+      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, quoteNumber } = body;
 
       // Find or create contact
       let contactId;

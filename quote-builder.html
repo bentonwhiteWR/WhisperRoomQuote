@@ -595,7 +595,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
         <div style="font-size:12px;font-weight:600;color:var(--text)">Billing Address</div>
-        <label class="acc-check" id="check-billsame" onclick="toggleBillSame()">
+        <label class="acc-check active" id="check-billsame" onclick="toggleBillSame()">
           <input type="checkbox" id="billsame" checked>
           <div class="acc-box"></div>
           Same as shipping
@@ -881,8 +881,11 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
   <button class="create-btn" id="pdfBtn" onclick="generatePDF()" style="margin-top:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.85);">
     Download PDF Quote
   </button>
-    <button class="create-btn" onclick="emailPDF()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);margin-top:8px">
-      &#x2709; Email Quote via Outlook
+    <button class="create-btn" onclick="emailViaHubSpot()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);margin-top:8px">
+      &#x2709; Email Quote via HubSpot
+    </button>
+    <button class="create-btn" id="copyLinkBtn" onclick="copyQuoteLink()" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-top:8px;opacity:.5;cursor:not-allowed" title="Push to HubSpot first to generate link">
+      &#x1F517; Copy Shareable Link
     </button>
 
   <div class="result-box" id="resultBox"></div>
@@ -1710,6 +1713,9 @@ async function createDeal() {
 
     if (data.success) {
       box.className = 'result-box success';
+      window._lastPushedContactId = data.contactId || null;
+      window._lastPushedDealId = data.dealId || null;
+      activateLinkBtn();
       box.innerHTML = `✓ Deal created in HubSpot.<br><a href="${data.dealUrl}" target="_blank">View Deal &#x2192;</a>`;
       // Save to history
       const repName = document.getElementById('repSelect').options[document.getElementById('repSelect').selectedIndex].text;
@@ -2589,45 +2595,62 @@ function onStateBlur(el) {
 }
 
 // ── Email PDF via Outlook ─────────────────────────────────────────
-function emailPDF() {
-  const firstName = document.getElementById('firstName').value.trim();
-  const lastName = document.getElementById('lastName').value.trim();
-  const email = document.getElementById('email').value.trim();
-  const company = document.getElementById('company').value.trim();
+function copyQuoteLink() {
+  const quoteNum = document.getElementById('quoteNumHidden').value;
+  if (!quoteNum || !window._lastPushedDealId) {
+    showToast('Push to HubSpot first to generate a shareable link', 'error');
+    return;
+  }
+  const url = 'https://whisperroomquote.up.railway.app/q/' + quoteNum;
+  navigator.clipboard.writeText(url).then(() => {
+    showToast('Quote link copied: ' + url, 'info');
+    document.getElementById('copyLinkBtn').textContent = '✓ Link Copied!';
+    setTimeout(() => { document.getElementById('copyLinkBtn').textContent = '🔗 Copy Shareable Link'; }, 3000);
+  }).catch(() => {
+    prompt('Copy this link:', url);
+  });
+}
+
+function activateLinkBtn() {
+  const btn = document.getElementById('copyLinkBtn');
+  if (btn) {
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+    btn.title = 'Copy shareable link for this quote';
+    btn.style.color = 'var(--text)';
+  }
+}
+
+function emailPDF() { emailViaHubSpot(); }
+
+function emailViaHubSpot() {
+  const contactId = window._lastPushedContactId;
   const quoteNum = document.getElementById('quoteNumHidden').value || '';
-  const dealName = document.getElementById('dealName').value.trim();
+  const company = document.getElementById('company').value.trim();
 
-  const to = email || '';
-  const subject = encodeURIComponent(`WhisperRoom Quote${quoteNum ? ' #' + quoteNum : ''}${company ? ' - ' + company : ''}`);
-  const body = encodeURIComponent(
-    `Dear ${firstName || 'Customer'},
-
-Thank you for your interest in WhisperRoom. Please find your quote attached.
-
-Quote Number: ${quoteNum}
-Customer: ${firstName} ${lastName}${company ? ' - ' + company : ''}
-
-If you have any questions, please don't hesitate to reach out.
-
-Best regards,
-WhisperRoom, Inc.
-(865) 558-5364
-info@whisperroom.com
-www.whisperroom.com`
-  );
-
-  // Open Outlook with pre-filled fields — user attaches PDF manually
-  window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
-
-  // Also trigger PDF download so rep has it ready to attach
-  setTimeout(generatePDF, 300);
+  if (contactId) {
+    const subject = encodeURIComponent('WhisperRoom Quote' + (quoteNum ? ' #' + quoteNum : '') + (company ? ' — ' + company : ''));
+    const hsUrl = 'https://app.hubspot.com/contacts/5764220/contact/' + contactId + '?interaction=email';
+    window.open(hsUrl, '_blank');
+    setTimeout(generatePDF, 400);
+    showToast('Opening HubSpot email — PDF downloading to attach', 'info');
+  } else {
+    const email = document.getElementById('email').value.trim();
+    const firstName = document.getElementById('firstName').value.trim();
+    if (!email) { alert('No email address. Push to HubSpot first or add an email.'); return; }
+    const subject = encodeURIComponent('WhisperRoom Quote' + (quoteNum ? ' #' + quoteNum : '') + (company ? ' — ' + company : ''));
+    const body = encodeURIComponent('Dear ' + (firstName || 'Customer') + ',\n\nThank you for your interest in WhisperRoom. Please find your quote attached.\n\nBest regards,\nWhisperRoom, Inc.\n(865) 558-5364 | info@whisperroom.com');
+    window.open('mailto:' + email + '?subject=' + subject + '&body=' + body, '_blank');
+    setTimeout(generatePDF, 400);
+  }
 }
 
 // ── Billing same as shipping ─────────────────────────────────────
-function toggleBillSame(label) {
+function toggleBillSame() {
   const checked = document.getElementById('billsame').checked;
+  const lbl = document.getElementById('check-billsame');
   document.getElementById('billingFields').style.display = checked ? 'none' : 'block';
-  label.classList.toggle('active', checked);
+  if (lbl) lbl.classList.toggle('active', checked);
 }
 
 // ── Init ──────────────────────────────────────────────────────────

@@ -1558,6 +1558,29 @@ async function createDeal() {
   // Scoped variable for duplicate check result
   let existingContactId = null;
 
+  // Run duplicate contact check before pushing
+  try {
+    const contactBadgeEl = document.getElementById('contactBadge');
+    const contactAlreadyLoaded = contactBadgeEl && contactBadgeEl.style.display === 'block';
+    if (!contactAlreadyLoaded) {
+      const customerForCheck = { firstName, lastName, email,
+        phone: document.getElementById('phone').value.trim(),
+        company: document.getElementById('company').value.trim(),
+      };
+      const dupContact = await checkForDuplicates(customerForCheck);
+      if (dupContact) {
+        btn.disabled = false;
+        btn.innerHTML = 'Push to HubSpot';
+        const choice = await showDupModal(dupContact, customerForCheck);
+        existingContactId = choice.useExisting ? dupContact.id : null;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-inline"></span>Creating in HubSpot...';
+      }
+    }
+  } catch(dupErr) {
+    console.warn('Duplicate check skipped:', dupErr.message);
+  }
+
   const sub = getSubtotal();
   const disc = getDiscountAmount();
   const total = sub - disc + getFreightTotal() + getTaxAmount();
@@ -1824,7 +1847,12 @@ function generatePDF() {
 <style>
   @import url('https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700,800&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Satoshi', 'DM Sans', sans-serif; font-size: 11px; color: #46484d; background: white; padding: 40px; }
+  @page { margin: 0.5cm; size: A4; }
+  @media print {
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body { margin: 0; }
+  }
+  body { font-family: 'Satoshi', 'DM Sans', sans-serif; font-size: 10px; color: #46484d; background: white; padding: 24px; }
 
   /* Header */
   .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 36px; padding-bottom: 24px; border-bottom: 3px solid #46484d; }
@@ -1940,7 +1968,7 @@ function generatePDF() {
   <div class="totals">
     <div class="totals-row"><span class="totals-label">Subtotal</span><span class="totals-val">${fmt(sub)}</span></div>
     ${disc > 0 ? `<div class="totals-row discount"><span class="totals-label">Discount${discPct ? ` (${discVal}%)` : ''}</span><span class="totals-val">−${fmt(disc)}</span></div>` : ''}
-    ${freight > 0 ? `<div class="totals-row"><span class="totals-label">Freight${freightData && freightData.transit ? ` (${freightData.transit})` : ''}</span><span class="totals-val">${fmt(freight)}</span></div>` : '<div class="totals-row"><span class="totals-label">Freight</span><span class="totals-val" style="color:#888">TBD</span></div>'}
+    ${freight > 0 ? `<div class="totals-row"><span class="totals-label">Freight</span><span class="totals-val">${fmt(freight)}</span></div>` : '<div class="totals-row"><span class="totals-label">Freight</span><span class="totals-val" style="color:#888">TBD</span></div>'}
     ${tax > 0 ? `<div class="totals-row"><span class="totals-label">Sales Tax${taxData ? ` (${(taxData.rate*100).toFixed(3)}%)` : ''}</span><span class="totals-val">${fmt(tax)}</span></div>` : ''}
     <div class="totals-row grand"><span class="totals-label">Total USD</span><span class="totals-val">${fmt(total)}</span></div>
   </div>
@@ -1952,12 +1980,12 @@ ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</
         <strong style="font-size:10px;color:#46484d;display:block;margin-bottom:6px;">TERMS AND CONDITIONS:</strong>
         I understand that WhisperRooms are not 100% soundproof. I understand that all products manufactured by WhisperRoom, Inc. are for indoor use only. Any returns will be at the sole discretion of WhisperRoom, Inc. and are subject to a restocking fee and freight charges. Any damage that occurs during shipping or delivery must be reported to WhisperRoom, Inc. within five business days. I assume responsibility for any damage not reported to WhisperRoom, Inc. In the event that delivery is not accepted for any reason, I agree to pay in full, all shipping charges including all charges incurred for return freight and restocking charges. Compliance with local, state and national building codes and standards are my responsibility. Any alterations to the WhisperRoom will void the warranty.
       </div>
-      \${document.getElementById('canada') && document.getElementById('canada').checked ? \`
-      <div style="margin:0 0 14px;padding:10px 14px;background:#fff8f0;border-left:3px solid #ee6216;font-size:9px;color:#46484d;line-height:1.7;">
-        <strong style="color:#ee6216;display:block;margin-bottom:3px;">INTERNATIONAL / CANADIAN ORDER</strong>
-        Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.
-        \${document.getElementById('customsBroker') && document.getElementById('customsBroker').value ? '<br><strong>Customs Broker:</strong> ' + document.getElementById('customsBroker').value : ''}
-      </div>\` : ''}
+      \${(() => {
+        const canadaChecked = document.getElementById('canada') && document.getElementById('canada').checked;
+        if (!canadaChecked) return '';
+        const broker = document.getElementById('customsBroker') && document.getElementById('customsBroker').value ? document.getElementById('customsBroker').value : '';
+        return '<div style=\'margin:0 0 14px;padding:10px 14px;background:#fff8f0;border-left:3px solid #ee6216;font-size:9px;color:#46484d;line-height:1.7;\'><strong style=\'color:#ee6216;display:block;margin-bottom:3px;\'>INTERNATIONAL / CANADIAN ORDER</strong>Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.' + (broker ? '<br><strong>Customs Broker:</strong> ' + broker : '') + '</div>';
+      })()}
       <div style="margin:0 0 16px;padding:10px 14px;background:#f8f8f8;border:1px solid #ebebeb;font-size:8.5px;color:#555;line-height:1.75;">
         <strong style="font-size:9px;color:#333;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em;">Terms and Conditions</strong>
         I understand that WhisperRooms are not 100% soundproof. I understand that all products manufactured by WhisperRoom, Inc. are for indoor use only. Any returns will be at the sole discretion of WhisperRoom, Inc. and are subject to a restocking fee and freight charges. Any damage that occurs during shipping or delivery must be reported to WhisperRoom, Inc. within five business days. I assume responsibility for any damage not reported to WhisperRoom, Inc. In the event that delivery is not accepted for any reason, I agree to pay in full, all shipping charges including all charges incurred for return freight and restocking charges. Compliance with local, state and national building codes and standards are my responsibility. Any alterations to the WhisperRoom will void the warranty.
@@ -1981,12 +2009,17 @@ ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</
 </body>
 </html>`;
 
-  // Open as blob URL to avoid about:blank in print header/footer
+  // Open as blob URL and trigger print/save with proper filename
   const blob = new Blob([html], { type: 'text/html' });
   const blobUrl = URL.createObjectURL(blob);
   const win = window.open(blobUrl, '_blank');
   win.focus();
+  // Set document title so PDF saves with deal name
   setTimeout(() => {
+    const dealNameVal = document.getElementById('dealName').value.trim();
+    const quoteNumVal = document.getElementById('quoteNumHidden').value || '';
+    const pdfTitle = dealNameVal ? dealNameVal + ' — Quote' : (quoteNumVal ? 'Quote-' + quoteNumVal : 'WhisperRoom-Quote');
+    win.document.title = pdfTitle;
     win.print();
     setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
   }, 800);

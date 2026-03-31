@@ -714,6 +714,45 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── API: Get deals associated with a contact ──────────────────
+  if (pathname.startsWith('/api/contact-deals/') && req.method === 'GET') {
+    try {
+      const contactId = pathname.replace('/api/contact-deals/', '').trim();
+      if (!contactId) { json({ deals: [] }); return; }
+
+      // Search for deals associated with this contact
+      const res = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/objects/deals/search',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, {
+        filterGroups: [{
+          filters: [{
+            propertyName: 'associations.contact',
+            operator: 'EQ',
+            value: contactId
+          }]
+        }],
+        properties: ['dealname', 'amount', 'dealstage', 'hubspot_owner_id', 'hs_lastmodifieddate', 'closedate'],
+        sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+        limit: 10
+      });
+
+      const deals = (res.body.results || []).map(d => ({
+        id: d.id,
+        name: d.properties.dealname || 'Untitled Deal',
+        amount: d.properties.amount || null,
+        stage: d.properties.dealstage || null,
+        ownerId: d.properties.hubspot_owner_id || null,
+        modified: d.properties.hs_lastmodifieddate || null,
+      }));
+
+      json({ deals });
+    } catch(e) { json({ deals: [], error: e.message }); }
+    return;
+  }
+
   // ── API: Get deal with contact details ──
   if (pathname.startsWith('/api/deal/') && req.method === 'GET') {
     try {

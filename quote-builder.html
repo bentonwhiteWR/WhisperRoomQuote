@@ -2057,8 +2057,9 @@ function fillContact(contact) {
   document.getElementById('contactBadge').style.display = 'none';
   // Load saved accessorial preferences for this contact
   if (p.email) loadAccessorialPrefs(p.email);
-  // Save contact ID for use by unlinkDeal
+  // Save contact ID for use by unlinkDeal, reset unlink flag for new contact
   window._loadedContactId = contact.id;
+  window._userUnlinked = false;
   // Suggest deals associated with this contact
   suggestDealsForContact(contact.id);
 }
@@ -2477,6 +2478,38 @@ function loadFromHistoryEntry(idOrIdx) {
 
   updateSummary();
   toggleHistory();
+
+  // Check if any product prices have changed since this quote was saved
+  const itemsWithIds = lineItems.filter(i => i.productId);
+  if (itemsWithIds.length > 0) {
+    fetch('/api/check-prices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: itemsWithIds })
+    })
+    .then(r => r.json())
+    .then(data => {
+      const changed = (data.results || []).filter(r => r.changed);
+      if (changed.length === 0) return;
+
+      // Show price change modal
+      const lines = changed.map(c =>
+        `  ${c.name}: quoted $${c.quotedPrice.toFixed(2)} → current $${c.currentPrice.toFixed(2)}`
+      ).join('\n');
+
+      const msg = `${changed.length} item${changed.length > 1 ? 's have' : ' has'} a different price since this quote was saved:\n\n${lines}\n\nUpdate to current prices?`;
+
+      if (confirm(msg)) {
+        changed.forEach(c => {
+          const item = lineItems.find(i => String(i.productId) === String(c.productId));
+          if (item) item.price = c.currentPrice;
+        });
+        renderLineItems();
+        updateSummary();
+      }
+    })
+    .catch(() => {}); // silent fail — don't block on price check errors
+  }
 }
 
 function toggleHistory() {
@@ -2756,13 +2789,14 @@ function onDealSearchInput(val) {
 function unlinkDeal() {
   linkedDeal = null;
   selectedDeal = null;
+  window._userUnlinked = true; // user explicitly unlinked — suppress auto-link
   document.getElementById('linkedDealBadge').style.display = 'none';
   document.getElementById('dealLinkRow').style.display = 'flex';
   document.getElementById('dealName').value = '';
   document.getElementById('linkedDealMeta').textContent = '';
   updateRevisionBadge();
 
-  // Re-show deal suggestions if a contact is loaded
+  // Re-show deal list (but won't auto-link since _userUnlinked is set)
   const contactId = window._loadedContactId;
   if (contactId) suggestDealsForContact(contactId);
 }
@@ -2801,8 +2835,8 @@ async function suggestDealsForContact(contactId) {
     // Only show if no deal is already linked
     if (!linkedDeal) {
       container.style.display = 'block';
-      // Auto-link if only one deal
-      if (deals.length === 1) {
+      // Auto-link if only one deal — but NOT if user just manually unlinked
+      if (deals.length === 1 && !window._userUnlinked) {
         linkDealById(deals[0].id, deals[0].name);
         container.style.display = 'none';
       }
@@ -3045,6 +3079,7 @@ function newQuote() {
   window._lastPushedContactId = null;
   window._lastPushedDealId = null;
   window._loadedContactId = null;  // clear so deal suggestions don't auto-fire
+  window._userUnlinked = false;
 
   // Clear linked deal state fully
   linkedDeal = null;

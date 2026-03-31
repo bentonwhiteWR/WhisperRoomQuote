@@ -1985,14 +1985,14 @@ async function createDeal() {
       box.className = 'result-box success';
       window._lastPushedContactId = data.contactId || null;
       window._lastPushedDealId = data.dealId || null;
-      window._historicalQuoteLoaded = false;
-      // Update quote number display with the confirmed number from server
+      // Mark form as published — next push will generate a new quote number
       if (data.quoteNumber) {
         document.getElementById('quoteNumHidden').value = data.quoteNumber;
         document.getElementById('quoteNumDisplay').textContent = data.quoteNumber;
       }
+      window._historicalQuoteLoaded = true; // treat as published — next push = new revision
       activateLinkBtn();
-      updatePushButtonText();
+      updatePushButtonText(); // will show "Update Quote & Deal" + revision preview
       // Also activate PDF button
       const pdfBtn = document.getElementById('pdfBtn');
       if (pdfBtn) {

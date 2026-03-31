@@ -1131,11 +1131,11 @@ body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-seri
 .page{max-width:820px;margin:0 auto;padding:28px 16px 100px}
 
 /* Header */
-.header-card{background:#1a1a1a;border-radius:14px;padding:28px 32px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px}
-.logo-img{height:28px;display:block}
+.header-card{background:#ffffff;border-radius:14px;padding:28px 32px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;border-bottom:3px solid #ee6216;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.logo-img{height:26px;display:block}
 .quote-badge{text-align:right}
 .quote-num{font-size:26px;font-weight:800;color:#ee6216;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
-.quote-date{font-size:12px;color:rgba(255,255,255,.4);margin-top:4px}
+.quote-date{font-size:12px;color:#aaa;margin-top:4px}
 .quote-valid{font-size:11px;font-weight:700;color:#ee6216;margin-top:3px;text-transform:uppercase;letter-spacing:.06em}
 
 /* Cards */
@@ -1196,7 +1196,7 @@ tbody tr:last-child td{border-bottom:none}
 <div class="page">
 
   <div class="header-card">
-    <img src="/assets/logo-orange.svg" alt="WhisperRoom" class="logo-img">
+    <img src="/assets/logo-black.svg" alt="WhisperRoom" class="logo-img">
     <div class="quote-badge">
       <div class="quote-num">${q.quoteNumber||'QUOTE'}</div>
       <div class="quote-date">Issued ${q.date||new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>

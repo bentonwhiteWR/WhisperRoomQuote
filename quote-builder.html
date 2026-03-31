@@ -117,6 +117,18 @@ body {
   /* Quote number — smaller */
   #quoteNumDisplay { font-size: 18px; }
 }
+.deal-suggestion-item {
+  padding: 8px 10px;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 6px;
+  margin-bottom: 5px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.deal-suggestion-item:hover { background: rgba(238,98,22,.15); border-color: var(--accent); }
+.deal-suggestion-item .dsn { font-size:12px; font-weight:600; color:rgba(255,255,255,.9); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.deal-suggestion-item .dsm { font-size:10px; color:var(--muted); margin-top:2px; }
 .mobile-summary-toggle {
   display: none;
   padding: 10px 14px;
@@ -132,7 +144,19 @@ body {
   user-select: none;
 }
 @media (max-width: 768px) {
-  .mobile-summary-toggle { display: block; }
+  .deal-suggestion-item {
+  padding: 8px 10px;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 6px;
+  margin-bottom: 5px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.deal-suggestion-item:hover { background: rgba(238,98,22,.15); border-color: var(--accent); }
+.deal-suggestion-item .dsn { font-size:12px; font-weight:600; color:rgba(255,255,255,.9); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.deal-suggestion-item .dsm { font-size:10px; color:var(--muted); margin-top:2px; }
+.mobile-summary-toggle { display: block; }
   .sidebar.collapsed #summaryContent { display: none; }
   #mobileSummaryLabel { }
 }
@@ -590,21 +614,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
 <div class="main-col">
 
   <!-- DEAL SEARCH -->
-  <div class="deal-search-bar">
-    <div style="flex:1">
-      <label>Link to Existing Deal (optional)</label>
-      <div style="position:relative">
-        <input type="text" id="dealSearch" class="product-search-input" placeholder="Search deals by name..." autocomplete="off" style="background:var(--bg)">
-        <div class="contact-dropdown" id="dealDropdown"></div>
-      </div>
-      <div id="selectedDealBadge" style="display:none">
-        <div class="deal-badge">
-          <span id="selectedDealName">—</span>
-          <span class="x" onclick="clearDeal()">✕</span>
-        </div>
-      </div>
-    </div>
-  </div>
+  
 
   <!-- CONTACT SEARCH -->
   <div class="contact-search-bar">
@@ -947,6 +957,51 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
   <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,.1)">
     <div class="summary-title">Deal Name <span id="revisionBadge" style="font-size:10px;color:rgba(238,98,22,.8);font-weight:400;display:none"></span></div>
     <input type="text" id="dealName" class="product-search-input" placeholder="Auto-generated if blank" style="margin-top:8px;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.15);color:rgba(255,255,255,.9);" oninput="updateRevisionBadge()">
+
+    <!-- Deal Linking Panel -->
+    <div style="margin-top:10px">
+
+      <!-- Suggested deals (appears after contact selected) -->
+      <div id="dealSuggestions" style="display:none;margin-bottom:8px">
+        <div style="font-size:10px;color:var(--accent);font-weight:600;margin-bottom:5px;text-transform:uppercase;letter-spacing:.06em">&#x1F4A1; Deals Found for This Contact</div>
+        <div id="dealSuggestionList"></div>
+      </div>
+
+      <!-- Manual deal search -->
+      <div id="dealLinkRow" style="display:flex;gap:6px;align-items:center">
+        <div style="position:relative;flex:1">
+          <input type="text" id="dealSearch"
+            class="product-search-input"
+            placeholder="Search & link a deal..."
+            autocomplete="off"
+            style="background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.12);color:rgba(255,255,255,.8);font-size:11px;padding:7px 10px;"
+            oninput="onDealSearchInput(this.value)">
+          <div class="contact-dropdown" id="dealDropdown"></div>
+        </div>
+      </div>
+
+      <!-- Linked deal badge -->
+      <div id="linkedDealBadge" style="display:none;margin-top:8px">
+        <div style="background:rgba(62,207,142,.1);border:1px solid rgba(62,207,142,.25);border-radius:7px;padding:9px 12px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="linkedDealName">—</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:2px" id="linkedDealMeta"></div>
+            </div>
+            <span onclick="unlinkDeal()" style="cursor:pointer;color:var(--muted);font-size:14px;padding-left:8px;flex-shrink:0">✕</span>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:8px">
+            <button onclick="openLinkedDealInHubSpot()" style="flex:1;padding:5px 0;font-size:10px;font-weight:600;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:5px;color:rgba(255,255,255,.7);cursor:pointer;letter-spacing:.04em">
+              &#x2197; VIEW IN HUBSPOT
+            </button>
+            <button onclick="unlinkDeal()" style="padding:5px 10px;font-size:10px;font-weight:600;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:5px;color:var(--muted);cursor:pointer">
+              UNLINK
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
   </div>
 
   <button class="create-btn" id="createBtn" onclick="createDeal()">
@@ -1821,6 +1876,7 @@ async function createDeal() {
         dealName: document.getElementById('dealName').value.trim() ||
           `${document.getElementById('company').value.trim() || lastName} — Quote`,
         existingDealId: selectedDeal ? selectedDeal.id : null,
+        linkedDealId: linkedDeal ? linkedDeal.id : (selectedDeal ? selectedDeal.id : null),
       })
     });
 
@@ -1874,6 +1930,7 @@ async function createDeal() {
 // ── Deal search ──────────────────────────────────────────────────
 let selectedDeal = null;
 const dealSearchInput = document.getElementById('dealSearch');
+if (dealSearchInput) dealSearchInput.addEventListener('input', e => onDealSearchInput(e.target.value));
 const dealDropdown = document.getElementById('dealDropdown');
 let dealSearchTimeout = null;
 
@@ -1930,11 +1987,8 @@ async function searchDeals(q) {
 
 
 
-function clearDeal() {
-  selectedDeal = null;
-  document.getElementById('selectedDealBadge').style.display = 'none';
-  document.getElementById('dealName').value = '';
-}
+function clearDeal() { unlinkDeal(); }
+
 
 // ── Contact search ───────────────────────────────────────────────
 const contactSearch = document.getElementById('contactSearch');
@@ -2000,6 +2054,8 @@ function fillContact(contact) {
   document.getElementById('contactBadge').style.display = 'none';
   // Load saved accessorial preferences for this contact
   if (p.email) loadAccessorialPrefs(p.email);
+  // Suggest deals associated with this contact
+  suggestDealsForContact(contact.id);
 }
 
 // Show "New Contact" badge when manually typing in name fields
@@ -2601,50 +2657,129 @@ async function onPresetSelect(presetName) {
 
 // ── Deal auto-fill ────────────────────────────────────────────────
 async function selectDeal(deal) {
-  selectedDeal = deal;
-  document.getElementById('selectedDealName').textContent = deal.name;
-  document.getElementById('selectedDealBadge').style.display = 'block';
-  document.getElementById('dealName').value = deal.name;
+  linkDealById(deal.id, deal.name);
   dealSearchInput.value = '';
   dealDropdown.classList.remove('open');
+}
 
-  // Fetch deal details including contact and owner
-  try {
-    document.getElementById('freightStatus').textContent = 'Loading deal details...';
-    const res = await fetch('/api/deal/' + deal.id);
-    const data = await res.json();
+// ── Core deal linking ────────────────────────────────────────────
+let linkedDeal = null; // { id, name, amount, stage, ownerId }
 
-    if (data && data.contact && data.contact.properties) {
-      const p = data.contact.properties;
-      // Auto-fill customer form from deal's contact
-      document.getElementById('firstName').value = p.firstname || '';
-      document.getElementById('lastName').value = p.lastname || '';
-      document.getElementById('email').value = p.email || '';
-      document.getElementById('phone').value = p.phone || '';
-      document.getElementById('company').value = p.company || '';
-      document.getElementById('shipAddress').value = p.address || '';
-      document.getElementById('shipCity').value = p.city || '';
-      document.getElementById('shipState').value = normalizeState(p.state);
-      document.getElementById('shipZip').value = p.zip || '';
-      document.getElementById('contactBadge').style.display = 'none';
-      // Load accessorial prefs for this contact
-      if (p.email) loadAccessorialPrefs(p.email);
-    }
+function linkDealById(dealId, dealName) {
+  linkedDeal = { id: dealId, name: dealName };
+  selectedDeal = { id: dealId, name: dealName };
 
-    // Set rep to deal owner
-    if (data && data.deal && data.deal.properties && data.deal.properties.hubspot_owner_id) {
-      const ownerId = data.deal.properties.hubspot_owner_id;
-      const repSelect = document.getElementById('repSelect');
-      if ([...repSelect.options].some(o => o.value === ownerId)) {
-        repSelect.value = ownerId;
-        updateQuoteNumber();
+  // Update the deal name input
+  document.getElementById('dealName').value = dealName;
+
+  // Show linked badge
+  document.getElementById('linkedDealBadge').style.display = 'block';
+  document.getElementById('dealLinkRow').style.display = 'none';
+  document.getElementById('linkedDealName').textContent = dealName;
+  document.getElementById('dealSuggestions').style.display = 'none';
+
+  // Fetch full deal details to auto-fill rep + show meta
+  fetch('/api/deal/' + dealId).then(r => r.json()).then(data => {
+    if (data && data.deal && data.deal.properties) {
+      const p = data.deal.properties;
+      const amount = p.amount ? '$' + parseFloat(p.amount).toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0}) : '';
+      const stage = p.dealstage || '';
+      document.getElementById('linkedDealMeta').textContent = [amount, stage].filter(Boolean).join(' · ');
+      linkedDeal.amount = p.amount;
+      linkedDeal.stage = p.dealstage;
+
+      // Set rep to deal owner
+      if (p.hubspot_owner_id) {
+        const sel = document.getElementById('repSelect');
+        if ([...sel.options].some(o => o.value === p.hubspot_owner_id)) {
+          sel.value = p.hubspot_owner_id;
+          localStorage.setItem('wr_default_rep', p.hubspot_owner_id);
+          updateQuoteNumber();
+        }
+      }
+
+      // Auto-fill contact from deal if not already filled
+      if (data.contact && data.contact.properties) {
+        const cp = data.contact.properties;
+        const hasContact = document.getElementById('firstName').value.trim();
+        if (!hasContact) {
+          document.getElementById('firstName').value = cp.firstname || '';
+          document.getElementById('lastName').value = cp.lastname || '';
+          document.getElementById('email').value = cp.email || '';
+          document.getElementById('phone').value = cp.phone || '';
+          document.getElementById('company').value = cp.company || '';
+          document.getElementById('shipAddress').value = cp.address || '';
+          document.getElementById('shipCity').value = cp.city || '';
+          document.getElementById('shipState').value = normalizeState(cp.state);
+          document.getElementById('shipZip').value = cp.zip || '';
+          if (cp.email) loadAccessorialPrefs(cp.email);
+        }
       }
     }
+  }).catch(() => {});
+  updateRevisionBadge();
+}
 
-    document.getElementById('freightStatus').textContent = '';
+function onDealSearchInput(val) {
+  if (!val || val.length < 2) {
+    document.getElementById('dealDropdown').classList.remove('open');
+    return;
+  }
+  // Reuse existing deal search logic
+  searchDeals(val);
+}
+
+function unlinkDeal() {
+  linkedDeal = null;
+  selectedDeal = null;
+  document.getElementById('linkedDealBadge').style.display = 'none';
+  document.getElementById('dealLinkRow').style.display = 'flex';
+  document.getElementById('dealName').value = '';
+  document.getElementById('linkedDealMeta').textContent = '';
+  updateRevisionBadge();
+}
+
+function openLinkedDealInHubSpot() {
+  if (!linkedDeal) return;
+  window.open('https://app.hubspot.com/contacts/5764220/deal/' + linkedDeal.id, '_blank');
+}
+
+// ── Suggest deals when a contact is loaded ───────────────────────
+async function suggestDealsForContact(contactId) {
+  if (!contactId) return;
+  try {
+    const res = await fetch('/api/contact-deals/' + contactId);
+    const data = await res.json();
+    const deals = data.deals || [];
+
+    const container = document.getElementById('dealSuggestions');
+    const list = document.getElementById('dealSuggestionList');
+
+    if (deals.length === 0) {
+      container.style.display = 'none';
+      return;
+    }
+
+    list.innerHTML = deals.map(d => {
+      const amount = d.amount ? ' · $' + parseFloat(d.amount).toLocaleString('en-US', {minimumFractionDigits:0}) : '';
+      const modified = d.modified ? ' · ' + new Date(d.modified).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '';
+      return `<div class="deal-suggestion-item" onclick="linkDealById('${d.id}', ${JSON.stringify(d.name)})">
+        <div class="dsn">${d.name}</div>
+        <div class="dsm">${d.stage || 'Open'}${amount}${modified}</div>
+      </div>`;
+    }).join('');
+
+    // Only show if no deal is already linked
+    if (!linkedDeal) {
+      container.style.display = 'block';
+      // Auto-link if only one deal
+      if (deals.length === 1) {
+        linkDealById(deals[0].id, deals[0].name);
+        container.style.display = 'none';
+      }
+    }
   } catch(e) {
-    document.getElementById('freightStatus').textContent = 'Could not load deal details.';
-    setTimeout(() => document.getElementById('freightStatus').textContent = '', 3000);
+    console.warn('Deal suggestions failed:', e.message);
   }
 }
 

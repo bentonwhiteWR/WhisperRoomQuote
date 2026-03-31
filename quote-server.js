@@ -822,7 +822,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, quoteNumber, billing } = body;
+      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, quoteNumber, billing, isRevision, linkedDealId: bodyLinkedDealId } = body;
 
       // Find or create contact
       let contactId;
@@ -914,7 +914,7 @@ const server = http.createServer(async (req, res) => {
           billing_zipcode: billing ? billing.zip || '' : customer.zip || '',
           // quote_links set separately below
           pipeline: 'default',
-          dealstage: 'appointmentscheduled',
+          dealstage: isRevision ? 'qualifiedtobuy' : 'appointmentscheduled',
           amount: total.toFixed(2),
           hubspot_owner_id: String(ownerId),
           closedate: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
@@ -1242,13 +1242,49 @@ tbody tr:last-child td{border-bottom:none}
 
 </div>
 
-<div class="action-bar">
-  <button class="btn btn-primary" onclick="window.print()">&#x2B07;&nbsp;&nbsp;Download / Save PDF</button>
-  <button class="btn btn-secondary" id="share-btn" onclick="(function(b){if(navigator.clipboard){navigator.clipboard.writeText(window.location.href).then(function(){b.textContent='\u2713 Link Copied!';setTimeout(function(){b.textContent='Share Link'},2000)}).catch(function(){prompt('Copy link:',window.location.href)})}else{prompt('Copy link:',window.location.href)}})(this)">Share Link</button>
+<div class="action-bar" id="action-bar">
+  <button class="btn btn-accept" id="accept-btn" onclick="acceptQuote()">&#x2713;&nbsp;&nbsp;Accept This Quote</button>
+  <button class="btn btn-primary" onclick="window.print()">&#x2B07;&nbsp;&nbsp;Download PDF</button>
+  <button class="btn btn-secondary" id="share-btn" onclick="(function(b){if(navigator.clipboard){navigator.clipboard.writeText(window.location.href).then(function(){b.textContent='\u2713 Copied!';setTimeout(function(){b.textContent='Share Link'},2000)}).catch(function(){prompt('Copy link:',window.location.href)})}else{prompt('Copy link:',window.location.href)}})(this)">Share Link</button>
+</div>
+
+<div id="accepted-bar" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#1a7a4a;color:white;text-align:center;padding:20px;font-size:15px;font-weight:700;z-index:100;font-family:inherit">
+  &#x2713;&nbsp;&nbsp;Quote Accepted &mdash; A WhisperRoom representative will be in touch shortly.
 </div>
 
 <script>
   document.title = 'Quote ${q.quoteNumber||''}${q.dealName ? ' - ' + q.dealName.replace(/[<>]/g,'') : ''}';
+
+  async function acceptQuote() {
+    const btn = document.getElementById('accept-btn');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.innerHTML = 'Processing…';
+    try {
+      const res = await fetch('/api/accept-quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quoteNumber: '${q.quoteNumber || ""}',
+          dealId: '${q.dealId || ""}',
+          contactEmail: '${q.customer ? (q.customer.email || "") : ""}'
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById('action-bar').style.display = 'none';
+        document.getElementById('accepted-bar').style.display = 'block';
+        window.scrollTo(0, 0);
+      } else {
+        btn.disabled = false;
+        btn.innerHTML = '✓  Accept This Quote';
+        alert('Something went wrong. Please contact WhisperRoom at (865) 558-5364.');
+      }
+    } catch(e) {
+      btn.disabled = false;
+      btn.innerHTML = '✓  Accept This Quote';
+    }
+  }
 </script>
 </body>
 </html>`;;
@@ -1304,6 +1340,75 @@ tbody tr:last-child td{border-bottom:none}
       }));
 
       json({ results: checks });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // ── API: Accept Quote (from shareable link page) ──────────────
+  if (pathname === '/api/accept-quote' && req.method === 'POST') {
+    try {
+      const { quoteNumber, dealId, contactId } = JSON.parse(await readBody(req));
+
+      const results = {};
+
+      // 1. Advance deal stage to Verbal Confirmation
+      if (dealId) {
+        const stageRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v3/objects/deals/${dealId}`,
+          method: 'PATCH',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, { properties: { dealstage: 'contractsent' } });
+        results.stageUpdated = !stageRes.body.error;
+      }
+
+      // 2. Create a HubSpot task for the deal owner
+      if (dealId) {
+        // Get deal owner first
+        const dealData = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v3/objects/deals/${dealId}?properties=hubspot_owner_id,dealname`,
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+        });
+        const ownerId = dealData.body?.properties?.hubspot_owner_id;
+        const dealName = dealData.body?.properties?.dealname || 'Deal';
+
+        if (ownerId) {
+          const dueDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: '/crm/v3/objects/tasks',
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, {
+            properties: {
+              hs_task_subject: `Customer accepted quote #${quoteNumber} — create invoice`,
+              hs_task_body: `Customer accepted quote #${quoteNumber} for ${dealName}. Ready to create invoice.`,
+              hubspot_owner_id: ownerId,
+              hs_task_status: 'NOT_STARTED',
+              hs_task_type: 'TODO',
+              hs_timestamp: new Date().toISOString(),
+              hs_task_priority: 'HIGH',
+            },
+            associations: dealId ? [{ to: { id: dealId }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 216 }] }] : []
+          });
+          results.taskCreated = true;
+        }
+      }
+
+      // 3. Log a note on the deal
+      if (dealId) {
+        await saveQuoteNote(dealId, {
+          dealName: `Quote #${quoteNumber} accepted by customer`,
+          quoteNumber,
+          savedAt: new Date().toISOString(),
+          acceptedAt: new Date().toISOString(),
+        });
+        results.noteLogged = true;
+      }
+
+      json({ success: true, results });
     } catch(e) { json({ error: e.message }, 500); }
     return;
   }
@@ -1390,4 +1495,38 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`WhisperRoom Quote Builder running on port ${PORT}`);
   console.log(`HubSpot token: ${HS_TOKEN ? HS_TOKEN.substring(0,12) + '...' : 'NOT SET'}`);
   console.log(`TaxJar key: ${TAXJAR_KEY ? TAXJAR_KEY.substring(0,8) + '...' : 'NOT SET'}`);
-});
+});erRoom Quote Builder
+// Node.js server with HubSpot, TaxJar, and ABF integration
+
+const http    = require('http');
+const https   = require('https');
+const fs      = require('fs');
+const path    = require('path');
+const url     = require('url');
+const crypto  = require('crypto');
+
+// ── Quote History via HubSpot Notes ──────────────────────────────
+// Stored as notes on deals - persistent, visible in HubSpot, never wiped
+
+async function saveQuoteNote(dealId, quoteData) {
+  const snapshotData = {
+    ...quoteData,
+    dealId: dealId,   // save so history restore can link directly
+    id: crypto.randomBytes(8).toString('hex'),
+    savedAt: new Date().toISOString()
+  };
+  // WR_QUOTE_DATA markers allow the /q/:quoteNumber route to find this note
+  const noteBody = 'WR_QUOTE_DATA:' + JSON.stringify(snapshotData) + ':END_WR_QUOTE';
+
+  // Create note
+  const note = await httpsRequest({
+    hostname: 'api.hubapi.com',
+    path: '/crm/v3/objects/notes',
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+  }, {
+    properties: {
+      hs_note_body: noteBody,
+      hs_timestamp: new Date().toISOString(),
+    }
+  });

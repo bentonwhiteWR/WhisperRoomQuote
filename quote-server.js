@@ -833,20 +833,41 @@ const server = http.createServer(async (req, res) => {
         const existing = await hsSearchContact(customer.email);
         if (existing.results && existing.results.length > 0) {
           contactId = existing.results[0].id;
-          // Update contact's address from ship-to fields
-          if (customer.address || customer.city || customer.state) {
-            await httpsRequest({
-              hostname: 'api.hubapi.com',
-              path: `/crm/v3/objects/contacts/${contactId}`,
-              method: 'PATCH',
-              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-            }, { properties: {
-              address: customer.address || '',
-              city:    customer.city    || '',
-              state:   toStateFull(customer.state) || '',
-              zip:     customer.zip     || '',
-              phone:   customer.phone   || '',
-            }}).catch(e => console.warn('Contact address update failed:', e.message));
+          // Selectively update contact — only overwrite fields that are blank
+          // in HubSpot, or where the quote has a value and HubSpot doesn't.
+          // Never overwrite existing data blindly.
+          try {
+            const existingProps = existing.results[0].properties || {};
+            const updateProps = {};
+
+            // Address: update only if HubSpot has nothing, or quote has a value
+            if (customer.address && !existingProps.address) {
+              updateProps.address = customer.address;
+            }
+            if (customer.city && !existingProps.city) {
+              updateProps.city = customer.city;
+            }
+            if (customer.state && !existingProps.state) {
+              updateProps.state = toStateFull(customer.state);
+            }
+            if (customer.zip && !existingProps.zip) {
+              updateProps.zip = customer.zip;
+            }
+            // Phone: only fill if HubSpot has none
+            if (customer.phone && !existingProps.phone) {
+              updateProps.phone = customer.phone;
+            }
+
+            if (Object.keys(updateProps).length > 0) {
+              await httpsRequest({
+                hostname: 'api.hubapi.com',
+                path: `/crm/v3/objects/contacts/${contactId}`,
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+              }, { properties: updateProps });
+            }
+          } catch(e) {
+            console.warn('Contact update skipped:', e.message);
           }
         } else {
           const newContact = await hsCreateContact({

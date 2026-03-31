@@ -3044,6 +3044,11 @@ function newQuote() {
 
   window._lastPushedContactId = null;
   window._lastPushedDealId = null;
+  window._loadedContactId = null;  // clear so deal suggestions don't auto-fire
+
+  // Clear linked deal state fully
+  linkedDeal = null;
+  selectedDeal = null;
 }
 
 // ── Mobile summary toggle ────────────────────────────────────────

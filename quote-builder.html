@@ -1797,6 +1797,14 @@ async function getTax() {
 
 // ── Create Deal ───────────────────────────────────────────────────
 async function createDeal() {
+  // If revising a historical quote, generate a fresh quote number now
+  if (window._historicalQuoteLoaded) {
+    window._historicalQuoteLoaded = false;
+    updateQuoteNumber();
+    updatePushButtonText();
+    document.getElementById('revisionNote').style.display = 'none';
+  }
+
   const firstName = document.getElementById('firstName').value.trim();
   const lastName = document.getElementById('lastName').value.trim();
   const email = document.getElementById('email').value.trim();
@@ -1810,7 +1818,8 @@ async function createDeal() {
 
   const btn = document.getElementById('createBtn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-inline"></span>Creating in HubSpot...';
+  const isRevision = !!(linkedDeal || selectedDeal);
+  btn.innerHTML = '<span class="spinner-inline"></span>' + (isRevision ? 'Updating...' : 'Creating...');
 
   // Scoped variable for duplicate check result
   let existingContactId = null;
@@ -1831,7 +1840,8 @@ async function createDeal() {
         const choice = await showDupModal(dupContact, customerForCheck);
         existingContactId = choice.useExisting ? dupContact.id : null;
         btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-inline"></span>Creating in HubSpot...';
+        const isRevision = !!(linkedDeal || selectedDeal);
+  btn.innerHTML = '<span class="spinner-inline"></span>' + (isRevision ? 'Updating...' : 'Creating...');
       }
     }
   } catch(dupErr) {
@@ -1897,7 +1907,12 @@ async function createDeal() {
       box.className = 'result-box success';
       window._lastPushedContactId = data.contactId || null;
       window._lastPushedDealId = data.dealId || null;
-      window._historicalQuoteLoaded = false; // pushed — next quote gets fresh number
+      window._historicalQuoteLoaded = false;
+      // Update quote number display with the confirmed number from server
+      if (data.quoteNumber) {
+        document.getElementById('quoteNumHidden').value = data.quoteNumber;
+        document.getElementById('quoteNumDisplay').textContent = data.quoteNumber;
+      }
       activateLinkBtn();
       // Also activate PDF button
       const pdfBtn = document.getElementById('pdfBtn');

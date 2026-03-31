@@ -627,6 +627,9 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
         <input type="text" id="contactSearch" placeholder="Type name or email to search..." autocomplete="off">
         <div class="contact-dropdown" id="contactDropdown"></div>
       </div>
+      <button id="viewContactBtn" onclick="openContactInHubSpot()" style="display:none;margin-top:6px;width:100%;padding:6px 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--muted);cursor:pointer">
+        &#x2197; View Contact in HubSpot
+      </button>
     </div>
     <div style="align-self:flex-end;padding-bottom:2px;font-size:11px;color:var(--muted);white-space:nowrap">
       or fill in manually ↓
@@ -2060,6 +2063,8 @@ function fillContact(contact) {
   // Save contact ID for use by unlinkDeal, reset unlink flag for new contact
   window._loadedContactId = contact.id;
   window._userUnlinked = false;
+  const vcBtn = document.getElementById('viewContactBtn');
+  if (vcBtn) vcBtn.style.display = 'block';
   // Suggest deals associated with this contact
   suggestDealsForContact(contact.id);
 }
@@ -2436,6 +2441,8 @@ function loadFromHistoryEntry(idOrIdx) {
     // Clear loaded contact ID so deal suggestions don't fire for wrong person
     window._loadedContactId = null;
     window._userUnlinked = false;
+    const vcBtn2 = document.getElementById('viewContactBtn');
+    if (vcBtn2) vcBtn2.style.display = 'none';
   }
 
   lineItems = q.lineItems ? JSON.parse(JSON.stringify(q.lineItems)) : [];
@@ -2817,6 +2824,11 @@ function unlinkDeal() {
   if (contactId) suggestDealsForContact(contactId);
 }
 
+function openContactInHubSpot() {
+  if (!window._loadedContactId) return;
+  window.open('https://app.hubspot.com/contacts/5764220/contact/' + window._loadedContactId, '_blank');
+}
+
 function openLinkedDealInHubSpot() {
   if (!linkedDeal) return;
   window.open('https://app.hubspot.com/contacts/5764220/deal/' + linkedDeal.id, '_blank');
@@ -3098,6 +3110,8 @@ function newQuote() {
   window._userUnlinked = false;
   const addrNote = document.getElementById('addressNote');
   if (addrNote) addrNote.style.display = 'none';
+  const vcBtn = document.getElementById('viewContactBtn');
+  if (vcBtn) vcBtn.style.display = 'none';
 
   // Clear linked deal state fully
   linkedDeal = null;

@@ -1171,6 +1171,8 @@ tbody tr:last-child td{border-bottom:none}
 .btn-primary:hover{background:#d4561a;transform:translateY(-1px);box-shadow:0 4px 12px rgba(238,98,22,.3)}
 .btn-secondary{background:#f0f0f0;color:#555}
 .btn-secondary:hover{background:#e5e5e5}
+.btn-accept{background:#2563eb;color:white;font-size:14px}
+.btn-accept:hover{background:#1d4ed8;transform:translateY(-1px);box-shadow:0 4px 14px rgba(37,99,235,.4)}
 
 /* Footer */
 .footer{text-align:center;margin-top:28px;font-size:11px;color:#ccc;line-height:1.9}

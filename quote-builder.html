@@ -1016,7 +1016,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     <button class="create-btn" onclick="emailViaHubSpot()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);margin-top:8px">
       &#x2709; Email Quote (with Link)
     </button>
-    <button class="create-btn" id="copyLinkBtn" onclick="copyQuoteLink()" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-top:8px;opacity:.5" title="Set a quote number to generate a link">
+    <button class="create-btn" id="copyLinkBtn" onclick="copyQuoteLink()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);margin-top:8px">
       &#x1F517; Copy Shareable Link
     </button>
 
@@ -2057,6 +2057,8 @@ function fillContact(contact) {
   document.getElementById('contactBadge').style.display = 'none';
   // Load saved accessorial preferences for this contact
   if (p.email) loadAccessorialPrefs(p.email);
+  // Save contact ID for use by unlinkDeal
+  window._loadedContactId = contact.id;
   // Suggest deals associated with this contact
   suggestDealsForContact(contact.id);
 }
@@ -2759,6 +2761,10 @@ function unlinkDeal() {
   document.getElementById('dealName').value = '';
   document.getElementById('linkedDealMeta').textContent = '';
   updateRevisionBadge();
+
+  // Re-show deal suggestions if a contact is loaded
+  const contactId = window._loadedContactId;
+  if (contactId) suggestDealsForContact(contactId);
 }
 
 function openLinkedDealInHubSpot() {
@@ -2892,9 +2898,11 @@ function showToast(msg, type) {
 function copyQuoteLink() {
   const quoteNum = document.getElementById('quoteNumHidden').value;
   if (!quoteNum) {
-    showToast('No quote number — push to HubSpot first', 'error');
+    showToast('No quote number yet — select a rep first', 'error');
     return;
   }
+  // Note: link works after pushing to HubSpot (data stored in notes)
+  // Before pushing, the link will show "quote not found" to the viewer
   const url = 'https://whisperroomquote.up.railway.app/q/' + quoteNum;
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(url).then(() => {

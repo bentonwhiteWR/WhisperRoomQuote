@@ -665,7 +665,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
       <div class="section-title">Ship To Address</div>
     </div>
     <div class="form-grid">
-      <div class="field"><label>Street Address</label><input type="text" id="shipAddress" placeholder="123 Main St"></div>
+      <div class="field"><label>Street Address</label><input type="text" id="shipAddress" placeholder="123 Main St" oninput="document.getElementById('addressNote').style.display='block'"></div>
     </div>
     <div class="form-grid cols-3" style="margin-top:14px">
       <div class="field"><label>City</label><input type="text" id="shipCity" placeholder="Nashville"></div>
@@ -2418,8 +2418,24 @@ function loadFromHistoryEntry(idOrIdx) {
     });
     document.getElementById('shipAddress').value = q.customer.address || '';
     document.getElementById('shipCity').value = q.customer.city || '';
-    document.getElementById('shipState').value = q.customer.state || '';
+    document.getElementById('shipState').value = normalizeState(q.customer.state || '');
     document.getElementById('shipZip').value = q.customer.zip || '';
+
+    // Update the contact search field to show who this quote belongs to
+    // so there's no confusion about which contact is loaded
+    const name = [q.customer.firstName, q.customer.lastName].filter(Boolean).join(' ');
+    const contactSearchEl = document.getElementById('contactSearch');
+    if (contactSearchEl) {
+      contactSearchEl.value = name || q.customer.email || '';
+    }
+
+    // Show the contact badge to make it clear a contact is loaded
+    const badge = document.getElementById('contactBadge');
+    if (badge) badge.style.display = 'none'; // hide the "new contact" badge
+
+    // Clear loaded contact ID so deal suggestions don't fire for wrong person
+    window._loadedContactId = null;
+    window._userUnlinked = false;
   }
 
   lineItems = q.lineItems ? JSON.parse(JSON.stringify(q.lineItems)) : [];
@@ -3080,6 +3096,8 @@ function newQuote() {
   window._lastPushedDealId = null;
   window._loadedContactId = null;  // clear so deal suggestions don't auto-fire
   window._userUnlinked = false;
+  const addrNote = document.getElementById('addressNote');
+  if (addrNote) addrNote.style.display = 'none';
 
   // Clear linked deal state fully
   linkedDeal = null;

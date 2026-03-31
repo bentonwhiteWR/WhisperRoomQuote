@@ -1013,13 +1013,13 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
   <button class="create-btn" id="createBtn" onclick="createDeal()">
     Push to HubSpot
   </button>
-  <button class="create-btn" id="pdfBtn" onclick="generatePDF()" style="margin-top:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.85);">
-    Download PDF Quote
+  <button class="create-btn" id="pdfBtn" onclick="handlePdfBtn()" style="margin-top:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.4);opacity:.5;cursor:not-allowed" title="Push to HubSpot first">
+    &#x2B07; Download / View Quote
   </button>
     <button class="create-btn" onclick="emailViaHubSpot()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);margin-top:8px">
       &#x2709; Email Quote (with Link)
     </button>
-    <button class="create-btn" id="copyLinkBtn" onclick="copyQuoteLink()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);margin-top:8px">
+    <button class="create-btn" id="copyLinkBtn" onclick="copyQuoteLink()" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-top:8px;opacity:.5" title="Push to HubSpot first">
       &#x1F517; Copy Shareable Link
     </button>
 
@@ -1883,6 +1883,7 @@ async function createDeal() {
           `${document.getElementById('company').value.trim() || lastName} — Quote`,
         existingDealId: selectedDeal ? selectedDeal.id : null,
         linkedDealId: linkedDeal ? linkedDeal.id : (selectedDeal ? selectedDeal.id : null),
+        isRevision: !!(linkedDeal || selectedDeal), // updating existing = revision
       })
     });
 
@@ -1894,6 +1895,14 @@ async function createDeal() {
       window._lastPushedContactId = data.contactId || null;
       window._lastPushedDealId = data.dealId || null;
       activateLinkBtn();
+      // Also activate PDF button
+      const pdfBtn = document.getElementById('pdfBtn');
+      if (pdfBtn) {
+        pdfBtn.style.opacity = '1';
+        pdfBtn.style.cursor = 'pointer';
+        pdfBtn.style.color = 'rgba(255,255,255,.85)';
+        pdfBtn.title = 'View & download quote page';
+      }
       box.innerHTML = `✓ Deal created in HubSpot.<br><a href="${data.dealUrl}" target="_blank">View Deal &#x2192;</a>`;
       // Save to history
       const repName = document.getElementById('repSelect').options[document.getElementById('repSelect').selectedIndex].text;
@@ -2716,9 +2725,11 @@ async function onPresetSelect(presetName) {
   const presetEl = document.getElementById('presetSelect');
   if (presetEl) presetEl.disabled = true;
 
-  // Load all SKUs from the preset mapping
-  // Row 1 of mapping (skus[0]) is the MDL booth model - load all as-is
-  await loadPreset(presetName, skus);
+  // For standalone booths (not named packages), the booth itself must be
+  // first in the list — the preset map only contains accessories
+  const isPackage = PACKAGE_DISCOUNT_NAMES.includes(presetName);
+  const allSkus = isPackage ? skus : [presetName, ...skus];
+  await loadPreset(presetName, allSkus);
 
   // Auto-apply 5% discount for named packages
   if (PACKAGE_DISCOUNT_NAMES.includes(presetName)) {
@@ -2955,6 +2966,17 @@ function showToast(msg, type) {
   toast.style.opacity = '1';
   clearTimeout(toast._t);
   toast._t = setTimeout(() => { toast.style.opacity = '0'; }, 3000);
+}
+
+function handlePdfBtn() {
+  const quoteNum = document.getElementById('quoteNumHidden').value;
+  if (!window._lastPushedDealId && !quoteNum) {
+    showToast('Push to HubSpot first to generate the quote page', 'error');
+    return;
+  }
+  // Open the shareable quote page — customer-facing, clean, downloadable
+  const url = 'https://whisperroomquote.up.railway.app/q/' + quoteNum;
+  window.open(url, '_blank');
 }
 
 function copyQuoteLink() {

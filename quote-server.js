@@ -1142,6 +1142,18 @@ thead th:nth-child(3),thead th:nth-child(4){text-align:right}
   </div>
 
 </div>
+
+<div style="position:sticky;bottom:0;background:rgba(255,255,255,.96);backdrop-filter:blur(8px);border-top:1px solid #e8e8e8;padding:14px 16px;display:flex;gap:10px;justify-content:center;z-index:100">
+  <button onclick="window.print()" style="padding:11px 28px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:none;background:#ee6216;color:white;letter-spacing:.04em">
+    &#x2B07; Download / Save PDF
+  </button>
+  <button onclick="(navigator.clipboard?navigator.clipboard.writeText(window.location.href).then(function(){var b=document.getElementById('slb');b.textContent='\u2713 Copied!';setTimeout(function(){b.textContent='Share Link'},2000)}).catch(function(){prompt('Copy link:',window.location.href)}):prompt('Copy link:',window.location.href))" id="slb" style="padding:11px 28px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:none;background:#f0f0f0;color:#555;letter-spacing:.04em">
+    Share Link
+  </button>
+</div>
+
+<style>@media print{[style*="position:sticky"]{display:none!important}}</style>
+
 </body>
 </html>`;
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });

@@ -14,6 +14,7 @@ const crypto  = require('crypto');
 async function saveQuoteNote(dealId, quoteData) {
   const snapshotData = {
     ...quoteData,
+    dealId: dealId,   // save so history restore can link directly
     id: crypto.randomBytes(8).toString('hex'),
     savedAt: new Date().toISOString()
   };

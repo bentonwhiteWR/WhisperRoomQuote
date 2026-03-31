@@ -816,6 +816,21 @@ const server = http.createServer(async (req, res) => {
         const existing = await hsSearchContact(customer.email);
         if (existing.results && existing.results.length > 0) {
           contactId = existing.results[0].id;
+          // Update contact's address from ship-to fields
+          if (customer.address || customer.city || customer.state) {
+            await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/contacts/${contactId}`,
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, { properties: {
+              address: customer.address || '',
+              city:    customer.city    || '',
+              state:   toStateFull(customer.state) || '',
+              zip:     customer.zip     || '',
+              phone:   customer.phone   || '',
+            }}).catch(e => console.warn('Contact address update failed:', e.message));
+          }
         } else {
           const newContact = await hsCreateContact({
             firstname: customer.firstName,

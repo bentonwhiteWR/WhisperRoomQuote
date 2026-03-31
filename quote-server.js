@@ -1495,38 +1495,4 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`WhisperRoom Quote Builder running on port ${PORT}`);
   console.log(`HubSpot token: ${HS_TOKEN ? HS_TOKEN.substring(0,12) + '...' : 'NOT SET'}`);
   console.log(`TaxJar key: ${TAXJAR_KEY ? TAXJAR_KEY.substring(0,8) + '...' : 'NOT SET'}`);
-});erRoom Quote Builder
-// Node.js server with HubSpot, TaxJar, and ABF integration
-
-const http    = require('http');
-const https   = require('https');
-const fs      = require('fs');
-const path    = require('path');
-const url     = require('url');
-const crypto  = require('crypto');
-
-// ── Quote History via HubSpot Notes ──────────────────────────────
-// Stored as notes on deals - persistent, visible in HubSpot, never wiped
-
-async function saveQuoteNote(dealId, quoteData) {
-  const snapshotData = {
-    ...quoteData,
-    dealId: dealId,   // save so history restore can link directly
-    id: crypto.randomBytes(8).toString('hex'),
-    savedAt: new Date().toISOString()
-  };
-  // WR_QUOTE_DATA markers allow the /q/:quoteNumber route to find this note
-  const noteBody = 'WR_QUOTE_DATA:' + JSON.stringify(snapshotData) + ':END_WR_QUOTE';
-
-  // Create note
-  const note = await httpsRequest({
-    hostname: 'api.hubapi.com',
-    path: '/crm/v3/objects/notes',
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-  }, {
-    properties: {
-      hs_note_body: noteBody,
-      hs_timestamp: new Date().toISOString(),
-    }
-  });
+});

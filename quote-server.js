@@ -1051,6 +1051,7 @@ const server = http.createServer(async (req, res) => {
         success: true,
         dealId,
         contactId,
+        quoteNumber,
         dealUrl: `https://app.hubspot.com/contacts/5764220/record/0-3/${dealId}`
       });
 

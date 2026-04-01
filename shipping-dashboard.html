@@ -324,15 +324,15 @@ function buildRow(s) {
     </td>
     <td><span class="carrier-badge carrier-${s.carrier}">${s.carrier === 'OD' ? 'Old Dom.' : s.carrier}</span></td>
     <td>${trackingCell}</td>
-    <td class="date-cell hide-mobile">${fmtDate(s.dateShipped)}</td>
-    <td class="amount hide-mobile">${fmtAmount(s.amount)}</td>
-    <td class="hide-mobile"><span class="rep-name" style="color:${repColor}">${s.rep}</span></td>
     <td id="status-${s.dealId}">
       ${s.tracking && s.trackingUrl
         ? `<a href="${s.trackingUrl}" target="_blank" class="status-badge status-unknown">Track →</a>`
         : `<span class="status-badge status-unknown">No tracking</span>`
       }
     </td>
+    <td class="date-cell hide-mobile">${fmtDate(s.dateShipped)}</td>
+    <td class="amount hide-mobile">${fmtAmount(s.amount)}</td>
+    <td class="hide-mobile"><span class="rep-name" style="color:${repColor}">${s.rep}</span></td>
     <td>
       <a href="${s.dealUrl}" target="_blank" class="hs-link">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>

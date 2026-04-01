@@ -2041,7 +2041,10 @@ async function createDeal() {
       // Save to history
       const repName = document.getElementById('repSelect').options[document.getElementById('repSelect').selectedIndex].text;
       const companyVal = document.getElementById('company').value.trim();
-      const dealNameFinal = document.getElementById('dealName').value.trim() ||
+      // Don't use dealName input if it looks like a quote number (all digits, 10 chars)
+      const dealNameInput = document.getElementById('dealName').value.trim();
+      const isQuoteNumber = /^\d{10}$/.test(dealNameInput);
+      const dealNameFinal = (dealNameInput && !isQuoteNumber) ? dealNameInput :
         (companyVal ? companyVal + ' — Quote' :
          (firstName && lastName ? firstName + ' ' + lastName + ' — Quote' : 'New Quote'));
       const existingRevision = allHistory.filter(q => q.dealName === dealNameFinal).length;

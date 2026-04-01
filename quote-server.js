@@ -1886,6 +1886,8 @@ tbody tr:last-child td{border-bottom:none}
   // ── Admin: Backfill tracking numbers via contact email lookup ────
   if (pathname === '/api/admin/backfill-tracking' && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    // Fire and forget — return immediately, run in background
+    json({ success: true, message: 'Backfill started in background. Check /api/admin/backfill-status for progress.' });
     try {
       await ensureHubSpotProperties();
 
@@ -1935,10 +1937,9 @@ tbody tr:last-child td{border-bottom:none}
   "coastalhearingcenter@yahoo.com": { tracking: "78076256086", carrier: "OD" }
 };
 
-      const results = [];
-      for (const [customerEmail, info] of Object.entries(emailToTracking)) {
+      // Run all lookups in parallel (5 at a time to avoid rate limits)
+      async function processOne(customerEmail, info) {
         try {
-          // 1. Find contact by email
           const contactSearch = await httpsRequest({
             hostname: 'api.hubapi.com',
             path: '/crm/v3/objects/contacts/search',
@@ -1946,18 +1947,12 @@ tbody tr:last-child td{border-bottom:none}
             headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
           }, {
             filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: customerEmail }] }],
-            properties: ['email'],
-            limit: 1
+            properties: ['email'], limit: 1
           });
-
           const contacts = contactSearch.body?.results || [];
-          if (!contacts.length) {
-            results.push({ email: customerEmail, skipped: 'contact not found' });
-            continue;
-          }
+          if (!contacts.length) return { email: customerEmail, skipped: 'contact not found' };
           const contactId = contacts[0].id;
 
-          // 2. Find shipped deal associated with this contact
           const dealSearch = await httpsRequest({
             hostname: 'api.hubapi.com',
             path: '/crm/v3/objects/deals/search',
@@ -1969,42 +1964,48 @@ tbody tr:last-child td{border-bottom:none}
               associatedWith: [{ objectType: 'contacts', operator: 'EQUAL', objectIdValues: [parseInt(contactId)] }]
             }],
             properties: ['dealname', 'tracking_number'],
-            sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
-            limit: 1
+            sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }], limit: 1
           });
-
           const deals = dealSearch.body?.results || [];
-          if (!deals.length) {
-            results.push({ email: customerEmail, contactId, skipped: 'no shipped deal' });
-            continue;
-          }
-
+          if (!deals.length) return { email: customerEmail, contactId, skipped: 'no shipped deal' };
           const deal = deals[0];
-          // Skip if already has a tracking number
-          if (deal.properties?.tracking_number) {
-            results.push({ email: customerEmail, dealId: deal.id, skipped: 'already has tracking: ' + deal.properties.tracking_number });
-            continue;
-          }
+          if (deal.properties?.tracking_number) return { email: customerEmail, dealId: deal.id, skipped: 'already has tracking: ' + deal.properties.tracking_number };
 
-          // 3. Write tracking number to deal
           await httpsRequest({
             hostname: 'api.hubapi.com',
             path: `/crm/v3/objects/deals/${deal.id}`,
             method: 'PATCH',
             headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
           }, { properties: { tracking_number: info.tracking, freight_carrier: info.carrier } });
-
-          results.push({ email: customerEmail, dealId: deal.id, dealName: deal.properties.dealname, tracking: info.tracking, carrier: info.carrier, success: true });
-        } catch(e) {
-          results.push({ email: customerEmail, error: e.message });
-        }
+          return { email: customerEmail, dealId: deal.id, tracking: info.tracking, carrier: info.carrier, success: true };
+        } catch(e) { return { email: customerEmail, error: e.message }; }
       }
 
-      const written  = results.filter(r => r.success).length;
-      const skipped  = results.filter(r => r.skipped).length;
-      const errors   = results.filter(r => r.error).length;
-      json({ success: true, total: Object.keys(emailToTracking).length, written, skipped, errors, results });
-    } catch(e) { json({ error: e.message }, 500); }
+      // Run in parallel batches of 8
+      const entries = Object.entries(emailToTracking);
+      const results = [];
+      for (let i = 0; i < entries.length; i += 8) {
+        const batch = entries.slice(i, i + 8);
+        const batchResults = await Promise.all(batch.map(([email, info]) => processOne(email, info)));
+        results.push(...batchResults);
+      }
+
+      const written = results.filter(r => r.success).length;
+      const skipped = results.filter(r => r.skipped).length;
+      const errors  = results.filter(r => r.error).length;
+      global._backfillStatus = { done: true, total: entries.length, written, skipped, errors, results };
+      console.log(`Backfill complete: ${written} written, ${skipped} skipped, ${errors} errors`);
+    } catch(e) {
+      global._backfillStatus = { done: true, error: e.message };
+      console.error('Backfill error:', e.message);
+    }
+    return;
+  }
+
+  // ── Admin: Backfill status ────────────────────────────────────────
+  if (pathname === '/api/admin/backfill-status' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    json(global._backfillStatus || { done: false, message: 'Not started or still running' });
     return;
   }
 

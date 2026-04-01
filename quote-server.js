@@ -1194,15 +1194,7 @@ const server = http.createServer(async (req, res) => {
         });
       } catch(e) { console.warn('DB save error:', e.message); }
 
-      // Save quote snapshot as note on the deal (backup/HubSpot visibility)
-      try {
-        await saveQuoteNote(dealId, {
-          dealName, quoteNumber,
-          ownerId, total,
-          date: new Date().toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}),
-          customer, lineItems, discount, freight, tax,
-        });
-      } catch(e) { console.error('Note save error:', e.message); }
+      // HubSpot Notes write removed — DB is primary storage
 
       json({
         success: true,

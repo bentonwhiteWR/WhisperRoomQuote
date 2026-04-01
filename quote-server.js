@@ -1887,33 +1887,85 @@ tbody tr:last-child td{border-bottom:none}
   if (pathname === '/api/admin/backfill-tracking' && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
-      const updates = [
-        { dealId: '57553721263', tracking: '248006567',  carrier: 'ABF' },
-        { dealId: '36810606391', tracking: '248006564',  carrier: 'ABF' },
-        { dealId: '57100222803', tracking: '248006557',  carrier: 'ABF' },
-        { dealId: '52994045801', tracking: '78078521750', carrier: 'OD'  },
-        { dealId: '57856188970', tracking: '248007088',  carrier: 'ABF' },
-        { dealId: '52003078435', tracking: '78076726732', carrier: 'OD'  },
-      ];
-
-      // First ensure property exists
       await ensureHubSpotProperties();
 
+      // Scraped from shipping emails — email IDs with tracking numbers
+      const emailTracking = [
+  { emailId: "106205902444", tracking: "78077872246", carrier: "OD" },
+  { emailId: "106567955526", tracking: "248007092", carrier: "ABF" },
+  { emailId: "106657124937", tracking: "248007097", carrier: "ABF" },
+  { emailId: "106327575322", tracking: "248007084", carrier: "ABF" },
+  { emailId: "106894523682", tracking: "78078696057", carrier: "OD" },
+  { emailId: "106773708328", tracking: "78078524150", carrier: "OD" },
+  { emailId: "106896377624", tracking: "78078713803", carrier: "OD" },
+  { emailId: "106776638648", tracking: "248006552", carrier: "ABF" },
+  { emailId: "106419856644", tracking: "78078096381", carrier: "OD" },
+  { emailId: "106580685863", tracking: "248007091", carrier: "ABF" },
+  { emailId: "106280159136", tracking: "248859712", carrier: "OD" },
+  { emailId: "106570365957", tracking: "248007093", carrier: "ABF" },
+  { emailId: "106773824166", tracking: "248006553", carrier: "ABF" },
+  { emailId: "106437006348", tracking: "78078144215", carrier: "OD" },
+  { emailId: "106704665734", tracking: "78078494438", carrier: "OD" },
+  { emailId: "106233633965", tracking: "248007081", carrier: "ABF" },
+  { emailId: "106656894501", tracking: "248007098", carrier: "ABF" },
+  { emailId: "106109016127", tracking: "78077745905", carrier: "OD" },
+  { emailId: "105215291253", tracking: "248007064", carrier: "ABF" },
+  { emailId: "104013195026", tracking: "78076246681", carrier: "OD" },
+  { emailId: "105911585321", tracking: "78077656458", carrier: "OD" },
+  { emailId: "104166801323", tracking: "78076411889", carrier: "OD" },
+  { emailId: "105645348494", tracking: "248007072", carrier: "ABF" },
+  { emailId: "106060122395", tracking: "248007076", carrier: "ABF" },
+  { emailId: "104412981832", tracking: "78076484027", carrier: "OD" },
+  { emailId: "105510997315", tracking: "80999169362", carrier: "OD" },
+  { emailId: "105914684437", tracking: "78077495626", carrier: "OD" },
+  { emailId: "104778789134", tracking: "248007054", carrier: "ABF" },
+  { emailId: "104767420048", tracking: "248007055", carrier: "ABF" },
+  { emailId: "104404962895", tracking: "248890541", carrier: "ABF" },
+  { emailId: "106068189218", tracking: "248007077", carrier: "ABF" },
+  { emailId: "105804645041", tracking: "78077484554", carrier: "OD" },
+  { emailId: "105945323539", tracking: "248007075", carrier: "ABF" },
+  { emailId: "105804918960", tracking: "248006856", carrier: "ABF" },
+  { emailId: "104793587569", tracking: "78076726732", carrier: "OD" },
+  { emailId: "104166367901", tracking: "248890542", carrier: "ABF" },
+  { emailId: "104967786386", tracking: "78076884051", carrier: "OD" },
+  { emailId: "104977362802", tracking: "248007059", carrier: "ABF" },
+  { emailId: "105508830118", tracking: "78077248041", carrier: "OD" },
+  { emailId: "105222996511", tracking: "248007065", carrier: "ABF" },
+  { emailId: "105914992546", tracking: "78077570642", carrier: "OD" },
+  { emailId: "104039031326", tracking: "248890538", carrier: "ABF" },
+  { emailId: "104392542829", tracking: "78076256086", carrier: "OD" }
+];
+
       const results = [];
-      for (const u of updates) {
+      for (const item of emailTracking) {
         try {
+          // Look up deals associated with this email engagement
+          const assocRes = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v4/objects/emails/${item.emailId}/associations/deals`,
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+          });
+          const dealAssocs = assocRes.body?.results || [];
+          if (dealAssocs.length === 0) {
+            results.push({ emailId: item.emailId, tracking: item.tracking, skipped: 'no deal association' });
+            continue;
+          }
+          const dealId = dealAssocs[0].toObjectId;
           await httpsRequest({
             hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/deals/${u.dealId}`,
+            path: `/crm/v3/objects/deals/${dealId}`,
             method: 'PATCH',
             headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-          }, { properties: { tracking_number: u.tracking, freight_carrier: u.carrier } });
-          results.push({ dealId: u.dealId, success: true });
+          }, { properties: { tracking_number: item.tracking, freight_carrier: item.carrier } });
+          results.push({ emailId: item.emailId, dealId, tracking: item.tracking, carrier: item.carrier, success: true });
         } catch(e) {
-          results.push({ dealId: u.dealId, error: e.message });
+          results.push({ emailId: item.emailId, error: e.message });
         }
       }
-      json({ success: true, results });
+      const succeeded = results.filter(r => r.success).length;
+      const skipped = results.filter(r => r.skipped).length;
+      json({ success: true, total: emailTracking.length, written: succeeded, skipped, results });
     } catch(e) { json({ error: e.message }, 500); }
     return;
   }

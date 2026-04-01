@@ -970,7 +970,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, quoteNumber, billing, isRevision, linkedDealId: bodyLinkedDealId } = body;
+      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, quoteNumber, billing, isRevision, linkedDealId: bodyLinkedDealId, confirmContactOverride } = body;
 
       // Find or create contact
       let contactId;
@@ -988,22 +988,20 @@ const server = http.createServer(async (req, res) => {
             const existingProps = existing.results[0].properties || {};
             const updateProps = {};
 
-            // Address: update only if HubSpot has nothing, or quote has a value
-            if (customer.address && !existingProps.address) {
-              updateProps.address = customer.address;
-            }
-            if (customer.city && !existingProps.city) {
-              updateProps.city = customer.city;
-            }
-            if (customer.state && !existingProps.state) {
-              updateProps.state = toStateFull(customer.state);
-            }
-            if (customer.zip && !existingProps.zip) {
-              updateProps.zip = customer.zip;
-            }
-            // Phone: only fill if HubSpot has none
-            if (customer.phone && !existingProps.phone) {
-              updateProps.phone = customer.phone;
+            if (confirmContactOverride) {
+              // Rep confirmed — update all address fields
+              if (customer.address) updateProps.address = customer.address;
+              if (customer.city)    updateProps.city    = customer.city;
+              if (customer.state)   updateProps.state   = toStateFull(customer.state);
+              if (customer.zip)     updateProps.zip     = customer.zip;
+              if (customer.phone)   updateProps.phone   = customer.phone;
+            } else {
+              // Only fill blanks — never overwrite existing data
+              if (customer.address && !existingProps.address) updateProps.address = customer.address;
+              if (customer.city    && !existingProps.city)    updateProps.city    = customer.city;
+              if (customer.state   && !existingProps.state)   updateProps.state   = toStateFull(customer.state);
+              if (customer.zip     && !existingProps.zip)     updateProps.zip     = customer.zip;
+              if (customer.phone   && !existingProps.phone)   updateProps.phone   = customer.phone;
             }
 
             if (Object.keys(updateProps).length > 0) {
@@ -1413,6 +1411,43 @@ tbody tr:last-child td{border-bottom:none}
 
 </div>
 
+<!-- Foam/Hinge selection modal -->
+<div id="accept-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;align-items:center;justify-content:center;padding:16px">
+  <div style="background:white;border-radius:14px;padding:32px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <h2 style="font-size:18px;font-weight:800;color:#1a1a1a;margin-bottom:6px">Almost done!</h2>
+    <p style="font-size:13px;color:#888;margin-bottom:24px">Please answer two quick questions before accepting.</p>
+
+    <div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:10px">Foam Color</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${['Gray','Blue','Purple','Orange','Burgundy'].map(c => `
+        <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;transition:border-color .15s" onclick="this.style.borderColor='#ee6216'">
+          <input type="radio" name="foam" value="${c}" style="accent-color:#ee6216"> ${c}
+        </label>`).join('')}
+      </div>
+    </div>
+
+    <div style="margin-bottom:28px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:10px">Door Hinge</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${['Left','Right'].map(h => `
+        <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;transition:border-color .15s" onclick="this.style.borderColor='#ee6216'">
+          <input type="radio" name="hinge" value="${h}" style="accent-color:#ee6216"> ${h} Hand
+        </label>`).join('')}
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button onclick="submitAcceptance()" style="flex:1;padding:13px;background:#ee6216;color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">
+        ✓ Accept Quote
+      </button>
+      <button onclick="document.getElementById('accept-modal').style.display='none'" style="padding:13px 18px;background:#f0f0f0;color:#555;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
 <div class="action-bar" id="action-bar">
   <button class="btn btn-accept" id="accept-btn" onclick="acceptQuote()">&#x2713;&nbsp;&nbsp;Accept This Quote</button>
   <button class="btn btn-primary" onclick="window.print()">&#x2B07;&nbsp;&nbsp;Download PDF</button>
@@ -1429,8 +1464,22 @@ tbody tr:last-child td{border-bottom:none}
   async function acceptQuote() {
     const btn = document.getElementById('accept-btn');
     if (!btn) return;
-    btn.disabled = true;
-    btn.innerHTML = 'Processing…';
+
+    // Show foam/hinge selection modal first
+    const modal = document.getElementById('accept-modal');
+    if (modal) { modal.style.display = 'flex'; return; }
+  }
+
+  async function submitAcceptance() {
+    const foam  = document.querySelector('input[name="foam"]:checked')?.value  || '';
+    const hinge = document.querySelector('input[name="hinge"]:checked')?.value || '';
+    if (!foam)  { alert('Please select a foam color.'); return; }
+    if (!hinge) { alert('Please select a hinge preference.'); return; }
+
+    document.getElementById('accept-modal').style.display = 'none';
+    const btn = document.getElementById('accept-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = 'Processing…'; }
+
     try {
       const res = await fetch('/api/accept-quote', {
         method: 'POST',
@@ -1438,7 +1487,9 @@ tbody tr:last-child td{border-bottom:none}
         body: JSON.stringify({
           quoteNumber: '${q.quoteNumber || ""}',
           dealId: '${q.dealId || ""}',
-          contactEmail: '${q.customer ? (q.customer.email || "") : ""}'
+          contactEmail: '${q.customer ? (q.customer.email || "") : ""}',
+          foamColor: foam,
+          hingePreference: hinge,
         })
       });
       const data = await res.json();
@@ -1447,13 +1498,11 @@ tbody tr:last-child td{border-bottom:none}
         document.getElementById('accepted-bar').style.display = 'block';
         window.scrollTo(0, 0);
       } else {
-        btn.disabled = false;
-        btn.innerHTML = '✓  Accept This Quote';
+        if (btn) { btn.disabled = false; btn.innerHTML = '✓  Accept This Quote'; }
         alert('Something went wrong. Please contact WhisperRoom at (865) 558-5364.');
       }
     } catch(e) {
-      btn.disabled = false;
-      btn.innerHTML = '✓  Accept This Quote';
+      if (btn) { btn.disabled = false; btn.innerHTML = '✓  Accept This Quote'; }
     }
   }
 </script>
@@ -1594,7 +1643,7 @@ tbody tr:last-child td{border-bottom:none}
           }, {
             properties: {
               hs_task_subject: `Customer accepted quote #${quoteNumber} — create invoice`,
-              hs_task_body: `Customer accepted quote #${quoteNumber} for ${dealName}. Ready to create invoice.`,
+              hs_task_body: `Customer accepted quote #${quoteNumber} for ${dealName}. Ready to create invoice.\n\nFoam Color: ${body.foamColor || 'Not specified'}\nHinge: ${body.hingePreference || 'Not specified'}`,
               hubspot_owner_id: ownerId,
               hs_task_status: 'NOT_STARTED',
               hs_task_type: 'TODO',
@@ -1616,7 +1665,7 @@ tbody tr:last-child td{border-bottom:none}
           headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
         }, {
           properties: {
-            hs_note_body: `✓ Quote #${quoteNumber} accepted by customer on ${new Date().toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'})}.`,
+            hs_note_body: `✓ Quote #${quoteNumber} accepted by customer on ${new Date().toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'})}.\n\nFoam Color: ${body.foamColor || 'Not specified'}\nHinge Preference: ${body.hingePreference || 'Not specified'}`,
             hs_timestamp: new Date().toISOString(),
           },
           associations: [{

@@ -57,6 +57,101 @@ async function initDb() {
   }
 }
 
+// Rep owner email map (HubSpot owner IDs → emails)
+const OWNER_EMAILS = {
+  '36303670': 'bentonwhite@whisperroom.com',
+  '36320208': 'gabrielwhite@whisperroom.com',
+  '36330944': 'jholdway@whisperroom.com',
+  '38143901': 'ssmith@whisperroom.com',
+  '38732178': 'accounting@whisperroom.com',
+  '38732186': 'jeromypackwood@whisperroom.com',
+  '38900892': 'cburgess@whisperroom.com',
+  '117442978': 'tsingleton@whisperroom.com',
+};
+
+async function getOwnerEmail(ownerId) {
+  // Try local map first
+  if (OWNER_EMAILS[String(ownerId)]) return OWNER_EMAILS[String(ownerId)];
+  // Fall back to HubSpot owners API
+  try {
+    const res = await httpsRequest({
+      hostname: 'api.hubapi.com',
+      path: `/crm/v3/owners/${ownerId}?idProperty=id`,
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+    });
+    return res.body?.email || null;
+  } catch(e) { return null; }
+}
+
+async function sendAcceptanceEmail({ repEmail, repName, customerName, company, quoteNumber, total, dealName, dealId, foamColor, hingePreference, customerNote }) {
+  try {
+    const fmt = n => n ? '$' + parseFloat(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
+    const dealUrl = dealId ? `https://app.hubspot.com/contacts/5764220/deal/${dealId}` : null;
+    const quoteUrl = `https://whisperroomquote.up.railway.app/q/${quoteNumber}`;
+
+    const htmlBody = `
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto">
+  <div style="background:#1a1a1a;padding:24px 32px;border-radius:10px 10px 0 0">
+    <h1 style="color:#ee6216;font-size:22px;margin:0">WhisperRoom</h1>
+  </div>
+  <div style="background:#fff;border:1px solid #e8e8e8;border-top:none;padding:32px;border-radius:0 0 10px 10px">
+    <h2 style="color:#1a1a1a;font-size:20px;margin:0 0 8px">🔔 Quote Accepted</h2>
+    <p style="color:#666;margin:0 0 24px;font-size:15px">${customerName}${company ? ' — ' + company : ''} has accepted a quote.</p>
+
+    <table style="width:100%;border-collapse:collapse;margin-bottom:24px">
+      <tr><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;color:#888;font-size:13px;width:140px">Quote Number</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;font-weight:600;color:#1a1a1a">${quoteNumber}</td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;color:#888;font-size:13px">Deal</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;font-weight:600;color:#1a1a1a">${dealName || '—'}</td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;color:#888;font-size:13px">Total</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;font-weight:600;color:#ee6216;font-size:18px">${fmt(total)}</td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;color:#888;font-size:13px">Foam Color</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;font-weight:600;color:#1a1a1a">${foamColor || '<span style="color:#bbb">Not selected</span>'}</td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;color:#888;font-size:13px">Door Hinge</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;font-weight:600;color:#1a1a1a">${hingePreference || '<span style="color:#bbb">Not selected</span>'}</td></tr>
+      ${customerNote ? `<tr><td style="padding:8px 0;color:#888;font-size:13px;vertical-align:top">Customer Note</td><td style="padding:8px 0;color:#1a1a1a;font-style:italic">"${customerNote}"</td></tr>` : ''}
+    </table>
+
+    <div style="display:flex;gap:12px">
+      ${dealUrl ? `<a href="${dealUrl}" style="display:inline-block;padding:12px 24px;background:#ee6216;color:white;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px">View Deal in HubSpot →</a>` : ''}
+      <a href="${quoteUrl}" style="display:inline-block;padding:12px 24px;background:#f0f0f0;color:#555;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px">View Quote →</a>
+    </div>
+  </div>
+  <p style="color:#bbb;font-size:11px;text-align:center;margin-top:16px">WhisperRoom, Inc. · 322 Nancy Lynn Lane Suite 14 · Knoxville, TN 37919</p>
+</div>`;
+
+    // Send via HubSpot single-send email API
+    // This uses the older v1 endpoint which supports inline HTML without a template ID
+    const sendRes = await httpsRequest({
+      hostname: 'api.hubapi.com',
+      path: '/email/public/v1/singleEmail/send',
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+    }, {
+      emailId: 0,
+      message: {
+        to: repEmail,
+        from: 'info@whisperroom.com',
+        replyTo: 'info@whisperroom.com',
+        subject: `🔔 Quote Accepted — ${company || customerName} — ${fmt(total)} — #${quoteNumber}`,
+      },
+      contactProperties: [
+        { name: 'firstname', value: repName || 'Team' }
+      ],
+      customProperties: [
+        { name: 'body', value: htmlBody }
+      ]
+    });
+
+    if (sendRes.body && sendRes.body.status === 'error') {
+      console.warn('Email API error:', sendRes.body.message);
+      return false;
+    }
+
+    console.log(`Acceptance email sent to ${repEmail} for quote #${quoteNumber}`);
+    return true;
+  } catch(e) {
+    console.warn('Email send failed:', e.message);
+    return false;
+  }
+}
+
 async function saveQuoteToDb(quoteData) {
   if (!db || !process.env.DATABASE_URL) return null;
   try {
@@ -1437,6 +1532,13 @@ tbody tr:last-child td{border-bottom:none}
       </div>
     </div>
 
+    <div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:8px">Message to WhisperRoom <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#bbb">(optional)</span></div>
+      <textarea id="customer-note" rows="3" placeholder="Any questions, special instructions, or delivery notes..." style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
+    </div>
+
+    <p style="font-size:12px;color:#bbb;margin:0 0 16px;text-align:center">Foam and hinge selections are optional — a WhisperRoom rep will follow up if needed.</p>
+
     <div style="display:flex;gap:10px">
       <button onclick="submitAcceptance()" style="flex:1;padding:13px;background:#ee6216;color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">
         ✓ Accept Quote
@@ -1473,8 +1575,8 @@ tbody tr:last-child td{border-bottom:none}
   async function submitAcceptance() {
     const foam  = document.querySelector('input[name="foam"]:checked')?.value  || '';
     const hinge = document.querySelector('input[name="hinge"]:checked')?.value || '';
-    if (!foam)  { alert('Please select a foam color.'); return; }
-    if (!hinge) { alert('Please select a hinge preference.'); return; }
+    const customerNote = (document.getElementById('customer-note')?.value || '').trim();
+    // Foam and hinge are optional — no validation required
 
     document.getElementById('accept-modal').style.display = 'none';
     const btn = document.getElementById('accept-btn');
@@ -1490,6 +1592,7 @@ tbody tr:last-child td{border-bottom:none}
           contactEmail: '${q.customer ? (q.customer.email || "") : ""}',
           foamColor: foam,
           hingePreference: hinge,
+          customerNote: customerNote,
         })
       });
       const data = await res.json();
@@ -1654,6 +1757,34 @@ tbody tr:last-child td{border-bottom:none}
           });
           results.taskCreated = true;
         }
+
+        // 2b. Send email notification to rep
+        const repEmail = await getOwnerEmail(ownerId);
+        if (repEmail) {
+          // Get customer info from snapshot if available
+          let customerName = 'Customer', company = '', total = null;
+          const snapshot = await getQuoteFromDb(quoteNumber);
+          if (snapshot) {
+            const c = snapshot.customer || {};
+            customerName = [c.firstName, c.lastName].filter(Boolean).join(' ') || 'Customer';
+            company = c.company || '';
+            total = snapshot.total;
+          }
+          await sendAcceptanceEmail({
+            repEmail,
+            repName: dealData.body?.properties?.hubspot_owner_id ? repEmail.split('@')[0] : 'Team',
+            customerName,
+            company,
+            quoteNumber,
+            total,
+            dealName,
+            dealId,
+            foamColor: body.foamColor || '',
+            hingePreference: body.hingePreference || '',
+            customerNote: body.customerNote || '',
+          });
+          results.emailSent = true;
+        }
       }
 
       // 3. Log a plain note on the deal (NOT a WR_QUOTE_DATA note — just an activity log)
@@ -1665,7 +1796,7 @@ tbody tr:last-child td{border-bottom:none}
           headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
         }, {
           properties: {
-            hs_note_body: `✓ Quote #${quoteNumber} accepted by customer on ${new Date().toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'})}.\n\nFoam Color: ${body.foamColor || 'Not specified'}\nHinge Preference: ${body.hingePreference || 'Not specified'}`,
+            hs_note_body: `✓ Quote #${quoteNumber} accepted by customer on ${new Date().toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'})}.\n\nFoam Color: ${body.foamColor || 'Not selected'}\nHinge Preference: ${body.hingePreference || 'Not selected'}${body.customerNote ? '\n\nCustomer Note: "' + body.customerNote + '"' : ''}`,
             hs_timestamp: new Date().toISOString(),
           },
           associations: [{

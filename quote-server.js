@@ -1632,6 +1632,47 @@ tbody tr:last-child td{border-bottom:none}
     return;
   }
 
+  // ── Admin: Delete all WR_QUOTE_DATA notes ───────────────────────
+  if (pathname === '/api/admin/clear-notes' && req.method === 'POST') {
+    try {
+      const body = JSON.parse(await readBody(req));
+      if (body.password !== PASSWORD) { json({ error: 'Unauthorized' }, 401); return; }
+
+      // Find all WR_QUOTE_DATA notes
+      const searchRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/objects/notes/search',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, {
+        filterGroups: [{ filters: [{ propertyName: 'hs_note_body', operator: 'CONTAINS_TOKEN', value: 'WR_QUOTE_DATA:' }] }],
+        properties: ['hs_note_body'],
+        limit: 200
+      });
+
+      const notes = searchRes.body.results || [];
+      const deleted = [];
+      const errors = [];
+
+      for (const note of notes) {
+        try {
+          await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/notes/${note.id}`,
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+          });
+          deleted.push(note.id);
+        } catch(e) {
+          errors.push({ id: note.id, error: e.message });
+        }
+      }
+
+      json({ success: true, deleted: deleted.length, errors: errors.length, ids: deleted });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   res.writeHead(404); res.end('Not found');
 });
 

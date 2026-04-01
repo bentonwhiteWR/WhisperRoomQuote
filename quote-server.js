@@ -845,7 +845,10 @@ const server = http.createServer(async (req, res) => {
         headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
       }, {
         filterGroups: [{
-          filters: [{ propertyName: 'dealstage', operator: 'EQ', value: '845719' }]
+          filters: [
+            { propertyName: 'dealstage', operator: 'EQ', value: '845719' },
+            { propertyName: 'freight_carrier', operator: 'HAS_PROPERTY' }
+          ]
         }],
         properties: ['dealname','amount','freight_carrier','tracking_number','date_shipped','hubspot_owner_id',
                      'shipping_address','shipping_city','shipping_state','shipping_zipcode','closedate'],
@@ -854,7 +857,7 @@ const server = http.createServer(async (req, res) => {
       });
 
       const deals = (searchRes.body.results || []).filter(d =>
-        d.properties.tracking_number && d.properties.freight_carrier
+        d.properties.freight_carrier
       );
 
       // Map owner IDs to names

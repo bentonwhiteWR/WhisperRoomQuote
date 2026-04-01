@@ -7,13 +7,23 @@ const fs      = require('fs');
 const path    = require('path');
 const url     = require('url');
 const crypto  = require('crypto');
-const { Pool } = require('pg');
-
-// ── PostgreSQL Database ───────────────────────────────────────────
-const db = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
-});
+// ── PostgreSQL Database (optional — falls back to HubSpot Notes) ──
+let Pool, db;
+try {
+  Pool = require('pg').Pool;
+  if (process.env.DATABASE_URL) {
+    db = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false }
+    });
+    console.log('PostgreSQL connected');
+  } else {
+    console.log('No DATABASE_URL — using HubSpot Notes for history');
+  }
+} catch(e) {
+  console.log('pg module not available — using HubSpot Notes for history');
+  db = null;
+}
 
 async function initDb() {
   try {

@@ -1990,6 +1990,9 @@ async function createDeal() {
         document.getElementById('quoteNumHidden').value = data.quoteNumber;
         document.getElementById('quoteNumDisplay').textContent = data.quoteNumber;
       }
+      // Advance session sequence counter so next quote number is correct
+      const repId = document.getElementById('repSelect').value;
+      advanceQuoteSeq(repId);
       window._historicalQuoteLoaded = true; // treat as published — next push = new revision
       activateLinkBtn();
       updatePushButtonText(); // will show "Update Quote & Deal" + revision preview
@@ -2456,6 +2459,9 @@ const REP_NUMBERS = {
   '36320208': '19', // Gabe White
 };
 
+// Track sequence per rep per day in session
+const _quoteSeqCache = {};
+
 function generateQuoteNumber(ownerId) {
   const repNum = REP_NUMBERS[ownerId] || '00';
   const now = new Date();
@@ -2463,22 +2469,38 @@ function generateQuoteNumber(ownerId) {
   const dd = String(now.getDate()).padStart(2, '0');
   const yy = String(now.getFullYear()).slice(-2);
   const dateKey = repNum + mm + dd + yy;
+  const cacheKey = ownerId + '_' + mm + dd + yy;
 
-  // Count quotes done today by this rep — match exact date string
-  // Date stored as "Mar 31, 2026" format, so we match month+day+year precisely
+  // Use session cache if available (set after each push)
+  if (_quoteSeqCache[cacheKey] !== undefined) {
+    return dateKey + String(_quoteSeqCache[cacheKey] + 1).padStart(2, '0');
+  }
+
+  // Count today's quotes from history (DB-backed when available)
   const todayQuotes = allHistory.filter(q => {
     if (!q.ownerId || q.ownerId !== ownerId) return false;
     if (!q.date) return false;
-    // q.date is like "Mar 31, 2026" — check it matches today
     const d = new Date(q.date);
     return d.getFullYear() === now.getFullYear() &&
            d.getMonth() === now.getMonth() &&
            d.getDate() === now.getDate();
   });
-  const todayCount = todayQuotes.length;
 
-  const seq = String(todayCount + 1).padStart(2, '0');
-  return dateKey + seq;
+  const seq = todayQuotes.length + 1;
+  return dateKey + String(seq).padStart(2, '0');
+}
+
+function advanceQuoteSeq(ownerId) {
+  const now = new Date();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const yy = String(now.getFullYear()).slice(-2);
+  const cacheKey = ownerId + '_' + mm + dd + yy;
+
+  // Read current seq from display
+  const current = document.getElementById('quoteNumHidden').value;
+  const currentSeq = current ? parseInt(current.slice(-2)) : 0;
+  _quoteSeqCache[cacheKey] = currentSeq; // next call returns currentSeq+1
 }
 
 function renderHistory() {
@@ -2900,7 +2922,16 @@ function linkDealById(dealId, dealName) {
     if (data && data.deal && data.deal.properties) {
       const p = data.deal.properties;
       const amount = p.amount ? '$' + parseFloat(p.amount).toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0}) : '';
-      const stage = p.dealstage || '';
+      const stageLabels = {
+        'appointmentscheduled': 'Sent Quote',
+        'qualifiedtobuy':       'Updated Quote',
+        'contractsent':         'Verbal Confirmation',
+        'closedwon':            'Closed Won',
+        '845719':               'Shipped',
+        'closedlost':           'Closed Lost',
+        '1169840404':           'Bid',
+      };
+      const stage = stageLabels[p.dealstage] || p.dealstage || '';
       document.getElementById('linkedDealMeta').textContent = [amount, stage].filter(Boolean).join(' · ');
       linkedDeal.amount = p.amount;
       linkedDeal.stage = p.dealstage;

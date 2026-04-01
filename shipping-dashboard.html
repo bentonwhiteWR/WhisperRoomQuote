@@ -28,7 +28,6 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
 
-  /* ── Header ── */
   .header {
     background: var(--surface);
     border-bottom: 1px solid var(--border);
@@ -41,9 +40,12 @@
     top: 0;
     z-index: 100;
   }
-  .logo { font-size: 18px; font-weight: 800; letter-spacing: -.3px; }
-  .logo span:first-child { color: #fff; }
-  .logo span:last-child  { color: var(--orange); }
+  .logo-wrap { display: flex; align-items: center; gap: 0; }
+  .logo-text { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; letter-spacing: -.3px; line-height: 1; }
+  .logo-whisper { color: #f0ede8; }
+  .logo-room   { color: #e8531a; }
+  .logo-divider { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 10px; }
+
   .header-right { display: flex; align-items: center; gap: 12px; }
   .nav-link {
     color: var(--muted); font-size: 13px; font-weight: 500;
@@ -61,10 +63,8 @@
   .refresh-btn.spinning svg { animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ── Main ── */
   .main { padding: 24px; max-width: 1400px; margin: 0 auto; }
 
-  /* ── Stats Bar ── */
   .stats-bar {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -80,90 +80,45 @@
   .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 6px; }
   .stat-value { font-size: 24px; font-weight: 800; }
 
-  /* ── Filters ── */
   .filters {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-    align-items: center;
+    display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;
   }
   .search-input {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-size: 13px;
-    flex: 1;
-    min-width: 200px;
-    outline: none;
-    transition: border-color .15s;
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 12px; border-radius: 8px; font-size: 13px; flex: 1; min-width: 200px;
+    outline: none; transition: border-color .15s;
   }
   .search-input:focus { border-color: var(--orange); }
   .filter-select {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-size: 13px;
-    outline: none;
-    cursor: pointer;
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 12px; border-radius: 8px; font-size: 13px; outline: none; cursor: pointer;
   }
   .filter-count { font-size: 12px; color: var(--muted); margin-left: 4px; }
 
-  /* ── Table ── */
   .table-wrap {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
   }
   table { width: 100%; border-collapse: collapse; }
   thead { background: var(--surface2); }
   th {
-    padding: 10px 14px;
-    text-align: left;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .07em;
-    color: var(--muted);
-    border-bottom: 1px solid var(--border);
-    white-space: nowrap;
+    padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .07em; color: var(--muted);
+    border-bottom: 1px solid var(--border); white-space: nowrap;
   }
-  td {
-    padding: 13px 14px;
-    font-size: 13px;
-    border-bottom: 1px solid var(--border);
-    vertical-align: middle;
-  }
+  td { padding: 13px 14px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: rgba(255,255,255,.02); }
 
   .deal-name {
-    font-weight: 600;
-    color: var(--text);
-    text-decoration: none;
-    display: block;
-    max-width: 260px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-weight: 600; color: var(--text); text-decoration: none;
+    display: block; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .deal-name:hover { color: var(--orange); }
   .deal-address { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
   .carrier-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 3px 9px;
-    border-radius: 5px;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: .03em;
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 5px; font-size: 12px; font-weight: 700; letter-spacing: .03em;
   }
   .carrier-ABF   { background: var(--orange-dim); color: var(--orange); }
   .carrier-OD    { background: var(--blue-dim);   color: var(--blue);   }
@@ -172,76 +127,25 @@
   .carrier-USPS  { background: var(--green-dim);  color: var(--green);  }
   .carrier-Other { background: rgba(255,255,255,.06); color: var(--muted); }
 
+  .tracking-cell { display: flex; align-items: center; gap: 6px; }
   .tracking-link {
-    font-family: monospace;
-    font-size: 13px;
-    color: var(--orange);
-    text-decoration: none;
-    display: flex;
-    align-items: center;
-    gap: 5px;
+    font-family: monospace; font-size: 13px; color: var(--orange);
+    text-decoration: none; display: inline-flex; align-items: center; gap: 4px;
   }
   .tracking-link:hover { text-decoration: underline; }
   .tracking-none { color: var(--muted); font-size: 12px; font-style: italic; }
 
   .copy-btn {
-    background: none;
-    border: 1px solid var(--border);
-    color: var(--muted);
-    padding: 3px 7px;
-    border-radius: 5px;
-    font-size: 11px;
-    cursor: pointer;
-    transition: all .15s;
+    background: none; border: 1px solid var(--border); color: var(--muted);
+    padding: 3px 7px; border-radius: 5px; font-size: 11px; cursor: pointer; transition: all .15s;
   }
   .copy-btn:hover { border-color: var(--orange); color: var(--orange); }
   .copy-btn.copied { border-color: var(--green); color: var(--green); }
 
-  .amount { font-weight: 600; color: var(--text); }
-  .rep-name { font-size: 12px; color: var(--muted); }
-  .date-cell { font-size: 12px; color: var(--muted); white-space: nowrap; }
-
-  .hs-link {
-    color: var(--muted);
-    text-decoration: none;
-    font-size: 12px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    transition: color .15s;
-  }
-  .hs-link:hover { color: var(--orange); }
-
-  /* ── Empty / Loading ── */
-  .empty-state {
-    text-align: center;
-    padding: 64px 24px;
-    color: var(--muted);
-  }
-  .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
-  .empty-state h3 { font-size: 16px; color: var(--text); margin-bottom: 6px; }
-
-  .loading-row td { text-align: center; padding: 48px; }
-  .skeleton-line {
-    height: 14px;
-    background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
-    background-size: 400% 100%;
-    animation: shimmer 1.4s infinite;
-    border-radius: 4px;
-  }
-  @keyframes shimmer { to { background-position: -400% 0; } }
-
-  /* ── Responsive ── */
   .status-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 3px 9px;
-    border-radius: 5px;
-    font-size: 11px;
-    font-weight: 700;
-    text-decoration: none;
-    white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 5px; font-size: 11px; font-weight: 700;
+    text-decoration: none; white-space: nowrap;
   }
   .status-delivered  { background: var(--green-dim); color: var(--green); }
   .status-transit    { background: var(--blue-dim);  color: var(--blue);  }
@@ -250,6 +154,26 @@
   .status-unknown    { background: rgba(255,255,255,.06); color: var(--muted); }
   .status-loading    { background: rgba(255,255,255,.06); color: var(--muted); animation: pulse .8s ease-in-out infinite; }
   @keyframes pulse   { 0%,100%{opacity:.4} 50%{opacity:1} }
+
+  .amount { font-weight: 600; }
+  .rep-name { font-size: 12px; }
+  .date-cell { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .hs-link {
+    color: var(--muted); text-decoration: none; font-size: 12px;
+    display: flex; align-items: center; gap: 4px; transition: color .15s;
+  }
+  .hs-link:hover { color: var(--orange); }
+
+  .empty-state { text-align: center; padding: 64px 24px; color: var(--muted); }
+  .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+  .empty-state h3 { font-size: 16px; color: var(--text); margin-bottom: 6px; }
+  .loading-row td { text-align: center; padding: 48px; }
+  .skeleton-line {
+    height: 14px;
+    background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
+    background-size: 400% 100%; animation: shimmer 1.4s infinite; border-radius: 4px;
+  }
+  @keyframes shimmer { to { background-position: -400% 0; } }
 
   @media (max-width: 768px) {
     .main { padding: 16px; }
@@ -261,12 +185,16 @@
 <body>
 
 <div class="header">
-  <div class="logo"><span>Whisper</span><span>Room</span> <span style="color:var(--muted);font-weight:400;font-size:14px;margin-left:6px">/ Shipping Board</span></div>
+  <div class="logo-wrap">
+    <span class="logo-text"><span class="logo-whisper">Whisper</span><span class="logo-room">Room</span></span>
+    <span class="logo-divider">/ Shipping Board</span>
+  </div>
   <div class="header-right">
     <a href="/" class="nav-link">← Quote Builder</a>
     <button class="refresh-btn" id="refreshBtn" onclick="loadShipments()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+        <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+        <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
       </svg>
       Refresh
     </button>
@@ -274,8 +202,7 @@
 </div>
 
 <div class="main">
-
-  <div class="stats-bar" id="statsBar">
+  <div class="stats-bar">
     <div class="stat-card"><div class="stat-label">Active Shipments</div><div class="stat-value" id="statTotal">—</div></div>
     <div class="stat-card"><div class="stat-label">ABF</div><div class="stat-value" style="color:var(--orange)" id="statABF">—</div></div>
     <div class="stat-card"><div class="stat-label">Old Dominion</div><div class="stat-value" style="color:var(--blue)" id="statOD">—</div></div>
@@ -315,7 +242,7 @@
         </tr>
       </thead>
       <tbody id="tableBody">
-        <tr class="loading-row"><td colspan="7">
+        <tr class="loading-row"><td colspan="8">
           <div style="display:flex;flex-direction:column;gap:10px;padding:20px">
             <div class="skeleton-line" style="width:100%"></div>
             <div class="skeleton-line" style="width:85%"></div>
@@ -326,7 +253,6 @@
       </tbody>
     </table>
   </div>
-
 </div>
 
 <script>
@@ -549,6 +475,7 @@ function statusIcon(status) {
 
 // Load on page open
 loadShipments();
+
 </script>
 </body>
 </html>

@@ -820,7 +820,86 @@ const server = http.createServer(async (req, res) => {
     res.end(buf); return;
   }
 
-    if (pathname === '/' || pathname === '/index.html') {
+    // ── Shipping Dashboard ──────────────────────────────────────────
+  if (pathname === '/shipping') {
+    if (!isAuth(req)) { res.writeHead(302, {Location: '/'}); res.end(); return; }
+    try {
+      const html = fs.readFileSync(path.join(__dirname, 'shipping-dashboard.html'), 'utf8');
+      res.writeHead(200, {'Content-Type':'text/html'});
+      res.end(html);
+    } catch(e) {
+      res.writeHead(500); res.end('shipping-dashboard.html not found');
+    }
+    return;
+  }
+
+  // ── Shipping Board API ───────────────────────────────────────────
+  if (pathname === '/api/shipping-board' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      // Fetch shipped deals with tracking from HubSpot
+      const searchRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/objects/deals/search',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, {
+        filterGroups: [{
+          filters: [{ propertyName: 'dealstage', operator: 'EQ', value: '845719' }]
+        }],
+        properties: ['dealname','amount','freight_carrier','tracking_number','date_shipped','hubspot_owner_id',
+                     'shipping_address','shipping_city','shipping_state','shipping_zipcode','closedate'],
+        sorts: [{ propertyName: 'date_shipped', direction: 'DESCENDING' }],
+        limit: 100
+      });
+
+      const deals = (searchRes.body.results || []).filter(d =>
+        d.properties.tracking_number && d.properties.freight_carrier
+      );
+
+      // Map owner IDs to names
+      const ownerMap = {
+        '36303670': 'Benton White',
+        '36320208': 'Gabe White',
+        '36330944': 'Jill Holdway',
+        '38143901': 'Sarah Smith',
+        '38732178': 'Kim Dalton',
+        '38732186': 'Jeromy Packwood',
+        '38900892': 'Chet Burgess',
+        '117442978': 'Travis Singleton',
+      };
+
+      const results = deals.map(d => {
+        const p = d.properties;
+        const carrier = p.freight_carrier || '';
+        const tracking = p.tracking_number || '';
+        let trackingUrl = '';
+        if (carrier === 'ABF')  trackingUrl = `https://view.arcb.com/nlo/tools/tracking?pro=${tracking}`;
+        if (carrier === 'OD')   trackingUrl = `https://www.odfl.com/us/en/tools/trace-track-ltl-freight.html?pro=${tracking}`;
+        if (carrier === 'UPS')  trackingUrl = `https://www.ups.com/track?tracknum=${tracking}`;
+        if (carrier === 'FedEx') trackingUrl = `https://www.fedex.com/en-us/tracking.html?tracknumbers=${tracking}`;
+        if (carrier === 'USPS') trackingUrl = `https://tools.usps.com/go/TrackConfirmAction?tLabels=${tracking}`;
+
+        return {
+          dealId: d.id,
+          dealName: p.dealname,
+          amount: p.amount ? parseFloat(p.amount) : null,
+          carrier,
+          tracking,
+          trackingUrl,
+          dateShipped: p.date_shipped || p.closedate?.split('T')[0],
+          address: [p.shipping_address, p.shipping_city, p.shipping_state, p.shipping_zipcode].filter(Boolean).join(', '),
+          rep: ownerMap[p.hubspot_owner_id] || 'Unknown',
+          dealUrl: `https://app.hubspot.com/contacts/5764220/deal/${d.id}`,
+        };
+      });
+
+      json({ success: true, shipments: results, total: results.length });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  if (pathname === '/' || pathname === '/index.html') {
     try {
       const html = fs.readFileSync(MAIN_HTML_PATH, 'utf8');
       res.writeHead(200, {'Content-Type':'text/html'});

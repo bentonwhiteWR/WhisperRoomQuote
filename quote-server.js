@@ -936,7 +936,8 @@ const server = http.createServer(async (req, res) => {
         filterGroups: [{
           filters: [
             { propertyName: 'dealstage', operator: 'EQ', value: '845719' },
-            { propertyName: 'freight_carrier', operator: 'HAS_PROPERTY' }
+            { propertyName: 'freight_carrier', operator: 'HAS_PROPERTY' },
+            { propertyName: 'date_shipped', operator: 'GTE', value: String(Date.now() - 30 * 24 * 60 * 60 * 1000) }
           ]
         }],
         properties: ['dealname','amount','freight_carrier','tracking_number','date_shipped','hubspot_owner_id',

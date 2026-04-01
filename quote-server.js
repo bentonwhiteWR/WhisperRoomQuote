@@ -1761,7 +1761,7 @@ tbody tr:last-child td{border-bottom:none}
           }, {
             properties: {
               hs_task_subject: `Customer accepted quote #${quoteNumber} — create invoice`,
-              hs_task_body: `Customer accepted quote #${quoteNumber} for ${dealName}. Ready to create invoice.\n\nFoam Color: ${body.foamColor || 'Not specified'}\nHinge: ${body.hingePreference || 'Not specified'}`,
+              hs_task_body: `Customer accepted quote #${quoteNumber} for ${dealName}. Ready to create invoice.\n\nFoam Color: ${body.foamColor || 'Not selected'}\nHinge: ${body.hingePreference || 'Not selected'}${body.customerNote ? '\n\nCustomer Note: "' + body.customerNote + '"' : ''}`,
               hubspot_owner_id: ownerId,
               hs_task_status: 'NOT_STARTED',
               hs_task_type: 'TODO',
@@ -1823,6 +1823,28 @@ tbody tr:last-child td{border-bottom:none}
       }
 
       json({ success: true, results });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // ── Admin: Test email send ───────────────────────────────────────
+  if (pathname === '/api/admin/test-email' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const body = JSON.parse(await readBody(req));
+      const to = body.to || 'bentonwhite@whisperroom.com';
+      const result = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/email/public/v1/singleEmail/send',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, {
+        emailId: 0,
+        message: { to, from: 'info@whisperroom.com', subject: 'WhisperRoom Quote Builder Test Email' },
+        contactProperties: [{ name: 'firstname', value: 'Test' }],
+        customProperties: [{ name: 'body', value: '<p>This is a test from the quote builder.</p>' }]
+      });
+      json({ success: true, status: result.statusCode, body: result.body });
     } catch(e) { json({ error: e.message }, 500); }
     return;
   }

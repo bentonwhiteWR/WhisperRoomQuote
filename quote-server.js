@@ -833,6 +833,92 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── Live Tracking Status ─────────────────────────────────────────
+  if (pathname === '/api/track' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const carrier  = parsed.query.carrier  || '';
+    const tracking = parsed.query.tracking || '';
+    if (!tracking) { json({ error: 'No tracking number' }, 400); return; }
+
+    try {
+      let result = { status: null, label: null, location: null, detail: null };
+
+      if (carrier === 'ABF') {
+        // ABF XML tracking API
+        const abfRes = await httpsRequest({
+          hostname: 'www.abfs.com',
+          path: `/xml/trackxml.asp?ID=DT&uid=Q8MZK7K1&pw=189059-248A&AcctNum=2011001&ProNumber=${tracking}`,
+          method: 'GET',
+          headers: { 'Accept': 'text/xml' }
+        });
+        const xml = typeof abfRes.body === 'string' ? abfRes.body : JSON.stringify(abfRes.body);
+        // Parse key fields from ABF XML response
+        const statusMatch  = xml.match(/<ShipmentStatus>([^<]+)<\/ShipmentStatus>/i)
+                          || xml.match(/<Status>([^<]+)<\/Status>/i)
+                          || xml.match(/StatusDesc[^>]*>([^<]+)</i);
+        const locationMatch = xml.match(/<City>([^<]+)<\/City>/i);
+        const stateMatch    = xml.match(/<State>([^<]+)<\/State>/i);
+        const detailMatch   = xml.match(/<StatusDesc[^>]*>([^<]+)</i)
+                           || xml.match(/<Description>([^<]+)<\/Description>/i);
+
+        if (statusMatch) {
+          result.status = statusMatch[1].trim();
+          result.label  = statusMatch[1].trim();
+        }
+        if (locationMatch && stateMatch) {
+          result.location = locationMatch[1].trim() + ', ' + stateMatch[1].trim();
+        }
+        if (detailMatch) result.detail = detailMatch[1].trim();
+
+        // Normalize ABF status
+        if (result.status) {
+          const s = result.status.toUpperCase();
+          if (s.includes('DELIVER'))      { result.status = 'delivered'; result.label = 'Delivered'; }
+          else if (s.includes('OUT'))     { result.status = 'out_for_delivery'; result.label = 'Out for Delivery'; }
+          else if (s.includes('TRANSIT')) { result.status = 'in_transit'; result.label = 'In Transit'; }
+          else if (s.includes('PICKUP') || s.includes('PICKED')) { result.status = 'picked_up'; result.label = 'Picked Up'; }
+          else if (s.includes('EXCEPTION') || s.includes('DELAY')) { result.status = 'exception'; result.label = 'Exception'; }
+          else if (s.includes('SCHEDUL') || s.includes('TENDER')) { result.status = 'scheduled'; result.label = 'Scheduled'; }
+        }
+      }
+
+      else if (carrier === 'OD') {
+        // Old Dominion tracking API
+        const odRes = await httpsRequest({
+          hostname: 'www.odfl.com',
+          path: `/us/en/tools/tracking-api.json?pro=${tracking}`,
+          method: 'GET',
+          headers: { 'Accept': 'application/json', 'User-Agent': 'WhisperRoom/1.0' }
+        });
+        const body = odRes.body;
+        if (body && typeof body === 'object') {
+          const shipment = body.shipment || body.shipments?.[0] || body;
+          const statusRaw = shipment.statusDescription || shipment.status || shipment.currentStatus || '';
+          const city  = shipment.currentCity  || shipment.city  || '';
+          const state = shipment.currentState || shipment.state || '';
+          if (statusRaw) {
+            result.status = statusRaw;
+            result.label  = statusRaw;
+            if (city && state) result.location = city + ', ' + state;
+            // Normalize
+            const s = statusRaw.toUpperCase();
+            if (s.includes('DELIVER'))      { result.status = 'delivered';    result.label = 'Delivered'; }
+            else if (s.includes('OUT FOR')) { result.status = 'out_for_delivery'; result.label = 'Out for Delivery'; }
+            else if (s.includes('TRANSIT')) { result.status = 'in_transit';   result.label = 'In Transit'; }
+            else if (s.includes('PICKUP') || s.includes('PICKED')) { result.status = 'picked_up'; result.label = 'Picked Up'; }
+            else if (s.includes('EXCEPTION')){ result.status = 'exception';  result.label = 'Exception'; }
+          }
+        }
+      }
+
+      json(result);
+    } catch(e) {
+      console.warn('Track error:', e.message);
+      json({ status: null, label: null, error: e.message });
+    }
+    return;
+  }
+
   // ── Shipping Board API ───────────────────────────────────────────
   if (pathname === '/api/shipping-board' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

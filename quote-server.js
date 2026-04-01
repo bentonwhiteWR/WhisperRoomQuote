@@ -1509,25 +1509,25 @@ tbody tr:last-child td{border-bottom:none}
 <!-- Foam/Hinge selection modal -->
 <div id="accept-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;align-items:center;justify-content:center;padding:16px">
   <div style="background:white;border-radius:14px;padding:32px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)">
-    <h2 style="font-size:18px;font-weight:800;color:#1a1a1a;margin-bottom:6px">Almost done!</h2>
-    <p style="font-size:13px;color:#888;margin-bottom:24px">Please answer two quick questions before accepting.</p>
+    <h2 style="font-size:18px;font-weight:800;color:#1a1a1a;margin-bottom:6px">One last step!</h2>
+    <p style="font-size:13px;color:#888;margin-bottom:24px">Please answer the following before accepting your quote. These are required before your order ships — you can choose <em>Undecided</em> if you need more time.</p>
 
     <div style="margin-bottom:20px">
       <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:10px">Foam Color</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        ${['Gray','Blue','Purple','Orange','Burgundy'].map(c => `
-        <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;transition:border-color .15s" onclick="this.style.borderColor='#ee6216'">
-          <input type="radio" name="foam" value="${c}" style="accent-color:#ee6216"> ${c}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="foam-grid">
+        ${['Gray','Blue','Purple','Orange','Burgundy','Undecided'].map(c => `
+        <label class="sel-label" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;transition:all .15s">
+          <input type="radio" name="foam" value="${c}" style="accent-color:#ee6216" onchange="updateLabels()"> ${c}
         </label>`).join('')}
       </div>
     </div>
 
     <div style="margin-bottom:28px">
       <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:10px">Door Hinge</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        ${['Left','Right'].map(h => `
-        <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;transition:border-color .15s" onclick="this.style.borderColor='#ee6216'">
-          <input type="radio" name="hinge" value="${h}" style="accent-color:#ee6216"> ${h} Hand
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="hinge-grid">
+        ${['Left Hand','Right Hand','Undecided'].map(h => `
+        <label class="sel-label" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;transition:all .15s">
+          <input type="radio" name="hinge" value="${h}" style="accent-color:#ee6216" onchange="updateLabels()"> ${h}
         </label>`).join('')}
       </div>
     </div>
@@ -1537,7 +1537,7 @@ tbody tr:last-child td{border-bottom:none}
       <textarea id="customer-note" rows="3" placeholder="Any questions, special instructions, or delivery notes..." style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
     </div>
 
-    <p style="font-size:12px;color:#bbb;margin:0 0 16px;text-align:center">Foam and hinge selections are optional — a WhisperRoom rep will follow up if needed.</p>
+    <p style="font-size:12px;color:#bbb;margin:0 0 16px;text-align:center">These selections are required before your order ships. Choose <em>Undecided</em> if you need more time — a WhisperRoom rep will follow up.</p>
 
     <div style="display:flex;gap:10px">
       <button onclick="submitAcceptance()" style="flex:1;padding:13px;background:#ee6216;color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">
@@ -1562,6 +1562,21 @@ tbody tr:last-child td{border-bottom:none}
 
 <script>
   document.title = 'Quote ${q.quoteNumber||''}${q.dealName ? ' - ' + q.dealName.replace(/[<>]/g,'') : ''}';
+
+  function updateLabels() {
+    // Reset all label borders, then highlight only the selected one per group
+    document.querySelectorAll('.sel-label').forEach(l => {
+      l.style.borderColor = '#eee';
+      l.style.background = 'white';
+    });
+    document.querySelectorAll('input[name="foam"]:checked, input[name="hinge"]:checked').forEach(inp => {
+      const label = inp.closest('.sel-label');
+      if (label) {
+        label.style.borderColor = '#ee6216';
+        label.style.background = '#fff8f0';
+      }
+    });
+  }
 
   async function acceptQuote() {
     const btn = document.getElementById('accept-btn');

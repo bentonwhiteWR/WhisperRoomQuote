@@ -6,6 +6,7 @@
 <title>WhisperRoom — Shipping Board</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial Black,sans-serif' font-size='18' font-weight='900' fill='%23e8531a'>W</text></svg>">
 <style>
   :root {
     --bg: #0f0f0f;
@@ -98,7 +99,15 @@
   .table-wrap {
     background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
   }
-  table { width: 100%; border-collapse: collapse; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th:nth-child(1), td:nth-child(1) { width: 28%; }
+  th:nth-child(2), td:nth-child(2) { width: 8%; }
+  th:nth-child(3), td:nth-child(3) { width: 14%; }
+  th:nth-child(4), td:nth-child(4) { width: 14%; }
+  th:nth-child(5), td:nth-child(5) { width: 10%; }
+  th:nth-child(6), td:nth-child(6) { width: 10%; }
+  th:nth-child(7), td:nth-child(7) { width: 10%; }
+  th:nth-child(8), td:nth-child(8) { width: 6%; }
   thead { background: var(--surface2); }
   th {
     padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700;
@@ -320,7 +329,7 @@ function buildRow(s) {
     <td class="hide-mobile"><span class="rep-name" style="color:${repColor}">${s.rep}</span></td>
     <td id="status-${s.dealId}">
       ${s.tracking && s.trackingUrl
-        ? `<span class="status-badge status-loading">Loading…</span>`
+        ? `<a href="${s.trackingUrl}" target="_blank" class="status-badge status-unknown">Track →</a>`
         : `<span class="status-badge status-unknown">No tracking</span>`
       }
     </td>

@@ -25,6 +25,30 @@
     --yellow-dim: rgba(245,158,11,.12);
     --red: #ef4444;
     --red-dim: rgba(239,68,68,.12);
+    --row-hover: rgba(255,255,255,.02);
+    --skeleton-a: #222;
+    --skeleton-b: #2a2a2a;
+  }
+  :root.light {
+    --bg: #f5f5f5;
+    --surface: #ffffff;
+    --surface2: #f0f0f0;
+    --border: #e0e0e0;
+    --orange: #d44f0c;
+    --orange-dim: rgba(212,79,12,.1);
+    --text: #1a1a1a;
+    --muted: #666;
+    --green: #16a34a;
+    --green-dim: rgba(22,163,74,.1);
+    --blue: #2563eb;
+    --blue-dim: rgba(37,99,235,.1);
+    --yellow: #d97706;
+    --yellow-dim: rgba(217,119,6,.1);
+    --red: #dc2626;
+    --red-dim: rgba(220,38,38,.1);
+    --row-hover: rgba(0,0,0,.02);
+    --skeleton-a: #e8e8e8;
+    --skeleton-b: #d0d0d0;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
@@ -54,6 +78,12 @@
     transition: background .15s, color .15s;
   }
   .nav-link:hover { background: var(--surface2); color: var(--text); }
+  .mode-btn {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    width: 34px; height: 34px; border-radius: 8px; font-size: 16px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: background .15s;
+  }
+  .mode-btn:hover { background: var(--border); }
   .refresh-btn {
     background: var(--orange); color: white; border: none;
     padding: 7px 14px; border-radius: 7px; font-size: 13px;
@@ -116,7 +146,7 @@
   }
   td { padding: 13px 14px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   tr:last-child td { border-bottom: none; }
-  tr:hover td { background: rgba(255,255,255,.02); }
+  tr:hover td { background: var(--row-hover); }
 
   .deal-name {
     font-weight: 600; color: var(--text); text-decoration: none;
@@ -179,7 +209,7 @@
   .loading-row td { text-align: center; padding: 48px; }
   .skeleton-line {
     height: 14px;
-    background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
+    background: linear-gradient(90deg, var(--skeleton-a) 25%, var(--skeleton-b) 50%, var(--skeleton-a) 75%);
     background-size: 400% 100%; animation: shimmer 1.4s infinite; border-radius: 4px;
   }
   @keyframes shimmer { to { background-position: -400% 0; } }
@@ -200,6 +230,9 @@
   </div>
   <div class="header-right">
     <a href="/" class="nav-link">← Quote Builder</a>
+    <button class="mode-btn" id="modeBtn" onclick="toggleMode()" title="Toggle light/dark mode">
+      <span id="modeIcon">☀️</span>
+    </button>
     <button class="refresh-btn" id="refreshBtn" onclick="loadShipments()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
@@ -212,11 +245,11 @@
 
 <div class="main">
   <div class="stats-bar">
-    <div class="stat-card"><div class="stat-label">Active Shipments</div><div class="stat-value" id="statTotal">—</div></div>
+    <div class="stat-card"><div class="stat-label">Last 30 Days</div><div class="stat-value" id="statTotal">—</div></div>
     <div class="stat-card"><div class="stat-label">ABF</div><div class="stat-value" style="color:var(--orange)" id="statABF">—</div></div>
     <div class="stat-card"><div class="stat-label">Old Dominion</div><div class="stat-value" style="color:var(--blue)" id="statOD">—</div></div>
     <div class="stat-card"><div class="stat-label">UPS / Other</div><div class="stat-value" style="color:var(--muted)" id="statOther">—</div></div>
-    <div class="stat-card"><div class="stat-label">Total Value</div><div class="stat-value" style="color:var(--green)" id="statValue">—</div></div>
+
   </div>
 
   <div class="filters">
@@ -365,8 +398,7 @@ function updateStats(shipments) {
   document.getElementById('statABF').textContent = shipments.filter(s => s.carrier === 'ABF').length;
   document.getElementById('statOD').textContent = shipments.filter(s => s.carrier === 'OD').length;
   document.getElementById('statOther').textContent = shipments.filter(s => !['ABF','OD'].includes(s.carrier)).length;
-  const total = shipments.reduce((sum, s) => sum + (s.amount || 0), 0);
-  document.getElementById('statValue').textContent = '$' + total.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
 }
 
 function populateRepFilter(shipments) {
@@ -481,6 +513,24 @@ function statusIcon(status) {
   if (s.includes('exception') || s.includes('delay')) return '⚠️';
   return '→';
 }
+
+// ── Light / Dark mode ────────────────────────────────────────────
+function toggleMode() {
+  const isLight = document.documentElement.classList.toggle('light');
+  document.getElementById('modeIcon').textContent = isLight ? '🌙' : '☀️';
+  localStorage.setItem('wr_shipping_mode', isLight ? 'light' : 'dark');
+}
+
+// Restore saved mode on load
+(function() {
+  if (localStorage.getItem('wr_shipping_mode') === 'light') {
+    document.documentElement.classList.add('light');
+    document.addEventListener('DOMContentLoaded', () => {
+      const btn = document.getElementById('modeIcon');
+      if (btn) btn.textContent = '🌙';
+    });
+  }
+})();
 
 // Load on page open
 loadShipments();

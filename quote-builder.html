@@ -1875,6 +1875,32 @@ async function getTax() {
 
 // ── Create Deal ───────────────────────────────────────────────────
 async function createDeal() {
+  // Check if address differs from HubSpot contact and confirm override
+  const orig = window._loadedContactAddress;
+  if (orig && window._loadedContactId) {
+    const curAddr  = document.getElementById('shipAddress').value.trim();
+    const curCity  = document.getElementById('shipCity').value.trim();
+    const curState = document.getElementById('shipState').value.trim();
+    const curZip   = document.getElementById('shipZip').value.trim();
+    const curPhone = document.getElementById('phone').value.trim();
+    const addrChanged = (curAddr  && curAddr  !== orig.address) ||
+                        (curCity  && curCity  !== orig.city)    ||
+                        (curZip   && curZip   !== orig.zip)     ||
+                        (curPhone && curPhone !== orig.phone);
+    if (addrChanged) {
+      const msg = 'The ship-to address differs from this contact\'s HubSpot record.\n\nUpdate the contact\'s address in HubSpot with this new address?\n\n' +
+        (curAddr  !== orig.address ? `Address: ${orig.address || '(blank)'} → ${curAddr}\n` : '') +
+        (curCity  !== orig.city    ? `City: ${orig.city || '(blank)'} → ${curCity}\n` : '') +
+        (curZip   !== orig.zip     ? `ZIP: ${orig.zip || '(blank)'} → ${curZip}\n` : '') +
+        (curPhone !== orig.phone   ? `Phone: ${orig.phone || '(blank)'} → ${curPhone}` : '');
+      const confirmOverride = confirm(msg);
+      // Pass flag to server
+      window._confirmContactOverride = confirmOverride;
+    } else {
+      window._confirmContactOverride = false;
+    }
+  }
+
   // If revising a historical quote, generate a fresh quote number now
   if (window._historicalQuoteLoaded) {
     window._historicalQuoteLoaded = false;
@@ -1975,6 +2001,7 @@ async function createDeal() {
         existingDealId: selectedDeal ? selectedDeal.id : null,
         linkedDealId: linkedDeal ? linkedDeal.id : (selectedDeal ? selectedDeal.id : null),
         isRevision: !!(linkedDeal || selectedDeal), // updating existing = revision
+        confirmContactOverride: window._confirmContactOverride || false,
       })
     });
 
@@ -1985,6 +2012,12 @@ async function createDeal() {
       box.className = 'result-box success';
       window._lastPushedContactId = data.contactId || null;
       window._lastPushedDealId = data.dealId || null;
+      // Auto-link the deal that was just created/updated
+      if (data.dealId) {
+        const pushedDealName = document.getElementById('dealName').value.trim() ||
+          document.getElementById('quoteNumDisplay').textContent;
+        linkDealById(data.dealId, pushedDealName);
+      }
       // Mark form as published — next push will generate a new quote number
       if (data.quoteNumber) {
         document.getElementById('quoteNumHidden').value = data.quoteNumber;
@@ -2007,7 +2040,10 @@ async function createDeal() {
       box.innerHTML = `✓ Deal created in HubSpot.<br><a href="${data.dealUrl}" target="_blank">View Deal &#x2192;</a>`;
       // Save to history
       const repName = document.getElementById('repSelect').options[document.getElementById('repSelect').selectedIndex].text;
-      const dealNameFinal = document.getElementById('dealName').value.trim() || (document.getElementById('company').value.trim() || lastName) + ' — Quote';
+      const companyVal = document.getElementById('company').value.trim();
+      const dealNameFinal = document.getElementById('dealName').value.trim() ||
+        (companyVal ? companyVal + ' — Quote' :
+         (firstName && lastName ? firstName + ' ' + lastName + ' — Quote' : 'New Quote'));
       const existingRevision = allHistory.filter(q => q.dealName === dealNameFinal).length;
       const customerEmail = document.getElementById('email').value.trim();
       const accessories = {
@@ -2170,8 +2206,15 @@ function fillContact(contact) {
   document.getElementById('contactBadge').style.display = 'none';
   // Load saved accessorial preferences for this contact
   if (p.email) loadAccessorialPrefs(p.email);
-  // Save contact ID for use by unlinkDeal, reset unlink flag for new contact
+  // Save contact ID and original address for override detection
   window._loadedContactId = contact.id;
+  window._loadedContactAddress = {
+    address: p.address || '',
+    city:    p.city    || '',
+    state:   p.state   || '',
+    zip:     p.zip     || '',
+    phone:   p.phone   || '',
+  };
   window._userUnlinked = false;
   const vcBtn = document.getElementById('viewContactBtn');
   if (vcBtn) vcBtn.style.display = 'block';
@@ -3294,8 +3337,13 @@ function newQuote() {
   if (contactSearch) contactSearch.value = '';
 
   // Reset canadian/tax exempt
+  // Force canada/international OFF — don't use toggleAcc (which inverts state)
   const canadaEl = document.getElementById('canada');
-  if (canadaEl) { canadaEl.checked = false; toggleAcc(document.getElementById('check-canada'), 'canada'); }
+  if (canadaEl) {
+    canadaEl.checked = false;
+    const checkLabel = document.getElementById('check-canada');
+    if (checkLabel) checkLabel.classList.remove('active');
+  }
   document.getElementById('customsBrokerRow').style.display = 'none';
   const taxEl = document.getElementById('taxexempt');
   if (taxEl) { taxEl.checked = false; document.getElementById('taxExemptRow').style.display = 'none'; }

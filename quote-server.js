@@ -64,7 +64,7 @@ const OWNER_EMAILS = {
   '36330944': 'jholdway@whisperroom.com',
   '38143901': 'ssmith@whisperroom.com',
   '38732178': 'accounting@whisperroom.com',
-  '38732186': 'jeromypackwood@whisperroom.com',
+  '38732186': 'shipping@whisperroom.com',
   '38900892': 'cburgess@whisperroom.com',
   '117442978': 'tsingleton@whisperroom.com',
 };

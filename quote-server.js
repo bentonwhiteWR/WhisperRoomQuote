@@ -1883,89 +1883,127 @@ tbody tr:last-child td{border-bottom:none}
     return;
   }
 
-  // ── Admin: Backfill tracking numbers from scraped emails ────────
+  // ── Admin: Backfill tracking numbers via contact email lookup ────
   if (pathname === '/api/admin/backfill-tracking' && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
       await ensureHubSpotProperties();
 
-      // Scraped from shipping emails — email IDs with tracking numbers
-      const emailTracking = [
-  { emailId: "106205902444", tracking: "78077872246", carrier: "OD" },
-  { emailId: "106567955526", tracking: "248007092", carrier: "ABF" },
-  { emailId: "106657124937", tracking: "248007097", carrier: "ABF" },
-  { emailId: "106327575322", tracking: "248007084", carrier: "ABF" },
-  { emailId: "106894523682", tracking: "78078696057", carrier: "OD" },
-  { emailId: "106773708328", tracking: "78078524150", carrier: "OD" },
-  { emailId: "106896377624", tracking: "78078713803", carrier: "OD" },
-  { emailId: "106776638648", tracking: "248006552", carrier: "ABF" },
-  { emailId: "106419856644", tracking: "78078096381", carrier: "OD" },
-  { emailId: "106580685863", tracking: "248007091", carrier: "ABF" },
-  { emailId: "106280159136", tracking: "248859712", carrier: "OD" },
-  { emailId: "106570365957", tracking: "248007093", carrier: "ABF" },
-  { emailId: "106773824166", tracking: "248006553", carrier: "ABF" },
-  { emailId: "106437006348", tracking: "78078144215", carrier: "OD" },
-  { emailId: "106704665734", tracking: "78078494438", carrier: "OD" },
-  { emailId: "106233633965", tracking: "248007081", carrier: "ABF" },
-  { emailId: "106656894501", tracking: "248007098", carrier: "ABF" },
-  { emailId: "106109016127", tracking: "78077745905", carrier: "OD" },
-  { emailId: "105215291253", tracking: "248007064", carrier: "ABF" },
-  { emailId: "104013195026", tracking: "78076246681", carrier: "OD" },
-  { emailId: "105911585321", tracking: "78077656458", carrier: "OD" },
-  { emailId: "104166801323", tracking: "78076411889", carrier: "OD" },
-  { emailId: "105645348494", tracking: "248007072", carrier: "ABF" },
-  { emailId: "106060122395", tracking: "248007076", carrier: "ABF" },
-  { emailId: "104412981832", tracking: "78076484027", carrier: "OD" },
-  { emailId: "105510997315", tracking: "80999169362", carrier: "OD" },
-  { emailId: "105914684437", tracking: "78077495626", carrier: "OD" },
-  { emailId: "104778789134", tracking: "248007054", carrier: "ABF" },
-  { emailId: "104767420048", tracking: "248007055", carrier: "ABF" },
-  { emailId: "104404962895", tracking: "248890541", carrier: "ABF" },
-  { emailId: "106068189218", tracking: "248007077", carrier: "ABF" },
-  { emailId: "105804645041", tracking: "78077484554", carrier: "OD" },
-  { emailId: "105945323539", tracking: "248007075", carrier: "ABF" },
-  { emailId: "105804918960", tracking: "248006856", carrier: "ABF" },
-  { emailId: "104793587569", tracking: "78076726732", carrier: "OD" },
-  { emailId: "104166367901", tracking: "248890542", carrier: "ABF" },
-  { emailId: "104967786386", tracking: "78076884051", carrier: "OD" },
-  { emailId: "104977362802", tracking: "248007059", carrier: "ABF" },
-  { emailId: "105508830118", tracking: "78077248041", carrier: "OD" },
-  { emailId: "105222996511", tracking: "248007065", carrier: "ABF" },
-  { emailId: "105914992546", tracking: "78077570642", carrier: "OD" },
-  { emailId: "104039031326", tracking: "248890538", carrier: "ABF" },
-  { emailId: "104392542829", tracking: "78076256086", carrier: "OD" }
-];
+      // Map: customer email → tracking number + carrier
+      const emailToTracking = {
+  "timothy.j.masi@us.mcd.com": { tracking: "78077872246", carrier: "OD" },
+  "jon.olivier@grainger.com": { tracking: "248007092", carrier: "ABF" },
+  "nedad@wardenwoods.com": { tracking: "248007097", carrier: "ABF" },
+  "michael.yanez@microsoft.com": { tracking: "248007084", carrier: "ABF" },
+  "catherine.massengale@ttu.edu": { tracking: "78078696057", carrier: "OD" },
+  "jcortner@missionmobilemed.com": { tracking: "78078524150", carrier: "OD" },
+  "riley.w@hellohearingstudios.com": { tracking: "78078713803", carrier: "OD" },
+  "admin@kavnhealth.com": { tracking: "248006552", carrier: "ABF" },
+  "noahstern00@gmail.com": { tracking: "78078096381", carrier: "OD" },
+  "macguarnieri@aol.com": { tracking: "248007091", carrier: "ABF" },
+  "realminseok@hotmail.com": { tracking: "248859712", carrier: "OD" },
+  "jperez2@bartonhealth.org": { tracking: "248007093", carrier: "ABF" },
+  "brady.lorenzen@mayo.edu": { tracking: "248006553", carrier: "ABF" },
+  "nathan@tshmt.com": { tracking: "78078144215", carrier: "OD" },
+  "randall.turner@morrisjenkins.com": { tracking: "78078494438", carrier: "OD" },
+  "vo@jordankilgore.com": { tracking: "248007081", carrier: "ABF" },
+  "drapp@offscriptsociety.com": { tracking: "248007098", carrier: "ABF" },
+  "jill@digitalvideogroup.com": { tracking: "78077745905", carrier: "OD" },
+  "fmaurer@midjourney.com": { tracking: "248007064", carrier: "ABF" },
+  "clint.rollett@rd.nestle.com": { tracking: "78076246681", carrier: "OD" },
+  "ousteventhomas@gmail.com": { tracking: "78077656458", carrier: "OD" },
+  "emovshin@unitedhearing.com": { tracking: "78076411889", carrier: "OD" },
+  "mflan25@gmail.com": { tracking: "248007072", carrier: "ABF" },
+  "sara.frazier@donegalsd.org": { tracking: "248007076", carrier: "ABF" },
+  "drnnenna@reenglobalhealth.com": { tracking: "78076484027", carrier: "OD" },
+  "igor@fortell.com": { tracking: "80999169362", carrier: "OD" },
+  "raybrown742@gmail.com": { tracking: "78077495626", carrier: "OD" },
+  "noah.malone@mannasupply.com": { tracking: "248007054", carrier: "ABF" },
+  "robert.mentzer.contractor@pepsico.com": { tracking: "248007055", carrier: "ABF" },
+  "nspann@whisperroomguys.com": { tracking: "248890542", carrier: "ABF" },
+  "garrett.kenehan@chaffey.edu": { tracking: "248007077", carrier: "ABF" },
+  "t.peterson@asu.edu": { tracking: "78077484554", carrier: "OD" },
+  "adavidson@nmrevents.com": { tracking: "248007075", carrier: "ABF" },
+  "rvanormer@ithacavoice.org": { tracking: "248006856", carrier: "ABF" },
+  "dmgray@oxfordsc.org": { tracking: "78076726732", carrier: "OD" },
+  "aminidmaynard@state.gov": { tracking: "78076884051", carrier: "OD" },
+  "heather_lydon@baxter.com": { tracking: "248007059", carrier: "ABF" },
+  "kelly.zimbelman@unlv.edu": { tracking: "78077248041", carrier: "OD" },
+  "emounts@modernhearing.net": { tracking: "248007065", carrier: "ABF" },
+  "ktr.adams@gmail.com": { tracking: "78077570642", carrier: "OD" },
+  "margaret.keating@audionova.com": { tracking: "248890538", carrier: "ABF" },
+  "coastalhearingcenter@yahoo.com": { tracking: "78076256086", carrier: "OD" }
+};
 
       const results = [];
-      for (const item of emailTracking) {
+      for (const [customerEmail, info] of Object.entries(emailToTracking)) {
         try {
-          // Look up deals associated with this email engagement
-          const assocRes = await httpsRequest({
+          // 1. Find contact by email
+          const contactSearch = await httpsRequest({
             hostname: 'api.hubapi.com',
-            path: `/crm/v4/objects/emails/${item.emailId}/associations/deals`,
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+            path: '/crm/v3/objects/contacts/search',
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, {
+            filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: customerEmail }] }],
+            properties: ['email'],
+            limit: 1
           });
-          const dealAssocs = assocRes.body?.results || [];
-          if (dealAssocs.length === 0) {
-            results.push({ emailId: item.emailId, tracking: item.tracking, skipped: 'no deal association' });
+
+          const contacts = contactSearch.body?.results || [];
+          if (!contacts.length) {
+            results.push({ email: customerEmail, skipped: 'contact not found' });
             continue;
           }
-          const dealId = dealAssocs[0].toObjectId;
+          const contactId = contacts[0].id;
+
+          // 2. Find shipped deal associated with this contact
+          const dealSearch = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: '/crm/v3/objects/deals/search',
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, {
+            filterGroups: [{
+              filters: [{ propertyName: 'dealstage', operator: 'EQ', value: '845719' }],
+              associatedWith: [{ objectType: 'contacts', operator: 'EQUAL', objectIdValues: [parseInt(contactId)] }]
+            }],
+            properties: ['dealname', 'tracking_number'],
+            sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
+            limit: 1
+          });
+
+          const deals = dealSearch.body?.results || [];
+          if (!deals.length) {
+            results.push({ email: customerEmail, contactId, skipped: 'no shipped deal' });
+            continue;
+          }
+
+          const deal = deals[0];
+          // Skip if already has a tracking number
+          if (deal.properties?.tracking_number) {
+            results.push({ email: customerEmail, dealId: deal.id, skipped: 'already has tracking: ' + deal.properties.tracking_number });
+            continue;
+          }
+
+          // 3. Write tracking number to deal
           await httpsRequest({
             hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/deals/${dealId}`,
+            path: `/crm/v3/objects/deals/${deal.id}`,
             method: 'PATCH',
             headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-          }, { properties: { tracking_number: item.tracking, freight_carrier: item.carrier } });
-          results.push({ emailId: item.emailId, dealId, tracking: item.tracking, carrier: item.carrier, success: true });
+          }, { properties: { tracking_number: info.tracking, freight_carrier: info.carrier } });
+
+          results.push({ email: customerEmail, dealId: deal.id, dealName: deal.properties.dealname, tracking: info.tracking, carrier: info.carrier, success: true });
         } catch(e) {
-          results.push({ emailId: item.emailId, error: e.message });
+          results.push({ email: customerEmail, error: e.message });
         }
       }
-      const succeeded = results.filter(r => r.success).length;
-      const skipped = results.filter(r => r.skipped).length;
-      json({ success: true, total: emailTracking.length, written: succeeded, skipped, results });
+
+      const written  = results.filter(r => r.success).length;
+      const skipped  = results.filter(r => r.skipped).length;
+      const errors   = results.filter(r => r.error).length;
+      json({ success: true, total: Object.keys(emailToTracking).length, written, skipped, errors, results });
     } catch(e) { json({ error: e.message }, 500); }
     return;
   }

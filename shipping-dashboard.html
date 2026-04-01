@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WhisperRoom — Shipping Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #0f0f0f;
@@ -230,6 +232,25 @@
   @keyframes shimmer { to { background-position: -400% 0; } }
 
   /* ── Responsive ── */
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .status-delivered  { background: var(--green-dim); color: var(--green); }
+  .status-transit    { background: var(--blue-dim);  color: var(--blue);  }
+  .status-pickup     { background: var(--yellow-dim);color: var(--yellow);}
+  .status-exception  { background: var(--red-dim);   color: var(--red);   }
+  .status-unknown    { background: rgba(255,255,255,.06); color: var(--muted); }
+  .status-loading    { background: rgba(255,255,255,.06); color: var(--muted); animation: pulse .8s ease-in-out infinite; }
+  @keyframes pulse   { 0%,100%{opacity:.4} 50%{opacity:1} }
+
   @media (max-width: 768px) {
     .main { padding: 16px; }
     th.hide-mobile, td.hide-mobile { display: none; }
@@ -286,6 +307,7 @@
           <th>Customer / Deal</th>
           <th>Carrier</th>
           <th>Tracking #</th>
+          <th>Status</th>
           <th class="hide-mobile">Date Shipped</th>
           <th class="hide-mobile">Amount</th>
           <th class="hide-mobile">Rep</th>
@@ -370,6 +392,12 @@ function buildRow(s) {
     <td class="date-cell hide-mobile">${fmtDate(s.dateShipped)}</td>
     <td class="amount hide-mobile">${fmtAmount(s.amount)}</td>
     <td class="hide-mobile"><span class="rep-name" style="color:${repColor}">${s.rep}</span></td>
+    <td id="status-${s.dealId}">
+      ${s.tracking && s.trackingUrl
+        ? `<span class="status-badge status-loading">Loading…</span>`
+        : `<span class="status-badge status-unknown">No tracking</span>`
+      }
+    </td>
     <td>
       <a href="${s.dealUrl}" target="_blank" class="hs-link">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
@@ -439,6 +467,10 @@ async function loadShipments() {
     updateStats(allShipments);
     populateRepFilter(allShipments);
 
+    // Fetch live tracking status for all shipments with tracking numbers
+    const trackable = allShipments.filter(s => s.tracking && s.carrier);
+    if (trackable.length > 0) fetchAllStatuses(trackable);
+
     if (allShipments.length === 0) {
       document.getElementById('tableBody').innerHTML = `<tr><td colspan="7">
         <div class="empty-state">
@@ -462,6 +494,57 @@ async function loadShipments() {
   } finally {
     btn.classList.remove('spinning');
   }
+}
+
+// ── Live tracking status ──────────────────────────────────────────
+async function fetchAllStatuses(shipments) {
+  // Fetch in parallel, max 10 at a time
+  const chunks = [];
+  for (let i = 0; i < shipments.length; i += 10) chunks.push(shipments.slice(i, i + 10));
+  for (const chunk of chunks) {
+    await Promise.all(chunk.map(s => fetchStatus(s)));
+  }
+}
+
+async function fetchStatus(s) {
+  const cell = document.getElementById('status-' + s.dealId);
+  if (!cell) return;
+  try {
+    const res = await fetch(`/api/track?carrier=${encodeURIComponent(s.carrier)}&tracking=${encodeURIComponent(s.tracking)}`, { credentials: 'include' });
+    const data = await res.json();
+    if (data.status) {
+      const cls = statusClass(data.status);
+      const icon = statusIcon(data.status);
+      const label = data.label || data.status;
+      const detail = data.location ? ` · ${data.location}` : '';
+      cell.innerHTML = s.trackingUrl
+        ? `<a href="${s.trackingUrl}" target="_blank" class="status-badge ${cls}" title="${data.detail || ''}">${icon} ${label}${detail}</a>`
+        : `<span class="status-badge ${cls}" title="${data.detail || ''}">${icon} ${label}${detail}</span>`;
+    } else {
+      cell.innerHTML = `<a href="${s.trackingUrl}" target="_blank" class="status-badge status-unknown">Track →</a>`;
+    }
+  } catch(e) {
+    if (cell) cell.innerHTML = `<a href="${s.trackingUrl}" target="_blank" class="status-badge status-unknown">Track →</a>`;
+  }
+}
+
+function statusClass(status) {
+  const s = status.toLowerCase();
+  if (s.includes('deliver')) return 'status-delivered';
+  if (s.includes('transit') || s.includes('progress') || s.includes('movement') || s.includes('out for')) return 'status-transit';
+  if (s.includes('pickup') || s.includes('picked') || s.includes('tender')) return 'status-pickup';
+  if (s.includes('exception') || s.includes('delay') || s.includes('hold') || s.includes('failed')) return 'status-exception';
+  return 'status-transit';
+}
+
+function statusIcon(status) {
+  const s = status.toLowerCase();
+  if (s.includes('deliver')) return '✓';
+  if (s.includes('out for')) return '🚚';
+  if (s.includes('transit') || s.includes('progress')) return '→';
+  if (s.includes('pickup') || s.includes('picked')) return '📦';
+  if (s.includes('exception') || s.includes('delay')) return '⚠️';
+  return '→';
 }
 
 // Load on page open

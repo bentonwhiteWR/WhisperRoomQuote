@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WhisperRoom — Shipping Board</title>
+<style>
+  :root {
+    --bg: #0f0f0f;
+    --surface: #1a1a1a;
+    --surface2: #222;
+    --border: #2a2a2a;
+    --orange: #ee6216;
+    --orange-dim: rgba(238,98,22,.12);
+    --text: #e8e8e8;
+    --muted: #888;
+    --green: #22c55e;
+    --green-dim: rgba(34,197,94,.12);
+    --blue: #3b82f6;
+    --blue-dim: rgba(59,130,246,.12);
+    --yellow: #f59e0b;
+    --yellow-dim: rgba(245,158,11,.12);
+    --red: #ef4444;
+    --red-dim: rgba(239,68,68,.12);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+
+  /* ── Header ── */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo { font-size: 18px; font-weight: 800; letter-spacing: -.3px; }
+  .logo span:first-child { color: #fff; }
+  .logo span:last-child  { color: var(--orange); }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .nav-link {
+    color: var(--muted); font-size: 13px; font-weight: 500;
+    text-decoration: none; padding: 6px 12px; border-radius: 6px;
+    transition: background .15s, color .15s;
+  }
+  .nav-link:hover { background: var(--surface2); color: var(--text); }
+  .refresh-btn {
+    background: var(--orange); color: white; border: none;
+    padding: 7px 14px; border-radius: 7px; font-size: 13px;
+    font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;
+    transition: opacity .15s;
+  }
+  .refresh-btn:hover { opacity: .85; }
+  .refresh-btn.spinning svg { animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Main ── */
+  .main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+  /* ── Stats Bar ── */
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 6px; }
+  .stat-value { font-size: 24px; font-weight: 800; }
+
+  /* ── Filters ── */
+  .filters {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .search-input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    flex: 1;
+    min-width: 200px;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .search-input:focus { border-color: var(--orange); }
+  .filter-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+  }
+  .filter-count { font-size: 12px; color: var(--muted); margin-left: 4px; }
+
+  /* ── Table ── */
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead { background: var(--surface2); }
+  th {
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  td {
+    padding: 13px 14px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+
+  .deal-name {
+    font-weight: 600;
+    color: var(--text);
+    text-decoration: none;
+    display: block;
+    max-width: 260px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .deal-name:hover { color: var(--orange); }
+  .deal-address { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .carrier-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .03em;
+  }
+  .carrier-ABF   { background: var(--orange-dim); color: var(--orange); }
+  .carrier-OD    { background: var(--blue-dim);   color: var(--blue);   }
+  .carrier-UPS   { background: var(--yellow-dim); color: var(--yellow); }
+  .carrier-FedEx { background: var(--red-dim);    color: var(--red);    }
+  .carrier-USPS  { background: var(--green-dim);  color: var(--green);  }
+  .carrier-Other { background: rgba(255,255,255,.06); color: var(--muted); }
+
+  .tracking-link {
+    font-family: monospace;
+    font-size: 13px;
+    color: var(--orange);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .tracking-link:hover { text-decoration: underline; }
+  .tracking-none { color: var(--muted); font-size: 12px; font-style: italic; }
+
+  .copy-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 3px 7px;
+    border-radius: 5px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .copy-btn:hover { border-color: var(--orange); color: var(--orange); }
+  .copy-btn.copied { border-color: var(--green); color: var(--green); }
+
+  .amount { font-weight: 600; color: var(--text); }
+  .rep-name { font-size: 12px; color: var(--muted); }
+  .date-cell { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+  .hs-link {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: color .15s;
+  }
+  .hs-link:hover { color: var(--orange); }
+
+  /* ── Empty / Loading ── */
+  .empty-state {
+    text-align: center;
+    padding: 64px 24px;
+    color: var(--muted);
+  }
+  .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+  .empty-state h3 { font-size: 16px; color: var(--text); margin-bottom: 6px; }
+
+  .loading-row td { text-align: center; padding: 48px; }
+  .skeleton-line {
+    height: 14px;
+    background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s infinite;
+    border-radius: 4px;
+  }
+  @keyframes shimmer { to { background-position: -400% 0; } }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    .main { padding: 16px; }
+    th.hide-mobile, td.hide-mobile { display: none; }
+    .deal-name { max-width: 160px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo"><span>Whisper</span><span>Room</span> <span style="color:var(--muted);font-weight:400;font-size:14px;margin-left:6px">/ Shipping Board</span></div>
+  <div class="header-right">
+    <a href="/" class="nav-link">← Quote Builder</a>
+    <button class="refresh-btn" id="refreshBtn" onclick="loadShipments()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+      </svg>
+      Refresh
+    </button>
+  </div>
+</div>
+
+<div class="main">
+
+  <div class="stats-bar" id="statsBar">
+    <div class="stat-card"><div class="stat-label">Active Shipments</div><div class="stat-value" id="statTotal">—</div></div>
+    <div class="stat-card"><div class="stat-label">ABF</div><div class="stat-value" style="color:var(--orange)" id="statABF">—</div></div>
+    <div class="stat-card"><div class="stat-label">Old Dominion</div><div class="stat-value" style="color:var(--blue)" id="statOD">—</div></div>
+    <div class="stat-card"><div class="stat-label">UPS / Other</div><div class="stat-value" style="color:var(--muted)" id="statOther">—</div></div>
+    <div class="stat-card"><div class="stat-label">Total Value</div><div class="stat-value" style="color:var(--green)" id="statValue">—</div></div>
+  </div>
+
+  <div class="filters">
+    <input type="text" class="search-input" id="searchInput" placeholder="Search customer, deal, tracking #..." oninput="filterTable()">
+    <select class="filter-select" id="carrierFilter" onchange="filterTable()">
+      <option value="">All Carriers</option>
+      <option value="ABF">ABF</option>
+      <option value="OD">Old Dominion</option>
+      <option value="UPS">UPS</option>
+      <option value="FedEx">FedEx</option>
+      <option value="USPS">USPS</option>
+      <option value="Other">Other</option>
+    </select>
+    <select class="filter-select" id="repFilter" onchange="filterTable()">
+      <option value="">All Reps</option>
+    </select>
+    <span class="filter-count" id="filterCount"></span>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Customer / Deal</th>
+          <th>Carrier</th>
+          <th>Tracking #</th>
+          <th class="hide-mobile">Date Shipped</th>
+          <th class="hide-mobile">Amount</th>
+          <th class="hide-mobile">Rep</th>
+          <th>HubSpot</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr class="loading-row"><td colspan="7">
+          <div style="display:flex;flex-direction:column;gap:10px;padding:20px">
+            <div class="skeleton-line" style="width:100%"></div>
+            <div class="skeleton-line" style="width:85%"></div>
+            <div class="skeleton-line" style="width:92%"></div>
+            <div class="skeleton-line" style="width:78%"></div>
+          </div>
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+let allShipments = [];
+
+const REP_COLORS = {
+  'Jill Holdway':   '#f59e0b',
+  'Sarah Smith':    '#3b82f6',
+  'Travis Singleton': '#8b5cf6',
+  'Benton White':   '#ee6216',
+  'Gabe White':     '#22c55e',
+  'Chet Burgess':   '#ec4899',
+  'Kim Dalton':     '#14b8a6',
+  'Jeromy Packwood':'#64748b',
+};
+
+function fmtDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d + 'T00:00:00');
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function fmtAmount(n) {
+  if (!n) return '—';
+  return '$' + parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+function carrierLabel(c) {
+  const map = { OD: 'Old Dominion', ABF: 'ABF Freight', UPS: 'UPS', FedEx: 'FedEx', USPS: 'USPS', Other: 'Other' };
+  return map[c] || c;
+}
+
+function copyTracking(btn, tracking) {
+  navigator.clipboard.writeText(tracking).then(() => {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+
+function buildRow(s) {
+  const repColor = REP_COLORS[s.rep] || '#888';
+  const trackingCell = s.tracking
+    ? `<div style="display:flex;align-items:center;gap:6px">
+         ${s.trackingUrl
+           ? `<a href="${s.trackingUrl}" target="_blank" class="tracking-link" title="Track on carrier website">
+               ${s.tracking}
+               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+             </a>`
+           : `<span class="tracking-link" style="cursor:default">${s.tracking}</span>`
+         }
+         <button class="copy-btn" onclick="copyTracking(this,'${s.tracking}')">Copy</button>
+       </div>`
+    : `<span class="tracking-none">No tracking</span>`;
+
+  return `<tr data-carrier="${s.carrier}" data-rep="${s.rep}" data-search="${(s.dealName + ' ' + s.tracking + ' ' + s.address + ' ' + s.rep).toLowerCase()}">
+    <td>
+      <a href="${s.dealUrl}" target="_blank" class="deal-name" title="${s.dealName}">${s.dealName}</a>
+      ${s.address ? `<div class="deal-address">${s.address}</div>` : ''}
+    </td>
+    <td><span class="carrier-badge carrier-${s.carrier}">${s.carrier === 'OD' ? 'Old Dom.' : s.carrier}</span></td>
+    <td>${trackingCell}</td>
+    <td class="date-cell hide-mobile">${fmtDate(s.dateShipped)}</td>
+    <td class="amount hide-mobile">${fmtAmount(s.amount)}</td>
+    <td class="hide-mobile"><span class="rep-name" style="color:${repColor}">${s.rep}</span></td>
+    <td>
+      <a href="${s.dealUrl}" target="_blank" class="hs-link">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        View Deal
+      </a>
+    </td>
+  </tr>`;
+}
+
+function filterTable() {
+  const query = document.getElementById('searchInput').value.toLowerCase();
+  const carrier = document.getElementById('carrierFilter').value;
+  const rep = document.getElementById('repFilter').value;
+  const rows = document.querySelectorAll('#tableBody tr[data-carrier]');
+  let visible = 0;
+  rows.forEach(row => {
+    const matchSearch = !query || row.dataset.search.includes(query);
+    const matchCarrier = !carrier || row.dataset.carrier === carrier;
+    const matchRep = !rep || row.dataset.rep === rep;
+    const show = matchSearch && matchCarrier && matchRep;
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('filterCount').textContent = visible !== allShipments.length
+    ? `Showing ${visible} of ${allShipments.length}` : '';
+}
+
+function updateStats(shipments) {
+  document.getElementById('statTotal').textContent = shipments.length;
+  document.getElementById('statABF').textContent = shipments.filter(s => s.carrier === 'ABF').length;
+  document.getElementById('statOD').textContent = shipments.filter(s => s.carrier === 'OD').length;
+  document.getElementById('statOther').textContent = shipments.filter(s => !['ABF','OD'].includes(s.carrier)).length;
+  const total = shipments.reduce((sum, s) => sum + (s.amount || 0), 0);
+  document.getElementById('statValue').textContent = '$' + total.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+function populateRepFilter(shipments) {
+  const reps = [...new Set(shipments.map(s => s.rep))].sort();
+  const sel = document.getElementById('repFilter');
+  sel.innerHTML = '<option value="">All Reps</option>';
+  reps.forEach(r => {
+    const opt = document.createElement('option');
+    opt.value = r; opt.textContent = r;
+    sel.appendChild(opt);
+  });
+}
+
+async function loadShipments() {
+  const btn = document.getElementById('refreshBtn');
+  btn.classList.add('spinning');
+  document.getElementById('tableBody').innerHTML = `<tr class="loading-row"><td colspan="7">
+    <div style="display:flex;flex-direction:column;gap:10px;padding:20px">
+      <div class="skeleton-line" style="width:100%"></div>
+      <div class="skeleton-line" style="width:85%"></div>
+      <div class="skeleton-line" style="width:92%"></div>
+      <div class="skeleton-line" style="width:78%"></div>
+    </div>
+  </td></tr>`;
+
+  try {
+    const res = await fetch('/api/shipping-board', { credentials: 'include' });
+    const data = await res.json();
+
+    if (!data.success) throw new Error(data.error || 'Failed to load');
+
+    allShipments = data.shipments;
+    updateStats(allShipments);
+    populateRepFilter(allShipments);
+
+    if (allShipments.length === 0) {
+      document.getElementById('tableBody').innerHTML = `<tr><td colspan="7">
+        <div class="empty-state">
+          <div class="icon">📦</div>
+          <h3>No shipments found</h3>
+          <p>No deals in Shipped stage with tracking numbers.</p>
+        </div>
+      </td></tr>`;
+    } else {
+      document.getElementById('tableBody').innerHTML = allShipments.map(buildRow).join('');
+      filterTable();
+    }
+  } catch(e) {
+    document.getElementById('tableBody').innerHTML = `<tr><td colspan="7">
+      <div class="empty-state">
+        <div class="icon">⚠️</div>
+        <h3>Error loading shipments</h3>
+        <p style="color:var(--red)">${e.message}</p>
+      </div>
+    </td></tr>`;
+  } finally {
+    btn.classList.remove('spinning');
+  }
+}
+
+// Load on page open
+loadShipments();
+</script>
+</body>
+</html>

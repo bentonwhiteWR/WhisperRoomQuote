@@ -1638,14 +1638,17 @@ tbody tr:last-child td{border-bottom:none}
       const body = JSON.parse(await readBody(req));
       if (body.password !== PASSWORD) { json({ error: 'Unauthorized' }, 401); return; }
 
-      // Find all WR_QUOTE_DATA notes
+      // Find all quote builder notes (both old and new format)
       const searchRes = await httpsRequest({
         hostname: 'api.hubapi.com',
         path: '/crm/v3/objects/notes/search',
         method: 'POST',
         headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
       }, {
-        filterGroups: [{ filters: [{ propertyName: 'hs_note_body', operator: 'CONTAINS_TOKEN', value: 'WR_QUOTE_DATA:' }] }],
+        filterGroups: [
+          { filters: [{ propertyName: 'hs_note_body', operator: 'CONTAINS_TOKEN', value: 'WR_QUOTE_DATA:' }] },
+          { filters: [{ propertyName: 'hs_note_body', operator: 'CONTAINS_TOKEN', value: 'QUOTE_SNAPSHOT::' }] }
+        ],
         properties: ['hs_note_body'],
         limit: 200
       });

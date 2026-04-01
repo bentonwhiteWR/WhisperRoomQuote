@@ -923,6 +923,9 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/shipping-board' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
+      // Ensure tracking_number property exists (creates it if not)
+      await ensureHubSpotProperties();
+
       // Fetch shipped deals with tracking from HubSpot
       const searchRes = await httpsRequest({
         hostname: 'api.hubapi.com',

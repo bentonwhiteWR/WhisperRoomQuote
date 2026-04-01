@@ -966,7 +966,7 @@ const server = http.createServer(async (req, res) => {
         const carrier = p.freight_carrier || '';
         const tracking = p.tracking_number || '';
         let trackingUrl = '';
-        if (carrier === 'ABF')  trackingUrl = `https://view.arcb.com/nlo/tools/tracking?pro=${tracking}`;
+        if (carrier === 'ABF')  trackingUrl = `https://view.arcb.com/nlo/tools/tracking/${tracking}`;
         if (carrier === 'OD')   trackingUrl = `https://www.odfl.com/us/en/tools/trace-track-ltl-freight.html?pro=${tracking}`;
         if (carrier === 'UPS')  trackingUrl = `https://www.ups.com/track?tracknum=${tracking}`;
         if (carrier === 'FedEx') trackingUrl = `https://www.fedex.com/en-us/tracking.html?tracknumbers=${tracking}`;

@@ -7,6 +7,133 @@ const fs      = require('fs');
 const path    = require('path');
 const url     = require('url');
 const crypto  = require('crypto');
+const { Pool } = require('pg');
+
+// ── PostgreSQL Database ───────────────────────────────────────────
+const db = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+});
+
+async function initDb() {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS quotes (
+        id            SERIAL PRIMARY KEY,
+        quote_number  TEXT UNIQUE NOT NULL,
+        deal_id       TEXT,
+        contact_id    TEXT,
+        deal_name     TEXT,
+        customer_name TEXT,
+        company       TEXT,
+        rep_id        TEXT,
+        total         NUMERIC(12,2),
+        date          TEXT,
+        quote_link    TEXT,
+        json_snapshot JSONB NOT NULL,
+        created_at    TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_quotes_quote_number ON quotes(quote_number)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_quotes_deal_id      ON quotes(deal_id)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_quotes_contact_id   ON quotes(contact_id)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_quotes_rep_id       ON quotes(rep_id)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_quotes_created_at   ON quotes(created_at DESC)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_quotes_company      ON quotes(lower(company))`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_quotes_customer_name ON quotes(lower(customer_name))`);
+    console.log('Database ready');
+  } catch(e) {
+    console.warn('DB init skipped (no DATABASE_URL?):', e.message);
+  }
+}
+
+async function saveQuoteToDb(quoteData) {
+  if (!db || !process.env.DATABASE_URL) return null;
+  try {
+    const { quoteNumber, dealId, contactId, dealName, customer, total, date, ownerId } = quoteData;
+    const customerName = customer ? [customer.firstName, customer.lastName].filter(Boolean).join(' ') : '';
+    const company = customer ? (customer.company || '') : '';
+    const quoteLink = quoteNumber ? `https://whisperroomquote.up.railway.app/q/${quoteNumber}` : null;
+
+    const res = await db.query(`
+      INSERT INTO quotes
+        (quote_number, deal_id, contact_id, deal_name, customer_name, company, rep_id, total, date, quote_link, json_snapshot)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      ON CONFLICT (quote_number) DO UPDATE SET
+        deal_id       = EXCLUDED.deal_id,
+        contact_id    = EXCLUDED.contact_id,
+        deal_name     = EXCLUDED.deal_name,
+        customer_name = EXCLUDED.customer_name,
+        company       = EXCLUDED.company,
+        rep_id        = EXCLUDED.rep_id,
+        total         = EXCLUDED.total,
+        date          = EXCLUDED.date,
+        quote_link    = EXCLUDED.quote_link,
+        json_snapshot = EXCLUDED.json_snapshot
+      RETURNING id
+    `, [
+      quoteNumber, dealId || null, contactId || null, dealName || null,
+      customerName, company, ownerId || null,
+      total ? parseFloat(total) : null,
+      date || null, quoteLink, JSON.stringify(quoteData)
+    ]);
+
+    return res.rows[0]?.id;
+  } catch(e) {
+    console.warn('DB save failed:', e.message);
+    return null;
+  }
+}
+
+async function getQuoteFromDb(quoteNumber) {
+  if (!db || !process.env.DATABASE_URL) return null;
+  try {
+    const res = await db.query(
+      'SELECT json_snapshot FROM quotes WHERE quote_number = $1',
+      [quoteNumber]
+    );
+    if (res.rows.length === 0) return null;
+    return res.rows[0].json_snapshot;
+  } catch(e) {
+    console.warn('DB get failed:', e.message);
+    return null;
+  }
+}
+
+async function searchQuotesInDb(query, repId, limit = 100, offset = 0) {
+  if (!db || !process.env.DATABASE_URL) return null;
+  try {
+    let where = 'WHERE 1=1';
+    const params = [];
+    let p = 1;
+
+    if (query) {
+      params.push(`%${query.toLowerCase()}%`);
+      where += ` AND (lower(customer_name) LIKE $${p} OR lower(company) LIKE $${p} OR lower(deal_name) LIKE $${p} OR quote_number LIKE $${p})`;
+      p++;
+    }
+    if (repId) {
+      params.push(repId);
+      where += ` AND rep_id = $${p}`;
+      p++;
+    }
+
+    params.push(limit, offset);
+    const res = await db.query(`
+      SELECT id, quote_number, deal_id, deal_name, customer_name, company, rep_id, total, date, quote_link, created_at, json_snapshot
+      FROM quotes
+      ${where}
+      ORDER BY created_at DESC
+      LIMIT $${p} OFFSET $${p+1}
+    `, params);
+
+    const countRes = await db.query(`SELECT COUNT(*) FROM quotes ${where}`, params.slice(0, p-1));
+    return { results: res.rows, total: parseInt(countRes.rows[0].count) };
+  } catch(e) {
+    console.warn('DB search failed:', e.message);
+    return null;
+  }
+}
 
 // ── Quote History via HubSpot Notes ──────────────────────────────
 // Stored as notes on deals - persistent, visible in HubSpot, never wiped
@@ -713,8 +840,19 @@ const server = http.createServer(async (req, res) => {
   // ── API: Get quote history ──
   if (pathname === '/api/history' && req.method === 'GET') {
     try {
-      const history = await fetchQuoteHistory();
-      json({ results: history });
+      const q = parsed.query.q || '';
+      const repId = parsed.query.rep || '';
+      const limit = Math.min(parseInt(parsed.query.limit || '100'), 200);
+      const offset = parseInt(parsed.query.offset || '0');
+
+      // Try DB first, fall back to HubSpot Notes
+      const dbResults = await searchQuotesInDb(q, repId, limit, offset);
+      if (dbResults) {
+        json({ results: dbResults.results.map(r => r.json_snapshot), total: dbResults.total, source: 'db' });
+      } else {
+        const history = await fetchQuoteHistory();
+        json({ results: history, source: 'hubspot' });
+      }
     } catch(e) { json({error: e.message}, 500); }
     return;
   }
@@ -1037,7 +1175,16 @@ const server = http.createServer(async (req, res) => {
         } catch(e) { console.warn('Contact quote history update failed:', e.message); }
       }
 
-      // Save quote snapshot as note on the deal
+      // Save to PostgreSQL DB (primary storage)
+      try {
+        await saveQuoteToDb({
+          quoteNumber, dealId, contactId, dealName, ownerId, total,
+          date: new Date().toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}),
+          customer, lineItems, discount, freight, tax,
+        });
+      } catch(e) { console.warn('DB save error:', e.message); }
+
+      // Save quote snapshot as note on the deal (backup/HubSpot visibility)
       try {
         await saveQuoteNote(dealId, {
           dealName, quoteNumber,
@@ -1066,28 +1213,47 @@ const server = http.createServer(async (req, res) => {
     const quoteId = decodeURIComponent(pathname.replace('/q/', '').trim());
     if (!quoteId) { res.writeHead(404); res.end('Not found'); return; }
     try {
-      const notesRes = await httpsRequest({
-        hostname: 'api.hubapi.com',
-        path: '/crm/v3/objects/notes/search',
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-      }, {
-        filterGroups: [{ filters: [{ propertyName: 'hs_note_body', operator: 'CONTAINS_TOKEN', value: quoteId }] }],
-        properties: ['hs_note_body', 'hs_timestamp'],
-        limit: 10
-      });
+      // Try DB first (fast), fall back to HubSpot Notes (legacy)
+      let quoteData = await getQuoteFromDb(quoteId);
 
-      const notes = notesRes.body.results || [];
-      let quoteData = null;
-      for (const note of notes) {
-        try {
-          const body = note.properties.hs_note_body || '';
-          const m = body.match(/WR_QUOTE_DATA:(.+):END_WR_QUOTE/s);
-          if (m) {
-            const parsed = JSON.parse(m[1]);
-            if (String(parsed.quoteNumber) === String(quoteId)) { quoteData = parsed; break; }
-          }
-        } catch(e) { continue; }
+      if (!quoteData) {
+        // Legacy: search HubSpot notes
+        const notesRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/notes/search',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, {
+          filterGroups: [
+            { filters: [{ propertyName: 'hs_note_body', operator: 'CONTAINS_TOKEN', value: quoteId }] },
+          ],
+          properties: ['hs_note_body', 'hs_timestamp'],
+          limit: 10
+        });
+
+        const notes = notesRes.body.results || [];
+        // Collect ALL matching snapshots, then pick the best one:
+        // prefer the one with lineItems (full quote), most recently saved
+        const candidates = [];
+        for (const note of notes) {
+          try {
+            const body = note.properties.hs_note_body || '';
+            const m = body.match(/WR_QUOTE_DATA:(.+):END_WR_QUOTE/s);
+            if (m) {
+              const parsed = JSON.parse(m[1]);
+              if (String(parsed.quoteNumber) === String(quoteId)) {
+                candidates.push({ data: parsed, ts: note.properties.hs_timestamp || '' });
+              }
+            }
+          } catch(e) { continue; }
+        }
+        if (candidates.length > 0) {
+          // Prefer full snapshots (have lineItems), then most recent
+          const full = candidates.filter(c => c.data.lineItems && c.data.lineItems.length > 0);
+          const pool = full.length > 0 ? full : candidates;
+          pool.sort((a, b) => b.ts.localeCompare(a.ts));
+          quoteData = pool[0].data;
+        }
       }
 
       if (!quoteData) {
@@ -1350,9 +1516,44 @@ tbody tr:last-child td{border-bottom:none}
   // ── API: Accept Quote (from shareable link page) ──────────────
   if (pathname === '/api/accept-quote' && req.method === 'POST') {
     try {
-      const { quoteNumber, dealId, contactId } = JSON.parse(await readBody(req));
+      const body = JSON.parse(await readBody(req));
+      const { quoteNumber } = body;
+      // dealId comes from the quote snapshot in DB or HubSpot — more reliable than embedded template
+      let dealId = body.dealId;
 
-      const results = {};
+      // If dealId is missing or empty, look it up from the DB or HubSpot snapshot
+      if (!dealId) {
+        const snapshot = await getQuoteFromDb(quoteNumber);
+        if (snapshot && snapshot.dealId) {
+          dealId = snapshot.dealId;
+        } else {
+          // Fall back: search notes for most complete snapshot
+          const notesRes = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: '/crm/v3/objects/notes/search',
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, {
+            filterGroups: [{ filters: [{ propertyName: 'hs_note_body', operator: 'CONTAINS_TOKEN', value: quoteNumber }] }],
+            properties: ['hs_note_body', 'hs_timestamp'],
+            sorts: [{ propertyName: 'hs_timestamp', direction: 'DESCENDING' }],
+            limit: 10
+          });
+          for (const note of (notesRes.body.results || [])) {
+            const m = (note.properties.hs_note_body || '').match(/WR_QUOTE_DATA:(.+):END_WR_QUOTE/s);
+            if (m) {
+              const parsed = JSON.parse(m[1]);
+              if (String(parsed.quoteNumber) === String(quoteNumber) && parsed.lineItems?.length > 0 && parsed.dealId) {
+                dealId = parsed.dealId;
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      console.log(`Accept quote #${quoteNumber} → dealId: ${dealId}`);
+      const results = { quoteNumber, resolvedDealId: dealId };
 
       // 1. Advance deal stage to Verbal Confirmation
       if (dealId) {
@@ -1363,6 +1564,10 @@ tbody tr:last-child td{border-bottom:none}
           headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
         }, { properties: { dealstage: 'contractsent' } });
         results.stageUpdated = !stageRes.body.error;
+        if (stageRes.body.error) console.warn('Stage update failed:', stageRes.body.message);
+      } else {
+        results.warning = 'No dealId found — stage not updated';
+        console.warn(`Accept quote #${quoteNumber}: no dealId found`);
       }
 
       // 2. Create a HubSpot task for the deal owner
@@ -1400,15 +1605,24 @@ tbody tr:last-child td{border-bottom:none}
         }
       }
 
-      // 3. Log a note on the deal
+      // 3. Log a plain note on the deal (NOT a WR_QUOTE_DATA note — just an activity log)
       if (dealId) {
-        await saveQuoteNote(dealId, {
-          dealName: `Quote #${quoteNumber} accepted by customer`,
-          quoteNumber,
-          savedAt: new Date().toISOString(),
-          acceptedAt: new Date().toISOString(),
+        const acceptNote = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/notes',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, {
+          properties: {
+            hs_note_body: `✓ Quote #${quoteNumber} accepted by customer on ${new Date().toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'})}.`,
+            hs_timestamp: new Date().toISOString(),
+          },
+          associations: [{
+            to: { id: dealId },
+            types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 214 }]
+          }]
         });
-        results.noteLogged = true;
+        results.noteLogged = !!acceptNote.body?.id;
       }
 
       json({ success: true, results });
@@ -1494,6 +1708,7 @@ async function ensureHubSpotProperties() {
 }
 
 server.listen(PORT, '0.0.0.0', () => {
+  initDb();
   ensureHubSpotProperties();
   console.log(`WhisperRoom Quote Builder running on port ${PORT}`);
   console.log(`HubSpot token: ${HS_TOKEN ? HS_TOKEN.substring(0,12) + '...' : 'NOT SET'}`);

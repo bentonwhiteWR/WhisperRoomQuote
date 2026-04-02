@@ -152,77 +152,36 @@ async function searchQuotesInDb(query, repId, limit = 100, offset = 0) {
 }
 
 // ── Quote History via HubSpot Notes ──────────────────────────────
-// Stored as notes on deals - persistent, visible in HubSpot, never wiped
-
-async function saveQuoteNote(dealId, quoteData) {
-  const snapshotData = {
-    ...quoteData,
-    dealId: dealId,   // save so history restore can link directly
-    id: crypto.randomBytes(8).toString('hex'),
-    savedAt: new Date().toISOString()
-  };
-  // WR_QUOTE_DATA markers allow the /q/:quoteNumber route to find this note
-  const noteBody = 'WR_QUOTE_DATA:' + JSON.stringify(snapshotData) + ':END_WR_QUOTE';
-
-  // Create note
-  const note = await httpsRequest({
-    hostname: 'api.hubapi.com',
-    path: '/crm/v3/objects/notes',
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-  }, {
-    properties: {
-      hs_note_body: noteBody,
-      hs_timestamp: new Date().toISOString(),
-    }
-  });
-
-  if (note.body && note.body.id) {
-    // Associate note with deal
-    await httpsRequest({
-      hostname: 'api.hubapi.com',
-      path: `/crm/v3/objects/notes/${note.body.id}/associations/deals/${dealId}/note_to_deal`,
-      method: 'PUT',
-      headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-    });
-  }
-  return note.body;
-}
-
 async function fetchQuoteHistory() {
-  // Search for notes in BOTH old (QUOTE_SNAPSHOT::) and new (WR_QUOTE_DATA:) formats
-  const res = await httpsRequest({
-    hostname: 'api.hubapi.com',
-    path: '/crm/v3/objects/notes/search',
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-  }, {
-    filterGroups: [
-      { filters: [{ propertyName: 'hs_note_body', operator: 'CONTAINS_TOKEN', value: 'QUOTE_SNAPSHOT::' }] },
-      { filters: [{ propertyName: 'hs_note_body', operator: 'CONTAINS_TOKEN', value: 'WR_QUOTE_DATA:' }] },
-    ],
-    properties: ['hs_note_body', 'hs_timestamp'],
-    sorts: [{ propertyName: 'hs_timestamp', direction: 'DESCENDING' }],
-    limit: 200
-  });
-
-  if (!res.body || !res.body.results) return [];
-
-  return res.body.results.map(note => {
-    try {
-      const body = note.properties.hs_note_body || '';
-      let parsed = null;
-      // New format: WR_QUOTE_DATA:{...}:END_WR_QUOTE
-      const newMatch = body.match(/WR_QUOTE_DATA:(.+):END_WR_QUOTE/s);
-      if (newMatch) {
-        parsed = JSON.parse(newMatch[1]);
-      } else if (body.includes('QUOTE_SNAPSHOT::')) {
-        // Old format: QUOTE_SNAPSHOT::{...}
-        parsed = JSON.parse(body.replace('QUOTE_SNAPSHOT::', ''));
-      }
-      return parsed;
-    } catch(e) { return null; }
-  }).filter(Boolean);
+  // DB-only — notes system removed
+  if (!db) return [];
+  try {
+    const res = await db.query(`
+      SELECT quote_number, deal_id, deal_name, customer_name, company,
+             rep_id, total, date, quote_link, json_snapshot, created_at
+      FROM quotes ORDER BY created_at DESC LIMIT 200
+    `);
+    return res.rows.map(r => ({
+      id: r.json_snapshot?.id || r.quote_number,
+      quoteNumber: r.quote_number,
+      dealId: r.deal_id,
+      dealName: r.deal_name,
+      customer: {
+        firstName: r.customer_name?.split(' ')[0] || '',
+        lastName:  r.customer_name?.split(' ').slice(1).join(' ') || '',
+        company:   r.company || ''
+      },
+      ownerId: r.rep_id,
+      total: r.total,
+      date: r.date,
+      quoteLink: r.quote_link,
+      savedAt: r.created_at,
+      ...r.json_snapshot
+    }));
+  } catch(e) {
+    console.warn('fetchQuoteHistory:', e.message);
+    return [];
+  }
 }
 
 const PORT         = process.env.PORT || 3457;
@@ -238,7 +197,13 @@ const NMFC_ITEM    = '027880';
 const NMFC_SUB     = '02';
 const FREIGHT_CLASS = '100';
 
-const sessions = new Set();
+const sessions      = new Set();
+const oauthSessions = new Map(); // token → { email, name, ownerId, expiresAt }
+const oauthStates   = new Set(); // CSRF state tokens
+
+const HS_CLIENT_ID     = process.env.HS_CLIENT_ID     || '';
+const HS_CLIENT_SECRET = process.env.HS_CLIENT_SECRET || '';
+const HS_REDIRECT_URI  = process.env.HS_REDIRECT_URI  || 'https://whisperroomquote.up.railway.app/auth/callback';
 
 // ── Nexus states (freight taxability per state) ───────────────────
 const NEXUS_STATES = {
@@ -259,7 +224,7 @@ const NEXUS_STATES = {
 };
 
 // ── HTTPS helper ──────────────────────────────────────────────────
-function httpsRequest(options, body) {
+function httpsRequest(options, body, rawBody) {
   return new Promise((resolve, reject) => {
     const req = https.request(options, (res) => {
       let data = '';
@@ -270,7 +235,8 @@ function httpsRequest(options, body) {
       });
     });
     req.on('error', reject);
-    if (body) req.write(typeof body === 'string' ? body : JSON.stringify(body));
+    if (rawBody) req.write(rawBody);
+    else if (body) req.write(typeof body === 'string' ? body : JSON.stringify(body));
     req.end();
   });
 }
@@ -713,7 +679,21 @@ function parseCookies(req) {
 }
 function isAuth(req) {
   const c = parseCookies(req);
+  if (c.wr_oauth_session && oauthSessions.has(c.wr_oauth_session)) {
+    const s = oauthSessions.get(c.wr_oauth_session);
+    if (s.expiresAt > Date.now()) return true;
+    oauthSessions.delete(c.wr_oauth_session);
+  }
   return c.wr_qt_session && sessions.has(c.wr_qt_session);
+}
+
+function getSession(req) {
+  const c = parseCookies(req);
+  if (c.wr_oauth_session && oauthSessions.has(c.wr_oauth_session)) {
+    const s = oauthSessions.get(c.wr_oauth_session);
+    if (s.expiresAt > Date.now()) return s;
+  }
+  return null;
 }
 
 // ── Request body parser ───────────────────────────────────────────
@@ -728,34 +708,42 @@ function readBody(req) {
 // ── Login page HTML ───────────────────────────────────────────────
 const LOGIN_HTML = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WhisperRoom Quote Builder</title>
+<title>WhisperRoom — Login</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial Black,sans-serif' font-size='18' font-weight='900' fill='%23e8531a'>W</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@400;500&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0a0a0a;color:#f0ede8;font-family:'DM Mono',monospace;min-height:100vh;display:flex;align-items:center;justify-content:center}
 .box{width:360px;padding:40px}
 .logo{font-family:'Syne',sans-serif;font-size:30px;font-weight:800;margin-bottom:4px}
 .logo span{color:#e8531a}
-.sub{font-size:11px;color:#7a7672;text-transform:uppercase;letter-spacing:.1em;margin-bottom:40px}
+.sub{font-size:11px;color:#7a7672;text-transform:uppercase;letter-spacing:.1em;margin-bottom:32px}
+.hs-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:13px 20px;background:#ff7a59;border:none;border-radius:6px;color:#fff;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;text-decoration:none;margin-bottom:20px;transition:background .15s}
+.hs-btn:hover{background:#ff6a45}
+.divider{display:flex;align-items:center;gap:12px;margin-bottom:20px;color:#444;font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:#2e2e2e}
 label{font-size:11px;color:#7a7672;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px}
 input{width:100%;background:#181818;border:1px solid #2e2e2e;border-radius:4px;color:#f0ede8;font-family:'DM Mono',monospace;font-size:14px;padding:12px;outline:none}
 input:focus{border-color:#e8531a}
-button{margin-top:16px;width:100%;padding:14px;background:#e8531a;border:none;border-radius:4px;color:white;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
-button:hover{background:#d4450e}
+.pw-btn{margin-top:16px;width:100%;padding:14px;background:#333;border:none;border-radius:4px;color:#f0ede8;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;transition:background .15s}
+.pw-btn:hover{background:#444}
 .err{margin-top:12px;color:#e74c3c;font-size:12px;text-align:center}
 </style></head><body>
 <div class="box">
   <div class="logo">Whisper<span>Room</span></div>
-  <div class="sub">Quote Builder — Internal</div>
-  <label>Password</label>
+  <div class="sub">Internal Tools</div>
+  {{HS_BTN}}
+  <div class="divider">or password</div>
   <form method="POST" action="/login">
+    <label>Password</label>
     <input type="password" name="password" placeholder="Enter password" autofocus>
-    <button type="submit">Access Tool</button>
+    <button type="submit" class="pw-btn">Sign In</button>
     {{ERROR}}
   </form>
 </div></body></html>`;
 
 // ── Main HTML (served from file) ──────────────────────────────────
+const HSO_BTN = `<a href="/auth/hubspot" class="hs-btn"><svg width="18" height="18" viewBox="0 0 512 512" fill="white"><path d="M267.4 211.6c-25.1 23.7-40.8 57-40.8 93.8 0 29.3 9.7 56.3 26 78L203.1 434c-4.4-1.6-9.1-2.5-14-2.5-21.9 0-39.7 17.8-39.7 39.7S167.2 511 189.1 511s39.7-17.8 39.7-39.7c0-4.9-.9-9.6-2.5-14l49.2-50.4c22 16.4 49.2 26.1 78.7 26.1 73.5 0 133.1-59.6 133.1-133.1 0-67.7-50.6-123.5-116.1-131.8v-65.2c13.4-6.8 22.6-20.7 22.6-36.7 0-22.8-18.5-41.3-41.3-41.3-22.8 0-41.3 18.5-41.3 41.3 0 16 9.2 29.9 22.6 36.7v65.7c-22.5 2.9-43.1 11.5-60.4 24.6zM354.2 439.8c-46.6 0-84.4-37.8-84.4-84.4s37.8-84.4 84.4-84.4 84.4 37.8 84.4 84.4-37.8 84.4-84.4 84.4z"/></svg> Sign in with HubSpot</a>`;
 const MAIN_HTML_PATH = path.join(__dirname, 'quote-builder.html');
 
 // ── Server ────────────────────────────────────────────────────────
@@ -773,6 +761,98 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify(data));
   };
 
+  // ── HubSpot OAuth: Initiate ──────────────────────────────────────
+  if (pathname === '/auth/hubspot') {
+    if (!HS_CLIENT_ID) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    const state = generateToken();
+    oauthStates.add(state);
+    setTimeout(() => oauthStates.delete(state), 600000);
+    const scopes = 'crm.objects.contacts.read crm.objects.deals.read crm.objects.deals.write oauth';
+    const authUrl = `https://app.hubspot.com/oauth/authorize?client_id=${HS_CLIENT_ID}&redirect_uri=${encodeURIComponent(HS_REDIRECT_URI)}&scope=${encodeURIComponent(scopes)}&state=${state}`;
+    res.writeHead(302, { Location: authUrl });
+    res.end();
+    return;
+  }
+
+  // ── HubSpot OAuth: Callback ───────────────────────────────────────
+  if (pathname === '/auth/callback') {
+    const { code, state, error } = parsed.query;
+    if (error || !code || !oauthStates.has(state)) {
+      res.writeHead(302, { Location: '/?auth_error=1' }); res.end(); return;
+    }
+    oauthStates.delete(state);
+    try {
+      // Exchange code for tokens
+      const tokenRes = await httpsRequest({
+        hostname: 'api.hubapi.com', path: '/oauth/v1/token', method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      }, null, `grant_type=authorization_code&client_id=${HS_CLIENT_ID}&client_secret=${HS_CLIENT_SECRET}&redirect_uri=${encodeURIComponent(HS_REDIRECT_URI)}&code=${code}`);
+      const { access_token, expires_in } = tokenRes.body;
+
+      // Get user info from token
+      const tokenInfoRes = await httpsRequest({
+        hostname: 'api.hubapi.com', path: `/oauth/v1/access-tokens/${access_token}`,
+        method: 'GET', headers: { 'Authorization': `Bearer ${access_token}` }
+      });
+      const { user, hub_id } = tokenInfoRes.body;
+
+      // Verify correct portal
+      if (String(hub_id) !== '5764220') {
+        res.writeHead(302, { Location: '/?auth_error=wrong_portal' }); res.end(); return;
+      }
+
+      // Look up their owner record for name + ownerId
+      let ownerId = null; let displayName = user.split('@')[0];
+      try {
+        const ownerRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v3/owners?email=${encodeURIComponent(user)}&limit=1`,
+          method: 'GET', headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+        });
+        const owners = ownerRes.body?.results || [];
+        if (owners.length) {
+          ownerId = owners[0].id;
+          displayName = [owners[0].firstName, owners[0].lastName].filter(Boolean).join(' ') || displayName;
+        }
+      } catch(e) { /* non-fatal */ }
+
+      const sessionToken = generateToken();
+      oauthSessions.set(sessionToken, {
+        email: user, name: displayName, ownerId,
+        expiresAt: Date.now() + ((expires_in || 21600) * 1000)
+      });
+      res.writeHead(302, {
+        'Set-Cookie': `wr_oauth_session=${sessionToken}; HttpOnly; Path=/; Max-Age=28800`,
+        'Location': '/'
+      });
+      res.end();
+    } catch(e) {
+      console.error('OAuth error:', e.message);
+      res.writeHead(302, { Location: '/?auth_error=1' }); res.end();
+    }
+    return;
+  }
+
+  // ── Logout ────────────────────────────────────────────────────────
+  if (pathname === '/auth/logout') {
+    const c = parseCookies(req);
+    if (c.wr_oauth_session) oauthSessions.delete(c.wr_oauth_session);
+    if (c.wr_qt_session)    sessions.delete(c.wr_qt_session);
+    res.writeHead(302, {
+      'Set-Cookie': ['wr_oauth_session=; HttpOnly; Path=/; Max-Age=0', 'wr_qt_session=; HttpOnly; Path=/; Max-Age=0'],
+      'Location': '/'
+    });
+    res.end(); return;
+  }
+
+  // ── Session info ──────────────────────────────────────────────────
+  if (pathname === '/api/me' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const sess = getSession(req);
+    json({ name: sess?.name || 'User', email: sess?.email || '', ownerId: sess?.ownerId || null });
+    return;
+  }
+
   // ── Login ──
   if (pathname === '/login' && req.method === 'POST') {
     const body = await readBody(req);
@@ -787,7 +867,7 @@ const server = http.createServer(async (req, res) => {
       res.end();
     } else {
       res.writeHead(200, {'Content-Type':'text/html'});
-      res.end(LOGIN_HTML.replace('{{ERROR}}', '<div class="err">Incorrect password.</div>'));
+      res.end(LOGIN_HTML.replace('{{ERROR}}', '<div class="err">Incorrect password.</div>').replace('{{HS_BTN}}', HS_CLIENT_ID ? HSO_BTN : ''));
     }
     return;
   }
@@ -798,7 +878,7 @@ const server = http.createServer(async (req, res) => {
       json({ error: 'Unauthorized' }, 401); return;
     }
     res.writeHead(200, {'Content-Type':'text/html'});
-    res.end(LOGIN_HTML.replace('{{ERROR}}',''));
+    res.end(LOGIN_HTML.replace('{{ERROR}}','').replace('{{HS_BTN}}', HS_CLIENT_ID ? HSO_BTN : ''));
     return;
   }
 
@@ -923,9 +1003,6 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/shipping-board' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
-      // Ensure tracking_number property exists (creates it if not)
-      await ensureHubSpotProperties();
-
       // Fetch shipped deals with tracking from HubSpot
       const searchRes = await httpsRequest({
         hostname: 'api.hubapi.com',
@@ -1045,14 +1122,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ── API: Save quote to history (called after deal creation) ──
+  // ── API: Save quote to history (DB only) ─────────────────────────
   if (pathname === '/api/history' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      // Save as note on the deal if dealId provided
-      if (body.dealId) {
-        await saveQuoteNote(body.dealId, body);
-      }
+      await saveQuoteToDb(body);
       json({ success: true });
     } catch(e) { json({error: e.message}, 500); }
     return;
@@ -1391,48 +1465,7 @@ const server = http.createServer(async (req, res) => {
     const quoteId = decodeURIComponent(pathname.replace('/q/', '').trim());
     if (!quoteId) { res.writeHead(404); res.end('Not found'); return; }
     try {
-      // Try DB first (fast), fall back to HubSpot Notes (legacy)
       let quoteData = await getQuoteFromDb(quoteId);
-
-      if (!quoteData) {
-        // Legacy: search HubSpot notes
-        const notesRes = await httpsRequest({
-          hostname: 'api.hubapi.com',
-          path: '/crm/v3/objects/notes/search',
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-        }, {
-          filterGroups: [
-            { filters: [{ propertyName: 'hs_note_body', operator: 'CONTAINS_TOKEN', value: quoteId }] },
-          ],
-          properties: ['hs_note_body', 'hs_timestamp'],
-          limit: 10
-        });
-
-        const notes = notesRes.body.results || [];
-        // Collect ALL matching snapshots, then pick the best one:
-        // prefer the one with lineItems (full quote), most recently saved
-        const candidates = [];
-        for (const note of notes) {
-          try {
-            const body = note.properties.hs_note_body || '';
-            const m = body.match(/WR_QUOTE_DATA:(.+):END_WR_QUOTE/s);
-            if (m) {
-              const parsed = JSON.parse(m[1]);
-              if (String(parsed.quoteNumber) === String(quoteId)) {
-                candidates.push({ data: parsed, ts: note.properties.hs_timestamp || '' });
-              }
-            }
-          } catch(e) { continue; }
-        }
-        if (candidates.length > 0) {
-          // Prefer full snapshots (have lineItems), then most recent
-          const full = candidates.filter(c => c.data.lineItems && c.data.lineItems.length > 0);
-          const pool = full.length > 0 ? full : candidates;
-          pool.sort((a, b) => b.ts.localeCompare(a.ts));
-          quoteData = pool[0].data;
-        }
-      }
 
       if (!quoteData) {
         res.writeHead(404, { 'Content-Type': 'text/html' });
@@ -1718,15 +1751,6 @@ tbody tr:last-child td{border-bottom:none}
     return;
   }
 
-  // ── One-time property setup endpoint ─────────────────────────────
-  if (pathname === '/api/ensure-properties' && req.method === 'POST') {
-    const body = JSON.parse(await readBody(req));
-    if (body.password !== process.env.WR_PASSWORD) { json({ error: 'Unauthorized' }, 401); return; }
-    await ensureHubSpotProperties();
-    json({ ok: true, message: 'Properties ensured' });
-    return;
-  }
-
   // ── API: Batch check current prices for line items ──────────────
   if (pathname === '/api/check-prices' && req.method === 'POST') {
     try {
@@ -1778,29 +1802,6 @@ tbody tr:last-child td{border-bottom:none}
         const snapshot = await getQuoteFromDb(quoteNumber);
         if (snapshot && snapshot.dealId) {
           dealId = snapshot.dealId;
-        } else {
-          // Fall back: search notes for most complete snapshot
-          const notesRes = await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: '/crm/v3/objects/notes/search',
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-          }, {
-            filterGroups: [{ filters: [{ propertyName: 'hs_note_body', operator: 'CONTAINS_TOKEN', value: quoteNumber }] }],
-            properties: ['hs_note_body', 'hs_timestamp'],
-            sorts: [{ propertyName: 'hs_timestamp', direction: 'DESCENDING' }],
-            limit: 10
-          });
-          for (const note of (notesRes.body.results || [])) {
-            const m = (note.properties.hs_note_body || '').match(/WR_QUOTE_DATA:(.+):END_WR_QUOTE/s);
-            if (m) {
-              const parsed = JSON.parse(m[1]);
-              if (String(parsed.quoteNumber) === String(quoteNumber) && parsed.lineItems?.length > 0 && parsed.dealId) {
-                dealId = parsed.dealId;
-                break;
-              }
-            }
-          }
         }
       }
 
@@ -1890,8 +1891,6 @@ tbody tr:last-child td{border-bottom:none}
     // Fire and forget — return immediately, run in background
     json({ success: true, message: 'Backfill started in background. Check /api/admin/backfill-status for progress.' });
     try {
-      await ensureHubSpotProperties();
-
       // Map: customer email → tracking number + carrier
       const emailToTracking = {
   "timothy.j.masi@us.mcd.com": { tracking: "78077872246", carrier: "OD" },
@@ -2010,139 +2009,13 @@ tbody tr:last-child td{border-bottom:none}
     return;
   }
 
-  // ── Admin: Delete all WR_QUOTE_DATA notes ───────────────────────
-  if (pathname === '/api/admin/clear-notes' && req.method === 'POST') {
-    try {
-      const body = JSON.parse(await readBody(req));
-      if (body.password !== PASSWORD) { json({ error: 'Unauthorized' }, 401); return; }
-
-      // Find all quote builder notes (both old and new format)
-      const searchRes = await httpsRequest({
-        hostname: 'api.hubapi.com',
-        path: '/crm/v3/objects/notes/search',
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-      }, {
-        filterGroups: [
-          { filters: [{ propertyName: 'hs_note_body', operator: 'CONTAINS_TOKEN', value: 'WR_QUOTE_DATA:' }] },
-          { filters: [{ propertyName: 'hs_note_body', operator: 'CONTAINS_TOKEN', value: 'QUOTE_SNAPSHOT::' }] }
-        ],
-        properties: ['hs_note_body'],
-        limit: 200
-      });
-
-      const notes = searchRes.body.results || [];
-      const deleted = [];
-      const errors = [];
-
-      for (const note of notes) {
-        try {
-          await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/notes/${note.id}`,
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-          });
-          deleted.push(note.id);
-        } catch(e) {
-          errors.push({ id: note.id, error: e.message });
-        }
-      }
-
-      json({ success: true, deleted: deleted.length, errors: errors.length, ids: deleted });
-    } catch(e) { json({ error: e.message }, 500); }
-    return;
-  }
-
   res.writeHead(404); res.end('Not found');
 });
 
-// Ensure quote_link deal property exists on startup
-async function ensureHubSpotProperties() {
-  // Properties to ensure exist, keyed by objectType
-  const propsToCreate = {
-    deals: [
-      {
-        name: 'tracking_number',
-        label: 'Tracking Number',
-        type: 'string',
-        fieldType: 'text',
-        groupName: 'dealinformation',
-        description: 'Freight carrier tracking / PRO number'
-      },
-      {
-        name: 'quote_link',
-        label: 'Quote Links',
-        type: 'string',
-        fieldType: 'textarea',
-        groupName: 'dealinformation',
-        description: 'All shareable customer quote links for this deal (newest first, with date and amount)'
-      },
-      {
-        name: 'quote_number',
-        label: 'Quote Number',
-        type: 'string',
-        fieldType: 'text',
-        groupName: 'dealinformation',
-        description: 'WhisperRoom internal quote number — searchable in deal pipeline'
-      },
-    ],
-    contacts: [
-      {
-        name: 'quote_links',
-        label: 'Quote History',
-        type: 'string',
-        fieldType: 'textarea',
-        groupName: 'contactinformation',
-        description: 'All WhisperRoom quotes sent to this contact across all deals (newest first)'
-      },
-      {
-        name: 'quote_number',
-        label: 'Latest Quote Number',
-        type: 'string',
-        fieldType: 'text',
-        groupName: 'contactinformation',
-        description: 'Most recent WhisperRoom quote number for this contact — searchable'
-      },
-      {
-        name: 'all_quote_numbers',
-        label: 'All Quote Numbers',
-        type: 'string',
-        fieldType: 'text',
-        groupName: 'contactinformation',
-        description: 'All WhisperRoom quote numbers for this contact, comma-separated'
-      },
-    ],
-  };
-
-  for (const [objectType, props] of Object.entries(propsToCreate)) {
-    for (const prop of props) {
-      try {
-        const check = await httpsRequest({
-          hostname: 'api.hubapi.com',
-          path: `/crm/v3/properties/${objectType}/${prop.name}`,
-          method: 'GET',
-          headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-        });
-        if (check.status === 200) { console.log(`${objectType}.${prop.name} exists`); continue; }
-        await httpsRequest({
-          hostname: 'api.hubapi.com',
-          path: `/crm/v3/properties/${objectType}`,
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-        }, prop);
-        console.log(`${objectType}.${prop.name} created`);
-      } catch(e) {
-        console.log(`${objectType}.${prop.name} skipped:`, e.message);
-      }
-    }
-  }
-}
-
 server.listen(PORT, '0.0.0.0', () => {
   initDb();
-  ensureHubSpotProperties();
   console.log(`WhisperRoom Quote Builder running on port ${PORT}`);
   console.log(`HubSpot token: ${HS_TOKEN ? HS_TOKEN.substring(0,12) + '...' : 'NOT SET'}`);
   console.log(`TaxJar key: ${TAXJAR_KEY ? TAXJAR_KEY.substring(0,8) + '...' : 'NOT SET'}`);
+  console.log(`HubSpot OAuth: ${HS_CLIENT_ID ? 'configured' : 'password-only mode'}`);
 });

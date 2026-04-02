@@ -2294,11 +2294,8 @@ tbody tr:last-child td{border-bottom:none}
         } catch(e) { console.warn('Line item create error:', e.message); }
       }
 
-      // 5. Create the invoice with required properties
-      // hs_invoice_status options: DRAFT, OPEN, PAID, VOIDED
-      // hs_payment_terms options: DUE_ON_RECEIPT, NET_10, NET_30, NET_60, NET_90
+      // 5. Create the invoice (properties only, no inline associations)
       const today = new Date().toISOString().split('T')[0];
-      const invoiceNumber = quoteNumber ? `INV-${quoteNumber}` : `INV-${Date.now()}`;
 
       const invoiceRes = await httpsRequest({
         hostname: 'api.hubapi.com',
@@ -2312,25 +2309,13 @@ tbody tr:last-child td{border-bottom:none}
           hs_title:           quoteNumber ? `Invoice — ${quoteNumber}` : 'Invoice',
           hs_invoice_date:    today,
           hs_due_date:        today,
-        },
-        // Associate deal and line items at creation time
-        associations: [
-          {
-            to: { id: dealId },
-            types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 176 }] // invoice_to_deal
-          },
-          ...createdLineItemIds.map(liId => ({
-            to: { id: liId },
-            types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 174 }] // invoice_to_line_item
-          }))
-        ]
+        }
       });
 
       console.log('Invoice create response:', JSON.stringify(invoiceRes.body));
 
       const invoiceId = invoiceRes.body?.id;
       if (!invoiceId) {
-        // Log full error for debugging
         console.error('Invoice create failed:', JSON.stringify(invoiceRes.body));
         const errMsg = invoiceRes.body?.message
           || (invoiceRes.body?.errors || []).map(e => e.message).join(', ')
@@ -2338,7 +2323,41 @@ tbody tr:last-child td{border-bottom:none}
         throw new Error('Error creating INVOICE: ' + errMsg);
       }
 
-      // 6. Return invoice URL
+      // 6. Associate invoice → deal using batch associations API
+      try {
+        await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v4/associations/invoices/deals/batch/create',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, {
+          inputs: [{
+            from: { id: invoiceId },
+            to:   { id: dealId },
+            types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 176 }]
+          }]
+        });
+      } catch(e) { console.warn('Invoice→deal association failed:', e.message); }
+
+      // 7. Associate invoice → line items using batch associations API
+      if (createdLineItemIds.length > 0) {
+        try {
+          await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: '/crm/v4/associations/invoices/line_items/batch/create',
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, {
+            inputs: createdLineItemIds.map(liId => ({
+              from: { id: invoiceId },
+              to:   { id: liId },
+              types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 174 }]
+            }))
+          });
+        } catch(e) { console.warn('Invoice→line_items association failed:', e.message); }
+      }
+
+      // 8. Return invoice URL
       const invoiceUrl = `https://app.hubspot.com/contacts/5764220/record/0-53/${invoiceId}`;
       json({ success: true, invoiceId, invoiceUrl });
 

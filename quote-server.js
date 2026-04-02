@@ -918,32 +918,30 @@ const server = http.createServer(async (req, res) => {
       const createCode = createRes.body?.meta?.code;
       console.log(`AfterShip create: ${createCode} for ${tracking}`);
 
-      // 2. Fetch tracking data — use slug+tracking_number for lookup
+      // 2. Fetch tracking data
       let trackingData = null;
 
-      // Try GET by slug/tracking_number first
-      if (slug) {
-        const getRes = await httpsRequest({
-          hostname: 'api.aftership.com',
-          path: `${AS_BASE}/trackings/${slug}/${tracking}`,
-          method: 'GET',
-          headers: { 'as-api-key': AFTERSHIP_KEY }
-        });
-        if (getRes.body?.data) {
-          trackingData = getRes.body.data;
-        }
-      }
+      // AfterShip 2026-01 API: GET by tracking_number (+ optional slug) via query params
+      const fetchParams = `tracking_number=${encodeURIComponent(tracking)}${slug ? '&slug=' + encodeURIComponent(slug) : ''}`;
+      const listRes = await httpsRequest({
+        hostname: 'api.aftership.com',
+        path: `${AS_BASE}/trackings?${fetchParams}`,
+        method: 'GET',
+        headers: { 'as-api-key': AFTERSHIP_KEY }
+      });
+      const items = listRes.body?.data?.trackings || [];
+      if (items.length) trackingData = items[0];
 
-      // Fall back to list search if slug lookup failed
-      if (!trackingData) {
-        const listRes = await httpsRequest({
+      // If slug search found nothing, retry without slug (carrier may differ from what HubSpot has)
+      if (!trackingData && slug) {
+        const retryRes = await httpsRequest({
           hostname: 'api.aftership.com',
-          path: `${AS_BASE}/trackings?tracking_numbers=${encodeURIComponent(tracking)}`,
+          path: `${AS_BASE}/trackings?tracking_number=${encodeURIComponent(tracking)}`,
           method: 'GET',
           headers: { 'as-api-key': AFTERSHIP_KEY }
         });
-        const items = listRes.body?.data?.trackings || [];
-        if (items.length) trackingData = items[0];
+        const retryItems = retryRes.body?.data?.trackings || [];
+        if (retryItems.length) trackingData = retryItems[0];
       }
 
       if (!trackingData) {
@@ -1005,21 +1003,22 @@ const server = http.createServer(async (req, res) => {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
       }, {
-        // Two filter groups (OR logic): deals with date_shipped set in last 30 days,
-        // OR deals with no date_shipped but closedate in last 30 days (shipping board
-        // should show all recent shipped deals regardless of which date field was used).
+        // OR across 4 scenarios: any Shipped-stage deal in last 30 days, whether it
+        // has tracking/carrier set or not, using either date_shipped or closedate.
+        // This ensures deals show up on the board even if Jeromy hasn't filled in
+        // carrier/tracking yet — they'll show as "No tracking" rows.
         filterGroups: [
           {
+            // Has date_shipped in last 30 days (fully filled out)
             filters: [
               { propertyName: 'dealstage', operator: 'EQ', value: '845719' },
-              { propertyName: 'freight_carrier', operator: 'HAS_PROPERTY' },
               { propertyName: 'date_shipped', operator: 'GTE', value: String(Date.now() - 30 * 24 * 60 * 60 * 1000) }
             ]
           },
           {
+            // No date_shipped but closedate in last 30 days
             filters: [
               { propertyName: 'dealstage', operator: 'EQ', value: '845719' },
-              { propertyName: 'freight_carrier', operator: 'HAS_PROPERTY' },
               { propertyName: 'date_shipped', operator: 'NOT_HAS_PROPERTY' },
               { propertyName: 'closedate', operator: 'GTE', value: String(Date.now() - 30 * 24 * 60 * 60 * 1000) }
             ]
@@ -1031,9 +1030,8 @@ const server = http.createServer(async (req, res) => {
         limit: 100
       });
 
-      const deals = (searchRes.body.results || []).filter(d =>
-        d.properties.freight_carrier
-      );
+      // Keep all shipped deals — those without carrier/tracking show as "No tracking" rows
+      const deals = searchRes.body.results || [];
 
       // Map owner IDs to names
       const ownerMap = {

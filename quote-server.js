@@ -920,80 +920,100 @@ const server = http.createServer(async (req, res) => {
     const tracking = parsed.query.tracking || '';
     if (!tracking) { json({ error: 'No tracking number' }, 400); return; }
 
+    const AFTERSHIP_KEY = process.env.AFTERSHIP_API_KEY || '';
+    if (!AFTERSHIP_KEY) {
+      json({ status: null, label: null, error: 'AfterShip not configured' });
+      return;
+    }
+
+    // Map our carrier codes to AfterShip slugs
+    const slugMap = {
+      'ABF': 'abf',
+      'OD':  'old-dominion',
+      'UPS': 'ups',
+      'FedEx': 'fedex',
+      'USPS': 'usps',
+    };
+    const slug = slugMap[carrier];
+
     try {
-      let result = { status: null, label: null, location: null, detail: null };
+      // AfterShip tracking API — GET /v4/trackings/:slug/:tracking
+      const asPath = slug
+        ? `/v4/trackings/${slug}/${tracking}`
+        : `/v4/trackings?tracking_numbers=${tracking}`;
 
-      if (carrier === 'ABF') {
-        // ABF XML tracking API
-        const abfRes = await httpsRequest({
-          hostname: 'www.abfs.com',
-          path: `/xml/trackxml.asp?ID=DT&uid=Q8MZK7K1&pw=189059-248A&AcctNum=2011001&ProNumber=${tracking}`,
-          method: 'GET',
-          headers: { 'Accept': 'text/xml' }
-        });
-        const xml = typeof abfRes.body === 'string' ? abfRes.body : JSON.stringify(abfRes.body);
-        // Parse key fields from ABF XML response
-        const statusMatch  = xml.match(/<ShipmentStatus>([^<]+)<\/ShipmentStatus>/i)
-                          || xml.match(/<Status>([^<]+)<\/Status>/i)
-                          || xml.match(/StatusDesc[^>]*>([^<]+)</i);
-        const locationMatch = xml.match(/<City>([^<]+)<\/City>/i);
-        const stateMatch    = xml.match(/<State>([^<]+)<\/State>/i);
-        const detailMatch   = xml.match(/<StatusDesc[^>]*>([^<]+)</i)
-                           || xml.match(/<Description>([^<]+)<\/Description>/i);
+      const asRes = await httpsRequest({
+        hostname: 'api.aftership.com',
+        path: asPath,
+        method: 'GET',
+        headers: {
+          'aftership-api-key': AFTERSHIP_KEY,
+          'Content-Type': 'application/json'
+        }
+      });
 
-        if (statusMatch) {
-          result.status = statusMatch[1].trim();
-          result.label  = statusMatch[1].trim();
-        }
-        if (locationMatch && stateMatch) {
-          result.location = locationMatch[1].trim() + ', ' + stateMatch[1].trim();
-        }
-        if (detailMatch) result.detail = detailMatch[1].trim();
+      const data = asRes.body?.data?.tracking || asRes.body?.data?.trackings?.[0];
 
-        // Normalize ABF status
-        if (result.status) {
-          const s = result.status.toUpperCase();
-          if (s.includes('DELIVER'))      { result.status = 'delivered'; result.label = 'Delivered'; }
-          else if (s.includes('OUT'))     { result.status = 'out_for_delivery'; result.label = 'Out for Delivery'; }
-          else if (s.includes('TRANSIT')) { result.status = 'in_transit'; result.label = 'In Transit'; }
-          else if (s.includes('PICKUP') || s.includes('PICKED')) { result.status = 'picked_up'; result.label = 'Picked Up'; }
-          else if (s.includes('EXCEPTION') || s.includes('DELAY')) { result.status = 'exception'; result.label = 'Exception'; }
-          else if (s.includes('SCHEDUL') || s.includes('TENDER')) { result.status = 'scheduled'; result.label = 'Scheduled'; }
+      if (!data) {
+        // Tracking not found in AfterShip — register it first then return pending
+        if (slug) {
+          try {
+            await httpsRequest({
+              hostname: 'api.aftership.com',
+              path: '/v4/trackings',
+              method: 'POST',
+              headers: {
+                'aftership-api-key': AFTERSHIP_KEY,
+                'Content-Type': 'application/json'
+              }
+            }, { tracking: { tracking_number: tracking, slug } });
+          } catch(e) { /* ignore — may already exist */ }
         }
+        json({ status: 'pending', label: 'Pending', location: null, eta: null, deliveredAt: null });
+        return;
       }
 
-      else if (carrier === 'OD') {
-        // Old Dominion tracking API
-        const odRes = await httpsRequest({
-          hostname: 'www.odfl.com',
-          path: `/us/en/tools/tracking-api.json?pro=${tracking}`,
-          method: 'GET',
-          headers: { 'Accept': 'application/json', 'User-Agent': 'WhisperRoom/1.0' }
-        });
-        const body = odRes.body;
-        if (body && typeof body === 'object') {
-          const shipment = body.shipment || body.shipments?.[0] || body;
-          const statusRaw = shipment.statusDescription || shipment.status || shipment.currentStatus || '';
-          const city  = shipment.currentCity  || shipment.city  || '';
-          const state = shipment.currentState || shipment.state || '';
-          if (statusRaw) {
-            result.status = statusRaw;
-            result.label  = statusRaw;
-            if (city && state) result.location = city + ', ' + state;
-            // Normalize
-            const s = statusRaw.toUpperCase();
-            if (s.includes('DELIVER'))      { result.status = 'delivered';    result.label = 'Delivered'; }
-            else if (s.includes('OUT FOR')) { result.status = 'out_for_delivery'; result.label = 'Out for Delivery'; }
-            else if (s.includes('TRANSIT')) { result.status = 'in_transit';   result.label = 'In Transit'; }
-            else if (s.includes('PICKUP') || s.includes('PICKED')) { result.status = 'picked_up'; result.label = 'Picked Up'; }
-            else if (s.includes('EXCEPTION')){ result.status = 'exception';  result.label = 'Exception'; }
-          }
-        }
+      // Normalize AfterShip tag → our status
+      const tag = data.tag || '';
+      const statusMap = {
+        'Delivered':        { status: 'delivered',        label: 'Delivered' },
+        'OutForDelivery':   { status: 'out_for_delivery', label: 'Out for Delivery' },
+        'InTransit':        { status: 'in_transit',       label: 'In Transit' },
+        'AttemptFail':      { status: 'exception',        label: 'Attempt Failed' },
+        'Exception':        { status: 'exception',        label: 'Exception' },
+        'InfoReceived':     { status: 'pending',          label: 'Info Received' },
+        'Pending':          { status: 'pending',          label: 'Pending' },
+        'AvailableForPickup': { status: 'pickup',         label: 'Available for Pickup' },
+      };
+      const normalized = statusMap[tag] || { status: 'in_transit', label: tag || 'In Transit' };
+
+      // Get last checkpoint location
+      const checkpoints = data.checkpoints || [];
+      const lastCheck = checkpoints[checkpoints.length - 1];
+      let location = null;
+      if (lastCheck) {
+        const parts = [lastCheck.city, lastCheck.state, lastCheck.country_iso3].filter(Boolean);
+        if (parts.length) location = parts.join(', ');
+        // Use checkpoint message as detail
+        normalized.detail = lastCheck.message || null;
       }
 
-      json(result);
+      // ETA and delivery date
+      const eta = data.expected_delivery || data.aftership_estimated_delivery_date || null;
+      const deliveredAt = tag === 'Delivered' ? (data.delivery_time || lastCheck?.checkpoint_time || null) : null;
+      const signedBy = data.signed_by || null;
+
+      json({
+        ...normalized,
+        location,
+        eta: eta ? eta.split('T')[0] : null,
+        deliveredAt: deliveredAt ? deliveredAt.split('T')[0] : null,
+        signedBy,
+        lastEvent: lastCheck?.message || null,
+        lastEventTime: lastCheck?.checkpoint_time ? lastCheck.checkpoint_time.split('T')[0] : null,
+      });
     } catch(e) {
-      console.warn('Track error:', e.message);
+      console.warn('AfterShip track error:', e.message);
       json({ status: null, label: null, error: e.message });
     }
     return;

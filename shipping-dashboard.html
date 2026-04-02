@@ -678,72 +678,77 @@ loadShipments();
 
 // ── Add Shipment Flow ─────────────────────────────────────────────
 let _selectedShipDeal = null;
-let _dealSearchTimer = null;
+let _allClosedWonDeals = [];
 
-function openAddShipment() {
+async function openAddShipment() {
   // Reset form
-  document.getElementById('shipDealSearch').value = '';
-  document.getElementById('shipDealResults').style.display = 'none';
+  _selectedShipDeal = null;
   document.getElementById('shipDealSelected').style.display = 'none';
+  document.getElementById('shipDealPickerWrap').style.display = 'block';
+  document.getElementById('shipDealFilter').value = '';
   document.getElementById('shipCarrier').value = '';
   document.getElementById('shipTracking').value = '';
   document.getElementById('shipErrorMsg').style.display = 'none';
-  _selectedShipDeal = null;
-
-  // Default date to today
-  const today = new Date().toISOString().split('T')[0];
-  document.getElementById('shipDate').value = today;
-
+  document.getElementById('shipDate').value = new Date().toISOString().split('T')[0];
   document.getElementById('addShipmentModal').style.display = 'flex';
+
+  // Load deals
+  renderDealList('<div style="padding:14px;font-size:12px;color:#666;text-align:center">Loading…</div>');
+  try {
+    const res = await fetch('/api/deals/closed-won', { credentials: 'include' });
+    const data = await res.json();
+    _allClosedWonDeals = data.results || [];
+    filterDealList('');
+  } catch(e) {
+    renderDealList('<div style="padding:14px;font-size:12px;color:#ef4444;text-align:center">Failed to load deals</div>');
+  }
 }
 
 function closeAddShipment() {
   document.getElementById('addShipmentModal').style.display = 'none';
 }
 
-function searchClosedWonDeals(query) {
-  clearTimeout(_dealSearchTimer);
-  const resultsEl = document.getElementById('shipDealResults');
-  if (query.length < 2) { resultsEl.style.display = 'none'; return; }
+function renderDealList(html) {
+  document.getElementById('shipDealList').innerHTML = html;
+}
 
-  _dealSearchTimer = setTimeout(async () => {
-    try {
-      const res = await fetch('/api/deals/closed-won?q=' + encodeURIComponent(query), { credentials: 'include' });
-      const data = await res.json();
-      const deals = data.results || [];
+function filterDealList(query) {
+  const q = query.toLowerCase();
+  const filtered = q
+    ? _allClosedWonDeals.filter(d => d.name.toLowerCase().includes(q))
+    : _allClosedWonDeals;
 
-      if (!deals.length) {
-        resultsEl.innerHTML = '<div style="padding:12px;font-size:12px;color:#888;text-align:center">No Closed Won deals found</div>';
-        resultsEl.style.display = 'block';
-        return;
-      }
+  if (!filtered.length) {
+    renderDealList('<div style="padding:14px;font-size:12px;color:#666;text-align:center">No deals found</div>');
+    return;
+  }
 
-      resultsEl.innerHTML = deals.map(d => `
-        <div onclick="selectShipDeal('${d.id}', ${JSON.stringify(d.name).replace(/'/g,"\'")})"
-          style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #222;font-size:13px;color:#e8e8e8;transition:background .1s"
-          onmouseover="this.style.background='#1e1e1e'" onmouseout="this.style.background='transparent'">
-          <div style="font-weight:600">${d.name}</div>
-          ${d.amount ? '<div style="font-size:11px;color:#888;margin-top:2px">$' + parseFloat(d.amount).toLocaleString('en-US', {minimumFractionDigits:0,maximumFractionDigits:0}) + '</div>' : ''}
-        </div>
-      `).join('');
-      resultsEl.style.display = 'block';
-    } catch(e) { console.warn('Deal search error:', e); }
-  }, 300);
+  renderDealList(filtered.map(d => `
+    <div onclick="selectShipDeal('${d.id}', this.dataset.name)"
+      data-name="${d.name.replace(/"/g,'&quot;')}"
+      style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #1e1e1e;font-size:13px;color:#e8e8e8;transition:background .1s"
+      onmouseover="this.style.background='#1a1a1a'" onmouseout="this.style.background='transparent'">
+      <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.name}</div>
+      ${d.amount ? `<div style="font-size:11px;color:#666;margin-top:2px">$${parseFloat(d.amount).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0})}</div>` : ''}
+    </div>
+  `).join(''));
 }
 
 function selectShipDeal(id, name) {
   _selectedShipDeal = { id, name };
-  document.getElementById('shipDealSearch').value = '';
-  document.getElementById('shipDealResults').style.display = 'none';
   document.getElementById('shipDealSelectedName').textContent = name;
-  const sel = document.getElementById('shipDealSelected');
-  sel.style.display = 'flex';
+  document.getElementById('shipDealSelected').style.display = 'flex';
+  document.getElementById('shipDealPickerWrap').style.display = 'none';
+  // Focus carrier next
+  document.getElementById('shipCarrier').focus();
 }
 
 function clearShipDeal() {
   _selectedShipDeal = null;
   document.getElementById('shipDealSelected').style.display = 'none';
-  document.getElementById('shipDealSearch').value = '';
+  document.getElementById('shipDealPickerWrap').style.display = 'block';
+  document.getElementById('shipDealFilter').value = '';
+  filterDealList('');
 }
 
 async function submitShipment() {
@@ -800,17 +805,25 @@ async function submitShipment() {
     <div style="font-size:16px;font-weight:700;color:#e8e8e8;margin-bottom:4px">Add Shipment</div>
     <div style="font-size:12px;color:#888;margin-bottom:24px">Search for a Closed Won deal, enter tracking details, and mark as shipped.</div>
 
-    <!-- Deal Search -->
+    <!-- Deal List -->
     <div style="margin-bottom:16px">
       <label style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Deal (Closed Won)</label>
-      <input id="shipDealSearch" type="text" placeholder="Search by customer or deal name…"
-        style="width:100%;background:#111;border:1px solid #333;color:#e8e8e8;padding:10px 12px;border-radius:8px;font-size:13px;outline:none;font-family:inherit"
-        oninput="searchClosedWonDeals(this.value)"
-        onfocus="this.style.borderColor='#ee6216'" onblur="this.style.borderColor='#333'">
-      <div id="shipDealResults" style="display:none;background:#111;border:1px solid #333;border-radius:8px;margin-top:4px;max-height:180px;overflow-y:auto"></div>
-      <div id="shipDealSelected" style="display:none;background:rgba(238,98,22,.1);border:1px solid rgba(238,98,22,.3);border-radius:8px;padding:10px 12px;margin-top:6px;font-size:13px;color:#ee6216;display:flex;justify-content:space-between;align-items:center">
-        <span id="shipDealSelectedName"></span>
-        <button onclick="clearShipDeal()" style="background:none;border:none;color:#888;cursor:pointer;font-size:14px;padding:0 2px">✕</button>
+
+      <!-- Selected state -->
+      <div id="shipDealSelected" style="display:none;background:rgba(238,98,22,.1);border:1px solid rgba(238,98,22,.3);border-radius:8px;padding:10px 14px;font-size:13px;color:#ee6216;align-items:center;justify-content:space-between">
+        <span id="shipDealSelectedName" style="font-weight:600"></span>
+        <button onclick="clearShipDeal()" style="background:none;border:none;color:#888;cursor:pointer;font-size:16px;padding:0 2px;line-height:1">✕</button>
+      </div>
+
+      <!-- Filter + list (hidden once deal selected) -->
+      <div id="shipDealPickerWrap">
+        <input id="shipDealFilter" type="text" placeholder="Filter deals…"
+          style="width:100%;background:#111;border:1px solid #333;color:#e8e8e8;padding:9px 12px;border-radius:8px 8px 0 0;font-size:13px;outline:none;font-family:inherit;border-bottom:none"
+          oninput="filterDealList(this.value)"
+          onfocus="this.style.borderColor='#ee6216';this.style.borderBottomColor='#333'" onblur="this.style.borderColor='#333'">
+        <div id="shipDealList" style="background:#111;border:1px solid #333;border-radius:0 0 8px 8px;max-height:200px;overflow-y:auto">
+          <div style="padding:14px;font-size:12px;color:#666;text-align:center">Loading deals…</div>
+        </div>
       </div>
     </div>
 

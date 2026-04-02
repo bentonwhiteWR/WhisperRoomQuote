@@ -929,7 +929,9 @@ const server = http.createServer(async (req, res) => {
         method: 'GET',
         headers: { 'as-api-key': AFTERSHIP_KEY }
       });
-      const items = listRes.body?.data?.trackings || [];
+      console.log(`AfterShip GET (${fetchParams}): status=${listRes.status} meta=${JSON.stringify(listRes.body?.meta)} dataKeys=${Object.keys(listRes.body?.data || {}).join(',')}`);
+      // AfterShip 2026-01 returns data.trackings array
+      const items = listRes.body?.data?.trackings || listRes.body?.data?.tracking ? [listRes.body.data.tracking] : [];
       if (items.length) trackingData = items[0];
 
       // If slug search found nothing, retry without slug (carrier may differ from what HubSpot has)
@@ -940,8 +942,21 @@ const server = http.createServer(async (req, res) => {
           method: 'GET',
           headers: { 'as-api-key': AFTERSHIP_KEY }
         });
-        const retryItems = retryRes.body?.data?.trackings || [];
+        console.log(`AfterShip retry (no slug): status=${retryRes.status} meta=${JSON.stringify(retryRes.body?.meta)} dataKeys=${Object.keys(retryRes.body?.data || {}).join(',')}`);
+        const retryItems = retryRes.body?.data?.trackings || retryRes.body?.data?.tracking ? [retryRes.body?.data?.tracking].filter(Boolean) : [];
         if (retryItems.length) trackingData = retryItems[0];
+      }
+
+      // Last resort: try direct GET by slug/tracking path (older but sometimes works)
+      if (!trackingData && slug) {
+        const directRes = await httpsRequest({
+          hostname: 'api.aftership.com',
+          path: `${AS_BASE}/trackings/${encodeURIComponent(slug)}/${encodeURIComponent(tracking)}`,
+          method: 'GET',
+          headers: { 'as-api-key': AFTERSHIP_KEY }
+        });
+        console.log(`AfterShip direct path GET: status=${directRes.status} meta=${JSON.stringify(directRes.body?.meta)}`);
+        if (directRes.body?.data?.tracking) trackingData = directRes.body.data.tracking;
       }
 
       if (!trackingData) {

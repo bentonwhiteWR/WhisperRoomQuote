@@ -41,6 +41,7 @@ async function initDb() {
         date          TEXT,
         quote_link    TEXT,
         json_snapshot JSONB NOT NULL,
+        payment_link  TEXT,
         created_at    TIMESTAMPTZ DEFAULT NOW()
       )
     `);
@@ -85,6 +86,7 @@ async function saveQuoteToDb(quoteData) {
         total         = EXCLUDED.total,
         date          = EXCLUDED.date,
         quote_link    = EXCLUDED.quote_link,
+        payment_link  = COALESCE(EXCLUDED.payment_link, quotes.payment_link),
         json_snapshot = EXCLUDED.json_snapshot
       RETURNING id
     `, [
@@ -1489,7 +1491,185 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ── Shareable Quote Page ─────────────────────────────────────────
-  if (pathname.startsWith('/q/') && req.method === 'GET') {
+
+  // ── Invoice Page (/i/:quoteNumber) ──────────────────────────────
+  if (pathname.startsWith('/i/') && req.method === 'GET') {
+    const quoteId = decodeURIComponent(pathname.replace('/i/', '').trim());
+    if (!quoteId) { res.writeHead(404); res.end('Not found'); return; }
+    try {
+      let quoteData = await getQuoteFromDb(quoteId);
+      if (!quoteData) {
+        res.writeHead(404, { 'Content-Type': 'text/html' });
+        res.end('<!DOCTYPE html><html><head><title>Invoice Not Found</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#f5f5f5}div{text-align:center}</style></head><body><div><h2 style="color:#ee6216">Invoice Not Found</h2><p style="color:#888">This link may have expired or the invoice number is incorrect.</p></div></body></html>');
+        return;
+      }
+
+      // Get payment link from DB
+      let paymentUrl = null;
+      if (db) {
+        try {
+          const pr = await db.query('SELECT payment_link FROM quotes WHERE quote_number = $1', [quoteId]);
+          paymentUrl = pr.rows[0]?.payment_link || null;
+        } catch(e) {}
+      }
+
+      const q = quoteData;
+      const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+      const sub = (q.lineItems||[]).reduce((s,i)=>s+(i.price*i.qty),0);
+      const disc = q.discount && q.discount.value > 0
+        ? (q.discount.type==='pct' ? sub*q.discount.value/100 : q.discount.value) : 0;
+      const freightAmt = q.freight ? q.freight.total : 0;
+      const taxAmt = q.tax ? q.tax.tax : 0;
+      const total = sub - disc + freightAmt + taxAmt;
+      const c = q.customer || {};
+
+      const lineRows = (q.lineItems||[]).map(item =>
+        `<tr>
+          <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;padding-right:16px">
+            <div class="item-name">${item.name}</div>
+            ${item.description?`<div class="item-desc">${item.description}</div>`:''}
+          </td>
+          <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;text-align:center;color:#888;width:50px">${item.qty}</td>
+          <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;text-align:right;color:#888;width:110px">${fmt(item.price)}</td>
+          <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;text-align:right;font-weight:700;color:#1a1a1a;width:110px">${fmt(item.price*item.qty)}</td>
+        </tr>`
+      ).join('');
+
+      const issueDate = q.date || new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WhisperRoom Invoice ${q.quoteNumber||''}</title>
+<link rel="icon" href="/assets/favicon.avif">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f2f2f2;color:#333;-webkit-font-smoothing:antialiased}
+.page{max-width:820px;margin:0 auto;padding:28px 16px 120px}
+.header-card{background:#ffffff;border-radius:14px;padding:28px 32px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;border-bottom:3px solid #ee6216;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.logo-img{height:26px;display:block}
+.inv-badge{text-align:right}
+.inv-num{font-size:26px;font-weight:800;color:#ee6216;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+.inv-label{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px}
+.inv-date{font-size:12px;color:#aaa;margin-top:4px}
+.card{background:#fff;border-radius:14px;padding:28px 32px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#bbb;margin-bottom:14px}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.info-item label{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px}
+.info-item span{font-size:14px;font-weight:600;color:#1a1a1a}
+table{width:100%;border-collapse:collapse}
+thead th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#aaa;padding:0 0 12px;border-bottom:2px solid #f0f0f0;text-align:left}
+thead th:nth-child(2){text-align:center}
+thead th:nth-child(3),thead th:nth-child(4){text-align:right}
+tbody tr:last-child td{border-bottom:none}
+.item-name{font-weight:700;color:#1a1a1a;font-size:14px}
+.item-desc{font-size:11px;color:#999;margin-top:3px;line-height:1.5}
+.totals{max-width:340px;margin-left:auto;margin-top:20px;padding-top:16px;border-top:2px solid #f0f0f0}
+.tot{display:flex;justify-content:space-between;padding:7px 0;font-size:14px;color:#666;border-bottom:1px solid #f8f8f8}
+.tot.grand{font-size:22px;font-weight:800;color:#1a1a1a;border:none;padding-top:14px;margin-top:4px}
+.tot.grand span:last-child{color:#ee6216}
+.discount-val{color:#1a7a4a!important;font-weight:600}
+.terms{font-size:11px;color:#999;line-height:1.8}
+.action-bar{position:fixed;bottom:0;left:0;right:0;background:rgba(255,255,255,.96);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid #e8e8e8;padding:14px 20px;display:flex;gap:10px;justify-content:center;z-index:100}
+.btn{padding:12px 32px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;border:none;letter-spacing:.04em;font-family:inherit;transition:all .15s}
+.btn-pay{background:#1a7a4a;color:white;font-size:15px;padding:14px 40px}
+.btn-pay:hover{background:#166040;transform:translateY(-1px);box-shadow:0 4px 14px rgba(26,122,74,.4)}
+.btn-secondary{background:#f0f0f0;color:#555}
+.btn-secondary:hover{background:#e5e5e5}
+.footer{text-align:center;margin-top:28px;font-size:11px;color:#ccc;line-height:1.9}
+.footer a{color:#ee6216;text-decoration:none}
+@media(max-width:540px){
+  .header-card{flex-direction:column;padding:20px}
+  .inv-badge{text-align:left}
+  .card{padding:20px}
+  .info-grid{grid-template-columns:1fr}
+  .action-bar{flex-direction:column;padding:12px}
+  .btn{width:100%;text-align:center}
+}
+@media print{
+  body{background:white}
+  .action-bar{display:none!important}
+  .page{padding-bottom:20px}
+  .card{box-shadow:none;border:1px solid #eee}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header-card">
+    <img src="/assets/logo-black.svg" alt="WhisperRoom" class="logo-img">
+    <div class="inv-badge">
+      <div class="inv-label">Invoice</div>
+      <div class="inv-num">${q.quoteNumber||'INV'}</div>
+      <div class="inv-date">Issued ${issueDate}</div>
+    </div>
+  </div>
+
+  ${c.firstName ? `<div class="card">
+    <div class="card-label">Billed To</div>
+    <div class="info-grid">
+      <div class="info-item"><label>Name</label><span>${c.firstName} ${c.lastName}</span></div>
+      ${c.company?`<div class="info-item"><label>Company</label><span>${c.company}</span></div>`:''}
+      ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
+      ${c.address?`<div class="info-item"><label>Ship To</label><span>${c.address}, ${c.city}, ${c.state} ${c.zip}</span></div>`:''}
+    </div>
+  </div>` : ''}
+
+  <div class="card">
+    <div class="card-label">Products &amp; Services</div>
+    <table>
+      <thead><tr><th>Item</th><th style="text-align:center">Qty</th><th style="text-align:right">Unit Price</th><th style="text-align:right">Total</th></tr></thead>
+      <tbody>${lineRows}</tbody>
+    </table>
+    <div class="totals">
+      <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
+      ${disc>0?`<div class="tot"><span>Discount${q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
+      ${freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
+      ${taxAmt>0?`<div class="tot"><span>Sales Tax</span><span>${fmt(taxAmt)}</span></div>`:''}
+      <div class="tot grand"><span>Amount Due</span><span>${fmt(total)}</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">Payment Terms</div>
+    <p class="terms">Payment is due upon receipt. We accept ACH bank transfer and major credit/debit cards. For questions regarding this invoice, contact us at <a href="mailto:info@whisperroom.com" style="color:#ee6216">info@whisperroom.com</a> or (865) 558-5364.</p>
+  </div>
+
+  <div class="footer">
+    WhisperRoom, Inc. &middot; 322 Nancy Lynn Lane, Suite 14 &middot; Knoxville, TN 37919<br>
+    (865) 558-5364 &middot; <a href="mailto:info@whisperroom.com">info@whisperroom.com</a> &middot; <a href="https://www.whisperroom.com" target="_blank">whisperroom.com</a>
+  </div>
+
+</div>
+
+<div class="action-bar" id="action-bar">
+  ${paymentUrl
+    ? `<button class="btn btn-pay" onclick="window.open('${paymentUrl}','_blank')">&#x1F4B3;&nbsp;&nbsp;Pay Now — ${fmt(total)}</button>`
+    : `<button class="btn btn-pay" style="opacity:.5;cursor:not-allowed" title="Payment link not available">&#x1F4B3;&nbsp;&nbsp;Pay Now — ${fmt(total)}</button>`
+  }
+  <button class="btn btn-secondary" onclick="window.print()">&#x2B07;&nbsp;&nbsp;Download PDF</button>
+</div>
+
+<script>
+  document.title = 'Invoice ${q.quoteNumber||''}${q.dealName ? ' — ' + q.dealName.replace(/[<>]/g,'') : ''}';
+</script>
+</body>
+</html>`;
+
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(html);
+    } catch(e) {
+      res.writeHead(500, { 'Content-Type': 'text/html' });
+      res.end('<h2 style="font-family:sans-serif;padding:40px">Error: ' + e.message + '</h2>');
+    }
+    return;
+  }
+
+    if (pathname.startsWith('/q/') && req.method === 'GET') {
     const quoteId = decodeURIComponent(pathname.replace('/q/', '').trim());
     if (!quoteId) { res.writeHead(404); res.end('Not found'); return; }
     try {
@@ -2226,31 +2406,16 @@ tbody tr:last-child td{border-bottom:none}
   }
 
   // ── API: Create Invoice ──────────────────────────────────────────
+  // ── API: Create Payment Link (replaces invoice flow) ────────────
   if (pathname === '/api/create-invoice' && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
       const body = JSON.parse(await readBody(req));
-      const { dealId, quoteNumber, lineItems, freight, tax, discount, advanceStage } = body;
+      const { dealId, quoteNumber, lineItems, freight, tax, discount, advanceStage, ownerId } = body;
 
       if (!dealId) { json({ error: 'No deal ID' }, 400); return; }
 
-      const { ownerId } = body;
-
-      // 1. Fetch deal owner if not passed
-      let resolvedOwnerId = ownerId || null;
-      if (!resolvedOwnerId) {
-        try {
-          const dealData = await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/deals/${dealId}?properties=hubspot_owner_id`,
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-          });
-          resolvedOwnerId = dealData.body?.properties?.hubspot_owner_id || null;
-        } catch(e) { console.warn('Could not fetch deal owner:', e.message); }
-      }
-
-      // 2. Optionally advance deal stage to Verbal Confirmation
+      // 1. Optionally advance deal stage to Verbal Confirmation
       if (advanceStage) {
         await httpsRequest({
           hostname: 'api.hubapi.com',
@@ -2260,147 +2425,80 @@ tbody tr:last-child td{border-bottom:none}
         }, { properties: { dealstage: 'contractsent' } });
       }
 
-      // 3. Calculate totals
+      // 2. Calculate total
       const sub = (lineItems || []).reduce((s, i) => s + (parseFloat(i.price) * parseInt(i.qty)), 0);
       const discAmt = discount && discount.value > 0
         ? (discount.type === 'pct' ? sub * discount.value / 100 : discount.value) : 0;
       const freightTotal = freight ? parseFloat(freight.total || 0) : 0;
       const taxTotal = tax ? parseFloat(tax.tax || 0) : 0;
+      const total = Math.round((sub - discAmt + freightTotal + taxTotal) * 100) / 100;
 
-      // 4. Build line items in order: products (as quoted) → freight → discount → tax
-      const invoiceLineItems = [...(lineItems || [])];
-      if (freightTotal > 0) {
-        invoiceLineItems.push({
-          name: 'Freight',
-          qty: 1,
-          price: freightTotal,
-          description: freight && freight.transit ? `LTL freight. Transit: ${freight.transit}` : 'LTL freight'
-        });
-      }
-      if (discAmt > 0) {
-        invoiceLineItems.push({
-          name: 'Discount',
-          qty: 1,
-          price: -discAmt,
-          description: discount && discount.type === 'pct' ? `${discount.value}% discount` : 'Discount'
-        });
-      }
-      if (taxTotal > 0) {
-        invoiceLineItems.push({
-          name: `Sales Tax (${tax && tax.rate ? (tax.rate * 100).toFixed(3) : ''}%)`,
-          qty: 1,
-          price: taxTotal,
-          description: tax && tax.freightTaxed ? 'State tax — includes freight.' : 'State tax — product only.'
-        });
-      }
-
-      // 5. Create line items sequentially to preserve order
-      const createdLineItemIds = [];
-      for (const item of invoiceLineItems) {
-        try {
-          const liProps = {
-            name: item.name,
-            quantity: String(item.qty || 1),
-            price: String(parseFloat(item.price || 0).toFixed(2)),
-            description: item.description || '',
-          };
-          if (item.productId) liProps.hs_product_id = String(item.productId);
-          const li = await hsCreateLineItem(liProps);
-          if (li.id) createdLineItemIds.push(li.id);
-        } catch(e) { console.warn('Line item create error:', e.message); }
-      }
-
-      // 6. Create the invoice
-      const today = new Date().toISOString().split('T')[0];
-      // Create as draft first — HubSpot requires line items before status can be 'open'
-      const invoiceProps = {
-        hs_invoice_status: 'draft',
-        hs_currency:       'USD',
-        hs_title:          quoteNumber ? `Invoice — ${quoteNumber}` : 'Invoice',
-        hs_invoice_date:   today,
-        hs_due_date:       today,
-      };
-      if (resolvedOwnerId) invoiceProps.hubspot_owner_id = String(resolvedOwnerId);
-      if (quoteNumber)     invoiceProps.quote_number     = quoteNumber;
-
-      const invoiceRes = await httpsRequest({
+      // 3. Create HubSpot payment link
+      const paymentRes = await httpsRequest({
         hostname: 'api.hubapi.com',
-        path: '/crm/v3/objects/invoices',
+        path: '/crm/v3/objects/commerce_payments',
         method: 'POST',
         headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-      }, { properties: invoiceProps });
+      }, {
+        properties: {
+          hs_payment_type:     'PAYMENT_LINK',
+          hs_currency_code:    'USD',
+          hs_amount:           total.toFixed(2),
+          hs_title:            quoteNumber ? `Invoice — ${quoteNumber}` : 'WhisperRoom Invoice',
+          hs_payment_methods:  'ach;credit_or_debit_card',
+          hs_status:           'ACTIVE',
+        }
+      });
 
-      console.log('Invoice create response:', JSON.stringify(invoiceRes.body));
+      console.log('Payment link response:', JSON.stringify(paymentRes.body));
 
-      const invoiceId = invoiceRes.body?.id;
-      if (!invoiceId) {
-        console.error('Invoice create failed:', JSON.stringify(invoiceRes.body));
-        const errMsg = invoiceRes.body?.message
-          || (invoiceRes.body?.errors || []).map(e => e.message).join(', ')
-          || JSON.stringify(invoiceRes.body);
-        throw new Error('Error creating INVOICE: ' + errMsg);
+      const paymentId = paymentRes.body?.id;
+      const paymentUrl = paymentRes.body?.properties?.hs_payment_link_url
+        || paymentRes.body?.properties?.hs_url
+        || null;
+
+      if (!paymentId) {
+        console.error('Payment link failed:', JSON.stringify(paymentRes.body));
+        // Fall back to invoice page without payment link
+        const invoicePageUrl = `https://whisperroomquote.up.railway.app/i/${quoteNumber}`;
+        json({ success: true, invoiceUrl: invoicePageUrl, paymentUrl: null, warning: 'Payment link creation failed — invoice page created without pay button' });
+        return;
       }
 
-      // 6. Associate invoice → deal using batch associations API
-      try {
-        const dealAssocRes = await httpsRequest({
-          hostname: 'api.hubapi.com',
-          path: '/crm/v4/associations/invoices/deals/batch/create',
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-        }, {
-          inputs: [{
-            from: { id: String(invoiceId) },
-            to:   { id: String(dealId) },
-            types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 175 }]
-          }]
-        });
-        console.log('Deal assoc response:', JSON.stringify(dealAssocRes.body));
-      } catch(e) { console.warn('Invoice→deal association failed:', e.message); }
-
-      // 7. Associate invoice → line items
-      if (createdLineItemIds.length > 0) {
-        try {
-          const liAssocRes = await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: '/crm/v4/associations/invoices/line_items/batch/create',
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-          }, {
-            inputs: createdLineItemIds.map(liId => ({
-              from: { id: String(invoiceId) },
-              to:   { id: String(liId) },
-              types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 409 }]
-            }))
-          });
-          console.log('Line item assoc response:', JSON.stringify(liAssocRes.body));
-        } catch(e) { console.warn('Invoice→line_items association failed:', e.message); }
-      }
-
-      // 8. Patch invoice to open now that line items are attached
+      // 4. Associate payment link with deal
       try {
         await httpsRequest({
           hostname: 'api.hubapi.com',
-          path: `/crm/v3/objects/invoices/${invoiceId}`,
-          method: 'PATCH',
+          path: `/crm/v3/objects/commerce_payments/${paymentId}/associations/deals/${dealId}/commerce_payment_to_deal`,
+          method: 'PUT',
           headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-        }, { properties: { hs_invoice_status: 'open' } });
-      } catch(e) { console.warn('Invoice status patch failed:', e.message); }
+        });
+      } catch(e) { console.warn('Payment link→deal assoc failed:', e.message); }
 
-      // 9. Return invoice URL
-      // hs_invoice_link is the customer-facing invoice page returned by HubSpot
-      const invoiceUrl = invoiceRes.body?.properties?.hs_invoice_link
-        || `https://app.hubspot.com/contacts/5764220/objects/0-53/views/all/list`;
-      json({ success: true, invoiceId, invoiceUrl });
+      // 5. Save payment link URL to quote record in DB
+      if (quoteNumber && paymentUrl) {
+        try {
+          await db.query(
+            'UPDATE quotes SET payment_link = $1 WHERE quote_number = $2',
+            [paymentUrl, quoteNumber]
+          );
+        } catch(e) { console.warn('DB payment_link save failed:', e.message); }
+      }
+
+      // 6. Return the invoice page URL (/i/ route) — this is what the rep copies and sends
+      const invoicePageUrl = `https://whisperroomquote.up.railway.app/i/${quoteNumber}`;
+      json({ success: true, invoiceUrl: invoicePageUrl, paymentUrl });
 
     } catch(e) {
-      console.error('Create invoice error:', e.message);
+      console.error('Create payment link error:', e.message);
       json({ error: e.message }, 500);
     }
     return;
   }
 
-      res.writeHead(404); res.end('Not found');
+
+
+  res.writeHead(404); res.end('Not found');
 });
 
 server.listen(PORT, '0.0.0.0', () => {

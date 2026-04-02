@@ -287,6 +287,10 @@
     <button class="mode-btn" id="modeBtn" onclick="toggleMode()" title="Toggle light/dark mode">
       <span id="modeIcon">☀️</span>
     </button>
+    <button onclick="openAddShipment()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:#f0ede8;padding:7px 14px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:background .15s" onmouseover="this.style.background='rgba(255,255,255,.14)'" onmouseout="this.style.background='rgba(255,255,255,.08)'">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Shipment
+    </button>
     <button class="refresh-btn" id="refreshBtn" onclick="loadShipments()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
@@ -671,6 +675,187 @@ function toggleMode() {
 // Load on page open
 loadShipments();
 
+
+// ── Add Shipment Flow ─────────────────────────────────────────────
+let _selectedShipDeal = null;
+let _dealSearchTimer = null;
+
+function openAddShipment() {
+  // Reset form
+  document.getElementById('shipDealSearch').value = '';
+  document.getElementById('shipDealResults').style.display = 'none';
+  document.getElementById('shipDealSelected').style.display = 'none';
+  document.getElementById('shipCarrier').value = '';
+  document.getElementById('shipTracking').value = '';
+  document.getElementById('shipErrorMsg').style.display = 'none';
+  _selectedShipDeal = null;
+
+  // Default date to today
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('shipDate').value = today;
+
+  document.getElementById('addShipmentModal').style.display = 'flex';
+}
+
+function closeAddShipment() {
+  document.getElementById('addShipmentModal').style.display = 'none';
+}
+
+function searchClosedWonDeals(query) {
+  clearTimeout(_dealSearchTimer);
+  const resultsEl = document.getElementById('shipDealResults');
+  if (query.length < 2) { resultsEl.style.display = 'none'; return; }
+
+  _dealSearchTimer = setTimeout(async () => {
+    try {
+      const res = await fetch('/api/deals/closed-won?q=' + encodeURIComponent(query), { credentials: 'include' });
+      const data = await res.json();
+      const deals = data.results || [];
+
+      if (!deals.length) {
+        resultsEl.innerHTML = '<div style="padding:12px;font-size:12px;color:#888;text-align:center">No Closed Won deals found</div>';
+        resultsEl.style.display = 'block';
+        return;
+      }
+
+      resultsEl.innerHTML = deals.map(d => `
+        <div onclick="selectShipDeal('${d.id}', ${JSON.stringify(d.name).replace(/'/g,"\'")})"
+          style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #222;font-size:13px;color:#e8e8e8;transition:background .1s"
+          onmouseover="this.style.background='#1e1e1e'" onmouseout="this.style.background='transparent'">
+          <div style="font-weight:600">${d.name}</div>
+          ${d.amount ? '<div style="font-size:11px;color:#888;margin-top:2px">$' + parseFloat(d.amount).toLocaleString('en-US', {minimumFractionDigits:0,maximumFractionDigits:0}) + '</div>' : ''}
+        </div>
+      `).join('');
+      resultsEl.style.display = 'block';
+    } catch(e) { console.warn('Deal search error:', e); }
+  }, 300);
+}
+
+function selectShipDeal(id, name) {
+  _selectedShipDeal = { id, name };
+  document.getElementById('shipDealSearch').value = '';
+  document.getElementById('shipDealResults').style.display = 'none';
+  document.getElementById('shipDealSelectedName').textContent = name;
+  const sel = document.getElementById('shipDealSelected');
+  sel.style.display = 'flex';
+}
+
+function clearShipDeal() {
+  _selectedShipDeal = null;
+  document.getElementById('shipDealSelected').style.display = 'none';
+  document.getElementById('shipDealSearch').value = '';
+}
+
+async function submitShipment() {
+  const errEl = document.getElementById('shipErrorMsg');
+  errEl.style.display = 'none';
+
+  const carrier  = document.getElementById('shipCarrier').value.trim();
+  const tracking = document.getElementById('shipTracking').value.trim();
+  const dateShipped = document.getElementById('shipDate').value;
+
+  if (!_selectedShipDeal) { errEl.textContent = 'Please select a deal.'; errEl.style.display = 'block'; return; }
+  if (!carrier)            { errEl.textContent = 'Please select a carrier.'; errEl.style.display = 'block'; return; }
+  if (!tracking)           { errEl.textContent = 'Please enter a tracking number.'; errEl.style.display = 'block'; return; }
+  if (!dateShipped)        { errEl.textContent = 'Please enter a ship date.'; errEl.style.display = 'block'; return; }
+
+  const btn = document.getElementById('shipSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Processing…';
+
+  try {
+    const res = await fetch('/api/ship-deal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        dealId: _selectedShipDeal.id,
+        carrier,
+        tracking,
+        dateShipped
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      closeAddShipment();
+      // Reload board to show new row
+      loadShipments();
+    } else {
+      throw new Error(data.error || 'Failed to mark as shipped');
+    }
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Mark as Shipped';
+  }
+}
+
 </script>
+
+<!-- ADD SHIPMENT MODAL -->
+<div id="addShipmentModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#1a1a1a;border:1px solid #2e2e2e;border-radius:12px;padding:32px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+    <div style="font-size:16px;font-weight:700;color:#e8e8e8;margin-bottom:4px">Add Shipment</div>
+    <div style="font-size:12px;color:#888;margin-bottom:24px">Search for a Closed Won deal, enter tracking details, and mark as shipped.</div>
+
+    <!-- Deal Search -->
+    <div style="margin-bottom:16px">
+      <label style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Deal (Closed Won)</label>
+      <input id="shipDealSearch" type="text" placeholder="Search by customer or deal name…"
+        style="width:100%;background:#111;border:1px solid #333;color:#e8e8e8;padding:10px 12px;border-radius:8px;font-size:13px;outline:none;font-family:inherit"
+        oninput="searchClosedWonDeals(this.value)"
+        onfocus="this.style.borderColor='#ee6216'" onblur="this.style.borderColor='#333'">
+      <div id="shipDealResults" style="display:none;background:#111;border:1px solid #333;border-radius:8px;margin-top:4px;max-height:180px;overflow-y:auto"></div>
+      <div id="shipDealSelected" style="display:none;background:rgba(238,98,22,.1);border:1px solid rgba(238,98,22,.3);border-radius:8px;padding:10px 12px;margin-top:6px;font-size:13px;color:#ee6216;display:flex;justify-content:space-between;align-items:center">
+        <span id="shipDealSelectedName"></span>
+        <button onclick="clearShipDeal()" style="background:none;border:none;color:#888;cursor:pointer;font-size:14px;padding:0 2px">✕</button>
+      </div>
+    </div>
+
+    <!-- Carrier -->
+    <div style="margin-bottom:16px">
+      <label style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Freight Carrier</label>
+      <select id="shipCarrier" style="width:100%;background:#111;border:1px solid #333;color:#e8e8e8;padding:10px 12px;border-radius:8px;font-size:13px;outline:none;font-family:inherit;cursor:pointer"
+        onfocus="this.style.borderColor='#ee6216'" onblur="this.style.borderColor='#333'">
+        <option value="">Select carrier…</option>
+        <option value="ABF">ABF Freight</option>
+        <option value="OD">Old Dominion</option>
+        <option value="UPS">UPS</option>
+        <option value="FedEx">FedEx</option>
+        <option value="USPS">USPS</option>
+      </select>
+    </div>
+
+    <!-- Tracking Number -->
+    <div style="margin-bottom:16px">
+      <label style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Tracking Number</label>
+      <input id="shipTracking" type="text" placeholder="Enter tracking number…"
+        style="width:100%;background:#111;border:1px solid #333;color:#e8e8e8;padding:10px 12px;border-radius:8px;font-size:13px;outline:none;font-family:monospace"
+        onfocus="this.style.borderColor='#ee6216'" onblur="this.style.borderColor='#333'">
+    </div>
+
+    <!-- Date Shipped -->
+    <div style="margin-bottom:24px">
+      <label style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Date Shipped</label>
+      <input id="shipDate" type="date"
+        style="width:100%;background:#111;border:1px solid #333;color:#e8e8e8;padding:10px 12px;border-radius:8px;font-size:13px;outline:none;font-family:inherit;cursor:pointer"
+        onfocus="this.style.borderColor='#ee6216'" onblur="this.style.borderColor='#333'">
+    </div>
+
+    <div id="shipErrorMsg" style="display:none;color:#ef4444;font-size:12px;margin-bottom:12px"></div>
+
+    <div style="display:flex;gap:10px">
+      <button id="shipSubmitBtn" onclick="submitShipment()" style="flex:1;padding:13px;background:#ee6216;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+        Mark as Shipped
+      </button>
+      <button onclick="closeAddShipment()" style="padding:13px 18px;background:rgba(255,255,255,.06);color:#888;border:1px solid #333;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

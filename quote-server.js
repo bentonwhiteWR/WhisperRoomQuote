@@ -544,41 +544,6 @@ async function hsBatchAssociateLineItems(dealId, lineItemIds) {
 }
 
 // ── TaxJar API ────────────────────────────────────────────────────
-async function calculateTax(toState, toZip, toCity, amount, shipping) {
-  const stateUpper = toStateAbbr(toState);
-  const inNexus = NEXUS_STATES[stateUpper];
-  if (!inNexus) return { tax: 0, rate: 0, inNexus: false };
-
-  const taxableShipping = inNexus.taxFreight ? shipping : 0;
-
-  const params = new URLSearchParams({
-    from_country: 'US', from_state: 'TN', from_zip: '37813', from_city: 'Knoxville',
-    to_country: 'US', to_state: stateUpper, to_zip: toZip, to_city: toCity || '',
-    amount: amount.toFixed(2),
-    shipping: taxableShipping.toFixed(2)
-  });
-
-  const res = await httpsGet(
-    `https://api.taxjar.com/v2/taxes?${params.toString()}`
-  );
-
-  try {
-    const data = JSON.parse(res.body);
-    if (data.tax) {
-      return {
-        tax: data.tax.amount_to_collect || 0,
-        rate: data.tax.rate || 0,
-        inNexus: true,
-        freightTaxed: inNexus.taxFreight
-      };
-    }
-  } catch(e) {}
-
-  // Fallback if TaxJar fails
-  return { tax: 0, rate: 0, inNexus: true, error: 'TaxJar API error' };
-}
-
-// TaxJar requires Authorization header - let's use proper request
 async function calculateTaxProper(toState, toZip, toCity, amount, shipping) {
   const stateUpper = toStateAbbr(toState);
   const inNexus = NEXUS_STATES[stateUpper];
@@ -586,7 +551,7 @@ async function calculateTaxProper(toState, toZip, toCity, amount, shipping) {
 
   const taxableShipping = inNexus.taxFreight ? shipping : 0;
   const body = {
-    from_country: 'US', from_state: 'TN', from_zip: '37813', from_city: 'Knoxville',
+    from_country: 'US', from_state: 'TN', from_zip: '37813', from_city: 'Morristown',
     to_country: 'US', to_state: stateUpper, to_zip: toZip, to_city: toCity || '',
     amount: parseFloat(amount.toFixed(2)),
     shipping: parseFloat(taxableShipping.toFixed(2))
@@ -1040,13 +1005,26 @@ const server = http.createServer(async (req, res) => {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
       }, {
-        filterGroups: [{
-          filters: [
-            { propertyName: 'dealstage', operator: 'EQ', value: '845719' },
-            { propertyName: 'freight_carrier', operator: 'HAS_PROPERTY' },
-            { propertyName: 'date_shipped', operator: 'GTE', value: String(Date.now() - 30 * 24 * 60 * 60 * 1000) }
-          ]
-        }],
+        // Two filter groups (OR logic): deals with date_shipped set in last 30 days,
+        // OR deals with no date_shipped but closedate in last 30 days (shipping board
+        // should show all recent shipped deals regardless of which date field was used).
+        filterGroups: [
+          {
+            filters: [
+              { propertyName: 'dealstage', operator: 'EQ', value: '845719' },
+              { propertyName: 'freight_carrier', operator: 'HAS_PROPERTY' },
+              { propertyName: 'date_shipped', operator: 'GTE', value: String(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+            ]
+          },
+          {
+            filters: [
+              { propertyName: 'dealstage', operator: 'EQ', value: '845719' },
+              { propertyName: 'freight_carrier', operator: 'HAS_PROPERTY' },
+              { propertyName: 'date_shipped', operator: 'NOT_HAS_PROPERTY' },
+              { propertyName: 'closedate', operator: 'GTE', value: String(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+            ]
+          }
+        ],
         properties: ['dealname','amount','freight_carrier','tracking_number','date_shipped','hubspot_owner_id',
                      'shipping_address','shipping_city','shipping_state','shipping_zipcode','closedate'],
         sorts: [{ propertyName: 'date_shipped', direction: 'DESCENDING' }],
@@ -1168,33 +1146,40 @@ const server = http.createServer(async (req, res) => {
       const contactId = pathname.replace('/api/contact-deals/', '').trim();
       if (!contactId) { json({ deals: [] }); return; }
 
-      // Search for deals associated with this contact
-      const res = await httpsRequest({
+      // Step 1: Get deal IDs via associations endpoint
+      // NOTE: The search API's associations.contact filter is not supported —
+      // must use the dedicated associations endpoint instead.
+      const assocRes = await httpsRequest({
         hostname: 'api.hubapi.com',
-        path: '/crm/v3/objects/deals/search',
+        path: `/crm/v3/objects/contacts/${contactId}/associations/deals`,
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+      });
+
+      const dealIds = (assocRes.body?.results || []).map(r => r.id);
+      if (!dealIds.length) { json({ deals: [] }); return; }
+
+      // Step 2: Batch fetch deal details (cap at 10 most-recent by ID descending)
+      const batchRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/objects/deals/batch/read',
         method: 'POST',
         headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
       }, {
-        filterGroups: [{
-          filters: [{
-            propertyName: 'associations.contact',
-            operator: 'EQ',
-            value: contactId
-          }]
-        }],
-        properties: ['dealname', 'amount', 'dealstage', 'hubspot_owner_id', 'hs_lastmodifieddate', 'closedate'],
-        sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
-        limit: 10
+        inputs: dealIds.slice(0, 10).map(id => ({ id })),
+        properties: ['dealname', 'amount', 'dealstage', 'hubspot_owner_id', 'hs_lastmodifieddate', 'closedate']
       });
 
-      const deals = (res.body.results || []).map(d => ({
-        id: d.id,
-        name: d.properties.dealname || 'Untitled Deal',
-        amount: d.properties.amount || null,
-        stage: d.properties.dealstage || null,
-        ownerId: d.properties.hubspot_owner_id || null,
-        modified: d.properties.hs_lastmodifieddate || null,
-      }));
+      const deals = (batchRes.body?.results || [])
+        .sort((a, b) => new Date(b.properties.hs_lastmodifieddate || 0) - new Date(a.properties.hs_lastmodifieddate || 0))
+        .map(d => ({
+          id: d.id,
+          name: d.properties.dealname || 'Untitled Deal',
+          amount: d.properties.amount || null,
+          stage: d.properties.dealstage || null,
+          ownerId: d.properties.hubspot_owner_id || null,
+          modified: d.properties.hs_lastmodifieddate || null,
+        }));
 
       json({ deals });
     } catch(e) { json({ deals: [], error: e.message }); }

@@ -130,14 +130,15 @@
     background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
   }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  th:nth-child(1), td:nth-child(1) { width: 28%; }
-  th:nth-child(2), td:nth-child(2) { width: 8%; }
-  th:nth-child(3), td:nth-child(3) { width: 14%; }
-  th:nth-child(4), td:nth-child(4) { width: 14%; }
-  th:nth-child(5), td:nth-child(5) { width: 10%; }
-  th:nth-child(6), td:nth-child(6) { width: 10%; }
-  th:nth-child(7), td:nth-child(7) { width: 10%; }
-  th:nth-child(8), td:nth-child(8) { width: 6%; }
+  th:nth-child(1), td:nth-child(1) { width: 20%; }  /* Customer */
+  th:nth-child(2), td:nth-child(2) { width: 7%;  }  /* Carrier */
+  th:nth-child(3), td:nth-child(3) { width: 11%; }  /* Tracking # */
+  th:nth-child(4), td:nth-child(4) { width: 11%; }  /* Status */
+  th:nth-child(5), td:nth-child(5) { width: 18%; }  /* Latest Event */
+  th:nth-child(6), td:nth-child(6) { width: 9%;  }  /* Date Shipped */
+  th:nth-child(7), td:nth-child(7) { width: 13%; }  /* Destination */
+  th:nth-child(8), td:nth-child(8) { width: 7%;  }  /* Transit Time */
+  th:nth-child(9), td:nth-child(9) { width: 4%;  }  /* HubSpot */
   thead { background: var(--surface2); }
   th {
     padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700;
@@ -263,7 +264,7 @@
     .date-cell { font-size: 11px; color: var(--muted); }
 
     /* Hide amount, rep, hubspot on mobile */
-    td:nth-child(6), td:nth-child(7), td:nth-child(8) { display: none !important; }
+    td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9) { display: none !important; }
   }
 
   @media (max-width: 420px) {
@@ -330,10 +331,11 @@
           <th>Carrier</th>
           <th>Tracking #</th>
           <th>Status</th>
+          <th class="hide-mobile">Latest Event</th>
           <th class="hide-mobile">Date Shipped</th>
-          <th class="hide-mobile">Amount</th>
-          <th class="hide-mobile">Rep</th>
-          <th>HubSpot</th>
+          <th class="hide-mobile">Destination</th>
+          <th class="hide-mobile">Transit</th>
+          <th>HS</th>
         </tr>
       </thead>
       <tbody id="tableBody">
@@ -416,13 +418,13 @@ function buildRow(s) {
         : `<span class="status-badge status-unknown">No tracking</span>`
       }
     </td>
+    <td class="hide-mobile" id="event-${s.dealId}" style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0">—</td>
     <td class="date-cell hide-mobile" id="date-${s.dealId}">${fmtDate(s.dateShipped)}</td>
-    <td class="amount hide-mobile">${fmtAmount(s.amount)}</td>
-    <td class="hide-mobile"><span class="rep-name" style="color:${repColor}">${s.rep}</span></td>
+    <td class="hide-mobile" id="dest-${s.dealId}" style="font-size:11px;color:var(--muted)">—</td>
+    <td class="hide-mobile" id="transit-${s.dealId}" style="font-size:11px;color:var(--muted);text-align:center">—</td>
     <td>
-      <a href="${s.dealUrl}" target="_blank" class="hs-link">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-        View Deal
+      <a href="${s.dealUrl}" target="_blank" class="hs-link" title="View Deal">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
       </a>
     </td>
   </tr>`;
@@ -487,9 +489,13 @@ async function loadShipments() {
     updateStats(allShipments);
     populateRepFilter(allShipments);
 
-    // Fetch live tracking status for all shipments with tracking numbers
+    // Pre-register all tracking numbers with AfterShip in one batch call
+    // This ensures AfterShip has started polling carriers before we request status
     const trackable = allShipments.filter(s => s.tracking && s.carrier);
-    if (trackable.length > 0) fetchAllStatuses(trackable);
+    if (trackable.length > 0) {
+      registerAllWithAfterShip(trackable);  // fire and forget
+      fetchAllStatuses(trackable);
+    }
 
     if (allShipments.length === 0) {
       document.getElementById('tableBody').innerHTML = `<tr><td colspan="7">
@@ -517,6 +523,18 @@ async function loadShipments() {
 }
 
 // ── Live tracking status ──────────────────────────────────────────
+// Pre-register all tracking numbers with AfterShip in one server call
+async function registerAllWithAfterShip(shipments) {
+  try {
+    await fetch('/api/register-trackings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(shipments.map(s => ({ tracking: s.tracking, carrier: s.carrier })))
+    });
+  } catch(e) { /* non-fatal */ }
+}
+
 async function fetchAllStatuses(shipments) {
   // Fetch in parallel, max 10 at a time
   const chunks = [];
@@ -560,6 +578,33 @@ async function fetchStatus(s) {
         : `<span class="status-badge ${cls}" title="${tooltip}">${icon} ${label}${locationStr}</span>`;
 
       cell.innerHTML = badge + etaLine + signedLine;
+
+      // Latest Event cell
+      const eventCell = document.getElementById('event-' + s.dealId);
+      if (eventCell && data.lastEvent) {
+        const evDate = data.lastEventTime ? `<span style="color:var(--muted);margin-right:4px">${fmtDate(data.lastEventTime)}</span>` : '';
+        eventCell.innerHTML = evDate + data.lastEvent;
+        eventCell.title = data.lastEvent;
+      }
+
+      // Destination cell — parse from address
+      const destCell = document.getElementById('dest-' + s.dealId);
+      if (destCell && s.address) {
+        // Extract city, state from address string
+        const parts = s.address.split(',').map(p => p.trim());
+        const dest = parts.length >= 2 ? parts.slice(-3, -1).join(', ') : s.address;
+        destCell.textContent = dest;
+      }
+
+      // Transit time cell — days between ship date and now (or delivery)
+      const transitCell = document.getElementById('transit-' + s.dealId);
+      if (transitCell && s.dateShipped) {
+        const start = new Date(s.dateShipped + 'T00:00:00');
+        const end = data.deliveredAt ? new Date(data.deliveredAt + 'T00:00:00') : new Date();
+        const days = Math.round((end - start) / (1000 * 60 * 60 * 24));
+        transitCell.textContent = days + 'd';
+        if (data.status === 'delivered') transitCell.style.color = 'var(--green)';
+      }
 
       // If delivered, update date cell to show delivery date
       const dateCell = document.getElementById('date-' + s.dealId);

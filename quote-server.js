@@ -2334,7 +2334,7 @@ tbody tr:last-child td{border-bottom:none}
           inputs: [{
             from: { id: String(invoiceId) },
             to:   { id: String(dealId) },
-            types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 339 }]
+            types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 175 }]
           }]
         });
         console.log('Deal assoc response:', JSON.stringify(dealAssocRes.body));
@@ -2352,7 +2352,7 @@ tbody tr:last-child td{border-bottom:none}
             inputs: createdLineItemIds.map(liId => ({
               from: { id: String(invoiceId) },
               to:   { id: String(liId) },
-              types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 341 }]
+              types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 409 }]
             }))
           });
           console.log('Line item assoc response:', JSON.stringify(liAssocRes.body));
@@ -2370,30 +2370,7 @@ tbody tr:last-child td{border-bottom:none}
     return;
   }
 
-    // ── TEMP: Fetch real association type IDs from HubSpot ──────────
-  if (pathname === '/api/debug/assoc-types' && req.method === 'GET') {
-    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
-    try {
-      const [invToDeal, invToLI] = await Promise.all([
-        httpsRequest({
-          hostname: 'api.hubapi.com',
-          path: '/crm/v4/associations/invoices/deals/labels',
-          method: 'GET',
-          headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-        }),
-        httpsRequest({
-          hostname: 'api.hubapi.com',
-          path: '/crm/v4/associations/invoices/line_items/labels',
-          method: 'GET',
-          headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-        })
-      ]);
-      json({ invoiceToDeal: invToDeal.body, invoiceToLineItem: invToLI.body });
-    } catch(e) { json({ error: e.message }, 500); }
-    return;
-  }
-
-    res.writeHead(404); res.end('Not found');
+      res.writeHead(404); res.end('Not found');
 });
 
 server.listen(PORT, '0.0.0.0', () => {

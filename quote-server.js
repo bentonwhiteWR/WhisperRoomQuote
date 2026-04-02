@@ -1915,6 +1915,112 @@ tbody tr:last-child td{border-bottom:none}
     return;
   }
 
+  // ── Batch register tracking numbers with AfterShip ───────────────
+  if (pathname === '/api/register-trackings' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const AFTERSHIP_KEY = process.env.AFTERSHIP_API_KEY || '';
+    if (!AFTERSHIP_KEY) { json({ ok: true, skipped: 'no key' }); return; }
+
+    try {
+      const items = JSON.parse(await readBody(req));
+      const AS_BASE = '/tracking/2026-01';
+      const slugMap = { ABF: 'abf', OD: 'old-dominion', UPS: 'ups', FedEx: 'fedex', USPS: 'usps' };
+
+      // Register in parallel batches of 5
+      const results = [];
+      for (let i = 0; i < items.length; i += 5) {
+        const batch = items.slice(i, i + 5);
+        await Promise.all(batch.map(async item => {
+          if (!item.tracking) return;
+          const slug = slugMap[item.carrier] || null;
+          const body = { tracking: { tracking_number: item.tracking } };
+          if (slug) body.tracking.slug = slug;
+          try {
+            const res = await httpsRequest({
+              hostname: 'api.aftership.com',
+              path: `${AS_BASE}/trackings`,
+              method: 'POST',
+              headers: { 'as-api-key': AFTERSHIP_KEY, 'Content-Type': 'application/json' }
+            }, body);
+            const code = res.body?.meta?.code;
+            // 201 = created, 4018 = already exists — both fine
+            results.push({ tracking: item.tracking, code });
+          } catch(e) {
+            results.push({ tracking: item.tracking, error: e.message });
+          }
+        }));
+      }
+
+      const created = results.filter(r => r.code === 201).length;
+      const existing = results.filter(r => r.code === 4018).length;
+      console.log(`AfterShip batch register: ${created} new, ${existing} existing`);
+      json({ ok: true, created, existing, total: results.length });
+    } catch(e) {
+      console.warn('Batch register error:', e.message);
+      json({ ok: false, error: e.message });
+    }
+    return;
+  }
+
+  // ── HubSpot Webhook: tracking_number property changed ───────────
+  // HubSpot calls this when tracking_number is set on a deal
+  if (pathname === '/api/webhooks/tracking-updated' && req.method === 'POST') {
+    try {
+      const events = JSON.parse(await readBody(req));
+      const AFTERSHIP_KEY = process.env.AFTERSHIP_API_KEY || '';
+
+      // Process in background — respond immediately to HubSpot
+      json({ received: true });
+
+      if (!AFTERSHIP_KEY) return;
+
+      const AS_BASE = '/tracking/2026-01';
+
+      // HubSpot sends an array of property change events
+      const items = Array.isArray(events) ? events : [events];
+      for (const event of items) {
+        const tracking = event.propertyValue || event.value || '';
+        const dealId   = event.objectId || event.dealId || '';
+        if (!tracking || tracking.trim() === '') continue;
+
+        // Get the deal's freight_carrier to determine slug
+        let slug = null;
+        try {
+          const dealRes = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/deals/${dealId}?properties=freight_carrier,dealname`,
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+          });
+          const carrier = dealRes.body?.properties?.freight_carrier || '';
+          const dealName = dealRes.body?.properties?.dealname || dealId;
+          const slugMap = { ABF: 'abf', OD: 'old-dominion', UPS: 'ups', FedEx: 'fedex', USPS: 'usps' };
+          slug = slugMap[carrier] || null;
+          console.log(`Webhook: registering ${tracking} (${carrier}/${slug}) for "${dealName}"`);
+        } catch(e) { console.warn('Webhook deal lookup failed:', e.message); }
+
+        // Register with AfterShip
+        try {
+          const body = { tracking: { tracking_number: tracking } };
+          if (slug) body.tracking.slug = slug;
+          const asRes = await httpsRequest({
+            hostname: 'api.aftership.com',
+            path: `${AS_BASE}/trackings`,
+            method: 'POST',
+            headers: { 'as-api-key': AFTERSHIP_KEY, 'Content-Type': 'application/json' }
+          }, body);
+          const code = asRes.body?.meta?.code;
+          // 201 = created, 4018 = already exists — both fine
+          console.log(`AfterShip register ${tracking}: code ${code}`);
+        } catch(e) { console.warn('AfterShip register failed:', e.message); }
+      }
+    } catch(e) {
+      console.warn('Webhook error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── Admin: Backfill tracking numbers via contact email lookup ────
   if (pathname === '/api/admin/backfill-tracking' && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

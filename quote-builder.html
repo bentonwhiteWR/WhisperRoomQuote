@@ -3546,8 +3546,16 @@ async function confirmCreateInvoice() {
     const data = await res.json();
     if (data.success && data.invoiceUrl) {
       closeInvoiceModal();
+      // Show invoice link in result box for rep to copy and send
+      const box = document.getElementById('resultBox');
+      if (box) {
+        box.className = 'result-box success';
+        box.innerHTML = `&#x2713; Invoice created.<br>
+          <a href="${data.invoiceUrl}" target="_blank" style="color:inherit;font-weight:700">Open Invoice Page &#x2192;</a><br>
+          <span style="font-size:11px;opacity:.7;margin-top:4px;display:block">${data.invoiceUrl}</span>
+          <button onclick="navigator.clipboard.writeText('${data.invoiceUrl}').then(()=>{this.textContent='✓ Copied!';setTimeout(()=>this.textContent='Copy Invoice Link',2000)})" style="margin-top:8px;padding:6px 14px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit">Copy Invoice Link</button>`;
+      }
       showToast('Invoice created!', 'success');
-      window.open(data.invoiceUrl, '_blank');
     } else {
       throw new Error(data.error || 'Invoice creation failed');
     }

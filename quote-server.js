@@ -2149,21 +2149,24 @@ tbody tr:last-child td{border-bottom:none}
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
       const q = parsed.query.q || '';
-      if (q.length < 2) { json({ results: [] }); return; }
-      const searchRes = await httpsRequest({
-        hostname: 'api.hubapi.com',
-        path: '/crm/v3/objects/deals/search',
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-      }, {
-        query: q.trim(),
+      // Build request body — filter by stage always, optionally add text search
+      const reqBody = {
         filterGroups: [{
           filters: [{ propertyName: 'dealstage', operator: 'EQ', value: 'closedwon' }]
         }],
         properties: ['dealname', 'amount', 'hubspot_owner_id'],
         sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
-        limit: 10
-      });
+        limit: 100
+      };
+      if (q.trim().length >= 2) reqBody.query = q.trim();
+
+      const searchRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/objects/deals/search',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, reqBody);
+
       const results = (searchRes.body.results || []).map(d => ({
         id: d.id,
         name: d.properties.dealname || 'Untitled',

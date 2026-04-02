@@ -1029,6 +1029,9 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     <button class="create-btn" id="copyLinkBtn" onclick="copyQuoteLink()" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-top:8px;opacity:.5" title="Push to HubSpot first">
       &#x1F517; Copy Shareable Link
     </button>
+    <button class="create-btn" id="invoiceBtn" onclick="createInvoice()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.4);margin-top:8px;opacity:.5;cursor:not-allowed" title="Push to HubSpot first" disabled>
+      &#x1F4CB; Create Invoice in HubSpot
+    </button>
 
   <div class="result-box" id="resultBox"></div>
 
@@ -2056,6 +2059,7 @@ async function createDeal() {
         pdfBtn.style.color = 'rgba(255,255,255,.85)';
         pdfBtn.title = 'View & download quote page';
       }
+      enableInvoiceBtn();
       box.innerHTML = `✓ Deal created in HubSpot.<br><a href="${data.dealUrl}" target="_blank">View Deal &#x2192;</a>`;
       // Save to history
       const repName = document.getElementById('repSelect').options[document.getElementById('repSelect').selectedIndex].text;
@@ -2726,6 +2730,7 @@ function loadFromHistoryEntry(idOrIdx) {
       pdfBtn.style.color = 'rgba(255,255,255,.85)';
       pdfBtn.title = 'View this historical quote';
     }
+    enableInvoiceBtn();
   }
 
   updateSummary();
@@ -3445,6 +3450,158 @@ document.getElementById('repSelect').addEventListener('change', function() {
 
 updateSummary();
 fetchHistory().then(() => { updateQuoteNumber(); checkLinkBtnState(); });
+
+// ── Invoice Button Enable ────────────────────────────────────────
+function enableInvoiceBtn() {
+  const btn = document.getElementById('invoiceBtn');
+  if (!btn) return;
+  btn.disabled = false;
+  btn.style.opacity = '1';
+  btn.style.cursor = 'pointer';
+  btn.style.color = 'rgba(255,255,255,.85)';
+  btn.style.background = 'rgba(26,122,74,.2)';
+  btn.style.borderColor = 'rgba(26,122,74,.5)';
+  btn.title = 'Create invoice in HubSpot from this quote';
+}
+
+// ── Create Invoice ───────────────────────────────────────────────
+async function createInvoice() {
+  const dealId = window._lastPushedDealId || linkedDeal?.id;
+  const quoteNumber = document.getElementById('quoteNumHidden').value;
+
+  if (!dealId) {
+    showToast('Push to HubSpot first before creating an invoice', 'error');
+    return;
+  }
+
+  // Check deal stage — if not at Verbal Confirmation yet, warn
+  const btn = document.getElementById('invoiceBtn');
+  btn.disabled = true;
+  btn.textContent = 'Checking deal…';
+
+  try {
+    const dealRes = await fetch('/api/deal/' + dealId);
+    const dealData = await dealRes.json();
+    const stage = dealData?.deal?.properties?.dealstage || '';
+    // contractsent = Verbal Confirmation, closedwon = Closed Won
+    const needsConfirmation = !['contractsent','closedwon'].includes(stage);
+
+    if (needsConfirmation) {
+      // Show confirmation modal
+      document.getElementById('invoiceStageWarning').style.display = 'block';
+    } else {
+      document.getElementById('invoiceStageWarning').style.display = 'none';
+    }
+
+    // Populate preview
+    const dealName = dealData?.deal?.properties?.dealname || document.getElementById('dealName').value.trim() || 'Quote';
+    document.getElementById('invoicePreviewName').textContent = dealName;
+    document.getElementById('invoicePreviewQuote').textContent = quoteNumber || '—';
+
+    // Build line items preview
+    const sub = lineItems.reduce((s, i) => s + (i.price * i.qty), 0);
+    const disc = (discountData && discountData.value > 0)
+      ? (discountData.type === 'pct' ? sub * discountData.value / 100 : discountData.value) : 0;
+    const freight = freightData ? freightData.total : 0;
+    const tax = taxData ? taxData.tax : 0;
+    const total = sub - disc + freight + tax;
+    document.getElementById('invoicePreviewTotal').textContent = '$' + total.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+    // Show modal
+    document.getElementById('invoiceModal').style.display = 'flex';
+
+  } catch(e) {
+    showToast('Error checking deal: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📋 Create Invoice in HubSpot';
+  }
+}
+
+async function confirmCreateInvoice() {
+  const dealId = window._lastPushedDealId || linkedDeal?.id;
+  const quoteNumber = document.getElementById('quoteNumHidden').value;
+
+  const confirmBtn = document.getElementById('invoiceConfirmBtn');
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = 'Creating…';
+
+  try {
+    const res = await fetch('/api/create-invoice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        dealId,
+        quoteNumber,
+        lineItems,
+        freight: freightData,
+        tax: taxData,
+        discount: discountData,
+        advanceStage: document.getElementById('invoiceStageWarning').style.display !== 'none'
+      })
+    });
+    const data = await res.json();
+    if (data.success && data.invoiceUrl) {
+      closeInvoiceModal();
+      showToast('Invoice created!', 'success');
+      window.open(data.invoiceUrl, '_blank');
+    } else {
+      throw new Error(data.error || 'Invoice creation failed');
+    }
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = 'Create Invoice';
+  }
+}
+
+function closeInvoiceModal() {
+  document.getElementById('invoiceModal').style.display = 'none';
+}
+
 </script>
+
+<!-- INVOICE MODAL -->
+<div id="invoiceModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:32px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:6px;font-family:var(--sans)">Create HubSpot Invoice</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:24px">This will create a live invoice in HubSpot and open it in a new tab.</div>
+
+    <div id="invoiceStageWarning" style="display:none;background:rgba(184,134,11,.1);border:1px solid rgba(184,134,11,.3);border-radius:8px;padding:12px 14px;margin-bottom:20px;font-size:12px;color:var(--yellow)">
+      ⚠️ This deal hasn't reached Verbal Confirmation yet. The stage will be advanced to Verbal Confirmation when the invoice is created.
+    </div>
+
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:24px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Deal</span>
+        <span style="font-size:12px;font-weight:600;color:var(--text)" id="invoicePreviewName">—</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Quote #</span>
+        <span style="font-size:12px;color:var(--text);font-family:var(--mono)" id="invoicePreviewQuote">—</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
+        <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Total</span>
+        <span style="font-size:14px;font-weight:700;color:var(--text)" id="invoicePreviewTotal">—</span>
+      </div>
+    </div>
+
+    <div style="font-size:11px;color:var(--muted);margin-bottom:20px">
+      Currency: USD &nbsp;·&nbsp; Due: On receipt &nbsp;·&nbsp; Line items pulled from this quote
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button id="invoiceConfirmBtn" onclick="confirmCreateInvoice()" style="flex:1;padding:13px;background:#1a7a4a;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--mono)">
+        Create Invoice
+      </button>
+      <button onclick="closeInvoiceModal()" style="padding:13px 18px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--mono)">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

@@ -2312,8 +2312,9 @@ tbody tr:last-child td{border-bottom:none}
 
       // 6. Create the invoice
       const today = new Date().toISOString().split('T')[0];
+      // Create as draft first — HubSpot requires line items before status can be 'open'
       const invoiceProps = {
-        hs_invoice_status: 'open',
+        hs_invoice_status: 'draft',
         hs_currency:       'USD',
         hs_title:          quoteNumber ? `Invoice — ${quoteNumber}` : 'Invoice',
         hs_invoice_date:   today,
@@ -2376,8 +2377,20 @@ tbody tr:last-child td{border-bottom:none}
         } catch(e) { console.warn('Invoice→line_items association failed:', e.message); }
       }
 
-      // 8. Return invoice URL — HubSpot Commerce invoice editor
-      const invoiceUrl = `https://app.hubspot.com/commerce/5764220/invoices/${invoiceId}`;
+      // 8. Patch invoice to open now that line items are attached
+      try {
+        await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v3/objects/invoices/${invoiceId}`,
+          method: 'PATCH',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, { properties: { hs_invoice_status: 'open' } });
+      } catch(e) { console.warn('Invoice status patch failed:', e.message); }
+
+      // 9. Return invoice URL
+      // hs_invoice_link is the customer-facing invoice page returned by HubSpot
+      const invoiceUrl = invoiceRes.body?.properties?.hs_invoice_link
+        || `https://app.hubspot.com/contacts/5764220/objects/0-53/views/all/list`;
       json({ success: true, invoiceId, invoiceUrl });
 
     } catch(e) {

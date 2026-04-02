@@ -895,8 +895,8 @@ const server = http.createServer(async (req, res) => {
 
     // Map our carrier codes to AfterShip slugs
     const slugMap = {
-      'ABF':   'abf',
-      'OD':    'old-dominion',
+      'ABF':   'abf-freight',
+      'OD':    'old-dominion-freight-line',
       'UPS':   'ups',
       'FedEx': 'fedex',
       'USPS':  'usps',
@@ -1922,7 +1922,7 @@ tbody tr:last-child td{border-bottom:none}
     try {
       const items = JSON.parse(await readBody(req));
       const AS_BASE = '/tracking/2026-01';
-      const slugMap = { ABF: 'abf', OD: 'old-dominion', UPS: 'ups', FedEx: 'fedex', USPS: 'usps' };
+      const slugMap = { ABF: 'abf-freight', OD: 'old-dominion-freight-line', UPS: 'ups', FedEx: 'fedex', USPS: 'usps' };
 
       // Register in parallel batches of 5
       const results = [];
@@ -1992,7 +1992,7 @@ tbody tr:last-child td{border-bottom:none}
           });
           const carrier = dealRes.body?.properties?.freight_carrier || '';
           const dealName = dealRes.body?.properties?.dealname || dealId;
-          const slugMap = { ABF: 'abf', OD: 'old-dominion', UPS: 'ups', FedEx: 'fedex', USPS: 'usps' };
+          const slugMap = { ABF: 'abf-freight', OD: 'old-dominion-freight-line', UPS: 'ups', FedEx: 'fedex', USPS: 'usps' };
           slug = slugMap[carrier] || null;
           console.log(`Webhook: registering ${tracking} (${carrier}/${slug}) for "${dealName}"`);
         } catch(e) { console.warn('Webhook deal lookup failed:', e.message); }
@@ -2143,7 +2143,208 @@ tbody tr:last-child td{border-bottom:none}
     return;
   }
 
-  res.writeHead(404); res.end('Not found');
+
+  // ── API: Search Closed Won deals (for Add Shipment modal) ────────
+  if (pathname === '/api/deals/closed-won' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const q = parsed.query.q || '';
+      if (q.length < 2) { json({ results: [] }); return; }
+      const searchRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/objects/deals/search',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, {
+        query: q.trim(),
+        filterGroups: [{
+          filters: [{ propertyName: 'dealstage', operator: 'EQ', value: 'closedwon' }]
+        }],
+        properties: ['dealname', 'amount', 'hubspot_owner_id'],
+        sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+        limit: 10
+      });
+      const results = (searchRes.body.results || []).map(d => ({
+        id: d.id,
+        name: d.properties.dealname || 'Untitled',
+        amount: d.properties.amount || null,
+        ownerId: d.properties.hubspot_owner_id || null,
+      }));
+      json({ results });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // ── API: Ship Deal (from Add Shipment modal) ─────────────────────
+  if (pathname === '/api/ship-deal' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const body = JSON.parse(await readBody(req));
+      const { dealId, carrier, tracking, dateShipped } = body;
+      if (!dealId || !carrier || !tracking) {
+        json({ error: 'Missing required fields' }, 400); return;
+      }
+
+      // 1. Patch deal: set tracking, carrier, date_shipped, advance stage to Shipped
+      await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/objects/deals/${dealId}`,
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, {
+        properties: {
+          tracking_number: tracking,
+          freight_carrier: carrier,
+          date_shipped: dateShipped || new Date().toISOString().split('T')[0],
+          dealstage: '845719'  // Shipped
+        }
+      });
+
+      // 2. Register with AfterShip
+      const AFTERSHIP_KEY = process.env.AFTERSHIP_API_KEY || '';
+      if (AFTERSHIP_KEY) {
+        const slugMap = { ABF: 'abf-freight', OD: 'old-dominion-freight-line', UPS: 'ups', FedEx: 'fedex', USPS: 'usps' };
+        const slug = slugMap[carrier] || null;
+        const asBody = { tracking: { tracking_number: tracking } };
+        if (slug) asBody.tracking.slug = slug;
+        try {
+          await httpsRequest({
+            hostname: 'api.aftership.com',
+            path: '/tracking/2026-01/trackings',
+            method: 'POST',
+            headers: { 'as-api-key': AFTERSHIP_KEY, 'Content-Type': 'application/json' }
+          }, asBody);
+        } catch(e) { console.warn('AfterShip register on ship-deal:', e.message); }
+      }
+
+      json({ success: true });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // ── API: Create Invoice ──────────────────────────────────────────
+  if (pathname === '/api/create-invoice' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const body = JSON.parse(await readBody(req));
+      const { dealId, quoteNumber, lineItems, freight, tax, discount, advanceStage } = body;
+
+      if (!dealId) { json({ error: 'No deal ID' }, 400); return; }
+
+      // 1. Optionally advance deal stage to Verbal Confirmation
+      if (advanceStage) {
+        await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v3/objects/deals/${dealId}`,
+          method: 'PATCH',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, { properties: { dealstage: 'contractsent' } });
+      }
+
+      // 2. Calculate totals
+      const sub = (lineItems || []).reduce((s, i) => s + (parseFloat(i.price) * parseInt(i.qty)), 0);
+      const discAmt = discount && discount.value > 0
+        ? (discount.type === 'pct' ? sub * discount.value / 100 : discount.value) : 0;
+      const freightTotal = freight ? parseFloat(freight.total || 0) : 0;
+      const taxTotal = tax ? parseFloat(tax.tax || 0) : 0;
+      const total = sub - discAmt + freightTotal + taxTotal;
+
+      // 3. Create HubSpot invoice
+      const invoiceRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/objects/invoices',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, {
+        properties: {
+          hs_invoice_status: 'draft',
+          hs_currency_code: 'USD',
+          hs_payment_terms: 'DUE_ON_RECEIPT',
+          hs_title: quoteNumber ? `Invoice — ${quoteNumber}` : 'Invoice',
+          hs_due_date: new Date().toISOString().split('T')[0],
+        }
+      });
+
+      const invoiceId = invoiceRes.body?.id;
+      if (!invoiceId) {
+        console.error('Invoice create failed:', JSON.stringify(invoiceRes.body));
+        throw new Error('Failed to create invoice: ' + (invoiceRes.body?.message || JSON.stringify(invoiceRes.body)));
+      }
+
+      // 4. Associate invoice with deal
+      await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/objects/invoices/${invoiceId}/associations/deals/${dealId}/invoice_to_deal`,
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      });
+
+      // 5. Create line items and associate with invoice
+      const invoiceLineItems = [...(lineItems || [])];
+
+      // Add freight line item if applicable
+      if (freightTotal > 0) {
+        invoiceLineItems.push({
+          name: 'Freight',
+          qty: 1,
+          price: freightTotal,
+          description: freight.transit ? `LTL freight. Transit: ${freight.transit}` : 'LTL freight'
+        });
+      }
+
+      // Add discount line item if applicable
+      if (discAmt > 0) {
+        invoiceLineItems.push({
+          name: 'Discount',
+          qty: 1,
+          price: -discAmt,
+          description: discount.type === 'pct' ? `${discount.value}% discount` : 'Discount'
+        });
+      }
+
+      // Add tax line item if applicable
+      if (taxTotal > 0) {
+        invoiceLineItems.push({
+          name: `Sales Tax (${tax.rate ? (tax.rate * 100).toFixed(3) : ''}%)`,
+          qty: 1,
+          price: taxTotal,
+          description: `State tax. ${tax.freightTaxed ? 'Includes freight.' : 'Product only.'}`
+        });
+      }
+
+      // Create each line item and associate with invoice
+      for (const item of invoiceLineItems) {
+        try {
+          const li = await hsCreateLineItem({
+            name: item.name,
+            quantity: String(item.qty || 1),
+            price: String(parseFloat(item.price).toFixed(2)),
+            hs_product_id: item.productId ? String(item.productId) : undefined,
+            description: item.description || '',
+          });
+          if (li.id) {
+            await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/line_items/${li.id}/associations/invoices/${invoiceId}/line_item_to_invoice`,
+              method: 'PUT',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            });
+          }
+        } catch(e) { console.warn('Invoice line item error:', e.message); }
+      }
+
+      // 6. Return invoice URL to open in new tab
+      const invoiceUrl = `https://app.hubspot.com/invoices/${invoiceId}`;
+      json({ success: true, invoiceId, invoiceUrl });
+
+    } catch(e) {
+      console.error('Create invoice error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+    res.writeHead(404); res.end('Not found');
 });
 
 server.listen(PORT, '0.0.0.0', () => {

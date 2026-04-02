@@ -3046,6 +3046,9 @@ function linkDealById(dealId, dealName) {
     }
   }).catch(() => {});
   updateRevisionBadge();
+  // Enable invoice button any time a deal is linked — covers fresh push,
+  // history load, async name-search fallback, and manual deal linking
+  enableInvoiceBtn();
 }
 
 function onDealSearchInput(val) {
@@ -3456,11 +3459,8 @@ function enableInvoiceBtn() {
   const btn = document.getElementById('invoiceBtn');
   if (!btn) return;
   btn.disabled = false;
-  btn.style.opacity = '1';
-  btn.style.cursor = 'pointer';
-  btn.style.color = 'rgba(255,255,255,.85)';
-  btn.style.background = 'rgba(26,122,74,.2)';
-  btn.style.borderColor = 'rgba(26,122,74,.5)';
+  btn.removeAttribute('disabled');
+  btn.style.cssText = 'margin-top:8px;opacity:1;cursor:pointer;color:rgba(255,255,255,.85);background:rgba(26,122,74,.2);border:1px solid rgba(26,122,74,.5)';
   btn.title = 'Create invoice in HubSpot from this quote';
 }
 
@@ -3500,8 +3500,9 @@ async function createInvoice() {
 
     // Build line items preview
     const sub = lineItems.reduce((s, i) => s + (i.price * i.qty), 0);
-    const disc = (discountData && discountData.value > 0)
-      ? (discountData.type === 'pct' ? sub * discountData.value / 100 : discountData.value) : 0;
+    const discVal = parseFloat(document.getElementById('discountValue').value) || 0;
+    const disc = discVal > 0
+      ? (discountType === 'pct' ? sub * discVal / 100 : discVal) : 0;
     const freight = freightData ? freightData.total : 0;
     const tax = taxData ? taxData.tax : 0;
     const total = sub - disc + freight + tax;
@@ -3537,7 +3538,7 @@ async function confirmCreateInvoice() {
         lineItems,
         freight: freightData,
         tax: taxData,
-        discount: discountData,
+        discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
         advanceStage: document.getElementById('invoiceStageWarning').style.display !== 'none'
       })
     });

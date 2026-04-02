@@ -2325,40 +2325,43 @@ tbody tr:last-child td{border-bottom:none}
 
       // 6. Associate invoice → deal using batch associations API
       try {
-        await httpsRequest({
+        const dealAssocRes = await httpsRequest({
           hostname: 'api.hubapi.com',
           path: '/crm/v4/associations/invoices/deals/batch/create',
           method: 'POST',
           headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
         }, {
           inputs: [{
-            from: { id: invoiceId },
-            to:   { id: dealId },
+            from: { id: String(invoiceId) },
+            to:   { id: String(dealId) },
             types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 176 }]
           }]
         });
+        console.log('Deal assoc response:', JSON.stringify(dealAssocRes.body));
       } catch(e) { console.warn('Invoice→deal association failed:', e.message); }
 
-      // 7. Associate invoice → line items using batch associations API
+      // 7. Associate invoice → line items
       if (createdLineItemIds.length > 0) {
         try {
-          await httpsRequest({
+          const liAssocRes = await httpsRequest({
             hostname: 'api.hubapi.com',
             path: '/crm/v4/associations/invoices/line_items/batch/create',
             method: 'POST',
             headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
           }, {
             inputs: createdLineItemIds.map(liId => ({
-              from: { id: invoiceId },
-              to:   { id: liId },
+              from: { id: String(invoiceId) },
+              to:   { id: String(liId) },
               types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 174 }]
             }))
           });
+          console.log('Line item assoc response:', JSON.stringify(liAssocRes.body));
         } catch(e) { console.warn('Invoice→line_items association failed:', e.message); }
       }
 
-      // 8. Return invoice URL
-      const invoiceUrl = `https://app.hubspot.com/contacts/5764220/record/0-53/${invoiceId}`;
+      // 8. Return invoice URL — use HubSpot's returned URL directly
+      const invoiceUrl = invoiceRes.body?.url
+        || `https://app.hubspot.com/contacts/5764220/objects/0-53?filters=%5B%7B%22property%22%3A%22hs_object_id%22%2C%22operator%22%3A%22EQ%22%2C%22value%22%3A%22${invoiceId}%22%7D%5D`;
       json({ success: true, invoiceId, invoiceUrl });
 
     } catch(e) {

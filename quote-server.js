@@ -2234,7 +2234,23 @@ tbody tr:last-child td{border-bottom:none}
 
       if (!dealId) { json({ error: 'No deal ID' }, 400); return; }
 
-      // 1. Optionally advance deal stage to Verbal Confirmation
+      const { ownerId } = body;
+
+      // 1. Fetch deal owner if not passed
+      let resolvedOwnerId = ownerId || null;
+      if (!resolvedOwnerId) {
+        try {
+          const dealData = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/deals/${dealId}?properties=hubspot_owner_id`,
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+          });
+          resolvedOwnerId = dealData.body?.properties?.hubspot_owner_id || null;
+        } catch(e) { console.warn('Could not fetch deal owner:', e.message); }
+      }
+
+      // 2. Optionally advance deal stage to Verbal Confirmation
       if (advanceStage) {
         await httpsRequest({
           hostname: 'api.hubapi.com',
@@ -2244,14 +2260,14 @@ tbody tr:last-child td{border-bottom:none}
         }, { properties: { dealstage: 'contractsent' } });
       }
 
-      // 2. Calculate totals
+      // 3. Calculate totals
       const sub = (lineItems || []).reduce((s, i) => s + (parseFloat(i.price) * parseInt(i.qty)), 0);
       const discAmt = discount && discount.value > 0
         ? (discount.type === 'pct' ? sub * discount.value / 100 : discount.value) : 0;
       const freightTotal = freight ? parseFloat(freight.total || 0) : 0;
       const taxTotal = tax ? parseFloat(tax.tax || 0) : 0;
 
-      // 3. Build all line items for the invoice
+      // 4. Build line items in order: products (as quoted) → freight → discount → tax
       const invoiceLineItems = [...(lineItems || [])];
       if (freightTotal > 0) {
         invoiceLineItems.push({
@@ -2278,7 +2294,7 @@ tbody tr:last-child td{border-bottom:none}
         });
       }
 
-      // 4. Create line items first (needed for invoice association)
+      // 5. Create line items sequentially to preserve order
       const createdLineItemIds = [];
       for (const item of invoiceLineItems) {
         try {
@@ -2294,23 +2310,24 @@ tbody tr:last-child td{border-bottom:none}
         } catch(e) { console.warn('Line item create error:', e.message); }
       }
 
-      // 5. Create the invoice (properties only, no inline associations)
+      // 6. Create the invoice
       const today = new Date().toISOString().split('T')[0];
+      const invoiceProps = {
+        hs_invoice_status: 'open',
+        hs_currency:       'USD',
+        hs_title:          quoteNumber ? `Invoice — ${quoteNumber}` : 'Invoice',
+        hs_invoice_date:   today,
+        hs_due_date:       today,
+      };
+      if (resolvedOwnerId) invoiceProps.hubspot_owner_id = String(resolvedOwnerId);
+      if (quoteNumber)     invoiceProps.quote_number     = quoteNumber;
 
       const invoiceRes = await httpsRequest({
         hostname: 'api.hubapi.com',
         path: '/crm/v3/objects/invoices',
         method: 'POST',
         headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-      }, {
-        properties: {
-          hs_invoice_status:  'draft',
-          hs_currency:        'USD',
-          hs_title:           quoteNumber ? `Invoice — ${quoteNumber}` : 'Invoice',
-          hs_invoice_date:    today,
-          hs_due_date:        today,
-        }
-      });
+      }, { properties: invoiceProps });
 
       console.log('Invoice create response:', JSON.stringify(invoiceRes.body));
 

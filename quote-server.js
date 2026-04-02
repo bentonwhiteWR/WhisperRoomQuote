@@ -2334,7 +2334,7 @@ tbody tr:last-child td{border-bottom:none}
           inputs: [{
             from: { id: String(invoiceId) },
             to:   { id: String(dealId) },
-            types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 176 }]
+            types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 339 }]
           }]
         });
         console.log('Deal assoc response:', JSON.stringify(dealAssocRes.body));
@@ -2352,7 +2352,7 @@ tbody tr:last-child td{border-bottom:none}
             inputs: createdLineItemIds.map(liId => ({
               from: { id: String(invoiceId) },
               to:   { id: String(liId) },
-              types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 174 }]
+              types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 341 }]
             }))
           });
           console.log('Line item assoc response:', JSON.stringify(liAssocRes.body));

@@ -926,90 +926,100 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    const AS_BASE = '/tracking/2026-01';
+
     // Map our carrier codes to AfterShip slugs
     const slugMap = {
-      'ABF': 'abf',
-      'OD':  'old-dominion',
-      'UPS': 'ups',
+      'ABF':   'abf',
+      'OD':    'old-dominion',
+      'UPS':   'ups',
       'FedEx': 'fedex',
-      'USPS': 'usps',
+      'USPS':  'usps',
     };
-    const slug = slugMap[carrier];
+    const slug = slugMap[carrier] || null;
 
     try {
-      // AfterShip tracking API — GET /v4/trackings/:slug/:tracking
-      const asPath = slug
-        ? `/v4/trackings/${slug}/${tracking}`
-        : `/v4/trackings?tracking_numbers=${tracking}`;
-
-      const asRes = await httpsRequest({
+      // 1. Try to create the tracking (registers it in AfterShip if new)
+      const createBody = { tracking_number: tracking };
+      if (slug) createBody.slug = slug;
+      const createRes = await httpsRequest({
         hostname: 'api.aftership.com',
-        path: asPath,
-        method: 'GET',
-        headers: {
-          'aftership-api-key': AFTERSHIP_KEY,
-          'Content-Type': 'application/json'
-        }
-      });
+        path: `${AS_BASE}/trackings`,
+        method: 'POST',
+        headers: { 'as-api-key': AFTERSHIP_KEY, 'Content-Type': 'application/json' }
+      }, { tracking: createBody });
 
-      const data = asRes.body?.data?.tracking || asRes.body?.data?.trackings?.[0];
+      // 201 = created, 4018 = already exists — both are fine, proceed to fetch
+      const createCode = createRes.body?.meta?.code;
+      console.log(`AfterShip create: ${createCode} for ${tracking}`);
 
-      if (!data) {
-        // Tracking not found in AfterShip — register it first then return pending
-        if (slug) {
-          try {
-            await httpsRequest({
-              hostname: 'api.aftership.com',
-              path: '/v4/trackings',
-              method: 'POST',
-              headers: {
-                'aftership-api-key': AFTERSHIP_KEY,
-                'Content-Type': 'application/json'
-              }
-            }, { tracking: { tracking_number: tracking, slug } });
-          } catch(e) { /* ignore — may already exist */ }
+      // 2. Fetch tracking data — use slug+tracking_number for lookup
+      let trackingData = null;
+
+      // Try GET by slug/tracking_number first
+      if (slug) {
+        const getRes = await httpsRequest({
+          hostname: 'api.aftership.com',
+          path: `${AS_BASE}/trackings/${slug}/${tracking}`,
+          method: 'GET',
+          headers: { 'as-api-key': AFTERSHIP_KEY }
+        });
+        if (getRes.body?.data) {
+          trackingData = getRes.body.data;
         }
-        json({ status: 'pending', label: 'Pending', location: null, eta: null, deliveredAt: null });
+      }
+
+      // Fall back to list search if slug lookup failed
+      if (!trackingData) {
+        const listRes = await httpsRequest({
+          hostname: 'api.aftership.com',
+          path: `${AS_BASE}/trackings?tracking_numbers=${encodeURIComponent(tracking)}`,
+          method: 'GET',
+          headers: { 'as-api-key': AFTERSHIP_KEY }
+        });
+        const items = listRes.body?.data?.trackings || [];
+        if (items.length) trackingData = items[0];
+      }
+
+      if (!trackingData) {
+        json({ status: 'pending', label: 'Registered', location: null, eta: null, deliveredAt: null });
         return;
       }
 
       // Normalize AfterShip tag → our status
-      const tag = data.tag || '';
+      const tag = trackingData.tag || '';
       const statusMap = {
-        'Delivered':        { status: 'delivered',        label: 'Delivered' },
-        'OutForDelivery':   { status: 'out_for_delivery', label: 'Out for Delivery' },
-        'InTransit':        { status: 'in_transit',       label: 'In Transit' },
-        'AttemptFail':      { status: 'exception',        label: 'Attempt Failed' },
-        'Exception':        { status: 'exception',        label: 'Exception' },
-        'InfoReceived':     { status: 'pending',          label: 'Info Received' },
-        'Pending':          { status: 'pending',          label: 'Pending' },
-        'AvailableForPickup': { status: 'pickup',         label: 'Available for Pickup' },
+        'Delivered':          { status: 'delivered',        label: 'Delivered' },
+        'OutForDelivery':     { status: 'out_for_delivery', label: 'Out for Delivery' },
+        'InTransit':          { status: 'in_transit',       label: 'In Transit' },
+        'AttemptFail':        { status: 'exception',        label: 'Attempt Failed' },
+        'Exception':          { status: 'exception',        label: 'Exception' },
+        'InfoReceived':       { status: 'pending',          label: 'Info Received' },
+        'Pending':            { status: 'pending',          label: 'Pending' },
+        'AvailableForPickup': { status: 'pickup',           label: 'Available for Pickup' },
       };
       const normalized = statusMap[tag] || { status: 'in_transit', label: tag || 'In Transit' };
 
-      // Get last checkpoint location
-      const checkpoints = data.checkpoints || [];
+      // Get last checkpoint
+      const checkpoints = trackingData.checkpoints || [];
       const lastCheck = checkpoints[checkpoints.length - 1];
       let location = null;
       if (lastCheck) {
         const parts = [lastCheck.city, lastCheck.state, lastCheck.country_iso3].filter(Boolean);
         if (parts.length) location = parts.join(', ');
-        // Use checkpoint message as detail
         normalized.detail = lastCheck.message || null;
       }
 
-      // ETA and delivery date
-      const eta = data.expected_delivery || data.aftership_estimated_delivery_date || null;
-      const deliveredAt = tag === 'Delivered' ? (data.delivery_time || lastCheck?.checkpoint_time || null) : null;
-      const signedBy = data.signed_by || null;
+      const eta = trackingData.expected_delivery || trackingData.aftership_estimated_delivery_date || null;
+      const deliveredAt = tag === 'Delivered' ? (trackingData.delivery_time || lastCheck?.checkpoint_time || null) : null;
 
       json({
         ...normalized,
         location,
-        eta: eta ? eta.split('T')[0] : null,
-        deliveredAt: deliveredAt ? deliveredAt.split('T')[0] : null,
-        signedBy,
-        lastEvent: lastCheck?.message || null,
+        eta:         eta          ? eta.split('T')[0]          : null,
+        deliveredAt: deliveredAt  ? deliveredAt.split('T')[0]  : null,
+        signedBy:    trackingData.signed_by || null,
+        lastEvent:   lastCheck?.message || null,
         lastEventTime: lastCheck?.checkpoint_time ? lastCheck.checkpoint_time.split('T')[0] : null,
       });
     } catch(e) {

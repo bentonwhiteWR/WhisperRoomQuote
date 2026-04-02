@@ -959,7 +959,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
   </div>
 
   <div style="margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,.1)">
-    <div class="summary-title">Quote Number</div>
+    <div class="summary-title">Deal / Quote #</div>
     <div style="margin-top:8px;font-family:var(--mono);font-size:16px;font-weight:600;color:var(--accent);letter-spacing:.05em;" id="quoteNumDisplay">—</div>
     <input type="hidden" id="quoteNumHidden" value="">
     <div id="revisionNote" style="display:none;margin-top:6px;font-size:10px;color:rgba(238,98,22,.8);font-weight:600;letter-spacing:.03em">
@@ -2025,7 +2025,22 @@ async function createDeal() {
       // Mark form as published — next push will generate a new quote number
       if (data.quoteNumber) {
         document.getElementById('quoteNumHidden').value = data.quoteNumber;
-        document.getElementById('quoteNumDisplay').textContent = data.quoteNumber;
+        // Show quote number in the label, deal name as the display value
+        const dealNameAfterPush = document.getElementById('dealName').value.trim();
+        const displayVal = dealNameAfterPush || data.quoteNumber;
+        document.getElementById('quoteNumDisplay').textContent = displayVal;
+        // Update the label to show quote number below
+        const qnLabel = document.querySelector('#quoteNumDisplay')?.previousElementSibling;
+        if (qnLabel) qnLabel.textContent = 'Quote Number';
+        // Show the actual quote number as a sub-label
+        let qnSub = document.getElementById('quoteNumSub');
+        if (!qnSub) {
+          qnSub = document.createElement('div');
+          qnSub.id = 'quoteNumSub';
+          qnSub.style.cssText = 'margin-top:4px;font-size:11px;color:rgba(255,255,255,.4);font-family:var(--mono);letter-spacing:.05em';
+          document.getElementById('quoteNumDisplay').after(qnSub);
+        }
+        qnSub.textContent = data.quoteNumber;
       }
       // Advance session sequence counter so next quote number is correct
       const repId = document.getElementById('repSelect').value;
@@ -2523,7 +2538,7 @@ function generateQuoteNumber(ownerId) {
 
   // Use session cache if available (set after each push)
   if (_quoteSeqCache[cacheKey] !== undefined) {
-    return dateKey + String(_quoteSeqCache[cacheKey] + 1).padStart(2, '0');
+    return 'W-' + dateKey + String(_quoteSeqCache[cacheKey] + 1).padStart(2, '0');
   }
 
   // Count today's quotes from history (DB-backed when available)
@@ -2537,7 +2552,7 @@ function generateQuoteNumber(ownerId) {
   });
 
   const seq = todayQuotes.length + 1;
-  return dateKey + String(seq).padStart(2, '0');
+  return 'W-' + dateKey + String(seq).padStart(2, '0');
 }
 
 function advanceQuoteSeq(ownerId) {
@@ -2547,8 +2562,8 @@ function advanceQuoteSeq(ownerId) {
   const yy = String(now.getFullYear()).slice(-2);
   const cacheKey = ownerId + '_' + mm + dd + yy;
 
-  // Read current seq from display
-  const current = document.getElementById('quoteNumHidden').value;
+  // Read current seq from display — strip W- prefix before parsing
+  const current = document.getElementById('quoteNumHidden').value.replace(/^W-/, '');
   const currentSeq = current ? parseInt(current.slice(-2)) : 0;
   _quoteSeqCache[cacheKey] = currentSeq; // next call returns currentSeq+1
 }
@@ -2691,7 +2706,17 @@ function loadFromHistoryEntry(idOrIdx) {
     window._historicalQuoteLoaded = true; // prevent updateQuoteNumber overwrite
     updatePushButtonText();
     document.getElementById('quoteNumHidden').value = q.quoteNumber;
-    document.getElementById('quoteNumDisplay').textContent = q.quoteNumber;
+    // Show deal name in display, quote number as sub-label
+    const displayVal = q.dealName || q.quoteNumber;
+    document.getElementById('quoteNumDisplay').textContent = displayVal;
+    let qnSub = document.getElementById('quoteNumSub');
+    if (!qnSub) {
+      qnSub = document.createElement('div');
+      qnSub.id = 'quoteNumSub';
+      qnSub.style.cssText = 'margin-top:4px;font-size:11px;color:rgba(255,255,255,.4);font-family:var(--mono);letter-spacing:.05em';
+      document.getElementById('quoteNumDisplay').after(qnSub);
+    }
+    qnSub.textContent = q.quoteNumber;
     activateLinkBtn();
     // Also activate PDF button
     const pdfBtn = document.getElementById('pdfBtn');

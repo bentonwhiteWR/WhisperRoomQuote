@@ -2307,13 +2307,11 @@ tbody tr:last-child td{border-bottom:none}
         headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
       }, {
         properties: {
-          hs_invoice_status:  'DRAFT',
+          hs_invoice_status:  'draft',
           hs_currency:        'USD',
-          hs_payment_terms:   'DUE_ON_RECEIPT',
           hs_title:           quoteNumber ? `Invoice — ${quoteNumber}` : 'Invoice',
           hs_invoice_date:    today,
           hs_due_date:        today,
-          hs_invoice_number:  invoiceNumber,
         },
         // Associate deal and line items at creation time
         associations: [

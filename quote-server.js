@@ -2443,7 +2443,8 @@ tbody tr:last-child td{border-bottom:none}
         properties: {
           hs_payment_type:     'PAYMENT_LINK',
           hs_currency_code:    'USD',
-          hs_amount:           total.toFixed(2),
+          hs_initial_amount:   total.toFixed(2),
+          hs_initiated_date:   new Date().toISOString(),
           hs_title:            quoteNumber ? `Invoice — ${quoteNumber}` : 'WhisperRoom Invoice',
           hs_payment_methods:  'ach;credit_or_debit_card',
           hs_status:           'ACTIVE',

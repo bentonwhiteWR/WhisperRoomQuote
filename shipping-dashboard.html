@@ -533,44 +533,75 @@ async function fetchStatus(s) {
     const res = await fetch(`/api/track?carrier=${encodeURIComponent(s.carrier)}&tracking=${encodeURIComponent(s.tracking)}`, { credentials: 'include' });
     const data = await res.json();
     if (data.status) {
-      const cls = statusClass(data.status);
-      const icon = statusIcon(data.status);
+      const cls   = statusClass(data.status);
+      const icon  = statusIcon(data.status);
       const label = data.label || data.status;
-      const detail = data.location ? ` · ${data.location}` : '';
-      cell.innerHTML = s.trackingUrl
-        ? `<a href="${s.trackingUrl}" target="_blank" class="status-badge ${cls}" title="${data.detail || ''}">${icon} ${label}${detail}</a>`
-        : `<span class="status-badge ${cls}" title="${data.detail || ''}">${icon} ${label}${detail}</span>`;
+
+      // Build location/detail line
+      const locationStr = data.location ? ` · ${data.location}` : '';
+
+      // Tooltip: last event message
+      const tooltip = data.lastEvent || data.detail || '';
+
+      // ETA line (only show if not delivered)
+      let etaLine = '';
+      if (data.eta && data.status !== 'delivered') {
+        etaLine = `<div style="font-size:10px;color:var(--muted);margin-top:2px">ETA ${fmtDate(data.eta)}</div>`;
+      }
+
+      // Signed by line
+      let signedLine = '';
+      if (data.signedBy && data.status === 'delivered') {
+        signedLine = `<div style="font-size:10px;color:var(--muted);margin-top:1px">Signed: ${data.signedBy}</div>`;
+      }
+
+      const badge = s.trackingUrl
+        ? `<a href="${s.trackingUrl}" target="_blank" class="status-badge ${cls}" title="${tooltip}">${icon} ${label}${locationStr}</a>`
+        : `<span class="status-badge ${cls}" title="${tooltip}">${icon} ${label}${locationStr}</span>`;
+
+      cell.innerHTML = badge + etaLine + signedLine;
+
       // If delivered, update date cell to show delivery date
-      if (data.status === 'delivered' && data.deliveredAt) {
-        const dateCell = document.getElementById('date-' + s.dealId);
-        if (dateCell) {
-          dateCell.innerHTML = `<span style="color:var(--green)">${fmtDate(data.deliveredAt)}</span><div style="font-size:10px;color:var(--muted)">Delivered</div>`;
+      const dateCell = document.getElementById('date-' + s.dealId);
+      if (dateCell) {
+        if (data.status === 'delivered' && data.deliveredAt) {
+          dateCell.innerHTML = `<span style="color:var(--green);font-weight:600">${fmtDate(data.deliveredAt)}</span><div style="font-size:10px;color:var(--muted)">Delivered</div>`;
+        } else if (data.lastEventTime) {
+          // Show last event date as a subtle update indicator
+          dateCell.innerHTML = `${fmtDate(s.dateShipped)}<div style="font-size:10px;color:var(--muted)">Updated ${fmtDate(data.lastEventTime)}</div>`;
         }
       }
     } else {
-      cell.innerHTML = `<a href="${s.trackingUrl}" target="_blank" class="status-badge status-unknown">Track →</a>`;
+      cell.innerHTML = s.trackingUrl
+        ? `<a href="${s.trackingUrl}" target="_blank" class="status-badge status-unknown">Track →</a>`
+        : `<span class="status-badge status-unknown">No data</span>`;
     }
   } catch(e) {
-    if (cell) cell.innerHTML = `<a href="${s.trackingUrl}" target="_blank" class="status-badge status-unknown">Track →</a>`;
+    if (cell) cell.innerHTML = s.trackingUrl
+      ? `<a href="${s.trackingUrl}" target="_blank" class="status-badge status-unknown">Track →</a>`
+      : `<span class="status-badge status-unknown">—</span>`;
   }
 }
 
 function statusClass(status) {
-  const s = status.toLowerCase();
-  if (s.includes('deliver')) return 'status-delivered';
-  if (s.includes('transit') || s.includes('progress') || s.includes('movement') || s.includes('out for')) return 'status-transit';
-  if (s.includes('pickup') || s.includes('picked') || s.includes('tender')) return 'status-pickup';
-  if (s.includes('exception') || s.includes('delay') || s.includes('hold') || s.includes('failed')) return 'status-exception';
+  const s = (status || '').toLowerCase();
+  if (s === 'delivered') return 'status-delivered';
+  if (s === 'out_for_delivery') return 'status-transit';
+  if (s === 'in_transit') return 'status-transit';
+  if (s === 'pickup') return 'status-pickup';
+  if (s === 'pending') return 'status-unknown';
+  if (s === 'exception') return 'status-exception';
   return 'status-transit';
 }
 
 function statusIcon(status) {
-  const s = status.toLowerCase();
-  if (s.includes('deliver')) return '✓';
-  if (s.includes('out for')) return '🚚';
-  if (s.includes('transit') || s.includes('progress')) return '→';
-  if (s.includes('pickup') || s.includes('picked')) return '📦';
-  if (s.includes('exception') || s.includes('delay')) return '⚠️';
+  const s = (status || '').toLowerCase();
+  if (s === 'delivered') return '✓';
+  if (s === 'out_for_delivery') return '🚚';
+  if (s === 'in_transit') return '→';
+  if (s === 'pickup') return '📦';
+  if (s === 'exception') return '⚠️';
+  if (s === 'pending') return '○';
   return '→';
 }
 

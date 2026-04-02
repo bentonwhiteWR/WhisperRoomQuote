@@ -2250,9 +2250,56 @@ tbody tr:last-child td{border-bottom:none}
         ? (discount.type === 'pct' ? sub * discount.value / 100 : discount.value) : 0;
       const freightTotal = freight ? parseFloat(freight.total || 0) : 0;
       const taxTotal = tax ? parseFloat(tax.tax || 0) : 0;
-      const total = sub - discAmt + freightTotal + taxTotal;
 
-      // 3. Create HubSpot invoice
+      // 3. Build all line items for the invoice
+      const invoiceLineItems = [...(lineItems || [])];
+      if (freightTotal > 0) {
+        invoiceLineItems.push({
+          name: 'Freight',
+          qty: 1,
+          price: freightTotal,
+          description: freight && freight.transit ? `LTL freight. Transit: ${freight.transit}` : 'LTL freight'
+        });
+      }
+      if (discAmt > 0) {
+        invoiceLineItems.push({
+          name: 'Discount',
+          qty: 1,
+          price: -discAmt,
+          description: discount && discount.type === 'pct' ? `${discount.value}% discount` : 'Discount'
+        });
+      }
+      if (taxTotal > 0) {
+        invoiceLineItems.push({
+          name: `Sales Tax (${tax && tax.rate ? (tax.rate * 100).toFixed(3) : ''}%)`,
+          qty: 1,
+          price: taxTotal,
+          description: tax && tax.freightTaxed ? 'State tax — includes freight.' : 'State tax — product only.'
+        });
+      }
+
+      // 4. Create line items first (needed for invoice association)
+      const createdLineItemIds = [];
+      for (const item of invoiceLineItems) {
+        try {
+          const liProps = {
+            name: item.name,
+            quantity: String(item.qty || 1),
+            price: String(parseFloat(item.price || 0).toFixed(2)),
+            description: item.description || '',
+          };
+          if (item.productId) liProps.hs_product_id = String(item.productId);
+          const li = await hsCreateLineItem(liProps);
+          if (li.id) createdLineItemIds.push(li.id);
+        } catch(e) { console.warn('Line item create error:', e.message); }
+      }
+
+      // 5. Create the invoice with required properties
+      // hs_invoice_status options: DRAFT, OPEN, PAID, VOIDED
+      // hs_payment_terms options: DUE_ON_RECEIPT, NET_10, NET_30, NET_60, NET_90
+      const today = new Date().toISOString().split('T')[0];
+      const invoiceNumber = quoteNumber ? `INV-${quoteNumber}` : `INV-${Date.now()}`;
+
       const invoiceRes = await httpsRequest({
         hostname: 'api.hubapi.com',
         path: '/crm/v3/objects/invoices',
@@ -2260,84 +2307,41 @@ tbody tr:last-child td{border-bottom:none}
         headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
       }, {
         properties: {
-          hs_invoice_status: 'draft',
-          hs_currency_code: 'USD',
-          hs_payment_terms: 'DUE_ON_RECEIPT',
-          hs_title: quoteNumber ? `Invoice — ${quoteNumber}` : 'Invoice',
-          hs_due_date: new Date().toISOString().split('T')[0],
-        }
+          hs_invoice_status:  'DRAFT',
+          hs_currency_code:   'USD',
+          hs_payment_terms:   'DUE_ON_RECEIPT',
+          hs_title:           quoteNumber ? `Invoice — ${quoteNumber}` : 'Invoice',
+          hs_invoice_date:    today,
+          hs_due_date:        today,
+          hs_invoice_number:  invoiceNumber,
+        },
+        // Associate deal and line items at creation time
+        associations: [
+          {
+            to: { id: dealId },
+            types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 176 }] // invoice_to_deal
+          },
+          ...createdLineItemIds.map(liId => ({
+            to: { id: liId },
+            types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 174 }] // invoice_to_line_item
+          }))
+        ]
       });
+
+      console.log('Invoice create response:', JSON.stringify(invoiceRes.body));
 
       const invoiceId = invoiceRes.body?.id;
       if (!invoiceId) {
+        // Log full error for debugging
         console.error('Invoice create failed:', JSON.stringify(invoiceRes.body));
-        throw new Error('Failed to create invoice: ' + (invoiceRes.body?.message || JSON.stringify(invoiceRes.body)));
+        const errMsg = invoiceRes.body?.message
+          || (invoiceRes.body?.errors || []).map(e => e.message).join(', ')
+          || JSON.stringify(invoiceRes.body);
+        throw new Error('Error creating INVOICE: ' + errMsg);
       }
 
-      // 4. Associate invoice with deal
-      await httpsRequest({
-        hostname: 'api.hubapi.com',
-        path: `/crm/v3/objects/invoices/${invoiceId}/associations/deals/${dealId}/invoice_to_deal`,
-        method: 'PUT',
-        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-      });
-
-      // 5. Create line items and associate with invoice
-      const invoiceLineItems = [...(lineItems || [])];
-
-      // Add freight line item if applicable
-      if (freightTotal > 0) {
-        invoiceLineItems.push({
-          name: 'Freight',
-          qty: 1,
-          price: freightTotal,
-          description: freight.transit ? `LTL freight. Transit: ${freight.transit}` : 'LTL freight'
-        });
-      }
-
-      // Add discount line item if applicable
-      if (discAmt > 0) {
-        invoiceLineItems.push({
-          name: 'Discount',
-          qty: 1,
-          price: -discAmt,
-          description: discount.type === 'pct' ? `${discount.value}% discount` : 'Discount'
-        });
-      }
-
-      // Add tax line item if applicable
-      if (taxTotal > 0) {
-        invoiceLineItems.push({
-          name: `Sales Tax (${tax.rate ? (tax.rate * 100).toFixed(3) : ''}%)`,
-          qty: 1,
-          price: taxTotal,
-          description: `State tax. ${tax.freightTaxed ? 'Includes freight.' : 'Product only.'}`
-        });
-      }
-
-      // Create each line item and associate with invoice
-      for (const item of invoiceLineItems) {
-        try {
-          const li = await hsCreateLineItem({
-            name: item.name,
-            quantity: String(item.qty || 1),
-            price: String(parseFloat(item.price).toFixed(2)),
-            hs_product_id: item.productId ? String(item.productId) : undefined,
-            description: item.description || '',
-          });
-          if (li.id) {
-            await httpsRequest({
-              hostname: 'api.hubapi.com',
-              path: `/crm/v3/objects/line_items/${li.id}/associations/invoices/${invoiceId}/line_item_to_invoice`,
-              method: 'PUT',
-              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-            });
-          }
-        } catch(e) { console.warn('Invoice line item error:', e.message); }
-      }
-
-      // 6. Return invoice URL to open in new tab
-      const invoiceUrl = `https://app.hubspot.com/invoices/${invoiceId}`;
+      // 6. Return invoice URL
+      const invoiceUrl = `https://app.hubspot.com/contacts/5764220/record/0-53/${invoiceId}`;
       json({ success: true, invoiceId, invoiceUrl });
 
     } catch(e) {

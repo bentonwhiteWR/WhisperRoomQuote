@@ -2359,8 +2359,8 @@ tbody tr:last-child td{border-bottom:none}
         } catch(e) { console.warn('Invoice→line_items association failed:', e.message); }
       }
 
-      // 8. Return invoice URL — direct link to invoice editor
-      const invoiceUrl = `https://app.hubspot.com/invoices/5764220/${invoiceId}`;
+      // 8. Return invoice URL — HubSpot Commerce invoice editor
+      const invoiceUrl = `https://app.hubspot.com/commerce/5764220/invoices/${invoiceId}`;
       json({ success: true, invoiceId, invoiceUrl });
 
     } catch(e) {

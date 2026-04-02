@@ -2308,7 +2308,7 @@ tbody tr:last-child td{border-bottom:none}
       }, {
         properties: {
           hs_invoice_status:  'DRAFT',
-          hs_currency_code:   'USD',
+          hs_currency:        'USD',
           hs_payment_terms:   'DUE_ON_RECEIPT',
           hs_title:           quoteNumber ? `Invoice — ${quoteNumber}` : 'Invoice',
           hs_invoice_date:    today,

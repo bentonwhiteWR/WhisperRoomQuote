@@ -2359,15 +2359,37 @@ tbody tr:last-child td{border-bottom:none}
         } catch(e) { console.warn('Invoice→line_items association failed:', e.message); }
       }
 
-      // 8. Return invoice URL — use HubSpot's returned URL directly
-      const invoiceUrl = invoiceRes.body?.url
-        || `https://app.hubspot.com/contacts/5764220/objects/0-53?filters=%5B%7B%22property%22%3A%22hs_object_id%22%2C%22operator%22%3A%22EQ%22%2C%22value%22%3A%22${invoiceId}%22%7D%5D`;
+      // 8. Return invoice URL — direct link to invoice editor
+      const invoiceUrl = `https://app.hubspot.com/invoices/5764220/${invoiceId}`;
       json({ success: true, invoiceId, invoiceUrl });
 
     } catch(e) {
       console.error('Create invoice error:', e.message);
       json({ error: e.message }, 500);
     }
+    return;
+  }
+
+    // ── TEMP: Fetch real association type IDs from HubSpot ──────────
+  if (pathname === '/api/debug/assoc-types' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const [invToDeal, invToLI] = await Promise.all([
+        httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v4/associations/invoices/deals/labels',
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+        }),
+        httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v4/associations/invoices/line_items/labels',
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+        })
+      ]);
+      json({ invoiceToDeal: invToDeal.body, invoiceToLineItem: invToLI.body });
+    } catch(e) { json({ error: e.message }, 500); }
     return;
   }
 

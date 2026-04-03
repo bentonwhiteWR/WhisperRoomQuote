@@ -1278,59 +1278,60 @@ const server = http.createServer(async (req, res) => {
     const slug = slugMap[carrier] || null;
 
     try {
-      // 1. Try to create the tracking (registers it in AfterShip if new)
+      // 1. Try to create the tracking using v4 (stable, reliable)
       const createBody = { tracking_number: tracking };
       if (slug) createBody.slug = slug;
       const createRes = await httpsRequest({
         hostname: 'api.aftership.com',
-        path: `${AS_BASE}/trackings`,
+        path: `/v4/trackings`,
         method: 'POST',
-        headers: { 'as-api-key': AFTERSHIP_KEY, 'Content-Type': 'application/json' }
+        headers: { 'aftership-api-key': AFTERSHIP_KEY, 'Content-Type': 'application/json' }
       }, { tracking: createBody });
 
-      // 201 = created, 4018 = already exists — both are fine, proceed to fetch
       const createCode = createRes.body?.meta?.code;
-      console.log(`AfterShip create: ${createCode} for ${tracking}`);
+      console.log(`AfterShip v4 create: ${createCode} for ${tracking}`);
 
-      // 2. Fetch tracking data
+      // 2. Fetch tracking data — AfterShip stores trackings by slug+number
       let trackingData = null;
+      const AS_OLDER = '/v4'; // v4 is the stable version with reliable GET by tracking number
 
-      // AfterShip 2026-01 API: GET by tracking_number (+ optional slug) via query params
-      const fetchParams = `tracking_number=${encodeURIComponent(tracking)}${slug ? '&slug=' + encodeURIComponent(slug) : ''}`;
-      const listRes = await httpsRequest({
-        hostname: 'api.aftership.com',
-        path: `${AS_BASE}/trackings?${fetchParams}`,
-        method: 'GET',
-        headers: { 'as-api-key': AFTERSHIP_KEY }
-      });
-      console.log(`AfterShip GET full response: status=${listRes.status} body=${JSON.stringify(listRes.body).slice(0,500)}`);
-      // AfterShip 2026-01 returns data.trackings array
-      const items = listRes.body?.data?.trackings || listRes.body?.data?.tracking ? [listRes.body.data.tracking] : [];
-      if (items.length) trackingData = items[0];
-
-      // If slug search found nothing, retry without slug (carrier may differ from what HubSpot has)
-      if (!trackingData && slug) {
-        const retryRes = await httpsRequest({
+      // Try v4 GET by slug+tracking (most reliable)
+      if (slug) {
+        const v4Res = await httpsRequest({
           hostname: 'api.aftership.com',
-          path: `${AS_BASE}/trackings?tracking_number=${encodeURIComponent(tracking)}`,
+          path: `/v4/trackings/${encodeURIComponent(slug)}/${encodeURIComponent(tracking)}`,
           method: 'GET',
-          headers: { 'as-api-key': AFTERSHIP_KEY }
+          headers: { 'aftership-api-key': AFTERSHIP_KEY }
         });
-        console.log(`AfterShip retry (no slug): status=${retryRes.status} meta=${JSON.stringify(retryRes.body?.meta)} dataKeys=${Object.keys(retryRes.body?.data || {}).join(',')}`);
-        const retryItems = retryRes.body?.data?.trackings || retryRes.body?.data?.tracking ? [retryRes.body?.data?.tracking].filter(Boolean) : [];
-        if (retryItems.length) trackingData = retryItems[0];
+        console.log(`AfterShip v4 GET: status=${v4Res.status} tag=${v4Res.body?.data?.tracking?.tag}`);
+        if (v4Res.body?.data?.tracking) trackingData = v4Res.body.data.tracking;
       }
 
-      // Last resort: try direct GET by slug/tracking path (older but sometimes works)
-      if (!trackingData && slug) {
-        const directRes = await httpsRequest({
+      // Try v4 without slug
+      if (!trackingData) {
+        const v4AllRes = await httpsRequest({
           hostname: 'api.aftership.com',
-          path: `${AS_BASE}/trackings/${encodeURIComponent(slug)}/${encodeURIComponent(tracking)}`,
+          path: `/v4/trackings?tracking_number=${encodeURIComponent(tracking)}&limit=1`,
+          method: 'GET',
+          headers: { 'aftership-api-key': AFTERSHIP_KEY }
+        });
+        console.log(`AfterShip v4 list: status=${v4AllRes.status} count=${v4AllRes.body?.data?.count}`);
+        const v4Items = v4AllRes.body?.data?.trackings || [];
+        if (v4Items.length) trackingData = v4Items[0];
+      }
+
+      // Try 2024-10 API as fallback
+      if (!trackingData) {
+        const fetchParams = `tracking_number=${encodeURIComponent(tracking)}${slug ? '&slug=' + encodeURIComponent(slug) : ''}`;
+        const newRes = await httpsRequest({
+          hostname: 'api.aftership.com',
+          path: `/tracking/2024-10/trackings?${fetchParams}`,
           method: 'GET',
           headers: { 'as-api-key': AFTERSHIP_KEY }
         });
-        console.log(`AfterShip direct path GET: status=${directRes.status} meta=${JSON.stringify(directRes.body?.meta)}`);
-        if (directRes.body?.data?.tracking) trackingData = directRes.body.data.tracking;
+        console.log(`AfterShip 2024-10: status=${newRes.status} count=${newRes.body?.data?.pagination?.total}`);
+        const newItems = newRes.body?.data?.trackings || [];
+        if (newItems.length) trackingData = newItems[0];
       }
 
       if (!trackingData) {
@@ -1352,18 +1353,18 @@ const server = http.createServer(async (req, res) => {
       };
       const normalized = statusMap[tag] || { status: 'in_transit', label: tag || 'In Transit' };
 
-      // Get last checkpoint
-      const checkpoints = trackingData.checkpoints || [];
+      // Get last checkpoint — v4 uses 'checkpoints', newer uses 'events'
+      const checkpoints = trackingData.checkpoints || trackingData.events || [];
       const lastCheck = checkpoints[checkpoints.length - 1];
       let location = null;
       if (lastCheck) {
         const parts = [lastCheck.city, lastCheck.state, lastCheck.country_iso3].filter(Boolean);
         if (parts.length) location = parts.join(', ');
-        normalized.detail = lastCheck.message || null;
+        normalized.detail = lastCheck.message || lastCheck.description || null;
       }
 
       const eta = trackingData.expected_delivery || trackingData.aftership_estimated_delivery_date || null;
-      const deliveredAt = tag === 'Delivered' ? (trackingData.delivery_time || lastCheck?.checkpoint_time || null) : null;
+      const deliveredAt = tag === 'Delivered' ? (trackingData.delivery_time || lastCheck?.checkpoint_time || lastCheck?.occurred_at || null) : null;
 
       json({
         ...normalized,
@@ -1371,8 +1372,9 @@ const server = http.createServer(async (req, res) => {
         eta:         eta          ? eta.split('T')[0]          : null,
         deliveredAt: deliveredAt  ? deliveredAt.split('T')[0]  : null,
         signedBy:    trackingData.signed_by || null,
-        lastEvent:   lastCheck?.message || null,
-        lastEventTime: lastCheck?.checkpoint_time ? lastCheck.checkpoint_time.split('T')[0] : null,
+        lastEvent:   lastCheck?.message || lastCheck?.description || null,
+        lastEventTime: lastCheck?.checkpoint_time || lastCheck?.occurred_at
+          ? (lastCheck.checkpoint_time || lastCheck.occurred_at).split('T')[0] : null,
       });
     } catch(e) {
       console.warn('AfterShip track error:', e.message);

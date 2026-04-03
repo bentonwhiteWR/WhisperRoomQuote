@@ -7,6 +7,83 @@ const fs      = require('fs');
 const path    = require('path');
 const url     = require('url');
 const crypto  = require('crypto');
+
+// ── Puppeteer PDF generation ──────────────────────────────────────
+let chromium, puppeteerCore;
+try {
+  chromium     = require('@sparticuz/chromium');
+  puppeteerCore = require('puppeteer-core');
+  console.log('Puppeteer loaded');
+} catch(e) {
+  console.warn('Puppeteer not available:', e.message);
+}
+
+// Semaphore — only one PDF at a time to stay within Hobby memory limits
+let _pdfBusy = false;
+async function generatePdf(pageUrl, filename, res, req) {
+  if (!puppeteerCore || !chromium) {
+    res.writeHead(503); res.end('PDF generation not available'); return;
+  }
+  // Queue: wait if another PDF is generating
+  let waited = 0;
+  while (_pdfBusy) {
+    await new Promise(r => setTimeout(r, 300));
+    waited += 300;
+    if (waited > 30000) { res.writeHead(503); res.end('PDF busy — try again'); return; }
+  }
+  _pdfBusy = true;
+  let browser;
+  try {
+    // Pass session cookie so the page renders (auth required)
+    const cookies = req.headers.cookie || '';
+    const sessionCookie = cookies.split(';')
+      .map(c => c.trim())
+      .find(c => c.startsWith('wr_qt_session=') || c.startsWith('wr_oauth_session='));
+
+    browser = await puppeteerCore.launch({
+      args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox',
+             '--disable-dev-shm-usage', '--disable-gpu'],
+      defaultViewport: { width: 1200, height: 900 },
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+    });
+
+    const page = await browser.newPage();
+
+    // Set auth cookie so protected pages load
+    if (sessionCookie) {
+      const [name, value] = sessionCookie.split('=');
+      await page.setCookie({
+        name: name.trim(),
+        value: value.trim(),
+        domain: 'whisperroomquote.up.railway.app',
+        path: '/',
+        httpOnly: true,
+      });
+    }
+
+    await page.goto(pageUrl, { waitUntil: 'networkidle0', timeout: 25000 });
+
+    // Hide action bar (buttons not needed in PDF)
+    await page.addStyleTag({ content: '.action-bar { display: none !important; } body { padding-bottom: 0 !important; }' });
+
+    const pdfBuffer = await page.pdf({
+      format: 'Letter',
+      printBackground: true,
+      margin: { top: '0', right: '0', bottom: '0', left: '0' },
+    });
+
+    res.writeHead(200, {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename.replace(/"/g, '\"')}"`,
+      'Content-Length': pdfBuffer.length,
+    });
+    res.end(pdfBuffer);
+  } finally {
+    _pdfBusy = false;
+    if (browser) await browser.close().catch(() => {});
+  }
+}
 // ── PostgreSQL Database (optional — falls back to HubSpot Notes) ──
 let Pool, db;
 try {
@@ -2512,7 +2589,59 @@ tbody tr:hover td{background:#fdfcfb}
 
 
 
-  res.writeHead(404); res.end('Not found');
+
+  // ── PDF Download: Quote ──────────────────────────────────────────
+  if (pathname.startsWith('/api/download-quote/') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const quoteNumber = decodeURIComponent(pathname.replace('/api/download-quote/', '').trim());
+    if (!quoteNumber) { json({ error: 'No quote number' }, 400); return; }
+
+    try {
+      // Verify quote exists first
+      const quoteData = await getQuoteFromDb(quoteNumber);
+      if (!quoteData) { res.writeHead(404); res.end('Quote not found'); return; }
+
+      const dealName = quoteData.dealName || quoteData.customer?.company || quoteData.customer?.lastName || 'Quote';
+      const safeName = dealName.replace(/[<>:"/\|?*]/g, '').trim();
+      const filename = `${quoteNumber} — ${safeName}.pdf`;
+
+      await generatePdf(
+        `https://whisperroomquote.up.railway.app/q/${encodeURIComponent(quoteNumber)}`,
+        filename, res, req
+      );
+    } catch(e) {
+      console.error('Quote PDF error:', e.message);
+      if (!res.headersSent) { res.writeHead(500); res.end('PDF generation failed: ' + e.message); }
+    }
+    return;
+  }
+
+  // ── PDF Download: Invoice ─────────────────────────────────────────
+  if (pathname.startsWith('/api/download-invoice/') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const quoteNumber = decodeURIComponent(pathname.replace('/api/download-invoice/', '').trim());
+    if (!quoteNumber) { json({ error: 'No quote number' }, 400); return; }
+
+    try {
+      const quoteData = await getQuoteFromDb(quoteNumber);
+      if (!quoteData) { res.writeHead(404); res.end('Invoice not found'); return; }
+
+      const dealName = quoteData.dealName || quoteData.customer?.company || quoteData.customer?.lastName || 'Invoice';
+      const safeName = dealName.replace(/[<>:"/\|?*]/g, '').trim();
+      const filename = `${quoteNumber} — ${safeName} (Invoice).pdf`;
+
+      await generatePdf(
+        `https://whisperroomquote.up.railway.app/i/${encodeURIComponent(quoteNumber)}`,
+        filename, res, req
+      );
+    } catch(e) {
+      console.error('Invoice PDF error:', e.message);
+      if (!res.headersSent) { res.writeHead(500); res.end('PDF generation failed: ' + e.message); }
+    }
+    return;
+  }
+
+    res.writeHead(404); res.end('Not found');
 });
 
 server.listen(PORT, '0.0.0.0', () => {

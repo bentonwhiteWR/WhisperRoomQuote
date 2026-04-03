@@ -146,9 +146,7 @@ async function gdriveCreateDealFolders(dealName, quoteNumber) {
     const dealFolder = await gdriveEnsureFolder(safeName, GDRIVE_ROOT_FOLDER);
     if (!dealFolder?.id) { console.warn('GDrive: failed to create deal folder'); return null; }
 
-    // Create subfolders
-    const subfolders = ['Quotes', 'Invoices', 'Purchase Orders', 'Drawings & Specs', 'Shipping', 'Final Order'];
-    await Promise.all(subfolders.map(name => gdriveEnsureFolder(name, dealFolder.id)));
+    // Subfolders skipped — files upload directly to deal folder (personal Drive quota restriction)
 
     // Save folder ID to DB
     if (db && quoteNumber) {
@@ -173,19 +171,14 @@ async function gdriveSavePdfToDeal(quoteNumber, subfolderName, filename, pdfBuff
     if (!db) { console.warn('GDrive: no DB connection'); return; }
     const row = await db.query('SELECT gdrive_folder_id FROM quotes WHERE quote_number = $1', [quoteNumber]);
     const dealFolderId = row.rows[0]?.gdrive_folder_id;
-    if (!dealFolderId) { console.warn(`GDrive: no folder ID for quote ${quoteNumber} — was folder created?`); return; }
-    console.log(`GDrive: uploading "${filename}" to ${subfolderName}/ (parent: ${dealFolderId})`);
+    if (!dealFolderId) { console.warn(`GDrive: no folder ID for quote ${quoteNumber}`); return; }
+    console.log(`GDrive: uploading "${filename}" directly to deal folder ${dealFolderId}`);
 
-    // Find or create the subfolder
-    const subfolder = await gdriveEnsureFolder(subfolderName, dealFolderId);
-    if (!subfolder?.id) { console.warn(`GDrive: could not find/create ${subfolderName} subfolder`); return; }
-    console.log(`GDrive: subfolder "${subfolderName}" id=${subfolder.id}`);
-
-    // Upload the PDF
-    const result = await gdriveUploadFilePdf(filename, pdfBuffer, subfolder.id);
-    console.log(`GDrive: uploaded "${filename}" to ${subfolderName}/ — result:`, JSON.stringify(result)?.slice(0,100));
+    // Upload directly to deal folder (skip subfolders — personal Drive quota restriction)
+    const result = await gdriveUploadFilePdf(filename, pdfBuffer, dealFolderId);
+    console.log(`GDrive: uploaded "${filename}" — result:`, JSON.stringify(result)?.slice(0,100));
   } catch(e) {
-    console.warn(`GDrive savePdf error (${subfolderName}):`, e.message, e.stack?.split('\n')[1]);
+    console.warn(`GDrive savePdf error:`, e.message, e.stack?.split('\n')[1]);
   }
 }
 

@@ -3638,22 +3638,79 @@ async function confirmProcessOrder() {
     const data = await res.json();
     if (data.success) {
       closeOrderModal();
+
+      // Build mailto with all order details pre-filled
+      const foam            = document.querySelector('input[name="orderFoam"]:checked')?.value  || 'Undecided';
+      const hinge           = document.querySelector('input[name="orderHinge"]:checked')?.value || 'Undecided';
+      const productionNotes = document.getElementById('orderProductionNotes').value.trim();
+      const deliveryNotes   = document.getElementById('orderDeliveryNotes').value.trim();
+      const quoteNum        = document.getElementById('quoteNumHidden').value;
+      const dealNameVal     = document.getElementById('dealName').value.trim() || quoteNum;
+      const customerName    = [document.getElementById('firstName').value.trim(), document.getElementById('lastName').value.trim()].filter(Boolean).join(' ');
+      const company         = document.getElementById('company').value.trim();
+      const shipAddr        = [document.getElementById('shipAddress').value.trim(), document.getElementById('shipCity').value.trim(), document.getElementById('shipState').value.trim(), document.getElementById('shipZip').value.trim()].filter(Boolean).join(', ');
+
+      const sub = lineItems.reduce((s,i) => s + (i.price * i.qty), 0);
+      const discVal = parseFloat(document.getElementById('discountValue').value) || 0;
+      const discAmt = discVal > 0 ? (discountType === 'pct' ? sub * discVal / 100 : discVal) : 0;
+      const freightAmt = freightData ? parseFloat(freightData.total || 0) : 0;
+      const taxAmt = taxData ? parseFloat(taxData.tax || 0) : 0;
+      const total = sub - discAmt + freightAmt + taxAmt;
+      const totalWeight = lineItems.reduce((s,i) => s + ((parseFloat(i.weight)||0) * (parseInt(i.qty)||1)), 0);
+      const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+
+      const lineList = lineItems.map(i =>
+        `  - ${i.name} (x${i.qty}) — ${fmt(i.price * i.qty)}${i.weight ? ' — ' + (parseFloat(i.weight)*parseInt(i.qty)) + ' lbs' : ''}`
+      ).join('\n');
+
+      const emailSubject = `New Order: ${quoteNum} — ${dealNameVal}`;
+      const emailBody = [
+        `NEW ORDER — ${quoteNum}`,
+        `Deal: ${dealNameVal}`,
+        ``,
+        `CUSTOMER`,
+        customerName ? `Name: ${customerName}` : null,
+        company      ? `Company: ${company}`    : null,
+        shipAddr     ? `Ship To: ${shipAddr}`   : null,
+        ``,
+        `ORDER SPECIFICATIONS`,
+        `Foam Color: ${foam}`,
+        `Door Hinge: ${hinge}`,
+        productionNotes ? `Production Notes: ${productionNotes}` : null,
+        deliveryNotes   ? `Delivery Notes: ${deliveryNotes}`     : null,
+        ``,
+        `LINE ITEMS`,
+        lineList,
+        ``,
+        `TOTALS`,
+        `Subtotal: ${fmt(sub)}`,
+        discAmt > 0     ? `Discount: -${fmt(discAmt)}`     : null,
+        freightAmt > 0  ? `Freight: ${fmt(freightAmt)}`    : null,
+        taxAmt > 0      ? `Sales Tax: ${fmt(taxAmt)}`      : null,
+        `Order Total: ${fmt(total)}`,
+        totalWeight > 0 ? `Total Weight: ${totalWeight.toLocaleString()} lbs` : null,
+        ``,
+        `ORDER PAGE`,
+        data.orderUrl,
+      ].filter(l => l !== null).join('\n');
+
+      const mailto = `mailto:shipping@whisperroom.com,accounting@whisperroom.com,bentonwhite@whisperroom.com?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+      window.location.href = mailto;
+
       // Show order link in result box
       const box = document.getElementById('resultBox');
       if (box) {
         box.className = 'result-box success';
-        box.innerHTML = `&#x2713; Order processed &amp; team notified!<br>
+        box.innerHTML = `&#x2713; Order processed! Email draft opened.<br>
           <a href="${data.orderUrl}" target="_blank" style="color:inherit;font-weight:700">View Order Page &#x2192;</a><br>
-          <span style="font-size:11px;opacity:.7;display:block;margin-top:4px">${data.orderUrl}</span>
           <button onclick="navigator.clipboard.writeText('${data.orderUrl}').then(()=>{this.textContent='✓ Copied!';setTimeout(()=>this.textContent='Copy Order Link',2000)})" style="margin-top:8px;padding:6px 14px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit">Copy Order Link</button>`;
       }
-      showToast('Order sent to shipping & accounting!', 'success');
-      // Disable order btn to prevent double-sending
+      showToast('Email draft opened!', 'success');
       const orderBtn = document.getElementById('orderBtn');
       if (orderBtn) {
         orderBtn.disabled = true;
         orderBtn.style.opacity = '.5';
-        orderBtn.textContent = '✓ Order Processed';
+        orderBtn.innerHTML = '&#x2713; Order Processed';
       }
     } else {
       throw new Error(data.error || 'Order processing failed');

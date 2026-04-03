@@ -2066,7 +2066,7 @@ async function createDeal() {
         pdfBtn.title = 'Download quote as PDF';
       }
       enableInvoiceBtn();
-      box.innerHTML = `✓ Deal created in HubSpot.<br><a href="${data.dealUrl}" target="_blank">View Deal &#x2192;</a>`;
+      enableOrderBtn();
       // Save to history
       const repName = document.getElementById('repSelect').options[document.getElementById('repSelect').selectedIndex].text;
       const companyVal = document.getElementById('company').value.trim();
@@ -2483,23 +2483,22 @@ ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</
 
     <div style="margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Foam Color</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px" id="orderFoamGrid">
-        ${['Gray','Blue','Purple','Orange','Burgundy','Undecided'].map(c =>
-          `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8);transition:all .15s" class="order-sel-label">
-            <input type="radio" name="orderFoam" value="${c}" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> ${c}
-          </label>`
-        ).join('')}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Gray" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Gray</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Blue" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Blue</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Purple" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Purple</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Orange" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Orange</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Burgundy" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Burgundy</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Undecided" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Undecided</label>
       </div>
     </div>
 
     <div style="margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Door Hinge</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px" id="orderHingeGrid">
-        ${['Left Hand','Right Hand','Undecided'].map(h =>
-          `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8);transition:all .15s" class="order-sel-label">
-            <input type="radio" name="orderHinge" value="${h}" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> ${h}
-          </label>`
-        ).join('')}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderHinge" value="Left Hand" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> Left Hand</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderHinge" value="Right Hand" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> Right Hand</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderHinge" value="Undecided" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> Undecided</label>
       </div>
     </div>
 
@@ -2789,8 +2788,7 @@ function loadFromHistoryEntry(idOrIdx) {
       pdfBtn.title = 'Download quote as PDF';
     }
     enableInvoiceBtn();
-    // Enable order btn if this quote has a payment link already
-    if (q.payment_link || q.paymentLink) enableOrderBtn();
+    enableOrderBtn();
   }
 
   updateSummary();
@@ -3829,23 +3827,22 @@ function closeInvoiceModal() {
 
     <div style="margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Foam Color</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px" id="orderFoamGrid">
-        ${['Gray','Blue','Purple','Orange','Burgundy','Undecided'].map(c =>
-          `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8);transition:all .15s" class="order-sel-label">
-            <input type="radio" name="orderFoam" value="${c}" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> ${c}
-          </label>`
-        ).join('')}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Gray" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Gray</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Blue" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Blue</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Purple" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Purple</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Orange" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Orange</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Burgundy" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Burgundy</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Undecided" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Undecided</label>
       </div>
     </div>
 
     <div style="margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Door Hinge</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px" id="orderHingeGrid">
-        ${['Left Hand','Right Hand','Undecided'].map(h =>
-          `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8);transition:all .15s" class="order-sel-label">
-            <input type="radio" name="orderHinge" value="${h}" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> ${h}
-          </label>`
-        ).join('')}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderHinge" value="Left Hand" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> Left Hand</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderHinge" value="Right Hand" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> Right Hand</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderHinge" value="Undecided" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> Undecided</label>
       </div>
     </div>
 

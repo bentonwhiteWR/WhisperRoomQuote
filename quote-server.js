@@ -170,20 +170,22 @@ async function gdriveCreateDealFolders(dealName, quoteNumber) {
 // Upload a PDF to a deal's subfolder (e.g. Quotes, Invoices, Final Order)
 async function gdriveSavePdfToDeal(quoteNumber, subfolderName, filename, pdfBuffer) {
   try {
-    if (!db) return;
+    if (!db) { console.warn('GDrive: no DB connection'); return; }
     const row = await db.query('SELECT gdrive_folder_id FROM quotes WHERE quote_number = $1', [quoteNumber]);
     const dealFolderId = row.rows[0]?.gdrive_folder_id;
-    if (!dealFolderId) { console.warn(`GDrive: no folder ID for quote ${quoteNumber}`); return; }
+    if (!dealFolderId) { console.warn(`GDrive: no folder ID for quote ${quoteNumber} — was folder created?`); return; }
+    console.log(`GDrive: uploading "${filename}" to ${subfolderName}/ (parent: ${dealFolderId})`);
 
     // Find or create the subfolder
     const subfolder = await gdriveEnsureFolder(subfolderName, dealFolderId);
     if (!subfolder?.id) { console.warn(`GDrive: could not find/create ${subfolderName} subfolder`); return; }
+    console.log(`GDrive: subfolder "${subfolderName}" id=${subfolder.id}`);
 
     // Upload the PDF
-    await gdriveUploadFilePdf(filename, pdfBuffer, subfolder.id);
-    console.log(`GDrive: uploaded "${filename}" to ${subfolderName}/`);
+    const result = await gdriveUploadFilePdf(filename, pdfBuffer, subfolder.id);
+    console.log(`GDrive: uploaded "${filename}" to ${subfolderName}/ — result:`, JSON.stringify(result)?.slice(0,100));
   } catch(e) {
-    console.warn(`GDrive savePdf error (${subfolderName}):`, e.message);
+    console.warn(`GDrive savePdf error (${subfolderName}):`, e.message, e.stack?.split('\n')[1]);
   }
 }
 
@@ -237,6 +239,7 @@ Content-Type: application/pdf
 // Generate PDF buffer from an internal page URL (uses Puppeteer)
 async function generatePdfBuffer(pageUrl) {
   if (!puppeteer) throw new Error('Puppeteer not available');
+  console.log(`GDrive: generating PDF for ${pageUrl}`);
   let browser;
   try {
     browser = await puppeteer.launch({
@@ -1896,7 +1899,7 @@ const server = http.createServer(async (req, res) => {
             const pdfBuffer = await generatePdfBuffer(quoteUrl);
             const safeName = finalDealName.replace(/[/\\:*?"<>|]/g, '-').trim();
             await gdriveSavePdfToDeal(quoteNumber, 'Quotes', `${quoteNumber} — ${safeName}.pdf`, pdfBuffer);
-          } catch(e) { console.warn('GDrive quote upload error:', e.message); }
+          } catch(e) { console.warn('GDrive quote upload error:', e.message, e.stack?.split('\n')[1]); }
         })();
 
       } catch(e) { console.warn('DB save error:', e.message); }
@@ -3018,7 +3021,7 @@ tbody tr:hover td{background:#fdfcfb}
           const dn = dealNameRow?.rows[0]?.deal_name || quoteNumber;
           const safeName = dn.replace(/[/\\:*?"<>|]/g, '-').trim();
           await gdriveSavePdfToDeal(quoteNumber, 'Invoices', `${quoteNumber} — ${safeName} (Invoice).pdf`, pdfBuffer);
-        } catch(e) { console.warn('GDrive invoice upload error:', e.message); }
+        } catch(e) { console.warn('GDrive invoice upload error:', e.message, e.stack?.split('\n')[1]); }
       })();
 
     } catch(e) {
@@ -3669,7 +3672,7 @@ tbody tr:last-child td{border-bottom:none}
           const dn = dealName || quoteNumber;
           const safeName = dn.replace(/[/\\:*?"<>|]/g, '-').trim();
           await gdriveSavePdfToDeal(quoteNumber, 'Final Order', `${quoteNumber} — ${safeName} (Order).pdf`, pdfBuffer);
-        } catch(e) { console.warn('GDrive order upload error:', e.message); }
+        } catch(e) { console.warn('GDrive order upload error:', e.message, e.stack?.split('\n')[1]); }
       })();
 
     } catch(e) {

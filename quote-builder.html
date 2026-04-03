@@ -60,19 +60,24 @@ body {
 .topbar {
   background: var(--charcoal);
   border-bottom: 1px solid rgba(255,255,255,.1);
-  padding: 0 32px;
-  height: 56px;
+  padding: 0 20px;
+  min-height: 52px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   position: sticky;
   top: 0;
   z-index: 100;
+  flex-wrap: nowrap;
+  gap: 8px;
 }
-.logo { font-family: 'Satoshi', sans-serif; font-size: 20px; font-weight: 800; color: #ffffff; }
+.logo { font-family: 'Satoshi', sans-serif; font-size: 20px; font-weight: 800; color: #ffffff; flex-shrink: 0; }
 .logo span { color: #ee6216; }
-.topbar-right { display: flex; align-items: center; gap: 16px; }
-.topbar-badge { font-size: 10px; color: #ee6216; background: rgba(238,98,22,.15); border: 1px solid rgba(238,98,22,.4); padding: 3px 10px; border-radius: 2px; letter-spacing: .1em; text-transform: uppercase; }
+.topbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.topbar-badge { font-size: 10px; color: #ee6216; background: rgba(238,98,22,.15); border: 1px solid rgba(238,98,22,.4); padding: 3px 10px; border-radius: 2px; letter-spacing: .1em; text-transform: uppercase; flex-shrink:0; }
+.topbar-nav-btn { padding:5px 10px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.6);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:5px;white-space:nowrap; }
+.topbar-nav-btn:hover { background:rgba(255,255,255,.12);color:rgba(255,255,255,.9); }
+.topbar-nav-btn.active { background:rgba(238,98,22,.2);border-color:rgba(238,98,22,.4);color:#ee6216; }
 
 /* ── Layout ── */
 .layout { display: grid; grid-template-columns: 1fr 340px; gap: 0; height: calc(100vh - 56px); overflow: hidden; }
@@ -99,7 +104,9 @@ body {
     padding: 16px;
     top: 0;
   }
-  .topbar { padding: 0 12px; }
+  .topbar { padding: 0 10px; }
+  .topbar-right { gap: 5px; }
+  .topbar-nav-btn { padding: 4px 8px; font-size: 10px; }
   .topbar-title { font-size: 12px; }
   .section { margin-bottom: 20px; }
   .section-head { padding: 10px 14px; }
@@ -592,10 +599,8 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
       + New Quote
     </button>
     <button onclick="toggleHistory()" class="history-btn"><span>&#x1F4CB;</span> History</button>
-    <a href="/orders" style="padding:6px 14px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.6);cursor:pointer;margin-right:4px;text-decoration:none;display:inline-flex;align-items:center;gap:5px;" title="View production orders">
-      &#x1F4E6; Orders
-    </a>
-    <a href="/shipping" style="padding:6px 14px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:rgba(238,98,22,.2);border:1px solid rgba(238,98,22,.4);border-radius:6px;color:#ee6216;cursor:pointer;margin-right:4px;text-decoration:none;display:inline-flex;align-items:center;gap:5px;" title="View active shipments">
+    <a href="/orders" class="topbar-nav-btn" title="View production orders">&#x1F4E6; Orders</a>
+    <a href="/shipping" class="topbar-nav-btn active" title="View active shipments">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
       Shipping
     </a>
@@ -2010,8 +2015,15 @@ async function createDeal() {
         discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0, amount: disc },
         total,
         ownerId: document.getElementById('repSelect').value,
-        dealName: document.getElementById('dealName').value.trim() ||
-          `${document.getElementById('company').value.trim() || lastName} — Quote`,
+        dealName: (() => {
+          const manual = document.getElementById('dealName').value.trim();
+          if (manual) return manual;
+          const co   = document.getElementById('company').value.trim();
+          const fn   = document.getElementById('firstName').value.trim();
+          const ln   = document.getElementById('lastName').value.trim();
+          const base = co || [fn, ln].filter(Boolean).join(' ') || 'Customer';
+          return `${base} — ${document.getElementById('quoteNumHidden').value || 'Quote'}`;
+        })(),
         existingDealId: selectedDeal ? selectedDeal.id : null,
         linkedDealId: linkedDeal ? linkedDeal.id : (selectedDeal ? selectedDeal.id : null),
         isRevision: !!(linkedDeal || selectedDeal), // updating existing = revision

@@ -37,24 +37,13 @@ async function generatePdf(pageUrl, filename, res, req) {
       .map(c => c.trim())
       .find(c => c.startsWith('wr_qt_session=') || c.startsWith('wr_oauth_session='));
 
-    // Use system Chromium installed by nixpacks if available, else puppeteer's bundled Chrome
-    const execPath = process.env.PUPPETEER_EXECUTABLE_PATH
-      || (require('fs').existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : null)
-      || (require('fs').existsSync('/usr/bin/chromium-browser') ? '/usr/bin/chromium-browser' : null)
-      || (require('fs').existsSync('/nix/store') ? (() => {
-           try {
-             const { execSync } = require('child_process');
-             return execSync('which chromium 2>/dev/null || which chromium-browser 2>/dev/null').toString().trim();
-           } catch(e) { return null; }
-         })() : null);
-
     browser = await puppeteer.launch({
       args: ['--no-sandbox', '--disable-setuid-sandbox',
              '--disable-dev-shm-usage', '--disable-gpu',
              '--single-process', '--no-zygote'],
       defaultViewport: { width: 1200, height: 900 },
       headless: 'new',
-      ...(execPath ? { executablePath: execPath } : {}),
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     });
 
     const page = await browser.newPage();

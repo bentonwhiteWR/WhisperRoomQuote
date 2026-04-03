@@ -1020,8 +1020,8 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
   <button class="create-btn" id="createBtn" onclick="createDeal()">
     Create Quote &amp; Deal
   </button>
-  <button class="create-btn" id="pdfBtn" onclick="handlePdfBtn()" style="margin-top:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.4);opacity:.5;cursor:not-allowed" title="Push to HubSpot first">
-    &#x2B07; Download / View Quote
+  <button class="create-btn" id="pdfBtn" onclick="downloadQuotePdf()" style="margin-top:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.4);opacity:.5;cursor:not-allowed" title="Push to HubSpot first" disabled>
+    &#x2B07; Download Quote PDF
   </button>
     <button class="create-btn" onclick="emailViaHubSpot()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);margin-top:8px">
       &#x2709; Email Quote (with Link)
@@ -2054,10 +2054,12 @@ async function createDeal() {
       // Also activate PDF button
       const pdfBtn = document.getElementById('pdfBtn');
       if (pdfBtn) {
+        pdfBtn.disabled = false;
+        pdfBtn.removeAttribute('disabled');
         pdfBtn.style.opacity = '1';
         pdfBtn.style.cursor = 'pointer';
         pdfBtn.style.color = 'rgba(255,255,255,.85)';
-        pdfBtn.title = 'View & download quote page';
+        pdfBtn.title = 'Download quote as PDF';
       }
       enableInvoiceBtn();
       box.innerHTML = `✓ Deal created in HubSpot.<br><a href="${data.dealUrl}" target="_blank">View Deal &#x2192;</a>`;
@@ -2725,10 +2727,12 @@ function loadFromHistoryEntry(idOrIdx) {
     // Also activate PDF button
     const pdfBtn = document.getElementById('pdfBtn');
     if (pdfBtn) {
+      pdfBtn.disabled = false;
+      pdfBtn.removeAttribute('disabled');
       pdfBtn.style.opacity = '1';
       pdfBtn.style.cursor = 'pointer';
       pdfBtn.style.color = 'rgba(255,255,255,.85)';
-      pdfBtn.title = 'View this historical quote';
+      pdfBtn.title = 'Download quote as PDF';
     }
     enableInvoiceBtn();
   }
@@ -3237,15 +3241,37 @@ function showToast(msg, type) {
   toast._t = setTimeout(() => { toast.style.opacity = '0'; }, 3000);
 }
 
-function handlePdfBtn() {
+async function downloadQuotePdf() {
   const quoteNum = document.getElementById('quoteNumHidden').value;
-  if (!window._lastPushedDealId && !quoteNum) {
-    showToast('Push to HubSpot first to generate the quote page', 'error');
+  if (!quoteNum) {
+    showToast('Push to HubSpot first to generate the PDF', 'error');
     return;
   }
-  // Open the shareable quote page — customer-facing, clean, downloadable
-  const url = 'https://whisperroomquote.up.railway.app/q/' + quoteNum;
-  window.open(url, '_blank');
+  const btn = document.getElementById('pdfBtn');
+  const origText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '&#x23F3; Generating PDF…';
+  try {
+    const res = await fetch(`/api/download-quote/${encodeURIComponent(quoteNum)}`, {
+      credentials: 'include'
+    });
+    if (!res.ok) throw new Error('PDF generation failed — try again in a moment');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const cd = res.headers.get('Content-Disposition') || '';
+    const match = cd.match(/filename="([^"]+)"/);
+    a.download = match ? match[1] : `${quoteNum}.pdf`;
+    a.href = url;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('PDF downloaded!', 'success');
+  } catch(e) {
+    showToast('PDF failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origText;
+  }
 }
 
 function copyQuoteLink() {
@@ -3570,6 +3596,8 @@ async function confirmCreateInvoice() {
 function closeInvoiceModal() {
   document.getElementById('invoiceModal').style.display = 'none';
 }
+
+
 
 </script>
 

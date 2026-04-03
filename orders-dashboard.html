@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WhisperRoom — Production Orders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial Black,sans-serif' font-size='18' font-weight='900' fill='%23e8531a'>W</text></svg>">
+<style>
+  :root {
+    --bg: #0f0f0f;
+    --surface: #1a1a1a;
+    --surface2: #222;
+    --border: #2a2a2a;
+    --orange: #ee6216;
+    --orange-dim: rgba(238,98,22,.12);
+    --text: #e8e8e8;
+    --muted: #888;
+    --green: #22c55e;
+    --green-dim: rgba(34,197,94,.12);
+    --blue: #3b82f6;
+    --row-hover: rgba(255,255,255,.02);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+
+  /* Topbar */
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 52px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
+  .topbar-logo { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800; }
+  .topbar-logo span { color: var(--orange); }
+  .topbar-nav { display: flex; gap: 6px; }
+  .nav-link { padding: 6px 12px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; border-radius: 6px; color: var(--muted); text-decoration: none; transition: all .15s; }
+  .nav-link:hover { background: rgba(255,255,255,.08); color: var(--text); }
+  .nav-link.active { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(238,98,22,.3); }
+
+  /* Main */
+  .main { max-width: 1200px; margin: 0 auto; padding: 28px 24px; }
+  .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+  .page-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; }
+  .page-title span { color: var(--orange); }
+  .order-count { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+  /* Search/filter bar */
+  .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+  .search-input { flex: 1; min-width: 200px; padding: 9px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 13px; font-family: inherit; outline: none; }
+  .search-input:focus { border-color: var(--orange); }
+  .search-input::placeholder { color: var(--muted); }
+
+  /* Orders table */
+  .orders-table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); padding: 12px 16px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+  tbody tr { border-bottom: 1px solid var(--border); cursor: pointer; transition: background .1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--row-hover); }
+  tbody td { padding: 14px 16px; font-size: 13px; vertical-align: middle; }
+  .td-main { font-weight: 600; color: var(--text); }
+  .td-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .td-mono { font-family: monospace; font-size: 12px; color: var(--orange); }
+  .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+  .badge-production { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(238,98,22,.25); }
+  .badge-foam { background: rgba(255,255,255,.05); color: var(--muted); border: 1px solid var(--border); }
+
+  /* Empty state */
+  .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty-icon { font-size: 36px; margin-bottom: 12px; }
+  .empty-text { font-size: 14px; }
+
+  /* Loading skeleton */
+  .skeleton { background: linear-gradient(90deg, #1e1e1e 25%, #252525 50%, #1e1e1e 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: 4px; height: 14px; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+  /* Edit Drawer */
+  .drawer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 200; }
+  .drawer-overlay.open { display: block; }
+  .drawer { position: fixed; top: 0; right: -520px; width: 500px; max-width: 96vw; height: 100vh; background: var(--surface); border-left: 1px solid var(--border); z-index: 201; transition: right .25s ease; overflow-y: auto; padding: 28px 28px 40px; }
+  .drawer.open { right: 0; }
+  .drawer-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; }
+  .drawer-title { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800; }
+  .drawer-subtitle { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .drawer-close { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; padding: 4px; line-height: 1; }
+  .drawer-close:hover { color: var(--text); }
+  .drawer-section { margin-bottom: 22px; }
+  .drawer-section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; color: var(--orange); margin-bottom: 12px; }
+  .field-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field.full { grid-column: 1 / -1; }
+  .field label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .field input, .field textarea, .field select {
+    padding: 9px 12px; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 7px; color: var(--text); font-size: 13px; font-family: inherit; outline: none;
+  }
+  .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--orange); }
+  .field textarea { resize: vertical; min-height: 72px; }
+
+  /* Radio selectors */
+  .sel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .sel-label { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--text); transition: all .15s; }
+  .sel-label input { accent-color: var(--orange); }
+  .sel-label.selected { border-color: var(--orange); background: var(--orange-dim); }
+
+  /* Drawer buttons */
+  .drawer-footer { display: flex; gap: 10px; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border); }
+  .btn { padding: 11px 20px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; font-family: inherit; transition: all .15s; }
+  .btn-primary { background: var(--orange); color: white; flex: 1; }
+  .btn-primary:hover { background: #d4561a; }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-secondary { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+  .btn-secondary:hover { color: var(--text); }
+  .btn-danger { background: rgba(239,68,68,.1); color: #ef4444; border: 1px solid rgba(239,68,68,.2); }
+  .btn-danger:hover { background: rgba(239,68,68,.2); }
+
+  /* Toast */
+  #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: #1e1e1e; border: 1px solid var(--border); border-radius: 8px; padding: 10px 18px; font-size: 13px; font-weight: 600; color: var(--text); z-index: 999; transition: transform .25s; pointer-events: none; white-space: nowrap; }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+  #toast.success { border-color: var(--green); color: var(--green); }
+  #toast.error { border-color: #ef4444; color: #ef4444; }
+
+  .order-link-btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 5px; font-size: 11px; font-weight: 600; color: var(--muted); text-decoration: none; transition: all .15s; }
+  .order-link-btn:hover { color: var(--orange); border-color: var(--orange); }
+
+  @media(max-width:640px) {
+    .drawer { width: 100vw; }
+    .field-group { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo">Whisper<span>Room</span></div>
+  <nav class="topbar-nav">
+    <a href="/" class="nav-link">Quote Builder</a>
+    <a href="/orders" class="nav-link active">Orders</a>
+    <a href="/shipping" class="nav-link">Shipping</a>
+  </nav>
+</div>
+
+<div class="main">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Production <span>Orders</span></div>
+      <div class="order-count" id="orderCount">Loading...</div>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <input type="text" class="search-input" id="searchInput" placeholder="Search by name, company, quote number..." oninput="filterOrders()">
+  </div>
+
+  <div class="orders-table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Quote #</th>
+          <th>Customer / Company</th>
+          <th>Foam</th>
+          <th>Hinge</th>
+          <th>Total</th>
+          <th>Processed</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="ordersBody">
+        <tr><td colspan="7"><div style="padding:40px;text-align:center;color:var(--muted)">Loading orders...</div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Edit Drawer -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+<div class="drawer" id="editDrawer">
+  <div class="drawer-header">
+    <div>
+      <div class="drawer-title" id="drawerTitle">Edit Order</div>
+      <div class="drawer-subtitle" id="drawerSubtitle"></div>
+    </div>
+    <button class="drawer-close" onclick="closeDrawer()">&#x2715;</button>
+  </div>
+
+  <div class="drawer-section">
+    <div class="drawer-section-title">Contact Information</div>
+    <div class="field-group">
+      <div class="field"><label>First Name</label><input type="text" id="editFirstName" placeholder="First name"></div>
+      <div class="field"><label>Last Name</label><input type="text" id="editLastName" placeholder="Last name"></div>
+      <div class="field full"><label>Company</label><input type="text" id="editCompany" placeholder="Company name"></div>
+      <div class="field full"><label>Email</label><input type="email" id="editEmail" placeholder="customer@example.com"></div>
+    </div>
+  </div>
+
+  <div class="drawer-section">
+    <div class="drawer-section-title">Ship To Address</div>
+    <div class="field-group">
+      <div class="field full"><label>Street Address</label><input type="text" id="editAddress" placeholder="123 Main St"></div>
+      <div class="field"><label>City</label><input type="text" id="editCity" placeholder="City"></div>
+      <div class="field"><label>State</label><input type="text" id="editState" placeholder="TN" maxlength="2"></div>
+      <div class="field"><label>ZIP</label><input type="text" id="editZip" placeholder="37919"></div>
+    </div>
+  </div>
+
+  <div class="drawer-section">
+    <div class="drawer-section-title">Order Specifications</div>
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Foam Color</div>
+      <div class="sel-grid" id="editFoamGrid">
+        <label class="sel-label"><input type="radio" name="editFoam" value="Gray" onchange="highlightSel('editFoam')"> Gray</label>
+        <label class="sel-label"><input type="radio" name="editFoam" value="Blue" onchange="highlightSel('editFoam')"> Blue</label>
+        <label class="sel-label"><input type="radio" name="editFoam" value="Purple" onchange="highlightSel('editFoam')"> Purple</label>
+        <label class="sel-label"><input type="radio" name="editFoam" value="Orange" onchange="highlightSel('editFoam')"> Orange</label>
+        <label class="sel-label"><input type="radio" name="editFoam" value="Burgundy" onchange="highlightSel('editFoam')"> Burgundy</label>
+      </div>
+    </div>
+    <div>
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Door Hinge</div>
+      <div class="sel-grid" id="editHingeGrid">
+        <label class="sel-label"><input type="radio" name="editHinge" value="Left Hand" onchange="highlightSel('editHinge')"> Left Hand</label>
+        <label class="sel-label"><input type="radio" name="editHinge" value="Right Hand" onchange="highlightSel('editHinge')"> Right Hand</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="drawer-section">
+    <div class="drawer-section-title">Notes</div>
+    <div class="field-group">
+      <div class="field full"><label>Production Notes</label><textarea id="editProductionNotes" placeholder="Internal notes for production team..."></textarea></div>
+      <div class="field full"><label>Special Delivery Notes</label><textarea id="editDeliveryNotes" placeholder="Liftgate required, residential delivery, etc..."></textarea></div>
+    </div>
+  </div>
+
+  <div class="drawer-footer">
+    <button class="btn btn-primary" id="saveBtn" onclick="saveOrder()">Save Changes</button>
+    <a id="viewOrderBtn" href="#" target="_blank" class="btn btn-secondary" style="text-decoration:none;display:flex;align-items:center">View Order Page</a>
+    <button class="btn btn-secondary" onclick="closeDrawer()">Cancel</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+let allOrders = [];
+let currentQuoteNumber = null;
+
+async function loadOrders() {
+  try {
+    const res = await fetch('/api/orders', { credentials: 'include' });
+    if (res.status === 401) { window.location.href = '/'; return; }
+    const data = await res.json();
+    allOrders = data.orders || [];
+    renderOrders(allOrders);
+    document.getElementById('orderCount').textContent = `${allOrders.length} order${allOrders.length !== 1 ? 's' : ''} in production`;
+  } catch(e) {
+    document.getElementById('ordersBody').innerHTML = `<tr><td colspan="7"><div style="padding:40px;text-align:center;color:#ef4444">Failed to load orders: ${e.message}</div></td></tr>`;
+  }
+}
+
+function fmt(n) {
+  return '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function renderOrders(orders) {
+  const tbody = document.getElementById('ordersBody');
+  if (!orders.length) {
+    tbody.innerHTML = `<tr><td colspan="7">
+      <div class="empty">
+        <div class="empty-icon">📦</div>
+        <div class="empty-text">No orders in production yet</div>
+      </div>
+    </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = orders.map(o => {
+    const customer = o.customer_name || '—';
+    const company  = o.company || '';
+    const foam     = o.order_data?.foamColor || '—';
+    const hinge    = o.order_data?.hingePreference || '—';
+    const date     = o.created_at ? new Date(o.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+    const total    = o.total ? fmt(o.total) : '—';
+    const orderUrl = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(o.quote_number)}`;
+
+    return `<tr onclick="openDrawer('${o.quote_number}')">
+      <td><div class="td-mono">${o.quote_number}</div></td>
+      <td>
+        <div class="td-main">${customer}</div>
+        ${company ? `<div class="td-sub">${company}</div>` : ''}
+      </td>
+      <td><span class="badge badge-foam">${foam}</span></td>
+      <td><span class="badge badge-foam">${hinge}</span></td>
+      <td style="font-weight:600;color:var(--orange)">${total}</td>
+      <td style="color:var(--muted);font-size:12px">${date}</td>
+      <td onclick="event.stopPropagation()">
+        <a href="${orderUrl}" target="_blank" class="order-link-btn">Order Page ↗</a>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function filterOrders() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  if (!q) { renderOrders(allOrders); return; }
+  const filtered = allOrders.filter(o =>
+    (o.quote_number||'').toLowerCase().includes(q) ||
+    (o.customer_name||'').toLowerCase().includes(q) ||
+    (o.company||'').toLowerCase().includes(q) ||
+    (o.deal_name||'').toLowerCase().includes(q)
+  );
+  renderOrders(filtered);
+}
+
+function openDrawer(quoteNumber) {
+  const order = allOrders.find(o => o.quote_number === quoteNumber);
+  if (!order) return;
+  currentQuoteNumber = quoteNumber;
+
+  document.getElementById('drawerTitle').textContent = order.quote_number;
+  document.getElementById('drawerSubtitle').textContent = order.deal_name || order.customer_name || '';
+
+  // Customer fields
+  const c = order.json_snapshot?.customer || {};
+  document.getElementById('editFirstName').value = c.firstName || '';
+  document.getElementById('editLastName').value  = c.lastName  || '';
+  document.getElementById('editCompany').value   = c.company   || order.company || '';
+  document.getElementById('editEmail').value     = c.email     || '';
+
+  // Address
+  document.getElementById('editAddress').value = c.address || '';
+  document.getElementById('editCity').value    = c.city    || '';
+  document.getElementById('editState').value   = c.state   || '';
+  document.getElementById('editZip').value     = c.zip     || '';
+
+  // Order specs
+  const od = order.order_data || {};
+  setRadio('editFoam',  od.foamColor        || '');
+  setRadio('editHinge', od.hingePreference  || '');
+  document.getElementById('editProductionNotes').value = od.productionNotes || '';
+  document.getElementById('editDeliveryNotes').value   = od.deliveryNotes   || '';
+
+  // Order page link
+  const orderUrl = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(quoteNumber)}`;
+  document.getElementById('viewOrderBtn').href = orderUrl;
+
+  // Open drawer
+  document.getElementById('editDrawer').classList.add('open');
+  document.getElementById('drawerOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeDrawer() {
+  document.getElementById('editDrawer').classList.remove('open');
+  document.getElementById('drawerOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+  currentQuoteNumber = null;
+}
+
+function setRadio(name, value) {
+  document.querySelectorAll(`input[name="${name}"]`).forEach(inp => {
+    inp.checked = (inp.value === value);
+  });
+  highlightSel(name);
+}
+
+function highlightSel(name) {
+  document.querySelectorAll(`input[name="${name}"]`).forEach(inp => {
+    const label = inp.closest('.sel-label');
+    if (!label) return;
+    label.classList.toggle('selected', inp.checked);
+  });
+}
+
+async function saveOrder() {
+  if (!currentQuoteNumber) return;
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  const payload = {
+    customer: {
+      firstName: document.getElementById('editFirstName').value.trim(),
+      lastName:  document.getElementById('editLastName').value.trim(),
+      company:   document.getElementById('editCompany').value.trim(),
+      email:     document.getElementById('editEmail').value.trim(),
+      address:   document.getElementById('editAddress').value.trim(),
+      city:      document.getElementById('editCity').value.trim(),
+      state:     document.getElementById('editState').value.trim(),
+      zip:       document.getElementById('editZip').value.trim(),
+    },
+    foamColor:        document.querySelector('input[name="editFoam"]:checked')?.value  || '',
+    hingePreference:  document.querySelector('input[name="editHinge"]:checked')?.value || '',
+    productionNotes:  document.getElementById('editProductionNotes').value.trim(),
+    deliveryNotes:    document.getElementById('editDeliveryNotes').value.trim(),
+  };
+
+  try {
+    const res = await fetch(`/api/orders/${encodeURIComponent(currentQuoteNumber)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast('Order updated', 'success');
+      closeDrawer();
+      loadOrders();
+    } else {
+      throw new Error(data.error || 'Save failed');
+    }
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save Changes';
+  }
+}
+
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show ' + type;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.className = '', 3000);
+}
+
+loadOrders();
+</script>
+</body>
+</html>

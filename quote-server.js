@@ -168,15 +168,15 @@ async function gdriveCreateDealFolders(dealName, quoteNumber) {
 // Upload a PDF to a deal's subfolder (e.g. Quotes, Invoices, Final Order)
 async function gdriveSavePdfToDeal(quoteNumber, subfolderName, filename, pdfBuffer) {
   try {
-    if (!db) { console.warn('GDrive: no DB connection'); return; }
-    const row = await db.query('SELECT gdrive_folder_id FROM quotes WHERE quote_number = $1', [quoteNumber]);
-    const dealFolderId = row.rows[0]?.gdrive_folder_id;
-    if (!dealFolderId) { console.warn(`GDrive: no folder ID for quote ${quoteNumber}`); return; }
-    console.log(`GDrive: uploading "${filename}" directly to deal folder ${dealFolderId}`);
-
-    // Upload directly to deal folder (skip subfolders — personal Drive quota restriction)
-    const result = await gdriveUploadFilePdf(filename, pdfBuffer, dealFolderId);
-    console.log(`GDrive: uploaded "${filename}" — result:`, JSON.stringify(result)?.slice(0,100));
+    // Upload directly to root folder (owned by whisperroomwr@gmail.com)
+    // Service account-created subfolders are owned by the SA and hit quota limits
+    console.log(`GDrive: uploading "${filename}" to root folder`);
+    const result = await gdriveUploadFilePdf(filename, pdfBuffer, GDRIVE_ROOT_FOLDER);
+    if (result?.error) {
+      console.warn(`GDrive upload error:`, JSON.stringify(result.error));
+    } else {
+      console.log(`GDrive: uploaded "${filename}" successfully — id:`, result?.id);
+    }
   } catch(e) {
     console.warn(`GDrive savePdf error:`, e.message, e.stack?.split('\n')[1]);
   }

@@ -1886,12 +1886,8 @@ const server = http.createServer(async (req, res) => {
         (async () => {
           try {
             await gdriveCreateDealFolders(finalDealName, quoteNumber);
-            // Generate and upload quote PDF
-            const shareToken = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
-            const quoteUrl = `https://whisperroomquote.up.railway.app/q/${encodeURIComponent(quoteNumber)}${shareToken ? '?t=' + shareToken : ''}`;
-            const pdfBuffer = await generatePdfBuffer(quoteUrl);
-            const safeName = finalDealName.replace(/[/\\:*?"<>|]/g, '-').trim();
-            await gdriveSavePdfToDeal(quoteNumber, 'Quotes', `${quoteNumber} — ${safeName}.pdf`, pdfBuffer);
+            // PDF auto-upload to Drive — pending Workspace provisioning
+            // await gdriveSavePdfToDeal(quoteNumber, 'Quotes', ...)
           } catch(e) { console.warn('GDrive quote upload error:', e.message, e.stack?.split('\n')[1]); }
         })();
 
@@ -3006,16 +3002,7 @@ tbody tr:hover td{background:#fdfcfb}
       const invoicePageUrl = `https://whisperroomquote.up.railway.app/i/${quoteNumber}?t=${invToken}`;
       json({ success: true, invoiceUrl: invoicePageUrl, paymentUrl, invoiceId });
 
-      // 10. Upload invoice PDF to Google Drive (non-blocking)
-      (async () => {
-        try {
-          const pdfBuffer = await generatePdfBuffer(invoicePageUrl);
-          const dealNameRow = await db?.query('SELECT deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
-          const dn = dealNameRow?.rows[0]?.deal_name || quoteNumber;
-          const safeName = dn.replace(/[/\\:*?"<>|]/g, '-').trim();
-          await gdriveSavePdfToDeal(quoteNumber, 'Invoices', `${quoteNumber} — ${safeName} (Invoice).pdf`, pdfBuffer);
-        } catch(e) { console.warn('GDrive invoice upload error:', e.message, e.stack?.split('\n')[1]); }
-      })();
+      // PDF auto-upload to Drive — pending Workspace provisioning
 
     } catch(e) {
       console.error('Create invoice error:', e.message);
@@ -3658,15 +3645,7 @@ tbody tr:last-child td{border-bottom:none}
       console.log(`Order processed: ${quoteNumber}, deal ${dealId} → closedwon`);
       json({ success: true, orderUrl });
 
-      // Upload order PDF to Google Drive (non-blocking)
-      (async () => {
-        try {
-          const pdfBuffer = await generatePdfBuffer(orderUrl);
-          const dn = dealName || quoteNumber;
-          const safeName = dn.replace(/[/\\:*?"<>|]/g, '-').trim();
-          await gdriveSavePdfToDeal(quoteNumber, 'Final Order', `${quoteNumber} — ${safeName} (Order).pdf`, pdfBuffer);
-        } catch(e) { console.warn('GDrive order upload error:', e.message, e.stack?.split('\n')[1]); }
-      })();
+      // PDF auto-upload to Drive — pending Workspace provisioning
 
     } catch(e) {
       console.error('Process order error:', e.message);

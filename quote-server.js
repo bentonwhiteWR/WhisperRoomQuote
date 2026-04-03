@@ -2589,6 +2589,122 @@ tbody tr:hover td{background:#fdfcfb}
 
 
 
+  // ── Orders Dashboard Page ─────────────────────────────────────────
+  if (pathname === '/orders' && req.method === 'GET') {
+    if (!isAuth(req)) { redirect('/login'); return; }
+    const html = fs.readFileSync(path.join(__dirname, 'orders-dashboard.html'), 'utf8');
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+    return;
+  }
+
+  // ── API: List Orders ──────────────────────────────────────────────
+  if (pathname === '/api/orders' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      if (!db) { json({ orders: [] }); return; }
+      const result = await db.query(`
+        SELECT
+          o.quote_number,
+          o.deal_id,
+          o.order_data,
+          o.created_at,
+          q.customer_name,
+          q.company,
+          q.deal_name,
+          q.total,
+          q.json_snapshot
+        FROM orders o
+        LEFT JOIN quotes q ON q.quote_number = o.quote_number
+        ORDER BY o.created_at DESC
+      `);
+      json({ orders: result.rows });
+    } catch(e) {
+      console.error('List orders error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Update Order ─────────────────────────────────────────────
+  if (pathname.startsWith('/api/orders/') && req.method === 'PATCH') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').trim());
+    try {
+      const body = JSON.parse(await readBody(req));
+      const { customer, foamColor, hingePreference, productionNotes, deliveryNotes } = body;
+
+      if (!db) { json({ error: 'No database' }, 500); return; }
+
+      // 1. Update order_data in orders table
+      const existing = await db.query('SELECT order_data FROM orders WHERE quote_number = $1', [quoteNumber]);
+      if (!existing.rows[0]) { json({ error: 'Order not found' }, 404); return; }
+
+      const currentOrderData = existing.rows[0].order_data || {};
+      const updatedOrderData = {
+        ...currentOrderData,
+        foamColor:        foamColor        || currentOrderData.foamColor,
+        hingePreference:  hingePreference  || currentOrderData.hingePreference,
+        productionNotes:  productionNotes  !== undefined ? productionNotes : currentOrderData.productionNotes,
+        deliveryNotes:    deliveryNotes    !== undefined ? deliveryNotes   : currentOrderData.deliveryNotes,
+        lastUpdated: new Date().toISOString(),
+      };
+
+      await db.query(
+        'UPDATE orders SET order_data = $1 WHERE quote_number = $2',
+        [JSON.stringify(updatedOrderData), quoteNumber]
+      );
+
+      // 2. Update customer in quote snapshot
+      if (customer) {
+        const qr = await db.query('SELECT json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
+        if (qr.rows[0]) {
+          const snapshot = qr.rows[0].json_snapshot || {};
+          snapshot.customer = { ...snapshot.customer, ...customer };
+          await db.query(
+            'UPDATE quotes SET json_snapshot = $1, customer_name = $2, company = $3 WHERE quote_number = $4',
+            [
+              JSON.stringify(snapshot),
+              [customer.firstName, customer.lastName].filter(Boolean).join(' ') || snapshot.customer_name,
+              customer.company || snapshot.company,
+              quoteNumber
+            ]
+          );
+        }
+      }
+
+      // 3. Update HubSpot deal contact properties if deal_id exists
+      const orderRow = await db.query('SELECT deal_id FROM orders WHERE quote_number = $1', [quoteNumber]);
+      const dealId = orderRow.rows[0]?.deal_id;
+      if (dealId && customer) {
+        try {
+          await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/deals/${dealId}`,
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, {
+            properties: {
+              ...(customer.address ? { delivery_street: customer.address } : {}),
+              ...(customer.city    ? { delivery_city:   customer.city    } : {}),
+              ...(customer.state   ? { delivery_state:  customer.state   } : {}),
+              ...(customer.zip     ? { delivery_zip:    customer.zip     } : {}),
+            }
+          });
+        } catch(e) { console.warn('HubSpot deal patch failed:', e.message); }
+      }
+
+      console.log(`Order ${quoteNumber} updated`);
+      json({ success: true });
+
+    } catch(e) {
+      console.error('Update order error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+
   // ── Order Page (/o/:quoteNumber) ─────────────────────────────────
   if (pathname.startsWith('/o/') && req.method === 'GET') {
     const quoteId = decodeURIComponent(pathname.replace('/o/', '').trim());

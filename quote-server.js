@@ -2007,6 +2007,7 @@ const server = http.createServer(async (req, res) => {
         contactId,
         quoteNumber,
         shareToken,
+        dealName: finalDealName,
         dealUrl: `https://app.hubspot.com/contacts/5764220/record/0-3/${dealId}`
       });
 

@@ -1686,12 +1686,16 @@ async function searchProducts(q) {
       dropdown.innerHTML = '<div class="product-option-empty">No products found</div>';
       return;
     }
-    dropdown.innerHTML = results.slice(0, 20).map(p => `
-      <div class="product-option" onclick="addLineItem(${JSON.stringify(p).replace(/"/g, '&quot;')})">
+    // Store results in a map keyed by index to avoid JSON/HTML escaping issues
+    window._productSearchResults = {};
+    dropdown.innerHTML = results.slice(0, 20).map((p, idx) => {
+      window._productSearchResults[idx] = p;
+      return `
+      <div class="product-option" onclick="addLineItem(window._productSearchResults[${idx}])">
         <div class="product-option-name">${p.properties.name}</div>
         <div class="product-option-price">${p.properties.hs_sku ? p.properties.hs_sku + ' · ' : ''}${fmt(p.properties.price)}</div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
     dropdown.classList.add('open');
   } catch(e) {
     dropdown.innerHTML = '<div class="product-option-empty">Search error</div>';

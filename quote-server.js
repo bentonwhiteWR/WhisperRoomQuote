@@ -1303,7 +1303,7 @@ const server = http.createServer(async (req, res) => {
         method: 'GET',
         headers: { 'as-api-key': AFTERSHIP_KEY }
       });
-      console.log(`AfterShip GET (${fetchParams}): status=${listRes.status} meta=${JSON.stringify(listRes.body?.meta)} dataKeys=${Object.keys(listRes.body?.data || {}).join(',')}`);
+      console.log(`AfterShip GET full response: status=${listRes.status} body=${JSON.stringify(listRes.body).slice(0,500)}`);
       // AfterShip 2026-01 returns data.trackings array
       const items = listRes.body?.data?.trackings || listRes.body?.data?.tracking ? [listRes.body.data.tracking] : [];
       if (items.length) trackingData = items[0];

@@ -17,6 +17,36 @@ try {
   console.warn('Puppeteer not available:', e.message);
 }
 
+// ── Token validator for public quote/invoice/order links ─────────
+function validateShareToken(quoteData, requestedToken) {
+  if (!quoteData) return false;
+  const storedToken = quoteData._shareToken || quoteData.shareToken;
+  if (!storedToken) return true; // legacy quotes without token — allow during transition
+  if (!requestedToken) return false;
+  return storedToken === requestedToken;
+}
+
+// ── Rate limiter for public routes ───────────────────────────────
+const rateLimitMap = new Map(); // ip → { count, resetAt }
+function checkRateLimit(ip, max=30, windowMs=60000) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (entry.count >= max) return false;
+  entry.count++;
+  return true;
+}
+// Clean up old entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitMap) {
+    if (now > entry.resetAt) rateLimitMap.delete(ip);
+  }
+}, 300000);
+
 // Semaphore — only one PDF at a time to stay within Hobby memory limits
 let _pdfBusy = false;
 async function generatePdf(pageUrl, filename, res, req) {
@@ -98,8 +128,14 @@ try {
 async function initDb() {
   try {
     // Migrations — add columns if they don't exist yet
-    await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payment_link TEXT`).catch(() => {});
-    await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS order_link   TEXT`).catch(() => {});
+    await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payment_link  TEXT`).catch(() => {});
+    await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS order_link    TEXT`).catch(() => {});
+    await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS share_token   TEXT`).catch(() => {});
+    // Backfill share tokens for existing quotes
+    await db.query(`
+      UPDATE quotes SET share_token = encode(gen_random_bytes(6), 'hex')
+      WHERE share_token IS NULL
+    `).catch(() => {});
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS quotes (
@@ -117,6 +153,7 @@ async function initDb() {
         json_snapshot JSONB NOT NULL,
         payment_link  TEXT,
         order_link    TEXT,
+        share_token   TEXT,
         created_at    TIMESTAMPTZ DEFAULT NOW()
       )
     `);
@@ -149,8 +186,8 @@ async function saveQuoteToDb(quoteData) {
 
     const res = await db.query(`
       INSERT INTO quotes
-        (quote_number, deal_id, contact_id, deal_name, customer_name, company, rep_id, total, date, quote_link, json_snapshot)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        (quote_number, deal_id, contact_id, deal_name, customer_name, company, rep_id, total, date, quote_link, json_snapshot, share_token)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       ON CONFLICT (quote_number) DO UPDATE SET
         deal_id       = EXCLUDED.deal_id,
         contact_id    = EXCLUDED.contact_id,
@@ -163,13 +200,15 @@ async function saveQuoteToDb(quoteData) {
         quote_link    = EXCLUDED.quote_link,
         payment_link  = COALESCE(EXCLUDED.payment_link, quotes.payment_link),
         order_link    = COALESCE(EXCLUDED.order_link, quotes.order_link),
+        share_token   = COALESCE(quotes.share_token, EXCLUDED.share_token),
         json_snapshot = EXCLUDED.json_snapshot
       RETURNING id
     `, [
       quoteNumber, dealId || null, contactId || null, dealName || null,
       customerName, company, ownerId || null,
       total ? parseFloat(total) : null,
-      date || null, quoteLink, JSON.stringify(quoteData)
+      date || null, quoteLink, JSON.stringify(quoteData),
+      quoteData.shareToken || require('crypto').randomBytes(6).toString('hex')
     ]);
 
     return res.rows[0]?.id;
@@ -183,11 +222,14 @@ async function getQuoteFromDb(quoteNumber) {
   if (!db || !process.env.DATABASE_URL) return null;
   try {
     const res = await db.query(
-      'SELECT json_snapshot FROM quotes WHERE quote_number = $1',
+      'SELECT json_snapshot, share_token FROM quotes WHERE quote_number = $1',
       [quoteNumber]
     );
     if (res.rows.length === 0) return null;
-    return res.rows[0].json_snapshot;
+    if (!res.rows[0]) return null;
+    const snap = res.rows[0].json_snapshot;
+    if (snap) snap._shareToken = res.rows[0].share_token;
+    return snap;
   } catch(e) {
     console.warn('DB get failed:', e.message);
     return null;
@@ -214,7 +256,7 @@ async function searchQuotesInDb(query, repId, limit = 100, offset = 0) {
 
     params.push(limit, offset);
     const res = await db.query(`
-      SELECT id, quote_number, deal_id, deal_name, customer_name, company, rep_id, total, date, quote_link, created_at, json_snapshot
+      SELECT id, quote_number, deal_id, deal_name, customer_name, company, rep_id, total, date, quote_link, share_token, created_at, json_snapshot
       FROM quotes
       ${where}
       ORDER BY created_at DESC
@@ -252,7 +294,8 @@ async function fetchQuoteHistory() {
       ownerId: r.rep_id,
       total: r.total,
       date: r.date,
-      quoteLink: r.quote_link,
+      quoteLink:   r.quote_link,
+      shareToken:  r.share_token,
       savedAt: r.created_at,
       ...r.json_snapshot
     }));
@@ -916,8 +959,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ── Auth gate ──
-  // Public routes — no auth required
+  // Public routes — no auth required but rate limited + token validated
   const isPublicRoute = pathname.startsWith('/q/') || pathname.startsWith('/i/') || pathname.startsWith('/o/') || pathname === '/api/accept-quote';
+  if (isPublicRoute) {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+    if (!checkRateLimit(ip, 30, 60000)) {
+      res.writeHead(429, { 'Content-Type': 'text/html' });
+      res.end('<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px;text-align:center"><h2>Too many requests</h2><p>Please wait a moment and try again.</p></body></html>');
+      return;
+    }
+  }
   if (!isAuth(req) && pathname !== '/login' && !isPublicRoute) {
     if (pathname.startsWith('/api/')) {
       json({ error: 'Unauthorized' }, 401); return;
@@ -1544,12 +1595,16 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Save to PostgreSQL DB (primary storage)
+      let shareToken = null;
       try {
         await saveQuoteToDb({
           quoteNumber, dealId, contactId, dealName, ownerId, total,
           date: new Date().toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}),
           customer, lineItems, discount, freight, tax,
         });
+        // Fetch the token we just saved
+        const tokenRow = await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]);
+        shareToken = tokenRow?.rows[0]?.share_token || null;
       } catch(e) { console.warn('DB save error:', e.message); }
 
       // HubSpot Notes write removed — DB is primary storage
@@ -1559,6 +1614,7 @@ const server = http.createServer(async (req, res) => {
         dealId,
         contactId,
         quoteNumber,
+        shareToken,
         dealUrl: `https://app.hubspot.com/contacts/5764220/record/0-3/${dealId}`
       });
 
@@ -1579,6 +1635,12 @@ const server = http.createServer(async (req, res) => {
       if (!quoteData) {
         res.writeHead(404, { 'Content-Type': 'text/html' });
         res.end('<!DOCTYPE html><html><head><title>Invoice Not Found</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#f5f5f5}div{text-align:center}</style></head><body><div><h2 style="color:#ee6216">Invoice Not Found</h2><p style="color:#888">This link may have expired or the invoice number is incorrect.</p></div></body></html>');
+        return;
+      }
+      const iToken = new URLSearchParams(search).get('t');
+      if (!validateShareToken(quoteData, iToken)) {
+        res.writeHead(403, { 'Content-Type': 'text/html' });
+        res.end('<!DOCTYPE html><html><head><title>Link Expired</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#f5f5f5}div{text-align:center}</style></head><body><div><h2 style="color:#ee6216">This link is no longer valid</h2><p style="color:#888;margin-top:8px">Please contact your WhisperRoom representative for an updated link.</p></div></body></html>');
         return;
       }
 
@@ -1762,6 +1824,12 @@ tbody tr:hover td{background:#fafafa}
       if (!quoteData) {
         res.writeHead(404, { 'Content-Type': 'text/html' });
         res.end('<!DOCTYPE html><html><head><title>Quote Not Found</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#f5f5f5}div{text-align:center}</style></head><body><div><h2 style="color:#ee6216">Quote Not Found</h2><p style="color:#888">This link may have expired or the quote number is incorrect.</p></div></body></html>');
+        return;
+      }
+      const qToken = new URLSearchParams(search).get('t');
+      if (!validateShareToken(quoteData, qToken)) {
+        res.writeHead(403, { 'Content-Type': 'text/html' });
+        res.end('<!DOCTYPE html><html><head><title>Link Expired</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#f5f5f5}div{text-align:center}</style></head><body><div><h2 style="color:#ee6216">This link is no longer valid</h2><p style="color:#888;margin-top:8px">Please contact your WhisperRoom representative for an updated link.</p></div></body></html>');
         return;
       }
 
@@ -2552,7 +2620,8 @@ tbody tr:hover td{background:#fdfcfb}
       if (!paymentId) {
         console.error('Payment link failed:', JSON.stringify(paymentRes.body));
         // Fall back to invoice page without payment link
-        const invoicePageUrl = `https://whisperroomquote.up.railway.app/i/${quoteNumber}`;
+        const invToken1 = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
+        const invoicePageUrl = `https://whisperroomquote.up.railway.app/i/${quoteNumber}?t=${invToken1}`;
         json({ success: true, invoiceUrl: invoicePageUrl, paymentUrl: null, warning: 'Payment link creation failed — invoice page created without pay button' });
         return;
       }
@@ -2578,7 +2647,8 @@ tbody tr:hover td{background:#fdfcfb}
       }
 
       // 6. Return the invoice page URL (/i/ route) — this is what the rep copies and sends
-      const invoicePageUrl = `https://whisperroomquote.up.railway.app/i/${quoteNumber}`;
+      const invToken2 = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
+      const invoicePageUrl = `https://whisperroomquote.up.railway.app/i/${quoteNumber}?t=${invToken2}`;
       json({ success: true, invoiceUrl: invoicePageUrl, paymentUrl });
 
     } catch(e) {
@@ -2598,6 +2668,136 @@ tbody tr:hover td{background:#fdfcfb}
     res.end(html);
     return;
   }
+
+  // ── API: HubSpot Closed Won deals (for orders board) ─────────────
+  if (pathname === '/api/orders/hubspot-deals' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      // Fetch Closed Won deals from HubSpot, exclude ones already in DB orders
+      const hsRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/objects/deals/search',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, {
+        filterGroups: [{
+          filters: [{ propertyName: 'dealstage', operator: 'EQ', value: 'closedwon' }]
+        }],
+        properties: ['dealname','amount','hubspot_owner_id','closedate','hs_deal_stage_probability',
+                     'customer_name','company','shipping_address','shipping_city','shipping_state','shipping_zip'],
+        sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
+        limit: 100
+      });
+
+      const hsDeals = (hsRes.body?.results || []);
+
+      // Get list of quote numbers already in our orders DB
+      let dbQuoteNumbers = new Set();
+      if (db) {
+        const dbOrders = await db.query('SELECT deal_id FROM orders WHERE deal_id IS NOT NULL');
+        dbOrders.rows.forEach(r => dbQuoteNumbers.add(r.deal_id));
+      }
+
+      // Filter out deals already processed through the new system
+      const unprocessed = hsDeals.filter(d => !dbQuoteNumbers.has(d.id));
+
+      json({ deals: unprocessed.map(d => ({
+        id: d.id,
+        dealName: d.properties.dealname || 'Unnamed Deal',
+        amount: d.properties.amount || null,
+        ownerId: d.properties.hubspot_owner_id || null,
+        closeDate: d.properties.closedate || null,
+        company: d.properties.company || '',
+        dealUrl: `https://app.hubspot.com/contacts/5764220/record/0-3/${d.id}`,
+        source: 'hubspot'
+      }))});
+
+    } catch(e) {
+      console.error('HubSpot deals fetch error:', e.message);
+      json({ deals: [], error: e.message });
+    }
+    return;
+  }
+
+  // ── API: Ship HubSpot deal directly (from orders board) ──────────
+  if (pathname === '/api/orders/ship-hubspot-deal' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const body = JSON.parse(await readBody(req));
+      const { dealId, dealName, carrier, tracking, shipDate, pallets, boxes, repName } = body;
+
+      if (!dealId || !carrier || !tracking) {
+        json({ error: 'dealId, carrier and tracking are required' }, 400); return;
+      }
+
+      // 1. Advance deal to Shipped in HubSpot
+      await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/objects/deals/${dealId}`,
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, {
+        properties: {
+          dealstage: '845719',
+          carrier__c: carrier,
+          tracking_number: tracking,
+          date_shipped: shipDate || new Date().toISOString().split('T')[0],
+        }
+      });
+
+      // 2. Create minimal order record in DB so it shows up in orders board
+      if (db) {
+        try {
+          const orderData = {
+            shipped: { carrier, tracking, date: shipDate, pallets: parseInt(pallets)||0, boxes: parseInt(boxes)||0 },
+            processedAt: new Date().toISOString(),
+            changeLog: [{
+              at: new Date().toISOString(),
+              summary: `Marked Shipped — ${carrier}, ${tracking}`,
+              rep: repName || 'Unknown',
+            }],
+            source: 'hubspot_import'
+          };
+          // Use deal ID as a pseudo quote number for legacy deals
+          const pseudoQuoteNum = `HS-${dealId}`;
+          await db.query(`
+            INSERT INTO orders (quote_number, deal_id, order_data)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (quote_number) DO UPDATE SET
+              order_data = EXCLUDED.order_data,
+              deal_id    = EXCLUDED.deal_id
+          `, [pseudoQuoteNum, dealId, JSON.stringify(orderData)]);
+        } catch(e) { console.warn('DB order create failed:', e.message); }
+      }
+
+      // 3. Register with AfterShip if tracking provided
+      try {
+        const slugMap = {
+          'ABF Freight': 'abf-freight',
+          'Old Dominion': 'old-dominion-freight-line',
+        };
+        const slug = slugMap[carrier] || 'usps';
+        await httpsRequest({
+          hostname: 'api.aftership.com',
+          path: '/tracking/2024-10/trackings',
+          method: 'POST',
+          headers: {
+            'as-api-key': process.env.AFTERSHIP_API_KEY || '',
+            'Content-Type': 'application/json'
+          }
+        }, { tracking: { tracking_number: tracking, slug, title: dealName || dealId } });
+      } catch(e) { console.warn('AfterShip register failed:', e.message); }
+
+      console.log(`HubSpot deal ${dealId} marked shipped: ${carrier} ${tracking}`);
+      json({ success: true });
+
+    } catch(e) {
+      console.error('Ship HubSpot deal error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
 
   // ── API: List Orders ──────────────────────────────────────────────
   if (pathname === '/api/orders' && req.method === 'GET') {
@@ -2633,21 +2833,38 @@ tbody tr:hover td{background:#fdfcfb}
     const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').trim());
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, foamColor, hingePreference, productionNotes, deliveryNotes } = body;
+      const { customer, foamColor, hingePreference, productionNotes, deliveryNotes, shipped, changes, repName } = body;
 
       if (!db) { json({ error: 'No database' }, 500); return; }
 
-      // 1. Update order_data in orders table
-      const existing = await db.query('SELECT order_data FROM orders WHERE quote_number = $1', [quoteNumber]);
+      // 1. Get existing order data
+      const existing = await db.query('SELECT order_data, deal_id FROM orders WHERE quote_number = $1', [quoteNumber]);
       if (!existing.rows[0]) { json({ error: 'Order not found' }, 404); return; }
 
       const currentOrderData = existing.rows[0].order_data || {};
+      const dealId = existing.rows[0].deal_id;
+      const wasShipped = !!(currentOrderData.shipped?.tracking);
+      const isNowShipped = !!(shipped?.tracking);
+
+      // 2. Append to change log if anything changed
+      const changeLog = currentOrderData.changeLog || [];
+      if (changes && changes.length > 0) {
+        changeLog.push({
+          at: new Date().toISOString(),
+          summary: changes.join(' · '),
+          rep: repName || null,
+        });
+      }
+
+      // 3. Build updated order data
       const updatedOrderData = {
         ...currentOrderData,
-        foamColor:        foamColor        || currentOrderData.foamColor,
-        hingePreference:  hingePreference  || currentOrderData.hingePreference,
-        productionNotes:  productionNotes  !== undefined ? productionNotes : currentOrderData.productionNotes,
-        deliveryNotes:    deliveryNotes    !== undefined ? deliveryNotes   : currentOrderData.deliveryNotes,
+        foamColor:        foamColor        !== undefined ? foamColor        : currentOrderData.foamColor,
+        hingePreference:  hingePreference  !== undefined ? hingePreference  : currentOrderData.hingePreference,
+        productionNotes:  productionNotes  !== undefined ? productionNotes  : currentOrderData.productionNotes,
+        deliveryNotes:    deliveryNotes    !== undefined ? deliveryNotes    : currentOrderData.deliveryNotes,
+        shipped:          shipped          !== undefined ? shipped          : currentOrderData.shipped,
+        changeLog,
         lastUpdated: new Date().toISOString(),
       };
 
@@ -2656,7 +2873,7 @@ tbody tr:hover td{background:#fdfcfb}
         [JSON.stringify(updatedOrderData), quoteNumber]
       );
 
-      // 2. Update customer in quote snapshot
+      // 4. Update customer in quote snapshot
       if (customer) {
         const qr = await db.query('SELECT json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
         if (qr.rows[0]) {
@@ -2674,29 +2891,46 @@ tbody tr:hover td{background:#fdfcfb}
         }
       }
 
-      // 3. Update HubSpot deal contact properties if deal_id exists
-      const orderRow = await db.query('SELECT deal_id FROM orders WHERE quote_number = $1', [quoteNumber]);
-      const dealId = orderRow.rows[0]?.deal_id;
-      if (dealId && customer) {
+      // 5. HubSpot updates
+      if (dealId) {
         try {
-          await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/deals/${dealId}`,
-            method: 'PATCH',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-          }, {
-            properties: {
-              ...(customer.address ? { delivery_street: customer.address } : {}),
-              ...(customer.city    ? { delivery_city:   customer.city    } : {}),
-              ...(customer.state   ? { delivery_state:  customer.state   } : {}),
-              ...(customer.zip     ? { delivery_zip:    customer.zip     } : {}),
-            }
-          });
-        } catch(e) { console.warn('HubSpot deal patch failed:', e.message); }
+          // If newly marked shipped → advance to Shipped stage + add tracking
+          if (isNowShipped && !wasShipped) {
+            await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/deals/${dealId}`,
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, {
+              properties: {
+                dealstage: '845719',
+                carrier__c: shipped.carrier || '',
+                tracking_number: shipped.tracking || '',
+                date_shipped: shipped.date || new Date().toISOString().split('T')[0],
+              }
+            });
+          }
+          // Address update
+          if (customer?.address) {
+            await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/deals/${dealId}`,
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, {
+              properties: {
+                ...(customer.address ? { delivery_street: customer.address } : {}),
+                ...(customer.city    ? { delivery_city:   customer.city    } : {}),
+                ...(customer.state   ? { delivery_state:  customer.state   } : {}),
+                ...(customer.zip     ? { delivery_zip:    customer.zip     } : {}),
+              }
+            });
+          }
+        } catch(e) { console.warn('HubSpot update failed:', e.message); }
       }
 
-      console.log(`Order ${quoteNumber} updated`);
-      json({ success: true });
+      console.log(`Order ${quoteNumber} updated${isNowShipped && !wasShipped ? ' → SHIPPED' : ''}`);
+      json({ success: true, shipped: isNowShipped });
 
     } catch(e) {
       console.error('Update order error:', e.message);
@@ -2715,6 +2949,12 @@ tbody tr:hover td{background:#fdfcfb}
       if (!quoteData) {
         res.writeHead(404, { 'Content-Type': 'text/html' });
         res.end('<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px"><h2>Order Not Found</h2></body></html>');
+        return;
+      }
+      const oToken = new URLSearchParams(search).get('t');
+      if (!validateShareToken(quoteData, oToken)) {
+        res.writeHead(403, { 'Content-Type': 'text/html' });
+        res.end('<!DOCTYPE html><html><head><title>Link Expired</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#f5f5f5}div{text-align:center}</style></head><body><div><h2 style="color:#ee6216">This link is no longer valid</h2><p style="color:#888;margin-top:8px">Please contact your WhisperRoom representative for an updated link.</p></div></body></html>');
         return;
       }
 
@@ -2869,6 +3109,28 @@ tbody tr:last-child td{border-bottom:none}
     </div>
   </div>
 
+  ${o.shipped&&o.shipped.tracking ? `<div class="card">
+    <div class="card-label">Shipment</div>
+    <div class="info-grid">
+      <div class="info-item"><label>Carrier</label><span>${o.shipped.carrier||'—'}</span></div>
+      <div class="info-item"><label>Tracking / PRO</label><span>${o.shipped.tracking}</span></div>
+      ${o.shipped.date?`<div class="info-item"><label>Date Shipped</label><span>${new Date(o.shipped.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</span></div>`:''}
+      ${o.shipped.pallets?`<div class="info-item"><label>Pallets</label><span>${o.shipped.pallets}</span></div>`:''}
+      ${o.shipped.boxes?`<div class="info-item"><label>Boxes</label><span>${o.shipped.boxes}</span></div>`:''}
+    </div>
+  </div>` : ''}
+
+  ${o.changeLog&&o.changeLog.length ? `<div class="card">
+    <div class="card-label">Change Log</div>
+    <div style="font-size:12px;line-height:1.9">
+      ${o.changeLog.slice().reverse().map(entry => `
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f5f5f5;gap:16px">
+          <span style="color:#555">${entry.summary}</span>
+          <span style="color:#bbb;white-space:nowrap;font-size:11px">${new Date(entry.at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>
+        </div>`).join('')}
+    </div>
+  </div>` : ''}
+
   <div class="footer">
     <strong>WhisperRoom, Inc.</strong> &middot; 322 Nancy Lynn Lane, Suite 14 &middot; Knoxville, TN 37919<br>
     <a href="tel:18002008168">1-800-200-8168</a> &middot; <a href="mailto:info@whisperroom.com">info@whisperroom.com</a> &middot; <a href="https://www.whisperroom.com" target="_blank">whisperroom.com</a>
@@ -2906,7 +3168,8 @@ tbody tr:last-child td{border-bottom:none}
       }, { properties: { dealstage: 'closedwon' } });
 
       // 2. Save order data to DB
-      const orderUrl = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(quoteNumber)}`;
+      const orderToken = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
+      const orderUrl = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(quoteNumber)}?t=${orderToken}`;
       const orderData = { foamColor, hingePreference, productionNotes, deliveryNotes, processedAt: new Date().toISOString() };
 
       if (db) {

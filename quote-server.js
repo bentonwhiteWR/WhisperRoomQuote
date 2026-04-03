@@ -1600,10 +1600,22 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Save to PostgreSQL DB (primary storage)
+      // Fetch actual deal name from HubSpot to ensure DB matches
+      let finalDealName = dealName;
+      try {
+        const dnRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v3/objects/deals/${dealId}?properties=dealname`,
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+        });
+        finalDealName = dnRes.body?.properties?.dealname || dealName;
+      } catch(e) { /* use client dealName as fallback */ }
+
       let shareToken = null;
       try {
         await saveQuoteToDb({
-          quoteNumber, dealId, contactId, dealName, ownerId, total,
+          quoteNumber, dealId, contactId, dealName: finalDealName, ownerId, total,
           date: new Date().toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}),
           customer, lineItems, discount, freight, tax,
         });
@@ -1690,60 +1702,61 @@ const server = http.createServer(async (req, res) => {
 <title>WhisperRoom Invoice ${q.quoteNumber||''}</title>
 <link rel="icon" href="/assets/favicon.avif">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f2f2f2;color:#333;-webkit-font-smoothing:antialiased}
-.page{max-width:820px;margin:0 auto;padding:28px 16px 120px}
-.header-card{background:#1a1a1a;padding:28px 40px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
-.logo-img{height:22px;display:block;filter:brightness(0) invert(1)}
+body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f6f4;color:#1a1a1a;-webkit-font-smoothing:antialiased}
+.page{max-width:840px;margin:0 auto;padding:0 0 110px}
+.header-card{background:#ffffff;padding:32px 40px 28px;margin-bottom:0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:20px;border-left:6px solid transparent;border-image:linear-gradient(to bottom,#ee6216 0%,rgba(238,98,22,.15) 70%,transparent 100%) 1;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.logo-img{height:40px;display:block}
 .header-right{text-align:right}
-.quote-type{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:#ee6216;margin-bottom:6px}
-.quote-num{font-size:28px;font-weight:800;color:#ffffff;letter-spacing:-.5px;font-variant-numeric:tabular-nums;line-height:1}
-.quote-meta{font-size:11px;color:rgba(255,255,255,.35);margin-top:5px}
-.accent-strip{height:3px;background:linear-gradient(90deg,#ee6216,#ff8c42);margin-bottom:20px}
-.card{background:#fff;border-radius:10px;padding:28px 32px;margin:0 16px 12px;box-shadow:0 1px 4px rgba(0,0,0,.07)}
-.card-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;color:#ee6216;margin-bottom:16px}
-.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.info-item label{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:3px}
+.quote-type{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.16em;color:#ee6216;margin-bottom:8px}
+.quote-num{font-size:34px;font-weight:800;color:#1a1a1a;letter-spacing:-.8px;font-variant-numeric:tabular-nums;line-height:1}
+.quote-meta{font-size:12px;color:#aaa;margin-top:6px}
+.accent-strip{height:1px;background:#eee;margin-bottom:20px}
+.card{background:#fff;border-radius:10px;padding:30px 36px;margin:0 0 12px;box-shadow:0 1px 4px rgba(0,0,0,.06);border:1px solid #f0f0f0}
+.card-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#ee6216;margin-bottom:18px}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.info-item label{font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px}
 .info-item span{font-size:14px;font-weight:600;color:#1a1a1a}
 table{width:100%;border-collapse:collapse}
-thead th{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#bbb;padding:0 0 14px;border-bottom:1px solid #f0f0f0;text-align:left}
+thead th{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#ccc;padding:0 0 16px;border-bottom:2px solid #f5f5f5;text-align:left}
 thead th:nth-child(2){text-align:center}
 thead th:nth-child(3),thead th:nth-child(4){text-align:right}
 tbody tr:last-child td{border-bottom:none}
-tbody tr:hover td{background:#fafafa}
+tbody tr:hover td{background:#fdfcfb}
 .item-name{font-weight:700;color:#1a1a1a;font-size:14px}
-.item-desc{font-size:11px;color:#aaa;margin-top:3px;line-height:1.5}
-.totals{max-width:320px;margin-left:auto;margin-top:24px;padding-top:20px;border-top:1px solid #eee}
-.tot{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#888}
-.tot.grand{font-size:22px;font-weight:800;color:#1a1a1a;padding-top:16px;margin-top:8px;border-top:2px solid #1a1a1a}
+.item-desc{font-size:11px;color:#bbb;margin-top:4px;line-height:1.6}
+.totals{max-width:320px;margin-left:auto;margin-top:28px;padding-top:20px;border-top:2px solid #f5f5f5}
+.tot{display:flex;justify-content:space-between;padding:7px 0;font-size:13px;color:#999}
+.tot.grand{font-size:26px;font-weight:800;color:#1a1a1a;padding-top:18px;margin-top:10px;border-top:2px solid #1a1a1a}
 .tot.grand span:last-child{color:#ee6216}
 .discount-val{color:#1a7a4a!important;font-weight:600}
-.terms{font-size:11px;color:#aaa;line-height:1.9}
-.action-bar{position:fixed;bottom:0;left:0;right:0;background:rgba(26,26,26,.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid rgba(255,255,255,.08);padding:14px 24px;display:flex;gap:10px;justify-content:center;z-index:100}
-.btn{padding:13px 30px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:none;letter-spacing:.04em;font-family:inherit;transition:all .15s}
-.btn-pay{background:#ee6216;color:white;font-size:14px;padding:13px 36px}
-.btn-pay:hover{background:#d4561a;transform:translateY(-1px);box-shadow:0 4px 20px rgba(238,98,22,.45)}
-.btn-secondary{background:rgba(255,255,255,.06);color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.08)}
-.btn-secondary:hover{background:rgba(255,255,255,.1);color:rgba(255,255,255,.7)}
-.footer{text-align:center;margin:20px 16px 0;padding:20px 0;font-size:11px;color:#aaa;line-height:2;border-top:1px solid #e0e0e0}
+.terms{font-size:11px;color:#bbb;line-height:1.9}
+.action-bar{position:fixed;bottom:0;left:0;right:0;background:rgba(20,20,20,.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid rgba(255,255,255,.06);padding:16px 28px;display:flex;gap:12px;justify-content:center;align-items:center;z-index:100}
+.btn{padding:13px 32px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:none;letter-spacing:.04em;font-family:inherit;transition:all .15s}
+.btn-pay{background:#1a7a4a;color:white;font-size:14px;font-weight:800;padding:14px 40px;letter-spacing:.02em}
+.btn-pay:hover{background:#166040;transform:translateY(-1px);box-shadow:0 6px 24px rgba(26,122,74,.5)}
+.btn-secondary{background:rgba(255,255,255,.05);color:rgba(255,255,255,.45);border:1px solid rgba(255,255,255,.08)}
+.btn-secondary:hover{background:rgba(255,255,255,.09);color:rgba(255,255,255,.65)}
+.footer{text-align:center;margin:24px 0 0;padding:24px 32px;font-size:11px;color:#bbb;line-height:2.1;border-top:1px solid #ece9e4}
 .footer a{color:#ee6216;text-decoration:none}
-.footer strong{color:#555;font-weight:600}
-@media(max-width:560px){
-  .header-card{padding:22px 20px}
+.footer strong{color:#888;font-weight:600}
+@media(max-width:600px){
+  .header-card{padding:24px 20px;border-left:4px solid transparent}
+  .logo-img{height:30px}
   .header-right{text-align:left}
-  .quote-num{font-size:22px}
-  .card{padding:20px;margin:0 10px 10px}
+  .quote-num{font-size:26px}
+  .card{padding:22px 20px}
   .info-grid{grid-template-columns:1fr}
-  .action-bar{flex-direction:column;padding:12px 16px}
+  .action-bar{flex-direction:column;padding:14px 16px}
   .btn{width:100%;text-align:center}
 }
 @media print{
   body{background:white}
   .action-bar{display:none!important}
   .page{padding-bottom:20px}
-  .header-card{background:#1a1a1a!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .card{box-shadow:none;border:1px solid #eee;margin:0 0 10px}
+  .header-card{border-left:6px solid #ee6216!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .card{box-shadow:none}
 }
 </style>
 </head>
@@ -1751,7 +1764,7 @@ tbody tr:hover td{background:#fafafa}
 <div class="page">
 
   <div class="header-card">
-    <img src="/assets/logo-orange.svg" alt="WhisperRoom" class="logo-img">
+    <img src="/assets/logo-black.svg" alt="WhisperRoom" class="logo-img">
     <div class="header-right">
       <div class="quote-type">Invoice</div>
       <div class="quote-num">${q.quoteNumber||'INV'}</div>
@@ -1778,9 +1791,9 @@ tbody tr:hover td{background:#fafafa}
     </table>
     <div class="totals">
       <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
-      ${disc>0?`<div class="tot"><span>Discount${q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
+      ${disc>0?`<div class="tot"><span>Discount${q.discount&&q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
       ${freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
-      ${taxAmt>0?`<div class="tot"><span>Sales Tax</span><span>${fmt(taxAmt)}</span></div>`:''}
+      ${taxAmt>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+(q.tax.rate*100).toFixed(2).replace(/\\.?0+$/,'')+'%)':''}</span><span>${fmt(taxAmt)}</span></div>`:''}
       <div class="tot grand"><span>Amount Due</span><span>${fmt(total)}</span></div>
     </div>
   </div>
@@ -2616,11 +2629,17 @@ tbody tr:hover td{background:#fdfcfb}
       });
 
       console.log('Payment link response:', JSON.stringify(paymentRes.body));
+      console.log('Payment link properties:', JSON.stringify(Object.keys(paymentRes.body?.properties || {})));
 
       const paymentId = paymentRes.body?.id;
-      const paymentUrl = paymentRes.body?.properties?.hs_payment_link_url
-        || paymentRes.body?.properties?.hs_url
-        || null;
+      // Try all known property names for the payment URL
+      const props = paymentRes.body?.properties || {};
+      const paymentUrl = props.hs_payment_link_url
+        || props.hs_url
+        || props.hs_payment_url
+        || props.hs_checkout_url
+        || props.hs_link_url
+        || (paymentId ? `https://app.hubspot.com/contacts/5764220/record/0-101/${paymentId}` : null);
 
       if (!paymentId) {
         console.error('Payment link failed:', JSON.stringify(paymentRes.body));

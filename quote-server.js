@@ -2589,6 +2589,337 @@ tbody tr:hover td{background:#fdfcfb}
 
 
 
+  // ── Order Page (/o/:quoteNumber) ─────────────────────────────────
+  if (pathname.startsWith('/o/') && req.method === 'GET') {
+    const quoteId = decodeURIComponent(pathname.replace('/o/', '').trim());
+    if (!quoteId) { res.writeHead(404); res.end('Not found'); return; }
+    try {
+      const quoteData = await getQuoteFromDb(quoteId);
+      if (!quoteData) {
+        res.writeHead(404, { 'Content-Type': 'text/html' });
+        res.end('<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px"><h2>Order Not Found</h2></body></html>');
+        return;
+      }
+
+      // Get order details from DB
+      let orderData = null;
+      if (db) {
+        try {
+          const or = await db.query('SELECT order_data FROM orders WHERE quote_number = $1', [quoteId]);
+          if (or.rows[0]) orderData = or.rows[0].order_data;
+        } catch(e) {}
+      }
+
+      const q = quoteData;
+      const o = orderData || {};
+      const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+      const fmtW = n => parseFloat(n||0) > 0 ? `${parseFloat(n).toLocaleString()} lbs` : '—';
+      const sub = (q.lineItems||[]).reduce((s,i)=>s+(i.price*i.qty),0);
+      const disc = q.discount && q.discount.value > 0
+        ? (q.discount.type==='pct' ? sub*q.discount.value/100 : q.discount.value) : 0;
+      const freightAmt = q.freight ? q.freight.total : 0;
+      const taxAmt = q.tax ? q.tax.tax : 0;
+      const total = sub - disc + freightAmt + taxAmt;
+      const totalWeight = (q.lineItems||[]).reduce((s,i) => s + ((parseFloat(i.weight)||0) * (parseInt(i.qty)||1)), 0);
+      const c = q.customer || {};
+      const issueDate = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+
+      const lineRows = (q.lineItems||[]).map(item => {
+        const itemWeight = parseFloat(item.weight)||0;
+        const totalItemWeight = itemWeight * (parseInt(item.qty)||1);
+        return `<tr>
+          <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;padding-right:12px">
+            <div class="item-name">${item.name}</div>
+            ${item.description?`<div class="item-desc">${item.description}</div>`:''}
+          </td>
+          <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;text-align:center;color:#888;width:40px">${item.qty}</td>
+          <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;text-align:right;color:#888;width:90px">${fmt(item.price)}</td>
+          <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;text-align:right;color:#aaa;width:80px">${itemWeight>0?fmtW(totalItemWeight):'—'}</td>
+          <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;text-align:right;font-weight:700;color:#1a1a1a;width:90px">${fmt(item.price*item.qty)}</td>
+        </tr>`;
+      }).join('');
+
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Order ${q.quoteNumber||''}</title>
+<link rel="icon" href="/assets/favicon.avif">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',-apple-system,sans-serif;background:#f7f6f4;color:#1a1a1a;-webkit-font-smoothing:antialiased}
+.page{max-width:840px;margin:0 auto;padding:0 0 40px}
+.header-card{background:#ffffff;padding:32px 40px 28px;margin-bottom:0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:20px;border-left:6px solid transparent;border-image:linear-gradient(to bottom,#ee6216 0%,rgba(238,98,22,.15) 70%,transparent 100%) 1;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.logo-img{height:40px;display:block}
+.header-right{text-align:right}
+.order-type{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.16em;color:#ee6216;margin-bottom:8px}
+.order-num{font-size:34px;font-weight:800;color:#1a1a1a;letter-spacing:-.8px;line-height:1}
+.order-meta{font-size:12px;color:#aaa;margin-top:6px}
+.order-tag{display:inline-block;margin-top:8px;background:#1a7a4a;color:white;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;padding:4px 12px;border-radius:3px}
+.accent-strip{height:1px;background:#eee;margin-bottom:20px}
+.card{background:#fff;border-radius:10px;padding:28px 32px;margin:0 0 12px;box-shadow:0 1px 4px rgba(0,0,0,.06);border:1px solid #f0f0f0}
+.card-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#ee6216;margin-bottom:16px}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.info-item label{font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px}
+.info-item span{font-size:14px;font-weight:600;color:#1a1a1a}
+.notes-box{background:#f9f8f6;border-radius:8px;padding:14px 16px;font-size:13px;color:#555;line-height:1.6;border:1px solid #ede9e3}
+table{width:100%;border-collapse:collapse}
+thead th{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#ccc;padding:0 0 14px;border-bottom:2px solid #f5f5f5;text-align:left}
+thead th:nth-child(2),thead th:nth-child(3),thead th:nth-child(4),thead th:nth-child(5){text-align:right}
+thead th:nth-child(2){text-align:center}
+tbody tr:last-child td{border-bottom:none}
+.item-name{font-weight:700;color:#1a1a1a;font-size:14px}
+.item-desc{font-size:11px;color:#bbb;margin-top:4px;line-height:1.6}
+.totals{max-width:320px;margin-left:auto;margin-top:24px;padding-top:18px;border-top:2px solid #f5f5f5}
+.tot{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#999}
+.tot.grand{font-size:24px;font-weight:800;color:#1a1a1a;padding-top:16px;margin-top:8px;border-top:2px solid #1a1a1a}
+.tot.grand span:last-child{color:#ee6216}
+.tot.weight-total{font-size:14px;font-weight:700;color:#555;border-top:1px solid #eee;margin-top:8px;padding-top:10px}
+.discount-val{color:#1a7a4a!important;font-weight:600}
+.footer{text-align:center;margin:24px 0 0;padding:24px 32px;font-size:11px;color:#bbb;line-height:2.1;border-top:1px solid #ece9e4}
+.footer a{color:#ee6216;text-decoration:none}
+.footer strong{color:#888;font-weight:600}
+@media(max-width:600px){
+  .header-card{padding:24px 20px}
+  .logo-img{height:30px}
+  .header-right{text-align:left}
+  .order-num{font-size:26px}
+  .card{padding:20px}
+  .info-grid{grid-template-columns:1fr}
+}
+@media print{
+  body{background:white}
+  .header-card{border-left:6px solid #ee6216!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .card{box-shadow:none}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header-card">
+    <img src="/assets/logo-black.svg" alt="WhisperRoom" class="logo-img">
+    <div class="header-right">
+      <div class="order-type">Production Order</div>
+      <div class="order-num">${q.quoteNumber||'ORDER'}</div>
+      <div class="order-meta">Processed ${issueDate}</div>
+      <div class="order-tag">&#x2713; Order Confirmed</div>
+    </div>
+  </div>
+  <div class="accent-strip"></div>
+
+  ${c.firstName||c.company ? `<div class="card">
+    <div class="card-label">Ship To</div>
+    <div class="info-grid">
+      ${c.firstName?`<div class="info-item"><label>Name</label><span>${c.firstName} ${c.lastName}</span></div>`:''}
+      ${c.company?`<div class="info-item"><label>Company</label><span>${c.company}</span></div>`:''}
+      ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
+      ${c.address?`<div class="info-item"><label>Delivery Address</label><span>${c.address}, ${c.city}, ${c.state} ${c.zip}</span></div>`:''}
+    </div>
+  </div>` : ''}
+
+  <div class="card">
+    <div class="card-label">Order Specifications</div>
+    <div class="info-grid">
+      <div class="info-item"><label>Foam Color</label><span>${o.foamColor||'Not specified'}</span></div>
+      <div class="info-item"><label>Door Hinge</label><span>${o.hingePreference||'Not specified'}</span></div>
+    </div>
+    ${o.productionNotes?`<div style="margin-top:16px"><div style="font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Production Notes</div><div class="notes-box">${o.productionNotes}</div></div>`:''}
+    ${o.deliveryNotes?`<div style="margin-top:12px"><div style="font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Special Delivery Notes</div><div class="notes-box">${o.deliveryNotes}</div></div>`:''}
+  </div>
+
+  <div class="card">
+    <div class="card-label">Line Items</div>
+    <table>
+      <thead><tr>
+        <th>Item</th>
+        <th style="text-align:center">Qty</th>
+        <th style="text-align:right">Unit Price</th>
+        <th style="text-align:right">Weight</th>
+        <th style="text-align:right">Total</th>
+      </tr></thead>
+      <tbody>${lineRows}</tbody>
+    </table>
+    <div class="totals">
+      <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
+      ${disc>0?`<div class="tot"><span>Discount${q.discount&&q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
+      ${freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
+      ${taxAmt>0?`<div class="tot"><span>Sales Tax</span><span>${fmt(taxAmt)}</span></div>`:''}
+      <div class="tot grand"><span>Order Total</span><span>${fmt(total)}</span></div>
+      ${totalWeight>0?`<div class="tot weight-total"><span>&#x2696; Total Weight</span><span>${totalWeight.toLocaleString()} lbs</span></div>`:''}
+    </div>
+  </div>
+
+  <div class="footer">
+    <strong>WhisperRoom, Inc.</strong> &middot; 322 Nancy Lynn Lane, Suite 14 &middot; Knoxville, TN 37919<br>
+    <a href="tel:18002008168">1-800-200-8168</a> &middot; <a href="mailto:info@whisperroom.com">info@whisperroom.com</a> &middot; <a href="https://www.whisperroom.com" target="_blank">whisperroom.com</a>
+  </div>
+
+</div>
+</body>
+</html>`;
+
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(html);
+    } catch(e) {
+      res.writeHead(500); res.end('Error: ' + e.message);
+    }
+    return;
+  }
+
+  // ── API: Process Order ────────────────────────────────────────────
+  if (pathname === '/api/process-order' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const body = JSON.parse(await readBody(req));
+      const { dealId, quoteNumber, lineItems, freight, tax, discount,
+              customer, foamColor, hingePreference, productionNotes,
+              deliveryNotes, ownerId, dealName } = body;
+
+      if (!dealId || !quoteNumber) { json({ error: 'Missing dealId or quoteNumber' }, 400); return; }
+
+      // 1. Advance deal to Closed Won
+      await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/objects/deals/${dealId}`,
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, { properties: { dealstage: 'closedwon' } });
+
+      // 2. Save order data to DB
+      const orderUrl = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(quoteNumber)}`;
+      const orderData = { foamColor, hingePreference, productionNotes, deliveryNotes, processedAt: new Date().toISOString() };
+
+      if (db) {
+        try {
+          await db.query(`
+            CREATE TABLE IF NOT EXISTS orders (
+              id           SERIAL PRIMARY KEY,
+              quote_number TEXT UNIQUE NOT NULL,
+              deal_id      TEXT,
+              order_data   JSONB,
+              created_at   TIMESTAMPTZ DEFAULT NOW()
+            )
+          `);
+          await db.query(`
+            INSERT INTO orders (quote_number, deal_id, order_data)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (quote_number) DO UPDATE SET
+              order_data = EXCLUDED.order_data,
+              deal_id    = EXCLUDED.deal_id
+          `, [quoteNumber, dealId, JSON.stringify(orderData)]);
+
+          // Also save order link to quotes table
+          await db.query('UPDATE quotes SET order_link = $1 WHERE quote_number = $2', [orderUrl, quoteNumber]);
+        } catch(e) { console.warn('Order DB save failed:', e.message); }
+      }
+
+      // 3. Calculate totals for email
+      const sub = (lineItems||[]).reduce((s,i) => s + (parseFloat(i.price)*parseInt(i.qty)), 0);
+      const discAmt = discount && discount.value > 0
+        ? (discount.type==='pct' ? sub*discount.value/100 : discount.value) : 0;
+      const freightTotal = freight ? parseFloat(freight.total||0) : 0;
+      const taxTotal = tax ? parseFloat(tax.tax||0) : 0;
+      const total = sub - discAmt + freightTotal + taxTotal;
+      const totalWeight = (lineItems||[]).reduce((s,i) => s + ((parseFloat(i.weight)||0)*(parseInt(i.qty)||1)), 0);
+      const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+      const c = customer || {};
+
+      // 4. Build notification email
+      const lineTable = (lineItems||[]).map(item =>
+        `  - ${item.name} (x${item.qty}) — ${fmt(item.price * item.qty)}${item.weight ? ` — ${parseFloat(item.weight)*parseInt(item.qty)} lbs` : ''}`
+      ).join('\n');
+
+      const emailBody = [
+        `NEW ORDER — ${quoteNumber}`,
+        `Deal: ${dealName||quoteNumber}`,
+        ``,
+        `CUSTOMER`,
+        `Name: ${c.firstName||''} ${c.lastName||''}`.trim(),
+        c.company ? `Company: ${c.company}` : null,
+        c.email   ? `Email: ${c.email}`     : null,
+        c.address ? `Ship To: ${c.address}, ${c.city}, ${c.state} ${c.zip}` : null,
+        ``,
+        `ORDER SPECIFICATIONS`,
+        `Foam Color: ${foamColor||'Not specified'}`,
+        `Door Hinge: ${hingePreference||'Not specified'}`,
+        productionNotes ? `Production Notes: ${productionNotes}` : null,
+        deliveryNotes   ? `Delivery Notes: ${deliveryNotes}`     : null,
+        ``,
+        `LINE ITEMS`,
+        lineTable,
+        ``,
+        `TOTALS`,
+        `Subtotal: ${fmt(sub)}`,
+        discAmt > 0 ? `Discount: -${fmt(discAmt)}` : null,
+        freightTotal > 0 ? `Freight: ${fmt(freightTotal)}` : null,
+        taxTotal > 0 ? `Sales Tax: ${fmt(taxTotal)}` : null,
+        `Order Total: ${fmt(total)}`,
+        totalWeight > 0 ? `Total Weight: ${totalWeight.toLocaleString()} lbs` : null,
+        ``,
+        `VIEW ORDER PAGE`,
+        orderUrl,
+        ``,
+        `HubSpot Deal: https://app.hubspot.com/contacts/5764220/deal/${dealId}`,
+      ].filter(l => l !== null).join('\n');
+
+      // 5. Send emails via HubSpot transactional or direct SMTP
+      // Using HubSpot engagement (note) as notification fallback if no SMTP
+      const recipients = ['shipping@whisperroom.com', 'accounting@whisperroom.com', 'bentonwhite@whisperroom.com'];
+
+      // Create HubSpot note on deal with full order details
+      try {
+        await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/notes',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, {
+          properties: {
+            hs_note_body: `<b>ORDER PROCESSED — ${quoteNumber}</b><br><br>${emailBody.replace(/\n/g,'<br>')}`,
+            hs_timestamp: new Date().toISOString(),
+          },
+          associations: [{
+            to: { id: dealId },
+            types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 214 }]
+          }]
+        });
+      } catch(e) { console.warn('HubSpot note failed:', e.message); }
+
+      // Send email via HubSpot single send API
+      for (const to of recipients) {
+        try {
+          await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: '/crm/v3/objects/emails',
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, {
+            properties: {
+              hs_email_direction: 'EMAIL',
+              hs_email_status:    'SENT',
+              hs_email_subject:   `New Order: ${quoteNumber} — ${dealName||''}`,
+              hs_email_text:      emailBody,
+              hs_email_to_email:  to,
+              hs_timestamp:       new Date().toISOString(),
+            }
+          });
+        } catch(e) { console.warn(`Email to ${to} failed:`, e.message); }
+      }
+
+      console.log(`Order processed: ${quoteNumber}, deal ${dealId} → closedwon`);
+      json({ success: true, orderUrl });
+
+    } catch(e) {
+      console.error('Process order error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+
   // ── PDF Download: Quote ──────────────────────────────────────────
   if (pathname.startsWith('/api/download-quote/') && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

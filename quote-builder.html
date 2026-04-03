@@ -1405,6 +1405,7 @@ function addLineItem(product) {
     name,
     description: product.properties.description || '',
     price: parseFloat(product.properties.price) || 0,
+    weight: parseFloat(product.properties.weight) || 0,
     qty: 1,
   };
   lineItems.push(item);
@@ -1584,7 +1585,7 @@ function updateLineItem(id, field, value) {
   if (field === 'weight')      item.weight      = parseFloat(value) || 0;
   // Don't re-render on description/weight changes (would reset cursor)
   if (field === 'qty' || field === 'price') renderLineItems();
-  updateSummary();
+  if (field === 'weight') updateSummary();
 }
 
 // ── Summary ───────────────────────────────────────────────────────

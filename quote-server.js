@@ -916,7 +916,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ── Auth gate ──
-  if (!isAuth(req) && pathname !== '/login') {
+  // Public routes — no auth required
+  const isPublicRoute = pathname.startsWith('/q/') || pathname.startsWith('/i/') || pathname.startsWith('/o/') || pathname === '/api/accept-quote';
+  if (!isAuth(req) && pathname !== '/login' && !isPublicRoute) {
     if (pathname.startsWith('/api/')) {
       json({ error: 'Unauthorized' }, 401); return;
     }
@@ -2591,7 +2593,6 @@ tbody tr:hover td{background:#fdfcfb}
 
   // ── Orders Dashboard Page ─────────────────────────────────────────
   if (pathname === '/orders' && req.method === 'GET') {
-    if (!isAuth(req)) { redirect('/login'); return; }
     const html = fs.readFileSync(path.join(__dirname, 'orders-dashboard.html'), 'utf8');
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);

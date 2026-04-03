@@ -1265,7 +1265,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const AS_BASE = '/tracking/2026-01';
+    const AS_BASE = '/tracking/2024-10';
 
     // Map our carrier codes to AfterShip slugs
     const slugMap = {
@@ -1278,60 +1278,45 @@ const server = http.createServer(async (req, res) => {
     const slug = slugMap[carrier] || null;
 
     try {
-      // 1. Try to create the tracking using v4 (stable, reliable)
+      // 1. Register tracking with AfterShip 2024-10
       const createBody = { tracking_number: tracking };
       if (slug) createBody.slug = slug;
       const createRes = await httpsRequest({
         hostname: 'api.aftership.com',
-        path: `/v4/trackings`,
+        path: `/tracking/2024-10/trackings`,
         method: 'POST',
-        headers: { 'aftership-api-key': AFTERSHIP_KEY, 'Content-Type': 'application/json' }
+        headers: { 'as-api-key': AFTERSHIP_KEY, 'Content-Type': 'application/json' }
       }, { tracking: createBody });
 
       const createCode = createRes.body?.meta?.code;
-      console.log(`AfterShip v4 create: ${createCode} for ${tracking}`);
+      console.log(`AfterShip create: ${createCode} for ${tracking}`);
 
-      // 2. Fetch tracking data — AfterShip stores trackings by slug+number
+      // 2. Fetch tracking data
       let trackingData = null;
-      const AS_OLDER = '/v4'; // v4 is the stable version with reliable GET by tracking number
 
-      // Try v4 GET by slug+tracking (most reliable)
+      // Try by slug+tracking number directly
       if (slug) {
-        const v4Res = await httpsRequest({
+        const directRes = await httpsRequest({
           hostname: 'api.aftership.com',
-          path: `/v4/trackings/${encodeURIComponent(slug)}/${encodeURIComponent(tracking)}`,
-          method: 'GET',
-          headers: { 'aftership-api-key': AFTERSHIP_KEY }
-        });
-        console.log(`AfterShip v4 GET: status=${v4Res.status} tag=${v4Res.body?.data?.tracking?.tag}`);
-        if (v4Res.body?.data?.tracking) trackingData = v4Res.body.data.tracking;
-      }
-
-      // Try v4 without slug
-      if (!trackingData) {
-        const v4AllRes = await httpsRequest({
-          hostname: 'api.aftership.com',
-          path: `/v4/trackings?tracking_number=${encodeURIComponent(tracking)}&limit=1`,
-          method: 'GET',
-          headers: { 'aftership-api-key': AFTERSHIP_KEY }
-        });
-        console.log(`AfterShip v4 list: status=${v4AllRes.status} count=${v4AllRes.body?.data?.count}`);
-        const v4Items = v4AllRes.body?.data?.trackings || [];
-        if (v4Items.length) trackingData = v4Items[0];
-      }
-
-      // Try 2024-10 API as fallback
-      if (!trackingData) {
-        const fetchParams = `tracking_number=${encodeURIComponent(tracking)}${slug ? '&slug=' + encodeURIComponent(slug) : ''}`;
-        const newRes = await httpsRequest({
-          hostname: 'api.aftership.com',
-          path: `/tracking/2024-10/trackings?${fetchParams}`,
+          path: `/tracking/2024-10/trackings/${encodeURIComponent(slug)}/${encodeURIComponent(tracking)}`,
           method: 'GET',
           headers: { 'as-api-key': AFTERSHIP_KEY }
         });
-        console.log(`AfterShip 2024-10: status=${newRes.status} count=${newRes.body?.data?.pagination?.total}`);
-        const newItems = newRes.body?.data?.trackings || [];
-        if (newItems.length) trackingData = newItems[0];
+        console.log(`AfterShip direct GET: status=${directRes.status} tag=${directRes.body?.data?.tracking?.tag}`);
+        if (directRes.body?.data?.tracking) trackingData = directRes.body.data.tracking;
+      }
+
+      // Fallback: list query by tracking number
+      if (!trackingData) {
+        const listRes = await httpsRequest({
+          hostname: 'api.aftership.com',
+          path: `/tracking/2024-10/trackings?tracking_number=${encodeURIComponent(tracking)}&limit=1`,
+          method: 'GET',
+          headers: { 'as-api-key': AFTERSHIP_KEY }
+        });
+        console.log(`AfterShip list GET: status=${listRes.status} count=${listRes.body?.data?.pagination?.total}`);
+        const items = listRes.body?.data?.trackings || [];
+        if (items.length) trackingData = items[0];
       }
 
       if (!trackingData) {
@@ -2553,7 +2538,7 @@ tbody tr:hover td{background:#fdfcfb}
 
     try {
       const items = JSON.parse(await readBody(req));
-      const AS_BASE = '/tracking/2026-01';
+      const AS_BASE = '/tracking/2024-10';
       const slugMap = { ABF: 'abf-freight', OD: 'old-dominion-freight-line', UPS: 'ups', FedEx: 'fedex', USPS: 'usps' };
 
       // Register in parallel batches of 5
@@ -2604,7 +2589,7 @@ tbody tr:hover td{background:#fdfcfb}
 
       if (!AFTERSHIP_KEY) return;
 
-      const AS_BASE = '/tracking/2026-01';
+      const AS_BASE = '/tracking/2024-10';
 
       // HubSpot sends an array of property change events
       const items = Array.isArray(events) ? events : [events];
@@ -2845,7 +2830,7 @@ tbody tr:hover td{background:#fdfcfb}
         try {
           await httpsRequest({
             hostname: 'api.aftership.com',
-            path: '/tracking/2026-01/trackings',
+            path: '/tracking/2024-10/trackings',
             method: 'POST',
             headers: { 'as-api-key': AFTERSHIP_KEY, 'Content-Type': 'application/json' }
           }, asBody);

@@ -1723,7 +1723,7 @@ body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-seri
 .page{max-width:840px;margin:0 auto;padding:0 0 110px}
 
 /* Header — white with orange left border */
-.header-card{background:#ffffff;padding:32px 40px 28px;margin-bottom:0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:20px;border-left:6px solid #ee6216;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.header-card{background:#ffffff;padding:32px 40px 28px;margin-bottom:0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:20px;border-left:6px solid transparent;border-image:linear-gradient(to bottom,#ee6216 0%,rgba(238,98,22,.15) 70%,transparent 100%) 1;box-shadow:0 2px 12px rgba(0,0,0,.08)}
 .logo-img{height:40px;display:block}
 .header-right{text-align:right}
 .quote-type{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.16em;color:#ee6216;margin-bottom:8px}
@@ -1736,7 +1736,7 @@ body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-seri
 
 /* Cards */
 .card{background:#fff;border-radius:10px;padding:30px 36px;margin:0 0 12px;box-shadow:0 1px 4px rgba(0,0,0,.06);border:1px solid #f0f0f0}
-.card-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.16em;color:#ee6216;margin-bottom:18px}
+.card-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#ee6216;margin-bottom:18px}
 .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .info-item label{font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px}
 .info-item span{font-size:14px;font-weight:600;color:#1a1a1a}
@@ -1777,7 +1777,7 @@ tbody tr:hover td{background:#fdfcfb}
 .footer strong{color:#888;font-weight:600}
 
 @media(max-width:600px){
-  .header-card{padding:24px 20px;border-left:4px solid #ee6216}
+  .header-card{padding:24px 20px;border-left:4px solid transparent;border-image:linear-gradient(to bottom,#ee6216 0%,rgba(238,98,22,.15) 70%,transparent 100%) 1}
   .logo-img{height:30px}
   .header-right{text-align:left}
   .quote-num{font-size:26px}
@@ -1790,7 +1790,7 @@ tbody tr:hover td{background:#fdfcfb}
   body{background:white}
   .action-bar{display:none!important}
   .page{padding-bottom:20px}
-  .header-card{border-left:6px solid #ee6216!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .header-card{border-left:6px solid #ee6216!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;border-image:none!important}
   .card{box-shadow:none}
 }
 </style>
@@ -1829,7 +1829,7 @@ tbody tr:hover td{background:#fdfcfb}
       <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
       ${disc>0?`<div class="tot"><span>Discount${q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
       ${freight>0?`<div class="tot"><span>Freight</span><span>${fmt(freight)}</span></div>`:''}
-      ${tax>0?`<div class="tot"><span>Sales Tax</span><span>${fmt(tax)}</span></div>`:''}
+      ${tax>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+( q.tax.rate*100).toFixed(2).replace(/\.?0+$/,'')+')%':''}</span><span>${fmt(tax)}</span></div>`:''}
       <div class="tot grand"><span>Total</span><span>${fmt(total)}</span></div>
     </div>
   </div>

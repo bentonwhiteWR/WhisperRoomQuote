@@ -836,6 +836,7 @@ const MAIN_HTML_PATH = path.join(__dirname, 'quote-builder.html');
 const server = http.createServer(async (req, res) => {
   const parsed = url.parse(req.url, true);
   const pathname = parsed.pathname;
+  const search = parsed.search || '';
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');

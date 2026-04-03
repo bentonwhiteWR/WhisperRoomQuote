@@ -31,7 +31,15 @@ async function getGDriveToken() {
   if (!sa) { console.warn('GOOGLE_SERVICE_ACCOUNT_JSON not set'); return null; }
 
   let creds;
-  try { creds = JSON.parse(sa); } catch(e) { console.warn('Invalid service account JSON'); return null; }
+  try {
+    // Handle both escaped \n and literal newlines in private key
+    const cleaned = sa.replace(/\\n/g, '\n');
+    creds = JSON.parse(cleaned);
+  } catch(e) {
+    try { creds = JSON.parse(sa); } catch(e2) {
+      console.warn('Invalid service account JSON:', e2.message); return null;
+    }
+  }
 
   const now = Math.floor(Date.now() / 1000);
   const header  = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
@@ -54,7 +62,7 @@ async function getGDriveToken() {
     path: '/token',
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-  }, `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`, true);
+  }, `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`);
 
   _gdriveToken = tokenRes.body?.access_token;
   _gdriveTokenExpiry = Date.now() + 3500000;
@@ -64,16 +72,15 @@ async function getGDriveToken() {
 async function gdriveRequest(method, path, body) {
   const token = await getGDriveToken();
   if (!token) return null;
-  const isUpload = path.includes('upload');
   const res = await httpsRequest({
-    hostname: isUpload ? 'www.googleapis.com' : 'www.googleapis.com',
+    hostname: 'www.googleapis.com',
     path,
     method,
     headers: {
       'Authorization': `Bearer ${token}`,
-      'Content-Type': body ? (typeof body === 'string' ? 'application/x-www-form-urlencoded' : 'application/json') : undefined,
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
     }
-  }, body);
+  }, body || undefined);
   return res.body;
 }
 

@@ -17,6 +17,148 @@ try {
   console.warn('Puppeteer not available:', e.message);
 }
 
+
+// ── Google Drive Integration ──────────────────────────────────────
+const GDRIVE_ROOT_FOLDER = '1Gxc_aA64I6v28AYYUW75a4sbAzHoc9DH';
+
+let _gdriveToken = null;
+let _gdriveTokenExpiry = 0;
+
+async function getGDriveToken() {
+  if (_gdriveToken && Date.now() < _gdriveTokenExpiry) return _gdriveToken;
+
+  const sa = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (!sa) { console.warn('GOOGLE_SERVICE_ACCOUNT_JSON not set'); return null; }
+
+  let creds;
+  try { creds = JSON.parse(sa); } catch(e) { console.warn('Invalid service account JSON'); return null; }
+
+  const now = Math.floor(Date.now() / 1000);
+  const header  = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    iss: creds.client_email,
+    scope: 'https://www.googleapis.com/auth/drive',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600,
+  })).toString('base64url');
+
+  const crypto = require('crypto');
+  const sign = crypto.createSign('RSA-SHA256');
+  sign.update(`${header}.${payload}`);
+  const sig = sign.sign(creds.private_key).toString('base64url');
+  const jwt = `${header}.${payload}.${sig}`;
+
+  const tokenRes = await httpsRequest({
+    hostname: 'oauth2.googleapis.com',
+    path: '/token',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  }, `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`, true);
+
+  _gdriveToken = tokenRes.body?.access_token;
+  _gdriveTokenExpiry = Date.now() + 3500000;
+  return _gdriveToken;
+}
+
+async function gdriveRequest(method, path, body) {
+  const token = await getGDriveToken();
+  if (!token) return null;
+  const isUpload = path.includes('upload');
+  const res = await httpsRequest({
+    hostname: isUpload ? 'www.googleapis.com' : 'www.googleapis.com',
+    path,
+    method,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': body ? (typeof body === 'string' ? 'application/x-www-form-urlencoded' : 'application/json') : undefined,
+    }
+  }, body);
+  return res.body;
+}
+
+async function gdriveFindFolder(name, parentId) {
+  const q = encodeURIComponent(`name='${name.replace(/'/g,"\'")}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+  const res = await gdriveRequest('GET', `/drive/v3/files?q=${q}&fields=files(id,name)&supportsAllDrives=true`);
+  return res?.files?.[0] || null;
+}
+
+async function gdriveCreateFolder(name, parentId) {
+  const res = await gdriveRequest('POST', '/drive/v3/files?supportsAllDrives=true', {
+    name,
+    mimeType: 'application/vnd.google-apps.folder',
+    parents: [parentId],
+  });
+  return res;
+}
+
+async function gdriveEnsureFolder(name, parentId) {
+  const existing = await gdriveFindFolder(name, parentId);
+  if (existing) return existing;
+  return await gdriveCreateFolder(name, parentId);
+}
+
+async function gdriveRenameFolder(folderId, newName) {
+  return await gdriveRequest('PATCH', `/drive/v3/files/${folderId}?supportsAllDrives=true`, { name: newName });
+}
+
+async function gdriveUploadFile(filename, mimeType, content, parentId) {
+  const token = await getGDriveToken();
+  if (!token) return null;
+  // Multipart upload
+  const boundary = 'wr_boundary_' + Date.now();
+  const meta = JSON.stringify({ name: filename, parents: [parentId] });
+  const body = [
+    `--${boundary}`,
+    'Content-Type: application/json; charset=UTF-8',
+    '',
+    meta,
+    `--${boundary}`,
+    `Content-Type: ${mimeType}`,
+    '',
+    typeof content === 'string' ? content : content.toString('base64'),
+    `--${boundary}--`,
+  ].join('\r\n');
+
+  const res = await httpsRequest({
+    hostname: 'www.googleapis.com',
+    path: '/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true',
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': `multipart/related; boundary=${boundary}`,
+    }
+  }, body, true);
+  return res.body;
+}
+
+// Create the standard deal folder structure
+async function gdriveCreateDealFolders(dealName, quoteNumber) {
+  try {
+    const safeName = dealName.replace(/[/\:*?"<>|]/g, '-').trim();
+    const dealFolder = await gdriveEnsureFolder(safeName, GDRIVE_ROOT_FOLDER);
+    if (!dealFolder?.id) { console.warn('GDrive: failed to create deal folder'); return null; }
+
+    // Create subfolders
+    const subfolders = ['Quotes', 'Invoices', 'Purchase Orders', 'Drawings & Specs', 'Shipping', 'Final Order'];
+    await Promise.all(subfolders.map(name => gdriveEnsureFolder(name, dealFolder.id)));
+
+    // Save folder ID to DB
+    if (db && quoteNumber) {
+      await db.query(
+        'UPDATE quotes SET gdrive_folder_id = $1 WHERE quote_number = $2',
+        [dealFolder.id, quoteNumber]
+      ).catch(e => console.warn('GDrive folder ID save failed:', e.message));
+    }
+
+    console.log(`GDrive: folder created for "${safeName}" — ${dealFolder.id}`);
+    return dealFolder;
+  } catch(e) {
+    console.warn('GDrive createDealFolders error:', e.message);
+    return null;
+  }
+}
+
 // ── Token validator for public quote/invoice/order links ─────────
 function validateShareToken(quoteData, requestedToken) {
   if (!quoteData) return false;
@@ -130,7 +272,8 @@ async function initDb() {
     // Migrations — add columns if they don't exist yet
     await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payment_link  TEXT`).catch(() => {});
     await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS order_link    TEXT`).catch(() => {});
-    await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS share_token   TEXT`).catch(() => {});
+    await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS share_token      TEXT`).catch(() => {});
+    await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS gdrive_folder_id TEXT`).catch(() => {});
     // Backfill share tokens for existing quotes
     await db.query(`
       UPDATE quotes SET share_token = encode(gen_random_bytes(6), 'hex')
@@ -153,8 +296,9 @@ async function initDb() {
         json_snapshot JSONB NOT NULL,
         payment_link  TEXT,
         order_link    TEXT,
-        share_token   TEXT,
-        created_at    TIMESTAMPTZ DEFAULT NOW()
+        share_token      TEXT,
+        gdrive_folder_id TEXT,
+        created_at       TIMESTAMPTZ DEFAULT NOW()
       )
     `);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_quotes_quote_number ON quotes(quote_number)`);
@@ -1459,6 +1603,23 @@ const server = http.createServer(async (req, res) => {
           dealstage: 'qualifiedtobuy',
           dealname: dealName || undefined,
         } });
+
+        // Rename Google Drive folder if deal name changed
+        if (dealName && db) {
+          try {
+            const folderRow = await db.query(
+              'SELECT gdrive_folder_id, deal_name FROM quotes WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 1',
+              [existingDealId]
+            );
+            const folderId = folderRow.rows[0]?.gdrive_folder_id;
+            const oldName  = folderRow.rows[0]?.deal_name;
+            if (folderId && oldName && oldName !== dealName) {
+              const safeName = dealName.replace(/[/\\:*?"<>|]/g, '-').trim();
+              await gdriveRenameFolder(folderId, safeName);
+              console.log(`GDrive: renamed folder "${oldName}" → "${dealName}"`);
+            }
+          } catch(e) { console.warn('GDrive rename error:', e.message); }
+        }
       } else {
         const deal = await hsCreateDeal({
           dealname: dealName || `${customer.company || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || 'Customer'} — ${quoteNumber || 'Quote'}`,
@@ -1622,6 +1783,10 @@ const server = http.createServer(async (req, res) => {
         // Fetch the token we just saved
         const tokenRow = await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]);
         shareToken = tokenRow?.rows[0]?.share_token || null;
+
+        // Create Google Drive folder for this deal (non-blocking)
+        gdriveCreateDealFolders(finalDealName, quoteNumber).catch(e => console.warn('GDrive folder error:', e.message));
+
       } catch(e) { console.warn('DB save error:', e.message); }
 
       // HubSpot Notes write removed — DB is primary storage

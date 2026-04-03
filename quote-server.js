@@ -2592,91 +2592,149 @@ tbody tr:hover td{background:#fdfcfb}
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
       const body = JSON.parse(await readBody(req));
-      const { dealId, quoteNumber, lineItems, freight, tax, discount, advanceStage, ownerId } = body;
+      const { dealId, quoteNumber, lineItems, freight, tax, discount, ownerId } = body;
 
       if (!dealId) { json({ error: 'No deal ID' }, 400); return; }
 
-      // 1. Optionally advance deal stage to Verbal Confirmation
-      if (advanceStage) {
-        await httpsRequest({
-          hostname: 'api.hubapi.com',
-          path: `/crm/v3/objects/deals/${dealId}`,
-          method: 'PATCH',
-          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-        }, { properties: { dealstage: 'contractsent' } });
+      // 1. Fetch deal owner if not passed
+      let resolvedOwnerId = ownerId || null;
+      if (!resolvedOwnerId) {
+        try {
+          const dealData = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/deals/${dealId}?properties=hubspot_owner_id`,
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+          });
+          resolvedOwnerId = dealData.body?.properties?.hubspot_owner_id || null;
+        } catch(e) { console.warn('Could not fetch deal owner:', e.message); }
       }
 
-      // 2. Calculate total
+      // 2. Calculate totals
       const sub = (lineItems || []).reduce((s, i) => s + (parseFloat(i.price) * parseInt(i.qty)), 0);
       const discAmt = discount && discount.value > 0
         ? (discount.type === 'pct' ? sub * discount.value / 100 : discount.value) : 0;
       const freightTotal = freight ? parseFloat(freight.total || 0) : 0;
       const taxTotal = tax ? parseFloat(tax.tax || 0) : 0;
-      const total = Math.round((sub - discAmt + freightTotal + taxTotal) * 100) / 100;
 
-      // 3. Create HubSpot payment link
-      const paymentRes = await httpsRequest({
-        hostname: 'api.hubapi.com',
-        path: '/crm/v3/objects/commerce_payments',
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-      }, {
-        properties: {
-          hs_currency_code:  'USD',
-          hs_initial_amount: total.toFixed(2),
-          hs_initiated_date: new Date().toISOString(),
-        }
+      // 3. Create line items in order: products → freight → discount → tax
+      const invoiceLineItems = [...(lineItems || [])];
+      if (freightTotal > 0) invoiceLineItems.push({
+        name: 'Freight', qty: 1, price: freightTotal,
+        description: freight?.transit ? `LTL freight. Transit: ${freight.transit}` : 'LTL freight'
+      });
+      if (discAmt > 0) invoiceLineItems.push({
+        name: 'Discount', qty: 1, price: -discAmt,
+        description: discount?.type === 'pct' ? `${discount.value}% discount` : 'Discount'
+      });
+      if (taxTotal > 0) invoiceLineItems.push({
+        name: `Sales Tax (${tax?.rate ? (tax.rate * 100).toFixed(2).replace(/\.?0+$/,'') : ''}%)`,
+        qty: 1, price: taxTotal,
+        description: tax?.freightTaxed ? 'State tax — includes freight.' : 'State tax — product only.'
       });
 
-      console.log('Payment link response:', JSON.stringify(paymentRes.body));
-      console.log('Payment link properties:', JSON.stringify(Object.keys(paymentRes.body?.properties || {})));
-
-      const paymentId = paymentRes.body?.id;
-      // Try all known property names for the payment URL
-      const props = paymentRes.body?.properties || {};
-      const paymentUrl = props.hs_payment_link_url
-        || props.hs_url
-        || props.hs_payment_url
-        || props.hs_checkout_url
-        || props.hs_link_url
-        || (paymentId ? `https://app.hubspot.com/contacts/5764220/record/0-101/${paymentId}` : null);
-
-      if (!paymentId) {
-        console.error('Payment link failed:', JSON.stringify(paymentRes.body));
-        // Fall back to invoice page without payment link
-        const invToken1 = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
-        const invoicePageUrl = `https://whisperroomquote.up.railway.app/i/${quoteNumber}?t=${invToken1}`;
-        json({ success: true, invoiceUrl: invoicePageUrl, paymentUrl: null, warning: 'Payment link creation failed — invoice page created without pay button' });
-        return;
+      const createdLineItemIds = [];
+      for (const item of invoiceLineItems) {
+        try {
+          const liProps = {
+            name: item.name,
+            quantity: String(item.qty || 1),
+            price: String(parseFloat(item.price || 0).toFixed(2)),
+            description: item.description || '',
+          };
+          if (item.productId) liProps.hs_product_id = String(item.productId);
+          const li = await hsCreateLineItem(liProps);
+          if (li.id) createdLineItemIds.push(li.id);
+        } catch(e) { console.warn('Line item create error:', e.message); }
       }
 
-      // 4. Associate payment link with deal
+      // 4. Create HubSpot invoice as draft first
+      const today = new Date().toISOString().split('T')[0];
+      const invoiceProps = {
+        hs_invoice_status: 'draft',
+        hs_currency:       'USD',
+        hs_title:          quoteNumber ? `Invoice — ${quoteNumber}` : 'Invoice',
+        hs_invoice_date:   today,
+        hs_due_date:       today,
+        hs_payment_collection_method: 'automatic',
+      };
+      if (resolvedOwnerId) invoiceProps.hubspot_owner_id = String(resolvedOwnerId);
+      if (quoteNumber)     invoiceProps.quote_number     = quoteNumber;
+
+      const invoiceRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/objects/invoices',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, { properties: invoiceProps });
+
+      console.log('Invoice create response:', JSON.stringify(invoiceRes.body));
+
+      const invoiceId = invoiceRes.body?.id;
+      if (!invoiceId) {
+        const errMsg = invoiceRes.body?.message
+          || (invoiceRes.body?.errors || []).map(e => e.message).join(', ')
+          || JSON.stringify(invoiceRes.body);
+        throw new Error('Error creating invoice: ' + errMsg);
+      }
+
+      // 5. Associate invoice → deal
+      try {
+        const dealAssocRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v4/associations/invoices/deals/batch/create',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, {
+          inputs: [{ from: { id: String(invoiceId) }, to: { id: String(dealId) },
+            types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 175 }] }]
+        });
+        console.log('Deal assoc response:', JSON.stringify(dealAssocRes.body));
+      } catch(e) { console.warn('Invoice→deal association failed:', e.message); }
+
+      // 6. Associate invoice → line items
+      if (createdLineItemIds.length > 0) {
+        try {
+          const liAssocRes = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: '/crm/v4/associations/invoices/line_items/batch/create',
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, {
+            inputs: createdLineItemIds.map(liId => ({
+              from: { id: String(invoiceId) }, to: { id: String(liId) },
+              types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 409 }]
+            }))
+          });
+          console.log('Line item assoc response:', JSON.stringify(liAssocRes.body));
+        } catch(e) { console.warn('Invoice→line_items association failed:', e.message); }
+      }
+
+      // 7. Patch to open now that line items are attached
       try {
         await httpsRequest({
           hostname: 'api.hubapi.com',
-          path: `/crm/v3/objects/commerce_payments/${paymentId}/associations/deals/${dealId}/commerce_payment_to_deal`,
-          method: 'PUT',
+          path: `/crm/v3/objects/invoices/${invoiceId}`,
+          method: 'PATCH',
           headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-        });
-      } catch(e) { console.warn('Payment link→deal assoc failed:', e.message); }
+        }, { properties: { hs_invoice_status: 'open' } });
+      } catch(e) { console.warn('Invoice status patch failed:', e.message); }
 
-      // 5. Save payment link URL to quote record in DB
+      // 8. Save hs_invoice_link as payment URL — this is the customer-facing checkout page
+      const paymentUrl = invoiceRes.body?.properties?.hs_invoice_link || null;
       if (quoteNumber && paymentUrl) {
         try {
-          await db.query(
-            'UPDATE quotes SET payment_link = $1 WHERE quote_number = $2',
-            [paymentUrl, quoteNumber]
-          );
+          await db.query('UPDATE quotes SET payment_link = $1 WHERE quote_number = $2', [paymentUrl, quoteNumber]);
         } catch(e) { console.warn('DB payment_link save failed:', e.message); }
       }
 
-      // 6. Return the invoice page URL (/i/ route) — this is what the rep copies and sends
-      const invToken2 = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
-      const invoicePageUrl = `https://whisperroomquote.up.railway.app/i/${quoteNumber}?t=${invToken2}`;
-      json({ success: true, invoiceUrl: invoicePageUrl, paymentUrl });
+      // 9. Return invoice page URL
+      const invToken = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
+      const invoicePageUrl = `https://whisperroomquote.up.railway.app/i/${quoteNumber}?t=${invToken}`;
+      json({ success: true, invoiceUrl: invoicePageUrl, paymentUrl, invoiceId });
 
     } catch(e) {
-      console.error('Create payment link error:', e.message);
+      console.error('Create invoice error:', e.message);
       json({ error: e.message }, 500);
     }
     return;

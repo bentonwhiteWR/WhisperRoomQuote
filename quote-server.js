@@ -64,9 +64,11 @@ async function generatePdf(pageUrl, filename, res, req) {
       margin: { top: '0', right: '0', bottom: '0', left: '0' },
     });
 
+    const asciiName = filename.replace(/[^\x20-\x7E]/g, '-');
+    const encodedName = encodeURIComponent(filename);
     res.writeHead(200, {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${filename.replace(/"/g, '\"')}"`,
+      'Content-Disposition': `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`,
       'Content-Length': pdfBuffer.length,
     });
     res.end(pdfBuffer);

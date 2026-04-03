@@ -166,6 +166,101 @@ async function gdriveCreateDealFolders(dealName, quoteNumber) {
   }
 }
 
+
+// Upload a PDF to a deal's subfolder (e.g. Quotes, Invoices, Final Order)
+async function gdriveSavePdfToDeal(quoteNumber, subfolderName, filename, pdfBuffer) {
+  try {
+    if (!db) return;
+    const row = await db.query('SELECT gdrive_folder_id FROM quotes WHERE quote_number = $1', [quoteNumber]);
+    const dealFolderId = row.rows[0]?.gdrive_folder_id;
+    if (!dealFolderId) { console.warn(`GDrive: no folder ID for quote ${quoteNumber}`); return; }
+
+    // Find or create the subfolder
+    const subfolder = await gdriveEnsureFolder(subfolderName, dealFolderId);
+    if (!subfolder?.id) { console.warn(`GDrive: could not find/create ${subfolderName} subfolder`); return; }
+
+    // Upload the PDF
+    await gdriveUploadFilePdf(filename, pdfBuffer, subfolder.id);
+    console.log(`GDrive: uploaded "${filename}" to ${subfolderName}/`);
+  } catch(e) {
+    console.warn(`GDrive savePdf error (${subfolderName}):`, e.message);
+  }
+}
+
+// PDF-specific upload using proper binary multipart
+async function gdriveUploadFilePdf(filename, pdfBuffer, parentId) {
+  const token = await getGDriveToken();
+  if (!token) return null;
+
+  const boundary = 'wr_pdf_' + Date.now();
+  const meta = JSON.stringify({ name: filename, parents: [parentId], mimeType: 'application/pdf' });
+
+  // Build multipart body with binary PDF
+  const metaPart = Buffer.from(
+    `--${boundary}
+Content-Type: application/json; charset=UTF-8
+
+${meta}
+--${boundary}
+Content-Type: application/pdf
+
+`
+  );
+  const closePart = Buffer.from(`
+--${boundary}--`);
+  const body = Buffer.concat([metaPart, pdfBuffer, closePart]);
+
+  return new Promise((resolve, reject) => {
+    const req = require('https').request({
+      hostname: 'www.googleapis.com',
+      path: '/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true',
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+        'Content-Length': body.length,
+      }
+    }, res => {
+      let d = '';
+      res.on('data', c => d += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(d)); } catch(e) { resolve(d); }
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+
+// Generate PDF buffer from an internal page URL (uses Puppeteer)
+async function generatePdfBuffer(pageUrl) {
+  if (!puppeteer) throw new Error('Puppeteer not available');
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      args: ['--no-sandbox', '--disable-setuid-sandbox',
+             '--disable-dev-shm-usage', '--disable-gpu',
+             '--single-process', '--no-zygote'],
+      defaultViewport: { width: 1200, height: 900 },
+      headless: 'new',
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+    });
+    const page = await browser.newPage();
+    await page.goto(pageUrl, { waitUntil: 'networkidle0', timeout: 25000 });
+    await page.addStyleTag({ content: '.action-bar{display:none!important}body{padding-bottom:0!important}' });
+    const pdfBuffer = await page.pdf({
+      format: 'Letter',
+      printBackground: true,
+      margin: { top: '0', right: '0', bottom: '0', left: '0' },
+    });
+    return pdfBuffer;
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
+}
+
 // ── Token validator for public quote/invoice/order links ─────────
 function validateShareToken(quoteData, requestedToken) {
   if (!quoteData) return false;
@@ -1791,8 +1886,18 @@ const server = http.createServer(async (req, res) => {
         const tokenRow = await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]);
         shareToken = tokenRow?.rows[0]?.share_token || null;
 
-        // Create Google Drive folder for this deal (non-blocking)
-        gdriveCreateDealFolders(finalDealName, quoteNumber).catch(e => console.warn('GDrive folder error:', e.message));
+        // Create Google Drive folder and upload quote PDF (non-blocking)
+        (async () => {
+          try {
+            await gdriveCreateDealFolders(finalDealName, quoteNumber);
+            // Generate and upload quote PDF
+            const shareToken = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
+            const quoteUrl = `https://whisperroomquote.up.railway.app/q/${encodeURIComponent(quoteNumber)}${shareToken ? '?t=' + shareToken : ''}`;
+            const pdfBuffer = await generatePdfBuffer(quoteUrl);
+            const safeName = finalDealName.replace(/[/\\:*?"<>|]/g, '-').trim();
+            await gdriveSavePdfToDeal(quoteNumber, 'Quotes', `${quoteNumber} — ${safeName}.pdf`, pdfBuffer);
+          } catch(e) { console.warn('GDrive quote upload error:', e.message); }
+        })();
 
       } catch(e) { console.warn('DB save error:', e.message); }
 
@@ -2905,6 +3010,17 @@ tbody tr:hover td{background:#fdfcfb}
       const invoicePageUrl = `https://whisperroomquote.up.railway.app/i/${quoteNumber}?t=${invToken}`;
       json({ success: true, invoiceUrl: invoicePageUrl, paymentUrl, invoiceId });
 
+      // 10. Upload invoice PDF to Google Drive (non-blocking)
+      (async () => {
+        try {
+          const pdfBuffer = await generatePdfBuffer(invoicePageUrl);
+          const dealNameRow = await db?.query('SELECT deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
+          const dn = dealNameRow?.rows[0]?.deal_name || quoteNumber;
+          const safeName = dn.replace(/[/\\:*?"<>|]/g, '-').trim();
+          await gdriveSavePdfToDeal(quoteNumber, 'Invoices', `${quoteNumber} — ${safeName} (Invoice).pdf`, pdfBuffer);
+        } catch(e) { console.warn('GDrive invoice upload error:', e.message); }
+      })();
+
     } catch(e) {
       console.error('Create invoice error:', e.message);
       json({ error: e.message }, 500);
@@ -3545,6 +3661,16 @@ tbody tr:last-child td{border-bottom:none}
 
       console.log(`Order processed: ${quoteNumber}, deal ${dealId} → closedwon`);
       json({ success: true, orderUrl });
+
+      // Upload order PDF to Google Drive (non-blocking)
+      (async () => {
+        try {
+          const pdfBuffer = await generatePdfBuffer(orderUrl);
+          const dn = dealName || quoteNumber;
+          const safeName = dn.replace(/[/\\:*?"<>|]/g, '-').trim();
+          await gdriveSavePdfToDeal(quoteNumber, 'Final Order', `${quoteNumber} — ${safeName} (Order).pdf`, pdfBuffer);
+        } catch(e) { console.warn('GDrive order upload error:', e.message); }
+      })();
 
     } catch(e) {
       console.error('Process order error:', e.message);

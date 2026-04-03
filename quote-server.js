@@ -3352,6 +3352,18 @@ tbody tr:last-child td{border-bottom:none}
     return;
   }
 
+  
+  // ── TEMP: Clear all DB data (remove after use) ───────────────────
+  if (pathname === '/api/admin/nuke-db' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      await db.query('TRUNCATE TABLE orders CASCADE');
+      await db.query('TRUNCATE TABLE quotes CASCADE');
+      json({ success: true, message: 'All quotes and orders cleared' });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
     res.writeHead(404); res.end('Not found');
 });
 

@@ -1719,79 +1719,79 @@ tbody tr:hover td{background:#fafafa}
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#ededed;color:#1a1a1a;-webkit-font-smoothing:antialiased}
+body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f7f6f4;color:#1a1a1a;-webkit-font-smoothing:antialiased}
 .page{max-width:840px;margin:0 auto;padding:0 0 110px}
 
-/* Header — dark branded */
-.header-card{background:#1a1a1a;padding:28px 40px 24px;margin-bottom:0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
-.logo-img{height:22px;display:block;filter:brightness(0) invert(1)}
+/* Header — white with orange left border */
+.header-card{background:#ffffff;padding:32px 40px 28px;margin-bottom:0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:20px;border-left:6px solid #ee6216;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.logo-img{height:40px;display:block}
 .header-right{text-align:right}
-.quote-type{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:#ee6216;margin-bottom:6px}
-.quote-num{font-size:28px;font-weight:800;color:#ffffff;letter-spacing:-.5px;font-variant-numeric:tabular-nums;line-height:1}
-.quote-meta{font-size:11px;color:rgba(255,255,255,.35);margin-top:5px}
-.quote-valid-tag{display:inline-block;margin-top:6px;background:#ee6216;color:white;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;padding:3px 10px;border-radius:3px}
+.quote-type{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.16em;color:#ee6216;margin-bottom:8px}
+.quote-num{font-size:34px;font-weight:800;color:#1a1a1a;letter-spacing:-.8px;font-variant-numeric:tabular-nums;line-height:1}
+.quote-meta{font-size:12px;color:#aaa;margin-top:6px}
+.quote-valid-tag{display:inline-block;margin-top:8px;background:#ee6216;color:white;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;padding:4px 12px;border-radius:3px}
 
-/* Orange accent strip */
-.accent-strip{height:3px;background:linear-gradient(90deg,#ee6216,#ff8c42);margin-bottom:20px}
+/* Divider */
+.accent-strip{height:1px;background:#eee;margin-bottom:20px}
 
 /* Cards */
-.card{background:#fff;border-radius:10px;padding:28px 32px;margin:0 16px 12px;box-shadow:0 1px 4px rgba(0,0,0,.07)}
-.card-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;color:#ee6216;margin-bottom:16px}
-.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.info-item label{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:3px}
+.card{background:#fff;border-radius:10px;padding:30px 36px;margin:0 0 12px;box-shadow:0 1px 4px rgba(0,0,0,.06);border:1px solid #f0f0f0}
+.card-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.16em;color:#ee6216;margin-bottom:18px}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.info-item label{font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:4px}
 .info-item span{font-size:14px;font-weight:600;color:#1a1a1a}
 
 /* Table */
 table{width:100%;border-collapse:collapse}
-thead th{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#bbb;padding:0 0 14px;border-bottom:1px solid #f0f0f0;text-align:left}
+thead th{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:#ccc;padding:0 0 16px;border-bottom:2px solid #f5f5f5;text-align:left}
 thead th:nth-child(2){text-align:center}
 thead th:nth-child(3),thead th:nth-child(4){text-align:right}
 tbody tr:last-child td{border-bottom:none}
-tbody tr:hover td{background:#fafafa}
+tbody tr:hover td{background:#fdfcfb}
 .item-name{font-weight:700;color:#1a1a1a;font-size:14px}
-.item-desc{font-size:11px;color:#aaa;margin-top:3px;line-height:1.5}
+.item-desc{font-size:11px;color:#bbb;margin-top:4px;line-height:1.6}
 
 /* Totals */
-.totals{max-width:320px;margin-left:auto;margin-top:24px;padding-top:20px;border-top:1px solid #eee}
-.tot{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#888}
-.tot.grand{font-size:22px;font-weight:800;color:#1a1a1a;padding-top:16px;margin-top:8px;border-top:2px solid #1a1a1a}
+.totals{max-width:320px;margin-left:auto;margin-top:28px;padding-top:20px;border-top:2px solid #f5f5f5}
+.tot{display:flex;justify-content:space-between;padding:7px 0;font-size:13px;color:#999}
+.tot.grand{font-size:26px;font-weight:800;color:#1a1a1a;padding-top:18px;margin-top:10px;border-top:2px solid #1a1a1a}
 .tot.grand span:last-child{color:#ee6216}
 .discount-val{color:#1a7a4a!important;font-weight:600}
 
 /* Terms */
-.terms{font-size:11px;color:#aaa;line-height:1.9}
+.terms{font-size:11px;color:#bbb;line-height:1.9}
 
-/* Bottom action bar */
-.action-bar{position:fixed;bottom:0;left:0;right:0;background:rgba(26,26,26,.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid rgba(255,255,255,.08);padding:14px 24px;display:flex;gap:10px;justify-content:center;z-index:100}
-.btn{padding:13px 30px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:none;letter-spacing:.04em;font-family:inherit;transition:all .15s}
-.btn-primary{background:rgba(255,255,255,.1);color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.12)}
-.btn-primary:hover{background:rgba(255,255,255,.16);color:white}
-.btn-secondary{background:rgba(255,255,255,.06);color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.08)}
-.btn-secondary:hover{background:rgba(255,255,255,.1);color:rgba(255,255,255,.7)}
-.btn-accept{background:#ee6216;color:white;font-size:14px;padding:13px 36px}
-.btn-accept:hover{background:#d4561a;transform:translateY(-1px);box-shadow:0 4px 20px rgba(238,98,22,.45)}
+/* Bottom bar */
+.action-bar{position:fixed;bottom:0;left:0;right:0;background:rgba(20,20,20,.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid rgba(255,255,255,.06);padding:16px 28px;display:flex;gap:12px;justify-content:center;align-items:center;z-index:100}
+.btn{padding:13px 32px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:none;letter-spacing:.04em;font-family:inherit;transition:all .15s}
+.btn-primary{background:rgba(255,255,255,.08);color:rgba(255,255,255,.65);border:1px solid rgba(255,255,255,.12)}
+.btn-primary:hover{background:rgba(255,255,255,.14);color:white}
+.btn-secondary{background:rgba(255,255,255,.05);color:rgba(255,255,255,.45);border:1px solid rgba(255,255,255,.08)}
+.btn-secondary:hover{background:rgba(255,255,255,.09);color:rgba(255,255,255,.65)}
+.btn-accept{background:#ee6216;color:white;font-size:14px;font-weight:800;padding:14px 40px;letter-spacing:.02em}
+.btn-accept:hover{background:#d4561a;transform:translateY(-1px);box-shadow:0 6px 24px rgba(238,98,22,.5)}
 
 /* Footer */
-.footer{text-align:center;margin:20px 16px 0;padding:20px 0;font-size:11px;color:#aaa;line-height:2;border-top:1px solid #e0e0e0}
+.footer{text-align:center;margin:24px 0 0;padding:24px 32px;font-size:11px;color:#bbb;line-height:2.1;border-top:1px solid #ece9e4}
 .footer a{color:#ee6216;text-decoration:none}
-.footer strong{color:#555;font-weight:600}
+.footer strong{color:#888;font-weight:600}
 
-@media(max-width:560px){
-  .header-card{padding:22px 20px}
+@media(max-width:600px){
+  .header-card{padding:24px 20px;border-left:4px solid #ee6216}
+  .logo-img{height:30px}
   .header-right{text-align:left}
-  .quote-num{font-size:22px}
-  .card{padding:20px;margin:0 10px 10px}
+  .quote-num{font-size:26px}
+  .card{padding:22px 20px}
   .info-grid{grid-template-columns:1fr}
-  .action-bar{flex-direction:column;padding:12px 16px}
+  .action-bar{flex-direction:column;padding:14px 16px}
   .btn{width:100%;text-align:center}
 }
 @media print{
   body{background:white}
   .action-bar{display:none!important}
   .page{padding-bottom:20px}
-  .header-card{background:#1a1a1a!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .accent-strip{display:block!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .card{box-shadow:none;border:1px solid #eee;margin:0 0 10px}
+  .header-card{border-left:6px solid #ee6216!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .card{box-shadow:none}
 }
 </style>
 </head>
@@ -1799,7 +1799,7 @@ tbody tr:hover td{background:#fafafa}
 <div class="page">
 
   <div class="header-card">
-    <img src="/assets/logo-orange.svg" alt="WhisperRoom" class="logo-img">
+    <img src="/assets/logo-black.svg" alt="WhisperRoom" class="logo-img">
     <div class="header-right">
       <div class="quote-type">Price Quote</div>
       <div class="quote-num">${q.quoteNumber||'QUOTE'}</div>

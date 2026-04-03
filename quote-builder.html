@@ -2489,7 +2489,6 @@ ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</
         <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Purple" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Purple</label>
         <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Orange" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Orange</label>
         <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Burgundy" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Burgundy</label>
-        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Undecided" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Undecided</label>
       </div>
     </div>
 
@@ -2498,7 +2497,6 @@ ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
         <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderHinge" value="Left Hand" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> Left Hand</label>
         <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderHinge" value="Right Hand" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> Right Hand</label>
-        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderHinge" value="Undecided" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> Undecided</label>
       </div>
     </div>
 
@@ -3595,8 +3593,10 @@ async function confirmProcessOrder() {
   const quoteNumber = document.getElementById('quoteNumHidden').value;
   if (!dealId || !quoteNumber) { showToast('No deal linked', 'error'); return; }
 
-  const foam            = document.querySelector('input[name="orderFoam"]:checked')?.value  || 'Undecided';
-  const hinge           = document.querySelector('input[name="orderHinge"]:checked')?.value || 'Undecided';
+  const foam  = document.querySelector('input[name="orderFoam"]:checked')?.value  || '';
+  const hinge = document.querySelector('input[name="orderHinge"]:checked')?.value || '';
+  if (!foam)  { showToast('Please select a foam color', 'error'); return; }
+  if (!hinge) { showToast('Please select a door hinge preference', 'error'); return; }
   const productionNotes = document.getElementById('orderProductionNotes').value.trim();
   const deliveryNotes   = document.getElementById('orderDeliveryNotes').value.trim();
 
@@ -3640,8 +3640,8 @@ async function confirmProcessOrder() {
       closeOrderModal();
 
       // Build mailto with all order details pre-filled
-      const foam            = document.querySelector('input[name="orderFoam"]:checked')?.value  || 'Undecided';
-      const hinge           = document.querySelector('input[name="orderHinge"]:checked')?.value || 'Undecided';
+      const foam  = document.querySelector('input[name="orderFoam"]:checked')?.value  || '';
+      const hinge = document.querySelector('input[name="orderHinge"]:checked')?.value || '';
       const productionNotes = document.getElementById('orderProductionNotes').value.trim();
       const deliveryNotes   = document.getElementById('orderDeliveryNotes').value.trim();
       const quoteNum        = document.getElementById('quoteNumHidden').value;
@@ -3694,7 +3694,7 @@ async function confirmProcessOrder() {
         data.orderUrl,
       ].filter(l => l !== null).join('\n');
 
-      const mailto = `mailto:shipping@whisperroom.com,accounting@whisperroom.com,bentonwhite@whisperroom.com?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+      const mailto = `mailto:shipping@whisperroom.com?cc=accounting@whisperroom.com,bentonwhite@whisperroom.com&subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
       window.location.href = mailto;
 
       // Show order link in result box
@@ -3890,7 +3890,6 @@ function closeInvoiceModal() {
         <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Purple" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Purple</label>
         <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Orange" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Orange</label>
         <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Burgundy" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Burgundy</label>
-        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Undecided" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Undecided</label>
       </div>
     </div>
 
@@ -3899,7 +3898,6 @@ function closeInvoiceModal() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
         <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderHinge" value="Left Hand" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> Left Hand</label>
         <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderHinge" value="Right Hand" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> Right Hand</label>
-        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderHinge" value="Undecided" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> Undecided</label>
       </div>
     </div>
 

@@ -1448,13 +1448,17 @@ const server = http.createServer(async (req, res) => {
       let dealId;
       if (existingDealId) {
         dealId = existingDealId;
-        // Update amount on existing deal
+        // Update existing deal — amount + advance stage to Updated Quote
         await httpsRequest({
           hostname: 'api.hubapi.com',
           path: `/crm/v3/objects/deals/${dealId}`,
           method: 'PATCH',
           headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-        }, { properties: { amount: total.toFixed(2) } });
+        }, { properties: {
+          amount: total.toFixed(2),
+          dealstage: 'qualifiedtobuy',
+          dealname: dealName || undefined,
+        } });
       } else {
         const deal = await hsCreateDeal({
           dealname: dealName || `${customer.company || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || 'Customer'} — ${quoteNumber || 'Quote'}`,

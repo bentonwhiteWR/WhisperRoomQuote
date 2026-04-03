@@ -97,6 +97,10 @@ try {
 
 async function initDb() {
   try {
+    // Migrations — add columns if they don't exist yet
+    await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payment_link TEXT`).catch(() => {});
+    await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS order_link   TEXT`).catch(() => {});
+
     await db.query(`
       CREATE TABLE IF NOT EXISTS quotes (
         id            SERIAL PRIMARY KEY,
@@ -112,6 +116,7 @@ async function initDb() {
         quote_link    TEXT,
         json_snapshot JSONB NOT NULL,
         payment_link  TEXT,
+        order_link    TEXT,
         created_at    TIMESTAMPTZ DEFAULT NOW()
       )
     `);
@@ -157,6 +162,7 @@ async function saveQuoteToDb(quoteData) {
         date          = EXCLUDED.date,
         quote_link    = EXCLUDED.quote_link,
         payment_link  = COALESCE(EXCLUDED.payment_link, quotes.payment_link),
+        order_link    = COALESCE(EXCLUDED.order_link, quotes.order_link),
         json_snapshot = EXCLUDED.json_snapshot
       RETURNING id
     `, [

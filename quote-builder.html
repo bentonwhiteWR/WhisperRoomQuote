@@ -1410,6 +1410,7 @@ function setDiscType(type) {
 // ── Line items ────────────────────────────────────────────────────
 function addLineItem(product) {
   const name = product.properties.name;
+  console.log('addLineItem weight:', product.properties.weight, 'parsed:', parseFloat(product.properties.weight));
   const item = {
     id: Date.now() + Math.random(),
     productId: product.id,

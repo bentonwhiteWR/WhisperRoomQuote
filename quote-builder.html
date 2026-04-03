@@ -2720,6 +2720,9 @@ function loadFromHistoryEntry(idOrIdx) {
   }
 
   window._loadedShareToken = q._shareToken || q.shareToken || null;
+  // Clear result box so invoice/order links from other quotes don't bleed through
+  const resultBox = document.getElementById('resultBox');
+  if (resultBox) { resultBox.className = 'result-box'; resultBox.innerHTML = ''; }
   lineItems = q.lineItems ? JSON.parse(JSON.stringify(q.lineItems)) : [];
   renderLineItems();
 
@@ -3769,9 +3772,9 @@ async function createInvoice() {
 
     if (needsConfirmation) {
       // Show confirmation modal
-      document.getElementById('invoiceStageWarning').style.display = 'block';
+
     } else {
-      document.getElementById('invoiceStageWarning').style.display = 'none';
+
     }
 
     // Populate preview
@@ -3820,7 +3823,7 @@ async function confirmCreateInvoice() {
         freight: freightData,
         tax: taxData,
         discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
-        advanceStage: document.getElementById('invoiceStageWarning').style.display !== 'none',
+        advanceStage: false,
         ownerId: linkedDeal?.ownerId || window._lastPushedOwnerId || document.getElementById('repSelect').value || null
       })
     });
@@ -3863,9 +3866,7 @@ function closeInvoiceModal() {
     <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:6px;font-family:var(--sans)">Create HubSpot Invoice</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:24px">This will create a live invoice in HubSpot and open it in a new tab.</div>
 
-    <div id="invoiceStageWarning" style="display:none;background:rgba(184,134,11,.1);border:1px solid rgba(184,134,11,.3);border-radius:8px;padding:12px 14px;margin-bottom:20px;font-size:12px;color:var(--yellow)">
-      ⚠️ This deal hasn't reached Verbal Confirmation yet. The stage will be advanced to Verbal Confirmation when the invoice is created.
-    </div>
+
 
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:24px">
       <div style="display:flex;justify-content:space-between;margin-bottom:8px">

@@ -619,7 +619,7 @@ async function hsSearchProducts(query, limit = 100, offset = 0) {
   const body = {
     limit,
     after: offset,
-    properties: ['name', 'price', 'hs_sku', 'description', 'weight', 'hs_product_type'],
+    properties: ['name', 'price', 'hs_sku', 'description', 'weight'],
     sorts: [{ propertyName: 'name', direction: 'ASCENDING' }]
   };
   if (query && query.trim()) body.query = query.trim();
@@ -1481,10 +1481,6 @@ const server = http.createServer(async (req, res) => {
       const q = parsed.query.q || '';
       const offset = parseInt(parsed.query.after || '0');
       const data = await hsSearchProducts(q, 100, offset);
-      // Debug: log first product properties to check weight field name
-      if (data?.results?.[0]) {
-        console.log('Product properties sample:', JSON.stringify(data.results[0].properties));
-      }
       json(data);
     } catch(e) { json({error: e.message}, 500); }
     return;

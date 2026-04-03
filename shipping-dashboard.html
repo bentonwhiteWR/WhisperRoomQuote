@@ -547,11 +547,10 @@ async function registerAllWithAfterShip(shipments) {
 }
 
 async function fetchAllStatuses(shipments) {
-  // Fetch in parallel, max 10 at a time
-  const chunks = [];
-  for (let i = 0; i < shipments.length; i += 10) chunks.push(shipments.slice(i, i + 10));
-  for (const chunk of chunks) {
-    await Promise.all(chunk.map(s => fetchStatus(s)));
+  // Fetch one at a time with 400ms delay to avoid AfterShip rate limiting
+  for (const s of shipments) {
+    await fetchStatus(s);
+    await new Promise(r => setTimeout(r, 400));
   }
 }
 

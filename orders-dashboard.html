@@ -50,6 +50,17 @@
   .theme-btn { padding: 6px 10px; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; transition: all .15s; }
   .theme-btn:hover { border-color: var(--orange); color: var(--orange); }
 
+  /* Tabs */
+  .tab-bar { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 0; }
+  .tab { padding: 10px 16px; font-size: 12px; font-weight: 700; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all .15s; text-transform: uppercase; letter-spacing: .06em; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--orange); border-bottom-color: var(--orange); }
+
+  /* Rep badge */
+  .rep-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 10px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
+  .rep-bar select { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; padding: 4px 8px; font-family: inherit; outline: none; }
+  .rep-bar select:focus { border-color: var(--orange); }
+
   /* Main */
   .main { max-width: 1200px; margin: 0 auto; padding: 28px 24px; }
   .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
@@ -174,27 +185,73 @@
     </div>
   </div>
 
+  <!-- Rep identity bar -->
+  <div class="rep-bar">
+    <span style="color:var(--muted)">Logged in as:</span>
+    <select id="repIdentity" onchange="saveRepIdentity()">
+      <option value="">Select your name...</option>
+      <option value="Jill Holdway">Jill Holdway</option>
+      <option value="Sarah Smith">Sarah Smith</option>
+      <option value="Travis Singleton">Travis Singleton</option>
+      <option value="Benton White">Benton White</option>
+      <option value="Gabe White">Gabe White</option>
+      <option value="Kim Dalton">Kim Dalton</option>
+      <option value="Chet Burgess">Chet Burgess</option>
+      <option value="Jeromy Packwood">Jeromy Packwood</option>
+    </select>
+    <span style="color:var(--muted);font-size:11px">— used to attribute changes in order history</span>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tab-bar">
+    <div class="tab active" id="tab-db" onclick="switchTab('db')">Active Orders <span id="dbCount" style="opacity:.5"></span></div>
+    <div class="tab" id="tab-hs" onclick="switchTab('hs')">HubSpot Closed Won <span id="hsCount" style="opacity:.5"></span></div>
+  </div>
+
   <div class="filter-bar">
     <input type="text" class="search-input" id="searchInput" placeholder="Search by name, company, quote number..." oninput="filterOrders()">
   </div>
 
-  <div class="orders-table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Quote #</th>
-          <th>Customer / Company</th>
-          <th>Foam</th>
-          <th>Hinge</th>
-          <th>Total</th>
-          <th>Processed</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody id="ordersBody">
-        <tr><td colspan="7"><div style="padding:40px;text-align:center;color:var(--muted)">Loading orders...</div></td></tr>
-      </tbody>
-    </table>
+  <!-- DB Orders table -->
+  <div id="panel-db">
+    <div class="orders-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Quote #</th>
+            <th>Customer / Company</th>
+            <th>Foam</th>
+            <th>Hinge</th>
+            <th>Total</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="ordersBody">
+          <tr><td colspan="7"><div style="padding:40px;text-align:center;color:var(--muted)">Loading orders...</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- HubSpot Deals table -->
+  <div id="panel-hs" style="display:none">
+    <div class="orders-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Deal Name</th>
+            <th>Company</th>
+            <th>Amount</th>
+            <th>Close Date</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="hsDealsBody">
+          <tr><td colspan="5"><div style="padding:40px;text-align:center;color:var(--muted)">Loading HubSpot deals...</div></td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 
@@ -258,22 +315,121 @@
     </div>
   </div>
 
+  <div class="drawer-section" id="shipmentSection">
+    <div class="drawer-section-title" style="display:flex;align-items:center;justify-content:space-between">
+      <span>Shipment</span>
+      <span id="shippedBadge" style="display:none;font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px;background:var(--green-dim);color:var(--green);border:1px solid rgba(34,197,94,.25);text-transform:uppercase;letter-spacing:.08em">&#x2713; Shipped</span>
+    </div>
+    <div class="field-group">
+      <div class="field">
+        <label>Carrier</label>
+        <select id="editCarrier">
+          <option value="">Select carrier...</option>
+          <option value="ABF Freight">ABF Freight</option>
+          <option value="Old Dominion">Old Dominion</option>
+          <option value="FedEx Freight">FedEx Freight</option>
+          <option value="UPS Freight">UPS Freight</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Date Shipped</label>
+        <input type="date" id="editShipDate">
+      </div>
+      <div class="field full">
+        <label>PRO / Tracking Number</label>
+        <input type="text" id="editTracking" placeholder="Enter tracking or PRO number">
+      </div>
+      <div class="field">
+        <label>Pallet Count</label>
+        <input type="number" id="editPallets" placeholder="0" min="0">
+      </div>
+      <div class="field">
+        <label>Box Count</label>
+        <input type="number" id="editBoxes" placeholder="0" min="0">
+      </div>
+    </div>
+  </div>
+
+  <div class="drawer-section" id="changeLogSection" style="display:none">
+    <div class="drawer-section-title">Change Log</div>
+    <div id="changeLogList" style="font-size:12px;color:var(--muted);line-height:1.8"></div>
+  </div>
+
   <div class="drawer-footer">
     <button class="btn btn-primary" id="saveBtn" onclick="saveOrder()">Save Changes</button>
-    <a id="viewOrderBtn" href="#" target="_blank" class="btn btn-secondary" style="text-decoration:none;display:flex;align-items:center">View Order Page</a>
+    <a id="viewOrderBtn" href="#" target="_blank" class="btn btn-secondary" style="text-decoration:none;display:flex;align-items:center">View Order ↗</a>
     <button class="btn btn-secondary" onclick="closeDrawer()">Cancel</button>
+  </div>
+</div>
+
+<!-- HubSpot Deal Ship Modal -->
+<div id="hsShipModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border-radius:14px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+    <h2 style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:6px">&#x1F69A; Ship It</h2>
+    <div id="hsShipDealName" style="font-size:13px;color:var(--muted);margin-bottom:20px"></div>
+    <div class="field-group" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="field" style="display:flex;flex-direction:column;gap:5px">
+        <label style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Carrier</label>
+        <select id="hsCarrier" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+          <option value="">Select...</option>
+          <option value="ABF Freight">ABF Freight</option>
+          <option value="Old Dominion">Old Dominion</option>
+          <option value="FedEx Freight">FedEx Freight</option>
+          <option value="UPS Freight">UPS Freight</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="field" style="display:flex;flex-direction:column;gap:5px">
+        <label style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Date Shipped</label>
+        <input type="date" id="hsShipDate" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+      </div>
+      <div class="field" style="display:flex;flex-direction:column;gap:5px;grid-column:1/-1">
+        <label style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">PRO / Tracking Number</label>
+        <input type="text" id="hsTracking" placeholder="Enter tracking or PRO number" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+      </div>
+      <div class="field" style="display:flex;flex-direction:column;gap:5px">
+        <label style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Pallets</label>
+        <input type="number" id="hsPallets" placeholder="0" min="0" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+      </div>
+      <div class="field" style="display:flex;flex-direction:column;gap:5px">
+        <label style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Boxes</label>
+        <input type="number" id="hsBoxes" placeholder="0" min="0" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:24px">
+      <button id="hsShipConfirmBtn" onclick="confirmHsShip()" style="flex:1;padding:13px;background:var(--green);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">&#x1F69A; Mark Shipped</button>
+      <button onclick="closeHsShipModal()" style="padding:13px 18px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
+    </div>
   </div>
 </div>
 
 <div id="toast"></div>
 
 <script>
+// ── Rep identity ──────────────────────────────────────────────────
+function saveRepIdentity() {
+  const val = document.getElementById('repIdentity').value;
+  if (val) localStorage.setItem('wr-rep', val);
+}
+function getCurrentRep() {
+  return document.getElementById('repIdentity').value || localStorage.getItem('wr-rep') || 'Unknown';
+}
+// Restore saved rep
+const savedRep = localStorage.getItem('wr-rep');
+if (savedRep) {
+  document.addEventListener('DOMContentLoaded', () => {
+    const sel = document.getElementById('repIdentity');
+    if (sel) sel.value = savedRep;
+  });
+}
+
+// ── Theme ─────────────────────────────────────────────────────────
 function toggleTheme() {
   const isLight = document.documentElement.classList.toggle('light');
   document.getElementById('themeBtn').textContent = isLight ? '🌙' : '☀️';
   localStorage.setItem('wr-theme', isLight ? 'light' : 'dark');
 }
-// Restore saved theme
 if (localStorage.getItem('wr-theme') === 'light') {
   document.documentElement.classList.add('light');
   document.addEventListener('DOMContentLoaded', () => {
@@ -282,7 +438,376 @@ if (localStorage.getItem('wr-theme') === 'light') {
   });
 }
 
+// ── State ─────────────────────────────────────────────────────────
 let allOrders = [];
+let allHsDeals = [];
+let currentQuoteNumber = null;
+let currentHsDeal = null;
+let currentTab = 'db';
+
+// ── Tabs ──────────────────────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('tab-db').classList.toggle('active', tab === 'db');
+  document.getElementById('tab-hs').classList.toggle('active', tab === 'hs');
+  document.getElementById('panel-db').style.display = tab === 'db' ? '' : 'none';
+  document.getElementById('panel-hs').style.display = tab === 'hs' ? '' : 'none';
+  filterOrders();
+  if (tab === 'hs' && allHsDeals.length === 0) loadHsDeals();
+}
+
+// ── Load Data ─────────────────────────────────────────────────────
+async function loadOrders() {
+  try {
+    const res = await fetch('/api/orders', { credentials: 'include' });
+    if (res.status === 401) { window.location.href = '/'; return; }
+    const data = await res.json();
+    allOrders = data.orders || [];
+    renderOrders(allOrders);
+    document.getElementById('orderCount').textContent = `${allOrders.length} order${allOrders.length !== 1 ? 's' : ''} in production`;
+    document.getElementById('dbCount').textContent = `(${allOrders.length})`;
+  } catch(e) {
+    document.getElementById('ordersBody').innerHTML = `<tr><td colspan="7"><div style="padding:40px;text-align:center;color:#ef4444">Failed to load orders: ${e.message}</div></td></tr>`;
+  }
+}
+
+async function loadHsDeals() {
+  document.getElementById('hsDealsBody').innerHTML = `<tr><td colspan="5"><div style="padding:40px;text-align:center;color:var(--muted)">Loading from HubSpot...</div></td></tr>`;
+  try {
+    const res = await fetch('/api/orders/hubspot-deals', { credentials: 'include' });
+    const data = await res.json();
+    allHsDeals = data.deals || [];
+    renderHsDeals(allHsDeals);
+    document.getElementById('hsCount').textContent = `(${allHsDeals.length})`;
+  } catch(e) {
+    document.getElementById('hsDealsBody').innerHTML = `<tr><td colspan="5"><div style="padding:40px;text-align:center;color:#ef4444">Failed: ${e.message}</div></td></tr>`;
+  }
+}
+
+// ── Format ────────────────────────────────────────────────────────
+function fmt(n) {
+  return '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+// ── Render DB Orders ──────────────────────────────────────────────
+function renderOrders(orders) {
+  const tbody = document.getElementById('ordersBody');
+  if (!orders.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-icon">📦</div><div class="empty-text">No orders yet</div></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = orders.map(o => {
+    const customer  = o.customer_name || '—';
+    const company   = o.company || '';
+    const foam      = o.order_data?.foamColor || '—';
+    const hinge     = o.order_data?.hingePreference || '—';
+    const isShipped = !!(o.order_data?.shipped?.tracking);
+    const total     = o.total ? fmt(o.total) : '—';
+    const orderUrl  = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(o.quote_number)}`;
+    return `<tr onclick="openDrawer('${o.quote_number}')">
+      <td><div class="td-mono">${o.quote_number}</div></td>
+      <td><div class="td-main">${customer}</div>${company ? `<div class="td-sub">${company}</div>` : ''}</td>
+      <td><span class="badge badge-foam">${foam}</span></td>
+      <td><span class="badge badge-foam">${hinge}</span></td>
+      <td style="font-weight:600;color:var(--orange)">${total}</td>
+      <td>${isShipped
+        ? `<span class="badge" style="background:var(--green-dim);color:var(--green);border:1px solid rgba(34,197,94,.25)">✓ Shipped</span>`
+        : `<span class="badge badge-production">In Production</span>`}
+      </td>
+      <td onclick="event.stopPropagation()"><a href="${orderUrl}" target="_blank" class="order-link-btn">Order ↗</a></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Render HubSpot Deals ──────────────────────────────────────────
+function renderHsDeals(deals) {
+  const tbody = document.getElementById('hsDealsBody');
+  if (!deals.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty"><div class="empty-icon">✓</div><div class="empty-text">All Closed Won deals have been processed</div></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = deals.map(d => {
+    const amount   = d.amount ? fmt(d.amount) : '—';
+    const date     = d.closeDate ? new Date(d.closeDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+    return `<tr>
+      <td><div class="td-main">${d.dealName}</div></td>
+      <td><div class="td-sub">${d.company || '—'}</div></td>
+      <td style="font-weight:600;color:var(--orange)">${amount}</td>
+      <td style="color:var(--muted);font-size:12px">${date}</td>
+      <td>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button onclick="openHsShipModal('${d.id}','${d.dealName.replace(/'/g,'\\\'')}')" class="btn btn-primary" style="padding:6px 12px;font-size:11px;white-space:nowrap">&#x1F69A; Ship It</button>
+          <a href="${d.dealUrl}" target="_blank" class="order-link-btn">HubSpot ↗</a>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Filter ────────────────────────────────────────────────────────
+function filterOrders() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  if (currentTab === 'db') {
+    renderOrders(q ? allOrders.filter(o =>
+      (o.quote_number||'').toLowerCase().includes(q) ||
+      (o.customer_name||'').toLowerCase().includes(q) ||
+      (o.company||'').toLowerCase().includes(q) ||
+      (o.deal_name||'').toLowerCase().includes(q)
+    ) : allOrders);
+  } else {
+    renderHsDeals(q ? allHsDeals.filter(d =>
+      (d.dealName||'').toLowerCase().includes(q) ||
+      (d.company||'').toLowerCase().includes(q)
+    ) : allHsDeals);
+  }
+}
+
+// ── Edit Drawer ───────────────────────────────────────────────────
+function openDrawer(quoteNumber) {
+  const order = allOrders.find(o => o.quote_number === quoteNumber);
+  if (!order) return;
+  currentQuoteNumber = quoteNumber;
+
+  document.getElementById('drawerTitle').textContent = order.quote_number;
+  document.getElementById('drawerSubtitle').textContent = order.deal_name || order.customer_name || '';
+
+  const c  = order.json_snapshot?.customer || {};
+  const od = order.order_data || {};
+
+  document.getElementById('editFirstName').value = c.firstName || '';
+  document.getElementById('editLastName').value  = c.lastName  || '';
+  document.getElementById('editCompany').value   = c.company   || order.company || '';
+  document.getElementById('editEmail').value     = c.email     || '';
+  document.getElementById('editAddress').value   = c.address   || '';
+  document.getElementById('editCity').value      = c.city      || '';
+  document.getElementById('editState').value     = c.state     || '';
+  document.getElementById('editZip').value       = c.zip       || '';
+
+  setRadio('editFoam',  od.foamColor       || '');
+  setRadio('editHinge', od.hingePreference || '');
+  document.getElementById('editProductionNotes').value = od.productionNotes || '';
+  document.getElementById('editDeliveryNotes').value   = od.deliveryNotes   || '';
+
+  const shipped = od.shipped || {};
+  document.getElementById('editCarrier').value  = shipped.carrier  || '';
+  document.getElementById('editTracking').value = shipped.tracking || '';
+  document.getElementById('editPallets').value  = shipped.pallets  || '';
+  document.getElementById('editBoxes').value    = shipped.boxes    || '';
+  document.getElementById('editShipDate').value = shipped.date
+    ? new Date(shipped.date).toISOString().split('T')[0]
+    : new Date().toISOString().split('T')[0];
+
+  const badge = document.getElementById('shippedBadge');
+  badge.style.display = shipped.tracking ? 'inline-flex' : 'none';
+
+  const log = od.changeLog || [];
+  const logSection = document.getElementById('changeLogSection');
+  const logList    = document.getElementById('changeLogList');
+  if (log.length) {
+    logSection.style.display = 'block';
+    logList.innerHTML = log.slice().reverse().map(entry =>
+      `<div style="padding:6px 0;border-bottom:1px solid var(--border)">
+        <span style="color:var(--text);font-weight:600">${entry.summary}</span>
+        ${entry.rep ? `<span style="color:var(--orange);margin-left:6px;font-size:11px">— ${entry.rep}</span>` : ''}
+        <span style="color:var(--muted);margin-left:6px;font-size:11px">${new Date(entry.at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>
+      </div>`
+    ).join('');
+  } else {
+    logSection.style.display = 'none';
+  }
+
+  const orderUrl = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(quoteNumber)}`;
+  document.getElementById('viewOrderBtn').href = orderUrl;
+
+  document.getElementById('editDrawer').classList.add('open');
+  document.getElementById('drawerOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeDrawer() {
+  document.getElementById('editDrawer').classList.remove('open');
+  document.getElementById('drawerOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+  currentQuoteNumber = null;
+}
+
+function setRadio(name, value) {
+  document.querySelectorAll(`input[name="${name}"]`).forEach(inp => { inp.checked = (inp.value === value); });
+  highlightSel(name);
+}
+
+function highlightSel(name) {
+  document.querySelectorAll(`input[name="${name}"]`).forEach(inp => {
+    const label = inp.closest('.sel-label');
+    if (label) label.classList.toggle('selected', inp.checked);
+  });
+}
+
+// ── Save Order ────────────────────────────────────────────────────
+async function saveOrder() {
+  if (!currentQuoteNumber) return;
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  const order   = allOrders.find(o => o.quote_number === currentQuoteNumber);
+  const prevOd  = order?.order_data || {};
+  const prevC   = order?.json_snapshot?.customer || {};
+  const repName = getCurrentRep();
+
+  const newFoam      = document.querySelector('input[name="editFoam"]:checked')?.value  || '';
+  const newHinge     = document.querySelector('input[name="editHinge"]:checked')?.value || '';
+  const newProdNotes = document.getElementById('editProductionNotes').value.trim();
+  const newDelNotes  = document.getElementById('editDeliveryNotes').value.trim();
+  const carrier      = document.getElementById('editCarrier').value;
+  const tracking     = document.getElementById('editTracking').value.trim();
+  const shipDate     = document.getElementById('editShipDate').value;
+  const pallets      = document.getElementById('editPallets').value;
+  const boxes        = document.getElementById('editBoxes').value;
+  const isShipping   = carrier && tracking;
+
+  const customer = {
+    firstName: document.getElementById('editFirstName').value.trim(),
+    lastName:  document.getElementById('editLastName').value.trim(),
+    company:   document.getElementById('editCompany').value.trim(),
+    email:     document.getElementById('editEmail').value.trim(),
+    address:   document.getElementById('editAddress').value.trim(),
+    city:      document.getElementById('editCity').value.trim(),
+    state:     document.getElementById('editState').value.trim(),
+    zip:       document.getElementById('editZip').value.trim(),
+  };
+
+  // Build diff for change log
+  const changes = [];
+  const chk = (label, prev, next) => { if ((prev||'') !== (next||'') && (prev||next)) changes.push(`${label}: ${prev||'—'} → ${next||'—'}`); };
+  chk('Foam Color',       prevOd.foamColor       || '', newFoam);
+  chk('Door Hinge',       prevOd.hingePreference || '', newHinge);
+  chk('Production Notes', prevOd.productionNotes || '', newProdNotes);
+  chk('Delivery Notes',   prevOd.deliveryNotes   || '', newDelNotes);
+  chk('Name',    [prevC.firstName,prevC.lastName].filter(Boolean).join(' '), [customer.firstName,customer.lastName].filter(Boolean).join(' '));
+  chk('Company', prevC.company||'', customer.company);
+  chk('Email',   prevC.email  ||'', customer.email);
+  const prevAddr = [prevC.address,prevC.city,prevC.state,prevC.zip].filter(Boolean).join(', ');
+  const newAddr  = [customer.address,customer.city,customer.state,customer.zip].filter(Boolean).join(', ');
+  chk('Address', prevAddr, newAddr);
+  if (isShipping && !prevOd.shipped?.tracking) changes.push(`Marked Shipped — ${carrier}, ${tracking}`);
+
+  const payload = {
+    customer,
+    foamColor:       newFoam,
+    hingePreference: newHinge,
+    productionNotes: newProdNotes,
+    deliveryNotes:   newDelNotes,
+    shipped: isShipping ? { carrier, tracking, date: shipDate, pallets: parseInt(pallets)||0, boxes: parseInt(boxes)||0 } : (prevOd.shipped || null),
+    changes,
+    repName,
+  };
+
+  try {
+    const res = await fetch(`/api/orders/${encodeURIComponent(currentQuoteNumber)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(isShipping && !prevOd.shipped?.tracking ? '✓ Order marked shipped!' : '✓ Order updated', 'success');
+      closeDrawer();
+      loadOrders();
+    } else {
+      throw new Error(data.error || 'Save failed');
+    }
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save Changes';
+  }
+}
+
+// ── HubSpot Ship Modal ────────────────────────────────────────────
+function openHsShipModal(dealId, dealName) {
+  currentHsDeal = { id: dealId, name: dealName };
+  document.getElementById('hsShipDealName').textContent = dealName;
+  document.getElementById('hsCarrier').value   = '';
+  document.getElementById('hsTracking').value  = '';
+  document.getElementById('hsPallets').value   = '';
+  document.getElementById('hsBoxes').value     = '';
+  document.getElementById('hsShipDate').value  = new Date().toISOString().split('T')[0];
+  document.getElementById('hsShipModal').style.display = 'flex';
+}
+
+function closeHsShipModal() {
+  document.getElementById('hsShipModal').style.display = 'none';
+  currentHsDeal = null;
+}
+
+async function confirmHsShip() {
+  if (!currentHsDeal) return;
+  const carrier  = document.getElementById('hsCarrier').value;
+  const tracking = document.getElementById('hsTracking').value.trim();
+  if (!carrier)  { showToast('Please select a carrier', 'error'); return; }
+  if (!tracking) { showToast('Please enter a tracking number', 'error'); return; }
+
+  const btn = document.getElementById('hsShipConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Shipping…';
+
+  try {
+    const res = await fetch('/api/orders/ship-hubspot-deal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        dealId:   currentHsDeal.id,
+        dealName: currentHsDeal.name,
+        carrier,
+        tracking,
+        shipDate: document.getElementById('hsShipDate').value,
+        pallets:  document.getElementById('hsPallets').value,
+        boxes:    document.getElementById('hsBoxes').value,
+        repName:  getCurrentRep(),
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast('✓ Deal marked shipped in HubSpot!', 'success');
+      closeHsShipModal();
+      // Remove deal from HS list and reload
+      allHsDeals = allHsDeals.filter(d => d.id !== currentHsDeal?.id);
+      renderHsDeals(allHsDeals);
+      document.getElementById('hsCount').textContent = `(${allHsDeals.length})`;
+    } else {
+      throw new Error(data.error || 'Failed');
+    }
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🚚 Mark Shipped';
+  }
+}
+
+// ── Toast ─────────────────────────────────────────────────────────
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show ' + type;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.className = '', 3000);
+}
+
+// ── Init ──────────────────────────────────────────────────────────
+// Restore rep identity
+const _savedRep = localStorage.getItem('wr-rep');
+if (_savedRep) {
+  const sel = document.getElementById('repIdentity');
+  if (sel) sel.value = _savedRep;
+}
+
+loadOrders();
+</script>
 let currentQuoteNumber = null;
 
 async function loadOrders() {
@@ -319,6 +844,7 @@ function renderOrders(orders) {
     const company  = o.company || '';
     const foam     = o.order_data?.foamColor || '—';
     const hinge    = o.order_data?.hingePreference || '—';
+    const isShipped = !!(o.order_data?.shipped?.tracking);
     const date     = o.created_at ? new Date(o.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
     const total    = o.total ? fmt(o.total) : '—';
     const orderUrl = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(o.quote_number)}`;
@@ -332,9 +858,13 @@ function renderOrders(orders) {
       <td><span class="badge badge-foam">${foam}</span></td>
       <td><span class="badge badge-foam">${hinge}</span></td>
       <td style="font-weight:600;color:var(--orange)">${total}</td>
-      <td style="color:var(--muted);font-size:12px">${date}</td>
+      <td>
+        ${isShipped
+          ? `<span class="badge" style="background:var(--green-dim);color:var(--green);border:1px solid rgba(34,197,94,.25)">&#x2713; Shipped</span>`
+          : `<span class="badge badge-production">In Production</span>`}
+      </td>
       <td onclick="event.stopPropagation()">
-        <a href="${orderUrl}" target="_blank" class="order-link-btn">Order Page ↗</a>
+        <a href="${orderUrl}" target="_blank" class="order-link-btn">Order ↗</a>
       </td>
     </tr>`;
   }).join('');
@@ -380,6 +910,40 @@ function openDrawer(quoteNumber) {
   document.getElementById('editProductionNotes').value = od.productionNotes || '';
   document.getElementById('editDeliveryNotes').value   = od.deliveryNotes   || '';
 
+  // Shipment fields
+  const shipped = od.shipped || {};
+  document.getElementById('editCarrier').value  = shipped.carrier  || '';
+  document.getElementById('editTracking').value = shipped.tracking || '';
+  document.getElementById('editPallets').value  = shipped.pallets  || '';
+  document.getElementById('editBoxes').value    = shipped.boxes    || '';
+  document.getElementById('editShipDate').value = shipped.date
+    ? new Date(shipped.date).toISOString().split('T')[0]
+    : new Date().toISOString().split('T')[0];
+
+  // Shipped badge
+  const badge = document.getElementById('shippedBadge');
+  if (shipped.carrier && shipped.tracking) {
+    badge.style.display = 'inline-flex';
+  } else {
+    badge.style.display = 'none';
+  }
+
+  // Change log
+  const log = od.changeLog || [];
+  const logSection = document.getElementById('changeLogSection');
+  const logList = document.getElementById('changeLogList');
+  if (log.length) {
+    logSection.style.display = 'block';
+    logList.innerHTML = log.slice().reverse().map(entry =>
+      `<div style="padding:6px 0;border-bottom:1px solid var(--border)">
+        <span style="color:var(--text);font-weight:600">${entry.summary}</span>
+        <span style="color:var(--muted);margin-left:8px;font-size:11px">${new Date(entry.at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>
+      </div>`
+    ).join('');
+  } else {
+    logSection.style.display = 'none';
+  }
+
   // Order page link
   const orderUrl = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(quoteNumber)}`;
   document.getElementById('viewOrderBtn').href = orderUrl;
@@ -418,21 +982,57 @@ async function saveOrder() {
   btn.disabled = true;
   btn.textContent = 'Saving…';
 
+  const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
+  const prevOd = order?.order_data || {};
+  const prevC  = order?.json_snapshot?.customer || {};
+
+  const newFoam  = document.querySelector('input[name="editFoam"]:checked')?.value  || '';
+  const newHinge = document.querySelector('input[name="editHinge"]:checked')?.value || '';
+  const newProdNotes = document.getElementById('editProductionNotes').value.trim();
+  const newDelNotes  = document.getElementById('editDeliveryNotes').value.trim();
+
+  // Shipment
+  const carrier  = document.getElementById('editCarrier').value;
+  const tracking = document.getElementById('editTracking').value.trim();
+  const shipDate = document.getElementById('editShipDate').value;
+  const pallets  = document.getElementById('editPallets').value;
+  const boxes    = document.getElementById('editBoxes').value;
+  const isShipping = carrier && tracking;
+
+  // Customer
+  const customer = {
+    firstName: document.getElementById('editFirstName').value.trim(),
+    lastName:  document.getElementById('editLastName').value.trim(),
+    company:   document.getElementById('editCompany').value.trim(),
+    email:     document.getElementById('editEmail').value.trim(),
+    address:   document.getElementById('editAddress').value.trim(),
+    city:      document.getElementById('editCity').value.trim(),
+    state:     document.getElementById('editState').value.trim(),
+    zip:       document.getElementById('editZip').value.trim(),
+  };
+
+  // Build change log diff
+  const changes = [];
+  const chk = (label, prev, next) => { if (prev !== next && (prev || next)) changes.push(`${label}: ${prev||'—'} → ${next||'—'}`); };
+  chk('Foam Color',       prevOd.foamColor       || '', newFoam);
+  chk('Door Hinge',       prevOd.hingePreference || '', newHinge);
+  chk('Production Notes', prevOd.productionNotes || '', newProdNotes);
+  chk('Delivery Notes',   prevOd.deliveryNotes   || '', newDelNotes);
+  chk('Name',    [prevC.firstName,prevC.lastName].filter(Boolean).join(' '), [customer.firstName,customer.lastName].filter(Boolean).join(' '));
+  chk('Company', prevC.company || '', customer.company);
+  chk('Email',   prevC.email   || '', customer.email);
+  chk('Address', [prevC.address,prevC.city,prevC.state,prevC.zip].filter(Boolean).join(', '),
+                 [customer.address,customer.city,customer.state,customer.zip].filter(Boolean).join(', '));
+  if (isShipping && !prevOd.shipped?.tracking) changes.push(`Marked Shipped — ${carrier}, ${tracking}`);
+
   const payload = {
-    customer: {
-      firstName: document.getElementById('editFirstName').value.trim(),
-      lastName:  document.getElementById('editLastName').value.trim(),
-      company:   document.getElementById('editCompany').value.trim(),
-      email:     document.getElementById('editEmail').value.trim(),
-      address:   document.getElementById('editAddress').value.trim(),
-      city:      document.getElementById('editCity').value.trim(),
-      state:     document.getElementById('editState').value.trim(),
-      zip:       document.getElementById('editZip').value.trim(),
-    },
-    foamColor:        document.querySelector('input[name="editFoam"]:checked')?.value  || '',
-    hingePreference:  document.querySelector('input[name="editHinge"]:checked')?.value || '',
-    productionNotes:  document.getElementById('editProductionNotes').value.trim(),
-    deliveryNotes:    document.getElementById('editDeliveryNotes').value.trim(),
+    customer,
+    foamColor:       newFoam,
+    hingePreference: newHinge,
+    productionNotes: newProdNotes,
+    deliveryNotes:   newDelNotes,
+    shipped: isShipping ? { carrier, tracking, date: shipDate, pallets: parseInt(pallets)||0, boxes: parseInt(boxes)||0 } : (prevOd.shipped || null),
+    changes,
   };
 
   try {
@@ -444,7 +1044,7 @@ async function saveOrder() {
     });
     const data = await res.json();
     if (data.success) {
-      showToast('Order updated', 'success');
+      showToast(isShipping && !prevOd.shipped?.tracking ? '✓ Order marked shipped!' : '✓ Order updated', 'success');
       closeDrawer();
       loadOrders();
     } else {

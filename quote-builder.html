@@ -1032,6 +1032,9 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     <button class="create-btn" id="invoiceBtn" onclick="createInvoice()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.4);margin-top:8px;opacity:.5;cursor:not-allowed" title="Push to HubSpot first" disabled>
       &#x1F4CB; Create Invoice in HubSpot
     </button>
+    <button class="create-btn" id="orderBtn" onclick="openOrderModal()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.4);margin-top:8px;opacity:.5;cursor:not-allowed" title="Create invoice first" disabled>
+      &#x1F4E6; Process Order
+    </button>
 
   <div class="result-box" id="resultBox"></div>
 
@@ -2471,6 +2474,56 @@ ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</
   </div>
 </div>
 
+
+<!-- ORDER MODAL -->
+<div id="orderModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#1e1e1e;border-radius:14px;padding:28px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);max-height:90vh;overflow-y:auto">
+    <h2 style="font-size:16px;font-weight:800;color:#f0ede8;margin-bottom:6px">&#x1F4E6; Process Order</h2>
+    <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:20px">This will advance the deal to Closed Won and notify shipping &amp; accounting.</p>
+
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Foam Color</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px" id="orderFoamGrid">
+        ${['Gray','Blue','Purple','Orange','Burgundy','Undecided'].map(c =>
+          `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8);transition:all .15s" class="order-sel-label">
+            <input type="radio" name="orderFoam" value="${c}" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> ${c}
+          </label>`
+        ).join('')}
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Door Hinge</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px" id="orderHingeGrid">
+        ${['Left Hand','Right Hand','Undecided'].map(h =>
+          `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8);transition:all .15s" class="order-sel-label">
+            <input type="radio" name="orderHinge" value="${h}" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> ${h}
+          </label>`
+        ).join('')}
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Production Notes</div>
+      <textarea id="orderProductionNotes" rows="3" placeholder="Internal notes for production team..." style="width:100%;padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;color:#f0ede8;box-sizing:border-box"></textarea>
+    </div>
+
+    <div style="margin-bottom:24px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Special Delivery Notes</div>
+      <textarea id="orderDeliveryNotes" rows="3" placeholder="Liftgate required, residential delivery, call before delivery, etc..." style="width:100%;padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;color:#f0ede8;box-sizing:border-box"></textarea>
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button id="orderConfirmBtn" onclick="confirmProcessOrder()" style="flex:1;padding:13px;background:#ee6216;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+        Send Order &#x2192;
+      </button>
+      <button onclick="closeOrderModal()" style="padding:13px 18px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>`;
 
@@ -2736,6 +2789,8 @@ function loadFromHistoryEntry(idOrIdx) {
       pdfBtn.title = 'Download quote as PDF';
     }
     enableInvoiceBtn();
+    // Enable order btn if this quote has a payment link already
+    if (q.payment_link || q.paymentLink) enableOrderBtn();
   }
 
   updateSummary();
@@ -3491,6 +3546,128 @@ function enableInvoiceBtn() {
   btn.title = 'Create invoice in HubSpot from this quote';
 }
 
+// ── Process Order ─────────────────────────────────────────────────
+function enableOrderBtn() {
+  const btn = document.getElementById('orderBtn');
+  if (!btn) return;
+  btn.disabled = false;
+  btn.removeAttribute('disabled');
+  btn.style.cssText = 'margin-top:8px;opacity:1;cursor:pointer;color:rgba(255,255,255,.85);background:rgba(238,98,22,.2);border:1px solid rgba(238,98,22,.5)';
+  btn.title = 'Process this order and notify shipping & accounting';
+}
+
+function openOrderModal() {
+  const quoteNum = document.getElementById('quoteNumHidden').value;
+  if (!quoteNum) { showToast('No quote loaded', 'error'); return; }
+
+  // Pre-fill foam/hinge from customer acceptance if available
+  const foam  = window._acceptedFoam  || '';
+  const hinge = window._acceptedHinge || '';
+  if (foam) {
+    const foamInput = document.querySelector(`input[name="orderFoam"][value="${foam}"]`);
+    if (foamInput) { foamInput.checked = true; highlightOrderSel('orderFoam'); }
+  }
+  if (hinge) {
+    const hingeInput = document.querySelector(`input[name="orderHinge"][value="${hinge}"]`);
+    if (hingeInput) { hingeInput.checked = true; highlightOrderSel('orderHinge'); }
+  }
+  document.getElementById('orderModal').style.display = 'flex';
+}
+
+function closeOrderModal() {
+  document.getElementById('orderModal').style.display = 'none';
+}
+
+function highlightOrderSel(name) {
+  document.querySelectorAll(`input[name="${name}"]`).forEach(inp => {
+    const label = inp.closest('.order-sel-label');
+    if (!label) return;
+    if (inp.checked) {
+      label.style.borderColor = '#ee6216';
+      label.style.background  = 'rgba(238,98,22,.15)';
+    } else {
+      label.style.borderColor = 'rgba(255,255,255,.12)';
+      label.style.background  = 'transparent';
+    }
+  });
+}
+
+async function confirmProcessOrder() {
+  const dealId     = window._lastPushedDealId || linkedDeal?.id;
+  const quoteNumber = document.getElementById('quoteNumHidden').value;
+  if (!dealId || !quoteNumber) { showToast('No deal linked', 'error'); return; }
+
+  const foam            = document.querySelector('input[name="orderFoam"]:checked')?.value  || 'Undecided';
+  const hinge           = document.querySelector('input[name="orderHinge"]:checked')?.value || 'Undecided';
+  const productionNotes = document.getElementById('orderProductionNotes').value.trim();
+  const deliveryNotes   = document.getElementById('orderDeliveryNotes').value.trim();
+
+  const btn = document.getElementById('orderConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Processing…';
+
+  try {
+    const res = await fetch('/api/process-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        dealId,
+        quoteNumber,
+        lineItems,
+        freight: freightData,
+        tax: taxData,
+        discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
+        customer: {
+          firstName: document.getElementById('firstName').value.trim(),
+          lastName:  document.getElementById('lastName').value.trim(),
+          company:   document.getElementById('company').value.trim(),
+          email:     document.getElementById('email').value.trim(),
+          address:   document.getElementById('shipAddress').value.trim(),
+          city:      document.getElementById('shipCity').value.trim(),
+          state:     document.getElementById('shipState').value.trim(),
+          zip:       document.getElementById('shipZip').value.trim(),
+        },
+        foamColor:        foam,
+        hingePreference:  hinge,
+        productionNotes,
+        deliveryNotes,
+        ownerId: document.getElementById('repSelect').value,
+        dealName: document.getElementById('dealName').value.trim(),
+      })
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      closeOrderModal();
+      // Show order link in result box
+      const box = document.getElementById('resultBox');
+      if (box) {
+        box.className = 'result-box success';
+        box.innerHTML = `&#x2713; Order processed &amp; team notified!<br>
+          <a href="${data.orderUrl}" target="_blank" style="color:inherit;font-weight:700">View Order Page &#x2192;</a><br>
+          <span style="font-size:11px;opacity:.7;display:block;margin-top:4px">${data.orderUrl}</span>
+          <button onclick="navigator.clipboard.writeText('${data.orderUrl}').then(()=>{this.textContent='✓ Copied!';setTimeout(()=>this.textContent='Copy Order Link',2000)})" style="margin-top:8px;padding:6px 14px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit">Copy Order Link</button>`;
+      }
+      showToast('Order sent to shipping & accounting!', 'success');
+      // Disable order btn to prevent double-sending
+      const orderBtn = document.getElementById('orderBtn');
+      if (orderBtn) {
+        orderBtn.disabled = true;
+        orderBtn.style.opacity = '.5';
+        orderBtn.textContent = '✓ Order Processed';
+      }
+    } else {
+      throw new Error(data.error || 'Order processing failed');
+    }
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send Order →';
+  }
+}
+
 // ── Create Invoice ───────────────────────────────────────────────
 async function createInvoice() {
   const dealId = window._lastPushedDealId || linkedDeal?.id;
@@ -3583,6 +3760,7 @@ async function confirmCreateInvoice() {
           <button onclick="navigator.clipboard.writeText('${data.invoiceUrl}').then(()=>{this.textContent='✓ Copied!';setTimeout(()=>this.textContent='Copy Invoice Link',2000)})" style="margin-top:8px;padding:6px 14px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit">Copy Invoice Link</button>`;
       }
       showToast('Invoice created!', 'success');
+      enableOrderBtn();
     } else {
       throw new Error(data.error || 'Invoice creation failed');
     }
@@ -3636,6 +3814,56 @@ function closeInvoiceModal() {
         Create Invoice
       </button>
       <button onclick="closeInvoiceModal()" style="padding:13px 18px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--mono)">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ORDER MODAL -->
+<div id="orderModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#1e1e1e;border-radius:14px;padding:28px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);max-height:90vh;overflow-y:auto">
+    <h2 style="font-size:16px;font-weight:800;color:#f0ede8;margin-bottom:6px">&#x1F4E6; Process Order</h2>
+    <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:20px">This will advance the deal to Closed Won and notify shipping &amp; accounting.</p>
+
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Foam Color</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px" id="orderFoamGrid">
+        ${['Gray','Blue','Purple','Orange','Burgundy','Undecided'].map(c =>
+          `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8);transition:all .15s" class="order-sel-label">
+            <input type="radio" name="orderFoam" value="${c}" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> ${c}
+          </label>`
+        ).join('')}
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Door Hinge</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px" id="orderHingeGrid">
+        ${['Left Hand','Right Hand','Undecided'].map(h =>
+          `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8);transition:all .15s" class="order-sel-label">
+            <input type="radio" name="orderHinge" value="${h}" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> ${h}
+          </label>`
+        ).join('')}
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Production Notes</div>
+      <textarea id="orderProductionNotes" rows="3" placeholder="Internal notes for production team..." style="width:100%;padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;color:#f0ede8;box-sizing:border-box"></textarea>
+    </div>
+
+    <div style="margin-bottom:24px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Special Delivery Notes</div>
+      <textarea id="orderDeliveryNotes" rows="3" placeholder="Liftgate required, residential delivery, call before delivery, etc..." style="width:100%;padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;color:#f0ede8;box-sizing:border-box"></textarea>
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button id="orderConfirmBtn" onclick="confirmProcessOrder()" style="flex:1;padding:13px;background:#ee6216;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+        Send Order &#x2192;
+      </button>
+      <button onclick="closeOrderModal()" style="padding:13px 18px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
         Cancel
       </button>
     </div>

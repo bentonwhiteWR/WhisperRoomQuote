@@ -1457,7 +1457,7 @@ const server = http.createServer(async (req, res) => {
         }, { properties: { amount: total.toFixed(2) } });
       } else {
         const deal = await hsCreateDeal({
-          dealname: dealName || `${customer.company || customer.lastName} - ${quoteNumber || 'Quote'}`,
+          dealname: dealName || `${customer.company || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || 'Customer'} — ${quoteNumber || 'Quote'}`,
           tax_rate: tax && tax.rate ? String((tax.rate * 100).toFixed(3)) : '',
           quote_number: quoteNumber || '',
           freight_cost: freight && freight.total ? String(freight.total) : '',

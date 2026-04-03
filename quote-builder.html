@@ -2026,6 +2026,7 @@ async function createDeal() {
       box.className = 'result-box success';
       window._lastPushedContactId = data.contactId || null;
       window._lastPushedDealId = data.dealId || null;
+      window._lastShareToken = data.shareToken || null;
       // Auto-link the deal that was just created/updated
       if (data.dealId) {
         const pushedDealName = document.getElementById('dealName').value.trim() ||
@@ -2706,6 +2707,7 @@ function loadFromHistoryEntry(idOrIdx) {
     if (vcBtn2) vcBtn2.style.display = 'none';
   }
 
+  window._loadedShareToken = q._shareToken || q.shareToken || null;
   lineItems = q.lineItems ? JSON.parse(JSON.stringify(q.lineItems)) : [];
   renderLineItems();
 
@@ -3329,6 +3331,10 @@ async function downloadQuotePdf() {
   }
 }
 
+function getShareToken() {
+  return window._lastShareToken || window._loadedShareToken || '';
+}
+
 function copyQuoteLink() {
   const quoteNum = document.getElementById('quoteNumHidden').value;
   if (!quoteNum) {
@@ -3337,7 +3343,8 @@ function copyQuoteLink() {
   }
   // Note: link works after pushing to HubSpot (data stored in notes)
   // Before pushing, the link will show "quote not found" to the viewer
-  const url = 'https://whisperroomquote.up.railway.app/q/' + quoteNum;
+  const tok = getShareToken();
+  const url = 'https://whisperroomquote.up.railway.app/q/' + quoteNum + (tok ? '?t=' + tok : '');
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(url).then(() => {
       showToast('Link copied to clipboard!', 'info');
@@ -3376,7 +3383,7 @@ function emailViaHubSpot() {
   if (!email) { alert('No email address on file.'); return; }
 
   const quoteLink = quoteNum
-    ? 'https://whisperroomquote.up.railway.app/q/' + quoteNum
+    ? 'https://whisperroomquote.up.railway.app/q/' + quoteNum + (getShareToken() ? '?t=' + getShareToken() : '')
     : null;
 
   const subject = encodeURIComponent(

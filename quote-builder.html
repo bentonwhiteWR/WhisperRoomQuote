@@ -1410,7 +1410,6 @@ function setDiscType(type) {
 // ── Line items ────────────────────────────────────────────────────
 function addLineItem(product) {
   const name = product.properties.name;
-  console.log('addLineItem weight:', product.properties.weight, 'parsed:', parseFloat(product.properties.weight));
   const item = {
     id: Date.now() + Math.random(),
     productId: product.id,
@@ -1477,6 +1476,7 @@ async function loadPreset(boothName, skus) {
           name: product.properties.name,
           description: product.properties.description || '',
           price: parseFloat(product.properties.price) || 0,
+          weight: parseFloat(product.properties.weight) || 0,
           qty: 1,
         });
       }

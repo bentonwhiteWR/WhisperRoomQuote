@@ -2055,17 +2055,23 @@ async function createDeal() {
       window._lastPushedContactId = data.contactId || null;
       window._lastPushedDealId = data.dealId || null;
       window._lastShareToken = data.shareToken || null;
+
+      // Update dealName input with the actual name from HubSpot
+      if (data.dealName) {
+        document.getElementById('dealName').value = data.dealName;
+      }
+
       // Auto-link the deal that was just created/updated
       if (data.dealId) {
-        const pushedDealName = document.getElementById('dealName').value.trim() ||
+        const pushedDealName = data.dealName || document.getElementById('dealName').value.trim() ||
           document.getElementById('quoteNumDisplay').textContent;
         linkDealById(data.dealId, pushedDealName);
       }
       // Mark form as published — next push will generate a new quote number
       if (data.quoteNumber) {
         document.getElementById('quoteNumHidden').value = data.quoteNumber;
-        // Show quote number in the label, deal name as the display value
-        const dealNameAfterPush = document.getElementById('dealName').value.trim();
+        // Show deal name as display, quote number as sub-label
+        const dealNameAfterPush = data.dealName || document.getElementById('dealName').value.trim();
         const displayVal = dealNameAfterPush || data.quoteNumber;
         document.getElementById('quoteNumDisplay').textContent = displayVal;
         // Update the label to show quote number below
@@ -2099,13 +2105,10 @@ async function createDeal() {
       }
       enableInvoiceBtn();
       enableOrderBtn();
-      // Save to history
+      // Save to history — use actual deal name from HubSpot response
       const repName = document.getElementById('repSelect').options[document.getElementById('repSelect').selectedIndex].text;
       const companyVal = document.getElementById('company').value.trim();
-      // Don't use dealName input if it looks like a quote number (all digits, 10 chars)
-      const dealNameInput = document.getElementById('dealName').value.trim();
-      const isQuoteNumber = /^\d{10}$/.test(dealNameInput);
-      const dealNameFinal = (dealNameInput && !isQuoteNumber) ? dealNameInput :
+      const dealNameFinal = data.dealName ||
         (companyVal ? companyVal + ' — Quote' :
          (firstName && lastName ? firstName + ' ' + lastName + ' — Quote' : 'New Quote'));
       const existingRevision = allHistory.filter(q => q.dealName === dealNameFinal).length;

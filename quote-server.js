@@ -1549,51 +1549,56 @@ const server = http.createServer(async (req, res) => {
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f2f2f2;color:#333;-webkit-font-smoothing:antialiased}
 .page{max-width:820px;margin:0 auto;padding:28px 16px 120px}
-.header-card{background:#ffffff;border-radius:14px;padding:28px 32px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;border-bottom:3px solid #ee6216;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-.logo-img{height:26px;display:block}
-.inv-badge{text-align:right}
-.inv-num{font-size:26px;font-weight:800;color:#ee6216;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
-.inv-label{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px}
-.inv-date{font-size:12px;color:#aaa;margin-top:4px}
-.card{background:#fff;border-radius:14px;padding:28px 32px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
-.card-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#bbb;margin-bottom:14px}
-.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.info-item label{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px}
+.header-card{background:#1a1a1a;padding:28px 40px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
+.logo-img{height:22px;display:block;filter:brightness(0) invert(1)}
+.header-right{text-align:right}
+.quote-type{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:#ee6216;margin-bottom:6px}
+.quote-num{font-size:28px;font-weight:800;color:#ffffff;letter-spacing:-.5px;font-variant-numeric:tabular-nums;line-height:1}
+.quote-meta{font-size:11px;color:rgba(255,255,255,.35);margin-top:5px}
+.accent-strip{height:3px;background:linear-gradient(90deg,#ee6216,#ff8c42);margin-bottom:20px}
+.card{background:#fff;border-radius:10px;padding:28px 32px;margin:0 16px 12px;box-shadow:0 1px 4px rgba(0,0,0,.07)}
+.card-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;color:#ee6216;margin-bottom:16px}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.info-item label{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:3px}
 .info-item span{font-size:14px;font-weight:600;color:#1a1a1a}
 table{width:100%;border-collapse:collapse}
-thead th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#aaa;padding:0 0 12px;border-bottom:2px solid #f0f0f0;text-align:left}
+thead th{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#bbb;padding:0 0 14px;border-bottom:1px solid #f0f0f0;text-align:left}
 thead th:nth-child(2){text-align:center}
 thead th:nth-child(3),thead th:nth-child(4){text-align:right}
 tbody tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:#fafafa}
 .item-name{font-weight:700;color:#1a1a1a;font-size:14px}
-.item-desc{font-size:11px;color:#999;margin-top:3px;line-height:1.5}
-.totals{max-width:340px;margin-left:auto;margin-top:20px;padding-top:16px;border-top:2px solid #f0f0f0}
-.tot{display:flex;justify-content:space-between;padding:7px 0;font-size:14px;color:#666;border-bottom:1px solid #f8f8f8}
-.tot.grand{font-size:22px;font-weight:800;color:#1a1a1a;border:none;padding-top:14px;margin-top:4px}
+.item-desc{font-size:11px;color:#aaa;margin-top:3px;line-height:1.5}
+.totals{max-width:320px;margin-left:auto;margin-top:24px;padding-top:20px;border-top:1px solid #eee}
+.tot{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#888}
+.tot.grand{font-size:22px;font-weight:800;color:#1a1a1a;padding-top:16px;margin-top:8px;border-top:2px solid #1a1a1a}
 .tot.grand span:last-child{color:#ee6216}
 .discount-val{color:#1a7a4a!important;font-weight:600}
-.terms{font-size:11px;color:#999;line-height:1.8}
-.action-bar{position:fixed;bottom:0;left:0;right:0;background:rgba(255,255,255,.96);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid #e8e8e8;padding:14px 20px;display:flex;gap:10px;justify-content:center;z-index:100}
-.btn{padding:12px 32px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;border:none;letter-spacing:.04em;font-family:inherit;transition:all .15s}
-.btn-pay{background:#1a7a4a;color:white;font-size:15px;padding:14px 40px}
-.btn-pay:hover{background:#166040;transform:translateY(-1px);box-shadow:0 4px 14px rgba(26,122,74,.4)}
-.btn-secondary{background:#f0f0f0;color:#555}
-.btn-secondary:hover{background:#e5e5e5}
-.footer{text-align:center;margin-top:28px;font-size:11px;color:#ccc;line-height:1.9}
+.terms{font-size:11px;color:#aaa;line-height:1.9}
+.action-bar{position:fixed;bottom:0;left:0;right:0;background:rgba(26,26,26,.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid rgba(255,255,255,.08);padding:14px 24px;display:flex;gap:10px;justify-content:center;z-index:100}
+.btn{padding:13px 30px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:none;letter-spacing:.04em;font-family:inherit;transition:all .15s}
+.btn-pay{background:#ee6216;color:white;font-size:14px;padding:13px 36px}
+.btn-pay:hover{background:#d4561a;transform:translateY(-1px);box-shadow:0 4px 20px rgba(238,98,22,.45)}
+.btn-secondary{background:rgba(255,255,255,.06);color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.08)}
+.btn-secondary:hover{background:rgba(255,255,255,.1);color:rgba(255,255,255,.7)}
+.footer{text-align:center;margin:20px 16px 0;padding:20px 0;font-size:11px;color:#aaa;line-height:2;border-top:1px solid #e0e0e0}
 .footer a{color:#ee6216;text-decoration:none}
-@media(max-width:540px){
-  .header-card{flex-direction:column;padding:20px}
-  .inv-badge{text-align:left}
-  .card{padding:20px}
+.footer strong{color:#555;font-weight:600}
+@media(max-width:560px){
+  .header-card{padding:22px 20px}
+  .header-right{text-align:left}
+  .quote-num{font-size:22px}
+  .card{padding:20px;margin:0 10px 10px}
   .info-grid{grid-template-columns:1fr}
-  .action-bar{flex-direction:column;padding:12px}
+  .action-bar{flex-direction:column;padding:12px 16px}
   .btn{width:100%;text-align:center}
 }
 @media print{
   body{background:white}
   .action-bar{display:none!important}
   .page{padding-bottom:20px}
-  .card{box-shadow:none;border:1px solid #eee}
+  .header-card{background:#1a1a1a!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .card{box-shadow:none;border:1px solid #eee;margin:0 0 10px}
 }
 </style>
 </head>
@@ -1601,13 +1606,14 @@ tbody tr:last-child td{border-bottom:none}
 <div class="page">
 
   <div class="header-card">
-    <img src="/assets/logo-black.svg" alt="WhisperRoom" class="logo-img">
-    <div class="inv-badge">
-      <div class="inv-label">Invoice</div>
-      <div class="inv-num">${q.quoteNumber||'INV'}</div>
-      <div class="inv-date">Issued ${issueDate}</div>
+    <img src="/assets/logo-orange.svg" alt="WhisperRoom" class="logo-img">
+    <div class="header-right">
+      <div class="quote-type">Invoice</div>
+      <div class="quote-num">${q.quoteNumber||'INV'}</div>
+      <div class="quote-meta">Issued ${issueDate}</div>
     </div>
   </div>
+  <div class="accent-strip"></div>
 
   ${c.firstName ? `<div class="card">
     <div class="card-label">Billed To</div>
@@ -1640,8 +1646,8 @@ tbody tr:last-child td{border-bottom:none}
   </div>
 
   <div class="footer">
-    WhisperRoom, Inc. &middot; 322 Nancy Lynn Lane, Suite 14 &middot; Knoxville, TN 37919<br>
-    (865) 558-5364 &middot; <a href="mailto:info@whisperroom.com">info@whisperroom.com</a> &middot; <a href="https://www.whisperroom.com" target="_blank">whisperroom.com</a>
+    <strong>WhisperRoom, Inc.</strong> &middot; 322 Nancy Lynn Lane, Suite 14 &middot; Knoxville, TN 37919<br>
+    <a href="tel:18002008168">1-800-200-8168</a> &middot; <a href="mailto:info@whisperroom.com">info@whisperroom.com</a> &middot; <a href="https://www.whisperroom.com" target="_blank">whisperroom.com</a>
   </div>
 
 </div>
@@ -1711,72 +1717,81 @@ tbody tr:last-child td{border-bottom:none}
 <title>WhisperRoom Quote ${q.quoteNumber||''}</title>
 <link rel="icon" href="/assets/favicon.avif">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f2f2f2;color:#333;-webkit-font-smoothing:antialiased}
-.page{max-width:820px;margin:0 auto;padding:28px 16px 100px}
+body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#ededed;color:#1a1a1a;-webkit-font-smoothing:antialiased}
+.page{max-width:840px;margin:0 auto;padding:0 0 110px}
 
-/* Header */
-.header-card{background:#ffffff;border-radius:14px;padding:28px 32px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;border-bottom:3px solid #ee6216;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-.logo-img{height:26px;display:block}
-.quote-badge{text-align:right}
-.quote-num{font-size:26px;font-weight:800;color:#ee6216;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
-.quote-date{font-size:12px;color:#aaa;margin-top:4px}
-.quote-valid{font-size:11px;font-weight:700;color:#ee6216;margin-top:3px;text-transform:uppercase;letter-spacing:.06em}
+/* Header — dark branded */
+.header-card{background:#1a1a1a;padding:28px 40px 24px;margin-bottom:0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
+.logo-img{height:22px;display:block;filter:brightness(0) invert(1)}
+.header-right{text-align:right}
+.quote-type{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:#ee6216;margin-bottom:6px}
+.quote-num{font-size:28px;font-weight:800;color:#ffffff;letter-spacing:-.5px;font-variant-numeric:tabular-nums;line-height:1}
+.quote-meta{font-size:11px;color:rgba(255,255,255,.35);margin-top:5px}
+.quote-valid-tag{display:inline-block;margin-top:6px;background:#ee6216;color:white;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;padding:3px 10px;border-radius:3px}
+
+/* Orange accent strip */
+.accent-strip{height:3px;background:linear-gradient(90deg,#ee6216,#ff8c42);margin-bottom:20px}
 
 /* Cards */
-.card{background:#fff;border-radius:14px;padding:28px 32px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
-.card-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#bbb;margin-bottom:14px}
-.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.info-item label{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:3px}
+.card{background:#fff;border-radius:10px;padding:28px 32px;margin:0 16px 12px;box-shadow:0 1px 4px rgba(0,0,0,.07)}
+.card-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;color:#ee6216;margin-bottom:16px}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.info-item label{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:3px}
 .info-item span{font-size:14px;font-weight:600;color:#1a1a1a}
 
 /* Table */
 table{width:100%;border-collapse:collapse}
-thead th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#aaa;padding:0 0 12px;border-bottom:2px solid #f0f0f0;text-align:left}
+thead th{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#bbb;padding:0 0 14px;border-bottom:1px solid #f0f0f0;text-align:left}
 thead th:nth-child(2){text-align:center}
 thead th:nth-child(3),thead th:nth-child(4){text-align:right}
 tbody tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:#fafafa}
 .item-name{font-weight:700;color:#1a1a1a;font-size:14px}
-.item-desc{font-size:11px;color:#999;margin-top:3px;line-height:1.5}
+.item-desc{font-size:11px;color:#aaa;margin-top:3px;line-height:1.5}
 
 /* Totals */
-.totals{max-width:340px;margin-left:auto;margin-top:20px;padding-top:16px;border-top:2px solid #f0f0f0}
-.tot{display:flex;justify-content:space-between;padding:7px 0;font-size:14px;color:#666;border-bottom:1px solid #f8f8f8}
-.tot.grand{font-size:20px;font-weight:800;color:#1a1a1a;border:none;padding-top:14px;margin-top:4px}
+.totals{max-width:320px;margin-left:auto;margin-top:24px;padding-top:20px;border-top:1px solid #eee}
+.tot{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;color:#888}
+.tot.grand{font-size:22px;font-weight:800;color:#1a1a1a;padding-top:16px;margin-top:8px;border-top:2px solid #1a1a1a}
 .tot.grand span:last-child{color:#ee6216}
 .discount-val{color:#1a7a4a!important;font-weight:600}
 
 /* Terms */
-.terms{font-size:11px;color:#999;line-height:1.8}
+.terms{font-size:11px;color:#aaa;line-height:1.9}
 
-/* Bottom bar */
-.action-bar{position:fixed;bottom:0;left:0;right:0;background:rgba(255,255,255,.96);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid #e8e8e8;padding:14px 20px;display:flex;gap:10px;justify-content:center;z-index:100}
-.btn{padding:12px 32px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;border:none;letter-spacing:.04em;font-family:inherit;transition:all .15s}
-.btn-primary{background:#ee6216;color:white}
-.btn-primary:hover{background:#d4561a;transform:translateY(-1px);box-shadow:0 4px 12px rgba(238,98,22,.3)}
-.btn-secondary{background:#f0f0f0;color:#555}
-.btn-secondary:hover{background:#e5e5e5}
-.btn-accept{background:#2563eb;color:white;font-size:14px}
-.btn-accept:hover{background:#1d4ed8;transform:translateY(-1px);box-shadow:0 4px 14px rgba(37,99,235,.4)}
+/* Bottom action bar */
+.action-bar{position:fixed;bottom:0;left:0;right:0;background:rgba(26,26,26,.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid rgba(255,255,255,.08);padding:14px 24px;display:flex;gap:10px;justify-content:center;z-index:100}
+.btn{padding:13px 30px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:none;letter-spacing:.04em;font-family:inherit;transition:all .15s}
+.btn-primary{background:rgba(255,255,255,.1);color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.12)}
+.btn-primary:hover{background:rgba(255,255,255,.16);color:white}
+.btn-secondary{background:rgba(255,255,255,.06);color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.08)}
+.btn-secondary:hover{background:rgba(255,255,255,.1);color:rgba(255,255,255,.7)}
+.btn-accept{background:#ee6216;color:white;font-size:14px;padding:13px 36px}
+.btn-accept:hover{background:#d4561a;transform:translateY(-1px);box-shadow:0 4px 20px rgba(238,98,22,.45)}
 
 /* Footer */
-.footer{text-align:center;margin-top:28px;font-size:11px;color:#ccc;line-height:1.9}
+.footer{text-align:center;margin:20px 16px 0;padding:20px 0;font-size:11px;color:#aaa;line-height:2;border-top:1px solid #e0e0e0}
 .footer a{color:#ee6216;text-decoration:none}
+.footer strong{color:#555;font-weight:600}
 
-@media(max-width:540px){
-  .header-card{flex-direction:column;padding:20px}
-  .quote-badge{text-align:left}
-  .card{padding:20px}
+@media(max-width:560px){
+  .header-card{padding:22px 20px}
+  .header-right{text-align:left}
+  .quote-num{font-size:22px}
+  .card{padding:20px;margin:0 10px 10px}
   .info-grid{grid-template-columns:1fr}
-  .action-bar{flex-direction:column;padding:12px}
+  .action-bar{flex-direction:column;padding:12px 16px}
   .btn{width:100%;text-align:center}
 }
 @media print{
   body{background:white}
   .action-bar{display:none!important}
   .page{padding-bottom:20px}
-  .card{box-shadow:none;border:1px solid #eee}
+  .header-card{background:#1a1a1a!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .accent-strip{display:block!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .card{box-shadow:none;border:1px solid #eee;margin:0 0 10px}
 }
 </style>
 </head>
@@ -1784,13 +1799,15 @@ tbody tr:last-child td{border-bottom:none}
 <div class="page">
 
   <div class="header-card">
-    <img src="/assets/logo-black.svg" alt="WhisperRoom" class="logo-img">
-    <div class="quote-badge">
+    <img src="/assets/logo-orange.svg" alt="WhisperRoom" class="logo-img">
+    <div class="header-right">
+      <div class="quote-type">Price Quote</div>
       <div class="quote-num">${q.quoteNumber||'QUOTE'}</div>
-      <div class="quote-date">Issued ${q.date||new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
-      <div class="quote-valid">Valid 30 Days</div>
+      <div class="quote-meta">Issued ${q.date||new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+      <div class="quote-valid-tag">Valid 30 Days</div>
     </div>
   </div>
+  <div class="accent-strip"></div>
 
   ${c.firstName ? `<div class="card">
     <div class="card-label">Prepared For</div>
@@ -1811,7 +1828,7 @@ tbody tr:last-child td{border-bottom:none}
     <div class="totals">
       <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
       ${disc>0?`<div class="tot"><span>Discount${q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
-      ${freight>0?`<div class="tot"><span>Freight Estimate</span><span>${fmt(freight)}</span></div>`:''}
+      ${freight>0?`<div class="tot"><span>Freight</span><span>${fmt(freight)}</span></div>`:''}
       ${tax>0?`<div class="tot"><span>Sales Tax</span><span>${fmt(tax)}</span></div>`:''}
       <div class="tot grand"><span>Total</span><span>${fmt(total)}</span></div>
     </div>
@@ -1823,9 +1840,9 @@ tbody tr:last-child td{border-bottom:none}
   </div>
 
   <div class="footer">
-    WhisperRoom, Inc. &middot; 322 Nancy Lynn Lane, Suite 14 &middot; Knoxville, TN 37919<br>
-    (865) 558-5364 &middot; <a href="mailto:info@whisperroom.com">info@whisperroom.com</a> &middot; <a href="https://www.whisperroom.com" target="_blank">whisperroom.com</a><br><br>
-    Shipping charges are estimated based on zip code provided. Quote valid 30 days from issue date.
+    <strong>WhisperRoom, Inc.</strong> &middot; 322 Nancy Lynn Lane, Suite 14 &middot; Knoxville, TN 37919<br>
+    <a href="tel:18002008168">1-800-200-8168</a> &middot; <a href="mailto:info@whisperroom.com">info@whisperroom.com</a> &middot; <a href="https://www.whisperroom.com" target="_blank">whisperroom.com</a><br>
+    Shipping charges are based on the zip code provided and may vary. Quote valid 30 days from issue date.
   </div>
 
 </div>

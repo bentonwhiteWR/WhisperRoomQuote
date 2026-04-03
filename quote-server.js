@@ -9,10 +9,9 @@ const url     = require('url');
 const crypto  = require('crypto');
 
 // ── Puppeteer PDF generation ──────────────────────────────────────
-let chromium, puppeteerCore;
+let puppeteer;
 try {
-  chromium     = require('@sparticuz/chromium');
-  puppeteerCore = require('puppeteer-core');
+  puppeteer = require('puppeteer');
   console.log('Puppeteer loaded');
 } catch(e) {
   console.warn('Puppeteer not available:', e.message);
@@ -21,10 +20,9 @@ try {
 // Semaphore — only one PDF at a time to stay within Hobby memory limits
 let _pdfBusy = false;
 async function generatePdf(pageUrl, filename, res, req) {
-  if (!puppeteerCore || !chromium) {
+  if (!puppeteer) {
     res.writeHead(503); res.end('PDF generation not available'); return;
   }
-  // Queue: wait if another PDF is generating
   let waited = 0;
   while (_pdfBusy) {
     await new Promise(r => setTimeout(r, 300));
@@ -34,38 +32,30 @@ async function generatePdf(pageUrl, filename, res, req) {
   _pdfBusy = true;
   let browser;
   try {
-    // Pass session cookie so the page renders (auth required)
     const cookies = req.headers.cookie || '';
     const sessionCookie = cookies.split(';')
       .map(c => c.trim())
       .find(c => c.startsWith('wr_qt_session=') || c.startsWith('wr_oauth_session='));
 
-    browser = await puppeteerCore.launch({
-      args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox',
-             '--disable-dev-shm-usage', '--disable-gpu'],
+    browser = await puppeteer.launch({
+      args: ['--no-sandbox', '--disable-setuid-sandbox',
+             '--disable-dev-shm-usage', '--disable-gpu',
+             '--single-process', '--no-zygote'],
       defaultViewport: { width: 1200, height: 900 },
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
+      headless: 'new',
     });
 
     const page = await browser.newPage();
 
-    // Set auth cookie so protected pages load
     if (sessionCookie) {
-      const [name, value] = sessionCookie.split('=');
-      await page.setCookie({
-        name: name.trim(),
-        value: value.trim(),
-        domain: 'whisperroomquote.up.railway.app',
-        path: '/',
-        httpOnly: true,
-      });
+      const eqIdx = sessionCookie.indexOf('=');
+      const name  = sessionCookie.slice(0, eqIdx).trim();
+      const value = sessionCookie.slice(eqIdx + 1).trim();
+      await page.setCookie({ name, value, domain: 'whisperroomquote.up.railway.app', path: '/', httpOnly: true });
     }
 
     await page.goto(pageUrl, { waitUntil: 'networkidle0', timeout: 25000 });
-
-    // Hide action bar (buttons not needed in PDF)
-    await page.addStyleTag({ content: '.action-bar { display: none !important; } body { padding-bottom: 0 !important; }' });
+    await page.addStyleTag({ content: '.action-bar{display:none!important}body{padding-bottom:0!important}' });
 
     const pdfBuffer = await page.pdf({
       format: 'Letter',

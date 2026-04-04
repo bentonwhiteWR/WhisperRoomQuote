@@ -3071,6 +3071,66 @@ tbody tr:hover td{background:#fdfcfb}
     return;
   }
 
+
+  // ── API: Get invoices for a deal ──────────────────────────────────
+  if (pathname.startsWith('/api/deals/') && pathname.endsWith('/invoices') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const dealId = pathname.split('/')[3];
+    try {
+      // Get invoice associations from HubSpot
+      const assocRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v4/objects/deals/${dealId}/associations/invoices`,
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+      });
+      const invoiceIds = (assocRes?.results || []).map(r => r.toObjectId);
+      if (!invoiceIds.length) { json({ invoices: [] }); return; }
+
+      // Batch fetch invoice details
+      const batchRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/objects/invoices/batch/read',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, {
+        inputs: invoiceIds.map(id => ({ id: String(id) })),
+        properties: ['hs_invoice_status','hs_due_date','hs_invoice_date','hs_number','hs_title','hs_amount_billed','hs_balance_due','hs_hubspot_invoice_link','quote_number']
+      });
+
+      const invoices = (batchRes?.results || []).map(inv => ({
+        id: inv.id,
+        status:     inv.properties?.hs_invoice_status || 'draft',
+        number:     inv.properties?.hs_number || '',
+        title:      inv.properties?.hs_title || '',
+        date:       inv.properties?.hs_invoice_date || '',
+        dueDate:    inv.properties?.hs_due_date || '',
+        amount:     inv.properties?.hs_amount_billed || '0',
+        balance:    inv.properties?.hs_balance_due || '0',
+        invoiceUrl: inv.properties?.hs_hubspot_invoice_link || null,
+        quoteNumber: inv.properties?.quote_number || '',
+      }));
+
+      // Also check our DB for payment_link / invoice page URL
+      if (db) {
+        const dbRows = await db.query(
+          'SELECT quote_number, payment_link FROM quotes WHERE deal_id = $1 AND payment_link IS NOT NULL',
+          [dealId]
+        );
+        dbRows.rows.forEach(row => {
+          const match = invoices.find(i => i.quoteNumber === row.quote_number);
+          if (match) match.paymentPageUrl = row.payment_link;
+        });
+      }
+
+      json({ invoices });
+    } catch(e) {
+      console.error('Get deal invoices error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── API: Create Invoice ──────────────────────────────────────────
   // ── API: Create Payment Link (replaces invoice flow) ────────────
   if (pathname === '/api/create-invoice' && req.method === 'POST') {

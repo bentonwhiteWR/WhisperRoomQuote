@@ -3297,6 +3297,30 @@ tbody tr:hover td{background:#fdfcfb}
   }
 
 
+
+  // ── API: Get freight quote for order ────────────────────────────
+  if (pathname === '/api/orders-freight' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const body = JSON.parse(await readBody(req));
+      const { pallets, totalWeight, city, state: rawState, zip, canadian, accessories } = body;
+      const state = toStateAbbr(rawState);
+      if (!pallets || !pallets.length) { json({ error: 'No pallet data' }, 400); return; }
+      if (!city || !state || !zip) { json({ error: 'Missing destination' }, 400); return; }
+      const abfUrl = buildAbfUrl(pallets, totalWeight, city, state, zip, canadian || false, accessories || {});
+      const res2 = await httpsGet(abfUrl);
+      const result = parseAbfXml(res2.body);
+      json({ carriers: [{
+        name: 'ABF Freight',
+        cost: result.cost,
+        markup: Math.round(result.cost * 0.25 * 100) / 100,
+        transit: result.transit,
+        total: Math.round((result.cost + result.cost * 0.25) * 100) / 100,
+      }]});
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   // ── API: List Orders ──────────────────────────────────────────────
   if (pathname === '/api/orders' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
@@ -3331,7 +3355,7 @@ tbody tr:hover td{background:#fdfcfb}
     const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').trim());
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, foamColor, hingePreference, productionNotes, deliveryNotes, shipped, changes, repName } = body;
+      const { customer, foamColor, hingePreference, productionNotes, deliveryNotes, shipped, changes, repName, freightCost } = body;
 
       if (!db) { json({ error: 'No database' }, 500); return; }
 
@@ -3362,6 +3386,7 @@ tbody tr:hover td{background:#fdfcfb}
         productionNotes:  productionNotes  !== undefined ? productionNotes  : currentOrderData.productionNotes,
         deliveryNotes:    deliveryNotes    !== undefined ? deliveryNotes    : currentOrderData.deliveryNotes,
         shipped:          shipped          !== undefined ? shipped          : currentOrderData.shipped,
+        freightCost:      freightCost      !== undefined ? freightCost      : currentOrderData.freightCost,
         changeLog,
         lastUpdated: new Date().toISOString(),
       };
@@ -3405,6 +3430,7 @@ tbody tr:hover td{background:#fdfcfb}
                 carrier__c: shipped.carrier || '',
                 tracking_number: shipped.tracking || '',
                 date_shipped: shipped.date || new Date().toISOString().split('T')[0],
+                ...(freightCost ? { freight_cost: String(freightCost) } : {}),
               }
             });
           }

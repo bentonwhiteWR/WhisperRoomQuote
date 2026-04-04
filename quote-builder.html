@@ -1055,6 +1055,15 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
       Pallets: <span style="color:rgba(255,255,255,.85)" id="totalPallets">0</span>
     </div>
   </div>
+
+  <!-- Deal Invoice Panel -->
+  <div id="dealInvoicePanel" style="display:none;margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,.1)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.5)">Invoices for This Deal</div>
+      <button onclick="loadDealInvoices()" style="background:none;border:none;color:rgba(255,255,255,.4);font-size:12px;cursor:pointer;padding:2px 6px;font-family:inherit" title="Refresh">&#x21BB;</button>
+    </div>
+    <div id="dealInvoiceList" style="display:flex;flex-direction:column;gap:6px"></div>
+  </div>
 </div>
 </div>
 
@@ -3092,6 +3101,9 @@ function linkDealById(dealId, dealName) {
   document.getElementById('linkedDealName').textContent = dealName;
   document.getElementById('dealSuggestions').style.display = 'none';
 
+  // Load invoices for this deal
+  loadDealInvoices();
+
   // Fetch full deal details to auto-fill rep + show meta
   fetch('/api/deal/' + dealId).then(r => r.json()).then(data => {
     if (data && data.deal && data.deal.properties) {
@@ -3577,6 +3589,63 @@ updateSummary();
 fetchHistory().then(() => { updateQuoteNumber(); checkLinkBtnState(); });
 
 // ── Invoice Button Enable ────────────────────────────────────────
+// ── Deal Invoice Panel ────────────────────────────────────────────
+async function loadDealInvoices() {
+  const dealId = window._lastPushedDealId || linkedDeal?.id || selectedDeal?.id;
+  const panel = document.getElementById('dealInvoicePanel');
+  const list  = document.getElementById('dealInvoiceList');
+  console.log('[invoices] loadDealInvoices called, dealId:', dealId);
+  if (!dealId) { panel.style.display = 'none'; return; }
+
+  panel.style.display = 'block';
+  list.innerHTML = '<div style="font-size:11px;color:rgba(255,255,255,.3);font-style:italic">Loading...</div>';
+
+  try {
+    const res = await fetch(`/api/deals/${dealId}/invoices`, { credentials: 'include' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const invoices = data.invoices || [];
+    if (!invoices.length) {
+      list.innerHTML = '<div style="font-size:11px;color:rgba(255,255,255,.3);font-style:italic">No invoices yet</div>';
+      return;
+    }
+
+    const statusColor = s => ({
+      'paid': '#22c55e', 'open': '#f59e0b', 'draft': 'rgba(255,255,255,.4)',
+      'voided': 'rgba(255,255,255,.25)', 'overdue': '#ef4444'
+    }[s] || 'rgba(255,255,255,.4)');
+
+    const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+
+    list.innerHTML = invoices.map(inv => `
+      <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:10px 12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:700;color:rgba(255,255,255,.9);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+              ${inv.number || inv.title || 'Invoice'}
+              ${inv.quoteNumber ? `<span style="font-size:10px;font-weight:400;color:rgba(255,255,255,.4);margin-left:4px">${inv.quoteNumber}</span>` : ''}
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap">
+              <span style="font-size:10px;font-weight:700;color:${statusColor(inv.status)};text-transform:uppercase;letter-spacing:.06em">${inv.status}</span>
+              <span style="font-size:10px;color:rgba(255,255,255,.5)">${fmt(inv.amount)}</span>
+              ${parseFloat(inv.balance||0) > 0 ? `<span style="font-size:10px;color:#f59e0b">due: ${fmt(inv.balance)}</span>` : ''}
+              ${inv.date ? `<span style="font-size:10px;color:rgba(255,255,255,.35)">${new Date(inv.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</span>` : ''}
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;flex-shrink:0">
+            ${inv.paymentPageUrl ? `<a href="${inv.paymentPageUrl}" target="_blank" style="font-size:10px;font-weight:600;color:#ee6216;text-decoration:none;white-space:nowrap">Invoice Page ↗</a>` : ''}
+            ${inv.invoiceUrl ? `<a href="${inv.invoiceUrl}" target="_blank" style="font-size:10px;color:rgba(255,255,255,.4);text-decoration:none;white-space:nowrap">HubSpot ↗</a>` : ''}
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+  } catch(e) {
+    list.innerHTML = `<div style="font-size:11px;color:rgba(239,68,68,.7)">Error: ${e.message}</div>`;
+  }
+}
+
 function enableInvoiceBtn() {
   const btn = document.getElementById('invoiceBtn');
   if (!btn) return;
@@ -3845,6 +3914,13 @@ async function confirmCreateInvoice() {
         advanceStage: false,
         ownerId: linkedDeal?.ownerId || window._lastPushedOwnerId || document.getElementById('repSelect').value || null,
         contactId: window._lastPushedContactId || null,
+        customer: {
+          address: document.getElementById('shipAddress')?.value.trim() || '',
+          city:    document.getElementById('shipCity')?.value.trim() || '',
+          state:   document.getElementById('shipState')?.value.trim() || '',
+          zip:     document.getElementById('shipZip')?.value.trim() || '',
+          country: document.getElementById('shipCountry')?.value.trim() || 'US',
+        },
       })
     });
     const data = await res.json();
@@ -3861,6 +3937,8 @@ async function confirmCreateInvoice() {
       }
       showToast('Invoice created!', 'success');
       enableOrderBtn();
+      // Refresh invoice panel to show new invoice
+      setTimeout(loadDealInvoices, 1500);
     } else {
       throw new Error(data.error || 'Invoice creation failed');
     }

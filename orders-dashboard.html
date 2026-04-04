@@ -322,7 +322,10 @@
   <div class="drawer-section" id="shipmentSection">
     <div class="drawer-section-title" style="display:flex;align-items:center;justify-content:space-between">
       <span>Shipment</span>
-      <span id="shippedBadge" style="display:none;font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px;background:var(--green-dim);color:var(--green);border:1px solid rgba(34,197,94,.25);text-transform:uppercase;letter-spacing:.08em">&#x2713; Shipped</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button onclick="openFreightModal()" style="padding:4px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:var(--orange-dim);border:1px solid rgba(238,98,22,.3);border-radius:5px;color:var(--orange);cursor:pointer;font-family:inherit">&#x1F69A; Get Freight</button>
+        <span id="shippedBadge" style="display:none;font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px;background:var(--green-dim);color:var(--green);border:1px solid rgba(34,197,94,.25);text-transform:uppercase;letter-spacing:.08em">&#x2713; Shipped</span>
+      </div>
     </div>
     <div class="field-group">
       <div class="field">
@@ -352,6 +355,10 @@
         <label>Box Count</label>
         <input type="number" id="editBoxes" placeholder="0" min="0">
       </div>
+      <div class="field">
+        <label>Freight Cost (actual)</label>
+        <input type="number" id="editFreightCost" placeholder="0.00" min="0" step="0.01">
+      </div>
     </div>
   </div>
 
@@ -364,6 +371,71 @@
     <button class="btn btn-primary" id="saveBtn" onclick="saveOrder()">Save Changes</button>
     <a id="viewOrderBtn" href="#" target="_blank" class="btn btn-secondary" style="text-decoration:none;display:flex;align-items:center">View Order ↗</a>
     <button class="btn btn-secondary" onclick="closeDrawer()">Cancel</button>
+  </div>
+</div>
+
+<!-- Freight Quote Modal -->
+<div id="freightModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:400;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border-radius:14px;padding:28px;max-width:540px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);max-height:90vh;overflow-y:auto">
+    <h2 style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px">&#x1F69A; Get Freight Quote</h2>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:20px">Override any field before running the quote</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+      <div style="display:flex;flex-direction:column;gap:5px">
+        <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">City</label>
+        <input id="fqCity" type="text" placeholder="City" style="padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px">
+        <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">State</label>
+        <input id="fqState" type="text" placeholder="TN" maxlength="2" style="padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px">
+        <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">ZIP</label>
+        <input id="fqZip" type="text" placeholder="00000" style="padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      <div style="display:flex;flex-direction:column;gap:5px">
+        <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Total Weight (lbs)</label>
+        <input id="fqWeight" type="number" placeholder="0" min="0" style="padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px">
+        <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Pallets</label>
+        <input id="fqPalletCount" type="number" placeholder="1" min="1" style="padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+      </div>
+    </div>
+
+    <!-- Pallet dimensions table -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Pallet Dimensions (inches)</div>
+      <div id="fqPalletRows" style="display:flex;flex-direction:column;gap:6px"></div>
+      <button onclick="fqAddPalletRow()" style="margin-top:8px;padding:5px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;cursor:pointer;font-family:inherit">+ Add Pallet</button>
+    </div>
+
+    <!-- Accessories -->
+    <div style="margin-bottom:20px">
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Accessorials</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="fqResidential"> Residential</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="fqLiftgate"> Liftgate</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="fqLimitedAccess"> Limited Access</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="fqLoadingDock"> Loading Dock</label>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="fqResults" style="display:none;margin-bottom:20px">
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Carrier Options</div>
+      <div id="fqCarrierList" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+
+    <div id="fqError" style="display:none;padding:10px 14px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;color:#ef4444;font-size:12px;margin-bottom:16px"></div>
+
+    <div style="display:flex;gap:10px">
+      <button id="fqRunBtn" onclick="runFreightQuote()" style="flex:1;padding:12px;background:var(--orange);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Get Rates</button>
+      <button onclick="closeFreightModal()" style="padding:12px 18px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -411,6 +483,205 @@
 <div id="toast"></div>
 
 <script>
+// ── Booth pallet dimensions (for freight quoting) ─────────────────
+const BOOTH_DATA = {
+  "Voice Over Basic":{"pallets":[{l:90,w:52,h:42}]},
+  "Voice Over Deluxe":{"pallets":[{l:90,w:52,h:60}]},
+  "Audiology Basic":{"pallets":[{l:90,w:52,h:48}]},
+  "Audiology Deluxe":{"pallets":[{l:90,w:52,h:52}]},
+  "Office Booth":{"pallets":[{l:90,w:47,h:37}]},
+  "Work From Home Booth":{"pallets":[{l:90,w:52,h:48}]},
+  "Drum Booth":{"pallets":[{l:102,w:52,h:28},{l:90,w:52,h:41},{l:102,w:52,h:44}]},
+  "Audiology Basic Plus":{"pallets":[{l:90,w:52,h:48}]},
+  "Audiology Compact":{"pallets":[{l:90,w:52,h:42}]},
+  "Audiology Ultra":{"pallets":[{l:90,w:52,h:52},{l:90,w:52,h:41}]},
+  "Audiology Premium":{"pallets":[{l:90,w:52,h:59}]},
+  "Creator Basic":{"pallets":[{l:90,w:52,h:52}]},
+  "Creator Deluxe":{"pallets":[{l:90,w:52,h:52},{l:90,w:52,h:41}]},
+  "Practice Basic":{"pallets":[{l:90,w:52,h:52}]},
+  "Practice Deluxe":{"pallets":[{l:90,w:52,h:52},{l:90,w:52,h:41}]},
+  "Recording Studio":{"pallets":[{l:102,w:52,h:37},{l:90,w:52,h:43}]},
+  "Drum Studio":{"pallets":[{l:102,w:52,h:44},{l:90,w:52,h:46},{l:102,w:52,h:54}]},
+  "Meeting Booth":{"pallets":[{l:90,w:52,h:59}]},
+  "Maker Space":{"pallets":[{l:102,w:52,h:28},{l:90,w:52,h:41}]},
+  "MDL 127 LP S":{"pallets":[{l:90,w:54,h:40}]},"MDL 127 LP E":{"pallets":[{l:90,w:54,h:62}]},
+  "MDL 4230 S":{"pallets":[{l:90,w:47,h:35}]},"MDL 4230 E":{"pallets":[{l:90,w:47,h:51}]},
+  "MDL 4242 S":{"pallets":[{l:90,w:47,h:37}]},"MDL 4242 E":{"pallets":[{l:90,w:47,h:58}]},
+  "MDL 4260 S":{"pallets":[{l:90,w:47,h:41}]},"MDL 4260 E":{"pallets":[{l:90,w:47,h:64}]},
+  "MDL 4284 S":{"pallets":[{l:90,w:47,h:57}]},"MDL 4284 E":{"pallets":[{l:90,w:47,h:57},{l:90,w:47,h:38}]},
+  "MDL 4848 S":{"pallets":[{l:90,w:52,h:38}]},"MDL 4848 E":{"pallets":[{l:90,w:52,h:60}]},
+  "MDL 4872 S":{"pallets":[{l:90,w:52,h:46}]},"MDL 4872 E":{"pallets":[{l:90,w:52,h:64}]},
+  "MDL 4896 S":{"pallets":[{l:90,w:52,h:52}]},"MDL 4896 E":{"pallets":[{l:90,w:52,h:64},{l:90,w:52,h:38}]},
+  "MDL 6060 S":{"pallets":[{l:90,w:66,h:42}]},"MDL 6060 E":{"pallets":[{l:90,w:66,h:60}]},
+  "MDL 6084 S":{"pallets":[{l:90,w:66,h:52}]},"MDL 6084 E":{"pallets":[{l:90,w:66,h:64},{l:90,w:66,h:38}]},
+  "MDL 7272 S":{"pallets":[{l:90,w:78,h:48}]},"MDL 7272 E":{"pallets":[{l:90,w:78,h:64},{l:90,w:78,h:38}]},
+  "MDL 7296 S":{"pallets":[{l:90,w:78,h:56}]},"MDL 7296 E":{"pallets":[{l:90,w:78,h:64},{l:90,w:78,h:50}]},
+  "MDL 8484 S":{"pallets":[{l:90,w:90,h:50}]},"MDL 8484 E":{"pallets":[{l:90,w:90,h:64},{l:90,w:90,h:44}]},
+  "MDL 9696 S":{"pallets":[{l:108,w:102,h:54}]},"MDL 9696 E":{"pallets":[{l:108,w:102,h:64},{l:108,w:102,h:48}]},
+};
+
+// ── Freight Modal ─────────────────────────────────────────────────
+let _freightPallets = [];
+
+function openFreightModal() {
+  const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
+  if (!order) return;
+
+  const od = order.order_data || {};
+  const snapshot = order.json_snapshot || {};
+  const customer = snapshot.customer || {};
+  const lineItems = snapshot.lineItems || [];
+
+  // Pre-fill destination from order
+  document.getElementById('fqCity').value  = customer.city  || od.deliveryCity  || '';
+  document.getElementById('fqState').value = customer.state || od.deliveryState || '';
+  document.getElementById('fqZip').value   = customer.zip   || od.deliveryZip   || '';
+
+  // Build pallets from BOOTH_DATA and line items
+  _freightPallets = [];
+  let totalWeight = 0;
+
+  lineItems.forEach(item => {
+    const bd = BOOTH_DATA[item.name];
+    const itemWeight = (parseFloat(item.weight) || 0) * (parseInt(item.qty) || 1);
+    totalWeight += itemWeight;
+    if (bd) {
+      for (let q = 0; q < (parseInt(item.qty) || 1); q++) {
+        const w = parseFloat(item.weight) || 0;
+        const perPallet = Math.floor(w / bd.pallets.length);
+        const rem = w % bd.pallets.length;
+        bd.pallets.forEach((pl, i) => {
+          _freightPallets.push({ l: pl.l, w: pl.w, h: pl.h, weight: Math.round(perPallet + (i === 0 ? rem : 0)) });
+        });
+      }
+    }
+  });
+
+  // If no pallet data found, add one default pallet
+  if (_freightPallets.length === 0) _freightPallets.push({ l: 90, w: 52, h: 48, weight: Math.round(totalWeight) });
+
+  document.getElementById('fqWeight').value = Math.round(totalWeight) || '';
+  document.getElementById('fqPalletCount').value = _freightPallets.length;
+  document.getElementById('fqResidential').checked = false;
+  document.getElementById('fqLiftgate').checked = false;
+  document.getElementById('fqLimitedAccess').checked = false;
+  document.getElementById('fqLoadingDock').checked = false;
+  document.getElementById('fqResults').style.display = 'none';
+  document.getElementById('fqError').style.display = 'none';
+
+  renderPalletRows();
+  document.getElementById('freightModal').style.display = 'flex';
+}
+
+function renderPalletRows() {
+  const container = document.getElementById('fqPalletRows');
+  container.innerHTML = _freightPallets.map((pl, i) => `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:6px;align-items:center">
+      <input type="number" value="${pl.l}" min="1" placeholder="L" onchange="updatePallet(${i},'l',this.value)"
+        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
+      <input type="number" value="${pl.w}" min="1" placeholder="W" onchange="updatePallet(${i},'w',this.value)"
+        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
+      <input type="number" value="${pl.h}" min="1" placeholder="H" onchange="updatePallet(${i},'h',this.value)"
+        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
+      <input type="number" value="${pl.weight}" min="0" placeholder="lbs" onchange="updatePallet(${i},'weight',this.value)"
+        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
+      <button onclick="removePallet(${i})" style="padding:4px 8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);border-radius:5px;color:#ef4444;font-size:12px;cursor:pointer;font-family:inherit">×</button>
+    </div>
+  `).join('');
+}
+
+function updatePallet(i, field, value) {
+  if (_freightPallets[i]) _freightPallets[i][field] = parseFloat(value) || 0;
+}
+
+function removePallet(i) {
+  _freightPallets.splice(i, 1);
+  document.getElementById('fqPalletCount').value = _freightPallets.length;
+  renderPalletRows();
+}
+
+function fqAddPalletRow() {
+  _freightPallets.push({ l: 90, w: 52, h: 48, weight: 0 });
+  document.getElementById('fqPalletCount').value = _freightPallets.length;
+  renderPalletRows();
+}
+
+async function runFreightQuote() {
+  const city  = document.getElementById('fqCity').value.trim();
+  const state = document.getElementById('fqState').value.trim().toUpperCase();
+  const zip   = document.getElementById('fqZip').value.trim();
+  const totalWeight = parseFloat(document.getElementById('fqWeight').value) || 0;
+
+  if (!city || !state || !zip) { showToast('Enter city, state and ZIP first', 'error'); return; }
+  if (!_freightPallets.length) { showToast('Add at least one pallet', 'error'); return; }
+
+  const btn = document.getElementById('fqRunBtn');
+  btn.disabled = true;
+  btn.textContent = 'Getting rates...';
+  document.getElementById('fqError').style.display = 'none';
+  document.getElementById('fqResults').style.display = 'none';
+
+  try {
+    const res = await fetch('/api/orders-freight', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        pallets: _freightPallets,
+        totalWeight,
+        city, state, zip,
+        accessories: {
+          residential:   document.getElementById('fqResidential').checked,
+          liftgate:      document.getElementById('fqLiftgate').checked,
+          limitedaccess: document.getElementById('fqLimitedAccess').checked,
+          loadingdock:   document.getElementById('fqLoadingDock').checked,
+        }
+      })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    // Render carrier options
+    const list = document.getElementById('fqCarrierList');
+    list.innerHTML = (data.carriers || []).map(c => `
+      <div style="padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:border-color .15s"
+           onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'"
+           onclick="selectFreightOption('${c.name}', ${c.cost}, '${c.transit}')">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-weight:700;color:var(--text);font-size:14px">${c.name}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">Transit: ${c.transit} · Base: $${c.cost.toFixed(2)}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:18px;font-weight:800;color:var(--orange)">$${c.cost.toFixed(2)}</div>
+            <div style="font-size:10px;color:var(--muted)">actual cost</div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    document.getElementById('fqResults').style.display = 'block';
+  } catch(e) {
+    document.getElementById('fqError').textContent = 'Error: ' + e.message;
+    document.getElementById('fqError').style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Get Rates';
+  }
+}
+
+function selectFreightOption(carrier, cost, transit) {
+  // Pre-fill carrier and freight cost in the drawer
+  document.getElementById('editCarrier').value = carrier;
+  document.getElementById('editFreightCost').value = cost.toFixed(2);
+  closeFreightModal();
+  showToast(`${carrier} selected — $${cost.toFixed(2)}`, 'success');
+}
+
+function closeFreightModal() {
+  document.getElementById('freightModal').style.display = 'none';
+}
+
 // ── Rep identity ──────────────────────────────────────────────────
 function saveRepIdentity() {
   const val = document.getElementById('repIdentity').value;
@@ -600,6 +871,7 @@ function openDrawer(quoteNumber) {
   document.getElementById('editShipDate').value = shipped.date
     ? new Date(shipped.date).toISOString().split('T')[0]
     : new Date().toISOString().split('T')[0];
+  document.getElementById('editFreightCost').value = od.freightCost || '';
 
   const badge = document.getElementById('shippedBadge');
   badge.style.display = shipped.tracking ? 'inline-flex' : 'none';
@@ -668,6 +940,7 @@ async function saveOrder() {
   const shipDate     = document.getElementById('editShipDate').value;
   const pallets      = document.getElementById('editPallets').value;
   const boxes        = document.getElementById('editBoxes').value;
+  const freightCost  = parseFloat(document.getElementById('editFreightCost').value) || null;
   const isShipping   = carrier && tracking;
 
   const customer = {
@@ -694,6 +967,7 @@ async function saveOrder() {
   const prevAddr = [prevC.address,prevC.city,prevC.state,prevC.zip].filter(Boolean).join(', ');
   const newAddr  = [customer.address,customer.city,customer.state,customer.zip].filter(Boolean).join(', ');
   chk('Address', prevAddr, newAddr);
+  chk('Freight Cost', prevOd.freightCost ? '$'+prevOd.freightCost : '', freightCost ? '$'+freightCost : '');
   if (isShipping && !prevOd.shipped?.tracking) changes.push(`Marked Shipped — ${carrier}, ${tracking}`);
 
   const payload = {
@@ -703,6 +977,7 @@ async function saveOrder() {
     productionNotes: newProdNotes,
     deliveryNotes:   newDelNotes,
     shipped: isShipping ? { carrier, tracking, date: shipDate, pallets: parseInt(pallets)||0, boxes: parseInt(boxes)||0 } : (prevOd.shipped || null),
+    freightCost,
     changes,
     repName,
   };

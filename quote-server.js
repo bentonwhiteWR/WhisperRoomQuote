@@ -1931,7 +1931,13 @@ const server = http.createServer(async (req, res) => {
         }
       } else {
         const deal = await hsCreateDeal({
-          dealname: dealName || `${customer.company || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || 'Customer'} — ${quoteNumber || 'Quote'}`,
+          dealname: dealName || (() => {
+            const base = customer.company || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || 'Customer';
+            const now = new Date();
+            const mo = now.toLocaleString('en-US', { month: 'short' });
+            const yr = now.getFullYear();
+            return `${base} · ${mo} ${yr}`;
+          })(),
           tax_rate: tax && tax.rate ? String((tax.rate * 100).toFixed(3)) : '',
           quote_number: quoteNumber || '',
           freight_cost: freight && freight.total ? String(freight.total) : '',

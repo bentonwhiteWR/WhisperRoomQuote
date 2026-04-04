@@ -1081,48 +1081,99 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
 </div>
 
 <!-- DEAL HUB MODAL -->
-<div id="dealHubOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto" onclick="if(event.target===this)closeDealHub()">
-  <div style="background:#1a1a1a;border-radius:14px;width:100%;max-width:760px;box-shadow:0 24px 80px rgba(0,0,0,.6);overflow:hidden">
+<div id="dealHubOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;align-items:flex-start;justify-content:center;padding:24px 16px;overflow-y:auto" onclick="if(event.target===this)closeDealHub()">
+  <div style="background:#1a1a1a;border-radius:16px;width:100%;max-width:800px;box-shadow:0 32px 80px rgba(0,0,0,.7);overflow:hidden">
 
     <!-- Header -->
-    <div style="padding:20px 24px 16px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between">
-      <div>
-        <div style="font-size:16px;font-weight:800;color:#fff" id="dhDealName">Deal Hub</div>
-        <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:3px" id="dhDealMeta"></div>
+    <div style="padding:20px 24px 16px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:flex-start;justify-content:space-between;gap:16px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:18px;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="dhDealName">Deal Hub</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:4px" id="dhDealMeta"></div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button id="dhHubSpotBtn" onclick="openLinkedDealInHubSpot()" style="padding:6px 12px;font-size:11px;font-weight:600;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:rgba(255,255,255,.5);cursor:pointer;font-family:inherit">View in HubSpot ↗</button>
-        <button onclick="closeDealHub()" style="background:none;border:none;color:rgba(255,255,255,.4);font-size:20px;cursor:pointer;line-height:1;padding:0 4px">✕</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+        <button onclick="openLinkedDealInHubSpot()" style="padding:5px 10px;font-size:10px;font-weight:600;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:5px;color:rgba(255,255,255,.4);cursor:pointer;font-family:inherit">HS ↗</button>
+        <button onclick="closeDealHub()" style="background:none;border:none;color:rgba(255,255,255,.4);font-size:22px;cursor:pointer;line-height:1;padding:0 2px">✕</button>
       </div>
     </div>
 
     <!-- Loading state -->
-    <div id="dhLoading" style="padding:40px;text-align:center;color:rgba(255,255,255,.3);font-size:13px">Loading deal data...</div>
+    <div id="dhLoading" style="padding:48px;text-align:center;color:rgba(255,255,255,.3);font-size:13px">Loading deal data...</div>
 
     <!-- Content -->
-    <div id="dhContent" style="display:none;padding:20px 24px 24px">
+    <div id="dhContent" style="display:none">
 
-      <!-- Quotes section -->
-      <div style="margin-bottom:24px">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.35);margin-bottom:10px">Quotes</div>
-        <div id="dhQuotesList"></div>
-        <button onclick="closeDealHub()" style="margin-top:10px;padding:8px 14px;font-size:11px;font-weight:700;background:rgba(238,98,22,.15);border:1px solid rgba(238,98,22,.3);border-radius:7px;color:#ee6216;cursor:pointer;font-family:inherit">
-          + New Quote for This Deal
-        </button>
+      <!-- Pipeline bar -->
+      <div style="padding:16px 24px;border-bottom:1px solid rgba(255,255,255,.06)">
+        <div id="dhPipelineBar" style="display:flex;gap:0;align-items:stretch"></div>
       </div>
 
-      <!-- Invoices section -->
-      <div id="dhInvoicesSection" style="margin-bottom:24px;display:none">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.35);margin-bottom:10px">Invoices</div>
-        <div id="dhInvoicesList"></div>
+      <!-- Next action prompt -->
+      <div id="dhNextAction" style="display:none;margin:16px 24px 0;padding:12px 16px;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.2);border-radius:8px;display:flex;align-items:center;gap:10px">
+        <div style="font-size:18px" id="dhNextActionIcon">→</div>
+        <div>
+          <div style="font-size:11px;font-weight:700;color:#ee6216;text-transform:uppercase;letter-spacing:.06em">Next Action</div>
+          <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.85);margin-top:2px" id="dhNextActionText"></div>
+        </div>
       </div>
 
-      <!-- Orders section -->
-      <div id="dhOrdersSection" style="display:none">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.35);margin-bottom:10px">Orders</div>
-        <div id="dhOrdersList"></div>
-      </div>
+      <!-- Main content grid -->
+      <div style="padding:20px 24px 24px;display:flex;flex-direction:column;gap:20px">
 
+        <!-- Quotes -->
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.35)">Quotes</div>
+            <button onclick="closeDealHub()" style="padding:4px 10px;font-size:10px;font-weight:700;background:rgba(238,98,22,.12);border:1px solid rgba(238,98,22,.25);border-radius:5px;color:#ee6216;cursor:pointer;font-family:inherit">+ New Quote</button>
+          </div>
+          <div id="dhQuotesList"></div>
+        </div>
+
+        <!-- Invoices -->
+        <div id="dhInvoicesSection" style="display:none">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.35);margin-bottom:10px">Invoices</div>
+          <div id="dhInvoicesList"></div>
+        </div>
+
+        <!-- Orders -->
+        <div id="dhOrdersSection" style="display:none">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.35);margin-bottom:10px">Orders</div>
+          <div id="dhOrdersList"></div>
+        </div>
+
+        <!-- Admin Panel -->
+        <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:16px">
+          <button onclick="document.getElementById('dhAdminPanel').style.display=document.getElementById('dhAdminPanel').style.display==='none'?'block':'none'" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;padding:0;text-transform:uppercase;letter-spacing:.06em">
+            ⚙ Admin Override <span style="font-size:9px">▼</span>
+          </button>
+          <div id="dhAdminPanel" style="display:none;margin-top:14px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <!-- Payment Status -->
+              <div>
+                <label style="font-size:10px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Payment Status</label>
+                <select id="dhPaymentStatus" onchange="updatePaymentStatus(this.value)" style="width:100%;padding:8px 10px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:12px;font-family:inherit;outline:none;cursor:pointer">
+                  <option value="not_paid">Not Paid</option>
+                  <option value="po_received">PO Received</option>
+                  <option value="paid">Paid</option>
+                </select>
+              </div>
+              <!-- Deal Stage Override -->
+              <div>
+                <label style="font-size:10px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Stage Override</label>
+                <select id="dhStageOverride" onchange="updateDealStage(this.value)" style="width:100%;padding:8px 10px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;font-size:12px;font-family:inherit;outline:none;cursor:pointer">
+                  <option value="appointmentscheduled">Sent Quote</option>
+                  <option value="qualifiedtobuy">Updated Quote</option>
+                  <option value="contractsent">Verbal Confirmation</option>
+                  <option value="closedwon">Closed Won</option>
+                  <option value="845719">Shipped</option>
+                  <option value="closedlost">Closed Lost</option>
+                </select>
+              </div>
+            </div>
+            <div id="dhAdminStatus" style="margin-top:8px;font-size:11px;color:rgba(255,255,255,.3)"></div>
+          </div>
+        </div>
+
+      </div>
     </div>
   </div>
 </div>
@@ -3684,34 +3735,29 @@ function updateInvoiceOrderBtnState() {
 
 // ── Invoice Button Enable ────────────────────────────────────────
 function openDealHubById(dealId, dealName, company) {
-  // Temporarily set linkedDeal so openDealHub can use the ID
-  const prev = linkedDeal;
-  linkedDeal = linkedDeal || { id: dealId, name: dealName || company || 'Deal' };
-  if (!linkedDeal.id) linkedDeal = { id: dealId, name: dealName || company || 'Deal' };
-  // Override with the clicked deal's info
-  const hub = { id: dealId, name: dealName || company || 'Deal' };
-  linkedDeal = hub;
+  linkedDeal = { id: dealId, name: dealName || company || 'Deal' };
   openDealHub();
 }
 
-// ── Deal Hub Modal ────────────────────────────────────────────────
+// ── Deal Hub Modal ─────────────────────────────────────────────────
+let _dhDealId = null;
+
 async function openDealHub() {
   const dealId = linkedDeal?.id || selectedDeal?.id || window._lastPushedDealId;
   if (!dealId) return;
+  _dhDealId = dealId;
 
   document.getElementById('dealHubOverlay').style.display = 'flex';
   document.getElementById('dhLoading').style.display = 'block';
   document.getElementById('dhContent').style.display = 'none';
+  document.getElementById('dhNextAction').style.display = 'none';
   document.getElementById('dhDealName').textContent = linkedDeal?.name || 'Deal Hub';
-  document.getElementById('dhDealMeta').textContent = linkedDeal?.amount
-    ? `${linkedDeal.amount}${linkedDeal.stage ? ' · ' + linkedDeal.stage : ''}`
-    : '';
+  document.getElementById('dhDealMeta').textContent = '';
 
   try {
     const res = await fetch(`/api/deals/${dealId}/hub`, { credentials: 'include' });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
-
     renderDealHub(data);
     document.getElementById('dhLoading').style.display = 'none';
     document.getElementById('dhContent').style.display = 'block';
@@ -3722,23 +3768,83 @@ async function openDealHub() {
 
 function closeDealHub() {
   document.getElementById('dealHubOverlay').style.display = 'none';
+  _dhDealId = null;
 }
 
 function renderDealHub(data) {
-  const fmt = n => '$' + parseFloat(n||0).toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0});
+  const fmt     = n => '$' + parseFloat(n||0).toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0});
   const fmtDate = d => d ? new Date(d).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '—';
 
-  // Update header with live stage from HubSpot
-  if (data.dealStage) {
-    const stageName = DEAL_STAGES[data.dealStage] || data.dealStage;
-    const meta = document.getElementById('dhDealMeta');
-    if (meta) {
-      const amount = linkedDeal?.amount || '';
-      meta.textContent = [amount, stageName].filter(Boolean).join(' · ');
-    }
+  // ── Header meta ───────────────────────────────────────────────
+  const stageName = DEAL_STAGES[data.dealStage] || data.dealStage || '';
+  const amount    = data.dealAmount ? fmt(data.dealAmount) : '';
+  document.getElementById('dhDealMeta').textContent = [amount, stageName].filter(Boolean).join(' · ');
+
+  // ── Pipeline bar ──────────────────────────────────────────────
+  const stages = [
+    { key: 'appointmentscheduled', label: 'Sent Quote' },
+    { key: 'qualifiedtobuy',       label: 'Updated' },
+    { key: 'contractsent',         label: 'Verbal Confirm' },
+    { key: 'closedwon',            label: 'Closed Won' },
+    { key: '845719',               label: 'Shipped' },
+  ];
+  const curIdx = stages.findIndex(s => s.key === data.dealStage);
+  const bar = document.getElementById('dhPipelineBar');
+  bar.innerHTML = '';
+  stages.forEach((s, i) => {
+    const active  = i === curIdx;
+    const past    = i < curIdx;
+    const seg = document.createElement('div');
+    seg.style.cssText = `flex:1;text-align:center;padding:8px 4px;font-size:10px;font-weight:${active?'800':'600'};cursor:pointer;border-radius:${i===0?'6px 0 0 6px':i===stages.length-1?'0 6px 6px 0':'0'};transition:.15s;
+      background:${active?'#ee6216':past?'rgba(238,98,22,.2)':'rgba(255,255,255,.04)'};
+      color:${active?'#fff':past?'rgba(238,98,22,.8)':'rgba(255,255,255,.3)'};
+      border-top:1px solid ${active?'#ee6216':past?'rgba(238,98,22,.25)':'rgba(255,255,255,.08)'};
+      border-bottom:1px solid ${active?'#ee6216':past?'rgba(238,98,22,.25)':'rgba(255,255,255,.08)'};
+      border-left:1px solid ${active?'#ee6216':past?'rgba(238,98,22,.25)':'rgba(255,255,255,.08)'};
+      border-right:${i===stages.length-1?'1px solid '+(active?'#ee6216':past?'rgba(238,98,22,.25)':'rgba(255,255,255,.08)'):'none'}`;
+    seg.textContent = s.label;
+    seg.title = 'Click to move to this stage';
+    seg.onclick = () => updateDealStage(s.key, s.label);
+    bar.appendChild(seg);
+  });
+
+  // ── Payment status badge ──────────────────────────────────────
+  const payColors = { paid: '#22c55e', po_received: '#f59e0b', not_paid: 'rgba(255,255,255,.3)' };
+  const payLabels = { paid: '✓ Paid', po_received: 'PO Received', not_paid: 'Not Paid' };
+  const ps = data.paymentStatus || 'not_paid';
+  const payBadge = document.createElement('div');
+  payBadge.style.cssText = `margin-left:8px;padding:5px 10px;border-radius:5px;font-size:10px;font-weight:700;color:${payColors[ps]};border:1px solid ${payColors[ps]};background:${ps==='paid'?'rgba(34,197,94,.1)':ps==='po_received'?'rgba(245,158,11,.1)':'rgba(255,255,255,.04)'};white-space:nowrap;flex-shrink:0`;
+  payBadge.textContent = payLabels[ps] || ps;
+  // Append to meta line
+  const metaEl = document.getElementById('dhDealMeta');
+  metaEl.style.display = 'flex';
+  metaEl.style.alignItems = 'center';
+  metaEl.style.gap = '8px';
+  metaEl.appendChild(payBadge);
+
+  // ── Next action prompt ────────────────────────────────────────
+  const nextActions = {
+    'appointmentscheduled': { icon: '📋', text: 'Quote sent — follow up with the customer' },
+    'qualifiedtobuy':       { icon: '📋', text: 'Quote updated — waiting on customer decision' },
+    'contractsent':         { icon: '🧾', text: ps === 'paid' || ps === 'po_received' ? 'Payment confirmed — process the order' : 'Quote accepted — collect payment then process order' },
+    'closedwon':            { icon: '📦', text: 'Order ready — ship it when production complete' },
+    '845719':               { icon: '✅', text: 'Shipped — tracking active on shipping board' },
+    'closedlost':           { icon: '—',  text: 'Deal closed lost' },
+  };
+  const na = nextActions[data.dealStage];
+  if (na && data.dealStage !== 'closedlost') {
+    document.getElementById('dhNextAction').style.display = 'flex';
+    document.getElementById('dhNextActionIcon').textContent = na.icon;
+    document.getElementById('dhNextActionText').textContent = na.text;
   }
 
-  // ── Quotes ─────────────────────────────────────────────────────
+  // ── Admin panel defaults ──────────────────────────────────────
+  const psSelect = document.getElementById('dhPaymentStatus');
+  if (psSelect) psSelect.value = ps;
+  const stageSelect = document.getElementById('dhStageOverride');
+  if (stageSelect) stageSelect.value = data.dealStage || 'appointmentscheduled';
+
+  // ── Quotes ────────────────────────────────────────────────────
   const quotesList = document.getElementById('dhQuotesList');
   if (!data.quotes?.length) {
     quotesList.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.3);font-style:italic;padding:8px 0">No quotes yet</div>';
@@ -3747,137 +3853,157 @@ function renderDealHub(data) {
     data.quotes.forEach(q => {
       const accepted = q.accepted;
       const row = document.createElement('div');
-      if (accepted) {
-        row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(34,197,94,.08);border:1.5px solid rgba(34,197,94,.35);border-radius:8px;margin-bottom:6px;cursor:pointer;transition:border-color .15s';
-        row.onmouseenter = () => row.style.borderColor = 'rgba(34,197,94,.7)';
-        row.onmouseleave = () => row.style.borderColor = 'rgba(34,197,94,.35)';
-      } else {
-        row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;margin-bottom:6px;cursor:pointer;transition:border-color .15s';
-        row.onmouseenter = () => row.style.borderColor = 'rgba(238,98,22,.4)';
-        row.onmouseleave = () => row.style.borderColor = 'rgba(255,255,255,.08)';
-      }
+      row.style.cssText = accepted
+        ? 'display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(34,197,94,.08);border:1.5px solid rgba(34,197,94,.35);border-radius:8px;margin-bottom:6px;cursor:pointer;transition:border-color .15s'
+        : 'display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;margin-bottom:6px;cursor:pointer;transition:border-color .15s';
+      row.onmouseenter = () => row.style.borderColor = accepted ? 'rgba(34,197,94,.7)' : 'rgba(238,98,22,.4)';
+      row.onmouseleave = () => row.style.borderColor = accepted ? 'rgba(34,197,94,.35)' : 'rgba(255,255,255,.08)';
       row.onclick = () => { closeDealHub(); loadQuoteFromDealHub(q); };
-
       row.innerHTML = `
         <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:8px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span style="font-size:13px;font-weight:700;color:#fff;font-family:var(--mono)">${q.quoteNumber}</span>
-            ${accepted ? '<span style="font-size:10px;font-weight:800;color:#22c55e;text-transform:uppercase;letter-spacing:.06em;background:rgba(34,197,94,.15);padding:2px 7px;border-radius:4px;border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>' : ''}
+            ${accepted ? '<span style="font-size:10px;font-weight:800;color:#22c55e;background:rgba(34,197,94,.15);padding:2px 7px;border-radius:4px;border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>' : ''}
           </div>
         </div>
-        ${q.firstMdl ? `<div style="font-size:11px;color:${accepted ? 'rgba(34,197,94,.7)' : 'rgba(255,255,255,.5)'};min-width:80px;font-family:var(--mono)">${q.firstMdl}</div>` : ''}
-        <div style="font-size:13px;font-weight:700;color:${accepted ? '#22c55e' : 'rgba(255,255,255,.8)'}">${fmt(q.total)}</div>
-        <div style="font-size:11px;color:rgba(255,255,255,.35);min-width:70px;text-align:right">${fmtDate(q.date)}</div>
-        <div style="font-size:11px;color:${accepted ? '#22c55e' : '#ee6216'};flex-shrink:0">${accepted ? '✓ Load' : 'Load →'}</div>
+        ${q.firstMdl ? `<div style="font-size:11px;color:${accepted?'rgba(34,197,94,.7)':'rgba(255,255,255,.45)'};font-family:var(--mono);flex-shrink:0">${q.firstMdl}</div>` : ''}
+        <div style="font-size:13px;font-weight:700;color:${accepted?'#22c55e':'rgba(255,255,255,.8)'};flex-shrink:0">${fmt(q.total)}</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.3);flex-shrink:0">${fmtDate(q.date)}</div>
+        <div style="font-size:11px;color:${accepted?'#22c55e':'#ee6216'};flex-shrink:0">${accepted?'✓ Load':'Load →'}</div>
       `;
-
-      // Right-click or secondary: open quote page
       if (q.shareToken) {
-        const viewBtn = document.createElement('a');
-        viewBtn.href = `https://whisperroomquote.up.railway.app/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}`;
-        viewBtn.target = '_blank';
-        viewBtn.onclick = e => e.stopPropagation();
-        viewBtn.style.cssText = 'font-size:10px;color:rgba(255,255,255,.3);text-decoration:none;flex-shrink:0;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08)';
-        viewBtn.textContent = '↗';
-        row.appendChild(viewBtn);
+        const a = document.createElement('a');
+        a.href = `https://whisperroomquote.up.railway.app/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}`;
+        a.target = '_blank';
+        a.onclick = e => e.stopPropagation();
+        a.style.cssText = 'font-size:10px;color:rgba(255,255,255,.25);text-decoration:none;flex-shrink:0;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08)';
+        a.textContent = '↗';
+        row.appendChild(a);
       }
-
       quotesList.appendChild(row);
     });
   }
 
-  // ── Invoices ───────────────────────────────────────────────────
+  // ── Invoices ──────────────────────────────────────────────────
   const invSection = document.getElementById('dhInvoicesSection');
-  const invList = document.getElementById('dhInvoicesList');
+  const invList    = document.getElementById('dhInvoicesList');
   if (data.invoices?.length) {
     invSection.style.display = 'block';
     invList.innerHTML = '';
-    const statusColor = s => ({ 'paid': '#22c55e', 'open': '#f59e0b', 'draft': 'rgba(255,255,255,.35)', 'voided': 'rgba(255,255,255,.2)', 'overdue': '#ef4444' }[s] || 'rgba(255,255,255,.35)');
+    const statusColor = s => ({ paid:'#22c55e', open:'#f59e0b', draft:'rgba(255,255,255,.35)', voided:'rgba(255,255,255,.2)', overdue:'#ef4444' }[s] || 'rgba(255,255,255,.35)');
     data.invoices.forEach(inv => {
       const paid = inv.status === 'paid';
-      const row = document.createElement('div');
-      if (paid) {
-        row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(34,197,94,.08);border:1.5px solid rgba(34,197,94,.35);border-radius:8px;margin-bottom:6px';
-      } else {
-        row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;margin-bottom:6px';
-      }
+      const row  = document.createElement('div');
+      row.style.cssText = paid
+        ? 'display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(34,197,94,.08);border:1.5px solid rgba(34,197,94,.35);border-radius:8px;margin-bottom:6px'
+        : 'display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;margin-bottom:6px';
       row.innerHTML = `
         <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:13px;font-weight:700;color:${paid ? '#22c55e' : '#fff'}">${inv.number || inv.title || 'Invoice'}</span>
-            ${paid ? '<span style="font-size:10px;font-weight:800;color:#22c55e;text-transform:uppercase;letter-spacing:.06em;background:rgba(34,197,94,.15);padding:2px 7px;border-radius:4px;border:1px solid rgba(34,197,94,.3)">✓ Paid</span>' : `<span style="font-size:10px;font-weight:700;color:${statusColor(inv.status)};text-transform:uppercase;letter-spacing:.06em">${inv.status}</span>`}
-            ${inv.quoteNumber ? `<span style="font-size:10px;color:rgba(255,255,255,.3)">${inv.quoteNumber}</span>` : ''}
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:13px;font-weight:700;color:${paid?'#22c55e':'#fff'}">${inv.number || inv.title || 'Invoice'}</span>
+            ${paid ? '<span style="font-size:10px;font-weight:800;color:#22c55e;background:rgba(34,197,94,.15);padding:2px 7px;border-radius:4px;border:1px solid rgba(34,197,94,.3)">✓ Paid</span>' : `<span style="font-size:10px;font-weight:700;color:${statusColor(inv.status)};text-transform:uppercase;letter-spacing:.06em">${inv.status}</span>`}
+            ${inv.quoteNumber ? `<span style="font-size:10px;color:rgba(255,255,255,.25)">${inv.quoteNumber}</span>` : ''}
           </div>
         </div>
-        <div style="font-size:13px;font-weight:700;color:${paid ? '#22c55e' : 'rgba(255,255,255,.8)'}">${fmt(inv.amount)}</div>
-        <div style="font-size:11px;color:rgba(255,255,255,.35);min-width:70px;text-align:right">${fmtDate(inv.date)}</div>
+        <div style="font-size:13px;font-weight:700;color:${paid?'#22c55e':'rgba(255,255,255,.8)'};">${fmt(inv.amount)}</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.3)">${fmtDate(inv.date)}</div>
       `;
-      const linkRow = document.createElement('div');
-      linkRow.style.cssText = 'display:flex;gap:6px;flex-shrink:0';
+      const links = document.createElement('div');
+      links.style.cssText = 'display:flex;gap:6px;flex-shrink:0';
       if (inv.paymentPageUrl) {
         const a = document.createElement('a');
         a.href = inv.paymentPageUrl; a.target = '_blank';
         a.style.cssText = 'font-size:10px;font-weight:600;color:#ee6216;text-decoration:none;padding:3px 8px;border-radius:4px;border:1px solid rgba(238,98,22,.25)';
-        a.textContent = 'Invoice ↗';
-        linkRow.appendChild(a);
-
-        const emailBtn = document.createElement('button');
-        emailBtn.style.cssText = 'font-size:10px;font-weight:600;color:rgba(255,255,255,.5);padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);cursor:pointer;font-family:inherit';
-        emailBtn.textContent = '✉ Email';
-        emailBtn.onclick = () => emailInvoiceToClient(inv.paymentPageUrl);
-        linkRow.appendChild(emailBtn);
+        a.textContent = 'Invoice ↗'; links.appendChild(a);
+        const eb = document.createElement('button');
+        eb.style.cssText = 'font-size:10px;color:rgba(255,255,255,.4);padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,.1);background:none;cursor:pointer;font-family:inherit';
+        eb.textContent = '✉'; eb.onclick = () => emailInvoiceToClient(inv.paymentPageUrl); links.appendChild(eb);
       }
       if (inv.hubspotUrl) {
         const a = document.createElement('a');
         a.href = inv.hubspotUrl; a.target = '_blank';
-        a.style.cssText = 'font-size:10px;color:rgba(255,255,255,.35);text-decoration:none;padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,.08)';
-        a.textContent = 'HS ↗';
-        linkRow.appendChild(a);
+        a.style.cssText = 'font-size:10px;color:rgba(255,255,255,.25);text-decoration:none;padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,.08)';
+        a.textContent = 'HS ↗'; links.appendChild(a);
       }
-      row.appendChild(linkRow);
+      row.appendChild(links);
       invList.appendChild(row);
     });
-  } else {
-    invSection.style.display = 'none';
-  }
+  } else { invSection.style.display = 'none'; }
 
-  // ── Orders ─────────────────────────────────────────────────────
+  // ── Orders ────────────────────────────────────────────────────
   const ordSection = document.getElementById('dhOrdersSection');
-  const ordList = document.getElementById('dhOrdersList');
+  const ordList    = document.getElementById('dhOrdersList');
   if (data.orders?.length) {
     ordSection.style.display = 'block';
     ordList.innerHTML = '';
     data.orders.forEach(ord => {
       const shipped = ord.shipped?.tracking;
       const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;margin-bottom:6px';
+      row.style.cssText = shipped
+        ? 'display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:8px;margin-bottom:6px'
+        : 'display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;margin-bottom:6px';
       row.innerHTML = `
         <div style="flex:1;min-width:0">
-          <span style="font-size:13px;font-weight:700;color:#fff;font-family:var(--mono)">${ord.quoteNumber}</span>
-          ${ord.foamColor ? `<span style="font-size:10px;color:rgba(255,255,255,.3);margin-left:6px">${ord.foamColor}${ord.hingePreference ? ' · ' + ord.hingePreference : ''}</span>` : ''}
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-size:13px;font-weight:700;color:#fff;font-family:var(--mono)">${ord.quoteNumber}</span>
+            ${shipped
+              ? `<span style="font-size:10px;font-weight:700;color:#22c55e;text-transform:uppercase;letter-spacing:.06em">✓ Shipped</span>
+                 <span style="font-size:11px;color:rgba(255,255,255,.4);font-family:var(--mono)">${shipped}</span>`
+              : `<span style="font-size:10px;font-weight:700;color:#f59e0b;text-transform:uppercase;letter-spacing:.06em">In Production</span>`
+            }
+          </div>
+          ${ord.foamColor ? `<div style="font-size:10px;color:rgba(255,255,255,.35);margin-top:3px">${ord.foamColor}${ord.hingePreference?' · '+ord.hingePreference:''}</div>` : ''}
         </div>
-        ${shipped
-          ? `<span style="font-size:10px;font-weight:700;color:#22c55e;text-transform:uppercase;letter-spacing:.06em">Shipped</span>
-             <span style="font-size:11px;color:rgba(255,255,255,.4);font-family:var(--mono)">${shipped}</span>`
-          : `<span style="font-size:10px;font-weight:700;color:#f59e0b;text-transform:uppercase;letter-spacing:.06em">In Production</span>`
-        }
       `;
-      // Link to order page
-      const quotes = data.quotes || [];
-      const matchQ = quotes.find(q => q.quoteNumber === ord.quoteNumber);
+      const matchQ = data.quotes?.find(q => q.quoteNumber === ord.quoteNumber);
       if (matchQ?.shareToken) {
         const a = document.createElement('a');
         a.href = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(ord.quoteNumber)}?t=${matchQ.shareToken}`;
         a.target = '_blank';
-        a.style.cssText = 'font-size:10px;color:rgba(255,255,255,.35);text-decoration:none;padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,.08);flex-shrink:0';
-        a.textContent = 'Order ↗';
-        row.appendChild(a);
+        a.style.cssText = 'font-size:10px;color:rgba(255,255,255,.3);text-decoration:none;padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,.08);flex-shrink:0';
+        a.textContent = 'Order ↗'; row.appendChild(a);
       }
       ordList.appendChild(row);
     });
-  } else {
-    ordSection.style.display = 'none';
-  }
+  } else { ordSection.style.display = 'none'; }
+}
+
+async function updatePaymentStatus(status) {
+  if (!_dhDealId) return;
+  const el = document.getElementById('dhAdminStatus');
+  el.textContent = 'Saving...';
+  try {
+    const res = await fetch(`/api/deals/${_dhDealId}/payment-status`, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'}, credentials: 'include',
+      body: JSON.stringify({ status })
+    });
+    const data = await res.json();
+    if (data.success) {
+      el.textContent = '✓ Payment status updated';
+      el.style.color = '#22c55e';
+      setTimeout(() => { el.textContent = ''; el.style.color = ''; }, 3000);
+    } else throw new Error(data.error);
+  } catch(e) { el.textContent = 'Error: ' + e.message; el.style.color = '#ef4444'; }
+}
+
+async function updateDealStage(stage, label) {
+  if (!_dhDealId) return;
+  const el = document.getElementById('dhAdminStatus');
+  if (!confirm(`Move deal to "${label || DEAL_STAGES[stage] || stage}"?`)) return;
+  el.textContent = 'Saving...';
+  try {
+    const res = await fetch(`/api/deals/${_dhDealId}/stage`, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'}, credentials: 'include',
+      body: JSON.stringify({ stage })
+    });
+    const data = await res.json();
+    if (data.success) {
+      el.textContent = '✓ Stage updated';
+      el.style.color = '#22c55e';
+      // Refresh hub
+      setTimeout(() => openDealHub(), 1000);
+    } else throw new Error(data.error);
+  } catch(e) { el.textContent = 'Error: ' + e.message; el.style.color = '#ef4444'; }
 }
 
 async function loadQuoteFromDealHub(q) {

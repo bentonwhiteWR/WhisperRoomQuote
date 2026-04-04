@@ -3032,7 +3032,6 @@ tbody tr:hover td{background:#fdfcfb}
         hs_title:          quoteNumber ? `Invoice — ${quoteNumber}` : 'Invoice',
         hs_invoice_date:   today,
         hs_due_date:       today,
-        hs_payment_collection_method: 'automatic',
       };
       if (resolvedOwnerId) invoiceProps.hubspot_owner_id = String(resolvedOwnerId);
       if (quoteNumber)     invoiceProps.quote_number     = quoteNumber;

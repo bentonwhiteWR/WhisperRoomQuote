@@ -84,12 +84,6 @@ async function gdriveRequest(method, path, body) {
   return res.body;
 }
 
-async function gdriveFindFolder(name, parentId) {
-  const q = encodeURIComponent(`name='${name.replace(/'/g,"\'")}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-  const res = await gdriveRequest('GET', `/drive/v3/files?q=${q}&fields=files(id,name)&supportsAllDrives=true`);
-  return res?.files?.[0] || null;
-}
-
 async function gdriveCreateFolder(name, parentId) {
   const res = await gdriveRequest('POST', '/drive/v3/files?supportsAllDrives=true', {
     name,
@@ -97,6 +91,12 @@ async function gdriveCreateFolder(name, parentId) {
     parents: [parentId],
   });
   return res;
+}
+
+async function gdriveFindFolder(name, parentId) {
+  const q = encodeURIComponent(`name='${name.replace(/'/g,"\\'")}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+  const res = await gdriveRequest('GET', `/drive/v3/files?q=${q}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives`);
+  return res?.files?.[0] || null;
 }
 
 async function gdriveEnsureFolder(name, parentId) {
@@ -168,17 +168,21 @@ async function gdriveCreateDealFolders(dealName, quoteNumber) {
 // Upload a PDF to a deal's subfolder (e.g. Quotes, Invoices, Final Order)
 async function gdriveSavePdfToDeal(quoteNumber, subfolderName, filename, pdfBuffer) {
   try {
-    // Upload directly to root folder (owned by whisperroomwr@gmail.com)
-    // Service account-created subfolders are owned by the SA and hit quota limits
-    console.log(`GDrive: uploading "${filename}" to root folder`);
-    const result = await gdriveUploadFilePdf(filename, pdfBuffer, GDRIVE_ROOT_FOLDER);
+    if (!db) { console.warn('GDrive: no DB connection'); return; }
+    const row = await db.query('SELECT gdrive_folder_id FROM quotes WHERE quote_number = $1', [quoteNumber]);
+    const dealFolderId = row.rows[0]?.gdrive_folder_id;
+    if (!dealFolderId) { console.warn(`GDrive: no folder ID for quote ${quoteNumber}`); return; }
+    console.log(`GDrive: uploading "${filename}" to deal folder ${dealFolderId}`);
+
+    // Upload directly to deal folder (Shared Drive supports service account uploads)
+    const result = await gdriveUploadFilePdf(filename, pdfBuffer, dealFolderId);
     if (result?.error) {
       console.warn(`GDrive upload error:`, JSON.stringify(result.error));
     } else {
-      console.log(`GDrive: uploaded "${filename}" successfully — id:`, result?.id);
+      console.log(`GDrive: uploaded "${filename}" — id:`, result?.id);
     }
   } catch(e) {
-    console.warn(`GDrive savePdf error:`, e.message, e.stack?.split('\n')[1]);
+    console.warn(`GDrive savePdf error:`, e.message);
   }
 }
 
@@ -2088,8 +2092,12 @@ const server = http.createServer(async (req, res) => {
         (async () => {
           try {
             await gdriveCreateDealFolders(finalDealName, quoteNumber);
-            // PDF auto-upload to Drive — pending Workspace provisioning
-            // await gdriveSavePdfToDeal(quoteNumber, 'Quotes', ...)
+            // Upload quote PDF to Google Drive
+            const shareTokenQ = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
+            const quoteUrl = `https://whisperroomquote.up.railway.app/q/${encodeURIComponent(quoteNumber)}${shareTokenQ ? '?t=' + shareTokenQ : ''}`;
+            const pdfBufQ = await generatePdfBuffer(quoteUrl);
+            const safeNameQ = finalDealName.replace(/[/\\:*?"<>|]/g, '-').trim();
+            await gdriveSavePdfToDeal(quoteNumber, 'Quotes', `${quoteNumber} — ${safeNameQ}.pdf`, pdfBufQ);
           } catch(e) { console.warn('GDrive quote upload error:', e.message, e.stack?.split('\n')[1]); }
         })();
 
@@ -3243,7 +3251,16 @@ tbody tr:hover td{background:#fdfcfb}
       const invoicePageUrl = `https://whisperroomquote.up.railway.app/i/${quoteNumber}?t=${invToken}`;
       json({ success: true, invoiceUrl: invoicePageUrl, paymentUrl, invoiceId });
 
-      // PDF auto-upload to Drive — pending Workspace provisioning
+      // Upload invoice PDF to Google Drive (non-blocking)
+      (async () => {
+        try {
+          const pdfBufI = await generatePdfBuffer(invoicePageUrl);
+          const dnRowI = await db?.query('SELECT deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
+          const dnI = dnRowI?.rows[0]?.deal_name || quoteNumber;
+          const safeNameI = dnI.replace(/[/\\:*?"<>|]/g, '-').trim();
+          await gdriveSavePdfToDeal(quoteNumber, 'Invoices', `${quoteNumber} — ${safeNameI} (Invoice).pdf`, pdfBufI);
+        } catch(e) { console.warn('GDrive invoice upload error:', e.message); }
+      })();
 
     } catch(e) {
       console.error('Create invoice error:', e.message);
@@ -3653,21 +3670,20 @@ tbody tr:hover td{background:#fdfcfb}
       console.log(`Order ${quoteNumber} updated${isNowShipped && !wasShipped ? ' → SHIPPED' : ''}`);
       json({ success: true, shipped: isNowShipped });
 
-      // When marked shipped — upload order PDF to Google Drive (non-blocking)
-      // Pending Workspace Shared Drive provisioning — uncomment when ready:
-      // if (isNowShipped && !wasShipped) {
-      //   (async () => {
-      //     try {
-      //       const tokenRow = await db?.query('SELECT share_token, deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
-      //       const token    = tokenRow?.rows[0]?.share_token || '';
-      //       const dn       = tokenRow?.rows[0]?.deal_name   || quoteNumber;
-      //       const orderUrl = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(quoteNumber)}${token ? '?t=' + token : ''}`;
-      //       const pdfBuf   = await generatePdfBuffer(orderUrl);
-      //       const safeName = dn.replace(/[/\\:*?"<>|]/g, '-').trim();
-      //       await gdriveSavePdfToDeal(quoteNumber, 'Final Order', `${quoteNumber} — ${safeName} (Order).pdf`, pdfBuf);
-      //     } catch(e) { console.warn('GDrive order PDF error:', e.message); }
-      //   })();
-      // }
+      // Upload order PDF to Google Drive when shipped (non-blocking)
+      if (isNowShipped && !wasShipped) {
+        (async () => {
+          try {
+            const tokenRowO = await db?.query('SELECT share_token, deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
+            const tokenO    = tokenRowO?.rows[0]?.share_token || '';
+            const dnO       = tokenRowO?.rows[0]?.deal_name   || quoteNumber;
+            const orderUrl  = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(quoteNumber)}${tokenO ? '?t=' + tokenO : ''}`;
+            const pdfBufO   = await generatePdfBuffer(orderUrl);
+            const safeNameO = dnO.replace(/[/\\:*?"<>|]/g, '-').trim();
+            await gdriveSavePdfToDeal(quoteNumber, 'Final Order', `${quoteNumber} — ${safeNameO} (Order).pdf`, pdfBufO);
+          } catch(e) { console.warn('GDrive order PDF error:', e.message); }
+        })();
+      }
 
     } catch(e) {
       console.error('Update order error:', e.message);

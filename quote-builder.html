@@ -3843,7 +3843,8 @@ async function confirmCreateInvoice() {
         tax: taxData,
         discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
         advanceStage: false,
-        ownerId: linkedDeal?.ownerId || window._lastPushedOwnerId || document.getElementById('repSelect').value || null
+        ownerId: linkedDeal?.ownerId || window._lastPushedOwnerId || document.getElementById('repSelect').value || null,
+        contactId: window._lastPushedContactId || null,
       })
     });
     const data = await res.json();

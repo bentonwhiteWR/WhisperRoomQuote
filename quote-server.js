@@ -1190,6 +1190,102 @@ function parseAbfXml(xmlText) {
   return { cost: Math.round(cost * 100) / 100, dynDisc, transit };
 }
 
+
+// ── ABF Shipment Booking ──────────────────────────────────────────
+function buildAbfBookingUrl(params) {
+  const {
+    pallets, totalWeight,
+    consName, consAddr, consCity, consState, consZip, consCountry,
+    consPhone, consTaxId,
+    pickupDate, // YYYY-MM-DD
+    bolNumber,  // our reference number
+    specialInstructions,
+    accessories,
+  } = params;
+
+  const today = pickupDate ? new Date(pickupDate) : new Date();
+  const parts = [
+    'DL=2',
+    `ID=${ABF_ID}`,
+    `ShipAcct=${ABF_ACCT}`,
+    'ShipPay=Y',
+    // Shipper info
+    `ShipName=${encodeURIComponent('WhisperRoom Inc')}`,
+    `ShipAddr=${encodeURIComponent('322 Nancy Lynn Lane Suite 14')}`,
+    `ShipCity=${encodeURIComponent(SHIP_CITY)}`,
+    `ShipState=${SHIP_STATE}`,
+    `ShipZip=${SHIP_ZIP}`,
+    'ShipCountry=US',
+    `ShipPhone=${encodeURIComponent('8655585364')}`,
+    // Consignee info
+    `ConsName=${encodeURIComponent(consName || '')}`,
+    `ConsAddr=${encodeURIComponent(consAddr || '')}`,
+    `ConsCity=${encodeURIComponent(consCity || '')}`,
+    `ConsState=${consState || ''}`,
+    `ConsZip=${consZip || ''}`,
+    `ConsCountry=${consCountry || 'US'}`,
+    `ConsPhone=${encodeURIComponent(consPhone || '')}`,
+    // Pickup date
+    `ShipMonth=${today.getMonth()+1}`,
+    `ShipDay=${today.getDate()}`,
+    `ShipYear=${today.getFullYear()}`,
+    // Reference
+    `BOLRef1=${encodeURIComponent(bolNumber || '')}`,
+    'FrtLWHType=IN',
+    'Acc=ARR=Y',
+  ];
+
+  // Accessorials
+  if (accessories?.residential)   parts.push('Acc_RDEL=Y');
+  if (accessories?.liftgate)      parts.push('Acc_LGATE=Y');
+  if (accessories?.limitedaccess) parts.push('Acc_LAPU=Y');
+  if (accessories?.loadingdock)   parts.push('Acc_DOCK=Y');
+  if (specialInstructions)        parts.push(`SpcInst=${encodeURIComponent(specialInstructions)}`);
+
+  // Freight pieces
+  pallets.forEach((pl, i) => {
+    const n = i + 1;
+    parts.push(
+      `FrtLng${n}=${pl.l}`,
+      `FrtWdth${n}=${pl.w}`,
+      `FrtHght${n}=${pl.h}`,
+      `UnitType${n}=PLT`,
+      `Wgt${n}=${pl.weight}`,
+      `UnitNo${n}=1`,
+      `Class${n}=${FREIGHT_CLASS}`,
+      `NMFCItem${n}=${NMFC_ITEM}`,
+      `NMFCSub${n}=${NMFC_SUB}`,
+    );
+  });
+
+  return 'https://www.abfs.com/xml/ashipxml.asp?' + parts.join('&');
+}
+
+function parseAbfBookingXml(xmlText) {
+  // Extract PRO number
+  const proMatch = xmlText.match(/<PRO[^>]*>([^<]*)<\/PRO>/i)
+    || xmlText.match(/PRO["\s]*[:=]["\s]*([0-9-]+)/i)
+    || xmlText.match(/<PRONUMBER[^>]*>([^<]*)<\/PRONUMBER>/i);
+  const proNumber = proMatch ? proMatch[1].trim() : null;
+
+  // Extract confirmation/BOL number
+  const bolMatch = xmlText.match(/<BOL[^>]*>([^<]*)<\/BOL>/i)
+    || xmlText.match(/<BOLNUMBER[^>]*>([^<]*)<\/BOLNUMBER>/i);
+  const bolNumber = bolMatch ? bolMatch[1].trim() : null;
+
+  // Check for errors
+  const errMatch = xmlText.match(/<ERROR[^>]*>([^<]*)<\/ERROR>/i)
+    || xmlText.match(/<ERRORMSG[^>]*>([^<]*)<\/ERRORMSG>/i);
+  const error = errMatch ? errMatch[1].trim() : null;
+
+  // Extract pickup confirmation
+  const pickupMatch = xmlText.match(/<PICKUP[^>]*>([^<]*)<\/PICKUP>/i)
+    || xmlText.match(/<CONFIRMNO[^>]*>([^<]*)<\/CONFIRMNO>/i);
+  const pickupConfirm = pickupMatch ? pickupMatch[1].trim() : null;
+
+  return { proNumber, bolNumber, pickupConfirm, error, raw: xmlText.slice(0, 500) };
+}
+
 // ── Auth ──────────────────────────────────────────────────────────
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
 function parseCookies(req) {
@@ -3321,6 +3417,106 @@ tbody tr:hover td{background:#fdfcfb}
     return;
   }
 
+
+  // ── API: Book ABF Shipment ────────────────────────────────────────
+  if (pathname === '/api/book-abf-shipment' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const body = JSON.parse(await readBody(req));
+      const {
+        quoteNumber, dealId,
+        pallets, totalWeight,
+        consName, consAddr, consCity, consState, consZip, consPhone,
+        pickupDate, accessories, specialInstructions,
+      } = body;
+
+      if (!pallets?.length) { json({ error: 'No pallet data' }, 400); return; }
+      if (!consCity || !consState || !consZip) { json({ error: 'Missing destination' }, 400); return; }
+
+      const bolNumber = quoteNumber || `WR-${Date.now()}`;
+
+      const bookingUrl = buildAbfBookingUrl({
+        pallets, totalWeight,
+        consName, consAddr, consCity, consState: toStateAbbr(consState), consZip,
+        consPhone, pickupDate, bolNumber, specialInstructions, accessories,
+      });
+
+      console.log('ABF booking URL:', bookingUrl.slice(0, 200) + '...');
+      const res = await httpsGet(bookingUrl);
+      console.log('ABF booking response:', res.body?.slice(0, 500));
+
+      const result = parseAbfBookingXml(res.body);
+
+      if (result.error) {
+        json({ error: 'ABF booking error: ' + result.error, raw: result.raw });
+        return;
+      }
+
+      if (!result.proNumber && !result.bolNumber && !result.pickupConfirm) {
+        json({ error: 'No confirmation received from ABF. Raw: ' + result.raw });
+        return;
+      }
+
+      // Save PRO number to order and HubSpot
+      const proNumber = result.proNumber || result.bolNumber;
+      if (proNumber) {
+        // Update order in DB
+        if (db && quoteNumber) {
+          try {
+            const existing = await db.query('SELECT order_data FROM orders WHERE quote_number = $1', [quoteNumber]);
+            if (existing.rows[0]) {
+              const od = existing.rows[0].order_data || {};
+              od.shipped = { ...(od.shipped||{}), tracking: proNumber, carrier: 'ABF Freight', date: pickupDate || new Date().toISOString().split('T')[0] };
+              od.changeLog = od.changeLog || [];
+              od.changeLog.push({ at: new Date().toISOString(), summary: `ABF booked — PRO ${proNumber}`, rep: 'System' });
+              await db.query('UPDATE orders SET order_data = $1 WHERE quote_number = $2', [JSON.stringify(od), quoteNumber]);
+            }
+          } catch(e) { console.warn('DB update after booking:', e.message); }
+        }
+
+        // Update HubSpot deal
+        if (dealId) {
+          try {
+            await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/deals/${dealId}`,
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, { properties: {
+              dealstage: '845719',
+              tracking_number: proNumber,
+              carrier__c: 'ABF',
+              date_shipped: pickupDate || new Date().toISOString().split('T')[0],
+            }});
+          } catch(e) { console.warn('HubSpot update after booking:', e.message); }
+        }
+
+        // Register with AfterShip
+        try {
+          await httpsRequest({
+            hostname: 'api.aftership.com',
+            path: '/tracking/2024-10/trackings',
+            method: 'POST',
+            headers: { 'as-api-key': process.env.AFTERSHIP_API_KEY || '', 'Content-Type': 'application/json' }
+          }, { tracking: { tracking_number: proNumber, slug: 'abf-freight', title: consName || quoteNumber } });
+        } catch(e) { console.warn('AfterShip register after booking:', e.message); }
+      }
+
+      json({
+        success: true,
+        proNumber,
+        bolNumber: result.bolNumber,
+        pickupConfirm: result.pickupConfirm,
+        message: `Shipment booked. PRO: ${proNumber || 'pending'}`,
+      });
+
+    } catch(e) {
+      console.error('ABF booking error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── API: List Orders ──────────────────────────────────────────────
   if (pathname === '/api/orders' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
@@ -3336,7 +3532,8 @@ tbody tr:hover td{background:#fdfcfb}
           q.company,
           q.deal_name,
           q.total,
-          q.json_snapshot
+          q.json_snapshot,
+          q.share_token
         FROM orders o
         LEFT JOIN quotes q ON q.quote_number = o.quote_number
         ORDER BY o.created_at DESC
@@ -3661,6 +3858,17 @@ tbody tr:last-child td{border-bottom:none}
   </div>
 
 </div>
+
+<div class="action-bar" id="action-bar">
+  <a href="/api/download-order/${encodeURIComponent(q.quoteNumber)}?t=${q._shareToken||''}" class="btn btn-secondary" style="text-decoration:none">&#x2B73;&nbsp; Download PDF</a>
+  <button class="btn btn-secondary" onclick="window.print()">&#x1F5A8;&nbsp; Print</button>
+</div>
+
+<script>
+// Hide action bar on print
+window.addEventListener('beforeprint', () => { document.getElementById('action-bar').style.display = 'none'; });
+window.addEventListener('afterprint',  () => { document.getElementById('action-bar').style.display = 'flex'; });
+</script>
 </body>
 </html>`;
 
@@ -3827,6 +4035,22 @@ tbody tr:last-child td{border-bottom:none}
 
 
   // ── PDF Download: Quote ──────────────────────────────────────────
+  if (pathname.startsWith('/api/download-order/') && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(401); res.end('Unauthorized'); return; }
+    const quoteNumber = decodeURIComponent(pathname.replace('/api/download-order/', '').trim());
+    try {
+      const tokenRow = await db?.query('SELECT share_token, deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
+      const token = tokenRow?.rows[0]?.share_token || '';
+      const dealName = tokenRow?.rows[0]?.deal_name || quoteNumber;
+      const orderUrl = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(quoteNumber)}${token ? '?t=' + token : ''}`;
+      const safeName = `${quoteNumber} — ${dealName.replace(/[^\w\s—-]/g, '')} (Order)`.slice(0, 80);
+      await generatePdf(orderUrl, safeName + '.pdf', res, req);
+    } catch(e) {
+      res.writeHead(500); res.end('PDF error: ' + e.message);
+    }
+    return;
+  }
+
   if (pathname.startsWith('/api/download-quote/') && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const quoteNumber = decodeURIComponent(pathname.replace('/api/download-quote/', '').trim());

@@ -108,6 +108,18 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .toast-msg.show { opacity:1; }
 .toast-success { background:#1a7a4a; } .toast-error { background:#7a1a1a; } .toast-info { background:#1a3a7a; }
 ::-webkit-scrollbar { width:5px; height:5px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+.timeline-wrap { padding:0 0 8px; }
+.tl-item { display:flex; gap:10px; padding:7px 0; position:relative; }
+.tl-item::before { content:''; position:absolute; left:14px; top:30px; bottom:-7px; width:1px; background:var(--border); }
+.tl-item:last-child::before { display:none; }
+.tl-icon { width:28px; height:28px; border-radius:50%; background:var(--surface2); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0; z-index:1; }
+.tl-item.highlight .tl-icon { background:var(--green-dim); border-color:rgba(34,197,94,.3); }
+.tl-body { flex:1; min-width:0; padding-top:3px; }
+.tl-label { font-size:12px; font-weight:700; color:var(--text); line-height:1.3; }
+.tl-item.highlight .tl-label { color:var(--green); }
+.tl-detail { font-size:10px; color:var(--muted); margin-top:1px; }
+.tl-time { font-size:10px; color:var(--muted); margin-top:2px; }
+.tl-amount { font-size:11px; font-weight:700; color:var(--orange); margin-top:1px; }
 </style>
 </head>
 <body>
@@ -269,6 +281,7 @@ function renderBoard() {
 async function openDeal(dealId) {
   currentDealId=dealId;
   renderBoard();
+  _timelineLoaded = false;
   document.getElementById('hubEmpty').style.display='none';
   const hc=document.getElementById('hubContent');
   hc.style.display='block';
@@ -401,6 +414,16 @@ function renderHub(dealId,data) {
       ${quotesHtml}
     </div>
     ${invHtml}${ordHtml}
+    <div style="padding:0 20px 12px;border-top:1px solid var(--border);margin-top:4px">
+      <button onclick="toggleTimeline()" style="background:none;border:none;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:5px;padding:12px 0;width:100%">
+        📅 Activity Timeline <span id="timelineCaret" style="font-size:9px">▼</span>
+      </button>
+      <div id="timelineWrap" style="display:none">
+        <div id="timelineContent" class="timeline-wrap">
+          <div style="font-size:12px;color:var(--muted);text-align:center;padding:16px">Loading…</div>
+        </div>
+      </div>
+    </div>
     <div class="admin-toggle">
       <button class="admin-btn" onclick="toggleAdmin()">⚙ Admin Override <span id="adminCaret">▼</span></button>
     </div>
@@ -436,6 +459,67 @@ function loadLatestAccepted(dealId) {
 function newQuote() { window.location.href='/quotes'; }
 function newQuoteForDeal(dealId,dealName) {
   window.location.href=`/quotes?dealId=${dealId}&dealName=${encodeURIComponent(dealName)}&fromHub=${dealId}`;
+}
+
+// ── Timeline ───────────────────────────────────────────────────────
+let _timelineLoaded = false;
+
+function toggleTimeline() {
+  const wrap  = document.getElementById('timelineWrap');
+  const caret = document.getElementById('timelineCaret');
+  const open  = wrap.style.display === 'block';
+  wrap.style.display  = open ? 'none' : 'block';
+  caret.textContent   = open ? '▼' : '▲';
+  if (!open && !_timelineLoaded) {
+    _timelineLoaded = true;
+    loadTimeline();
+  }
+}
+
+async function loadTimeline() {
+  if (!currentDealId) return;
+  const el = document.getElementById('timelineContent');
+  el.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:16px">Loading…</div>';
+  try {
+    const res  = await fetch(`/api/deals/${currentDealId}/timeline`, { credentials:'include' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    renderTimeline(data.events || []);
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:var(--red);padding:12px">Error: ${e.message}</div>`;
+  }
+}
+
+function renderTimeline(events) {
+  const el = document.getElementById('timelineContent');
+  if (!events.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);font-style:italic;padding:8px 0">No activity recorded yet</div>';
+    return;
+  }
+
+  const fmtTs = iso => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'America/New_York'})
+      + ' · ' + d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
+  };
+  const fmtMoney = n => n ? ' $'+parseFloat(n).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}) : '';
+
+  // Render newest first
+  const reversed = [...events].reverse();
+  el.className = 'timeline-wrap';
+  el.innerHTML = reversed.map(e => `
+    <div class="tl-item${e.highlight?' highlight':''}">
+      <div class="tl-icon">${e.icon||'·'}</div>
+      <div class="tl-body">
+        <div class="tl-label">${e.label||''}</div>
+        ${e.detail?`<div class="tl-detail">${e.detail}</div>`:''}
+        ${e.amount?`<div class="tl-amount">${fmtMoney(e.amount)}</div>`:''}
+        ${e.rep?`<div class="tl-detail">${e.rep}</div>`:''}
+        <div class="tl-time">${fmtTs(e.at)}</div>
+      </div>
+    </div>
+  `).join('');
 }
 
 function toggleAdmin() {

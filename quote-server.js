@@ -2678,16 +2678,31 @@ tbody tr:hover td{background:#fdfcfb}
       // dealId comes from the quote snapshot in DB or HubSpot — more reliable than embedded template
       let dealId = body.dealId;
 
-      // If dealId is missing or empty, look it up from the DB or HubSpot snapshot
+      // If dealId is missing, look it up from DB deal_id column first, then snapshot
       if (!dealId) {
-        const snapshot = await getQuoteFromDb(quoteNumber);
-        if (snapshot && snapshot.dealId) {
-          dealId = snapshot.dealId;
+        if (db) {
+          const row = await db.query('SELECT deal_id FROM quotes WHERE quote_number = $1', [quoteNumber]);
+          dealId = row.rows[0]?.deal_id || null;
+        }
+        if (!dealId) {
+          const snapshot = await getQuoteFromDb(quoteNumber);
+          if (snapshot?.dealId) dealId = snapshot.dealId;
         }
       }
 
       console.log(`Accept quote #${quoteNumber} → dealId: ${dealId}`);
       const results = { quoteNumber, resolvedDealId: dealId };
+
+      // 0. Mark quote as accepted in DB
+      if (db && quoteNumber) {
+        try {
+          await db.query(
+            `UPDATE quotes SET json_snapshot = jsonb_set(COALESCE(json_snapshot, '{}'), '{accepted}', 'true') WHERE quote_number = $1`,
+            [quoteNumber]
+          );
+          console.log(`Quote ${quoteNumber} marked accepted in DB`);
+        } catch(e) { console.warn('DB accepted flag error:', e.message); }
+      }
 
       // 1. Advance deal stage to Verbal Confirmation
       if (dealId) {

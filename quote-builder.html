@@ -2230,13 +2230,13 @@ document.addEventListener('click', e => {
 });
 
 const DEAL_STAGES = {
-  'appointmentscheduled': 'Appointment Scheduled',
-  'qualifiedtobuy': 'Qualified to Buy',
-  'presentationscheduled': 'Presentation Scheduled',
-  'decisionmakerboughtin': 'Decision Maker Bought In',
-  'contractsent': 'Contract Sent',
-  'closedwon': 'Closed Won',
-  'closedlost': 'Closed Lost',
+  'appointmentscheduled': 'Sent Quote',
+  'qualifiedtobuy':       'Updated Quote',
+  'contractsent':         'Verbal Confirmation',
+  'closedwon':            'Closed Won',
+  '845719':               'Shipped',
+  'closedlost':           'Closed Lost',
+  '1169840404':           'Bid',
 };
 
 async function searchDeals(q) {
@@ -2769,7 +2769,7 @@ function renderHistory() {
   }).join('');
 }
 
-function loadFromHistoryEntry(idOrIdx) {
+function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   const q = allHistory.find(h => h.id === idOrIdx) || allHistory[parseInt(idOrIdx)];
   if (!q) return;
   if (!confirm('Load "' + (q.dealName || 'Untitled Quote') + '"? This will replace your current quote.')) return;
@@ -2893,7 +2893,11 @@ function loadFromHistoryEntry(idOrIdx) {
   }
 
   updateSummary();
-  toggleHistory();
+  // Close history panel if open — only if not called from Deal Hub
+  if (!skipClose) {
+    const hp = document.getElementById('historyPanel');
+    if (hp?.classList.contains('open')) toggleHistory();
+  }
 
   // Check if any product prices have changed since this quote was saved
   const itemsWithIds = lineItems.filter(i => i.productId);
@@ -3164,16 +3168,7 @@ function linkDealById(dealId, dealName) {
     if (data && data.deal && data.deal.properties) {
       const p = data.deal.properties;
       const amount = p.amount ? '$' + parseFloat(p.amount).toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0}) : '';
-      const stageLabels = {
-        'appointmentscheduled': 'Sent Quote',
-        'qualifiedtobuy':       'Updated Quote',
-        'contractsent':         'Verbal Confirmation',
-        'closedwon':            'Closed Won',
-        '845719':               'Shipped',
-        'closedlost':           'Closed Lost',
-        '1169840404':           'Bid',
-      };
-      const stage = stageLabels[p.dealstage] || p.dealstage || '';
+      const stage = DEAL_STAGES[p.dealstage] || p.dealstage || '';
       document.getElementById('linkedDealMeta').textContent = [amount, stage].filter(Boolean).join(' · ');
       linkedDeal.amount = p.amount;
       linkedDeal.stage = p.dealstage;
@@ -3689,6 +3684,16 @@ function renderDealHub(data) {
   const fmt = n => '$' + parseFloat(n||0).toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:0});
   const fmtDate = d => d ? new Date(d).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '—';
 
+  // Update header with live stage from HubSpot
+  if (data.dealStage) {
+    const stageName = DEAL_STAGES[data.dealStage] || data.dealStage;
+    const meta = document.getElementById('dhDealMeta');
+    if (meta) {
+      const amount = linkedDeal?.amount || '';
+      meta.textContent = [amount, stageName].filter(Boolean).join(' · ');
+    }
+  }
+
   // ── Quotes ─────────────────────────────────────────────────────
   const quotesList = document.getElementById('dhQuotesList');
   if (!data.quotes?.length) {
@@ -3713,6 +3718,7 @@ function renderDealHub(data) {
           <span style="font-size:13px;font-weight:700;color:#fff;font-family:var(--mono)">${q.quoteNumber}</span>
           ${accepted ? '<span style="font-size:9px;font-weight:700;color:#22c55e;margin-left:6px;text-transform:uppercase;letter-spacing:.06em">Accepted</span>' : ''}
         </div>
+        ${q.firstMdl ? `<div style="font-size:11px;color:rgba(255,255,255,.5);min-width:80px;font-family:var(--mono)">${q.firstMdl}</div>` : ''}
         <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.8)">${fmt(q.total)}</div>
         <div style="font-size:11px;color:rgba(255,255,255,.35);min-width:70px;text-align:right">${fmtDate(q.date)}</div>
         <div style="font-size:11px;color:#ee6216;flex-shrink:0">Load →</div>
@@ -3760,6 +3766,12 @@ function renderDealHub(data) {
         a.style.cssText = 'font-size:10px;font-weight:600;color:#ee6216;text-decoration:none;padding:3px 8px;border-radius:4px;border:1px solid rgba(238,98,22,.25)';
         a.textContent = 'Invoice ↗';
         linkRow.appendChild(a);
+
+        const emailBtn = document.createElement('button');
+        emailBtn.style.cssText = 'font-size:10px;font-weight:600;color:rgba(255,255,255,.5);padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);cursor:pointer;font-family:inherit';
+        emailBtn.textContent = '✉ Email';
+        emailBtn.onclick = () => emailInvoiceToClient(inv.paymentPageUrl);
+        linkRow.appendChild(emailBtn);
       }
       if (inv.hubspotUrl) {
         const a = document.createElement('a');
@@ -3815,18 +3827,33 @@ function renderDealHub(data) {
 }
 
 async function loadQuoteFromDealHub(q) {
-  // Find the history entry by quote number
   const entry = allHistory.find(h => h.quoteNumber === q.quoteNumber || h.id === q.quoteNumber);
   if (entry) {
-    loadFromHistoryEntry(entry.id || allHistory.indexOf(entry));
+    loadFromHistoryEntry(entry.id || allHistory.indexOf(entry), true);
   } else {
-    // Not in local history yet — fetch it
     showToast('Loading quote...', 'success');
     await loadHistory();
     const found = allHistory.find(h => h.quoteNumber === q.quoteNumber || h.id === q.quoteNumber);
-    if (found) loadFromHistoryEntry(found.id || allHistory.indexOf(found));
+    if (found) loadFromHistoryEntry(found.id || allHistory.indexOf(found), true);
     else showToast('Quote not found in history', 'error');
   }
+}
+
+// ── Email Invoice to Client ──────────────────────────────────────
+function emailInvoiceToClient(invoiceUrl) {
+  const firstName = document.getElementById('firstName')?.value.trim() || '';
+  const lastName  = document.getElementById('lastName')?.value.trim() || '';
+  const email     = document.getElementById('email')?.value.trim() || '';
+  const company   = document.getElementById('company')?.value.trim() || '';
+  const dealName  = linkedDeal?.name || document.getElementById('dealName')?.value.trim() || 'your WhisperRoom';
+
+  const to = email || '';
+  const subject = encodeURIComponent(`Your WhisperRoom Invoice — ${dealName}`);
+  const name = [firstName, lastName].filter(Boolean).join(' ') || company || 'there';
+  const body = encodeURIComponent(
+    `Hi ${name},\n\nPlease find your invoice for ${dealName} at the link below:\n\n${invoiceUrl}\n\nYou can view and pay your invoice securely through the link above.\n\nIf you have any questions, please don't hesitate to reach out.\n\nBest regards,\nWhisperRoom, Inc.\n1-800-200-8168\ninfo@whisperroom.com`
+  );
+  window.open(`mailto:${to}?subject=${subject}&body=${body}`, '_blank');
 }
 
 // ── Deal Hub ──────────────────────────────────────────────────────
@@ -3884,16 +3911,23 @@ async function loadDealInvoices() {
         const a = document.createElement('a');
         a.href = inv.paymentPageUrl;
         a.target = '_blank';
-        a.style.cssText = 'font-size:10px;font-weight:600;color:#ee6216;text-decoration:none';
-        a.textContent = 'Invoice Page ↗';
+        a.style.cssText = 'font-size:10px;font-weight:600;color:#ee6216;text-decoration:none;padding:4px 8px;border-radius:5px;border:1px solid rgba(238,98,22,.3);background:rgba(238,98,22,.08)';
+        a.textContent = 'View Invoice ↗';
         linkRow.appendChild(a);
+
+        // Email invoice button
+        const emailBtn = document.createElement('button');
+        emailBtn.style.cssText = 'font-size:10px;font-weight:600;color:rgba(255,255,255,.6);padding:4px 8px;border-radius:5px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.06);cursor:pointer;font-family:inherit';
+        emailBtn.textContent = '✉ Email';
+        emailBtn.onclick = () => emailInvoiceToClient(inv.paymentPageUrl);
+        linkRow.appendChild(emailBtn);
       }
       if (inv.invoiceUrl) {
         const a = document.createElement('a');
         a.href = inv.invoiceUrl;
         a.target = '_blank';
-        a.style.cssText = 'font-size:10px;color:rgba(255,255,255,.4);text-decoration:none';
-        a.textContent = 'HubSpot ↗';
+        a.style.cssText = 'font-size:10px;color:rgba(255,255,255,.3);text-decoration:none;padding:4px 6px;border-radius:5px;border:1px solid rgba(255,255,255,.08)';
+        a.textContent = 'HS ↗';
         linkRow.appendChild(a);
       }
       list.appendChild(card);

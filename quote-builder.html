@@ -4261,11 +4261,14 @@ async function confirmCreateInvoice() {
         ownerId: linkedDeal?.ownerId || window._lastPushedOwnerId || document.getElementById('repSelect').value || null,
         contactId: window._lastPushedContactId || null,
         customer: {
-          address: document.getElementById('shipAddress')?.value.trim() || '',
-          city:    document.getElementById('shipCity')?.value.trim() || '',
-          state:   document.getElementById('shipState')?.value.trim() || '',
-          zip:     document.getElementById('shipZip')?.value.trim() || '',
-          country: document.getElementById('shipCountry')?.value.trim() || 'US',
+          firstName: document.getElementById('firstName')?.value.trim() || '',
+          lastName:  document.getElementById('lastName')?.value.trim() || '',
+          company:   document.getElementById('company')?.value.trim() || '',
+          address:   document.getElementById('shipAddress')?.value.trim() || '',
+          city:      document.getElementById('shipCity')?.value.trim() || '',
+          state:     document.getElementById('shipState')?.value.trim() || '',
+          zip:       document.getElementById('shipZip')?.value.trim() || '',
+          country:   'US',
         },
       })
     });

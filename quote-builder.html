@@ -2097,7 +2097,10 @@ async function createDeal() {
           const fn   = document.getElementById('firstName').value.trim();
           const ln   = document.getElementById('lastName').value.trim();
           const base = co || [fn, ln].filter(Boolean).join(' ') || 'Customer';
-          return `${base} — ${document.getElementById('quoteNumHidden').value || 'Quote'}`;
+          const now  = new Date();
+          const mo   = now.toLocaleString('en-US', { month: 'short' });
+          const yr   = now.getFullYear();
+          return `${base} · ${mo} ${yr}`;
         })(),
         existingDealId: selectedDeal ? selectedDeal.id : null,
         linkedDealId: linkedDeal ? linkedDeal.id : (selectedDeal ? selectedDeal.id : null),

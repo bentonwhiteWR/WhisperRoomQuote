@@ -200,7 +200,7 @@ const fmtDate = d => d?new Date(d).toLocaleDateString('en-US',{month:'short',day
 
 async function loadDeals() {
   try {
-    const qs=new URLSearchParams({limit:100});
+    const qs=new URLSearchParams({limit:200});
     if(currentRepFilter) qs.set('rep',currentRepFilter);
     const res=await fetch('/api/deals/list?'+qs,{credentials:'include'});
     const data=await res.json();
@@ -481,7 +481,33 @@ async function doStageOverride(stage,label) {
     setTimeout(()=>openDeal(currentDealId),600);
   } catch(e){setAdminStatus('Error: '+e.message,'var(--red)');}
 }
-function onSearch() { clearTimeout(searchTimeout); searchTimeout=setTimeout(()=>applyFilter(),200); }
+function onSearch() {
+  clearTimeout(searchTimeout);
+  const q = document.getElementById('dealSearch').value.trim();
+  if (q.length === 0) {
+    // Back to cached deals
+    filteredDeals = [...allDeals];
+    renderBoard();
+  } else if (q.length >= 2) {
+    // Live HubSpot search for full history
+    searchTimeout = setTimeout(() => searchAllDeals(q), 300);
+  }
+}
+
+async function searchAllDeals(q) {
+  document.getElementById('boardCount').textContent = 'Searching…';
+  try {
+    const qs = new URLSearchParams({ q, limit: 50 });
+    if (currentRepFilter) qs.set('rep', currentRepFilter);
+    const res  = await fetch('/api/deals/list?' + qs, { credentials: 'include' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    filteredDeals = data.deals || [];
+    renderBoard();
+  } catch(e) {
+    document.getElementById('boardCount').textContent = 'Search error';
+  }
+}
 function onRepFilter() { currentRepFilter=document.getElementById('repFilter').value; loadDeals(); }
 function showToast(msg,type='info') {
   const t=document.getElementById('toast');

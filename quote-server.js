@@ -146,7 +146,9 @@ async function gdriveCreateDealFolders(dealName, quoteNumber) {
     const dealFolder = await gdriveEnsureFolder(safeName, GDRIVE_ROOT_FOLDER);
     if (!dealFolder?.id) { console.warn('GDrive: failed to create deal folder'); return null; }
 
-    // Subfolders skipped — files upload directly to deal folder (personal Drive quota restriction)
+    // Create subfolders inside deal folder
+    const subfolders = ['Quotes', 'Invoices', 'Purchase Orders', 'Drawings & Specs', 'Shipping', 'Final Order'];
+    await Promise.all(subfolders.map(name => gdriveEnsureFolder(name, dealFolder.id)));
 
     // Save folder ID to DB
     if (db && quoteNumber) {
@@ -168,10 +170,17 @@ async function gdriveCreateDealFolders(dealName, quoteNumber) {
 // Upload a PDF to a deal's subfolder (e.g. Quotes, Invoices, Final Order)
 async function gdriveSavePdfToDeal(quoteNumber, subfolderName, filename, pdfBuffer) {
   try {
-    // Upload directly to Shared Drive root — SA-created subfolders still hit quota
-    // Files are named with quote number so they're identifiable
-    console.log(`GDrive: uploading "${filename}" to Shared Drive root`);
-    const result = await gdriveUploadFilePdf(filename, pdfBuffer, GDRIVE_ROOT_FOLDER);
+    if (!db) { console.warn('GDrive: no DB connection'); return; }
+    const row = await db.query('SELECT gdrive_folder_id FROM quotes WHERE quote_number = $1', [quoteNumber]);
+    const dealFolderId = row.rows[0]?.gdrive_folder_id;
+    if (!dealFolderId) { console.warn(`GDrive: no folder ID for quote ${quoteNumber}`); return; }
+
+    // Find or create the subfolder inside the deal folder
+    const subfolder = await gdriveEnsureFolder(subfolderName, dealFolderId);
+    if (!subfolder?.id) { console.warn(`GDrive: could not find/create ${subfolderName} subfolder`); return; }
+
+    console.log(`GDrive: uploading "${filename}" to ${subfolderName}/ (${subfolder.id})`);
+    const result = await gdriveUploadFilePdf(filename, pdfBuffer, subfolder.id);
     if (result?.error) {
       console.warn(`GDrive upload error:`, JSON.stringify(result.error));
     } else {

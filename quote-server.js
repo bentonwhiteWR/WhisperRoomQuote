@@ -3188,7 +3188,45 @@ tbody tr:hover td{background:#fdfcfb}
   }
 
 
-  // ── API: Deal Hub — all quotes, invoices, orders for a deal ──────
+  // ── API: Update deal payment status ──────────────────────────────
+  if (pathname.startsWith('/api/deals/') && pathname.endsWith('/payment-status') && req.method === 'PATCH') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const dealId = pathname.split('/')[3];
+    try {
+      const { status } = JSON.parse(await readBody(req));
+      await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/objects/deals/${dealId}`,
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, { properties: { payment_status: status } });
+      json({ success: true, status });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Update deal stage ────────────────────────────────────────
+  if (pathname.startsWith('/api/deals/') && pathname.endsWith('/stage') && req.method === 'PATCH') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const dealId = pathname.split('/')[3];
+    try {
+      const { stage } = JSON.parse(await readBody(req));
+      await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/objects/deals/${dealId}`,
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, { properties: { dealstage: stage } });
+      json({ success: true, stage });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+
   if (pathname.startsWith('/api/deals/') && pathname.endsWith('/hub') && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const dealId = pathname.split('/')[3];
@@ -3197,15 +3235,21 @@ tbody tr:hover td{background:#fdfcfb}
       // Fetch deal name from HubSpot — used for fallback matching on legacy quotes
       let dealName = null;
       let dealStage = null;
+      let dealAmount = null;
+      let dealOwnerId = null;
+      let paymentStatus = 'not_paid';
       try {
         const dnRes = await httpsRequest({
           hostname: 'api.hubapi.com',
-          path: `/crm/v3/objects/deals/${dealId}?properties=dealname,dealstage`,
+          path: `/crm/v3/objects/deals/${dealId}?properties=dealname,dealstage,payment_status,amount,hubspot_owner_id`,
           method: 'GET',
           headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
         });
-        dealName = dnRes.body?.properties?.dealname || null;
-        dealStage = dnRes.body?.properties?.dealstage || null;
+        dealName    = dnRes.body?.properties?.dealname    || null;
+        dealStage   = dnRes.body?.properties?.dealstage   || null;
+        dealAmount  = dnRes.body?.properties?.amount      || null;
+        dealOwnerId = dnRes.body?.properties?.hubspot_owner_id || null;
+        paymentStatus = dnRes.body?.properties?.payment_status || 'not_paid';
       } catch(e) {}
 
       let quotes = [];
@@ -3328,7 +3372,7 @@ tbody tr:hover td{background:#fdfcfb}
         }
       } catch(e) { console.warn('Deal hub invoices error:', e.message); }
 
-      json({ dealId, dealStage, quotes, invoices, orders });
+      json({ dealId, dealStage, dealAmount, paymentStatus, quotes, invoices, orders });
     } catch(e) {
       console.error('Deal hub error:', e.message);
       json({ error: e.message }, 500);

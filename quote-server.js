@@ -3115,17 +3115,21 @@ tbody tr:hover td{background:#fdfcfb}
       // Also check our DB for payment_link / invoice page URL
       if (db) {
         const dbRows = await db.query(
-          'SELECT quote_number, payment_link FROM quotes WHERE deal_id = $1 AND payment_link IS NOT NULL',
+          'SELECT quote_number, payment_link, share_token FROM quotes WHERE deal_id = $1 AND payment_link IS NOT NULL',
           [dealId]
         );
-        // Match by quote_number, or attach first DB row to first invoice if unmatched
         dbRows.rows.forEach(row => {
           const match = invoices.find(i => i.quoteNumber === row.quote_number);
-          if (match) match.paymentPageUrl = row.payment_link;
+          const invoicePage = row.quote_number && row.share_token
+            ? `https://whisperroomquote.up.railway.app/i/${row.quote_number}?t=${row.share_token}`
+            : row.payment_link;
+          if (match) match.paymentPageUrl = invoicePage;
         });
-        // If no quote_number matched but we have 1 invoice and 1 DB row, attach it
         if (invoices.length === 1 && !invoices[0].paymentPageUrl && dbRows.rows.length > 0) {
-          invoices[0].paymentPageUrl = dbRows.rows[0].payment_link;
+          const row = dbRows.rows[0];
+          invoices[0].paymentPageUrl = row.quote_number && row.share_token
+            ? `https://whisperroomquote.up.railway.app/i/${row.quote_number}?t=${row.share_token}`
+            : row.payment_link;
         }
       }
 
@@ -3149,10 +3153,11 @@ tbody tr:hover td{background:#fdfcfb}
       if (db) {
         const qr = await db.query(
           `SELECT quote_number, total, date, deal_name, rep_id, share_token, payment_link,
-                  json_snapshot->>'accepted' as accepted
+                  (json_snapshot->>'accepted')::text as accepted
            FROM quotes WHERE deal_id = $1 ORDER BY created_at DESC`,
           [dealId]
         );
+        console.log(`[hub] deal ${dealId} quotes: ${qr.rows.length}`);
         quotes = qr.rows.map(r => ({
           quoteNumber: r.quote_number,
           total:       r.total,
@@ -3161,7 +3166,7 @@ tbody tr:hover td{background:#fdfcfb}
           repId:       r.rep_id,
           shareToken:  r.share_token,
           paymentLink: r.payment_link,
-          accepted:    r.accepted === 'true' || r.accepted === true,
+          accepted:    r.accepted === 'true',
         }));
       }
 
@@ -3173,6 +3178,7 @@ tbody tr:hover td{background:#fdfcfb}
            FROM orders o WHERE o.deal_id = $1 ORDER BY o.created_at DESC`,
           [dealId]
         );
+        console.log(`[hub] deal ${dealId} orders: ${or.rows.length}`);
         orders = or.rows.map(r => ({
           quoteNumber: r.quote_number,
           foamColor:   r.order_data?.foamColor || '',
@@ -3204,9 +3210,13 @@ tbody tr:hover td{background:#fdfcfb}
             properties: ['hs_invoice_status','hs_invoice_date','hs_number','hs_title','hs_amount_billed','hs_balance_due','hs_hubspot_invoice_link','quote_number']
           });
           // Merge payment page URL from DB
-          const dbInv = db ? (await db.query('SELECT quote_number, payment_link FROM quotes WHERE deal_id = $1 AND payment_link IS NOT NULL', [dealId])).rows : [];
+          const dbInv = db ? (await db.query('SELECT quote_number, payment_link, share_token FROM quotes WHERE deal_id = $1 AND payment_link IS NOT NULL', [dealId])).rows : [];
           invoices = (batchRes?.body?.results || []).map(inv => {
-            const dbMatch = dbInv.find(d => d.quote_number === inv.properties?.quote_number);
+            const dbMatch = dbInv.find(d => d.quote_number === inv.properties?.quote_number)
+              || (dbInv.length === 1 ? dbInv[0] : null);
+            const invPageUrl = dbMatch?.quote_number && dbMatch?.share_token
+              ? `https://whisperroomquote.up.railway.app/i/${dbMatch.quote_number}?t=${dbMatch.share_token}`
+              : dbMatch?.payment_link || null;
             return {
               id:             inv.id,
               status:         inv.properties?.hs_invoice_status || 'draft',
@@ -3217,13 +3227,9 @@ tbody tr:hover td{background:#fdfcfb}
               balance:        inv.properties?.hs_balance_due || '0',
               hubspotUrl:     inv.properties?.hs_hubspot_invoice_link || null,
               quoteNumber:    inv.properties?.quote_number || '',
-              paymentPageUrl: dbMatch?.payment_link || null,
+              paymentPageUrl: invPageUrl,
             };
           });
-          // Fallback: attach any unmatched payment_link to first invoice
-          if (invoices.length === 1 && !invoices[0].paymentPageUrl && dbInv.length > 0) {
-            invoices[0].paymentPageUrl = dbInv[0].payment_link;
-          }
         }
       } catch(e) { console.warn('Deal hub invoices error:', e.message); }
 

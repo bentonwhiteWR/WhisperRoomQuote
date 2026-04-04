@@ -1934,7 +1934,7 @@ const server = http.createServer(async (req, res) => {
           dealname: dealName || (() => {
             const base = customer.company || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || 'Customer';
             const now = new Date();
-            const mo = now.toLocaleString('en-US', { month: 'short' });
+            const mo = now.toLocaleString('en-US', { month: 'short', timeZone: 'America/New_York' });
             const yr = now.getFullYear();
             return `${base} · ${mo} ${yr}`;
           })(),
@@ -2009,7 +2009,7 @@ const server = http.createServer(async (req, res) => {
       if (quoteNumber) {
         try {
           const newLink = `https://whisperroomquote.up.railway.app/q/${quoteNumber}`;
-          const datestamp = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+          const datestamp = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone:'America/New_York'});
 
           // Read existing links
           const existingDeal = await httpsRequest({
@@ -2038,7 +2038,7 @@ const server = http.createServer(async (req, res) => {
       if (quoteNumber && contactId) {
         try {
           const newLink = `https://whisperroomquote.up.railway.app/q/${quoteNumber}`;
-          const datestamp = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+          const datestamp = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone:'America/New_York'});
           const totalFmt = total ? ' — $' + parseFloat(total).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
           const dealLabel = dealName ? ` — ${dealName}` : '';
 
@@ -2184,7 +2184,7 @@ const server = http.createServer(async (req, res) => {
         </tr>`
       ).join('');
 
-      const issueDate = q.date || new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+      const issueDate = q.date || new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'});
 
       const html = `<!DOCTYPE html>
 <html lang="en">
@@ -2459,7 +2459,7 @@ tbody tr:hover td{background:#fdfcfb}
     <div class="header-right">
       <div class="quote-type">Price Quote</div>
       <div class="quote-num">${q.quoteNumber||'QUOTE'}</div>
-      <div class="quote-meta">Issued ${q.date||new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+      <div class="quote-meta">Issued ${q.date||new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'})}</div>
       <div class="quote-valid-tag">Valid 30 Days</div>
     </div>
   </div>
@@ -2678,7 +2678,7 @@ tbody tr:hover td{background:#fdfcfb}
       // dealId comes from the quote snapshot in DB or HubSpot — more reliable than embedded template
       let dealId = body.dealId;
 
-      // If dealId is missing, look it up from DB deal_id column first, then snapshot
+      // If dealId is missing, look it up from DB deal_id column first, then snapshot, then HubSpot
       if (!dealId) {
         if (db) {
           const row = await db.query('SELECT deal_id FROM quotes WHERE quote_number = $1', [quoteNumber]);
@@ -2687,6 +2687,29 @@ tbody tr:hover td{background:#fdfcfb}
         if (!dealId) {
           const snapshot = await getQuoteFromDb(quoteNumber);
           if (snapshot?.dealId) dealId = snapshot.dealId;
+          // Also check linkedDealId in snapshot
+          if (!dealId && snapshot?.linkedDealId) dealId = snapshot.linkedDealId;
+        }
+        // Last resort: search HubSpot for a deal with this quote number
+        if (!dealId) {
+          try {
+            const srch = await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: '/crm/v3/objects/deals/search',
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, {
+              filterGroups: [{ filters: [{ propertyName: 'quote_number', operator: 'EQ', value: quoteNumber }] }],
+              properties: ['dealname', 'quote_number'],
+              limit: 1
+            });
+            dealId = srch.body?.results?.[0]?.id || null;
+            if (dealId) console.log(`Accept: found dealId ${dealId} via HubSpot search`);
+          } catch(e) { console.warn('HubSpot deal search failed:', e.message); }
+        }
+        // Also backfill the DB if we found it
+        if (dealId && db) {
+          db.query('UPDATE quotes SET deal_id = $1 WHERE quote_number = $2 AND deal_id IS NULL', [dealId, quoteNumber]).catch(() => {});
         }
       }
 
@@ -3511,6 +3534,7 @@ tbody tr:hover td{background:#fdfcfb}
 
       // 8b. Patch shipping address separately — failure here won't affect invoice status
       if (customer) {
+        console.log(`[invoice] patching address for ${invoiceId}:`, JSON.stringify({name: customer.firstName, addr: customer.address, city: customer.city, state: customer.state, zip: customer.zip}));
         try {
           const addrProps = {};
           const fullName = [customer.firstName, customer.lastName].filter(Boolean).join(' ') || customer.company || '';
@@ -4065,7 +4089,7 @@ tbody tr:hover td{background:#fdfcfb}
       const total = sub - disc + freightAmt + taxAmt;
       const totalWeight = (q.lineItems||[]).reduce((s,i) => s + ((parseFloat(i.weight)||0) * (parseInt(i.qty)||1)), 0);
       const c = q.customer || {};
-      const issueDate = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+      const issueDate = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'});
 
       const lineRows = (q.lineItems||[]).map(item => {
         const itemWeight = parseFloat(item.weight)||0;
@@ -4189,7 +4213,7 @@ tbody tr:last-child td{border-bottom:none}
       <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
       ${disc>0?`<div class="tot"><span>Discount${q.discount&&q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
       ${freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
-      ${taxAmt>0?`<div class="tot"><span>Sales Tax</span><span>${fmt(taxAmt)}</span></div>`:''}
+      ${taxAmt>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+(q.tax.rate*100).toFixed(2).replace(/\.?0+$/,'')+'%)':''}</span><span>${fmt(taxAmt)}</span></div>`:''}
       <div class="tot grand"><span>Order Total</span><span>${fmt(total)}</span></div>
       ${totalWeight>0?`<div class="tot weight-total"><span>&#x2696; Total Weight</span><span>${totalWeight.toLocaleString()} lbs</span></div>`:''}
     </div>
@@ -4212,7 +4236,7 @@ tbody tr:last-child td{border-bottom:none}
       ${o.changeLog.slice().reverse().map(entry => `
         <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f5f5f5;gap:16px">
           <span style="color:#555">${entry.summary}</span>
-          <span style="color:#bbb;white-space:nowrap;font-size:11px">${new Date(entry.at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>
+          <span style="color:#bbb;white-space:nowrap;font-size:11px">${new Date(entry.at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})}</span>
         </div>`).join('')}
     </div>
   </div>` : ''}

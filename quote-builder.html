@@ -1031,9 +1031,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
   <button class="create-btn" id="createBtn" onclick="createDeal()">
     Create Quote &amp; Deal
   </button>
-  <button class="create-btn" id="pdfBtn" onclick="downloadQuotePdf()" style="margin-top:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.4);opacity:.5;cursor:not-allowed" title="Push to HubSpot first" disabled>
-    &#x2B07; Download Quote PDF
-  </button>
+
     <button class="create-btn" onclick="emailViaHubSpot()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);margin-top:8px">
       &#x2709; Email Quote (with Link)
     </button>
@@ -2156,15 +2154,6 @@ async function createDeal() {
       activateLinkBtn();
       updatePushButtonText(); // will show "Update Quote & Deal" + revision preview
       // Also activate PDF button
-      const pdfBtn = document.getElementById('pdfBtn');
-      if (pdfBtn) {
-        pdfBtn.disabled = false;
-        pdfBtn.removeAttribute('disabled');
-        pdfBtn.style.opacity = '1';
-        pdfBtn.style.cursor = 'pointer';
-        pdfBtn.style.color = 'rgba(255,255,255,.85)';
-        pdfBtn.title = 'Download quote as PDF';
-      }
       enableInvoiceBtn();
       enableOrderBtn();
       // Save to history — use actual deal name from HubSpot response
@@ -2882,15 +2871,6 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
     qnSub.textContent = q.quoteNumber;
     activateLinkBtn();
     // Also activate PDF button
-    const pdfBtn = document.getElementById('pdfBtn');
-    if (pdfBtn) {
-      pdfBtn.disabled = false;
-      pdfBtn.removeAttribute('disabled');
-      pdfBtn.style.opacity = '1';
-      pdfBtn.style.cursor = 'pointer';
-      pdfBtn.style.color = 'rgba(255,255,255,.85)';
-      pdfBtn.title = 'Download quote as PDF';
-    }
     enableInvoiceBtn();
     enableOrderBtn();
   }
@@ -3705,26 +3685,28 @@ function renderDealHub(data) {
     quotesList.innerHTML = '';
     data.quotes.forEach(q => {
       const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;margin-bottom:6px;cursor:pointer;transition:border-color .15s';
-      row.onmouseenter = () => row.style.borderColor = 'rgba(238,98,22,.4)';
-      row.onmouseleave = () => row.style.borderColor = 'rgba(255,255,255,.08)';
+      if (accepted) {
+        row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(34,197,94,.08);border:1.5px solid rgba(34,197,94,.35);border-radius:8px;margin-bottom:6px;cursor:pointer;transition:border-color .15s';
+        row.onmouseenter = () => row.style.borderColor = 'rgba(34,197,94,.7)';
+        row.onmouseleave = () => row.style.borderColor = 'rgba(34,197,94,.35)';
+      } else {
+        row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;margin-bottom:6px;cursor:pointer;transition:border-color .15s';
+        row.onmouseenter = () => row.style.borderColor = 'rgba(238,98,22,.4)';
+        row.onmouseleave = () => row.style.borderColor = 'rgba(255,255,255,.08)';
+      }
       row.onclick = () => { closeDealHub(); loadQuoteFromDealHub(q); };
 
-      const accepted = q.accepted;
-      const statusDot = accepted
-        ? '<span style="width:7px;height:7px;border-radius:50%;background:#22c55e;flex-shrink:0;display:inline-block"></span>'
-        : '<span style="width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.2);flex-shrink:0;display:inline-block"></span>';
-
       row.innerHTML = `
-        ${statusDot}
         <div style="flex:1;min-width:0">
-          <span style="font-size:13px;font-weight:700;color:#fff;font-family:var(--mono)">${q.quoteNumber}</span>
-          ${accepted ? '<span style="font-size:9px;font-weight:700;color:#22c55e;margin-left:6px;text-transform:uppercase;letter-spacing:.06em">Accepted</span>' : ''}
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:13px;font-weight:700;color:#fff;font-family:var(--mono)">${q.quoteNumber}</span>
+            ${accepted ? '<span style="font-size:10px;font-weight:800;color:#22c55e;text-transform:uppercase;letter-spacing:.06em;background:rgba(34,197,94,.15);padding:2px 7px;border-radius:4px;border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>' : ''}
+          </div>
         </div>
-        ${q.firstMdl ? `<div style="font-size:11px;color:rgba(255,255,255,.5);min-width:80px;font-family:var(--mono)">${q.firstMdl}</div>` : ''}
-        <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.8)">${fmt(q.total)}</div>
+        ${q.firstMdl ? `<div style="font-size:11px;color:${accepted ? 'rgba(34,197,94,.7)' : 'rgba(255,255,255,.5)'};min-width:80px;font-family:var(--mono)">${q.firstMdl}</div>` : ''}
+        <div style="font-size:13px;font-weight:700;color:${accepted ? '#22c55e' : 'rgba(255,255,255,.8)'}">${fmt(q.total)}</div>
         <div style="font-size:11px;color:rgba(255,255,255,.35);min-width:70px;text-align:right">${fmtDate(q.date)}</div>
-        <div style="font-size:11px;color:#ee6216;flex-shrink:0">Load →</div>
+        <div style="font-size:11px;color:${accepted ? '#22c55e' : '#ee6216'};flex-shrink:0">${accepted ? '✓ Load' : 'Load →'}</div>
       `;
 
       // Right-click or secondary: open quote page

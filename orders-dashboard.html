@@ -1017,7 +1017,7 @@ function openDrawer(quoteNumber) {
       `<div style="padding:6px 0;border-bottom:1px solid var(--border)">
         <span style="color:var(--text);font-weight:600">${entry.summary}</span>
         ${entry.rep ? `<span style="color:var(--orange);margin-left:6px;font-size:11px">— ${entry.rep}</span>` : ''}
-        <span style="color:var(--muted);margin-left:6px;font-size:11px">${new Date(entry.at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>
+        <span style="color:var(--muted);margin-left:6px;font-size:11px">${new Date(entry.at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})}</span>
       </div>`
     ).join('');
   } else {

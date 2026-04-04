@@ -3152,14 +3152,16 @@ tbody tr:hover td{background:#fdfcfb}
       // 1. All quotes for this deal
       // Fetch deal name from HubSpot — used for fallback matching on legacy quotes
       let dealName = null;
+      let dealStage = null;
       try {
         const dnRes = await httpsRequest({
           hostname: 'api.hubapi.com',
-          path: `/crm/v3/objects/deals/${dealId}?properties=dealname`,
+          path: `/crm/v3/objects/deals/${dealId}?properties=dealname,dealstage`,
           method: 'GET',
           headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
         });
         dealName = dnRes.body?.properties?.dealname || null;
+        dealStage = dnRes.body?.properties?.dealstage || null;
       } catch(e) {}
 
       let quotes = [];
@@ -3167,7 +3169,8 @@ tbody tr:hover td{background:#fdfcfb}
         // Match by deal_id OR by deal_name (for quotes saved before deal_id backfill)
         const qr = await db.query(
           `SELECT quote_number, total, date, deal_name, rep_id, share_token, payment_link,
-                  (json_snapshot->>'accepted')::text as accepted
+                  (json_snapshot->>'accepted')::text as accepted,
+                  json_snapshot->'lineItems' as line_items
            FROM quotes
            WHERE deal_id = $1
               OR (deal_id IS NULL AND deal_name = $2)
@@ -3186,16 +3189,26 @@ tbody tr:hover td{background:#fdfcfb}
           console.log(`[hub] backfilled deal_id for ${nullRows.length} quotes`);
         }
 
-        quotes = qr.rows.map(r => ({
-          quoteNumber: r.quote_number,
-          total:       r.total,
-          date:        r.date,
-          dealName:    r.deal_name,
-          repId:       r.rep_id,
-          shareToken:  r.share_token,
-          paymentLink: r.payment_link,
-          accepted:    r.accepted === 'true',
-        }));
+        quotes = qr.rows.map(r => {
+          // Extract first booth/MDL model from line items
+          let firstMdl = '';
+          try {
+            const items = r.line_items || [];
+            const mdlItem = items.find(i => i && (i.name?.startsWith('MDL') || /\d{4}/.test(i.name || '')));
+            if (mdlItem) firstMdl = mdlItem.name?.split(' ').slice(0,2).join(' ') || '';
+          } catch(e) {}
+          return {
+            quoteNumber: r.quote_number,
+            total:       r.total,
+            date:        r.date,
+            dealName:    r.deal_name,
+            repId:       r.rep_id,
+            shareToken:  r.share_token,
+            paymentLink: r.payment_link,
+            accepted:    r.accepted === 'true',
+            firstMdl,
+          };
+        });
       }
 
       // 2. Orders for this deal — match by deal_id OR via quotes join on deal_name
@@ -3267,7 +3280,7 @@ tbody tr:hover td{background:#fdfcfb}
         }
       } catch(e) { console.warn('Deal hub invoices error:', e.message); }
 
-      json({ dealId, quotes, invoices, orders });
+      json({ dealId, dealStage, quotes, invoices, orders });
     } catch(e) {
       console.error('Deal hub error:', e.message);
       json({ error: e.message }, 500);
@@ -3358,12 +3371,25 @@ tbody tr:hover td{background:#fdfcfb}
         hs_invoice_date:   today,
         hs_due_date:       today,
       };
-      // Ship-to address
-      if (customer?.address) invoiceProps.hs_shipping_address_street       = customer.address;
-      if (customer?.city)    invoiceProps.hs_shipping_address_city         = customer.city;
-      if (customer?.state)   invoiceProps.hs_shipping_address_state        = customer.state;
-      if (customer?.zip)     invoiceProps.hs_shipping_address_postal_code  = customer.zip;
-      if (customer?.country) invoiceProps.hs_shipping_address_country      = customer.country || 'US';
+      // Ship-to: patch contact's address fields so HubSpot invoice picks them up
+      if (resolvedContactId && customer?.address) {
+        try {
+          await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/contacts/${resolvedContactId}`,
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, { properties: {
+            address:  customer.address || '',
+            city:     customer.city    || '',
+            state:    toStateFull(customer.state) || customer.state || '',
+            zip:      customer.zip     || '',
+            country:  customer.country || 'United States',
+          }});
+          console.log(`Contact ${resolvedContactId} address updated for invoice`);
+        } catch(e) { console.warn('Contact address patch failed:', e.message); }
+      }
+      invoiceProps.hs_title = quoteNumber ? `Invoice — ${quoteNumber}` : 'Invoice';
       if (resolvedOwnerId) invoiceProps.hubspot_owner_id = String(resolvedOwnerId);
       if (quoteNumber)     invoiceProps.quote_number     = quoteNumber;
 

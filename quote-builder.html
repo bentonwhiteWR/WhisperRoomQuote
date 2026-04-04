@@ -593,35 +593,20 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
 <body>
 
 <div class="topbar">
-  <span id="topbarLogo" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;letter-spacing:-.3px"><span id="logoWhisper" style="color:#f0ede8">Whisper</span><span style="color:#e8531a">Room</span></span>
-  <div class="topbar-right">
-    <button onclick="newQuote()" style="padding:6px 14px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:rgba(255,255,255,.8);cursor:pointer;margin-right:8px;" title="Clear form and start a new quote">
-      + New Quote
-    </button>
+  <span id="topbarLogo" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;letter-spacing:-.3px;flex-shrink:0"><span id="logoWhisper" style="color:#f0ede8">Whisper</span><span style="color:#e8531a">Room</span></span>
+  <nav style="display:flex;gap:5px;align-items:center;flex:1;margin-left:8px;flex-wrap:wrap">
+    <a href="/deals" class="topbar-nav-btn">⬡ Deal Hub</a>
+    <a href="/quotes" class="topbar-nav-btn active">Quotes</a>
+    <a href="/orders" class="topbar-nav-btn">Orders</a>
+    <a href="/shipping" class="topbar-nav-btn">Shipping</a>
+  </nav>
+  <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+    <a id="backToDealHubBtn" href="/deals" style="display:none;padding:5px 12px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.3);border-radius:6px;color:#22c55e;cursor:pointer;text-decoration:none;white-space:nowrap">← Deal Hub</a>
+    <button onclick="newQuote()" style="padding:5px 12px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:rgba(238,98,22,.2);border:1px solid rgba(238,98,22,.4);border-radius:6px;color:#ee6216;cursor:pointer;font-family:inherit;white-space:nowrap">+ New Quote</button>
     <button onclick="toggleHistory()" class="history-btn"><span>&#x1F4CB;</span> History</button>
-    <a href="/orders" class="topbar-nav-btn" title="View production orders">&#x1F4E6; Orders</a>
-    <a href="/shipping" class="topbar-nav-btn active" title="View active shipments">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-      Shipping
-    </a>
-    <button id="themeToggle" onclick="toggleTheme()" style="
-      background: rgba(255,255,255,.1);
-      border: 1px solid rgba(255,255,255,.2);
-      border-radius: 20px;
-      color: rgba(255,255,255,.8);
-      font-family: var(--mono);
-      font-size: 11px;
-      padding: 5px 14px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      transition: all .15s;
-    ">
+    <button id="themeToggle" onclick="toggleTheme()" style="padding:5px 9px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#f0ede8;cursor:pointer;font-size:14px;line-height:1;transition:all .15s;">
       <span id="themeIcon">☀️</span>
-      <span id="themeLabel">Light</span>
     </button>
-    <div class="topbar-badge">Quote Builder</div>
   </div>
 </div>
 
@@ -2179,7 +2164,13 @@ async function createDeal() {
       box.className = 'result-box success';
       window._lastPushedContactId = data.contactId || null;
       window._lastPushedDealId = data.dealId || null;
-      setQuoteAccepted(false); // new push = fresh quote, not accepted yet
+      setQuoteAccepted(false);
+      // Show Back to Deal Hub button
+      const backBtn = document.getElementById('backToDealHubBtn');
+      if (backBtn && data.dealId) {
+        backBtn.style.display = 'inline-flex';
+        backBtn.href = `/deals?dealId=${data.dealId}`;
+      }
       window._lastShareToken = data.shareToken || null;
 
       // Update dealName input with the actual name from HubSpot
@@ -3111,7 +3102,7 @@ function setLogoForTheme(isDark) {
 function toggleTheme() {
   const isDark = document.body.classList.toggle('dark');
   document.getElementById('themeIcon').textContent = isDark ? '🌙' : '☀️';
-  document.getElementById('themeLabel').textContent = isDark ? 'Dark' : 'Light';
+
   localStorage.setItem('wr_theme', isDark ? 'dark' : 'light');
   setLogoForTheme(isDark);
 }
@@ -3123,7 +3114,7 @@ function toggleTheme() {
   if (isDark) {
     document.body.classList.add('dark');
     document.getElementById('themeIcon').textContent = '🌙';
-    document.getElementById('themeLabel').textContent = 'Dark';
+
   }
   setLogoForTheme(isDark);
 })();
@@ -3687,7 +3678,53 @@ document.getElementById('repSelect').addEventListener('change', function() {
 });
 
 updateSummary();
-fetchHistory().then(() => { updateQuoteNumber(); checkLinkBtnState(); });
+fetchHistory().then(() => {
+  updateQuoteNumber();
+  checkLinkBtnState();
+
+  // Handle URL params from Deal Hub
+  const urlParams = new URLSearchParams(window.location.search);
+  const loadQuote = urlParams.get('loadQuote');
+  const dealId    = urlParams.get('dealId');
+  const dealName  = urlParams.get('dealName');
+  const fromHub   = urlParams.get('fromHub');
+
+  // Show "Back to Deal Hub" button if came from hub
+  if (fromHub || dealId || loadQuote) {
+    const btn = document.getElementById('backToDealHubBtn');
+    if (btn) {
+      btn.style.display = 'inline-flex';
+      // If we know which deal, link back to it
+      const backDealId = fromHub || dealId;
+      if (backDealId) btn.href = `/deals?dealId=${backDealId}`;
+    }
+  }
+
+  // Pre-link a deal if coming from Deal Hub
+  if (dealId && dealName) {
+    setTimeout(() => linkDealById(dealId, decodeURIComponent(dealName)), 200);
+  }
+
+  // Load a specific quote if requested
+  if (loadQuote) {
+    const decoded = decodeURIComponent(loadQuote);
+    const entry = allHistory.find(h => h.quoteNumber === decoded || h.id === decoded);
+    if (entry) {
+      loadFromHistoryEntry(entry.id || allHistory.indexOf(entry), true);
+    } else {
+      // Not in cache yet — try fetching
+      fetchHistory().then(() => {
+        const found = allHistory.find(h => h.quoteNumber === decoded || h.id === decoded);
+        if (found) loadFromHistoryEntry(found.id || allHistory.indexOf(found), true);
+      });
+    }
+  }
+
+  // Clean URL so refreshing doesn't re-trigger
+  if (urlParams.toString()) {
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+});
 
 // ── Quote lock / accepted state ───────────────────────────────────
 let _quoteIsAccepted  = false; // loaded quote was accepted by customer

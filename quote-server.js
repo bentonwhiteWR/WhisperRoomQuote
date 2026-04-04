@@ -19,7 +19,7 @@ try {
 
 
 // ── Google Drive Integration ──────────────────────────────────────
-const GDRIVE_ROOT_FOLDER = '1Gxc_aA64I6v28AYYUW75a4sbAzHoc9DH';
+const GDRIVE_ROOT_FOLDER = process.env.GDRIVE_ROOT_FOLDER || '1Gxc_aA64I6v28AYYUW75a4sbAzHoc9DH';
 
 let _gdriveToken = null;
 let _gdriveTokenExpiry = 0;
@@ -168,14 +168,10 @@ async function gdriveCreateDealFolders(dealName, quoteNumber) {
 // Upload a PDF to a deal's subfolder (e.g. Quotes, Invoices, Final Order)
 async function gdriveSavePdfToDeal(quoteNumber, subfolderName, filename, pdfBuffer) {
   try {
-    if (!db) { console.warn('GDrive: no DB connection'); return; }
-    const row = await db.query('SELECT gdrive_folder_id FROM quotes WHERE quote_number = $1', [quoteNumber]);
-    const dealFolderId = row.rows[0]?.gdrive_folder_id;
-    if (!dealFolderId) { console.warn(`GDrive: no folder ID for quote ${quoteNumber}`); return; }
-    console.log(`GDrive: uploading "${filename}" to deal folder ${dealFolderId}`);
-
-    // Upload directly to deal folder (Shared Drive supports service account uploads)
-    const result = await gdriveUploadFilePdf(filename, pdfBuffer, dealFolderId);
+    // Upload directly to Shared Drive root — SA-created subfolders still hit quota
+    // Files are named with quote number so they're identifiable
+    console.log(`GDrive: uploading "${filename}" to Shared Drive root`);
+    const result = await gdriveUploadFilePdf(filename, pdfBuffer, GDRIVE_ROOT_FOLDER);
     if (result?.error) {
       console.warn(`GDrive upload error:`, JSON.stringify(result.error));
     } else {

@@ -3084,7 +3084,8 @@ tbody tr:hover td{background:#fdfcfb}
         method: 'GET',
         headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
       });
-      const invoiceIds = (assocRes?.results || []).map(r => r.toObjectId);
+      console.log(`[deal invoices] deal ${dealId} assoc status:`, assocRes?.status, 'results:', assocRes?.body?.results?.length);
+      const invoiceIds = (assocRes?.body?.results || []).map(r => r.toObjectId);
       if (!invoiceIds.length) { json({ invoices: [] }); return; }
 
       // Batch fetch invoice details
@@ -3098,7 +3099,7 @@ tbody tr:hover td{background:#fdfcfb}
         properties: ['hs_invoice_status','hs_due_date','hs_invoice_date','hs_number','hs_title','hs_amount_billed','hs_balance_due','hs_hubspot_invoice_link','quote_number']
       });
 
-      const invoices = (batchRes?.results || []).map(inv => ({
+      const invoices = (batchRes?.body?.results || []).map(inv => ({
         id: inv.id,
         status:     inv.properties?.hs_invoice_status || 'draft',
         number:     inv.properties?.hs_number || '',
@@ -3117,12 +3118,18 @@ tbody tr:hover td{background:#fdfcfb}
           'SELECT quote_number, payment_link FROM quotes WHERE deal_id = $1 AND payment_link IS NOT NULL',
           [dealId]
         );
+        // Match by quote_number, or attach first DB row to first invoice if unmatched
         dbRows.rows.forEach(row => {
           const match = invoices.find(i => i.quoteNumber === row.quote_number);
           if (match) match.paymentPageUrl = row.payment_link;
         });
+        // If no quote_number matched but we have 1 invoice and 1 DB row, attach it
+        if (invoices.length === 1 && !invoices[0].paymentPageUrl && dbRows.rows.length > 0) {
+          invoices[0].paymentPageUrl = dbRows.rows[0].payment_link;
+        }
       }
 
+      console.log(`[deal invoices] returning ${invoices.length} invoices for deal ${dealId}`);
       json({ invoices });
     } catch(e) {
       console.error('Get deal invoices error:', e.message);

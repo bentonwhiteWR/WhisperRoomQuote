@@ -8,125 +8,106 @@
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial Black,sans-serif' font-size='18' font-weight='900' fill='%23e8531a'>W</text></svg>">
 <style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
 :root {
-  --bg: #0f0f0f;
-  --surface: #1a1a1a;
-  --surface2: #222;
-  --border: #2a2a2a;
-  --text: #e8e8e8;
-  --muted: #888;
-  --dim: rgba(255,255,255,.2);
-  --orange: #ee6216;
-  --orange-dim: rgba(238,98,22,.12);
-  --green: #22c55e;
-  --green-dim: rgba(34,197,94,.12);
-  --amber: #f59e0b;
-  --red: #ef4444;
-  --mono: 'JetBrains Mono', 'Consolas', monospace;
+  --bg:#0f0f0f; --surface:#1a1a1a; --surface2:#222; --surface3:#2a2a2a; --border:#2e2e2e;
+  --text:#e8e8e8; --text2:#aaa; --muted:#666;
+  --orange:#ee6216; --orange-dim:rgba(238,98,22,.12); --orange-border:rgba(238,98,22,.3);
+  --green:#22c55e; --green-dim:rgba(34,197,94,.1); --amber:#f59e0b; --red:#ef4444;
+  --mono:'JetBrains Mono','Consolas',monospace;
 }
 :root.light {
-  --bg: #f5f5f5;
-  --surface: #ffffff;
-  --surface2: #f0f0f0;
-  --border: #e0e0e0;
-  --text: #1a1a1a;
-  --muted: #666;
-  --dim: rgba(0,0,0,.2);
-  --orange: #d44f0c;
-  --orange-dim: rgba(212,79,12,.1);
-  --green: #16a34a;
-  --green-dim: rgba(22,163,74,.1);
+  --bg:#f0f0f0; --surface:#ffffff; --surface2:#f8f8f8; --surface3:#ececec; --border:#d8d8d8;
+  --text:#111111; --text2:#555; --muted:#999;
+  --orange:#c94f0e; --orange-dim:rgba(201,79,14,.08); --orange-border:rgba(201,79,14,.25);
+  --green:#16a34a; --green-dim:rgba(22,163,74,.08); --amber:#d97706; --red:#dc2626;
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased; }
-
-/* Topbar — always dark */
-.topbar { display: flex; align-items: center; justify-content: space-between; padding: 0 20px; min-height: 52px; background: #1a1a1a; border-bottom: 1px solid rgba(255,255,255,.1); position: sticky; top: 0; z-index: 100; gap: 8px; flex-wrap: nowrap; }
-.topbar-logo { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; white-space: nowrap; color: #f0ede8; flex-shrink: 0; }
-.topbar-logo span { color: #e8531a; }
-.topbar-nav { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
-.nav-link { padding: 5px 10px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; border-radius: 6px; color: rgba(255,255,255,.55); text-decoration: none; transition: all .15s; white-space: nowrap; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); }
-.nav-link:hover { background: rgba(255,255,255,.12); color: rgba(255,255,255,.9); }
-.nav-link.active { background: rgba(238,98,22,.2); color: #ee6216; border-color: rgba(238,98,22,.4); }
-.theme-btn { padding: 5px 9px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 6px; color: #f0ede8; cursor: pointer; font-size: 14px; line-height: 1; transition: all .15s; flex-shrink: 0; }
-.theme-btn:hover { background: rgba(255,255,255,.14); }
-
-/* Layout */
-.layout { display:grid; grid-template-columns:320px 1fr; height:calc(100vh - 52px); overflow:hidden; }
-
-/* Deal list */
-.deal-list-panel { border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
-.deal-list-header { padding:16px; border-bottom:1px solid var(--border); }
-.search-input { width:100%; padding:8px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:13px; font-family:inherit; outline:none; }
-.search-input:focus { border-color:rgba(238,98,22,.4); }
-.filter-row { display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; }
-.filter-btn { padding:4px 10px; font-size:10px; font-weight:700; border-radius:4px; cursor:pointer; font-family:inherit; text-transform:uppercase; letter-spacing:.05em; border:1px solid var(--border); background:none; color:var(--muted); transition:.15s; }
-.filter-btn.active { background:var(--orange-dim); border-color:rgba(238,98,22,.3); color:var(--orange); }
-.deal-list { flex:1; overflow-y:auto; }
-.deal-item { padding:13px 16px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .1s; }
-.deal-item:hover { background:rgba(255,255,255,.03); }
-.deal-item.active { background:rgba(238,98,22,.08); border-left:2px solid var(--orange); }
-.deal-name { font-size:13px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.deal-meta { display:flex; align-items:center; gap:8px; margin-top:4px; flex-wrap:wrap; }
-.deal-amount { font-size:12px; font-weight:700; color:var(--orange); }
-.deal-stage-badge { font-size:10px; font-weight:700; padding:2px 6px; border-radius:3px; text-transform:uppercase; letter-spacing:.05em; }
-.deal-mdl { font-size:10px; color:var(--dim); font-family:var(--mono); }
-.deal-rep { font-size:10px; color:var(--muted); }
-.deal-modified { font-size:10px; color:var(--dim); }
-.pay-badge { font-size:9px; font-weight:700; padding:2px 5px; border-radius:3px; text-transform:uppercase; letter-spacing:.04em; }
-.deal-empty { padding:40px 20px; text-align:center; color:var(--muted); font-size:13px; }
-
-/* Hub panel */
-.hub-panel { overflow-y:auto; display:flex; flex-direction:column; }
-.hub-empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; color:var(--muted); }
-.hub-empty-icon { font-size:48px; opacity:.3; }
-
-/* Hub content */
-.hub-header { padding:20px 24px 16px; border-bottom:1px solid var(--border); }
-.hub-deal-name { font-size:20px; font-weight:800; color:#fff; }
-.hub-deal-meta { display:flex; align-items:center; gap:10px; margin-top:6px; flex-wrap:wrap; }
-.hub-actions { display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
-.btn { padding:8px 16px; font-size:12px; font-weight:700; border-radius:7px; cursor:pointer; font-family:inherit; border:none; transition:.15s; }
-.btn-primary { background:var(--orange); color:#fff; }
-.btn-primary:hover { background:#d4561b; }
-.btn-secondary { background:var(--surface2); color:var(--text); border:1px solid var(--border); }
-.btn-secondary:hover { background:rgba(255,255,255,.08); }
-.btn-green { background:rgba(34,197,94,.15); color:var(--green); border:1px solid rgba(34,197,94,.3); }
-
-/* Pipeline */
-.pipeline { display:flex; margin:16px 24px; border-radius:8px; overflow:hidden; }
-.pipe-step { flex:1; padding:10px 8px; text-align:center; font-size:11px; font-weight:700; cursor:pointer; transition:.15s; border:1px solid transparent; }
-
-/* Sections */
-.hub-body { padding:20px 24px; display:flex; flex-direction:column; gap:20px; }
-.section-title { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:rgba(255,255,255,.35); margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; }
-.card-row { display:flex; align-items:center; gap:12px; padding:11px 14px; border-radius:8px; margin-bottom:6px; cursor:pointer; transition:border-color .15s; }
-.card-row-accepted { background:rgba(34,197,94,.08); border:1.5px solid rgba(34,197,94,.35); }
-.card-row-normal { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); }
-.card-row-normal:hover { border-color:rgba(238,98,22,.4); }
-.card-row-accepted:hover { border-color:rgba(34,197,94,.7); }
-
-/* Next action */
-.next-action { padding:12px 16px; background:rgba(238,98,22,.08); border:1px solid rgba(238,98,22,.2); border-radius:8px; display:flex; align-items:center; gap:12px; }
-
-/* Admin */
-.admin-panel { border-top:1px solid var(--border); padding-top:16px; }
-.admin-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; }
-.admin-select { width:100%; padding:8px 10px; background:rgba(255,255,255,.07); border:1px solid var(--border); border-radius:7px; color:#fff; font-size:12px; font-family:inherit; outline:none; cursor:pointer; }
-
-/* Toast */
-#toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:9999; display:flex; flex-direction:column; gap:8px; pointer-events:none; }
-.toast-msg { padding:10px 20px; border-radius:8px; font-size:13px; font-weight:600; color:#fff; opacity:0; transition:opacity .3s; }
+body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; -webkit-font-smoothing:antialiased; }
+.topbar { display:flex; align-items:center; padding:0 20px; min-height:52px; background:#1a1a1a; border-bottom:1px solid rgba(255,255,255,.1); position:sticky; top:0; z-index:200; gap:10px; }
+.topbar-logo { font-family:'Syne',sans-serif; font-size:20px; font-weight:800; color:#f0ede8; flex-shrink:0; margin-right:4px; }
+.topbar-logo span { color:#e8531a; }
+.topbar-nav { display:flex; gap:5px; align-items:center; flex:1; }
+.nav-link { padding:5px 10px; font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; border-radius:6px; color:rgba(255,255,255,.5); text-decoration:none; transition:.15s; white-space:nowrap; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); }
+.nav-link:hover { background:rgba(255,255,255,.12); color:rgba(255,255,255,.9); }
+.nav-link.active { background:rgba(238,98,22,.2); color:#ee6216; border-color:rgba(238,98,22,.4); }
+.topbar-spacer { flex:1; }
+.theme-btn { padding:5px 9px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:6px; color:#f0ede8; cursor:pointer; font-size:14px; line-height:1; flex-shrink:0; }
+.main { display:flex; height:calc(100vh - 52px); overflow:hidden; }
+.board-wrap { flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0; }
+.board-toolbar { padding:10px 16px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex-shrink:0; }
+.search-box { flex:1; min-width:180px; max-width:300px; position:relative; }
+.search-box input { width:100%; padding:7px 12px 7px 30px; background:var(--surface2); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:12px; font-family:inherit; outline:none; }
+.search-box input:focus { border-color:var(--orange-border); }
+.search-box::before { content:"🔍"; position:absolute; left:9px; top:50%; transform:translateY(-50%); font-size:11px; pointer-events:none; }
+.rep-select { padding:7px 10px; background:var(--surface2); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:12px; font-family:inherit; outline:none; cursor:pointer; }
+.board-count { font-size:11px; color:var(--muted); margin-left:auto; }
+.board { flex:1; display:grid; grid-template-columns:repeat(5,minmax(170px,1fr)); gap:0; overflow-x:auto; overflow-y:hidden; }
+.col { display:flex; flex-direction:column; border-right:1px solid var(--border); overflow:hidden; }
+.col:last-child { border-right:none; }
+.col-header { padding:10px 12px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+.col-title { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.07em; }
+.col-count { font-size:10px; font-weight:700; padding:2px 7px; border-radius:10px; }
+.col-cards { flex:1; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:6px; }
+.col-sent .col-title { color:#ee6216; } .col-sent .col-count { background:rgba(238,98,22,.12); color:#ee6216; }
+.col-verbal .col-title { color:#f59e0b; } .col-verbal .col-count { background:rgba(245,158,11,.12); color:#f59e0b; }
+.col-won .col-title { color:#22c55e; } .col-won .col-count { background:rgba(34,197,94,.12); color:#22c55e; }
+.col-shipped .col-title { color:#3b82f6; } .col-shipped .col-count { background:rgba(59,130,246,.12); color:#3b82f6; }
+.col-lost .col-title { color:var(--muted); } .col-lost .col-count { background:rgba(239,68,68,.08); color:var(--muted); }
+.deal-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:10px 12px; cursor:pointer; transition:border-color .15s, box-shadow .15s; }
+.deal-card:hover { border-color:var(--orange-border); box-shadow:0 2px 8px rgba(0,0,0,.12); }
+.deal-card.active { border-color:var(--orange); box-shadow:0 0 0 1px var(--orange); }
+.deal-card.accepted { border-color:rgba(34,197,94,.35); background:var(--green-dim); }
+.card-name { font-size:12px; font-weight:700; color:var(--text); line-height:1.3; margin-bottom:4px; }
+.card-mdl  { font-size:10px; font-family:var(--mono); color:var(--text2); margin-bottom:4px; }
+.card-meta { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
+.card-amount { font-size:11px; font-weight:700; color:var(--orange); }
+.card-rep    { font-size:10px; color:var(--muted); }
+.card-age    { font-size:10px; color:var(--muted); margin-left:auto; }
+.card-pay    { font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; }
+.card-quote  { font-size:9px; font-family:var(--mono); color:var(--muted); margin-top:3px; }
+.hub-panel { width:480px; flex-shrink:0; border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+.hub-empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; }
+.hub-empty-icon { font-size:40px; opacity:.2; }
+.hub-empty-text { font-size:13px; color:var(--muted); }
+.hub-scroll { flex:1; overflow-y:auto; }
+.hub-header { padding:18px 20px 14px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--surface); z-index:10; }
+.hub-name { font-size:17px; font-weight:800; color:var(--text); }
+.hub-meta { display:flex; align-items:center; gap:8px; margin-top:6px; flex-wrap:wrap; }
+.hub-actions { display:flex; gap:7px; margin-top:12px; flex-wrap:wrap; }
+.btn { padding:7px 14px; font-size:11px; font-weight:700; border-radius:6px; cursor:pointer; font-family:inherit; border:none; transition:.15s; text-decoration:none; display:inline-flex; align-items:center; gap:4px; }
+.btn-orange { background:var(--orange); color:#fff; }
+.btn-ghost  { background:var(--surface2); color:var(--text); border:1px solid var(--border); }
+.btn-ghost:hover { border-color:var(--orange-border); }
+.btn-green  { background:var(--green-dim); color:var(--green); border:1px solid rgba(34,197,94,.3); }
+.pipeline { display:flex; margin:12px 20px; border-radius:7px; overflow:hidden; border:1px solid var(--border); }
+.pipe-step { flex:1; padding:8px 4px; text-align:center; font-size:10px; font-weight:700; cursor:pointer; transition:.12s; border-right:1px solid var(--border); user-select:none; }
+.pipe-step:last-child { border-right:none; }
+.next-action { margin:0 20px 12px; padding:10px 14px; border-radius:7px; display:flex; align-items:flex-start; gap:10px; background:var(--orange-dim); border:1px solid var(--orange-border); }
+.na-icon { font-size:16px; flex-shrink:0; margin-top:1px; }
+.na-label { font-size:9px; font-weight:800; color:var(--orange); text-transform:uppercase; letter-spacing:.07em; }
+.na-text  { font-size:12px; font-weight:600; color:var(--text); margin-top:2px; line-height:1.4; }
+.hub-section { padding:0 20px 16px; }
+.section-label { font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin-bottom:8px; }
+.row-card { display:flex; align-items:center; gap:10px; padding:9px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:7px; margin-bottom:5px; cursor:pointer; transition:border-color .12s; }
+.row-card:hover { border-color:var(--orange-border); }
+.row-card.row-accepted { background:var(--green-dim); border-color:rgba(34,197,94,.3); }
+.row-card.row-accepted:hover { border-color:var(--green); }
+.row-card.row-paid { background:var(--green-dim); border-color:rgba(34,197,94,.3); cursor:default; }
+.row-link { font-size:10px; color:var(--muted); text-decoration:none; padding:2px 7px; border-radius:4px; border:1px solid var(--border); flex-shrink:0; }
+.row-link:hover { border-color:var(--orange-border); color:var(--orange); }
+.row-date { font-size:10px; color:var(--muted); flex-shrink:0; }
+.row-badge { font-size:9px; font-weight:800; padding:2px 6px; border-radius:3px; text-transform:uppercase; letter-spacing:.05em; flex-shrink:0; }
+.admin-toggle { padding:0 20px 8px; }
+.admin-btn { background:none; border:none; color:var(--muted); font-size:11px; font-weight:600; cursor:pointer; font-family:inherit; text-transform:uppercase; letter-spacing:.06em; display:flex; align-items:center; gap:5px; padding:6px 0; }
+.admin-inner { padding:0 20px 16px; display:none; }
+.admin-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.admin-label { font-size:9px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; display:block; margin-bottom:5px; }
+.admin-select { width:100%; padding:7px 9px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; font-family:inherit; outline:none; cursor:pointer; }
+#toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:9999; display:flex; flex-direction:column; gap:6px; pointer-events:none; }
+.toast-msg { padding:9px 18px; border-radius:7px; font-size:12px; font-weight:600; color:#fff; opacity:0; transition:opacity .25s; white-space:nowrap; }
 .toast-msg.show { opacity:1; }
-.toast-success { background:#1a7a4a; }
-.toast-error   { background:#7a1a1a; }
-.toast-info    { background:#1a3a7a; }
-
-@media (max-width:768px) {
-  .layout { grid-template-columns:1fr; }
-  .deal-list-panel { height:280px; border-right:none; border-bottom:1px solid var(--border); }
-}
+.toast-success { background:#1a7a4a; } .toast-error { background:#7a1a1a; } .toast-info { background:#1a3a7a; }
+::-webkit-scrollbar { width:5px; height:5px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 </style>
 </head>
 <body>
@@ -138,496 +119,392 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     <a href="/quotes" class="nav-link">Quotes</a>
     <a href="/orders" class="nav-link">Orders</a>
     <a href="/shipping" class="nav-link">Shipping</a>
-    <button onclick="newQuote()" style="padding:5px 12px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:rgba(238,98,22,.2);border:1px solid rgba(238,98,22,.4);border-radius:6px;color:#ee6216;cursor:pointer;font-family:inherit;white-space:nowrap">+ New Quote</button>
   </nav>
-  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark mode">☀️</button>
+  <div class="topbar-spacer"></div>
+  <button onclick="newQuote()" style="padding:5px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(238,98,22,.2);border:1px solid rgba(238,98,22,.4);border-radius:6px;color:#ee6216;cursor:pointer;font-family:inherit;white-space:nowrap">+ New Quote</button>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">☀️</button>
 </div>
 
-<div class="layout">
-
-  <!-- Left: deal list -->
-  <div class="deal-list-panel">
-    <div class="deal-list-header">
-      <input class="search-input" id="dealSearch" type="text" placeholder="Search deals, companies, contacts…" oninput="onSearch(this.value)">
-      <div class="filter-row" id="filterRow">
-        <button class="filter-btn active" data-stage="" onclick="setStageFilter(this,'')">All</button>
-        <button class="filter-btn" data-stage="appointmentscheduled" onclick="setStageFilter(this,'appointmentscheduled')">Sent</button>
-        <button class="filter-btn" data-stage="contractsent" onclick="setStageFilter(this,'contractsent')">Verbal</button>
-        <button class="filter-btn" data-stage="closedwon" onclick="setStageFilter(this,'closedwon')">Won</button>
-        <button class="filter-btn" data-stage="845719" onclick="setStageFilter(this,'845719')">Shipped</button>
+<div class="main">
+  <div class="board-wrap">
+    <div class="board-toolbar">
+      <div class="search-box">
+        <input id="dealSearch" type="text" placeholder="Search name, company, quote #…" oninput="onSearch()">
       </div>
+      <select class="rep-select" id="repFilter" onchange="onRepFilter()">
+        <option value="">All Reps</option>
+        <option value="36330944">Jill</option>
+        <option value="38143901">Sarah</option>
+        <option value="117442978">Travis</option>
+        <option value="36303670">Benton</option>
+        <option value="36320208">Gabe</option>
+        <option value="38732178">Kim</option>
+        <option value="38900892">Chet</option>
+        <option value="38732186">Jeromy</option>
+      </select>
+      <span class="board-count" id="boardCount"></span>
     </div>
-    <div class="deal-list" id="dealList">
-      <div class="deal-empty">Loading deals…</div>
+    <div class="board" id="board">
+      <div style="padding:40px;text-align:center;color:var(--muted);grid-column:1/-1">Loading deals…</div>
     </div>
   </div>
 
-  <!-- Right: hub detail -->
   <div class="hub-panel" id="hubPanel">
     <div class="hub-empty" id="hubEmpty">
       <div class="hub-empty-icon">⬡</div>
-      <div style="font-size:15px;font-weight:600;color:rgba(255,255,255,.4)">Select a deal to open its hub</div>
-      <div style="font-size:12px;color:rgba(255,255,255,.2)">Or create a new quote to start a deal</div>
+      <div class="hub-empty-text">Select a deal</div>
     </div>
-    <div id="hubContent" style="display:none;flex:1">
-      <!-- Injected by renderHub() -->
-    </div>
+    <div id="hubContent" style="display:none" class="hub-scroll"></div>
   </div>
-
 </div>
 
 <div id="toast"></div>
 
 <script>
 const REPS = {
-  '36330944': 'Jill', '38143901': 'Sarah', '117442978': 'Travis',
-  '36303670': 'Benton', '36320208': 'Gabe', '38732178': 'Kim',
-  '38900892': 'Chet', '38732186': 'Jeromy'
+  '36330944':'Jill','38143901':'Sarah','117442978':'Travis',
+  '36303670':'Benton','36320208':'Gabe','38732178':'Kim',
+  '38900892':'Chet','38732186':'Jeromy'
 };
 const STAGES = {
-  'appointmentscheduled': 'Sent Quote',
-  'qualifiedtobuy':       'Updated Quote',
-  'contractsent':         'Verbal Confirmation',
-  'closedwon':            'Closed Won',
-  '845719':               'Shipped',
-  'closedlost':           'Closed Lost',
+  'appointmentscheduled':'Sent Quote','qualifiedtobuy':'Updated Quote',
+  'contractsent':'Verbal Confirmation','closedwon':'Closed Won',
+  '845719':'Shipped','closedlost':'Closed Lost',
 };
-const STAGE_COLORS = {
-  'appointmentscheduled': 'rgba(238,98,22,.15)',
-  'qualifiedtobuy':       'rgba(238,98,22,.2)',
-  'contractsent':         'rgba(245,158,11,.15)',
-  'closedwon':            'rgba(34,197,94,.15)',
-  '845719':               'rgba(34,197,94,.2)',
-  'closedlost':           'rgba(239,68,68,.15)',
-};
-const STAGE_TEXT = {
-  'appointmentscheduled': '#ee6216',
-  'qualifiedtobuy':       '#ee6216',
-  'contractsent':         '#f59e0b',
-  'closedwon':            '#22c55e',
-  '845719':               '#22c55e',
-  'closedlost':           '#ef4444',
-};
-const PAY_LABELS = { paid:'✓ Paid', po_received:'PO Received', not_paid:'Not Paid' };
-const PAY_COLORS = { paid:'#22c55e', po_received:'#f59e0b', not_paid:'rgba(255,255,255,.3)' };
-
-let allDeals = [];
-let currentDealId = null;
-let currentStageFilter = '';
-let searchTimeout = null;
-
-const fmt = n => '$' + parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
-const fmtDate = d => {
-  if (!d) return '—';
-  const dt = new Date(d);
-  const now = new Date();
-  const diff = (now - dt) / 1000;
-  if (diff < 3600)   return Math.round(diff/60) + 'm ago';
-  if (diff < 86400)  return Math.round(diff/3600) + 'h ago';
-  if (diff < 604800) return Math.round(diff/86400) + 'd ago';
-  return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'America/New_York'});
+const COLUMNS = [
+  {key:'sent',   label:'Sent / Updated', stages:['appointmentscheduled','qualifiedtobuy'], cls:'col-sent'},
+  {key:'verbal', label:'Verbal Confirm', stages:['contractsent'],                         cls:'col-verbal'},
+  {key:'won',    label:'Closed Won',     stages:['closedwon'],                             cls:'col-won'},
+  {key:'shipped',label:'Shipped',        stages:['845719'],                                cls:'col-shipped'},
+  {key:'lost',   label:'Closed Lost',    stages:['closedlost'],                            cls:'col-lost'},
+];
+const PAY_COLORS = {paid:'#22c55e',po_received:'#f59e0b',not_paid:''};
+const PAY_LABELS = {paid:'✓ Paid',po_received:'PO Rcvd',not_paid:''};
+const PIPE_BG = {
+  appointmentscheduled:'#ee6216',qualifiedtobuy:'#ee6216',contractsent:'#f59e0b',
+  closedwon:'#22c55e','845719':'#3b82f6',closedlost:'#555'
 };
 
-// ── Load deals ──────────────────────────────────────────────────────
-async function loadDeals(query = '') {
+let allDeals=[], filteredDeals=[], currentDealId=null, searchTimeout=null, currentRepFilter='';
+
+const fmt = n => '$'+parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
+const fmtAge = d => {
+  if(!d) return '';
+  const s=(Date.now()-new Date(d))/1000;
+  if(s<3600)  return Math.round(s/60)+'m';
+  if(s<86400) return Math.round(s/3600)+'h';
+  if(s<604800)return Math.round(s/86400)+'d';
+  return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'America/New_York'});
+};
+const fmtDate = d => d?new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'America/New_York'}):'—';
+
+async function loadDeals() {
   try {
-    const qs = new URLSearchParams({ limit: 60 });
-    if (query)               qs.set('q', query);
-    if (currentStageFilter)  qs.set('stage', currentStageFilter);
-    const res  = await fetch('/api/deals/list?' + qs, { credentials: 'include' });
-    const data = await res.json();
-    allDeals = data.deals || [];
-    renderDealList(allDeals);
+    const qs=new URLSearchParams({limit:100});
+    if(currentRepFilter) qs.set('rep',currentRepFilter);
+    const res=await fetch('/api/deals/list?'+qs,{credentials:'include'});
+    const data=await res.json();
+    if(data.error) throw new Error(data.error);
+    allDeals=data.deals||[];
+    applyFilter();
   } catch(e) {
-    document.getElementById('dealList').innerHTML = `<div class="deal-empty">Error: ${e.message}</div>`;
+    document.getElementById('board').innerHTML=`<div style="padding:40px;color:#ef4444;grid-column:1/-1">Error: ${e.message}</div>`;
   }
 }
 
-function renderDealList(deals) {
-  const list = document.getElementById('dealList');
-  if (!deals.length) {
-    list.innerHTML = '<div class="deal-empty">No deals found</div>';
-    return;
-  }
-  list.innerHTML = '';
-  deals.forEach(d => {
-    const div = document.createElement('div');
-    div.className = 'deal-item' + (d.id === currentDealId ? ' active' : '');
-    div.onclick = () => openDeal(d.id);
+function applyFilter() {
+  const q=document.getElementById('dealSearch').value.trim().toLowerCase();
+  filteredDeals=!q?[...allDeals]:allDeals.filter(d=>
+    d.name?.toLowerCase().includes(q)||
+    d.latestQuote?.toLowerCase().includes(q)||
+    REPS[d.ownerId]?.toLowerCase().includes(q)
+  );
+  renderBoard();
+}
 
-    const ps = d.paymentStatus || 'not_paid';
-    const payColor = PAY_COLORS[ps];
-    const payLabel = PAY_LABELS[ps];
-    const stageLabel = STAGES[d.stage] || d.stage || '—';
-    const stageColor = STAGE_TEXT[d.stage] || 'rgba(255,255,255,.4)';
-    const stageBg    = STAGE_COLORS[d.stage] || 'rgba(255,255,255,.06)';
-    const repName    = REPS[d.ownerId] || '—';
-
-    div.innerHTML = `
-      <div class="deal-name">${d.name}</div>
-      <div class="deal-meta">
-        ${d.amount && parseFloat(d.amount) > 0 ? `<span class="deal-amount">${fmt(d.amount)}</span>` : ''}
-        <span class="deal-stage-badge" style="background:${stageBg};color:${stageColor}">${stageLabel}</span>
-        ${d.firstMdl ? `<span class="deal-mdl">${d.firstMdl}</span>` : ''}
-        ${ps !== 'not_paid' ? `<span class="pay-badge" style="color:${payColor};border:1px solid ${payColor};background:${ps==='paid'?'rgba(34,197,94,.1)':'rgba(245,158,11,.1)'}">${payLabel}</span>` : ''}
-      </div>
-      <div class="deal-meta" style="margin-top:3px">
-        <span class="deal-rep">${repName}</span>
-        <span class="deal-modified">${fmtDate(d.modified)}</span>
-        ${d.latestQuote ? `<span class="deal-mdl">${d.latestQuote}</span>` : ''}
-      </div>
-    `;
-    list.appendChild(div);
+function renderBoard() {
+  const board=document.getElementById('board');
+  board.innerHTML='';
+  let total=0;
+  COLUMNS.forEach(col => {
+    const deals=filteredDeals.filter(d=>col.stages.includes(d.stage));
+    total+=deals.length;
+    const colEl=document.createElement('div');
+    colEl.className=`col ${col.cls}`;
+    colEl.innerHTML=`<div class="col-header"><span class="col-title">${col.label}</span><span class="col-count">${deals.length}</span></div>`;
+    const cardsEl=document.createElement('div');
+    cardsEl.className='col-cards';
+    if(!deals.length) {
+      cardsEl.innerHTML='<div style="font-size:11px;color:var(--muted);text-align:center;padding:16px 4px;font-style:italic">No deals</div>';
+    } else {
+      deals.forEach(d => {
+        const card=document.createElement('div');
+        card.className='deal-card'+(d.id===currentDealId?' active':'')+(d.accepted&&d.id!==currentDealId?' accepted':'');
+        card.onclick=()=>openDeal(d.id);
+        const ps=d.paymentStatus||'not_paid';
+        const payBg=ps==='paid'?'rgba(34,197,94,.12)':'rgba(245,158,11,.1)';
+        const payHtml=ps!=='not_paid'
+          ?`<span class="card-pay" style="color:${PAY_COLORS[ps]};background:${payBg};border:1px solid ${PAY_COLORS[ps]}">${PAY_LABELS[ps]}</span>`
+          :'';
+        card.innerHTML=`
+          <div class="card-name">${d.name}</div>
+          ${d.firstMdl?`<div class="card-mdl">${d.firstMdl}</div>`:''}
+          <div class="card-meta">
+            ${d.amount&&parseFloat(d.amount)>0?`<span class="card-amount">${fmt(d.amount)}</span>`:''}
+            ${payHtml}
+            <span class="card-rep">${REPS[d.ownerId]||'—'}</span>
+            <span class="card-age">${fmtAge(d.modified)}</span>
+          </div>
+          ${d.latestQuote?`<div class="card-quote">${d.latestQuote}</div>`:''}
+        `;
+        cardsEl.appendChild(card);
+      });
+    }
+    colEl.appendChild(cardsEl);
+    board.appendChild(colEl);
   });
+  document.getElementById('boardCount').textContent=`${total} deals`;
 }
 
-// ── Open deal ───────────────────────────────────────────────────────
 async function openDeal(dealId) {
-  currentDealId = dealId;
-  // Highlight in list
-  document.querySelectorAll('.deal-item').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.deal-item').forEach(el => {
-    const deal = allDeals.find(d => d.id === dealId);
-    if (deal && el.querySelector('.deal-name')?.textContent === deal.name) el.classList.add('active');
-  });
-  // Re-render to get proper active state
-  renderDealList(allDeals);
-
-  document.getElementById('hubEmpty').style.display    = 'none';
-  document.getElementById('hubContent').style.display  = 'block';
-  document.getElementById('hubContent').innerHTML = `<div style="padding:48px;text-align:center;color:rgba(255,255,255,.3);font-size:13px">Loading deal…</div>`;
-
+  currentDealId=dealId;
+  renderBoard();
+  document.getElementById('hubEmpty').style.display='none';
+  const hc=document.getElementById('hubContent');
+  hc.style.display='block';
+  hc.innerHTML='<div style="padding:48px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>';
   try {
-    const res  = await fetch(`/api/deals/${dealId}/hub`, { credentials: 'include' });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    renderHub(dealId, data);
+    const res=await fetch(`/api/deals/${dealId}/hub`,{credentials:'include'});
+    const data=await res.json();
+    if(data.error) throw new Error(data.error);
+    renderHub(dealId,data);
   } catch(e) {
-    document.getElementById('hubContent').innerHTML = `<div style="padding:40px;color:#ef4444;font-size:13px">Error: ${e.message}</div>`;
+    hc.innerHTML=`<div style="padding:40px;color:#ef4444;font-size:13px">Error: ${e.message}</div>`;
   }
 }
 
-// ── Render hub ──────────────────────────────────────────────────────
-function renderHub(dealId, data) {
-  const deal = allDeals.find(d => d.id === dealId) || {};
-  const ps   = data.paymentStatus || 'not_paid';
+function renderHub(dealId,data) {
+  const deal=allDeals.find(d=>d.id===dealId)||{};
+  const ps=data.paymentStatus||'not_paid';
+  const na={
+    appointmentscheduled:{icon:'📋',text:'Quote sent — follow up with the customer'},
+    qualifiedtobuy:      {icon:'📋',text:'Quote updated — follow up with customer'},
+    contractsent:        {icon:ps==='paid'||ps==='po_received'?'📦':'💳',
+                          text:ps==='paid'||ps==='po_received'?'Payment confirmed — process the order':'Quote accepted — collect payment (CC or PO)'},
+    closedwon:           {icon:'📦',text:'In production — ship when complete'},
+    '845719':            {icon:'✅',text:'Shipped — tracking active on shipping board'},
+  }[data.dealStage];
 
-  // Next action logic
-  const nextActions = {
-    'appointmentscheduled': { icon:'📋', text:'Follow up — waiting on customer decision' },
-    'qualifiedtobuy':       { icon:'📋', text:'Quote updated — follow up with customer' },
-    'contractsent':         { icon: ps==='paid'||ps==='po_received' ? '📦' : '💳',
-                              text: ps==='paid'||ps==='po_received'
-                                ? 'Payment confirmed — process the order when ready'
-                                : 'Quote accepted — collect payment (CC or PO) to proceed' },
-    'closedwon':            { icon:'📦', text:'Order in production — ship when complete' },
-    '845719':               { icon:'✅', text:'Shipped — tracking active on shipping board' },
-  };
-  const na = nextActions[data.dealStage];
-
-  // Pipeline stages
-  const pipeStages = [
-    { key:'appointmentscheduled', label:'Sent Quote' },
-    { key:'qualifiedtobuy',       label:'Updated' },
-    { key:'contractsent',         label:'Verbal Confirm' },
-    { key:'closedwon',            label:'Closed Won' },
-    { key:'845719',               label:'Shipped' },
+  const pipeStages=[
+    {key:'appointmentscheduled',label:'Sent'},{key:'qualifiedtobuy',label:'Updated'},
+    {key:'contractsent',label:'Verbal'},{key:'closedwon',label:'Won'},{key:'845719',label:'Shipped'},
   ];
-  const curPipeIdx = pipeStages.findIndex(s => s.key === data.dealStage);
-  const pipeHtml = pipeStages.map((s, i) => {
-    const active = i === curPipeIdx;
-    const past   = i < curPipeIdx;
-    const bg     = active ? '#ee6216' : past ? 'rgba(238,98,22,.18)' : 'rgba(255,255,255,.04)';
-    const color  = active ? '#fff' : past ? 'rgba(238,98,22,.8)' : 'rgba(255,255,255,.25)';
-    const border = active ? '#ee6216' : past ? 'rgba(238,98,22,.2)' : 'rgba(255,255,255,.07)';
-    const br = i===0 ? '7px 0 0 7px' : i===pipeStages.length-1 ? '0 7px 7px 0' : '0';
-    return `<div class="pipe-step" style="background:${bg};color:${color};border-color:${border};border-radius:${br}" onclick="stageOverride('${s.key}','${s.label}')" title="Move to ${s.label}">${s.label}</div>`;
+  const curIdx=pipeStages.findIndex(s=>s.key===data.dealStage);
+  const pipeHtml=pipeStages.map((s,i)=>{
+    const active=i===curIdx, past=i<curIdx;
+    const bg=active?PIPE_BG[s.key]||'#ee6216':past?'rgba(238,98,22,.15)':'var(--surface2)';
+    const color=active?'#fff':past?'rgba(238,98,22,.7)':'var(--muted)';
+    const border=active?PIPE_BG[s.key]||'#ee6216':past?'rgba(238,98,22,.2)':'var(--border)';
+    return `<div class="pipe-step" style="background:${bg};color:${color};border-color:${border}" onclick="doStageOverride('${s.key}','${s.label}')">${s.label}</div>`;
   }).join('');
 
-  // Quotes
-  const quotesHtml = !data.quotes?.length
-    ? '<div style="font-size:12px;color:rgba(255,255,255,.3);font-style:italic;padding:6px 0">No quotes yet</div>'
-    : data.quotes.map(q => {
-        const accepted = q.accepted;
-        const rowClass = accepted ? 'card-row card-row-accepted' : 'card-row card-row-normal';
-        return `<div class="${rowClass}" onclick="loadQuote('${q.quoteNumber}','${q.shareToken||''}','${encodeURIComponent(q.quoteNumber)}')">
-          <div style="flex:1;min-width:0">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <span style="font-size:13px;font-weight:700;color:#fff;font-family:var(--mono)">${q.quoteNumber}</span>
-              ${accepted ? '<span style="font-size:10px;font-weight:800;color:#22c55e;background:rgba(34,197,94,.15);padding:2px 7px;border-radius:4px;border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>' : ''}
-            </div>
-          </div>
-          ${q.firstMdl ? `<span style="font-size:11px;color:${accepted?'rgba(34,197,94,.7)':'rgba(255,255,255,.4)'};font-family:var(--mono)">${q.firstMdl}</span>` : ''}
-          <span style="font-size:13px;font-weight:700;color:${accepted?'#22c55e':'rgba(255,255,255,.8)'}">${fmt(q.total)}</span>
-          <span style="font-size:11px;color:rgba(255,255,255,.3)">${fmtDate(q.date)}</span>
-          ${q.shareToken ? `<a href="https://whisperroomquote.up.railway.app/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:rgba(255,255,255,.25);text-decoration:none;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08)">↗</a>` : ''}
-          <span style="font-size:11px;color:${accepted?'#22c55e':'#ee6216'};flex-shrink:0">${accepted?'✓ Load':'Load →'}</span>
-        </div>`;
-      }).join('');
+  const payColor=PAY_COLORS[ps];
+  const payBadge=ps!=='not_paid'
+    ?`<span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;border:1px solid ${payColor};color:${payColor};background:${ps==='paid'?'rgba(34,197,94,.1)':'rgba(245,158,11,.1)'}">${ps==='paid'?'✓ Paid':'PO Received'}</span>`
+    :'<span style="font-size:11px;color:var(--muted)">Not Paid</span>';
 
-  // Invoices
-  let invoicesHtml = '';
-  if (data.invoices?.length) {
-    invoicesHtml = data.invoices.map(inv => {
-      const paid = inv.status === 'paid';
-      const statusColor = { paid:'#22c55e', open:'#f59e0b', draft:'rgba(255,255,255,.35)', voided:'rgba(255,255,255,.2)', overdue:'#ef4444' }[inv.status] || 'rgba(255,255,255,.35)';
-      return `<div class="card-row ${paid?'card-row-accepted':'card-row-normal'}" style="cursor:default">
+  const quotesHtml=!data.quotes?.length
+    ?'<div style="font-size:12px;color:var(--muted);font-style:italic;padding:6px 0">No quotes yet</div>'
+    :data.quotes.map(q=>{
+      const acc=q.accepted;
+      return `<div class="row-card ${acc?'row-accepted':''}" onclick="loadQuote('${q.quoteNumber}')">
         <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="font-size:13px;font-weight:700;color:${paid?'#22c55e':'#fff'}">${inv.number||inv.title||'Invoice'}</span>
-            ${paid ? '<span style="font-size:10px;font-weight:800;color:#22c55e;background:rgba(34,197,94,.15);padding:2px 7px;border-radius:4px;border:1px solid rgba(34,197,94,.3)">✓ Paid</span>'
-                   : `<span style="font-size:10px;font-weight:700;color:${statusColor};text-transform:uppercase;letter-spacing:.06em">${inv.status}</span>`}
-            ${inv.quoteNumber ? `<span style="font-size:10px;color:rgba(255,255,255,.25)">${inv.quoteNumber}</span>` : ''}
+          <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+            <span style="font-size:12px;font-weight:700;color:var(--text);font-family:var(--mono)">${q.quoteNumber}</span>
+            ${acc?'<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>':''}
+            ${q.firstMdl?`<span style="font-size:10px;color:var(--text2);font-family:var(--mono)">${q.firstMdl}</span>`:''}
           </div>
         </div>
-        <span style="font-size:13px;font-weight:700;color:${paid?'#22c55e':'rgba(255,255,255,.8)'}">${fmt(inv.amount)}</span>
-        <span style="font-size:11px;color:rgba(255,255,255,.3)">${fmtDate(inv.date)}</span>
-        ${inv.paymentPageUrl ? `<a href="${inv.paymentPageUrl}" target="_blank" style="font-size:10px;font-weight:600;color:#ee6216;text-decoration:none;padding:3px 8px;border-radius:4px;border:1px solid rgba(238,98,22,.25);white-space:nowrap">Invoice ↗</a>` : ''}
-        ${inv.hubspotUrl ? `<a href="${inv.hubspotUrl}" target="_blank" style="font-size:10px;color:rgba(255,255,255,.25);text-decoration:none;padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,.08)">HS ↗</a>` : ''}
+        <span style="font-size:12px;font-weight:700;color:${acc?'var(--green)':'var(--text)'}">${fmt(q.total)}</span>
+        <span class="row-date">${fmtDate(q.date)}</span>
+        ${q.shareToken?`<a href="https://whisperroomquote.up.railway.app/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}" target="_blank" onclick="event.stopPropagation()" class="row-link">↗</a>`:''}
+        <span style="font-size:10px;font-weight:700;color:${acc?'var(--green)':'var(--orange)'};flex-shrink:0">${acc?'✓ Load':'Load →'}</span>
       </div>`;
     }).join('');
-  }
 
-  // Orders
-  let ordersHtml = '';
-  if (data.orders?.length) {
-    ordersHtml = data.orders.map(ord => {
-      const shipped = ord.shipped?.tracking;
-      const matchQ  = data.quotes?.find(q => q.quoteNumber === ord.quoteNumber);
-      return `<div class="card-row ${shipped?'card-row-accepted':'card-row-normal'}" style="cursor:default">
+  const invHtml=!data.invoices?.length?'':`<div class="hub-section">
+    <div class="section-label">Invoices (${data.invoices.length})</div>
+    ${data.invoices.map(inv=>{
+      const paid=inv.status==='paid';
+      const sc={paid:'#22c55e',open:'#f59e0b',draft:'var(--muted)',voided:'var(--muted)',overdue:'#ef4444'}[inv.status]||'var(--muted)';
+      return `<div class="row-card ${paid?'row-paid':''}" style="cursor:default">
+        <div style="flex:1;min-width:0;display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:700;color:${paid?'var(--green)':'var(--text)'}">${inv.number||inv.title||'Invoice'}</span>
+          ${paid?'<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Paid</span>'
+                :`<span class="row-badge" style="color:${sc};border:1px solid ${sc}">${inv.status||'—'}</span>`}
+          ${inv.quoteNumber?`<span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${inv.quoteNumber}</span>`:''}
+        </div>
+        <span style="font-size:12px;font-weight:700;color:${paid?'var(--green)':'var(--text)'}">${fmt(inv.amount)}</span>
+        <span class="row-date">${fmtDate(inv.date)}</span>
+        ${inv.paymentPageUrl?`<a href="${inv.paymentPageUrl}" target="_blank" class="row-link" style="color:var(--orange);border-color:var(--orange-border)">Invoice ↗</a>`:''}
+        ${inv.hubspotUrl?`<a href="${inv.hubspotUrl}" target="_blank" class="row-link">HS ↗</a>`:''}
+      </div>`;
+    }).join('')}
+  </div>`;
+
+  const ordHtml=!data.orders?.length?'':`<div class="hub-section">
+    <div class="section-label">Orders (${data.orders.length})</div>
+    ${data.orders.map(ord=>{
+      const shipped=ord.shipped?.tracking;
+      const matchQ=data.quotes?.find(q=>q.quoteNumber===ord.quoteNumber);
+      return `<div class="row-card ${shipped?'row-accepted':''}" style="cursor:default">
         <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="font-size:13px;font-weight:700;color:#fff;font-family:var(--mono)">${ord.quoteNumber}</span>
+          <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+            <span style="font-size:12px;font-weight:700;color:var(--text);font-family:var(--mono)">${ord.quoteNumber}</span>
             ${shipped
-              ? `<span style="font-size:10px;font-weight:700;color:#22c55e;text-transform:uppercase;letter-spacing:.06em">✓ Shipped</span>
-                 <span style="font-size:11px;color:rgba(255,255,255,.4);font-family:var(--mono)">${shipped}</span>`
-              : `<span style="font-size:10px;font-weight:700;color:#f59e0b;text-transform:uppercase;letter-spacing:.06em">In Production</span>`}
+              ?`<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Shipped</span><span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${shipped}</span>`
+              :'<span class="row-badge" style="color:#f59e0b;border:1px solid rgba(245,158,11,.3)">In Production</span>'}
           </div>
-          ${ord.foamColor ? `<div style="font-size:10px;color:rgba(255,255,255,.35);margin-top:3px">${ord.foamColor}${ord.hingePreference?' · '+ord.hingePreference:''}</div>` : ''}
+          ${ord.foamColor?`<div style="font-size:10px;color:var(--muted);margin-top:2px">${ord.foamColor}${ord.hingePreference?' · '+ord.hingePreference:''}</div>`:''}
         </div>
-        ${matchQ?.shareToken ? `<a href="https://whisperroomquote.up.railway.app/o/${encodeURIComponent(ord.quoteNumber)}?t=${matchQ.shareToken}" target="_blank" style="font-size:10px;color:rgba(255,255,255,.3);text-decoration:none;padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,.08)">Order ↗</a>` : ''}
+        ${matchQ?.shareToken?`<a href="https://whisperroomquote.up.railway.app/o/${encodeURIComponent(ord.quoteNumber)}?t=${matchQ.shareToken}" target="_blank" class="row-link">Order ↗</a>`:''}
       </div>`;
-    }).join('');
-  }
+    }).join('')}
+  </div>`;
 
-  document.getElementById('hubContent').innerHTML = `
-    <!-- Header -->
+  const stageOpts=Object.entries(STAGES).map(([k,v])=>`<option value="${k}" ${data.dealStage===k?'selected':''}>${v}</option>`).join('');
+
+  document.getElementById('hubContent').innerHTML=`
     <div class="hub-header">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+      <div style="display:flex;align-items:flex-start;gap:10px">
         <div style="flex:1;min-width:0">
-          <div class="hub-deal-name">${deal.name || 'Deal'}</div>
-          <div class="hub-deal-meta">
-            ${deal.amount && parseFloat(deal.amount)>0 ? `<span style="font-size:15px;font-weight:700;color:var(--orange)">${fmt(deal.amount)}</span>` : ''}
-            ${data.dealStage ? `<span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;background:${STAGE_COLORS[data.dealStage]||'rgba(255,255,255,.06)'};color:${STAGE_TEXT[data.dealStage]||'rgba(255,255,255,.5)'}">${STAGES[data.dealStage]||data.dealStage}</span>` : ''}
-            <span style="font-size:12px;font-weight:700;color:${PAY_COLORS[ps]};padding:3px 8px;border-radius:4px;border:1px solid ${PAY_COLORS[ps]};background:${ps==='paid'?'rgba(34,197,94,.1)':ps==='po_received'?'rgba(245,158,11,.1)':'rgba(255,255,255,.04)'}">${PAY_LABELS[ps]}</span>
+          <div class="hub-name">${deal.name||'Deal'}</div>
+          <div class="hub-meta">
+            ${deal.amount&&parseFloat(deal.amount)>0?`<span style="font-size:14px;font-weight:800;color:var(--orange)">${fmt(deal.amount)}</span>`:''}
+            ${data.dealStage?`<span style="font-size:10px;font-weight:700;padding:3px 7px;border-radius:4px;background:${PIPE_BG[data.dealStage]||'var(--surface2)'};color:#fff">${STAGES[data.dealStage]||data.dealStage}</span>`:''}
+            ${payBadge}
             <span style="font-size:11px;color:var(--muted)">${REPS[deal.ownerId]||''}</span>
           </div>
         </div>
-        <a href="https://app.hubspot.com/contacts/5764220/deal/${dealId}" target="_blank" style="font-size:11px;color:var(--muted);text-decoration:none;padding:5px 10px;border-radius:5px;border:1px solid var(--border);flex-shrink:0">HS ↗</a>
+        <a href="https://app.hubspot.com/contacts/5764220/deal/${dealId}" target="_blank" style="font-size:10px;color:var(--muted);text-decoration:none;padding:4px 8px;border-radius:5px;border:1px solid var(--border);flex-shrink:0">HS ↗</a>
       </div>
-
-      <!-- Quick actions -->
       <div class="hub-actions">
-        <button class="btn btn-primary" onclick="newQuoteForDeal('${dealId}','${(deal.name||'').replace(/'/g,"\\'")}')">+ New Quote</button>
-        ${data.quotes?.some(q=>q.accepted) ? `<button class="btn btn-secondary" onclick="loadLatestAccepted('${dealId}')">Load Accepted Quote</button>` : ''}
-        <a href="/orders" class="btn btn-secondary" style="text-decoration:none">Orders Board</a>
+        <button class="btn btn-orange" onclick="newQuoteForDeal('${dealId}','${(deal.name||'').replace(/'/g,"\\'")}')">+ New Quote</button>
+        ${data.quotes?.some(q=>q.accepted)?'<button class="btn btn-green" onclick="loadLatestAccepted(\''+dealId+'\')">Load Accepted</button>':''}
+        <a href="/orders" class="btn btn-ghost">Orders Board</a>
       </div>
     </div>
-
-    <!-- Pipeline -->
     <div class="pipeline">${pipeHtml}</div>
-
-    <!-- Next action -->
-    ${na ? `<div class="next-action" style="margin:0 24px">
-      <div style="font-size:20px">${na.icon}</div>
-      <div>
-        <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.06em">Next Action</div>
-        <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.85);margin-top:2px">${na.text}</div>
-      </div>
-    </div>` : ''}
-
-    <!-- Body -->
-    <div class="hub-body">
-
-      <!-- Quotes -->
-      <div>
-        <div class="section-title">
-          <span>Quotes <span style="color:var(--dim);font-weight:400">(${data.quotes?.length||0})</span></span>
-        </div>
-        ${quotesHtml}
-      </div>
-
-      <!-- Invoices -->
-      ${data.invoices?.length ? `<div>
-        <div class="section-title">Invoices <span style="color:var(--dim);font-weight:400">(${data.invoices.length})</span></div>
-        ${invoicesHtml}
-      </div>` : ''}
-
-      <!-- Orders -->
-      ${data.orders?.length ? `<div>
-        <div class="section-title">Orders <span style="color:var(--dim);font-weight:400">(${data.orders.length})</span></div>
-        ${ordersHtml}
-      </div>` : ''}
-
-      <!-- Admin -->
-      <div class="admin-panel">
-        <button onclick="toggleAdmin()" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:.06em;padding:0;display:flex;align-items:center;gap:6px">
-          ⚙ Admin Override <span id="adminCaret" style="font-size:9px">▼</span>
-        </button>
-        <div id="adminInner" style="display:none">
-          <div class="admin-grid">
-            <div>
-              <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Payment Status</label>
-              <select id="adminPayStatus" class="admin-select" onchange="savePaymentStatus(this.value)">
-                <option value="not_paid" ${ps==='not_paid'?'selected':''}>Not Paid</option>
-                <option value="po_received" ${ps==='po_received'?'selected':''}>PO Received</option>
-                <option value="paid" ${ps==='paid'?'selected':''}>Paid</option>
-              </select>
-            </div>
-            <div>
-              <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Stage Override</label>
-              <select id="adminStage" class="admin-select" onchange="stageOverride(this.value,this.options[this.selectedIndex].text)">
-                ${Object.entries(STAGES).map(([k,v]) => `<option value="${k}" ${data.dealStage===k?'selected':''}>${v}</option>`).join('')}
-              </select>
-            </div>
-          </div>
-          <div id="adminStatus" style="margin-top:8px;font-size:11px;color:var(--dim)"></div>
-        </div>
-      </div>
-
+    ${na?`<div class="next-action"><div class="na-icon">${na.icon}</div><div><div class="na-label">Next Action</div><div class="na-text">${na.text}</div></div></div>`:''}
+    <div class="hub-section" style="margin-top:4px">
+      <div class="section-label">Quotes (${data.quotes?.length||0})</div>
+      ${quotesHtml}
     </div>
+    ${invHtml}${ordHtml}
+    <div class="admin-toggle">
+      <button class="admin-btn" onclick="toggleAdmin()">⚙ Admin Override <span id="adminCaret">▼</span></button>
+    </div>
+    <div class="admin-inner" id="adminInner">
+      <div class="admin-grid">
+        <div>
+          <label class="admin-label">Payment Status</label>
+          <select class="admin-select" onchange="doPaymentStatus(this.value)">
+            <option value="not_paid" ${ps==='not_paid'?'selected':''}>Not Paid</option>
+            <option value="po_received" ${ps==='po_received'?'selected':''}>PO Received</option>
+            <option value="paid" ${ps==='paid'?'selected':''}>Paid</option>
+          </select>
+        </div>
+        <div>
+          <label class="admin-label">Stage Override</label>
+          <select class="admin-select" id="adminStageSelect" onchange="doStageOverride(this.value,this.options[this.selectedIndex].text)">${stageOpts}</select>
+        </div>
+      </div>
+      <div class="admin-status" id="adminStatus"></div>
+    </div>
+    <div style="height:20px"></div>
   `;
 }
 
-// ── Admin actions ───────────────────────────────────────────────────
-function toggleAdmin() {
-  const el = document.getElementById('adminInner');
-  const ca = document.getElementById('adminCaret');
-  const open = el.style.display !== 'none';
-  el.style.display = open ? 'none' : 'block';
-  if (ca) ca.textContent = open ? '▼' : '▲';
+function loadQuote(quoteNumber) {
+  if(!quoteNumber) return;
+  window.location.href=`/quotes?loadQuote=${encodeURIComponent(quoteNumber)}&fromHub=${currentDealId||''}`; 
+}
+function loadLatestAccepted(dealId) {
+  const d=allDeals.find(d=>d.id===dealId);
+  if(d?.latestQuote) loadQuote(d.latestQuote);
+}
+function newQuote() { window.location.href='/quotes'; }
+function newQuoteForDeal(dealId,dealName) {
+  window.location.href=`/quotes?dealId=${dealId}&dealName=${encodeURIComponent(dealName)}&fromHub=${dealId}`;
 }
 
-async function savePaymentStatus(status) {
-  if (!currentDealId) return;
+function toggleAdmin() {
+  const inner=document.getElementById('adminInner');
+  const caret=document.getElementById('adminCaret');
+  const open=inner.style.display==='block';
+  inner.style.display=open?'none':'block';
+  if(caret) caret.textContent=open?'▼':'▲';
+}
+function setAdminStatus(msg,color) {
+  const el=document.getElementById('adminStatus');
+  if(el){el.textContent=msg;el.style.color=color||'var(--muted)';}
+}
+async function doPaymentStatus(status) {
+  if(!currentDealId) return;
   setAdminStatus('Saving…');
   try {
-    const res = await fetch(`/api/deals/${currentDealId}/payment-status`, {
-      method: 'PATCH', headers: {'Content-Type':'application/json'}, credentials: 'include',
-      body: JSON.stringify({ status })
-    });
-    const data = await res.json();
-    if (data.success) {
-      setAdminStatus('✓ Saved', '#22c55e');
-      // Update deal in local list
-      const d = allDeals.find(d => d.id === currentDealId);
-      if (d) { d.paymentStatus = status; renderDealList(allDeals); }
-      // Refresh hub after short delay
-      setTimeout(() => openDeal(currentDealId), 800);
-    } else throw new Error(data.error);
-  } catch(e) { setAdminStatus('Error: ' + e.message, '#ef4444'); }
+    const res=await fetch(`/api/deals/${currentDealId}/payment-status`,{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({status})});
+    const data=await res.json();
+    if(!data.success) throw new Error(data.error);
+    setAdminStatus('✓ Saved','var(--green)');
+    const d=allDeals.find(d=>d.id===currentDealId);
+    if(d){d.paymentStatus=status;renderBoard();}
+    setTimeout(()=>openDeal(currentDealId),600);
+  } catch(e){setAdminStatus('Error: '+e.message,'var(--red)');}
 }
-
-async function stageOverride(stage, label) {
-  if (!currentDealId) return;
-  const stageName = label || STAGES[stage] || stage;
-  if (!confirm(`Move deal to "${stageName}"?`)) {
-    // Reset select
-    const sel = document.getElementById('adminStage');
-    if (sel) sel.value = allDeals.find(d=>d.id===currentDealId)?.stage || '';
+async function doStageOverride(stage,label) {
+  if(!currentDealId) return;
+  if(!confirm(`Move deal to "${label||STAGES[stage]||stage}"?`)){
+    const sel=document.getElementById('adminStageSelect');
+    const d=allDeals.find(d=>d.id===currentDealId);
+    if(sel&&d) sel.value=d.stage||'';
     return;
   }
   setAdminStatus('Saving…');
   try {
-    const res = await fetch(`/api/deals/${currentDealId}/stage`, {
-      method: 'PATCH', headers: {'Content-Type':'application/json'}, credentials: 'include',
-      body: JSON.stringify({ stage })
-    });
-    const data = await res.json();
-    if (data.success) {
-      setAdminStatus('✓ Stage updated', '#22c55e');
-      const d = allDeals.find(d => d.id === currentDealId);
-      if (d) { d.stage = stage; renderDealList(allDeals); }
-      setTimeout(() => openDeal(currentDealId), 800);
-    } else throw new Error(data.error);
-  } catch(e) { setAdminStatus('Error: ' + e.message, '#ef4444'); }
+    const res=await fetch(`/api/deals/${currentDealId}/stage`,{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({stage})});
+    const data=await res.json();
+    if(!data.success) throw new Error(data.error);
+    setAdminStatus('✓ Stage updated','var(--green)');
+    const d=allDeals.find(d=>d.id===currentDealId);
+    if(d){d.stage=stage;renderBoard();}
+    setTimeout(()=>openDeal(currentDealId),600);
+  } catch(e){setAdminStatus('Error: '+e.message,'var(--red)');}
 }
-
-function setAdminStatus(msg, color = 'rgba(255,255,255,.3)') {
-  const el = document.getElementById('adminStatus');
-  if (el) { el.textContent = msg; el.style.color = color; }
-}
-
-// ── Quote actions ───────────────────────────────────────────────────
-function newQuote() {
-  window.location.href = '/';
-}
-
-function newQuoteForDeal(dealId, dealName) {
-  // Open quote builder with deal pre-selected via URL param
-  window.location.href = `/?dealId=${dealId}&dealName=${encodeURIComponent(dealName)}`;
-}
-
-function loadQuote(quoteNumber, shareToken, encodedNum) {
-  // Open quote builder and trigger load via URL param
-  window.location.href = `/?loadQuote=${encodeURIComponent(quoteNumber)}`;
-}
-
-function loadLatestAccepted(dealId) {
-  const deal = allDeals.find(d => d.id === dealId);
-  if (deal?.latestQuote) {
-    window.location.href = `/?loadQuote=${encodeURIComponent(deal.latestQuote)}`;
-  }
-}
-
-// ── Search & filter ─────────────────────────────────────────────────
-function onSearch(val) {
-  clearTimeout(searchTimeout);
-  searchTimeout = setTimeout(() => loadDeals(val.trim()), 300);
-}
-
-function setStageFilter(btn, stage) {
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  currentStageFilter = stage;
-  loadDeals(document.getElementById('dealSearch').value.trim());
-}
-
-// ── Toast ───────────────────────────────────────────────────────────
-function showToast(msg, type='info') {
-  const t = document.getElementById('toast');
-  const el = document.createElement('div');
-  el.className = `toast-msg toast-${type}`;
-  el.textContent = msg;
+function onSearch() { clearTimeout(searchTimeout); searchTimeout=setTimeout(()=>applyFilter(),200); }
+function onRepFilter() { currentRepFilter=document.getElementById('repFilter').value; loadDeals(); }
+function showToast(msg,type='info') {
+  const t=document.getElementById('toast');
+  const el=document.createElement('div');
+  el.className=`toast-msg toast-${type}`;
+  el.textContent=msg;
   t.appendChild(el);
-  requestAnimationFrame(() => { el.classList.add('show'); });
-  setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 400); }, 3000);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  setTimeout(()=>{el.classList.remove('show');setTimeout(()=>el.remove(),300);},3000);
 }
-
-// ── Init ─────────────────────────────────────────────────────────────
-loadDeals();
-
-// Handle URL params — if coming from quote builder with a deal
-const urlParams = new URLSearchParams(window.location.search);
-const openDealParam = urlParams.get('dealId');
-if (openDealParam) {
-  // Wait for deals to load then open
-  setTimeout(() => openDeal(openDealParam), 800);
-}
-
-// ── Theme ───────────────────────────────────────────────────────────
 function toggleTheme() {
-  const isLight = document.documentElement.classList.toggle('light');
-  document.getElementById('themeBtn').textContent = isLight ? '🌙' : '☀️';
-  localStorage.setItem('wr-theme', isLight ? 'light' : 'dark');
+  const isLight=document.documentElement.classList.toggle('light');
+  document.getElementById('themeBtn').textContent=isLight?'🌙':'☀️';
+  localStorage.setItem('wr-theme',isLight?'light':'dark');
 }
-if (localStorage.getItem('wr-theme') === 'light') {
+if(localStorage.getItem('wr-theme')==='light'){
   document.documentElement.classList.add('light');
-  document.addEventListener('DOMContentLoaded', () => {
-    const btn = document.getElementById('themeBtn');
-    if (btn) btn.textContent = '🌙';
-  });
+  document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('themeBtn');if(b)b.textContent='🌙';});
 }
+loadDeals();
+const _p=new URLSearchParams(window.location.search);
+const _od=_p.get('dealId');
+if(_od) setTimeout(()=>openDeal(_od),900);
 </script>
 </body>
 </html>

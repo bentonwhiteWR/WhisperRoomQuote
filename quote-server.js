@@ -3329,12 +3329,12 @@ tbody tr:hover td{background:#fdfcfb}
       const freightTotal = freight ? parseFloat(freight.total || 0) : 0;
       const taxTotal = tax ? parseFloat(tax.tax || 0) : 0;
 
-      // 3. Build line items — apply discount per product line item, skip freight/tax
-      const invoiceLineItems = (lineItems || []).map(item => {
-        const unitPrice = parseFloat(item.price || 0);
-        const discountedPrice = discPct > 0 ? Math.round(unitPrice * (1 - discPct) * 100) / 100 : unitPrice;
-        return { ...item, price: discountedPrice };
-      });
+      // 3. Build line items — original price + discount % on each product line item
+      const invoiceLineItems = (lineItems || []).map(item => ({
+        ...item,
+        price: parseFloat(item.price || 0), // keep original price
+        lineDiscount: discPct > 0 ? parseFloat((discPct * 100).toFixed(4)) : 0, // % for HubSpot column
+      }));
       if (freightTotal > 0) invoiceLineItems.push({
         name: 'Freight', qty: 1, price: freightTotal,
         description: freight?.transit ? `LTL freight. Transit: ${freight.transit}` : 'LTL freight'
@@ -3354,9 +3354,12 @@ tbody tr:hover td{background:#fdfcfb}
             quantity: String(item.qty || 1),
             price: String(parseFloat(item.price || 0).toFixed(2)),
             description: item.description || '',
-            hs_position_on_quote: String(idx), // preserve order
+            hs_position_on_quote: String(idx),
           };
           if (item.productId) liProps.hs_product_id = String(item.productId);
+          if (item.lineDiscount && item.lineDiscount > 0) {
+            liProps.hs_discount_percentage = String(item.lineDiscount);
+          }
           const li = await hsCreateLineItem(liProps);
           if (li.id) createdLineItemIds.push(li.id);
         } catch(e) { console.warn('Line item create error:', e.message); }
@@ -3390,6 +3393,14 @@ tbody tr:hover td{background:#fdfcfb}
         } catch(e) { console.warn('Contact address patch failed:', e.message); }
       }
       invoiceProps.hs_title = quoteNumber ? `Invoice — ${quoteNumber}` : 'Invoice';
+      // Custom ship-to fields
+      if (customer) {
+        const name = [customer.firstName, customer.lastName].filter(Boolean).join(' ') || customer.company || '';
+        const csz  = [customer.city, customer.state, customer.zip].filter(Boolean).join(', ');
+        if (name) invoiceProps.ship_to_name          = name;
+        if (customer.address) invoiceProps.ship_to_address      = customer.address;
+        if (csz)  invoiceProps.ship_to_city_state_zip = csz;
+      }
       if (resolvedOwnerId) invoiceProps.hubspot_owner_id = String(resolvedOwnerId);
       if (quoteNumber)     invoiceProps.quote_number     = quoteNumber;
 

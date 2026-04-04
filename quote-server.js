@@ -754,6 +754,12 @@ async function fetchQuoteHistory() {
 const PORT         = process.env.PORT || 3457;
 const PASSWORD     = process.env.WR_PASSWORD || 'whisperroom';
 const HS_TOKEN     = process.env.HS_TOKEN || 'pat-na1-46b267e5-120c-42fa-95a6-14eb28460a85';
+
+const REPS = {
+  '36330944':'Jill','38143901':'Sarah','117442978':'Travis',
+  '36303670':'Benton','36320208':'Gabe','38732178':'Kim',
+  '38900892':'Chet','38732186':'Jeromy'
+};
 const TAXJAR_KEY   = process.env.TAXJAR_KEY || 'a432e28eece47221d3176cfc1a7d2dae';
 const ABF_ID       = 'Q8MZK7K1';
 const ABF_ACCT     = '189059-248A';
@@ -2811,12 +2817,13 @@ tbody tr:hover td{background:#fdfcfb}
       console.log(`Accept quote #${quoteNumber} → dealId: ${dealId}`);
       const results = { quoteNumber, resolvedDealId: dealId };
 
-      // 0. Mark quote as accepted in DB
+      // 0. Mark quote as accepted in DB with timestamp
       if (db && quoteNumber) {
         try {
+          const acceptedAt = new Date().toISOString();
           await db.query(
-            `UPDATE quotes SET json_snapshot = jsonb_set(COALESCE(json_snapshot, '{}'), '{accepted}', 'true') WHERE quote_number = $1`,
-            [quoteNumber]
+            `UPDATE quotes SET json_snapshot = jsonb_set(jsonb_set(COALESCE(json_snapshot, '{}'), '{accepted}', 'true'), '{acceptedAt}', $2) WHERE quote_number = $1`,
+            [quoteNumber, JSON.stringify(acceptedAt)]
           );
           console.log(`Quote ${quoteNumber} marked accepted in DB`);
         } catch(e) { console.warn('DB accepted flag error:', e.message); }
@@ -3321,6 +3328,153 @@ tbody tr:hover td{background:#fdfcfb}
     return;
   }
 
+
+  // ── API: Deal activity timeline ───────────────────────────────────
+  if (pathname.startsWith('/api/deals/') && pathname.endsWith('/timeline') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const dealId = pathname.split('/')[3];
+    try {
+      const events = [];
+
+      // 1. Deal created / stage changes from HubSpot deal properties
+      const dealRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/objects/deals/${dealId}?properties=dealname,dealstage,createdate,hs_lastmodifieddate,amount,hubspot_owner_id`,
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+      });
+      const dp = dealRes.body?.properties || {};
+      if (dp.createdate) events.push({
+        at: dp.createdate, type: 'deal_created',
+        icon: '🟠', label: 'Deal created',
+        detail: dp.dealname || '',
+        rep: REPS[dp.hubspot_owner_id] || ''
+      });
+
+      // 2. Quotes from DB
+      if (db) {
+        // Get deal name for fallback matching
+        const dealName = dp.dealname || null;
+        const qr = await db.query(
+          `SELECT quote_number, date, created_at, total,
+                  (json_snapshot->>'accepted')::text as accepted,
+                  json_snapshot->'acceptedAt' as accepted_at,
+                  json_snapshot->'customer' as customer
+           FROM quotes
+           WHERE deal_id = $1 OR (deal_id IS NULL AND deal_name = $2)
+           ORDER BY created_at ASC`,
+          [dealId, dealName]
+        );
+        qr.rows.forEach(r => {
+          const customerName = (() => {
+            try {
+              const c = r.customer || {};
+              return [c.firstName, c.lastName].filter(Boolean).join(' ') || c.company || '';
+            } catch(e) { return ''; }
+          })();
+          events.push({
+            at: r.created_at, type: 'quote_sent',
+            icon: '📋', label: `Quote sent — ${r.quote_number}`,
+            detail: customerName ? `To: ${customerName}` : '',
+            amount: r.total ? parseFloat(r.total) : null,
+            quoteNumber: r.quote_number,
+          });
+          if (r.accepted === 'true') {
+            // Use acceptedAt if stored, else use modified time as estimate
+            const acceptedAt = r.accepted_at || r.created_at;
+            events.push({
+              at: acceptedAt, type: 'quote_accepted',
+              icon: '✅', label: `Quote accepted — ${r.quote_number}`,
+              detail: '', quoteNumber: r.quote_number,
+              highlight: true,
+            });
+          }
+        });
+
+        // 3. Orders from DB
+        const or = await db.query(
+          `SELECT o.quote_number, o.created_at, o.order_data
+           FROM orders o
+           WHERE o.deal_id = $1
+              OR o.quote_number IN (SELECT quote_number FROM quotes WHERE deal_id = $1 OR (deal_id IS NULL AND deal_name = $2))
+           ORDER BY o.created_at ASC`,
+          [dealId, dealName]
+        );
+        or.rows.forEach(r => {
+          events.push({
+            at: r.created_at, type: 'order_created',
+            icon: '📦', label: `Order processed — ${r.quote_number}`,
+            detail: [r.order_data?.foamColor, r.order_data?.hingePreference].filter(Boolean).join(' · '),
+            quoteNumber: r.quote_number,
+          });
+          if (r.order_data?.shipped?.date) {
+            const shipDate = new Date(r.order_data.shipped.date).toISOString();
+            events.push({
+              at: shipDate, type: 'shipped',
+              icon: '🚚', label: `Shipped — ${r.quote_number}`,
+              detail: [r.order_data.shipped.carrier, r.order_data.shipped.tracking].filter(Boolean).join(' · '),
+              highlight: true,
+            });
+          }
+          // Change log entries
+          (r.order_data?.changeLog || []).forEach(entry => {
+            if (entry.summary?.includes('Marked Shipped')) return; // dedupe with shipped event
+            events.push({
+              at: entry.at, type: 'order_update',
+              icon: '🔧', label: entry.summary,
+              detail: entry.rep || '',
+            });
+          });
+        });
+      }
+
+      // 4. Invoices from HubSpot
+      try {
+        const assocRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v4/associations/deals/invoices/batch/read`,
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, { inputs: [{ id: String(dealId) }] });
+
+        const invoiceIds = (assocRes.body?.results?.[0]?.to || []).map(r => r.toObjectId);
+        if (invoiceIds.length) {
+          const batchRes = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: '/crm/v3/objects/invoices/batch/read',
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, {
+            inputs: invoiceIds.map(id => ({ id: String(id) })),
+            properties: ['hs_invoice_status','hs_create_date','hs_number','hs_amount_billed','hs_payment_date']
+          });
+          (batchRes.body?.results || []).forEach(inv => {
+            const p = inv.properties || {};
+            if (p.hs_create_date) events.push({
+              at: p.hs_create_date, type: 'invoice_created',
+              icon: '🧾', label: `Invoice created — ${p.hs_number || inv.id}`,
+              amount: p.hs_amount_billed ? parseFloat(p.hs_amount_billed) : null,
+            });
+            if (p.hs_payment_date && p.hs_invoice_status === 'paid') events.push({
+              at: p.hs_payment_date, type: 'invoice_paid',
+              icon: '💰', label: `Invoice paid — ${p.hs_number || inv.id}`,
+              amount: p.hs_amount_billed ? parseFloat(p.hs_amount_billed) : null,
+              highlight: true,
+            });
+          });
+        }
+      } catch(e) { console.warn('Timeline invoice fetch failed:', e.message); }
+
+      // Sort all events chronologically
+      events.sort((a, b) => new Date(a.at) - new Date(b.at));
+
+      json({ events });
+    } catch(e) {
+      console.error('Timeline error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
 
   if (pathname.startsWith('/api/deals/') && pathname.endsWith('/hub') && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

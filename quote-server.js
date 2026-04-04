@@ -1452,7 +1452,7 @@ const server = http.createServer(async (req, res) => {
       });
       res.writeHead(302, {
         'Set-Cookie': `wr_oauth_session=${sessionToken}; HttpOnly; Path=/; Max-Age=28800`,
-        'Location': '/'
+        'Location': '/deals'
       });
       res.end();
     } catch(e) {
@@ -1491,7 +1491,7 @@ const server = http.createServer(async (req, res) => {
       sessions.add(token);
       res.writeHead(302, {
         'Set-Cookie': `wr_qt_session=${token}; HttpOnly; Path=/; Max-Age=86400`,
-        'Location': '/'
+        'Location': '/deals'
       });
       res.end();
     } else {
@@ -1541,7 +1541,7 @@ const server = http.createServer(async (req, res) => {
 
     // ── Shipping Dashboard ──────────────────────────────────────────
   if (pathname === '/shipping') {
-    if (!isAuth(req)) { res.writeHead(302, {Location: '/'}); res.end(); return; }
+    if (!isAuth(req)) { res.writeHead(302, {Location: '/deals'}); res.end(); return; }
     try {
       const html = fs.readFileSync(path.join(__dirname, 'shipping-dashboard.html'), 'utf8');
       res.writeHead(200, {'Content-Type':'text/html'});
@@ -1676,6 +1676,14 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/' || pathname === '/index.html') {
+    // Redirect to Deal Hub as default landing page
+    res.writeHead(302, { Location: '/deals' });
+    res.end();
+    return;
+  }
+
+  if (pathname === '/quotes' || pathname === '/quote-builder') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/deals' }); res.end(); return; }
     try {
       const html = fs.readFileSync(MAIN_HTML_PATH, 'utf8');
       res.writeHead(200, {'Content-Type':'text/html'});
@@ -1804,6 +1812,93 @@ const server = http.createServer(async (req, res) => {
     } catch(e) { json({error: e.message}, 500); }
     return;
   }
+
+  // ── API: List all deals for deals dashboard ───────────────────────
+  if (pathname === '/api/deals/list' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const q     = parsed.query.q     || '';
+      const stage = parsed.query.stage || '';
+      const rep   = parsed.query.rep   || '';
+      const limit = parseInt(parsed.query.limit) || 50;
+
+      const filters = [];
+      if (stage) filters.push({ propertyName: 'dealstage', operator: 'EQ', value: stage });
+      if (rep)   filters.push({ propertyName: 'hubspot_owner_id', operator: 'EQ', value: rep });
+
+      const searchBody = {
+        filterGroups: filters.length ? [{ filters }] : [],
+        properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
+                     'closedate','payment_status','tracking_number','carrier__c',
+                     'hs_contact_id','phone','email'],
+        sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+        limit,
+      };
+      if (q) searchBody.query = q;
+
+      const res2 = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/objects/deals/search',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, searchBody);
+
+      const deals = (res2.body?.results || []).map(d => ({
+        id:            d.id,
+        name:          d.properties?.dealname || '—',
+        stage:         d.properties?.dealstage || '',
+        amount:        d.properties?.amount || '0',
+        ownerId:       d.properties?.hubspot_owner_id || '',
+        modified:      d.properties?.hs_lastmodifieddate || '',
+        paymentStatus: d.properties?.payment_status || 'not_paid',
+        tracking:      d.properties?.tracking_number || '',
+        carrier:       d.properties?.carrier__c || '',
+      }));
+
+      // Enrich with DB quote data (latest quote number, accepted status)
+      if (db && deals.length) {
+        const ids = deals.map(d => d.id);
+        const dbRes = await db.query(
+          `SELECT deal_id, quote_number, total,
+                  (json_snapshot->>'accepted')::text as accepted,
+                  json_snapshot->'lineItems' as line_items
+           FROM quotes
+           WHERE deal_id = ANY($1)
+           ORDER BY created_at DESC`,
+          [ids]
+        );
+        // Group by deal_id — first row = latest quote
+        const byDeal = {};
+        dbRes.rows.forEach(r => {
+          if (!byDeal[r.deal_id]) {
+            let firstMdl = '';
+            try {
+              const items = r.line_items || [];
+              const mdlItem = items.find(i => i?.name?.startsWith('MDL') || /\d{4}/.test(i?.name||''));
+              if (mdlItem) firstMdl = (mdlItem.name||'').split(' ').slice(0,3).join(' ');
+            } catch(e) {}
+            byDeal[r.deal_id] = {
+              latestQuote: r.quote_number,
+              total: r.total,
+              accepted: r.accepted === 'true',
+              firstMdl,
+            };
+          }
+        });
+        deals.forEach(d => {
+          if (byDeal[d.id]) Object.assign(d, byDeal[d.id]);
+        });
+      }
+
+      json({ deals, total: res2.body?.total || deals.length });
+    } catch(e) {
+      console.error('Deals list error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+
 
   // ── API: Get freight quote ──
   if (pathname === '/api/freight' && req.method === 'POST') {
@@ -3651,6 +3746,14 @@ tbody tr:hover td{background:#fdfcfb}
 
 
   // ── Orders Dashboard Page ─────────────────────────────────────────
+  if (pathname === '/deals' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    const html = fs.readFileSync(path.join(__dirname, 'deals-dashboard.html'), 'utf8');
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+    return;
+  }
+
   if (pathname === '/orders' && req.method === 'GET') {
     const html = fs.readFileSync(path.join(__dirname, 'orders-dashboard.html'), 'utf8');
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });

@@ -2249,7 +2249,7 @@ tbody tr:hover td{background:#fdfcfb}
 <div class="page">
 
   <div class="header-card">
-    <img src="/assets/logo-black.svg" alt="WhisperRoom" class="logo-img">
+    <img src="https://whisperroomquote.up.railway.app/assets/logo-black.svg" alt="WhisperRoom" class="logo-img">
     <div class="header-right">
       <div class="quote-type">Invoice</div>
       <div class="quote-num">${q.quoteNumber||'INV'}</div>
@@ -2448,7 +2448,7 @@ tbody tr:hover td{background:#fdfcfb}
 <div class="page">
 
   <div class="header-card">
-    <img src="/assets/logo-black.svg" alt="WhisperRoom" class="logo-img">
+    <img src="https://whisperroomquote.up.railway.app/assets/logo-black.svg" alt="WhisperRoom" class="logo-img">
     <div class="header-right">
       <div class="quote-type">Price Quote</div>
       <div class="quote-num">${q.quoteNumber||'QUOTE'}</div>
@@ -3839,7 +3839,7 @@ tbody tr:last-child td{border-bottom:none}
 <div class="page">
 
   <div class="header-card">
-    <img src="/assets/logo-black.svg" alt="WhisperRoom" class="logo-img">
+    <img src="https://whisperroomquote.up.railway.app/assets/logo-black.svg" alt="WhisperRoom" class="logo-img">
     <div class="header-right">
       <div class="order-type">Production Order</div>
       <div class="order-num">${q.quoteNumber||'ORDER'}</div>

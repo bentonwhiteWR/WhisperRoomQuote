@@ -2751,15 +2751,20 @@ function renderHistory() {
     const custName = ((q.customer?.firstName || '') + ' ' + (q.customer?.lastName || '')).trim() || '—';
     const date = q.date || (q.savedAt ? new Date(q.savedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—');
     return `<div class="history-item" onclick="loadFromHistoryEntry('${q.id || i}')">
-      <div class="history-item-name">${q.dealName || 'Untitled Quote'}${q.revision > 1 ? ' <span style="font-size:10px;color:var(--muted)">v' + q.revision + '</span>' : ''}</div>
-      <div class="history-item-meta">
-        <span>${custName}</span>
-        ${q.customer?.company ? '<span>' + q.customer.company + '</span>' : ''}
-        <span>${date}</span>
-        <span style="color:var(--accent)">${repName}</span>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div class="history-item-name">${q.dealName || 'Untitled Quote'}${q.revision > 1 ? ' <span style="font-size:10px;color:var(--muted)">v' + q.revision + '</span>' : ''}</div>
+          <div class="history-item-meta">
+            <span>${custName}</span>
+            ${q.customer?.company ? '<span>' + q.customer.company + '</span>' : ''}
+            <span>${date}</span>
+            <span style="color:var(--accent)">${repName}</span>
+          </div>
+          ${q.quoteNumber ? '<div style="font-size:10px;color:var(--dim);margin-top:2px;font-family:var(--mono)">' + q.quoteNumber + '</div>' : ''}
+          <div class="history-item-total">${fmt(q.total || 0)}</div>
+        </div>
+        ${q.dealId ? `<button onclick="event.stopPropagation();openDealHubById('${q.dealId}','${(q.dealName||'').replace(/'/g,"\\'")}','${q.customer?.company||''}')" style="flex-shrink:0;padding:4px 8px;font-size:9px;font-weight:700;background:rgba(62,207,142,.1);border:1px solid rgba(62,207,142,.25);border-radius:5px;color:rgba(62,207,142,.8);cursor:pointer;font-family:inherit;letter-spacing:.04em;white-space:nowrap">&#x25A6; HUB</button>` : ''}
       </div>
-      ${q.quoteNumber ? '<div style="font-size:10px;color:var(--dim);margin-top:2px;font-family:var(--mono)">' + q.quoteNumber + '</div>' : ''}
-      <div class="history-item-total">${fmt(q.total || 0)}</div>
     </div>`;
   }).join('');
 }
@@ -3639,6 +3644,17 @@ updateSummary();
 fetchHistory().then(() => { updateQuoteNumber(); checkLinkBtnState(); });
 
 // ── Invoice Button Enable ────────────────────────────────────────
+function openDealHubById(dealId, dealName, company) {
+  // Temporarily set linkedDeal so openDealHub can use the ID
+  const prev = linkedDeal;
+  linkedDeal = linkedDeal || { id: dealId, name: dealName || company || 'Deal' };
+  if (!linkedDeal.id) linkedDeal = { id: dealId, name: dealName || company || 'Deal' };
+  // Override with the clicked deal's info
+  const hub = { id: dealId, name: dealName || company || 'Deal' };
+  linkedDeal = hub;
+  openDealHub();
+}
+
 // ── Deal Hub Modal ────────────────────────────────────────────────
 async function openDealHub() {
   const dealId = linkedDeal?.id || selectedDeal?.id || window._lastPushedDealId;

@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WhisperRoom — Production Orders</title>
+<title>WhisperRoom — Shipping Board</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial Black,sans-serif' font-size='18' font-weight='900' fill='%23e8531a'>W</text></svg>">
 <style>
   :root {
@@ -20,7 +20,14 @@
     --green: #22c55e;
     --green-dim: rgba(34,197,94,.12);
     --blue: #3b82f6;
+    --blue-dim: rgba(59,130,246,.12);
+    --yellow: #f59e0b;
+    --yellow-dim: rgba(245,158,11,.12);
+    --red: #ef4444;
+    --red-dim: rgba(239,68,68,.12);
     --row-hover: rgba(255,255,255,.02);
+    --skeleton-a: #222;
+    --skeleton-b: #2a2a2a;
   }
   :root.light {
     --bg: #f5f5f5;
@@ -34,1233 +41,841 @@
     --green: #16a34a;
     --green-dim: rgba(22,163,74,.1);
     --blue: #2563eb;
+    --blue-dim: rgba(37,99,235,.1);
+    --yellow: #d97706;
+    --yellow-dim: rgba(217,119,6,.1);
+    --red: #dc2626;
+    --red-dim: rgba(220,38,38,.1);
     --row-hover: rgba(0,0,0,.02);
+    --skeleton-a: #e8e8e8;
+    --skeleton-b: #d0d0d0;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
 
-  /* Topbar — always dark regardless of light/dark mode */
-  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 0 20px; min-height: 52px; background: #1a1a1a; border-bottom: 1px solid rgba(255,255,255,.1); position: sticky; top: 0; z-index: 100; gap: 8px; flex-wrap: nowrap; }
-  .topbar-logo { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; white-space: nowrap; color: #f0ede8; flex-shrink: 0; }
-  .topbar-logo span { color: #e8531a; }
-  .topbar-nav { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-  .nav-link { padding: 5px 10px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; border-radius: 6px; color: rgba(255,255,255,.55); text-decoration: none; transition: all .15s; white-space: nowrap; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); }
-  .nav-link:hover { background: rgba(255,255,255,.12); color: rgba(255,255,255,.9); }
-  .nav-link.active { background: rgba(238,98,22,.2); color: #ee6216; border-color: rgba(238,98,22,.4); }
-  .theme-btn { padding: 5px 9px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 6px; color: #f0ede8; cursor: pointer; font-size: 14px; line-height: 1; transition: all .15s; flex-shrink: 0; }
-  .theme-btn:hover { background: rgba(255,255,255,.14); }
-
-  /* Tabs */
-  .tab-bar { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 0; }
-  .tab { padding: 10px 16px; font-size: 12px; font-weight: 700; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all .15s; text-transform: uppercase; letter-spacing: .06em; }
-  .tab:hover { color: var(--text); }
-  .tab.active { color: var(--orange); border-bottom-color: var(--orange); }
-
-  /* Rep badge */
-  .rep-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 10px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
-  .rep-bar select { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; padding: 4px 8px; font-family: inherit; outline: none; }
-  .rep-bar select:focus { border-color: var(--orange); }
-
-  /* Main */
-  .main { max-width: 1200px; margin: 0 auto; padding: 28px 24px; }
-  .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
-  .page-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; }
-  .page-title span { color: var(--orange); }
-  .order-count { font-size: 12px; color: var(--muted); margin-top: 3px; }
-
-  /* Search/filter bar */
-  .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-  .search-input { flex: 1; min-width: 200px; padding: 9px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 13px; font-family: inherit; outline: none; }
-  .search-input:focus { border-color: var(--orange); }
-  .search-input::placeholder { color: var(--muted); }
-
-  /* Orders table */
-  .orders-table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-  table { width: 100%; border-collapse: collapse; }
-  thead th { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); padding: 12px 16px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
-  tbody tr { border-bottom: 1px solid var(--border); cursor: pointer; transition: background .1s; }
-  tbody tr:last-child { border-bottom: none; }
-  tbody tr:hover { background: var(--row-hover); }
-  tbody td { padding: 14px 16px; font-size: 13px; vertical-align: middle; }
-  .td-main { font-weight: 600; color: var(--text); }
-  .td-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
-  .td-mono { font-family: monospace; font-size: 12px; color: var(--orange); }
-  .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
-  .badge-production { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(238,98,22,.25); }
-  .badge-foam { background: rgba(255,255,255,.05); color: var(--muted); border: 1px solid var(--border); }
-
-  /* Empty state */
-  .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
-  .empty-icon { font-size: 36px; margin-bottom: 12px; }
-  .empty-text { font-size: 14px; }
-
-  /* Loading skeleton */
-  .skeleton { background: linear-gradient(90deg, #1e1e1e 25%, #252525 50%, #1e1e1e 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: 4px; height: 14px; }
-  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-
-  /* Edit Drawer */
-  .drawer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 200; }
-  .drawer-overlay.open { display: block; }
-  .drawer { position: fixed; top: 0; right: -520px; width: 500px; max-width: 96vw; height: 100vh; background: var(--surface); border-left: 1px solid var(--border); z-index: 201; transition: right .25s ease; overflow-y: auto; padding: 28px 28px 40px; }
-  .drawer.open { right: 0; }
-  .drawer-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; }
-  .drawer-title { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800; }
-  .drawer-subtitle { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  .drawer-close { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; padding: 4px; line-height: 1; }
-  .drawer-close:hover { color: var(--text); }
-  .drawer-section { margin-bottom: 22px; }
-  .drawer-section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; color: var(--orange); margin-bottom: 12px; }
-  .field-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .field { display: flex; flex-direction: column; gap: 5px; }
-  .field.full { grid-column: 1 / -1; }
-  .field label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-  .field input, .field textarea, .field select {
-    padding: 9px 12px; background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 7px; color: var(--text); font-size: 13px; font-family: inherit; outline: none;
+  .header {
+    background: #1a1a1a;
+    border-bottom: 1px solid rgba(255,255,255,.1);
+    padding: 0 20px;
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    gap: 8px;
+    flex-wrap: nowrap;
   }
-  .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--orange); }
-  .field textarea { resize: vertical; min-height: 72px; }
+  .logo-wrap { display: flex; align-items: center; gap: 0; flex-shrink: 0; }
+  .logo-text { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; letter-spacing: -.3px; line-height: 1; }
+  .logo-whisper { color: #f0ede8; }
+  .logo-room   { color: #e8531a; }
+  .logo-divider { color: rgba(255,255,255,.3); font-weight: 400; font-size: 12px; margin-left: 10px; white-space: nowrap; }
 
-  /* Radio selectors */
-  .sel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-  .sel-label { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--text); transition: all .15s; }
-  .sel-label input { accent-color: var(--orange); }
-  .sel-label.selected { border-color: var(--orange); background: var(--orange-dim); }
+  .header-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .nav-link {
+    color: rgba(255,255,255,.55); font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+    text-decoration: none; padding: 5px 10px; border-radius: 6px; white-space: nowrap;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+    transition: background .15s, color .15s;
+  }
+  .nav-link:hover { background: rgba(255,255,255,.12); color: rgba(255,255,255,.9); }
+  .nav-link.active { background: rgba(238,98,22,.2); border-color: rgba(238,98,22,.4); color: #ee6216; }
+  .mode-btn {
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); color: #f0ede8;
+    width: 32px; height: 32px; border-radius: 8px; font-size: 15px; cursor: pointer; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; transition: background .15s;
+  }
+  .mode-btn:hover { background: rgba(255,255,255,.14); }
+  .refresh-btn {
+    background: var(--orange); color: white; border: none;
+    padding: 7px 14px; border-radius: 7px; font-size: 13px;
+    font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;
+    transition: opacity .15s;
+  }
+  .refresh-btn:hover { opacity: .85; }
+  .refresh-btn.spinning svg { animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* Drawer buttons */
-  .drawer-footer { display: flex; gap: 10px; margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border); }
-  .btn { padding: 11px 20px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; font-family: inherit; transition: all .15s; }
-  .btn-primary { background: var(--orange); color: white; flex: 1; }
-  .btn-primary:hover { background: #d4561a; }
-  .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
-  .btn-secondary { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
-  .btn-secondary:hover { color: var(--text); }
-  .btn-danger { background: rgba(239,68,68,.1); color: #ef4444; border: 1px solid rgba(239,68,68,.2); }
-  .btn-danger:hover { background: rgba(239,68,68,.2); }
+  .main { padding: 24px; max-width: 1400px; margin: 0 auto; }
 
-  /* Toast */
-  #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: #1e1e1e; border: 1px solid var(--border); border-radius: 8px; padding: 10px 18px; font-size: 13px; font-weight: 600; color: var(--text); z-index: 999; transition: transform .25s; pointer-events: none; white-space: nowrap; }
-  #toast.show { transform: translateX(-50%) translateY(0); }
-  #toast.success { border-color: var(--green); color: var(--green); }
-  #toast.error { border-color: #ef4444; color: #ef4444; }
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 6px; }
+  .stat-value { font-size: 24px; font-weight: 800; }
 
-  .order-link-btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 5px; font-size: 11px; font-weight: 600; color: var(--muted); text-decoration: none; transition: all .15s; }
-  .order-link-btn:hover { color: var(--orange); border-color: var(--orange); }
+  .filters {
+    display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;
+  }
+  .search-input {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 12px; border-radius: 8px; font-size: 13px; flex: 1; min-width: 200px;
+    outline: none; transition: border-color .15s;
+  }
+  .search-input:focus { border-color: var(--orange); }
+  .filter-select {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 12px; border-radius: 8px; font-size: 13px; outline: none; cursor: pointer;
+  }
+  .filter-count { font-size: 12px; color: var(--muted); margin-left: 4px; }
 
-  /* Mobile */
-  @media(max-width:640px) {
-    .drawer { width: 100vw; }
-    .field-group { grid-template-columns: 1fr; }
-    .main { padding: 12px 10px; }
-    .topbar { padding: 0 10px; min-height: 48px; }
-    .topbar-logo { font-size: 16px; }
-    .topbar-nav { gap: 4px; }
+  .table-wrap {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th:nth-child(1), td:nth-child(1) { width: 20%; }  /* Customer */
+  th:nth-child(2), td:nth-child(2) { width: 7%;  }  /* Carrier */
+  th:nth-child(3), td:nth-child(3) { width: 11%; }  /* Tracking # */
+  th:nth-child(4), td:nth-child(4) { width: 11%; }  /* Status */
+  th:nth-child(5), td:nth-child(5) { width: 18%; }  /* Latest Event */
+  th:nth-child(6), td:nth-child(6) { width: 9%;  }  /* Date Shipped */
+  th:nth-child(7), td:nth-child(7) { width: 13%; }  /* Destination */
+  th:nth-child(8), td:nth-child(8) { width: 7%;  }  /* Transit Time */
+  th:nth-child(9), td:nth-child(9) { width: 4%;  }  /* HubSpot */
+  thead { background: var(--surface2); }
+  th {
+    padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .07em; color: var(--muted);
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  td { padding: 13px 14px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--row-hover); }
+
+  .deal-name {
+    font-weight: 600; color: var(--text); text-decoration: none;
+    display: block; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .deal-name:hover { color: var(--orange); }
+  .deal-address { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .carrier-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 5px; font-size: 12px; font-weight: 700; letter-spacing: .03em;
+  }
+  .carrier-ABF   { background: var(--orange-dim); color: var(--orange); }
+  .carrier-OD    { background: var(--blue-dim);   color: var(--blue);   }
+  .carrier-UPS   { background: var(--yellow-dim); color: var(--yellow); }
+  .carrier-FedEx { background: var(--red-dim);    color: var(--red);    }
+  .carrier-USPS  { background: var(--green-dim);  color: var(--green);  }
+  .carrier-Other { background: rgba(255,255,255,.06); color: var(--muted); }
+
+  .tracking-cell { display: flex; align-items: center; gap: 6px; }
+  .tracking-link {
+    font-family: monospace; font-size: 13px; color: var(--orange);
+    text-decoration: none; display: inline-flex; align-items: center; gap: 4px;
+  }
+  .tracking-link:hover { text-decoration: underline; }
+  .tracking-none { color: var(--muted); font-size: 12px; font-style: italic; }
+
+  .copy-btn {
+    background: none; border: 1px solid var(--border); color: var(--muted);
+    padding: 3px 7px; border-radius: 5px; font-size: 11px; cursor: pointer; transition: all .15s;
+  }
+  .copy-btn:hover { border-color: var(--orange); color: var(--orange); }
+  .copy-btn.copied { border-color: var(--green); color: var(--green); }
+
+  .status-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 5px; font-size: 11px; font-weight: 700;
+    text-decoration: none; white-space: nowrap;
+  }
+  .status-delivered  { background: var(--green-dim); color: var(--green); }
+  .status-transit    { background: var(--blue-dim);  color: var(--blue);  }
+  .status-pickup     { background: var(--yellow-dim);color: var(--yellow);}
+  .status-exception  { background: var(--red-dim);   color: var(--red);   }
+  .status-unknown    { background: rgba(255,255,255,.06); color: var(--muted); }
+  .status-loading    { background: rgba(255,255,255,.06); color: var(--muted); animation: pulse .8s ease-in-out infinite; }
+  @keyframes pulse   { 0%,100%{opacity:.4} 50%{opacity:1} }
+
+  .amount { font-weight: 600; }
+  .rep-name { font-size: 12px; }
+  .date-cell { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .hs-link {
+    color: var(--muted); text-decoration: none; font-size: 12px;
+    display: flex; align-items: center; gap: 4px; transition: color .15s;
+  }
+  .hs-link:hover { color: var(--orange); }
+
+  .empty-state { text-align: center; padding: 64px 24px; color: var(--muted); }
+  .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+  .empty-state h3 { font-size: 16px; color: var(--text); margin-bottom: 6px; }
+  .loading-row td { text-align: center; padding: 48px; }
+  .skeleton-line {
+    height: 14px;
+    background: linear-gradient(90deg, var(--skeleton-a) 25%, var(--skeleton-b) 50%, var(--skeleton-a) 75%);
+    background-size: 400% 100%; animation: shimmer 1.4s infinite; border-radius: 4px;
+  }
+  @keyframes shimmer { to { background-position: -400% 0; } }
+
+  @media (max-width: 768px) {
+    .main { padding: 12px; }
+    .stats-bar { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 16px; }
+    .stat-card { padding: 10px 12px; }
+    .stat-value { font-size: 20px; }
+    .filters { gap: 8px; }
+    .search-input { min-width: 0; font-size: 14px; }
+    .filter-select { font-size: 13px; padding: 7px 10px; }
+
+    /* Switch to card layout on mobile — no table */
+    .table-wrap { border-radius: 10px; overflow: hidden; }
+    table, thead, tbody, th, td, tr { display: block; }
+    thead { display: none; }
+    tr {
+      padding: 14px 14px 10px;
+      border-bottom: 1px solid var(--border);
+      position: relative;
+    }
+    tr:last-child { border-bottom: none; }
+    tr:hover td { background: none; }
+
+    /* Each TD becomes a layout element */
+    td { padding: 0; border: none; display: inline; }
+
+    /* Row layout: custom via data-col */
+    tr { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto auto; gap: 4px 8px; }
+
+    /* Col 1: Deal name (spans full width top) */
+    td:nth-child(1) { grid-column: 1 / 3; grid-row: 1; display: block; }
+    .deal-name { max-width: 100%; font-size: 13px; }
+    .deal-address { font-size: 11px; }
+
+    /* Col 2: Carrier badge (row 2 left) */
+    td:nth-child(2) { grid-column: 1; grid-row: 2; display: inline-flex; align-items: center; }
+
+    /* Col 3: Tracking # (row 2 right, hidden — shown in status row) */
+    td:nth-child(3) { grid-column: 2; grid-row: 2; display: inline-flex; align-items: center; justify-content: flex-end; }
+    .tracking-link { font-size: 12px; }
+    .copy-btn { display: none; }
+
+    /* Col 4: Status (row 3 left) */
+    td:nth-child(4) { grid-column: 1; grid-row: 3; display: inline-flex; align-items: center; }
+
+    /* Col 5,6,7: Date, Amount, Rep — show as small inline row 3 right */
+    td:nth-child(5) { grid-column: 2; grid-row: 3; display: inline-flex; align-items: center; justify-content: flex-end; }
+    td:nth-child(5).hide-mobile { display: inline-flex !important; }
+    .date-cell { font-size: 11px; color: var(--muted); }
+
+    /* Hide amount, rep, hubspot on mobile */
+    td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9) { display: none !important; }
+  }
+
+  @media (max-width: 420px) {
+    .stats-bar { grid-template-columns: repeat(2, 1fr); }
+    .header { padding: 0 10px; }
+    .logo-text { font-size: 16px; }
+    .logo-divider { display: none; }
+    .header-right { gap: 4px; }
     .nav-link { padding: 4px 7px; font-size: 10px; }
-    .tab-bar { overflow-x: auto; flex-wrap: nowrap; }
-    .tab { white-space: nowrap; font-size: 11px; padding: 8px 10px; }
-    .rep-bar { flex-wrap: wrap; gap: 6px; }
-    /* Hide less critical columns on mobile */
-    thead th:nth-child(3),
-    thead th:nth-child(4),
-    thead th:nth-child(5),
-    tbody td:nth-child(3),
-    tbody td:nth-child(4),
-    tbody td:nth-child(5) { display: none; }
   }
 </style>
 </head>
 <body>
 
-<div class="topbar">
-  <div class="topbar-logo">Whisper<span>Room</span></div>
-  <nav class="topbar-nav">
-    <a href="/" class="nav-link">Quote Builder</a>
-    <a href="/orders" class="nav-link active">Orders</a>
-    <a href="/shipping" class="nav-link">Shipping</a>
-  </nav>
-  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark mode">☀️</button>
+<div class="header">
+  <div class="logo-wrap">
+    <span class="logo-text"><span class="logo-whisper">Whisper</span><span class="logo-room">Room</span></span>
+    <span class="logo-divider">/ Shipping Board</span>
+  </div>
+  <div class="header-right">
+    <a href="/deals" class="nav-link">⬡ Deal Hub</a>
+    <a href="/quotes" class="nav-link">Quotes</a>
+    <a href="/orders" class="nav-link">📦 Orders</a>
+    <button class="mode-btn" id="modeBtn" onclick="toggleMode()" title="Toggle light/dark mode">
+      <span id="modeIcon">☀️</span>
+    </button>
+    <button onclick="openAddShipment()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:#f0ede8;padding:7px 14px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:background .15s" onmouseover="this.style.background='rgba(255,255,255,.14)'" onmouseout="this.style.background='rgba(255,255,255,.08)'">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add Shipment
+    </button>
+    <button class="refresh-btn" id="refreshBtn" onclick="loadShipments()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+        <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+      </svg>
+      Refresh
+    </button>
+  </div>
 </div>
 
 <div class="main">
-  <div class="page-header">
-    <div>
-      <div class="page-title">Production <span>Orders</span></div>
-      <div class="order-count" id="orderCount">Loading...</div>
-    </div>
+  <div class="stats-bar">
+    <div class="stat-card"><div class="stat-label">Last 30 Days</div><div class="stat-value" id="statTotal">—</div></div>
+    <div class="stat-card"><div class="stat-label">ABF</div><div class="stat-value" style="color:var(--orange)" id="statABF">—</div></div>
+    <div class="stat-card"><div class="stat-label">Old Dominion</div><div class="stat-value" style="color:var(--blue)" id="statOD">—</div></div>
+    <div class="stat-card"><div class="stat-label">UPS / Other</div><div class="stat-value" style="color:var(--muted)" id="statOther">—</div></div>
+
   </div>
 
-  <!-- Rep identity bar -->
-  <div class="rep-bar">
-    <span style="color:var(--muted)">Logged in as:</span>
-    <select id="repIdentity" onchange="saveRepIdentity()">
-      <option value="">Select your name...</option>
-      <option value="Jill Holdway">Jill Holdway</option>
-      <option value="Sarah Smith">Sarah Smith</option>
-      <option value="Travis Singleton">Travis Singleton</option>
-      <option value="Benton White">Benton White</option>
-      <option value="Gabe White">Gabe White</option>
-      <option value="Kim Dalton">Kim Dalton</option>
-      <option value="Chet Burgess">Chet Burgess</option>
-      <option value="Jeromy Packwood">Jeromy Packwood</option>
+  <div class="filters">
+    <input type="text" class="search-input" id="searchInput" placeholder="Search customer, deal, tracking #..." oninput="filterTable()">
+    <select class="filter-select" id="carrierFilter" onchange="filterTable()">
+      <option value="">All Carriers</option>
+      <option value="ABF">ABF</option>
+      <option value="OD">Old Dominion</option>
+      <option value="UPS">UPS</option>
+      <option value="FedEx">FedEx</option>
+      <option value="USPS">USPS</option>
+      <option value="Other">Other</option>
     </select>
-    <span style="color:var(--muted);font-size:11px">— used to attribute changes in order history</span>
+    <select class="filter-select" id="repFilter" onchange="filterTable()">
+      <option value="">All Reps</option>
+    </select>
+    <span class="filter-count" id="filterCount"></span>
   </div>
 
-  <!-- Tabs -->
-  <div class="tab-bar">
-    <div class="tab active" id="tab-db" onclick="switchTab('db')">Active Orders <span id="dbCount" style="opacity:.5"></span></div>
-    <div class="tab" id="tab-hs" onclick="switchTab('hs')">HubSpot Closed Won <span id="hsCount" style="opacity:.5"></span></div>
-  </div>
-
-  <div class="filter-bar">
-    <input type="text" class="search-input" id="searchInput" placeholder="Search by name, company, quote number..." oninput="filterOrders()">
-  </div>
-
-  <!-- DB Orders table -->
-  <div id="panel-db">
-    <div class="orders-table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Quote #</th>
-            <th>Customer / Company</th>
-            <th>Foam</th>
-            <th>Hinge</th>
-            <th>Total</th>
-            <th>Status</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="ordersBody">
-          <tr><td colspan="7"><div style="padding:40px;text-align:center;color:var(--muted)">Loading orders...</div></td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- HubSpot Deals table -->
-  <div id="panel-hs" style="display:none">
-    <div class="orders-table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Deal Name</th>
-            <th>Company</th>
-            <th>Amount</th>
-            <th>Close Date</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="hsDealsBody">
-          <tr><td colspan="5"><div style="padding:40px;text-align:center;color:var(--muted)">Loading HubSpot deals...</div></td></tr>
-        </tbody>
-      </table>
-    </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Customer / Deal</th>
+          <th>Carrier</th>
+          <th>Tracking #</th>
+          <th>Status</th>
+          <th class="hide-mobile">Latest Event</th>
+          <th class="hide-mobile">Date Shipped</th>
+          <th class="hide-mobile">Destination</th>
+          <th class="hide-mobile">Transit</th>
+          <th>HS</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr class="loading-row"><td colspan="8">
+          <div style="display:flex;flex-direction:column;gap:10px;padding:20px">
+            <div class="skeleton-line" style="width:100%"></div>
+            <div class="skeleton-line" style="width:85%"></div>
+            <div class="skeleton-line" style="width:92%"></div>
+            <div class="skeleton-line" style="width:78%"></div>
+          </div>
+        </td></tr>
+      </tbody>
+    </table>
   </div>
 </div>
-
-<!-- Edit Drawer -->
-<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
-<div class="drawer" id="editDrawer">
-  <div class="drawer-header">
-    <div>
-      <div class="drawer-title" id="drawerTitle">Edit Order</div>
-      <div class="drawer-subtitle" id="drawerSubtitle"></div>
-    </div>
-    <button class="drawer-close" onclick="closeDrawer()">&#x2715;</button>
-  </div>
-
-  <div class="drawer-section">
-    <div class="drawer-section-title">Contact Information</div>
-    <div class="field-group">
-      <div class="field"><label>First Name</label><input type="text" id="editFirstName" placeholder="First name"></div>
-      <div class="field"><label>Last Name</label><input type="text" id="editLastName" placeholder="Last name"></div>
-      <div class="field full"><label>Company</label><input type="text" id="editCompany" placeholder="Company name"></div>
-      <div class="field full"><label>Email</label><input type="email" id="editEmail" placeholder="customer@example.com"></div>
-    </div>
-  </div>
-
-  <div class="drawer-section">
-    <div class="drawer-section-title">Ship To Address</div>
-    <div class="field-group">
-      <div class="field full"><label>Street Address</label><input type="text" id="editAddress" placeholder="123 Main St"></div>
-      <div class="field"><label>City</label><input type="text" id="editCity" placeholder="City"></div>
-      <div class="field"><label>State</label><input type="text" id="editState" placeholder="TN" maxlength="2"></div>
-      <div class="field"><label>ZIP</label><input type="text" id="editZip" placeholder="37919"></div>
-    </div>
-  </div>
-
-  <div class="drawer-section">
-    <div class="drawer-section-title">Order Specifications</div>
-    <div style="margin-bottom:14px">
-      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Foam Color</div>
-      <div class="sel-grid" id="editFoamGrid">
-        <label class="sel-label"><input type="radio" name="editFoam" value="Gray" onchange="highlightSel('editFoam')"> Gray</label>
-        <label class="sel-label"><input type="radio" name="editFoam" value="Blue" onchange="highlightSel('editFoam')"> Blue</label>
-        <label class="sel-label"><input type="radio" name="editFoam" value="Purple" onchange="highlightSel('editFoam')"> Purple</label>
-        <label class="sel-label"><input type="radio" name="editFoam" value="Orange" onchange="highlightSel('editFoam')"> Orange</label>
-        <label class="sel-label"><input type="radio" name="editFoam" value="Burgundy" onchange="highlightSel('editFoam')"> Burgundy</label>
-      </div>
-    </div>
-    <div>
-      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Door Hinge</div>
-      <div class="sel-grid" id="editHingeGrid">
-        <label class="sel-label"><input type="radio" name="editHinge" value="Left Hand" onchange="highlightSel('editHinge')"> Left Hand</label>
-        <label class="sel-label"><input type="radio" name="editHinge" value="Right Hand" onchange="highlightSel('editHinge')"> Right Hand</label>
-      </div>
-    </div>
-  </div>
-
-  <div class="drawer-section">
-    <div class="drawer-section-title">Notes</div>
-    <div class="field-group">
-      <div class="field full"><label>Production Notes</label><textarea id="editProductionNotes" placeholder="Internal notes for production team..."></textarea></div>
-      <div class="field full"><label>Special Delivery Notes</label><textarea id="editDeliveryNotes" placeholder="Liftgate required, residential delivery, etc..."></textarea></div>
-    </div>
-  </div>
-
-  <div class="drawer-section" id="shipmentSection">
-    <div class="drawer-section-title" style="display:flex;align-items:center;justify-content:space-between">
-      <span>Shipment</span>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button onclick="openFreightModal()" style="padding:4px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:var(--orange-dim);border:1px solid rgba(238,98,22,.3);border-radius:5px;color:var(--orange);cursor:pointer;font-family:inherit">&#x1F69A; Get Freight</button>
-        <span id="shippedBadge" style="display:none;font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px;background:var(--green-dim);color:var(--green);border:1px solid rgba(34,197,94,.25);text-transform:uppercase;letter-spacing:.08em">&#x2713; Shipped</span>
-      </div>
-    </div>
-    <div class="field-group">
-      <div class="field">
-        <label>Carrier</label>
-        <select id="editCarrier">
-          <option value="">Select carrier...</option>
-          <option value="ABF Freight">ABF Freight</option>
-          <option value="Old Dominion">Old Dominion</option>
-          <option value="FedEx Freight">FedEx Freight</option>
-          <option value="UPS Freight">UPS Freight</option>
-          <option value="Other">Other</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Date Shipped</label>
-        <input type="date" id="editShipDate">
-      </div>
-      <div class="field full">
-        <label>PRO / Tracking Number</label>
-        <input type="text" id="editTracking" placeholder="Enter tracking or PRO number">
-      </div>
-      <div class="field">
-        <label>Pallet Count</label>
-        <input type="number" id="editPallets" placeholder="0" min="0">
-      </div>
-      <div class="field">
-        <label>Box Count</label>
-        <input type="number" id="editBoxes" placeholder="0" min="0">
-      </div>
-      <div class="field">
-        <label>Freight Cost (actual)</label>
-        <input type="number" id="editFreightCost" placeholder="0.00" min="0" step="0.01">
-      </div>
-    </div>
-  </div>
-
-  <div class="drawer-section" id="changeLogSection" style="display:none">
-    <div class="drawer-section-title">Change Log</div>
-    <div id="changeLogList" style="font-size:12px;color:var(--muted);line-height:1.8"></div>
-  </div>
-
-  <div class="drawer-footer">
-    <button class="btn btn-primary" id="saveBtn" onclick="saveOrder()">Save Changes</button>
-    <button id="shipItBtn" onclick="openShipFromDrawer()" style="display:none;padding:9px 16px;background:var(--green);color:white;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🚚 Ship It</button>
-    <a id="viewOrderBtn" href="#" target="_blank" class="btn btn-secondary" style="text-decoration:none;display:flex;align-items:center">View Order ↗</a>
-    <button class="btn btn-secondary" onclick="closeDrawer()">Cancel</button>
-  </div>
-</div>
-
-<!-- Freight Quote Modal -->
-<div id="freightModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:400;align-items:center;justify-content:center;padding:16px">
-  <div style="background:var(--surface);border-radius:14px;padding:28px;max-width:540px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);max-height:90vh;overflow-y:auto">
-    <h2 style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px">&#x1F69A; Get Freight Quote</h2>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:20px">Override any field before running the quote</div>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
-      <div style="display:flex;flex-direction:column;gap:5px">
-        <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">City</label>
-        <input id="fqCity" type="text" placeholder="City" style="padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
-      </div>
-      <div style="display:flex;flex-direction:column;gap:5px">
-        <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">State</label>
-        <input id="fqState" type="text" placeholder="TN" maxlength="2" style="padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
-      </div>
-      <div style="display:flex;flex-direction:column;gap:5px">
-        <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">ZIP</label>
-        <input id="fqZip" type="text" placeholder="00000" style="padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
-      </div>
-    </div>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-      <div style="display:flex;flex-direction:column;gap:5px">
-        <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Total Weight (lbs)</label>
-        <input id="fqWeight" type="number" placeholder="0" min="0" style="padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
-      </div>
-      <div style="display:flex;flex-direction:column;gap:5px">
-        <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Pallets</label>
-        <input id="fqPalletCount" type="number" placeholder="1" min="1" style="padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
-      </div>
-    </div>
-
-    <!-- Pallet dimensions table -->
-    <div style="margin-bottom:16px">
-      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Pallet Dimensions (inches)</div>
-      <div id="fqPalletRows" style="display:flex;flex-direction:column;gap:6px"></div>
-      <button onclick="fqAddPalletRow()" style="margin-top:8px;padding:5px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;cursor:pointer;font-family:inherit">+ Add Pallet</button>
-    </div>
-
-    <!-- Accessories -->
-    <div style="margin-bottom:20px">
-      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Accessorials</div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="fqResidential"> Residential</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="fqLiftgate"> Liftgate</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="fqLimitedAccess"> Limited Access</label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="fqLoadingDock"> Loading Dock</label>
-      </div>
-    </div>
-
-    <!-- Results -->
-    <div id="fqResults" style="display:none;margin-bottom:20px">
-      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Carrier Options</div>
-      <div id="fqCarrierList" style="display:flex;flex-direction:column;gap:8px"></div>
-    </div>
-
-    <div id="fqError" style="display:none;padding:10px 14px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;color:#ef4444;font-size:12px;margin-bottom:16px"></div>
-
-    <div style="display:flex;gap:10px">
-      <button id="fqRunBtn" onclick="runFreightQuote()" style="flex:1;padding:12px;background:var(--orange);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Get Rates</button>
-      <button onclick="closeFreightModal()" style="padding:12px 18px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- HubSpot Deal Ship Modal -->
-<div id="hsShipModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center;padding:16px">
-  <div style="background:var(--surface);border-radius:14px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)">
-    <h2 style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:6px">&#x1F69A; Ship It</h2>
-    <div id="hsShipDealName" style="font-size:13px;color:var(--muted);margin-bottom:20px"></div>
-    <div class="field-group" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div class="field" style="display:flex;flex-direction:column;gap:5px">
-        <label style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Carrier</label>
-        <select id="hsCarrier" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
-          <option value="">Select...</option>
-          <option value="ABF Freight">ABF Freight</option>
-          <option value="Old Dominion">Old Dominion</option>
-          <option value="FedEx Freight">FedEx Freight</option>
-          <option value="UPS Freight">UPS Freight</option>
-          <option value="Other">Other</option>
-        </select>
-      </div>
-      <div class="field" style="display:flex;flex-direction:column;gap:5px">
-        <label style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Date Shipped</label>
-        <input type="date" id="hsShipDate" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
-      </div>
-      <div class="field" style="display:flex;flex-direction:column;gap:5px;grid-column:1/-1">
-        <label style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">PRO / Tracking Number</label>
-        <input type="text" id="hsTracking" placeholder="Enter tracking or PRO number" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
-      </div>
-      <div class="field" style="display:flex;flex-direction:column;gap:5px">
-        <label style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Pallets</label>
-        <input type="number" id="hsPallets" placeholder="0" min="0" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
-      </div>
-      <div class="field" style="display:flex;flex-direction:column;gap:5px">
-        <label style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Boxes</label>
-        <input type="number" id="hsBoxes" placeholder="0" min="0" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
-      </div>
-    </div>
-    <div style="display:flex;gap:10px;margin-top:24px">
-      <button id="hsShipConfirmBtn" onclick="confirmHsShip()" style="flex:1;padding:13px;background:var(--green);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">&#x1F69A; Mark Shipped</button>
-      <button onclick="closeHsShipModal()" style="padding:13px 18px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<div id="toast"></div>
 
 <script>
-// ── Booth pallet dimensions (for freight quoting) ─────────────────
-const BOOTH_DATA = {
-  "Voice Over Basic":{"pallets":[{l:90,w:52,h:42}]},
-  "Voice Over Deluxe":{"pallets":[{l:90,w:52,h:60}]},
-  "Audiology Basic":{"pallets":[{l:90,w:52,h:48}]},
-  "Audiology Deluxe":{"pallets":[{l:90,w:52,h:52}]},
-  "Office Booth":{"pallets":[{l:90,w:47,h:37}]},
-  "Work From Home Booth":{"pallets":[{l:90,w:52,h:48}]},
-  "Drum Booth":{"pallets":[{l:102,w:52,h:28},{l:90,w:52,h:41},{l:102,w:52,h:44}]},
-  "Audiology Basic Plus":{"pallets":[{l:90,w:52,h:48}]},
-  "Audiology Compact":{"pallets":[{l:90,w:52,h:42}]},
-  "Audiology Ultra":{"pallets":[{l:90,w:52,h:52},{l:90,w:52,h:41}]},
-  "Audiology Premium":{"pallets":[{l:90,w:52,h:59}]},
-  "Creator Basic":{"pallets":[{l:90,w:52,h:52}]},
-  "Creator Deluxe":{"pallets":[{l:90,w:52,h:52},{l:90,w:52,h:41}]},
-  "Practice Basic":{"pallets":[{l:90,w:52,h:52}]},
-  "Practice Deluxe":{"pallets":[{l:90,w:52,h:52},{l:90,w:52,h:41}]},
-  "Recording Studio":{"pallets":[{l:102,w:52,h:37},{l:90,w:52,h:43}]},
-  "Drum Studio":{"pallets":[{l:102,w:52,h:44},{l:90,w:52,h:46},{l:102,w:52,h:54}]},
-  "Meeting Booth":{"pallets":[{l:90,w:52,h:59}]},
-  "Maker Space":{"pallets":[{l:102,w:52,h:28},{l:90,w:52,h:41}]},
-  "MDL 127 LP S":{"pallets":[{l:90,w:54,h:40}]},"MDL 127 LP E":{"pallets":[{l:90,w:54,h:62}]},
-  "MDL 4230 S":{"pallets":[{l:90,w:47,h:35}]},"MDL 4230 E":{"pallets":[{l:90,w:47,h:51}]},
-  "MDL 4242 S":{"pallets":[{l:90,w:47,h:37}]},"MDL 4242 E":{"pallets":[{l:90,w:47,h:58}]},
-  "MDL 4260 S":{"pallets":[{l:90,w:47,h:41}]},"MDL 4260 E":{"pallets":[{l:90,w:47,h:64}]},
-  "MDL 4284 S":{"pallets":[{l:90,w:47,h:57}]},"MDL 4284 E":{"pallets":[{l:90,w:47,h:57},{l:90,w:47,h:38}]},
-  "MDL 4848 S":{"pallets":[{l:90,w:52,h:38}]},"MDL 4848 E":{"pallets":[{l:90,w:52,h:60}]},
-  "MDL 4872 S":{"pallets":[{l:90,w:52,h:46}]},"MDL 4872 E":{"pallets":[{l:90,w:52,h:64}]},
-  "MDL 4896 S":{"pallets":[{l:90,w:52,h:52}]},"MDL 4896 E":{"pallets":[{l:90,w:52,h:64},{l:90,w:52,h:38}]},
-  "MDL 6060 S":{"pallets":[{l:90,w:66,h:42}]},"MDL 6060 E":{"pallets":[{l:90,w:66,h:60}]},
-  "MDL 6084 S":{"pallets":[{l:90,w:66,h:52}]},"MDL 6084 E":{"pallets":[{l:90,w:66,h:64},{l:90,w:66,h:38}]},
-  "MDL 7272 S":{"pallets":[{l:90,w:78,h:48}]},"MDL 7272 E":{"pallets":[{l:90,w:78,h:64},{l:90,w:78,h:38}]},
-  "MDL 7296 S":{"pallets":[{l:90,w:78,h:56}]},"MDL 7296 E":{"pallets":[{l:90,w:78,h:64},{l:90,w:78,h:50}]},
-  "MDL 8484 S":{"pallets":[{l:90,w:90,h:50}]},"MDL 8484 E":{"pallets":[{l:90,w:90,h:64},{l:90,w:90,h:44}]},
-  "MDL 9696 S":{"pallets":[{l:108,w:102,h:54}]},"MDL 9696 E":{"pallets":[{l:108,w:102,h:64},{l:108,w:102,h:48}]},
+let allShipments = [];
+
+const REP_COLORS = {
+  'Jill Holdway':   '#f59e0b',
+  'Sarah Smith':    '#3b82f6',
+  'Travis Singleton': '#8b5cf6',
+  'Benton White':   '#ee6216',
+  'Gabe White':     '#22c55e',
+  'Chet Burgess':   '#ec4899',
+  'Kim Dalton':     '#14b8a6',
+  'Jeromy Packwood':'#64748b',
 };
 
-// ── Freight Modal ─────────────────────────────────────────────────
-let _freightPallets = [];
+function fmtDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d + 'T00:00:00');
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
-function openFreightModal() {
-  const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
-  if (!order) return;
+function fmtAmount(n) {
+  if (!n) return '—';
+  return '$' + parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
 
-  const od = order.order_data || {};
-  const snapshot = order.json_snapshot || {};
-  const customer = snapshot.customer || {};
-  const lineItems = snapshot.lineItems || [];
+function carrierLabel(c) {
+  const map = { OD: 'Old Dominion', ABF: 'ABF Freight', UPS: 'UPS', FedEx: 'FedEx', USPS: 'USPS', Other: 'Other' };
+  return map[c] || c;
+}
 
-  // Pre-fill destination from order
-  document.getElementById('fqCity').value  = customer.city  || od.deliveryCity  || '';
-  document.getElementById('fqState').value = customer.state || od.deliveryState || '';
-  document.getElementById('fqZip').value   = customer.zip   || od.deliveryZip   || '';
+function copyTracking(btn, tracking) {
+  navigator.clipboard.writeText(tracking).then(() => {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  });
+}
 
-  // Build pallets from BOOTH_DATA and line items
-  _freightPallets = [];
-  let totalWeight = 0;
+function buildRow(s) {
+  const repColor = REP_COLORS[s.rep] || '#888';
+  const trackingCell = s.tracking
+    ? `<div style="display:flex;align-items:center;gap:6px">
+         ${s.trackingUrl
+           ? `<a href="${s.trackingUrl}" target="_blank" class="tracking-link" title="Track on carrier website">
+               ${s.tracking}
+               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+             </a>`
+           : `<span class="tracking-link" style="cursor:default">${s.tracking}</span>`
+         }
+         <button class="copy-btn" onclick="copyTracking(this,'${s.tracking}')">Copy</button>
+       </div>`
+    : `<span class="tracking-none">No tracking</span>`;
 
-  lineItems.forEach(item => {
-    const bd = BOOTH_DATA[item.name];
-    const itemWeight = (parseFloat(item.weight) || 0) * (parseInt(item.qty) || 1);
-    totalWeight += itemWeight;
-    if (bd) {
-      for (let q = 0; q < (parseInt(item.qty) || 1); q++) {
-        const w = parseFloat(item.weight) || 0;
-        const perPallet = Math.floor(w / bd.pallets.length);
-        const rem = w % bd.pallets.length;
-        bd.pallets.forEach((pl, i) => {
-          _freightPallets.push({ l: pl.l, w: pl.w, h: pl.h, weight: Math.round(perPallet + (i === 0 ? rem : 0)) });
-        });
+  return `<tr data-carrier="${s.carrier}" data-rep="${s.rep}" data-search="${(s.dealName + ' ' + s.tracking + ' ' + s.address + ' ' + s.rep).toLowerCase()}">
+    <td>
+      <a href="${s.dealUrl}" target="_blank" class="deal-name" title="${s.dealName}">${s.dealName.replace(/\s*-\s*New Deal\s*$/i, '').trim()}</a>
+      ${s.address ? `<div class="deal-address">${s.address}</div>` : ''}
+    </td>
+    <td><span class="carrier-badge carrier-${s.carrier}">${s.carrier === 'OD' ? 'Old Dom.' : s.carrier}</span></td>
+    <td>${trackingCell}</td>
+    <td id="status-${s.dealId}">
+      ${s.tracking && s.trackingUrl
+        ? `<a href="${s.trackingUrl}" target="_blank" class="status-badge status-unknown">Track →</a>`
+        : `<span class="status-badge status-unknown">No tracking</span>`
       }
-    }
+    </td>
+    <td class="hide-mobile" id="event-${s.dealId}" style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0">—</td>
+    <td class="date-cell hide-mobile" id="date-${s.dealId}">${fmtDate(s.dateShipped)}</td>
+    <td class="hide-mobile" id="dest-${s.dealId}" style="font-size:11px;color:var(--muted)">—</td>
+    <td class="hide-mobile" id="transit-${s.dealId}" style="font-size:11px;color:var(--muted);text-align:center">—</td>
+    <td>
+      <a href="${s.dealUrl}" target="_blank" class="hs-link" title="View Deal">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+      </a>
+    </td>
+  </tr>`;
+}
+
+function filterTable() {
+  const query = document.getElementById('searchInput').value.toLowerCase();
+  const carrier = document.getElementById('carrierFilter').value;
+  const rep = document.getElementById('repFilter').value;
+  const rows = document.querySelectorAll('#tableBody tr[data-carrier]');
+  let visible = 0;
+  rows.forEach(row => {
+    const matchSearch = !query || row.dataset.search.includes(query);
+    const matchCarrier = !carrier || row.dataset.carrier === carrier;
+    const matchRep = !rep || row.dataset.rep === rep;
+    const show = matchSearch && matchCarrier && matchRep;
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
   });
-
-  // If no pallet data found, add one default pallet
-  if (_freightPallets.length === 0) _freightPallets.push({ l: 90, w: 52, h: 48, weight: Math.round(totalWeight) });
-
-  document.getElementById('fqWeight').value = Math.round(totalWeight) || '';
-  document.getElementById('fqPalletCount').value = _freightPallets.length;
-  document.getElementById('fqResidential').checked = false;
-  document.getElementById('fqLiftgate').checked = false;
-  document.getElementById('fqLimitedAccess').checked = false;
-  document.getElementById('fqLoadingDock').checked = false;
-  document.getElementById('fqResults').style.display = 'none';
-  document.getElementById('fqError').style.display = 'none';
-
-  renderPalletRows();
-  document.getElementById('freightModal').style.display = 'flex';
+  document.getElementById('filterCount').textContent = visible !== allShipments.length
+    ? `Showing ${visible} of ${allShipments.length}` : '';
 }
 
-function renderPalletRows() {
-  const container = document.getElementById('fqPalletRows');
-  container.innerHTML = _freightPallets.map((pl, i) => `
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:6px;align-items:center">
-      <input type="number" value="${pl.l}" min="1" placeholder="L" onchange="updatePallet(${i},'l',this.value)"
-        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
-      <input type="number" value="${pl.w}" min="1" placeholder="W" onchange="updatePallet(${i},'w',this.value)"
-        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
-      <input type="number" value="${pl.h}" min="1" placeholder="H" onchange="updatePallet(${i},'h',this.value)"
-        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
-      <input type="number" value="${pl.weight}" min="0" placeholder="lbs" onchange="updatePallet(${i},'weight',this.value)"
-        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
-      <button onclick="removePallet(${i})" style="padding:4px 8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);border-radius:5px;color:#ef4444;font-size:12px;cursor:pointer;font-family:inherit">×</button>
+function updateStats(shipments) {
+  document.getElementById('statTotal').textContent = shipments.length;
+  document.getElementById('statABF').textContent = shipments.filter(s => s.carrier === 'ABF').length;
+  document.getElementById('statOD').textContent = shipments.filter(s => s.carrier === 'OD').length;
+  document.getElementById('statOther').textContent = shipments.filter(s => !['ABF','OD'].includes(s.carrier)).length;
+
+}
+
+function populateRepFilter(shipments) {
+  const reps = [...new Set(shipments.map(s => s.rep))].sort();
+  const sel = document.getElementById('repFilter');
+  sel.innerHTML = '<option value="">All Reps</option>';
+  reps.forEach(r => {
+    const opt = document.createElement('option');
+    opt.value = r; opt.textContent = r;
+    sel.appendChild(opt);
+  });
+}
+
+async function loadShipments() {
+  const btn = document.getElementById('refreshBtn');
+  btn.classList.add('spinning');
+  document.getElementById('tableBody').innerHTML = `<tr class="loading-row"><td colspan="7">
+    <div style="display:flex;flex-direction:column;gap:10px;padding:20px">
+      <div class="skeleton-line" style="width:100%"></div>
+      <div class="skeleton-line" style="width:85%"></div>
+      <div class="skeleton-line" style="width:92%"></div>
+      <div class="skeleton-line" style="width:78%"></div>
     </div>
-  `).join('');
-}
-
-function updatePallet(i, field, value) {
-  if (_freightPallets[i]) _freightPallets[i][field] = parseFloat(value) || 0;
-}
-
-function removePallet(i) {
-  _freightPallets.splice(i, 1);
-  document.getElementById('fqPalletCount').value = _freightPallets.length;
-  renderPalletRows();
-}
-
-function fqAddPalletRow() {
-  _freightPallets.push({ l: 90, w: 52, h: 48, weight: 0 });
-  document.getElementById('fqPalletCount').value = _freightPallets.length;
-  renderPalletRows();
-}
-
-async function runFreightQuote() {
-  const city  = document.getElementById('fqCity').value.trim();
-  const state = document.getElementById('fqState').value.trim().toUpperCase();
-  const zip   = document.getElementById('fqZip').value.trim();
-  const totalWeight = parseFloat(document.getElementById('fqWeight').value) || 0;
-
-  if (!city || !state || !zip) { showToast('Enter city, state and ZIP first', 'error'); return; }
-  if (!_freightPallets.length) { showToast('Add at least one pallet', 'error'); return; }
-
-  const btn = document.getElementById('fqRunBtn');
-  btn.disabled = true;
-  btn.textContent = 'Getting rates...';
-  document.getElementById('fqError').style.display = 'none';
-  document.getElementById('fqResults').style.display = 'none';
+  </td></tr>`;
 
   try {
-    const res = await fetch('/api/orders-freight', {
+    const res = await fetch('/api/shipping-board', { credentials: 'include' });
+    const data = await res.json();
+
+    if (!data.success) throw new Error(data.error || 'Failed to load');
+
+    allShipments = data.shipments;
+    updateStats(allShipments);
+    populateRepFilter(allShipments);
+
+    // Pre-register all tracking numbers with AfterShip in one batch call
+    // This ensures AfterShip has started polling carriers before we request status
+    const trackable = allShipments.filter(s => s.tracking && s.carrier);
+    if (trackable.length > 0) {
+      registerAllWithAfterShip(trackable);  // fire and forget
+      fetchAllStatuses(trackable);
+    }
+
+    if (allShipments.length === 0) {
+      document.getElementById('tableBody').innerHTML = `<tr><td colspan="7">
+        <div class="empty-state">
+          <div class="icon">📦</div>
+          <h3>No shipments found</h3>
+          <p>No deals in Shipped stage with tracking numbers.</p>
+        </div>
+      </td></tr>`;
+    } else {
+      document.getElementById('tableBody').innerHTML = allShipments.map(buildRow).join('');
+      filterTable();
+    }
+  } catch(e) {
+    document.getElementById('tableBody').innerHTML = `<tr><td colspan="7">
+      <div class="empty-state">
+        <div class="icon">⚠️</div>
+        <h3>Error loading shipments</h3>
+        <p style="color:var(--red)">${e.message}</p>
+      </div>
+    </td></tr>`;
+  } finally {
+    btn.classList.remove('spinning');
+  }
+}
+
+// ── Live tracking status ──────────────────────────────────────────
+// Pre-register all tracking numbers with AfterShip in one server call
+async function registerAllWithAfterShip(shipments) {
+  try {
+    await fetch('/api/register-trackings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({
-        pallets: _freightPallets,
-        totalWeight,
-        city, state, zip,
-        accessories: {
-          residential:   document.getElementById('fqResidential').checked,
-          liftgate:      document.getElementById('fqLiftgate').checked,
-          limitedaccess: document.getElementById('fqLimitedAccess').checked,
-          loadingdock:   document.getElementById('fqLoadingDock').checked,
+      body: JSON.stringify(shipments.map(s => ({ tracking: s.tracking, carrier: s.carrier })))
+    });
+  } catch(e) { /* non-fatal */ }
+}
+
+async function fetchAllStatuses(shipments) {
+  // Fetch one at a time with 400ms delay to avoid AfterShip rate limiting
+  for (const s of shipments) {
+    await fetchStatus(s);
+    await new Promise(r => setTimeout(r, 400));
+  }
+}
+
+async function fetchStatus(s) {
+  const cell = document.getElementById('status-' + s.dealId);
+  if (!cell) return;
+  try {
+    const res = await fetch(`/api/track?carrier=${encodeURIComponent(s.carrier)}&tracking=${encodeURIComponent(s.tracking)}`, { credentials: 'include' });
+    const data = await res.json();
+    if (data.status) {
+      const cls   = statusClass(data.status);
+      const icon  = statusIcon(data.status);
+      const label = data.label || data.status;
+
+      // Build location/detail line
+      const locationStr = data.location ? ` · ${data.location}` : '';
+
+      // Tooltip: last event message
+      const tooltip = data.lastEvent || data.detail || '';
+
+      // ETA line (only show if not delivered)
+      let etaLine = '';
+      if (data.eta && data.status !== 'delivered') {
+        etaLine = `<div style="font-size:10px;color:var(--muted);margin-top:2px">ETA ${fmtDate(data.eta)}</div>`;
+      }
+
+      // Signed by line
+      let signedLine = '';
+      if (data.signedBy && data.status === 'delivered') {
+        signedLine = `<div style="font-size:10px;color:var(--muted);margin-top:1px">Signed: ${data.signedBy}</div>`;
+      }
+
+      const badge = s.trackingUrl
+        ? `<a href="${s.trackingUrl}" target="_blank" class="status-badge ${cls}" title="${tooltip}">${icon} ${label}${locationStr}</a>`
+        : `<span class="status-badge ${cls}" title="${tooltip}">${icon} ${label}${locationStr}</span>`;
+
+      cell.innerHTML = badge + etaLine + signedLine;
+
+      // Latest Event cell
+      const eventCell = document.getElementById('event-' + s.dealId);
+      if (eventCell && data.lastEvent) {
+        const evDate = data.lastEventTime ? `<span style="color:var(--muted);margin-right:4px">${fmtDate(data.lastEventTime)}</span>` : '';
+        eventCell.innerHTML = evDate + data.lastEvent;
+        eventCell.title = data.lastEvent;
+      }
+
+      // Destination cell — parse from address
+      const destCell = document.getElementById('dest-' + s.dealId);
+      if (destCell && s.address) {
+        // Extract city, state from address string
+        const parts = s.address.split(',').map(p => p.trim());
+        const dest = parts.length >= 2 ? parts.slice(-3, -1).join(', ') : s.address;
+        destCell.textContent = dest;
+      }
+
+      // Transit time cell — days between ship date and now (or delivery)
+      const transitCell = document.getElementById('transit-' + s.dealId);
+      if (transitCell && s.dateShipped) {
+        const start = new Date(s.dateShipped + 'T00:00:00');
+        const end = data.deliveredAt ? new Date(data.deliveredAt + 'T00:00:00') : new Date();
+        const days = Math.round((end - start) / (1000 * 60 * 60 * 24));
+        transitCell.textContent = days + 'd';
+        if (data.status === 'delivered') transitCell.style.color = 'var(--green)';
+      }
+
+      // If delivered, update date cell to show delivery date
+      const dateCell = document.getElementById('date-' + s.dealId);
+      if (dateCell) {
+        if (data.status === 'delivered' && data.deliveredAt) {
+          dateCell.innerHTML = `<span style="color:var(--green);font-weight:600">${fmtDate(data.deliveredAt)}</span><div style="font-size:10px;color:var(--muted)">Delivered</div>`;
+        } else if (data.lastEventTime) {
+          // Show last event date as a subtle update indicator
+          dateCell.innerHTML = `${fmtDate(s.dateShipped)}<div style="font-size:10px;color:var(--muted)">Updated ${fmtDate(data.lastEventTime)}</div>`;
         }
-      })
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-
-    // Render carrier options
-    const list = document.getElementById('fqCarrierList');
-    list.innerHTML = (data.carriers || []).map(c => `
-      <div style="padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:border-color .15s"
-           onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'"
-           onclick="selectFreightOption('${c.name}', ${c.cost}, '${c.transit}')">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <div style="font-weight:700;color:var(--text);font-size:14px">${c.name}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">Transit: ${c.transit} · Base: $${c.cost.toFixed(2)}</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:18px;font-weight:800;color:var(--orange)">$${c.cost.toFixed(2)}</div>
-            <div style="font-size:10px;color:var(--muted)">actual cost</div>
-          </div>
-        </div>
-      </div>
-    `).join('');
-
-    document.getElementById('fqResults').style.display = 'block';
-  } catch(e) {
-    document.getElementById('fqError').textContent = 'Error: ' + e.message;
-    document.getElementById('fqError').style.display = 'block';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Get Rates';
-  }
-}
-
-let _selectedCarrier = null;
-let _selectedFreightCost = null;
-
-function selectFreightOption(carrier, cost, transit) {
-  _selectedCarrier = carrier;
-  _selectedFreightCost = cost;
-
-  // Highlight selected card
-  document.querySelectorAll('#fqCarrierList > div').forEach(el => {
-    el.style.borderColor = 'var(--border)';
-    el.style.background = 'var(--surface2)';
-  });
-  event.currentTarget.style.borderColor = 'var(--orange)';
-  event.currentTarget.style.background = 'rgba(238,98,22,.06)';
-
-  // Show pickup date + book button
-  let bookSection = document.getElementById('fqBookSection');
-  if (!bookSection) {
-    bookSection = document.createElement('div');
-    bookSection.id = 'fqBookSection';
-    document.getElementById('fqResults').after(bookSection);
-  }
-  bookSection.style.display = 'block';
-  bookSection.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-      <div style="display:flex;flex-direction:column;gap:5px">
-        <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Pickup Date</label>
-        <input type="date" id="fqPickupDate" value="${new Date().toISOString().split('T')[0]}"
-          style="padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
-      </div>
-      <div style="display:flex;flex-direction:column;gap:5px">
-        <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Contact Phone</label>
-        <input type="text" id="fqConsPhone" placeholder="(000) 000-0000"
-          style="padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
-      </div>
-      <div style="display:flex;flex-direction:column;gap:5px;grid-column:1/-1">
-        <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Special Instructions (optional)</label>
-        <input type="text" id="fqSpecialInst" placeholder="e.g. Call before delivery"
-          style="padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
-      </div>
-    </div>
-    <div style="display:flex;gap:10px">
-      <button id="fqBookBtn" onclick="bookShipment()" style="flex:1;padding:12px;background:var(--green, #1a7a4a);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
-        &#x2713; Book ABF Shipment
-      </button>
-      <button onclick="applyRateOnly()" style="padding:12px 16px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">
-        Rate Only
-      </button>
-    </div>
-    <div id="fqBookResult" style="margin-top:10px;display:none"></div>
-  `;
-
-  // Pre-fill phone from order customer data
-  const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
-  const phone = order?.json_snapshot?.customer?.phone || '';
-  if (phone) document.getElementById('fqConsPhone').value = phone;
-}
-
-function applyRateOnly() {
-  // Just fill carrier + cost, don't book
-  if (_selectedCarrier) document.getElementById('editCarrier').value = _selectedCarrier;
-  if (_selectedFreightCost) document.getElementById('editFreightCost').value = _selectedFreightCost.toFixed(2);
-  closeFreightModal();
-  showToast(`${_selectedCarrier} rate applied — $${_selectedFreightCost?.toFixed(2)}`, 'success');
-}
-
-async function bookShipment() {
-  const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
-  if (!order) return;
-
-  const customer = order.json_snapshot?.customer || {};
-  const btn = document.getElementById('fqBookBtn');
-  btn.disabled = true;
-  btn.textContent = 'Booking...';
-
-  const resultDiv = document.getElementById('fqBookResult');
-  resultDiv.style.display = 'none';
-
-  try {
-    const res = await fetch('/api/book-abf-shipment', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        quoteNumber: order.quote_number,
-        dealId: order.deal_id,
-        pallets: _freightPallets,
-        totalWeight: parseFloat(document.getElementById('fqWeight').value) || 0,
-        consName: customer.company || [customer.firstName, customer.lastName].filter(Boolean).join(' '),
-        consAddr: customer.address || '',
-        consCity: document.getElementById('fqCity').value.trim(),
-        consState: document.getElementById('fqState').value.trim(),
-        consZip: document.getElementById('fqZip').value.trim(),
-        consPhone: document.getElementById('fqConsPhone').value.trim(),
-        pickupDate: document.getElementById('fqPickupDate').value,
-        specialInstructions: document.getElementById('fqSpecialInst').value.trim(),
-        accessories: {
-          residential:   document.getElementById('fqResidential').checked,
-          liftgate:      document.getElementById('fqLiftgate').checked,
-          limitedaccess: document.getElementById('fqLimitedAccess').checked,
-          loadingdock:   document.getElementById('fqLoadingDock').checked,
-        },
-      })
-    });
-    const data = await res.json();
-
-    if (data.error) throw new Error(data.error);
-
-    // Fill in the drawer fields automatically
-    document.getElementById('editCarrier').value = 'ABF Freight';
-    document.getElementById('editFreightCost').value = _selectedFreightCost?.toFixed(2) || '';
-    document.getElementById('editTracking').value = data.proNumber || '';
-    if (document.getElementById('editShipDate') && document.getElementById('fqPickupDate').value) {
-      document.getElementById('editShipDate').value = document.getElementById('fqPickupDate').value;
+      }
+    } else {
+      cell.innerHTML = s.trackingUrl
+        ? `<a href="${s.trackingUrl}" target="_blank" class="status-badge status-unknown">Track →</a>`
+        : `<span class="status-badge status-unknown">No data</span>`;
     }
-
-    resultDiv.style.cssText = 'display:block;padding:12px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25);border-radius:8px;font-size:12px;color:#22c55e';
-    resultDiv.innerHTML = `&#x2713; Booked! PRO: <strong>${data.proNumber || 'Pending'}</strong>${data.pickupConfirm ? ' · Pickup: ' + data.pickupConfirm : ''}`;
-
-    // Reload orders to reflect new tracking
-    setTimeout(() => { closeFreightModal(); loadOrders(); }, 2000);
-    showToast(`ABF booked — PRO ${data.proNumber || 'pending'}`, 'success');
-
   } catch(e) {
-    resultDiv.style.cssText = 'display:block;padding:10px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;font-size:12px;color:#ef4444';
-    resultDiv.textContent = 'Error: ' + e.message;
-    btn.disabled = false;
-    btn.textContent = '✓ Book ABF Shipment';
+    if (cell) cell.innerHTML = s.trackingUrl
+      ? `<a href="${s.trackingUrl}" target="_blank" class="status-badge status-unknown">Track →</a>`
+      : `<span class="status-badge status-unknown">—</span>`;
   }
 }
 
-function closeFreightModal() {
-  document.getElementById('freightModal').style.display = 'none';
-  const bs = document.getElementById('fqBookSection');
-  if (bs) bs.style.display = 'none';
-  _selectedCarrier = null;
-  _selectedFreightCost = null;
+function statusClass(status) {
+  const s = (status || '').toLowerCase();
+  if (s === 'delivered') return 'status-delivered';
+  if (s === 'out_for_delivery') return 'status-transit';
+  if (s === 'in_transit') return 'status-transit';
+  if (s === 'pickup') return 'status-pickup';
+  if (s === 'pending') return 'status-unknown';
+  if (s === 'exception') return 'status-exception';
+  return 'status-transit';
 }
 
-// ── Rep identity ──────────────────────────────────────────────────
-function saveRepIdentity() {
-  const val = document.getElementById('repIdentity').value;
-  if (val) localStorage.setItem('wr-rep', val);
-}
-function getCurrentRep() {
-  return document.getElementById('repIdentity').value || localStorage.getItem('wr-rep') || 'Unknown';
-}
-// Restore saved rep
-const savedRep = localStorage.getItem('wr-rep');
-if (savedRep) {
-  document.addEventListener('DOMContentLoaded', () => {
-    const sel = document.getElementById('repIdentity');
-    if (sel) sel.value = savedRep;
-  });
+function statusIcon(status) {
+  const s = (status || '').toLowerCase();
+  if (s === 'delivered') return '✓';
+  if (s === 'out_for_delivery') return '🚚';
+  if (s === 'in_transit') return '→';
+  if (s === 'pickup') return '📦';
+  if (s === 'exception') return '⚠️';
+  if (s === 'pending') return '○';
+  return '→';
 }
 
-// ── Theme ─────────────────────────────────────────────────────────
-function toggleTheme() {
+// ── Light / Dark mode ────────────────────────────────────────────
+function toggleMode() {
   const isLight = document.documentElement.classList.toggle('light');
-  document.getElementById('themeBtn').textContent = isLight ? '🌙' : '☀️';
-  localStorage.setItem('wr-theme', isLight ? 'light' : 'dark');
-}
-if (localStorage.getItem('wr-theme') === 'light') {
-  document.documentElement.classList.add('light');
-  document.addEventListener('DOMContentLoaded', () => {
-    const btn = document.getElementById('themeBtn');
-    if (btn) btn.textContent = '🌙';
-  });
+  document.getElementById('modeIcon').textContent = isLight ? '🌙' : '☀️';
+  localStorage.setItem('wr_shipping_mode', isLight ? 'light' : 'dark');
 }
 
-// ── State ─────────────────────────────────────────────────────────
-let allOrders = [];
-let allHsDeals = [];
-let currentQuoteNumber = null;
-let currentHsDeal = null;
-let currentTab = 'db';
-
-// ── Tabs ──────────────────────────────────────────────────────────
-function switchTab(tab) {
-  currentTab = tab;
-  document.getElementById('tab-db').classList.toggle('active', tab === 'db');
-  document.getElementById('tab-hs').classList.toggle('active', tab === 'hs');
-  document.getElementById('panel-db').style.display = tab === 'db' ? '' : 'none';
-  document.getElementById('panel-hs').style.display = tab === 'hs' ? '' : 'none';
-  filterOrders();
-  if (tab === 'hs' && allHsDeals.length === 0) loadHsDeals();
-}
-
-// ── Load Data ─────────────────────────────────────────────────────
-async function loadOrders() {
-  try {
-    const res = await fetch('/api/orders', { credentials: 'include' });
-    if (res.status === 401) { window.location.href = '/'; return; }
-    const data = await res.json();
-    allOrders = data.orders || [];
-    renderOrders(allOrders);
-    document.getElementById('orderCount').textContent = `${allOrders.length} order${allOrders.length !== 1 ? 's' : ''} in production`;
-    document.getElementById('dbCount').textContent = `(${allOrders.length})`;
-  } catch(e) {
-    document.getElementById('ordersBody').innerHTML = `<tr><td colspan="7"><div style="padding:40px;text-align:center;color:#ef4444">Failed to load orders: ${e.message}</div></td></tr>`;
-  }
-}
-
-async function loadHsDeals() {
-  document.getElementById('hsDealsBody').innerHTML = `<tr><td colspan="5"><div style="padding:40px;text-align:center;color:var(--muted)">Loading from HubSpot...</div></td></tr>`;
-  try {
-    const res = await fetch('/api/orders/hubspot-deals', { credentials: 'include' });
-    const data = await res.json();
-    allHsDeals = data.deals || [];
-    renderHsDeals(allHsDeals);
-    document.getElementById('hsCount').textContent = `(${allHsDeals.length})`;
-  } catch(e) {
-    document.getElementById('hsDealsBody').innerHTML = `<tr><td colspan="5"><div style="padding:40px;text-align:center;color:#ef4444">Failed: ${e.message}</div></td></tr>`;
-  }
-}
-
-// ── Format ────────────────────────────────────────────────────────
-function fmt(n) {
-  return '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-}
-
-// ── Render DB Orders ──────────────────────────────────────────────
-function renderOrders(orders) {
-  const tbody = document.getElementById('ordersBody');
-  if (!orders.length) {
-    tbody.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-icon">📦</div><div class="empty-text">No orders yet</div></div></td></tr>`;
-    return;
-  }
-  tbody.innerHTML = orders.map(o => {
-    const customer  = o.customer_name || '—';
-    const company   = o.company || '';
-    const foam      = o.order_data?.foamColor || '—';
-    const hinge     = o.order_data?.hingePreference || '—';
-    const isShipped = !!(o.order_data?.shipped?.tracking);
-    const total     = o.total ? fmt(o.total) : '—';
-    const orderUrl  = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(o.quote_number)}${o.share_token ? '?t=' + o.share_token : ''}`;
-    return `<tr onclick="openDrawer('${o.quote_number}')">
-      <td><div class="td-mono">${o.quote_number}</div></td>
-      <td><div class="td-main">${customer}</div>${company ? `<div class="td-sub">${company}</div>` : ''}</td>
-      <td><span class="badge badge-foam">${foam}</span></td>
-      <td><span class="badge badge-foam">${hinge}</span></td>
-      <td style="font-weight:600;color:var(--orange)">${total}</td>
-      <td>${isShipped
-        ? `<span class="badge" style="background:var(--green-dim);color:var(--green);border:1px solid rgba(34,197,94,.25)">✓ Shipped</span>`
-        : `<span class="badge badge-production">In Production</span>`}
-      </td>
-      <td onclick="event.stopPropagation()"><a href="${orderUrl}" target="_blank" class="order-link-btn">Order ↗</a></td>
-    </tr>`;
-  }).join('');
-}
-
-// ── Render HubSpot Deals ──────────────────────────────────────────
-function renderHsDeals(deals) {
-  const tbody = document.getElementById('hsDealsBody');
-  if (!deals.length) {
-    tbody.innerHTML = `<tr><td colspan="5"><div class="empty"><div class="empty-icon">✓</div><div class="empty-text">All Closed Won deals have been processed</div></div></td></tr>`;
-    return;
-  }
-  tbody.innerHTML = deals.map(d => {
-    const amount   = d.amount ? fmt(d.amount) : '—';
-    const date     = d.closeDate ? new Date(d.closeDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
-    return `<tr>
-      <td><div class="td-main">${d.dealName}</div></td>
-      <td><div class="td-sub">${d.company || '—'}</div></td>
-      <td style="font-weight:600;color:var(--orange)">${amount}</td>
-      <td style="color:var(--muted);font-size:12px">${date}</td>
-      <td>
-        <div style="display:flex;gap:6px;align-items:center">
-          <button onclick="openHsShipModal('${d.id}','${d.dealName.replace(/'/g,'\\\'')}')" class="btn btn-primary" style="padding:6px 12px;font-size:11px;white-space:nowrap">&#x1F69A; Ship It</button>
-          <a href="${d.dealUrl}" target="_blank" class="order-link-btn">HubSpot ↗</a>
-        </div>
-      </td>
-    </tr>`;
-  }).join('');
-}
-
-// ── Filter ────────────────────────────────────────────────────────
-function filterOrders() {
-  const q = document.getElementById('searchInput').value.toLowerCase();
-  if (currentTab === 'db') {
-    renderOrders(q ? allOrders.filter(o =>
-      (o.quote_number||'').toLowerCase().includes(q) ||
-      (o.customer_name||'').toLowerCase().includes(q) ||
-      (o.company||'').toLowerCase().includes(q) ||
-      (o.deal_name||'').toLowerCase().includes(q)
-    ) : allOrders);
-  } else {
-    renderHsDeals(q ? allHsDeals.filter(d =>
-      (d.dealName||'').toLowerCase().includes(q) ||
-      (d.company||'').toLowerCase().includes(q)
-    ) : allHsDeals);
-  }
-}
-
-// ── Edit Drawer ───────────────────────────────────────────────────
-function openDrawer(quoteNumber) {
-  const order = allOrders.find(o => o.quote_number === quoteNumber);
-  if (!order) return;
-  currentQuoteNumber = quoteNumber;
-
-  document.getElementById('drawerTitle').textContent = order.quote_number;
-  document.getElementById('drawerSubtitle').textContent = order.deal_name || order.customer_name || '';
-
-  const c  = order.json_snapshot?.customer || {};
-  const od = order.order_data || {};
-
-  document.getElementById('editFirstName').value = c.firstName || '';
-  document.getElementById('editLastName').value  = c.lastName  || '';
-  document.getElementById('editCompany').value   = c.company   || order.company || '';
-  document.getElementById('editEmail').value     = c.email     || '';
-  document.getElementById('editAddress').value   = c.address   || '';
-  document.getElementById('editCity').value      = c.city      || '';
-  document.getElementById('editState').value     = c.state     || '';
-  document.getElementById('editZip').value       = c.zip       || '';
-
-  setRadio('editFoam',  od.foamColor       || '');
-  setRadio('editHinge', od.hingePreference || '');
-  document.getElementById('editProductionNotes').value = od.productionNotes || '';
-  document.getElementById('editDeliveryNotes').value   = od.deliveryNotes   || '';
-
-  const shipped = od.shipped || {};
-  document.getElementById('editCarrier').value  = shipped.carrier  || '';
-  document.getElementById('editTracking').value = shipped.tracking || '';
-  document.getElementById('editPallets').value  = shipped.pallets  || '';
-  document.getElementById('editBoxes').value    = shipped.boxes    || '';
-  document.getElementById('editShipDate').value = shipped.date
-    ? new Date(shipped.date).toISOString().split('T')[0]
-    : new Date().toISOString().split('T')[0];
-  document.getElementById('editFreightCost').value = od.freightCost || '';
-
-  const badge = document.getElementById('shippedBadge');
-  badge.style.display = shipped.tracking ? 'inline-flex' : 'none';
-
-  // Show Ship It button only if not yet shipped
-  const shipItBtn = document.getElementById('shipItBtn');
-  if (shipItBtn) shipItBtn.style.display = shipped.tracking ? 'none' : 'inline-flex';
-
-  const log = od.changeLog || [];
-  const logSection = document.getElementById('changeLogSection');
-  const logList    = document.getElementById('changeLogList');
-  if (log.length) {
-    logSection.style.display = 'block';
-    logList.innerHTML = log.slice().reverse().map(entry =>
-      `<div style="padding:6px 0;border-bottom:1px solid var(--border)">
-        <span style="color:var(--text);font-weight:600">${entry.summary}</span>
-        ${entry.rep ? `<span style="color:var(--orange);margin-left:6px;font-size:11px">— ${entry.rep}</span>` : ''}
-        <span style="color:var(--muted);margin-left:6px;font-size:11px">${new Date(entry.at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})}</span>
-      </div>`
-    ).join('');
-  } else {
-    logSection.style.display = 'none';
-  }
-
-  const orderUrl = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(quoteNumber)}${order.share_token ? '?t=' + order.share_token : ''}`;
-  console.log('View Order URL:', orderUrl, 'token:', order.share_token);
-  document.getElementById('viewOrderBtn').href = orderUrl;
-
-  document.getElementById('editDrawer').classList.add('open');
-  document.getElementById('drawerOverlay').classList.add('open');
-  document.body.style.overflow = 'hidden';
-}
-
-function closeDrawer() {
-  document.getElementById('editDrawer').classList.remove('open');
-  document.getElementById('drawerOverlay').classList.remove('open');
-  document.body.style.overflow = '';
-  currentQuoteNumber = null;
-}
-
-function setRadio(name, value) {
-  document.querySelectorAll(`input[name="${name}"]`).forEach(inp => { inp.checked = (inp.value === value); });
-  highlightSel(name);
-}
-
-function highlightSel(name) {
-  document.querySelectorAll(`input[name="${name}"]`).forEach(inp => {
-    const label = inp.closest('.sel-label');
-    if (label) label.classList.toggle('selected', inp.checked);
-  });
-}
-
-// ── Save Order ────────────────────────────────────────────────────
-async function saveOrder() {
-  if (!currentQuoteNumber) return;
-  const btn = document.getElementById('saveBtn');
-  btn.disabled = true;
-  btn.textContent = 'Saving…';
-
-  const order   = allOrders.find(o => o.quote_number === currentQuoteNumber);
-  const prevOd  = order?.order_data || {};
-  const prevC   = order?.json_snapshot?.customer || {};
-  const repName = getCurrentRep();
-
-  const newFoam      = document.querySelector('input[name="editFoam"]:checked')?.value  || '';
-  const newHinge     = document.querySelector('input[name="editHinge"]:checked')?.value || '';
-  const newProdNotes = document.getElementById('editProductionNotes').value.trim();
-  const newDelNotes  = document.getElementById('editDeliveryNotes').value.trim();
-  const carrier      = document.getElementById('editCarrier').value;
-  const tracking     = document.getElementById('editTracking').value.trim();
-  const shipDate     = document.getElementById('editShipDate').value;
-  const pallets      = document.getElementById('editPallets').value;
-  const boxes        = document.getElementById('editBoxes').value;
-  const freightCost  = parseFloat(document.getElementById('editFreightCost').value) || null;
-  const isShipping   = carrier && tracking;
-
-  const customer = {
-    firstName: document.getElementById('editFirstName').value.trim(),
-    lastName:  document.getElementById('editLastName').value.trim(),
-    company:   document.getElementById('editCompany').value.trim(),
-    email:     document.getElementById('editEmail').value.trim(),
-    address:   document.getElementById('editAddress').value.trim(),
-    city:      document.getElementById('editCity').value.trim(),
-    state:     document.getElementById('editState').value.trim(),
-    zip:       document.getElementById('editZip').value.trim(),
-  };
-
-  // Build diff for change log
-  const changes = [];
-  const chk = (label, prev, next) => { if ((prev||'') !== (next||'') && (prev||next)) changes.push(`${label}: ${prev||'—'} → ${next||'—'}`); };
-  chk('Foam Color',       prevOd.foamColor       || '', newFoam);
-  chk('Door Hinge',       prevOd.hingePreference || '', newHinge);
-  chk('Production Notes', prevOd.productionNotes || '', newProdNotes);
-  chk('Delivery Notes',   prevOd.deliveryNotes   || '', newDelNotes);
-  chk('Name',    [prevC.firstName,prevC.lastName].filter(Boolean).join(' '), [customer.firstName,customer.lastName].filter(Boolean).join(' '));
-  chk('Company', prevC.company||'', customer.company);
-  chk('Email',   prevC.email  ||'', customer.email);
-  const prevAddr = [prevC.address,prevC.city,prevC.state,prevC.zip].filter(Boolean).join(', ');
-  const newAddr  = [customer.address,customer.city,customer.state,customer.zip].filter(Boolean).join(', ');
-  chk('Address', prevAddr, newAddr);
-  chk('Freight Cost', prevOd.freightCost ? '$'+prevOd.freightCost : '', freightCost ? '$'+freightCost : '');
-  if (isShipping && !prevOd.shipped?.tracking) changes.push(`Marked Shipped — ${carrier}, ${tracking}`);
-
-  const payload = {
-    customer,
-    foamColor:       newFoam,
-    hingePreference: newHinge,
-    productionNotes: newProdNotes,
-    deliveryNotes:   newDelNotes,
-    shipped: isShipping ? { carrier, tracking, date: shipDate, pallets: parseInt(pallets)||0, boxes: parseInt(boxes)||0 } : (prevOd.shipped || null),
-    freightCost,
-    changes,
-    repName,
-  };
-
-  try {
-    const res = await fetch(`/api/orders/${encodeURIComponent(currentQuoteNumber)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(payload)
+// Restore saved mode on load
+(function() {
+  if (localStorage.getItem('wr_shipping_mode') === 'light') {
+    document.documentElement.classList.add('light');
+    document.addEventListener('DOMContentLoaded', () => {
+      const btn = document.getElementById('modeIcon');
+      if (btn) btn.textContent = '🌙';
     });
+  }
+})();
+
+// Load on page open
+loadShipments();
+
+
+// ── Add Shipment Flow ─────────────────────────────────────────────
+let _selectedShipDeal = null;
+let _allClosedWonDeals = [];
+
+async function openAddShipment() {
+  // Reset form
+  _selectedShipDeal = null;
+  document.getElementById('shipDealSelected').style.display = 'none';
+  document.getElementById('shipDealPickerWrap').style.display = 'block';
+  document.getElementById('shipDealFilter').value = '';
+  document.getElementById('shipCarrier').value = '';
+  document.getElementById('shipTracking').value = '';
+  document.getElementById('shipErrorMsg').style.display = 'none';
+  document.getElementById('shipDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('addShipmentModal').style.display = 'flex';
+
+  // Load deals
+  renderDealList('<div style="padding:14px;font-size:12px;color:#666;text-align:center">Loading…</div>');
+  try {
+    const res = await fetch('/api/deals/closed-won', { credentials: 'include' });
     const data = await res.json();
-    if (data.success) {
-      showToast(isShipping && !prevOd.shipped?.tracking ? '✓ Order marked shipped!' : '✓ Order updated', 'success');
-      closeDrawer();
-      loadOrders();
-    } else {
-      throw new Error(data.error || 'Save failed');
-    }
+    _allClosedWonDeals = data.results || [];
+    filterDealList('');
   } catch(e) {
-    showToast('Error: ' + e.message, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Save Changes';
+    renderDealList('<div style="padding:14px;font-size:12px;color:#ef4444;text-align:center">Failed to load deals</div>');
   }
 }
 
-// ── HubSpot Ship Modal ────────────────────────────────────────────
-function openShipFromDrawer() {
-  const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
-  if (!order) return;
-  // Pre-fill the ship modal from the drawer's current values
-  const carrier  = document.getElementById('editCarrier').value;
-  const tracking = document.getElementById('editTracking').value.trim();
-  const date     = document.getElementById('editShipDate').value;
-  const pallets  = document.getElementById('editPallets').value;
-  const boxes    = document.getElementById('editBoxes').value;
-
-  document.getElementById('hsCarrier').value  = carrier  || '';
-  document.getElementById('hsTracking').value = tracking || '';
-  document.getElementById('hsShipDate').value = date     || new Date().toISOString().split('T')[0];
-  document.getElementById('hsPallets').value  = pallets  || '';
-  document.getElementById('hsBoxes').value    = boxes    || '';
-
-  openHsShipModal(order.deal_id, order.deal_name || order.quote_number);
+function closeAddShipment() {
+  document.getElementById('addShipmentModal').style.display = 'none';
 }
 
-function openHsShipModal(dealId, dealName) {
-  currentHsDeal = { id: dealId, name: dealName };
-  document.getElementById('hsShipDealName').textContent = dealName;
-  document.getElementById('hsCarrier').value   = '';
-  document.getElementById('hsTracking').value  = '';
-  document.getElementById('hsPallets').value   = '';
-  document.getElementById('hsBoxes').value     = '';
-  document.getElementById('hsShipDate').value  = new Date().toISOString().split('T')[0];
-  document.getElementById('hsShipModal').style.display = 'flex';
+function renderDealList(html) {
+  document.getElementById('shipDealList').innerHTML = html;
 }
 
-function closeHsShipModal() {
-  document.getElementById('hsShipModal').style.display = 'none';
-  currentHsDeal = null;
+function filterDealList(query) {
+  const q = query.toLowerCase();
+  const filtered = q
+    ? _allClosedWonDeals.filter(d => d.name.toLowerCase().includes(q))
+    : _allClosedWonDeals;
+
+  if (!filtered.length) {
+    renderDealList('<div style="padding:14px;font-size:12px;color:#666;text-align:center">No deals found</div>');
+    return;
+  }
+
+  renderDealList(filtered.map(d => `
+    <div onclick="selectShipDeal('${d.id}', this.dataset.name)"
+      data-name="${d.name.replace(/"/g,'&quot;')}"
+      style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #1e1e1e;font-size:13px;color:#e8e8e8;transition:background .1s"
+      onmouseover="this.style.background='#1a1a1a'" onmouseout="this.style.background='transparent'">
+      <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.name}</div>
+      ${d.amount ? `<div style="font-size:11px;color:#666;margin-top:2px">$${parseFloat(d.amount).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0})}</div>` : ''}
+    </div>
+  `).join(''));
 }
 
-async function confirmHsShip() {
-  const carrier  = document.getElementById('hsCarrier').value;
-  const tracking = document.getElementById('hsTracking').value.trim();
-  const shipDate = document.getElementById('hsShipDate').value;
-  const pallets  = document.getElementById('hsPallets').value;
-  const boxes    = document.getElementById('hsBoxes').value;
+function selectShipDeal(id, name) {
+  _selectedShipDeal = { id, name };
+  document.getElementById('shipDealSelectedName').textContent = name;
+  document.getElementById('shipDealSelected').style.display = 'flex';
+  document.getElementById('shipDealPickerWrap').style.display = 'none';
+  // Focus carrier next
+  document.getElementById('shipCarrier').focus();
+}
 
-  if (!carrier)  { showToast('Please select a carrier', 'error'); return; }
-  if (!tracking) { showToast('Please enter a tracking number', 'error'); return; }
+function clearShipDeal() {
+  _selectedShipDeal = null;
+  document.getElementById('shipDealSelected').style.display = 'none';
+  document.getElementById('shipDealPickerWrap').style.display = 'block';
+  document.getElementById('shipDealFilter').value = '';
+  filterDealList('');
+}
 
-  const btn = document.getElementById('hsShipConfirmBtn');
+async function submitShipment() {
+  const errEl = document.getElementById('shipErrorMsg');
+  errEl.style.display = 'none';
+
+  const carrier  = document.getElementById('shipCarrier').value.trim();
+  const tracking = document.getElementById('shipTracking').value.trim();
+  const dateShipped = document.getElementById('shipDate').value;
+
+  if (!_selectedShipDeal) { errEl.textContent = 'Please select a deal.'; errEl.style.display = 'block'; return; }
+  if (!carrier)            { errEl.textContent = 'Please select a carrier.'; errEl.style.display = 'block'; return; }
+  if (!tracking)           { errEl.textContent = 'Please enter a tracking number.'; errEl.style.display = 'block'; return; }
+  if (!dateShipped)        { errEl.textContent = 'Please enter a ship date.'; errEl.style.display = 'block'; return; }
+
+  const btn = document.getElementById('shipSubmitBtn');
   btn.disabled = true;
-  btn.textContent = 'Shipping…';
+  btn.textContent = 'Processing…';
 
   try {
-    // If opened from drawer — save to DB order via PATCH
-    if (currentQuoteNumber) {
-      const prevOd = allOrders.find(o => o.quote_number === currentQuoteNumber)?.order_data || {};
-      const res = await fetch(`/api/orders/${encodeURIComponent(currentQuoteNumber)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          shipped: { carrier, tracking, date: shipDate, pallets: parseInt(pallets)||0, boxes: parseInt(boxes)||0 },
-          freightCost: document.getElementById('editFreightCost')?.value ? parseFloat(document.getElementById('editFreightCost').value) : null,
-          changes: [`Marked Shipped — ${carrier}, ${tracking}`],
-          repName: getCurrentRep(),
-        })
-      });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Failed');
-      showToast('✓ Order shipped!', 'success');
-      closeHsShipModal();
-      closeDrawer();
-      loadOrders();
-      return;
-    }
-
-    // Otherwise — HubSpot deals tab flow
-    if (!currentHsDeal) return;
-    const res = await fetch('/api/orders/ship-hubspot-deal', {
+    const res = await fetch('/api/ship-deal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({
-        dealId:   currentHsDeal.id,
-        dealName: currentHsDeal.name,
-        carrier, tracking, shipDate, pallets, boxes,
-        repName:  getCurrentRep(),
+        dealId: _selectedShipDeal.id,
+        carrier,
+        tracking,
+        dateShipped
       })
     });
     const data = await res.json();
     if (data.success) {
-      showToast('✓ Deal marked shipped in HubSpot!', 'success');
-      closeHsShipModal();
-      allHsDeals = allHsDeals.filter(d => d.id !== currentHsDeal?.id);
-      renderHsDeals(allHsDeals);
-      document.getElementById('hsCount').textContent = `(${allHsDeals.length})`;
+      closeAddShipment();
+      // Reload board to show new row
+      loadShipments();
     } else {
-      throw new Error(data.error || 'Failed');
+      throw new Error(data.error || 'Failed to mark as shipped');
     }
   } catch(e) {
-    showToast('Error: ' + e.message, 'error');
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
   } finally {
     btn.disabled = false;
-    btn.textContent = '🚚 Mark Shipped';
+    btn.textContent = 'Mark as Shipped';
   }
 }
 
-// ── Toast ─────────────────────────────────────────────────────────
-function showToast(msg, type='') {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'show ' + type;
-  clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.className = '', 3000);
-}
-
-// ── Init ──────────────────────────────────────────────────────────
-// Restore rep identity
-const _savedRep = localStorage.getItem('wr-rep');
-if (_savedRep) {
-  const sel = document.getElementById('repIdentity');
-  if (sel) sel.value = _savedRep;
-}
-
-loadOrders();
 </script>
+
+<!-- ADD SHIPMENT MODAL -->
+<div id="addShipmentModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#1a1a1a;border:1px solid #2e2e2e;border-radius:12px;padding:32px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+    <div style="font-size:16px;font-weight:700;color:#e8e8e8;margin-bottom:4px">Add Shipment</div>
+    <div style="font-size:12px;color:#888;margin-bottom:24px">Search for a Closed Won deal, enter tracking details, and mark as shipped.</div>
+
+    <!-- Deal List -->
+    <div style="margin-bottom:16px">
+      <label style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Deal (Closed Won)</label>
+
+      <!-- Selected state -->
+      <div id="shipDealSelected" style="display:none;background:rgba(238,98,22,.1);border:1px solid rgba(238,98,22,.3);border-radius:8px;padding:10px 14px;font-size:13px;color:#ee6216;align-items:center;justify-content:space-between">
+        <span id="shipDealSelectedName" style="font-weight:600"></span>
+        <button onclick="clearShipDeal()" style="background:none;border:none;color:#888;cursor:pointer;font-size:16px;padding:0 2px;line-height:1">✕</button>
+      </div>
+
+      <!-- Filter + list (hidden once deal selected) -->
+      <div id="shipDealPickerWrap">
+        <input id="shipDealFilter" type="text" placeholder="Filter deals…"
+          style="width:100%;background:#111;border:1px solid #333;color:#e8e8e8;padding:9px 12px;border-radius:8px 8px 0 0;font-size:13px;outline:none;font-family:inherit;border-bottom:none"
+          oninput="filterDealList(this.value)"
+          onfocus="this.style.borderColor='#ee6216';this.style.borderBottomColor='#333'" onblur="this.style.borderColor='#333'">
+        <div id="shipDealList" style="background:#111;border:1px solid #333;border-radius:0 0 8px 8px;max-height:200px;overflow-y:auto">
+          <div style="padding:14px;font-size:12px;color:#666;text-align:center">Loading deals…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Carrier -->
+    <div style="margin-bottom:16px">
+      <label style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Freight Carrier</label>
+      <select id="shipCarrier" style="width:100%;background:#111;border:1px solid #333;color:#e8e8e8;padding:10px 12px;border-radius:8px;font-size:13px;outline:none;font-family:inherit;cursor:pointer"
+        onfocus="this.style.borderColor='#ee6216'" onblur="this.style.borderColor='#333'">
+        <option value="">Select carrier…</option>
+        <option value="ABF">ABF Freight</option>
+        <option value="OD">Old Dominion</option>
+        <option value="UPS">UPS</option>
+        <option value="FedEx">FedEx</option>
+        <option value="USPS">USPS</option>
+      </select>
+    </div>
+
+    <!-- Tracking Number -->
+    <div style="margin-bottom:16px">
+      <label style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Tracking Number</label>
+      <input id="shipTracking" type="text" placeholder="Enter tracking number…"
+        style="width:100%;background:#111;border:1px solid #333;color:#e8e8e8;padding:10px 12px;border-radius:8px;font-size:13px;outline:none;font-family:monospace"
+        onfocus="this.style.borderColor='#ee6216'" onblur="this.style.borderColor='#333'">
+    </div>
+
+    <!-- Date Shipped -->
+    <div style="margin-bottom:24px">
+      <label style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Date Shipped</label>
+      <input id="shipDate" type="date"
+        style="width:100%;background:#111;border:1px solid #333;color:#e8e8e8;padding:10px 12px;border-radius:8px;font-size:13px;outline:none;font-family:inherit;cursor:pointer"
+        onfocus="this.style.borderColor='#ee6216'" onblur="this.style.borderColor='#333'">
+    </div>
+
+    <div id="shipErrorMsg" style="display:none;color:#ef4444;font-size:12px;margin-bottom:12px"></div>
+
+    <div style="display:flex;gap:10px">
+      <button id="shipSubmitBtn" onclick="submitShipment()" style="flex:1;padding:13px;background:#ee6216;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+        Mark as Shipped
+      </button>
+      <button onclick="closeAddShipment()" style="padding:13px 18px;background:rgba(255,255,255,.06);color:#888;border:1px solid #333;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

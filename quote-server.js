@@ -3111,9 +3111,13 @@ tbody tr:hover td{background:#fdfcfb}
       const freightTotal = freight ? parseFloat(freight.total || 0) : 0;
       const taxTotal = tax ? parseFloat(tax.tax || 0) : 0;
 
-      // 3. Create line items in exact quote order: products → freight → tax
-      // Discount handled via invoice property, not line item
+      // 3. Create line items in exact quote order: products → discount → freight → tax
       const invoiceLineItems = [...(lineItems || [])];
+      if (discAmt > 0) invoiceLineItems.push({
+        name: `Discount${discount?.type === 'pct' ? ' (' + discount.value + '%)' : ''}`,
+        qty: 1, price: -discAmt,
+        description: discount?.type === 'pct' ? `${discount.value}% discount` : 'Discount',
+      });
       if (freightTotal > 0) invoiceLineItems.push({
         name: 'Freight', qty: 1, price: freightTotal,
         description: freight?.transit ? `LTL freight. Transit: ${freight.transit}` : 'LTL freight'
@@ -3151,9 +3155,6 @@ tbody tr:hover td{background:#fdfcfb}
         hs_due_date:       today,
       };
       // Apply discount as invoice-level percentage (HubSpot native discount)
-      if (discAmt > 0 && sub > 0 && discount?.type === 'pct') {
-        invoiceProps.hs_discount_percentage = String(parseFloat(discount.value).toFixed(2));
-      }
       if (resolvedOwnerId) invoiceProps.hubspot_owner_id = String(resolvedOwnerId);
       if (quoteNumber)     invoiceProps.quote_number     = quoteNumber;
 

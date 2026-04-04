@@ -3151,12 +3151,11 @@ tbody tr:hover td{background:#fdfcfb}
       // 1. All quotes for this deal
       let quotes = [];
       if (db) {
-        // Debug: check what deal_ids exist near this one
-        const debugRow = await db.query(
-          `SELECT quote_number, deal_id, deal_name FROM quotes WHERE deal_id = $1 OR deal_id = $2 LIMIT 5`,
-          [dealId, String(parseInt(dealId))]
+        // Debug: show recent quotes and their actual deal_ids
+        const debugAll = await db.query(
+          `SELECT quote_number, deal_id, deal_name FROM quotes ORDER BY created_at DESC LIMIT 10`
         );
-        console.log(`[hub] debug rows for ${dealId}:`, JSON.stringify(debugRow.rows.map(r => ({q: r.quote_number, d: r.deal_id, n: r.deal_name}))));
+        console.log(`[hub] recent quotes:`, JSON.stringify(debugAll.rows.map(r => ({q: r.quote_number, d: r.deal_id, n: r.deal_name?.slice(0,30)}))));
 
         const qr = await db.query(
           `SELECT quote_number, total, date, deal_name, rep_id, share_token, payment_link,

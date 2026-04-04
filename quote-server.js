@@ -2084,6 +2084,7 @@ const server = http.createServer(async (req, res) => {
 
       let shareToken = null;
       try {
+        console.log(`[save] saving quote ${quoteNumber} with dealId: ${dealId}`);
         await saveQuoteToDb({
           quoteNumber, dealId, contactId, dealName: finalDealName, ownerId, total,
           date: new Date().toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}),
@@ -3149,21 +3150,42 @@ tbody tr:hover td{background:#fdfcfb}
     const dealId = pathname.split('/')[3];
     try {
       // 1. All quotes for this deal
+      // Fetch deal name from HubSpot — used for fallback matching on legacy quotes
+      let dealName = null;
+      try {
+        const dnRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v3/objects/deals/${dealId}?properties=dealname`,
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+        });
+        dealName = dnRes.body?.properties?.dealname || null;
+      } catch(e) {}
+
       let quotes = [];
       if (db) {
-        // Debug: show recent quotes and their actual deal_ids
-        const debugAll = await db.query(
-          `SELECT quote_number, deal_id, deal_name FROM quotes ORDER BY created_at DESC LIMIT 10`
-        );
-        console.log(`[hub] recent quotes:`, JSON.stringify(debugAll.rows.map(r => ({q: r.quote_number, d: r.deal_id, n: r.deal_name?.slice(0,30)}))));
-
+        // Match by deal_id OR by deal_name (for quotes saved before deal_id backfill)
         const qr = await db.query(
           `SELECT quote_number, total, date, deal_name, rep_id, share_token, payment_link,
                   (json_snapshot->>'accepted')::text as accepted
-           FROM quotes WHERE deal_id = $1 ORDER BY created_at DESC`,
-          [dealId]
+           FROM quotes
+           WHERE deal_id = $1
+              OR (deal_id IS NULL AND deal_name = $2)
+           ORDER BY created_at DESC`,
+          [dealId, dealName]
         );
-        console.log(`[hub] deal ${dealId} quotes: ${qr.rows.length}`);
+        console.log(`[hub] deal ${dealId} (${dealName}) quotes: ${qr.rows.length}`);
+
+        // Backfill deal_id for matched quotes that are missing it
+        const nullRows = qr.rows.filter(r => !r.deal_id);
+        if (nullRows.length > 0) {
+          await db.query(
+            `UPDATE quotes SET deal_id = $1 WHERE deal_name = $2 AND deal_id IS NULL`,
+            [dealId, dealName]
+          );
+          console.log(`[hub] backfilled deal_id for ${nullRows.length} quotes`);
+        }
+
         quotes = qr.rows.map(r => ({
           quoteNumber: r.quote_number,
           total:       r.total,
@@ -3176,13 +3198,19 @@ tbody tr:hover td{background:#fdfcfb}
         }));
       }
 
-      // 2. Orders for this deal
+      // 2. Orders for this deal — match by deal_id OR via quotes join on deal_name
       let orders = [];
       if (db) {
         const or = await db.query(
           `SELECT o.quote_number, o.order_data, o.created_at
-           FROM orders o WHERE o.deal_id = $1 ORDER BY o.created_at DESC`,
-          [dealId]
+           FROM orders o
+           WHERE o.deal_id = $1
+              OR o.quote_number IN (
+                SELECT quote_number FROM quotes
+                WHERE deal_id = $1 OR (deal_id IS NULL AND deal_name = $2)
+              )
+           ORDER BY o.created_at DESC`,
+          [dealId, dealName]
         );
         console.log(`[hub] deal ${dealId} orders: ${or.rows.length}`);
         orders = or.rows.map(r => ({

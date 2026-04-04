@@ -966,6 +966,18 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     <span id="sumTotal">$0.00</span>
   </div>
 
+  <!-- Accepted badge — shown when loaded quote has been accepted -->
+  <div id="quoteAcceptedBadge" style="display:none;margin-top:16px;padding:10px 14px;background:rgba(34,197,94,.1);border:1.5px solid rgba(34,197,94,.35);border-radius:8px;text-align:center">
+    <div style="font-size:13px;font-weight:800;color:#22c55e;letter-spacing:.04em">✓ QUOTE ACCEPTED</div>
+    <div style="font-size:10px;color:rgba(34,197,94,.7);margin-top:3px">Customer has confirmed this quote</div>
+  </div>
+
+  <!-- Modified warning — shown when accepted quote has been changed -->
+  <div id="quoteModifiedWarning" style="display:none;margin-top:16px;padding:10px 14px;background:rgba(239,68,68,.1);border:1.5px solid rgba(239,68,68,.3);border-radius:8px;text-align:center">
+    <div style="font-size:12px;font-weight:700;color:#ef4444">⚠ Quote Modified</div>
+    <div style="font-size:10px;color:rgba(239,68,68,.7);margin-top:3px">Push as new quote before creating invoice or order</div>
+  </div>
+
   <div style="margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,.1)">
     <div class="summary-title">Deal / Quote #</div>
     <div style="margin-top:8px;font-family:var(--mono);font-size:16px;font-weight:600;color:var(--accent);letter-spacing:.05em;" id="quoteNumDisplay">—</div>
@@ -1477,6 +1489,7 @@ function addLineItem(product) {
     qty: 1,
   };
   lineItems.push(item);
+  markQuoteModified();
 
   // Check if this product has a preset - auto-populate sub-items
   if (BOOTH_PRESETS[name]) {
@@ -1556,6 +1569,7 @@ function removeLineItem(id) {
 function removeByIdx(btn) {
   const idx = parseInt(btn.getAttribute('data-idx'));
   lineItems.splice(idx, 1);
+  markQuoteModified();
   renderLineItems();
   updateSummary();
 }
@@ -2114,6 +2128,7 @@ async function createDeal() {
       box.className = 'result-box success';
       window._lastPushedContactId = data.contactId || null;
       window._lastPushedDealId = data.dealId || null;
+      setQuoteAccepted(false); // new push = fresh quote, not accepted yet
       window._lastShareToken = data.shareToken || null;
 
       // Update dealName input with the actual name from HubSpot
@@ -2795,6 +2810,8 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   }
 
   window._loadedShareToken = q._shareToken || q.shareToken || null;
+  // Set accepted state for this loaded quote
+  setQuoteAccepted(q.accepted || q._accepted || false);
   // Clear result box so invoice/order links from other quotes don't bleed through
   const resultBox = document.getElementById('resultBox');
   if (resultBox) { resultBox.className = 'result-box'; resultBox.innerHTML = ''; }
@@ -3621,6 +3638,50 @@ document.getElementById('repSelect').addEventListener('change', function() {
 updateSummary();
 fetchHistory().then(() => { updateQuoteNumber(); checkLinkBtnState(); });
 
+// ── Quote lock / accepted state ───────────────────────────────────
+let _quoteIsAccepted  = false; // loaded quote was accepted by customer
+let _quoteIsModified  = false; // accepted quote has been modified since load
+
+function setQuoteAccepted(accepted) {
+  _quoteIsAccepted = !!accepted;
+  _quoteIsModified = false;
+  document.getElementById('quoteAcceptedBadge').style.display   = accepted ? 'block' : 'none';
+  document.getElementById('quoteModifiedWarning').style.display  = 'none';
+  updateInvoiceOrderBtnState();
+}
+
+function markQuoteModified() {
+  if (!_quoteIsAccepted) return; // only care if it was accepted
+  _quoteIsModified = true;
+  document.getElementById('quoteAcceptedBadge').style.display   = 'none';
+  document.getElementById('quoteModifiedWarning').style.display = 'block';
+  updateInvoiceOrderBtnState();
+}
+
+function updateInvoiceOrderBtnState() {
+  const blocked = _quoteIsAccepted && _quoteIsModified;
+  const invoiceBtn = document.getElementById('invoiceBtn');
+  const orderBtn   = document.getElementById('orderBtn');
+  if (blocked) {
+    if (invoiceBtn && !invoiceBtn.disabled) {
+      invoiceBtn.style.opacity = '.4';
+      invoiceBtn.style.cursor  = 'not-allowed';
+      invoiceBtn.title = 'Push modified quote first before creating invoice';
+      invoiceBtn.onclick = () => showToast('Quote was modified — push as new quote first', 'error');
+    }
+    if (orderBtn && !orderBtn.disabled) {
+      orderBtn.style.opacity = '.4';
+      orderBtn.style.cursor  = 'not-allowed';
+      orderBtn.title = 'Push modified quote first before processing order';
+      orderBtn.onclick = () => showToast('Quote was modified — push as new quote first', 'error');
+    }
+  } else {
+    // Re-enable if they were blocked by this — actual enabled state handled by enableInvoiceBtn/enableOrderBtn
+    if (invoiceBtn) invoiceBtn.onclick = createInvoice;
+    if (orderBtn)   orderBtn.onclick   = openOrderModal;
+  }
+}
+
 // ── Invoice Button Enable ────────────────────────────────────────
 function openDealHubById(dealId, dealName, company) {
   // Temporarily set linkedDeal so openDealHub can use the ID
@@ -3733,15 +3794,22 @@ function renderDealHub(data) {
     invList.innerHTML = '';
     const statusColor = s => ({ 'paid': '#22c55e', 'open': '#f59e0b', 'draft': 'rgba(255,255,255,.35)', 'voided': 'rgba(255,255,255,.2)', 'overdue': '#ef4444' }[s] || 'rgba(255,255,255,.35)');
     data.invoices.forEach(inv => {
+      const paid = inv.status === 'paid';
       const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;margin-bottom:6px';
+      if (paid) {
+        row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(34,197,94,.08);border:1.5px solid rgba(34,197,94,.35);border-radius:8px;margin-bottom:6px';
+      } else {
+        row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;margin-bottom:6px';
+      }
       row.innerHTML = `
         <div style="flex:1;min-width:0">
-          <span style="font-size:13px;font-weight:700;color:#fff">${inv.number || inv.title || 'Invoice'}</span>
-          ${inv.quoteNumber ? `<span style="font-size:10px;color:rgba(255,255,255,.3);margin-left:6px">${inv.quoteNumber}</span>` : ''}
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:13px;font-weight:700;color:${paid ? '#22c55e' : '#fff'}">${inv.number || inv.title || 'Invoice'}</span>
+            ${paid ? '<span style="font-size:10px;font-weight:800;color:#22c55e;text-transform:uppercase;letter-spacing:.06em;background:rgba(34,197,94,.15);padding:2px 7px;border-radius:4px;border:1px solid rgba(34,197,94,.3)">✓ Paid</span>' : `<span style="font-size:10px;font-weight:700;color:${statusColor(inv.status)};text-transform:uppercase;letter-spacing:.06em">${inv.status}</span>`}
+            ${inv.quoteNumber ? `<span style="font-size:10px;color:rgba(255,255,255,.3)">${inv.quoteNumber}</span>` : ''}
+          </div>
         </div>
-        <span style="font-size:10px;font-weight:700;color:${statusColor(inv.status)};text-transform:uppercase;letter-spacing:.06em">${inv.status}</span>
-        <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.8)">${fmt(inv.amount)}</div>
+        <div style="font-size:13px;font-weight:700;color:${paid ? '#22c55e' : 'rgba(255,255,255,.8)'}">${fmt(inv.amount)}</div>
         <div style="font-size:11px;color:rgba(255,255,255,.35);min-width:70px;text-align:right">${fmtDate(inv.date)}</div>
       `;
       const linkRow = document.createElement('div');

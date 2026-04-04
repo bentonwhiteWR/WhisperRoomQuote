@@ -369,6 +369,7 @@
 
   <div class="drawer-footer">
     <button class="btn btn-primary" id="saveBtn" onclick="saveOrder()">Save Changes</button>
+    <button id="shipItBtn" onclick="openShipFromDrawer()" style="display:none;padding:9px 16px;background:var(--green);color:white;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🚚 Ship It</button>
     <a id="viewOrderBtn" href="#" target="_blank" class="btn btn-secondary" style="text-decoration:none;display:flex;align-items:center">View Order ↗</a>
     <button class="btn btn-secondary" onclick="closeDrawer()">Cancel</button>
   </div>
@@ -1003,6 +1004,10 @@ function openDrawer(quoteNumber) {
   const badge = document.getElementById('shippedBadge');
   badge.style.display = shipped.tracking ? 'inline-flex' : 'none';
 
+  // Show Ship It button only if not yet shipped
+  const shipItBtn = document.getElementById('shipItBtn');
+  if (shipItBtn) shipItBtn.style.display = shipped.tracking ? 'none' : 'inline-flex';
+
   const log = od.changeLog || [];
   const logSection = document.getElementById('changeLogSection');
   const logList    = document.getElementById('changeLogList');
@@ -1020,6 +1025,7 @@ function openDrawer(quoteNumber) {
   }
 
   const orderUrl = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(quoteNumber)}${order.share_token ? '?t=' + order.share_token : ''}`;
+  console.log('View Order URL:', orderUrl, 'token:', order.share_token);
   document.getElementById('viewOrderBtn').href = orderUrl;
 
   document.getElementById('editDrawer').classList.add('open');
@@ -1133,6 +1139,25 @@ async function saveOrder() {
 }
 
 // ── HubSpot Ship Modal ────────────────────────────────────────────
+function openShipFromDrawer() {
+  const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
+  if (!order) return;
+  // Pre-fill the ship modal from the drawer's current values
+  const carrier  = document.getElementById('editCarrier').value;
+  const tracking = document.getElementById('editTracking').value.trim();
+  const date     = document.getElementById('editShipDate').value;
+  const pallets  = document.getElementById('editPallets').value;
+  const boxes    = document.getElementById('editBoxes').value;
+
+  document.getElementById('hsCarrier').value  = carrier  || '';
+  document.getElementById('hsTracking').value = tracking || '';
+  document.getElementById('hsShipDate').value = date     || new Date().toISOString().split('T')[0];
+  document.getElementById('hsPallets').value  = pallets  || '';
+  document.getElementById('hsBoxes').value    = boxes    || '';
+
+  openHsShipModal(order.deal_id, order.deal_name || order.quote_number);
+}
+
 function openHsShipModal(dealId, dealName) {
   currentHsDeal = { id: dealId, name: dealName };
   document.getElementById('hsShipDealName').textContent = dealName;
@@ -1150,9 +1175,12 @@ function closeHsShipModal() {
 }
 
 async function confirmHsShip() {
-  if (!currentHsDeal) return;
   const carrier  = document.getElementById('hsCarrier').value;
   const tracking = document.getElementById('hsTracking').value.trim();
+  const shipDate = document.getElementById('hsShipDate').value;
+  const pallets  = document.getElementById('hsPallets').value;
+  const boxes    = document.getElementById('hsBoxes').value;
+
   if (!carrier)  { showToast('Please select a carrier', 'error'); return; }
   if (!tracking) { showToast('Please enter a tracking number', 'error'); return; }
 
@@ -1161,6 +1189,31 @@ async function confirmHsShip() {
   btn.textContent = 'Shipping…';
 
   try {
+    // If opened from drawer — save to DB order via PATCH
+    if (currentQuoteNumber) {
+      const prevOd = allOrders.find(o => o.quote_number === currentQuoteNumber)?.order_data || {};
+      const res = await fetch(`/api/orders/${encodeURIComponent(currentQuoteNumber)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          shipped: { carrier, tracking, date: shipDate, pallets: parseInt(pallets)||0, boxes: parseInt(boxes)||0 },
+          freightCost: document.getElementById('editFreightCost')?.value ? parseFloat(document.getElementById('editFreightCost').value) : null,
+          changes: [`Marked Shipped — ${carrier}, ${tracking}`],
+          repName: getCurrentRep(),
+        })
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed');
+      showToast('✓ Order shipped!', 'success');
+      closeHsShipModal();
+      closeDrawer();
+      loadOrders();
+      return;
+    }
+
+    // Otherwise — HubSpot deals tab flow
+    if (!currentHsDeal) return;
     const res = await fetch('/api/orders/ship-hubspot-deal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1168,11 +1221,7 @@ async function confirmHsShip() {
       body: JSON.stringify({
         dealId:   currentHsDeal.id,
         dealName: currentHsDeal.name,
-        carrier,
-        tracking,
-        shipDate: document.getElementById('hsShipDate').value,
-        pallets:  document.getElementById('hsPallets').value,
-        boxes:    document.getElementById('hsBoxes').value,
+        carrier, tracking, shipDate, pallets, boxes,
         repName:  getCurrentRep(),
       })
     });
@@ -1180,7 +1229,6 @@ async function confirmHsShip() {
     if (data.success) {
       showToast('✓ Deal marked shipped in HubSpot!', 'success');
       closeHsShipModal();
-      // Remove deal from HS list and reload
       allHsDeals = allHsDeals.filter(d => d.id !== currentHsDeal?.id);
       renderHsDeals(allHsDeals);
       document.getElementById('hsCount').textContent = `(${allHsDeals.length})`;

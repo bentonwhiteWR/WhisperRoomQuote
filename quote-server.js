@@ -3653,6 +3653,22 @@ tbody tr:hover td{background:#fdfcfb}
       console.log(`Order ${quoteNumber} updated${isNowShipped && !wasShipped ? ' → SHIPPED' : ''}`);
       json({ success: true, shipped: isNowShipped });
 
+      // When marked shipped — upload order PDF to Google Drive (non-blocking)
+      // Pending Workspace Shared Drive provisioning — uncomment when ready:
+      // if (isNowShipped && !wasShipped) {
+      //   (async () => {
+      //     try {
+      //       const tokenRow = await db?.query('SELECT share_token, deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
+      //       const token    = tokenRow?.rows[0]?.share_token || '';
+      //       const dn       = tokenRow?.rows[0]?.deal_name   || quoteNumber;
+      //       const orderUrl = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(quoteNumber)}${token ? '?t=' + token : ''}`;
+      //       const pdfBuf   = await generatePdfBuffer(orderUrl);
+      //       const safeName = dn.replace(/[/\\:*?"<>|]/g, '-').trim();
+      //       await gdriveSavePdfToDeal(quoteNumber, 'Final Order', `${quoteNumber} — ${safeName} (Order).pdf`, pdfBuf);
+      //     } catch(e) { console.warn('GDrive order PDF error:', e.message); }
+      //   })();
+      // }
+
     } catch(e) {
       console.error('Update order error:', e.message);
       json({ error: e.message }, 500);
@@ -3666,14 +3682,37 @@ tbody tr:hover td{background:#fdfcfb}
     const quoteId = decodeURIComponent(pathname.replace('/o/', '').trim());
     if (!quoteId) { res.writeHead(404); res.end('Not found'); return; }
     try {
-      const quoteData = await getQuoteFromDb(quoteId);
+      let quoteData = await getQuoteFromDb(quoteId);
+
+      // For HubSpot legacy orders (HS-{dealId}), quoteData won't exist
+      // Allow auth'd reps through anyway — order data will render what's available
       if (!quoteData) {
-        res.writeHead(404, { 'Content-Type': 'text/html' });
-        res.end('<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px"><h2>Order Not Found</h2></body></html>');
-        return;
+        if (isAuth(req)) {
+          // Create minimal quoteData from order if it exists
+          if (db) {
+            try {
+              const or = await db.query('SELECT order_data, deal_id FROM orders WHERE quote_number = $1', [quoteId]);
+              if (or.rows[0]) {
+                quoteData = {
+                  quoteNumber: quoteId,
+                  dealName: or.rows[0].order_data?.dealName || quoteId,
+                  customer: {},
+                  lineItems: [],
+                  _shareToken: null,
+                };
+              }
+            } catch(e) {}
+          }
+        }
+        if (!quoteData) {
+          res.writeHead(404, { 'Content-Type': 'text/html' });
+          res.end('<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px"><h2>Order Not Found</h2></body></html>');
+          return;
+        }
       }
       const oToken = new URLSearchParams(search).get('t');
-      if (!validateShareToken(quoteData, oToken)) {
+      // Logged-in reps can always view order pages without token
+      if (!isAuth(req) && !validateShareToken(quoteData, oToken)) {
         res.writeHead(403, { 'Content-Type': 'text/html' });
         res.end('<!DOCTYPE html><html><head><title>Link Expired</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#f5f5f5}div{text-align:center}</style></head><body><div><h2 style="color:#ee6216">This link is no longer valid</h2><p style="color:#888;margin-top:8px">Please contact your WhisperRoom representative for an updated link.</p></div></body></html>');
         return;

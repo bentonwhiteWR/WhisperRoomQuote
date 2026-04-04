@@ -724,7 +724,7 @@ async function fetchQuoteHistory() {
   try {
     const res = await db.query(`
       SELECT quote_number, deal_id, deal_name, customer_name, company,
-             rep_id, total, date, quote_link, json_snapshot, created_at
+             rep_id, total, date, quote_link, share_token, json_snapshot, created_at
       FROM quotes ORDER BY created_at DESC LIMIT 200
     `);
     return res.rows.map(r => ({

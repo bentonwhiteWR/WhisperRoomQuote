@@ -1820,7 +1820,7 @@ const server = http.createServer(async (req, res) => {
       const q     = parsed.query.q     || '';
       const stage = parsed.query.stage || '';
       const rep   = parsed.query.rep   || '';
-      const limit = parseInt(parsed.query.limit) || 50;
+      const limit = Math.min(parseInt(parsed.query.limit) || 200, 200);
 
       const filters = [];
       if (stage) filters.push({ propertyName: 'dealstage', operator: 'EQ', value: stage });

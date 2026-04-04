@@ -3138,6 +3138,103 @@ tbody tr:hover td{background:#fdfcfb}
     return;
   }
 
+
+  // ── API: Deal Hub — all quotes, invoices, orders for a deal ──────
+  if (pathname.startsWith('/api/deals/') && pathname.endsWith('/hub') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const dealId = pathname.split('/')[3];
+    try {
+      // 1. All quotes for this deal
+      let quotes = [];
+      if (db) {
+        const qr = await db.query(
+          `SELECT quote_number, total, date, deal_name, rep_id, share_token, payment_link,
+                  json_snapshot->>'accepted' as accepted
+           FROM quotes WHERE deal_id = $1 ORDER BY created_at DESC`,
+          [dealId]
+        );
+        quotes = qr.rows.map(r => ({
+          quoteNumber: r.quote_number,
+          total:       r.total,
+          date:        r.date,
+          dealName:    r.deal_name,
+          repId:       r.rep_id,
+          shareToken:  r.share_token,
+          paymentLink: r.payment_link,
+          accepted:    r.accepted === 'true' || r.accepted === true,
+        }));
+      }
+
+      // 2. Orders for this deal
+      let orders = [];
+      if (db) {
+        const or = await db.query(
+          `SELECT o.quote_number, o.order_data, o.created_at
+           FROM orders o WHERE o.deal_id = $1 ORDER BY o.created_at DESC`,
+          [dealId]
+        );
+        orders = or.rows.map(r => ({
+          quoteNumber: r.quote_number,
+          foamColor:   r.order_data?.foamColor || '',
+          hingePreference: r.order_data?.hingePreference || '',
+          shipped:     r.order_data?.shipped || null,
+          freightCost: r.order_data?.freightCost || null,
+          createdAt:   r.created_at,
+        }));
+      }
+
+      // 3. Invoices from HubSpot
+      let invoices = [];
+      try {
+        const assocRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v4/objects/deals/${dealId}/associations/invoices`,
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+        });
+        const invoiceIds = (assocRes?.body?.results || []).map(r => r.toObjectId);
+        if (invoiceIds.length) {
+          const batchRes = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: '/crm/v3/objects/invoices/batch/read',
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, {
+            inputs: invoiceIds.map(id => ({ id: String(id) })),
+            properties: ['hs_invoice_status','hs_invoice_date','hs_number','hs_title','hs_amount_billed','hs_balance_due','hs_hubspot_invoice_link','quote_number']
+          });
+          // Merge payment page URL from DB
+          const dbInv = db ? (await db.query('SELECT quote_number, payment_link FROM quotes WHERE deal_id = $1 AND payment_link IS NOT NULL', [dealId])).rows : [];
+          invoices = (batchRes?.body?.results || []).map(inv => {
+            const dbMatch = dbInv.find(d => d.quote_number === inv.properties?.quote_number);
+            return {
+              id:             inv.id,
+              status:         inv.properties?.hs_invoice_status || 'draft',
+              number:         inv.properties?.hs_number || '',
+              title:          inv.properties?.hs_title || '',
+              date:           inv.properties?.hs_invoice_date || '',
+              amount:         inv.properties?.hs_amount_billed || '0',
+              balance:        inv.properties?.hs_balance_due || '0',
+              hubspotUrl:     inv.properties?.hs_hubspot_invoice_link || null,
+              quoteNumber:    inv.properties?.quote_number || '',
+              paymentPageUrl: dbMatch?.payment_link || null,
+            };
+          });
+          // Fallback: attach any unmatched payment_link to first invoice
+          if (invoices.length === 1 && !invoices[0].paymentPageUrl && dbInv.length > 0) {
+            invoices[0].paymentPageUrl = dbInv[0].payment_link;
+          }
+        }
+      } catch(e) { console.warn('Deal hub invoices error:', e.message); }
+
+      json({ dealId, quotes, invoices, orders });
+    } catch(e) {
+      console.error('Deal hub error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── API: Create Invoice ──────────────────────────────────────────
   // ── API: Create Payment Link (replaces invoice flow) ────────────
   if (pathname === '/api/create-invoice' && req.method === 'POST') {

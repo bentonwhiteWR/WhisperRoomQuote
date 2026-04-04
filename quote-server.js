@@ -3195,7 +3195,11 @@ tbody tr:hover td{background:#fdfcfb}
           try {
             const items = r.line_items || [];
             const mdlItem = items.find(i => i && (i.name?.startsWith('MDL') || /\d{4}/.test(i.name || '')));
-            if (mdlItem) firstMdl = mdlItem.name?.split(' ').slice(0,2).join(' ') || '';
+            if (mdlItem) {
+              // Include "MDL 9696 E" or "MDL 9696 S" — up to 3 words
+              const parts = (mdlItem.name || '').split(' ');
+              firstMdl = parts.slice(0, 3).join(' ');
+            }
           } catch(e) {}
           return {
             quoteNumber: r.quote_number,
@@ -3469,26 +3473,46 @@ tbody tr:hover td{background:#fdfcfb}
         } catch(e) { console.warn('Invoice→line_items association failed:', e.message); }
       }
 
-      // 8. Patch to open + add shipping address
+      // 8a. Patch to open — separate from address so status always succeeds
       try {
-        const patchProps = { hs_invoice_status: 'open' };
-        if (customer) {
-          const fullName = [customer.firstName, customer.lastName].filter(Boolean).join(' ') || customer.company || '';
-          if (fullName)         patchProps.hs_recipient_shipping_name    = fullName;
-          if (customer.address) patchProps.hs_recipient_shipping_address = customer.address;
-          if (customer.city)    patchProps.hs_recipient_shipping_city    = customer.city;
-          if (customer.state)   patchProps.hs_recipient_shipping_state   = customer.state;
-          if (customer.zip)     patchProps.hs_recipient_shipping_zip     = customer.zip;
-          patchProps.hs_recipient_shipping_country      = 'United States';
-          patchProps.hs_recipient_shipping_country_code = 'US';
-        }
-        await httpsRequest({
+        const statusRes = await httpsRequest({
           hostname: 'api.hubapi.com',
           path: `/crm/v3/objects/invoices/${invoiceId}`,
           method: 'PATCH',
           headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-        }, { properties: patchProps });
-      } catch(e) { console.warn('Invoice patch failed:', e.message); }
+        }, { properties: { hs_invoice_status: 'open' } });
+        if (statusRes.body?.status === 'error') {
+          console.warn('Invoice status patch error:', statusRes.body?.message);
+        } else {
+          console.log(`Invoice ${invoiceId} set to open`);
+        }
+      } catch(e) { console.warn('Invoice status patch failed:', e.message); }
+
+      // 8b. Patch shipping address separately — failure here won't affect invoice status
+      if (customer) {
+        try {
+          const addrProps = {};
+          const fullName = [customer.firstName, customer.lastName].filter(Boolean).join(' ') || customer.company || '';
+          if (fullName)         addrProps.hs_recipient_shipping_name         = fullName;
+          if (customer.address) addrProps.hs_recipient_shipping_address      = customer.address;
+          if (customer.city)    addrProps.hs_recipient_shipping_city         = customer.city;
+          if (customer.state)   addrProps.hs_recipient_shipping_state        = customer.state;
+          if (customer.zip)     addrProps.hs_recipient_shipping_zip          = customer.zip;
+          addrProps.hs_recipient_shipping_country      = 'United States';
+          addrProps.hs_recipient_shipping_country_code = 'US';
+          const addrRes = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/invoices/${invoiceId}`,
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, { properties: addrProps });
+          if (addrRes.body?.status === 'error') {
+            console.warn('Invoice address patch error:', addrRes.body?.message?.slice(0, 200));
+          } else {
+            console.log(`Invoice ${invoiceId} shipping address set`);
+          }
+        } catch(e) { console.warn('Invoice address patch failed:', e.message); }
+      }
 
       // 9. Fetch invoice link after open (it may only be set after status=open)
       let paymentUrl = invoiceRes.body?.properties?.hs_invoice_link || null;

@@ -3374,7 +3374,7 @@ tbody tr:hover td{background:#fdfcfb}
         hs_invoice_date:   today,
         hs_due_date:       today,
       };
-      // Ship-to: patch contact's address fields so HubSpot invoice picks them up
+      // Ship-to: patch contact's address so HubSpot invoice billing address populates
       if (resolvedContactId && customer?.address) {
         try {
           await httpsRequest({
@@ -3389,17 +3389,19 @@ tbody tr:hover td{background:#fdfcfb}
             zip:      customer.zip     || '',
             country:  customer.country || 'United States',
           }});
-          console.log(`Contact ${resolvedContactId} address updated for invoice`);
         } catch(e) { console.warn('Contact address patch failed:', e.message); }
       }
+      // Also try patching invoice shipping address after creation (patch separately to avoid creation errors)
       invoiceProps.hs_title = quoteNumber ? `Invoice — ${quoteNumber}` : 'Invoice';
       // Custom ship-to fields
       if (customer) {
-        const name = [customer.firstName, customer.lastName].filter(Boolean).join(' ') || customer.company || '';
-        const csz  = [customer.city, customer.state, customer.zip].filter(Boolean).join(', ');
-        if (name) invoiceProps.ship_to_name          = name;
+        const firstName = customer.firstName || '';
+        const lastName  = customer.lastName  || '';
+        const fullName  = [firstName, lastName].filter(Boolean).join(' ') || customer.company || '';
+        const csz       = [customer.city, customer.state, customer.zip].filter(Boolean).join(', ');
+        if (fullName)        invoiceProps.ship_to_name          = fullName;
         if (customer.address) invoiceProps.ship_to_address      = customer.address;
-        if (csz)  invoiceProps.ship_to_city_state_zip = csz;
+        if (csz)             invoiceProps.ship_to_city_state_zip = csz;
       }
       if (resolvedOwnerId) invoiceProps.hubspot_owner_id = String(resolvedOwnerId);
       if (quoteNumber)     invoiceProps.quote_number     = quoteNumber;
@@ -3412,6 +3414,15 @@ tbody tr:hover td{background:#fdfcfb}
       }, { properties: invoiceProps });
 
       console.log('Invoice create response:', JSON.stringify(invoiceRes.body));
+      // One-time: discover available invoice properties for address fields
+      if (!global._invoicePropsDiscovered) {
+        global._invoicePropsDiscovered = true;
+        httpsRequest({ hostname: 'api.hubapi.com', path: '/crm/v3/properties/invoices?limit=200', method: 'GET', headers: { 'Authorization': `Bearer ${HS_TOKEN}` } })
+          .then(r => {
+            const addrProps = (r.body?.results || []).filter(p => /ship|address|street|city|state|zip|postal|billing/i.test(p.name));
+            console.log('[invoice props] address-related:', JSON.stringify(addrProps.map(p => p.name)));
+          }).catch(() => {});
+      }
 
       const invoiceId = invoiceRes.body?.id;
       if (!invoiceId) {
@@ -3467,15 +3478,34 @@ tbody tr:hover td{background:#fdfcfb}
         } catch(e) { console.warn('Invoice→line_items association failed:', e.message); }
       }
 
-      // 8. Patch to open
+      // 8. Patch to open + add shipping address in same call
       try {
-        await httpsRequest({
+        const patchProps = { hs_invoice_status: 'open' };
+        if (customer?.address) {
+          // Try both known HubSpot invoice address formats
+          patchProps.hs_shipping_address_street_1 = customer.address;
+          patchProps.hs_shipping_address_city     = customer.city    || '';
+          patchProps.hs_shipping_address_state    = customer.state   || '';
+          patchProps.hs_shipping_address_zip      = customer.zip     || '';
+          patchProps.hs_shipping_address_country  = 'US';
+        }
+        const patchRes = await httpsRequest({
           hostname: 'api.hubapi.com',
           path: `/crm/v3/objects/invoices/${invoiceId}`,
           method: 'PATCH',
           headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-        }, { properties: { hs_invoice_status: 'open' } });
-      } catch(e) { console.warn('Invoice status patch failed:', e.message); }
+        }, { properties: patchProps });
+        if (patchRes.body?.status === 'error') {
+          // If shipping fields fail, retry with just status
+          console.warn('Invoice address patch failed, retrying status only:', patchRes.body?.message);
+          await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/invoices/${invoiceId}`,
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, { properties: { hs_invoice_status: 'open' } });
+        }
+      } catch(e) { console.warn('Invoice patch failed:', e.message); }
 
       // 9. Fetch invoice link after open (it may only be set after status=open)
       let paymentUrl = invoiceRes.body?.properties?.hs_invoice_link || null;

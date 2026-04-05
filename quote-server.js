@@ -1409,7 +1409,74 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify(data));
   };
 
-  // ── HubSpot OAuth: Initiate ──────────────────────────────────────
+  // ── API: Price Book CSV Export ────────────────────────────────────
+  if (pathname === '/api/pricebook-export' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    try {
+      // Fetch all products from HubSpot
+      let all = [], after = null;
+      for (let page = 0; page < 20; page++) {
+        let path = '/crm/v3/objects/products?limit=100&properties=name,price,description,hs_sku,hs_product_type';
+        if (after) path += `&after=${after}`;
+        const r = await httpsRequest({ hostname:'api.hubapi.com', path, method:'GET', headers:{ 'Authorization':`Bearer ${HS_TOKEN}` } });
+        const results = r.body?.results || [];
+        all.push(...results);
+        after = r.body?.paging?.next?.after || null;
+        if (!after || results.length < 100) break;
+      }
+
+      // Sort by name
+      all.sort((a,b) => (a.properties?.name||'').localeCompare(b.properties?.name||''));
+
+      // Auto-category helper
+      const getCategory = name => {
+        if (/^MDL\b/.test(name))                              return 'Booth';
+        if (/^WDO\b|^IEP WDO/.test(name))                    return 'Window';
+        if (/^EFP\b|^IEP\b|RAMP|^STEP\b/.test(name))         return 'Floor';
+        if (/^HX\b|^DWC\b|^LT\b|CBL UPG/.test(name))        return 'Electrical';
+        if (/^HEPA\b|^VENT\b|^REMOTE\b|^AP\b/.test(name))    return 'Ventilation';
+        if (/^SL\b|^VSS\b|^EFS\b|^CP\b|^MJP|BASS TRAP|^AUDI|^FOAM|Desk|^WA\b|^RM\b|^ADA\b/.test(name)) return 'Accessories';
+        return 'Other';
+      };
+
+      // Build CSV
+      const esc = v => `"${String(v||'').replace(/"/g,'""')}"`;
+      const rows = [
+        ['HubSpot ID','Name','Price','Description','SKU','Product Type','Category'],
+        ...all.map(p => {
+          const pr = p.properties || {};
+          return [
+            p.id,
+            pr.name || '',
+            pr.price || '',
+            pr.description || '',
+            pr.hs_sku || '',
+            pr.hs_product_type || '',
+            getCategory(pr.name || ''),
+          ];
+        })
+      ];
+      const csv = rows.map(r => r.map(esc).join(',')).join('\r\n');
+
+      res.writeHead(200, {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': `attachment; filename="whisperroom-pricebook-${new Date().toISOString().slice(0,10)}.csv"`,
+      });
+      res.end(csv);
+    } catch(e) {
+      res.writeHead(500); res.end('Export failed: ' + e.message);
+    }
+    return;
+  }
+
+
+  const host = req.headers.host || '';
+  if (host.includes('railway.app') && !host.includes('sales.whisperroom.com')) {
+    res.writeHead(301, { Location: `https://sales.whisperroom.com${req.url}` });
+    res.end(); return;
+  }
+
+
   if (pathname === '/auth/hubspot') {
     if (!HS_CLIENT_ID) { res.writeHead(302, { Location: '/' }); res.end(); return; }
     const state = generateToken();

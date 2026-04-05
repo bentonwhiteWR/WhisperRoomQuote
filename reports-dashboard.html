@@ -168,6 +168,10 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
     <a href="/reports" class="nav-link active">Reports</a>
   </nav>
   <div class="topbar-spacer"></div>
+  <div id="userBadge" style="display:none;align-items:center;gap:8px;flex-shrink:0">
+    <span id="userName" style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600"></span>
+    <a href="/auth/logout" style="padding:5px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.4);text-decoration:none;white-space:nowrap">Sign Out</a>
+  </div>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀️</button>
 </div>
 
@@ -188,15 +192,15 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
     </div>
     <div class="sidebar-section">
       <span class="sidebar-label">Sections</span>
-      <button class="sidebar-btn active" onclick="scrollTo('overview')">📊 Overview</button>
-      <button class="sidebar-btn" onclick="scrollTo('leaderboard')">🏆 Rep Leaderboard</button>
-      <button class="sidebar-btn" onclick="scrollTo('velocity')">⚡ Sales Velocity</button>
-      <button class="sidebar-btn" onclick="scrollTo('forecast')">🔮 Revenue Forecast</button>
-      <button class="sidebar-btn" onclick="scrollTo('revisions')">🔄 Quote Revisions</button>
-      <button class="sidebar-btn" onclick="scrollTo('products')">📦 Product Mix</button>
-      <button class="sidebar-btn" onclick="scrollTo('customers')">🏢 Customer Insights</button>
-      <button class="sidebar-btn" onclick="scrollTo('map')">🗺 Geography</button>
-      <button class="sidebar-btn" onclick="scrollTo('monthly')">📅 Monthly Trend</button>
+      <button class="sidebar-btn active" onclick="navScrollTo('overview')">📊 Overview</button>
+      <button class="sidebar-btn" onclick="navScrollTo('leaderboard')">🏆 Rep Leaderboard</button>
+      <button class="sidebar-btn" onclick="navScrollTo('velocity')">⚡ Sales Velocity</button>
+      <button class="sidebar-btn" onclick="navScrollTo('forecast')">🔮 Revenue Forecast</button>
+      <button class="sidebar-btn" onclick="navScrollTo('revisions')">🔄 Quote Revisions</button>
+      <button class="sidebar-btn" onclick="navScrollTo('products')">📦 Product Mix</button>
+      <button class="sidebar-btn" onclick="navScrollTo('customers')">🏢 Customer Insights</button>
+      <button class="sidebar-btn" onclick="navScrollTo('map')">🗺 Geography</button>
+      <button class="sidebar-btn" onclick="navScrollTo('monthly')">📅 Monthly Trend</button>
     </div>
     <div class="sidebar-section">
       <span class="sidebar-label" id="lastUpdatedLabel">—</span>
@@ -220,7 +224,7 @@ const fmtK = n => { const v=parseFloat(n||0); if(v>=1000000) return '$'+(v/10000
 const pct  = (n,d) => d ? Math.round(n/d*100)+'%' : '—';
 const fmtDate = d => d?new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'America/New_York'}):' — ';
 
-function scrollTo(id) {
+function navScrollTo(id) {
   const el = document.getElementById('section-'+id);
   if (el) el.scrollIntoView({ behavior:'smooth', block:'start' });
   document.querySelectorAll('.sidebar-btn').forEach(b => b.classList.remove('active'));
@@ -726,59 +730,59 @@ function drawMap(geo) {
     return `rgb(${r},${g},${b})`;
   };
 
-  // Simplified US state paths (abbreviated)
+  // US state paths — proper simplified coordinates at 960x600
   const STATE_PATHS = {
-    AL:'M 549 353 L 549 430 L 522 430 L 513 408 L 510 360 L 549 353 Z',
-    AK:'M 110 480 L 160 470 L 180 490 L 170 510 L 130 510 L 110 490 Z',
-    AZ:'M 190 340 L 245 340 L 245 410 L 190 415 Z',
-    AR:'M 505 335 L 550 335 L 548 385 L 505 385 Z',
-    CA:'M 120 240 L 175 220 L 190 290 L 175 340 L 145 350 L 115 310 Z',
-    CO:'M 280 275 L 360 275 L 358 325 L 280 323 Z',
-    CT:'M 720 215 L 740 212 L 743 230 L 720 232 Z',
-    DE:'M 705 260 L 718 258 L 720 275 L 706 278 Z',
-    FL:'M 548 430 L 575 430 L 620 460 L 615 490 L 580 500 L 555 475 L 545 455 Z',
-    GA:'M 553 355 L 600 355 L 600 420 L 575 435 L 548 430 L 549 353 Z',
-    HI:'M 220 540 L 290 540 L 290 560 L 220 560 Z',
-    ID:'M 195 175 L 235 165 L 245 240 L 220 240 L 207 210 Z',
-    IL:'M 518 270 L 545 265 L 548 325 L 518 330 Z',
-    IN:'M 548 268 L 575 265 L 577 322 L 548 325 Z',
-    IA:'M 460 248 L 518 245 L 520 285 L 460 288 Z',
-    KS:'M 363 298 L 458 295 L 460 330 L 363 333 Z',
-    KY:'M 548 300 L 615 295 L 618 330 L 548 335 Z',
-    LA:'M 480 395 L 530 393 L 535 425 L 510 440 L 480 435 Z',
-    ME:'M 750 155 L 780 148 L 785 185 L 758 190 Z',
-    MD:'M 672 268 L 710 263 L 712 285 L 680 292 L 672 278 Z',
-    MA:'M 728 205 L 770 198 L 773 220 L 728 222 Z',
-    MI:'M 548 200 L 598 185 L 608 240 L 578 245 L 548 235 Z',
-    MN:'M 435 178 L 498 172 L 502 243 L 436 248 Z',
-    MS:'M 510 353 L 548 353 L 548 430 L 513 430 Z',
-    MO:'M 460 290 L 518 285 L 520 350 L 460 350 Z',
-    MT:'M 210 162 L 340 155 L 343 218 L 212 222 Z',
-    NE:'M 363 258 L 458 252 L 460 298 L 363 300 Z',
-    NV:'M 162 235 L 205 218 L 210 295 L 190 320 L 155 290 Z',
-    NH:'M 730 175 L 748 170 L 752 213 L 731 215 Z',
-    NJ:'M 700 240 L 718 237 L 720 265 L 700 268 Z',
-    NM:'M 248 340 L 315 338 L 315 405 L 248 408 Z',
-    NY:'M 660 190 L 728 178 L 730 225 L 680 232 L 662 215 Z',
-    NC:'M 598 315 L 672 308 L 675 340 L 598 345 Z',
-    ND:'M 358 170 L 435 165 L 438 212 L 358 215 Z',
-    OH:'M 578 260 L 618 255 L 620 308 L 578 312 Z',
-    OK:'M 362 330 L 458 325 L 460 365 L 362 368 Z',
-    OR:'M 128 195 L 200 178 L 207 240 L 132 245 Z',
-    PA:'M 620 230 L 700 222 L 703 265 L 620 272 Z',
-    RI:'M 742 215 L 752 213 L 754 228 L 743 230 Z',
-    SC:'M 598 348 L 645 342 L 648 380 L 598 380 Z',
-    SD:'M 358 212 L 435 208 L 437 255 L 358 258 Z',
-    TN:'M 520 330 L 615 323 L 618 355 L 520 360 Z',
-    TX:'M 315 338 L 460 330 L 465 445 L 390 450 L 310 410 Z',
-    UT:'M 218 270 L 275 265 L 278 338 L 218 342 Z',
-    VT:'M 712 175 L 730 172 L 733 215 L 712 218 Z',
-    VA:'M 615 280 L 675 272 L 678 310 L 618 318 Z',
-    WA:'M 132 148 L 210 138 L 213 178 L 132 185 Z',
-    WV:'M 618 270 L 658 262 L 660 295 L 618 302 Z',
-    WI:'M 490 198 L 545 190 L 548 248 L 490 252 Z',
-    WY:'M 280 218 L 358 212 L 360 270 L 280 275 Z',
-    DC:'M 693 272 L 700 268 L 703 276 L 696 280 Z',
+    WA:'M 117 73 L 169 65 L 178 77 L 197 73 L 201 93 L 185 103 L 183 122 L 165 120 L 162 130 L 150 133 L 131 126 L 120 107 Z',
+    OR:'M 116 130 L 164 123 L 182 126 L 183 165 L 183 188 L 108 188 L 108 162 Z',
+    CA:'M 107 188 L 183 188 L 185 225 L 181 270 L 162 310 L 148 330 L 120 340 L 103 305 L 92 270 L 100 240 Z',
+    NV:'M 183 165 L 220 153 L 233 200 L 226 272 L 181 270 L 183 225 Z',
+    ID:'M 183 88 L 213 82 L 225 100 L 228 145 L 220 153 L 183 165 L 183 122 L 185 103 L 197 93 Z',
+    MT:'M 196 70 L 315 62 L 318 93 L 308 135 L 240 138 L 225 100 L 213 82 Z',
+    WY:'M 225 138 L 308 135 L 315 175 L 310 215 L 231 215 L 226 175 Z',
+    UT:'M 220 215 L 230 215 L 232 272 L 234 310 L 183 310 L 183 270 L 225 272 Z',
+    CO:'M 232 215 L 315 212 L 316 260 L 234 260 L 234 215 Z',
+    AZ:'M 181 310 L 234 310 L 235 365 L 210 382 L 182 375 L 164 360 L 164 340 Z',
+    NM:'M 234 260 L 316 260 L 318 340 L 258 342 L 235 345 L 234 310 Z',
+    ND:'M 318 90 L 418 85 L 420 133 L 318 135 Z',
+    SD:'M 318 135 L 420 133 L 423 178 L 318 178 Z',
+    NE:'M 318 178 L 423 178 L 427 215 L 320 215 Z',
+    KS:'M 320 215 L 427 215 L 430 258 L 322 258 Z',
+    OK:'M 321 258 L 430 258 L 433 308 L 372 310 L 368 300 L 322 300 Z',
+    TX:'M 320 300 L 368 300 L 372 310 L 433 308 L 438 355 L 415 390 L 370 405 L 325 410 L 295 380 L 272 342 L 258 342 L 316 260 Z',
+    MN:'M 418 85 L 467 84 L 475 88 L 478 130 L 471 140 L 466 133 L 420 133 Z',
+    IA:'M 420 133 L 466 133 L 471 140 L 472 175 L 425 178 Z',
+    MO:'M 425 178 L 472 175 L 476 215 L 477 262 L 427 262 L 425 235 L 427 215 Z',
+    AR:'M 427 262 L 477 262 L 479 310 L 430 312 L 427 290 Z',
+    LA:'M 430 312 L 479 310 L 480 345 L 456 355 L 432 352 L 430 335 Z',
+    WI:'M 468 88 L 502 88 L 512 98 L 510 115 L 522 130 L 510 140 L 493 138 L 472 138 L 471 110 Z',
+    MI:'M 510 98 L 535 88 L 555 102 L 545 128 L 530 135 L 515 135 L 510 115 Z',
+    IL:'M 472 138 L 493 138 L 510 140 L 509 178 L 505 218 L 478 215 L 476 178 Z',
+    IN:'M 510 140 L 533 138 L 535 180 L 532 215 L 505 215 L 509 178 Z',
+    OH:'M 535 138 L 565 135 L 570 178 L 565 215 L 533 215 L 535 178 Z',
+    KY:'M 505 218 L 565 215 L 572 250 L 538 255 L 507 258 Z',
+    TN:'M 507 258 L 538 255 L 572 250 L 575 272 L 545 278 L 510 278 Z',
+    MS:'M 478 312 L 505 310 L 510 355 L 490 368 L 470 358 L 468 335 Z',
+    AL:'M 505 310 L 532 308 L 535 368 L 510 370 L 490 368 Z',
+    GA:'M 532 308 L 572 305 L 578 345 L 560 375 L 538 380 L 535 368 Z',
+    FL:'M 535 368 L 560 375 L 578 345 L 592 360 L 598 395 L 578 420 L 550 428 L 530 415 L 522 395 L 535 375 Z',
+    SC:'M 572 305 L 600 298 L 610 328 L 585 342 L 572 335 Z',
+    NC:'M 572 272 L 617 262 L 628 278 L 612 298 L 572 305 L 572 288 Z',
+    VA:'M 572 250 L 610 242 L 622 258 L 617 262 L 572 272 Z',
+    WV:'M 565 215 L 598 212 L 608 235 L 610 242 L 572 250 L 570 235 Z',
+    MD:'M 598 232 L 618 228 L 625 245 L 612 252 L 608 245 Z',
+    DE:'M 618 228 L 630 225 L 635 240 L 625 245 Z',
+    PA:'M 565 195 L 615 190 L 618 228 L 598 232 L 570 232 Z',
+    NY:'M 565 162 L 612 155 L 630 170 L 630 195 L 615 195 L 565 195 L 565 178 Z',
+    NJ:'M 615 190 L 630 188 L 635 210 L 620 215 L 615 205 Z',
+    CT:'M 630 178 L 645 175 L 648 190 L 632 192 Z',
+    RI:'M 645 175 L 652 173 L 655 183 L 647 185 Z',
+    MA:'M 612 158 L 648 150 L 652 168 L 630 172 L 615 170 Z',
+    VT:'M 612 135 L 625 132 L 628 155 L 612 158 Z',
+    NH:'M 625 118 L 638 115 L 642 148 L 628 152 L 626 135 Z',
+    ME:'M 638 100 L 660 95 L 665 135 L 645 148 L 638 130 Z',
+    AK:'M 70 440 L 155 425 L 168 445 L 158 465 L 115 472 L 75 465 Z',
+    HI:'M 200 480 L 265 470 L 268 488 L 205 492 Z',
+    DC:'M 608 245 L 615 242 L 617 250 L 610 252 Z',
   };
 
   const tooltip = document.getElementById('mapTooltip');
@@ -849,6 +853,21 @@ if(localStorage.getItem('wr-theme')==='light'){
   document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('themeBtn');if(b)b.textContent='🌙';});
 }
 loadReport();
+
+// ── Session user ──────────────────────────────────────────────────
+async function loadCurrentUser() {
+  try {
+    const res  = await fetch('/api/me', { credentials:'include' });
+    const data = await res.json();
+    if (data.name) {
+      const badge = document.getElementById('userBadge');
+      const name  = document.getElementById('userName');
+      if (badge) badge.style.display = 'flex';
+      if (name)  name.textContent = data.name;
+    }
+  } catch(e) {}
+}
+loadCurrentUser();
 </script>
 </body>
 </html>

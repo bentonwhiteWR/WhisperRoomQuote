@@ -839,7 +839,7 @@ async function hsSearchProducts(query, limit = 100, offset = 0) {
   const body = {
     limit,
     after: offset,
-    properties: ['name', 'price', 'hs_sku', 'description', 'weight'],
+    properties: ['name', 'price', 'hs_sku', 'description', 'weight', 'category'],
     sorts: [{ propertyName: 'name', direction: 'ASCENDING' }]
   };
   if (query && query.trim()) body.query = query.trim();

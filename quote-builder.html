@@ -3927,35 +3927,34 @@ function renderDealHub(data) {
       row.onmouseleave = () => row.style.borderColor = accepted ? 'rgba(34,197,94,.35)' : 'rgba(255,255,255,.08)';
       row.onclick = () => { closeDealHub(); loadQuoteFromDealHub(q); };
 
-      // Build accept details bar
-      const hasPrefs = accepted && (q.acceptedFoam || q.acceptedHinge || q.acceptedNote);
-      const prefsHtml = hasPrefs ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:5px;padding:5px 7px;background:rgba(34,197,94,.06);border-radius:4px;border:1px solid rgba(34,197,94,.15)">
-        ${q.acceptedFoam  ? `<span style="font-size:10px;color:#22c55e">🎨 ${q.acceptedFoam}</span>`  : ''}
-        ${q.acceptedHinge ? `<span style="font-size:10px;color:#22c55e">🚪 ${q.acceptedHinge}</span>` : ''}
-        ${q.acceptedNote  ? `<span style="font-size:10px;color:rgba(255,255,255,.5);font-style:italic">"${q.acceptedNote}"</span>` : ''}
-      </div>` : '';
+      const noteBar = accepted && (q.acceptedFoam||q.acceptedHinge||q.acceptedNote)
+        ? [q.acceptedFoam, q.acceptedHinge, q.acceptedNote?'"'+q.acceptedNote+'"':''].filter(Boolean).join(' · ')
+        : '';
 
+      row.style.flexDirection = 'column';
+      row.style.alignItems = 'stretch';
+      row.style.gap = '6px';
       row.innerHTML = `
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="font-size:13px;font-weight:700;color:#fff;font-family:var(--mono)">${q.quoteNumber}</span>
-            ${accepted ? '<span style="font-size:10px;font-weight:800;color:#22c55e;background:rgba(34,197,94,.15);padding:2px 7px;border-radius:4px;border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>' : ''}
-            ${q.firstMdl ? `<span style="font-size:11px;color:${accepted?'rgba(34,197,94,.7)':'rgba(255,255,255,.45)'};font-family:var(--mono)">${q.firstMdl}</span>` : ''}
+        <!-- Row 1: Quote #, Accepted, Amount, Date, View/Copy/Email, Load -->
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:13px;font-weight:700;color:#fff;font-family:var(--mono)">${q.quoteNumber}</span>
+          ${accepted ? '<span style="font-size:10px;font-weight:800;color:#22c55e;background:rgba(34,197,94,.15);padding:2px 7px;border-radius:4px;border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>' : ''}
+          <span style="font-size:13px;font-weight:700;color:${accepted?'#22c55e':'rgba(255,255,255,.8)'};">${fmt(q.total)}</span>
+          <span style="font-size:11px;color:rgba(255,255,255,.3);">${fmtDate(q.date)}</span>
+          <div style="display:flex;gap:4px;margin-left:auto" onclick="event.stopPropagation()">
+            ${qUrl ? `<a href="${qUrl}" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:rgba(255,255,255,.3);text-decoration:none;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08)">View ↗</a>` : ''}
+            ${qUrl ? `<button onclick="event.stopPropagation();navigator.clipboard?.writeText('${qUrl}').then(()=>showToast('Link copied!','info'))" style="font-size:10px;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08);background:none;color:rgba(255,255,255,.3);cursor:pointer;font-family:inherit">🔗</button>` : ''}
+            ${qUrl ? `<button onclick="event.stopPropagation();emailInvoiceToClient('${qUrl}')" style="font-size:10px;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08);background:none;color:rgba(255,255,255,.3);cursor:pointer;font-family:inherit">✉</button>` : ''}
+            <span style="font-size:11px;font-weight:700;color:${accepted?'#22c55e':'#ee6216'};padding:2px 4px">${accepted?'✓ Load':'Load →'}</span>
           </div>
-          <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap" onclick="event.stopPropagation()">
-            ${accepted ? `<button onclick="event.stopPropagation();createInvoice()" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(238,98,22,.3);background:rgba(238,98,22,.1);color:#ee6216;cursor:pointer;font-family:inherit">+ Invoice</button>` : ''}
-            <button onclick="event.stopPropagation();markDhQuotePaid('${q.quoteNumber}')" style="font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,.3);background:none;color:#f59e0b;cursor:pointer;font-family:inherit">$ Paid</button>
-          </div>
-          ${prefsHtml}
         </div>
-        <div style="font-size:13px;font-weight:700;color:${accepted?'#22c55e':'rgba(255,255,255,.8)'};flex-shrink:0">${fmt(q.total)}</div>
-        <div style="font-size:11px;color:rgba(255,255,255,.3);flex-shrink:0">${fmtDate(q.date)}</div>
-        <div style="display:flex;gap:5px;flex-shrink:0" onclick="event.stopPropagation()">
-          ${qUrl ? `<a href="${qUrl}" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:rgba(255,255,255,.3);text-decoration:none;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08)">View ↗</a>` : ''}
-          ${qUrl ? `<button onclick="event.stopPropagation();navigator.clipboard?.writeText('${qUrl}').then(()=>showToast('Link copied!','info'))" style="font-size:10px;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08);background:none;color:rgba(255,255,255,.3);cursor:pointer;font-family:inherit">🔗</button>` : ''}
-          ${qUrl ? `<button onclick="event.stopPropagation();emailInvoiceToClient('${qUrl}')" style="font-size:10px;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08);background:none;color:rgba(255,255,255,.3);cursor:pointer;font-family:inherit">✉</button>` : ''}
+        <!-- Row 2: MDL, +Invoice, $Paid, note -->
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap" onclick="event.stopPropagation()">
+          ${q.firstMdl ? `<span style="font-size:10px;color:rgba(255,255,255,.5);font-family:var(--mono);font-weight:600">${q.firstMdl}</span>` : ''}
+          ${accepted ? `<button onclick="event.stopPropagation();createInvoice()" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(238,98,22,.3);background:rgba(238,98,22,.1);color:#ee6216;cursor:pointer;font-family:inherit">+ Invoice</button>` : ''}
+          <button onclick="event.stopPropagation();markDhQuotePaid('${q.quoteNumber}')" style="font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,.3);background:none;color:#f59e0b;cursor:pointer;font-family:inherit">$ Paid</button>
+          ${noteBar ? `<span style="font-size:10px;color:rgba(34,197,94,.7)">${noteBar}</span>` : ''}
         </div>
-        <div style="font-size:11px;color:${accepted?'#22c55e':'#ee6216'};flex-shrink:0">${accepted?'✓ Load':'Load →'}</div>
       `;
       quotesList.appendChild(row);
     });

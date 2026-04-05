@@ -1411,7 +1411,7 @@ const server = http.createServer(async (req, res) => {
     const state = generateToken();
     oauthStates.add(state);
     setTimeout(() => oauthStates.delete(state), 600000);
-    const scopes = 'crm.objects.contacts.read crm.objects.deals.read crm.objects.deals.write oauth';
+    const scopes = 'crm.objects.owners.read oauth';
     const authUrl = `https://app.hubspot.com/oauth/authorize?client_id=${HS_CLIENT_ID}&redirect_uri=${encodeURIComponent(HS_REDIRECT_URI)}&scope=${encodeURIComponent(scopes)}&state=${state}`;
     res.writeHead(302, { Location: authUrl });
     res.end();

@@ -3329,7 +3329,212 @@ tbody tr:hover td{background:#fdfcfb}
   }
 
 
-  // ── API: Deal activity timeline ───────────────────────────────────
+  // ── API: Reports data ────────────────────────────────────────────
+  if (pathname === '/api/reports' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const period = parsed.query.period || '30'; // days
+      const days   = parseInt(period);
+      const since  = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+      const report = {};
+
+      if (db) {
+        // ── Quote stats ──────────────────────────────────────────
+        const qAll = await db.query(
+          `SELECT quote_number, rep_id, total, created_at, company, deal_name,
+                  (json_snapshot->>'accepted')::text as accepted,
+                  json_snapshot->'lineItems' as line_items
+           FROM quotes WHERE created_at >= $1 ORDER BY created_at DESC`,
+          [since]
+        );
+        const quotes = qAll.rows;
+        report.quotes = {
+          total:       quotes.length,
+          totalValue:  quotes.reduce((s, q) => s + parseFloat(q.total || 0), 0),
+          accepted:    quotes.filter(q => q.accepted === 'true').length,
+          acceptRate:  quotes.length ? Math.round(quotes.filter(q => q.accepted === 'true').length / quotes.length * 100) : 0,
+          byRep:       {},
+          recentList:  quotes.slice(0, 20).map(q => ({
+            quoteNumber: q.quote_number,
+            dealName:    q.deal_name || q.company || '—',
+            rep:         REPS[q.rep_id] || '—',
+            total:       parseFloat(q.total || 0),
+            accepted:    q.accepted === 'true',
+            date:        q.created_at,
+          })),
+        };
+        quotes.forEach(q => {
+          const rep = REPS[q.rep_id] || 'Unknown';
+          if (!report.quotes.byRep[rep]) report.quotes.byRep[rep] = { count:0, value:0, accepted:0 };
+          report.quotes.byRep[rep].count++;
+          report.quotes.byRep[rep].value += parseFloat(q.total || 0);
+          if (q.accepted === 'true') report.quotes.byRep[rep].accepted++;
+        });
+
+        // ── Most quoted products ──────────────────────────────────
+        const productCounts = {};
+        quotes.forEach(q => {
+          try {
+            const items = q.line_items || [];
+            items.forEach(item => {
+              if (!item?.name) return;
+              const name = item.name;
+              if (!productCounts[name]) productCounts[name] = { count:0, revenue:0 };
+              productCounts[name].count += parseInt(item.qty || 1);
+              productCounts[name].revenue += parseFloat(item.price || 0) * parseInt(item.qty || 1);
+            });
+          } catch(e) {}
+        });
+        report.topProducts = Object.entries(productCounts)
+          .sort((a, b) => b[1].count - a[1].count)
+          .slice(0, 10)
+          .map(([name, d]) => ({ name, count: d.count, revenue: Math.round(d.revenue) }));
+
+        // ── Order stats ───────────────────────────────────────────
+        const oAll = await db.query(
+          `SELECT quote_number, created_at, order_data
+           FROM orders WHERE created_at >= $1 ORDER BY created_at DESC`,
+          [since]
+        );
+        const orders = oAll.rows;
+        const shippedOrders = orders.filter(o => o.order_data?.shipped?.tracking);
+        const avgFulfillDays = (() => {
+          const diffs = [];
+          orders.forEach(o => {
+            if (o.order_data?.shipped?.date && o.created_at) {
+              const diff = (new Date(o.order_data.shipped.date) - new Date(o.created_at)) / (1000*60*60*24);
+              if (diff > 0 && diff < 180) diffs.push(diff);
+            }
+          });
+          return diffs.length ? Math.round(diffs.reduce((s,d) => s+d, 0) / diffs.length) : null;
+        })();
+        const carrierCounts = {};
+        shippedOrders.forEach(o => {
+          const c = o.order_data?.shipped?.carrier || 'Unknown';
+          carrierCounts[c] = (carrierCounts[c] || 0) + 1;
+        });
+        const foamCounts = {};
+        orders.forEach(o => {
+          const f = o.order_data?.foamColor;
+          if (f) foamCounts[f] = (foamCounts[f] || 0) + 1;
+        });
+        report.orders = {
+          total:         orders.length,
+          shipped:       shippedOrders.length,
+          inProduction:  orders.length - shippedOrders.length,
+          avgFulfillDays,
+          byCarrier:     carrierCounts,
+          byFoamColor:   Object.entries(foamCounts).sort((a,b)=>b[1]-a[1]).slice(0,5),
+        };
+
+        // ── Revenue by month (last 6 months) ─────────────────────
+        const sixMonthsAgo = new Date(Date.now() - 180 * 24*60*60*1000).toISOString();
+        const monthly = await db.query(
+          `SELECT to_char(created_at AT TIME ZONE 'America/New_York', 'Mon YYYY') as month,
+                  to_char(created_at AT TIME ZONE 'America/New_York', 'YYYY-MM') as month_key,
+                  COUNT(*) as quote_count,
+                  SUM(total) as total_value,
+                  SUM(CASE WHEN (json_snapshot->>'accepted')::text = 'true' THEN 1 ELSE 0 END) as accepted_count
+           FROM quotes WHERE created_at >= $1
+           GROUP BY month, month_key
+           ORDER BY month_key ASC`,
+          [sixMonthsAgo]
+        );
+        report.monthly = monthly.rows.map(r => ({
+          month:      r.month,
+          monthKey:   r.month_key,
+          quotes:     parseInt(r.quote_count),
+          value:      parseFloat(r.total_value || 0),
+          accepted:   parseInt(r.accepted_count),
+        }));
+
+        // ── All-time totals ───────────────────────────────────────
+        const totals = await db.query(
+          `SELECT COUNT(*) as total_quotes,
+                  SUM(total) as total_value,
+                  SUM(CASE WHEN (json_snapshot->>'accepted')::text = 'true' THEN 1 ELSE 0 END) as total_accepted,
+                  COUNT(DISTINCT company) as unique_companies,
+                  MIN(created_at) as first_quote
+           FROM quotes`
+        );
+        report.allTime = {
+          totalQuotes:     parseInt(totals.rows[0].total_quotes),
+          totalValue:      parseFloat(totals.rows[0].total_value || 0),
+          totalAccepted:   parseInt(totals.rows[0].total_accepted),
+          uniqueCompanies: parseInt(totals.rows[0].unique_companies),
+          since:           totals.rows[0].first_quote,
+        };
+      }
+
+      // ── HubSpot pipeline snapshot ─────────────────────────────
+      try {
+        const pipeRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/deals/search',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, {
+          filterGroups: [],
+          properties: ['dealstage','amount','hubspot_owner_id','payment_status','hs_lastmodifieddate'],
+          sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+          limit: 200,
+        });
+        const deals = pipeRes.body?.results || [];
+        const pipeline = {};
+        let totalPipelineValue = 0;
+        const stageNames = {
+          'appointmentscheduled':'Sent Quote','qualifiedtobuy':'Updated Quote',
+          'contractsent':'Verbal Confirmation','closedwon':'Closed Won',
+          '845719':'Shipped','closedlost':'Closed Lost',
+        };
+        deals.forEach(d => {
+          const stage = stageNames[d.properties?.dealstage] || d.properties?.dealstage || 'Unknown';
+          const amt   = parseFloat(d.properties?.amount || 0);
+          if (!pipeline[stage]) pipeline[stage] = { count:0, value:0 };
+          pipeline[stage].count++;
+          pipeline[stage].value += amt;
+          if (!['Closed Lost'].includes(stage)) totalPipelineValue += amt;
+        });
+        report.pipeline = { byStage: pipeline, totalValue: totalPipelineValue, totalDeals: deals.length };
+
+        // Win rate — closed won vs (closed won + closed lost)
+        const won  = (pipeline['Closed Won']?.count || 0) + (pipeline['Shipped']?.count || 0);
+        const lost = pipeline['Closed Lost']?.count || 0;
+        report.pipeline.winRate = (won + lost) > 0 ? Math.round(won / (won + lost) * 100) : null;
+
+        // Payment status breakdown
+        const payBreakdown = { paid:0, po_received:0, not_paid:0 };
+        deals.forEach(d => {
+          const ps = d.properties?.payment_status || 'not_paid';
+          payBreakdown[ps] = (payBreakdown[ps] || 0) + 1;
+        });
+        report.pipeline.paymentBreakdown = payBreakdown;
+
+        // By rep
+        const repDeals = {};
+        deals.forEach(d => {
+          const rep = REPS[d.properties?.hubspot_owner_id] || 'Unknown';
+          const amt = parseFloat(d.properties?.amount || 0);
+          if (!repDeals[rep]) repDeals[rep] = { total:0, value:0, won:0 };
+          repDeals[rep].total++;
+          repDeals[rep].value += amt;
+          if (['closedwon','845719'].includes(d.properties?.dealstage)) repDeals[rep].won++;
+        });
+        report.pipeline.byRep = repDeals;
+      } catch(e) { console.warn('Pipeline fetch failed:', e.message); }
+
+      report.period = days;
+      report.generatedAt = new Date().toISOString();
+      json(report);
+    } catch(e) {
+      console.error('Reports error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+
   if (pathname.startsWith('/api/deals/') && pathname.endsWith('/timeline') && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const dealId = pathname.split('/')[3];
@@ -3900,6 +4105,14 @@ tbody tr:hover td{background:#fdfcfb}
 
 
   // ── Orders Dashboard Page ─────────────────────────────────────────
+  if (pathname === '/reports' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/deals' }); res.end(); return; }
+    const html = fs.readFileSync(path.join(__dirname, 'reports-dashboard.html'), 'utf8');
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+    return;
+  }
+
   if (pathname === '/deals' && req.method === 'GET') {
     if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
     const html = fs.readFileSync(path.join(__dirname, 'deals-dashboard.html'), 'utf8');

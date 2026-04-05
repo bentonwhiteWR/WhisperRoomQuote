@@ -3124,18 +3124,10 @@ async function loadPriceBook() {
   const body = document.getElementById('pbBody');
   body.innerHTML = '<div class="pb-loading">Loading products…</div>';
   try {
-    let all = [], after = 0;
-    for (let i = 0; i < 5; i++) {
-      const res  = await fetch(`/api/products?q=&after=${after}`, { credentials:'include' });
-      const data = await res.json();
-      const batch = data.results || [];
-      all.push(...batch);
-      if (batch.length < 100) break;
-      after += 100;
-    }
-    pbAllProducts = all.sort((a, b) =>
-      (a.properties?.name || '').localeCompare(b.properties?.name || '')
-    );
+    const res  = await fetch('/api/products-all', { credentials:'include' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    pbAllProducts = data.results || [];
     document.getElementById('pbCount').textContent = `${pbAllProducts.length} products`;
     pbFilter();
   } catch(e) {

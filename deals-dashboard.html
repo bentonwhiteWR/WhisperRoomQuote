@@ -338,6 +338,12 @@ function renderHub(dealId,data) {
     :data.quotes.map(q=>{
       const acc=q.accepted;
       const qUrl=q.shareToken?`https://sales.whisperroom.com/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}`:'';
+      const acceptDetails = acc && (q.acceptedFoam||q.acceptedHinge||q.acceptedNote) ? `
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:5px;padding:6px 8px;background:rgba(34,197,94,.06);border-radius:5px;border:1px solid rgba(34,197,94,.15)">
+          ${q.acceptedFoam?`<span style="font-size:10px;color:var(--green)">🎨 ${q.acceptedFoam}</span>`:''}
+          ${q.acceptedHinge?`<span style="font-size:10px;color:var(--green)">🚪 ${q.acceptedHinge}</span>`:''}
+          ${q.acceptedNote?`<span style="font-size:10px;color:var(--text2);font-style:italic">"${q.acceptedNote}"</span>`:''}
+        </div>` : '';
       return `<div class="row-card ${acc?'row-accepted':''}" onclick="loadQuote('${q.quoteNumber}')">
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
@@ -345,6 +351,7 @@ function renderHub(dealId,data) {
             ${acc?'<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>':''}
             ${q.firstMdl?`<span style="font-size:10px;color:var(--text2);font-family:var(--mono)">${q.firstMdl}</span>`:''}
           </div>
+          ${acceptDetails}
         </div>
         <span style="font-size:12px;font-weight:700;color:${acc?'var(--green)':'var(--text)'}">${fmt(q.total)}</span>
         <span class="row-date">${fmtDate(q.date)}</span>
@@ -352,6 +359,7 @@ function renderHub(dealId,data) {
           ${qUrl?`<a href="${qUrl}" target="_blank" class="row-link" title="View quote">View ↗</a>`:''}
           ${qUrl?`<button onclick="copyQuoteLink('${q.quoteNumber}','${q.shareToken||''}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit" title="Copy shareable link">🔗</button>`:''}
           ${qUrl?`<button onclick="emailQuote('${q.quoteNumber}','${q.shareToken||''}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit" title="Email quote link">✉</button>`:''}
+          ${acc?`<button onclick="createInvoiceForDeal(event)" class="row-link" style="cursor:pointer;background:rgba(238,98,22,.1);font-family:inherit;color:var(--orange);border-color:var(--orange-border);font-weight:700" title="Create invoice">+ Invoice</button>`:''}
           <button onclick="markQuotePaid('${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit;color:var(--amber);border-color:rgba(245,158,11,.3)" title="Mark this quote as paid">$ Paid</button>
         </div>
         <span style="font-size:10px;font-weight:700;color:${acc?'var(--green)':'var(--orange)'};flex-shrink:0">${acc?'✓ Load':'Load →'}</span>
@@ -566,6 +574,15 @@ function emailInvoiceLink(invoiceUrl) {
   const subj    = encodeURIComponent(`Your WhisperRoom Invoice — ${deal.name || ''}`);
   const body    = encodeURIComponent(`Hi ${name},\n\nPlease find your WhisperRoom invoice at the link below:\n\n${invoiceUrl}\n\nYou can view and pay your invoice securely through the link above.\n\nBest regards,\nWhisperRoom, Inc.\n1-800-200-8168`);
   window.open(`mailto:${toEmail}?subject=${subj}&body=${body}`, '_blank');
+}
+
+function createInvoiceForDeal(event) {
+  event.stopPropagation();
+  // Navigate to quote builder with the deal pre-linked so rep can create invoice from there
+  if (currentDealId) {
+    const deal = allDeals.find(d => d.id === currentDealId);
+    window.location.href = `/quotes?dealId=${currentDealId}&dealName=${encodeURIComponent(deal?.name||'')}&fromHub=${currentDealId}&createInvoice=1`;
+  }
 }
 
 async function markQuotePaid(quoteNumber) {

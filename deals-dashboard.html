@@ -338,31 +338,31 @@ function renderHub(dealId,data) {
     :data.quotes.map(q=>{
       const acc=q.accepted;
       const qUrl=q.shareToken?`https://sales.whisperroom.com/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}`:'';
-      const acceptDetails = acc && (q.acceptedFoam||q.acceptedHinge||q.acceptedNote) ? `
-        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:5px;padding:6px 8px;background:rgba(34,197,94,.06);border-radius:5px;border:1px solid rgba(34,197,94,.15)">
-          ${q.acceptedFoam?`<span style="font-size:10px;color:var(--green)">🎨 ${q.acceptedFoam}</span>`:''}
-          ${q.acceptedHinge?`<span style="font-size:10px;color:var(--green)">🚪 ${q.acceptedHinge}</span>`:''}
-          ${q.acceptedNote?`<span style="font-size:10px;color:var(--text2);font-style:italic">"${q.acceptedNote}"</span>`:''}
+      const noteBar = acc && (q.acceptedFoam||q.acceptedHinge||q.acceptedNote) ? `
+        <div style="font-size:10px;color:var(--green);margin-top:2px;opacity:.8">
+          ${[q.acceptedFoam,q.acceptedHinge,q.acceptedNote?'"'+q.acceptedNote+'"':''].filter(Boolean).join(' · ')}
         </div>` : '';
-      return `<div class="row-card ${acc?'row-accepted':''}" onclick="loadQuote('${q.quoteNumber}')">
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
-            <span style="font-size:12px;font-weight:700;color:var(--text);font-family:var(--mono)">${q.quoteNumber}</span>
-            ${acc?'<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>':''}
-            ${q.firstMdl?`<span style="font-size:10px;color:var(--text2);font-family:var(--mono)">${q.firstMdl}</span>`:''}
+      return `<div class="row-card ${acc?'row-accepted':''}" style="flex-direction:column;align-items:stretch;gap:6px;cursor:pointer" onclick="loadQuote('${q.quoteNumber}')">
+        <!-- Row 1: Quote #, Accepted, Amount, Date, View/Copy/Email, Load -->
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:700;color:var(--text);font-family:var(--mono)">${q.quoteNumber}</span>
+          ${acc?'<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>':''}
+          <span style="font-size:12px;font-weight:700;color:${acc?'var(--green)':'var(--text)'};">${fmt(q.total)}</span>
+          <span class="row-date">${fmtDate(q.date)}</span>
+          <div style="display:flex;gap:4px;margin-left:auto" onclick="event.stopPropagation()">
+            ${qUrl?`<a href="${qUrl}" target="_blank" class="row-link" title="View quote">View ↗</a>`:''}
+            ${qUrl?`<button onclick="copyQuoteLink('${q.quoteNumber}','${q.shareToken||''}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit" title="Copy link">🔗</button>`:''}
+            ${qUrl?`<button onclick="emailQuote('${q.quoteNumber}','${q.shareToken||''}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit" title="Email quote">✉</button>`:''}
+            <span style="font-size:10px;font-weight:700;color:${acc?'var(--green)':'var(--orange)'};padding:2px 4px">${acc?'✓ Load':'Load →'}</span>
           </div>
-          ${acceptDetails}
         </div>
-        <span style="font-size:12px;font-weight:700;color:${acc?'var(--green)':'var(--text)'}">${fmt(q.total)}</span>
-        <span class="row-date">${fmtDate(q.date)}</span>
-        <div style="display:flex;gap:5px;flex-shrink:0" onclick="event.stopPropagation()">
-          ${qUrl?`<a href="${qUrl}" target="_blank" class="row-link" title="View quote">View ↗</a>`:''}
-          ${qUrl?`<button onclick="copyQuoteLink('${q.quoteNumber}','${q.shareToken||''}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit" title="Copy shareable link">🔗</button>`:''}
-          ${qUrl?`<button onclick="emailQuote('${q.quoteNumber}','${q.shareToken||''}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit" title="Email quote link">✉</button>`:''}
-          ${acc?`<button onclick="createInvoiceForDeal(event)" class="row-link" style="cursor:pointer;background:rgba(238,98,22,.1);font-family:inherit;color:var(--orange);border-color:var(--orange-border);font-weight:700" title="Create invoice">+ Invoice</button>`:''}
-          <button onclick="markQuotePaid('${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit;color:var(--amber);border-color:rgba(245,158,11,.3)" title="Mark this quote as paid">$ Paid</button>
+        <!-- Row 2: MDL, +Invoice, $Paid, note -->
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap" onclick="event.stopPropagation()">
+          ${q.firstMdl?`<span style="font-size:10px;color:var(--text2);font-family:var(--mono);font-weight:600">${q.firstMdl}</span>`:''}
+          ${acc?`<button onclick="createInvoiceForDeal(event)" class="row-link" style="cursor:pointer;background:rgba(238,98,22,.1);font-family:inherit;color:var(--orange);border-color:var(--orange-border);font-weight:700;font-size:10px">+ Invoice</button>`:''}
+          <button onclick="markQuotePaid('${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit;color:var(--amber);border-color:rgba(245,158,11,.3);font-size:10px">$ Paid</button>
+          ${noteBar}
         </div>
-        <span style="font-size:10px;font-weight:700;color:${acc?'var(--green)':'var(--orange)'};flex-shrink:0">${acc?'✓ Load':'Load →'}</span>
       </div>`;
     }).join('');
 

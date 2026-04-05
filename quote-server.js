@@ -1783,11 +1783,35 @@ const server = http.createServer(async (req, res) => {
   // ── API: Search products ──
   if (pathname === '/api/products' && req.method === 'GET') {
     try {
-      const q = parsed.query.q || '';
+      const q      = parsed.query.q || '';
       const offset = parseInt(parsed.query.after || '0');
-      const data = await hsSearchProducts(q, 100, offset);
+      const data   = await hsSearchProducts(q, 100, offset);
       json(data);
     } catch(e) { json({error: e.message}, 500); }
+    return;
+  }
+
+  // ── API: All products (for price book) — uses list endpoint to get all 1200+ ──
+  if (pathname === '/api/products-all' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      let all = [], after = null;
+      for (let page = 0; page < 15; page++) {
+        let path = '/crm/v3/objects/products?limit=100&properties=name,price,description,weight,hs_sku,category';
+        if (after) path += `&after=${after}`;
+        const r = await httpsRequest({
+          hostname: 'api.hubapi.com', path, method: 'GET',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+        });
+        const results = r.body?.results || [];
+        all.push(...results);
+        after = r.body?.paging?.next?.after || null;
+        if (!after || results.length < 100) break;
+      }
+      // Sort by name
+      all.sort((a,b) => (a.properties?.name||'').localeCompare(b.properties?.name||''));
+      json({ results: all, total: all.length });
+    } catch(e) { json({ error: e.message }, 500); }
     return;
   }
 

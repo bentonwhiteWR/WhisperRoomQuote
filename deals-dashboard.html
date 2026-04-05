@@ -302,6 +302,7 @@ async function openDeal(dealId) {
 }
 
 function renderHub(dealId,data) {
+  window._lastHubData = data; // cache for invoice creation
   const deal=allDeals.find(d=>d.id===dealId)||{};
   // Store contact for email prefill
   window._hubContact = data.contact || null;
@@ -356,12 +357,14 @@ function renderHub(dealId,data) {
             <span style="font-size:10px;font-weight:700;color:${acc?'var(--green)':'var(--orange)'};padding:2px 4px">${acc?'✓ Load':'Load →'}</span>
           </div>
         </div>
-        <!-- Row 2: MDL, +Invoice, $Paid, note -->
+        <!-- Row 2: MDL + note on left, Invoice+Paid on right -->
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap" onclick="event.stopPropagation()">
           ${q.firstMdl?`<span style="font-size:10px;color:var(--text2);font-family:var(--mono);font-weight:600">${q.firstMdl}</span>`:''}
-          ${acc?`<button onclick="createInvoiceForDeal(event)" class="row-link" style="cursor:pointer;background:rgba(238,98,22,.1);font-family:inherit;color:var(--orange);border-color:var(--orange-border);font-weight:700;font-size:10px">+ Invoice</button>`:''}
-          <button onclick="markQuotePaid('${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit;color:var(--amber);border-color:rgba(245,158,11,.3);font-size:10px">$ Paid</button>
           ${noteBar}
+          <div style="margin-left:auto;display:flex;gap:5px">
+            ${acc?`<button onclick="createInvoiceForDeal(event,'${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:rgba(238,98,22,.1);font-family:inherit;color:var(--orange);border-color:var(--orange-border);font-weight:700;font-size:10px">+ Invoice</button>`:''}
+            <button onclick="markQuotePaid('${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit;color:var(--amber);border-color:rgba(245,158,11,.3);font-size:10px">$ Paid</button>
+          </div>
         </div>
       </div>`;
     }).join('');
@@ -576,12 +579,52 @@ function emailInvoiceLink(invoiceUrl) {
   window.open(`mailto:${toEmail}?subject=${subj}&body=${body}`, '_blank');
 }
 
-function createInvoiceForDeal(event) {
+async function createInvoiceForDeal(event, quoteNumber) {
   event.stopPropagation();
-  // Navigate to quote builder with the deal pre-linked so rep can create invoice from there
-  if (currentDealId) {
-    const deal = allDeals.find(d => d.id === currentDealId);
-    window.location.href = `/quotes?dealId=${currentDealId}&dealName=${encodeURIComponent(deal?.name||'')}&fromHub=${currentDealId}&createInvoice=1`;
+  if (!currentDealId) return;
+
+  // Find the accepted quote's snapshot data from the hub cache
+  const hubData = window._lastHubData;
+  const q = hubData?.quotes?.find(q => q.quoteNumber === quoteNumber) || hubData?.quotes?.find(q => q.accepted);
+  if (!q) { showToast('No accepted quote found', 'error'); return; }
+
+  // Fetch full snapshot for line items
+  const btn = event.target;
+  btn.textContent = '...';
+  btn.disabled = true;
+  try {
+    // Load snapshot from history endpoint
+    const snapRes = await fetch(`/api/quote-snapshot/${encodeURIComponent(q.quoteNumber)}`, { credentials:'include' });
+    const snap = await snapRes.json();
+    if (snap.error) throw new Error(snap.error);
+
+    const res = await fetch('/api/create-invoice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        dealId:     currentDealId,
+        quoteNumber: q.quoteNumber,
+        lineItems:  snap.lineItems  || [],
+        freight:    snap.freight    || null,
+        tax:        snap.tax        || null,
+        discount:   snap.discount   || { type:'pct', value:0 },
+        customer:   snap.customer   || {},
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast('✓ Invoice created!', 'success');
+      // Reload hub to show new invoice
+      setTimeout(() => openDeal(currentDealId), 800);
+    } else {
+      throw new Error(data.error || 'Invoice creation failed');
+    }
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    btn.textContent = '+ Invoice';
+    btn.disabled = false;
   }
 }
 

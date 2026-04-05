@@ -2858,8 +2858,11 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   }
 
   window._loadedShareToken = q._shareToken || q.shareToken || null;
-  // Set accepted state for this loaded quote
+  // Set accepted state and customer preferences
   setQuoteAccepted(q.accepted || q._accepted || false);
+  window._acceptedFoam  = q.acceptedFoam  || q._acceptedFoam  || '';
+  window._acceptedHinge = q.acceptedHinge || q._acceptedHinge || '';
+  window._acceptedNote  = q.acceptedNote  || q._acceptedNote  || '';
   // Clear result box so invoice/order links from other quotes don't bleed through
   const resultBox = document.getElementById('resultBox');
   if (resultBox) { resultBox.className = 'result-box'; resultBox.innerHTML = ''; }
@@ -3712,7 +3715,8 @@ fetchHistory().then(() => {
   const loadQuote = urlParams.get('loadQuote');
   const dealId    = urlParams.get('dealId');
   const dealName  = urlParams.get('dealName');
-  const fromHub   = urlParams.get('fromHub');
+  const fromHub      = urlParams.get('fromHub');
+  const createInvoice = urlParams.get('createInvoice');
 
   // Show "Back to Deal Hub" button if came from hub
   if (fromHub || dealId || loadQuote) {

@@ -339,6 +339,7 @@ function renderHub(dealId,data) {
     :data.quotes.map(q=>{
       const acc=q.accepted;
       const qUrl=q.shareToken?`https://sales.whisperroom.com/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}`:'';
+      const dealPaid = (ps === 'paid');
       const noteBar = acc && (q.acceptedFoam||q.acceptedHinge||q.acceptedNote) ? `
         <div style="font-size:10px;color:var(--green);margin-top:2px;opacity:.8">
           ${[q.acceptedFoam,q.acceptedHinge,q.acceptedNote?'"'+q.acceptedNote+'"':''].filter(Boolean).join(' · ')}
@@ -348,7 +349,6 @@ function renderHub(dealId,data) {
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-size:12px;font-weight:700;color:var(--text);font-family:var(--mono)">${q.quoteNumber}</span>
           ${acc?'<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>':''}
-          <span style="font-size:12px;font-weight:700;color:${acc?'var(--green)':'var(--text)'};">${fmt(q.total)}</span>
           <span class="row-date">${fmtDate(q.date)}</span>
           <div style="display:flex;gap:4px;margin-left:auto" onclick="event.stopPropagation()">
             ${qUrl?`<a href="${qUrl}" target="_blank" class="row-link" title="View quote">View ↗</a>`:''}
@@ -360,10 +360,14 @@ function renderHub(dealId,data) {
         <!-- Row 2: MDL + note on left, Invoice+Paid on right -->
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap" onclick="event.stopPropagation()">
           ${q.firstMdl?`<span style="font-size:10px;color:var(--text2);font-family:var(--mono);font-weight:600">${q.firstMdl}</span>`:''}
+          <span style="font-size:12px;font-weight:700;color:${acc?'var(--green)':'var(--text)'}">${fmt(q.total)}</span>
           ${noteBar}
           <div style="margin-left:auto;display:flex;gap:5px">
-            ${acc?`<button onclick="createInvoiceForDeal(event,'${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:rgba(238,98,22,.1);font-family:inherit;color:var(--orange);border-color:var(--orange-border);font-weight:700;font-size:10px">+ Invoice</button>`:''}
-            <button onclick="markQuotePaid('${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit;color:var(--amber);border-color:rgba(245,158,11,.3);font-size:10px">$ Paid</button>
+            <button onclick="createInvoiceForDeal(event,'${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:rgba(238,98,22,.1);font-family:inherit;color:var(--orange);border-color:var(--orange-border);font-weight:700;font-size:10px">+ Invoice</button>
+            ${dealPaid
+              ? `<span class="row-link" style="background:rgba(34,197,94,.12);color:var(--green);border-color:rgba(34,197,94,.3);font-weight:700;font-size:10px;cursor:default">✓ Paid</span>`
+              : `<button onclick="markQuotePaid('${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit;color:var(--amber);border-color:rgba(245,158,11,.3);font-size:10px">$ Paid</button>`}
+            ${acc?`<button onclick="processOrderFromHub(event,'${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:rgba(59,130,246,.1);font-family:inherit;color:#3b82f6;border-color:rgba(59,130,246,.3);font-weight:700;font-size:10px">Process →</button>`:''}
           </div>
         </div>
       </div>`;
@@ -589,6 +593,7 @@ async function createInvoiceForDeal(event, quoteNumber) {
   if (!q) { showToast('No accepted quote found', 'error'); return; }
 
   // Fetch full snapshot for line items
+  if (!confirm(`Create invoice for ${quoteNumber}?`)) return;
   const btn = event.target;
   btn.textContent = '...';
   btn.disabled = true;
@@ -626,6 +631,12 @@ async function createInvoiceForDeal(event, quoteNumber) {
     btn.textContent = '+ Invoice';
     btn.disabled = false;
   }
+}
+
+function processOrderFromHub(event, quoteNumber) {
+  event.stopPropagation();
+  if (!currentDealId) return;
+  window.location.href = `/quotes?loadQuote=${encodeURIComponent(quoteNumber)}&fromHub=${currentDealId}`;
 }
 
 async function markQuotePaid(quoteNumber) {

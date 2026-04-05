@@ -668,13 +668,17 @@ async function getQuoteFromDb(quoteNumber) {
   if (!db || !process.env.DATABASE_URL) return null;
   try {
     const res = await db.query(
-      'SELECT json_snapshot, share_token FROM quotes WHERE quote_number = $1',
+      'SELECT json_snapshot, share_token, deal_id FROM quotes WHERE quote_number = $1',
       [quoteNumber]
     );
     if (res.rows.length === 0) return null;
     if (!res.rows[0]) return null;
-    const snap = res.rows[0].json_snapshot;
-    if (snap) snap._shareToken = res.rows[0].share_token;
+    const snap = res.rows[0].json_snapshot || {};
+    snap._shareToken = res.rows[0].share_token;
+    // Ensure dealId is populated from DB column (more reliable than snapshot)
+    if (res.rows[0].deal_id && !snap.dealId) {
+      snap.dealId = res.rows[0].deal_id;
+    }
     return snap;
   } catch(e) {
     console.warn('DB get failed:', e.message);
@@ -2845,6 +2849,12 @@ tbody tr:hover td{background:#fdfcfb}
       console.log(`Accept quote #${quoteNumber} → dealId: ${dealId}`);
       const results = { quoteNumber, resolvedDealId: dealId };
 
+      if (!dealId) {
+        console.warn(`[accept] dealId still null after all lookups for ${quoteNumber}`);
+      } else {
+        console.log(`[accept] will advance deal ${dealId} to contractsent`);
+      }
+
       // 0. Mark quote as accepted in DB with timestamp
       if (db && quoteNumber) {
         try {
@@ -2866,7 +2876,11 @@ tbody tr:hover td{background:#fdfcfb}
           headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
         }, { properties: { dealstage: 'contractsent' } });
         results.stageUpdated = !stageRes.body.error;
-        if (stageRes.body.error) console.warn('Stage update failed:', stageRes.body.message);
+        if (stageRes.body.error) {
+          console.warn('[accept] Stage update failed:', stageRes.body.message);
+        } else {
+          console.log(`[accept] Deal ${dealId} stage → contractsent ✓`);
+        }
       } else {
         results.warning = 'No dealId found — stage not updated';
         console.warn(`Accept quote #${quoteNumber}: no dealId found`);

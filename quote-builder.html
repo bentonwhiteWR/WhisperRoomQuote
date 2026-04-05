@@ -3939,7 +3939,6 @@ function renderDealHub(data) {
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-size:13px;font-weight:700;color:#fff;font-family:var(--mono)">${q.quoteNumber}</span>
           ${accepted ? '<span style="font-size:10px;font-weight:800;color:#22c55e;background:rgba(34,197,94,.15);padding:2px 7px;border-radius:4px;border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>' : ''}
-          <span style="font-size:13px;font-weight:700;color:${accepted?'#22c55e':'rgba(255,255,255,.8)'};">${fmt(q.total)}</span>
           <span style="font-size:11px;color:rgba(255,255,255,.3);">${fmtDate(q.date)}</span>
           <div style="display:flex;gap:4px;margin-left:auto" onclick="event.stopPropagation()">
             ${qUrl ? `<a href="${qUrl}" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:rgba(255,255,255,.3);text-decoration:none;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08)">View ↗</a>` : ''}
@@ -3951,10 +3950,14 @@ function renderDealHub(data) {
         <!-- Row 2: MDL + note on left, Invoice+Paid on right -->
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap" onclick="event.stopPropagation()">
           ${q.firstMdl ? `<span style="font-size:10px;color:rgba(255,255,255,.5);font-family:var(--mono);font-weight:600">${q.firstMdl}</span>` : ''}
+          <span style="font-size:13px;font-weight:700;color:${accepted?'#22c55e':'rgba(255,255,255,.8)'}">${fmt(q.total)}</span>
           ${noteBar ? `<span style="font-size:10px;color:rgba(34,197,94,.7)">${noteBar}</span>` : ''}
           <div style="margin-left:auto;display:flex;gap:5px">
-            ${accepted ? `<button onclick="event.stopPropagation();createInvoice()" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(238,98,22,.3);background:rgba(238,98,22,.1);color:#ee6216;cursor:pointer;font-family:inherit">+ Invoice</button>` : ''}
-            <button onclick="event.stopPropagation();markDhQuotePaid('${q.quoteNumber}')" style="font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,.3);background:none;color:#f59e0b;cursor:pointer;font-family:inherit">$ Paid</button>
+            <button onclick="event.stopPropagation();qbHubCreateInvoice('${q.quoteNumber}')" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(238,98,22,.3);background:rgba(238,98,22,.1);color:#ee6216;cursor:pointer;font-family:inherit">+ Invoice</button>
+            ${data.paymentStatus==='paid'
+              ? `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(34,197,94,.3);background:rgba(34,197,94,.12);color:#22c55e">✓ Paid</span>`
+              : `<button onclick="event.stopPropagation();markDhQuotePaid('${q.quoteNumber}')" style="font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,.3);background:none;color:#f59e0b;cursor:pointer;font-family:inherit">$ Paid</button>`}
+            ${accepted?`<button onclick="event.stopPropagation();openOrderModal()" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(59,130,246,.3);background:rgba(59,130,246,.1);color:#3b82f6;cursor:pointer;font-family:inherit">Process →</button>`:''}
           </div>
         </div>
       `;
@@ -4051,6 +4054,24 @@ function renderDealHub(data) {
       ordList.appendChild(row);
     });
   } else { ordSection.style.display = 'none'; }
+}
+
+async function qbHubCreateInvoice(quoteNumber) {
+  const dealId = linkedDeal?.id || window._lastPushedDealId;
+  if (!dealId) { showToast('No deal linked', 'error'); return; }
+  if (!confirm(`Create invoice for ${quoteNumber}?`)) return;
+  try {
+    const snapRes = await fetch(`/api/quote-snapshot/${encodeURIComponent(quoteNumber)}`, { credentials:'include' });
+    const snap = await snapRes.json();
+    if (snap.error) throw new Error(snap.error);
+    const res = await fetch('/api/create-invoice', {
+      method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
+      body: JSON.stringify({ dealId, quoteNumber, lineItems:snap.lineItems||[], freight:snap.freight, tax:snap.tax, discount:snap.discount, customer:snap.customer })
+    });
+    const data = await res.json();
+    if (data.success) { showToast('✓ Invoice created!', 'success'); openDealHub(); }
+    else throw new Error(data.error);
+  } catch(e) { showToast('Error: '+e.message, 'error'); }
 }
 
 async function markDhQuotePaid(quoteNumber) {

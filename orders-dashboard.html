@@ -180,7 +180,11 @@
     <a href="/shipping" class="nav-link">Shipping</a>
     <a href="/reports" class="nav-link">Reports</a>
   </nav>
-  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark mode">☀️</button>
+  <button class="theme-btn"
+  <div id="userBadge" style="display:none;align-items:center;gap:8px;flex-shrink:0">
+    <span id="userName" style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600"></span>
+    <a href="/auth/logout" style="padding:5px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.4);text-decoration:none;white-space:nowrap">Sign Out</a>
+  </div> id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark mode">☀️</button>
 </div>
 
 <div class="main">
@@ -908,7 +912,7 @@ function renderOrders(orders) {
     const hinge     = o.order_data?.hingePreference || '—';
     const isShipped = !!(o.order_data?.shipped?.tracking);
     const total     = o.total ? fmt(o.total) : '—';
-    const orderUrl  = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(o.quote_number)}${o.share_token ? '?t=' + o.share_token : ''}`;
+    const orderUrl  = `https://sales.whisperroom.com/o/${encodeURIComponent(o.quote_number)}${o.share_token ? '?t=' + o.share_token : ''}`;
     return `<tr onclick="openDrawer('${o.quote_number}')">
       <td><div class="td-mono">${o.quote_number}</div></td>
       <td><div class="td-main">${customer}</div>${company ? `<div class="td-sub">${company}</div>` : ''}</td>
@@ -1026,7 +1030,7 @@ function openDrawer(quoteNumber) {
     logSection.style.display = 'none';
   }
 
-  const orderUrl = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(quoteNumber)}${order.share_token ? '?t=' + order.share_token : ''}`;
+  const orderUrl = `https://sales.whisperroom.com/o/${encodeURIComponent(quoteNumber)}${order.share_token ? '?t=' + order.share_token : ''}`;
   console.log('View Order URL:', orderUrl, 'token:', order.share_token);
   document.getElementById('viewOrderBtn').href = orderUrl;
 
@@ -1275,6 +1279,21 @@ loadOrders().then(() => {
     window.history.replaceState({}, '', '/orders');
   }
 });
+
+// ── Session user ──────────────────────────────────────────────────
+async function loadCurrentUser() {
+  try {
+    const res  = await fetch('/api/me', { credentials:'include' });
+    const data = await res.json();
+    if (data.name) {
+      const badge = document.getElementById('userBadge');
+      const name  = document.getElementById('userName');
+      if (badge) badge.style.display = 'flex';
+      if (name)  name.textContent = data.name;
+    }
+  } catch(e) {}
+}
+loadCurrentUser();
 </script>
 </body>
 </html>

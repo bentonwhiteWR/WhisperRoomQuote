@@ -3752,6 +3752,25 @@ tbody tr:hover td{background:#fdfcfb}
     return;
   }
 
+  // ── API: Get quote snapshot for Deal Hub invoice creation ─────────
+  if (pathname.startsWith('/api/quote-snapshot/') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const qNum = decodeURIComponent(pathname.replace('/api/quote-snapshot/', '').trim());
+    try {
+      const snap = await getQuoteFromDb(qNum);
+      if (!snap) { json({ error: 'Quote not found' }, 404); return; }
+      json({
+        lineItems: snap.lineItems || [],
+        freight:   snap.freight   || null,
+        tax:       snap.tax       || null,
+        discount:  snap.discount  || { type:'pct', value:0 },
+        customer:  snap.customer  || {},
+        ownerId:   snap.ownerId   || null,
+      });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   if (pathname.startsWith('/api/deals/') && pathname.endsWith('/timeline') && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const dealId = pathname.split('/')[3];

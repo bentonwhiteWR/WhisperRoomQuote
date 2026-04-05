@@ -608,6 +608,10 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     <button id="themeToggle" onclick="toggleTheme()" style="padding:5px 9px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#f0ede8;cursor:pointer;font-size:14px;line-height:1;transition:all .15s;">
       <span id="themeIcon">☀️</span>
     </button>
+    <div id="userBadge" style="display:none;align-items:center;gap:8px;flex-shrink:0">
+      <span id="userName" style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600"></span>
+      <a href="/auth/logout" style="padding:5px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.4);text-decoration:none;white-space:nowrap">Sign Out</a>
+    </div>
   </div>
 </div>
 
@@ -1969,11 +1973,12 @@ async function getTax() {
     updateSummary();
     return;
   }
-  const state = document.getElementById('shipState').value.trim().toUpperCase();
-  const zip = document.getElementById('shipZip').value.trim();
-  const city = document.getElementById('shipCity').value.trim();
+  const state   = document.getElementById('shipState').value.trim().toUpperCase();
+  const zip     = document.getElementById('shipZip').value.trim();
+  const city    = document.getElementById('shipCity').value.trim();
+  const street  = document.getElementById('shipAddress').value.trim();
 
-  if (!state || !zip) { alert('Please fill in the ship-to address first.'); return; }
+  if (!state || !zip) { alert('Please fill in the ship-to state and zip first.'); return; }
 
   const subtotal = getSubtotal() - getDiscountAmount();
   const shipping = getFreightTotal();
@@ -1986,7 +1991,7 @@ async function getTax() {
     const res = await fetch('/api/tax', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state, zip, city, subtotal, shipping })
+      body: JSON.stringify({ state, zip, city, street, subtotal, shipping })
     });
     const data = await res.json();
     taxData = data;
@@ -3483,7 +3488,7 @@ function copyQuoteLink() {
   // Note: link works after pushing to HubSpot (data stored in notes)
   // Before pushing, the link will show "quote not found" to the viewer
   const tok = getShareToken();
-  const url = 'https://whisperroomquote.up.railway.app/q/' + quoteNum + (tok ? '?t=' + tok : '');
+  const url = 'https://sales.whisperroom.com/q/' + quoteNum + (tok ? '?t=' + tok : '');
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(url).then(() => {
       showToast('Link copied to clipboard!', 'info');
@@ -3522,7 +3527,7 @@ function emailViaHubSpot() {
   if (!email) { alert('No email address on file.'); return; }
 
   const quoteLink = quoteNum
-    ? 'https://whisperroomquote.up.railway.app/q/' + quoteNum + (getShareToken() ? '?t=' + getShareToken() : '')
+    ? 'https://sales.whisperroom.com/q/' + quoteNum + (getShareToken() ? '?t=' + getShareToken() : '')
     : null;
 
   const subject = encodeURIComponent(
@@ -3682,6 +3687,25 @@ updateSummary();
 fetchHistory().then(() => {
   updateQuoteNumber();
   checkLinkBtnState();
+
+  // Load current user — auto-select their rep and show name in nav
+  fetch('/api/me', { credentials:'include' }).then(r => r.json()).then(data => {
+    if (data.name) {
+      // Show user badge in nav
+      const badge = document.getElementById('userBadge');
+      const name  = document.getElementById('userName');
+      if (badge) badge.style.display = 'flex';
+      if (name)  name.textContent = data.name;
+    }
+    if (data.ownerId) {
+      // Auto-select their rep in the dropdown (only if not already loaded from history)
+      const repSel = document.getElementById('repSelect');
+      if (repSel && !repSel.value) {
+        repSel.value = data.ownerId;
+        updateQuoteNumber();
+      }
+    }
+  }).catch(() => {});
 
   // Handle URL params from Deal Hub
   const urlParams = new URLSearchParams(window.location.search);
@@ -3911,7 +3935,7 @@ function renderDealHub(data) {
       `;
       if (q.shareToken) {
         const a = document.createElement('a');
-        a.href = `https://whisperroomquote.up.railway.app/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}`;
+        a.href = `https://sales.whisperroom.com/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}`;
         a.target = '_blank';
         a.onclick = e => e.stopPropagation();
         a.style.cssText = 'font-size:10px;color:rgba(255,255,255,.25);text-decoration:none;flex-shrink:0;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08)';
@@ -3996,7 +4020,7 @@ function renderDealHub(data) {
       const matchQ = data.quotes?.find(q => q.quoteNumber === ord.quoteNumber);
       if (matchQ?.shareToken) {
         const a = document.createElement('a');
-        a.href = `https://whisperroomquote.up.railway.app/o/${encodeURIComponent(ord.quoteNumber)}?t=${matchQ.shareToken}`;
+        a.href = `https://sales.whisperroom.com/o/${encodeURIComponent(ord.quoteNumber)}?t=${matchQ.shareToken}`;
         a.target = '_blank';
         a.style.cssText = 'font-size:10px;color:rgba(255,255,255,.3);text-decoration:none;padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,.08);flex-shrink:0';
         a.textContent = 'Order ↗'; row.appendChild(a);

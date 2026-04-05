@@ -1262,7 +1262,19 @@ if (_savedRep) {
   if (sel) sel.value = _savedRep;
 }
 
-loadOrders();
+loadOrders().then(() => {
+  const params = new URLSearchParams(window.location.search);
+  const openOrder = params.get('openOrder');
+  if (openOrder) {
+    switchTab('active');
+    setTimeout(() => {
+      const order = allOrders.find(o => o.quote_number === openOrder);
+      if (order) openDrawer(openOrder);
+      else showToast('Order not in active list — check HubSpot tab', 'info');
+    }, 400);
+    window.history.replaceState({}, '', '/orders');
+  }
+});
 </script>
 </body>
 </html>

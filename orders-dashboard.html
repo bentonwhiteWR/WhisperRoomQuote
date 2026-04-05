@@ -196,7 +196,7 @@
   </div>
 
   <!-- Rep identity bar -->
-  <div class="rep-bar">
+  <div class="rep-bar" id="repBar">
     <span style="color:var(--muted)">Logged in as:</span>
     <select id="repIdentity" onchange="saveRepIdentity()">
       <option value="">Select your name...</option>
@@ -1290,6 +1290,15 @@ async function loadCurrentUser() {
       const name  = document.getElementById('userName');
       if (badge) badge.style.display = 'flex';
       if (name)  name.textContent = data.name;
+      // Hide manual rep selector — we know who they are
+      const repBar = document.getElementById('repBar');
+      if (repBar) repBar.style.display = 'none';
+      // Auto-set repIdentity for order attribution
+      const repSel = document.getElementById('repIdentity');
+      if (repSel && data.name) {
+        repSel.value = data.name;
+        saveRepIdentity();
+      }
     }
   } catch(e) {}
 }

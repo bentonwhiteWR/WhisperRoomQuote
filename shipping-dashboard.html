@@ -430,16 +430,16 @@ function buildRow(s) {
     </td>
     <td><span class="carrier-badge carrier-${s.carrier}">${s.carrier === 'OD' ? 'Old Dom.' : s.carrier}</span></td>
     <td>${trackingCell}</td>
-    <td id="status-${s.dealId}">
+    <td id="status-${s.tracking}">
       ${s.tracking && s.trackingUrl
         ? `<a href="${s.trackingUrl}" target="_blank" class="status-badge status-unknown">Track →</a>`
         : `<span class="status-badge status-unknown">No tracking</span>`
       }
     </td>
-    <td class="hide-mobile" id="event-${s.dealId}" style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0">—</td>
+    <td class="hide-mobile" id="event-${s.tracking}" style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0">—</td>
     <td class="date-cell hide-mobile" id="date-${s.dealId}">${fmtDate(s.dateShipped)}</td>
-    <td class="hide-mobile" id="dest-${s.dealId}" style="font-size:11px;color:var(--muted)">—</td>
-    <td class="hide-mobile" id="transit-${s.dealId}" style="font-size:11px;color:var(--muted);text-align:center">—</td>
+    <td class="hide-mobile" id="dest-${s.tracking}" style="font-size:11px;color:var(--muted)">—</td>
+    <td class="hide-mobile" id="transit-${s.tracking}" style="font-size:11px;color:var(--muted);text-align:center">—</td>
     <td>
       <a href="${s.dealUrl}" target="_blank" class="hs-link" title="View Deal">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
@@ -562,7 +562,7 @@ async function fetchAllStatuses(shipments) {
 }
 
 async function fetchStatus(s) {
-  const cell = document.getElementById('status-' + s.dealId);
+  const cell = document.getElementById('status-' + s.tracking);
   if (!cell) return;
   try {
     const res = await fetch(`/api/track?carrier=${encodeURIComponent(s.carrier)}&tracking=${encodeURIComponent(s.tracking)}`, { credentials: 'include' });
@@ -597,7 +597,7 @@ async function fetchStatus(s) {
       cell.innerHTML = badge + etaLine + signedLine;
 
       // Latest Event cell
-      const eventCell = document.getElementById('event-' + s.dealId);
+      const eventCell = document.getElementById('event-' + s.tracking);
       if (eventCell && data.lastEvent) {
         const evDate = data.lastEventTime ? `<span style="color:var(--muted);margin-right:4px">${fmtDate(data.lastEventTime)}</span>` : '';
         eventCell.innerHTML = evDate + data.lastEvent;
@@ -605,7 +605,7 @@ async function fetchStatus(s) {
       }
 
       // Destination cell — parse from address
-      const destCell = document.getElementById('dest-' + s.dealId);
+      const destCell = document.getElementById('dest-' + s.tracking);
       if (destCell && s.address) {
         // Extract city, state from address string
         const parts = s.address.split(',').map(p => p.trim());
@@ -614,7 +614,7 @@ async function fetchStatus(s) {
       }
 
       // Transit time cell — days between ship date and now (or delivery)
-      const transitCell = document.getElementById('transit-' + s.dealId);
+      const transitCell = document.getElementById('transit-' + s.tracking);
       if (transitCell && s.dateShipped) {
         const start = new Date(s.dateShipped + 'T00:00:00');
         const end = data.deliveredAt ? new Date(data.deliveredAt + 'T00:00:00') : new Date();

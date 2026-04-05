@@ -134,6 +134,10 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
     <a href="/reports" class="nav-link">Reports</a>
   </nav>
   <div class="topbar-spacer"></div>
+  <div id="userBadge" style="display:none;align-items:center;gap:8px;flex-shrink:0">
+    <span id="userName" style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600"></span>
+    <a href="/auth/logout" style="padding:5px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.4);text-decoration:none;white-space:nowrap">Sign Out</a>
+  </div>
   <button onclick="newQuote()" style="padding:5px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(238,98,22,.2);border:1px solid rgba(238,98,22,.4);border-radius:6px;color:#ee6216;cursor:pointer;font-family:inherit;white-space:nowrap">+ New Quote</button>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">☀️</button>
 </div>
@@ -299,6 +303,8 @@ async function openDeal(dealId) {
 
 function renderHub(dealId,data) {
   const deal=allDeals.find(d=>d.id===dealId)||{};
+  // Store contact for email prefill
+  window._hubContact = data.contact || null;
   const ps=data.paymentStatus||'not_paid';
   const na={
     appointmentscheduled:{icon:'📋',text:'Quote sent — follow up with the customer'},
@@ -331,7 +337,7 @@ function renderHub(dealId,data) {
     ?'<div style="font-size:12px;color:var(--muted);font-style:italic;padding:6px 0">No quotes yet</div>'
     :data.quotes.map(q=>{
       const acc=q.accepted;
-      const qUrl=q.shareToken?`https://whisperroomquote.up.railway.app/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}`:'';
+      const qUrl=q.shareToken?`https://sales.whisperroom.com/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}`:'';
       return `<div class="row-card ${acc?'row-accepted':''}" onclick="loadQuote('${q.quoteNumber}')">
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
@@ -389,7 +395,7 @@ function renderHub(dealId,data) {
           ${ord.foamColor?`<div style="font-size:10px;color:var(--muted);margin-top:2px">${ord.foamColor}${ord.hingePreference?' · '+ord.hingePreference:''}</div>`:''}
         </div>
         <div style="display:flex;gap:5px;flex-shrink:0">
-          ${matchQ?.shareToken?`<a href="https://whisperroomquote.up.railway.app/o/${encodeURIComponent(ord.quoteNumber)}?t=${matchQ.shareToken}" target="_blank" class="row-link">Order ↗</a>`:''}
+          ${matchQ?.shareToken?`<a href="https://sales.whisperroom.com/o/${encodeURIComponent(ord.quoteNumber)}?t=${matchQ.shareToken}" target="_blank" class="row-link">Order ↗</a>`:''}
           <a href="/orders?openOrder=${encodeURIComponent(ord.quoteNumber)}" class="row-link" style="color:var(--orange);border-color:var(--orange-border)">Open in Orders →</a>
         </div>
       </div>`;
@@ -535,25 +541,31 @@ function renderTimeline(events) {
 
 function copyQuoteLink(quoteNumber, shareToken) {
   if (!shareToken) { showToast('No share token — push quote first', 'error'); return; }
-  const url = `https://whisperroomquote.up.railway.app/q/${encodeURIComponent(quoteNumber)}?t=${shareToken}`;
+  const url = `https://sales.whisperroom.com/q/${encodeURIComponent(quoteNumber)}?t=${shareToken}`;
   navigator.clipboard?.writeText(url).then(() => showToast('Link copied!', 'success'))
     .catch(() => { prompt('Copy link:', url); });
 }
 
 function emailQuote(quoteNumber, shareToken) {
   if (!shareToken) { showToast('No share token — push quote first', 'error'); return; }
-  const deal = allDeals.find(d => d.id === currentDealId) || {};
-  const url  = `https://whisperroomquote.up.railway.app/q/${encodeURIComponent(quoteNumber)}?t=${shareToken}`;
-  const subj = encodeURIComponent(`Your WhisperRoom Quote — ${deal.name || quoteNumber}`);
-  const body = encodeURIComponent(`Hi,\n\nPlease find your WhisperRoom quote at the link below:\n\n${url}\n\nYou can review and accept your quote directly through the link above.\n\nIf you have any questions, please don't hesitate to reach out.\n\nBest regards,\nWhisperRoom, Inc.\n1-800-200-8168`);
-  window.open(`mailto:?subject=${subj}&body=${body}`, '_blank');
+  const deal    = allDeals.find(d => d.id === currentDealId) || {};
+  const contact = window._hubContact || {};
+  const toEmail = contact.email || '';
+  const name    = [contact.firstName, contact.lastName].filter(Boolean).join(' ') || contact.company || 'there';
+  const url     = `https://sales.whisperroom.com/q/${encodeURIComponent(quoteNumber)}?t=${shareToken}`;
+  const subj    = encodeURIComponent(`Your WhisperRoom Quote — ${deal.name || quoteNumber}`);
+  const body    = encodeURIComponent(`Hi ${name},\n\nPlease find your WhisperRoom quote at the link below:\n\n${url}\n\nYou can review and accept your quote directly through the link above.\n\nIf you have any questions, please don't hesitate to reach out.\n\nBest regards,\nWhisperRoom, Inc.\n1-800-200-8168`);
+  window.open(`mailto:${toEmail}?subject=${subj}&body=${body}`, '_blank');
 }
 
 function emailInvoiceLink(invoiceUrl) {
-  const deal = allDeals.find(d => d.id === currentDealId) || {};
-  const subj = encodeURIComponent(`Your WhisperRoom Invoice — ${deal.name || ''}`);
-  const body = encodeURIComponent(`Hi,\n\nPlease find your WhisperRoom invoice at the link below:\n\n${invoiceUrl}\n\nYou can view and pay your invoice securely through the link above.\n\nBest regards,\nWhisperRoom, Inc.\n1-800-200-8168`);
-  window.open(`mailto:?subject=${subj}&body=${body}`, '_blank');
+  const deal    = allDeals.find(d => d.id === currentDealId) || {};
+  const contact = window._hubContact || {};
+  const toEmail = contact.email || '';
+  const name    = [contact.firstName, contact.lastName].filter(Boolean).join(' ') || contact.company || 'there';
+  const subj    = encodeURIComponent(`Your WhisperRoom Invoice — ${deal.name || ''}`);
+  const body    = encodeURIComponent(`Hi ${name},\n\nPlease find your WhisperRoom invoice at the link below:\n\n${invoiceUrl}\n\nYou can view and pay your invoice securely through the link above.\n\nBest regards,\nWhisperRoom, Inc.\n1-800-200-8168`);
+  window.open(`mailto:${toEmail}?subject=${subj}&body=${body}`, '_blank');
 }
 
 async function markQuotePaid(quoteNumber) {
@@ -668,6 +680,29 @@ loadDeals();
 const _p=new URLSearchParams(window.location.search);
 const _od=_p.get('dealId');
 if(_od) setTimeout(()=>openDeal(_od),900);
+
+// ── Session user ──────────────────────────────────────────────────
+async function loadCurrentUser() {
+  try {
+    const res  = await fetch('/api/me', { credentials:'include' });
+    const data = await res.json();
+    if (data.name) {
+      const badge = document.getElementById('userBadge');
+      const name  = document.getElementById('userName');
+      if (badge) badge.style.display = 'flex';
+      if (name)  name.textContent = data.name;
+    }
+    // Auto-filter to logged-in rep's deals (they can clear it to see all)
+    if (data.ownerId) {
+      const repSel = document.getElementById('repFilter');
+      if (repSel) {
+        repSel.value = data.ownerId;
+        currentRepFilter = data.ownerId;
+      }
+    }
+  } catch(e) {}
+}
+loadCurrentUser();
 </script>
 </body>
 </html>

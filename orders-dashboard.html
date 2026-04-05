@@ -180,11 +180,11 @@
     <a href="/shipping" class="nav-link">Shipping</a>
     <a href="/reports" class="nav-link">Reports</a>
   </nav>
-  <button class="theme-btn"
   <div id="userBadge" style="display:none;align-items:center;gap:8px;flex-shrink:0">
     <span id="userName" style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600"></span>
     <a href="/auth/logout" style="padding:5px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.4);text-decoration:none;white-space:nowrap">Sign Out</a>
-  </div> id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark mode">☀️</button>
+  </div>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark mode">☀️</button>
 </div>
 
 <div class="main">
@@ -228,8 +228,8 @@
       <table>
         <thead>
           <tr>
-            <th>Quote #</th>
-            <th>Customer / Company</th>
+            <th>Deal Name</th>
+            <th>MDL</th>
             <th>Foam</th>
             <th>Hinge</th>
             <th>Total</th>
@@ -914,8 +914,8 @@ function renderOrders(orders) {
     const total     = o.total ? fmt(o.total) : '—';
     const orderUrl  = `https://sales.whisperroom.com/o/${encodeURIComponent(o.quote_number)}${o.share_token ? '?t=' + o.share_token : ''}`;
     return `<tr onclick="openDrawer('${o.quote_number}')">
-      <td><div class="td-mono">${o.quote_number}</div></td>
-      <td><div class="td-main">${customer}</div>${company ? `<div class="td-sub">${company}</div>` : ''}</td>
+      <td><div class="td-main">${o.deal_name || o.quote_number}</div><div class="td-sub">${o.quote_number}</div></td>
+      <td><div class="td-mono" style="font-size:11px">${(()=>{const items=(o.json_snapshot?.lineItems||[]).filter(i=>i?.name?.startsWith('MDL'));return items.length?items.map(i=>i.name).join(', '):'—';})()}</div></td>
       <td><span class="badge badge-foam">${foam}</span></td>
       <td><span class="badge badge-foam">${hinge}</span></td>
       <td style="font-weight:600;color:var(--orange)">${total}</td>

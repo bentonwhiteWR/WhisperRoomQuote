@@ -1795,10 +1795,10 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/products-all' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
-      let all = [], after = null;
-      for (let page = 0; page < 15; page++) {
+      let all = [], after = null, page = 0;
+      do {
         let path = '/crm/v3/objects/products?limit=100&properties=name,price,description,weight,hs_sku,category';
-        if (after) path += `&after=${after}`;
+        if (after) path += `&after=${encodeURIComponent(after)}`;
         const r = await httpsRequest({
           hostname: 'api.hubapi.com', path, method: 'GET',
           headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
@@ -1806,9 +1806,14 @@ const server = http.createServer(async (req, res) => {
         const results = r.body?.results || [];
         all.push(...results);
         after = r.body?.paging?.next?.after || null;
-        if (!after || results.length < 100) break;
-      }
-      // Sort by name
+        console.log(`[products-all] page ${page}: ${results.length} results, next cursor: ${after ? after.toString().slice(0,20) : 'none'}`);
+        page++;
+        if (!after || results.length === 0) break;
+      } while (page < 20);
+      console.log(`[products-all] total fetched: ${all.length}`);
+      // Log sample of category values to verify field name
+      const catSample = [...new Set(all.slice(0,50).map(p => p.properties?.category || 'NULL'))];
+      console.log(`[products-all] category sample:`, catSample.slice(0,10));
       all.sort((a,b) => (a.properties?.name||'').localeCompare(b.properties?.name||''));
       json({ results: all, total: all.length });
     } catch(e) { json({ error: e.message }, 500); }

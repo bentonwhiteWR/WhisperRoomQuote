@@ -331,6 +331,7 @@ function renderHub(dealId,data) {
     ?'<div style="font-size:12px;color:var(--muted);font-style:italic;padding:6px 0">No quotes yet</div>'
     :data.quotes.map(q=>{
       const acc=q.accepted;
+      const qUrl=q.shareToken?`https://whisperroomquote.up.railway.app/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}`:'';
       return `<div class="row-card ${acc?'row-accepted':''}" onclick="loadQuote('${q.quoteNumber}')">
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
@@ -341,7 +342,12 @@ function renderHub(dealId,data) {
         </div>
         <span style="font-size:12px;font-weight:700;color:${acc?'var(--green)':'var(--text)'}">${fmt(q.total)}</span>
         <span class="row-date">${fmtDate(q.date)}</span>
-        ${q.shareToken?`<a href="https://whisperroomquote.up.railway.app/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}" target="_blank" onclick="event.stopPropagation()" class="row-link">↗</a>`:''}
+        <div style="display:flex;gap:5px;flex-shrink:0" onclick="event.stopPropagation()">
+          ${qUrl?`<a href="${qUrl}" target="_blank" class="row-link" title="View quote">View ↗</a>`:''}
+          ${qUrl?`<button onclick="copyQuoteLink('${q.quoteNumber}','${q.shareToken||''}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit" title="Copy shareable link">🔗</button>`:''}
+          ${qUrl?`<button onclick="emailQuote('${q.quoteNumber}','${q.shareToken||''}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit" title="Email quote link">✉</button>`:''}
+          <button onclick="markQuotePaid('${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit;color:var(--amber);border-color:rgba(245,158,11,.3)" title="Mark this quote as paid">$ Paid</button>
+        </div>
         <span style="font-size:10px;font-weight:700;color:${acc?'var(--green)':'var(--orange)'};flex-shrink:0">${acc?'✓ Load':'Load →'}</span>
       </div>`;
     }).join('');
@@ -361,6 +367,7 @@ function renderHub(dealId,data) {
         <span style="font-size:12px;font-weight:700;color:${paid?'var(--green)':'var(--text)'}">${fmt(inv.amount)}</span>
         <span class="row-date">${fmtDate(inv.date)}</span>
         ${inv.paymentPageUrl?`<a href="${inv.paymentPageUrl}" target="_blank" class="row-link" style="color:var(--orange);border-color:var(--orange-border)">Invoice ↗</a>`:''}
+        ${inv.paymentPageUrl?`<button onclick="emailInvoiceLink('${inv.paymentPageUrl}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit" title="Email invoice to client">✉</button>`:''}
         ${inv.hubspotUrl?`<a href="${inv.hubspotUrl}" target="_blank" class="row-link">HS ↗</a>`:''}
       </div>`;
     }).join('')}
@@ -381,7 +388,10 @@ function renderHub(dealId,data) {
           </div>
           ${ord.foamColor?`<div style="font-size:10px;color:var(--muted);margin-top:2px">${ord.foamColor}${ord.hingePreference?' · '+ord.hingePreference:''}</div>`:''}
         </div>
-        ${matchQ?.shareToken?`<a href="https://whisperroomquote.up.railway.app/o/${encodeURIComponent(ord.quoteNumber)}?t=${matchQ.shareToken}" target="_blank" class="row-link">Order ↗</a>`:''}
+        <div style="display:flex;gap:5px;flex-shrink:0">
+          ${matchQ?.shareToken?`<a href="https://whisperroomquote.up.railway.app/o/${encodeURIComponent(ord.quoteNumber)}?t=${matchQ.shareToken}" target="_blank" class="row-link">Order ↗</a>`:''}
+          <a href="/orders?openOrder=${encodeURIComponent(ord.quoteNumber)}" class="row-link" style="color:var(--orange);border-color:var(--orange-border)">Open in Orders →</a>
+        </div>
       </div>`;
     }).join('')}
   </div>`;
@@ -521,6 +531,48 @@ function renderTimeline(events) {
       </div>
     </div>
   `).join('');
+}
+
+function copyQuoteLink(quoteNumber, shareToken) {
+  if (!shareToken) { showToast('No share token — push quote first', 'error'); return; }
+  const url = `https://whisperroomquote.up.railway.app/q/${encodeURIComponent(quoteNumber)}?t=${shareToken}`;
+  navigator.clipboard?.writeText(url).then(() => showToast('Link copied!', 'success'))
+    .catch(() => { prompt('Copy link:', url); });
+}
+
+function emailQuote(quoteNumber, shareToken) {
+  if (!shareToken) { showToast('No share token — push quote first', 'error'); return; }
+  const deal = allDeals.find(d => d.id === currentDealId) || {};
+  const url  = `https://whisperroomquote.up.railway.app/q/${encodeURIComponent(quoteNumber)}?t=${shareToken}`;
+  const subj = encodeURIComponent(`Your WhisperRoom Quote — ${deal.name || quoteNumber}`);
+  const body = encodeURIComponent(`Hi,\n\nPlease find your WhisperRoom quote at the link below:\n\n${url}\n\nYou can review and accept your quote directly through the link above.\n\nIf you have any questions, please don't hesitate to reach out.\n\nBest regards,\nWhisperRoom, Inc.\n1-800-200-8168`);
+  window.open(`mailto:?subject=${subj}&body=${body}`, '_blank');
+}
+
+function emailInvoiceLink(invoiceUrl) {
+  const deal = allDeals.find(d => d.id === currentDealId) || {};
+  const subj = encodeURIComponent(`Your WhisperRoom Invoice — ${deal.name || ''}`);
+  const body = encodeURIComponent(`Hi,\n\nPlease find your WhisperRoom invoice at the link below:\n\n${invoiceUrl}\n\nYou can view and pay your invoice securely through the link above.\n\nBest regards,\nWhisperRoom, Inc.\n1-800-200-8168`);
+  window.open(`mailto:?subject=${subj}&body=${body}`, '_blank');
+}
+
+async function markQuotePaid(quoteNumber) {
+  if (!currentDealId) return;
+  if (!confirm(`Mark ${quoteNumber} as paid and update the deal payment status to Paid?`)) return;
+  setAdminStatus('Saving…');
+  try {
+    const res = await fetch(`/api/deals/${currentDealId}/payment-status`, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'}, credentials: 'include',
+      body: JSON.stringify({ status: 'paid' })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    // Update local deal
+    const d = allDeals.find(d => d.id === currentDealId);
+    if (d) { d.paymentStatus = 'paid'; renderBoard(); }
+    showToast(`✓ ${quoteNumber} marked paid`, 'success');
+    setTimeout(() => openDeal(currentDealId), 600);
+  } catch(e) { showToast('Error: '+e.message, 'error'); }
 }
 
 function toggleAdmin() {

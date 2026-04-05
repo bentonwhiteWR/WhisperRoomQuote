@@ -2855,13 +2855,31 @@ tbody tr:hover td{background:#fdfcfb}
         console.log(`[accept] will advance deal ${dealId} to contractsent`);
       }
 
-      // 0. Mark quote as accepted in DB with timestamp
+      // 0. Mark quote as accepted in DB with timestamp + customer preferences
       if (db && quoteNumber) {
         try {
           const acceptedAt = new Date().toISOString();
           await db.query(
-            `UPDATE quotes SET json_snapshot = jsonb_set(jsonb_set(COALESCE(json_snapshot, '{}'), '{accepted}', 'true'), '{acceptedAt}', $2) WHERE quote_number = $1`,
-            [quoteNumber, JSON.stringify(acceptedAt)]
+            `UPDATE quotes SET json_snapshot = jsonb_set(
+              jsonb_set(
+                jsonb_set(
+                  jsonb_set(
+                    jsonb_set(COALESCE(json_snapshot, '{}'), '{accepted}', 'true'),
+                    '{acceptedAt}', $2
+                  ),
+                  '{acceptedFoam}', $3
+                ),
+                '{acceptedHinge}', $4
+              ),
+              '{acceptedNote}', $5
+            ) WHERE quote_number = $1`,
+            [
+              quoteNumber,
+              JSON.stringify(acceptedAt),
+              JSON.stringify(body.foamColor || ''),
+              JSON.stringify(body.hingePreference || ''),
+              JSON.stringify(body.customerNote || ''),
+            ]
           );
           console.log(`Quote ${quoteNumber} marked accepted in DB`);
         } catch(e) { console.warn('DB accepted flag error:', e.message); }
@@ -3910,8 +3928,11 @@ tbody tr:hover td{background:#fdfcfb}
         // Match by deal_id OR by deal_name (for quotes saved before deal_id backfill)
         const qr = await db.query(
           `SELECT quote_number, total, date, deal_name, rep_id, share_token, payment_link,
-                  (json_snapshot->>'accepted')::text as accepted,
-                  json_snapshot->'lineItems' as line_items
+                  (json_snapshot->>'accepted')::text            as accepted,
+                  json_snapshot->>'acceptedFoam'                as accepted_foam,
+                  json_snapshot->>'acceptedHinge'               as accepted_hinge,
+                  json_snapshot->>'acceptedNote'                as accepted_note,
+                  json_snapshot->'lineItems'                    as line_items
            FROM quotes
            WHERE deal_id = $1
               OR (deal_id IS NULL AND deal_name = $2)
@@ -3952,6 +3973,9 @@ tbody tr:hover td{background:#fdfcfb}
             paymentLink: r.payment_link,
             accepted:    r.accepted === 'true',
             firstMdl,
+            acceptedFoam:  r.accepted_foam  || '',
+            acceptedHinge: r.accepted_hinge || '',
+            acceptedNote:  r.accepted_note  || '',
           };
         });
       }

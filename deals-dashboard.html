@@ -41,7 +41,7 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .search-box::before { content:"🔍"; position:absolute; left:9px; top:50%; transform:translateY(-50%); font-size:11px; pointer-events:none; }
 .rep-select { padding:7px 10px; background:var(--surface2); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:12px; font-family:inherit; outline:none; cursor:pointer; }
 .board-count { font-size:11px; color:var(--muted); margin-left:auto; }
-.board { flex:1; display:grid; grid-template-columns:repeat(5,minmax(170px,1fr)); gap:0; overflow-x:auto; overflow-y:hidden; }
+.board { flex:1; display:grid; grid-template-columns:repeat(4,minmax(170px,1fr)); gap:0; overflow-x:auto; overflow-y:hidden; }
 .col { display:flex; flex-direction:column; border-right:1px solid var(--border); overflow:hidden; }
 .col:last-child { border-right:none; }
 .col-header { padding:10px 12px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
@@ -193,7 +193,7 @@ const COLUMNS = [
   {key:'verbal', label:'Verbal Confirm', stages:['contractsent'],                         cls:'col-verbal'},
   {key:'won',    label:'Closed Won',     stages:['closedwon'],                             cls:'col-won'},
   {key:'shipped',label:'Shipped',        stages:['845719'],                                cls:'col-shipped'},
-  {key:'lost',   label:'Closed Lost',    stages:['closedlost'],                            cls:'col-lost'},
+
 ];
 const PAY_COLORS = {paid:'#22c55e',po_received:'#f59e0b',not_paid:''};
 const PAY_LABELS = {paid:'✓ Paid',po_received:'PO Rcvd',not_paid:''};
@@ -364,10 +364,10 @@ function renderHub(dealId,data) {
           ${noteBar}
           <div style="margin-left:auto;display:flex;gap:5px">
             <button onclick="createInvoiceForDeal(event,'${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:rgba(238,98,22,.1);font-family:inherit;color:var(--orange);border-color:var(--orange-border);font-weight:700;font-size:10px">+ Invoice</button>
-            ${dealPaid
+            ${dealPaid && (window._lastHubData?._paidQuoteNumber === q.quoteNumber || !window._lastHubData?._paidQuoteNumber)
               ? `<span class="row-link" style="background:rgba(34,197,94,.12);color:var(--green);border-color:rgba(34,197,94,.3);font-weight:700;font-size:10px;cursor:default">✓ Paid</span>`
               : `<button onclick="markQuotePaid('${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit;color:var(--amber);border-color:rgba(245,158,11,.3);font-size:10px">$ Paid</button>`}
-            ${acc?`<button onclick="processOrderFromHub(event,'${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:rgba(59,130,246,.1);font-family:inherit;color:#3b82f6;border-color:rgba(59,130,246,.3);font-weight:700;font-size:10px">Process →</button>`:''}
+            <button onclick="processOrderFromHub(event,'${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:rgba(59,130,246,.1);font-family:inherit;color:#3b82f6;border-color:rgba(59,130,246,.3);font-weight:700;font-size:10px">Process →</button>
           </div>
         </div>
       </div>`;
@@ -641,8 +641,7 @@ function processOrderFromHub(event, quoteNumber) {
 
 async function markQuotePaid(quoteNumber) {
   if (!currentDealId) return;
-  if (!confirm(`Mark ${quoteNumber} as paid and update the deal payment status to Paid?`)) return;
-  setAdminStatus('Saving…');
+  if (!confirm(`Mark ${quoteNumber} as paid?`)) return;
   try {
     const res = await fetch(`/api/deals/${currentDealId}/payment-status`, {
       method: 'PATCH', headers: {'Content-Type':'application/json'}, credentials: 'include',
@@ -650,7 +649,8 @@ async function markQuotePaid(quoteNumber) {
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error);
-    // Update local deal
+    // Track which specific quote was paid so only that row turns green
+    if (window._lastHubData) window._lastHubData._paidQuoteNumber = quoteNumber;
     const d = allDeals.find(d => d.id === currentDealId);
     if (d) { d.paymentStatus = 'paid'; renderBoard(); }
     showToast(`✓ ${quoteNumber} marked paid`, 'success');

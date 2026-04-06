@@ -180,6 +180,7 @@
     <a href="/shipping" class="nav-link">Shipping</a>
     <a href="/reports" class="nav-link">Reports</a>
   </nav>
+  <span id="appVersion" style="font-size:9px;font-weight:700;color:var(--muted,rgba(255,255,255,.25));letter-spacing:.06em;padding:2px 6px;border:1px solid rgba(255,255,255,.08);border-radius:4px;font-family:monospace;flex-shrink:0"></span>
   <div id="userBadge" style="display:none;align-items:center;gap:8px;flex-shrink:0">
     <span id="userName" style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600"></span>
     <a href="/auth/logout" style="padding:5px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.4);text-decoration:none;white-space:nowrap">Sign Out</a>
@@ -1303,6 +1304,27 @@ async function loadCurrentUser() {
   } catch(e) {}
 }
 loadCurrentUser();
+
+// Auto-redirect to login on 401 (session expired or revoked)
+const _origFetch = window.fetch;
+window.fetch = async function(...args) {
+  const res = await _origFetch(...args);
+  if (res.status === 401) {
+    const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
+    if (url.startsWith('/api/')) {
+      console.warn('401 on', url, '— redirecting to login');
+      window.location.href = '/';
+    }
+  }
+  return res;
+};
+
+
+// ── App version ───────────────────────────────────────────────────
+fetch('/api/version').then(r=>r.json()).then(d=>{
+  const el=document.getElementById('appVersion');
+  if(el&&d.version) el.textContent='v'+d.version;
+}).catch(()=>{});
 </script>
 </body>
 </html>

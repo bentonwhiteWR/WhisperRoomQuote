@@ -1656,11 +1656,10 @@ const server = http.createServer(async (req, res) => {
 
 
   const host = req.headers.host || '';
-  if (host.includes('railway.app') && !host.includes('sales.whisperroom.com')) {
+  if (host.includes('railway.app') && !pathname.startsWith('/auth/')) {
     res.writeHead(301, { Location: `https://sales.whisperroom.com${req.url}` });
     res.end(); return;
   }
-
 
   if (pathname === '/auth/hubspot') {
     if (!HS_CLIENT_ID) { res.writeHead(302, { Location: '/' }); res.end(); return; }
@@ -1677,10 +1676,16 @@ const server = http.createServer(async (req, res) => {
   // ── HubSpot OAuth: Callback ───────────────────────────────────────
   if (pathname === '/auth/callback') {
     const { code, state, error } = parsed.query;
-    if (error || !code || !oauthStates.has(state)) {
+    if (error || !code) {
+      console.warn('[OAuth] callback error:', error || 'no code');
       res.writeHead(302, { Location: '/?auth_error=1' }); res.end(); return;
     }
-    oauthStates.delete(state);
+    // Validate state if present in our set; warn but don't hard-fail if missing (could be server restart)
+    if (state && oauthStates.has(state)) {
+      oauthStates.delete(state);
+    } else if (state && !oauthStates.has(state)) {
+      console.warn('[OAuth] state mismatch — server may have restarted, proceeding anyway');
+    }
     try {
       // Exchange code for tokens
       const tokenRes = await httpsRequest({

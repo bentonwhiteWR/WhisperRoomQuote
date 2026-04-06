@@ -653,6 +653,20 @@ async function initDb() {
       try { await db.query('DELETE FROM sessions WHERE expires_at < NOW()'); }
       catch(e) { /* non-fatal */ }
     }, 3600000);
+
+    // Backfill missing share tokens for any old quotes
+    try {
+      const missing = await db.query(
+        `SELECT id FROM quotes WHERE share_token IS NULL OR share_token = ''`
+      );
+      if (missing.rows.length > 0) {
+        for (const row of missing.rows) {
+          const tok = require('crypto').randomBytes(6).toString('hex');
+          await db.query(`UPDATE quotes SET share_token = $1 WHERE id = $2`, [tok, row.id]);
+        }
+        console.log(`[startup] backfilled share tokens for ${missing.rows.length} quotes`);
+      }
+    } catch(e) { console.warn('[startup] token backfill error:', e.message); }
   } catch(e) {
     console.warn('DB init skipped (no DATABASE_URL?):', e.message);
   }
@@ -1313,16 +1327,26 @@ async function calculateTaxProper(toState, toZip, toCity, amount, shipping, toSt
   const inNexus = NEXUS_STATES[stateUpper];
   if (!inNexus) return { tax: 0, rate: 0, inNexus: false };
 
+  // TaxJar requires at minimum: to_state + to_zip
+  // City and street improve accuracy but are not required
+  if (!toZip) {
+    console.warn(`[tax] no zip for ${stateUpper} — cannot calculate`);
+    return { tax: 0, rate: 0, inNexus: true, error: 'No zip code provided' };
+  }
+
   const taxableShipping = inNexus.taxFreight ? shipping : 0;
   const body = {
     from_country: 'US', from_state: 'TN', from_zip: '37813', from_city: 'Morristown',
     from_street: '1313 S Davy Crockett Pkwy',
-    to_country: 'US', to_state: stateUpper, to_zip: toZip, to_city: toCity || '',
-    to_street: toStreet || '',   // street helps but isn't required — TaxJar falls back to city/zip
+    to_country: 'US', to_state: stateUpper, to_zip: String(toZip).trim(),
     amount: parseFloat(amount.toFixed(2)),
     shipping: parseFloat(taxableShipping.toFixed(2))
   };
-  console.log(`[tax] calculating for ${toCity}, ${stateUpper} ${toZip} — amount: ${amount}, shipping: ${taxableShipping}`);
+  // Only add city/street if present — omitting is cleaner than sending empty string
+  if (toCity && toCity.trim()) body.to_city = toCity.trim();
+  if (toStreet && toStreet.trim()) body.to_street = toStreet.trim();
+
+  console.log(`[tax] calculating for ${toCity||'(no city)'}, ${stateUpper} ${toZip} — amount: ${amount}, shipping: ${taxableShipping}`);
 
   const res = await httpsRequest({
     hostname: 'api.taxjar.com',
@@ -1575,7 +1599,26 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify(data));
   };
 
-  // ── API: Price Book CSV Export ────────────────────────────────────
+  // ── API: Admin — backfill missing share tokens ───────────────────
+  if (pathname === '/api/admin/backfill-tokens' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      if (!db) { json({ error: 'No DB' }, 500); return; }
+      const missing = await db.query(
+        `SELECT id, quote_number FROM quotes WHERE share_token IS NULL OR share_token = ''`
+      );
+      let count = 0;
+      for (const row of missing.rows) {
+        const tok = require('crypto').randomBytes(6).toString('hex');
+        await db.query(`UPDATE quotes SET share_token = $1 WHERE id = $2`, [tok, row.id]);
+        count++;
+      }
+      json({ success: true, updated: count });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+
   if (pathname === '/api/pricebook-export' && req.method === 'GET') {
     if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
     try {
@@ -2323,7 +2366,7 @@ const server = http.createServer(async (req, res) => {
             const now = new Date();
             const mo = now.toLocaleString('en-US', { month: 'short', timeZone: 'America/New_York' });
             const yr = now.getFullYear();
-            return `${base} · ${mo} ${yr}`;
+            return `${base} - ${mo} ${yr}`;
           })(),
           tax_rate: tax && tax.rate ? String((tax.rate * 100).toFixed(3)) : '',
           quote_number: quoteNumber || '',
@@ -3820,7 +3863,7 @@ tbody tr:hover td{background:#fdfcfb}
         // Group by company
         const companies = {};
         qAllTime.rows.forEach(q => {
-          const co = q.company || (q.deal_name?.split('·')[0]?.trim()) || '—';
+          const co = q.company || (q.deal_name?.split(/[·-]/)[0]?.trim()) || '—';
           if (!co || co==='—') return;
           if (!companies[co]) companies[co] = {deals:new Set(),totalValue:0,accepted:0,repIds:new Set(),lastDate:null};
           if (q.deal_id) companies[co].deals.add(q.deal_id);

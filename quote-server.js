@@ -2323,7 +2323,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, quoteNumber, billing, isRevision, linkedDealId: bodyLinkedDealId, confirmContactOverride } = body;
+      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, quoteNumber, billing, isRevision, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel } = body;
 
       // Find or create contact
       let contactId;
@@ -2620,6 +2620,7 @@ const server = http.createServer(async (req, res) => {
           quoteNumber, dealId, contactId, dealName: finalDealName, ownerId, total,
           date: new Date().toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}),
           customer, lineItems, discount, freight, tax,
+          quoteLabel: quoteLabel || '',
         });
         // Fetch the token we just saved
         const tokenRow = await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]);

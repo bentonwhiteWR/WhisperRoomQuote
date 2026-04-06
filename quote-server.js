@@ -705,13 +705,17 @@ async function saveQuoteToDb(quoteData) {
         share_token   = COALESCE(quotes.share_token, EXCLUDED.share_token),
         json_snapshot = EXCLUDED.json_snapshot
       RETURNING id
-    `, [
-      quoteNumber, dealId || null, contactId || null, dealName || null,
-      customerName, company, ownerId || null,
-      total ? parseFloat(total) : null,
-      date || null, quoteLink, JSON.stringify(quoteData),
-      quoteData.shareToken || require('crypto').randomBytes(6).toString('hex')
-    ]);
+    `, (() => {
+      // Strip shareToken from snapshot — DB column is sole source of truth
+      const { shareToken: _s1, _shareToken: _s2, ...snapData } = quoteData;
+      return [
+        quoteNumber, dealId || null, contactId || null, dealName || null,
+        customerName, company, ownerId || null,
+        total ? parseFloat(total) : null,
+        date || null, quoteLink, JSON.stringify(snapData),
+        quoteData.shareToken || require('crypto').randomBytes(6).toString('hex')
+      ];
+    })());
 
     return res.rows[0]?.id;
   } catch(e) {
@@ -820,6 +824,7 @@ async function fetchQuoteHistory() {
 const PORT         = process.env.PORT || 3457;
 const PASSWORD     = process.env.WR_PASSWORD || '';
 const HS_TOKEN     = process.env.HS_TOKEN || '';
+const APP_VERSION  = (() => { try { return require('./package.json').version; } catch(e) { return '1.0.0'; } })();
 
 // ── Products cache (avoids hammering HubSpot on every price book open) ──
 let _productsCache     = null;
@@ -2017,7 +2022,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ── API: All products (for price book) — cached server-side ─────────
+  // ── API: Version ────────────────────────────────────────────────
+  if (pathname === '/api/version' && req.method === 'GET') {
+    json({ version: APP_VERSION }); return;
+  }
+
+
   if (pathname === '/api/products-all' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
@@ -4077,6 +4087,7 @@ tbody tr:hover td{background:#fdfcfb}
         discount:  snap.discount  || { type:'pct', value:0 },
         customer:  snap.customer  || {},
         ownerId:   snap.ownerId   || null,
+        shareToken: snap._shareToken || null,
       });
     } catch(e) { json({ error: e.message }, 500); }
     return;
@@ -5590,7 +5601,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
 
 server.listen(PORT, '0.0.0.0', () => {
   initDb();
-  console.log(`WhisperRoom Quote Builder running on port ${PORT}`);
+  console.log(`WhisperRoom Quote Builder v${APP_VERSION} running on port ${PORT}`);
   console.log(`HubSpot token: ${HS_TOKEN ? HS_TOKEN.substring(0,12) + '...' : 'NOT SET'}`);
   console.log(`TaxJar key: ${TAXJAR_KEY ? TAXJAR_KEY.substring(0,8) + '...' : 'NOT SET'}`);
   console.log(`HubSpot OAuth: ${HS_CLIENT_ID ? 'configured' : 'password-only mode'}`);

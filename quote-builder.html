@@ -3094,7 +3094,22 @@ function toggleHistory() {
   const overlay = document.getElementById('historyOverlay');
   const isOpen = panel.classList.toggle('open');
   overlay.classList.toggle('open', isOpen);
-  if (isOpen) { fetchHistory().then(() => renderHistory()); }
+  if (isOpen) { 
+// ── Auto-redirect to login on 401 (session expired) ──────────────
+const _origFetch = window.fetch;
+window.fetch = async function(...args) {
+  const res = await _origFetch(...args);
+  if (res.status === 401) {
+    const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
+    if (url.startsWith('/api/')) {
+      console.warn('[auth] 401 on', url, '— session expired, redirecting to login');
+      setTimeout(() => { window.location.href = '/'; }, 300);
+    }
+  }
+  return res;
+};
+
+fetchHistory().then(() => renderHistory()); }
 }
 
 // ── Price Book ────────────────────────────────────────────────────
@@ -3114,24 +3129,33 @@ function togglePriceBook() {
   } else {
     panel.classList.add('open');
     overlay.classList.add('open');
-    if (!pbLoaded) loadPriceBook();
-    else pbFilter();
+    if (!pbLoaded) {
+      loadPriceBook();
+    } else {
+      // Already loaded — just refresh added states in case line items changed
+      pbFilter();
+    }
   }
 }
 
 async function loadPriceBook() {
   pbLoaded = true;
   const body = document.getElementById('pbBody');
-  body.innerHTML = '<div class="pb-loading">Loading products…</div>';
+  const btn  = document.querySelector('button[onclick="togglePriceBook()"]');
+  if (body) body.innerHTML = '<div class="pb-loading">Loading products…</div>';
+  if (btn) btn.style.opacity = '0.6';
   try {
     const res  = await fetch('/api/products-all', { credentials:'include' });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     pbAllProducts = data.results || [];
-    document.getElementById('pbCount').textContent = `${pbAllProducts.length} products`;
+    const countEl = document.getElementById('pbCount');
+    if (countEl) countEl.textContent = `${pbAllProducts.length} products`;
     pbFilter();
   } catch(e) {
-    body.innerHTML = `<div class="pb-empty">Error: ${e.message}</div>`;
+    if (body) body.innerHTML = `<div class="pb-empty">Error: ${e.message}</div>`;
+  } finally {
+    if (btn) btn.style.opacity = '';
   }
 }
 
@@ -3895,6 +3919,11 @@ fetchHistory().then(() => {
   updateQuoteNumber();
   checkLinkBtnState();
 
+  // Preload price book silently in background — ready before rep clicks
+  setTimeout(() => {
+    if (!pbLoaded) loadPriceBook();
+  }, 3000); // 3s delay so it doesn't compete with page init
+
   // Load current user — auto-select their rep and show name in nav
   fetch('/api/me', { credentials:'include' }).then(r => r.json()).then(data => {
     if (data.name) {
@@ -3959,7 +3988,23 @@ fetchHistory().then(() => {
   }
 });
 
-// ── Quote lock / accepted state ───────────────────────────────────
+// ── Background preload price book so it's instant on first open ──
+setTimeout(() => {
+  fetch('/api/products-all', { credentials:'include' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.results?.length) {
+        pbAllProducts = data.results;
+        pbLoaded = true;
+        const countEl = document.getElementById('pbCount');
+        if (countEl) countEl.textContent = `${pbAllProducts.length} products`;
+        console.log(`[pricebook] preloaded ${pbAllProducts.length} products`);
+      }
+    })
+    .catch(() => {}); // silent — will load on demand if this fails
+}, 2000); // 2s after page load so it doesn't compete with deal/history fetch
+
+
 let _quoteIsAccepted  = false; // loaded quote was accepted by customer
 let _quoteIsModified  = false; // accepted quote has been modified since load
 

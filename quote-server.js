@@ -645,6 +645,24 @@ async function initDb() {
     await db.query(`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`).catch(()=>{});
     // Clean expired sessions on startup
     await db.query(`DELETE FROM sessions WHERE expires_at < NOW()`).catch(()=>{});
+
+    // Notifications table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id         SERIAL PRIMARY KEY,
+        owner_id   TEXT NOT NULL,
+        type       TEXT NOT NULL,
+        title      TEXT NOT NULL,
+        body       TEXT,
+        deal_id    TEXT,
+        deal_name  TEXT,
+        quote_num  TEXT,
+        read       BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `).catch(()=>{});
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_notif_owner ON notifications(owner_id, read, created_at DESC)`).catch(()=>{});
+
     console.log('Database ready');
     await initTrackingCache();
     startTrackingPoller();
@@ -884,6 +902,39 @@ const REPS = {
   '36303670':'Benton','36320208':'Gabe','38732178':'Kim',
   '38900892':'Chet','38732186':'Jeromy'
 };
+
+// Rep email addresses for notifications
+const REP_EMAILS = {
+  '36330944': 'jill@whisperroom.com',
+  '38143901': 'sarah@whisperroom.com',
+  '117442978':'travis@whisperroom.com',
+  '36303670': 'bentonwhite@whisperroom.com',
+  '36320208': 'gabe@whisperroom.com',
+  '38732178': 'kim@whisperroom.com',
+  '38900892': 'chet@whisperroom.com',
+  '38732186': 'jeromy@whisperroom.com',
+};
+
+async function createNotification(ownerId, type, title, body, { dealId, dealName, quoteNum } = {}) {
+  if (!db || !ownerId) return;
+  try {
+    await db.query(
+      `INSERT INTO notifications (owner_id, type, title, body, deal_id, deal_name, quote_num)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [String(ownerId), type, title, body || null, dealId || null, dealName || null, quoteNum || null]
+    );
+  } catch(e) { console.warn('[notify] DB insert failed:', e.message); }
+}
+
+async function notifyRep(ownerId, subject, bodyText, meta = {}) {
+  if (!ownerId) return;
+  // Create internal notification
+  await createNotification(ownerId, meta.type || 'info', subject, bodyText, meta);
+  // Log email intent (add SMTP later if needed)
+  const email = REP_EMAILS[String(ownerId)];
+  if (email) console.log(`[notify] ${email} — ${subject}`);
+}
+
 const TAXJAR_KEY   = process.env.TAXJAR_KEY || '';
 const ABF_ID       = 'Q8MZK7K1';
 const ABF_ACCT     = '189059-248A';
@@ -3258,9 +3309,19 @@ tbody tr:hover td{background:#fdfcfb}
             associations: dealId ? [{ to: { id: dealId }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 216 }] }] : []
           });
           results.taskCreated = true;
-        }
 
-        // Rep notified via HubSpot task (see below)
+          // Internal notification to rep
+          const repName = REPS[String(ownerId)] || 'Rep';
+          const notePrefs = [
+            body.foamColor ? `Foam: ${body.foamColor}` : null,
+            body.hingePreference ? `Hinge: ${body.hingePreference}` : null,
+            body.customerNote ? `Note: "${body.customerNote}"` : null,
+          ].filter(Boolean).join(' · ');
+          await notifyRep(ownerId, `✓ Quote Accepted — ${dealName}`,
+            `Quote #${quoteNumber} was accepted by the customer.${notePrefs ? ' ' + notePrefs : ''} Ready to invoice.`,
+            { type: 'quote_accepted', dealId, dealName, quoteNum: quoteNumber }
+          );
+        }
       }
 
       // 3. Log a plain note on the deal (NOT a WR_QUOTE_DATA note — just an activity log)
@@ -3684,6 +3745,25 @@ tbody tr:hover td{background:#fdfcfb}
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
       }, { properties: { payment_status: status } });
+
+      // Notify rep on payment
+      if (status === 'paid' || status === 'po_received') {
+        try {
+          const dealRes = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/deals/${dealId}?properties=hubspot_owner_id,dealname`,
+            method: 'GET', headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+          });
+          const ownerId  = dealRes.body?.properties?.hubspot_owner_id;
+          const dealName = dealRes.body?.properties?.dealname || dealId;
+          const statusLabel = status === 'paid' ? '💰 Payment Received' : '📄 PO Received';
+          await notifyRep(ownerId, `${statusLabel} — ${dealName}`,
+            `${dealName} has been marked as ${status === 'paid' ? 'paid' : 'PO received'}.`,
+            { type: 'payment', dealId, dealName }
+          );
+        } catch(e) { /* non-fatal */ }
+      }
+
       json({ success: true, status });
     } catch(e) {
       json({ error: e.message }, 500);
@@ -4074,7 +4154,45 @@ tbody tr:hover td{background:#fdfcfb}
     return;
   }
 
-  // ── API: Get quote snapshot for Deal Hub invoice creation ─────────
+  // ── API: Notifications ───────────────────────────────────────────
+  if (pathname === '/api/notifications' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const sess = getSession(req);
+    if (!sess?.ownerId) { json({ notifications: [] }); return; }
+    try {
+      const r = await db.query(
+        `SELECT id, type, title, body, deal_id, deal_name, quote_num, read, created_at
+         FROM notifications WHERE owner_id=$1
+         ORDER BY created_at DESC LIMIT 50`,
+        [String(sess.ownerId)]
+      );
+      json({ notifications: r.rows });
+    } catch(e) { json({ notifications: [] }); }
+    return;
+  }
+
+  if (pathname === '/api/notifications/read-all' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const sess = getSession(req);
+    if (!sess?.ownerId) { json({ success: true }); return; }
+    try {
+      await db.query(`UPDATE notifications SET read=true WHERE owner_id=$1`, [String(sess.ownerId)]);
+      json({ success: true });
+    } catch(e) { json({ success: false }); }
+    return;
+  }
+
+  if (pathname.startsWith('/api/notifications/') && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const notifId = pathname.split('/')[3];
+    try {
+      await db.query(`UPDATE notifications SET read=true WHERE id=$1`, [notifId]);
+      json({ success: true });
+    } catch(e) { json({ success: false }); }
+    return;
+  }
+
+
   if (pathname.startsWith('/api/quote-snapshot/') && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const qNum = decodeURIComponent(pathname.replace('/api/quote-snapshot/', '').trim());

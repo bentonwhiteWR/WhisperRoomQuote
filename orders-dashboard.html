@@ -284,6 +284,7 @@
       <div class="field"><label>Last Name</label><input type="text" id="editLastName" placeholder="Last name"></div>
       <div class="field full"><label>Company</label><input type="text" id="editCompany" placeholder="Company name"></div>
       <div class="field full"><label>Email</label><input type="email" id="editEmail" placeholder="customer@example.com"></div>
+      <div class="field full"><label>Phone</label><input type="tel" id="editPhone" placeholder="(865) 555-0100"></div>
     </div>
   </div>
 
@@ -986,6 +987,7 @@ function openDrawer(quoteNumber) {
 
   document.getElementById('editFirstName').value = c.firstName || '';
   document.getElementById('editLastName').value  = c.lastName  || '';
+  document.getElementById('editPhone').value     = c.phone     || '';
   document.getElementById('editCompany').value   = c.company   || order.company || '';
   document.getElementById('editEmail').value     = c.email     || '';
   document.getElementById('editAddress').value   = c.address   || '';
@@ -1086,6 +1088,7 @@ async function saveOrder() {
   const customer = {
     firstName: document.getElementById('editFirstName').value.trim(),
     lastName:  document.getElementById('editLastName').value.trim(),
+    phone:     document.getElementById('editPhone').value.trim(),
     company:   document.getElementById('editCompany').value.trim(),
     email:     document.getElementById('editEmail').value.trim(),
     address:   document.getElementById('editAddress').value.trim(),
@@ -1102,6 +1105,7 @@ async function saveOrder() {
   chk('Production Notes', prevOd.productionNotes || '', newProdNotes);
   chk('Delivery Notes',   prevOd.deliveryNotes   || '', newDelNotes);
   chk('Name',    [prevC.firstName,prevC.lastName].filter(Boolean).join(' '), [customer.firstName,customer.lastName].filter(Boolean).join(' '));
+  chk('Phone',   prevC.phone   || '', customer.phone   || '');
   chk('Company', prevC.company||'', customer.company);
   chk('Email',   prevC.email  ||'', customer.email);
   const prevAddr = [prevC.address,prevC.city,prevC.state,prevC.zip].filter(Boolean).join(', ');

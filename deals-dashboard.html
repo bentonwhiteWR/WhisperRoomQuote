@@ -120,6 +120,24 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .tl-detail { font-size:10px; color:var(--muted); margin-top:1px; }
 .tl-time { font-size:10px; color:var(--muted); margin-top:2px; }
 .tl-amount { font-size:11px; font-weight:700; color:var(--orange); margin-top:1px; }
+
+/* Notifications */
+.notif-bell { position:relative; padding:5px 9px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:6px; color:#f0ede8; cursor:pointer; font-size:14px; line-height:1; transition:all .15s; flex-shrink:0; }
+.notif-bell:hover { background:rgba(255,255,255,.14); }
+.notif-badge { position:absolute; top:-4px; right:-4px; background:#ee6216; color:#fff; font-size:9px; font-weight:800; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 3px; }
+.notif-panel { position:fixed; top:52px; right:0; width:360px; height:calc(100vh - 52px); background:var(--surface); border-left:1px solid var(--border); box-shadow:-4px 0 20px rgba(0,0,0,.2); z-index:300; display:flex; flex-direction:column; transform:translateX(100%); transition:transform .25s ease; }
+.notif-panel.open { transform:translateX(0); }
+.notif-header { padding:14px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+.notif-title { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.07em; color:var(--text); }
+.notif-list { flex:1; overflow-y:auto; }
+.notif-item { padding:12px 18px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .1s; }
+.notif-item:hover { background:var(--surface2); }
+.notif-item.unread { border-left:3px solid var(--orange); }
+.notif-item.read { border-left:3px solid transparent; opacity:.7; }
+.notif-item-title { font-size:12px; font-weight:700; color:var(--text); margin-bottom:3px; }
+.notif-item-body { font-size:11px; color:var(--text2); line-height:1.4; }
+.notif-item-time { font-size:10px; color:var(--muted); margin-top:4px; }
+.notif-empty { padding:40px 20px; text-align:center; color:var(--muted); font-size:12px; }
 </style>
 </head>
 <body>
@@ -140,6 +158,9 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
     <a href="/auth/logout" style="padding:5px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.4);text-decoration:none;white-space:nowrap">Sign Out</a>
   </div>
   <button onclick="newQuote()" style="padding:5px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(238,98,22,.2);border:1px solid rgba(238,98,22,.4);border-radius:6px;color:#ee6216;cursor:pointer;font-family:inherit;white-space:nowrap">+ New Quote</button>
+  <button class="notif-bell" id="notifBell" onclick="toggleNotifPanel()" title="Notifications">
+    🔔<span class="notif-badge" id="notifBadge" style="display:none">0</span>
+  </button>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">☀️</button>
 </div>
 
@@ -835,5 +856,18 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
   if(el&&d.version) el.textContent='v'+d.version;
 }).catch(()=>{});
 </script>
+
+<div class="notif-panel" id="notifPanel">
+  <div class="notif-header">
+    <span class="notif-title">🔔 Notifications</span>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button onclick="markAllRead()" style="font-size:10px;color:var(--muted);background:none;border:none;cursor:pointer;font-family:inherit;padding:0">Mark all read</button>
+      <button onclick="toggleNotifPanel()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0 4px">✕</button>
+    </div>
+  </div>
+  <div class="notif-list" id="notifList">
+    <div class="notif-empty">No notifications</div>
+  </div>
+</div>
 </body>
 </html>

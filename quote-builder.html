@@ -1125,6 +1125,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     <div style="font-size:12px;color:rgba(255,255,255,.6);margin-top:4px">
       Pallets: <span style="color:rgba(255,255,255,.85)" id="totalPallets">0</span>
     </div>
+    <div id="palletDims" style="display:none;margin-top:6px"></div>
   </div>
 
   <!-- Deal Invoice Panel -->
@@ -1628,26 +1629,15 @@ function addLineItem(product) {
 async function loadPreset(boothName, skus) {
   if (!skus || skus.length === 0) return;
 
-  // Show loading indicator
   document.getElementById('freightStatus').textContent = `Loading ${skus.length} preset items...`;
 
-  // Search for each SKU in parallel (batched)
-  const found = [];
-  const batchSize = 5;
-  for (let i = 0; i < skus.length; i += batchSize) {
-    const batch = skus.slice(i, i + batchSize);
-    const results = await Promise.all(batch.map(sku =>
-      fetch('/api/products?q=' + encodeURIComponent(sku))
-        .then(r => r.json())
-        .then(d => {
-          if (!d.results || d.results.length === 0) return null;
-          // Find exact name match first, then closest
-          const exact = d.results.find(p => p.properties.name === sku);
-          return exact || d.results[0];
-        })
-        .catch(() => null)
-    ));
-    results.forEach((product, idx) => {
+  // If products cache is loaded, use it — zero network calls, no race conditions
+  if (pbLoaded && pbAllProducts.length > 0) {
+    const found = [];
+    const missing = [];
+    skus.forEach((sku, idx) => {
+      const product = pbAllProducts.find(p => p.properties?.name === sku)
+                   || pbAllProducts.find(p => p.properties?.name?.toLowerCase() === sku.toLowerCase());
       if (product) {
         found.push({
           id: Date.now() + Math.random() + idx,
@@ -1658,14 +1648,53 @@ async function loadPreset(boothName, skus) {
           weight: parseFloat(product.properties.weight) || 0,
           qty: 1,
         });
+      } else {
+        missing.push(sku);
       }
     });
+    lineItems.push(...found);
+    renderLineItems();
+    updateSummary();
+    if (missing.length > 0) {
+      console.warn(`[preset] ${missing.length} SKUs not found in cache:`, missing);
+      document.getElementById('freightStatus').textContent = `${found.length} items loaded (${missing.length} not found: ${missing.join(', ')})`;
+    } else {
+      document.getElementById('freightStatus').textContent = `${found.length} items loaded.`;
+    }
+    setTimeout(() => document.getElementById('freightStatus').textContent = '', 4000);
+    return;
+  }
+
+  // Cache not ready yet — fall back to sequential HubSpot calls (one at a time, no race conditions)
+  const found = [];
+  for (let i = 0; i < skus.length; i++) {
+    const sku = skus[i];
+    try {
+      const res  = await fetch('/api/products?q=' + encodeURIComponent(sku));
+      const data = await res.json();
+      if (data.results?.length) {
+        const exact = data.results.find(p => p.properties.name === sku) || data.results[0];
+        if (exact) {
+          found.push({
+            id: Date.now() + Math.random() + i,
+            productId: exact.id,
+            name: exact.properties.name,
+            description: exact.properties.description || '',
+            price: parseFloat(exact.properties.price) || 0,
+            weight: parseFloat(exact.properties.weight) || 0,
+            qty: 1,
+          });
+        }
+      }
+    } catch(e) { console.warn('[preset] failed to load SKU:', sku, e.message); }
+    // Small delay between calls to avoid rate limiting
+    if (i < skus.length - 1) await new Promise(r => setTimeout(r, 150));
   }
 
   lineItems.push(...found);
   renderLineItems();
   updateSummary();
-  document.getElementById('freightStatus').textContent = found.length + ' items loaded from preset.';
+  document.getElementById('freightStatus').textContent = `${found.length} items loaded.`;
   setTimeout(() => document.getElementById('freightStatus').textContent = '', 3000);
 }
 
@@ -1829,13 +1858,31 @@ function updateSummary() {
   // Weight — sum all line item weights from HubSpot product data
   // Pallets — from BOOTH_DATA dimensions only (for freight quoting)
   let totalWeight = 0, totalPallets = 0;
+  const palletDims = [];
   lineItems.forEach(item => {
     totalWeight += (parseFloat(item.weight) || 0) * (parseInt(item.qty) || 1);
     const bd = BOOTH_DATA[item.name];
-    if (bd) totalPallets += bd.pallets.length * (parseInt(item.qty) || 1);
+    if (bd) {
+      const qty = parseInt(item.qty) || 1;
+      for (let q = 0; q < qty; q++) {
+        bd.pallets.forEach(p => palletDims.push(`${p.l}"×${p.w}"×${p.h}"`));
+      }
+      totalPallets += bd.pallets.length * qty;
+    }
   });
   document.getElementById('totalWeight').textContent = totalWeight > 0 ? `${Math.round(totalWeight).toLocaleString()} lbs` : '—';
   document.getElementById('totalPallets').textContent = totalPallets > 0 ? totalPallets : '—';
+  const dimsEl = document.getElementById('palletDims');
+  if (dimsEl) {
+    if (palletDims.length > 0) {
+      dimsEl.style.display = 'block';
+      dimsEl.innerHTML = palletDims.map((d,i) =>
+        `<div style="font-size:11px;color:rgba(255,255,255,.6);margin-top:2px">Pallet ${i+1}: <span style="color:rgba(255,255,255,.85)">${d}</span></div>`
+      ).join('');
+    } else {
+      dimsEl.style.display = 'none';
+    }
+  }
 }
 
 // ── Product search ────────────────────────────────────────────────
@@ -2046,7 +2093,7 @@ async function getTax() {
   const city    = document.getElementById('shipCity').value.trim();
   const street  = document.getElementById('shipAddress').value.trim();
 
-  if (!state || !zip) { alert('Please fill in the ship-to state and zip first.'); return; }
+  if (!state || !zip) { alert('Please fill in the ship-to state and zip code first.'); return; }
 
   const subtotal = getSubtotal() - getDiscountAmount();
   const shipping = getFreightTotal();
@@ -2222,7 +2269,7 @@ async function createDeal() {
           const now  = new Date();
           const mo   = now.toLocaleString('en-US', { month: 'short' });
           const yr   = now.getFullYear();
-          return `${base} · ${mo} ${yr}`;
+          return `${base} - ${mo} ${yr}`;
         })(),
         existingDealId: selectedDeal ? selectedDeal.id : null,
         linkedDealId: linkedDeal ? linkedDeal.id : (selectedDeal ? selectedDeal.id : null),
@@ -4192,7 +4239,7 @@ function renderDealHub(data) {
           <div style="display:flex;gap:4px;margin-left:auto" onclick="event.stopPropagation()">
             ${qUrl ? `<a href="${qUrl}" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:rgba(255,255,255,.3);text-decoration:none;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08)">View ↗</a>` : ''}
             ${qUrl ? `<button onclick="event.stopPropagation();navigator.clipboard?.writeText('${qUrl}').then(()=>showToast('Link copied!','info'))" style="font-size:10px;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08);background:none;color:rgba(255,255,255,.3);cursor:pointer;font-family:inherit">🔗</button>` : ''}
-            ${qUrl ? `<button onclick="event.stopPropagation();emailInvoiceToClient('${qUrl}')" style="font-size:10px;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08);background:none;color:rgba(255,255,255,.3);cursor:pointer;font-family:inherit">✉</button>` : ''}
+            ${qUrl ? `<button onclick="event.stopPropagation();emailQuoteToClient('${qUrl}')" style="font-size:10px;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08);background:none;color:rgba(255,255,255,.3);cursor:pointer;font-family:inherit">✉</button>` : ''}
             <span style="font-size:11px;font-weight:700;color:${accepted?'#22c55e':'#ee6216'};padding:2px 4px">${accepted?'✓ Load':'Load →'}</span>
           </div>
         </div>
@@ -4390,6 +4437,36 @@ async function loadQuoteFromDealHub(q) {
 }
 
 // ── Email Invoice to Client ──────────────────────────────────────
+function emailQuoteToClient(quoteUrl) {
+  const firstName = document.getElementById('firstName')?.value.trim() || '';
+  const lastName  = document.getElementById('lastName')?.value.trim() || '';
+  const email     = document.getElementById('email')?.value.trim() || '';
+  const company   = document.getElementById('company')?.value.trim() || '';
+  const dealName  = linkedDeal?.name || document.getElementById('dealName')?.value.trim() || 'your WhisperRoom';
+  const quoteNum  = document.getElementById('quoteNumHidden')?.value || '';
+
+  const to      = email || '';
+  const subject = encodeURIComponent(`Your WhisperRoom Quote${quoteNum ? ' — ' + quoteNum : ''} — ${dealName}`);
+  const name    = [firstName, lastName].filter(Boolean).join(' ') || company || 'there';
+  const body    = encodeURIComponent(
+    `Hi ${name},
+
+Thank you for your interest in WhisperRoom. Please find your quote at the link below:
+
+${quoteUrl}
+
+You can review and accept your quote directly through the link above.
+
+If you have any questions, please don't hesitate to reach out.
+
+Best regards,
+WhisperRoom, Inc.
+1-800-200-8168
+info@whisperroom.com`
+  );
+  window.open(`mailto:${to}?subject=${subject}&body=${body}`, '_blank');
+}
+
 function emailInvoiceToClient(invoiceUrl) {
   const firstName = document.getElementById('firstName')?.value.trim() || '';
   const lastName  = document.getElementById('lastName')?.value.trim() || '';

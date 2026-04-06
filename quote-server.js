@@ -1505,25 +1505,6 @@ function parseCookies(req) {
   });
   return list;
 }
-function isAuth(req) {
-  const c = parseCookies(req);
-  if (c.wr_oauth_session && oauthSessions.has(c.wr_oauth_session)) {
-    const s = oauthSessions.get(c.wr_oauth_session);
-    if (s.expiresAt > Date.now()) return true;
-    oauthSessions.delete(c.wr_oauth_session);
-  }
-  return c.wr_qt_session && sessions.has(c.wr_qt_session);
-}
-
-function getSession(req) {
-  const c = parseCookies(req);
-  if (c.wr_oauth_session && oauthSessions.has(c.wr_oauth_session)) {
-    const s = oauthSessions.get(c.wr_oauth_session);
-    if (s.expiresAt > Date.now()) return s;
-  }
-  return null;
-}
-
 // ── Request body parser ───────────────────────────────────────────
 function readBody(req) {
   return new Promise(resolve => {

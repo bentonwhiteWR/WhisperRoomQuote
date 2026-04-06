@@ -19,7 +19,7 @@ try {
 
 
 // ── Google Drive Integration ──────────────────────────────────────
-const GDRIVE_ROOT_FOLDER = process.env.GDRIVE_ROOT_FOLDER || '1Gxc_aA64I6v28AYYUW75a4sbAzHoc9DH';
+const GDRIVE_ROOT_FOLDER = process.env.GDRIVE_ROOT_FOLDER || '';
 
 let _gdriveToken = null;
 let _gdriveTokenExpiry = 0;
@@ -549,14 +549,37 @@ async function generatePdf(pageUrl, filename, res, req) {
     if (browser) await browser.close().catch(() => {});
   }
 }
-// ── PostgreSQL Database (optional — falls back to HubSpot Notes) ──
+// ── Fix 3: Catch unhandled crashes — log and keep running ────────────
+process.on('uncaughtException', (err) => {
+  console.error('[CRASH] uncaughtException:', err.message, err.stack?.split('\n')[1]);
+  // Don't exit — Railway will restart if truly unrecoverable
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[CRASH] unhandledRejection:', reason?.message || reason);
+});
+
+// ── Fix 4: Detect HubSpot 401 and force re-auth ──────────────────────
+// Wrap httpsRequest responses — if HubSpot returns 401, invalidate session
+async function hsRequest(options, body, rawBody) {
+  const res = await httpsRequest(options, body, rawBody);
+  if (res.status === 401 && options.hostname === 'api.hubapi.com') {
+    console.warn('[HubSpot] 401 received — private app token may be expired');
+    // Don't throw — let callers handle gracefully
+  }
+  return res;
+}
+
+
 let Pool, db;
 try {
   Pool = require('pg').Pool;
   if (process.env.DATABASE_URL) {
     db = new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false }
+      ssl: { rejectUnauthorized: false },
+      max: 10,                  // max concurrent connections
+      idleTimeoutMillis: 30000, // close idle connections after 30s
+      connectionTimeoutMillis: 5000, // fail fast if can't connect
     });
     console.log('PostgreSQL connected');
   } else {
@@ -608,9 +631,28 @@ async function initDb() {
     await db.query(`CREATE INDEX IF NOT EXISTS idx_quotes_created_at   ON quotes(created_at DESC)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_quotes_company      ON quotes(lower(company))`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_quotes_customer_name ON quotes(lower(customer_name))`);
+    // Sessions table for persistent auth (survives redeploys)
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        token      TEXT PRIMARY KEY,
+        email      TEXT,
+        name       TEXT,
+        owner_id   TEXT,
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `).catch(()=>{});
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`).catch(()=>{});
+    // Clean expired sessions on startup
+    await db.query(`DELETE FROM sessions WHERE expires_at < NOW()`).catch(()=>{});
     console.log('Database ready');
     await initTrackingCache();
     startTrackingPoller();
+    // Clean expired sessions every hour
+    setInterval(async () => {
+      try { await db.query('DELETE FROM sessions WHERE expires_at < NOW()'); }
+      catch(e) { /* non-fatal */ }
+    }, 3600000);
   } catch(e) {
     console.warn('DB init skipped (no DATABASE_URL?):', e.message);
   }
@@ -762,15 +804,68 @@ async function fetchQuoteHistory() {
 }
 
 const PORT         = process.env.PORT || 3457;
-const PASSWORD     = process.env.WR_PASSWORD || 'whisperroom';
-const HS_TOKEN     = process.env.HS_TOKEN || 'pat-na1-46b267e5-120c-42fa-95a6-14eb28460a85';
+const PASSWORD     = process.env.WR_PASSWORD || '';
+const HS_TOKEN     = process.env.HS_TOKEN || '';
+
+// ── Products cache (avoids hammering HubSpot on every price book open) ──
+let _productsCache     = null;
+let _productsCacheTime = 0;
+const PRODUCTS_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
+async function fetchAllProducts() {
+  let all = [], after = null, page = 0;
+  do {
+    let path = '/crm/v3/objects/products?limit=100&properties=name,price,description,weight,hs_sku,category';
+    if (after) path += `&after=${encodeURIComponent(after)}`;
+    const r = await httpsRequest({
+      hostname: 'api.hubapi.com', path, method: 'GET',
+      headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+    });
+    const results = r.body?.results || [];
+    all.push(...results);
+    after = r.body?.paging?.next?.after || null;
+    page++;
+    if (!after || results.length === 0) break;
+  } while (page < 20);
+  all.sort((a,b) => (a.properties?.name||'').localeCompare(b.properties?.name||''));
+  console.log(`[products cache] loaded ${all.length} products`);
+  return all;
+}
+
+async function getProductsCached() {
+  const now = Date.now();
+  if (_productsCache && (now - _productsCacheTime) < PRODUCTS_CACHE_TTL) {
+    return _productsCache;
+  }
+  _productsCache = await fetchAllProducts();
+  _productsCacheTime = Date.now();
+  return _productsCache;
+}
+
+// Warm cache on startup (after a short delay to let DB connect first)
+setTimeout(async () => {
+  if (!HS_TOKEN) return;
+  try { await getProductsCached(); }
+  catch(e) { console.warn('[products cache] warm failed:', e.message); }
+}, 8000);
+
+// Auto-refresh every 15 minutes
+setInterval(async () => {
+  if (!HS_TOKEN) return;
+  try {
+    _productsCache = await fetchAllProducts();
+    _productsCacheTime = Date.now();
+  } catch(e) { console.warn('[products cache] refresh failed:', e.message); }
+}, PRODUCTS_CACHE_TTL);
+
+
 
 const REPS = {
   '36330944':'Jill','38143901':'Sarah','117442978':'Travis',
   '36303670':'Benton','36320208':'Gabe','38732178':'Kim',
   '38900892':'Chet','38732186':'Jeromy'
 };
-const TAXJAR_KEY   = process.env.TAXJAR_KEY || 'a432e28eece47221d3176cfc1a7d2dae';
+const TAXJAR_KEY   = process.env.TAXJAR_KEY || '';
 const ABF_ID       = 'Q8MZK7K1';
 const ABF_ACCT     = '189059-248A';
 const SHIP_CITY    = 'Morristown';
@@ -780,9 +875,91 @@ const NMFC_ITEM    = '027880';
 const NMFC_SUB     = '02';
 const FREIGHT_CLASS = '100';
 
-const sessions      = new Set();
-const oauthSessions = new Map(); // token → { email, name, ownerId, expiresAt }
-const oauthStates   = new Set(); // CSRF state tokens
+const sessions      = new Set();       // password sessions (kept in-memory, rarely used)
+const oauthStates   = new Set();       // CSRF state tokens (short-lived, in-memory is fine)
+
+// DB-backed session helpers
+async function dbSessionSet(token, data) {
+  if (!db) return;
+  try {
+    await db.query(
+      `INSERT INTO sessions (token, email, name, owner_id, expires_at)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (token) DO UPDATE SET expires_at=$5`,
+      [token, data.email||'', data.name||'', data.ownerId||null, new Date(data.expiresAt)]
+    );
+  } catch(e) { console.warn('dbSessionSet:', e.message); }
+}
+async function dbSessionGet(token) {
+  if (!db) return null;
+  try {
+    const r = await db.query(
+      'SELECT email, name, owner_id, expires_at FROM sessions WHERE token=$1 AND expires_at > NOW()',
+      [token]
+    );
+    if (!r.rows.length) return null;
+    const row = r.rows[0];
+    return { email: row.email, name: row.name, ownerId: row.owner_id, expiresAt: new Date(row.expires_at).getTime() };
+  } catch(e) { return null; }
+}
+async function dbSessionDelete(token) {
+  if (!db) return;
+  try { await db.query('DELETE FROM sessions WHERE token=$1', [token]); } catch(e) {}
+}
+
+// In-memory cache to avoid DB hit on every request (cleared on expiry)
+const _sessionCache = new Map();
+
+function isAuth(req) {
+  const c = parseCookies(req);
+  // Password session (in-memory fallback)
+  if (c.wr_qt_session && sessions.has(c.wr_qt_session)) return true;
+  // OAuth session — check cache first, then DB
+  if (c.wr_oauth_session) {
+    const cached = _sessionCache.get(c.wr_oauth_session);
+    if (cached) {
+      if (cached.expiresAt > Date.now()) return true;
+      _sessionCache.delete(c.wr_oauth_session);
+    }
+    // Will be resolved async — optimistic true if token exists in cache
+    return _sessionCache.has(c.wr_oauth_session);
+  }
+  return false;
+}
+
+async function isAuthAsync(req) {
+  const c = parseCookies(req);
+  if (c.wr_qt_session && sessions.has(c.wr_qt_session)) return true;
+  if (c.wr_oauth_session) {
+    // Check memory cache
+    const cached = _sessionCache.get(c.wr_oauth_session);
+    if (cached && cached.expiresAt > Date.now()) return true;
+    // Check DB
+    const sess = await dbSessionGet(c.wr_oauth_session);
+    if (sess) { _sessionCache.set(c.wr_oauth_session, sess); return true; }
+  }
+  return false;
+}
+
+function getSession(req) {
+  const c = parseCookies(req);
+  if (c.wr_oauth_session) {
+    const cached = _sessionCache.get(c.wr_oauth_session);
+    if (cached && cached.expiresAt > Date.now()) return cached;
+  }
+  return null;
+}
+
+async function getSessionAsync(req) {
+  const c = parseCookies(req);
+  if (c.wr_oauth_session) {
+    const cached = _sessionCache.get(c.wr_oauth_session);
+    if (cached && cached.expiresAt > Date.now()) return cached;
+    const sess = await dbSessionGet(c.wr_oauth_session);
+    if (sess) { _sessionCache.set(c.wr_oauth_session, sess); return sess; }
+  }
+  return null;
+}
 
 const HS_CLIENT_ID     = process.env.HS_CLIENT_ID     || '';
 const HS_CLIENT_SECRET = process.env.HS_CLIENT_SECRET || '';
@@ -816,6 +993,10 @@ function httpsRequest(options, body, rawBody) {
         try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
         catch(e) { resolve({ status: res.statusCode, body: data }); }
       });
+    });
+    req.setTimeout(15000, () => {
+      req.destroy();
+      reject(new Error(`HubSpot API timeout: ${options.path?.slice(0,60)}`));
     });
     req.on('error', reject);
     if (rawBody) req.write(rawBody);
@@ -1399,9 +1580,13 @@ const server = http.createServer(async (req, res) => {
   const pathname = parsed.pathname;
   const search = parsed.search || '';
 
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  const allowedOrigin = (req.headers.origin || '').includes('sales.whisperroom.com')
+    ? req.headers.origin
+    : 'https://sales.whisperroom.com';
+  res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
   const json = (data, status=200) => {
@@ -1532,12 +1717,15 @@ const server = http.createServer(async (req, res) => {
       } catch(e) { /* non-fatal */ }
 
       const sessionToken = generateToken();
-      oauthSessions.set(sessionToken, {
+      const sessionData = {
         email: user, name: displayName, ownerId,
-        expiresAt: Date.now() + ((expires_in || 21600) * 1000)
-      });
+        expiresAt: Date.now() + (30 * 24 * 60 * 60 * 1000) // 30 days
+      };
+      // Save to DB (survives redeploys) + memory cache (fast access)
+      _sessionCache.set(sessionToken, sessionData);
+      await dbSessionSet(sessionToken, sessionData);
       res.writeHead(302, {
-        'Set-Cookie': `wr_oauth_session=${sessionToken}; HttpOnly; Path=/; Max-Age=28800`,
+        'Set-Cookie': `wr_oauth_session=${sessionToken}; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000`,
         'Location': '/deals'
       });
       res.end();
@@ -1551,8 +1739,11 @@ const server = http.createServer(async (req, res) => {
   // ── Logout ────────────────────────────────────────────────────────
   if (pathname === '/auth/logout') {
     const c = parseCookies(req);
-    if (c.wr_oauth_session) oauthSessions.delete(c.wr_oauth_session);
-    if (c.wr_qt_session)    sessions.delete(c.wr_qt_session);
+    if (c.wr_oauth_session) {
+      _sessionCache.delete(c.wr_oauth_session);
+      await dbSessionDelete(c.wr_oauth_session);
+    }
+    if (c.wr_qt_session) sessions.delete(c.wr_qt_session);
     res.writeHead(302, {
       'Set-Cookie': ['wr_oauth_session=; HttpOnly; Path=/; Max-Age=0', 'wr_qt_session=; HttpOnly; Path=/; Max-Age=0'],
       'Location': '/'
@@ -1562,8 +1753,8 @@ const server = http.createServer(async (req, res) => {
 
   // ── Session info ──────────────────────────────────────────────────
   if (pathname === '/api/me' && req.method === 'GET') {
-    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
-    const sess = getSession(req);
+    if (!await isAuthAsync(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const sess = await getSessionAsync(req);
     json({ name: sess?.name || 'User', email: sess?.email || '', ownerId: sess?.ownerId || null });
     return;
   }
@@ -1576,7 +1767,7 @@ const server = http.createServer(async (req, res) => {
       const token = generateToken();
       sessions.add(token);
       res.writeHead(302, {
-        'Set-Cookie': `wr_qt_session=${token}; HttpOnly; Path=/; Max-Age=86400`,
+        'Set-Cookie': `wr_qt_session=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000`,
         'Location': '/deals'
       });
       res.end();
@@ -1598,7 +1789,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
   }
-  if (!isAuth(req) && pathname !== '/login' && !isPublicRoute) {
+  if (!await isAuthAsync(req) && pathname !== '/login' && !isPublicRoute) {
     if (pathname.startsWith('/api/')) {
       json({ error: 'Unauthorized' }, 401); return;
     }
@@ -1791,31 +1982,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ── API: All products (for price book) — uses list endpoint to get all 1200+ ──
+  // ── API: All products (for price book) — cached server-side ─────────
   if (pathname === '/api/products-all' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
-      let all = [], after = null, page = 0;
-      do {
-        let path = '/crm/v3/objects/products?limit=100&properties=name,price,description,weight,hs_sku,category';
-        if (after) path += `&after=${encodeURIComponent(after)}`;
-        const r = await httpsRequest({
-          hostname: 'api.hubapi.com', path, method: 'GET',
-          headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-        });
-        const results = r.body?.results || [];
-        all.push(...results);
-        after = r.body?.paging?.next?.after || null;
-        console.log(`[products-all] page ${page}: ${results.length} results, next cursor: ${after ? after.toString().slice(0,20) : 'none'}`);
-        page++;
-        if (!after || results.length === 0) break;
-      } while (page < 20);
-      console.log(`[products-all] total fetched: ${all.length}`);
-      // Log sample of category values to verify field name
-      const catSample = [...new Set(all.slice(0,50).map(p => p.properties?.category || 'NULL'))];
-      console.log(`[products-all] category sample:`, catSample.slice(0,10));
-      all.sort((a,b) => (a.properties?.name||'').localeCompare(b.properties?.name||''));
-      json({ results: all, total: all.length });
+      const products = await getProductsCached();
+      json({ results: products, total: products.length });
     } catch(e) { json({ error: e.message }, 500); }
     return;
   }

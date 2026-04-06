@@ -330,7 +330,7 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
     if (slug) createBody.slug = slug;
     await httpsRequest({
       hostname: 'api.aftership.com',
-      path: '/tracking/2024-10/trackings',
+      path: '/tracking/2026-01/trackings',
       method: 'POST',
       headers: { 'as-api-key': AFTERSHIP_KEY, 'Content-Type': 'application/json' }
     }, { tracking: createBody });
@@ -338,7 +338,7 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
     // Fetch status
     const listRes = await httpsRequest({
       hostname: 'api.aftership.com',
-      path: `/tracking/2024-10/trackings?tracking_number=${encodeURIComponent(trackingNumber)}&limit=1`,
+      path: `/tracking/2026-01/trackings?tracking_number=${encodeURIComponent(trackingNumber)}&limit=1`,
       method: 'GET',
       headers: { 'as-api-key': AFTERSHIP_KEY }
     });
@@ -349,7 +349,7 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
     if (!trackingData && slug) {
       const directRes = await httpsRequest({
         hostname: 'api.aftership.com',
-        path: `/tracking/2024-10/trackings/${encodeURIComponent(slug)}/${encodeURIComponent(trackingNumber)}`,
+        path: `/tracking/2026-01/trackings/${encodeURIComponent(slug)}/${encodeURIComponent(trackingNumber)}`,
         method: 'GET',
         headers: { 'as-api-key': AFTERSHIP_KEY }
       });
@@ -944,11 +944,6 @@ const SHIP_ZIP     = '37813';
 const NMFC_ITEM    = '027880';
 const NMFC_SUB     = '02';
 const FREIGHT_CLASS = '100';
-
-// ── Old Dominion credentials ─────────────────────────────────────
-const OD_USER    = process.env.OD_USER    || '';
-const OD_PASS    = process.env.OD_PASS    || '';
-const OD_ACCOUNT = process.env.OD_ACCOUNT || '';
 
 const sessions      = new Set();       // password sessions (kept in-memory, rarely used)
 const oauthStates   = new Set();       // CSRF state tokens (short-lived, in-memory is fine)
@@ -1586,126 +1581,6 @@ function parseAbfBookingXml(xmlText) {
   return { proNumber, bolNumber, pickupConfirm, error, raw: xmlText.slice(0, 500) };
 }
 
-
-// ── Old Dominion Rate API ─────────────────────────────────────────
-// Calls OD's SOAP Rating API for a given shipType (LTL, GTD, GTE)
-// Returns { cost, transit, service, serviceLabel, error }
-async function getOdRate(destZip, totalWeight, accessories, shipType) {
-  if (!OD_USER || !OD_PASS || !OD_ACCOUNT) {
-    return { error: 'OD credentials not configured' };
-  }
-
-  // Map our accessorial checkboxes to OD accessorial codes
-  const accs = [];
-  if (accessories.residential)   accs.push('<accessorials>RDC</accessorials>');
-  if (accessories.liftgate)      accs.push('<accessorials>HYD</accessorials>');
-  if (accessories.limitedaccess) accs.push('<accessorials>LDC</accessorials>');
-  // Loading dock: no direct OD equivalent
-
-  const accXml = accs.join('\n        ');
-
-  const serviceLabels = {
-    LTL: 'Standard LTL',
-    GTD: 'Guaranteed',
-    GTE: 'Guaranteed by Noon',
-  };
-
-  const soapBody = `<?xml version="1.0" encoding="UTF-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:myr="http://myRate.ws.odfl.com/">
-  <soapenv:Header/>
-  <soapenv:Body>
-    <myr:getLTLRateEstimate>
-      <arg0>
-        ${accXml}
-        <destinationCountry>USA</destinationCountry>
-        <destinationPostalCode>${destZip}</destinationPostalCode>
-        <freightItems>
-          <ratedClass>${FREIGHT_CLASS}</ratedClass>
-          <weight>${Math.max(1, Math.round(totalWeight))}</weight>
-        </freightItems>
-        <movement>O</movement>
-        <odfl4MePassword>${OD_PASS}</odfl4MePassword>
-        <odfl4MeUser>${OD_USER}</odfl4MeUser>
-        <odflCustomerAccount>${OD_ACCOUNT}</odflCustomerAccount>
-        <originCountry>USA</originCountry>
-        <originPostalCode>${SHIP_ZIP}</originPostalCode>
-        <requestReferenceNumber>false</requestReferenceNumber>
-        <shipType>${shipType}</shipType>
-        <weightUnits>LBS</weightUnits>
-      </arg0>
-    </myr:getLTLRateEstimate>
-  </soapenv:Body>
-</soapenv:Envelope>`;
-
-  try {
-    const response = await new Promise((resolve, reject) => {
-      const bodyBuf = Buffer.from(soapBody, 'utf8');
-      const options = {
-        hostname: 'www.odfl.com',
-        path: '/wsRate_v6/RateService',
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/xml; charset=utf-8',
-          'SOAPAction': '""',
-          'Content-Length': bodyBuf.length,
-        },
-        timeout: 15000,
-      };
-      const r = require('https').request(options, res => {
-        let data = '';
-        res.on('data', c => data += c);
-        res.on('end', () => resolve({ status: res.statusCode, body: data }));
-      });
-      r.on('error', reject);
-      r.on('timeout', () => { r.destroy(); reject(new Error('OD rate request timed out')); });
-      r.write(bodyBuf);
-      r.end();
-    });
-
-    const xml = response.body;
-
-    // Check for error messages in the response
-    const errMatch = xml.match(/<errorMessages[^>]*>([^<]+)<\/errorMessages>/i);
-    if (errMatch) return { error: errMatch[1].trim() };
-
-    // Extract success flag
-    const successMatch = xml.match(/<success[^>]*>(true|false)<\/success>/i);
-    if (successMatch && successMatch[1] === 'false') {
-      return { error: 'OD rate request failed' };
-    }
-
-    // Extract net freight charge (total cost)
-    const netMatch = xml.match(/<netFreightCharge[^>]*>([\d.]+)<\/netFreightCharge>/i);
-    if (!netMatch) return { error: 'Could not parse OD rate response' };
-    const cost = parseFloat(netMatch[1]);
-
-    // Extract service days from destinationCities (take minimum)
-    const daysMatches = [...xml.matchAll(/<serviceDays[^>]*>(\d+)<\/serviceDays>/gi)];
-    const minDays = daysMatches.length
-      ? Math.min(...daysMatches.map(m => parseInt(m[1])))
-      : null;
-    const transit = minDays ? `${minDays} day${minDays !== 1 ? 's' : ''}` : 'Contact OD';
-
-    // Extract fuel surcharge and accessorial total for detail display
-    const fuelMatch  = xml.match(/<fuelSurcharge[^>]*>([\d.]+)<\/fuelSurcharge>/i);
-    const accMatch   = xml.match(/<totalAccessorialCharge[^>]*>([\d.]+)<\/totalAccessorialCharge>/i);
-    const grossMatch = xml.match(/<grossFreightCharge[^>]*>([\d.]+)<\/grossFreightCharge>/i);
-
-    return {
-      cost,
-      transit,
-      service: shipType,
-      serviceLabel: serviceLabels[shipType] || shipType,
-      fuel: fuelMatch  ? parseFloat(fuelMatch[1])  : 0,
-      accessorialTotal: accMatch  ? parseFloat(accMatch[1])  : 0,
-      grossFreight: grossMatch ? parseFloat(grossMatch[1]) : 0,
-      error: null,
-    };
-  } catch(e) {
-    return { error: e.message };
-  }
-}
-
 // ── Auth ──────────────────────────────────────────────────────────
 function generateToken() { return crypto.randomBytes(32).toString('hex'); }
 function parseCookies(req) {
@@ -2246,6 +2121,7 @@ const server = http.createServer(async (req, res) => {
 
   // ── API: Save quote to history (DB only) ─────────────────────────
   if (pathname === '/api/history' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
       const body = JSON.parse(await readBody(req));
       await saveQuoteToDb(body);
@@ -2910,6 +2786,7 @@ tbody tr:hover td{background:#fdfcfb}
       <div class="quote-type">Invoice</div>
       <div class="quote-num">${q.quoteNumber||'INV'}</div>
       <div class="quote-meta">Issued ${issueDate}</div>
+      ${q.quoteLabel ? `<div style="margin-top:10px;display:inline-block;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#ee6216;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.25);border-radius:4px;padding:4px 12px">${q.quoteLabel}</div>` : ''}
     </div>
   </div>
   <div class="accent-strip"></div>
@@ -3110,6 +2987,7 @@ tbody tr:hover td{background:#fdfcfb}
       <div class="quote-num">${q.quoteNumber||'QUOTE'}</div>
       <div class="quote-meta">Issued ${q.date||new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'})}</div>
       <div class="quote-valid-tag">Valid 30 Days</div>
+      ${q.quoteLabel ? `<div style="margin-top:10px;display:inline-block;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#ee6216;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.25);border-radius:4px;padding:4px 12px">${q.quoteLabel}</div>` : ''}
     </div>
   </div>
   <div class="accent-strip"></div>
@@ -3501,7 +3379,7 @@ tbody tr:hover td{background:#fdfcfb}
 
     try {
       const items = JSON.parse(await readBody(req));
-      const AS_BASE = '/tracking/2024-10';
+      const AS_BASE = '/tracking/2026-01';
       const slugMap = { ABF: 'abf-freight', OD: 'old-dominion-freight-line', UPS: 'ups', FedEx: 'fedex', USPS: 'usps' };
 
       // Register in parallel batches of 5
@@ -3552,7 +3430,7 @@ tbody tr:hover td{background:#fdfcfb}
 
       if (!AFTERSHIP_KEY) return;
 
-      const AS_BASE = '/tracking/2024-10';
+      const AS_BASE = '/tracking/2026-01';
 
       // HubSpot sends an array of property change events
       const items = Array.isArray(events) ? events : [events];
@@ -3595,6 +3473,81 @@ tbody tr:hover td{background:#fdfcfb}
     } catch(e) {
       console.warn('Webhook error:', e.message);
       json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+
+  // ── HubSpot Webhook: invoice paid → auto-update payment_status ───
+  // Set up in HubSpot: Workflows → Invoice paid → HTTP request POST to this endpoint
+  // Payload: { "objectId": "<invoice_id>", "dealId": "<deal_id>" }  (or HubSpot standard format)
+  if (pathname === '/api/webhooks/invoice-paid' && req.method === 'POST') {
+    try {
+      const raw = await readBody(req);
+      const events = JSON.parse(raw);
+      // Respond immediately — process in background
+      json({ received: true });
+
+      const items = Array.isArray(events) ? events : [events];
+      for (const event of items) {
+        // HubSpot sends objectId for the invoice, and we need the associated deal
+        const invoiceId = event.objectId || event.invoiceId || null;
+        let dealId = event.dealId || event.associatedDealId || null;
+
+        // If no dealId in payload, look it up via invoice → deal association
+        if (!dealId && invoiceId) {
+          try {
+            const assocRes = await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v4/associations/invoices/deals/batch/read`,
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, { inputs: [{ id: String(invoiceId) }] });
+            dealId = assocRes.body?.results?.[0]?.to?.[0]?.toObjectId || null;
+            if (dealId) console.log(`[invoice-webhook] invoice ${invoiceId} → deal ${dealId}`);
+          } catch(e) { console.warn('[invoice-webhook] association lookup failed:', e.message); }
+        }
+
+        if (!dealId) {
+          console.warn('[invoice-webhook] no dealId found for event:', JSON.stringify(event).slice(0, 200));
+          continue;
+        }
+
+        // Set payment_status = 'paid' on the deal
+        try {
+          await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/deals/${dealId}`,
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, { properties: { payment_status: 'paid' } });
+          console.log(`[invoice-webhook] deal ${dealId} payment_status → paid`);
+        } catch(e) { console.warn('[invoice-webhook] deal update failed:', e.message); }
+
+        // Create internal notification for the deal's rep
+        try {
+          const dealRes = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/deals/${dealId}?properties=dealname,hubspot_owner_id,amount`,
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+          });
+          const dp = dealRes.body?.properties || {};
+          const ownerId = dp.hubspot_owner_id;
+          const dealName = dp.dealname || `Deal ${dealId}`;
+          const amount = dp.amount ? '$' + parseFloat(dp.amount).toLocaleString('en-US', {minimumFractionDigits:0,maximumFractionDigits:0}) : '';
+          if (ownerId) {
+            await notifyRep(
+              ownerId,
+              `💰 Invoice Paid — ${dealName}`,
+              `Payment received${amount ? ' · ' + amount : ''}. Deal marked Paid.`,
+              { type: 'invoice_paid', dealId, dealName }
+            );
+          }
+        } catch(e) { console.warn('[invoice-webhook] notify failed:', e.message); }
+      }
+    } catch(e) {
+      console.warn('[invoice-webhook] error:', e.message);
     }
     return;
   }
@@ -3793,7 +3746,7 @@ tbody tr:hover td{background:#fdfcfb}
         try {
           await httpsRequest({
             hostname: 'api.aftership.com',
-            path: '/tracking/2024-10/trackings',
+            path: '/tracking/2026-01/trackings',
             method: 'POST',
             headers: { 'as-api-key': AFTERSHIP_KEY, 'Content-Type': 'application/json' }
           }, asBody);
@@ -4536,6 +4489,7 @@ tbody tr:hover td{background:#fdfcfb}
                   json_snapshot->>'acceptedFoam'                as accepted_foam,
                   json_snapshot->>'acceptedHinge'               as accepted_hinge,
                   json_snapshot->>'acceptedNote'                as accepted_note,
+                  json_snapshot->>'quoteLabel'                  as quote_label,
                   json_snapshot->'lineItems'                    as line_items
            FROM quotes
            WHERE deal_id = $1
@@ -4579,6 +4533,7 @@ tbody tr:hover td{background:#fdfcfb}
             acceptedFoam:  r.accepted_foam  || '',
             acceptedHinge: r.accepted_hinge || '',
             acceptedNote:  r.accepted_note  || '',
+            quoteLabel:    r.quote_label    || '',
           };
         });
       }
@@ -5088,17 +5043,26 @@ tbody tr:hover td{background:#fdfcfb}
         const slugMap = {
           'ABF Freight': 'abf-freight',
           'Old Dominion': 'old-dominion-freight-line',
+          'FedEx Freight': 'fedex',
+          'UPS Freight': 'ups-freight',
+          'UPS': 'ups',
+          'FedEx': 'fedex',
         };
-        const slug = slugMap[carrier] || 'usps';
-        await httpsRequest({
-          hostname: 'api.aftership.com',
-          path: '/tracking/2024-10/trackings',
-          method: 'POST',
-          headers: {
-            'as-api-key': process.env.AFTERSHIP_API_KEY || '',
-            'Content-Type': 'application/json'
-          }
-        }, { tracking: { tracking_number: tracking, slug, title: dealName || dealId } });
+        const slug = slugMap[carrier] || null;
+        // Only register if we have a known carrier — don't guess USPS for unknown carriers
+        if (slug) {
+          await httpsRequest({
+            hostname: 'api.aftership.com',
+            path: '/tracking/2026-01/trackings',
+            method: 'POST',
+            headers: {
+              'as-api-key': process.env.AFTERSHIP_API_KEY || '',
+              'Content-Type': 'application/json'
+            }
+          }, { tracking: { tracking_number: tracking, slug, title: dealName || dealId } });
+        } else {
+          console.log(`[AfterShip] Skipping registration — unknown carrier: ${carrier}`);
+        }
       } catch(e) { console.warn('AfterShip register failed:', e.message); }
 
       console.log(`HubSpot deal ${dealId} marked shipped: ${carrier} ${tracking}`);
@@ -5136,85 +5100,6 @@ tbody tr:hover td{background:#fdfcfb}
     return;
   }
 
-
-
-
-  // ── API: Multi-carrier Freight Quote (ABF + Old Dominion) ─────────
-  if (pathname === '/api/orders-freight-multi' && req.method === 'POST') {
-    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
-    try {
-      const body = JSON.parse(await readBody(req));
-      const { pallets, totalWeight, city, state: rawState, zip, canadian, accessories } = body;
-      const state = toStateAbbr(rawState);
-      if (!pallets || !pallets.length) { json({ error: 'No pallet data' }, 400); return; }
-      if (!zip) { json({ error: 'Missing destination ZIP' }, 400); return; }
-
-      const acc = accessories || {};
-      const carriers = [];
-
-      // ── ABF quote (existing logic) ────────────────────────────────
-      const abfPromise = (async () => {
-        try {
-          const abfUrl = buildAbfUrl(pallets, totalWeight, city || '', state || '', zip, canadian || false, acc);
-          const abfRes = await httpsGet(abfUrl);
-          const abf = parseAbfXml(abfRes.body);
-          return [{
-            carrier:      'ABF Freight',
-            service:      'LTL',
-            serviceLabel: 'Standard LTL',
-            cost:         abf.cost,
-            transit:      abf.transit,
-            bookable:     true,   // can fire /api/book-abf-shipment
-            tag:          'standard',
-          }];
-        } catch(e) {
-          console.warn('[freight-multi] ABF error:', e.message);
-          return [];
-        }
-      })();
-
-      // ── OD quotes — LTL, GTD, GTE in parallel ────────────────────
-      const odPromise = (async () => {
-        if (!OD_USER || !OD_PASS || !OD_ACCOUNT) return [];
-        const [ltl, gtd, gte] = await Promise.all([
-          getOdRate(zip, totalWeight, acc, 'LTL'),
-          getOdRate(zip, totalWeight, acc, 'GTD'),
-          getOdRate(zip, totalWeight, acc, 'GTE'),
-        ]);
-        const tags = { LTL: 'standard', GTD: 'guaranteed', GTE: 'guaranteed' };
-        return [ltl, gtd, gte]
-          .filter(r => !r.error && r.cost > 0)
-          .map(r => ({
-            carrier:      'Old Dominion',
-            service:      r.service,
-            serviceLabel: r.serviceLabel,
-            cost:         r.cost,
-            transit:      r.transit,
-            fuel:         r.fuel,
-            accessorialTotal: r.accessorialTotal,
-            grossFreight: r.grossFreight,
-            bookable:     false,  // manual PRO entry after booking on odfl.com
-            tag:          tags[r.service] || 'standard',
-          }));
-      })();
-
-      const [abfResults, odResults] = await Promise.all([abfPromise, odPromise]);
-
-      // Merge: ABF Standard, then OD Standard, then OD Guaranteed variants
-      const allCarriers = [
-        ...abfResults,
-        ...odResults.filter(r => r.service === 'LTL'),
-        ...odResults.filter(r => r.service === 'GTD'),
-        ...odResults.filter(r => r.service === 'GTE'),
-      ];
-
-      json({ carriers: allCarriers });
-    } catch(e) {
-      console.error('[freight-multi] error:', e.message);
-      json({ error: e.message }, 500);
-    }
-    return;
-  }
 
   // ── API: Book ABF Shipment ────────────────────────────────────────
   if (pathname === '/api/book-abf-shipment' && req.method === 'POST') {
@@ -5293,7 +5178,7 @@ tbody tr:hover td{background:#fdfcfb}
         try {
           await httpsRequest({
             hostname: 'api.aftership.com',
-            path: '/tracking/2024-10/trackings',
+            path: '/tracking/2026-01/trackings',
             method: 'POST',
             headers: { 'as-api-key': process.env.AFTERSHIP_API_KEY || '', 'Content-Type': 'application/json' }
           }, { tracking: { tracking_number: proNumber, slug: 'abf-freight', title: consName || quoteNumber } });
@@ -5620,6 +5505,7 @@ tbody tr:last-child td{border-bottom:none}
       <div class="order-num">${q.quoteNumber||'ORDER'}</div>
       <div class="order-meta">Processed ${issueDate}</div>
       <div class="order-tag">&#x2713; Order Confirmed</div>
+      ${q.quoteLabel ? `<div style="margin-top:10px;display:inline-block;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#ee6216;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.25);border-radius:4px;padding:4px 12px">${q.quoteLabel}</div>` : ''}
     </div>
   </div>
   <div class="accent-strip"></div>

@@ -981,6 +981,7 @@ const HS_REDIRECT_URI  = process.env.HS_REDIRECT_URI  || 'https://sales.whisperr
 
 // ── Nexus states (freight taxability per state) ───────────────────
 const NEXUS_STATES = {
+  AZ: { taxFreight: true  },
   CA: { taxFreight: true  },
   CO: { taxFreight: true  },
   FL: { taxFreight: false },
@@ -992,6 +993,7 @@ const NEXUS_STATES = {
   PA: { taxFreight: true  },
   TN: { taxFreight: true  },
   TX: { taxFreight: true  },
+  UT: { taxFreight: true  },
   VA: { taxFreight: false },
   WI: { taxFreight: true  },
   WA: { taxFreight: true  },
@@ -2713,7 +2715,7 @@ tbody tr:hover td{background:#fdfcfb}
       <div class="info-item"><label>Name</label><span>${c.firstName} ${c.lastName}</span></div>
       ${c.company?`<div class="info-item"><label>Company</label><span>${c.company}</span></div>`:''}
       ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
-      ${c.address?`<div class="info-item"><label>Ship To</label><span>${c.address}, ${c.city}, ${c.state} ${c.zip}</span></div>`:''}
+      ${(c.address||c.city||c.state||c.zip)?`<div class="info-item"><label>Ship To</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}</span></div>`:''}
     </div>
   </div>` : ''}
 
@@ -2913,7 +2915,7 @@ tbody tr:hover td{background:#fdfcfb}
       <div class="info-item"><label>Name</label><span>${c.firstName} ${c.lastName}</span></div>
       ${c.company?`<div class="info-item"><label>Company</label><span>${c.company}</span></div>`:''}
       ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
-      ${c.address?`<div class="info-item"><label>Ship To</label><span>${c.address}, ${c.city}, ${c.state} ${c.zip}</span></div>`:''}
+      ${(c.address||c.city||c.state||c.zip)?`<div class="info-item"><label>Ship To</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}</span></div>`:''}
     </div>
   </div>` : ''}
 
@@ -5276,7 +5278,7 @@ tbody tr:last-child td{border-bottom:none}
       ${c.firstName?`<div class="info-item"><label>Name</label><span>${c.firstName} ${c.lastName}</span></div>`:''}
       ${c.company?`<div class="info-item"><label>Company</label><span>${c.company}</span></div>`:''}
       ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
-      ${c.address?`<div class="info-item"><label>Delivery Address</label><span>${c.address}, ${c.city}, ${c.state} ${c.zip}</span></div>`:''}
+      ${(c.address||c.city||c.state||c.zip)?`<div class="info-item"><label>Delivery Address</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}</span></div>`:''}
     </div>
   </div>` : ''}
 
@@ -5434,7 +5436,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         `Name: ${c.firstName||''} ${c.lastName||''}`.trim(),
         c.company ? `Company: ${c.company}` : null,
         c.email   ? `Email: ${c.email}`     : null,
-        c.address ? `Ship To: ${c.address}, ${c.city}, ${c.state} ${c.zip}` : null,
+        c.address||c.city||c.state ? `Ship To: ${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}` : null,
         ``,
         `ORDER SPECIFICATIONS`,
         `Foam Color: ${foamColor||'Not specified'}`,

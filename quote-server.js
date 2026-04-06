@@ -2787,7 +2787,7 @@ tbody tr:hover td{background:#fdfcfb}
       <div class="quote-type">Invoice</div>
       <div class="quote-num">${q.quoteNumber||'INV'}</div>
       <div class="quote-meta">Issued ${issueDate}</div>
-      ${q.quoteLabel ? `<div style="margin-top:10px;display:inline-block;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#ee6216;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.25);border-radius:4px;padding:4px 12px">${q.quoteLabel}</div>` : ''}
+      ${q.quoteLabel ? `<div style="margin-top:8px;display:block;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#ee6216;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.25);border-radius:4px;padding:4px 12px;width:fit-content">${q.quoteLabel}</div>` : ''}
     </div>
   </div>
   <div class="accent-strip"></div>
@@ -2988,7 +2988,7 @@ tbody tr:hover td{background:#fdfcfb}
       <div class="quote-num">${q.quoteNumber||'QUOTE'}</div>
       <div class="quote-meta">Issued ${q.date||new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'})}</div>
       <div class="quote-valid-tag">Valid 30 Days</div>
-      ${q.quoteLabel ? `<div style="margin-top:10px;display:inline-block;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#ee6216;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.25);border-radius:4px;padding:4px 12px">${q.quoteLabel}</div>` : ''}
+      ${q.quoteLabel ? `<div style="margin-top:8px;display:block;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#ee6216;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.25);border-radius:4px;padding:4px 12px;width:fit-content">${q.quoteLabel}</div>` : ''}
     </div>
   </div>
   <div class="accent-strip"></div>
@@ -5506,7 +5506,7 @@ tbody tr:last-child td{border-bottom:none}
       <div class="order-num">${q.quoteNumber||'ORDER'}</div>
       <div class="order-meta">Processed ${issueDate}</div>
       <div class="order-tag">&#x2713; Order Confirmed</div>
-      ${q.quoteLabel ? `<div style="margin-top:10px;display:inline-block;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#ee6216;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.25);border-radius:4px;padding:4px 12px">${q.quoteLabel}</div>` : ''}
+      ${q.quoteLabel ? `<div style="margin-top:8px;display:block;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#ee6216;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.25);border-radius:4px;padding:4px 12px;width:fit-content">${q.quoteLabel}</div>` : ''}
     </div>
   </div>
   <div class="accent-strip"></div>

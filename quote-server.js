@@ -1307,7 +1307,7 @@ async function hsCreateContact(data) {
 async function hsSearchContact(email) {
   const body = {
     filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: email }] }],
-    properties: ['firstname', 'lastname', 'email', 'phone'],
+    properties: ['firstname', 'lastname', 'email', 'phone', 'hubspot_owner_id'],
     limit: 1
   };
   const res = await httpsRequest({
@@ -2357,6 +2357,23 @@ const server = http.createServer(async (req, res) => {
               if (customer.company && !existingProps.company) updateProps.company = customer.company;
             }
 
+            // Assign rep as contact owner if:
+            // - contact has no owner, OR
+            // - current owner is info@whisperroom.com (generic fallback)
+            if (ownerId) {
+              const currentOwner = existingProps.hubspot_owner_id;
+              const isGenericOwner = currentOwner && currentOwner === '36303670'; // Benton = info@ fallback
+              // Look up if the current owner email is info@
+              let ownerIsGeneric = !currentOwner;
+              if (currentOwner) {
+                const ownerEmail = REP_EMAILS[String(currentOwner)] || '';
+                ownerIsGeneric = !ownerEmail || ownerEmail === 'info@whisperroom.com';
+              }
+              if (ownerIsGeneric) {
+                updateProps.hubspot_owner_id = String(ownerId);
+              }
+            }
+
             if (Object.keys(updateProps).length > 0) {
               await httpsRequest({
                 hostname: 'api.hubapi.com',
@@ -2370,15 +2387,16 @@ const server = http.createServer(async (req, res) => {
           }
         } else {
           const newContact = await hsCreateContact({
-            firstname: customer.firstName,
-            lastname: customer.lastName,
-            email: customer.email,
-            phone: customer.phone,
-            company: customer.company,
-            address: customer.address,
-            city: customer.city,
-            state: toStateFull(customer.state),
-            zip: customer.zip,
+            firstname:          customer.firstName,
+            lastname:           customer.lastName,
+            email:              customer.email,
+            phone:              customer.phone,
+            company:            customer.company,
+            address:            customer.address,
+            city:               customer.city,
+            state:              toStateFull(customer.state),
+            zip:                customer.zip,
+            ...(ownerId ? { hubspot_owner_id: String(ownerId) } : {}),
           });
           contactId = newContact.id;
           if (!contactId) throw new Error('Failed to create contact: ' + JSON.stringify(newContact));

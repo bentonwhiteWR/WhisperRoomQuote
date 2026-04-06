@@ -2376,6 +2376,7 @@ async function createDeal() {
         freight: freightData ? {...freightData} : null,
         tax: taxData ? {...taxData} : null,
         accessories, notes: document.getElementById('notes').value.trim(), hubspotUrl: data.dealUrl,
+        quoteLabel: (document.getElementById('quoteLabel') || {value:''}).value.trim(),
       });
     } else {
       box.className = 'result-box error';

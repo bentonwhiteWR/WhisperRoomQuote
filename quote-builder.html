@@ -1103,8 +1103,8 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     Create Quote &amp; Deal
   </button>
 
-    <button class="create-btn" onclick="emailViaHubSpot()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);margin-top:8px">
-      &#x2709; Email Quote (with Link)
+    <button class="create-btn" id="viewQuoteBtn" onclick="viewQuote()" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-top:8px;opacity:.5;cursor:not-allowed" title="Push to HubSpot first" disabled>
+      &#x1F517; View Quote ↗
     </button>
     <button class="create-btn" id="copyLinkBtn" onclick="copyQuoteLink()" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-top:8px;opacity:.5" title="Push to HubSpot first">
       &#x1F517; Copy Shareable Link
@@ -3809,6 +3809,16 @@ function activateLinkBtn() {
   btn.style.color = 'var(--text)';
   btn.removeAttribute('title');
   btn.onclick = copyQuoteLink;
+
+  // Also activate View Quote button
+  const vBtn = document.getElementById('viewQuoteBtn');
+  if (vBtn) {
+    vBtn.style.opacity = '1';
+    vBtn.style.cursor = 'pointer';
+    vBtn.style.color = 'var(--text)';
+    vBtn.removeAttribute('title');
+    vBtn.disabled = false;
+  }
 }
 
 // Check on load and whenever quote number changes
@@ -3817,7 +3827,13 @@ function checkLinkBtnState() {
   if (quoteNum) activateLinkBtn();
 }
 
-function emailPDF() { emailViaHubSpot(); }
+function viewQuote() {
+  const quoteNum = document.getElementById('quoteNumHidden').value;
+  if (!quoteNum) { showToast('Push the quote first', 'error'); return; }
+  const tok = getShareToken();
+  const url = 'https://sales.whisperroom.com/q/' + quoteNum + (tok ? '?t=' + tok : '');
+  window.open(url, '_blank');
+}
 
 function emailViaHubSpot() {
   const email = document.getElementById('email').value.trim();

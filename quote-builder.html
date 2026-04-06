@@ -3017,6 +3017,7 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   }
 
   window._loadedShareToken = q._shareToken || q.shareToken || null;
+  window._lastShareToken   = null; // clear push token — loaded quote's token takes over
   // Set accepted state and customer preferences
   setQuoteAccepted(q.accepted || q._accepted || false);
   window._acceptedFoam  = q.acceptedFoam  || q._acceptedFoam  || '';
@@ -3760,7 +3761,9 @@ async function downloadQuotePdf() {
 }
 
 function getShareToken() {
-  return window._lastShareToken || window._loadedShareToken || '';
+  // _loadedShareToken: set when loading a historical quote — always use this if present
+  // _lastShareToken: set after a fresh push — only use for brand-new quotes
+  return window._loadedShareToken || window._lastShareToken || '';
 }
 
 function copyQuoteLink() {
@@ -3845,6 +3848,10 @@ function newQuote() {
   if (lineItems.length > 0 || document.getElementById('firstName').value.trim()) {
     if (!confirm('Start a new quote? This will clear the current form.')) return;
   }
+
+  // Clear share tokens so stale tokens don't leak into new quotes
+  window._lastShareToken   = null;
+  window._loadedShareToken = null;
 
   // Clear customer fields
   ['firstName','lastName','email','phone','company',

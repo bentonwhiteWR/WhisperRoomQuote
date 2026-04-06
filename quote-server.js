@@ -1348,6 +1348,8 @@ async function calculateTaxProper(toState, toZip, toCity, amount, shipping, toSt
 
   console.log(`[tax] calculating for ${toCity||'(no city)'}, ${stateUpper} ${toZip} — amount: ${amount}, shipping: ${taxableShipping}`);
 
+  console.log(`[tax] sending to TaxJar:`, JSON.stringify(body));
+
   const res = await httpsRequest({
     hostname: 'api.taxjar.com',
     path: '/v2/taxes',
@@ -1357,6 +1359,8 @@ async function calculateTaxProper(toState, toZip, toCity, amount, shipping, toSt
       'Content-Type': 'application/json'
     }
   }, body);
+
+  console.log(`[tax] TaxJar response status: ${res.status}, body:`, JSON.stringify(res.body));
 
   if (res.body && res.body.tax) {
     return {
@@ -1380,9 +1384,9 @@ function buildAbfUrl(pallets, totalWeight, consCity, consState, consZip, isCanad
     'ShipPay=Y', 'Acc=ARR=Y'
   ];
   if (accessories.residential)   parts.push('Acc_RDEL=Y');
-  if (accessories.liftgate)      parts.push('Acc_LGATE=Y');
-  if (accessories.limitedaccess) parts.push('Acc_LAPU=Y');
-  if (accessories.loadingdock)   parts.push('Acc_DOCK=Y');
+  if (accessories.liftgate)      parts.push('Acc_GRD_DEL=Y');
+  if (accessories.limitedaccess) { parts.push('Acc_LAD=Y'); parts.push('LADType=M'); }
+  // Loading dock: no param needed — ABF auto-applies based on destination zip
 
   parts.push(
     `ShipCity=${encodeURIComponent(SHIP_CITY)}`, `ShipState=${SHIP_STATE}`,
@@ -1470,9 +1474,9 @@ function buildAbfBookingUrl(params) {
 
   // Accessorials
   if (accessories?.residential)   parts.push('Acc_RDEL=Y');
-  if (accessories?.liftgate)      parts.push('Acc_LGATE=Y');
-  if (accessories?.limitedaccess) parts.push('Acc_LAPU=Y');
-  if (accessories?.loadingdock)   parts.push('Acc_DOCK=Y');
+  if (accessories?.liftgate)      parts.push('Acc_GRD_DEL=Y');
+  if (accessories?.limitedaccess) { parts.push('Acc_LAD=Y'); parts.push('LADType=M'); }
+  // Loading dock: no param needed — ABF auto-applies based on destination zip
   if (specialInstructions)        parts.push(`SpcInst=${encodeURIComponent(specialInstructions)}`);
 
   // Freight pieces
@@ -2236,7 +2240,9 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse(await readBody(req));
       const { state: rawState, zip, city, subtotal, shipping, street } = body;
       const state = toStateAbbr(rawState);
+      console.log(`[tax route] received: state=${state} zip=${zip} city=${city||'(none)'} street=${street||'(none)'} subtotal=${subtotal} shipping=${shipping}`);
       const result = await calculateTaxProper(state, zip, city, subtotal, shipping, street || '');
+      console.log(`[tax route] result: tax=${result.tax} rate=${result.rate} inNexus=${result.inNexus} error=${result.error||'none'}`);
       json(result);
     } catch(e) { json({error: e.message}, 500); }
     return;

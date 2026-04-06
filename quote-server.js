@@ -2257,7 +2257,8 @@ const server = http.createServer(async (req, res) => {
             let firstMdl = '';
             try {
               const items = r.line_items || [];
-              const mdlItem = items.find(i => i?.name?.startsWith('MDL') || /\d{4}/.test(i?.name||''));
+              // Strict MDL-only match — ignore accessories with 4-digit codes
+              const mdlItem = items.find(i => /^MDL\b/.test(i?.name||''));
               if (mdlItem) firstMdl = (mdlItem.name||'').split(' ').slice(0,3).join(' ');
             } catch(e) {}
             byDeal[r.deal_id] = {
@@ -4430,13 +4431,12 @@ tbody tr:hover td{background:#fdfcfb}
         }
 
         quotes = qr.rows.map(r => {
-          // Extract first booth/MDL model from line items
+          // Extract booth MDL from line items — strict MDL prefix match only
           let firstMdl = '';
           try {
             const items = r.line_items || [];
-            const mdlItem = items.find(i => i && (i.name?.startsWith('MDL') || /\d{4}/.test(i.name || '')));
+            const mdlItem = items.find(i => i && /^MDL\b/.test(i.name || ''));
             if (mdlItem) {
-              // Include "MDL 9696 E" or "MDL 9696 S" — up to 3 words
               const parts = (mdlItem.name || '').split(' ');
               firstMdl = parts.slice(0, 3).join(' ');
             }

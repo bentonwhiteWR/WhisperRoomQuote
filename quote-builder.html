@@ -1855,8 +1855,8 @@ function updateSummary() {
   document.getElementById('sumTax').textContent = tax > 0 ? fmt(tax) : (taxData && !taxData.inNexus ? 'No nexus' : 'Not calculated');
   document.getElementById('sumTotal').textContent = fmt(total);
 
-  // Weight — sum all line item weights from HubSpot product data
-  // Pallets — from BOOTH_DATA dimensions only (for freight quoting)
+  // Weight — sum ALL line items (booth + accessories all ship together on the booth pallet)
+  // Pallet dims — from BOOTH_DATA only
   let totalWeight = 0, totalPallets = 0;
   const palletDims = [];
   lineItems.forEach(item => {
@@ -1983,27 +1983,33 @@ async function getFreight() {
     return;
   }
 
-  // Build pallet list from line items
-  // Dimensions from BOOTH_DATA, weights from actual HubSpot product weights
+  // Build pallet list — dims from BOOTH_DATA, total weight from ALL line items
   let allPallets = [];
   let totalWeight = 0;
 
+  // Sum all weights first
+  lineItems.forEach(item => {
+    totalWeight += (parseFloat(item.weight) || 0) * (parseInt(item.qty) || 1);
+  });
+
+  // Build pallets from booth items only, but distribute total weight across them
+  let boothPallets = [];
   lineItems.forEach(item => {
     const bd = BOOTH_DATA[item.name];
-    const itemWeight = (parseFloat(item.weight) || 0) * (parseInt(item.qty) || 1);
-    totalWeight += itemWeight;
-
-    if (bd && bd.pallets.length > 0) {
-      for (let q = 0; q < (parseInt(item.qty) || 1); q++) {
-        const w = parseFloat(item.weight) || 0;
-        const perPallet = Math.floor(w / bd.pallets.length);
-        const rem = w % bd.pallets.length;
-        bd.pallets.forEach((pl, i) => {
-          allPallets.push({ ...pl, weight: Math.round(perPallet + (i === 0 ? rem : 0)) });
-        });
-      }
+    if (!bd || bd.pallets.length === 0) return;
+    for (let q = 0; q < (parseInt(item.qty) || 1); q++) {
+      bd.pallets.forEach(pl => boothPallets.push({ ...pl }));
     }
   });
+
+  if (boothPallets.length > 0 && totalWeight > 0) {
+    const perPallet = Math.floor(totalWeight / boothPallets.length);
+    const rem = Math.round(totalWeight % boothPallets.length);
+    allPallets = boothPallets.map((pl, i) => ({
+      ...pl,
+      weight: perPallet + (i === 0 ? rem : 0)
+    }));
+  }
 
   if (allPallets.length === 0) {
     alert('No booth products with pallet dimensions found. Add a booth or MDL first.');

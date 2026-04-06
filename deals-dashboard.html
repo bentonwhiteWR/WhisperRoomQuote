@@ -352,9 +352,8 @@ function renderHub(dealId,data) {
           ${acc?'<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>':''}
           <span class="row-date">${fmtDate(q.date)}</span>
           <div style="display:flex;gap:4px;margin-left:auto" onclick="event.stopPropagation()">
-            ${qUrl?`<a href="${qUrl}" target="_blank" class="row-link" title="View quote">View ↗</a>`:''}
+            ${qUrl?`<a href="${qUrl}" target="_blank" class="row-link" title="View quote">View Quote ↗</a>`:''}
             ${qUrl?`<button onclick="copyQuoteLink('${q.quoteNumber}','${q.shareToken||''}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit" title="Copy link">🔗</button>`:''}
-            ${qUrl?`<button onclick="emailQuote('${q.quoteNumber}','${q.shareToken||''}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit" title="Email quote">✉</button>`:''}
             <span style="font-size:10px;font-weight:700;color:${acc?'var(--green)':'var(--orange)'};padding:2px 4px">${acc?'✓ Load':'Load →'}</span>
           </div>
         </div>

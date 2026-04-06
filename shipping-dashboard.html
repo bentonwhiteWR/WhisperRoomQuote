@@ -305,7 +305,22 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       Add Shipment
     </button>
-    <button class="refresh-btn" id="refreshBtn" onclick="loadShipments()">
+    <button class="refresh-btn" id="refreshBtn" onclick="
+// ── Auto-redirect to login on 401 (session expired) ──────────────
+const _origFetch = window.fetch;
+window.fetch = async function(...args) {
+  const res = await _origFetch(...args);
+  if (res.status === 401) {
+    const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
+    if (url.startsWith('/api/')) {
+      console.warn('[auth] 401 on', url, '— session expired, redirecting to login');
+      setTimeout(() => { window.location.href = '/'; }, 300);
+    }
+  }
+  return res;
+};
+
+loadShipments()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
         <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>

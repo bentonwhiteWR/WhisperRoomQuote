@@ -2227,10 +2227,16 @@ const server = http.createServer(async (req, res) => {
       const { pallets, totalWeight, city, state: rawFreightState, zip, canadian, accessories } = body;
       const state = toStateAbbr(rawFreightState);
       const abfUrl = buildAbfUrl(pallets, totalWeight, city, state, zip, canadian, accessories || {});
+      console.log(`[freight] URL: ${abfUrl}`);
       const res2 = await httpsGet(abfUrl);
+      console.log(`[freight] ABF response: ${res2.body?.slice(0, 500)}`);
       const result = parseAbfXml(res2.body);
+      console.log(`[freight] parsed: cost=${result.cost} dynDisc=${result.dynDisc} transit=${result.transit}`);
       json({ ...result, markup: Math.round(result.cost * 0.25 * 100) / 100 });
-    } catch(e) { json({error: e.message}, 500); }
+    } catch(e) {
+      console.error(`[freight] error: ${e.message}`);
+      json({error: e.message}, 500);
+    }
     return;
   }
 

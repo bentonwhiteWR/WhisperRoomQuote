@@ -676,7 +676,8 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     <button id="themeToggle" onclick="toggleTheme()" style="padding:5px 9px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#f0ede8;cursor:pointer;font-size:14px;line-height:1;transition:all .15s;">
       <span id="themeIcon">☀️</span>
     </button>
-    <div id="userBadge" style="display:none;align-items:center;gap:8px;flex-shrink:0">
+    <span id="appVersion" style="font-size:9px;font-weight:700;color:var(--muted,rgba(255,255,255,.25));letter-spacing:.06em;padding:2px 6px;border:1px solid rgba(255,255,255,.08);border-radius:4px;font-family:monospace;flex-shrink:0"></span>
+  <div id="userBadge" style="display:none;align-items:center;gap:8px;flex-shrink:0">
       <span id="userName" style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600"></span>
       <a href="/auth/logout" style="padding:5px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.4);text-decoration:none;white-space:nowrap">Sign Out</a>
     </div>
@@ -3018,6 +3019,19 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
 
   window._loadedShareToken = q._shareToken || q.shareToken || null;
   window._lastShareToken   = null; // clear push token — loaded quote's token takes over
+  console.log('[token] loaded quote:', q.quoteNumber, '| _shareToken:', q._shareToken, '| shareToken:', q.shareToken, '| set to:', window._loadedShareToken);
+
+  // If token is missing, fetch it directly from server
+  if (!window._loadedShareToken && q.quoteNumber) {
+    fetch(`/api/quote-snapshot/${encodeURIComponent(q.quoteNumber)}`, { credentials:'include' })
+      .then(r => r.json())
+      .then(d => {
+        if (d.shareToken) {
+          window._loadedShareToken = d.shareToken;
+          console.log('[token] fetched from server:', d.shareToken);
+        }
+      }).catch(() => {});
+  }
   // Set accepted state and customer preferences
   setQuoteAccepted(q.accepted || q._accepted || false);
   window._acceptedFoam  = q.acceptedFoam  || q._acceptedFoam  || '';
@@ -3772,9 +3786,8 @@ function copyQuoteLink() {
     showToast('No quote number yet — select a rep first', 'error');
     return;
   }
-  // Note: link works after pushing to HubSpot (data stored in notes)
-  // Before pushing, the link will show "quote not found" to the viewer
   const tok = getShareToken();
+  console.log('[copyLink] quoteNum:', quoteNum, '| _lastShareToken:', window._lastShareToken, '| _loadedShareToken:', window._loadedShareToken, '| tok:', tok);
   const url = 'https://sales.whisperroom.com/q/' + quoteNum + (tok ? '?t=' + tok : '');
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(url).then(() => {
@@ -4891,6 +4904,12 @@ function closeInvoiceModal() {
 
 
 
+
+// App version
+fetch('/api/version').then(r=>r.json()).then(d=>{
+  const el=document.getElementById("appVersion");
+  if(el&&d.version) el.textContent="v"+d.version;
+}).catch(()=>{});
 </script>
 
 <!-- INVOICE MODAL -->

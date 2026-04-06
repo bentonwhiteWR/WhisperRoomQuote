@@ -166,6 +166,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
     <a href="/orders" class="nav-link">Orders</a>
     <a href="/shipping" class="nav-link">Shipping</a>
     <a href="/reports" class="nav-link active">Reports</a>
+  <span id="appVersion" style="font-size:9px;font-weight:700;color:var(--muted,rgba(255,255,255,.25));letter-spacing:.06em;padding:2px 6px;border:1px solid rgba(255,255,255,.08);border-radius:4px;font-family:monospace;flex-shrink:0"></span>
   </nav>
   <div class="topbar-spacer"></div>
   <div id="userBadge" style="display:none;align-items:center;gap:8px;flex-shrink:0">
@@ -868,6 +869,27 @@ async function loadCurrentUser() {
   } catch(e) {}
 }
 loadCurrentUser();
+
+// Auto-redirect to login on 401 (session expired or revoked)
+const _origFetch = window.fetch;
+window.fetch = async function(...args) {
+  const res = await _origFetch(...args);
+  if (res.status === 401) {
+    const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
+    if (url.startsWith('/api/')) {
+      console.warn('401 on', url, '— redirecting to login');
+      window.location.href = '/';
+    }
+  }
+  return res;
+};
+
+
+// ── App version ───────────────────────────────────────────────────
+fetch('/api/version').then(r=>r.json()).then(d=>{
+  const el=document.getElementById('appVersion');
+  if(el&&d.version) el.textContent='v'+d.version;
+}).catch(()=>{});
 </script>
 </body>
 </html>

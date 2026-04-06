@@ -4666,8 +4666,7 @@ async function confirmProcessOrder() {
 
   const foam  = document.querySelector('input[name="orderFoam"]:checked')?.value  || '';
   const hinge = document.querySelector('input[name="orderHinge"]:checked')?.value || '';
-  if (!foam)  { showToast('Please select a foam color', 'error'); return; }
-  if (!hinge) { showToast('Please select a door hinge preference', 'error'); return; }
+  // Foam and hinge are optional — allow processing with unknown selections
   const productionNotes = document.getElementById('orderProductionNotes').value.trim();
   const deliveryNotes   = document.getElementById('orderDeliveryNotes').value.trim();
 

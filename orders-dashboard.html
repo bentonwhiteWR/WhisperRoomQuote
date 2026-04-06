@@ -273,6 +273,7 @@
     <div>
       <div class="drawer-title" id="drawerTitle">Edit Order</div>
       <div class="drawer-subtitle" id="drawerSubtitle"></div>
+      <div id="drawerQuoteLabel" style="display:none;margin-top:5px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;padding:2px 8px;border-radius:3px;background:rgba(238,98,22,.1);color:var(--orange);border:1px solid rgba(238,98,22,.2)"></div>
     </div>
     <button class="drawer-close" onclick="closeDrawer()">&#x2715;</button>
   </div>
@@ -621,19 +622,17 @@ async function runFreightQuote() {
   const zip   = document.getElementById('fqZip').value.trim();
   const totalWeight = parseFloat(document.getElementById('fqWeight').value) || 0;
 
-  if (!zip) { showToast('Enter at least a ZIP code first', 'error'); return; }
+  if (!city || !state || !zip) { showToast('Enter city, state and ZIP first', 'error'); return; }
   if (!_freightPallets.length) { showToast('Add at least one pallet', 'error'); return; }
 
   const btn = document.getElementById('fqRunBtn');
   btn.disabled = true;
-  btn.textContent = 'Getting rates…';
+  btn.textContent = 'Getting rates...';
   document.getElementById('fqError').style.display = 'none';
   document.getElementById('fqResults').style.display = 'none';
-  const bookSec = document.getElementById('fqBookSection');
-  if (bookSec) bookSec.style.display = 'none';
 
   try {
-    const res = await fetch('/api/orders-freight-multi', {
+    const res = await fetch('/api/orders-freight', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -652,50 +651,26 @@ async function runFreightQuote() {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
+    // Render carrier options
     const list = document.getElementById('fqCarrierList');
-    const carriers = data.carriers || [];
-    _lastCarrierResults = carriers; // cache for selectFreightOption
-
-    if (!carriers.length) {
-      throw new Error('No rates returned — check credentials and destination ZIP');
-    }
-
-    // Tag colors and labels
-    const tagStyle = {
-      standard:    'background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid rgba(59,130,246,.3)',
-      guaranteed:  'background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.3)',
-    };
-
-    list.innerHTML = carriers.map((c, i) => {
-      const tag = tagStyle[c.tag] || tagStyle.standard;
-      const isOD = c.carrier === 'Old Dominion';
-      const costLabel = isOD ? 'OD net rate' : 'actual cost';
-      const detailParts = [`Transit: ${c.transit}`];
-      if (isOD && c.grossFreight > 0) detailParts.push(`Gross: $${c.grossFreight.toFixed(2)}`);
-      if (isOD && c.fuel > 0)         detailParts.push(`Fuel: $${c.fuel.toFixed(2)}`);
-      return `
-      <div data-idx="${i}" style="padding:14px 16px;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;cursor:pointer;transition:all .15s"
-           onmouseover="this.style.borderColor='var(--orange)'" onmouseout="if(!this.classList.contains('fq-selected'))this.style.borderColor='var(--border)'"
-           onclick="selectFreightOption(${i}, event)">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
-          <div style="flex:1;min-width:0">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-              <span style="font-weight:700;color:var(--text);font-size:14px">${c.carrier}</span>
-              <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;padding:2px 8px;border-radius:3px;${tag}">${c.serviceLabel}</span>
-            </div>
-            <div style="font-size:11px;color:var(--muted)">${detailParts.join(' · ')}</div>
-            ${isOD ? '<div style="font-size:10px;color:var(--muted);margin-top:3px">Book on odfl.com — enter PRO manually</div>' : ''}
+    list.innerHTML = (data.carriers || []).map(c => `
+      <div style="padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:border-color .15s"
+           onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'"
+           onclick="selectFreightOption('${c.name}', ${c.cost}, '${c.transit}')">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-weight:700;color:var(--text);font-size:14px">${c.name}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">Transit: ${c.transit} · Base: $${c.cost.toFixed(2)}</div>
           </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div style="font-size:20px;font-weight:800;color:var(--orange)">$${c.cost.toFixed(2)}</div>
-            <div style="font-size:10px;color:var(--muted)">${costLabel}</div>
+          <div style="text-align:right">
+            <div style="font-size:18px;font-weight:800;color:var(--orange)">$${c.cost.toFixed(2)}</div>
+            <div style="font-size:10px;color:var(--muted)">actual cost</div>
           </div>
         </div>
-      </div>`;
-    }).join('');
+      </div>
+    `).join('');
 
     document.getElementById('fqResults').style.display = 'block';
-
   } catch(e) {
     document.getElementById('fqError').textContent = 'Error: ' + e.message;
     document.getElementById('fqError').style.display = 'block';
@@ -707,39 +682,20 @@ async function runFreightQuote() {
 
 let _selectedCarrier = null;
 let _selectedFreightCost = null;
-let _selectedCarrierBookable = false;
-let _lastCarrierResults = [];
 
-function selectFreightOption(idx, evt) {
-  // Find the carrier from the rendered list
-  const list = document.getElementById('fqCarrierList');
-  const cards = list.querySelectorAll('[data-idx]');
+function selectFreightOption(carrier, cost, transit) {
+  _selectedCarrier = carrier;
+  _selectedFreightCost = cost;
 
-  // De-select all
-  cards.forEach(el => {
-    el.classList.remove('fq-selected');
+  // Highlight selected card
+  document.querySelectorAll('#fqCarrierList > div').forEach(el => {
     el.style.borderColor = 'var(--border)';
     el.style.background = 'var(--surface2)';
   });
+  event.currentTarget.style.borderColor = 'var(--orange)';
+  event.currentTarget.style.background = 'rgba(238,98,22,.06)';
 
-  // Select clicked
-  const card = list.querySelector(`[data-idx="${idx}"]`);
-  if (card) {
-    card.classList.add('fq-selected');
-    card.style.borderColor = 'var(--orange)';
-    card.style.background = 'rgba(238,98,22,.06)';
-  }
-
-  // Read data from the rendered card text (simpler than a global array)
-  // We'll pass carrier data via a global cache set during render
-  const c = _lastCarrierResults[idx];
-  if (!c) return;
-
-  _selectedCarrier = c.carrier + (c.service !== 'LTL' ? ' (' + c.serviceLabel + ')' : '');
-  _selectedFreightCost = c.cost;
-  _selectedCarrierBookable = c.bookable;
-
-  // Show booking / action section
+  // Show pickup date + book button
   let bookSection = document.getElementById('fqBookSection');
   if (!bookSection) {
     bookSection = document.createElement('div');
@@ -747,9 +703,6 @@ function selectFreightOption(idx, evt) {
     document.getElementById('fqResults').after(bookSection);
   }
   bookSection.style.display = 'block';
-
-  const isABF = c.carrier === 'ABF Freight';
-
   bookSection.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
       <div style="display:flex;flex-direction:column;gap:5px">
@@ -769,10 +722,9 @@ function selectFreightOption(idx, evt) {
       </div>
     </div>
     <div style="display:flex;gap:10px">
-      ${isABF
-        ? `<button id="fqBookBtn" onclick="bookShipment()" style="flex:1;padding:12px;background:var(--green,#1a7a4a);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">&#x2713; Book ABF Shipment</button>`
-        : `<a href="https://www.odfl.com" target="_blank" style="flex:1;padding:12px;background:#1a3a5c;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px">&#x2197; Book on odfl.com</a>`
-      }
+      <button id="fqBookBtn" onclick="bookShipment()" style="flex:1;padding:12px;background:var(--green, #1a7a4a);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+        &#x2713; Book ABF Shipment
+      </button>
       <button onclick="applyRateOnly()" style="padding:12px 16px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">
         Rate Only
       </button>
@@ -783,42 +735,28 @@ function selectFreightOption(idx, evt) {
   // Pre-fill phone from order customer data
   const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
   const phone = order?.json_snapshot?.customer?.phone || '';
-  if (phone) {
-    const phoneEl = document.getElementById('fqConsPhone');
-    if (phoneEl) phoneEl.value = phone;
-  }
+  if (phone) document.getElementById('fqConsPhone').value = phone;
 }
 
 function applyRateOnly() {
-  if (!_selectedCarrier || _selectedFreightCost == null) return;
-
-  // Map display carrier name back to the dropdown value
-  const carrierDropdownValue = _selectedCarrier.startsWith('Old Dominion') ? 'Old Dominion'
-    : _selectedCarrier.startsWith('ABF') ? 'ABF Freight'
-    : _selectedCarrier;
-
-  const carrierEl = document.getElementById('editCarrier');
-  if (carrierEl) carrierEl.value = carrierDropdownValue;
-  const costEl = document.getElementById('editFreightCost');
-  if (costEl) costEl.value = _selectedFreightCost.toFixed(2);
-
+  // Just fill carrier + cost, don't book
+  if (_selectedCarrier) document.getElementById('editCarrier').value = _selectedCarrier;
+  if (_selectedFreightCost) document.getElementById('editFreightCost').value = _selectedFreightCost.toFixed(2);
   closeFreightModal();
-  showToast(`${_selectedCarrier} rate applied — $${_selectedFreightCost.toFixed(2)}`, 'success');
+  showToast(`${_selectedCarrier} rate applied — $${_selectedFreightCost?.toFixed(2)}`, 'success');
 }
 
 async function bookShipment() {
-  // Only fires for ABF — OD uses the "Book on odfl.com" link instead
   const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
   if (!order) return;
 
   const customer = order.json_snapshot?.customer || {};
   const btn = document.getElementById('fqBookBtn');
-  if (!btn) return;
   btn.disabled = true;
-  btn.textContent = 'Booking…';
+  btn.textContent = 'Booking...';
 
   const resultDiv = document.getElementById('fqBookResult');
-  if (resultDiv) resultDiv.style.display = 'none';
+  resultDiv.style.display = 'none';
 
   try {
     const res = await fetch('/api/book-abf-shipment', {
@@ -835,9 +773,9 @@ async function bookShipment() {
         consCity: document.getElementById('fqCity').value.trim(),
         consState: document.getElementById('fqState').value.trim(),
         consZip: document.getElementById('fqZip').value.trim(),
-        consPhone: (document.getElementById('fqConsPhone') || {value:''}).value.trim(),
-        pickupDate: (document.getElementById('fqPickupDate') || {value:''}).value,
-        specialInstructions: (document.getElementById('fqSpecialInst') || {value:''}).value.trim(),
+        consPhone: document.getElementById('fqConsPhone').value.trim(),
+        pickupDate: document.getElementById('fqPickupDate').value,
+        specialInstructions: document.getElementById('fqSpecialInst').value.trim(),
         accessories: {
           residential:   document.getElementById('fqResidential').checked,
           liftgate:      document.getElementById('fqLiftgate').checked,
@@ -847,29 +785,27 @@ async function bookShipment() {
       })
     });
     const data = await res.json();
+
     if (data.error) throw new Error(data.error);
 
-    // Auto-fill drawer fields
+    // Fill in the drawer fields automatically
     document.getElementById('editCarrier').value = 'ABF Freight';
     document.getElementById('editFreightCost').value = _selectedFreightCost?.toFixed(2) || '';
     document.getElementById('editTracking').value = data.proNumber || '';
-    const shipDateEl = document.getElementById('editShipDate');
-    const pickupDateEl = document.getElementById('fqPickupDate');
-    if (shipDateEl && pickupDateEl?.value) shipDateEl.value = pickupDateEl.value;
-
-    if (resultDiv) {
-      resultDiv.style.cssText = 'display:block;padding:12px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25);border-radius:8px;font-size:12px;color:#22c55e';
-      resultDiv.innerHTML = `&#x2713; Booked! PRO: <strong>${data.proNumber || 'Pending'}</strong>${data.pickupConfirm ? ' · Pickup: ' + data.pickupConfirm : ''}`;
+    if (document.getElementById('editShipDate') && document.getElementById('fqPickupDate').value) {
+      document.getElementById('editShipDate').value = document.getElementById('fqPickupDate').value;
     }
 
+    resultDiv.style.cssText = 'display:block;padding:12px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25);border-radius:8px;font-size:12px;color:#22c55e';
+    resultDiv.innerHTML = `&#x2713; Booked! PRO: <strong>${data.proNumber || 'Pending'}</strong>${data.pickupConfirm ? ' · Pickup: ' + data.pickupConfirm : ''}`;
+
+    // Reload orders to reflect new tracking
     setTimeout(() => { closeFreightModal(); loadOrders(); }, 2000);
     showToast(`ABF booked — PRO ${data.proNumber || 'pending'}`, 'success');
 
   } catch(e) {
-    if (resultDiv) {
-      resultDiv.style.cssText = 'display:block;padding:10px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;font-size:12px;color:#ef4444';
-      resultDiv.textContent = 'Error: ' + e.message;
-    }
+    resultDiv.style.cssText = 'display:block;padding:10px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;font-size:12px;color:#ef4444';
+    resultDiv.textContent = 'Error: ' + e.message;
     btn.disabled = false;
     btn.textContent = '✓ Book ABF Shipment';
   }
@@ -881,8 +817,6 @@ function closeFreightModal() {
   if (bs) bs.style.display = 'none';
   _selectedCarrier = null;
   _selectedFreightCost = null;
-  _selectedCarrierBookable = false;
-  _lastCarrierResults = [];
 }
 
 // ── Rep identity ──────────────────────────────────────────────────
@@ -985,7 +919,7 @@ function renderOrders(orders) {
     const total     = o.total ? fmt(o.total) : '—';
     const orderUrl  = `https://sales.whisperroom.com/o/${encodeURIComponent(o.quote_number)}${o.share_token ? '?t=' + o.share_token : ''}`;
     return `<tr onclick="openDrawer('${o.quote_number}')">
-      <td><div class="td-main">${o.deal_name || o.quote_number}</div><div class="td-sub">${o.quote_number}</div></td>
+      <td><div class="td-main">${o.deal_name || o.quote_number}</div><div class="td-sub">${o.quote_number}${o.json_snapshot?.quoteLabel ? ' · <span style="color:var(--orange);font-size:10px;font-weight:700">' + o.json_snapshot.quoteLabel + '</span>' : ''}</div></td>
       <td><div class="td-mono" style="font-size:11px">${(()=>{const items=(o.json_snapshot?.lineItems||[]).filter(i=>i?.name?.startsWith('MDL'));return items.length?items.map(i=>i.name).join(', '):'—';})()}</div></td>
       <td><span class="badge badge-foam">${foam}</span></td>
       <td><span class="badge badge-foam">${hinge}</span></td>
@@ -1050,6 +984,13 @@ function openDrawer(quoteNumber) {
 
   document.getElementById('drawerTitle').textContent = order.quote_number;
   document.getElementById('drawerSubtitle').textContent = order.deal_name || order.customer_name || '';
+  // Show quoteLabel badge if present
+  const qlEl = document.getElementById('drawerQuoteLabel');
+  const ql = order.json_snapshot?.quoteLabel || '';
+  if (qlEl) {
+    qlEl.textContent = ql;
+    qlEl.style.display = ql ? 'inline-block' : 'none';
+  }
 
   const c  = order.json_snapshot?.customer || {};
   const od = order.order_data || {};

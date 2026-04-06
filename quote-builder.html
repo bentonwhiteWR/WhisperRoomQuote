@@ -2299,7 +2299,8 @@ async function createDeal() {
         backBtn.style.display = 'inline-flex';
         backBtn.href = `/deals?dealId=${data.dealId}`;
       }
-      window._lastShareToken = data.shareToken || null;
+      window._lastShareToken   = data.shareToken || null;
+      window._loadedShareToken = data.shareToken || null; // keep in sync so copy link works after revision
 
       // Update dealName input with the actual name from HubSpot
       if (data.dealName) {
@@ -4263,9 +4264,8 @@ function renderDealHub(data) {
           ${accepted ? '<span style="font-size:10px;font-weight:800;color:#22c55e;background:rgba(34,197,94,.15);padding:2px 7px;border-radius:4px;border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>' : ''}
           <span style="font-size:11px;color:rgba(255,255,255,.3);">${fmtDate(q.date)}</span>
           <div style="display:flex;gap:4px;margin-left:auto" onclick="event.stopPropagation()">
-            ${qUrl ? `<a href="${qUrl}" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:rgba(255,255,255,.3);text-decoration:none;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08)">View ↗</a>` : ''}
+            ${qUrl ? `<a href="${qUrl}" target="_blank" onclick="event.stopPropagation()" style="font-size:10px;color:rgba(255,255,255,.3);text-decoration:none;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08)">View Quote ↗</a>` : ''}
             ${qUrl ? `<button onclick="event.stopPropagation();navigator.clipboard?.writeText('${qUrl}').then(()=>showToast('Link copied!','info'))" style="font-size:10px;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08);background:none;color:rgba(255,255,255,.3);cursor:pointer;font-family:inherit">🔗</button>` : ''}
-            ${qUrl ? `<button onclick="event.stopPropagation();emailQuoteToClient('${qUrl}')" style="font-size:10px;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,.08);background:none;color:rgba(255,255,255,.3);cursor:pointer;font-family:inherit">✉</button>` : ''}
             <span style="font-size:11px;font-weight:700;color:${accepted?'#22c55e':'#ee6216'};padding:2px 4px">${accepted?'✓ Load':'Load →'}</span>
           </div>
         </div>

@@ -945,6 +945,11 @@ const NMFC_ITEM    = '027880';
 const NMFC_SUB     = '02';
 const FREIGHT_CLASS = '100';
 
+// ── Old Dominion credentials ─────────────────────────────────────
+const OD_USER    = process.env.OD_USER    || '';
+const OD_PASS    = process.env.OD_PASS    || '';
+const OD_ACCOUNT = process.env.OD_ACCOUNT || '';
+
 const sessions      = new Set();       // password sessions (kept in-memory, rarely used)
 const oauthStates   = new Set();       // CSRF state tokens (short-lived, in-memory is fine)
 
@@ -1579,6 +1584,126 @@ function parseAbfBookingXml(xmlText) {
   const pickupConfirm = pickupMatch ? pickupMatch[1].trim() : null;
 
   return { proNumber, bolNumber, pickupConfirm, error, raw: xmlText.slice(0, 500) };
+}
+
+
+// ── Old Dominion Rate API ─────────────────────────────────────────
+// Calls OD's SOAP Rating API for a given shipType (LTL, GTD, GTE)
+// Returns { cost, transit, service, serviceLabel, error }
+async function getOdRate(destZip, totalWeight, accessories, shipType) {
+  if (!OD_USER || !OD_PASS || !OD_ACCOUNT) {
+    return { error: 'OD credentials not configured' };
+  }
+
+  // Map our accessorial checkboxes to OD accessorial codes
+  const accs = [];
+  if (accessories.residential)   accs.push('<accessorials>RDC</accessorials>');
+  if (accessories.liftgate)      accs.push('<accessorials>HYD</accessorials>');
+  if (accessories.limitedaccess) accs.push('<accessorials>LDC</accessorials>');
+  // Loading dock: no direct OD equivalent
+
+  const accXml = accs.join('\n        ');
+
+  const serviceLabels = {
+    LTL: 'Standard LTL',
+    GTD: 'Guaranteed',
+    GTE: 'Guaranteed by Noon',
+  };
+
+  const soapBody = `<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:myr="http://myRate.ws.odfl.com/">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <myr:getLTLRateEstimate>
+      <arg0>
+        ${accXml}
+        <destinationCountry>USA</destinationCountry>
+        <destinationPostalCode>${destZip}</destinationPostalCode>
+        <freightItems>
+          <ratedClass>${FREIGHT_CLASS}</ratedClass>
+          <weight>${Math.max(1, Math.round(totalWeight))}</weight>
+        </freightItems>
+        <movement>O</movement>
+        <odfl4MePassword>${OD_PASS}</odfl4MePassword>
+        <odfl4MeUser>${OD_USER}</odfl4MeUser>
+        <odflCustomerAccount>${OD_ACCOUNT}</odflCustomerAccount>
+        <originCountry>USA</originCountry>
+        <originPostalCode>${SHIP_ZIP}</originPostalCode>
+        <requestReferenceNumber>false</requestReferenceNumber>
+        <shipType>${shipType}</shipType>
+        <weightUnits>LBS</weightUnits>
+      </arg0>
+    </myr:getLTLRateEstimate>
+  </soapenv:Body>
+</soapenv:Envelope>`;
+
+  try {
+    const response = await new Promise((resolve, reject) => {
+      const bodyBuf = Buffer.from(soapBody, 'utf8');
+      const options = {
+        hostname: 'www.odfl.com',
+        path: '/wsRate_v6/RateService',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/xml; charset=utf-8',
+          'SOAPAction': '""',
+          'Content-Length': bodyBuf.length,
+        },
+        timeout: 15000,
+      };
+      const r = require('https').request(options, res => {
+        let data = '';
+        res.on('data', c => data += c);
+        res.on('end', () => resolve({ status: res.statusCode, body: data }));
+      });
+      r.on('error', reject);
+      r.on('timeout', () => { r.destroy(); reject(new Error('OD rate request timed out')); });
+      r.write(bodyBuf);
+      r.end();
+    });
+
+    const xml = response.body;
+
+    // Check for error messages in the response
+    const errMatch = xml.match(/<errorMessages[^>]*>([^<]+)<\/errorMessages>/i);
+    if (errMatch) return { error: errMatch[1].trim() };
+
+    // Extract success flag
+    const successMatch = xml.match(/<success[^>]*>(true|false)<\/success>/i);
+    if (successMatch && successMatch[1] === 'false') {
+      return { error: 'OD rate request failed' };
+    }
+
+    // Extract net freight charge (total cost)
+    const netMatch = xml.match(/<netFreightCharge[^>]*>([\d.]+)<\/netFreightCharge>/i);
+    if (!netMatch) return { error: 'Could not parse OD rate response' };
+    const cost = parseFloat(netMatch[1]);
+
+    // Extract service days from destinationCities (take minimum)
+    const daysMatches = [...xml.matchAll(/<serviceDays[^>]*>(\d+)<\/serviceDays>/gi)];
+    const minDays = daysMatches.length
+      ? Math.min(...daysMatches.map(m => parseInt(m[1])))
+      : null;
+    const transit = minDays ? `${minDays} day${minDays !== 1 ? 's' : ''}` : 'Contact OD';
+
+    // Extract fuel surcharge and accessorial total for detail display
+    const fuelMatch  = xml.match(/<fuelSurcharge[^>]*>([\d.]+)<\/fuelSurcharge>/i);
+    const accMatch   = xml.match(/<totalAccessorialCharge[^>]*>([\d.]+)<\/totalAccessorialCharge>/i);
+    const grossMatch = xml.match(/<grossFreightCharge[^>]*>([\d.]+)<\/grossFreightCharge>/i);
+
+    return {
+      cost,
+      transit,
+      service: shipType,
+      serviceLabel: serviceLabels[shipType] || shipType,
+      fuel: fuelMatch  ? parseFloat(fuelMatch[1])  : 0,
+      accessorialTotal: accMatch  ? parseFloat(accMatch[1])  : 0,
+      grossFreight: grossMatch ? parseFloat(grossMatch[1]) : 0,
+      error: null,
+    };
+  } catch(e) {
+    return { error: e.message };
+  }
 }
 
 // ── Auth ──────────────────────────────────────────────────────────
@@ -2785,7 +2910,6 @@ tbody tr:hover td{background:#fdfcfb}
       <div class="quote-type">Invoice</div>
       <div class="quote-num">${q.quoteNumber||'INV'}</div>
       <div class="quote-meta">Issued ${issueDate}</div>
-      ${q.quoteLabel ? `<div style="margin-top:10px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#ee6216;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.2);border-radius:4px;padding:5px 14px;display:inline-block">${q.quoteLabel}</div>` : ''}
     </div>
   </div>
   <div class="accent-strip"></div>
@@ -2986,7 +3110,6 @@ tbody tr:hover td{background:#fdfcfb}
       <div class="quote-num">${q.quoteNumber||'QUOTE'}</div>
       <div class="quote-meta">Issued ${q.date||new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'})}</div>
       <div class="quote-valid-tag">Valid 30 Days</div>
-      ${q.quoteLabel ? `<div style="margin-top:10px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#ee6216;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.2);border-radius:4px;padding:5px 14px;display:inline-block">${q.quoteLabel}</div>` : ''}
     </div>
   </div>
   <div class="accent-strip"></div>
@@ -5013,6 +5136,85 @@ tbody tr:hover td{background:#fdfcfb}
     return;
   }
 
+
+
+
+  // ── API: Multi-carrier Freight Quote (ABF + Old Dominion) ─────────
+  if (pathname === '/api/orders-freight-multi' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const body = JSON.parse(await readBody(req));
+      const { pallets, totalWeight, city, state: rawState, zip, canadian, accessories } = body;
+      const state = toStateAbbr(rawState);
+      if (!pallets || !pallets.length) { json({ error: 'No pallet data' }, 400); return; }
+      if (!zip) { json({ error: 'Missing destination ZIP' }, 400); return; }
+
+      const acc = accessories || {};
+      const carriers = [];
+
+      // ── ABF quote (existing logic) ────────────────────────────────
+      const abfPromise = (async () => {
+        try {
+          const abfUrl = buildAbfUrl(pallets, totalWeight, city || '', state || '', zip, canadian || false, acc);
+          const abfRes = await httpsGet(abfUrl);
+          const abf = parseAbfXml(abfRes.body);
+          return [{
+            carrier:      'ABF Freight',
+            service:      'LTL',
+            serviceLabel: 'Standard LTL',
+            cost:         abf.cost,
+            transit:      abf.transit,
+            bookable:     true,   // can fire /api/book-abf-shipment
+            tag:          'standard',
+          }];
+        } catch(e) {
+          console.warn('[freight-multi] ABF error:', e.message);
+          return [];
+        }
+      })();
+
+      // ── OD quotes — LTL, GTD, GTE in parallel ────────────────────
+      const odPromise = (async () => {
+        if (!OD_USER || !OD_PASS || !OD_ACCOUNT) return [];
+        const [ltl, gtd, gte] = await Promise.all([
+          getOdRate(zip, totalWeight, acc, 'LTL'),
+          getOdRate(zip, totalWeight, acc, 'GTD'),
+          getOdRate(zip, totalWeight, acc, 'GTE'),
+        ]);
+        const tags = { LTL: 'standard', GTD: 'guaranteed', GTE: 'guaranteed' };
+        return [ltl, gtd, gte]
+          .filter(r => !r.error && r.cost > 0)
+          .map(r => ({
+            carrier:      'Old Dominion',
+            service:      r.service,
+            serviceLabel: r.serviceLabel,
+            cost:         r.cost,
+            transit:      r.transit,
+            fuel:         r.fuel,
+            accessorialTotal: r.accessorialTotal,
+            grossFreight: r.grossFreight,
+            bookable:     false,  // manual PRO entry after booking on odfl.com
+            tag:          tags[r.service] || 'standard',
+          }));
+      })();
+
+      const [abfResults, odResults] = await Promise.all([abfPromise, odPromise]);
+
+      // Merge: ABF Standard, then OD Standard, then OD Guaranteed variants
+      const allCarriers = [
+        ...abfResults,
+        ...odResults.filter(r => r.service === 'LTL'),
+        ...odResults.filter(r => r.service === 'GTD'),
+        ...odResults.filter(r => r.service === 'GTE'),
+      ];
+
+      json({ carriers: allCarriers });
+    } catch(e) {
+      console.error('[freight-multi] error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
 
   // ── API: Book ABF Shipment ────────────────────────────────────────
   if (pathname === '/api/book-abf-shipment' && req.method === 'POST') {

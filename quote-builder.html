@@ -730,6 +730,12 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
         </select>
       </div>
     </div>
+    <div class="form-grid" style="margin-top:14px">
+      <div class="field">
+        <label>Quote Label <span style="font-weight:400;color:var(--dim);text-transform:none;letter-spacing:0;font-size:9px">(optional — shown on PDF &amp; shared quote)</span></label>
+        <input type="text" id="quoteLabel" placeholder="e.g. Voice Over Basic Package, Audiology Suite…">
+      </div>
+    </div>
   </div>
 
   <!-- ② SHIP TO -->
@@ -2266,6 +2272,7 @@ async function createDeal() {
         discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0, amount: disc },
         total,
         ownerId: document.getElementById('repSelect').value,
+        quoteLabel: (document.getElementById('quoteLabel') || {value:''}).value.trim(),
         dealName: (() => {
           const manual = document.getElementById('dealName').value.trim();
           if (manual) return manual;
@@ -3053,6 +3060,8 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   document.getElementById('dealName').value = q.dealName || '';
   if (q.ownerId) document.getElementById('repSelect').value = q.ownerId;
   if (q.notes) document.getElementById('notes').value = q.notes;
+  const qlEl = document.getElementById('quoteLabel');
+  if (qlEl) qlEl.value = q.quoteLabel || '';
 
   // Restore deal link — use saved dealId first, fall back to name search
   unlinkDeal(); // reset first
@@ -3923,6 +3932,10 @@ function newQuote() {
   // Clear notes
   const notesEl = document.getElementById('notes');
   if (notesEl) notesEl.value = '';
+
+  // Clear quote label
+  const qlEl = document.getElementById('quoteLabel');
+  if (qlEl) qlEl.value = '';
 
   // Clear contact badge
   document.getElementById('contactBadge').style.display = 'none';

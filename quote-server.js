@@ -2522,7 +2522,6 @@ const server = http.createServer(async (req, res) => {
           billing_address: billing ? billing.address || '' : customer.address || '',
           billing_city: billing ? billing.city || '' : customer.city || '',
           billing_state: billing ? toStateFull(billing.state) || '' : toStateFull(customer.state) || '',
-          ...(billing?.email ? { billing_email: billing.email } : {}),
           shipping_zipcode: customer.zip || '',
           billing_zipcode: billing ? billing.zip || '' : customer.zip || '',
           // quote_links set separately below

@@ -2525,8 +2525,9 @@ async function createDeal() {
         backBtn.style.display = 'inline-flex';
         backBtn.href = `/deals?dealId=${data.dealId}`;
       }
-      window._lastShareToken   = data.shareToken || null;
-      window._loadedShareToken = data.shareToken || null; // keep in sync so copy link works after revision
+      window._lastShareToken        = data.shareToken || null;
+      window._loadedShareToken      = data.shareToken || null; // keep in sync so copy link works after revision
+      window._lastPushedQuoteNumber = data.quoteNumber || null; // lock quote number + token together
       window._contactSearchWarned = false; // reset guard after successful push
       window._nameGuardShown = false;
 
@@ -4176,7 +4177,9 @@ function getShareToken() {
 }
 
 function copyQuoteLink() {
-  const quoteNum = document.getElementById('quoteNumHidden').value;
+  // Use the locked quote number from last successful push if available
+  // This prevents a mid-push updateQuoteNumber() call from corrupting the link
+  const quoteNum = window._lastPushedQuoteNumber || document.getElementById('quoteNumHidden').value;
   if (!quoteNum) {
     showToast('No quote number yet — select a rep first', 'error');
     return;
@@ -4250,7 +4253,7 @@ This removes it from the database. The HubSpot deal is not affected.`)) return;
 }
 
 function viewQuote() {
-  const quoteNum = document.getElementById('quoteNumHidden').value;
+  const quoteNum = window._lastPushedQuoteNumber || document.getElementById('quoteNumHidden').value;
   if (!quoteNum) { showToast('Push the quote first', 'error'); return; }
   const tok = getShareToken();
   const url = 'https://sales.whisperroom.com/q/' + quoteNum + (tok ? '?t=' + tok : '');
@@ -4302,8 +4305,9 @@ function newQuote(skipConfirm = false) {
   }
 
   // Clear share tokens so stale tokens don't leak into new quotes
-  window._lastShareToken   = null;
-  window._loadedShareToken = null;
+  window._lastShareToken        = null;
+  window._loadedShareToken      = null;
+  window._lastPushedQuoteNumber = null;
 
   // Clear customer fields
   ['firstName','lastName','email','phone','company',

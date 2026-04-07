@@ -2522,6 +2522,7 @@ const server = http.createServer(async (req, res) => {
           billing_address: billing ? billing.address || '' : customer.address || '',
           billing_city: billing ? billing.city || '' : customer.city || '',
           billing_state: billing ? toStateFull(billing.state) || '' : toStateFull(customer.state) || '',
+          ...(billing?.email ? { billing_email: billing.email } : {}),
           shipping_zipcode: customer.zip || '',
           billing_zipcode: billing ? billing.zip || '' : customer.zip || '',
           // quote_links set separately below
@@ -2848,6 +2849,7 @@ tbody tr:hover td{background:#fdfcfb}
       ${c.company?`<div class="info-item"><label>Company</label><span>${c.company}</span></div>`:''}
       ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
       ${(c.address||c.city||c.state||c.zip)?`<div class="info-item"><label>Ship To</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}</span></div>`:''}
+      ${q.billing && (q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
     </div>
   </div>` : ''}
 
@@ -3049,6 +3051,7 @@ tbody tr:hover td{background:#fdfcfb}
       ${c.company?`<div class="info-item"><label>Company</label><span>${c.company}</span></div>`:''}
       ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
       ${(c.address||c.city||c.state||c.zip)?`<div class="info-item"><label>Ship To</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}</span></div>`:''}
+      ${q.billing && (q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
     </div>
   </div>` : ''}
 

@@ -2251,7 +2251,7 @@ const server = http.createServer(async (req, res) => {
            ORDER BY created_at DESC`,
           [ids]
         );
-        // Group by deal_id — first row = latest quote
+        // Group by deal_id — first row = latest quote, but check ALL rows for accepted status
         const byDeal = {};
         dbRes.rows.forEach(r => {
           if (!byDeal[r.deal_id]) {
@@ -2268,6 +2268,9 @@ const server = http.createServer(async (req, res) => {
               accepted: r.accepted === 'true',
               firstMdl,
             };
+          } else if (r.accepted === 'true') {
+            // Any quote for this deal being accepted marks the deal as accepted
+            byDeal[r.deal_id].accepted = true;
           }
         });
         deals.forEach(d => {

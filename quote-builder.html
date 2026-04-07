@@ -903,6 +903,9 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
         </div>
         <div id="discountDisplay" style="font-size:13px;color:var(--accent);min-width:80px;text-align:right">— $0.00</div>
       </div>
+      <button onclick="bakeInDiscount()" title="Apply discount to each line item price and remove the discount field" style="margin-top:8px;width:100%;padding:7px;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.25);border-radius:6px;color:var(--accent);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
+        ⬇ Bake Discount Into Line Items
+      </button>
     </div>
   </div>
 
@@ -1828,16 +1831,16 @@ function renderLineItems() {
       </td>
       <td style="min-width:60px">
         <input class="li-input" type="number" value="${item.qty}" min="1" step="1"
-          style="width:60px" onchange="updateLineItem('${item.id}','qty',this.value)">
+          style="width:60px" oninput="updateLineItem('${item.id}','qty',this.value)">
       </td>
       <td style="min-width:90px">
         <input class="li-input" type="number" value="${item.price.toFixed(2)}" min="0" step="0.01"
-          style="width:90px" onchange="updateLineItem('${item.id}','price',this.value)">
+          style="width:90px" oninput="updateLineItem('${item.id}','price',this.value)">
       </td>
       <td style="min-width:70px">
         <input class="li-input" type="number" value="${item.weight || ''}" min="0" step="1"
           style="width:70px" placeholder="lbs"
-          onchange="updateLineItem('${item.id}','weight',this.value)">
+          oninput="updateLineItem('${item.id}','weight',this.value)">
       </td>
       <td style="color:var(--text);font-size:13px;min-width:80px">${fmt(item.qty * item.price)}</td>
       <td>
@@ -1855,8 +1858,33 @@ function updateLineItem(id, field, value) {
   if (field === 'description') item.description = value;
   if (field === 'weight')      item.weight      = parseFloat(value) || 0;
   // Don't re-render on description/weight changes (would reset cursor)
-  if (field === 'qty' || field === 'price') renderLineItems();
+  if (field === 'qty' || field === 'price') { renderLineItems(); updateSummary(); }
   if (field === 'weight') updateSummary();
+}
+
+function bakeInDiscount() {
+  const val = parseFloat(document.getElementById('discountValue').value) || 0;
+  if (val <= 0) { alert('Set a discount value first.'); return; }
+
+  const isPercent = discountType === 'pct';
+  const discLabel = isPercent ? val + '%' : '$' + val.toFixed(2);
+
+  if (!confirm(`Apply ${discLabel} discount to each line item price and clear the discount field?\n\nThis bakes the discount into the unit prices for PO/invoice purposes.`)) return;
+
+  lineItems = lineItems.map(item => {
+    const discounted = isPercent
+      ? item.price * (1 - val / 100)
+      : Math.max(0, item.price - val);
+    return { ...item, price: Math.round(discounted * 100) / 100 };
+  });
+
+  // Clear the discount field
+  document.getElementById('discountValue').value = '0';
+  discountType = 'pct';
+  setDiscType('pct');
+
+  renderLineItems();
+  updateSummary();
 }
 
 // ── Summary ───────────────────────────────────────────────────────

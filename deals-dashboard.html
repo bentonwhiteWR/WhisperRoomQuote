@@ -41,7 +41,7 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .search-box::before { content:"🔍"; position:absolute; left:9px; top:50%; transform:translateY(-50%); font-size:11px; pointer-events:none; }
 .rep-select { padding:7px 10px; background:var(--surface2); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:12px; font-family:inherit; outline:none; cursor:pointer; }
 .board-count { font-size:11px; color:var(--muted); margin-left:auto; }
-.board { flex:1; display:grid; grid-template-columns:repeat(5,minmax(160px,1fr)); gap:0; overflow-x:auto; overflow-y:hidden; }
+.board { flex:1; display:grid; grid-template-columns:repeat(4,minmax(170px,1fr)); gap:0; overflow-x:auto; overflow-y:hidden; }
 .col { display:flex; flex-direction:column; border-right:1px solid var(--border); overflow:hidden; }
 .col:last-child { border-right:none; }
 .col-header { padding:10px 12px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
@@ -215,7 +215,7 @@ const COLUMNS = [
   {key:'verbal', label:'Verbal Confirm', stages:['contractsent'],                         cls:'col-verbal'},
   {key:'won',    label:'Closed Won',     stages:['closedwon'],                             cls:'col-won'},
   {key:'shipped',label:'Shipped',        stages:['845719'],                                cls:'col-shipped'},
-  {key:'lost',   label:'Closed Lost',    stages:['closedlost'],                            cls:'col-lost'},
+
 ];
 const PAY_COLORS = {paid:'#22c55e',po_received:'#f59e0b',not_paid:''};
 const PAY_LABELS = {paid:'✓ Paid',po_received:'PO Rcvd',not_paid:''};
@@ -381,7 +381,6 @@ function renderHub(dealId,data) {
         <!-- Row 2: MDL + note on left, Invoice+Paid on right -->
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap" onclick="event.stopPropagation()">
           ${q.firstMdl?`<span style="font-size:10px;color:var(--text2);font-family:var(--mono);font-weight:600">${q.firstMdl}</span>`:''}
-          ${q.quoteLabel?`<span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:2px 7px;border-radius:3px;background:rgba(238,98,22,.1);color:var(--orange);border:1px solid rgba(238,98,22,.2)">${q.quoteLabel}</span>`:''}
           <span style="font-size:12px;font-weight:700;color:${acc?'var(--green)':'var(--text)'}">${fmt(q.total)}</span>
           ${noteBar}
           <div style="margin-left:auto;display:flex;gap:5px">
@@ -497,6 +496,11 @@ function renderHub(dealId,data) {
         </div>
       </div>
       <div class="admin-status" id="adminStatus"></div>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <button onclick="doDeleteDeal()" style="width:100%;padding:8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:6px;color:#ef4444;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
+          🗑 Delete Deal &amp; All Quotes
+        </button>
+      </div>
     </div>
     <div style="height:20px"></div>
   `;
@@ -743,6 +747,37 @@ async function doPaymentStatus(status) {
     setTimeout(()=>openDeal(currentDealId),600);
   } catch(e){setAdminStatus('Error: '+e.message,'var(--red)');}
 }
+async function doDeleteDeal() {
+  if (!currentDealId) return;
+  const deal = allDeals.find(d => d.id === currentDealId);
+  const name = deal?.name || currentDealId;
+  if (!confirm(`Permanently delete "${name}" and ALL its quotes from the database and HubSpot?
+
+This cannot be undone.`)) return;
+  // Second confirmation for safety
+  if (!confirm(`Are you sure? This will delete the HubSpot deal and all associated DB records for "${name}".`)) return;
+  setAdminStatus('Deleting…');
+  try {
+    const res = await fetch(`/api/deals/${currentDealId}/delete`, {
+      method: 'DELETE',
+      credentials: 'include'
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    showToast(`"${name}" deleted`, 'success');
+    // Remove from local list and re-render
+    allDeals = allDeals.filter(d => d.id !== currentDealId);
+    filteredDeals = filteredDeals.filter(d => d.id !== currentDealId);
+    currentDealId = null;
+    document.getElementById('hubEmpty').style.display = 'flex';
+    document.getElementById('hubContent').style.display = 'none';
+    renderBoard();
+  } catch(e) {
+    setAdminStatus('Error: ' + e.message, 'var(--red)');
+    showToast('Delete failed: ' + e.message, 'error');
+  }
+}
+
 async function doStageOverride(stage,label) {
   if(!currentDealId) return;
   if(!confirm(`Move deal to "${label||STAGES[stage]||stage}"?`)){

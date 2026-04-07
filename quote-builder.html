@@ -1639,6 +1639,20 @@ function addLineItem(product) {
 }
 
 // Load preset items for a booth - searches HubSpot for each SKU
+// ── Per-preset quantity overrides ────────────────────────────────
+// Format: { 'Preset Name': { 'SKU': qty } }
+const PRESET_QTY_OVERRIDES = {
+  'Practice Basic':    { 'BASS TRAPS': 3 },
+  'Practice Deluxe':   { 'BASS TRAPS': 3 },
+  'Recording Studio':  { 'BASS TRAPS': 3 },
+  'Drum Booth':        { 'BASS TRAPS': 4 },
+  'Drum Studio':       { 'BASS TRAPS': 4 },
+};
+
+function getPresetQty(boothName, sku) {
+  return PRESET_QTY_OVERRIDES[boothName]?.[sku] ?? 1;
+}
+
 async function loadPreset(boothName, skus) {
   if (!skus || skus.length === 0) return;
 
@@ -1659,7 +1673,7 @@ async function loadPreset(boothName, skus) {
           description: product.properties.description || '',
           price: parseFloat(product.properties.price) || 0,
           weight: parseFloat(product.properties.weight) || 0,
-          qty: 1,
+          qty: getPresetQty(boothName, sku),
         });
       } else {
         missing.push(sku);
@@ -1695,7 +1709,7 @@ async function loadPreset(boothName, skus) {
             description: exact.properties.description || '',
             price: parseFloat(exact.properties.price) || 0,
             weight: parseFloat(exact.properties.weight) || 0,
-            qty: 1,
+            qty: getPresetQty(boothName, sku),
           });
         }
       }

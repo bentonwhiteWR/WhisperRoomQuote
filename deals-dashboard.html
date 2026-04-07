@@ -278,7 +278,8 @@ function renderBoard() {
     } else {
       deals.forEach(d => {
         const card=document.createElement('div');
-        card.className='deal-card'+(d.id===currentDealId?' active':'')+(d.accepted&&d.id!==currentDealId?' accepted':'');
+        const dealGreen = (d.accepted || d.paymentStatus==='paid' || d.paymentStatus==='po_received') && d.id!==currentDealId;
+        card.className='deal-card'+(d.id===currentDealId?' active':'')+(dealGreen?' accepted':'');
         card.onclick=()=>openDeal(d.id);
         const ps=d.paymentStatus||'not_paid';
         const payBg=ps==='paid'?'rgba(34,197,94,.12)':'rgba(245,158,11,.1)';
@@ -399,11 +400,13 @@ function renderHub(dealId,data) {
     ${data.invoices.map(inv=>{
       const paid=inv.status==='paid';
       const sc={paid:'#22c55e',open:'#f59e0b',draft:'var(--muted)',voided:'var(--muted)',overdue:'#ef4444'}[inv.status]||'var(--muted)';
+      const pmLabel = inv.paymentMethod === 'ach' ? 'ACH' : inv.paymentMethod === 'card' ? 'CC' : '';
       return `<div class="row-card ${paid?'row-paid':''}" style="cursor:default">
         <div style="flex:1;min-width:0;display:flex;align-items:center;gap:7px;flex-wrap:wrap">
           <span style="font-size:12px;font-weight:700;color:${paid?'var(--green)':'var(--text)'}">${inv.number||inv.title||'Invoice'}</span>
           ${paid?'<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Paid</span>'
                 :`<span class="row-badge" style="color:${sc};border:1px solid ${sc}">${inv.status||'—'}</span>`}
+          ${paid && pmLabel ? `<span class="row-badge" style="background:rgba(99,102,241,.1);color:#818cf8;border:1px solid rgba(99,102,241,.25)">${pmLabel}</span>` : ''}
           ${inv.quoteNumber?`<span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${inv.quoteNumber}</span>`:''}
         </div>
         <span style="font-size:12px;font-weight:700;color:${paid?'var(--green)':'var(--text)'}">${fmt(inv.amount)}</span>

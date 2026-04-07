@@ -2278,6 +2278,52 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
+      // Auto-sync: for any unpaid deals, check if their HubSpot invoice is actually paid
+      // Run in background — don't block the response
+      (async () => {
+        try {
+          const unpaidDeals = deals.filter(d => d.paymentStatus !== 'paid' && d.latestQuote);
+          if (!unpaidDeals.length) return;
+          // Batch fetch invoice associations for unpaid deals
+          const assocRes = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: '/crm/v4/associations/deals/invoices/batch/read',
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, { inputs: unpaidDeals.map(d => ({ id: String(d.id) })) });
+          const assocResults = assocRes.body?.results || [];
+          const invoiceIds = [];
+          const dealByInvoice = {};
+          assocResults.forEach(r => {
+            (r.to || []).forEach(t => {
+              invoiceIds.push(t.toObjectId);
+              dealByInvoice[t.toObjectId] = r.from?.id;
+            });
+          });
+          if (!invoiceIds.length) return;
+          // Fetch invoice statuses
+          const batchRes = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: '/crm/v3/objects/invoices/batch/read',
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, { inputs: invoiceIds.map(id => ({ id: String(id) })), properties: ['hs_invoice_status'] });
+          const paidInvoices = (batchRes.body?.results || []).filter(inv => inv.properties?.hs_invoice_status === 'paid');
+          for (const inv of paidInvoices) {
+            const dId = dealByInvoice[inv.id];
+            if (!dId) continue;
+            // Update deal in HubSpot
+            await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/deals/${dId}`,
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, { properties: { payment_status: 'paid' } });
+            console.log(`[deals list] auto-synced payment_status=paid for deal ${dId}`);
+          }
+        } catch(e) { console.warn('[deals list] auto-sync error:', e.message); }
+      })();
+
       json({ deals, total: res2.body?.total || deals.length });
     } catch(e) {
       console.error('Deals list error:', e.message);
@@ -3787,7 +3833,7 @@ tbody tr:hover td{background:#fdfcfb}
         headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
       }, {
         inputs: invoiceIds.map(id => ({ id: String(id) })),
-        properties: ['hs_invoice_status','hs_due_date','hs_invoice_date','hs_number','hs_title','hs_amount_billed','hs_balance_due','hs_hubspot_invoice_link','quote_number','hs_payment_method']
+        properties: ['hs_invoice_status','hs_due_date','hs_invoice_date','hs_number','hs_title','hs_amount_billed','hs_balance_due','hs_hubspot_invoice_link','quote_number']
       });
 
       const invoices = (batchRes?.body?.results || []).map(inv => ({
@@ -3801,7 +3847,6 @@ tbody tr:hover td{background:#fdfcfb}
         balance:    inv.properties?.hs_balance_due || '0',
         invoiceUrl: inv.properties?.hs_hubspot_invoice_link || null,
         quoteNumber: inv.properties?.quote_number || '',
-        paymentMethod: inv.properties?.hs_payment_method || '',
       }));
 
       // Also check our DB for payment_link / invoice page URL
@@ -4586,7 +4631,7 @@ tbody tr:hover td{background:#fdfcfb}
             headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
           }, {
             inputs: invoiceIds.map(id => ({ id: String(id) })),
-            properties: ['hs_invoice_status','hs_invoice_date','hs_number','hs_title','hs_amount_billed','hs_balance_due','hs_hubspot_invoice_link','quote_number','hs_payment_method']
+            properties: ['hs_invoice_status','hs_invoice_date','hs_number','hs_title','hs_amount_billed','hs_balance_due','hs_hubspot_invoice_link','quote_number']
           });
           // Merge payment page URL from DB
           const dbInv = db ? (await db.query('SELECT quote_number, payment_link, share_token FROM quotes WHERE deal_id = $1 AND payment_link IS NOT NULL', [dealId])).rows : [];
@@ -4610,6 +4655,45 @@ tbody tr:hover td{background:#fdfcfb}
               paymentMethod:  inv.properties?.hs_payment_method || '',
             };
           });
+
+          // Fetch payment method from associated Payment records
+          try {
+            const paidInvIds = invoices.filter(inv => inv.status === 'paid').map(inv => inv.id);
+            if (paidInvIds.length) {
+              const pmAssocRes = await httpsRequest({
+                hostname: 'api.hubapi.com',
+                path: '/crm/v4/associations/invoices/payments/batch/read',
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+              }, { inputs: paidInvIds.map(id => ({ id: String(id) })) });
+              const pmResults = pmAssocRes.body?.results || [];
+              const paymentIds = [];
+              const invByPayment = {};
+              pmResults.forEach(r => {
+                (r.to || []).forEach(t => {
+                  paymentIds.push(t.toObjectId);
+                  invByPayment[t.toObjectId] = r.from?.id;
+                });
+              });
+              if (paymentIds.length) {
+                const pmBatch = await httpsRequest({
+                  hostname: 'api.hubapi.com',
+                  path: '/crm/v3/objects/payments/batch/read',
+                  method: 'POST',
+                  headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+                }, { inputs: paymentIds.map(id => ({ id: String(id) })), properties: ['hs_payment_method'] });
+                (pmBatch.body?.results || []).forEach(pm => {
+                  const invId = invByPayment[pm.id];
+                  const inv = invoices.find(i => i.id === invId);
+                  if (inv && pm.properties?.hs_payment_method) {
+                    const raw = pm.properties.hs_payment_method;
+                    inv.paymentMethod = raw.includes('ach') || raw.includes('bank') ? 'ACH'
+                                      : raw.includes('card') ? 'CC' : raw;
+                  }
+                });
+              }
+            }
+          } catch(e) { console.warn('[deal hub] payment method fetch failed:', e.message); }
 
           // Auto-sync: if any invoice is paid and deal payment_status isn't already paid, update it
           const anyPaid = invoices.some(inv => inv.status === 'paid');

@@ -2751,7 +2751,7 @@ const server = http.createServer(async (req, res) => {
         `<tr>
           <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;padding-right:16px">
             <div class="item-name">${item.name}</div>
-            ${item.description?`<div class="item-desc">${item.description}</div>`:''}
+            ${item.description?`<div class="item-desc">${item.description.replace(/\n/g,'<br>')}</div>`:''}
           </td>
           <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;text-align:center;color:#888;width:50px">${item.qty}</td>
           <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;text-align:right;color:#888;width:110px">${fmt(item.price)}</td>
@@ -2934,7 +2934,7 @@ tbody tr:hover td{background:#fdfcfb}
         `<tr>
           <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;padding-right:16px">
             <div class="item-name">${item.name}</div>
-            ${item.description?`<div class="item-desc">${item.description}</div>`:''}
+            ${item.description?`<div class="item-desc">${item.description.replace(/\n/g,'<br>')}</div>`:''}
           </td>
           <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;text-align:center;color:#888;width:50px">${item.qty}</td>
           <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;text-align:right;color:#888;width:110px">${fmt(item.price)}</td>
@@ -5608,7 +5608,7 @@ tbody tr:hover td{background:#fdfcfb}
         return `<tr>
           <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;padding-right:12px">
             <div class="item-name">${item.name}</div>
-            ${item.description?`<div class="item-desc">${item.description}</div>`:''}
+            ${item.description?`<div class="item-desc">${item.description.replace(/\n/g,'<br>')}</div>`:''}
           </td>
           <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;text-align:center;color:#888;width:40px">${item.qty}</td>
           <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;text-align:right;color:#888;width:90px">${fmt(item.price)}</td>
@@ -5932,7 +5932,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
           const SHARED_ORDERS_FOLDER = '0AKEFNM5_Dl8jUk9PVA';
           const safeNameO = (dealName || quoteNumber).replace(/[/\\:*?"<>|]/g, '-').trim();
           const pdfBufO = await generatePdfBuffer(orderUrl);
-          const filename = `${quoteNumber} — ${safeNameO} (Order).pdf`;
+          const filename = `${safeNameO} (Order).pdf`;
           await gdriveUploadFilePdf(filename, pdfBufO, SHARED_ORDERS_FOLDER);
           console.log(`[process-order] PDF saved to shared orders folder: ${filename}`);
         } catch(e) { console.warn('[process-order] GDrive PDF error:', e.message); }

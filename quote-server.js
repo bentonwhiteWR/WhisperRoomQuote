@@ -140,9 +140,17 @@ async function gdriveUploadFile(filename, mimeType, content, parentId) {
 }
 
 // Create the standard deal folder structure
-async function gdriveCreateDealFolders(dealName, quoteNumber) {
+function getCompanyFolderName(dealName, companyName) {
+  // Use company name if available, otherwise strip " - Mon YYYY" date suffix from deal name
+  if (companyName && companyName.trim()) return companyName.trim();
+  // Strip date suffix e.g. "GloNova - Apr 2026" → "GloNova"
+  return (dealName || '').replace(/\s*[·—\-–]\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\s*$/i, '').trim() || dealName;
+}
+
+async function gdriveCreateDealFolders(dealName, quoteNumber, companyName) {
   try {
-    const safeName = dealName.replace(/[/\:*?"<>|]/g, '-').trim();
+    const folderName = getCompanyFolderName(dealName, companyName);
+    const safeName = folderName.replace(/[/\:*?"<>|]/g, '-').trim();
     const dealFolder = await gdriveEnsureFolder(safeName, GDRIVE_ROOT_FOLDER);
     if (!dealFolder?.id) { console.warn('GDrive: failed to create deal folder'); return null; }
 
@@ -2496,10 +2504,10 @@ const server = http.createServer(async (req, res) => {
             );
             const folderId = folderRow.rows[0]?.gdrive_folder_id;
             const oldName  = folderRow.rows[0]?.deal_name;
-            if (folderId && oldName && oldName !== dealName) {
-              const safeName = dealName.replace(/[/\\:*?"<>|]/g, '-').trim();
-              await gdriveRenameFolder(folderId, safeName);
-              console.log(`GDrive: renamed folder "${oldName}" → "${dealName}"`);
+            const newFolderName = getCompanyFolderName(dealName, customer?.company || '').replace(/[/\\:*?"<>|]/g, '-').trim();
+            if (folderId && newFolderName && oldName !== newFolderName) {
+              await gdriveRenameFolder(folderId, newFolderName);
+              console.log(`GDrive: renamed folder "${oldName}" → "${newFolderName}"`);
             }
           } catch(e) { console.warn('GDrive rename error:', e.message); }
         }
@@ -2678,7 +2686,7 @@ const server = http.createServer(async (req, res) => {
         // Create Google Drive folder and upload quote PDF (non-blocking)
         (async () => {
           try {
-            await gdriveCreateDealFolders(finalDealName, quoteNumber);
+            await gdriveCreateDealFolders(finalDealName, quoteNumber, customer?.company || '');
             // Upload quote PDF to Google Drive
             const shareTokenQ = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
             const quoteUrl = `https://sales.whisperroom.com/q/${encodeURIComponent(quoteNumber)}${shareTokenQ ? '?t=' + shareTokenQ : ''}`;
@@ -3600,6 +3608,69 @@ tbody tr:hover td{background:#fdfcfb}
       }
     } catch(e) {
       console.warn('[invoice-webhook] error:', e.message);
+    }
+    return;
+  }
+
+  // ── Admin: Rename Drive folders to company-name format ────────
+  if (pathname === '/api/admin/rename-drive-folders' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+
+      let body = {};
+      try { body = JSON.parse(await readBody(req)); } catch(e) {}
+      const dryRun = parsedUrl.query?.dryRun === 'true' || body.dryRun === true;
+
+      // Get all quotes that have a gdrive_folder_id
+      const rows = await db.query(`
+        SELECT DISTINCT ON (gdrive_folder_id)
+          gdrive_folder_id, deal_name, company, customer_name,
+          json_snapshot->>'dealName' as snap_deal_name,
+          json_snapshot->'customer'->>'company' as snap_company
+        FROM quotes
+        WHERE gdrive_folder_id IS NOT NULL
+        ORDER BY gdrive_folder_id, created_at DESC
+      `);
+
+      const results = { dryRun, renamed: [], skipped: [], errors: [] };
+
+      for (const row of rows.rows) {
+        const folderId = row.gdrive_folder_id;
+        const dealName  = row.snap_deal_name || row.deal_name || '';
+        const company   = row.snap_company   || row.company   || '';
+
+        const newName = getCompanyFolderName(dealName, company)
+          .replace(/[/\:*?"<>|]/g, '-').trim();
+
+        if (!newName) { results.skipped.push({ folderId, reason: 'no name' }); continue; }
+
+        try {
+          // Get current folder name from Drive to check if rename needed
+          const current = await gdriveRequest('GET', `/drive/v3/files/${folderId}?fields=name&supportsAllDrives=true`);
+          const currentName = current?.name || '';
+
+          if (currentName === newName) {
+            results.skipped.push({ folderId, name: currentName, reason: 'already correct' });
+            continue;
+          }
+
+          if (dryRun) {
+            // Dry run — report what would happen, don't actually rename
+            results.renamed.push({ folderId, from: currentName, to: newName, dryRun: true });
+          } else {
+            await gdriveRenameFolder(folderId, newName);
+            console.log(`[rename-folders] "${currentName}" → "${newName}"`);
+            results.renamed.push({ folderId, from: currentName, to: newName });
+          }
+        } catch(e) {
+          results.errors.push({ folderId, error: e.message });
+        }
+      }
+
+      json({ success: true, ...results, total: rows.rows.length });
+    } catch(e) {
+      json({ error: e.message }, 500);
     }
     return;
   }

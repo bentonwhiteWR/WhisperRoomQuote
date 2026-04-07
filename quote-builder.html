@@ -764,6 +764,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
         </label>
       </div>
       <div id="billingFields" style="display:none">
+        <div class="field"><label>Billing Email</label><input type="text" id="billEmail" placeholder="billing@company.com"></div>
         <div class="field"><label>Address</label><input type="text" id="billAddress" placeholder="123 Main St"></div>
         <div class="form-grid cols-2">
           <div class="field"><label>City</label><input type="text" id="billCity" placeholder="Nashville"></div>
@@ -2278,10 +2279,11 @@ async function createDeal() {
           const same = document.getElementById('billsame') && document.getElementById('billsame').checked;
           if (same) return null;
           return {
+            email:   (document.getElementById('billEmail')   || {value:''}).value.trim(),
             address: (document.getElementById('billAddress') || {value:''}).value.trim(),
-            city: (document.getElementById('billCity') || {value:''}).value.trim(),
-            state: (document.getElementById('billState') || {value:''}).value.trim(),
-            zip: (document.getElementById('billZip') || {value:''}).value.trim(),
+            city:    (document.getElementById('billCity')    || {value:''}).value.trim(),
+            state:   (document.getElementById('billState')   || {value:''}).value.trim(),
+            zip:     (document.getElementById('billZip')     || {value:''}).value.trim(),
           };
         })(),
         existingContactId: existingContactId || null,
@@ -2397,6 +2399,17 @@ async function createDeal() {
         tax: taxData ? {...taxData} : null,
         accessories, notes: document.getElementById('notes').value.trim(), hubspotUrl: data.dealUrl,
         quoteLabel: (document.getElementById('quoteLabel') || {value:''}).value.trim(),
+        billing: (() => {
+          const same = document.getElementById('billsame') && document.getElementById('billsame').checked;
+          if (same) return null;
+          return {
+            email:   (document.getElementById('billEmail')   || {value:''}).value.trim(),
+            address: (document.getElementById('billAddress') || {value:''}).value.trim(),
+            city:    (document.getElementById('billCity')    || {value:''}).value.trim(),
+            state:   (document.getElementById('billState')   || {value:''}).value.trim(),
+            zip:     (document.getElementById('billZip')     || {value:''}).value.trim(),
+          };
+        })(),
       });
     } else {
       box.className = 'result-box error';
@@ -3055,6 +3068,30 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
     document.getElementById('shipCity').value = q.customer.city || '';
     document.getElementById('shipState').value = normalizeState(q.customer.state || '');
     document.getElementById('shipZip').value = q.customer.zip || '';
+
+  // Restore billing fields
+  if (q.billing && (q.billing.address || q.billing.email)) {
+    // Uncheck "same as shipping"
+    const sameChk = document.getElementById('billsame');
+    if (sameChk) { sameChk.checked = false; }
+    const billFields = document.getElementById('billingFields');
+    if (billFields) billFields.style.display = 'block';
+    const checkLabel = document.getElementById('check-billsame');
+    if (checkLabel) checkLabel.classList.remove('active');
+    document.getElementById('billEmail')   && (document.getElementById('billEmail').value   = q.billing.email   || '');
+    document.getElementById('billAddress') && (document.getElementById('billAddress').value = q.billing.address || '');
+    document.getElementById('billCity')    && (document.getElementById('billCity').value    = q.billing.city    || '');
+    document.getElementById('billState')   && (document.getElementById('billState').value   = q.billing.state   || '');
+    document.getElementById('billZip')     && (document.getElementById('billZip').value     = q.billing.zip     || '');
+  } else {
+    // Same as shipping — reset to checked state
+    const sameChk = document.getElementById('billsame');
+    if (sameChk) { sameChk.checked = true; }
+    const billFields = document.getElementById('billingFields');
+    if (billFields) billFields.style.display = 'none';
+    const checkLabel = document.getElementById('check-billsame');
+    if (checkLabel) checkLabel.classList.add('active');
+  }
 
     // Update the contact search field to show who this quote belongs to
     // so there's no confusion about which contact is loaded
@@ -3973,7 +4010,7 @@ function newQuote() {
   // Clear customer fields
   ['firstName','lastName','email','phone','company',
    'shipAddress','shipCity','shipState','shipZip',
-   'billAddress','billCity','billState','billZip'].forEach(id => {
+   'billAddress','billCity','billState','billZip','billEmail'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });

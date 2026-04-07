@@ -1143,6 +1143,12 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     </div>
     <div id="dealInvoiceList" style="display:flex;flex-direction:column;gap:6px"></div>
   </div>
+
+  <div id="summaryDeleteWrap" style="display:none;margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.1)">
+    <button onclick="deleteCurrentQuote()" style="width:100%;padding:8px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:6px;color:#ef4444;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
+      🗑 Delete This Quote
+    </button>
+  </div>
 </div>
 </div>
 
@@ -2987,10 +2993,39 @@ function renderHistory() {
           ${q.quoteNumber ? '<div style="font-size:10px;color:var(--dim);margin-top:2px;font-family:var(--mono)">' + q.quoteNumber + '</div>' : ''}
           <div class="history-item-total">${fmt(q.total || 0)}</div>
         </div>
-        ${q.dealId ? `<button onclick="event.stopPropagation();openDealHubById('${q.dealId}','${(q.dealName||'').replace(/'/g,"\\'")}','${q.customer?.company||''}')" style="flex-shrink:0;padding:4px 8px;font-size:9px;font-weight:700;background:rgba(62,207,142,.1);border:1px solid rgba(62,207,142,.25);border-radius:5px;color:rgba(62,207,142,.8);cursor:pointer;font-family:inherit;letter-spacing:.04em;white-space:nowrap">&#x25A6; HUB</button>` : ''}
+        <div style="display:flex;gap:5px;flex-shrink:0">
+          ${q.dealId ? `<button onclick="event.stopPropagation();openDealHubById('${q.dealId}','${(q.dealName||'').replace(/'/g,"\\'")}','${q.customer?.company||''}')" style="padding:4px 8px;font-size:9px;font-weight:700;background:rgba(62,207,142,.1);border:1px solid rgba(62,207,142,.25);border-radius:5px;color:rgba(62,207,142,.8);cursor:pointer;font-family:inherit;letter-spacing:.04em;white-space:nowrap">&#x25A6; HUB</button>` : ''}
+          ${q.quoteNumber ? `<button onclick="event.stopPropagation();deleteQuoteFromHistory('${q.quoteNumber}','${(q.dealName||q.customer?.company||'this quote').replace(/'/g,"\\'")}','${i}')" style="padding:4px 7px;font-size:11px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:5px;color:#ef4444;cursor:pointer;font-family:inherit" title="Delete quote">🗑</button>` : ''}
+        </div>
       </div>
     </div>`;
   }).join('');
+}
+
+async function deleteQuoteFromHistory(quoteNumber, label, idxStr) {
+  if (!confirm(`Delete quote "${quoteNumber}" (${label})?
+
+This removes it from the database. The HubSpot deal is not affected.`)) return;
+  try {
+    const res = await fetch(`/api/quotes/${encodeURIComponent(quoteNumber)}/delete`, {
+      method: 'DELETE',
+      credentials: 'include'
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    // Remove from local history array and re-render
+    allHistory = allHistory.filter(h => h.quoteNumber !== quoteNumber);
+    renderHistory();
+    // If the deleted quote is currently loaded, clear the quote number display
+    const loaded = document.getElementById('quoteNumHidden').value;
+    if (loaded === quoteNumber) {
+      document.getElementById('quoteNumDisplay').textContent = '—';
+      document.getElementById('quoteNumHidden').value = '';
+    }
+    showNotif('Quote deleted', 'success');
+  } catch(e) {
+    alert('Delete failed: ' + e.message);
+  }
 }
 
 function loadFromHistoryEntry(idOrIdx, skipClose = false) {
@@ -3821,6 +3856,10 @@ function activateLinkBtn() {
   btn.onclick = copyQuoteLink;
 
   // Also activate View Quote button
+  // Show/hide summary delete button based on whether a quote is loaded
+  const deleteWrap = document.getElementById('summaryDeleteWrap');
+  if (deleteWrap) deleteWrap.style.display = document.getElementById('quoteNumHidden').value ? 'block' : 'none';
+
   const vBtn = document.getElementById('viewQuoteBtn');
   if (vBtn) {
     vBtn.style.opacity = '1';
@@ -3835,6 +3874,30 @@ function activateLinkBtn() {
 function checkLinkBtnState() {
   const quoteNum = document.getElementById('quoteNumHidden')?.value;
   if (quoteNum) activateLinkBtn();
+}
+
+async function deleteCurrentQuote() {
+  const qn = document.getElementById('quoteNumHidden').value;
+  if (!qn) { showNotif('No quote loaded', 'error'); return; }
+  const dealName = document.getElementById('dealName').value || qn;
+  if (!confirm(`Delete quote "${qn}" (${dealName})?
+
+This removes it from the database. The HubSpot deal is not affected.`)) return;
+  try {
+    const res = await fetch(`/api/quotes/${encodeURIComponent(qn)}/delete`, {
+      method: 'DELETE',
+      credentials: 'include'
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    allHistory = allHistory.filter(h => h.quoteNumber !== qn);
+    renderHistory();
+    // Clear the current quote
+    newQuote();
+    showNotif('Quote deleted', 'success');
+  } catch(e) {
+    alert('Delete failed: ' + e.message);
+  }
 }
 
 function viewQuote() {
@@ -3937,6 +4000,10 @@ function newQuote() {
   // Clear quote label
   const qlEl = document.getElementById('quoteLabel');
   if (qlEl) qlEl.value = '';
+
+  // Hide delete button when quote is cleared
+  const delWrap = document.getElementById('summaryDeleteWrap');
+  if (delWrap) delWrap.style.display = 'none';
 
   // Clear contact badge
   document.getElementById('contactBadge').style.display = 'none';

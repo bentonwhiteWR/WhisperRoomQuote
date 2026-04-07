@@ -1153,6 +1153,28 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
 </div>
 </div>
 
+<!-- CONTACT REPLACE GUARD MODAL -->
+<div id="contactGuardOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9000;align-items:center;justify-content:center">
+  <div style="background:var(--surface,#1e1e1e);border-radius:14px;padding:32px;max-width:420px;width:90%;box-shadow:0 24px 60px rgba(0,0,0,.5);color:var(--text,#e8e8e8)">
+    <div style="font-size:18px;font-weight:700;margin-bottom:8px">⚠️ Quote Already in Progress</div>
+    <div style="font-size:13px;color:var(--muted,#aaa);line-height:1.6;margin-bottom:20px">
+      You're selecting a new contact but there's already a quote loaded (<span id="guardQuoteNum" style="color:var(--accent,#ee6216);font-family:var(--mono)"></span>).<br><br>
+      What would you like to do?
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button onclick="contactGuardStartFresh()" style="padding:12px;background:var(--accent,#ee6216);border:none;border-radius:8px;color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.03em">
+        🆕 Start Fresh — Clear quote &amp; load new contact
+      </button>
+      <button onclick="contactGuardKeepQuote()" style="padding:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:var(--text,#e8e8e8);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+        🔄 Keep Quote — Just update the contact info
+      </button>
+      <button onclick="contactGuardCancel()" style="padding:10px;background:none;border:none;color:var(--muted,#aaa);font-size:12px;cursor:pointer;font-family:inherit">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- DEAL HUB MODAL -->
 <div id="dealHubOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;align-items:flex-start;justify-content:center;padding:24px 16px;overflow-y:auto" onclick="if(event.target===this)closeDealHub()">
   <div style="background:var(--surface,#1a1a1a);border-radius:16px;width:100%;max-width:800px;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden;color:var(--text,#e8e8e8)">
@@ -2330,6 +2352,8 @@ async function createDeal() {
       }
       window._lastShareToken   = data.shareToken || null;
       window._loadedShareToken = data.shareToken || null; // keep in sync so copy link works after revision
+      window._contactSearchWarned = false; // reset guard after successful push
+      window._nameGuardShown = false;
 
       // Update dealName input with the actual name from HubSpot
       if (data.dealName) {
@@ -2496,6 +2520,21 @@ contactSearch.addEventListener('input', () => {
   clearTimeout(contactSearchTimeout);
   const q = contactSearch.value.trim();
   if (q.length < 2) { contactDropdown.classList.remove('open'); return; }
+
+  // If a quote is already in progress, warn before searching
+  const existingQuoteNum = document.getElementById('quoteNumHidden').value;
+  const hasItems = lineItems.length > 0;
+  const hasCustomer = document.getElementById('firstName').value.trim() || document.getElementById('email').value.trim();
+  if ((existingQuoteNum || hasItems) && hasCustomer && !window._contactSearchWarned) {
+    window._contactSearchWarned = true;
+    const qLabel = existingQuoteNum || 'an unsaved quote';
+    if (!confirm(`You have ${qLabel} in progress.\n\nSearching for a new contact will replace the current customer info.\n\nPress OK to continue searching, or Cancel to keep the current quote.`)) {
+      contactSearch.value = '';
+      contactDropdown.classList.remove('open');
+      return;
+    }
+  }
+
   contactDropdown.innerHTML = '<div class="product-option-empty">Searching...</div>';
   contactDropdown.classList.add('open');
   contactSearchTimeout = setTimeout(() => searchContacts(q), 300);
@@ -2536,6 +2575,26 @@ async function searchContacts(q) {
 }
 
 function fillContact(contact) {
+  // Check if a quote is already in progress
+  const existingQuoteNum = document.getElementById('quoteNumHidden').value;
+  const hasItems = lineItems.length > 0;
+  const hasCustomer = document.getElementById('firstName').value.trim() || document.getElementById('email').value.trim();
+
+  if ((existingQuoteNum || hasItems) && hasCustomer) {
+    // Stash the pending contact and show the guard modal
+    window._pendingContact = contact;
+    const guardNum = document.getElementById('guardQuoteNum');
+    if (guardNum) guardNum.textContent = existingQuoteNum || 'unsaved quote';
+    const overlay = document.getElementById('contactGuardOverlay');
+    if (overlay) overlay.style.display = 'flex';
+    contactDropdown.classList.remove('open');
+    return;
+  }
+  // No conflict — fill directly
+  _doFillContact(contact);
+}
+
+function _doFillContact(contact) {
   const p = contact.properties;
   document.getElementById('firstName').value = p.firstname || '';
   document.getElementById('lastName').value = p.lastname || '';
@@ -2567,11 +2626,51 @@ function fillContact(contact) {
   suggestDealsForContact(contact.id);
 }
 
+function contactGuardStartFresh() {
+  document.getElementById('contactGuardOverlay').style.display = 'none';
+  const contact = window._pendingContact;
+  window._pendingContact = null;
+  if (!contact) return;
+  // Clear everything first, then fill the new contact
+  newQuote(true); // pass flag to skip the "are you sure" confirm
+  _doFillContact(contact);
+}
+
+function contactGuardKeepQuote() {
+  document.getElementById('contactGuardOverlay').style.display = 'none';
+  const contact = window._pendingContact;
+  window._pendingContact = null;
+  if (!contact) return;
+  _doFillContact(contact);
+}
+
+function contactGuardCancel() {
+  document.getElementById('contactGuardOverlay').style.display = 'none';
+  window._pendingContact = null;
+  // Re-focus the contact search field
+  const cs = document.getElementById('contactSearch');
+  if (cs) { cs.value = ''; cs.focus(); }
+  contactDropdown.classList.remove('open');
+}
+
 // Show "New Contact" badge when manually typing in name fields
 ['firstName','lastName','email'].forEach(id => {
   document.getElementById(id).addEventListener('input', () => {
     if (!contactSearch.value) {
       document.getElementById('contactBadge').style.display = 'inline';
+    }
+    // Guard: warn if quote is in progress and this is a fresh edit (not restoring from history)
+    if (!window._suppressNameGuard) {
+      const existingQuoteNum = document.getElementById('quoteNumHidden').value;
+      const hasItems = lineItems.length > 0;
+      if ((existingQuoteNum || hasItems) && !window._nameGuardShown) {
+        window._nameGuardShown = true;
+        const qLabel = existingQuoteNum || 'an unsaved quote';
+        if (!confirm(`You have ${qLabel} in progress.\n\nEditing the customer name will modify the current quote.\n\nPress OK to continue editing, or Cancel to start a fresh quote instead.`)) {
+          // They want a fresh quote — clear everything
+          newQuote(true);
+        }
+      }
     }
   });
 });
@@ -3060,6 +3159,7 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   if (!q) return;
   if (!confirm('Load "' + (q.dealName || 'Untitled Quote') + '"? This will replace your current quote.')) return;
 
+  window._suppressNameGuard = true; // don't trigger guard during history restore
   if (q.customer) {
     ['firstName','lastName','email','phone','company'].forEach(f => {
       const el = document.getElementById(f); if(el) el.value = q.customer[f] || '';
@@ -3112,6 +3212,9 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
     if (vcBtn2) vcBtn2.style.display = 'none';
   }
 
+  window._suppressNameGuard = false; // re-enable guard after restore
+  window._nameGuardShown = false;
+  window._contactSearchWarned = false;
   window._loadedShareToken = q._shareToken || q.shareToken || null;
   window._lastShareToken   = null; // clear push token — loaded quote's token takes over
   console.log('[token] loaded quote:', q.quoteNumber, '| _shareToken:', q._shareToken, '| shareToken:', q.shareToken, '| set to:', window._loadedShareToken);
@@ -3998,8 +4101,8 @@ function emailViaHubSpot() {
 }
 
 // ── New Quote ────────────────────────────────────────────────────
-function newQuote() {
-  if (lineItems.length > 0 || document.getElementById('firstName').value.trim()) {
+function newQuote(skipConfirm = false) {
+  if (!skipConfirm && (lineItems.length > 0 || document.getElementById('firstName').value.trim())) {
     if (!confirm('Start a new quote? This will clear the current form.')) return;
   }
 
@@ -4060,6 +4163,7 @@ function newQuote() {
   document.getElementById('contactBadge').style.display = 'none';
   const contactSearch = document.getElementById('contactSearch');
   if (contactSearch) contactSearch.value = '';
+  window._contactSearchWarned = false;
 
   // Reset canadian/tax exempt
   // Force canada/international OFF — don't use toggleAcc (which inverts state)

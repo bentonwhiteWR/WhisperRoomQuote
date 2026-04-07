@@ -2418,6 +2418,11 @@ async function createDeal() {
   btn.disabled = true;
   const isRevision = !!(linkedDeal || selectedDeal);
   btn.innerHTML = '<span class="spinner-inline"></span>' + (isRevision ? 'Updating...' : 'Creating...');
+  // Disable view/copy buttons during push to prevent stale quote number being used
+  const viewBtn = document.getElementById('viewQuoteBtn');
+  const linkBtn2 = document.getElementById('copyLinkBtn');
+  if (viewBtn) viewBtn.disabled = true;
+  if (linkBtn2) linkBtn2.disabled = true;
 
   // Scoped variable for duplicate check result
   let existingContactId = null;
@@ -2621,6 +2626,11 @@ async function createDeal() {
   } finally {
     btn.disabled = false;
     updatePushButtonText();
+    // Re-enable view/copy buttons — they now have correct _lastPushedQuoteNumber
+    const vBtn2 = document.getElementById('viewQuoteBtn');
+    const lBtn2 = document.getElementById('copyLinkBtn');
+    if (vBtn2 && window._lastPushedQuoteNumber) vBtn2.disabled = false;
+    if (lBtn2 && window._lastPushedQuoteNumber) lBtn2.disabled = false;
   }
 }
 

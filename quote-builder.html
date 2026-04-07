@@ -3009,7 +3009,7 @@ function renderHistory() {
         </div>
         <div style="display:flex;gap:5px;flex-shrink:0">
           ${q.dealId ? `<button onclick="event.stopPropagation();openDealHubById('${q.dealId}','${(q.dealName||'').replace(/'/g,"\\'")}','${q.customer?.company||''}')" style="padding:4px 8px;font-size:9px;font-weight:700;background:rgba(62,207,142,.1);border:1px solid rgba(62,207,142,.25);border-radius:5px;color:rgba(62,207,142,.8);cursor:pointer;font-family:inherit;letter-spacing:.04em;white-space:nowrap">&#x25A6; HUB</button>` : ''}
-          ${q.quoteNumber ? `<button onclick="event.stopPropagation();deleteQuoteFromHistory('${q.quoteNumber}','${(q.dealName||q.customer?.company||'this quote').replace(/'/g,"\\'")}','${i}')" style="padding:4px 7px;font-size:11px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:5px;color:#ef4444;cursor:pointer;font-family:inherit" title="Delete quote">🗑</button>` : ''}
+
         </div>
       </div>
     </div>`;

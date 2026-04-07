@@ -1137,6 +1137,9 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
       Pallets: <span style="color:rgba(255,255,255,.85)" id="totalPallets">0</span>
     </div>
     <div id="palletDims" style="display:none;margin-top:6px"></div>
+    <button onclick="openIntlShipping()" style="margin-top:10px;width:100%;padding:7px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);border-radius:6px;color:rgba(255,255,255,.7);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
+      🌐 International Shipping Request
+    </button>
   </div>
 
   <!-- Deal Invoice Panel -->
@@ -1154,6 +1157,36 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     </button>
   </div>
 </div>
+</div>
+
+<!-- INTERNATIONAL SHIPPING MODAL -->
+<div id="intlShippingOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9000;align-items:center;justify-content:center">
+  <div style="background:var(--surface,#1e1e1e);border-radius:14px;padding:28px;max-width:460px;width:92%;box-shadow:0 24px 60px rgba(0,0,0,.5);color:var(--text,#e8e8e8);max-height:90vh;overflow-y:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div style="font-size:16px;font-weight:700">🌐 International Shipping Request</div>
+      <button onclick="document.getElementById('intlShippingOverlay').style.display='none'" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:0 4px;line-height:1">×</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Fills a shipping quote request email to international freight contacts.</div>
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Country</label>
+        <input type="text" id="intlCountry" placeholder="e.g. Australia, Germany, Japan..." style="width:100%;padding:8px 10px;background:var(--surface2,rgba(255,255,255,.08));border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;font-family:inherit;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Delivery Address</label>
+        <textarea id="intlAddress" rows="2" placeholder="Full delivery address..." style="width:100%;padding:8px 10px;background:var(--surface2,rgba(255,255,255,.08));border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
+      </div>
+
+      <div id="intlPalletSummary" style="background:rgba(255,255,255,.05);border-radius:6px;padding:10px 12px;font-size:12px;color:var(--muted)">
+        <!-- filled by openIntlShipping() -->
+      </div>
+
+      <button onclick="sendIntlShippingEmail()" style="padding:11px;background:var(--accent,#ee6216);border:none;border-radius:8px;color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.03em">
+        ✉ Open Email Draft
+      </button>
+    </div>
+  </div>
 </div>
 
 <!-- CONTACT REPLACE GUARD MODAL -->
@@ -1860,6 +1893,122 @@ function updateLineItem(id, field, value) {
   // Don't re-render on description/weight changes (would reset cursor)
   if (field === 'qty' || field === 'price') { renderLineItems(); updateSummary(); }
   if (field === 'weight') updateSummary();
+}
+
+function openIntlShipping() {
+  // Build pallet summary from current line items
+  let totalWeight = 0, totalPallets = 0;
+  const palletList = [];
+
+  lineItems.forEach(item => {
+    totalWeight += (parseFloat(item.weight) || 0) * (parseInt(item.qty) || 1);
+    const bd = BOOTH_DATA[item.name];
+    if (bd) {
+      const qty = parseInt(item.qty) || 1;
+      for (let q = 0; q < qty; q++) {
+        bd.pallets.forEach(p => palletList.push({ l: p.l, w: p.w, h: p.h }));
+      }
+      totalPallets += bd.pallets.length * qty;
+    }
+  });
+
+  const sub    = getSubtotal();
+  const disc   = getDiscountAmount();
+  const frt    = getFreightTotal();
+  const tx     = getTaxAmount();
+  const total  = sub - disc + frt + tx;
+  const fmt    = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+
+  // Pre-fill address from customer ship-to
+  const addr = [
+    document.getElementById('shipAddress').value.trim(),
+    document.getElementById('shipCity').value.trim(),
+    document.getElementById('shipState').value.trim(),
+    document.getElementById('shipZip').value.trim(),
+  ].filter(Boolean).join(', ');
+  const addrEl = document.getElementById('intlAddress');
+  if (addrEl && !addrEl.value) addrEl.value = addr;
+
+  // Show pallet summary
+  const summaryEl = document.getElementById('intlPalletSummary');
+  if (summaryEl) {
+    if (palletList.length === 0) {
+      summaryEl.innerHTML = '<span style="color:var(--muted)">No booth pallets detected — add line items first.</span>';
+    } else {
+      summaryEl.innerHTML =
+        `<div style="margin-bottom:6px;font-weight:600;color:var(--text)">Quote Summary</div>` +
+        palletList.map((p,i) => `<div>Pallet ${i+1}: ${p.l}"×${p.w}"×${p.h}"</div>`).join('') +
+        `<div style="margin-top:6px">Total Pallets: <b>${totalPallets}</b></div>` +
+        `<div>Total Weight: <b>${Math.round(totalWeight).toLocaleString()} lbs</b></div>` +
+        `<div>Quote Total: <b>${fmt(total)}</b></div>`;
+    }
+  }
+
+  document.getElementById('intlShippingOverlay').style.display = 'flex';
+}
+
+function sendIntlShippingEmail() {
+  const country  = (document.getElementById('intlCountry').value || '').trim();
+  const address  = (document.getElementById('intlAddress').value || '').trim();
+
+  // Re-calc everything
+  let totalWeight = 0, totalPallets = 0;
+  const palletList = [];
+  lineItems.forEach(item => {
+    totalWeight += (parseFloat(item.weight) || 0) * (parseInt(item.qty) || 1);
+    const bd = BOOTH_DATA[item.name];
+    if (bd) {
+      const qty = parseInt(item.qty) || 1;
+      for (let q = 0; q < qty; q++) {
+        bd.pallets.forEach(p => palletList.push({ l: p.l, w: p.w, h: p.h }));
+      }
+      totalPallets += bd.pallets.length * qty;
+    }
+  });
+
+  const sub   = getSubtotal();
+  const disc  = getDiscountAmount();
+  const frt   = getFreightTotal();
+  const tx    = getTaxAmount();
+  const total = sub - disc + frt + tx;
+  const fmt   = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+
+  const custName = [
+    document.getElementById('firstName').value.trim(),
+    document.getElementById('lastName').value.trim(),
+  ].filter(Boolean).join(' ') || document.getElementById('company').value.trim() || '—';
+
+  const palletText = palletList.length > 0
+    ? `${totalPallets} pallets all in inches\n` + palletList.map((p,i) => `Pallet ${i+1}: ${p.l}"×${p.w}"×${p.h}"`).join('\n')
+    : 'No pallet data available';
+
+  const body = [
+    'Hello,',
+    '',
+    `Could I receive an overseas ocean shipping quote (DAP) to ${country || '[Country]'}? Below are the details.`,
+    '',
+    `NAME: ${custName}`,
+    `ADDRESS: ${address || '[Delivery Address]'}`,
+    '',
+    `DIMS: ${palletText}`,
+    '',
+    `TOTAL WEIGHT: ${Math.round(totalWeight).toLocaleString()} lbs`,
+    '',
+    `PRICE: ${fmt(total)}`,
+    '',
+    'Please have this include insurance and transit time.',
+    '',
+    'Thank you!',
+  ].join('\n');
+
+  const to = 'jdominguez@arcb.com;cbentley@arcb.com;chsexp@johnsjames.com;edipietro@worldbridgelogistics.com';
+  const cc = 'chet@whisperroom.com';
+  const subject = `WhisperRoom Overseas Quote to ${country || '[Country]'}`;
+
+  const mailto = `mailto:${encodeURIComponent(to)}?cc=${encodeURIComponent(cc)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+  window.location.href = mailto;
+  document.getElementById('intlShippingOverlay').style.display = 'none';
 }
 
 function bakeInDiscount() {

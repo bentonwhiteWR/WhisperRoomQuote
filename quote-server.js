@@ -3787,7 +3787,7 @@ tbody tr:hover td{background:#fdfcfb}
         headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
       }, {
         inputs: invoiceIds.map(id => ({ id: String(id) })),
-        properties: ['hs_invoice_status','hs_due_date','hs_invoice_date','hs_number','hs_title','hs_amount_billed','hs_balance_due','hs_hubspot_invoice_link','quote_number']
+        properties: ['hs_invoice_status','hs_due_date','hs_invoice_date','hs_number','hs_title','hs_amount_billed','hs_balance_due','hs_hubspot_invoice_link','quote_number','hs_payment_method']
       });
 
       const invoices = (batchRes?.body?.results || []).map(inv => ({
@@ -3801,6 +3801,7 @@ tbody tr:hover td{background:#fdfcfb}
         balance:    inv.properties?.hs_balance_due || '0',
         invoiceUrl: inv.properties?.hs_hubspot_invoice_link || null,
         quoteNumber: inv.properties?.quote_number || '',
+        paymentMethod: inv.properties?.hs_payment_method || '',
       }));
 
       // Also check our DB for payment_link / invoice page URL
@@ -4585,7 +4586,7 @@ tbody tr:hover td{background:#fdfcfb}
             headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
           }, {
             inputs: invoiceIds.map(id => ({ id: String(id) })),
-            properties: ['hs_invoice_status','hs_invoice_date','hs_number','hs_title','hs_amount_billed','hs_balance_due','hs_hubspot_invoice_link','quote_number']
+            properties: ['hs_invoice_status','hs_invoice_date','hs_number','hs_title','hs_amount_billed','hs_balance_due','hs_hubspot_invoice_link','quote_number','hs_payment_method']
           });
           // Merge payment page URL from DB
           const dbInv = db ? (await db.query('SELECT quote_number, payment_link, share_token FROM quotes WHERE deal_id = $1 AND payment_link IS NOT NULL', [dealId])).rows : [];
@@ -4606,8 +4607,24 @@ tbody tr:hover td{background:#fdfcfb}
               hubspotUrl:     inv.properties?.hs_hubspot_invoice_link || null,
               quoteNumber:    inv.properties?.quote_number || '',
               paymentPageUrl: invPageUrl,
+              paymentMethod:  inv.properties?.hs_payment_method || '',
             };
           });
+
+          // Auto-sync: if any invoice is paid and deal payment_status isn't already paid, update it
+          const anyPaid = invoices.some(inv => inv.status === 'paid');
+          if (anyPaid && paymentStatus !== 'paid') {
+            paymentStatus = 'paid';
+            try {
+              await httpsRequest({
+                hostname: 'api.hubapi.com',
+                path: `/crm/v3/objects/deals/${dealId}`,
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+              }, { properties: { payment_status: 'paid' } });
+              console.log(`[deal hub] auto-synced payment_status=paid for deal ${dealId}`);
+            } catch(e) { console.warn('[deal hub] auto-sync payment_status failed:', e.message); }
+          }
         }
       } catch(e) { console.warn('Deal hub invoices error:', e.message); }
 

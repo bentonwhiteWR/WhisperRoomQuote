@@ -5204,6 +5204,78 @@ tbody tr:hover td{background:#fdfcfb}
     return;
   }
 
+  // ── API: Delete Quote (single quote record) ─────────────────────
+  if (pathname.startsWith('/api/quotes/') && pathname.endsWith('/delete') && req.method === 'DELETE') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const quoteNumber = decodeURIComponent(pathname.replace('/api/quotes/', '').replace('/delete', '').trim());
+    if (!quoteNumber) { json({ error: 'Quote number required' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      // Delete from orders table too if exists
+      await db.query('DELETE FROM orders WHERE quote_number = $1', [quoteNumber]);
+      await db.query('DELETE FROM notifications WHERE quote_num = $1', [quoteNumber]);
+      const res = await db.query('DELETE FROM quotes WHERE quote_number = $1 RETURNING quote_number', [quoteNumber]);
+      if (res.rows.length === 0) { json({ error: 'Quote not found' }, 404); return; }
+      console.log(`[delete] quote ${quoteNumber} deleted from DB`);
+      json({ success: true, deleted: quoteNumber });
+    } catch(e) {
+      console.error('[delete quote] error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Delete Deal (all quotes + orders for a deal, + HubSpot deal) ──
+  if (pathname.startsWith('/api/deals/') && pathname.endsWith('/delete') && req.method === 'DELETE') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const dealId = pathname.replace('/api/deals/', '').replace('/delete', '').trim();
+    if (!dealId) { json({ error: 'Deal ID required' }, 400); return; }
+    try {
+      let dbDeleted = { quotes: 0, orders: 0 };
+
+      if (db) {
+        // Get all quote numbers for this deal first
+        const qRows = await db.query('SELECT quote_number FROM quotes WHERE deal_id = $1', [dealId]);
+        const qNums = qRows.rows.map(r => r.quote_number);
+
+        if (qNums.length) {
+          // Delete orders, notifications, then quotes
+          await db.query('DELETE FROM orders WHERE deal_id = $1 OR quote_number = ANY($2)', [dealId, qNums]);
+          await db.query('DELETE FROM notifications WHERE deal_id = $1 OR quote_num = ANY($2)', [dealId, qNums]);
+          const del = await db.query('DELETE FROM quotes WHERE deal_id = $1 RETURNING quote_number', [dealId]);
+          dbDeleted.quotes = del.rows.length;
+        } else {
+          // No quotes but try cleaning up orders/notifications by deal_id anyway
+          await db.query('DELETE FROM orders WHERE deal_id = $1', [dealId]);
+          await db.query('DELETE FROM notifications WHERE deal_id = $1', [dealId]);
+        }
+      }
+
+      // Delete from HubSpot
+      let hubspotDeleted = false;
+      try {
+        const hsRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v3/objects/deals/${dealId}`,
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+        });
+        // HubSpot returns 204 on success
+        hubspotDeleted = hsRes.status === 204 || hsRes.status === 200;
+        console.log(`[delete] HubSpot deal ${dealId} deleted: status ${hsRes.status}`);
+      } catch(e) {
+        console.warn(`[delete] HubSpot deal deletion failed: ${e.message}`);
+      }
+
+      console.log(`[delete] deal ${dealId} — DB quotes: ${dbDeleted.quotes}, HubSpot: ${hubspotDeleted}`);
+      json({ success: true, dealId, dbDeleted, hubspotDeleted });
+    } catch(e) {
+      console.error('[delete deal] error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── API: List Orders ──────────────────────────────────────────────
   if (pathname === '/api/orders' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

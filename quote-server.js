@@ -5923,7 +5923,17 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       console.log(`Order processed: ${quoteNumber}, deal ${dealId} → closedwon`);
       json({ success: true, orderUrl });
 
-      // PDF auto-upload to Drive — pending Workspace provisioning
+      // Upload order PDF to shared orders folder (non-blocking)
+      (async () => {
+        try {
+          const SHARED_ORDERS_FOLDER = '0AKEFNM5_Dl8jUk9PVA';
+          const safeNameO = (dealName || quoteNumber).replace(/[/\\:*?"<>|]/g, '-').trim();
+          const pdfBufO = await generatePdfBuffer(orderUrl);
+          const filename = `${quoteNumber} — ${safeNameO} (Order).pdf`;
+          await gdriveUploadFilePdf(filename, pdfBufO, SHARED_ORDERS_FOLDER);
+          console.log(`[process-order] PDF saved to shared orders folder: ${filename}`);
+        } catch(e) { console.warn('[process-order] GDrive PDF error:', e.message); }
+      })();
 
     } catch(e) {
       console.error('Process order error:', e.message);

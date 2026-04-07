@@ -1044,12 +1044,12 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
   </div>
 
   <div style="margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,.1)">
-    <div class="summary-title">Deal / Quote #</div>
-    <div style="margin-top:8px;font-family:var(--mono);font-size:16px;font-weight:600;color:var(--accent);letter-spacing:.05em;" id="quoteNumDisplay">—</div>
-    <input type="hidden" id="quoteNumHidden" value="">
-    <div id="revisionNote" style="display:none;margin-top:6px;font-size:10px;color:rgba(238,98,22,.8);font-weight:600;letter-spacing:.03em">
-      &#x21AA; Revision will be: <span id="revisionNextNum"></span>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <div class="summary-title" style="margin-bottom:0">Quote Number</div>
+      <div id="revisionNote" style="display:none;font-size:10px;color:rgba(238,98,22,.8);font-weight:600;letter-spacing:.03em">&#x21AA; Rev: <span id="revisionNextNum"></span></div>
     </div>
+    <div style="margin-top:8px;font-family:var(--mono);font-size:14px;font-weight:600;color:var(--accent);letter-spacing:.05em;" id="quoteNumDisplay">—</div>
+    <input type="hidden" id="quoteNumHidden" value="">
   </div>
 
   <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,.1)">

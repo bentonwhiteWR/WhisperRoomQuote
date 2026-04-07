@@ -2522,14 +2522,18 @@ contactSearch.addEventListener('input', () => {
   if (q.length < 2) { contactDropdown.classList.remove('open'); return; }
 
   // If a quote is already in progress, warn before searching
-  const existingQuoteNum = document.getElementById('quoteNumHidden').value;
-  const hasItems = lineItems.length > 0;
-  const hasCustomer = document.getElementById('firstName').value.trim() || document.getElementById('email').value.trim();
-  if ((existingQuoteNum || hasItems) && hasCustomer && !window._contactSearchWarned) {
-    window._contactSearchWarned = true;
-    const qLabel = existingQuoteNum || 'an unsaved quote';
-    if (!confirm(`You have ${qLabel} in progress.\n\nSearching for a new contact will replace the current customer info.\n\nPress OK to continue searching, or Cancel to keep the current quote.`)) {
-      contactSearch.value = '';
+  if (!window._contactSearchWarned) {
+    const existingQuoteNum = document.getElementById('quoteNumHidden').value;
+    const hasItems = lineItems.length > 0;
+    const hasExistingCustomer = window._loadedContactId || window._lastPushedContactId;
+    if ((existingQuoteNum || hasItems) && hasExistingCustomer) {
+      window._contactSearchWarned = true;
+      // Stash search value and show modal
+      window._pendingContactSearch = contactSearch.value;
+      const guardNum = document.getElementById('guardQuoteNum');
+      if (guardNum) guardNum.textContent = existingQuoteNum || 'unsaved quote';
+      const overlay = document.getElementById('contactGuardOverlay');
+      if (overlay) overlay.style.display = 'flex';
       contactDropdown.classList.remove('open');
       return;
     }
@@ -2630,23 +2634,37 @@ function contactGuardStartFresh() {
   document.getElementById('contactGuardOverlay').style.display = 'none';
   const contact = window._pendingContact;
   window._pendingContact = null;
-  if (!contact) return;
-  // Clear everything first, then fill the new contact
-  newQuote(true); // pass flag to skip the "are you sure" confirm
-  _doFillContact(contact);
+  window._nameGuardTriggeredBy = null;
+  window._pendingContactSearch = null;
+  // Clear everything first
+  newQuote(true);
+  // If a contact was selected from dropdown, fill it
+  if (contact) _doFillContact(contact);
 }
 
 function contactGuardKeepQuote() {
   document.getElementById('contactGuardOverlay').style.display = 'none';
   const contact = window._pendingContact;
   window._pendingContact = null;
-  if (!contact) return;
-  _doFillContact(contact);
+  window._nameGuardTriggeredBy = null;
+  // If a pending contact search value exists, re-trigger search
+  if (window._pendingContactSearch) {
+    const searchVal = window._pendingContactSearch;
+    window._pendingContactSearch = null;
+    const cs = document.getElementById('contactSearch');
+    if (cs) { cs.value = searchVal; searchContacts(searchVal); }
+  }
+  // If a contact was selected from dropdown, fill it
+  if (contact) _doFillContact(contact);
 }
 
 function contactGuardCancel() {
   document.getElementById('contactGuardOverlay').style.display = 'none';
   window._pendingContact = null;
+  window._pendingContactSearch = null;
+  window._nameGuardTriggeredBy = null;
+  window._nameGuardShown = false;
+  window._contactSearchWarned = false;
   // Re-focus the contact search field
   const cs = document.getElementById('contactSearch');
   if (cs) { cs.value = ''; cs.focus(); }
@@ -2660,16 +2678,18 @@ function contactGuardCancel() {
       document.getElementById('contactBadge').style.display = 'inline';
     }
     // Guard: warn if quote is in progress and this is a fresh edit (not restoring from history)
-    if (!window._suppressNameGuard) {
+    if (!window._suppressNameGuard && !window._nameGuardShown) {
       const existingQuoteNum = document.getElementById('quoteNumHidden').value;
       const hasItems = lineItems.length > 0;
-      if ((existingQuoteNum || hasItems) && !window._nameGuardShown) {
+      const hasExistingCustomer = window._loadedContactId || window._lastPushedContactId;
+      if ((existingQuoteNum || hasItems) && hasExistingCustomer) {
         window._nameGuardShown = true;
-        const qLabel = existingQuoteNum || 'an unsaved quote';
-        if (!confirm(`You have ${qLabel} in progress.\n\nEditing the customer name will modify the current quote.\n\nPress OK to continue editing, or Cancel to start a fresh quote instead.`)) {
-          // They want a fresh quote — clear everything
-          newQuote(true);
-        }
+        // Stash the field that triggered this so we can handle it properly
+        window._nameGuardTriggeredBy = id;
+        const guardNum = document.getElementById('guardQuoteNum');
+        if (guardNum) guardNum.textContent = existingQuoteNum || 'unsaved quote';
+        const overlay = document.getElementById('contactGuardOverlay');
+        if (overlay) overlay.style.display = 'flex';
       }
     }
   });

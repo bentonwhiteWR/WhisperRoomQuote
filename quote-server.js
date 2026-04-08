@@ -6024,20 +6024,22 @@ tbody tr:hover td{background:#fdfcfb}
       // 5. HubSpot updates
       if (dealId) {
         try {
-          // Build properties to update — always write everything we have
-          // Use shipmentFields for regular saves, shipped for Ship It
+          // Write all fields unconditionally — same pattern as description
           const sf = shipped || shipmentFields || {};
-          console.log(`[orders] sf=${JSON.stringify(sf)} serialNumber=${serialNumber}`);
           const hsProps = {};
-          if (serialNumber !== undefined) hsProps.description = serialNumber || '';
-          if (sf.carrier)   hsProps.freight_carrier = hsCarrierEnum(sf.carrier);
-          if (sf.tracking)  hsProps.tracking_number = sf.tracking;
-          if (sf.date)      hsProps.date_shipped    = sf.date;
-          if (sf.boxes  !== undefined) hsProps.box_count    = parseInt(sf.boxes)  || 0;
-          if (sf.pallets !== undefined) hsProps.pallet_count = parseInt(sf.pallets) || 0;
-          if (sf.hardwareBox !== undefined) hsProps.hardware_box = parseInt(sf.hardwareBox) || 0;
+          // Always include every field we have, even if empty
+          hsProps.description     = serialNumber !== undefined ? String(serialNumber || '') : undefined;
+          hsProps.freight_carrier = hsCarrierEnum(sf.carrier || '');
+          hsProps.tracking_number = String(sf.tracking || '');
+          hsProps.date_shipped    = String(sf.date || '');
+          hsProps.box_count       = parseInt(sf.boxes) || 0;
+          hsProps.pallet_count    = parseInt(sf.pallets) || 0;
+          hsProps.hardware_box    = parseInt(sf.hardwareBox) || 0;
           if (freightCost !== undefined && freightCost !== null) hsProps.freight_cost = String(freightCost);
           if (markShipped && sf.tracking) hsProps.dealstage = '845719';
+          // Only remove truly undefined (not empty string or 0)
+          if (hsProps.description === undefined) delete hsProps.description;
+          console.log(`[orders] writing to HubSpot: ${JSON.stringify(hsProps)}`);
 
           if (Object.keys(hsProps).length > 0) {
             const hsRes = await httpsRequest({

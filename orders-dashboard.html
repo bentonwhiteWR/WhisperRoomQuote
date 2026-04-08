@@ -1120,7 +1120,9 @@ async function saveOrder() {
   const pallets      = document.getElementById('editPallets').value;
   const boxes        = document.getElementById('editBoxes').value;
   const freightCost  = parseFloat(document.getElementById('editFreightCost').value) || null;
-  const isShipping   = carrier && tracking;
+  // isShipping only true when BOTH carrier AND tracking filled — used only for change log
+  // We always preserve all shipment fields regardless
+  const isShipping   = !!(carrier && tracking);
 
   const customer = {
     firstName: document.getElementById('editFirstName').value.trim(),
@@ -1160,7 +1162,17 @@ async function saveOrder() {
     hingePreference: newHinge,
     productionNotes: newProdNotes,
     deliveryNotes:   newDelNotes,
-    shipped: isShipping ? { carrier, tracking, date: shipDate, pallets: parseInt(pallets)||0, boxes: parseInt(boxes)||0, hardwareBox } : (prevOd.shipped || null),
+    // Always persist all shipment fields — never wipe them on save
+    // Only mark as "shipped" (tracking present) if tracking is actually filled
+    shipped: {
+      ...(prevOd.shipped || {}),
+      carrier:     carrier     || prevOd.shipped?.carrier     || '',
+      tracking:    tracking    || prevOd.shipped?.tracking    || '',
+      date:        shipDate    || prevOd.shipped?.date        || '',
+      pallets:     parseInt(pallets) || prevOd.shipped?.pallets || 0,
+      boxes:       parseInt(boxes)   || prevOd.shipped?.boxes   || 0,
+      hardwareBox: hardwareBox || prevOd.shipped?.hardwareBox || '',
+    },
     freightCost,
     shipEmailTo,
     shipEmailCc,
@@ -1225,6 +1237,7 @@ async function openShipFromDrawer() {
           hardwareBox: hardwareBox || '',
         },
         freightCost: document.getElementById('editFreightCost')?.value ? parseFloat(document.getElementById('editFreightCost').value) : null,
+        markShipped: true,
         changes: [`Marked Shipped — ${carrier}, ${tracking}`],
         repName: getCurrentRep(),
       })
@@ -1232,6 +1245,7 @@ async function openShipFromDrawer() {
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Failed');
     showToast('✓ Order shipped!', 'success');
+    openShipEmail(); // auto-open email draft
     closeDrawer();
     loadOrders();
   } catch(e) {
@@ -1450,6 +1464,7 @@ async function confirmHsShip() {
         body: JSON.stringify({
           shipped: { carrier, tracking, date: shipDate, pallets: parseInt(pallets)||0, boxes: parseInt(boxes)||0 },
           freightCost: document.getElementById('editFreightCost')?.value ? parseFloat(document.getElementById('editFreightCost').value) : null,
+          markShipped: true,
           changes: [`Marked Shipped — ${carrier}, ${tracking}`],
           repName: getCurrentRep(),
         })

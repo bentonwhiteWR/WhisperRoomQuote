@@ -5849,6 +5849,8 @@ tbody tr:hover td{background:#fdfcfb}
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
       if (!db) { json({ orders: [] }); return; }
+
+      // 1. DB orders
       const result = await db.query(`
         SELECT
           o.quote_number,
@@ -5865,7 +5867,60 @@ tbody tr:hover td{background:#fdfcfb}
         LEFT JOIN quotes q ON q.quote_number = o.quote_number
         ORDER BY o.created_at DESC
       `);
-      json({ orders: result.rows });
+      const dbOrders = result.rows;
+      const dbDealIds = new Set(dbOrders.map(r => r.deal_id).filter(Boolean));
+
+      // 2. Pull HubSpot Closed Won + Shipped deals not already in DB
+      let hsOrders = [];
+      try {
+        const hsRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/deals/search',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, {
+          filterGroups: [
+            { filters: [{ propertyName: 'dealstage', operator: 'EQ', value: 'closedwon' }] },
+            { filters: [{ propertyName: 'dealstage', operator: 'EQ', value: '845719' }] }
+          ],
+          properties: ['dealname','amount','hubspot_owner_id','closedate','dealstage',
+                       'company','freight_carrier','tracking_number','date_shipped',
+                       'box_count','pallet_count','hardware_box','deal_description'],
+          sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
+          limit: 100
+        });
+
+        hsOrders = (hsRes.body?.results || [])
+          .filter(d => !dbDealIds.has(d.id))
+          .map(d => {
+            const p = d.properties || {};
+            const isShipped = p.dealstage === '845719';
+            return {
+              quote_number: `HS-${d.id}`,
+              deal_id:      d.id,
+              deal_name:    p.dealname || 'Unnamed Deal',
+              customer_name: p.dealname || '',
+              company:      p.company  || '',
+              total:        p.amount   || null,
+              order_data: {
+                source: 'hubspot',
+                shipped: isShipped && p.tracking_number ? {
+                  carrier:     p.freight_carrier  || '',
+                  tracking:    p.tracking_number  || '',
+                  date:        p.date_shipped     || '',
+                  boxes:       parseInt(p.box_count)   || 0,
+                  pallets:     parseInt(p.pallet_count) || 0,
+                  hardwareBox: p.hardware_box     || '',
+                } : null,
+              },
+              json_snapshot: null,
+              share_token:   null,
+              created_at:   p.closedate || '',
+            };
+          });
+      } catch(e) { console.warn('[orders] HubSpot merge failed:', e.message); }
+
+      json({ orders: [...dbOrders, ...hsOrders] });
     } catch(e) {
       console.error('List orders error:', e.message);
       json({ error: e.message }, 500);

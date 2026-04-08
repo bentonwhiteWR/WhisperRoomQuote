@@ -3815,9 +3815,14 @@ tbody tr:hover td{background:#fdfcfb}
       // Step 4: Delete legacy folder if all moved successfully
       if (errors.length === 0) {
         try {
-          await gdriveRequest('DELETE', `/drive/v3/files/${legacyFolderId}?supportsAllDrives=true`);
+          // Use PATCH to trash the folder — more reliable than DELETE for shared drives
+          await gdriveRequest('PATCH',
+            `/drive/v3/files/${legacyFolderId}?supportsAllDrives=true&fields=id`,
+            { trashed: true }
+          );
+          console.log(`[merge-legacy] Trashed legacy folder ${legacyFolderId}`);
         } catch(e) {
-          console.warn('[merge-legacy] Could not delete legacy folder:', e.message);
+          console.warn('[merge-legacy] Could not trash legacy folder:', e.message);
         }
       }
 

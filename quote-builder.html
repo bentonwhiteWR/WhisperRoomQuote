@@ -1054,6 +1054,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     </div>
     <div style="margin-top:8px;font-family:var(--mono);font-size:14px;font-weight:600;color:var(--accent);letter-spacing:.05em;" id="quoteNumDisplay">—</div>
     <input type="hidden" id="quoteNumHidden" value="">
+
   </div>
 
   <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,.1)">
@@ -1151,10 +1152,35 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     <div id="dealInvoiceList" style="display:flex;flex-direction:column;gap:6px"></div>
   </div>
 
-  <div id="summaryDeleteWrap" style="display:none;margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.1)">
-    <button onclick="deleteCurrentQuote()" style="width:100%;padding:8px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:6px;color:#ef4444;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
-      🗑 Delete This Quote
+  <!-- ⚙ Admin Foldout — hidden by default, always accessible -->
+  <div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08)">
+    <button onclick="toggleSidebarAdmin()" style="background:none;border:none;color:rgba(255,255,255,.2);font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:.08em;display:flex;align-items:center;gap:5px;padding:0;width:100%">
+      <span>⚙</span><span>Admin</span><span id="sidebarAdminCaret" style="font-size:8px;margin-left:2px">▼</span>
     </button>
+    <div id="sidebarAdminPanel" style="display:none;margin-top:12px">
+
+      <!-- Fix Quote Counter -->
+      <div style="margin-bottom:14px">
+        <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">Fix Quote Counter</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:10px;color:rgba(255,255,255,.25)">Set today's count to:</span>
+          <input type="number" id="quoteCounterOverride" min="0" max="99" placeholder="#"
+            style="width:48px;padding:5px 6px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:5px;color:#fff;font-size:11px;font-family:var(--mono);outline:none;text-align:center"
+            oninput="updateQuoteCounterPreview()">
+          <button onclick="applyQuoteCounterOverride()"
+            style="padding:5px 10px;background:rgba(238,98,22,.15);border:1px solid rgba(238,98,22,.3);border-radius:5px;color:#ee6216;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">Apply</button>
+        </div>
+        <div style="font-size:10px;color:rgba(255,255,255,.2);margin-top:5px">Next: <span id="quoteCounterPreview" style="font-family:var(--mono);color:rgba(255,255,255,.4)">—</span></div>
+      </div>
+
+      <!-- Delete Quote -->
+      <div id="summaryDeleteWrap" style="display:none">
+        <button onclick="deleteCurrentQuote()" style="width:100%;padding:8px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:6px;color:#ef4444;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
+          🗑 Delete This Quote
+        </button>
+      </div>
+
+    </div>
   </div>
 </div>
 </div>
@@ -1213,7 +1239,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
 
 <!-- DEAL HUB MODAL -->
 <div id="dealHubOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;align-items:flex-start;justify-content:center;padding:24px 16px;overflow-y:auto" onclick="if(event.target===this)closeDealHub()">
-  <div style="background:var(--surface,#1a1a1a);border-radius:16px;width:100%;max-width:800px;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden;color:var(--text,#e8e8e8)">
+  <div style="background:#1a1b1e;border-radius:16px;width:100%;max-width:800px;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden;color:#e8e6e3">
 
     <!-- Header -->
     <div style="padding:20px 24px 16px;border-bottom:1px solid var(--border,rgba(255,255,255,.08));display:flex;align-items:flex-start;justify-content:space-between;gap:16px">
@@ -1306,13 +1332,13 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
               <label style="font-size:10px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Fix Quote Counter for Today</label>
               <div style="display:flex;gap:8px;align-items:center">
                 <div style="font-size:11px;color:rgba(255,255,255,.3);flex-shrink:0">Set today's count to:</div>
-                <input type="number" id="quoteCounterOverride" min="0" max="99" placeholder="e.g. 3"
+                <input type="number" id="dhQuoteCounterOverride" min="0" max="99" placeholder="e.g. 3"
                   style="width:70px;padding:6px 8px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:12px;font-family:inherit;outline:none;text-align:center">
-                <button onclick="applyQuoteCounterOverride()"
+                <button onclick="applyQuoteCounterOverride('dh')"
                   style="padding:6px 12px;background:rgba(238,98,22,.2);border:1px solid rgba(238,98,22,.4);border-radius:6px;color:#ee6216;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Apply</button>
               </div>
-              <div style="font-size:10px;color:rgba(255,255,255,.25);margin-top:5px">Next quote will be: <span id="quoteCounterPreview" style="font-family:var(--mono);color:rgba(255,255,255,.5)"></span></div>
-              <div id="quoteCounterStatus" style="font-size:11px;color:rgba(255,255,255,.3);margin-top:4px"></div>
+              <div style="font-size:10px;color:rgba(255,255,255,.25);margin-top:5px">Next quote will be: <span id="dhQuoteCounterPreview" style="font-family:var(--mono);color:rgba(255,255,255,.5)"></span></div>
+              <div id="dhQuoteCounterStatus" style="font-size:11px;color:rgba(255,255,255,.3);margin-top:4px"></div>
             </div>
           </div>
         </div>
@@ -2631,7 +2657,14 @@ async function createDeal() {
       });
     } else {
       box.className = 'result-box error';
-      box.innerHTML = `✕ Error: ${data.error}`;
+      // Special handling for quote number collision
+      if (data.error && data.error.includes('already exists for a different customer')) {
+        box.innerHTML = `✕ Quote number collision — this number was already used. <strong>Click Push again</strong> to get a new number.`;
+        // Force a fresh quote number so the next push uses a new one
+        window._historicalQuoteLoaded = true;
+      } else {
+        box.innerHTML = `✕ Error: ${data.error}`;
+      }
     }
   } catch(e) {
     document.getElementById('resultBox').className = 'result-box error';
@@ -3325,7 +3358,7 @@ function renderHistory() {
     const repName = REP_NAMES[q.ownerId] || q.rep || '—';
     const custName = ((q.customer?.firstName || '') + ' ' + (q.customer?.lastName || '')).trim() || '—';
     const date = q.date || (q.savedAt ? new Date(q.savedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—');
-    return `<div class="history-item" onclick="loadFromHistoryEntry('${q.id || i}')">
+    return `<div class="history-item" onclick="loadFromHistoryEntry('${q.quoteNumber || q.id}')">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
         <div style="flex:1;min-width:0">
           <div class="history-item-name">${q.dealName || 'Untitled Quote'}${q.revision > 1 ? ' <span style="font-size:10px;color:var(--muted)">v' + q.revision + '</span>' : ''}</div>
@@ -3374,7 +3407,9 @@ This removes it from the database. The HubSpot deal is not affected.`)) return;
 }
 
 function loadFromHistoryEntry(idOrIdx, skipClose = false) {
-  const q = allHistory.find(h => h.id === idOrIdx) || allHistory[parseInt(idOrIdx)];
+  const q = allHistory.find(h => h.quoteNumber === idOrIdx) ||
+            allHistory.find(h => h.id === idOrIdx) ||
+            allHistory[parseInt(idOrIdx)];
   if (!q) return;
   if (!confirm('Load "' + (q.dealName || 'Untitled Quote') + '"? This will replace your current quote.')) return;
 
@@ -4883,8 +4918,21 @@ async function markDhQuotePaid(quoteNumber) {
   } catch(e) { showToast('Error: '+e.message, 'error'); }
 }
 
-function applyQuoteCounterOverride() {
-  const val = parseInt(document.getElementById('quoteCounterOverride').value);
+function toggleSidebarAdmin() {
+  const panel  = document.getElementById('sidebarAdminPanel');
+  const caret  = document.getElementById('sidebarAdminCaret');
+  const open   = panel.style.display === 'none';
+  panel.style.display = open ? 'block' : 'none';
+  if (caret) caret.textContent = open ? '▲' : '▼';
+  if (open) updateQuoteCounterPreview();
+}
+
+function applyQuoteCounterOverride(prefix) {
+  const inputId   = prefix === 'dh' ? 'dhQuoteCounterOverride' : 'quoteCounterOverride';
+  const previewId = prefix === 'dh' ? 'dhQuoteCounterPreview'  : 'quoteCounterPreview';
+  const statusId  = prefix === 'dh' ? 'dhQuoteCounterStatus'   : null;
+
+  const val = parseInt(document.getElementById(inputId).value);
   if (isNaN(val) || val < 0) {
     document.getElementById('quoteCounterStatus').textContent = 'Enter a valid number (0 or higher)';
     return;
@@ -4903,8 +4951,8 @@ function applyQuoteCounterOverride() {
   updateQuoteNumber();
 
   // Show preview
-  const preview = document.getElementById('quoteCounterPreview');
-  const status  = document.getElementById('quoteCounterStatus');
+  const preview = document.getElementById(previewId);
+  const status  = statusId ? document.getElementById(statusId) : null;
   if (preview) preview.textContent = document.getElementById('quoteNumHidden').value || generateQuoteNumber(repId);
   if (status)  status.textContent  = '✓ Counter set — next new quote will use this sequence';
   setTimeout(() => { if (status) status.textContent = ''; }, 4000);

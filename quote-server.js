@@ -3620,7 +3620,8 @@ tbody tr:hover td{background:#fdfcfb}
 
       let body = {};
       try { body = JSON.parse(await readBody(req)); } catch(e) {}
-      const dryRun = parsedUrl.query?.dryRun === 'true' || body.dryRun === true;
+      const urlParams = new URLSearchParams(req.url.includes('?') ? req.url.split('?')[1] : '');
+      const dryRun = urlParams.get('dryRun') === 'true' || body.dryRun === true;
 
       // Get all quotes that have a gdrive_folder_id
       const rows = await db.query(`

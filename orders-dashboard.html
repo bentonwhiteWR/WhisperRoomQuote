@@ -1198,6 +1198,11 @@ async function saveOrder() {
   chk('Freight Cost', prevOd.freightCost ? '$'+prevOd.freightCost : '', freightCost ? '$'+freightCost : '');
 
   const hardwareBox = document.getElementById('editHardwareBox')?.value.trim() || '';
+  const carrier  = document.getElementById('editCarrier').value;
+  const tracking = document.getElementById('editTracking').value.trim();
+  const shipDate = document.getElementById('editShipDate').value;
+  const pallets  = document.getElementById('editPallets').value;
+  const boxes    = document.getElementById('editBoxes').value;
   const { to: shipEmailTo, cc: shipEmailCc } = getShipEmailAddresses();
 
   const payload = {
@@ -1207,8 +1212,8 @@ async function saveOrder() {
     serialNumber:    newSerial,
     productionNotes: newProdNotes,
     deliveryNotes:   newDelNotes,
-    // Do NOT include shipped here — shipping is managed exclusively by Ship It button
-    // This prevents Save from accidentally marking orders as shipped
+    // Include shipment fields for HubSpot sync — markShipped NOT set so deal stage won't advance
+    shipmentFields: { carrier, tracking, date: shipDate, pallets, boxes, hardwareBox },
     freightCost,
     shipEmailTo,
     shipEmailCc,

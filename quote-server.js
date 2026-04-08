@@ -6024,39 +6024,27 @@ tbody tr:hover td{background:#fdfcfb}
       // 5. HubSpot updates
       if (dealId) {
         try {
-          // Always update serial number / deal description when provided
-          if (serialNumber !== undefined) {
-            console.log(`[orders] writing serial_number to HubSpot deal ${dealId}: "${serialNumber}"`);
-            const hsResult = await httpsRequest({
+          // Build properties to update — always write everything we have
+          const hsProps = {};
+          if (serialNumber !== undefined) hsProps.description = serialNumber || '';
+          if (shipped?.carrier)   hsProps.freight_carrier = hsCarrierEnum(shipped.carrier);
+          if (shipped?.tracking)  hsProps.tracking_number = shipped.tracking;
+          if (shipped?.date)      hsProps.date_shipped    = shipped.date;
+          if (shipped?.boxes  !== undefined) hsProps.box_count    = parseInt(shipped.boxes)  || 0;
+          if (shipped?.pallets !== undefined) hsProps.pallet_count = parseInt(shipped.pallets) || 0;
+          if (shipped?.hardwareBox !== undefined) hsProps.hardware_box = parseInt(shipped.hardwareBox) || 0;
+          if (freightCost !== undefined && freightCost !== null) hsProps.freight_cost = String(freightCost);
+          if (markShipped && shipped?.tracking) hsProps.dealstage = '845719';
+
+          if (Object.keys(hsProps).length > 0) {
+            const hsRes = await httpsRequest({
               hostname: 'api.hubapi.com',
               path: `/crm/v3/objects/deals/${dealId}`,
               method: 'PATCH',
               headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-            }, { properties: { description: serialNumber || '' } });
-            console.log(`[orders] HubSpot deal_description write status: ${hsResult.status}`);
-          }
-          // Only push shipping fields to HubSpot when explicitly marking shipped (Ship It button)
-          console.log(`[orders] markShipped=${markShipped} isNowShipped=${isNowShipped} dealId=${dealId} tracking=${shipped?.tracking}`);
-          if (markShipped && isNowShipped) {
-            const _hsShipRes = await httpsRequest({
-              hostname: 'api.hubapi.com',
-              path: `/crm/v3/objects/deals/${dealId}`,
-              method: 'PATCH',
-              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-            }, {
-              properties: {
-                dealstage: '845719',
-                freight_carrier: hsCarrierEnum(shipped.carrier),
-                tracking_number: shipped.tracking || '',
-                date_shipped: shipped.date || new Date().toISOString().split('T')[0],
-                box_count: parseInt(shipped.boxes)||0,
-                pallet_count: parseInt(shipped.pallets)||0,
-                hardware_box: parseInt(shipped.hardwareBox)||0,
-                ...(freightCost !== undefined && freightCost !== null ? { freight_cost: String(freightCost) } : {}),
-              }
-            });
-            console.log(`[orders] Ship HubSpot status: ${_hsShipRes.status} carrier=${hsCarrierEnum(shipped.carrier)} tracking=${shipped.tracking}`);
-            if (_hsShipRes.status >= 400) console.error('[orders] Ship HubSpot error:', JSON.stringify(_hsShipRes.body)?.slice(0,300));
+            }, { properties: hsProps });
+            console.log(`[orders] HubSpot write status: ${hsRes.status} props: ${Object.keys(hsProps).join(',')}`);
+            if (hsRes.status >= 400) console.error('[orders] HubSpot error:', JSON.stringify(hsRes.body)?.slice(0,300));
           }
           // Address update
           if (customer?.address) {

@@ -147,6 +147,21 @@ function getCompanyFolderName(dealName, companyName) {
   return (dealName || '').replace(/\s*[·—\-–]\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\s*$/i, '').trim() || dealName;
 }
 
+
+// Map full carrier names to HubSpot freight_carrier enum values
+function hsCarrierEnum(carrier) {
+  if (!carrier) return '';
+  const c = carrier.toLowerCase();
+  if (c.includes('abf'))          return 'ABF';
+  if (c.includes('old dominion') || c === 'od') return 'OD';
+  if (c.includes('fedex'))        return 'FedEx';
+  if (c.includes('ups'))          return 'UPS';
+  if (c.includes('usps'))         return 'USPS';
+  if (c.includes('saia'))         return 'SAIA';
+  if (c.includes('yrc'))          return 'YRC';
+  return 'Other';
+}
+
 async function gdriveCreateDealFolders(dealName, quoteNumber, companyName) {
   try {
     const folderName = getCompanyFolderName(dealName, companyName);
@@ -5404,13 +5419,12 @@ tbody tr:hover td{background:#fdfcfb}
       }, {
         properties: {
           dealstage: '845719',
-          freight_carrier: carrier,
-          carrier__c: carrier,
+          freight_carrier: hsCarrierEnum(carrier),
           tracking_number: tracking,
           date_shipped: shipDate || new Date().toISOString().split('T')[0],
-          box_count: String(parseInt(boxes)||0),
-          pallet_count: String(parseInt(pallets)||0),
-          hardware_box: hardwareBox || '',
+          box_count: parseInt(boxes)||0,
+          pallet_count: parseInt(pallets)||0,
+          hardware_box: parseInt(hardwareBox)||0,
         }
       });
 
@@ -6018,7 +6032,7 @@ tbody tr:hover td{background:#fdfcfb}
               path: `/crm/v3/objects/deals/${dealId}`,
               method: 'PATCH',
               headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-            }, { properties: { deal_description: serialNumber || '' } });
+            }, { properties: { description: serialNumber || '' } });
             console.log(`[orders] HubSpot deal_description write status: ${hsResult.status}`);
           }
           // Only push shipping fields to HubSpot when explicitly marking shipped (Ship It button)
@@ -6031,13 +6045,12 @@ tbody tr:hover td{background:#fdfcfb}
             }, {
               properties: {
                 dealstage: '845719',
-                freight_carrier: shipped.carrier || '',
-                carrier__c: shipped.carrier || '',
+                freight_carrier: hsCarrierEnum(shipped.carrier),
                 tracking_number: shipped.tracking || '',
                 date_shipped: shipped.date || new Date().toISOString().split('T')[0],
-                box_count: String(shipped.boxes||0),
-                pallet_count: String(shipped.pallets||0),
-                hardware_box: shipped.hardwareBox || '',
+                box_count: parseInt(shipped.boxes)||0,
+                pallet_count: parseInt(shipped.pallets)||0,
+                hardware_box: parseInt(shipped.hardwareBox)||0,
                 ...(freightCost !== undefined && freightCost !== null ? { freight_cost: String(freightCost) } : {}),
               }
             });

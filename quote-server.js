@@ -5389,7 +5389,7 @@ tbody tr:hover td{background:#fdfcfb}
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
       const body = JSON.parse(await readBody(req));
-      const { dealId, dealName, carrier, tracking, shipDate, pallets, boxes, repName } = body;
+      const { dealId, dealName, carrier, tracking, shipDate, pallets, boxes, hardwareBox, repName } = body;
 
       if (!dealId || !carrier || !tracking) {
         json({ error: 'dealId, carrier and tracking are required' }, 400); return;
@@ -5404,9 +5404,13 @@ tbody tr:hover td{background:#fdfcfb}
       }, {
         properties: {
           dealstage: '845719',
+          freight_carrier: carrier,
           carrier__c: carrier,
           tracking_number: tracking,
           date_shipped: shipDate || new Date().toISOString().split('T')[0],
+          box_count: String(parseInt(boxes)||0),
+          pallet_count: String(parseInt(pallets)||0),
+          hardware_box: hardwareBox || '',
         }
       });
 
@@ -5414,7 +5418,7 @@ tbody tr:hover td{background:#fdfcfb}
       if (db) {
         try {
           const orderData = {
-            shipped: { carrier, tracking, date: shipDate, pallets: parseInt(pallets)||0, boxes: parseInt(boxes)||0 },
+            shipped: { carrier, tracking, date: shipDate, pallets: parseInt(pallets)||0, boxes: parseInt(boxes)||0, hardwareBox: hardwareBox||'' },
             processedAt: new Date().toISOString(),
             changeLog: [{
               at: new Date().toISOString(),
@@ -5890,9 +5894,13 @@ tbody tr:hover td{background:#fdfcfb}
             }, {
               properties: {
                 dealstage: '845719',
+                freight_carrier: shipped.carrier || '',
                 carrier__c: shipped.carrier || '',
                 tracking_number: shipped.tracking || '',
                 date_shipped: shipped.date || new Date().toISOString().split('T')[0],
+                box_count: String(shipped.boxes||0),
+                pallet_count: String(shipped.pallets||0),
+                hardware_box: shipped.hardwareBox || '',
                 ...(freightCost ? { freight_cost: String(freightCost) } : {}),
               }
             });

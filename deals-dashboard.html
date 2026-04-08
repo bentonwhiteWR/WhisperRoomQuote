@@ -481,6 +481,7 @@ function renderHub(dealId,data) {
           </div>
         </div>
         <a href="https://app.hubspot.com/contacts/5764220/deal/${dealId}" target="_blank" style="font-size:10px;color:var(--muted);text-decoration:none;padding:4px 8px;border-radius:5px;border:1px solid var(--border);flex-shrink:0">HS ↗</a>
+        <button onclick="openMergeLegacy('${dealId}')" title="Merge a legacy AllContacts folder into this deal" style="font-size:10px;color:var(--muted);padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">📁 Merge Legacy</button>
       </div>
       <div class="hub-actions">
         <button class="btn btn-orange" onclick="newQuoteForDeal('${dealId}','${(deal.name||'').replace(/'/g,"\\'")}')">+ New Quote</button>
@@ -933,5 +934,153 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
     <div class="notif-empty">No notifications</div>
   </div>
 </div>
+<!-- ── Merge Legacy Folder Modal ─────────────────────────────────── -->
+<div id="mergeLegacyModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:400;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border-radius:14px;padding:28px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+    <h2 style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px">📁 Merge Legacy Folder</h2>
+    <div id="mergeLegacyDealName" style="font-size:12px;color:var(--muted);margin-bottom:20px"></div>
+
+    <!-- Step 1: Search -->
+    <div id="mergeLegacyStep1">
+      <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px">Search AllContacts folder by name</label>
+      <div style="display:flex;gap:8px">
+        <input id="mergeLegacySearch" type="text" placeholder="e.g. Josie OGara or University of Texas"
+          style="flex:1;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none"
+          oninput="mergeLegacySearchDebounce()" />
+        <button onclick="runMergeLegacySearch()" style="padding:9px 14px;background:var(--orange);color:white;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Search</button>
+      </div>
+      <div id="mergeLegacyResults" style="margin-top:12px"></div>
+    </div>
+
+    <!-- Step 2: Confirm -->
+    <div id="mergeLegacyStep2" style="display:none">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Selected folder to merge</div>
+        <div id="mergeLegacySelectedName" style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px"></div>
+        <div style="font-size:11px;color:var(--muted)">All files will be moved into this deal's folder. The legacy folder will be deleted.</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="mergeLegacyConfirmBtn" onclick="confirmMergeLegacy()" style="flex:1;padding:13px;background:var(--green);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">✓ Confirm Merge</button>
+        <button onclick="mergeLegacyBack()" style="padding:13px 14px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">← Back</button>
+        <button onclick="closeMergeLegacy()" style="padding:13px 14px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Cancel (step 1) -->
+    <div id="mergeLegacyStep1Cancel" style="margin-top:16px;text-align:right">
+      <button onclick="closeMergeLegacy()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Merge Legacy Folder ───────────────────────────────────────────
+let _mergeLegacyDealId = null;
+let _mergeLegacySelectedFolder = null;
+let _mergeLegacySearchTimer = null;
+
+function openMergeLegacy(dealId) {
+  _mergeLegacyDealId = dealId;
+  _mergeLegacySelectedFolder = null;
+  const deal = allDeals.find(d => d.id === dealId) || {};
+  document.getElementById('mergeLegacyDealName').textContent = deal.name || dealId;
+  document.getElementById('mergeLegacySearch').value = deal.name
+    ? deal.name.replace(/\s*[·\-–—]\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\s*$/i, '').trim()
+    : '';
+  document.getElementById('mergeLegacyResults').innerHTML = '';
+  document.getElementById('mergeLegacyStep1').style.display = 'block';
+  document.getElementById('mergeLegacyStep1Cancel').style.display = 'block';
+  document.getElementById('mergeLegacyStep2').style.display = 'none';
+  document.getElementById('mergeLegacyModal').style.display = 'flex';
+}
+
+function closeMergeLegacy() {
+  document.getElementById('mergeLegacyModal').style.display = 'none';
+  _mergeLegacyDealId = null;
+  _mergeLegacySelectedFolder = null;
+}
+
+function mergeLegacyBack() {
+  document.getElementById('mergeLegacyStep2').style.display = 'none';
+  document.getElementById('mergeLegacyStep1').style.display = 'block';
+  document.getElementById('mergeLegacyStep1Cancel').style.display = 'block';
+  _mergeLegacySelectedFolder = null;
+}
+
+function mergeLegacySearchDebounce() {
+  clearTimeout(_mergeLegacySearchTimer);
+  _mergeLegacySearchTimer = setTimeout(runMergeLegacySearch, 400);
+}
+
+async function runMergeLegacySearch() {
+  const q = document.getElementById('mergeLegacySearch').value.trim();
+  if (!q) return;
+  const el = document.getElementById('mergeLegacyResults');
+  el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0">Searching…</div>';
+  try {
+    const res = await fetch(`/api/drive/search-legacy-folder?q=${encodeURIComponent(q)}`, { credentials: 'include' });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    if (!data.folders.length) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0">No folders found matching that name.</div>';
+      return;
+    }
+    el.innerHTML = data.folders.map(f => `
+      <div onclick="selectMergeLegacyFolder('${f.id}','${f.name.replace(/'/g,"\\'")}')"
+        style="padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;margin-bottom:6px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px">
+        📁 ${f.name}
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#ef4444;padding:8px 0">Error: ${e.message}</div>`;
+  }
+}
+
+function selectMergeLegacyFolder(id, name) {
+  _mergeLegacySelectedFolder = { id, name };
+  document.getElementById('mergeLegacySelectedName').textContent = name;
+  document.getElementById('mergeLegacyStep1').style.display = 'none';
+  document.getElementById('mergeLegacyStep1Cancel').style.display = 'none';
+  document.getElementById('mergeLegacyStep2').style.display = 'block';
+}
+
+async function confirmMergeLegacy() {
+  if (!_mergeLegacySelectedFolder || !_mergeLegacyDealId) return;
+  const deal = allDeals.find(d => d.id === _mergeLegacyDealId) || {};
+
+  // Find quote number for this deal if available
+  const hubData = window._lastHubData;
+  const quoteNumber = hubData?.quotes?.[0]?.quoteNumber || null;
+  const dealName = deal.name || '';
+  const companyName = hubData?.contact?.company || '';
+
+  const btn = document.getElementById('mergeLegacyConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Merging…';
+
+  try {
+    const res = await fetch('/api/drive/merge-legacy-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        legacyFolderId: _mergeLegacySelectedFolder.id,
+        quoteNumber,
+        dealName,
+        companyName,
+      })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    closeMergeLegacy();
+    showToast(`✓ ${data.message}`, 'success');
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✓ Confirm Merge';
+  }
+}
+</script>
+
 </body>
 </html>

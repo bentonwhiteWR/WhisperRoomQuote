@@ -5943,7 +5943,18 @@ tbody tr:hover td{background:#fdfcfb}
       if (!existing.rows[0]) { json({ error: 'Order not found' }, 404); return; }
 
       const currentOrderData = existing.rows[0].order_data || {};
-      const dealId = existing.rows[0].deal_id;
+      let dealId = existing.rows[0].deal_id;
+
+      // Fallback: if deal_id missing from orders table, look it up from quotes table
+      if (!dealId) {
+        const qRow = await db.query('SELECT deal_id FROM quotes WHERE quote_number = $1 AND deal_id IS NOT NULL LIMIT 1', [quoteNumber]);
+        if (qRow.rows[0]?.deal_id) {
+          dealId = qRow.rows[0].deal_id;
+          // Backfill it into orders table so we don't need to look it up next time
+          await db.query('UPDATE orders SET deal_id = $1 WHERE quote_number = $2', [dealId, quoteNumber]);
+          console.log(`[orders] backfilled deal_id ${dealId} for order ${quoteNumber}`);
+        }
+      }
       const wasShipped = !!(currentOrderData.shipped?.tracking);
       const isNowShipped = !!(shipped?.tracking);
 
@@ -6001,12 +6012,14 @@ tbody tr:hover td{background:#fdfcfb}
         try {
           // Always update serial number / deal description when provided
           if (serialNumber !== undefined) {
-            await httpsRequest({
+            console.log(`[orders] writing serial_number to HubSpot deal ${dealId}: "${serialNumber}"`);
+            const hsResult = await httpsRequest({
               hostname: 'api.hubapi.com',
               path: `/crm/v3/objects/deals/${dealId}`,
               method: 'PATCH',
               headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
             }, { properties: { deal_description: serialNumber || '' } });
+            console.log(`[orders] HubSpot deal_description write status: ${hsResult.status}`);
           }
           // Only push shipping fields to HubSpot when explicitly marking shipped (Ship It button)
           if (markShipped && isNowShipped) {

@@ -1163,11 +1163,11 @@ async function saveOrder() {
     productionNotes: newProdNotes,
     deliveryNotes:   newDelNotes,
     // Always persist all shipment fields — never wipe them on save
-    // Only mark as "shipped" (tracking present) if tracking is actually filled
+    // tracking is ONLY what the rep typed — never copy from prev (that would re-ship on Save)
     shipped: {
       ...(prevOd.shipped || {}),
       carrier:     carrier     || prevOd.shipped?.carrier     || '',
-      tracking:    tracking    || prevOd.shipped?.tracking    || '',
+      tracking:    tracking,
       date:        shipDate    || prevOd.shipped?.date        || '',
       pallets:     parseInt(pallets) || prevOd.shipped?.pallets || 0,
       boxes:       parseInt(boxes)   || prevOd.shipped?.boxes   || 0,
@@ -1344,98 +1344,23 @@ function setShipEmailAddresses(to, ccList) {
 }
 
 function openShipEmail() {
-  // Read from drawer fields (source of truth)
-  const carrier  = document.getElementById('editCarrier')?.value || document.getElementById('hsCarrier')?.value || '';
-  const tracking = (document.getElementById('editTracking')?.value || document.getElementById('hsTracking')?.value || '').trim();
-  const pallets  = document.getElementById('editPallets')?.value || document.getElementById('hsPallets')?.value || '0';
-  const boxes    = document.getElementById('editBoxes')?.value || document.getElementById('hsBoxes')?.value || '0';
-
   // Get To/CC from email fields; fall back to contact email if To is empty
   const { to: emailTo, cc: emailCc } = getShipEmailAddresses();
 
-  // Get customer info from current order
-  let firstName = '', customerEmail = '';
+  let customerEmail = '';
   if (currentQuoteNumber) {
     const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
-    const snap  = order?.json_snapshot || {};
-    const cust  = snap.customer || {};
-    firstName     = cust.firstName || '';
-    customerEmail = cust.email || '';
+    customerEmail = order?.json_snapshot?.customer?.email || '';
   }
 
-  // Use the To field if set, otherwise fall back to contact email
   const toAddress = emailTo || customerEmail || '';
 
-  // Carrier-specific details matching HubSpot template
-  let carrierLabel = carrier;
-  let carrierPhone = '';
-  let trackingUrl  = '';
-
-  if (carrier.includes('ABF')) {
-    carrierLabel = 'ABF Freight System, Inc.';
-    carrierPhone = '800-610-5544';
-    trackingUrl  = `https://view.arcb.com/nlo/tools/tracking/${tracking}`;
-  } else if (carrier.includes('Old Dominion')) {
-    carrierLabel = 'Old Dominion Freight Line';
-    carrierPhone = '800-432-6335';
-    trackingUrl  = 'https://www.odfl.com/us/en/tools/tracking.html';
-  } else if (carrier.includes('FedEx')) {
-    carrierLabel = 'FedEx Freight';
-    carrierPhone = '800-463-3339';
-    trackingUrl  = `https://www.fedex.com/fedextrack/?trknbr=${tracking}`;
-  } else if (carrier.includes('UPS')) {
-    carrierLabel = 'UPS Freight';
-    carrierPhone = '800-333-7400';
-    trackingUrl  = `https://www.ups.com/track?tracknum=${tracking}`;
-  }
-
-  const numBoxes   = parseInt(boxes)   || 0;
-  const numPallets = parseInt(pallets) || 0;
-  const totalShipment = [
-    numBoxes   > 0 ? `${numBoxes} box${numBoxes !== 1 ? 'es' : ''}` : null,
-    numPallets > 0 ? `on ${numPallets} pallet${numPallets !== 1 ? 's' : ''}` : null,
-  ].filter(Boolean).join(' ');
-
-  const subject = 'Shipping & Delivery Information for Your WhisperRoom Order';
-
-  const lines = [
-    `Hello ${firstName || 'there'},`,
-    '',
-    `Thank you for your recent WhisperRoom purchase! Below are the details you'll need to ensure a smooth delivery:`,
-    '',
-    `  • Carrier: ${carrierLabel}`,
-  ];
-  if (carrierPhone)  lines.push(`  • Phone: ${carrierPhone}`);
-  if (trackingUrl)   lines.push(`  • Tracking Website: ${trackingUrl}`);
-  if (tracking)      lines.push(`  • Tracking Number: ${tracking}`);
-  lines.push(`     (Please note: Tracking information may not appear in the carrier's system until later today or tomorrow.)`);
-  if (totalShipment) lines.push(`  • Total Shipment: ${totalShipment}`);
-  lines.push(`     (Your assembly instructions will be in Box #17, labeled "Hardware.")`);
-  lines.push('');
-  lines.push('Important Delivery Notes:');
-  lines.push('');
-  lines.push('  1. Inspect all items upon delivery BEFORE signing the delivery receipt.');
-  lines.push('  2. Note any damage, missing items, or shortages directly on the carrier\'s delivery receipt.');
-  lines.push('  3. Take photos of any damage before moving or unpacking items.');
-  lines.push('  4. Keep all original packaging materials until your booth is fully assembled and inspected.');
-  lines.push('');
-  lines.push('If you have questions or concerns about your shipment, please contact us:');
-  lines.push('  Email: shipping@whisperroom.com');
-  lines.push('  Phone: (865) 558-5500');
-  lines.push('');
-  lines.push('Thank you again for choosing WhisperRoom!');
-
-  const body = lines.join('\n');
+  // Open blank draft — addresses only, Jeromy loads template in client
   const ccStr = emailCc.length ? emailCc.join(',') : '';
-  // Build mailto — to/cc should NOT be encodeURIComponent'd, just the values after ?
-  let mailto = `mailto:${toAddress}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  if (ccStr) mailto += `&cc=${ccStr}`;
-  // Use window.open for reliability — window.location.href can be blocked
+  let mailto = `mailto:${toAddress}`;
+  if (ccStr) mailto += `?cc=${ccStr}`;
   const emailWin = window.open(mailto, '_blank');
-  if (!emailWin) {
-    // Fallback if popup blocked
-    window.location.href = mailto;
-  }
+  if (!emailWin) window.location.href = mailto;
 }
 
 async function confirmHsShip() {

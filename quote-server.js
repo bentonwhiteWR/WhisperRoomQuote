@@ -6036,8 +6036,9 @@ tbody tr:hover td{background:#fdfcfb}
             console.log(`[orders] HubSpot deal_description write status: ${hsResult.status}`);
           }
           // Only push shipping fields to HubSpot when explicitly marking shipped (Ship It button)
+          console.log(`[orders] markShipped=${markShipped} isNowShipped=${isNowShipped} dealId=${dealId} tracking=${shipped?.tracking}`);
           if (markShipped && isNowShipped) {
-            await httpsRequest({
+            const _hsShipRes = await httpsRequest({
               hostname: 'api.hubapi.com',
               path: `/crm/v3/objects/deals/${dealId}`,
               method: 'PATCH',
@@ -6054,6 +6055,8 @@ tbody tr:hover td{background:#fdfcfb}
                 ...(freightCost !== undefined && freightCost !== null ? { freight_cost: String(freightCost) } : {}),
               }
             });
+            console.log(`[orders] Ship HubSpot status: ${_hsShipRes.status} carrier=${hsCarrierEnum(shipped.carrier)} tracking=${shipped.tracking}`);
+            if (_hsShipRes.status >= 400) console.error('[orders] Ship HubSpot error:', JSON.stringify(_hsShipRes.body)?.slice(0,300));
           }
           // Address update
           if (customer?.address) {

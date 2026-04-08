@@ -3739,9 +3739,10 @@ tbody tr:hover td{background:#fdfcfb}
       if (!q) { json({ error: 'Missing q' }, 400); return; }
 
       // Search for folders in AllContacts root whose name contains the query (case-insensitive)
-      const escaped = q.replace(/'/g, "\\'");
+      const escaped = q.replace(/\\/g, '').replace(/'/g, "\\'");
+      const driveQ = `mimeType='application/vnd.google-apps.folder' and '${GDRIVE_ROOT_FOLDER}' in parents and name contains '${escaped}' and trashed=false`;
       const searchRes = await gdriveRequest('GET',
-        `/drive/v3/files?q=mimeType='application/vnd.google-apps.folder' and '${GDRIVE_ROOT_FOLDER}' in parents and name contains '${escaped}' and trashed=false&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true`
+        `/drive/v3/files?q=${encodeURIComponent(driveQ)}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true`
       );
 
       const folders = (searchRes?.files || []).map(f => ({ id: f.id, name: f.name }));

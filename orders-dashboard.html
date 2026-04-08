@@ -231,9 +231,9 @@
           <tr>
             <th>Deal Name</th>
             <th>MDL</th>
-            <th>Foam</th>
-            <th>Hinge</th>
-            <th>Total</th>
+            <th>Amount</th>
+            <th>Pallets</th>
+            <th>Ship Date</th>
             <th>Status</th>
             <th></th>
           </tr>
@@ -936,19 +936,19 @@ function renderOrders(orders) {
     return;
   }
   tbody.innerHTML = orders.map(o => {
-    const customer  = o.customer_name || '—';
-    const company   = o.company || '';
-    const foam      = o.order_data?.foamColor || '—';
-    const hinge     = o.order_data?.hingePreference || '—';
     const isShipped = !!(o.order_data?.shipped?.tracking);
     const total     = o.total ? fmt(o.total) : '—';
+    const pallets   = o.order_data?.shipped?.pallets || '—';
+    const shipDate  = o.order_data?.shipped?.date
+      ? new Date(o.order_data.shipped.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'America/New_York'})
+      : '—';
     const orderUrl  = `https://sales.whisperroom.com/o/${encodeURIComponent(o.quote_number)}${o.share_token ? '?t=' + o.share_token : ''}`;
     return `<tr onclick="openDrawer('${o.quote_number}')">
       <td><div class="td-main">${o.deal_name || o.quote_number}</div><div class="td-sub">${o.quote_number}</div></td>
       <td><div class="td-mono" style="font-size:11px">${(()=>{const items=(o.json_snapshot?.lineItems||[]).filter(i=>i?.name?.startsWith('MDL'));return items.length?items.map(i=>i.name).join(', '):'—';})()}</div></td>
-      <td><span class="badge badge-foam">${foam}</span></td>
-      <td><span class="badge badge-foam">${hinge}</span></td>
       <td style="font-weight:600;color:var(--orange)">${total}</td>
+      <td style="color:var(--muted);font-size:12px">${pallets}</td>
+      <td style="color:var(--muted);font-size:12px">${shipDate}</td>
       <td>${isShipped
         ? `<span class="badge" style="background:var(--green-dim);color:var(--green);border:1px solid rgba(34,197,94,.25)">✓ Shipped</span>`
         : `<span class="badge badge-production">In Production</span>`}
@@ -1040,7 +1040,7 @@ function openDrawer(quoteNumber) {
   document.getElementById('editFreightCost').value = od.freightCost || '';
 
   // Restore email addresses
-  const savedTo  = od.shipEmailTo  || snap?.customer?.email || '';
+  const savedTo  = od.shipEmailTo  || c?.email || '';
   const savedCc  = od.shipEmailCc  || [];
   setShipEmailAddresses(savedTo, savedCc);
 

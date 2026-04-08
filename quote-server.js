@@ -3784,8 +3784,9 @@ tbody tr:hover td{background:#fdfcfb}
       }
 
       // Step 2: List all files in legacy folder
+      const listQ = `'${legacyFolderId}' in parents and trashed=false`;
       const listRes = await gdriveRequest('GET',
-        `/drive/v3/files?q='${legacyFolderId}' in parents and trashed=false&fields=files(id,name,mimeType)&supportsAllDrives=true&includeItemsFromAllDrives=true`
+        `/drive/v3/files?q=${encodeURIComponent(listQ)}&fields=files(id,name,mimeType)&supportsAllDrives=true&includeItemsFromAllDrives=true`
       );
       const files = listRes?.files || [];
 

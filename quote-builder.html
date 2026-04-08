@@ -2561,6 +2561,8 @@ async function createDeal() {
         lineItems: discountedItems,
         freight: freightData,
         tax: taxData,
+        taxExempt: !!(document.getElementById('taxexempt') && document.getElementById('taxexempt').checked),
+        taxExemptCert: (document.getElementById('taxExemptCert') || {value:''}).value.trim() || '',
         discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0, amount: disc },
         total,
         ownerId: document.getElementById('repSelect').value,
@@ -3127,9 +3129,12 @@ function generatePDF() {
     ${disc > 0 ? `<div class="totals-row discount"><span class="totals-label">Discount${discPct ? ` (${discVal}%)` : ''}</span><span class="totals-val">−${fmt(disc)}</span></div>` : ''}
     ${freight > 0 ? `<div class="totals-row"><span class="totals-label">Freight</span><span class="totals-val">${fmt(freight)}</span></div>` : '<div class="totals-row"><span class="totals-label">Freight</span><span class="totals-val" style="color:#888">TBD</span></div>'}
     ${tax > 0 ? `<div class="totals-row"><span class="totals-label">Sales Tax${taxData ? ` (${(taxData.rate*100).toFixed(3)}%)` : ''}</span><span class="totals-val">${fmt(tax)}</span></div>` : ''}
+    ${isTaxExempt ? `<div class="totals-row"><span class="totals-label" style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span class="totals-val" style="color:#22c55e">${taxExemptCert ? taxExemptCert : 'Exempt'}</span></div>` : ''}
     <div class="totals-row grand"><span class="totals-label">Total USD</span><span class="totals-val">${fmt(total)}</span></div>
   </div>
 </div>
+
+${isTaxExempt ? `<div style="margin-bottom:14px;padding:10px 14px;background:#f0fdf4;border-left:3px solid #22c55e;font-size:9px;color:#166534;line-height:1.7;"><strong style="color:#166534;display:block;margin-bottom:3px;">TAX EXEMPTION REQUIRED</strong>This order is designated as tax exempt. A valid tax exemption certificate must be provided to WhisperRoom, Inc. before your order can be processed.${taxExemptCert ? ' Certificate: ' + taxExemptCert : ''}</div>` : ''}
 
 ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</div>` : ''}
 
@@ -4507,6 +4512,15 @@ function newQuote(skipConfirm = false) {
   document.getElementById('customsBrokerRow').style.display = 'none';
   const taxEl = document.getElementById('taxexempt');
   if (taxEl) { taxEl.checked = false; document.getElementById('taxExemptRow').style.display = 'none'; }
+  // Restore taxExempt from loaded quote
+  if (q.taxExempt && taxEl) {
+    taxEl.checked = true;
+    const taxLabel = document.getElementById('check-taxexempt');
+    if (taxLabel) taxLabel.classList.add('active');
+    document.getElementById('taxExemptRow').style.display = 'block';
+    const certEl = document.getElementById('taxExemptCert');
+    if (certEl) certEl.value = q.taxExemptCert || '';
+  }
 
   // Regenerate quote number
   updateQuoteNumber();

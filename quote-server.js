@@ -5948,7 +5948,7 @@ tbody tr:hover td{background:#fdfcfb}
     const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').trim());
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, foamColor, hingePreference, productionNotes, deliveryNotes, shipped, changes, repName, freightCost, shipEmailTo, shipEmailCc, markShipped, serialNumber } = body;
+      const { customer, foamColor, hingePreference, productionNotes, deliveryNotes, shipped, changes, repName, freightCost, shipEmailTo, shipEmailCc, markShipped, serialNumber, shipmentFields } = body;
 
       if (!db) { json({ error: 'No database' }, 500); return; }
 
@@ -6025,16 +6025,19 @@ tbody tr:hover td{background:#fdfcfb}
       if (dealId) {
         try {
           // Build properties to update — always write everything we have
+          // Use shipmentFields for regular saves, shipped for Ship It
+          const sf = shipped || shipmentFields || {};
+          console.log(`[orders] sf=${JSON.stringify(sf)} serialNumber=${serialNumber}`);
           const hsProps = {};
           if (serialNumber !== undefined) hsProps.description = serialNumber || '';
-          if (shipped?.carrier)   hsProps.freight_carrier = hsCarrierEnum(shipped.carrier);
-          if (shipped?.tracking)  hsProps.tracking_number = shipped.tracking;
-          if (shipped?.date)      hsProps.date_shipped    = shipped.date;
-          if (shipped?.boxes  !== undefined) hsProps.box_count    = parseInt(shipped.boxes)  || 0;
-          if (shipped?.pallets !== undefined) hsProps.pallet_count = parseInt(shipped.pallets) || 0;
-          if (shipped?.hardwareBox !== undefined) hsProps.hardware_box = parseInt(shipped.hardwareBox) || 0;
+          if (sf.carrier)   hsProps.freight_carrier = hsCarrierEnum(sf.carrier);
+          if (sf.tracking)  hsProps.tracking_number = sf.tracking;
+          if (sf.date)      hsProps.date_shipped    = sf.date;
+          if (sf.boxes  !== undefined) hsProps.box_count    = parseInt(sf.boxes)  || 0;
+          if (sf.pallets !== undefined) hsProps.pallet_count = parseInt(sf.pallets) || 0;
+          if (sf.hardwareBox !== undefined) hsProps.hardware_box = parseInt(sf.hardwareBox) || 0;
           if (freightCost !== undefined && freightCost !== null) hsProps.freight_cost = String(freightCost);
-          if (markShipped && shipped?.tracking) hsProps.dealstage = '845719';
+          if (markShipped && sf.tracking) hsProps.dealstage = '845719';
 
           if (Object.keys(hsProps).length > 0) {
             const hsRes = await httpsRequest({

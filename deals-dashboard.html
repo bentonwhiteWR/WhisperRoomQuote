@@ -446,7 +446,7 @@ function renderHub(dealId,data) {
         </div>
         <span style="font-size:12px;font-weight:700;color:${paid?'var(--green)':'var(--text)'}">${fmt(inv.amount)}</span>
         <span class="row-date">${fmtDate(inv.date)}</span>
-        ${inv.paymentPageUrl?`<a href="${inv.paymentPageUrl}" target="_blank" class="row-link" style="color:var(--orange);border-color:var(--orange-border)">Invoice ↗</a>`:''}
+        ${inv.paymentPageUrl?`<a href="${inv.paymentPageUrl}" target="_blank" class="row-link" style="color:var(--orange);border-color:var(--orange-border)">Invoice ↗</a>`:''}\n        ${inv.paymentPageUrl?`<button onclick="copyInvoiceLink('${inv.paymentPageUrl}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit" title="Copy invoice link">🔗</button>`:''}
 
         ${inv.hubspotUrl?`<a href="${inv.hubspotUrl}" target="_blank" class="row-link">HS ↗</a>`:''}
       </div>`;
@@ -480,19 +480,19 @@ function renderHub(dealId,data) {
 
   document.getElementById('hubContent').innerHTML=`
     <div class="hub-header">
-      <div style="display:flex;align-items:flex-start;gap:10px">
-        <div style="flex:1;min-width:0">
-          <div class="hub-name">${deal.name||'Deal'}</div>
-          <div class="hub-meta">
-            ${deal.amount&&parseFloat(deal.amount)>0?`<span style="font-size:14px;font-weight:800;color:var(--orange)">${fmt(deal.amount)}</span>`:''}
-            ${data.dealStage?`<span style="font-size:10px;font-weight:700;padding:3px 7px;border-radius:4px;background:${PIPE_BG[data.dealStage]||'var(--surface2)'};color:#fff">${STAGES[data.dealStage]||data.dealStage}</span>`:''}
-            ${payBadge}
-            <span style="font-size:11px;color:var(--muted)">${REPS[deal.ownerId]||''}</span>
-          </div>
-        </div>
+      <!-- Row 1: Deal name + meta -->
+      <div class="hub-name">${deal.name||'Deal'}</div>
+      <div class="hub-meta">
+        ${deal.amount&&parseFloat(deal.amount)>0?`<span style="font-size:14px;font-weight:800;color:var(--orange)">${fmt(deal.amount)}</span>`:''}
+        ${data.dealStage?`<span style="font-size:10px;font-weight:700;padding:3px 7px;border-radius:4px;background:${PIPE_BG[data.dealStage]||'var(--surface2)'};color:#fff">${STAGES[data.dealStage]||data.dealStage}</span>`:''}
+        ${payBadge}
+        <span style="font-size:11px;color:var(--muted)">${REPS[deal.ownerId]||''}</span>
+      </div>
+      <!-- Row 2: Admin buttons -->
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px">
         <a href="https://app.hubspot.com/contacts/5764220/deal/${dealId}" target="_blank" style="font-size:10px;color:var(--muted);text-decoration:none;padding:4px 8px;border-radius:5px;border:1px solid var(--border);flex-shrink:0">HS ↗</a>
-        ${data.driveFolderName ? `<button onclick="copyFolderPath('${data.driveFolderName.replace(/'/g,"\\'")}')" title="Copy local folder path to clipboard" style="font-size:10px;color:var(--muted);padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">📋 Copy Folder Path</button>` : ''}
-        <button onclick="openMergeDeal('${dealId}')" title="Merge this deal into another deal" style="font-size:10px;color:#ef4444;padding:4px 8px;border-radius:5px;border:1px solid rgba(239,68,68,.3);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">⤴ Merge Into</button>
+        ${data.driveFolderName ? `<button onclick="copyFolderPath('${data.driveFolderName.replace(/'/g,"\\'")}')" title="Copy local folder path to clipboard" style="font-size:10px;color:var(--muted);padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">📋 Copy Path</button>` : ''}
+        <button onclick="openMergeDeal('${dealId}')" title="Merge this deal into another deal" style="font-size:10px;color:#ef4444;padding:4px 8px;border-radius:5px;border:1px solid rgba(239,68,68,.3);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">⤤ Merge Into</button>
         <button onclick="openMergeLegacy('${dealId}')" title="Merge a legacy AllContacts folder into this deal" style="font-size:10px;color:var(--muted);padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">📁 Merge Legacy</button>
       </div>
       <div class="hub-actions">
@@ -626,6 +626,12 @@ function copyQuoteLink(quoteNumber, shareToken) {
   const url = `https://sales.whisperroom.com/q/${encodeURIComponent(quoteNumber)}?t=${shareToken}`;
   navigator.clipboard?.writeText(url).then(() => showToast('Link copied!', 'success'))
     .catch(() => { prompt('Copy link:', url); });
+}
+
+function copyInvoiceLink(url) {
+  if (!url) { showToast('No invoice link available', 'error'); return; }
+  navigator.clipboard?.writeText(url).then(() => showToast('Invoice link copied!', 'success'))
+    .catch(() => { prompt('Copy invoice link:', url); });
 }
 
 function emailQuote(quoteNumber, shareToken) {

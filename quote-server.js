@@ -2896,11 +2896,15 @@ tbody tr:hover td{background:#fdfcfb}
       ${disc>0?`<div class="tot"><span>Discount${q.discount&&q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
       ${freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
       ${taxAmt>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+(q.tax.rate*100).toFixed(2).replace(/\\.?0+$/,'')+'%)':''}</span><span>${fmt(taxAmt)}</span></div>`:''}
+      ${q.taxExempt?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||'Exempt')+'</span></div>':''}
       <div class="tot grand"><span>Amount Due</span><span>${fmt(total)}</span></div>
     </div>
   </div>
   ${freightTbd?`<div class="card" style="border-left:3px solid #ee6216;background:#fff8f5">
     <p style="margin:0;font-size:12px;color:#666"><strong style="color:#ee6216">Freight Note:</strong> Freight cost is to be determined. A freight estimate will be provided prior to finalizing your order. The total above does not include freight.</p>
+  </div>`:''}
+  ${q.taxExempt?`<div class="card" style="border-left:3px solid #22c55e;background:#f0fdf4">
+    <p style="margin:0;font-size:12px;color:#166534"><strong style="color:#166534">Tax Exemption Required:</strong> A valid tax exemption certificate must be provided to WhisperRoom, Inc. before your order can be processed.${q.taxExemptCert?' Certificate: '+q.taxExemptCert:''}</p>
   </div>`:''}
 
   <div class="card">
@@ -3102,11 +3106,15 @@ tbody tr:hover td{background:#fdfcfb}
       ${disc>0?`<div class="tot"><span>Discount${q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
       ${freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freight>0?`<div class="tot"><span>Freight</span><span>${fmt(freight)}</span></div>`:''}
       ${tax>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+( q.tax.rate*100).toFixed(2).replace(/\.?0+$/,'')+')%':''}</span><span>${fmt(tax)}</span></div>`:''}
+      ${q.taxExempt?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||'Exempt')+'</span></div>':''}
       <div class="tot grand"><span>Total</span><span>${fmt(total)}</span></div>
     </div>
   </div>
   ${freightTbd?`<div class="card" style="border-left:3px solid #ee6216;background:#fff8f5">
     <p style="margin:0;font-size:12px;color:#666"><strong style="color:#ee6216">Freight Note:</strong> Freight cost is to be determined. A freight estimate will be provided before your order is finalized. The total above does not include freight.</p>
+  </div>`:''}
+  ${q.taxExempt?`<div class="card" style="border-left:3px solid #22c55e;background:#f0fdf4">
+    <p style="margin:0;font-size:12px;color:#166534"><strong style="color:#166534">Tax Exemption Required:</strong> A valid tax exemption certificate must be provided to WhisperRoom, Inc. before your order can be processed.${q.taxExemptCert?' Certificate: '+q.taxExemptCert:''}</p>
   </div>`:''}
 
   <div class="card">
@@ -6124,6 +6132,7 @@ tbody tr:last-child td{border-bottom:none}
       ${disc>0?`<div class="tot"><span>Discount${q.discount&&q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
       ${freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
       ${taxAmt>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+(q.tax.rate*100).toFixed(2).replace(/\.?0+$/,'')+'%)':''}</span><span>${fmt(taxAmt)}</span></div>`:''}
+      ${q.taxExempt?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||'Exempt')+'</span></div>':''}
       <div class="tot grand"><span>Order Total</span><span>${fmt(total)}</span></div>
       ${totalWeight>0?`<div class="tot weight-total"><span>&#x2696; Total Weight</span><span>${totalWeight.toLocaleString()} lbs</span></div>`:''}
     </div>

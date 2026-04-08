@@ -215,7 +215,9 @@
 
   <!-- Tabs -->
   <div class="tab-bar">
-    <div class="tab active" id="tab-db" onclick="switchTab('db')">Active Orders <span id="dbCount" style="opacity:.5"></span></div>
+    <div class="tab active" id="tab-production" onclick="switchOrderFilter('production')">In Production <span id="productionCount" style="opacity:.5"></span></div>
+    <div class="tab" id="tab-shipped" onclick="switchOrderFilter('shipped')">Shipped <span id="shippedCount" style="opacity:.5"></span></div>
+    <div class="tab" id="tab-all" onclick="switchOrderFilter('all')">All Orders <span id="allCount" style="opacity:.5"></span></div>
     <div class="tab" id="tab-hs" onclick="switchTab('hs')">HubSpot Closed Won <span id="hsCount" style="opacity:.5"></span></div>
   </div>
 
@@ -270,11 +272,14 @@
 <div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
 <div class="drawer" id="editDrawer">
   <div class="drawer-header">
-    <div>
+    <div style="flex:1;min-width:0">
       <div class="drawer-title" id="drawerTitle">Edit Order</div>
       <div class="drawer-subtitle" id="drawerSubtitle"></div>
     </div>
-    <button class="drawer-close" onclick="closeDrawer()">&#x2715;</button>
+    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+      <a id="drawerHsBtn" href="#" target="_blank" style="display:none;font-size:10px;color:var(--muted);text-decoration:none;padding:4px 9px;border-radius:5px;border:1px solid var(--border);font-weight:600;font-family:inherit">HS ↗</a>
+      <button class="drawer-close" onclick="closeDrawer()">&#x2715;</button>
+    </div>
   </div>
 
   <div class="drawer-section">
@@ -885,11 +890,29 @@ let allHsDeals = [];
 let currentQuoteNumber = null;
 let currentHsDeal = null;
 let currentTab = 'db';
+let currentOrderFilter = 'production'; // 'production' | 'shipped' | 'all'
+
+// ── Order filter tabs ─────────────────────────────────────────────
+function switchOrderFilter(filter) {
+  currentOrderFilter = filter;
+  ['production','shipped','all'].forEach(f => {
+    const tab = document.getElementById(`tab-${f}`);
+    if (tab) tab.classList.toggle('active', f === filter);
+  });
+  document.getElementById('tab-hs').classList.remove('active');
+  document.getElementById('panel-db').style.display = '';
+  document.getElementById('panel-hs').style.display = 'none';
+  currentTab = 'db';
+  filterOrders();
+}
 
 // ── Tabs ──────────────────────────────────────────────────────────
 function switchTab(tab) {
   currentTab = tab;
-  document.getElementById('tab-db').classList.toggle('active', tab === 'db');
+  ['production','shipped','all'].forEach(f => {
+    const t = document.getElementById(`tab-${f}`);
+    if (t) t.classList.remove('active');
+  });
   document.getElementById('tab-hs').classList.toggle('active', tab === 'hs');
   document.getElementById('panel-db').style.display = tab === 'db' ? '' : 'none';
   document.getElementById('panel-hs').style.display = tab === 'hs' ? '' : 'none';
@@ -904,9 +927,13 @@ async function loadOrders() {
     if (res.status === 401) { window.location.href = '/'; return; }
     const data = await res.json();
     allOrders = data.orders || [];
-    renderOrders(allOrders);
-    document.getElementById('orderCount').textContent = `${allOrders.length} order${allOrders.length !== 1 ? 's' : ''} in production`;
-    document.getElementById('dbCount').textContent = `(${allOrders.length})`;
+    const inProd  = allOrders.filter(o => !o.order_data?.shipped?.tracking);
+    const shipped = allOrders.filter(o =>  o.order_data?.shipped?.tracking);
+    document.getElementById('productionCount').textContent = `(${inProd.length})`;
+    document.getElementById('shippedCount').textContent    = `(${shipped.length})`;
+    document.getElementById('allCount').textContent        = `(${allOrders.length})`;
+    document.getElementById('orderCount').textContent = `${inProd.length} order${inProd.length !== 1 ? 's' : ''} in production`;
+    filterOrders();
   } catch(e) {
     document.getElementById('ordersBody').innerHTML = `<tr><td colspan="7"><div style="padding:40px;text-align:center;color:#ef4444">Failed to load orders: ${e.message}</div></td></tr>`;
   }
@@ -989,12 +1016,23 @@ function renderHsDeals(deals) {
 function filterOrders() {
   const q = document.getElementById('searchInput').value.toLowerCase();
   if (currentTab === 'db') {
-    renderOrders(q ? allOrders.filter(o =>
-      (o.quote_number||'').toLowerCase().includes(q) ||
-      (o.customer_name||'').toLowerCase().includes(q) ||
-      (o.company||'').toLowerCase().includes(q) ||
-      (o.deal_name||'').toLowerCase().includes(q)
-    ) : allOrders);
+    let filtered = allOrders;
+    // Apply production/shipped/all filter
+    if (currentOrderFilter === 'production') {
+      filtered = filtered.filter(o => !o.order_data?.shipped?.tracking);
+    } else if (currentOrderFilter === 'shipped') {
+      filtered = filtered.filter(o =>  o.order_data?.shipped?.tracking);
+    }
+    // Apply search
+    if (q) {
+      filtered = filtered.filter(o =>
+        (o.quote_number||'').toLowerCase().includes(q) ||
+        (o.customer_name||'').toLowerCase().includes(q) ||
+        (o.company||'').toLowerCase().includes(q) ||
+        (o.deal_name||'').toLowerCase().includes(q)
+      );
+    }
+    renderOrders(filtered);
   } else {
     renderHsDeals(q ? allHsDeals.filter(d =>
       (d.dealName||'').toLowerCase().includes(q) ||
@@ -1011,6 +1049,17 @@ function openDrawer(quoteNumber) {
 
   document.getElementById('drawerTitle').textContent = order.quote_number;
   document.getElementById('drawerSubtitle').textContent = order.deal_name || order.customer_name || '';
+
+  // HS link
+  const hsBtn = document.getElementById('drawerHsBtn');
+  if (hsBtn) {
+    if (order.deal_id) {
+      hsBtn.href = `https://app.hubspot.com/contacts/5764220/deal/${order.deal_id}`;
+      hsBtn.style.display = 'inline-block';
+    } else {
+      hsBtn.style.display = 'none';
+    }
+  }
 
   const c  = order.json_snapshot?.customer || {};
   const od = order.order_data || {};

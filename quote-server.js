@@ -5822,7 +5822,7 @@ tbody tr:hover td{background:#fdfcfb}
     const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').trim());
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, foamColor, hingePreference, productionNotes, deliveryNotes, shipped, changes, repName, freightCost } = body;
+      const { customer, foamColor, hingePreference, productionNotes, deliveryNotes, shipped, changes, repName, freightCost, shipEmailTo, shipEmailCc } = body;
 
       if (!db) { json({ error: 'No database' }, 500); return; }
 
@@ -5854,6 +5854,8 @@ tbody tr:hover td{background:#fdfcfb}
         deliveryNotes:    deliveryNotes    !== undefined ? deliveryNotes    : currentOrderData.deliveryNotes,
         shipped:          shipped          !== undefined ? shipped          : currentOrderData.shipped,
         freightCost:      freightCost      !== undefined ? freightCost      : currentOrderData.freightCost,
+        shipEmailTo:      shipEmailTo      !== undefined ? shipEmailTo      : currentOrderData.shipEmailTo,
+        shipEmailCc:      shipEmailCc      !== undefined ? shipEmailCc      : currentOrderData.shipEmailCc,
         changeLog,
         lastUpdated: new Date().toISOString(),
       };

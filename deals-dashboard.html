@@ -297,7 +297,9 @@ function renderBoard() {
     } else {
       deals.forEach(d => {
         // A deal is "unintegrated" if it has no quotes/orders in our system
-        const isUnintegrated = !d.latestQuote && !d.accepted && d.paymentStatus === 'not_paid';
+        // Only flag Sent/Updated Quote stages — not newer or further-along deals
+        const earlyStage = d.stage === 'appointmentscheduled' || d.stage === 'qualifiedtobuy';
+        const isUnintegrated = earlyStage && !d.latestQuote && !d.accepted && d.paymentStatus === 'not_paid';
         if (hideUnintegrated && isUnintegrated) return;
         const card=document.createElement('div');
         const dealGreen = (d.accepted || d.paymentStatus==='paid' || d.paymentStatus==='po_received') && d.id!==currentDealId;

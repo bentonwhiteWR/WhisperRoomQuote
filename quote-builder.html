@@ -2503,11 +2503,7 @@ async function createDeal() {
           const co   = document.getElementById('company').value.trim();
           const fn   = document.getElementById('firstName').value.trim();
           const ln   = document.getElementById('lastName').value.trim();
-          const base = co || [fn, ln].filter(Boolean).join(' ') || 'Customer';
-          const now  = new Date();
-          const mo   = now.toLocaleString('en-US', { month: 'short' });
-          const yr   = now.getFullYear();
-          return `${base} - ${mo} ${yr}`;
+          return co || [fn, ln].filter(Boolean).join(' ') || 'Customer';
         })(),
         existingDealId: selectedDeal ? selectedDeal.id : null,
         linkedDealId: linkedDeal ? linkedDeal.id : (selectedDeal ? selectedDeal.id : null),

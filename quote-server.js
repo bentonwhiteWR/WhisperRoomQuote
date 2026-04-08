@@ -712,6 +712,27 @@ async function saveQuoteToDb(quoteData) {
     const company = customer ? (customer.company || '') : '';
     const quoteLink = quoteNumber ? `https://sales.whisperroom.com/q/${quoteNumber}` : null;
 
+    // ── Collision guard ─────────────────────────────────────────────
+    // Check if this quote number already exists for a DIFFERENT deal or contact
+    // Legitimate revisions share the same deal_id — those are fine to update
+    if (quoteNumber) {
+      const existing = await db.query(
+        `SELECT deal_id, contact_id, customer_name FROM quotes WHERE quote_number = $1 LIMIT 1`,
+        [quoteNumber]
+      );
+      if (existing.rows.length > 0) {
+        const ex = existing.rows[0];
+        const sameDeal    = dealId    && ex.deal_id    && ex.deal_id    === dealId;
+        const sameContact = contactId && ex.contact_id && ex.contact_id === contactId;
+        // If neither deal nor contact matches — this is a collision, not a revision
+        if (!sameDeal && !sameContact) {
+          console.error(`[saveQuoteToDb] COLLISION: quote ${quoteNumber} already exists for "${ex.customer_name}" (deal ${ex.deal_id}). Rejecting save.`);
+          throw new Error(`Quote number ${quoteNumber} already exists for a different customer. Please refresh and push again to get a new number.`);
+        }
+      }
+    }
+    // ── End collision guard ─────────────────────────────────────────
+
     const res = await db.query(`
       INSERT INTO quotes
         (quote_number, deal_id, contact_id, deal_name, customer_name, company, rep_id, total, date, quote_link, json_snapshot, share_token)
@@ -2692,7 +2713,14 @@ const server = http.createServer(async (req, res) => {
           } catch(e) { console.warn('GDrive quote upload error:', e.message, e.stack?.split('\n')[1]); }
         })();
 
-      } catch(e) { console.warn('DB save error:', e.message); }
+      } catch(e) {
+        console.warn('DB save error:', e.message);
+        // If it's a collision error, surface it to the client immediately
+        if (e.message && e.message.includes('already exists for a different customer')) {
+          json({ error: e.message }, 409);
+          return;
+        }
+      }
 
       // HubSpot Notes write removed — DB is primary storage
 

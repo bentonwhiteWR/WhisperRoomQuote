@@ -934,6 +934,10 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     </div>
     <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <button class="get-freight-btn" id="freightBtn" onclick="getFreightAndTax()">Get Freight + Tax Estimate</button>
+      <button id="freightTbdBtn" onclick="toggleFreightTbd()"
+        style="padding:7px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.03em">
+        TBD
+      </button>
       <div style="display:flex;align-items:center;gap:6px">
         <span style="font-size:11px;color:var(--muted)">Override:</span>
         <input type="number" id="freightOverride" placeholder="Manual $"
@@ -1729,6 +1733,9 @@ function addLineItem(product) {
   renderLineItems();
   updateSummary();
   freightData = null;
+  _freightTbd = false;
+  const tbdBtn = document.getElementById('freightTbdBtn');
+  if (tbdBtn) { tbdBtn.style.background='var(--surface2)'; tbdBtn.style.borderColor='var(--border)'; tbdBtn.style.color='var(--muted)'; }
   taxData = null;
   document.getElementById('freightResult').classList.remove('visible');
   document.getElementById('taxResult').classList.remove('visible');
@@ -2086,7 +2093,28 @@ function getDiscountAmount() {
 }
 
 function getFreightTotal() {
-  return freightData ? freightData.total : 0;
+  return freightData && !freightData.tbd ? freightData.total : 0;
+}
+
+let _freightTbd = false;
+function toggleFreightTbd() {
+  _freightTbd = !_freightTbd;
+  const btn = document.getElementById('freightTbdBtn');
+  if (_freightTbd) {
+    freightData = { tbd: true, total: 0 };
+    btn.style.background = 'rgba(238,98,22,.2)';
+    btn.style.borderColor = 'rgba(238,98,22,.5)';
+    btn.style.color = '#ee6216';
+    document.getElementById('freightResult').style.display = 'none';
+    document.getElementById('freightStatus').textContent = 'Freight set to TBD — will show on quote';
+  } else {
+    freightData = null;
+    btn.style.background = 'var(--surface2)';
+    btn.style.borderColor = 'var(--border)';
+    btn.style.color = 'var(--muted)';
+    document.getElementById('freightStatus').textContent = '';
+  }
+  updateSummary();
 }
 
 function getTaxAmount() {
@@ -2115,7 +2143,7 @@ function updateSummary() {
     document.getElementById('discountDisplay').textContent = '— $0.00';
   }
 
-  document.getElementById('sumFreight').textContent = freight > 0 ? fmt(freight) : 'Not quoted';
+  document.getElementById('sumFreight').textContent = freightData?.tbd ? 'TBD' : (freight > 0 ? fmt(freight) : 'Not quoted');
   document.getElementById('sumTax').textContent = tax > 0 ? fmt(tax) : (taxData && !taxData.inNexus ? 'No nexus' : 'Not calculated');
   document.getElementById('sumTotal').textContent = fmt(total);
 
@@ -3553,7 +3581,24 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   freightData = q.freight || null;
   taxData = q.tax || null;
 
-  if (freightData) {
+  // Restore TBD state
+  _freightTbd = !!(freightData?.tbd);
+  const tbdBtn = document.getElementById('freightTbdBtn');
+  if (tbdBtn) {
+    if (_freightTbd) {
+      tbdBtn.style.background = 'rgba(238,98,22,.2)';
+      tbdBtn.style.borderColor = 'rgba(238,98,22,.5)';
+      tbdBtn.style.color = '#ee6216';
+      document.getElementById('freightResult').style.display = 'none';
+      document.getElementById('freightStatus').textContent = 'Freight set to TBD — will show on quote';
+    } else {
+      tbdBtn.style.background = 'var(--surface2)';
+      tbdBtn.style.borderColor = 'var(--border)';
+      tbdBtn.style.color = 'var(--muted)';
+    }
+  }
+
+  if (freightData && !freightData.tbd) {
     document.getElementById('freightBase').textContent = fmt(freightData.base);
     document.getElementById('freightMarkup').textContent = fmt(freightData.markup);
     document.getElementById('freightTotal').textContent = fmt(freightData.total);

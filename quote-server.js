@@ -5983,6 +5983,22 @@ tbody tr:hover td{background:#fdfcfb}
       }
 
       // 3. Build updated order data
+      // Merge shipmentFields into the shipped object for persistence
+      // This lets Save persist carrier/tracking/etc. without triggering Ship It logic
+      let mergedShipped = currentOrderData.shipped || null;
+      if (shipmentFields) {
+        mergedShipped = {
+          ...(mergedShipped || {}),
+          ...(shipmentFields.carrier   ? { carrier:     shipmentFields.carrier }             : {}),
+          ...(shipmentFields.tracking  ? { tracking:    shipmentFields.tracking }            : {}),
+          ...(shipmentFields.date      ? { date:        shipmentFields.date }                : {}),
+          ...(shipmentFields.pallets   !== undefined ? { pallets: parseInt(shipmentFields.pallets)||0 } : {}),
+          ...(shipmentFields.boxes     !== undefined ? { boxes:   parseInt(shipmentFields.boxes)||0 }   : {}),
+          ...(shipmentFields.hardwareBox !== undefined ? { hardwareBox: shipmentFields.hardwareBox }    : {}),
+        };
+      }
+      if (shipped !== undefined) mergedShipped = shipped; // Ship It overrides everything
+
       const updatedOrderData = {
         ...currentOrderData,
         foamColor:        foamColor        !== undefined ? foamColor        : currentOrderData.foamColor,
@@ -5990,7 +6006,7 @@ tbody tr:hover td{background:#fdfcfb}
         serialNumber:     serialNumber     !== undefined ? serialNumber     : currentOrderData.serialNumber,
         productionNotes:  productionNotes  !== undefined ? productionNotes  : currentOrderData.productionNotes,
         deliveryNotes:    deliveryNotes    !== undefined ? deliveryNotes    : currentOrderData.deliveryNotes,
-        shipped:          shipped          !== undefined ? shipped          : currentOrderData.shipped,
+        shipped:          mergedShipped,
         freightCost:      freightCost      !== undefined ? freightCost      : currentOrderData.freightCost,
         shipEmailTo:      shipEmailTo      !== undefined ? shipEmailTo      : currentOrderData.shipEmailTo,
         shipEmailCc:      shipEmailCc      !== undefined ? shipEmailCc      : currentOrderData.shipEmailCc,

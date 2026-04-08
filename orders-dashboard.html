@@ -372,6 +372,22 @@
         <input type="number" id="editFreightCost" placeholder="0.00" min="0" step="0.01">
       </div>
     </div>
+
+    <!-- Shipping Email Addresses -->
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Shipping Email Recipients</label>
+        <button onclick="addShipEmailCc()" style="padding:3px 10px;font-size:10px;font-weight:700;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer;font-family:inherit">+ CC</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:10px;font-weight:700;color:var(--orange);width:22px;flex-shrink:0">To</span>
+          <input type="email" id="shipEmailTo" placeholder="Primary recipient email"
+            style="flex:1;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
+        </div>
+        <div id="shipEmailCcList" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+    </div>
   </div>
 
   <div class="drawer-section" id="changeLogSection" style="display:none">
@@ -1022,6 +1038,11 @@ function openDrawer(quoteNumber) {
     : new Date().toISOString().split('T')[0];
   document.getElementById('editFreightCost').value = od.freightCost || '';
 
+  // Restore email addresses
+  const savedTo  = od.shipEmailTo  || snap?.customer?.email || '';
+  const savedCc  = od.shipEmailCc  || [];
+  setShipEmailAddresses(savedTo, savedCc);
+
   const badge = document.getElementById('shippedBadge');
   badge.style.display = shipped.tracking ? 'inline-flex' : 'none';
 
@@ -1126,14 +1147,19 @@ async function saveOrder() {
   chk('Freight Cost', prevOd.freightCost ? '$'+prevOd.freightCost : '', freightCost ? '$'+freightCost : '');
   if (isShipping && !prevOd.shipped?.tracking) changes.push(`Marked Shipped — ${carrier}, ${tracking}`);
 
+  const hardwareBox = document.getElementById('editHardwareBox')?.value.trim() || '';
+  const { to: shipEmailTo, cc: shipEmailCc } = getShipEmailAddresses();
+
   const payload = {
     customer,
     foamColor:       newFoam,
     hingePreference: newHinge,
     productionNotes: newProdNotes,
     deliveryNotes:   newDelNotes,
-    shipped: isShipping ? { carrier, tracking, date: shipDate, pallets: parseInt(pallets)||0, boxes: parseInt(boxes)||0 } : (prevOd.shipped || null),
+    shipped: isShipping ? { carrier, tracking, date: shipDate, pallets: parseInt(pallets)||0, boxes: parseInt(boxes)||0, hardwareBox } : (prevOd.shipped || null),
     freightCost,
+    shipEmailTo,
+    shipEmailCc,
     changes,
     repName,
   };
@@ -1228,13 +1254,60 @@ function closeHsShipModal() {
   currentHsDeal = null;
 }
 
-function openShipEmail() {
-  const carrier  = document.getElementById('hsCarrier').value || '';
-  const tracking = document.getElementById('hsTracking').value.trim() || '';
-  const pallets  = document.getElementById('hsPallets').value || '0';
-  const boxes    = document.getElementById('hsBoxes').value || '0';
+// ── Shipping Email CC management ─────────────────────────────────
+let _shipEmailCcCount = 0;
 
-  // Get customer info from current order if available
+function addShipEmailCc(value = '') {
+  const list = document.getElementById('shipEmailCcList');
+  if (!list) return;
+  _shipEmailCcCount++;
+  const id = `shipEmailCc_${_shipEmailCcCount}`;
+  const div = document.createElement('div');
+  div.id = `shipCcRow_${_shipEmailCcCount}`;
+  div.style.cssText = 'display:flex;align-items:center;gap:6px';
+  div.innerHTML = `
+    <span style="font-size:10px;font-weight:700;color:var(--muted);width:22px;flex-shrink:0">CC</span>
+    <input type="email" id="${id}" value="${value}" placeholder="CC email address"
+      style="flex:1;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
+    <button onclick="removeShipCcRow('shipCcRow_${_shipEmailCcCount}')"
+      style="padding:4px 7px;background:none;border:1px solid var(--border);border-radius:5px;color:var(--muted);cursor:pointer;font-size:11px;font-family:inherit;flex-shrink:0">✕</button>
+  `;
+  list.appendChild(div);
+}
+
+function removeShipCcRow(rowId) {
+  const row = document.getElementById(rowId);
+  if (row) row.remove();
+}
+
+function getShipEmailAddresses() {
+  const to = (document.getElementById('shipEmailTo')?.value || '').trim();
+  const ccInputs = document.querySelectorAll('#shipEmailCcList input[type="email"]');
+  const cc = Array.from(ccInputs).map(el => el.value.trim()).filter(Boolean);
+  return { to, cc };
+}
+
+function setShipEmailAddresses(to, ccList) {
+  const toEl = document.getElementById('shipEmailTo');
+  if (toEl) toEl.value = to || '';
+  // Clear existing CC rows
+  const list = document.getElementById('shipEmailCcList');
+  if (list) list.innerHTML = '';
+  _shipEmailCcCount = 0;
+  (ccList || []).forEach(email => addShipEmailCc(email));
+}
+
+function openShipEmail() {
+  // Read from drawer fields (source of truth)
+  const carrier  = document.getElementById('editCarrier')?.value || document.getElementById('hsCarrier')?.value || '';
+  const tracking = (document.getElementById('editTracking')?.value || document.getElementById('hsTracking')?.value || '').trim();
+  const pallets  = document.getElementById('editPallets')?.value || document.getElementById('hsPallets')?.value || '0';
+  const boxes    = document.getElementById('editBoxes')?.value || document.getElementById('hsBoxes')?.value || '0';
+
+  // Get To/CC from email fields; fall back to contact email if To is empty
+  const { to: emailTo, cc: emailCc } = getShipEmailAddresses();
+
+  // Get customer info from current order
   let firstName = '', customerEmail = '';
   if (currentQuoteNumber) {
     const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
@@ -1243,6 +1316,9 @@ function openShipEmail() {
     firstName     = cust.firstName || '';
     customerEmail = cust.email || '';
   }
+
+  // Use the To field if set, otherwise fall back to contact email
+  const toAddress = emailTo || customerEmail || '';
 
   // Carrier-specific details matching HubSpot template
   let carrierLabel = carrier;
@@ -1304,8 +1380,9 @@ function openShipEmail() {
   lines.push('Thank you again for choosing WhisperRoom!');
 
   const body = lines.join('\n');
-  const to   = customerEmail || '';
-  const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const ccStr = emailCc.length ? emailCc.join(',') : '';
+  let mailto = `mailto:${encodeURIComponent(toAddress)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  if (ccStr) mailto += `&cc=${encodeURIComponent(ccStr)}`;
   window.location.href = mailto;
 }
 

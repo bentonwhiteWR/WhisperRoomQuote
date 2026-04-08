@@ -3708,7 +3708,12 @@ tbody tr:hover td{background:#fdfcfb}
 
         try {
           // Update HubSpot
-          await hsRequest('PATCH', `/crm/v3/objects/deals/${row.deal_id}`, { properties: { dealname: newName } });
+          await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/deals/${row.deal_id}`,
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, { properties: { dealname: newName } });
           // Update DB
           await db.query(`UPDATE quotes SET deal_name = $1 WHERE deal_id = $2`, [newName, row.deal_id]);
           console.log(`[strip-deal-dates] "${oldName}" → "${newName}"`);

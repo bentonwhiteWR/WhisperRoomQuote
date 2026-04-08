@@ -285,7 +285,15 @@ function renderBoard() {
   board.innerHTML='';
   let total=0;
   COLUMNS.forEach(col => {
-    const deals=filteredDeals.filter(d=>col.stages.includes(d.stage));
+    const deals=filteredDeals.filter(d=>col.stages.includes(d.stage))
+      .sort((a,b) => {
+        // Primary: most recently modified first
+        const tA = a.modified ? new Date(a.modified).getTime() : 0;
+        const tB = b.modified ? new Date(b.modified).getTime() : 0;
+        if (tB !== tA) return tB - tA;
+        // Secondary: larger amount first
+        return parseFloat(b.amount||0) - parseFloat(a.amount||0);
+      });
     total+=deals.length;
     const colEl=document.createElement('div');
     colEl.className=`col ${col.cls}`;

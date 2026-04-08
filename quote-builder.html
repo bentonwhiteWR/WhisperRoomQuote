@@ -1170,7 +1170,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
           <button onclick="applyQuoteCounterOverride()"
             style="padding:5px 10px;background:rgba(238,98,22,.15);border:1px solid rgba(238,98,22,.3);border-radius:5px;color:#ee6216;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">Apply</button>
         </div>
-        <div style="font-size:10px;color:rgba(255,255,255,.2);margin-top:5px">Next: <span id="quoteCounterPreview" style="font-family:var(--mono);color:rgba(255,255,255,.4)">—</span></div>
+        <div style="font-size:10px;color:rgba(255,255,255,.2);margin-top:5px">Next quote will be: <span id="quoteCounterPreview" style="font-family:var(--mono);color:rgba(255,255,255,.4)">—</span></div>
       </div>
 
       <!-- Delete Quote -->
@@ -2439,7 +2439,6 @@ async function createDeal() {
   if (window._historicalQuoteLoaded) {
     window._historicalQuoteLoaded = false;
     updateQuoteNumber();
-    updatePushButtonText();
     document.getElementById('revisionNote').style.display = 'none';
     _freshQuoteGenerated = true;
   }
@@ -2589,22 +2588,11 @@ async function createDeal() {
         // Only update quoteNumHidden from server response if we didn't already
         // generate a fresh number this push (prevents server echo from reverting it)
         document.getElementById('quoteNumHidden').value = data.quoteNumber;
-        // Show deal name as display, quote number as sub-label
-        const dealNameAfterPush = data.dealName || document.getElementById('dealName').value.trim();
-        const displayVal = dealNameAfterPush || data.quoteNumber;
-        document.getElementById('quoteNumDisplay').textContent = displayVal;
-        // Update the label to show quote number below
-        const qnLabel = document.querySelector('#quoteNumDisplay')?.previousElementSibling;
-        if (qnLabel) qnLabel.textContent = 'Quote Number';
-        // Show the actual quote number as a sub-label
-        let qnSub = document.getElementById('quoteNumSub');
-        if (!qnSub) {
-          qnSub = document.createElement('div');
-          qnSub.id = 'quoteNumSub';
-          qnSub.style.cssText = 'margin-top:4px;font-size:11px;color:rgba(255,255,255,.4);font-family:var(--mono);letter-spacing:.05em';
-          document.getElementById('quoteNumDisplay').after(qnSub);
-        }
-        qnSub.textContent = data.quoteNumber;
+        // Always show quote number as primary display
+        document.getElementById('quoteNumDisplay').textContent = data.quoteNumber;
+        // Clear any sub-label if it exists
+        const qnSub = document.getElementById('quoteNumSub');
+        if (qnSub) qnSub.textContent = '';
       }
       // Advance session sequence counter so next quote number is correct
       const repId = document.getElementById('repSelect').value;
@@ -2621,7 +2609,10 @@ async function createDeal() {
       const dealNameFinal = data.dealName ||
         (companyVal ? companyVal + ' — Quote' :
          (firstName && lastName ? firstName + ' ' + lastName + ' — Quote' : 'New Quote'));
-      const existingRevision = allHistory.filter(q => q.dealName === dealNameFinal).length;
+      const _revDealId = data.dealId || (linkedDeal?.id) || (selectedDeal?.id) || null;
+      const existingRevision = _revDealId
+        ? allHistory.filter(q => q.dealId === _revDealId).length
+        : allHistory.filter(q => q.dealName === dealNameFinal).length;
       const customerEmail = document.getElementById('email').value.trim();
       const accessories = {
         residential: document.getElementById('residential').checked,
@@ -2632,6 +2623,7 @@ async function createDeal() {
       if (customerEmail) saveAccessorialPrefs(customerEmail, accessories);
       saveQuoteToHistory({
         dealName: dealNameFinal,
+        dealId:   data.dealId || null,
         quoteNumber: document.getElementById('quoteNumHidden').value,
         date: new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}),
         rep: repName, ownerId: document.getElementById('repSelect').value,
@@ -3554,17 +3546,10 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
     window._historicalQuoteLoaded = true; // prevent updateQuoteNumber overwrite
     updatePushButtonText();
     document.getElementById('quoteNumHidden').value = q.quoteNumber;
-    // Show deal name in display, quote number as sub-label
-    const displayVal = q.dealName || q.quoteNumber;
-    document.getElementById('quoteNumDisplay').textContent = displayVal;
-    let qnSub = document.getElementById('quoteNumSub');
-    if (!qnSub) {
-      qnSub = document.createElement('div');
-      qnSub.id = 'quoteNumSub';
-      qnSub.style.cssText = 'margin-top:4px;font-size:11px;color:rgba(255,255,255,.4);font-family:var(--mono);letter-spacing:.05em';
-      document.getElementById('quoteNumDisplay').after(qnSub);
-    }
-    qnSub.textContent = q.quoteNumber;
+    // Always show quote number as primary display
+    document.getElementById('quoteNumDisplay').textContent = q.quoteNumber;
+    const qnSubEx = document.getElementById('quoteNumSub');
+    if (qnSubEx) qnSubEx.textContent = '';
     activateLinkBtn();
     // Also activate PDF button
     enableInvoiceBtn();
@@ -3879,10 +3864,22 @@ function toggleTheme() {
 })();
 
 function updateRevisionBadge() {
-  const name = document.getElementById('dealName').value.trim();
   const badge = document.getElementById('revisionBadge');
-  if (!name) { badge.style.display = 'none'; return; }
-  const revisions = allHistory.filter(q => q.dealName === name).length;
+  if (!badge) return;
+
+  // Use deal ID if linked — more accurate than name matching
+  const dealId = (linkedDeal?.id) || (selectedDeal?.id) || null;
+  const name   = document.getElementById('dealName').value.trim();
+
+  if (!dealId && !name) { badge.style.display = 'none'; return; }
+
+  let revisions;
+  if (dealId) {
+    revisions = allHistory.filter(q => q.dealId === dealId).length;
+  } else {
+    revisions = allHistory.filter(q => q.dealName === name).length;
+  }
+
   if (revisions > 0) {
     badge.textContent = 'v' + (revisions + 1);
     badge.style.display = 'inline';
@@ -4960,8 +4957,29 @@ function applyQuoteCounterOverride(prefix) {
 
 // Update preview when admin panel opens or input changes
 function updateQuoteCounterPreview() {
-  const preview = document.getElementById('quoteCounterPreview');
-  if (preview) preview.textContent = generateQuoteNumber(document.getElementById('repSelect').value);
+  const preview  = document.getElementById('quoteCounterPreview');
+  const input    = document.getElementById('quoteCounterOverride');
+  if (!preview) return;
+
+  const repId = document.getElementById('repSelect').value;
+  const now   = new Date();
+  const repNum = REP_NUMBERS[repId] || '00';
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const yy = String(now.getFullYear()).slice(-2);
+  const dateKey = repNum + mm + dd + yy;
+
+  const inputVal = input ? parseInt(input.value) : NaN;
+  if (!isNaN(inputVal) && inputVal >= 0) {
+    // Show what next number will be if Apply is clicked
+    const nextSeq = String(inputVal + 1).padStart(2, '0');
+    preview.textContent = `W-${dateKey}${nextSeq}`;
+    preview.style.color = 'rgba(238,98,22,.7)';
+  } else {
+    // Show current next number with no override
+    preview.textContent = generateQuoteNumber(repId);
+    preview.style.color = 'rgba(255,255,255,.3)';
+  }
 }
 
 async function updatePaymentStatus(status) {

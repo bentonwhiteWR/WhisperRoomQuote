@@ -2649,6 +2649,7 @@ async function createDeal() {
         liftgate: document.getElementById('liftgate').checked,
         limitedaccess: document.getElementById('limitedaccess').checked,
         loadingdock: document.getElementById('loadingdock').checked,
+        taxexempt: !!(document.getElementById('taxexempt') && document.getElementById('taxexempt').checked),
       };
       if (customerEmail) saveAccessorialPrefs(customerEmail, accessories);
       saveQuoteToHistory({

@@ -2578,7 +2578,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Add freight line item
-      if (freight && freight.total > 0) {
+      if (freight && freight.total > 0 && !freight.tbd) {
         const fli = await hsCreateLineItem({
           name: 'Freight',
           quantity: '1',
@@ -2774,7 +2774,8 @@ const server = http.createServer(async (req, res) => {
       const sub = (q.lineItems||[]).reduce((s,i)=>s+(i.price*i.qty),0);
       const disc = q.discount && q.discount.value > 0
         ? (q.discount.type==='pct' ? sub*q.discount.value/100 : q.discount.value) : 0;
-      const freightAmt = q.freight ? q.freight.total : 0;
+      const freightTbd = q.freight?.tbd === true;
+      const freightAmt = (!freightTbd && q.freight) ? q.freight.total : 0;
       const taxAmt = q.tax ? q.tax.tax : 0;
       const total = sub - disc + freightAmt + taxAmt;
       const c = q.customer || {};
@@ -2893,11 +2894,14 @@ tbody tr:hover td{background:#fdfcfb}
     <div class="totals">
       <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
       ${disc>0?`<div class="tot"><span>Discount${q.discount&&q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
-      ${freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
+      ${freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
       ${taxAmt>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+(q.tax.rate*100).toFixed(2).replace(/\\.?0+$/,'')+'%)':''}</span><span>${fmt(taxAmt)}</span></div>`:''}
       <div class="tot grand"><span>Amount Due</span><span>${fmt(total)}</span></div>
     </div>
   </div>
+  ${freightTbd?`<div class="card" style="border-left:3px solid #ee6216;background:#fff8f5">
+    <p style="margin:0;font-size:12px;color:#666"><strong style="color:#ee6216">Freight Note:</strong> Freight cost is to be determined. A freight estimate will be provided prior to finalizing your order. The total above does not include freight.</p>
+  </div>`:''}
 
   <div class="card">
     <div class="card-label">Payment Terms</div>
@@ -5983,7 +5987,8 @@ tbody tr:hover td{background:#fdfcfb}
       const sub = (q.lineItems||[]).reduce((s,i)=>s+(i.price*i.qty),0);
       const disc = q.discount && q.discount.value > 0
         ? (q.discount.type==='pct' ? sub*q.discount.value/100 : q.discount.value) : 0;
-      const freightAmt = q.freight ? q.freight.total : 0;
+      const freightTbd = q.freight?.tbd === true;
+      const freightAmt = (!freightTbd && q.freight) ? q.freight.total : 0;
       const taxAmt = q.tax ? q.tax.tax : 0;
       const total = sub - disc + freightAmt + taxAmt;
       const totalWeight = (q.lineItems||[]).reduce((s,i) => s + ((parseFloat(i.weight)||0) * (parseInt(i.qty)||1)), 0);
@@ -6113,12 +6118,15 @@ tbody tr:last-child td{border-bottom:none}
     <div class="totals">
       <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
       ${disc>0?`<div class="tot"><span>Discount${q.discount&&q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
-      ${freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
+      ${freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
       ${taxAmt>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+(q.tax.rate*100).toFixed(2).replace(/\.?0+$/,'')+'%)':''}</span><span>${fmt(taxAmt)}</span></div>`:''}
       <div class="tot grand"><span>Order Total</span><span>${fmt(total)}</span></div>
       ${totalWeight>0?`<div class="tot weight-total"><span>&#x2696; Total Weight</span><span>${totalWeight.toLocaleString()} lbs</span></div>`:''}
     </div>
   </div>
+  ${freightTbd?`<div class="card" style="border-left:3px solid #ee6216;background:#fff8f5">
+    <p style="margin:0;font-size:12px;color:#666"><strong style="color:#ee6216">Freight Note:</strong> Freight cost is to be determined. A freight estimate will be provided prior to finalizing your order. The total above does not include freight.</p>
+  </div>`:''}
 
   ${o.shipped&&o.shipped.tracking ? `<div class="card">
     <div class="card-label">Shipment</div>

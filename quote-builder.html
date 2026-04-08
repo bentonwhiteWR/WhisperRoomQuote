@@ -3278,6 +3278,30 @@ const REP_NUMBERS = {
 // Track sequence per rep per day in session
 const _quoteSeqCache = {};
 
+// ── localStorage key helpers ─────────────────────────────────────
+function _seqLsKey(ownerId) {
+  const now = new Date();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const yy = String(now.getFullYear()).slice(-2);
+  return 'wr_seq_' + ownerId + '_' + mm + dd + yy;
+}
+function _getPersistedSeq(ownerId) {
+  try {
+    const v = localStorage.getItem(_seqLsKey(ownerId));
+    return v !== null ? parseInt(v) : undefined;
+  } catch(e) { return undefined; }
+}
+function _setPersistedSeq(ownerId, val) {
+  try {
+    localStorage.setItem(_seqLsKey(ownerId), String(val));
+    // Clean up old keys from previous days
+    const todayKey = _seqLsKey(ownerId);
+    Object.keys(localStorage).filter(k => k.startsWith('wr_seq_') && k !== todayKey)
+      .forEach(k => localStorage.removeItem(k));
+  } catch(e) {}
+}
+
 function generateQuoteNumber(ownerId) {
   const repNum = REP_NUMBERS[ownerId] || '00';
   const now = new Date();
@@ -3287,12 +3311,19 @@ function generateQuoteNumber(ownerId) {
   const dateKey = repNum + mm + dd + yy;
   const cacheKey = ownerId + '_' + mm + dd + yy;
 
-  // Use session cache if available (set after each push)
+  // 1. Session cache (set after each push this session)
   if (_quoteSeqCache[cacheKey] !== undefined) {
     return 'W-' + dateKey + String(_quoteSeqCache[cacheKey] + 1).padStart(2, '0');
   }
 
-  // Count today's quotes from history (DB-backed when available)
+  // 2. Persisted override from localStorage (survives refresh, expires tomorrow)
+  const persisted = _getPersistedSeq(ownerId);
+  if (persisted !== undefined) {
+    _quoteSeqCache[cacheKey] = persisted; // seed session cache
+    return 'W-' + dateKey + String(persisted + 1).padStart(2, '0');
+  }
+
+  // 3. Count today's quotes from history (DB-backed when available)
   const todayQuotes = allHistory.filter(q => {
     if (!q.ownerId || q.ownerId !== ownerId) return false;
     if (!q.date) return false;
@@ -3317,6 +3348,7 @@ function advanceQuoteSeq(ownerId) {
   const current = document.getElementById('quoteNumHidden').value.replace(/^W-/, '');
   const currentSeq = current ? parseInt(current.slice(-2)) : 0;
   _quoteSeqCache[cacheKey] = currentSeq; // next call returns currentSeq+1
+  _setPersistedSeq(ownerId, currentSeq); // persist so refresh doesn't reset it
 }
 
 function renderHistory() {
@@ -4943,6 +4975,7 @@ function applyQuoteCounterOverride(prefix) {
 
   // Set cache so next generateQuoteNumber returns val+1
   _quoteSeqCache[cacheKey] = val;
+  _setPersistedSeq(repId, val); // persist to localStorage — survives refresh, expires tomorrow
 
   // Update the displayed quote number immediately
   updateQuoteNumber();

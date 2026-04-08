@@ -322,6 +322,7 @@
   <div class="drawer-section">
     <div class="drawer-section-title">Notes</div>
     <div class="field-group">
+      <div class="field full"><label>Serial Number</label><input type="text" id="editSerialNumber" placeholder="WhisperRoom serial number"></div>
       <div class="field full"><label>Production Notes</label><textarea id="editProductionNotes" placeholder="Internal notes for production team..."></textarea></div>
       <div class="field full"><label>Special Delivery Notes</label><textarea id="editDeliveryNotes" placeholder="Liftgate required, residential delivery, etc..."></textarea></div>
     </div>
@@ -1026,6 +1027,7 @@ function openDrawer(quoteNumber) {
 
   setRadio('editFoam',  od.foamColor       || '');
   setRadio('editHinge', od.hingePreference || '');
+  document.getElementById('editSerialNumber').value   = od.serialNumber    || '';
   document.getElementById('editProductionNotes').value = od.productionNotes || '';
   document.getElementById('editDeliveryNotes').value   = od.deliveryNotes   || '';
 
@@ -1112,17 +1114,10 @@ async function saveOrder() {
 
   const newFoam      = document.querySelector('input[name="editFoam"]:checked')?.value  || '';
   const newHinge     = document.querySelector('input[name="editHinge"]:checked')?.value || '';
+  const newSerial    = document.getElementById('editSerialNumber').value.trim();
   const newProdNotes = document.getElementById('editProductionNotes').value.trim();
   const newDelNotes  = document.getElementById('editDeliveryNotes').value.trim();
-  const carrier      = document.getElementById('editCarrier').value;
-  const tracking     = document.getElementById('editTracking').value.trim();
-  const shipDate     = document.getElementById('editShipDate').value;
-  const pallets      = document.getElementById('editPallets').value;
-  const boxes        = document.getElementById('editBoxes').value;
   const freightCost  = parseFloat(document.getElementById('editFreightCost').value) || null;
-  // isShipping only true when BOTH carrier AND tracking filled — used only for change log
-  // We always preserve all shipment fields regardless
-  const isShipping   = !!(carrier && tracking);
 
   const customer = {
     firstName: document.getElementById('editFirstName').value.trim(),
@@ -1141,6 +1136,7 @@ async function saveOrder() {
   const chk = (label, prev, next) => { if ((prev||'') !== (next||'') && (prev||next)) changes.push(`${label}: ${prev||'—'} → ${next||'—'}`); };
   chk('Foam Color',       prevOd.foamColor       || '', newFoam);
   chk('Door Hinge',       prevOd.hingePreference || '', newHinge);
+  chk('Serial Number',    prevOd.serialNumber    || '', newSerial);
   chk('Production Notes', prevOd.productionNotes || '', newProdNotes);
   chk('Delivery Notes',   prevOd.deliveryNotes   || '', newDelNotes);
   chk('Name',    [prevC.firstName,prevC.lastName].filter(Boolean).join(' '), [customer.firstName,customer.lastName].filter(Boolean).join(' '));
@@ -1151,7 +1147,6 @@ async function saveOrder() {
   const newAddr  = [customer.address,customer.city,customer.state,customer.zip].filter(Boolean).join(', ');
   chk('Address', prevAddr, newAddr);
   chk('Freight Cost', prevOd.freightCost ? '$'+prevOd.freightCost : '', freightCost ? '$'+freightCost : '');
-  if (isShipping && !prevOd.shipped?.tracking) changes.push(`Marked Shipped — ${carrier}, ${tracking}`);
 
   const hardwareBox = document.getElementById('editHardwareBox')?.value.trim() || '';
   const { to: shipEmailTo, cc: shipEmailCc } = getShipEmailAddresses();
@@ -1160,19 +1155,11 @@ async function saveOrder() {
     customer,
     foamColor:       newFoam,
     hingePreference: newHinge,
+    serialNumber:    newSerial,
     productionNotes: newProdNotes,
     deliveryNotes:   newDelNotes,
-    // Always persist all shipment fields — never wipe them on save
-    // tracking is ONLY what the rep typed — never copy from prev (that would re-ship on Save)
-    shipped: {
-      ...(prevOd.shipped || {}),
-      carrier:     carrier     || prevOd.shipped?.carrier     || '',
-      tracking:    tracking,
-      date:        shipDate    || prevOd.shipped?.date        || '',
-      pallets:     parseInt(pallets) || prevOd.shipped?.pallets || 0,
-      boxes:       parseInt(boxes)   || prevOd.shipped?.boxes   || 0,
-      hardwareBox: hardwareBox || prevOd.shipped?.hardwareBox || '',
-    },
+    // Do NOT include shipped here — shipping is managed exclusively by Ship It button
+    // This prevents Save from accidentally marking orders as shipped
     freightCost,
     shipEmailTo,
     shipEmailCc,
@@ -1189,7 +1176,7 @@ async function saveOrder() {
     });
     const data = await res.json();
     if (data.success) {
-      showToast(isShipping && !prevOd.shipped?.tracking ? '✓ Order marked shipped!' : '✓ Order updated', 'success');
+      showToast('✓ Order updated', 'success');
       closeDrawer();
       loadOrders();
     } else {

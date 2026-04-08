@@ -483,7 +483,7 @@ function renderHub(dealId,data) {
           </div>
         </div>
         <a href="https://app.hubspot.com/contacts/5764220/deal/${dealId}" target="_blank" style="font-size:10px;color:var(--muted);text-decoration:none;padding:4px 8px;border-radius:5px;border:1px solid var(--border);flex-shrink:0">HS ↗</a>
-        ${data.driveFolderId ? `<a href="https://drive.google.com/drive/folders/${data.driveFolderId}" target="_blank" style="font-size:10px;color:var(--muted);text-decoration:none;padding:4px 8px;border-radius:5px;border:1px solid var(--border);flex-shrink:0">📁 Folder</a>` : ''}
+        ${data.driveFolderName ? `<button onclick="copyFolderPath('${data.driveFolderName.replace(/'/g,"\\'")}')" title="Copy local folder path to clipboard" style="font-size:10px;color:var(--muted);padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">📋 Copy Folder Path</button>` : ''}
         <button onclick="openMergeDeal('${dealId}')" title="Merge this deal into another deal" style="font-size:10px;color:#ef4444;padding:4px 8px;border-radius:5px;border:1px solid rgba(239,68,68,.3);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">⤴ Merge Into</button>
         <button onclick="openMergeLegacy('${dealId}')" title="Merge a legacy AllContacts folder into this deal" style="font-size:10px;color:var(--muted);padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">📁 Merge Legacy</button>
       </div>
@@ -982,6 +982,25 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
 </div>
 
 <script>
+// ── Copy folder path to clipboard ────────────────────────────────
+function copyFolderPath(folderName) {
+  const path = `Z:\\Sales1\\AllContacts\\${folderName}`;
+  navigator.clipboard.writeText(path).then(() => {
+    showToast(`📋 Copied: ${path}`, 'success');
+  }).catch(() => {
+    // Fallback for older browsers
+    const el = document.createElement('textarea');
+    el.value = path;
+    el.style.position = 'fixed';
+    el.style.opacity = '0';
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
+    showToast(`📋 Copied: ${path}`, 'success');
+  });
+}
+
 // ── Merge Deal ────────────────────────────────────────────────────
 let _mergeDealSourceId   = null;
 let _mergeDealTargetId   = null;

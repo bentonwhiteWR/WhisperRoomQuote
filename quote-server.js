@@ -4766,6 +4766,7 @@ tbody tr:hover td{background:#fdfcfb}
         // Match by deal_id OR by deal_name (for quotes saved before deal_id backfill)
         const qr = await db.query(
           `SELECT quote_number, total, date, deal_name, rep_id, share_token, payment_link,
+                  gdrive_folder_id,
                   (json_snapshot->>'accepted')::text            as accepted,
                   json_snapshot->>'acceptedFoam'                as accepted_foam,
                   json_snapshot->>'acceptedHinge'               as accepted_hinge,
@@ -4815,6 +4816,7 @@ tbody tr:hover td{background:#fdfcfb}
             acceptedHinge: r.accepted_hinge || '',
             acceptedNote:  r.accepted_note  || '',
             quoteLabel:    r.quote_label    || '',
+            gdriveFolder:  r.gdrive_folder_id || null,
           };
         });
       }
@@ -4971,7 +4973,10 @@ tbody tr:hover td{background:#fdfcfb}
         }
       } catch(e) { console.warn('Deal hub contact fetch error:', e.message); }
 
-      json({ dealId, dealStage, dealAmount, paymentStatus, quotes, invoices, orders, contact });
+      // Pick up gdrive_folder_id from whichever quote has one
+      const driveFolderId = quotes.find(q => q.gdriveFolder)?.gdriveFolder || null;
+
+      json({ dealId, dealStage, dealAmount, paymentStatus, quotes, invoices, orders, contact, driveFolderId });
     } catch(e) {
       console.error('Deal hub error:', e.message);
       json({ error: e.message }, 500);

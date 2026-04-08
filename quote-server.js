@@ -4973,10 +4973,22 @@ tbody tr:hover td{background:#fdfcfb}
         }
       } catch(e) { console.warn('Deal hub contact fetch error:', e.message); }
 
-      // Pick up gdrive_folder_id from whichever quote has one
-      const driveFolderId = quotes.find(q => q.gdriveFolder)?.gdriveFolder || null;
+      // Pick up gdrive_folder_id and folder name from whichever quote has one
+      const driveFolderQuote = quotes.find(q => q.gdriveFolder) || null;
+      const driveFolderId   = driveFolderQuote?.gdriveFolder || null;
 
-      json({ dealId, dealStage, dealAmount, paymentStatus, quotes, invoices, orders, contact, driveFolderId });
+      // Get folder name from Drive to build the local path
+      let driveFolderName = null;
+      if (driveFolderId) {
+        try {
+          const folderMeta = await gdriveRequest('GET',
+            `/drive/v3/files/${driveFolderId}?fields=name&supportsAllDrives=true`
+          );
+          driveFolderName = folderMeta?.name || null;
+        } catch(e) { console.warn('[hub] Could not fetch folder name:', e.message); }
+      }
+
+      json({ dealId, dealStage, dealAmount, paymentStatus, quotes, invoices, orders, contact, driveFolderId, driveFolderName });
     } catch(e) {
       console.error('Deal hub error:', e.message);
       json({ error: e.message }, 500);

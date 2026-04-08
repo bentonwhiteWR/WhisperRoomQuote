@@ -2514,11 +2514,7 @@ const server = http.createServer(async (req, res) => {
       } else {
         const deal = await hsCreateDeal({
           dealname: dealName || (() => {
-            const base = customer.company || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || 'Customer';
-            const now = new Date();
-            const mo = now.toLocaleString('en-US', { month: 'short', timeZone: 'America/New_York' });
-            const yr = now.getFullYear();
-            return `${base} - ${mo} ${yr}`;
+            return customer.company || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || 'Customer';
           })(),
           tax_rate: tax && tax.rate ? String((tax.rate * 100).toFixed(3)) : '',
           quote_number: quoteNumber || '',
@@ -3670,6 +3666,155 @@ tbody tr:hover td{background:#fdfcfb}
       }
 
       json({ success: true, ...results, total: rows.rows.length });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── Admin: Strip date suffix from deal names (one-time + ongoing) ──
+  if (pathname === '/api/admin/strip-deal-date-suffixes' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const urlParams = new URLSearchParams(req.url.includes('?') ? req.url.split('?')[1] : '');
+      const dryRun = urlParams.get('dryRun') === 'true';
+
+      // Find all DB deals where deal_name matches "Name - Mon YYYY" or "Name · Mon YYYY"
+      const DATE_SUFFIX = /\s*[·—\-–]\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\s*$/i;
+
+      const rows = await db.query(`
+        SELECT DISTINCT ON (deal_id) deal_id, deal_name
+        FROM quotes
+        WHERE deal_id IS NOT NULL
+          AND deal_name ~ '[·—\\-–]\\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\\s+[0-9]{4}'
+        ORDER BY deal_id, created_at DESC
+      `);
+
+      const results = { dryRun, renamed: [], skipped: [], errors: [], total: rows.rows.length };
+
+      for (const row of rows.rows) {
+        const oldName = row.deal_name || '';
+        const newName = oldName.replace(DATE_SUFFIX, '').trim();
+
+        if (!newName || newName === oldName) {
+          results.skipped.push({ dealId: row.deal_id, name: oldName, reason: 'no change' });
+          continue;
+        }
+
+        if (dryRun) {
+          results.renamed.push({ dealId: row.deal_id, from: oldName, to: newName, dryRun: true });
+          continue;
+        }
+
+        try {
+          // Update HubSpot
+          await hsRequest('PATCH', `/crm/v3/objects/deals/${row.deal_id}`, { properties: { dealname: newName } });
+          // Update DB
+          await db.query(`UPDATE quotes SET deal_name = $1 WHERE deal_id = $2`, [newName, row.deal_id]);
+          console.log(`[strip-deal-dates] "${oldName}" → "${newName}"`);
+          results.renamed.push({ dealId: row.deal_id, from: oldName, to: newName });
+        } catch(e) {
+          results.errors.push({ dealId: row.deal_id, name: oldName, error: e.message });
+        }
+      }
+
+      json({ success: true, ...results });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── Drive: Search AllContacts for legacy folder by name ──────────
+  if (pathname === '/api/drive/search-legacy-folder' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const urlParams = new URLSearchParams(req.url.includes('?') ? req.url.split('?')[1] : '');
+      const q = (urlParams.get('q') || '').trim();
+      if (!q) { json({ error: 'Missing q' }, 400); return; }
+
+      // Search for folders in AllContacts root whose name contains the query (case-insensitive)
+      const escaped = q.replace(/'/g, "\\'");
+      const searchRes = await gdriveRequest('GET',
+        `/drive/v3/files?q=mimeType='application/vnd.google-apps.folder' and '${GDRIVE_ROOT_FOLDER}' in parents and name contains '${escaped}' and trashed=false&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true`
+      );
+
+      const folders = (searchRes?.files || []).map(f => ({ id: f.id, name: f.name }));
+      json({ success: true, folders });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── Drive: Merge legacy folder into deal folder ──────────────────
+  if (pathname === '/api/drive/merge-legacy-folder' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      let body = {};
+      try { body = JSON.parse(await readBody(req)); } catch(e) {}
+      const { legacyFolderId, quoteNumber, dealName, companyName } = body;
+
+      if (!legacyFolderId) { json({ error: 'Missing legacyFolderId' }, 400); return; }
+      if (!quoteNumber && !dealName) { json({ error: 'Missing quoteNumber or dealName' }, 400); return; }
+
+      // Step 1: Ensure deal folder exists (creates if needed, returns existing if found)
+      let dealFolderId = null;
+      if (quoteNumber) {
+        const qRow = await db.query(`SELECT gdrive_folder_id FROM quotes WHERE quote_number = $1 LIMIT 1`, [quoteNumber]);
+        dealFolderId = qRow.rows[0]?.gdrive_folder_id || null;
+      }
+
+      if (!dealFolderId) {
+        // Create/find the deal folder
+        const folderName = getCompanyFolderName(dealName || quoteNumber, companyName || '').replace(/[/\\:*?"<>|]/g, '-').trim();
+        const dealFolder = await gdriveEnsureFolder(folderName, GDRIVE_ROOT_FOLDER);
+        dealFolderId = dealFolder?.id;
+        if (!dealFolderId) throw new Error('Could not create or find deal folder');
+        // Save back to DB if we have a quote number
+        if (quoteNumber) {
+          await db.query(`UPDATE quotes SET gdrive_folder_id = $1 WHERE quote_number = $2`, [dealFolderId, quoteNumber]);
+        }
+      }
+
+      // Step 2: List all files in legacy folder
+      const listRes = await gdriveRequest('GET',
+        `/drive/v3/files?q='${legacyFolderId}' in parents and trashed=false&fields=files(id,name,mimeType)&supportsAllDrives=true&includeItemsFromAllDrives=true`
+      );
+      const files = listRes?.files || [];
+
+      if (!files.length) {
+        // Nothing to move — just delete the empty folder
+        await gdriveRequest('DELETE', `/drive/v3/files/${legacyFolderId}?supportsAllDrives=true`);
+        json({ success: true, moved: 0, message: 'Legacy folder was empty — deleted.' });
+        return;
+      }
+
+      // Step 3: Move each file to deal folder
+      let moved = 0;
+      const errors = [];
+      for (const file of files) {
+        try {
+          await gdriveRequest('PATCH',
+            `/drive/v3/files/${file.id}?addParents=${dealFolderId}&removeParents=${legacyFolderId}&supportsAllDrives=true&fields=id`,
+            {}
+          );
+          moved++;
+        } catch(e) {
+          errors.push({ name: file.name, error: e.message });
+        }
+      }
+
+      // Step 4: Delete legacy folder if all moved successfully
+      if (errors.length === 0) {
+        try {
+          await gdriveRequest('DELETE', `/drive/v3/files/${legacyFolderId}?supportsAllDrives=true`);
+        } catch(e) {
+          console.warn('[merge-legacy] Could not delete legacy folder:', e.message);
+        }
+      }
+
+      json({ success: true, moved, errors, dealFolderId, message: `Moved ${moved} item${moved!==1?'s':''} to deal folder.${errors.length?' Some errors occurred.':''}` });
     } catch(e) {
       json({ error: e.message }, 500);
     }

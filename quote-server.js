@@ -5558,6 +5558,120 @@ tbody tr:hover td{background:#fdfcfb}
   }
 
   // ── API: Delete Deal (all quotes + orders for a deal, + HubSpot deal) ──
+  if (pathname.startsWith('/api/deals/') && pathname.endsWith('/merge') && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const sourceDealId = pathname.replace('/api/deals/', '').replace('/merge', '').trim();
+    if (!sourceDealId) { json({ error: 'Source deal ID required' }, 400); return; }
+    try {
+      let body = {};
+      try { body = JSON.parse(await readBody(req)); } catch(e) {}
+      const { targetDealId } = body;
+      if (!targetDealId) { json({ error: 'targetDealId required' }, 400); return; }
+      if (sourceDealId === targetDealId) { json({ error: 'Source and target cannot be the same deal' }, 400); return; }
+
+      const result = { quotes: 0, orders: 0, driveFolder: null, hubspotDeleted: false };
+
+      if (db) {
+        // Get source deal's Drive folder before re-associating quotes
+        const folderRow = await db.query(
+          `SELECT DISTINCT gdrive_folder_id FROM quotes WHERE deal_id = $1 AND gdrive_folder_id IS NOT NULL LIMIT 1`,
+          [sourceDealId]
+        );
+        const sourceFolderId = folderRow.rows[0]?.gdrive_folder_id || null;
+
+        // Get target deal's folder
+        const targetFolderRow = await db.query(
+          `SELECT DISTINCT gdrive_folder_id FROM quotes WHERE deal_id = $1 AND gdrive_folder_id IS NOT NULL LIMIT 1`,
+          [targetDealId]
+        );
+        const targetFolderId = targetFolderRow.rows[0]?.gdrive_folder_id || null;
+
+        // Re-associate all quotes from source → target deal
+        const qRes = await db.query(
+          `UPDATE quotes SET deal_id = $1 WHERE deal_id = $2`,
+          [targetDealId, sourceDealId]
+        );
+        result.quotes = qRes.rowCount;
+
+        // Re-associate all orders from source → target deal
+        const oRes = await db.query(
+          `UPDATE orders SET deal_id = $1 WHERE deal_id = $2`,
+          [targetDealId, sourceDealId]
+        );
+        result.orders = oRes.rowCount;
+
+        // Update notifications
+        await db.query(
+          `UPDATE notifications SET deal_id = $1 WHERE deal_id = $2`,
+          [targetDealId, sourceDealId]
+        );
+
+        // Merge Drive folders if source has one
+        if (sourceFolderId && targetFolderId && sourceFolderId !== targetFolderId) {
+          try {
+            // List all files in source folder
+            const listQ = `'${sourceFolderId}' in parents and trashed=false`;
+            const listRes = await gdriveRequest('GET',
+              `/drive/v3/files?q=${encodeURIComponent(listQ)}&fields=files(id,name,mimeType)&supportsAllDrives=true&includeItemsFromAllDrives=true`
+            );
+            const files = listRes?.files || [];
+            let moved = 0;
+            for (const file of files) {
+              try {
+                await gdriveRequest('PATCH',
+                  `/drive/v3/files/${file.id}?addParents=${targetFolderId}&removeParents=${sourceFolderId}&supportsAllDrives=true&fields=id`,
+                  {}
+                );
+                moved++;
+              } catch(e) { console.warn(`[merge-deal] Could not move file ${file.name}:`, e.message); }
+            }
+            // Trash source folder
+            if (moved === files.length) {
+              try {
+                await gdriveRequest('PATCH',
+                  `/drive/v3/files/${sourceFolderId}?supportsAllDrives=true&fields=id`,
+                  { trashed: true }
+                );
+              } catch(e) { console.warn('[merge-deal] Could not trash source folder:', e.message); }
+            }
+            result.driveFolder = { moved, total: files.length };
+          } catch(e) {
+            console.warn('[merge-deal] Drive merge error:', e.message);
+            result.driveFolder = { error: e.message };
+          }
+        } else if (sourceFolderId && !targetFolderId) {
+          // Target has no folder — reassign source folder to target
+          await db.query(
+            `UPDATE quotes SET gdrive_folder_id = NULL WHERE deal_id = $1 AND gdrive_folder_id = $2`,
+            [targetDealId, sourceFolderId]
+          );
+          result.driveFolder = { reassigned: sourceFolderId };
+        }
+      }
+
+      // Delete source deal from HubSpot
+      try {
+        const hsRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v3/objects/deals/${sourceDealId}`,
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+        });
+        result.hubspotDeleted = hsRes.status === 204 || hsRes.status === 200;
+        console.log(`[merge-deal] HubSpot source deal ${sourceDealId} deleted: ${hsRes.status}`);
+      } catch(e) {
+        console.warn('[merge-deal] HubSpot delete failed:', e.message);
+      }
+
+      console.log(`[merge-deal] ${sourceDealId} → ${targetDealId}: quotes=${result.quotes}, orders=${result.orders}`);
+      json({ success: true, sourceDealId, targetDealId, ...result });
+    } catch(e) {
+      console.error('[merge-deal] error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   if (pathname.startsWith('/api/deals/') && pathname.endsWith('/delete') && req.method === 'DELETE') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const dealId = pathname.replace('/api/deals/', '').replace('/delete', '').trim();

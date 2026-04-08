@@ -5601,6 +5601,58 @@ tbody tr:hover td{background:#fdfcfb}
     return;
   }
 
+  // ── API: Unship order ────────────────────────────────────────────
+  if (pathname.startsWith('/api/orders/') && pathname.endsWith('/unship') && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').replace('/unship', '').trim());
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+
+      const existing = await db.query('SELECT order_data, deal_id FROM orders WHERE quote_number = $1', [quoteNumber]);
+      if (!existing.rows[0]) { json({ error: 'Order not found' }, 404); return; }
+
+      const od = existing.rows[0].order_data || {};
+      const dealId = existing.rows[0].deal_id;
+      const repName = JSON.parse(await readBody(req))?.repName || 'Unknown';
+
+      // Clear shipped data from order
+      const changeLog = od.changeLog || [];
+      changeLog.push({ at: new Date().toISOString(), summary: 'Unshipped — reverted to Closed Won', rep: repName });
+
+      const updated = { ...od, shipped: null, changeLog, lastUpdated: new Date().toISOString() };
+      await db.query('UPDATE orders SET order_data = $1 WHERE quote_number = $2', [JSON.stringify(updated), quoteNumber]);
+
+      // Revert HubSpot deal stage to Closed Won and clear shipping fields
+      if (dealId) {
+        try {
+          await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/deals/${dealId}`,
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, {
+            properties: {
+              dealstage: 'closedwon',
+              tracking_number: '',
+              freight_carrier: '',
+              carrier__c: '',
+              date_shipped: '',
+              box_count: '',
+              pallet_count: '',
+              hardware_box: '',
+            }
+          });
+          console.log(`[unship] Deal ${dealId} reverted to Closed Won`);
+        } catch(e) { console.warn('[unship] HubSpot revert failed:', e.message); }
+      }
+
+      json({ success: true, quoteNumber });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── API: Delete Quote (single quote record) ─────────────────────
   if (pathname.startsWith('/api/quotes/') && pathname.endsWith('/delete') && req.method === 'DELETE') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
@@ -5886,8 +5938,8 @@ tbody tr:hover td{background:#fdfcfb}
       // 5. HubSpot updates
       if (dealId) {
         try {
-          // If newly marked shipped → advance to Shipped stage + add tracking
-          if (isNowShipped && !wasShipped) {
+          // Push shipping fields whenever shipped data is present (not just first ship)
+          if (isNowShipped) {
             await httpsRequest({
               hostname: 'api.hubapi.com',
               path: `/crm/v3/objects/deals/${dealId}`,
@@ -5903,7 +5955,7 @@ tbody tr:hover td{background:#fdfcfb}
                 box_count: String(shipped.boxes||0),
                 pallet_count: String(shipped.pallets||0),
                 hardware_box: shipped.hardwareBox || '',
-                ...(freightCost ? { freight_cost: String(freightCost) } : {}),
+                ...(freightCost !== undefined && freightCost !== null ? { freight_cost: String(freightCost) } : {}),
               }
             });
           }

@@ -1273,7 +1273,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
 
         <!-- Admin Panel -->
         <div style="border-top:1px solid rgba(255,255,255,.06);padding-top:16px">
-          <button onclick="document.getElementById('dhAdminPanel').style.display=document.getElementById('dhAdminPanel').style.display==='none'?'block':'none'" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;padding:0;text-transform:uppercase;letter-spacing:.06em">
+          <button onclick="const p=document.getElementById('dhAdminPanel');p.style.display=p.style.display==='none'?'block':'none';if(p.style.display==='block')updateQuoteCounterPreview();" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;padding:0;text-transform:uppercase;letter-spacing:.06em">
             ⚙ Admin Override <span style="font-size:9px">▼</span>
           </button>
           <div id="dhAdminPanel" style="display:none;margin-top:14px">
@@ -1301,6 +1301,19 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
               </div>
             </div>
             <div id="dhAdminStatus" style="margin-top:8px;font-size:11px;color:rgba(255,255,255,.3)"></div>
+            <!-- Quote Counter Override -->
+            <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)">
+              <label style="font-size:10px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Fix Quote Counter for Today</label>
+              <div style="display:flex;gap:8px;align-items:center">
+                <div style="font-size:11px;color:rgba(255,255,255,.3);flex-shrink:0">Set today's count to:</div>
+                <input type="number" id="quoteCounterOverride" min="0" max="99" placeholder="e.g. 3"
+                  style="width:70px;padding:6px 8px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:12px;font-family:inherit;outline:none;text-align:center">
+                <button onclick="applyQuoteCounterOverride()"
+                  style="padding:6px 12px;background:rgba(238,98,22,.2);border:1px solid rgba(238,98,22,.4);border-radius:6px;color:#ee6216;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Apply</button>
+              </div>
+              <div style="font-size:10px;color:rgba(255,255,255,.25);margin-top:5px">Next quote will be: <span id="quoteCounterPreview" style="font-family:var(--mono);color:rgba(255,255,255,.5)"></span></div>
+              <div id="quoteCounterStatus" style="font-size:11px;color:rgba(255,255,255,.3);margin-top:4px"></div>
+            </div>
           </div>
         </div>
 
@@ -2396,11 +2409,13 @@ async function createDeal() {
   }
 
   // If revising a historical quote, generate a fresh quote number now
+  let _freshQuoteGenerated = false;
   if (window._historicalQuoteLoaded) {
     window._historicalQuoteLoaded = false;
     updateQuoteNumber();
     updatePushButtonText();
     document.getElementById('revisionNote').style.display = 'none';
+    _freshQuoteGenerated = true;
   }
 
   const firstName = document.getElementById('firstName').value.trim();
@@ -2544,7 +2559,9 @@ async function createDeal() {
         linkDealById(data.dealId, pushedDealName);
       }
       // Mark form as published — next push will generate a new quote number
-      if (data.quoteNumber) {
+      if (data.quoteNumber && !_freshQuoteGenerated) {
+        // Only update quoteNumHidden from server response if we didn't already
+        // generate a fresh number this push (prevents server echo from reverting it)
         document.getElementById('quoteNumHidden').value = data.quoteNumber;
         // Show deal name as display, quote number as sub-label
         const dealNameAfterPush = data.dealName || document.getElementById('dealName').value.trim();
@@ -4864,6 +4881,39 @@ async function markDhQuotePaid(quoteNumber) {
     if (data.success) { showToast('✓ Marked as paid', 'success'); openDealHub(); }
     else throw new Error(data.error);
   } catch(e) { showToast('Error: '+e.message, 'error'); }
+}
+
+function applyQuoteCounterOverride() {
+  const val = parseInt(document.getElementById('quoteCounterOverride').value);
+  if (isNaN(val) || val < 0) {
+    document.getElementById('quoteCounterStatus').textContent = 'Enter a valid number (0 or higher)';
+    return;
+  }
+  const repId = document.getElementById('repSelect').value;
+  const now   = new Date();
+  const mm    = String(now.getMonth() + 1).padStart(2, '0');
+  const dd    = String(now.getDate()).padStart(2, '0');
+  const yy    = String(now.getFullYear()).slice(-2);
+  const cacheKey = repId + '_' + mm + dd + yy;
+
+  // Set cache so next generateQuoteNumber returns val+1
+  _quoteSeqCache[cacheKey] = val;
+
+  // Update the displayed quote number immediately
+  updateQuoteNumber();
+
+  // Show preview
+  const preview = document.getElementById('quoteCounterPreview');
+  const status  = document.getElementById('quoteCounterStatus');
+  if (preview) preview.textContent = document.getElementById('quoteNumHidden').value || generateQuoteNumber(repId);
+  if (status)  status.textContent  = '✓ Counter set — next new quote will use this sequence';
+  setTimeout(() => { if (status) status.textContent = ''; }, 4000);
+}
+
+// Update preview when admin panel opens or input changes
+function updateQuoteCounterPreview() {
+  const preview = document.getElementById('quoteCounterPreview');
+  if (preview) preview.textContent = generateQuoteNumber(document.getElementById('repSelect').value);
 }
 
 async function updatePaymentStatus(status) {

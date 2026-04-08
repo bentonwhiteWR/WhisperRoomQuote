@@ -5615,11 +5615,16 @@ tbody tr:hover td{background:#fdfcfb}
       const dealId = existing.rows[0].deal_id;
       const repName = JSON.parse(await readBody(req))?.repName || 'Unknown';
 
-      // Clear shipped data from order
+      // Unship — clear tracking only, keep all other shipment fields intact
       const changeLog = od.changeLog || [];
       changeLog.push({ at: new Date().toISOString(), summary: 'Unshipped — reverted to Closed Won', rep: repName });
 
-      const updated = { ...od, shipped: null, changeLog, lastUpdated: new Date().toISOString() };
+      const updated = {
+        ...od,
+        shipped: { ...(od.shipped || {}), tracking: null },
+        changeLog,
+        lastUpdated: new Date().toISOString()
+      };
       await db.query('UPDATE orders SET order_data = $1 WHERE quote_number = $2', [JSON.stringify(updated), quoteNumber]);
 
       // Revert HubSpot deal stage to Closed Won and clear shipping fields
@@ -5874,7 +5879,7 @@ tbody tr:hover td{background:#fdfcfb}
     const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').trim());
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, foamColor, hingePreference, productionNotes, deliveryNotes, shipped, changes, repName, freightCost, shipEmailTo, shipEmailCc } = body;
+      const { customer, foamColor, hingePreference, productionNotes, deliveryNotes, shipped, changes, repName, freightCost, shipEmailTo, shipEmailCc, markShipped, serialNumber } = body;
 
       if (!db) { json({ error: 'No database' }, 500); return; }
 
@@ -5902,6 +5907,7 @@ tbody tr:hover td{background:#fdfcfb}
         ...currentOrderData,
         foamColor:        foamColor        !== undefined ? foamColor        : currentOrderData.foamColor,
         hingePreference:  hingePreference  !== undefined ? hingePreference  : currentOrderData.hingePreference,
+        serialNumber:     serialNumber     !== undefined ? serialNumber     : currentOrderData.serialNumber,
         productionNotes:  productionNotes  !== undefined ? productionNotes  : currentOrderData.productionNotes,
         deliveryNotes:    deliveryNotes    !== undefined ? deliveryNotes    : currentOrderData.deliveryNotes,
         shipped:          shipped          !== undefined ? shipped          : currentOrderData.shipped,
@@ -5938,8 +5944,17 @@ tbody tr:hover td{background:#fdfcfb}
       // 5. HubSpot updates
       if (dealId) {
         try {
-          // Push shipping fields whenever shipped data is present (not just first ship)
-          if (isNowShipped) {
+          // Always update serial number / deal description when provided
+          if (serialNumber !== undefined) {
+            await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/deals/${dealId}`,
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, { properties: { deal_description: serialNumber || '' } });
+          }
+          // Only push shipping fields to HubSpot when explicitly marking shipped (Ship It button)
+          if (markShipped && isNowShipped) {
             await httpsRequest({
               hostname: 'api.hubapi.com',
               path: `/crm/v3/objects/deals/${dealId}`,

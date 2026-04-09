@@ -6727,6 +6727,63 @@ tbody tr:hover td{background:#fdfcfb}
       console.log(`Order ${quoteNumber} updated${isNowShipped && !wasShipped ? ' → SHIPPED' : ''}`);
       json({ success: true, shipped: isNowShipped });
 
+      // ── Accounting task when Jeromy ships ────────────────────────
+      // Fire when: Ship It is clicked AND shipper is Jeromy (38732186)
+      if (isNowShipped && !wasShipped && dealId) {
+        (async () => {
+          try {
+            const sf2        = updatedOrderData.shipped || {};
+            const serial     = updatedOrderData.serialNumber || currentOrderData.serialNumber || '—';
+            const fc2        = updatedOrderData.freightCost   || currentOrderData.freightCost   || '—';
+            const dealRow    = await db?.query('SELECT deal_name FROM quotes WHERE quote_number = $1 LIMIT 1', [quoteNumber]);
+            const dealNameT  = dealRow?.rows[0]?.deal_name || quoteNumber;
+            const fcDisplay  = fc2 !== '—' ? `$${parseFloat(fc2).toFixed(2)}` : '—';
+
+            const taskBody = [
+              `Deal: ${dealNameT}`,
+              `Serial Number: ${serial}`,
+              `Carrier: ${sf2.carrier || '—'}`,
+              `PRO / Tracking: ${sf2.tracking || '—'}`,
+              `Freight Cost: ${fcDisplay}`,
+            ].join('\n');
+
+            // Create HubSpot task assigned to Jeromy, associated to the deal
+            const taskRes = await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: '/crm/v3/objects/tasks',
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, {
+              properties: {
+                hs_task_subject:   `📦 SHIPPED — ${dealNameT} — Notify accounting@whisperroom.com`,
+                hs_task_body:      taskBody,
+                hs_task_status:    'NOT_STARTED',
+                hs_task_type:      'TODO',
+                hs_task_priority:  'HIGH',
+                hubspot_owner_id:  '38732186', // Jeromy
+                hs_timestamp:      String(Date.now()),
+              }
+            });
+
+            const taskId = taskRes.body?.id;
+            if (taskId && dealId) {
+              await httpsRequest({
+                hostname: 'api.hubapi.com',
+                path: '/crm/v4/associations/tasks/deals/batch/create',
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+              }, {
+                inputs: [{ from: { id: taskId }, to: { id: String(dealId) },
+                  types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 216 }] }]
+              });
+            }
+            console.log(`[orders] accounting task created for ${dealNameT} (task ${taskId})`);
+          } catch(e) {
+            console.warn('[orders] accounting task failed:', e.message);
+          }
+        })();
+      }
+
       // Upload order PDF to Google Drive when shipped (non-blocking)
       if (isNowShipped && !wasShipped) {
         (async () => {

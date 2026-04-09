@@ -372,22 +372,34 @@ async function fetchABFTracking(trackingNumber, apiKey) {
     const shortStatus = get('SHORTSTATUS2') || get('SHORTSTATUS') || '';
     const longStatus  = get('LONGSTATUS') || '';
 
-    // Map ABF status codes to normalized status
-    let status = 'in_transit', label = 'In Transit';
-    const ss = shortStatus.toUpperCase();
-    const ls = longStatus.toLowerCase();
-    if (ss === 'D' || ls.includes('deliver')) { status = 'delivered';        label = 'Delivered'; }
-    else if (ss === 'OD' || ls.includes('out for delivery')) { status = 'out_for_delivery'; label = 'Out for Delivery'; }
-    else if (ss === 'P' || ls.includes('picked up'))         { status = 'in_transit';       label = 'Picked Up'; }
-    else if (ss === 'E' || ls.includes('exception'))         { status = 'exception';         label = 'Exception'; }
-
-    // Dates
+    // Dates — fetch these first so status logic can use them
     const deliveryDate = get('DELIVERYDATE');   // actual delivery (delivered only)
     const deliveryTime = get('DELIVERYTIME');
     const dueDate      = get('DUEDATE');        // scheduled delivery date
     const expectedDate = get('EXPECTEDDELIVERYDATE');
     const pickupDate   = get('PICKUP');
     const pickupTime   = get('PICKUPTIME');
+
+    // Map ABF status codes to normalized status
+    let status = 'in_transit', label = 'In Transit';
+    const ss = shortStatus.toUpperCase();
+    const ls = longStatus.toLowerCase();
+    // Use exact short-status code match OR unambiguous past-tense long status
+    // IMPORTANT: 'deliver' partial match is too broad — 'out for delivery', 'arrived for delivery' etc.
+    // Only mark delivered if short status is exactly 'D' AND there's an actual delivery date,
+    // OR the long status unambiguously says 'delivered' (past tense, not 'out for delivery')
+    const hasDeliveryDate = !!deliveryDate;
+    if ((ss === 'D' && hasDeliveryDate) || (ls.includes('delivered') && !ls.includes('out for delivery') && !ls.includes('arrived'))) {
+      status = 'delivered'; label = 'Delivered';
+    } else if (ss === 'OD' || ss === 'OFD' || ls.includes('out for delivery')) {
+      status = 'out_for_delivery'; label = 'Out for Delivery';
+    } else if (ls.includes('arrived') || ss === 'ARR') {
+      status = 'in_transit'; label = 'Arrived at Terminal';
+    } else if (ss === 'P' || ls.includes('picked up')) {
+      status = 'in_transit'; label = 'Picked Up';
+    } else if (ss === 'E' || ls.includes('exception')) {
+      status = 'exception'; label = 'Exception';
+    }
 
     // ETA — prefer DUEDATE, fall back to EXPECTEDDELIVERYDATE
     const etaRaw = dueDate || expectedDate || null;

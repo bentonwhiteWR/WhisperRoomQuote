@@ -317,12 +317,14 @@ async function initTrackingCache() {
   await db.query(`ALTER TABLE tracking_cache ADD COLUMN IF NOT EXISTS dest_city TEXT`).catch(()=>{});
   await db.query(`ALTER TABLE tracking_cache ADD COLUMN IF NOT EXISTS dest_state TEXT`).catch(()=>{});
   console.log('Tracking cache ready');
-  // Clear entries that have suspicious delivered status with no delivered_at (stale data)
+  // Clear entries with bogus delivered_at = today (fallback bug) or no delivered_at
   try {
+    const today = new Date().toISOString().split('T')[0];
     const wiped = await db.query(
-      "DELETE FROM tracking_cache WHERE status = 'delivered' AND delivered_at IS NULL"
+      "DELETE FROM tracking_cache WHERE status = 'delivered' AND (delivered_at IS NULL OR delivered_at = $1)",
+      [today]
     );
-    if (wiped.rowCount > 0) console.log(`[tracking] cleared ${wiped.rowCount} stale cache entries`);
+    if (wiped.rowCount > 0) console.log(`[tracking] cleared ${wiped.rowCount} stale/bogus cache entries`);
   } catch(e) { /* silent */ }
 }
 
@@ -351,119 +353,320 @@ async function saveTrackingToCache(trackingNumber, slug, data) {
   } catch(e) { console.warn('tracking cache save error:', e.message); }
 }
 
-async function fetchAndCacheTracking(trackingNumber, carrier) {
-  const AFTERSHIP_KEY = process.env.AFTERSHIP_API_KEY || '';
-  if (!AFTERSHIP_KEY) return null;
-
-  const slugMap = {
-    'ABF': 'abf', 'OD': 'olddominionfreight',
-    'UPS': 'ups', 'FedEx': 'fedex', 'USPS': 'usps',
-  };
-  const slug = slugMap[carrier] || null;
-
+async function fetchABFTracking(trackingNumber, apiKey) {
   try {
-    // Register if new
-    const createBody = { tracking_number: trackingNumber };
-    if (slug) createBody.slug = slug;
-    await httpsRequest({
-      hostname: 'api.aftership.com',
-      path: '/tracking/2026-01/trackings',
-      method: 'POST',
-      headers: { 'as-api-key': AFTERSHIP_KEY, 'Content-Type': 'application/json' }
-    }, { tracking: createBody });
+    const url = `https://www.abfs.com/xml/tracexml.asp?DL=2&ID=${encodeURIComponent(apiKey)}&RefNum=${encodeURIComponent(trackingNumber)}&RefType=A`;
+    const res = await httpsRequest({ hostname: 'www.abfs.com', path: url.replace('https://www.abfs.com', ''), method: 'GET', headers: { 'Accept': 'application/xml' } });
+    const xml = typeof res.body === 'string' ? res.body : JSON.stringify(res.body);
 
-    // Fetch status
-    const listRes = await httpsRequest({
-      hostname: 'api.aftership.com',
-      path: `/tracking/2026-01/trackings?tracking_number=${encodeURIComponent(trackingNumber)}&limit=1`,
-      method: 'GET',
-      headers: { 'as-api-key': AFTERSHIP_KEY }
-    });
+    // Parse XML fields with simple regex — ABF returns flat XML
+    const get = (tag) => { const m = xml.match(new RegExp(`<${tag}>([^<]*)</${tag}>`, 'i')); return m ? m[1].trim() : null; };
 
-    let trackingData = listRes.body?.data?.trackings?.[0] || null;
-
-    // Try direct path if list didn't find it
-    if (!trackingData && slug) {
-      const directRes = await httpsRequest({
-        hostname: 'api.aftership.com',
-        path: `/tracking/2026-01/trackings/${encodeURIComponent(slug)}/${encodeURIComponent(trackingNumber)}`,
-        method: 'GET',
-        headers: { 'as-api-key': AFTERSHIP_KEY }
-      });
-      trackingData = directRes.body?.data?.tracking || null;
+    const errors = get('NUMERRORS');
+    if (errors && errors !== '0') {
+      const errMsg = get('ERRORMESSAGE');
+      console.warn(`[ABF] tracking error for ${trackingNumber}: ${errMsg}`);
+      return null;
     }
 
-    if (!trackingData) return null;
+    const shortStatus = get('SHORTSTATUS2') || get('SHORTSTATUS') || '';
+    const longStatus  = get('LONGSTATUS') || '';
 
-    const tag = trackingData.tag || '';
-    const statusMap = {
-      'Delivered': { status: 'delivered', label: 'Delivered' },
-      'OutForDelivery': { status: 'out_for_delivery', label: 'Out for Delivery' },
-      'InTransit': { status: 'in_transit', label: 'In Transit' },
-      'AttemptFail': { status: 'exception', label: 'Attempt Failed' },
-      'Exception': { status: 'exception', label: 'Exception' },
-      'InfoReceived': { status: 'pending', label: 'Info Received' },
-      'Pending': { status: 'pending', label: 'Pending' },
-      'AvailableForPickup': { status: 'pickup', label: 'Available for Pickup' },
-    };
-    const normalized = statusMap[tag] || { status: 'in_transit', label: tag || 'In Transit' };
+    // Map ABF status codes to normalized status
+    let status = 'in_transit', label = 'In Transit';
+    const ss = shortStatus.toUpperCase();
+    const ls = longStatus.toLowerCase();
+    if (ss === 'D' || ls.includes('deliver')) { status = 'delivered';        label = 'Delivered'; }
+    else if (ss === 'OD' || ls.includes('out for delivery')) { status = 'out_for_delivery'; label = 'Out for Delivery'; }
+    else if (ss === 'P' || ls.includes('picked up'))         { status = 'in_transit';       label = 'Picked Up'; }
+    else if (ss === 'E' || ls.includes('exception'))         { status = 'exception';         label = 'Exception'; }
 
-    // Checkpoints — AfterShip returns newest last
-    const checkpoints = trackingData.checkpoints || trackingData.events || [];
-    const lastCheck = checkpoints[checkpoints.length - 1];
+    // Dates
+    const deliveryDate = get('DELIVERYDATE');   // actual delivery (delivered only)
+    const deliveryTime = get('DELIVERYTIME');
+    const dueDate      = get('DUEDATE');        // scheduled delivery date
+    const expectedDate = get('EXPECTEDDELIVERYDATE');
+    const pickupDate   = get('PICKUP');
+    const pickupTime   = get('PICKUPTIME');
 
-    // Location from checkpoint or top-level destination
-    let location = null;
-    if (lastCheck?.location) {
-      location = lastCheck.location;
-    } else if (lastCheck) {
-      const parts = [lastCheck.city, lastCheck.state].filter(Boolean);
-      if (parts.length) location = parts.join(', ');
+    // ETA — prefer DUEDATE, fall back to EXPECTEDDELIVERYDATE
+    const etaRaw = dueDate || expectedDate || null;
+    let eta = null;
+    if (etaRaw) {
+      // ABF returns dates as MM/DD/YYYY
+      try {
+        const d = new Date(etaRaw);
+        if (!isNaN(d)) eta = d.toISOString().split('T')[0];
+      } catch(e) {}
     }
-    if (!location && trackingData.destination_city) {
-      location = [trackingData.destination_city, trackingData.destination_state].filter(Boolean).join(', ');
+
+    // Delivery date (only when actually delivered)
+    let deliveredAt = null;
+    if (status === 'delivered' && deliveryDate) {
+      try {
+        const d = new Date(deliveryDate);
+        if (!isNaN(d)) deliveredAt = d.toISOString().split('T')[0];
+      } catch(e) {}
     }
 
-    // ETA — try multiple field names
-    const eta = trackingData.aftership_estimated_delivery_date
-      || trackingData.expected_delivery
-      || trackingData.latest_estimated_delivery
-      || null;
+    // Signature
+    const sigFirst = get('DELIVSIGFIRSTNAME') || '';
+    const sigLast  = get('DELIVSIGLASTNAME')  || '';
+    const signedBy = [sigFirst, sigLast].filter(Boolean).join(' ') || null;
 
-    // Delivered date
-    const deliveredRaw = tag === 'Delivered'
-      ? (trackingData.shipment_delivery_date || trackingData.delivery_time || lastCheck?.checkpoint_time || null)
-      : null;
+    // Destination
+    const destCity  = get('CONSIGNEECITY')  || null;
+    const destState = get('CONSIGNEESTATE') || null;
 
-    // Last event message — checkpoint.message is the real field
-    let lastEventMsg = lastCheck?.message || lastCheck?.description || null;
+    // Build last event from longStatus + pickup info
+    let lastEvent = longStatus || null;
+    let lastEventTime = null;
+    if (pickupDate) {
+      const pickupStr = [pickupDate, pickupTime].filter(Boolean).join(' ');
+      lastEventTime = pickupDate;
+      if (!lastEvent && pickupStr) lastEvent = `Picked up ${pickupStr}`;
+    }
 
-    // Last event time
-    const lastEventTime = lastCheck?.checkpoint_time || null;
-
-    // Destination city/state for display
-    const destCity  = trackingData.destination_city  || '';
-    const destState = trackingData.destination_state || '';
-
-    const result = {
-      ...normalized,
-      location,
-      eta: eta ? eta.split('T')[0] : null,
-      deliveredAt: deliveredRaw ? deliveredRaw.split('T')[0] : null,
-      signedBy: trackingData.signed_by || null,
-      lastEvent: lastEventMsg,
-      lastEventTime: lastEventTime ? lastEventTime.split('T')[0] : null,
-      destCity,
-      destState,
-    };
-
-    await saveTrackingToCache(trackingNumber, slug, result);
-    console.log(`Tracking cache updated: ${trackingNumber} → ${result.label}`);
-    return result;
+    return { status, label, lastEvent, lastEventTime, eta, deliveredAt, signedBy,
+             location: destCity ? [destCity, destState].filter(Boolean).join(', ') : null,
+             destCity, destState };
   } catch(e) {
-    console.warn(`fetchAndCacheTracking error (${trackingNumber}):`, e.message);
+    console.warn(`[ABF] API error for ${trackingNumber}: ${e.message}`);
     return null;
   }
+}
+
+async function fetchABFTransitDays(destZip, pickupDate, apiKey) {
+  // WhisperRoom always ships from Morristown TN 37813
+  try {
+    const pd = pickupDate ? new Date(pickupDate) : new Date();
+    const month = String(pd.getMonth() + 1).padStart(2, '0');
+    const day   = String(pd.getDate()).padStart(2, '0');
+    const year  = String(pd.getFullYear());
+    const path  = `/xml/transitxml.asp?DL=2&ID=${encodeURIComponent(apiKey)}&Shipper=Y&OriginZip=37813&OriginCountry=US&DestZip=${encodeURIComponent(destZip)}&DestCountry=US&PickupMonth=${month}&PickupDay=${day}&PickupYear=${year}`;
+    const res = await httpsRequest({ hostname: 'www.abfs.com', path, method: 'GET', headers: { 'Accept': 'application/xml' } });
+    const xml = typeof res.body === 'string' ? res.body : JSON.stringify(res.body);
+    const get = (tag) => { const m = xml.match(new RegExp(`<${tag}>([^<]*)</${tag}>`, 'i')); return m ? m[1].trim() : null; };
+    const errors = get('NUMERRORS');
+    if (errors && errors !== '0') return null;
+    const trDays  = get('TRDAYS');
+    const dueDate = get('DUEDATE');
+    let eta = null;
+    if (dueDate) { try { const d = new Date(dueDate); if (!isNaN(d)) eta = d.toISOString().split('T')[0]; } catch(e) {} }
+    return { transitDays: trDays ? parseInt(trDays) : null, eta };
+  } catch(e) {
+    console.warn(`[ABF] transit time error for ${destZip}: ${e.message}`);
+    return null;
+  }
+}
+
+
+async function fetchAndCacheTracking(trackingNumber, carrier) {
+  if (!trackingNumber) return null;
+
+  const carrierUpper = (carrier || '').toUpperCase();
+
+  // ── OD: REST API ────────────────────────────────────────────────
+  if (carrierUpper === 'OD' || carrierUpper.includes('DOMINION')) {
+    const OD_USER = process.env.OD_USER || '';
+    const OD_PASS = process.env.OD_PASS || '';
+    if (!OD_USER || !OD_PASS) {
+      console.warn('[tracking] OD credentials not set');
+      return null;
+    }
+    try {
+      console.log(`[tracking] OD API for ${trackingNumber}`);
+
+      // Step 1: Get session token
+      const authRes = await httpsRequest({
+        hostname: 'api.odfl.com',
+        path: '/auth/v1.0/token',
+        method: 'GET',
+        headers: {
+          'Authorization': 'Basic ' + Buffer.from(`${OD_USER}:${OD_PASS}`).toString('base64'),
+          'Accept': 'application/json',
+        }
+      });
+
+      const token = authRes.body?.access_token || authRes.body?.sessionToken || authRes.body?.token;
+      if (!token) {
+        console.warn('[tracking] OD auth failed:', JSON.stringify(authRes.body)?.slice(0, 200));
+        return null;
+      }
+
+      // Step 2: Track shipment
+      const trackRes = await httpsRequest({
+        hostname: 'api.odfl.com',
+        path: '/tracking/v2.0/shipment.track',
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        }
+      }, {
+        referenceType: 'PRO',
+        referenceNumber: trackingNumber,
+      });
+
+      const data = trackRes.body;
+      if (!data || trackRes.status >= 400) {
+        console.warn('[tracking] OD track failed:', JSON.stringify(data)?.slice(0, 200));
+        return null;
+      }
+
+      // Parse response — traceInfo is an array, first element is the shipment
+      const trace = Array.isArray(data.traceInfo) ? data.traceInfo[0] : (data.traceInfo || data);
+      const events = trace.trackTraceDetail || [];
+      // Events are newest-first — index 0 is the most recent
+      const latestEvt = events[0];
+
+      // Status from most recent event
+      let status = 'in_transit';
+      let label = 'In Transit';
+      if (latestEvt) {
+        const evtStatus = (latestEvt.status || '').toLowerCase();
+        if (evtStatus.includes('delivery confirmed') || evtStatus.includes('delivered')) {
+          status = 'delivered'; label = 'Delivered';
+        } else if (evtStatus.includes('out for delivery')) {
+          status = 'out_for_delivery'; label = 'Out for Delivery';
+        } else if (evtStatus.includes('arrived at consignee')) {
+          status = 'out_for_delivery'; label = 'Out for Delivery';
+        } else if (evtStatus.includes('exception')) {
+          status = 'exception'; label = 'Exception';
+        }
+      }
+
+      // Last event — find the most recent one with a city/location for context
+      let lastEvent = null;
+      let lastEventTime = null;
+      const evtWithLocation = events.find(e => e.city && e.state);
+      const evtToShow = evtWithLocation || latestEvt;
+      if (evtToShow) {
+        lastEvent = [evtToShow.status, evtToShow.desc].filter(Boolean).join(' — ') || null;
+        if (evtToShow.city && evtToShow.state) {
+          lastEvent = lastEvent ? `${lastEvent} (${evtToShow.city}, ${evtToShow.state})` : `${evtToShow.city}, ${evtToShow.state}`;
+        }
+        lastEventTime = evtToShow.dateTime ? evtToShow.dateTime.split('T')[0] : null;
+      }
+
+      // ETA
+      const eta = trace.updatedEta || trace.standardEta || null;
+
+      // Destination — use consignee city/state if available
+      const destCity  = trace.consigneeCity  || trace.destSvcCity  || null;
+      const destState = trace.consigneeState || trace.destSvcState || null;
+
+      // Delivered date — find the actual "Delivered" event
+      let deliveredAt = null;
+      if (status === 'delivered') {
+        const delEvt = events.find(e => (e.status || '').toLowerCase().includes('delivered') && e.dateTime);
+        if (delEvt) deliveredAt = delEvt.dateTime.split('T')[0];
+      }
+
+      // Delivery signature
+      const signedBy = trace.deliverySign || null;
+
+      const cacheData = {
+        status, label, lastEvent, lastEventTime,
+        eta:         eta ? eta.split('T')[0] : null,
+        deliveredAt,
+        signedBy,
+        location:    destCity ? [destCity, destState].filter(Boolean).join(', ') : null,
+        destCity,
+        destState,
+      };
+
+      await saveTrackingToCache(trackingNumber, 'OD', cacheData);
+      console.log(`[tracking] OD ${trackingNumber} → ${label}${lastEvent ? ' | ' + lastEvent.slice(0, 60) : ''}`);
+      return cacheData;
+
+    } catch(e) {
+      console.warn(`[tracking] OD error (${trackingNumber}): ${e.message}`);
+      return null;
+    }
+  }
+
+  // ── ABF: REST API ────────────────────────────────────────────────
+  if (carrierUpper === 'ABF') {
+    const ARCBEST_KEY = process.env.ARCBEST_API_KEY || '';
+    if (!ARCBEST_KEY) {
+      console.warn('[tracking] ARCBEST_API_KEY not set');
+      return null;
+    }
+    console.log(`[tracking] ABF API for ${trackingNumber}`);
+    const result = await fetchABFTracking(trackingNumber, ARCBEST_KEY);
+    if (!result) return null;
+
+    const cacheData = {
+      status:        result.status,
+      label:         result.label,
+      lastEvent:     result.lastEvent || null,
+      lastEventTime: result.lastEventTime || null,
+      eta:           result.eta || null,
+      deliveredAt:   result.deliveredAt || null,
+      signedBy:      result.signedBy || null,
+      location:      result.location || null,
+      destCity:      result.destCity || null,
+      destState:     result.destState || null,
+    };
+
+    await saveTrackingToCache(trackingNumber, 'ABF', cacheData);
+    console.log(`[tracking] ABF ${trackingNumber} → ${result.label}${result.lastEvent ? ' | ' + result.lastEvent.slice(0, 80) : ''}`);
+    return cacheData;
+  }
+
+  // ── UPS / FedEx / USPS: use Puppeteer to scrape tracking page ────
+  if (['UPS','FEDEX','USPS'].includes(carrierUpper)) {
+    if (!puppeteer) {
+      await saveTrackingToCache(trackingNumber, carrierUpper, { status: 'pending', label: 'Pending' });
+      return { status: 'pending', label: 'Pending' };
+    }
+    const urlMap = {
+      'UPS':   `https://www.ups.com/track?tracknum=${encodeURIComponent(trackingNumber)}&requester=ST/trackdetails`,
+      'FEDEX': `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(trackingNumber)}`,
+      'USPS':  `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(trackingNumber)}`,
+    };
+    const trackUrl = urlMap[carrierUpper];
+    let browser = null;
+    try {
+      console.log(`[tracking] ${carrierUpper} scrape for ${trackingNumber}`);
+      browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
+      const page = await browser.newPage();
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+      await page.goto(trackUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+      await new Promise(r => setTimeout(r, 3000));
+      const body = await page.evaluate(() => document.body.innerText);
+      const bodyLower = body.toLowerCase();
+
+      let status = 'in_transit', label = 'In Transit';
+      if (bodyLower.includes('delivered'))              { status = 'delivered';        label = 'Delivered'; }
+      else if (bodyLower.includes('out for delivery'))  { status = 'out_for_delivery'; label = 'Out for Delivery'; }
+      else if (bodyLower.includes('in transit') || bodyLower.includes('on the way')) { status = 'in_transit'; label = 'In Transit'; }
+
+      // Try to get a last event line
+      const lines = body.split('\n').map(l => l.trim()).filter(l => l.length > 10);
+      let lastEvent = null;
+      const dateRx = /\d{1,2}\/\d{1,2}\/\d{4}|\w+ \d{1,2},? \d{4}/;
+      const evtLine = lines.find(l => dateRx.test(l) && l.length < 200);
+      if (evtLine) lastEvent = evtLine;
+
+      const cacheData = { status, label, lastEvent, lastEventTime: null, eta: null,
+        deliveredAt: null, signedBy: null, location: null, destCity: null, destState: null };
+      await saveTrackingToCache(trackingNumber, carrierUpper, cacheData);
+      console.log(`[tracking] ${carrierUpper} ${trackingNumber} → ${label}`);
+      return cacheData;
+    } catch(e) {
+      console.warn(`[tracking] ${carrierUpper} error (${trackingNumber}): ${e.message}`);
+      return null;
+    } finally {
+      if (browser) await browser.close().catch(() => {});
+    }
+  }
+
+  // ── Other carriers: save pending ─────────────────────────────────
+  await saveTrackingToCache(trackingNumber, carrierUpper, { status: 'pending', label: 'Pending' });
+  return { status: 'pending', label: 'Pending' };
 }
 
 // Background poller — refreshes non-delivered shipments every 30 minutes
@@ -481,8 +684,7 @@ async function startTrackingPoller() {
         filterGroups: [{
           filters: [
             { propertyName: 'dealstage', operator: 'EQ', value: '845719' },
-            { propertyName: 'tracking_number', operator: 'HAS_PROPERTY' },
-            { propertyName: 'closedate', operator: 'GTE', value: String(Date.now() - 30*24*60*60*1000) }
+            { propertyName: 'tracking_number', operator: 'HAS_PROPERTY' }
           ]
         }],
         properties: ['tracking_number', 'freight_carrier'],
@@ -511,8 +713,8 @@ async function startTrackingPoller() {
 
         await fetchAndCacheTracking(tracking, carrier);
         refreshed++;
-        // 2 second gap between AfterShip calls
-        await new Promise(r => setTimeout(r, 2000));
+        // 5 second gap between calls (Puppeteer scrapes are resource-heavy)
+        await new Promise(r => setTimeout(r, 5000));
       }
 
       if (refreshed > 0) console.log(`Tracking poller: refreshed ${refreshed} shipments`);
@@ -2091,6 +2293,35 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Debug: test OD API raw response
+  if (pathname === '/api/debug/od-tracking' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const trackingNum = parsed.query.pro || '78078713803';
+    const OD_USER = process.env.OD_USER || '';
+    const OD_PASS = process.env.OD_PASS || '';
+    try {
+      const authRes = await httpsRequest({
+        hostname: 'api.odfl.com',
+        path: '/auth/v1.0/token',
+        method: 'GET',
+        headers: {
+          'Authorization': 'Basic ' + Buffer.from(`${OD_USER}:${OD_PASS}`).toString('base64'),
+          'Accept': 'application/json',
+        }
+      });
+      const token = authRes.body?.access_token || authRes.body?.sessionToken || authRes.body?.token;
+      if (!token) { json({ error: 'auth failed', authStatus: authRes.status, authBody: authRes.body }); return; }
+      const trackRes = await httpsRequest({
+        hostname: 'api.odfl.com',
+        path: '/tracking/v2.0/shipment.track',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Accept': 'application/json' }
+      }, { referenceType: 'PRO', referenceNumber: trackingNum });
+      json({ authStatus: authRes.status, trackStatus: trackRes.status, trackBody: trackRes.body });
+    } catch(e) { json({ error: e.message }); }
+    return;
+  }
+
   // Debug: dump tracking cache
   if (pathname === '/api/debug/tracking-cache' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
@@ -2222,6 +2453,29 @@ const server = http.createServer(async (req, res) => {
             } catch(e) { /* silent */ }
           }
         })();
+      }
+
+      // For ABF shipments missing ETA, fetch transit times in background
+      const ARCBEST_KEY = process.env.ARCBEST_API_KEY || '';
+      if (ARCBEST_KEY) {
+        const needEta = results.filter(r => r.carrier === 'ABF' && !r.trackEta && r.zip && r.trackStatus !== 'delivered');
+        if (needEta.length > 0) {
+          (async () => {
+            for (const s of needEta.slice(0, 10)) {
+              try {
+                const tt = await fetchABFTransitDays(s.zip, s.dateShipped, ARCBEST_KEY);
+                if (tt?.eta) {
+                  await db.query(
+                    'UPDATE tracking_cache SET eta = $1, updated_at = NOW() WHERE tracking_number = $2',
+                    [tt.eta, s.tracking]
+                  );
+                  console.log(`[ABF transit] ${s.tracking} → ETA ${tt.eta} (${tt.transitDays} days)`);
+                }
+              } catch(e) { /* silent */ }
+              await new Promise(r => setTimeout(r, 500));
+            }
+          })();
+        }
       }
 
       json({ success: true, shipments: results, total: results.length });

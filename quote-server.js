@@ -2033,6 +2033,34 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Debug: call AfterShip directly and return raw response
+  if (pathname.startsWith('/api/debug/aftership/') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const trackingNum = decodeURIComponent(pathname.replace('/api/debug/aftership/', '').trim());
+    const AFTERSHIP_KEY = process.env.AFTERSHIP_API_KEY || '';
+    try {
+      // Try direct slug lookup first
+      const directRes = await httpsRequest({
+        hostname: 'api.aftership.com',
+        path: `/tracking/2026-01/trackings/abf-freight/${encodeURIComponent(trackingNum)}`,
+        method: 'GET',
+        headers: { 'as-api-key': AFTERSHIP_KEY }
+      });
+      // Also try list
+      const listRes = await httpsRequest({
+        hostname: 'api.aftership.com',
+        path: `/tracking/2026-01/trackings?tracking_number=${encodeURIComponent(trackingNum)}&limit=1`,
+        method: 'GET',
+        headers: { 'as-api-key': AFTERSHIP_KEY }
+      });
+      json({
+        direct: { status: directRes.status, body: directRes.body },
+        list:   { status: listRes.status,   body: listRes.body },
+      });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   // Debug: dump tracking cache
   if (pathname === '/api/debug/tracking-cache' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

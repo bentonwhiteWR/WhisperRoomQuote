@@ -409,6 +409,11 @@
     <a id="viewOrderBtn" href="#" target="_blank" class="btn btn-secondary" style="text-decoration:none;display:flex;align-items:center">View Order ↗</a>
     <button class="btn btn-secondary" onclick="closeDrawer()">Cancel</button>
   </div>
+  <div id="adminDeleteBar" style="display:none;padding:12px 20px;border-top:1px solid rgba(239,68,68,.15);background:rgba(239,68,68,.03)">
+    <button onclick="deleteOrder()" style="width:100%;padding:8px;background:none;border:1px solid rgba(239,68,68,.3);border-radius:6px;color:#ef4444;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
+      🗑 Delete Order
+    </button>
+  </div>
 </div>
 
 <!-- Freight Quote Modal -->
@@ -1160,6 +1165,10 @@ function openDrawer(quoteNumber) {
   document.getElementById('editDrawer').classList.add('open');
   document.getElementById('drawerOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
+
+  // Show admin delete bar for all users
+  const deleteBar = document.getElementById('adminDeleteBar');
+  if (deleteBar) deleteBar.style.display = 'block';
 }
 
 function closeDrawer() {
@@ -1179,6 +1188,26 @@ function highlightSel(name) {
     const label = inp.closest('.sel-label');
     if (label) label.classList.toggle('selected', inp.checked);
   });
+}
+
+async function deleteOrder() {
+  if (!currentQuoteNumber) return;
+  const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
+  const name = order?.deal_name || order?.customer_name || currentQuoteNumber;
+  if (!confirm(`Delete order "${name}"?\n\nThis removes it from the orders board. The HubSpot deal and quote are NOT affected.`)) return;
+  try {
+    const res = await fetch(`/api/orders/${encodeURIComponent(currentQuoteNumber)}/delete`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Delete failed');
+    showToast(`Order deleted`, 'success');
+    closeDrawer();
+    loadOrders();
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  }
 }
 
 // ── Save Order ────────────────────────────────────────────────────
@@ -1548,7 +1577,8 @@ async function loadCurrentUser() {
       if (badge) badge.style.display = 'flex';
       if (name)  name.textContent = data.name;
       // Store for changelog attribution
-      window._sessionRepName = data.name;
+      window._sessionRepName  = data.name;
+      window._sessionOwnerId  = data.ownerId || null;
       // Hide manual rep selector — we know who they are
       const repBar = document.getElementById('repBar');
       if (repBar) repBar.style.display = 'none';

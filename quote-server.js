@@ -2998,7 +2998,7 @@ const server = http.createServer(async (req, res) => {
           name: cr.name,
           quantity: '1',
           price: '0.00',
-          description: `Credit applied: -$${amt.toFixed(2)}${cr.description ? ' — ' + cr.description : ''}`,
+          description: `Credit applied in ${anchor.name} above: -$${amt.toFixed(2)}${cr.description ? ' — ' + cr.description : ''}`,
         });
         if (li.id) lineItemIds.push(li.id);
       }
@@ -5434,7 +5434,7 @@ tbody tr:hover td{background:#fdfcfb}
             name: cr.name,
             qty: 1,
             price: 0,
-            description: `Credit applied: -$${amt.toFixed(2)}${cr.description ? ' — ' + cr.description : ''}`,
+            description: `Credit applied in ${anchor.name} above: -$${amt.toFixed(2)}${cr.description ? ' — ' + cr.description : ''}`,
             isCredit: true,
           });
         });
@@ -6194,7 +6194,8 @@ tbody tr:hover td{background:#fdfcfb}
       const dbOrders = result.rows;
       const dbDealIds = new Set(dbOrders.map(r => r.deal_id).filter(Boolean));
 
-      // 2. Pull HubSpot Closed Won + Shipped deals not already in DB
+      // 2. Pull HubSpot Closed Won deals not already in DB
+      // Shipped (845719) deals belong on the shipping board, not orders board
       let hsOrders = [];
       try {
         const hsRes = await httpsRequest({
@@ -6204,8 +6205,7 @@ tbody tr:hover td{background:#fdfcfb}
           headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
         }, {
           filterGroups: [
-            { filters: [{ propertyName: 'dealstage', operator: 'EQ', value: 'closedwon' }] },
-            { filters: [{ propertyName: 'dealstage', operator: 'EQ', value: '845719' }] }
+            { filters: [{ propertyName: 'dealstage', operator: 'EQ', value: 'closedwon' }] }
           ],
           properties: ['dealname','amount','hubspot_owner_id','closedate','dealstage',
                        'company','freight_carrier','tracking_number','date_shipped',
@@ -6218,7 +6218,6 @@ tbody tr:hover td{background:#fdfcfb}
           .filter(d => !dbDealIds.has(d.id))
           .map(d => {
             const p = d.properties || {};
-            const isShipped = p.dealstage === '845719';
             return {
               quote_number: `HS-${d.id}`,
               deal_id:      d.id,
@@ -6228,14 +6227,7 @@ tbody tr:hover td{background:#fdfcfb}
               total:        p.amount   || null,
               order_data: {
                 source: 'hubspot',
-                shipped: isShipped && p.tracking_number ? {
-                  carrier:     p.freight_carrier  || '',
-                  tracking:    p.tracking_number  || '',
-                  date:        p.date_shipped     || '',
-                  boxes:       parseInt(p.box_count)   || 0,
-                  pallets:     parseInt(p.pallet_count) || 0,
-                  hardwareBox: p.hardware_box     || '',
-                } : null,
+                shipped: null,
               },
               json_snapshot: null,
               share_token:   null,

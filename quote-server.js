@@ -5398,7 +5398,7 @@ tbody tr:hover td{background:#fdfcfb}
             hs_position_on_quote: String(idx),
           };
           if (item.productId) liProps.hs_product_id = String(item.productId);
-          if (item.lineDiscount && item.lineDiscount > 0) {
+          if (item.lineDiscount && item.lineDiscount > 0 && !item.isCredit) {
             liProps.hs_discount_percentage = String(item.lineDiscount);
           }
           const li = await hsCreateLineItem(liProps);
@@ -5415,10 +5415,17 @@ tbody tr:hover td{background:#fdfcfb}
         hs_invoice_date:   today,
         hs_due_date:       today,
       };
-      // Apply credit total as invoice-level discount so HubSpot total matches our total
+      // If there are credits, add a single "Credits" line item at the negative total
+      // HubSpot line_items support negative prices even though the product catalog doesn't
       if (creditTotal < 0) {
-        invoiceProps.hs_discount = String(Math.abs(creditTotal).toFixed(2));
-        console.log(`[create-invoice] applied credit discount of $${Math.abs(creditTotal).toFixed(2)}`);
+        invoiceLineItems.push({
+          name: 'Credits',
+          qty: 1,
+          price: parseFloat(creditTotal.toFixed(2)),
+          description: 'Applied credits — see quote for itemized detail.',
+          isCredit: true,
+        });
+        console.log(`[create-invoice] added Credits line item: $${creditTotal.toFixed(2)}`);
       }
       // Ship-to: patch contact's address so HubSpot invoice billing address populates
       if (resolvedContactId && customer?.address) {

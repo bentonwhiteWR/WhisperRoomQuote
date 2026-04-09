@@ -6243,13 +6243,14 @@ tbody tr:hover td{background:#fdfcfb}
       const dealId = existing.rows[0].deal_id;
       const repName = JSON.parse(await readBody(req))?.repName || 'Unknown';
 
-      // Unship — clear tracking only, keep carrier and all other shipment fields
+      // Unship — preserve ALL shipment data, just add unshipped flag so badge/stage reverts
+      // Shipment fields stay visible in the drawer for reference
       const changeLog = od.changeLog || [];
       changeLog.push({ at: new Date().toISOString(), summary: 'Unshipped — reverted to Closed Won', rep: repName });
 
       const updated = {
         ...od,
-        shipped: { ...(od.shipped || {}), tracking: null },
+        shipped:    od.shipped ? { ...od.shipped, unshipped: true } : null,
         changeLog,
         lastUpdated: new Date().toISOString()
       };
@@ -6492,7 +6493,7 @@ tbody tr:hover td{background:#fdfcfb}
         if (r.quote_number.startsWith('HS-')) {
           const od = r.order_data || {};
           const hasRealData = od.foamColor || od.hingePreference || od.serialNumber ||
-                              od.productionNotes || od.shipped?.tracking;
+                              od.productionNotes || (od.shipped?.tracking && !od.shipped?.unshipped);
           return !!hasRealData;
         }
         return true;
@@ -6708,7 +6709,7 @@ tbody tr:hover td{background:#fdfcfb}
           const hsProps = {};
           if (serialNumber !== undefined)   hsProps.description       = String(serialNumber || '');
           if (productionNotes !== undefined) hsProps.production_notes  = String(productionNotes || '');
-          console.log(`[orders] serialNumber received: ${JSON.stringify(serialNumber)}`);
+          console.log(`[orders] serialNumber received: ${JSON.stringify(serialNumber)} | updatedOrderData.serialNumber: ${JSON.stringify(updatedOrderData.serialNumber)}`);
           if (sf.carrier !== undefined)     hsProps.freight_carrier = hsCarrierEnum(sf.carrier || '');
           if (sf.tracking !== undefined)    hsProps.tracking_number = String(sf.tracking || '');
           if (sf.date !== undefined)        hsProps.date_shipped    = String(sf.date || '');

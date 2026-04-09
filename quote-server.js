@@ -497,14 +497,16 @@ async function startTrackingPoller() {
         const carrier  = deal.properties.freight_carrier || '';
         if (!tracking) continue;
 
-        // Skip if already delivered with full data (has delivered_at date)
         const cached = await getTrackingFromCache(tracking);
+
+        // Skip delivered shipments that have confirmed delivery date — they're done
         if (cached?.status === 'delivered' && cached?.delivered_at) continue;
 
-        // Skip if updated in last 25 minutes (but not if data is shallow)
-        if (cached?.updated_at && cached?.status !== 'delivered') {
+        // Skip if refreshed recently — 25 min for active, 4 hours for pending/no data
+        if (cached?.updated_at) {
           const age = Date.now() - new Date(cached.updated_at).getTime();
-          if (age < 25 * 60 * 1000) continue;
+          const minAge = (cached.status && cached.status !== 'pending') ? 25 * 60 * 1000 : 4 * 60 * 60 * 1000;
+          if (age < minAge) continue;
         }
 
         await fetchAndCacheTracking(tracking, carrier);
@@ -2115,18 +2117,9 @@ const server = http.createServer(async (req, res) => {
         // carrier/tracking yet — they'll show as "No tracking" rows.
         filterGroups: [
           {
-            // Has date_shipped in last 30 days (fully filled out)
+            // All shipped deals — no date filter, just stage
             filters: [
-              { propertyName: 'dealstage', operator: 'EQ', value: '845719' },
-              { propertyName: 'date_shipped', operator: 'GTE', value: String(Date.now() - 30 * 24 * 60 * 60 * 1000) }
-            ]
-          },
-          {
-            // No date_shipped but closedate in last 30 days
-            filters: [
-              { propertyName: 'dealstage', operator: 'EQ', value: '845719' },
-              { propertyName: 'date_shipped', operator: 'NOT_HAS_PROPERTY' },
-              { propertyName: 'closedate', operator: 'GTE', value: String(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+              { propertyName: 'dealstage', operator: 'EQ', value: '845719' }
             ]
           }
         ],
@@ -6214,6 +6207,21 @@ tbody tr:hover td{background:#fdfcfb}
             }, { properties: hsProps });
             console.log(`[orders] HubSpot write status: ${hsRes.status} props: ${Object.keys(hsProps).join(',')}`);
             if (hsRes.status >= 400) console.error('[orders] HubSpot error:', JSON.stringify(hsRes.body)?.slice(0,300));
+          }
+
+          // Register + fetch tracking with AfterShip immediately when tracking number is present
+          // This runs non-blocking so it doesn't slow down the save response
+          if (sf.tracking) {
+            (async () => {
+              try {
+                const cached = await getTrackingFromCache(sf.tracking);
+                // Only fetch if not already cached with good data
+                if (!cached || !cached.status || cached.status === 'pending') {
+                  console.log(`[orders] registering tracking ${sf.tracking} with AfterShip`);
+                  await fetchAndCacheTracking(sf.tracking, sf.carrier || updatedOrderData.shipped?.carrier || '');
+                }
+              } catch(e) { console.warn(`[orders] AfterShip register error: ${e.message}`); }
+            })();
           }
           // Address update
           if (customer?.address) {

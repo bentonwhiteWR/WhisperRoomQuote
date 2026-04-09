@@ -2756,7 +2756,132 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── API: Deal Hub panel ──────────────────────────────────────────
+  const hubMatch = pathname.match(/^\/api\/deals\/(\d+)\/hub$/);
+  if (hubMatch && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const dealId = hubMatch[1];
+    try {
+      // 1. Fetch deal properties from HubSpot
+      const dealRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/objects/deals/${dealId}?properties=dealname,dealstage,amount,hubspot_owner_id,payment_status,closedate,hs_lastmodifieddate`,
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+      });
+      const dp = dealRes.body?.properties || {};
 
+      // 2. Get associated contact
+      let contact = null;
+      try {
+        const assocRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v3/objects/deals/${dealId}/associations/contacts`,
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+        });
+        const contactId = assocRes.body?.results?.[0]?.id;
+        if (contactId) {
+          const cRes = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/contacts/${contactId}?properties=firstname,lastname,email,phone,company`,
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+          });
+          const cp = cRes.body?.properties || {};
+          contact = {
+            id:      contactId,
+            name:    [cp.firstname, cp.lastname].filter(Boolean).join(' ') || null,
+            email:   cp.email   || null,
+            phone:   cp.phone   || null,
+            company: cp.company || null,
+          };
+        }
+      } catch(e) { console.warn('[hub] contact fetch error:', e.message); }
+
+      // 3. Get quotes from DB
+      let quotes = [];
+      if (db) {
+        const qRes = await db.query(
+          `SELECT quote_number, total, created_at, json_snapshot, share_token
+           FROM quotes WHERE deal_id = $1
+           ORDER BY created_at DESC`,
+          [dealId]
+        );
+        quotes = qRes.rows.map(r => {
+          const snap = r.json_snapshot || {};
+          const items = snap.lineItems || [];
+          const mdlItem = items.find(i => /^MDL\b/.test(i?.name || ''));
+          const firstMdl = mdlItem ? (mdlItem.name || '').split(' ').slice(0, 3).join(' ') : '';
+          return {
+            quoteNumber:   r.quote_number,
+            total:         parseFloat(r.total) || 0,
+            date:          r.created_at,
+            accepted:      snap.accepted || false,
+            acceptedFoam:  snap.acceptedFoam  || null,
+            acceptedHinge: snap.acceptedHinge || null,
+            acceptedNote:  snap.acceptedNote  || null,
+            shareToken:    r.share_token || null,
+            firstMdl,
+          };
+        });
+      }
+
+      // 4. Fetch HubSpot invoices for payment status confirmation
+      let paymentStatus = dp.payment_status || 'not_paid';
+      let paidQuoteNumber = null;
+      try {
+        const invAssoc = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v4/associations/deals/invoices/batch/read`,
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, { inputs: [{ id: String(dealId) }] });
+        const invoiceIds = (invAssoc.body?.results?.[0]?.to || []).map(t => t.toObjectId);
+        if (invoiceIds.length) {
+          const batchRes = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: '/crm/v3/objects/invoices/batch/read',
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, { inputs: invoiceIds.map(id => ({ id: String(id) })),
+               properties: ['hs_invoice_status', 'hs_number', 'hs_amount_billed'] });
+          const paidInv = (batchRes.body?.results || []).find(i => i.properties?.hs_invoice_status === 'paid');
+          if (paidInv && paymentStatus !== 'paid') {
+            paymentStatus = 'paid';
+            // Sync back to HubSpot + DB in background
+            (async () => {
+              try {
+                await httpsRequest({
+                  hostname: 'api.hubapi.com',
+                  path: `/crm/v3/objects/deals/${dealId}`,
+                  method: 'PATCH',
+                  headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+                }, { properties: { payment_status: 'paid' } });
+              } catch(e) {}
+            })();
+          }
+        }
+      } catch(e) { console.warn('[hub] invoice check error:', e.message); }
+
+      json({
+        dealId,
+        dealName:      dp.dealname || '',
+        dealStage:     dp.dealstage || '',
+        amount:        dp.amount || '0',
+        ownerId:       dp.hubspot_owner_id || '',
+        paymentStatus,
+        _paidQuoteNumber: paidQuoteNumber,
+        contact,
+        quotes,
+        dealUrl: `https://app.hubspot.com/contacts/5764220/record/0-3/${dealId}`,
+      });
+    } catch(e) {
+      console.error('[hub] error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
 
   // ── API: Get freight quote ──
   if (pathname === '/api/freight' && req.method === 'POST') {

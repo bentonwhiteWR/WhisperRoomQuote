@@ -2265,34 +2265,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Debug: call AfterShip directly and return raw response
-  if (pathname.startsWith('/api/debug/aftership/') && req.method === 'GET') {
-    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
-    const trackingNum = decodeURIComponent(pathname.replace('/api/debug/aftership/', '').trim());
-    const AFTERSHIP_KEY = process.env.AFTERSHIP_API_KEY || '';
-    try {
-      // Try direct slug lookup first
-      const directRes = await httpsRequest({
-        hostname: 'api.aftership.com',
-        path: `/tracking/2026-01/trackings/abf/${encodeURIComponent(trackingNum)}`,
-        method: 'GET',
-        headers: { 'as-api-key': AFTERSHIP_KEY }
-      });
-      // Also try list
-      const listRes = await httpsRequest({
-        hostname: 'api.aftership.com',
-        path: `/tracking/2026-01/trackings?tracking_number=${encodeURIComponent(trackingNum)}&limit=1`,
-        method: 'GET',
-        headers: { 'as-api-key': AFTERSHIP_KEY }
-      });
-      json({
-        direct: { status: directRes.status, body: directRes.body },
-        list:   { status: listRes.status,   body: listRes.body },
-      });
-    } catch(e) { json({ error: e.message }, 500); }
-    return;
-  }
-
   // Debug: test OD API raw response
   if (pathname === '/api/debug/od-tracking' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
@@ -3882,113 +3854,6 @@ tbody tr:hover td{background:#fdfcfb}
     return;
   }
 
-  // ── Batch register tracking numbers with AfterShip ───────────────
-  if (pathname === '/api/register-trackings' && req.method === 'POST') {
-    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
-    const AFTERSHIP_KEY = process.env.AFTERSHIP_API_KEY || '';
-    if (!AFTERSHIP_KEY) { json({ ok: true, skipped: 'no key' }); return; }
-
-    try {
-      const items = JSON.parse(await readBody(req));
-      const AS_BASE = '/tracking/2026-01';
-      const slugMap = { ABF: 'abf-freight', OD: 'old-dominion-freight-line', UPS: 'ups', FedEx: 'fedex', USPS: 'usps' };
-
-      // Register in parallel batches of 5
-      const results = [];
-      for (let i = 0; i < items.length; i += 5) {
-        const batch = items.slice(i, i + 5);
-        await Promise.all(batch.map(async item => {
-          if (!item.tracking) return;
-          const slug = slugMap[item.carrier] || null;
-          const body = { tracking: { tracking_number: item.tracking } };
-          if (slug) body.tracking.slug = slug;
-          try {
-            const res = await httpsRequest({
-              hostname: 'api.aftership.com',
-              path: `${AS_BASE}/trackings`,
-              method: 'POST',
-              headers: { 'as-api-key': AFTERSHIP_KEY, 'Content-Type': 'application/json' }
-            }, body);
-            const code = res.body?.meta?.code;
-            // 201 = created, 4018 = already exists — both fine
-            results.push({ tracking: item.tracking, code });
-          } catch(e) {
-            results.push({ tracking: item.tracking, error: e.message });
-          }
-        }));
-      }
-
-      const created = results.filter(r => r.code === 201).length;
-      const existing = results.filter(r => r.code === 4018).length;
-      console.log(`AfterShip batch register: ${created} new, ${existing} existing`);
-      json({ ok: true, created, existing, total: results.length });
-    } catch(e) {
-      console.warn('Batch register error:', e.message);
-      json({ ok: false, error: e.message });
-    }
-    return;
-  }
-
-  // ── HubSpot Webhook: tracking_number property changed ───────────
-  // HubSpot calls this when tracking_number is set on a deal
-  if (pathname === '/api/webhooks/tracking-updated' && req.method === 'POST') {
-    try {
-      const events = JSON.parse(await readBody(req));
-      const AFTERSHIP_KEY = process.env.AFTERSHIP_API_KEY || '';
-
-      // Process in background — respond immediately to HubSpot
-      json({ received: true });
-
-      if (!AFTERSHIP_KEY) return;
-
-      const AS_BASE = '/tracking/2026-01';
-
-      // HubSpot sends an array of property change events
-      const items = Array.isArray(events) ? events : [events];
-      for (const event of items) {
-        const tracking = event.propertyValue || event.value || '';
-        const dealId   = event.objectId || event.dealId || '';
-        if (!tracking || tracking.trim() === '') continue;
-
-        // Get the deal's freight_carrier to determine slug
-        let slug = null;
-        try {
-          const dealRes = await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/deals/${dealId}?properties=freight_carrier,dealname`,
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-          });
-          const carrier = dealRes.body?.properties?.freight_carrier || '';
-          const dealName = dealRes.body?.properties?.dealname || dealId;
-          const slugMap = { ABF: 'abf-freight', OD: 'old-dominion-freight-line', UPS: 'ups', FedEx: 'fedex', USPS: 'usps' };
-          slug = slugMap[carrier] || null;
-          console.log(`Webhook: registering ${tracking} (${carrier}/${slug}) for "${dealName}"`);
-        } catch(e) { console.warn('Webhook deal lookup failed:', e.message); }
-
-        // Register with AfterShip
-        try {
-          const body = { tracking: { tracking_number: tracking } };
-          if (slug) body.tracking.slug = slug;
-          const asRes = await httpsRequest({
-            hostname: 'api.aftership.com',
-            path: `${AS_BASE}/trackings`,
-            method: 'POST',
-            headers: { 'as-api-key': AFTERSHIP_KEY, 'Content-Type': 'application/json' }
-          }, body);
-          const code = asRes.body?.meta?.code;
-          // 201 = created, 4018 = already exists — both fine
-          console.log(`AfterShip register ${tracking}: code ${code}`);
-        } catch(e) { console.warn('AfterShip register failed:', e.message); }
-      }
-    } catch(e) {
-      console.warn('Webhook error:', e.message);
-      json({ error: e.message }, 500);
-    }
-    return;
-  }
-
-
   // ── HubSpot Webhook: invoice paid → auto-update payment_status ───
   // Set up in HubSpot: Workflows → Invoice paid → HTTP request POST to this endpoint
   // Payload: { "objectId": "<invoice_id>", "dealId": "<deal_id>" }  (or HubSpot standard format)
@@ -4472,22 +4337,8 @@ tbody tr:hover td{background:#fdfcfb}
         }
       });
 
-      // 2. Register with AfterShip
-      const AFTERSHIP_KEY = process.env.AFTERSHIP_API_KEY || '';
-      if (AFTERSHIP_KEY) {
-        const slugMap = { ABF: 'abf-freight', OD: 'old-dominion-freight-line', UPS: 'ups', FedEx: 'fedex', USPS: 'usps' };
-        const slug = slugMap[carrier] || null;
-        const asBody = { tracking: { tracking_number: tracking } };
-        if (slug) asBody.tracking.slug = slug;
-        try {
-          await httpsRequest({
-            hostname: 'api.aftership.com',
-            path: '/tracking/2026-01/trackings',
-            method: 'POST',
-            headers: { 'as-api-key': AFTERSHIP_KEY, 'Content-Type': 'application/json' }
-          }, asBody);
-        } catch(e) { console.warn('AfterShip register on ship-deal:', e.message); }
-      }
+      // Seed tracking cache immediately so shipping board shows status on next load
+      fetchAndCacheTracking(tracking, carrier).catch(e => console.warn('[ship-deal] cache seed failed:', e.message));
 
       json({ success: true });
     } catch(e) { json({ error: e.message }, 500); }
@@ -5195,31 +5046,27 @@ tbody tr:hover td{background:#fdfcfb}
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const dealId = pathname.split('/')[3];
     try {
-      // 1. All quotes for this deal
-      // Fetch deal name from HubSpot — used for fallback matching on legacy quotes
-      let dealName = null;
-      let dealStage = null;
-      let dealAmount = null;
-      let dealOwnerId = null;
-      let paymentStatus = 'not_paid';
-      try {
-        const dnRes = await httpsRequest({
+      // Fire all independent data fetches in parallel
+      const [dealRes, contactAssocRes, quotesRes, ordersRes, invoiceAssocRes] = await Promise.all([
+
+        // 1. Deal properties from HubSpot
+        httpsRequest({
           hostname: 'api.hubapi.com',
           path: `/crm/v3/objects/deals/${dealId}?properties=dealname,dealstage,payment_status,amount,hubspot_owner_id`,
           method: 'GET',
           headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-        });
-        dealName    = dnRes.body?.properties?.dealname    || null;
-        dealStage   = dnRes.body?.properties?.dealstage   || null;
-        dealAmount  = dnRes.body?.properties?.amount      || null;
-        dealOwnerId = dnRes.body?.properties?.hubspot_owner_id || null;
-        paymentStatus = dnRes.body?.properties?.payment_status || 'not_paid';
-      } catch(e) {}
+        }).catch(() => ({ body: {} })),
 
-      let quotes = [];
-      if (db) {
-        // Match by deal_id OR by deal_name (for quotes saved before deal_id backfill)
-        const qr = await db.query(
+        // 2. Contact association from HubSpot
+        httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v4/associations/deals/contacts/batch/read`,
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, { inputs: [{ id: String(dealId) }] }).catch(() => ({ body: {} })),
+
+        // 3. Quotes from DB (need dealName for fallback — use dealId only for first pass)
+        db ? db.query(
           `SELECT quote_number, total, date, deal_name, rep_id, share_token, payment_link,
                   gdrive_folder_id,
                   (json_snapshot->>'accepted')::text            as accepted,
@@ -5228,104 +5075,141 @@ tbody tr:hover td{background:#fdfcfb}
                   json_snapshot->>'acceptedNote'                as accepted_note,
                   json_snapshot->>'quoteLabel'                  as quote_label,
                   json_snapshot->'lineItems'                    as line_items
-           FROM quotes
-           WHERE deal_id = $1
-              OR (deal_id IS NULL AND deal_name = $2)
-           ORDER BY created_at DESC`,
-          [dealId, dealName]
-        );
-        console.log(`[hub] deal ${dealId} (${dealName}) quotes: ${qr.rows.length}`);
+           FROM quotes WHERE deal_id = $1 ORDER BY created_at DESC`,
+          [dealId]
+        ).catch(() => ({ rows: [] })) : Promise.resolve({ rows: [] }),
 
-        // Backfill deal_id for matched quotes that are missing it
-        const nullRows = qr.rows.filter(r => !r.deal_id);
-        if (nullRows.length > 0) {
-          await db.query(
-            `UPDATE quotes SET deal_id = $1 WHERE deal_name = $2 AND deal_id IS NULL`,
-            [dealId, dealName]
-          );
-          console.log(`[hub] backfilled deal_id for ${nullRows.length} quotes`);
-        }
-
-        quotes = qr.rows.map(r => {
-          // Extract booth MDL from line items — strict MDL prefix match only
-          let firstMdl = '';
-          try {
-            const items = r.line_items || [];
-            const mdlItem = items.find(i => i && /^MDL\b/.test(i.name || ''));
-            if (mdlItem) {
-              const parts = (mdlItem.name || '').split(' ');
-              firstMdl = parts.slice(0, 3).join(' ');
-            }
-          } catch(e) {}
-          return {
-            quoteNumber: r.quote_number,
-            total:       r.total,
-            date:        r.date,
-            dealName:    r.deal_name,
-            repId:       r.rep_id,
-            shareToken:  r.share_token,
-            paymentLink: r.payment_link,
-            accepted:    r.accepted === 'true',
-            firstMdl,
-            acceptedFoam:  r.accepted_foam  || '',
-            acceptedHinge: r.accepted_hinge || '',
-            acceptedNote:  r.accepted_note  || '',
-            quoteLabel:    r.quote_label    || '',
-            gdriveFolder:  r.gdrive_folder_id || null,
-          };
-        });
-      }
-
-      // 2. Orders for this deal — match by deal_id OR via quotes join on deal_name
-      let orders = [];
-      if (db) {
-        const or = await db.query(
+        // 4. Orders from DB
+        db ? db.query(
           `SELECT o.quote_number, o.order_data, o.created_at
            FROM orders o
            WHERE o.deal_id = $1
-              OR o.quote_number IN (
-                SELECT quote_number FROM quotes
-                WHERE deal_id = $1 OR (deal_id IS NULL AND deal_name = $2)
-              )
+              OR o.quote_number IN (SELECT quote_number FROM quotes WHERE deal_id = $1)
            ORDER BY o.created_at DESC`,
-          [dealId, dealName]
-        );
-        console.log(`[hub] deal ${dealId} orders: ${or.rows.length}`);
-        orders = or.rows.map(r => ({
-          quoteNumber: r.quote_number,
-          foamColor:   r.order_data?.foamColor || '',
-          hingePreference: r.order_data?.hingePreference || '',
-          shipped:     r.order_data?.shipped || null,
-          freightCost: r.order_data?.freightCost || null,
-          createdAt:   r.created_at,
-        }));
-      }
+          [dealId]
+        ).catch(() => ({ rows: [] })) : Promise.resolve({ rows: [] }),
 
-      // 3. Invoices from HubSpot
-      let invoices = [];
-      try {
-        const assocRes = await httpsRequest({
+        // 5. Invoice associations from HubSpot
+        httpsRequest({
           hostname: 'api.hubapi.com',
           path: `/crm/v4/objects/deals/${dealId}/associations/invoices`,
           method: 'GET',
           headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-        });
-        const invoiceIds = (assocRes?.body?.results || []).map(r => r.toObjectId);
-        if (invoiceIds.length) {
-          const batchRes = await httpsRequest({
+        }).catch(() => ({ body: {} })),
+      ]);
+
+      // Extract deal properties
+      const dp = dealRes.body?.properties || {};
+      let dealName      = dp.dealname    || null;
+      const dealStage   = dp.dealstage   || null;
+      const dealAmount  = dp.amount      || null;
+      let paymentStatus = dp.payment_status || 'not_paid';
+
+      // If no quotes found by deal_id, try fallback by deal_name (legacy quotes)
+      let qRows = quotesRes.rows || [];
+      if (qRows.length === 0 && dealName && db) {
+        try {
+          const fallback = await db.query(
+            `SELECT quote_number, total, date, deal_name, rep_id, share_token, payment_link,
+                    gdrive_folder_id,
+                    (json_snapshot->>'accepted')::text            as accepted,
+                    json_snapshot->>'acceptedFoam'                as accepted_foam,
+                    json_snapshot->>'acceptedHinge'               as accepted_hinge,
+                    json_snapshot->>'acceptedNote'                as accepted_note,
+                    json_snapshot->>'quoteLabel'                  as quote_label,
+                    json_snapshot->'lineItems'                    as line_items
+             FROM quotes WHERE deal_id IS NULL AND deal_name = $1 ORDER BY created_at DESC`,
+            [dealName]
+          );
+          qRows = fallback.rows;
+          // Backfill deal_id in background
+          if (qRows.length > 0) {
+            db.query(`UPDATE quotes SET deal_id = $1 WHERE deal_name = $2 AND deal_id IS NULL`, [dealId, dealName])
+              .then(r => { if (r.rowCount > 0) console.log(`[hub] backfilled deal_id for ${r.rowCount} quotes`); })
+              .catch(() => {});
+          }
+        } catch(e) {}
+      }
+      console.log(`[hub] deal ${dealId} (${dealName}) quotes: ${qRows.length}`);
+
+      const quotes = qRows.map(r => {
+        let firstMdl = '';
+        try {
+          const mdlItem = (r.line_items || []).find(i => i && /^MDL\b/.test(i.name || ''));
+          if (mdlItem) firstMdl = (mdlItem.name || '').split(' ').slice(0, 3).join(' ');
+        } catch(e) {}
+        return {
+          quoteNumber:   r.quote_number,
+          total:         r.total,
+          date:          r.date,
+          dealName:      r.deal_name,
+          repId:         r.rep_id,
+          shareToken:    r.share_token,
+          paymentLink:   r.payment_link,
+          accepted:      r.accepted === 'true',
+          firstMdl,
+          acceptedFoam:  r.accepted_foam  || '',
+          acceptedHinge: r.accepted_hinge || '',
+          acceptedNote:  r.accepted_note  || '',
+          quoteLabel:    r.quote_label    || '',
+          gdriveFolder:  r.gdrive_folder_id || null,
+        };
+      });
+
+      const orders = (ordersRes.rows || []).map(r => ({
+        quoteNumber:     r.quote_number,
+        foamColor:       r.order_data?.foamColor || '',
+        hingePreference: r.order_data?.hingePreference || '',
+        shipped:         r.order_data?.shipped || null,
+        freightCost:     r.order_data?.freightCost || null,
+        createdAt:       r.created_at,
+      }));
+
+      // Resolve contact (needs contactId from assoc result)
+      let contact = null;
+      try {
+        const contactId = contactAssocRes.body?.results?.[0]?.to?.[0]?.toObjectId;
+        if (contactId) {
+          const cRes = await httpsRequest({
             hostname: 'api.hubapi.com',
-            path: '/crm/v3/objects/invoices/batch/read',
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-          }, {
-            inputs: invoiceIds.map(id => ({ id: String(id) })),
-            properties: ['hs_invoice_status','hs_invoice_date','hs_number','hs_title','hs_amount_billed','hs_balance_due','hs_hubspot_invoice_link','quote_number']
+            path: `/crm/v3/objects/contacts/${contactId}?properties=firstname,lastname,email,phone,company`,
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
           });
-          // Merge payment page URL from DB
-          const dbInv = db ? (await db.query('SELECT quote_number, payment_link, share_token FROM quotes WHERE deal_id = $1 AND payment_link IS NOT NULL', [dealId])).rows : [];
+          const cp = cRes.body?.properties || {};
+          contact = {
+            firstName: cp.firstname || '',
+            lastName:  cp.lastname  || '',
+            email:     cp.email     || '',
+            phone:     cp.phone     || '',
+            company:   cp.company   || '',
+          };
+        }
+      } catch(e) { console.warn('[hub] contact fetch error:', e.message); }
+
+      // Resolve invoices (needs invoiceIds from assoc result)
+      let invoices = [];
+      try {
+        const invoiceIds = (invoiceAssocRes?.body?.results || []).map(r => r.toObjectId);
+        if (invoiceIds.length) {
+          const [batchRes, dbInv] = await Promise.all([
+            httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: '/crm/v3/objects/invoices/batch/read',
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, {
+              inputs: invoiceIds.map(id => ({ id: String(id) })),
+              properties: ['hs_invoice_status','hs_invoice_date','hs_number','hs_title','hs_amount_billed','hs_balance_due','hs_hubspot_invoice_link','quote_number']
+            }),
+            db ? db.query('SELECT quote_number, payment_link, share_token FROM quotes WHERE deal_id = $1 AND payment_link IS NOT NULL', [dealId]).catch(() => ({ rows: [] }))
+               : Promise.resolve({ rows: [] }),
+          ]);
+
           invoices = (batchRes?.body?.results || []).map(inv => {
-            const dbMatch = dbInv.find(d => d.quote_number === inv.properties?.quote_number)
-              || (dbInv.length === 1 ? dbInv[0] : null);
+            const dbRows = dbInv.rows || [];
+            const dbMatch = dbRows.find(d => d.quote_number === inv.properties?.quote_number)
+              || (dbRows.length === 1 ? dbRows[0] : null);
             const invPageUrl = dbMatch?.quote_number && dbMatch?.share_token
               ? `https://sales.whisperroom.com/i/${dbMatch.quote_number}?t=${dbMatch.share_token}`
               : dbMatch?.payment_link || null;
@@ -5344,7 +5228,7 @@ tbody tr:hover td{background:#fdfcfb}
             };
           });
 
-          // Fetch payment method from associated Payment records
+          // Fetch payment method from Payment records (only for paid invoices)
           try {
             const paidInvIds = invoices.filter(inv => inv.status === 'paid').map(inv => inv.id);
             if (paidInvIds.length) {
@@ -5381,66 +5265,35 @@ tbody tr:hover td{background:#fdfcfb}
                 });
               }
             }
-          } catch(e) { console.warn('[deal hub] payment method fetch failed:', e.message); }
+          } catch(e) { console.warn('[hub] payment method fetch failed:', e.message); }
 
-          // Auto-sync: if any invoice is paid and deal payment_status isn't already paid, update it
+          // Auto-sync: if any invoice is paid, update deal payment_status in background
           const anyPaid = invoices.some(inv => inv.status === 'paid');
           if (anyPaid && paymentStatus !== 'paid') {
             paymentStatus = 'paid';
-            try {
-              await httpsRequest({
-                hostname: 'api.hubapi.com',
-                path: `/crm/v3/objects/deals/${dealId}`,
-                method: 'PATCH',
-                headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-              }, { properties: { payment_status: 'paid' } });
-              console.log(`[deal hub] auto-synced payment_status=paid for deal ${dealId}`);
-            } catch(e) { console.warn('[deal hub] auto-sync payment_status failed:', e.message); }
+            httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/deals/${dealId}`,
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, { properties: { payment_status: 'paid' } })
+              .then(() => console.log(`[hub] auto-synced payment_status=paid for deal ${dealId}`))
+              .catch(e => console.warn('[hub] auto-sync payment_status failed:', e.message));
           }
         }
-      } catch(e) { console.warn('Deal hub invoices error:', e.message); }
+      } catch(e) { console.warn('[hub] invoices error:', e.message); }
 
-      // Fetch associated contact for email prefill
-      let contact = null;
-      try {
-        const assocRes = await httpsRequest({
-          hostname: 'api.hubapi.com',
-          path: `/crm/v4/associations/deals/contacts/batch/read`,
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-        }, { inputs: [{ id: String(dealId) }] });
-        const contactId = assocRes.body?.results?.[0]?.to?.[0]?.toObjectId;
-        if (contactId) {
-          const cRes = await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/contacts/${contactId}?properties=firstname,lastname,email,phone,company`,
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-          });
-          const cp = cRes.body?.properties || {};
-          contact = {
-            firstName: cp.firstname || '',
-            lastName:  cp.lastname  || '',
-            email:     cp.email     || '',
-            phone:     cp.phone     || '',
-            company:   cp.company   || '',
-          };
-        }
-      } catch(e) { console.warn('Deal hub contact fetch error:', e.message); }
-
-      // Pick up gdrive_folder_id and folder name from whichever quote has one
+      // Drive folder (from quotes — no extra API call if no folder set)
       const driveFolderQuote = quotes.find(q => q.gdriveFolder) || null;
-      const driveFolderId   = driveFolderQuote?.gdriveFolder || null;
-
-      // Get folder name from Drive to build the local path
-      let driveFolderName = null;
+      const driveFolderId    = driveFolderQuote?.gdriveFolder || null;
+      let driveFolderName    = null;
       if (driveFolderId) {
         try {
           const folderMeta = await gdriveRequest('GET',
             `/drive/v3/files/${driveFolderId}?fields=name&supportsAllDrives=true`
           );
           driveFolderName = folderMeta?.name || null;
-        } catch(e) { console.warn('[hub] Could not fetch folder name:', e.message); }
+        } catch(e) { console.warn('[hub] folder name fetch failed:', e.message); }
       }
 
       json({ dealId, dealStage, dealAmount, paymentStatus, quotes, invoices, orders, contact, driveFolderId, driveFolderName });
@@ -5849,32 +5702,10 @@ tbody tr:hover td{background:#fdfcfb}
         } catch(e) { console.warn('DB order create failed:', e.message); }
       }
 
-      // 3. Register with AfterShip if tracking provided
-      try {
-        const slugMap = {
-          'ABF Freight': 'abf-freight',
-          'Old Dominion': 'old-dominion-freight-line',
-          'FedEx Freight': 'fedex',
-          'UPS Freight': 'ups-freight',
-          'UPS': 'ups',
-          'FedEx': 'fedex',
-        };
-        const slug = slugMap[carrier] || null;
-        // Only register if we have a known carrier — don't guess USPS for unknown carriers
-        if (slug) {
-          await httpsRequest({
-            hostname: 'api.aftership.com',
-            path: '/tracking/2026-01/trackings',
-            method: 'POST',
-            headers: {
-              'as-api-key': process.env.AFTERSHIP_API_KEY || '',
-              'Content-Type': 'application/json'
-            }
-          }, { tracking: { tracking_number: tracking, slug, title: dealName || dealId } });
-        } else {
-          console.log(`[AfterShip] Skipping registration — unknown carrier: ${carrier}`);
-        }
-      } catch(e) { console.warn('AfterShip register failed:', e.message); }
+      // 3. Seed tracking cache immediately so shipping board shows status on next load
+      if (tracking) {
+        fetchAndCacheTracking(tracking, carrier).catch(e => console.warn('[ship-deal] cache seed failed:', e.message));
+      }
 
       console.log(`HubSpot deal ${dealId} marked shipped: ${carrier} ${tracking}`);
       json({ success: true });
@@ -5985,15 +5816,8 @@ tbody tr:hover td{background:#fdfcfb}
           } catch(e) { console.warn('HubSpot update after booking:', e.message); }
         }
 
-        // Register with AfterShip
-        try {
-          await httpsRequest({
-            hostname: 'api.aftership.com',
-            path: '/tracking/2026-01/trackings',
-            method: 'POST',
-            headers: { 'as-api-key': process.env.AFTERSHIP_API_KEY || '', 'Content-Type': 'application/json' }
-          }, { tracking: { tracking_number: proNumber, slug: 'abf-freight', title: consName || quoteNumber } });
-        } catch(e) { console.warn('AfterShip register after booking:', e.message); }
+        // Seed tracking cache immediately
+        fetchAndCacheTracking(proNumber, 'ABF').catch(e => console.warn('ABF cache seed failed:', e.message));
       }
 
       json({
@@ -6463,18 +6287,17 @@ tbody tr:hover td{background:#fdfcfb}
             if (hsRes.status >= 400) console.error('[orders] HubSpot error:', JSON.stringify(hsRes.body)?.slice(0,300));
           }
 
-          // Register + fetch tracking with AfterShip immediately when tracking number is present
-          // This runs non-blocking so it doesn't slow down the save response
+          // Seed tracking cache immediately when tracking number is present (non-blocking)
           if (sf.tracking) {
             (async () => {
               try {
                 const cached = await getTrackingFromCache(sf.tracking);
                 // Only fetch if not already cached with good data
                 if (!cached || !cached.status || cached.status === 'pending') {
-                  console.log(`[orders] registering tracking ${sf.tracking} with AfterShip`);
+                  console.log(`[orders] seeding tracking cache for ${sf.tracking}`);
                   await fetchAndCacheTracking(sf.tracking, sf.carrier || updatedOrderData.shipped?.carrier || '');
                 }
-              } catch(e) { console.warn(`[orders] AfterShip register error: ${e.message}`); }
+              } catch(e) { console.warn(`[orders] tracking cache seed error: ${e.message}`); }
             })();
           }
           // Address update

@@ -3296,13 +3296,21 @@ tbody tr:hover td{background:#fdfcfb}
       <thead><tr><th>Item</th><th style="text-align:center">Qty</th><th style="text-align:right">Unit Price</th><th style="text-align:right">Total</th></tr></thead>
       <tbody>${lineRows}</tbody>
     </table>
-    <div class="totals">
-      <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
-      ${disc>0?`<div class="tot"><span>Discount${q.discount&&q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
-      ${freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
-      ${taxAmt>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+(q.tax.rate*100).toFixed(2).replace(/\\.?0+$/,'')+'%)':''}</span><span>${fmt(taxAmt)}</span></div>`:''}
-      ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
-      <div class="tot grand"><span>Amount Due</span><span>${fmt(total)}</span></div>
+    <div style="display:flex;align-items:flex-start;gap:20px;margin-top:16px;flex-wrap:wrap">
+      ${q.notes ? `<div style="flex:1;min-width:180px;background:rgba(238,98,22,.06);border:1px solid rgba(238,98,22,.25);border-radius:8px;padding:14px 16px">
+        <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:6px">Quote Notes</div>
+        <div style="font-size:13px;color:#444;line-height:1.6;white-space:pre-wrap">${q.notes.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+      </div>` : ''}
+      <div style="min-width:220px;${q.notes ? '' : 'margin-left:auto'}">
+        <div class="totals" style="margin-top:0">
+          <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
+          ${disc>0?`<div class="tot"><span>Discount${q.discount&&q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
+          ${freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
+          ${taxAmt>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+(q.tax.rate*100).toFixed(2).replace(/\\.?0+$/,'')+'%)':''}</span><span>${fmt(taxAmt)}</span></div>`:''}
+          ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
+          <div class="tot grand"><span>Amount Due</span><span>${fmt(total)}</span></div>
+        </div>
+      </div>
     </div>
   </div>
   ${freightTbd?`<div class="card" style="border-left:3px solid #ee6216;background:#fff8f5">
@@ -3506,13 +3514,21 @@ tbody tr:hover td{background:#fdfcfb}
       <thead><tr><th>Item</th><th style="text-align:center">Qty</th><th style="text-align:right">Unit Price</th><th style="text-align:right">Total</th></tr></thead>
       <tbody>${lineRows}</tbody>
     </table>
-    <div class="totals">
-      <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
-      ${disc>0?`<div class="tot"><span>Discount${q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
-      ${freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freight>0?`<div class="tot"><span>Freight</span><span>${fmt(freight)}</span></div>`:''}
-      ${tax>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+( q.tax.rate*100).toFixed(2).replace(/\.?0+$/,'')+')%':''}</span><span>${fmt(tax)}</span></div>`:''}
-      ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
-      <div class="tot grand"><span>Total</span><span>${fmt(total)}</span></div>
+    <div style="display:flex;align-items:flex-start;gap:20px;margin-top:16px;flex-wrap:wrap">
+      ${q.notes ? `<div style="flex:1;min-width:180px;background:rgba(238,98,22,.06);border:1px solid rgba(238,98,22,.25);border-radius:8px;padding:14px 16px">
+        <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:6px">Quote Notes</div>
+        <div style="font-size:13px;color:#444;line-height:1.6;white-space:pre-wrap">${q.notes.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+      </div>` : ''}
+      <div style="min-width:220px;${q.notes ? '' : 'margin-left:auto'}">
+        <div class="totals" style="margin-top:0">
+          <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
+          ${disc>0?`<div class="tot"><span>Discount${q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
+          ${freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freight>0?`<div class="tot"><span>Freight</span><span>${fmt(freight)}</span></div>`:''}
+          ${tax>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+( q.tax.rate*100).toFixed(2).replace(/\.?0+$/,'')+')%':''}</span><span>${fmt(tax)}</span></div>`:''}
+          ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
+          <div class="tot grand"><span>Total</span><span>${fmt(total)}</span></div>
+        </div>
+      </div>
     </div>
   </div>
   ${freightTbd?`<div class="card" style="border-left:3px solid #ee6216;background:#fff8f5">
@@ -5386,6 +5402,19 @@ tbody tr:hover td{background:#fdfcfb}
         description: tax?.freightTaxed ? 'State tax — includes freight.' : 'State tax — product only.'
       });
 
+      // If there are credits, add a single "Credits" line item at the negative total
+      // HubSpot line_items support negative prices even though the product catalog doesn't
+      if (creditTotal < 0) {
+        invoiceLineItems.push({
+          name: 'Credits',
+          qty: 1,
+          price: parseFloat(creditTotal.toFixed(2)),
+          description: 'Applied credits — see quote for itemized detail.',
+          isCredit: true,
+        });
+        console.log(`[create-invoice] added Credits line item: $${creditTotal.toFixed(2)}`);
+      }
+
       const createdLineItemIds = [];
       for (let idx = 0; idx < invoiceLineItems.length; idx++) {
         const item = invoiceLineItems[idx];
@@ -5415,18 +5444,6 @@ tbody tr:hover td{background:#fdfcfb}
         hs_invoice_date:   today,
         hs_due_date:       today,
       };
-      // If there are credits, add a single "Credits" line item at the negative total
-      // HubSpot line_items support negative prices even though the product catalog doesn't
-      if (creditTotal < 0) {
-        invoiceLineItems.push({
-          name: 'Credits',
-          qty: 1,
-          price: parseFloat(creditTotal.toFixed(2)),
-          description: 'Applied credits — see quote for itemized detail.',
-          isCredit: true,
-        });
-        console.log(`[create-invoice] added Credits line item: $${creditTotal.toFixed(2)}`);
-      }
       // Ship-to: patch contact's address so HubSpot invoice billing address populates
       if (resolvedContactId && customer?.address) {
         try {

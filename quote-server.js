@@ -5857,89 +5857,144 @@ tbody tr:hover td{background:#fdfcfb}
         console.warn(`[orders-freight] ABF Standard failed: ${e.message}`);
       }
 
-      // ── OD: fetch via REST API ────────────────────────────────────
+      // ── OD: SOAP XML rate API ─────────────────────────────────────
+      // OD's rate API is SOAP, not REST. Auth is in the request body.
+      // Service types: LTL (standard), GTD (guaranteed), GTE (guaranteed by noon)
       const odResults = [];
-      const OD_USER = process.env.OD_USER || '';
-      const OD_PASS = process.env.OD_PASS || '';
-      if (OD_USER && OD_PASS) {
-        try {
-          // Step 1: Auth
-          const authRes = await httpsRequest({
-            hostname: 'api.odfl.com',
-            path: '/auth/v1.0/token',
-            method: 'GET',
-            headers: {
-              'Authorization': 'Basic ' + Buffer.from(`${OD_USER}:${OD_PASS}`).toString('base64'),
-              'Accept': 'application/json',
-            }
-          });
-          const token = authRes.body?.access_token || authRes.body?.sessionToken || authRes.body?.token;
-          console.log('[orders-freight] OD auth status:', authRes.status, 'token present:', !!token);
+      const OD_USER    = process.env.OD_USER    || '';
+      const OD_PASS    = process.env.OD_PASS    || '';
+      const OD_ACCOUNT = process.env.OD_ACCOUNT || '';
+      if (OD_USER && OD_PASS && OD_ACCOUNT) {
+        const totalWt = Math.round(totalWeight || pallets.reduce((s,p)=>s+(parseFloat(p.weight)||0),0));
+        const destCountry = canadian ? 'CAN' : 'USA';
 
-          if (token) {
-            // Step 2: Rate quote
-            const totalWt = Math.round(totalWeight || pallets.reduce((s,p)=>s+(parseFloat(p.weight)||0),0));
-            const totalPieces = pallets.reduce((s, p) => s + (parseInt(p.pieces) || 1), 0);
-            const rateBody = {
-              originZip:           SHIP_ZIP,
-              originCountry:       'US',
-              destZip:             zip,
-              destCountry:         canadian ? 'CA' : 'US',
-              shipDate:            new Date().toISOString().split('T')[0],
-              totalWeight:         totalWt,
-              totalPieces,
-              freightClass:        parseFloat(FREIGHT_CLASS),
-              paymentTerms:        'Prepaid',
-              pickupService:       false,
-              deliveryService:     acc.liftgate || false,
-              residentialDelivery: acc.residential || false,
-            };
-            console.log('[orders-freight] OD rate request:', JSON.stringify(rateBody));
+        // Build accessorials array from accessories
+        const odAccessorials = [];
+        if (acc.liftgate)       odAccessorials.push('HYD');  // Liftgate Delivery
+        if (acc.residential)    odAccessorials.push('RDC');  // Residential Delivery
+        if (acc.limitedaccess)  odAccessorials.push('LDC');  // Limited Access Delivery
 
-            const rateRes = await httpsRequest({
-              hostname: 'api.odfl.com',
-              path: '/rating/v1.0/ratequote',
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-              }
-            }, rateBody);
+        // Build freightItems XML from pallets
+        const freightItemsXml = pallets.map(p => `
+        <freightItems>
+          <dimensionUnits>IN</dimensionUnits>
+          <length>${Math.round(p.l || 90)}</length>
+          <width>${Math.round(p.w || 52)}</width>
+          <height>${Math.round(p.h || 48)}</height>
+          <numberOfUnits>1</numberOfUnits>
+          <ratedClass>${FREIGHT_CLASS}</ratedClass>
+          <weight>${Math.round(parseFloat(p.weight) || Math.round(totalWt / pallets.length))}</weight>
+        </freightItems>`).join('');
 
-            console.log('[orders-freight] OD rate response status:', rateRes.status, 'body:', JSON.stringify(rateRes.body)?.slice(0, 500));
+        const accessorialsXml = odAccessorials.map(a => `<accessorials>${a}</accessorials>`).join('\n        ');
 
-            // OD returns array of rate options or a single object
-            const rates = Array.isArray(rateRes.body)             ? rateRes.body :
-                          Array.isArray(rateRes.body?.rates)       ? rateRes.body.rates :
-                          Array.isArray(rateRes.body?.rateQuotes)  ? rateRes.body.rateQuotes :
-                          rateRes.body?.rateQuote                  ? [rateRes.body.rateQuote] :
-                          rateRes.body?.totalCharges               ? [rateRes.body] : [];
+        // Helper to build SOAP envelope for a given shipType
+        const buildOdSoap = (shipType) => `<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:myr="http://myRate.ws.odfl.com/">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <myr:getLTLRateEstimate>
+      <arg0>
+        ${accessorialsXml}
+        <destinationCountry>${destCountry}</destinationCountry>
+        <destinationPostalCode>${zip}</destinationPostalCode>
+        ${freightItemsXml}
+        <numberPallets>${pallets.length}</numberPallets>
+        <movement>O</movement>
+        <odfl4MePassword>${OD_PASS}</odfl4MePassword>
+        <odfl4MeUser>${OD_USER}</odfl4MeUser>
+        <odflCustomerAccount>${OD_ACCOUNT}</odflCustomerAccount>
+        <originCountry>USA</originCountry>
+        <originPostalCode>${SHIP_ZIP}</originPostalCode>
+        <originState>${SHIP_STATE}</originState>
+        <requestReferenceNumber>false</requestReferenceNumber>
+        <shipType>${shipType}</shipType>
+        <tariff>559</tariff>
+        <weightUnits>LBS</weightUnits>
+      </arg0>
+    </myr:getLTLRateEstimate>
+  </soapenv:Body>
+</soapenv:Envelope>`;
 
-            console.log('[orders-freight] OD parsed rates count:', rates.length);
-
-            rates.forEach(r => {
-              const cost = parseFloat(r.totalCharges || r.netCharge || r.totalNetCharge || r.total || 0);
-              if (!cost) return;
-              const svcName = (r.serviceLevel || r.service || r.serviceCode || r.serviceName || 'Standard').toString();
-              const transitDays = r.transitDays || r.estimatedTransitDays || r.transit || null;
-              const transit = transitDays ? `${transitDays} day${transitDays !== 1 ? 's' : ''}` : '—';
-              odResults.push({
-                carrier:     'Old Dominion',
-                service:     svcName,
-                serviceCode: r.serviceCode || svcName,
-                cost:        Math.round(cost * 100) / 100,
-                transit,
-                bookable:    false,
-                odBookUrl:   buildOdBookUrl({ city, state, zip, pallets, totalWeight: totalWt, acc }),
-              });
-            });
+        // Helper to parse OD SOAP response
+        const parseOdSoap = (xml, shipType) => {
+          const get = (tag) => { const m = xml.match(new RegExp(`<${tag}[^>]*>([^<]*)<\/${tag}>`, 'i')); return m ? m[1].trim() : null; };
+          const success = get('success');
+          if (success === 'false') {
+            const err = get('errorMessages') || get('message') || 'Unknown error';
+            console.warn(`[orders-freight] OD ${shipType} error: ${err}`);
+            return null;
           }
-        } catch(e) {
-          console.warn('[orders-freight] OD rating failed:', e.message);
-        }
+          const netCharge  = parseFloat(get('netFreightCharge') || '0');
+          const fuelSurch  = parseFloat(get('fuelSurcharge') || '0');
+          const accessChrg = parseFloat(get('totalAccessorialCharge') || '0');
+          const total = Math.round((netCharge + fuelSurch + accessChrg) * 100) / 100;
+          if (!total) return null;
+
+          // Transit days from first destinationCities entry
+          const transitMatch = xml.match(/<destinationCities>[\s\S]*?<serviceDays>(\d+)<\/serviceDays>/i);
+          const transitDays = transitMatch ? parseInt(transitMatch[1]) : null;
+          const transit = transitDays ? `${transitDays} day${transitDays !== 1 ? 's' : ''}` : '—';
+
+          const serviceLabels = { LTL: 'Standard LTL', GTD: 'Guaranteed', GTE: 'Guaranteed by Noon' };
+          return {
+            carrier:     'Old Dominion',
+            service:     serviceLabels[shipType] || shipType,
+            serviceCode: shipType,
+            cost:        total,
+            transit,
+            bookable:    false,
+            odBookUrl:   buildOdBookUrl({ city, state, zip, pallets, totalWeight: totalWt, acc }),
+          };
+        };
+
+        // Fetch LTL + GTD + GTE in parallel
+        const OD_SERVICE_TYPES = ['LTL', 'GTD', 'GTE'];
+        const odRawResults = await Promise.all(OD_SERVICE_TYPES.map(async shipType => {
+          try {
+            const soapBody = buildOdSoap(shipType);
+            return new Promise((resolve) => {
+              const req2 = require('https').request({
+                hostname: 'www.odfl.com',
+                path: '/wsRate_v6/RateService',
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'text/xml; charset=utf-8',
+                  'SOAPAction': '"getLTLRateEstimate"',
+                  'Accept-Encoding': 'identity',
+                  'Content-Length': Buffer.byteLength(soapBody),
+                }
+              }, (res2) => {
+                let data = '';
+                res2.on('data', c => data += c);
+                res2.on('end', () => {
+                  console.log(`[orders-freight] OD ${shipType} HTTP status: ${res2.statusCode}, body length: ${data.length}`);
+                  resolve({ shipType, xml: data, status: res2.statusCode });
+                });
+              });
+              req2.on('error', (e) => {
+                console.warn(`[orders-freight] OD ${shipType} request error: ${e.message}`);
+                resolve(null);
+              });
+              req2.setTimeout(12000, () => { req2.destroy(); resolve(null); });
+              req2.write(soapBody);
+              req2.end();
+            });
+          } catch(e) {
+            console.warn(`[orders-freight] OD ${shipType} failed: ${e.message}`);
+            return null;
+          }
+        }));
+
+        odRawResults.forEach(r => {
+          if (!r) return;
+          const parsed = parseOdSoap(r.xml, r.shipType);
+          if (parsed) odResults.push(parsed);
+        });
+
+        console.log(`[orders-freight] OD results: ${odResults.length} rates`);
       } else {
-        console.warn('[orders-freight] OD credentials not set (OD_USER/OD_PASS)');
+        console.warn('[orders-freight] OD credentials not set (OD_USER/OD_PASS/OD_ACCOUNT)');
       }
 
       const carriers = [

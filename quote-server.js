@@ -6181,17 +6181,27 @@ tbody tr:hover td{background:#fdfcfb}
           o.deal_id,
           o.order_data,
           o.created_at,
-          q.customer_name,
-          q.company,
-          q.deal_name,
-          q.total,
+          COALESCE(q.customer_name, o.order_data->>'customerName') as customer_name,
+          COALESCE(q.company,       o.order_data->>'company')      as company,
+          COALESCE(q.deal_name,     o.order_data->>'dealName')     as deal_name,
+          COALESCE(q.total::text,   o.order_data->>'total')        as total,
           q.json_snapshot,
           q.share_token
         FROM orders o
         LEFT JOIN quotes q ON q.quote_number = o.quote_number
         ORDER BY o.created_at DESC
       `);
-      const dbOrders = result.rows;
+      const dbOrders = result.rows.filter(r => {
+        // Filter out orphaned HS- records that have no real order data
+        // These were created by the old approach and should be re-shown via HubSpot
+        if (r.quote_number.startsWith('HS-')) {
+          const od = r.order_data || {};
+          const hasRealData = od.foamColor || od.hingePreference || od.serialNumber ||
+                              od.productionNotes || od.shipped?.tracking;
+          return !!hasRealData;
+        }
+        return true;
+      });
       const dbDealIds = new Set(dbOrders.map(r => r.deal_id).filter(Boolean));
 
       // 2. Pull HubSpot Closed Won deals not already in DB
@@ -6256,41 +6266,53 @@ tbody tr:hover td{background:#fdfcfb}
 
       if (!db) { json({ error: 'No database' }, 500); return; }
 
-      // 1. Get existing order data — or create it for HubSpot-only orders (HS-{dealId})
-      let existing = await db.query('SELECT order_data, deal_id FROM orders WHERE quote_number = $1', [quoteNumber]);
-
-      if (!existing.rows[0]) {
-        // HubSpot-only order — no DB record yet. Create one now so it can be saved.
-        const isHsOnly = quoteNumber.startsWith('HS-');
-        const hsDealId = isHsOnly ? quoteNumber.replace('HS-', '') : null;
-
-        if (!hsDealId) { json({ error: 'Order not found' }, 404); return; }
-
-        // Bootstrap a minimal order record from HubSpot deal data
-        let dealName = quoteNumber;
+      // ── HubSpot-only orders (HS-{dealId}) — patch directly to HubSpot, no DB ──
+      if (quoteNumber.startsWith('HS-')) {
+        const hsDealId = quoteNumber.replace('HS-', '');
         try {
-          const dr = await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/deals/${hsDealId}?properties=dealname,amount,hubspot_owner_id`,
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-          });
-          dealName = dr.body?.properties?.dealname || quoteNumber;
-        } catch(e) { console.warn('[orders] HS deal lookup failed:', e.message); }
+          const hsProps = {};
+          if (serialNumber    !== undefined) hsProps.description      = String(serialNumber || '');
+          if (productionNotes !== undefined) hsProps.deal_description = String(productionNotes || '');
+          const sf = shipmentFields || shipped || {};
+          if (sf.carrier    !== undefined && sf.carrier)  hsProps.freight_carrier = hsCarrierEnum(sf.carrier);
+          if (sf.tracking   !== undefined && sf.tracking) hsProps.tracking_number = String(sf.tracking);
+          if (sf.date       !== undefined && sf.date)     hsProps.date_shipped    = String(sf.date);
+          if (sf.boxes      !== undefined)                hsProps.box_count       = parseInt(sf.boxes) || 0;
+          if (sf.pallets    !== undefined)                hsProps.pallet_count    = parseInt(sf.pallets) || 0;
+          if (sf.hardwareBox !== undefined)               hsProps.hardware_box    = String(sf.hardwareBox || '');
+          if (markShipped && sf.tracking)                 hsProps.dealstage       = '845719';
 
-        await db.query(
-          `INSERT INTO orders (quote_number, deal_id, order_data)
-           VALUES ($1, $2, $3)
-           ON CONFLICT (quote_number) DO NOTHING`,
-          [quoteNumber, hsDealId, JSON.stringify({ source: 'hubspot', changeLog: [] })]
-        );
-        console.log(`[orders] created DB record for HubSpot-only order ${quoteNumber} (deal ${hsDealId})`);
+          if (Object.keys(hsProps).length > 0) {
+            const hsRes = await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/deals/${hsDealId}`,
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, { properties: hsProps });
+            if (hsRes.status >= 400) {
+              console.error('[orders] HS-only PATCH error:', JSON.stringify(hsRes.body)?.slice(0,200));
+              json({ error: 'HubSpot update failed: ' + (hsRes.body?.message || hsRes.status) }, 500);
+              return;
+            }
+            console.log(`[orders] HS-only PATCH deal ${hsDealId}: ${Object.keys(hsProps).join(', ')}`);
+          }
 
-        // Re-fetch now that it exists
-        existing = await db.query('SELECT order_data, deal_id FROM orders WHERE quote_number = $1', [quoteNumber]);
-        if (!existing.rows[0]) { json({ error: 'Failed to create order record' }, 500); return; }
+          // Seed tracking cache if tracking number present
+          const trk = (sf.tracking || shipped?.tracking || '');
+          const car = (sf.carrier  || shipped?.carrier  || '');
+          if (trk && car) fetchAndCacheTracking(trk, car).catch(() => {});
+
+          json({ success: true });
+        } catch(e) {
+          console.error('[orders] HS-only save error:', e.message);
+          json({ error: e.message }, 500);
+        }
+        return;
       }
 
+      // 1. Get existing DB order
+      const existing = await db.query('SELECT order_data, deal_id FROM orders WHERE quote_number = $1', [quoteNumber]);
+      if (!existing.rows[0]) { json({ error: 'Order not found' }, 404); return; }
       const currentOrderData = existing.rows[0].order_data || {};
       let dealId = existing.rows[0].deal_id;
 

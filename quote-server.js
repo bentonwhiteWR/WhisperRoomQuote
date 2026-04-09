@@ -6219,7 +6219,7 @@ tbody tr:hover td{background:#fdfcfb}
           ],
           properties: ['dealname','amount','hubspot_owner_id','closedate','dealstage',
                        'company','freight_carrier','tracking_number','date_shipped',
-                       'box_count','pallet_count','hardware_box','deal_description','description'],
+                       'box_count','pallet_count','hardware_box','description','production_notes'],
           sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
           limit: 100
         });
@@ -6238,7 +6238,7 @@ tbody tr:hover td{background:#fdfcfb}
               order_data: {
                 source:          'hubspot',
                 serialNumber:    p.description      || '',
-                productionNotes: p.deal_description || '',
+                productionNotes: p.production_notes || '',
                 // Shipment fields pre-populate the drawer but shipped is always null —
                 // the rep explicitly marks shipped via Ship It. Don't infer shipped state
                 // from HubSpot fields since tracking/carrier may be set before pickup.
@@ -6281,15 +6281,15 @@ tbody tr:hover td{background:#fdfcfb}
         try {
           const hsProps = {};
           if (serialNumber    !== undefined) hsProps.description      = String(serialNumber || '');
-          if (productionNotes !== undefined) hsProps.deal_description = String(productionNotes || '');
           const sf = shipmentFields || shipped || {};
-          if (sf.carrier    !== undefined && sf.carrier)  hsProps.freight_carrier = hsCarrierEnum(sf.carrier);
-          if (sf.tracking   !== undefined && sf.tracking) hsProps.tracking_number = String(sf.tracking);
-          if (sf.date       !== undefined && sf.date)     hsProps.date_shipped    = String(sf.date);
-          if (sf.boxes      !== undefined)                hsProps.box_count       = parseInt(sf.boxes) || 0;
-          if (sf.pallets    !== undefined)                hsProps.pallet_count    = parseInt(sf.pallets) || 0;
-          if (sf.hardwareBox !== undefined)               hsProps.hardware_box    = String(sf.hardwareBox || '');
-          if (markShipped && sf.tracking)                 hsProps.dealstage       = '845719';
+          if (sf.carrier    !== undefined && sf.carrier)  hsProps.freight_carrier   = hsCarrierEnum(sf.carrier);
+          if (sf.tracking   !== undefined && sf.tracking) hsProps.tracking_number   = String(sf.tracking);
+          if (sf.date       !== undefined && sf.date)     hsProps.date_shipped      = String(sf.date);
+          if (sf.boxes      !== undefined)                hsProps.box_count         = parseInt(sf.boxes) || 0;
+          if (sf.pallets    !== undefined)                hsProps.pallet_count      = parseInt(sf.pallets) || 0;
+          if (sf.hardwareBox !== undefined)               hsProps.hardware_box      = String(sf.hardwareBox || '');
+          if (freightCost   !== undefined && freightCost) hsProps.actual_freight_cost = String(freightCost);
+          if (markShipped && sf.tracking)                 hsProps.dealstage         = '845719';
 
           if (Object.keys(hsProps).length > 0) {
             const hsRes = await httpsRequest({
@@ -6411,15 +6411,17 @@ tbody tr:hover td{background:#fdfcfb}
           const sf = shipped || shipmentFields || currentOrderData.shipped || {};
           const fc = freightCost !== undefined ? freightCost : (currentOrderData.freightCost || null);
           const hsProps = {};
-          if (serialNumber !== undefined)   hsProps.description     = String(serialNumber || '');
+          if (serialNumber !== undefined)   hsProps.description       = String(serialNumber || '');
+          if (productionNotes !== undefined) hsProps.production_notes  = String(productionNotes || '');
           if (sf.carrier !== undefined)     hsProps.freight_carrier = hsCarrierEnum(sf.carrier || '');
           if (sf.tracking !== undefined)    hsProps.tracking_number = String(sf.tracking || '');
           if (sf.date !== undefined)        hsProps.date_shipped    = String(sf.date || '');
           if (sf.boxes !== undefined)       hsProps.box_count       = parseInt(sf.boxes) || 0;
           if (sf.pallets !== undefined)     hsProps.pallet_count    = parseInt(sf.pallets) || 0;
           if (sf.hardwareBox !== undefined) hsProps.hardware_box    = parseInt(sf.hardwareBox) || 0;
-          if (fc !== null)                  hsProps.freight_cost    = String(fc);
-          if (markShipped && sf.tracking)   hsProps.dealstage       = '845719';
+          if (fc !== null)                  hsProps.freight_cost        = String(fc);
+          if (fc !== null)                  hsProps.actual_freight_cost = String(fc);
+          if (markShipped && sf.tracking)   hsProps.dealstage           = '845719';
           console.log(`[orders] writing to HubSpot: ${JSON.stringify(hsProps)}`);
 
           if (Object.keys(hsProps).length > 0) {

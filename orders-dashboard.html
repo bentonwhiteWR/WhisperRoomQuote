@@ -1081,14 +1081,16 @@ function openDrawer(quoteNumber) {
   document.getElementById('editDeliveryNotes').value   = od.deliveryNotes   || '';
 
   const shipped = od.shipped || {};
-  document.getElementById('editCarrier').value      = shipped.carrier      || '';
-  document.getElementById('editTracking').value     = shipped.tracking     || '';
-  document.getElementById('editPallets').value      = shipped.pallets      || '';
-  document.getElementById('editBoxes').value        = shipped.boxes        || '';
-  document.getElementById('editHardwareBox').value  = shipped.hardwareBox  || '';
+  // For HS-only orders, pre-populate shipment fields from HubSpot data (_hs* fields)
+  // without marking the order as shipped
+  document.getElementById('editCarrier').value      = shipped.carrier      || od._hsCarrier    || '';
+  document.getElementById('editTracking').value     = shipped.tracking     || od._hsTracking   || '';
+  document.getElementById('editPallets').value      = shipped.pallets      || od._hsPallets    || '';
+  document.getElementById('editBoxes').value        = shipped.boxes        || od._hsBoxes      || '';
+  document.getElementById('editHardwareBox').value  = shipped.hardwareBox  || od._hsHardwareBox|| '';
   document.getElementById('editShipDate').value = shipped.date
     ? new Date(shipped.date).toISOString().split('T')[0]
-    : new Date().toISOString().split('T')[0];
+    : (od._hsDate ? new Date(od._hsDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
   document.getElementById('editFreightCost').value = od.freightCost || '';
 
   // Restore email addresses

@@ -1942,8 +1942,26 @@ function updateLineItem(id, field, value) {
   if (field === 'price')       item.price       = parseFloat(value) || 0;
   if (field === 'description') item.description = value;
   if (field === 'weight')      item.weight      = parseFloat(value) || 0;
-  // Don't re-render on description/weight changes (would reset cursor)
-  if (field === 'qty' || field === 'price') { renderLineItems(); updateSummary(); }
+  // Re-render on qty changes (qty is a small number, fast to type)
+  // For price: DON'T re-render (destroys focus mid-typing) — just update the total cell and summary
+  if (field === 'qty') { renderLineItems(); updateSummary(); }
+  if (field === 'price') {
+    // Update just the total cell for this row without re-rendering the whole table
+    const row = document.querySelector(`tr[data-id="${id}"]`);
+    if (row) {
+      const totalCell = row.querySelector('td:nth-child(6)');
+      const isCredit = item.price < 0;
+      if (totalCell) {
+        totalCell.textContent = fmt(item.qty * item.price);
+        totalCell.style.color = isCredit ? '#ef4444' : 'var(--text)';
+        totalCell.style.fontWeight = isCredit ? '700' : '';
+      }
+      // Update price input color
+      const priceInput = row.querySelector('td:nth-child(4) input');
+      if (priceInput) priceInput.style.color = isCredit ? '#ef4444' : '';
+    }
+    updateSummary();
+  }
   if (field === 'weight') updateSummary();
 }
 

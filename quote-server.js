@@ -6608,6 +6608,93 @@ tbody tr:hover td{background:#fdfcfb}
           if (trk && car) fetchAndCacheTracking(trk, car).catch(() => {});
 
           json({ success: true });
+
+          // Non-blocking: create DB record + accounting task when Ship It is clicked
+          if (markShipped && sf.tracking) {
+            (async () => {
+              try {
+                // Create DB record so order appears on shipping board
+                const shippedData = {
+                  source:      'hubspot',
+                  serialNumber: serialNumber || '',
+                  shipped: {
+                    carrier:     sf.carrier     || '',
+                    tracking:    sf.tracking    || '',
+                    date:        sf.date        || new Date().toISOString().split('T')[0],
+                    boxes:       parseInt(sf.boxes)   || 0,
+                    pallets:     parseInt(sf.pallets)  || 0,
+                    hardwareBox: sf.hardwareBox || '',
+                  },
+                  freightCost: freightCost || null,
+                  changeLog: [{ at: new Date().toISOString(), summary: 'Shipped', rep: repName || 'Unknown' }],
+                };
+                if (db) {
+                  await db.query(
+                    `INSERT INTO orders (quote_number, deal_id, order_data)
+                     VALUES ($1, $2, $3)
+                     ON CONFLICT (quote_number) DO UPDATE SET
+                       order_data = EXCLUDED.order_data, deal_id = EXCLUDED.deal_id`,
+                    [quoteNumber, hsDealId, JSON.stringify(shippedData)]
+                  );
+                  console.log(`[orders] HS-only Ship It: DB record created for ${quoteNumber}`);
+                }
+
+                // Fetch deal name for task
+                let dealNameT = quoteNumber;
+                try {
+                  const dr = await httpsRequest({
+                    hostname: 'api.hubapi.com',
+                    path: `/crm/v3/objects/deals/${hsDealId}?properties=dealname`,
+                    method: 'GET',
+                    headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+                  });
+                  dealNameT = dr.body?.properties?.dealname || quoteNumber;
+                } catch(e) {}
+
+                // Accounting task
+                const fcDisplay = freightCost ? `$${parseFloat(freightCost).toFixed(2)}` : '—';
+                const taskBody = [
+                  `Deal: ${dealNameT}`,
+                  `Serial Number: ${serialNumber || '—'}`,
+                  `Carrier: ${sf.carrier || '—'}`,
+                  `PRO / Tracking: ${sf.tracking || '—'}`,
+                  `Freight Cost: ${fcDisplay}`,
+                ].join('\n');
+
+                const taskRes = await httpsRequest({
+                  hostname: 'api.hubapi.com',
+                  path: '/crm/v3/objects/tasks',
+                  method: 'POST',
+                  headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+                }, {
+                  properties: {
+                    hs_task_subject:  `📦 SHIPPED — ${dealNameT}`,
+                    hs_task_body:     taskBody,
+                    hs_task_status:   'NOT_STARTED',
+                    hs_task_type:     'TODO',
+                    hs_task_priority: 'HIGH',
+                    hubspot_owner_id: '38732178', // Kim Dalton
+                    hs_timestamp:     String(Date.now()),
+                  }
+                });
+                const taskId = taskRes.body?.id;
+                if (taskId && hsDealId) {
+                  await httpsRequest({
+                    hostname: 'api.hubapi.com',
+                    path: '/crm/v4/associations/tasks/deals/batch/create',
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+                  }, {
+                    inputs: [{ from: { id: taskId }, to: { id: String(hsDealId) },
+                      types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 216 }] }]
+                  });
+                }
+                console.log(`[orders] HS-only accounting task created for ${dealNameT} (task ${taskId})`);
+              } catch(e) {
+                console.warn('[orders] HS-only Ship It post-processing failed:', e.message);
+              }
+            })();
+          }
         } catch(e) {
           console.error('[orders] HS-only save error:', e.message);
           json({ error: e.message }, 500);

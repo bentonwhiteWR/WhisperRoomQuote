@@ -2958,16 +2958,32 @@ const server = http.createServer(async (req, res) => {
       // Associate contact with deal
       await hsAssociate('deals', dealId, 'contacts', contactId, 'deal_to_contact');
 
-      // Create line items — skip negative (credit) items, fold them into deal discount
+      // Create line items — deduct credits from MDL (or highest-priced item) so HubSpot total is correct
       const creditTotal = lineItems.reduce((s, item) => item.price < 0 ? s + (item.price * item.qty) : s, 0);
+      const creditItems = lineItems.filter(item => item.price < 0);
       const positiveItems = lineItems.filter(item => item.price >= 0);
 
+      // If credits exist, adjust the anchor line item price
+      let adjustedItems = positiveItems.map(i => ({ ...i }));
+      if (creditTotal < 0 && adjustedItems.length > 0) {
+        let anchorIdx = adjustedItems.findIndex(i => /^MDL\b/i.test(i.name || ''));
+        if (anchorIdx === -1) anchorIdx = adjustedItems.reduce((maxIdx, item, idx, arr) => item.price > arr[maxIdx].price ? idx : maxIdx, 0);
+        const anchor = adjustedItems[anchorIdx];
+        const creditAmt = Math.abs(creditTotal);
+        adjustedItems[anchorIdx] = {
+          ...anchor,
+          price: Math.max(0, anchor.price - creditAmt),
+          description: (`$${creditAmt.toFixed(2)} in credits applied to this line. ` + (anchor.description || '')).trim(),
+        };
+        console.log(`[create-deal] deducted $${creditAmt.toFixed(2)} credits from "${anchor.name}"`);
+      }
+
       const lineItemIds = [];
-      for (const item of positiveItems) {
+      for (const item of adjustedItems) {
         const li = await hsCreateLineItem({
           name: item.name,
           quantity: String(item.qty),
-          price: String(item.price),
+          price: String(parseFloat(item.price).toFixed(2)),
           hs_product_id: item.productId ? String(item.productId) : undefined,
           description: item.description || '',
           hs_discount_percentage: item.lineDiscount && item.lineDiscount > 0 ? String(item.lineDiscount) : undefined,
@@ -2975,11 +2991,16 @@ const server = http.createServer(async (req, res) => {
         if (li.id) lineItemIds.push(li.id);
       }
 
-      // If there are credits, add a single "Credits" line item at the negative total
-      // HubSpot doesn't support negative line items natively — use hs_discount_amount on deal instead
-      if (creditTotal < 0) {
-        // Append credit amount to deal description/notes — it's already reflected in total
-        console.log(`[create-deal] ${Math.abs(creditTotal).toFixed(2)} in credits folded into deal total`);
+      // Add each credit as a $0 descriptor line so HubSpot shows what's included
+      for (const cr of creditItems) {
+        const amt = Math.abs(parseFloat(cr.price) * parseInt(cr.qty || 1));
+        const li = await hsCreateLineItem({
+          name: cr.name,
+          quantity: '1',
+          price: '0.00',
+          description: `Credit applied: -$${amt.toFixed(2)}${cr.description ? ' — ' + cr.description : ''}`,
+        });
+        if (li.id) lineItemIds.push(li.id);
       }
 
       // Add freight line item
@@ -5383,15 +5404,43 @@ tbody tr:hover td{background:#fdfcfb}
       const freightTotal = freight ? parseFloat(freight.total || 0) : 0;
       const taxTotal = tax ? parseFloat(tax.tax || 0) : 0;
 
-      // 3. Build line items — skip negative (credit) items, fold into invoice discount
+      // 3. Build line items
       const creditTotal = (lineItems || []).reduce((s, item) => item.price < 0 ? s + (parseFloat(item.price) * parseInt(item.qty || 1)) : s, 0);
+      const creditItems = (lineItems || []).filter(item => parseFloat(item.price || 0) < 0);
       const positiveLineItems = (lineItems || []).filter(item => parseFloat(item.price || 0) >= 0);
 
-      const invoiceLineItems = positiveLineItems.map(item => ({
-        ...item,
-        price: parseFloat(item.price || 0),
-        lineDiscount: discPct > 0 ? parseFloat((discPct * 100).toFixed(4)) : 0,
-      }));
+      const invoiceLineItems = positiveLineItems.map(item => ({ ...item, price: parseFloat(item.price || 0), lineDiscount: discPct > 0 ? parseFloat((discPct * 100).toFixed(4)) : 0 }));
+
+      // If credits exist: deduct total from the MDL line item (or highest-priced item as fallback)
+      // so HubSpot invoice total is correct. Each credit also appears as a $0 descriptor line.
+      if (creditTotal < 0 && invoiceLineItems.length > 0) {
+        // Find MDL item first, fall back to highest-priced
+        let anchorIdx = invoiceLineItems.findIndex(i => /^MDL\b/i.test(i.name || ''));
+        if (anchorIdx === -1) {
+          anchorIdx = invoiceLineItems.reduce((maxIdx, item, idx, arr) =>
+            item.price > arr[maxIdx].price ? idx : maxIdx, 0);
+        }
+        const anchor = invoiceLineItems[anchorIdx];
+        const creditAmt = Math.abs(creditTotal);
+        const origPrice = parseFloat(anchor.price);
+        const adjustedPrice = Math.max(0, origPrice - creditAmt);
+        const creditDesc = `$${creditAmt.toFixed(2)} in credits applied to this line. ${anchor.description || ''}`.trim();
+        invoiceLineItems[anchorIdx] = { ...anchor, price: adjustedPrice, description: creditDesc };
+
+        // Add each individual credit as a $0 line with description showing the amount
+        creditItems.forEach(cr => {
+          const amt = Math.abs(parseFloat(cr.price) * parseInt(cr.qty || 1));
+          invoiceLineItems.push({
+            name: cr.name,
+            qty: 1,
+            price: 0,
+            description: `Credit applied: -$${amt.toFixed(2)}${cr.description ? ' — ' + cr.description : ''}`,
+            isCredit: true,
+          });
+        });
+        console.log(`[create-invoice] deducted $${creditAmt.toFixed(2)} credits from "${anchor.name}" (${origPrice.toFixed(2)} → ${adjustedPrice.toFixed(2)})`);
+      }
+
       if (freightTotal > 0) invoiceLineItems.push({
         name: 'Freight', qty: 1, price: freightTotal,
         description: freight?.transit ? `LTL freight. Transit: ${freight.transit}` : 'LTL freight'
@@ -5401,19 +5450,6 @@ tbody tr:hover td{background:#fdfcfb}
         qty: 1, price: taxTotal,
         description: tax?.freightTaxed ? 'State tax — includes freight.' : 'State tax — product only.'
       });
-
-      // If there are credits, add a single "Credits" line item at the negative total
-      // HubSpot line_items support negative prices even though the product catalog doesn't
-      if (creditTotal < 0) {
-        invoiceLineItems.push({
-          name: 'Credits',
-          qty: 1,
-          price: parseFloat(creditTotal.toFixed(2)),
-          description: 'Applied credits — see quote for itemized detail.',
-          isCredit: true,
-        });
-        console.log(`[create-invoice] added Credits line item: $${creditTotal.toFixed(2)}`);
-      }
 
       const createdLineItemIds = [];
       for (let idx = 0; idx < invoiceLineItems.length; idx++) {

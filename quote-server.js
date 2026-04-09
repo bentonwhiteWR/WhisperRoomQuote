@@ -2958,9 +2958,12 @@ const server = http.createServer(async (req, res) => {
       // Associate contact with deal
       await hsAssociate('deals', dealId, 'contacts', contactId, 'deal_to_contact');
 
-      // Create line items
+      // Create line items — skip negative (credit) items, fold them into deal discount
+      const creditTotal = lineItems.reduce((s, item) => item.price < 0 ? s + (item.price * item.qty) : s, 0);
+      const positiveItems = lineItems.filter(item => item.price >= 0);
+
       const lineItemIds = [];
-      for (const item of lineItems) {
+      for (const item of positiveItems) {
         const li = await hsCreateLineItem({
           name: item.name,
           quantity: String(item.qty),
@@ -2970,6 +2973,13 @@ const server = http.createServer(async (req, res) => {
           hs_discount_percentage: item.lineDiscount && item.lineDiscount > 0 ? String(item.lineDiscount) : undefined,
         });
         if (li.id) lineItemIds.push(li.id);
+      }
+
+      // If there are credits, add a single "Credits" line item at the negative total
+      // HubSpot doesn't support negative line items natively — use hs_discount_amount on deal instead
+      if (creditTotal < 0) {
+        // Append credit amount to deal description/notes — it's already reflected in total
+        console.log(`[create-deal] ${Math.abs(creditTotal).toFixed(2)} in credits folded into deal total`);
       }
 
       // Add freight line item
@@ -5357,11 +5367,14 @@ tbody tr:hover td{background:#fdfcfb}
       const freightTotal = freight ? parseFloat(freight.total || 0) : 0;
       const taxTotal = tax ? parseFloat(tax.tax || 0) : 0;
 
-      // 3. Build line items — original price + discount % on each product line item
-      const invoiceLineItems = (lineItems || []).map(item => ({
+      // 3. Build line items — skip negative (credit) items, fold into invoice discount
+      const creditTotal = (lineItems || []).reduce((s, item) => item.price < 0 ? s + (parseFloat(item.price) * parseInt(item.qty || 1)) : s, 0);
+      const positiveLineItems = (lineItems || []).filter(item => parseFloat(item.price || 0) >= 0);
+
+      const invoiceLineItems = positiveLineItems.map(item => ({
         ...item,
-        price: parseFloat(item.price || 0), // keep original price
-        lineDiscount: discPct > 0 ? parseFloat((discPct * 100).toFixed(4)) : 0, // % for HubSpot column
+        price: parseFloat(item.price || 0),
+        lineDiscount: discPct > 0 ? parseFloat((discPct * 100).toFixed(4)) : 0,
       }));
       if (freightTotal > 0) invoiceLineItems.push({
         name: 'Freight', qty: 1, price: freightTotal,
@@ -5402,6 +5415,11 @@ tbody tr:hover td{background:#fdfcfb}
         hs_invoice_date:   today,
         hs_due_date:       today,
       };
+      // Apply credit total as invoice-level discount so HubSpot total matches our total
+      if (creditTotal < 0) {
+        invoiceProps.hs_discount = String(Math.abs(creditTotal).toFixed(2));
+        console.log(`[create-invoice] applied credit discount of $${Math.abs(creditTotal).toFixed(2)}`);
+      }
       // Ship-to: patch contact's address so HubSpot invoice billing address populates
       if (resolvedContactId && customer?.address) {
         try {

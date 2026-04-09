@@ -6243,7 +6243,7 @@ tbody tr:hover td{background:#fdfcfb}
       const dealId = existing.rows[0].deal_id;
       const repName = JSON.parse(await readBody(req))?.repName || 'Unknown';
 
-      // Unship — clear tracking only, keep all other shipment fields intact
+      // Unship — clear tracking only, keep carrier and all other shipment fields
       const changeLog = od.changeLog || [];
       changeLog.push({ at: new Date().toISOString(), summary: 'Unshipped — reverted to Closed Won', rep: repName });
 
@@ -6255,7 +6255,7 @@ tbody tr:hover td{background:#fdfcfb}
       };
       await db.query('UPDATE orders SET order_data = $1 WHERE quote_number = $2', [JSON.stringify(updated), quoteNumber]);
 
-      // Revert HubSpot deal stage to Closed Won and clear shipping fields
+      // Revert HubSpot deal stage to Closed Won — don't clear any fields
       if (dealId) {
         try {
           await httpsRequest({
@@ -6264,18 +6264,9 @@ tbody tr:hover td{background:#fdfcfb}
             method: 'PATCH',
             headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
           }, {
-            properties: {
-              dealstage: 'closedwon',
-              tracking_number: '',
-              freight_carrier: '',
-              carrier__c: '',
-              date_shipped: '',
-              box_count: '',
-              pallet_count: '',
-              hardware_box: '',
-            }
+            properties: { dealstage: 'closedwon' }
           });
-          console.log(`[unship] Deal ${dealId} reverted to Closed Won`);
+          console.log(`[unship] Deal ${dealId} reverted to Closed Won — all fields preserved`);
         } catch(e) { console.warn('[unship] HubSpot revert failed:', e.message); }
       }
 
@@ -6717,6 +6708,7 @@ tbody tr:hover td{background:#fdfcfb}
           const hsProps = {};
           if (serialNumber !== undefined)   hsProps.description       = String(serialNumber || '');
           if (productionNotes !== undefined) hsProps.production_notes  = String(productionNotes || '');
+          console.log(`[orders] serialNumber received: ${JSON.stringify(serialNumber)}`);
           if (sf.carrier !== undefined)     hsProps.freight_carrier = hsCarrierEnum(sf.carrier || '');
           if (sf.tracking !== undefined)    hsProps.tracking_number = String(sf.tracking || '');
           if (sf.date !== undefined)        hsProps.date_shipped    = String(sf.date || '');

@@ -362,7 +362,6 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
   } else if (carrierUpper === 'OD' || carrierUpper.includes('DOMINION')) {
     url = `https://www.odfl.com/us/en/tools/trace-track-ltl-freight.html?pro=${encodeURIComponent(trackingNumber)}`;
   } else {
-    // Unsupported carrier — save pending status
     await saveTrackingToCache(trackingNumber, carrierUpper, { status: 'pending', label: 'Pending' });
     return { status: 'pending', label: 'Pending' };
   }
@@ -377,109 +376,98 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+    await new Promise(r => setTimeout(r, 3000));
 
     let result = null;
 
     if (carrierUpper === 'ABF') {
-      // Wait for status to render
-      await page.waitForSelector('body', { timeout: 10000 });
-      await new Promise(r => setTimeout(r, 2000));
-
       result = await page.evaluate(() => {
         const body = document.body.innerText;
+        const lines = body.split('\n').map(l => l.trim()).filter(Boolean);
 
-        // Status — look for the highlighted step
+        // Status
         let status = 'in_transit';
         let label = 'In Transit';
-        if (body.includes('Delivered') && body.includes('CURRENT STATUS') &&
-            body.split('CURRENT STATUS')[1]?.includes('Delivered')) {
-          status = 'delivered'; label = 'Delivered';
-        } else if (body.includes('Out For Delivery') && body.includes('CURRENT STATUS') &&
-            body.split('CURRENT STATUS')[1]?.includes('Out For Delivery')) {
-          status = 'out_for_delivery'; label = 'Out for Delivery';
-        } else if (body.includes('Picked Up') && !body.includes('CURRENT STATUS')) {
-          status = 'pending'; label = 'Info Received';
+        const csIdx = lines.indexOf('CURRENT STATUS');
+        if (csIdx >= 0 && lines[csIdx + 1]) {
+          const cs = lines[csIdx + 1];
+          if (cs.includes('Delivered'))        { status = 'delivered';        label = 'Delivered'; }
+          else if (cs.includes('Out For Delivery')) { status = 'out_for_delivery'; label = 'Out for Delivery'; }
+          else if (cs.includes('In Transit'))  { status = 'in_transit';       label = 'In Transit'; }
+          else if (cs.includes('Picked Up'))   { status = 'in_transit';       label = 'Picked Up'; }
         }
 
-        // Status detail
+        // Last event — STATUS DETAIL section
         let lastEvent = null;
-        const detailMatch = body.match(/STATUS DETAIL\s*
-([^
-]+(?:
-[^
-]+)?)/);
-        if (detailMatch) lastEvent = detailMatch[1].trim();
+        const sdIdx = lines.indexOf('STATUS DETAIL');
+        if (sdIdx >= 0 && lines[sdIdx + 1]) lastEvent = lines[sdIdx + 1];
 
-        // ETA
+        // ETA — DELIVERY SCHEDULED section
         let eta = null;
-        const etaMatch = body.match(/DELIVERY SCHEDULED\s*
-([^
-]+)\s*
-([^
-]+)/);
-        if (etaMatch) {
-          // Parse date like "Thu, Apr 09"
-          const dateStr = etaMatch[1].trim() + ', ' + new Date().getFullYear();
+        const dsIdx = lines.indexOf('DELIVERY SCHEDULED');
+        if (dsIdx >= 0 && lines[dsIdx + 1]) {
+          const dateStr = lines[dsIdx + 1] + ', ' + new Date().getFullYear();
           try {
             const d = new Date(dateStr);
             if (!isNaN(d)) eta = d.toISOString().split('T')[0];
           } catch(e) {}
         }
 
-        // Pickup date
-        let pickupDate = null;
-        const pickupMatch = body.match(/PICKED UP ON\s*
-([^
-]+)\s*
-([^
-]+)/);
-        if (pickupMatch) pickupDate = pickupMatch[1].trim();
-
         // Destination
         let destCity = null, destState = null;
-        const destMatch = body.match(/Destination Service Center\s*
-ABF SERVICE CENTER\s*
-([A-Z\s]+),\s*([A-Z]{2})/);
-        if (destMatch) { destCity = destMatch[1].trim(); destState = destMatch[2].trim(); }
+        const destIdx = lines.indexOf('Destination Service Center');
+        if (destIdx >= 0) {
+          // Next few lines: "ABF SERVICE CENTER" then "CITY, ST (code)"
+          for (let i = destIdx + 1; i < Math.min(destIdx + 4, lines.length); i++) {
+            const m = lines[i].match(/^([A-Z\s]+),\s*([A-Z]{2})\s*\(/);
+            if (m) { destCity = m[1].trim(); destState = m[2].trim(); break; }
+          }
+        }
 
-        return { status, label, lastEvent, eta, pickupDate, destCity, destState };
+        return { status, label, lastEvent, eta, destCity, destState };
       });
 
-    } else if (carrierUpper === 'OD') {
-      await page.waitForSelector('body', { timeout: 10000 });
-      await new Promise(r => setTimeout(r, 3000));
-
+    } else if (carrierUpper === 'OD' || carrierUpper.includes('DOMINION')) {
       result = await page.evaluate(() => {
         const body = document.body.innerText;
+        const lines = body.split('\n').map(l => l.trim()).filter(Boolean);
 
         let status = 'in_transit';
         let label = 'In Transit';
-        if (body.toLowerCase().includes('delivered')) {
-          status = 'delivered'; label = 'Delivered';
-        } else if (body.toLowerCase().includes('out for delivery')) {
-          status = 'out_for_delivery'; label = 'Out for Delivery';
-        } else if (body.toLowerCase().includes('picked up') || body.toLowerCase().includes('pickup')) {
-          status = 'in_transit'; label = 'In Transit';
-        }
+        const bodyLower = body.toLowerCase();
+        if (bodyLower.includes('delivered'))            { status = 'delivered';        label = 'Delivered'; }
+        else if (bodyLower.includes('out for delivery')){ status = 'out_for_delivery'; label = 'Out for Delivery'; }
 
-        // Last event — try to find most recent activity line
+        // Last event — find a line with a date pattern MM/DD/YYYY
         let lastEvent = null;
-        const lines = body.split('\n').map(l => l.trim()).filter(Boolean);
-        // OD shows events with dates like "04/08/2026"
-        const eventLine = lines.find(l => /\d{2}\/\d{2}\/\d{4}/.test(l) && l.length > 20);
+        const datePattern = /\d{2}\/\d{2}\/\d{4}/;
+        const eventLine = lines.find(l => datePattern.test(l) && l.length > 15);
         if (eventLine) lastEvent = eventLine;
 
         // ETA
         let eta = null;
-        const etaMatch = body.match(/Estimated Delivery[^\n]*\n[^\n]*?(\d{1,2}\/\d{1,2}\/\d{4})/i);
-        if (etaMatch) {
-          try {
-            const d = new Date(etaMatch[1]);
-            if (!isNaN(d)) eta = d.toISOString().split('T')[0];
-          } catch(e) {}
+        const etaIdx = lines.findIndex(l => l.toLowerCase().includes('estimated delivery'));
+        if (etaIdx >= 0) {
+          for (let i = etaIdx; i < Math.min(etaIdx + 3, lines.length); i++) {
+            const m = lines[i].match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
+            if (m) {
+              try {
+                const d = new Date(m[1]);
+                if (!isNaN(d)) { eta = d.toISOString().split('T')[0]; break; }
+              } catch(e) {}
+            }
+          }
         }
 
-        return { status, label, lastEvent, eta };
+        // Destination — look for "To:" or city/state pattern near delivery info
+        let destCity = null, destState = null;
+        const toIdx = lines.findIndex(l => l.match(/^To:/i));
+        if (toIdx >= 0 && lines[toIdx + 1]) {
+          const m = lines[toIdx + 1].match(/^([A-Za-z\s]+),\s*([A-Z]{2})/);
+          if (m) { destCity = m[1].trim(); destState = m[2].trim(); }
+        }
+
+        return { status, label, lastEvent, eta, destCity, destState };
       });
     }
 
@@ -512,6 +500,7 @@ ABF SERVICE CENTER\s*
     if (browser) await browser.close().catch(() => {});
   }
 }
+
 
 async function startTrackingPoller() {
   if (!db) return;
@@ -3631,11 +3620,6 @@ tbody tr:hover td{background:#fdfcfb}
 
       json({ success: true, results });
     } catch(e) { json({ error: e.message }, 500); }
-    return;
-  }
-
-
-
     return;
   }
 

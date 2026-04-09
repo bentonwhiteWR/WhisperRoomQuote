@@ -353,6 +353,118 @@ async function saveTrackingToCache(trackingNumber, slug, data) {
   } catch(e) { console.warn('tracking cache save error:', e.message); }
 }
 
+async function fetchABFTracking(trackingNumber, apiKey) {
+  try {
+    const url = `https://www.abfs.com/xml/tracexml.asp?DL=2&ID=${encodeURIComponent(apiKey)}&RefNum=${encodeURIComponent(trackingNumber)}&RefType=A`;
+    const res = await httpsRequest({ hostname: 'www.abfs.com', path: url.replace('https://www.abfs.com', ''), method: 'GET', headers: { 'Accept': 'application/xml' } });
+    const xml = typeof res.body === 'string' ? res.body : JSON.stringify(res.body);
+
+    // Parse XML fields with simple regex — ABF returns flat XML
+    const get = (tag) => { const m = xml.match(new RegExp(`<${tag}>([^<]*)</${tag}>`, 'i')); return m ? m[1].trim() : null; };
+
+    const errors = get('NUMERRORS');
+    if (errors && errors !== '0') {
+      const errMsg = get('ERRORMESSAGE');
+      console.warn(`[ABF] tracking error for ${trackingNumber}: ${errMsg}`);
+      return null;
+    }
+
+    const shortStatus = get('SHORTSTATUS2') || get('SHORTSTATUS') || '';
+    const longStatus  = get('LONGSTATUS') || '';
+
+    // Map ABF status codes to normalized status
+    let status = 'in_transit', label = 'In Transit';
+    const ss = shortStatus.toUpperCase();
+    const ls = longStatus.toLowerCase();
+    if (ss === 'D' || ls.includes('deliver')) { status = 'delivered';        label = 'Delivered'; }
+    else if (ss === 'OD' || ls.includes('out for delivery')) { status = 'out_for_delivery'; label = 'Out for Delivery'; }
+    else if (ss === 'P' || ls.includes('picked up'))         { status = 'in_transit';       label = 'Picked Up'; }
+    else if (ss === 'E' || ls.includes('exception'))         { status = 'exception';         label = 'Exception'; }
+
+    // Dates
+    const deliveryDate = get('DELIVERYDATE');   // actual delivery (delivered only)
+    const deliveryTime = get('DELIVERYTIME');
+    const dueDate      = get('DUEDATE');        // scheduled delivery date
+    const expectedDate = get('EXPECTEDDELIVERYDATE');
+    const pickupDate   = get('PICKUP');
+    const pickupTime   = get('PICKUPTIME');
+
+    // ETA — prefer DUEDATE, fall back to EXPECTEDDELIVERYDATE
+    const etaRaw = dueDate || expectedDate || null;
+    let eta = null;
+    if (etaRaw) {
+      // ABF returns dates as MM/DD/YYYY
+      try {
+        const d = new Date(etaRaw);
+        if (!isNaN(d)) eta = d.toISOString().split('T')[0];
+      } catch(e) {}
+    }
+
+    // Delivery date (only when actually delivered)
+    let deliveredAt = null;
+    if (status === 'delivered' && deliveryDate) {
+      try {
+        const d = new Date(deliveryDate);
+        if (!isNaN(d)) deliveredAt = d.toISOString().split('T')[0];
+      } catch(e) {}
+    }
+
+    // Signature
+    const sigFirst = get('DELIVSIGFIRSTNAME') || '';
+    const sigLast  = get('DELIVSIGLASTNAME')  || '';
+    const signedBy = [sigFirst, sigLast].filter(Boolean).join(' ') || null;
+
+    // Destination
+    const destCity  = get('CONSIGNEECITY')  || null;
+    const destState = get('CONSIGNEESTATE') || null;
+
+    // Weight/pieces for last event context
+    const weight = get('WEIGHT');
+    const pieces = get('PIECES');
+
+    // Build last event from longStatus + pickup info
+    let lastEvent = longStatus || null;
+    let lastEventTime = null;
+    if (pickupDate) {
+      const pickupStr = [pickupDate, pickupTime].filter(Boolean).join(' ');
+      lastEventTime = pickupDate;
+      if (!lastEvent && pickupStr) lastEvent = `Picked up ${pickupStr}`;
+    }
+
+    return { status, label, lastEvent, lastEventTime, eta, deliveredAt, signedBy,
+             location: destCity ? [destCity, destState].filter(Boolean).join(', ') : null,
+             destCity, destState, weight, pieces };
+  } catch(e) {
+    console.warn(`[ABF] API error for ${trackingNumber}: ${e.message}`);
+    return null;
+  }
+}
+
+async function fetchABFTransitDays(destZip, pickupDate, apiKey) {
+  // WhisperRoom always ships from Morristown TN 37813
+  try {
+    const pd = pickupDate ? new Date(pickupDate) : new Date();
+    const month = String(pd.getMonth() + 1).padStart(2, '0');
+    const day   = String(pd.getDate()).padStart(2, '0');
+    const year  = String(pd.getFullYear());
+    const path  = `/xml/transitxml.asp?DL=2&ID=${encodeURIComponent(apiKey)}&Shipper=Y&OriginZip=37813&OriginCountry=US&DestZip=${encodeURIComponent(destZip)}&DestCountry=US&PickupMonth=${month}&PickupDay=${day}&PickupYear=${year}`;
+    const res = await httpsRequest({ hostname: 'www.abfs.com', path, method: 'GET', headers: { 'Accept': 'application/xml' } });
+    const xml = typeof res.body === 'string' ? res.body : JSON.stringify(res.body);
+    const get = (tag) => { const m = xml.match(new RegExp(`<${tag}>([^<]*)</${tag}>`, 'i')); return m ? m[1].trim() : null; };
+    const errors = get('NUMERRORS');
+    if (errors && errors !== '0') return null;
+    const trDays  = get('TRDAYS');
+    const dueDate = get('DUEDATE');
+    let eta = null;
+    if (dueDate) { try { const d = new Date(dueDate); if (!isNaN(d)) eta = d.toISOString().split('T')[0]; } catch(e) {} }
+    return { transitDays: trDays ? parseInt(trDays) : null, eta };
+  } catch(e) {
+    console.warn(`[ABF] transit time error for ${destZip}: ${e.message}`);
+    return null;
+  }
+}
+
+
 async function fetchAndCacheTracking(trackingNumber, carrier) {
   if (!trackingNumber) return null;
 
@@ -468,130 +580,33 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
     }
   }
 
-  // ── ABF: Puppeteer scrape ────────────────────────────────────────
+  // ── ABF: REST API ────────────────────────────────────────────────
   if (carrierUpper === 'ABF') {
-    if (!puppeteer) { console.warn('[tracking] Puppeteer not available'); return null; }
-    const url = `https://view.arcb.com/nlo/tools/tracking/${encodeURIComponent(trackingNumber)}`;
-    let browser = null;
-    try {
-      console.log(`[tracking] ABF scrape for ${trackingNumber}`);
-      browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-      });
-      const page = await browser.newPage();
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-      await new Promise(r => setTimeout(r, 3000));
-
-      const result = await page.evaluate(() => {
-        const body = document.body.innerText;
-        const lines = body.split('\n').map(l => l.trim()).filter(Boolean);
-
-        // Status
-        let status = 'in_transit';
-        let label = 'In Transit';
-        const csIdx = lines.indexOf('CURRENT STATUS');
-        if (csIdx >= 0 && lines[csIdx + 1]) {
-          const cs = lines[csIdx + 1];
-          if (cs.includes('Delivered'))             { status = 'delivered';        label = 'Delivered'; }
-          else if (cs.includes('Out For Delivery')) { status = 'out_for_delivery'; label = 'Out for Delivery'; }
-          else if (cs.includes('In Transit'))       { status = 'in_transit';       label = 'In Transit'; }
-          else if (cs.includes('Picked Up'))        { status = 'in_transit';       label = 'Picked Up'; }
-        }
-
-        // Last event
-        let lastEvent = null;
-        const sdIdx = lines.indexOf('STATUS DETAIL');
-        if (sdIdx >= 0 && lines[sdIdx + 1]) lastEvent = lines[sdIdx + 1];
-
-        // ETA — try multiple patterns ABF uses
-        let eta = null;
-        const dsIdx = lines.indexOf('DELIVERY SCHEDULED');
-        if (dsIdx >= 0 && lines[dsIdx + 1]) {
-          // Format: "Thu, Apr 09" or "Apr 09" or "April 09, 2026"
-          const dateLine = lines[dsIdx + 1].replace(/^[A-Za-z]+,\s*/, ''); // strip day-of-week
-          const yr = new Date().getFullYear();
-          const attempts = [dateLine + ', ' + yr, dateLine, lines[dsIdx + 2] + ' ' + yr];
-          for (const attempt of attempts) {
-            try {
-              const d = new Date(attempt);
-              if (!isNaN(d) && d.getFullYear() >= yr) { eta = d.toISOString().split('T')[0]; break; }
-            } catch(e) {}
-          }
-        }
-        // Also check for a date pattern anywhere near "scheduled" or "delivery"
-        if (!eta) {
-          const schedIdx = lines.findIndex(l => l.toLowerCase().includes('scheduled') || l.toLowerCase().includes('estimated delivery'));
-          if (schedIdx >= 0) {
-            for (let i = schedIdx; i < Math.min(schedIdx + 4, lines.length); i++) {
-              const m = lines[i].match(/([A-Z][a-z]+\.?\s+\d{1,2}(?:,?\s*\d{4})?)/);
-              if (m) {
-                try {
-                  const d = new Date(m[1] + (m[1].includes(String(new Date().getFullYear())) ? '' : ', ' + new Date().getFullYear()));
-                  if (!isNaN(d)) { eta = d.toISOString().split('T')[0]; break; }
-                } catch(e) {}
-              }
-            }
-          }
-        }
-
-        // Destination
-        let destCity = null, destState = null;
-        const destIdx = lines.indexOf('Destination Service Center');
-        if (destIdx >= 0) {
-          for (let i = destIdx + 1; i < Math.min(destIdx + 4, lines.length); i++) {
-            const m = lines[i].match(/^([A-Z\s]+),\s*([A-Z]{2})\s*\(/);
-            if (m) { destCity = m[1].trim(); destState = m[2].trim(); break; }
-          }
-        }
-
-        // Actual delivery date — shown on delivered shipments
-        let deliveredAt = null;
-        if (status === 'delivered') {
-          // Look for a date near "Delivered" status
-          const delIdx = lines.findIndex(l => l.includes('Delivered'));
-          if (delIdx >= 0) {
-            for (let i = delIdx; i < Math.min(delIdx + 5, lines.length); i++) {
-              const m = lines[i].match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
-              if (m) {
-                try {
-                  const d = new Date(m[1]);
-                  if (!isNaN(d)) { deliveredAt = d.toISOString().split('T')[0]; break; }
-                } catch(e) {}
-              }
-            }
-          }
-        }
-
-        return { status, label, lastEvent, eta, destCity, destState, deliveredAt };
-      });
-
-      if (!result) return null;
-
-      const cacheData = {
-        status:        result.status,
-        label:         result.label,
-        lastEvent:     result.lastEvent || null,
-        lastEventTime: null,
-        eta:           result.eta || null,
-        deliveredAt:   result.deliveredAt || null,
-        signedBy:      null,
-        location:      result.destCity ? [result.destCity, result.destState].filter(Boolean).join(', ') : null,
-        destCity:      result.destCity || null,
-        destState:     result.destState || null,
-      };
-
-      await saveTrackingToCache(trackingNumber, 'ABF', cacheData);
-      console.log(`[tracking] ABF ${trackingNumber} → ${result.label}${result.lastEvent ? ' | ' + result.lastEvent.slice(0, 60) : ''}`);
-      return cacheData;
-
-    } catch(e) {
-      console.warn(`[tracking] ABF error (${trackingNumber}): ${e.message}`);
+    const ARCBEST_KEY = process.env.ARCBEST_API_KEY || '';
+    if (!ARCBEST_KEY) {
+      console.warn('[tracking] ARCBEST_API_KEY not set');
       return null;
-    } finally {
-      if (browser) await browser.close().catch(() => {});
     }
+    console.log(`[tracking] ABF API for ${trackingNumber}`);
+    const result = await fetchABFTracking(trackingNumber, ARCBEST_KEY);
+    if (!result) return null;
+
+    const cacheData = {
+      status:        result.status,
+      label:         result.label,
+      lastEvent:     result.lastEvent || null,
+      lastEventTime: result.lastEventTime || null,
+      eta:           result.eta || null,
+      deliveredAt:   result.deliveredAt || null,
+      signedBy:      result.signedBy || null,
+      location:      result.location || null,
+      destCity:      result.destCity || null,
+      destState:     result.destState || null,
+    };
+
+    await saveTrackingToCache(trackingNumber, 'ABF', cacheData);
+    console.log(`[tracking] ABF ${trackingNumber} → ${result.label}${result.lastEvent ? ' | ' + result.lastEvent.slice(0, 80) : ''}`);
+    return cacheData;
   }
 
   // ── UPS / FedEx / USPS: use Puppeteer to scrape tracking page ────
@@ -2367,6 +2382,29 @@ const server = http.createServer(async (req, res) => {
         };
       });
 
+
+      // For ABF shipments missing ETA, fetch transit times in background
+      const ARCBEST_KEY = process.env.ARCBEST_API_KEY || '';
+      if (ARCBEST_KEY) {
+        const needEta = results.filter(r => r.carrier === 'ABF' && !r.trackEta && r.zip && r.trackStatus !== 'delivered');
+        if (needEta.length > 0) {
+          (async () => {
+            for (const s of needEta.slice(0, 10)) {
+              try {
+                const tt = await fetchABFTransitDays(s.zip, s.dateShipped, ARCBEST_KEY);
+                if (tt?.eta) {
+                  await db.query(
+                    'UPDATE tracking_cache SET eta = $1, updated_at = NOW() WHERE tracking_number = $2',
+                    [tt.eta, s.tracking]
+                  );
+                  console.log(`[ABF transit] ${s.tracking} → ETA ${tt.eta} (${tt.transitDays} days)`);
+                }
+              } catch(e) { /* silent */ }
+              await new Promise(r => setTimeout(r, 500));
+            }
+          })();
+        }
+      }
 
       json({ success: true, shipments: results, total: results.length });
     } catch(e) { json({ error: e.message }, 500); }

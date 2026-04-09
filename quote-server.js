@@ -403,17 +403,30 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
     }
 
     const eta = trackingData.expected_delivery || trackingData.aftership_estimated_delivery_date || null;
-    const deliveredAt = tag === 'Delivered' ? (trackingData.delivery_time || lastCheck?.checkpoint_time || null) : null;
+    // Try multiple AfterShip field names for delivery time
+    const deliveredRaw = tag === 'Delivered'
+      ? (trackingData.delivery_time || trackingData.delivered_at || lastCheck?.checkpoint_time || lastCheck?.occurred_at || null)
+      : null;
+
+    // Build a meaningful last event message including location
+    let lastEventMsg = lastCheck?.message || lastCheck?.description || null;
+    if (lastEventMsg && lastCheck) {
+      const loc = [lastCheck.city, lastCheck.state].filter(Boolean).join(', ');
+      if (loc && !lastEventMsg.toLowerCase().includes(loc.toLowerCase())) {
+        lastEventMsg = `${lastEventMsg} — ${loc}`;
+      }
+    }
+
+    const lastEventTime = lastCheck?.checkpoint_time || lastCheck?.occurred_at || null;
 
     const result = {
       ...normalized,
       location,
       eta: eta ? eta.split('T')[0] : null,
-      deliveredAt: deliveredAt ? deliveredAt.split('T')[0] : null,
+      deliveredAt: deliveredRaw ? deliveredRaw.split('T')[0] : null,
       signedBy: trackingData.signed_by || null,
-      lastEvent: lastCheck?.message || lastCheck?.description || null,
-      lastEventTime: lastCheck?.checkpoint_time || lastCheck?.occurred_at
-        ? (lastCheck.checkpoint_time || lastCheck.occurred_at).split('T')[0] : null,
+      lastEvent: lastEventMsg,
+      lastEventTime: lastEventTime ? lastEventTime.split('T')[0] : null,
     };
 
     await saveTrackingToCache(trackingNumber, slug, result);
@@ -456,12 +469,12 @@ async function startTrackingPoller() {
         const carrier  = deal.properties.freight_carrier || '';
         if (!tracking) continue;
 
-        // Skip if already delivered and cached
+        // Skip if already delivered with full data (has delivered_at date)
         const cached = await getTrackingFromCache(tracking);
-        if (cached?.status === 'delivered') continue;
+        if (cached?.status === 'delivered' && cached?.delivered_at) continue;
 
-        // Skip if updated in last 25 minutes
-        if (cached?.updated_at) {
+        // Skip if updated in last 25 minutes (but not if data is shallow)
+        if (cached?.updated_at && cached?.status !== 'delivered') {
           const age = Date.now() - new Date(cached.updated_at).getTime();
           if (age < 25 * 60 * 1000) continue;
         }
@@ -2005,6 +2018,21 @@ const server = http.createServer(async (req, res) => {
 
 
   // ── Shipping Board API ───────────────────────────────────────────
+  // Force refresh a specific tracking number in the cache
+  if (pathname === '/api/shipping/refresh-tracking' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const body = JSON.parse(await readBody(req));
+      const { tracking, carrier } = body;
+      if (!tracking) { json({ error: 'tracking required' }, 400); return; }
+      // Delete from cache to force fresh fetch
+      await db.query('DELETE FROM tracking_cache WHERE tracking_number = $1', [tracking]);
+      const result = await fetchAndCacheTracking(tracking, carrier || '');
+      json({ success: true, tracking, result });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   // Debug: dump tracking cache
   if (pathname === '/api/debug/tracking-cache' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
@@ -2094,6 +2122,20 @@ const server = http.createServer(async (req, res) => {
 
         const cache = cacheMap[tracking] || null;
 
+        const dateShipped = p.date_shipped || p.closedate?.split('T')[0] || null;
+
+        // Sanity check: AfterShip sometimes returns 'delivered' immediately on new registrations
+        // If shipped within last 2 days and AfterShip says delivered with no delivered_at, treat as pending
+        let trackStatus = cache?.status || (tracking ? 'pending' : null);
+        let trackLabel  = cache?.label  || (tracking ? 'Pending' : 'No Tracking');
+        if (trackStatus === 'delivered' && !cache?.delivered_at && dateShipped) {
+          const daysSinceShip = (Date.now() - new Date(dateShipped).getTime()) / 86400000;
+          if (daysSinceShip < 3) {
+            trackStatus = 'in_transit';
+            trackLabel  = 'In Transit';
+          }
+        }
+
         return {
           dealId:      d.id,
           dealName:    p.dealname,
@@ -2101,7 +2143,7 @@ const server = http.createServer(async (req, res) => {
           carrier,
           tracking,
           trackingUrl,
-          dateShipped: p.date_shipped || p.closedate?.split('T')[0] || null,
+          dateShipped,
           city:        p.shipping_city  || '',
           state:       p.shipping_state || '',
           zip:         p.shipping_zipcode || '',
@@ -2109,8 +2151,8 @@ const server = http.createServer(async (req, res) => {
           rep:         ownerMap[p.hubspot_owner_id] || 'Unknown',
           dealUrl:     `https://app.hubspot.com/contacts/5764220/deal/${d.id}`,
           // AfterShip tracking data from cache
-          trackStatus:    cache?.status     || (tracking ? 'pending' : null),
-          trackLabel:     cache?.label      || (tracking ? 'Pending' : 'No Tracking'),
+          trackStatus,
+          trackLabel,
           trackLastEvent: cache?.last_event || null,
           trackLastTime:  cache?.last_event_time || null,
           trackEta:       cache?.eta        || null,

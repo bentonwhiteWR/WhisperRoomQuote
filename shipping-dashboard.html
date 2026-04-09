@@ -4,22 +4,24 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Shipping — WhisperRoom</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial Black,sans-serif' font-size='18' font-weight='900' fill='%23e8531a'>W</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0e0e0f;--surface:#141416;--surface2:#1a1a1d;--surface3:#222226;
-  --border:rgba(255,255,255,.07);--border2:rgba(255,255,255,.12);
-  --text:#f0ede8;--muted:rgba(240,237,232,.4);--muted2:rgba(240,237,232,.2);
-  --orange:#e8531a;--green:#22c55e;--green2:rgba(34,197,94,.1);
-  --red:#ef4444;--red2:rgba(239,68,68,.1);--blue:#60a5fa;--blue2:rgba(96,165,250,.1);
-  --yellow:#facc15;--yellow2:rgba(250,204,21,.1);--topbar:#0a0a0a;
+  --bg:#0f0f0f;--surface:#1a1a1a;--surface2:#222222;--surface3:#2a2a2a;
+  --border:#2e2e2e;--border2:#3a3a3a;
+  --text:#e8e8e8;--muted:#666;--muted2:#444;
+  --orange:#ee6216;--green:#22c55e;--green2:rgba(34,197,94,.12);
+  --red:#ef4444;--red2:rgba(239,68,68,.12);--blue:#60a5fa;--blue2:rgba(96,165,250,.12);
+  --yellow:#facc15;--yellow2:rgba(250,204,21,.12);--topbar:#0a0a0a;
   --mono:'DM Mono',monospace;--row-h:60px;
 }
 html.light{
-  --bg:#f0ede8;--surface:#fff;--surface2:#f5f3ef;--surface3:#ece9e4;
-  --border:rgba(0,0,0,.07);--border2:rgba(0,0,0,.13);
-  --text:#0a0a0a;--muted:rgba(10,10,10,.4);--muted2:rgba(10,10,10,.2);
+  --bg:#c8c5c0;--surface:#d2cfc9;--surface2:#c2bfb9;--surface3:#b8b5af;
+  --border:rgba(0,0,0,.15);--border2:rgba(0,0,0,.22);
+  --text:#0a0a0a;--muted:rgba(10,10,10,.55);--muted2:rgba(10,10,10,.35);
+  --topbar:#0a0a0a;
 }
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:13px}
 .topbar{background:var(--topbar);border-bottom:1px solid rgba(255,255,255,.07);padding:0 20px;height:52px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100}
@@ -206,7 +208,11 @@ async function loadBoard(force=false){
 
 function updateCounts(){
   const g={all:allShipments.length,in_transit:0,out_for_delivery:0,delivered:0,exception:0,pending:0};
-  allShipments.forEach(s=>{const st=s.trackStatus||'pending';if(g[st]!==undefined)g[st]++});
+  allShipments.forEach(s=>{
+    if(!s.tracking)return; // exclude no-tracking from counts
+    const st=s.trackStatus||'pending';if(g[st]!==undefined)g[st]++;
+  });
+  g.all=allShipments.filter(s=>s.tracking).length;
   Object.entries(g).forEach(([k,v])=>{const el=document.getElementById('cnt-'+k);if(el)el.textContent=v});
 }
 
@@ -233,6 +239,8 @@ function sortRows(arr){
 function renderTable(){
   const q=document.getElementById('searchInput').value.toLowerCase().trim();
   let rows=allShipments.filter(s=>{
+    // Hide rows with no tracking data
+    if(!s.tracking)return false;
     if(activeFilter!=='all'&&(s.trackStatus||'pending')!==activeFilter)return false;
     if(q){const h=[s.dealName,s.tracking,s.rep,s.carrier,s.city,s.state].join(' ').toLowerCase();return h.includes(q)}
     return true;

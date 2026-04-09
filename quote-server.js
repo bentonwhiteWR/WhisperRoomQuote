@@ -554,6 +554,57 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
     }
   }
 
+  // ── UPS / FedEx / USPS: use Puppeteer to scrape tracking page ────
+  // These carriers have public tracking pages — no auth needed
+  if (['UPS','FEDEX','USPS'].includes(carrierUpper)) {
+    if (!puppeteer) {
+      await saveTrackingToCache(trackingNumber, carrierUpper, { status: 'pending', label: 'Pending' });
+      return { status: 'pending', label: 'Pending' };
+    }
+    const urlMap = {
+      'UPS':   `https://www.ups.com/track?tracknum=${encodeURIComponent(trackingNumber)}&requester=ST/trackdetails`,
+      'FEDEX': `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(trackingNumber)}`,
+      'USPS':  `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(trackingNumber)}`,
+    };
+    const url = urlMap[carrierUpper];
+    let browser = null;
+    try {
+      console.log(`[tracking] ${carrierUpper} scrape for ${trackingNumber}`);
+      browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
+      const page = await browser.newPage();
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+      await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+      await new Promise(r => setTimeout(r, 3000));
+      const body = await page.evaluate(() => document.body.innerText);
+      const bodyLower = body.toLowerCase();
+
+      let status = 'in_transit', label = 'In Transit';
+      if (bodyLower.includes('delivered'))              { status = 'delivered';        label = 'Delivered'; }
+      else if (bodyLower.includes('out for delivery'))  { status = 'out_for_delivery'; label = 'Out for Delivery'; }
+      else if (bodyLower.includes('in transit') || bodyLower.includes('on the way')) { status = 'in_transit'; label = 'In Transit'; }
+
+      // Try to get a last event line
+      const lines = body.split('\n').map(l => l.trim()).filter(l => l.length > 10);
+      let lastEvent = null;
+      // Look for a line that contains a date pattern
+      const dateRx = /\d{1,2}\/\d{1,2}\/\d{4}|\w+ \d{1,2},? \d{4}/;
+      const evtLine = lines.find(l => dateRx.test(l) && l.length < 200);
+      if (evtLine) lastEvent = evtLine;
+
+      const cacheData = { status, label, lastEvent, lastEventTime: null, eta: null,
+        deliveredAt: status === 'delivered' ? new Date().toISOString().split('T')[0] : null,
+        signedBy: null, location: null, destCity: null, destState: null };
+      await saveTrackingToCache(trackingNumber, carrierUpper, cacheData);
+      console.log(`[tracking] ${carrierUpper} ${trackingNumber} → ${label}`);
+      return cacheData;
+    } catch(e) {
+      console.warn(`[tracking] ${carrierUpper} error (${trackingNumber}): ${e.message}`);
+      return null;
+    } finally {
+      if (browser) await browser.close().catch(() => {});
+    }
+  }
+
   // ── Other carriers: save pending ─────────────────────────────────
   await saveTrackingToCache(trackingNumber, carrierUpper, { status: 'pending', label: 'Pending' });
   return { status: 'pending', label: 'Pending' };
@@ -2286,6 +2337,33 @@ const server = http.createServer(async (req, res) => {
     // Redirect to Deal Hub as default landing page
     res.writeHead(302, { Location: '/deals' });
     res.end();
+    return;
+  }
+
+  if (pathname === '/deals') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/login' }); res.end(); return; }
+    try {
+      const html = fs.readFileSync(path.join(__dirname, 'deals-dashboard.html'), 'utf8');
+      res.writeHead(200, {'Content-Type':'text/html'}); res.end(html);
+    } catch(e) { res.writeHead(500); res.end('deals-dashboard.html not found'); }
+    return;
+  }
+
+  if (pathname === '/orders') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/login' }); res.end(); return; }
+    try {
+      const html = fs.readFileSync(path.join(__dirname, 'orders-dashboard.html'), 'utf8');
+      res.writeHead(200, {'Content-Type':'text/html'}); res.end(html);
+    } catch(e) { res.writeHead(500); res.end('orders-dashboard.html not found'); }
+    return;
+  }
+
+  if (pathname === '/reports') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/login' }); res.end(); return; }
+    try {
+      const html = fs.readFileSync(path.join(__dirname, 'reports-dashboard.html'), 'utf8');
+      res.writeHead(200, {'Content-Type':'text/html'}); res.end(html);
+    } catch(e) { res.writeHead(500); res.end('reports-dashboard.html not found'); }
     return;
   }
 

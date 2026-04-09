@@ -1535,7 +1535,11 @@ function toStateFull(val) {
   return STATE_FULL_NAME[upper] || trimmed;
 }
 
-// Search contacts by name or email, with associated company
+// Returns true if the state/province abbreviation is Canadian
+function isCanadianProvince(stateAbbr) {
+  const CA_PROVINCES = new Set(['AB','BC','MB','NB','NL','NS','ON','PE','QC','SK','NT','NU','YT']);
+  return CA_PROVINCES.has((stateAbbr || '').toUpperCase().trim());
+}
 async function hsSearchContacts(query) {
   const body = {
     query: query.trim(),
@@ -2894,7 +2898,7 @@ const server = http.createServer(async (req, res) => {
               // Rep confirmed — update all fields
               if (customer.address) updateProps.address = customer.address;
               if (customer.city)    updateProps.city    = customer.city;
-              if (customer.state)   updateProps.state   = toStateFull(customer.state);
+              if (customer.state)   updateProps.state   = toStateFull(customer.state) || customer.state;
               if (customer.zip)     updateProps.zip     = customer.zip;
               if (customer.phone)   updateProps.phone   = customer.phone;
               if (customer.company) updateProps.company = customer.company;
@@ -2902,7 +2906,7 @@ const server = http.createServer(async (req, res) => {
               // Only fill blanks — never overwrite existing data
               if (customer.address && !existingProps.address) updateProps.address = customer.address;
               if (customer.city    && !existingProps.city)    updateProps.city    = customer.city;
-              if (customer.state   && !existingProps.state)   updateProps.state   = toStateFull(customer.state);
+              if (customer.state   && !existingProps.state)   updateProps.state   = toStateFull(customer.state) || customer.state;
               if (customer.zip     && !existingProps.zip)     updateProps.zip     = customer.zip;
               if (customer.phone   && !existingProps.phone)   updateProps.phone   = customer.phone;
               if (customer.company && !existingProps.company) updateProps.company = customer.company;
@@ -2937,18 +2941,36 @@ const server = http.createServer(async (req, res) => {
             console.warn('Contact update skipped:', e.message);
           }
         } else {
-          const newContact = await hsCreateContact({
-            firstname:          customer.firstName,
-            lastname:           customer.lastName,
-            email:              customer.email,
-            phone:              customer.phone,
-            company:            customer.company,
-            address:            customer.address,
-            city:               customer.city,
-            state:              toStateFull(customer.state),
-            zip:                customer.zip,
-            ...(ownerId ? { hubspot_owner_id: String(ownerId) } : {}),
-          });
+          let newContact;
+          try {
+            newContact = await hsCreateContact({
+              firstname:          customer.firstName,
+              lastname:           customer.lastName,
+              email:              customer.email,
+              phone:              customer.phone,
+              company:            customer.company,
+              address:            customer.address,
+              city:               customer.city,
+              state:              toStateFull(customer.state),
+              zip:                customer.zip,
+              ...(ownerId ? { hubspot_owner_id: String(ownerId) } : {}),
+            });
+          } catch(e) {
+            // HubSpot may reject unrecognised state values (e.g. Canadian provinces).
+            // Retry without state — everything else still saves.
+            console.warn(`[create-deal] Contact create failed (${e.message}), retrying without state`);
+            newContact = await hsCreateContact({
+              firstname:          customer.firstName,
+              lastname:           customer.lastName,
+              email:              customer.email,
+              phone:              customer.phone,
+              company:            customer.company,
+              address:            customer.address,
+              city:               customer.city,
+              zip:                customer.zip,
+              ...(ownerId ? { hubspot_owner_id: String(ownerId) } : {}),
+            });
+          }
           contactId = newContact.id;
           if (!contactId) throw new Error('Failed to create contact: ' + JSON.stringify(newContact));
         }
@@ -3004,7 +3026,7 @@ const server = http.createServer(async (req, res) => {
           } catch(e) { console.warn('GDrive rename error:', e.message); }
         }
       } else {
-        const deal = await hsCreateDeal({
+        const dealProps = {
           dealname: dealName || (() => {
             return customer.company || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || 'Customer';
           })(),
@@ -3014,19 +3036,27 @@ const server = http.createServer(async (req, res) => {
           discount: discount && discount.value ? String(discount.value) : '',
           shipping_address: customer.address || '',
           shipping_city: customer.city || '',
-          shipping_state: toStateFull(customer.state) || '',
+          shipping_state: toStateFull(customer.state) || customer.state || '',
           billing_address: billing ? billing.address || '' : customer.address || '',
           billing_city: billing ? billing.city || '' : customer.city || '',
-          billing_state: billing ? toStateFull(billing.state) || '' : toStateFull(customer.state) || '',
+          billing_state: billing ? (toStateFull(billing.state) || billing.state || '') : (toStateFull(customer.state) || customer.state || ''),
           shipping_zipcode: customer.zip || '',
           billing_zipcode: billing ? billing.zip || '' : customer.zip || '',
-          // quote_links set separately below
           pipeline: 'default',
           dealstage: isRevision ? 'qualifiedtobuy' : 'appointmentscheduled',
           amount: total.toFixed(2),
           hubspot_owner_id: String(ownerId),
           closedate: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
-        });
+        };
+        let deal;
+        try {
+          deal = await hsCreateDeal(dealProps);
+        } catch(e) {
+          // Retry without state fields if HubSpot rejects unknown state values
+          console.warn(`[create-deal] Deal create failed (${e.message}), retrying without state fields`);
+          const { shipping_state, billing_state, ...dealPropsNoState } = dealProps;
+          deal = await hsCreateDeal(dealPropsNoState);
+        }
         dealId = deal.id;
         if (!dealId) throw new Error('Failed to create deal: ' + JSON.stringify(deal));
       }

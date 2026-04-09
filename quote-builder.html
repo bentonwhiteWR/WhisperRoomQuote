@@ -1372,11 +1372,12 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
 <div class="modal-overlay hidden" id="customModal">
   <div class="modal-box">
     <div class="modal-title">Add Custom Line Item</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px">Use a negative price (e.g. <span style="color:#ef4444">-25</span>) to add a credit.</div>
     <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px">
       <div class="field"><label>Item Name *</label><input type="text" id="customName" placeholder="e.g. Custom Install Service"></div>
       <div class="field"><label>Description</label><input type="text" id="customDesc" placeholder="Optional description"></div>
       <div class="form-grid cols-3" style="gap:10px">
-        <div class="field"><label>Price *</label><input type="number" id="customPrice" placeholder="0.00" min="0" step="0.01"></div>
+        <div class="field"><label>Price *</label><input type="number" id="customPrice" placeholder="0.00" step="0.01"></div>
         <div class="field"><label>Qty</label><input type="number" id="customQty" placeholder="1" min="1" value="1"></div>
         <div class="field"><label>Weight (lbs)</label><input type="number" id="customWeight" placeholder="0" min="0"></div>
       </div>
@@ -1894,15 +1895,20 @@ function renderLineItems() {
   table.style.display = 'table';
   empty.style.display = 'none';
 
-  tbody.innerHTML = lineItems.map((item, idx) => `
-    <tr data-id="${item.id}" draggable="true" class="li-row"
+  tbody.innerHTML = lineItems.map((item, idx) => {
+    const isCredit = item.price < 0 || item.isCredit;
+    const rowStyle = isCredit ? 'background:rgba(239,68,68,.04);' : '';
+    const amtStyle = isCredit ? 'color:#ef4444;font-weight:700' : 'color:var(--text)';
+    const creditBadge = isCredit ? '<span style="font-size:9px;font-weight:800;color:#ef4444;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);border-radius:3px;padding:1px 5px;margin-left:5px;vertical-align:middle;letter-spacing:.04em">CR</span>' : '';
+    return `
+    <tr data-id="${item.id}" draggable="true" class="li-row" style="${rowStyle}"
       ondragstart="liDragStart(event,'${item.id}')"
       ondragover="liDragOver(event)"
       ondrop="liDrop(event,'${item.id}')"
       ondragend="liDragEnd(event)">
       <td style="width:22px;padding:0 4px;cursor:grab;color:var(--dim);font-size:16px;user-select:none;vertical-align:middle" title="Drag to reorder">⠿</td>
       <td style="min-width:200px">
-        <div class="li-name">${item.name}</div>
+        <div class="li-name">${item.name}${creditBadge}</div>
         <textarea class="li-input" rows="2"
           style="width:100%;margin-top:4px;font-size:11px;resize:vertical;min-height:36px"
           onchange="updateLineItem('${item.id}','description',this.value)"
@@ -1913,20 +1919,20 @@ function renderLineItems() {
           style="width:60px" oninput="updateLineItem('${item.id}','qty',this.value)">
       </td>
       <td style="min-width:90px">
-        <input class="li-input" type="number" value="${item.price.toFixed(2)}" min="0" step="0.01"
-          style="width:90px" oninput="updateLineItem('${item.id}','price',this.value)">
+        <input class="li-input" type="number" value="${item.price.toFixed(2)}" step="0.01"
+          style="width:90px${isCredit ? ';color:#ef4444' : ''}" oninput="updateLineItem('${item.id}','price',this.value)">
       </td>
       <td style="min-width:70px">
         <input class="li-input" type="number" value="${item.weight || ''}" min="0" step="1"
           style="width:70px" placeholder="lbs"
           oninput="updateLineItem('${item.id}','weight',this.value)">
       </td>
-      <td style="color:var(--text);font-size:13px;min-width:80px">${fmt(item.qty * item.price)}</td>
+      <td style="${amtStyle};font-size:13px;min-width:80px">${fmt(item.qty * item.price)}</td>
       <td>
         <button class="li-remove" data-idx="${idx}" onclick="removeByIdx(this)">×</button>
       </td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
 }
 
 function updateLineItem(id, field, value) {
@@ -3225,6 +3231,7 @@ ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</
   </div>
   <div class="pb-tabs" id="pbTabs">
     <button class="pb-tab active" onclick="pbSetTab('all',this)">All</button>
+    <button class="pb-tab" onclick="pbSetTab('__credits__',this)" style="color:#ef4444;border-color:rgba(239,68,68,.3)">— Credits</button>
     <button class="pb-tab" onclick="pbSetTab('Standard',this)">Standard</button>
     <button class="pb-tab" onclick="pbSetTab('Enhanced',this)">Enhanced</button>
     <button class="pb-tab" onclick="pbSetTab('Ventilation',this)">Ventilation</button>
@@ -3749,6 +3756,70 @@ async function loadPriceBook() {
   }
 }
 
+// ── Credits catalog (hardcoded — not from HubSpot) ───────────────
+const WR_CREDITS = [
+  { name: 'DWC E',            price: -110,  weight: 0,   description: 'Door Window Credit' },
+  { name: 'DWC IEP',          price: -55,   weight: 0,   description: 'IEP Door Window Credit' },
+  { name: 'DWC S',            price: -55,   weight: 0,   description: 'Door Window Credit' },
+  { name: 'EFS CR',           price: -250,  weight: -25, description: 'Exterior Fan Silencer Credit' },
+  { name: 'IEP 102102 FL CR', price: -605,  weight: -49, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 102126 FL CR', price: -675,  weight: -59, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 102144 FL CR', price: -830,  weight: -71, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 102168 FL CR', price: -900,  weight: -81, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 102186 FL CR', price: -1055, weight: -89, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 10284 FL CR',  price: -450,  weight: -41, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 127 LP FL CR', price: -175,  weight: -9,  description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 4230 FL CR',   price: -105,  weight: -7,  description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 4242 FL CR',   price: -130,  weight: -9,  description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 4260 FL CR',   price: -155,  weight: -13, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 4284 FL CR',   price: -200,  weight: -16, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 4848 FL CR',   price: -145,  weight: -12, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 4872 FL CR',   price: -180,  weight: -17, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 4896 FL CR',   price: -225,  weight: -22, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 6060 FL CR',   price: -265,  weight: -18, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 6084 FL CR',   price: -305,  weight: -24, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 7272 FL CR',   price: -315,  weight: -25, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 7296 FL CR',   price: -365,  weight: -31, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 84102 FL CR',  price: -530,  weight: -42, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 84126 FL CR',  price: -580,  weight: -50, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 8484 FL CR',   price: -380,  weight: -35, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 96120 FL CR',  price: -610,  weight: -52, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 96144 FL CR',  price: -665,  weight: -64, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 96168 FL CR',  price: -835,  weight: -74, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 96192 FL CR',  price: -890,  weight: -84, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'IEP 9696 FL CR',   price: -440,  weight: -42, description: 'Isolation Enhancement Package Floor Credit' },
+  { name: 'LT CR',            price: -25,   weight: -5,  description: 'Light Credit (18in LED)' },
+  { name: 'LT RT CR',         price: -50,   weight: -5,  description: 'Light and Remote Credit' },
+  { name: 'RAMP CR',          price: -750,  weight: -111,description: 'Ramp Credit' },
+  { name: 'VENTSET CR',       price: -590,  weight: -50, description: 'Vent Set Credit' },
+  { name: 'VSS CR',           price: -645,  weight: -55, description: 'Ventilation Silencing System Credit' },
+];
+
+function addCreditItem(creditName) {
+  const credit = WR_CREDITS.find(c => c.name === creditName);
+  if (!credit) return;
+  lineItems.push({
+    id: Date.now() + Math.random(),
+    productId: null,
+    name: credit.name,
+    description: credit.description,
+    price: credit.price,
+    weight: credit.weight || 0,
+    qty: 1,
+    isCredit: true,
+  });
+  markQuoteModified();
+  renderLineItems();
+  updateSummary();
+  freightData = null;
+  _freightTbd = false;
+  taxData = null;
+  document.getElementById('freightResult').classList.remove('visible');
+  document.getElementById('taxResult').classList.remove('visible');
+  pbFilter(); // refresh added states
+  showToast(`+ ${credit.name} credit`, 'success');
+}
+
 function pbSetTab(tab, el) {
   pbCurrentTab = tab;
   document.querySelectorAll('.pb-tab').forEach(b => b.classList.remove('active'));
@@ -3762,6 +3833,29 @@ function pbFilter() {
   const fmtP = n => n ? '$'+parseFloat(n).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}) : '—';
   const body = document.getElementById('pbBody');
   if (!body) return;
+
+  // ── Credits tab — render from hardcoded WR_CREDITS list ──────────
+  if (pbCurrentTab === '__credits__') {
+    const currentNames = new Set(lineItems.map(i => i.name));
+    let credits = WR_CREDITS;
+    if (q) credits = credits.filter(c => c.name.toLowerCase().includes(q) || c.description.toLowerCase().includes(q));
+    if (!credits.length) { body.innerHTML = '<div class="pb-empty">No credits found</div>'; return; }
+    body.innerHTML = credits.map(c => {
+      const added = currentNames.has(c.name);
+      const safeName = c.name.replace(/'/g, "\\'");
+      return `<div class="pb-card" style="border-color:rgba(239,68,68,.15)">
+        <div style="flex:1;min-width:0">
+          <div class="pb-card-name" style="color:var(--text)">${c.name}</div>
+          ${c.description ? `<div class="pb-card-sub">${c.description}</div>` : ''}
+        </div>
+        <div class="pb-card-price" style="color:#ef4444">${fmtP(c.price)}</div>
+        <button class="pb-card-add${added?' added':''}" onclick="addCreditItem('${safeName}')"
+          style="${added?'':'background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:#ef4444'}"
+          title="${added?'In quote':'Add credit'}">${added?'✓':'+'}</button>
+      </div>`;
+    }).join('');
+    return;
+  }
 
   let products = pbAllProducts;
 

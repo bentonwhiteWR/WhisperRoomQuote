@@ -6209,7 +6209,7 @@ tbody tr:hover td{background:#fdfcfb}
           ],
           properties: ['dealname','amount','hubspot_owner_id','closedate','dealstage',
                        'company','freight_carrier','tracking_number','date_shipped',
-                       'box_count','pallet_count','hardware_box','deal_description'],
+                       'box_count','pallet_count','hardware_box','deal_description','description'],
           sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
           limit: 100
         });
@@ -6226,8 +6226,10 @@ tbody tr:hover td{background:#fdfcfb}
               company:      p.company  || '',
               total:        p.amount   || null,
               order_data: {
-                source: 'hubspot',
-                shipped: null,
+                source:          'hubspot',
+                serialNumber:    p.description      || '',
+                productionNotes: p.deal_description || '',
+                shipped:         null,
               },
               json_snapshot: null,
               share_token:   null,
@@ -6254,9 +6256,40 @@ tbody tr:hover td{background:#fdfcfb}
 
       if (!db) { json({ error: 'No database' }, 500); return; }
 
-      // 1. Get existing order data
-      const existing = await db.query('SELECT order_data, deal_id FROM orders WHERE quote_number = $1', [quoteNumber]);
-      if (!existing.rows[0]) { json({ error: 'Order not found' }, 404); return; }
+      // 1. Get existing order data — or create it for HubSpot-only orders (HS-{dealId})
+      let existing = await db.query('SELECT order_data, deal_id FROM orders WHERE quote_number = $1', [quoteNumber]);
+
+      if (!existing.rows[0]) {
+        // HubSpot-only order — no DB record yet. Create one now so it can be saved.
+        const isHsOnly = quoteNumber.startsWith('HS-');
+        const hsDealId = isHsOnly ? quoteNumber.replace('HS-', '') : null;
+
+        if (!hsDealId) { json({ error: 'Order not found' }, 404); return; }
+
+        // Bootstrap a minimal order record from HubSpot deal data
+        let dealName = quoteNumber;
+        try {
+          const dr = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/deals/${hsDealId}?properties=dealname,amount,hubspot_owner_id`,
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+          });
+          dealName = dr.body?.properties?.dealname || quoteNumber;
+        } catch(e) { console.warn('[orders] HS deal lookup failed:', e.message); }
+
+        await db.query(
+          `INSERT INTO orders (quote_number, deal_id, order_data)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (quote_number) DO NOTHING`,
+          [quoteNumber, hsDealId, JSON.stringify({ source: 'hubspot', changeLog: [] })]
+        );
+        console.log(`[orders] created DB record for HubSpot-only order ${quoteNumber} (deal ${hsDealId})`);
+
+        // Re-fetch now that it exists
+        existing = await db.query('SELECT order_data, deal_id FROM orders WHERE quote_number = $1', [quoteNumber]);
+        if (!existing.rows[0]) { json({ error: 'Failed to create order record' }, 500); return; }
+      }
 
       const currentOrderData = existing.rows[0].order_data || {};
       let dealId = existing.rows[0].deal_id;

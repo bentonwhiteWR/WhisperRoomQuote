@@ -492,7 +492,7 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
         }
       });
 
-      const token = authRes.body?.access_token || authRes.body?.token;
+      const token = authRes.body?.access_token || authRes.body?.sessionToken || authRes.body?.token;
       if (!token) {
         console.warn('[tracking] OD auth failed:', JSON.stringify(authRes.body)?.slice(0, 200));
         return null;
@@ -2278,7 +2278,7 @@ const server = http.createServer(async (req, res) => {
           'Accept': 'application/json',
         }
       });
-      const token = authRes.body?.access_token || authRes.body?.token;
+      const token = authRes.body?.access_token || authRes.body?.sessionToken || authRes.body?.token;
       if (!token) { json({ error: 'auth failed', authStatus: authRes.status, authBody: authRes.body }); return; }
       const trackRes = await httpsRequest({
         hostname: 'api.odfl.com',

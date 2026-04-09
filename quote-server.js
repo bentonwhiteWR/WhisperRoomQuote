@@ -5837,31 +5837,25 @@ tbody tr:hover td{background:#fdfcfb}
       if (!city || !state || !zip)     { json({ error: 'Missing destination' }, 400); return; }
       const acc = accessories || {};
 
-      // ── ABF: fetch standard + guaranteed + expedited in parallel ──
-      const ABF_SERVICE_TYPES = [
-        { code: null,   label: 'Standard LTL',  carrier: 'ABF' },
-        { code: 'GUAR', label: 'Guaranteed',    carrier: 'ABF' },
-        { code: 'SATU', label: 'Saturday',      carrier: 'ABF' },
-      ];
-
-      const abfResults = await Promise.all(ABF_SERVICE_TYPES.map(async svc => {
-        try {
-          const url = buildAbfUrl(pallets, totalWeight, city, state, zip, canadian || false, acc, svc.code);
-          const res2 = await httpsGet(url);
-          const result = parseAbfXml(res2.body);
-          return {
-            carrier:     'ABF Freight',
-            service:     svc.label,
-            serviceCode: svc.code || 'STND',
-            cost:        result.cost,
-            transit:     result.transit,
-            bookable:    true,
-          };
-        } catch(e) {
-          console.warn(`[orders-freight] ABF ${svc.label} failed: ${e.message}`);
-          return null;
-        }
-      }));
+      // ── ABF: standard LTL via XML API ────────────────────────────
+      // Note: ABF's legacy XML rate API (aquotexml.asp) only returns standard LTL.
+      // Guaranteed/expedited pricing requires the ArcBest REST API (separate integration).
+      const abfResults = [];
+      try {
+        const url = buildAbfUrl(pallets, totalWeight, city, state, zip, canadian || false, acc);
+        const res2 = await httpsGet(url);
+        const result = parseAbfXml(res2.body);
+        abfResults.push({
+          carrier:     'ABF Freight',
+          service:     'Standard LTL',
+          serviceCode: 'STND',
+          cost:        result.cost,
+          transit:     result.transit,
+          bookable:    true,
+        });
+      } catch(e) {
+        console.warn(`[orders-freight] ABF Standard failed: ${e.message}`);
+      }
 
       // ── OD: fetch via REST API ────────────────────────────────────
       const odResults = [];
@@ -5880,24 +5874,27 @@ tbody tr:hover td{background:#fdfcfb}
             }
           });
           const token = authRes.body?.access_token || authRes.body?.sessionToken || authRes.body?.token;
+          console.log('[orders-freight] OD auth status:', authRes.status, 'token present:', !!token);
 
           if (token) {
             // Step 2: Rate quote
+            const totalWt = Math.round(totalWeight || pallets.reduce((s,p)=>s+(parseFloat(p.weight)||0),0));
             const totalPieces = pallets.reduce((s, p) => s + (parseInt(p.pieces) || 1), 0);
             const rateBody = {
-              originZip:      SHIP_ZIP,
-              originCountry:  'US',
-              destZip:        zip,
-              destCountry:    canadian ? 'CA' : 'US',
-              shipDate:       new Date().toISOString().split('T')[0],
-              totalWeight:    Math.round(totalWeight || pallets.reduce((s,p)=>s+(parseFloat(p.weight)||0),0)),
+              originZip:           SHIP_ZIP,
+              originCountry:       'US',
+              destZip:             zip,
+              destCountry:         canadian ? 'CA' : 'US',
+              shipDate:            new Date().toISOString().split('T')[0],
+              totalWeight:         totalWt,
               totalPieces,
-              freightClass:   parseFloat(FREIGHT_CLASS),
-              paymentTerms:   'Prepaid',
-              pickupService:  false,
-              deliveryService: acc.liftgate || false,
+              freightClass:        parseFloat(FREIGHT_CLASS),
+              paymentTerms:        'Prepaid',
+              pickupService:       false,
+              deliveryService:     acc.liftgate || false,
               residentialDelivery: acc.residential || false,
             };
+            console.log('[orders-freight] OD rate request:', JSON.stringify(rateBody));
 
             const rateRes = await httpsRequest({
               hostname: 'api.odfl.com',
@@ -5910,19 +5907,22 @@ tbody tr:hover td{background:#fdfcfb}
               }
             }, rateBody);
 
-            const rateData = rateRes.body;
-            console.log('[orders-freight] OD rate response status:', rateRes.status);
+            console.log('[orders-freight] OD rate response status:', rateRes.status, 'body:', JSON.stringify(rateRes.body)?.slice(0, 500));
 
-            // OD returns array of rate options
-            const rates = Array.isArray(rateData) ? rateData :
-                          Array.isArray(rateData?.rates) ? rateData.rates :
-                          rateData?.rateQuote ? [rateData.rateQuote] : [];
+            // OD returns array of rate options or a single object
+            const rates = Array.isArray(rateRes.body)             ? rateRes.body :
+                          Array.isArray(rateRes.body?.rates)       ? rateRes.body.rates :
+                          Array.isArray(rateRes.body?.rateQuotes)  ? rateRes.body.rateQuotes :
+                          rateRes.body?.rateQuote                  ? [rateRes.body.rateQuote] :
+                          rateRes.body?.totalCharges               ? [rateRes.body] : [];
+
+            console.log('[orders-freight] OD parsed rates count:', rates.length);
 
             rates.forEach(r => {
-              const cost = parseFloat(r.totalCharges || r.netCharge || r.totalNetCharge || 0);
+              const cost = parseFloat(r.totalCharges || r.netCharge || r.totalNetCharge || r.total || 0);
               if (!cost) return;
-              const svcName = (r.serviceLevel || r.service || r.serviceCode || 'Standard').toString();
-              const transitDays = r.transitDays || r.estimatedTransitDays || null;
+              const svcName = (r.serviceLevel || r.service || r.serviceCode || r.serviceName || 'Standard').toString();
+              const transitDays = r.transitDays || r.estimatedTransitDays || r.transit || null;
               const transit = transitDays ? `${transitDays} day${transitDays !== 1 ? 's' : ''}` : '—';
               odResults.push({
                 carrier:     'Old Dominion',
@@ -5930,14 +5930,16 @@ tbody tr:hover td{background:#fdfcfb}
                 serviceCode: r.serviceCode || svcName,
                 cost:        Math.round(cost * 100) / 100,
                 transit,
-                bookable:    false, // OD booking via API not yet configured
-                odBookUrl:   buildOdBookUrl({ city, state, zip, pallets, totalWeight, acc }),
+                bookable:    false,
+                odBookUrl:   buildOdBookUrl({ city, state, zip, pallets, totalWeight: totalWt, acc }),
               });
             });
           }
         } catch(e) {
           console.warn('[orders-freight] OD rating failed:', e.message);
         }
+      } else {
+        console.warn('[orders-freight] OD credentials not set (OD_USER/OD_PASS)');
       }
 
       const carriers = [

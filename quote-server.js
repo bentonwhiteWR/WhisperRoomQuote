@@ -2955,10 +2955,22 @@ const server = http.createServer(async (req, res) => {
               zip:                customer.zip,
               ...(ownerId ? { hubspot_owner_id: String(ownerId) } : {}),
             });
+            if (newContact.status === 'error' || newContact.errors) {
+              console.warn(`[create-deal] Contact create failed (${newContact.message}), retrying without state`);
+              newContact = await hsCreateContact({
+                firstname:          customer.firstName,
+                lastname:           customer.lastName,
+                email:              customer.email,
+                phone:              customer.phone,
+                company:            customer.company,
+                address:            customer.address,
+                city:               customer.city,
+                zip:                customer.zip,
+                ...(ownerId ? { hubspot_owner_id: String(ownerId) } : {}),
+              });
+            }
           } catch(e) {
-            // HubSpot may reject unrecognised state values (e.g. Canadian provinces).
-            // Retry without state — everything else still saves.
-            console.warn(`[create-deal] Contact create failed (${e.message}), retrying without state`);
+            console.warn(`[create-deal] Contact create threw (${e.message}), retrying without state`);
             newContact = await hsCreateContact({
               firstname:          customer.firstName,
               lastname:           customer.lastName,
@@ -3051,9 +3063,14 @@ const server = http.createServer(async (req, res) => {
         let deal;
         try {
           deal = await hsCreateDeal(dealProps);
+          // HubSpot returns error body instead of throwing on 4xx
+          if (deal.status === 'error' || deal.errors) {
+            console.warn(`[create-deal] Deal create failed (${deal.message}), retrying without state fields`);
+            const { shipping_state, billing_state, ...dealPropsNoState } = dealProps;
+            deal = await hsCreateDeal(dealPropsNoState);
+          }
         } catch(e) {
-          // Retry without state fields if HubSpot rejects unknown state values
-          console.warn(`[create-deal] Deal create failed (${e.message}), retrying without state fields`);
+          console.warn(`[create-deal] Deal create threw (${e.message}), retrying without state fields`);
           const { shipping_state, billing_state, ...dealPropsNoState } = dealProps;
           deal = await hsCreateDeal(dealPropsNoState);
         }

@@ -352,36 +352,137 @@ async function saveTrackingToCache(trackingNumber, slug, data) {
 }
 
 async function fetchAndCacheTracking(trackingNumber, carrier) {
-  if (!puppeteer) { console.warn('[tracking] Puppeteer not available'); return null; }
   if (!trackingNumber) return null;
 
   const carrierUpper = (carrier || '').toUpperCase();
-  let url = '';
-  if (carrierUpper === 'ABF') {
-    url = `https://view.arcb.com/nlo/tools/tracking/${encodeURIComponent(trackingNumber)}`;
-  } else if (carrierUpper === 'OD' || carrierUpper.includes('DOMINION')) {
-    url = `https://www.odfl.com/us/en/tools/trace-track-ltl-freight.html?pro=${encodeURIComponent(trackingNumber)}`;
-  } else {
-    await saveTrackingToCache(trackingNumber, carrierUpper, { status: 'pending', label: 'Pending' });
-    return { status: 'pending', label: 'Pending' };
+
+  // ── OD: REST API ────────────────────────────────────────────────
+  if (carrierUpper === 'OD' || carrierUpper.includes('DOMINION')) {
+    const OD_USER = process.env.OD_USER || '';
+    const OD_PASS = process.env.OD_PASS || '';
+    if (!OD_USER || !OD_PASS) {
+      console.warn('[tracking] OD credentials not set');
+      return null;
+    }
+    try {
+      console.log(`[tracking] OD API for ${trackingNumber}`);
+
+      // Step 1: Get session token
+      const authRes = await httpsRequest({
+        hostname: 'api.odfl.com',
+        path: '/auth/v1.0/token',
+        method: 'GET',
+        headers: {
+          'Authorization': 'Basic ' + Buffer.from(`${OD_USER}:${OD_PASS}`).toString('base64'),
+          'Accept': 'application/json',
+        }
+      });
+
+      const token = authRes.body?.access_token || authRes.body?.token;
+      if (!token) {
+        console.warn('[tracking] OD auth failed:', JSON.stringify(authRes.body)?.slice(0, 200));
+        return null;
+      }
+
+      // Step 2: Track shipment
+      const trackRes = await httpsRequest({
+        hostname: 'api.odfl.com',
+        path: '/tracking/v2.0/shipment.track',
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        }
+      }, {
+        referenceType: 'PRO',
+        referenceNumber: trackingNumber,
+      });
+
+      const data = trackRes.body;
+      if (!data || trackRes.status >= 400) {
+        console.warn('[tracking] OD track failed:', JSON.stringify(data)?.slice(0, 200));
+        return null;
+      }
+
+      // Parse response
+      const trace = data.traceInfo || data;
+      const events = trace.trackTraceDetail || [];
+
+      // Status from latest event
+      let status = 'in_transit';
+      let label = 'In Transit';
+      const lastEvt = events[events.length - 1];
+      if (lastEvt) {
+        const evtStatus = (lastEvt.status || '').toLowerCase();
+        if (evtStatus.includes('deliver') && evtStatus.includes('complet')) {
+          status = 'delivered'; label = 'Delivered';
+        } else if (evtStatus.includes('out for delivery')) {
+          status = 'out_for_delivery'; label = 'Out for Delivery';
+        } else if (evtStatus.includes('pickup') || evtStatus.includes('picked up')) {
+          status = 'in_transit'; label = 'Picked Up';
+        }
+      }
+
+      // Last event message + location
+      let lastEvent = null;
+      let lastEventTime = null;
+      if (lastEvt) {
+        lastEvent = [lastEvt.status, lastEvt.desc].filter(Boolean).join(' — ') || null;
+        if (lastEvt.city && lastEvt.state) {
+          lastEvent = lastEvent ? `${lastEvent} (${lastEvt.city}, ${lastEvt.state})` : `${lastEvt.city}, ${lastEvt.state}`;
+        }
+        lastEventTime = lastEvt.dateTime ? lastEvt.dateTime.split('T')[0] : null;
+      }
+
+      // ETA
+      const eta = trace.updatedEta || trace.standardEta || null;
+
+      // Destination
+      const destCity  = trace.destSvcCity  || null;
+      const destState = trace.destSvcState || null;
+
+      // Delivered date
+      const deliveredAt = (status === 'delivered' && lastEvt?.dateTime)
+        ? lastEvt.dateTime.split('T')[0] : null;
+
+      const cacheData = {
+        status, label, lastEvent, lastEventTime,
+        eta:         eta ? eta.split('T')[0] : null,
+        deliveredAt,
+        signedBy:    trace.deliverySign || null,
+        location:    destCity ? [destCity, destState].filter(Boolean).join(', ') : null,
+        destCity,
+        destState,
+      };
+
+      await saveTrackingToCache(trackingNumber, 'OD', cacheData);
+      console.log(`[tracking] OD ${trackingNumber} → ${label}${lastEvent ? ' | ' + lastEvent.slice(0, 60) : ''}`);
+      return cacheData;
+
+    } catch(e) {
+      console.warn(`[tracking] OD error (${trackingNumber}): ${e.message}`);
+      return null;
+    }
   }
 
-  let browser = null;
-  try {
-    console.log(`[tracking] scraping ${carrierUpper} for ${trackingNumber}`);
-    browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
-    const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-    await new Promise(r => setTimeout(r, 3000));
+  // ── ABF: Puppeteer scrape ────────────────────────────────────────
+  if (carrierUpper === 'ABF') {
+    if (!puppeteer) { console.warn('[tracking] Puppeteer not available'); return null; }
+    const url = `https://view.arcb.com/nlo/tools/tracking/${encodeURIComponent(trackingNumber)}`;
+    let browser = null;
+    try {
+      console.log(`[tracking] ABF scrape for ${trackingNumber}`);
+      browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      });
+      const page = await browser.newPage();
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+      await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+      await new Promise(r => setTimeout(r, 3000));
 
-    let result = null;
-
-    if (carrierUpper === 'ABF') {
-      result = await page.evaluate(() => {
+      const result = await page.evaluate(() => {
         const body = document.body.innerText;
         const lines = body.split('\n').map(l => l.trim()).filter(Boolean);
 
@@ -391,18 +492,18 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
         const csIdx = lines.indexOf('CURRENT STATUS');
         if (csIdx >= 0 && lines[csIdx + 1]) {
           const cs = lines[csIdx + 1];
-          if (cs.includes('Delivered'))        { status = 'delivered';        label = 'Delivered'; }
+          if (cs.includes('Delivered'))             { status = 'delivered';        label = 'Delivered'; }
           else if (cs.includes('Out For Delivery')) { status = 'out_for_delivery'; label = 'Out for Delivery'; }
-          else if (cs.includes('In Transit'))  { status = 'in_transit';       label = 'In Transit'; }
-          else if (cs.includes('Picked Up'))   { status = 'in_transit';       label = 'Picked Up'; }
+          else if (cs.includes('In Transit'))       { status = 'in_transit';       label = 'In Transit'; }
+          else if (cs.includes('Picked Up'))        { status = 'in_transit';       label = 'Picked Up'; }
         }
 
-        // Last event — STATUS DETAIL section
+        // Last event
         let lastEvent = null;
         const sdIdx = lines.indexOf('STATUS DETAIL');
         if (sdIdx >= 0 && lines[sdIdx + 1]) lastEvent = lines[sdIdx + 1];
 
-        // ETA — DELIVERY SCHEDULED section
+        // ETA
         let eta = null;
         const dsIdx = lines.indexOf('DELIVERY SCHEDULED');
         if (dsIdx >= 0 && lines[dsIdx + 1]) {
@@ -417,7 +518,6 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
         let destCity = null, destState = null;
         const destIdx = lines.indexOf('Destination Service Center');
         if (destIdx >= 0) {
-          // Next few lines: "ABF SERVICE CENTER" then "CITY, ST (code)"
           for (let i = destIdx + 1; i < Math.min(destIdx + 4, lines.length); i++) {
             const m = lines[i].match(/^([A-Z\s]+),\s*([A-Z]{2})\s*\(/);
             if (m) { destCity = m[1].trim(); destState = m[2].trim(); break; }
@@ -427,78 +527,36 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
         return { status, label, lastEvent, eta, destCity, destState };
       });
 
-    } else if (carrierUpper === 'OD' || carrierUpper.includes('DOMINION')) {
-      result = await page.evaluate(() => {
-        const body = document.body.innerText;
-        const lines = body.split('\n').map(l => l.trim()).filter(Boolean);
+      if (!result) return null;
 
-        let status = 'in_transit';
-        let label = 'In Transit';
-        const bodyLower = body.toLowerCase();
-        if (bodyLower.includes('delivered'))            { status = 'delivered';        label = 'Delivered'; }
-        else if (bodyLower.includes('out for delivery')){ status = 'out_for_delivery'; label = 'Out for Delivery'; }
+      const cacheData = {
+        status:        result.status,
+        label:         result.label,
+        lastEvent:     result.lastEvent || null,
+        lastEventTime: null,
+        eta:           result.eta || null,
+        deliveredAt:   result.status === 'delivered' ? (result.eta || new Date().toISOString().split('T')[0]) : null,
+        signedBy:      null,
+        location:      result.destCity ? [result.destCity, result.destState].filter(Boolean).join(', ') : null,
+        destCity:      result.destCity || null,
+        destState:     result.destState || null,
+      };
 
-        // Last event — find a line with a date pattern MM/DD/YYYY
-        let lastEvent = null;
-        const datePattern = /\d{2}\/\d{2}\/\d{4}/;
-        const eventLine = lines.find(l => datePattern.test(l) && l.length > 15);
-        if (eventLine) lastEvent = eventLine;
+      await saveTrackingToCache(trackingNumber, 'ABF', cacheData);
+      console.log(`[tracking] ABF ${trackingNumber} → ${result.label}${result.lastEvent ? ' | ' + result.lastEvent.slice(0, 60) : ''}`);
+      return cacheData;
 
-        // ETA
-        let eta = null;
-        const etaIdx = lines.findIndex(l => l.toLowerCase().includes('estimated delivery'));
-        if (etaIdx >= 0) {
-          for (let i = etaIdx; i < Math.min(etaIdx + 3, lines.length); i++) {
-            const m = lines[i].match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
-            if (m) {
-              try {
-                const d = new Date(m[1]);
-                if (!isNaN(d)) { eta = d.toISOString().split('T')[0]; break; }
-              } catch(e) {}
-            }
-          }
-        }
-
-        // Destination — look for "To:" or city/state pattern near delivery info
-        let destCity = null, destState = null;
-        const toIdx = lines.findIndex(l => l.match(/^To:/i));
-        if (toIdx >= 0 && lines[toIdx + 1]) {
-          const m = lines[toIdx + 1].match(/^([A-Za-z\s]+),\s*([A-Z]{2})/);
-          if (m) { destCity = m[1].trim(); destState = m[2].trim(); }
-        }
-
-        return { status, label, lastEvent, eta, destCity, destState };
-      });
-    }
-
-    if (!result) {
-      console.warn(`[tracking] no result parsed for ${trackingNumber}`);
+    } catch(e) {
+      console.warn(`[tracking] ABF error (${trackingNumber}): ${e.message}`);
       return null;
+    } finally {
+      if (browser) await browser.close().catch(() => {});
     }
-
-    const cacheData = {
-      status:        result.status,
-      label:         result.label,
-      lastEvent:     result.lastEvent || null,
-      lastEventTime: null,
-      eta:           result.eta || null,
-      deliveredAt:   result.status === 'delivered' ? (result.eta || new Date().toISOString().split('T')[0]) : null,
-      signedBy:      null,
-      location:      result.destCity ? [result.destCity, result.destState].filter(Boolean).join(', ') : null,
-      destCity:      result.destCity || null,
-      destState:     result.destState || null,
-    };
-
-    await saveTrackingToCache(trackingNumber, carrierUpper, cacheData);
-    console.log(`[tracking] ${trackingNumber} → ${result.label}${result.lastEvent ? ' | ' + result.lastEvent.slice(0,60) : ''}`);
-    return cacheData;
-
-  } catch(e) {
-    console.warn(`[tracking] scrape error (${trackingNumber}): ${e.message}`);
-    return null;
-  } finally {
-    if (browser) await browser.close().catch(() => {});
   }
+
+  // ── Other carriers: save pending ─────────────────────────────────
+  await saveTrackingToCache(trackingNumber, carrierUpper, { status: 'pending', label: 'Pending' });
+  return { status: 'pending', label: 'Pending' };
 }
 
 

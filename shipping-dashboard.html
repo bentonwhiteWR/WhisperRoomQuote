@@ -45,7 +45,12 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .pill.active.pdelivered{color:var(--green);background:var(--green2);border-color:rgba(34,197,94,.4)}
 .pill.active.pexception{color:var(--red);background:var(--red2);border-color:rgba(239,68,68,.4)}
 .pill.active.pout{color:var(--yellow);background:var(--yellow2);border-color:rgba(250,204,21,.4)}
-.pdot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.pdot{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0}
+.pill.ptransit .pdot{background:var(--blue)}
+.pill.pdelivered .pdot{background:var(--green)}
+.pill.pexception .pdot{background:var(--red)}
+.pill.pout .pdot{background:var(--yellow)}
+.pill:not(.active) .pdot{background:var(--muted)}
 .pcount{font-family:'Syne',sans-serif;font-size:13px;color:var(--text)}
 /* controls */
 .controls{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
@@ -267,17 +272,27 @@ function buildRow(s,i){
   }
 
   let etaHtml='<span class="notrack">—</span>';
+  // Calculate transit days: ship date → ETA
+  const transitDays = (s.dateShipped && s.trackEta)
+    ? Math.round((new Date(s.trackEta) - new Date(s.dateShipped)) / 86400000)
+    : (s.dateShipped && s.trackDelivered)
+    ? Math.round((new Date(s.trackDelivered) - new Date(s.dateShipped)) / 86400000)
+    : null;
+  const transitStr = transitDays !== null ? `<div class="ctime">${transitDays} day transit</div>` : '';
+
   if(s.trackDelivered){
     etaHtml=`<span class="eta-del">✓ ${fd(s.trackDelivered)}</span>`;
-    if(s.signedBy)etaHtml+=`<div class="ctime">Signed: ${esc(s.signedBy)}</div>`;
+    if(s.signedBy) etaHtml+=`<div class="ctime">Signed: ${esc(s.signedBy)}</div>`;
+    else if(transitStr) etaHtml+=transitStr;
   }else if(s.trackEta){
     const today=new Date();today.setHours(0,0,0,0);
     const diff=Math.round((new Date(s.trackEta)-today)/86400000);
-    if(diff<0)etaHtml=`<span class="eta-past">${fd(s.trackEta)}</span>`;
+    if(diff<0)      etaHtml=`<span class="eta-past">${fd(s.trackEta)}</span>`;
     else if(diff===0)etaHtml=`<span class="eta-today">Today</span>`;
     else if(diff===1)etaHtml=`<span class="eta-soon">Tomorrow</span>`;
-    else if(diff<=3)etaHtml=`<span class="eta-soon">${fd(s.trackEta)}</span>`;
-    else etaHtml=`<span class="dv">${fd(s.trackEta)}</span>`;
+    else if(diff<=3) etaHtml=`<span class="eta-soon">${fd(s.trackEta)}</span>`;
+    else             etaHtml=`<span class="dv">${fd(s.trackEta)}</span>`;
+    etaHtml += transitStr;
   }
 
   const evtShort=s.trackLastEvent?esc(s.trackLastEvent.slice(0,58))+(s.trackLastEvent.length>58?'…':''):'<span class="notrack">—</span>';

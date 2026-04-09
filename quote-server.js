@@ -312,6 +312,13 @@ async function initTrackingCache() {
     )
   `).catch(e => console.warn('tracking_cache init error:', e.message));
   console.log('Tracking cache ready');
+  // Clear entries that have suspicious delivered status with no delivered_at (stale data)
+  try {
+    const wiped = await db.query(
+      "DELETE FROM tracking_cache WHERE status = 'delivered' AND delivered_at IS NULL"
+    );
+    if (wiped.rowCount > 0) console.log(`[tracking] cleared ${wiped.rowCount} stale cache entries`);
+  } catch(e) { /* silent */ }
 }
 
 async function getTrackingFromCache(trackingNumber) {
@@ -342,7 +349,7 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
   if (!AFTERSHIP_KEY) return null;
 
   const slugMap = {
-    'ABF': 'abf-freight', 'OD': 'old-dominion-freight-line',
+    'ABF': 'abf', 'OD': 'olddominionfreight',
     'UPS': 'ups', 'FedEx': 'fedex', 'USPS': 'usps',
   };
   const slug = slugMap[carrier] || null;
@@ -2042,7 +2049,7 @@ const server = http.createServer(async (req, res) => {
       // Try direct slug lookup first
       const directRes = await httpsRequest({
         hostname: 'api.aftership.com',
-        path: `/tracking/2026-01/trackings/abf-freight/${encodeURIComponent(trackingNum)}`,
+        path: `/tracking/2026-01/trackings/abf/${encodeURIComponent(trackingNum)}`,
         method: 'GET',
         headers: { 'as-api-key': AFTERSHIP_KEY }
       });

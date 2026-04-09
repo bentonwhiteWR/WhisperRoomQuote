@@ -2182,16 +2182,16 @@ const server = http.createServer(async (req, res) => {
         // carrier/tracking yet — they'll show as "No tracking" rows.
         filterGroups: [
           {
-            // All shipped deals — no date filter, just stage
             filters: [
-              { propertyName: 'dealstage', operator: 'EQ', value: '845719' }
+              { propertyName: 'dealstage', operator: 'EQ', value: '845719' },
+              { propertyName: 'closedate', operator: 'GTE', value: String(Date.now() - 90 * 24 * 60 * 60 * 1000) }
             ]
           }
         ],
         properties: ['dealname','amount','freight_carrier','tracking_number','date_shipped','hubspot_owner_id',
                      'shipping_address','shipping_city','shipping_state','shipping_zipcode','closedate'],
-        sorts: [{ propertyName: 'date_shipped', direction: 'DESCENDING' }],
-        limit: 100
+        sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
+        limit: 50
       });
 
       // Keep all shipped deals — those without carrier/tracking show as "No tracking" rows

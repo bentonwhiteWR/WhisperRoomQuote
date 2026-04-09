@@ -301,7 +301,7 @@ function buildRow(s,i){
     ${s.tracking?`<button class="ab" onclick="rfsh('${esc(s.tracking)}','${esc(s.carrier)}',this)">↻</button>`:''}
   </div>
 </div>
-<div class="expand ${hasExp?'':''"}" id="${id}">
+<div class="expand" id="${id}">
   <div class="einner">
     ${s.trackLastEvent?`<div class="esec"><div class="elabel">Last Event</div><div class="eval">${esc(s.trackLastEvent)}</div></div>`:''}
     ${s.trackLastTime?`<div class="esec"><div class="elabel">Event Time</div><div class="eval mono">${fd(s.trackLastTime)}</div></div>`:''}

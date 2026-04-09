@@ -6760,7 +6760,7 @@ tbody tr:hover td{background:#fdfcfb}
                 hs_task_status:    'NOT_STARTED',
                 hs_task_type:      'TODO',
                 hs_task_priority:  'HIGH',
-                hubspot_owner_id:  '38732186', // Jeromy
+                hubspot_owner_id:  '38732178', // Kim Dalton — accounting@whisperroom.com
                 hs_timestamp:      String(Date.now()),
               }
             });
@@ -6777,6 +6777,28 @@ tbody tr:hover td{background:#fdfcfb}
                   types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 216 }] }]
               });
             }
+
+            // Also log an email engagement to accounting on the deal timeline
+            await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: '/crm/v3/objects/emails',
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, {
+              properties: {
+                hs_email_direction: 'EMAIL',
+                hs_email_status:    'SENT',
+                hs_email_subject:   `📦 SHIPPED — ${dealNameT}`,
+                hs_email_text:      taskBody,
+                hs_email_to_email:  'accounting@whisperroom.com',
+                hs_timestamp:       new Date().toISOString(),
+              },
+              associations: [{
+                to: { id: String(dealId) },
+                types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 214 }]
+              }]
+            });
+
             console.log(`[orders] accounting task created for ${dealNameT} (task ${taskId})`);
           } catch(e) {
             console.warn('[orders] accounting task failed:', e.message);

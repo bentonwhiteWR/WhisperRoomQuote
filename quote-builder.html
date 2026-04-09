@@ -5767,6 +5767,7 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
   </div>
   <div class="pb-tabs" id="pbTabs">
     <button class="pb-tab active" onclick="pbSetTab('all',this)">All</button>
+    <button class="pb-tab" onclick="pbSetTab('__credits__',this)" style="color:#ef4444;border-color:rgba(239,68,68,.3)">— Credits</button>
     <button class="pb-tab" onclick="pbSetTab('Standard',this)">Standard</button>
     <button class="pb-tab" onclick="pbSetTab('Enhanced',this)">Enhanced</button>
     <button class="pb-tab" onclick="pbSetTab('Ventilation',this)">Ventilation</button>

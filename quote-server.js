@@ -317,12 +317,14 @@ async function initTrackingCache() {
   await db.query(`ALTER TABLE tracking_cache ADD COLUMN IF NOT EXISTS dest_city TEXT`).catch(()=>{});
   await db.query(`ALTER TABLE tracking_cache ADD COLUMN IF NOT EXISTS dest_state TEXT`).catch(()=>{});
   console.log('Tracking cache ready');
-  // Clear entries that have suspicious delivered status with no delivered_at (stale data)
+  // Clear entries with bogus delivered_at = today (fallback bug) or no delivered_at
   try {
+    const today = new Date().toISOString().split('T')[0];
     const wiped = await db.query(
-      "DELETE FROM tracking_cache WHERE status = 'delivered' AND delivered_at IS NULL"
+      "DELETE FROM tracking_cache WHERE status = 'delivered' AND (delivered_at IS NULL OR delivered_at = $1)",
+      [today]
     );
-    if (wiped.rowCount > 0) console.log(`[tracking] cleared ${wiped.rowCount} stale cache entries`);
+    if (wiped.rowCount > 0) console.log(`[tracking] cleared ${wiped.rowCount} stale/bogus cache entries`);
   } catch(e) { /* silent */ }
 }
 
@@ -503,15 +505,35 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
         const sdIdx = lines.indexOf('STATUS DETAIL');
         if (sdIdx >= 0 && lines[sdIdx + 1]) lastEvent = lines[sdIdx + 1];
 
-        // ETA
+        // ETA — try multiple patterns ABF uses
         let eta = null;
         const dsIdx = lines.indexOf('DELIVERY SCHEDULED');
         if (dsIdx >= 0 && lines[dsIdx + 1]) {
-          const dateStr = lines[dsIdx + 1] + ', ' + new Date().getFullYear();
-          try {
-            const d = new Date(dateStr);
-            if (!isNaN(d)) eta = d.toISOString().split('T')[0];
-          } catch(e) {}
+          // Format: "Thu, Apr 09" or "Apr 09" or "April 09, 2026"
+          const dateLine = lines[dsIdx + 1].replace(/^[A-Za-z]+,\s*/, ''); // strip day-of-week
+          const yr = new Date().getFullYear();
+          const attempts = [dateLine + ', ' + yr, dateLine, lines[dsIdx + 2] + ' ' + yr];
+          for (const attempt of attempts) {
+            try {
+              const d = new Date(attempt);
+              if (!isNaN(d) && d.getFullYear() >= yr) { eta = d.toISOString().split('T')[0]; break; }
+            } catch(e) {}
+          }
+        }
+        // Also check for a date pattern anywhere near "scheduled" or "delivery"
+        if (!eta) {
+          const schedIdx = lines.findIndex(l => l.toLowerCase().includes('scheduled') || l.toLowerCase().includes('estimated delivery'));
+          if (schedIdx >= 0) {
+            for (let i = schedIdx; i < Math.min(schedIdx + 4, lines.length); i++) {
+              const m = lines[i].match(/([A-Z][a-z]+\.?\s+\d{1,2}(?:,?\s*\d{4})?)/);
+              if (m) {
+                try {
+                  const d = new Date(m[1] + (m[1].includes(String(new Date().getFullYear())) ? '' : ', ' + new Date().getFullYear()));
+                  if (!isNaN(d)) { eta = d.toISOString().split('T')[0]; break; }
+                } catch(e) {}
+              }
+            }
+          }
         }
 
         // Destination
@@ -524,7 +546,25 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
           }
         }
 
-        return { status, label, lastEvent, eta, destCity, destState };
+        // Actual delivery date — shown on delivered shipments
+        let deliveredAt = null;
+        if (status === 'delivered') {
+          // Look for a date near "Delivered" status
+          const delIdx = lines.findIndex(l => l.includes('Delivered'));
+          if (delIdx >= 0) {
+            for (let i = delIdx; i < Math.min(delIdx + 5, lines.length); i++) {
+              const m = lines[i].match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
+              if (m) {
+                try {
+                  const d = new Date(m[1]);
+                  if (!isNaN(d)) { deliveredAt = d.toISOString().split('T')[0]; break; }
+                } catch(e) {}
+              }
+            }
+          }
+        }
+
+        return { status, label, lastEvent, eta, destCity, destState, deliveredAt };
       });
 
       if (!result) return null;
@@ -535,7 +575,7 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
         lastEvent:     result.lastEvent || null,
         lastEventTime: null,
         eta:           result.eta || null,
-        deliveredAt:   result.status === 'delivered' ? (result.eta || new Date().toISOString().split('T')[0]) : null,
+        deliveredAt:   result.deliveredAt || null,
         signedBy:      null,
         location:      result.destCity ? [result.destCity, result.destState].filter(Boolean).join(', ') : null,
         destCity:      result.destCity || null,
@@ -592,7 +632,7 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
       if (evtLine) lastEvent = evtLine;
 
       const cacheData = { status, label, lastEvent, lastEventTime: null, eta: null,
-        deliveredAt: status === 'delivered' ? new Date().toISOString().split('T')[0] : null,
+        deliveredAt: null, // actual delivery date not extracted from page
         signedBy: null, location: null, destCity: null, destState: null };
       await saveTrackingToCache(trackingNumber, carrierUpper, cacheData);
       console.log(`[tracking] ${carrierUpper} ${trackingNumber} → ${label}`);

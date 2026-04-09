@@ -3,907 +3,761 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WhisperRoom — Shipping Board</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&display=swap" rel="stylesheet">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial Black,sans-serif' font-size='18' font-weight='900' fill='%23e8531a'>W</text></svg>">
+<title>Shipping — WhisperRoom</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #0f0f0f;
-    --surface: #1a1a1a;
-    --surface2: #222;
-    --border: #2a2a2a;
-    --orange: #ee6216;
-    --orange-dim: rgba(238,98,22,.12);
-    --text: #e8e8e8;
-    --muted: #888;
-    --green: #22c55e;
-    --green-dim: rgba(34,197,94,.12);
-    --blue: #3b82f6;
-    --blue-dim: rgba(59,130,246,.12);
-    --yellow: #f59e0b;
-    --yellow-dim: rgba(245,158,11,.12);
-    --red: #ef4444;
-    --red-dim: rgba(239,68,68,.12);
-    --row-hover: rgba(255,255,255,.02);
-    --skeleton-a: #222;
-    --skeleton-b: #2a2a2a;
-  }
-  :root.light {
-    --bg: #f5f5f5;
-    --surface: #ffffff;
-    --surface2: #f0f0f0;
-    --border: #e0e0e0;
-    --orange: #d44f0c;
-    --orange-dim: rgba(212,79,12,.1);
-    --text: #1a1a1a;
-    --muted: #666;
-    --green: #16a34a;
-    --green-dim: rgba(22,163,74,.1);
-    --blue: #2563eb;
-    --blue-dim: rgba(37,99,235,.1);
-    --yellow: #d97706;
-    --yellow-dim: rgba(217,119,6,.1);
-    --red: #dc2626;
-    --red-dim: rgba(220,38,38,.1);
-    --row-hover: rgba(0,0,0,.02);
-    --skeleton-a: #e8e8e8;
-    --skeleton-b: #d0d0d0;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  .header {
-    background: #1a1a1a;
-    border-bottom: 1px solid rgba(255,255,255,.1);
+  :root {
+    --bg:        #0e0e0f;
+    --surface:   #161618;
+    --surface2:  #1e1e21;
+    --surface3:  #262629;
+    --border:    rgba(255,255,255,.08);
+    --border2:   rgba(255,255,255,.13);
+    --text:      #f0ede8;
+    --muted:     rgba(240,237,232,.45);
+    --muted2:    rgba(240,237,232,.25);
+    --orange:    #e8531a;
+    --orange2:   rgba(232,83,26,.15);
+    --green:     #22c55e;
+    --green2:    rgba(34,197,94,.12);
+    --red:       #ef4444;
+    --red2:      rgba(239,68,68,.12);
+    --blue:      #3b82f6;
+    --blue2:     rgba(59,130,246,.12);
+    --yellow:    #eab308;
+    --yellow2:   rgba(234,179,8,.12);
+    --radius:    12px;
+    --topbar:    #0a0a0a;
+  }
+
+  html.light {
+    --bg:       #f0ede8;
+    --surface:  #ffffff;
+    --surface2: #f5f3ef;
+    --surface3: #ece9e4;
+    --border:   rgba(0,0,0,.08);
+    --border2:  rgba(0,0,0,.13);
+    --text:     #0a0a0a;
+    --muted:    rgba(10,10,10,.45);
+    --muted2:   rgba(10,10,10,.25);
+    --topbar:   #0a0a0a;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+  }
+
+  /* ── Topbar ── */
+  .topbar {
+    background: var(--topbar);
+    border-bottom: 1px solid rgba(255,255,255,.07);
     padding: 0 20px;
-    min-height: 52px;
+    height: 52px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 16px;
     position: sticky;
     top: 0;
     z-index: 100;
-    gap: 8px;
-    flex-wrap: nowrap;
   }
-  .logo-wrap { display: flex; align-items: center; gap: 0; flex-shrink: 0; }
-  .logo-text { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; letter-spacing: -.3px; line-height: 1; }
-  .logo-whisper { color: #f0ede8; }
-  .logo-room   { color: #e8531a; }
-  .logo-divider { color: rgba(255,255,255,.3); font-weight: 400; font-size: 12px; margin-left: 10px; white-space: nowrap; }
-
-  .header-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-  .nav-link {
-    color: rgba(255,255,255,.55); font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
-    text-decoration: none; padding: 5px 10px; border-radius: 6px; white-space: nowrap;
-    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
-    transition: background .15s, color .15s;
-  }
+  .topbar-logo { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; color: #f0ede8; flex-shrink: 0; white-space: nowrap; text-decoration: none; }
+  .topbar-logo span { color: #e8531a; }
+  .topbar-nav { display: flex; gap: 6px; flex-wrap: wrap; }
+  .nav-link { padding: 5px 10px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; border-radius: 6px; color: rgba(255,255,255,.55); text-decoration: none; transition: all .15s; white-space: nowrap; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); }
   .nav-link:hover { background: rgba(255,255,255,.12); color: rgba(255,255,255,.9); }
-  .nav-link.active { background: rgba(238,98,22,.2); border-color: rgba(238,98,22,.4); color: #ee6216; }
-  .mode-btn {
-    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); color: #f0ede8;
-    width: 32px; height: 32px; border-radius: 8px; font-size: 15px; cursor: pointer; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center; transition: background .15s;
-  }
-  .mode-btn:hover { background: rgba(255,255,255,.14); }
-  .refresh-btn {
-    background: var(--orange); color: white; border: none;
-    padding: 7px 14px; border-radius: 7px; font-size: 13px;
-    font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;
-    transition: opacity .15s;
-  }
-  .refresh-btn:hover { opacity: .85; }
-  .refresh-btn.spinning svg { animation: spin .8s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  .nav-link.active { background: rgba(238,98,22,.2); color: #ee6216; border-color: rgba(238,98,22,.4); }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .theme-btn { padding: 5px 9px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 6px; color: #f0ede8; cursor: pointer; font-size: 14px; line-height: 1; transition: all .15s; }
 
-  .main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+  /* ── Page ── */
+  .page { max-width: 1400px; margin: 0 auto; padding: 28px 24px 60px; }
 
-  .stats-bar {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 12px;
+  .page-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
     margin-bottom: 24px;
+    gap: 16px;
+    flex-wrap: wrap;
   }
-  .stat-card {
+  .page-title-wrap {}
+  .page-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .page-subtitle { font-size: 13px; color: var(--muted); }
+
+  /* ── Stats bar ── */
+  .stats-bar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .stat-pill {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 14px;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 14px 16px;
+    border-radius: 50px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all .15s;
+    user-select: none;
   }
-  .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 6px; }
-  .stat-value { font-size: 24px; font-weight: 800; }
+  .stat-pill:hover { border-color: var(--border2); color: var(--text); }
+  .stat-pill.active { border-color: currentColor; }
+  .stat-pill.active.all    { color: var(--text); background: var(--surface2); }
+  .stat-pill.active.transit  { color: var(--blue);   background: var(--blue2); border-color: var(--blue); }
+  .stat-pill.active.delivered{ color: var(--green);  background: var(--green2); border-color: var(--green); }
+  .stat-pill.active.exception{ color: var(--red);    background: var(--red2); border-color: var(--red); }
+  .stat-pill.active.pending  { color: var(--muted);  background: var(--surface2); border-color: var(--border2); }
+  .stat-pill.active.out      { color: var(--orange); background: var(--orange2); border-color: var(--orange); }
+  .stat-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .stat-count { font-family: 'Syne', sans-serif; font-size: 14px; color: var(--text); }
 
-  .filters {
-    display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;
+  /* ── Controls ── */
+  .controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    align-items: center;
+    flex-wrap: wrap;
   }
+  .search-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 220px;
+    max-width: 360px;
+  }
+  .search-wrap svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); opacity: .35; pointer-events: none; }
   .search-input {
-    background: var(--surface); border: 1px solid var(--border); color: var(--text);
-    padding: 8px 12px; border-radius: 8px; font-size: 13px; flex: 1; min-width: 200px;
-    outline: none; transition: border-color .15s;
+    width: 100%;
+    padding: 9px 12px 9px 36px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color .15s;
   }
-  .search-input:focus { border-color: var(--orange); }
-  .filter-select {
-    background: var(--surface); border: 1px solid var(--border); color: var(--text);
-    padding: 8px 12px; border-radius: 8px; font-size: 13px; outline: none; cursor: pointer;
-  }
-  .filter-count { font-size: 12px; color: var(--muted); margin-left: 4px; }
+  .search-input:focus { border-color: var(--border2); }
+  .search-input::placeholder { color: var(--muted2); }
 
-  .table-wrap {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+  .sort-select {
+    padding: 9px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    cursor: pointer;
   }
-  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  th:nth-child(1), td:nth-child(1) { width: 20%; }  /* Customer */
-  th:nth-child(2), td:nth-child(2) { width: 7%;  }  /* Carrier */
-  th:nth-child(3), td:nth-child(3) { width: 11%; }  /* Tracking # */
-  th:nth-child(4), td:nth-child(4) { width: 11%; }  /* Status */
-  th:nth-child(5), td:nth-child(5) { width: 18%; }  /* Latest Event */
-  th:nth-child(6), td:nth-child(6) { width: 9%;  }  /* Date Shipped */
-  th:nth-child(7), td:nth-child(7) { width: 13%; }  /* Destination */
-  th:nth-child(8), td:nth-child(8) { width: 7%;  }  /* Transit Time */
-  th:nth-child(9), td:nth-child(9) { width: 4%;  }  /* HubSpot */
-  thead { background: var(--surface2); }
-  th {
-    padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: .07em; color: var(--muted);
-    border-bottom: 1px solid var(--border); white-space: nowrap;
-  }
-  td { padding: 13px 14px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: var(--row-hover); }
 
-  .deal-name {
-    font-weight: 600; color: var(--text); text-decoration: none;
-    display: block; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  .refresh-btn {
+    padding: 9px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all .15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
   }
-  .deal-name:hover { color: var(--orange); }
-  .deal-address { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .refresh-btn:hover { border-color: var(--border2); color: var(--text); }
+  .refresh-btn.spinning svg { animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
-  .carrier-badge {
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 3px 9px; border-radius: 5px; font-size: 12px; font-weight: 700; letter-spacing: .03em;
+  /* ── Grid ── */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 14px;
   }
-  .carrier-ABF   { background: var(--orange-dim); color: var(--orange); }
-  .carrier-OD    { background: var(--blue-dim);   color: var(--blue);   }
-  .carrier-UPS   { background: var(--yellow-dim); color: var(--yellow); }
-  .carrier-FedEx { background: var(--red-dim);    color: var(--red);    }
-  .carrier-USPS  { background: var(--green-dim);  color: var(--green);  }
-  .carrier-Other { background: rgba(255,255,255,.06); color: var(--muted); }
 
-  .tracking-cell { display: flex; align-items: center; gap: 6px; }
-  .tracking-link {
-    font-family: monospace; font-size: 13px; color: var(--orange);
-    text-decoration: none; display: inline-flex; align-items: center; gap: 4px;
+  /* ── Card ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    transition: border-color .15s, box-shadow .15s;
+    animation: fadeUp .25s ease both;
   }
-  .tracking-link:hover { text-decoration: underline; }
-  .tracking-none { color: var(--muted); font-size: 12px; font-style: italic; }
+  .card:hover { border-color: var(--border2); box-shadow: 0 4px 24px rgba(0,0,0,.18); }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
 
-  .copy-btn {
-    background: none; border: 1px solid var(--border); color: var(--muted);
-    padding: 3px 7px; border-radius: 5px; font-size: 11px; cursor: pointer; transition: all .15s;
+  /* Status stripe on left */
+  .card { border-left: 3px solid transparent; }
+  .card.status-delivered    { border-left-color: var(--green); }
+  .card.status-in_transit   { border-left-color: var(--blue); }
+  .card.status-out_for_delivery { border-left-color: var(--orange); }
+  .card.status-exception    { border-left-color: var(--red); }
+  .card.status-pending      { border-left-color: var(--muted2); }
+  .card.status-pickup       { border-left-color: var(--yellow); }
+  .card.status-unknown, .card.status-null { border-left-color: var(--border2); }
+
+  /* ── Card header ── */
+  .card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .card-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.3;
+    flex: 1;
+    min-width: 0;
   }
-  .copy-btn:hover { border-color: var(--orange); color: var(--orange); }
-  .copy-btn.copied { border-color: var(--green); color: var(--green); }
+  .card-name a { color: var(--text); text-decoration: none; }
+  .card-name a:hover { color: var(--orange); }
 
   .status-badge {
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 3px 9px; border-radius: 5px; font-size: 11px; font-weight: 700;
-    text-decoration: none; white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 50px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
-  .status-delivered  { background: var(--green-dim); color: var(--green); }
-  .status-transit    { background: var(--blue-dim);  color: var(--blue);  }
-  .status-pickup     { background: var(--yellow-dim);color: var(--yellow);}
-  .status-exception  { background: var(--red-dim);   color: var(--red);   }
-  .status-unknown    { background: rgba(255,255,255,.06); color: var(--muted); }
-  .status-loading    { background: rgba(255,255,255,.06); color: var(--muted); animation: pulse .8s ease-in-out infinite; }
-  @keyframes pulse   { 0%,100%{opacity:.4} 50%{opacity:1} }
+  .status-badge .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .badge-delivered     { background: var(--green2);  color: var(--green);  }
+  .badge-in_transit    { background: var(--blue2);   color: var(--blue);   }
+  .badge-out_for_delivery { background: var(--orange2); color: var(--orange); }
+  .badge-exception     { background: var(--red2);    color: var(--red);    }
+  .badge-pending       { background: var(--surface2); color: var(--muted); }
+  .badge-pickup        { background: var(--yellow2); color: var(--yellow); }
+  .badge-unknown       { background: var(--surface2); color: var(--muted); }
 
-  .amount { font-weight: 600; }
-  .rep-name { font-size: 12px; }
-  .date-cell { font-size: 12px; color: var(--muted); white-space: nowrap; }
-  .hs-link {
-    color: var(--muted); text-decoration: none; font-size: 12px;
-    display: flex; align-items: center; gap: 4px; transition: color .15s;
+  /* ── Card rows ── */
+  .card-rows { display: flex; flex-direction: column; gap: 8px; }
+  .card-row { display: flex; align-items: flex-start; gap: 10px; }
+  .row-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--muted);
+    width: 76px;
+    flex-shrink: 0;
+    padding-top: 1px;
+    line-height: 1.4;
   }
-  .hs-link:hover { color: var(--orange); }
-
-  .empty-state { text-align: center; padding: 64px 24px; color: var(--muted); }
-  .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
-  .empty-state h3 { font-size: 16px; color: var(--text); margin-bottom: 6px; }
-  .loading-row td { text-align: center; padding: 48px; }
-  .skeleton-line {
-    height: 14px;
-    background: linear-gradient(90deg, var(--skeleton-a) 25%, var(--skeleton-b) 50%, var(--skeleton-a) 75%);
-    background-size: 400% 100%; animation: shimmer 1.4s infinite; border-radius: 4px;
+  .row-value {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    line-height: 1.4;
+    flex: 1;
+    min-width: 0;
   }
-  @keyframes shimmer { to { background-position: -400% 0; } }
+  .row-value.muted { color: var(--muted); font-style: italic; }
+  .row-value a { color: var(--text); text-decoration: none; }
+  .row-value a:hover { color: var(--orange); text-decoration: underline; }
 
-  @media (max-width: 768px) {
-    .main { padding: 12px; }
-    .stats-bar { grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 16px; }
-    .stat-card { padding: 10px 12px; }
-    .stat-value { font-size: 20px; }
-    .filters { gap: 8px; }
-    .search-input { min-width: 0; font-size: 14px; }
-    .filter-select { font-size: 13px; padding: 7px 10px; }
+  /* Tracking number row */
+  .tracking-row { display: flex; align-items: center; gap: 6px; }
+  .tracking-num { font-family: 'DM Sans', monospace; font-size: 13px; font-weight: 600; }
+  .copy-btn {
+    padding: 2px 7px;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: inherit;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all .12s;
+    line-height: 1.4;
+  }
+  .copy-btn:hover { background: var(--surface3); color: var(--text); }
+  .copy-btn.copied { background: var(--green2); color: var(--green); border-color: var(--green); }
 
-    /* Switch to card layout on mobile — no table */
-    .table-wrap { border-radius: 10px; overflow: hidden; }
-    table, thead, tbody, th, td, tr { display: block; }
-    thead { display: none; }
-    tr {
-      padding: 14px 14px 10px;
-      border-bottom: 1px solid var(--border);
-      position: relative;
-    }
-    tr:last-child { border-bottom: none; }
-    tr:hover td { background: none; }
-
-    /* Each TD becomes a layout element */
-    td { padding: 0; border: none; display: inline; }
-
-    /* Row layout: custom via data-col */
-    tr { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto auto; gap: 4px 8px; }
-
-    /* Col 1: Deal name (spans full width top) */
-    td:nth-child(1) { grid-column: 1 / 3; grid-row: 1; display: block; }
-    .deal-name { max-width: 100%; font-size: 13px; }
-    .deal-address { font-size: 11px; }
-
-    /* Col 2: Carrier badge (row 2 left) */
-    td:nth-child(2) { grid-column: 1; grid-row: 2; display: inline-flex; align-items: center; }
-
-    /* Col 3: Tracking # (row 2 right, hidden — shown in status row) */
-    td:nth-child(3) { grid-column: 2; grid-row: 2; display: inline-flex; align-items: center; justify-content: flex-end; }
-    .tracking-link { font-size: 12px; }
-    .copy-btn { display: none; }
-
-    /* Col 4: Status (row 3 left) */
-    td:nth-child(4) { grid-column: 1; grid-row: 3; display: inline-flex; align-items: center; }
-
-    /* Col 5,6,7: Date, Amount, Rep — show as small inline row 3 right */
-    td:nth-child(5) { grid-column: 2; grid-row: 3; display: inline-flex; align-items: center; justify-content: flex-end; }
-    td:nth-child(5).hide-mobile { display: inline-flex !important; }
-    .date-cell { font-size: 11px; color: var(--muted); }
-
-    /* Hide amount, rep, hubspot on mobile */
-    td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9) { display: none !important; }
+  /* Carrier badge */
+  .carrier-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--muted);
   }
 
-  @media (max-width: 420px) {
-    .stats-bar { grid-template-columns: repeat(2, 1fr); }
-    .header { padding: 0 10px; }
-    .logo-text { font-size: 16px; }
-    .logo-divider { display: none; }
-    .header-right { gap: 4px; }
-    .nav-link { padding: 4px 7px; font-size: 10px; }
+  /* ETA highlight */
+  .eta-soon { color: var(--orange); font-weight: 700; }
+  .eta-today { color: var(--green); font-weight: 700; }
+  .eta-past  { color: var(--muted); }
+
+  /* Last event */
+  .last-event {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.4;
+    background: var(--surface2);
+    border-radius: 6px;
+    padding: 8px 10px;
+    border-left: 2px solid var(--border2);
+  }
+  .last-event-time { font-size: 11px; color: var(--muted2); margin-top: 3px; }
+
+  /* Card footer */
+  .card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    gap: 8px;
+  }
+  .card-rep { font-size: 11px; color: var(--muted); font-weight: 500; }
+  .card-amount { font-size: 11px; color: var(--muted); font-weight: 600; }
+  .card-actions { display: flex; gap: 6px; margin-left: auto; }
+  .action-btn {
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: inherit;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: pointer;
+    text-decoration: none;
+    transition: all .12s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .action-btn:hover { background: var(--surface3); color: var(--text); border-color: var(--border2); }
+
+  /* ── Empty / Loading ── */
+  .empty {
+    grid-column: 1 / -1;
+    padding: 80px 20px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .empty-icon { font-size: 40px; margin-bottom: 12px; opacity: .4; }
+  .loading-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 14px;
+  }
+  .skeleton {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    height: 200px;
+    position: relative;
+    overflow: hidden;
+  }
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.04) 50%, transparent 100%);
+    animation: shimmer 1.4s ease infinite;
+  }
+  @keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+  /* ── Result count ── */
+  .result-meta { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+
+  /* ── No tracking placeholder ── */
+  .no-tracking { color: var(--muted2); font-style: italic; font-size: 12px; }
+
+  /* ── Updated time ── */
+  .updated-time { font-size: 10px; color: var(--muted2); }
+
+  @media (max-width: 600px) {
+    .page { padding: 16px; }
+    .grid { grid-template-columns: 1fr; }
+    .stats-bar { gap: 6px; }
+    .page-title { font-size: 20px; }
   }
 </style>
 </head>
 <body>
 
-<div class="header">
-  <div class="logo-wrap">
-    <span class="logo-text"><span class="logo-whisper">Whisper</span><span class="logo-room">Room</span></span>
-    <span class="logo-divider">/ Shipping Board</span>
+<nav class="topbar">
+  <a href="/deals" class="topbar-logo">Whisper<span>Room</span></a>
+  <div class="topbar-nav">
+    <a href="/deals"    class="nav-link">⬡ Deal Hub</a>
+    <a href="/quotes"   class="nav-link">Quotes</a>
+    <a href="/orders"   class="nav-link">Orders</a>
+    <a href="/shipping" class="nav-link active">Shipping</a>
+    <a href="/reports"  class="nav-link">Reports</a>
   </div>
-  <div class="header-right">
-    <a href="/deals" class="nav-link">⬡ Deal Hub</a>
-    <a href="/quotes" class="nav-link">Quotes</a>
-    <a href="/orders" class="nav-link">📦 Orders</a>
-    <a href="/reports" class="nav-link">Reports</a>
+  <div class="topbar-right">
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">☀️</button>
+    <a href="/auth/logout" style="padding:5px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.4);text-decoration:none">Sign Out</a>
+  </div>
+</nav>
 
-    <span id="appVersion" style="font-size:9px;font-weight:700;color:var(--muted,rgba(255,255,255,.25));letter-spacing:.06em;padding:2px 6px;border:1px solid rgba(255,255,255,.08);border-radius:4px;font-family:monospace;flex-shrink:0"></span>
-  <div id="userBadge" style="display:none;align-items:center;gap:8px;flex-shrink:0">
-      <span id="userName" style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600"></span>
-      <a href="/auth/logout" style="padding:5px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.4);text-decoration:none;white-space:nowrap">Sign Out</a>
+<div class="page">
+
+  <div class="page-header">
+    <div class="page-title-wrap">
+      <div class="page-title">Shipments</div>
+      <div class="page-subtitle" id="pageSubtitle">Loading…</div>
     </div>
-    <button class="mode-btn" id="modeBtn" onclick="toggleMode()" title="Toggle light/dark mode">
-      <span id="modeIcon">☀️</span>
-    </button>
-    <button onclick="openAddShipment()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:#f0ede8;padding:7px 14px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;transition:background .15s" onmouseover="this.style.background='rgba(255,255,255,.14)'" onmouseout="this.style.background='rgba(255,255,255,.08)'">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      Add Shipment
-    </button>
-    <button class="refresh-btn" id="refreshBtn" onclick="
-// ── Auto-redirect to login on 401 (session expired) ──────────────
-const _origFetch = window.fetch;
-window.fetch = async function(...args) {
-  const res = await _origFetch(...args);
-  if (res.status === 401) {
-    const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
-    if (url.startsWith('/api/')) {
-      console.warn('[auth] 401 on', url, '— session expired, redirecting to login');
-      setTimeout(() => { window.location.href = '/'; }, 300);
-    }
-  }
-  return res;
-};
+  </div>
 
-loadShipments()">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
-        <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
-      </svg>
+  <!-- Status filter pills -->
+  <div class="stats-bar" id="statsBar">
+    <div class="stat-pill active all" data-filter="all" onclick="setFilter('all',this)">
+      <span class="stat-count" id="count-all">—</span>
+      <span>All</span>
+    </div>
+    <div class="stat-pill transit" data-filter="in_transit" onclick="setFilter('in_transit',this)">
+      <span class="stat-dot"></span>
+      <span class="stat-count" id="count-in_transit">—</span>
+      <span>In Transit</span>
+    </div>
+    <div class="stat-pill out" data-filter="out_for_delivery" onclick="setFilter('out_for_delivery',this)">
+      <span class="stat-dot"></span>
+      <span class="stat-count" id="count-out_for_delivery">—</span>
+      <span>Out for Delivery</span>
+    </div>
+    <div class="stat-pill delivered" data-filter="delivered" onclick="setFilter('delivered',this)">
+      <span class="stat-dot"></span>
+      <span class="stat-count" id="count-delivered">—</span>
+      <span>Delivered</span>
+    </div>
+    <div class="stat-pill exception" data-filter="exception" onclick="setFilter('exception',this)">
+      <span class="stat-dot"></span>
+      <span class="stat-count" id="count-exception">—</span>
+      <span>Exception</span>
+    </div>
+    <div class="stat-pill pending" data-filter="pending" onclick="setFilter('pending',this)">
+      <span class="stat-dot"></span>
+      <span class="stat-count" id="count-pending">—</span>
+      <span>Pending</span>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <div class="search-wrap">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input class="search-input" id="searchInput" placeholder="Search customer, tracking, rep…" oninput="renderGrid()">
+    </div>
+    <select class="sort-select" id="sortSelect" onchange="renderGrid()">
+      <option value="date_desc">Date Shipped ↓</option>
+      <option value="date_asc">Date Shipped ↑</option>
+      <option value="status">Status</option>
+      <option value="amount">Amount</option>
+    </select>
+    <button class="refresh-btn" id="refreshBtn" onclick="loadBoard(true)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
       Refresh
     </button>
   </div>
-</div>
 
-<div class="main">
-  <div class="stats-bar">
-    <div class="stat-card"><div class="stat-label">Last 30 Days</div><div class="stat-value" id="statTotal">—</div></div>
-    <div class="stat-card"><div class="stat-label">ABF</div><div class="stat-value" style="color:var(--orange)" id="statABF">—</div></div>
-    <div class="stat-card"><div class="stat-label">Old Dominion</div><div class="stat-value" style="color:var(--blue)" id="statOD">—</div></div>
-    <div class="stat-card"><div class="stat-label">UPS / Other</div><div class="stat-value" style="color:var(--muted)" id="statOther">—</div></div>
+  <div class="result-meta" id="resultMeta"></div>
 
+  <!-- Loading skeletons -->
+  <div class="loading-grid" id="loadingGrid">
+    <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+    <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
   </div>
 
-  <div class="filters">
-    <input type="text" class="search-input" id="searchInput" placeholder="Search customer, deal, tracking #..." oninput="filterTable()">
-    <select class="filter-select" id="carrierFilter" onchange="filterTable()">
-      <option value="">All Carriers</option>
-      <option value="ABF">ABF</option>
-      <option value="OD">Old Dominion</option>
-      <option value="UPS">UPS</option>
-      <option value="FedEx">FedEx</option>
-      <option value="USPS">USPS</option>
-      <option value="Other">Other</option>
-    </select>
-    <select class="filter-select" id="repFilter" onchange="filterTable()">
-      <option value="">All Reps</option>
-    </select>
-    <span class="filter-count" id="filterCount"></span>
-  </div>
+  <!-- Cards grid -->
+  <div class="grid" id="grid" style="display:none"></div>
 
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Customer / Deal</th>
-          <th>Carrier</th>
-          <th>Tracking #</th>
-          <th>Status</th>
-          <th class="hide-mobile">Latest Event</th>
-          <th class="hide-mobile">Date Shipped</th>
-          <th class="hide-mobile">Destination</th>
-          <th class="hide-mobile">Transit</th>
-          <th>HS</th>
-        </tr>
-      </thead>
-      <tbody id="tableBody">
-        <tr class="loading-row"><td colspan="8">
-          <div style="display:flex;flex-direction:column;gap:10px;padding:20px">
-            <div class="skeleton-line" style="width:100%"></div>
-            <div class="skeleton-line" style="width:85%"></div>
-            <div class="skeleton-line" style="width:92%"></div>
-            <div class="skeleton-line" style="width:78%"></div>
-          </div>
-        </td></tr>
-      </tbody>
-    </table>
-  </div>
 </div>
 
 <script>
 let allShipments = [];
+let activeFilter = 'all';
 
-const REP_COLORS = {
-  'Jill Holdway':   '#f59e0b',
-  'Sarah Smith':    '#3b82f6',
-  'Travis Singleton': '#8b5cf6',
-  'Benton White':   '#ee6216',
-  'Gabe White':     '#22c55e',
-  'Chet Burgess':   '#ec4899',
-  'Kim Dalton':     '#14b8a6',
-  'Jeromy Packwood':'#64748b',
-};
+// ── Load ──────────────────────────────────────────────────────────
+async function loadBoard(forceRefresh = false) {
+  const btn = document.getElementById('refreshBtn');
+  btn.classList.add('spinning');
+
+  try {
+    const url = forceRefresh ? '/api/shipping-board?refresh=1' : '/api/shipping-board';
+    const res = await fetch(url, { credentials: 'include' });
+    if (res.status === 401) { window.location.href = '/'; return; }
+    const data = await res.json();
+    allShipments = data.shipments || [];
+    updateCounts();
+    renderGrid();
+    const now = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    document.getElementById('pageSubtitle').textContent = `${allShipments.length} shipment${allShipments.length !== 1 ? 's' : ''} · updated ${now}`;
+  } catch(e) {
+    document.getElementById('loadingGrid').style.display = 'none';
+    document.getElementById('grid').style.display = 'grid';
+    document.getElementById('grid').innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div>Failed to load: ${e.message}</div>`;
+  } finally {
+    btn.classList.remove('spinning');
+    document.getElementById('loadingGrid').style.display = 'none';
+    document.getElementById('grid').style.display = 'grid';
+  }
+}
+
+// ── Counts ────────────────────────────────────────────────────────
+function updateCounts() {
+  const groups = { all: allShipments.length, in_transit: 0, out_for_delivery: 0, delivered: 0, exception: 0, pending: 0 };
+  allShipments.forEach(s => {
+    const st = s.trackStatus || 'pending';
+    if (groups[st] !== undefined) groups[st]++;
+    else if (st === 'pickup') groups.pending++;
+  });
+  Object.entries(groups).forEach(([k, v]) => {
+    const el = document.getElementById(`count-${k}`);
+    if (el) el.textContent = v;
+  });
+}
+
+// ── Filter ────────────────────────────────────────────────────────
+function setFilter(filter, el) {
+  activeFilter = filter;
+  document.querySelectorAll('.stat-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  renderGrid();
+}
+
+// ── Sort ──────────────────────────────────────────────────────────
+const STATUS_ORDER = { out_for_delivery: 0, exception: 1, in_transit: 2, pickup: 3, pending: 4, delivered: 5 };
+
+function sortShipments(arr) {
+  const sort = document.getElementById('sortSelect').value;
+  return [...arr].sort((a, b) => {
+    if (sort === 'date_desc') return (b.dateShipped || '').localeCompare(a.dateShipped || '');
+    if (sort === 'date_asc')  return (a.dateShipped || '').localeCompare(b.dateShipped || '');
+    if (sort === 'status') {
+      const sa = STATUS_ORDER[a.trackStatus] ?? 3;
+      const sb = STATUS_ORDER[b.trackStatus] ?? 3;
+      return sa - sb;
+    }
+    if (sort === 'amount') return (b.amount || 0) - (a.amount || 0);
+    return 0;
+  });
+}
+
+// ── Render ────────────────────────────────────────────────────────
+function renderGrid() {
+  const q = document.getElementById('searchInput').value.toLowerCase().trim();
+
+  let filtered = allShipments.filter(s => {
+    if (activeFilter !== 'all' && (s.trackStatus || 'pending') !== activeFilter) return false;
+    if (q) {
+      const hay = [s.dealName, s.tracking, s.rep, s.carrier, s.city, s.state].join(' ').toLowerCase();
+      return hay.includes(q);
+    }
+    return true;
+  });
+
+  filtered = sortShipments(filtered);
+
+  document.getElementById('resultMeta').textContent =
+    filtered.length !== allShipments.length
+      ? `Showing ${filtered.length} of ${allShipments.length} shipments`
+      : '';
+
+  const grid = document.getElementById('grid');
+  if (!filtered.length) {
+    grid.innerHTML = `<div class="empty"><div class="empty-icon">📦</div>No shipments match this filter.</div>`;
+    return;
+  }
+
+  grid.innerHTML = filtered.map((s, i) => buildCard(s, i)).join('');
+}
+
+// ── Card Builder ──────────────────────────────────────────────────
+function buildCard(s, i) {
+  const status = s.trackStatus || (s.tracking ? 'pending' : 'unknown');
+  const statusLabel = s.trackLabel || labelFor(status);
+
+  // Destination
+  const dest = [s.city, s.state].filter(Boolean).join(', ') || (s.address ? s.address.split(',').slice(-2).join(',').trim() : '');
+
+  // ETA
+  let etaHtml = '<span class="no-tracking">—</span>';
+  if (s.trackDelivered) {
+    etaHtml = `<span style="color:var(--green);font-weight:700">Delivered ${fmtDate(s.trackDelivered)}</span>`;
+  } else if (s.trackEta) {
+    const eta = new Date(s.trackEta);
+    const today = new Date(); today.setHours(0,0,0,0);
+    const diff = Math.round((eta - today) / 86400000);
+    if (diff < 0)      etaHtml = `<span class="eta-past">${fmtDate(s.trackEta)} (past)</span>`;
+    else if (diff === 0) etaHtml = `<span class="eta-today">Today</span>`;
+    else if (diff === 1) etaHtml = `<span class="eta-soon">Tomorrow</span>`;
+    else if (diff <= 3)  etaHtml = `<span class="eta-soon">${fmtDate(s.trackEta)} (${diff}d)</span>`;
+    else               etaHtml = fmtDate(s.trackEta);
+  }
+
+  // Last event
+  let eventHtml = '';
+  if (s.trackLastEvent) {
+    const timeStr = s.trackLastTime ? `<div class="last-event-time">${fmtDateTime(s.trackLastTime)}</div>` : '';
+    eventHtml = `<div class="last-event">${escHtml(s.trackLastEvent)}${timeStr}</div>`;
+  }
+
+  // Tracking
+  let trackHtml = '<span class="no-tracking">No tracking number</span>';
+  if (s.tracking) {
+    const link = s.trackingUrl ? `<a href="${s.trackingUrl}" target="_blank" class="tracking-num">${escHtml(s.tracking)}</a>` : `<span class="tracking-num">${escHtml(s.tracking)}</span>`;
+    trackHtml = `<div class="tracking-row">${link}<button class="copy-btn" onclick="copyTracking(this,'${escHtml(s.tracking)}')">Copy</button></div>`;
+  }
+
+  // Amount
+  const amtStr = s.amount ? '$' + s.amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '';
+
+  // Updated time
+  const updatedStr = s.trackUpdated ? `<span class="updated-time">Cached ${fmtTimeAgo(s.trackUpdated)}</span>` : '';
+
+  return `
+  <div class="card status-${status}" style="animation-delay:${i * 0.03}s">
+    <div class="card-header">
+      <div class="card-name">
+        <a href="${s.dealUrl}" target="_blank" title="Open in HubSpot">${escHtml(s.dealName)}</a>
+      </div>
+      <div class="status-badge badge-${status}">
+        <span class="dot"></span>
+        ${escHtml(statusLabel)}
+      </div>
+    </div>
+
+    <div class="card-rows">
+      <div class="card-row">
+        <div class="row-label">Carrier</div>
+        <div class="row-value">
+          <span class="carrier-badge">${escHtml(s.carrier || '—')}</span>
+        </div>
+      </div>
+      <div class="card-row">
+        <div class="row-label">Tracking</div>
+        <div class="row-value">${trackHtml}</div>
+      </div>
+      <div class="card-row">
+        <div class="row-label">Destination</div>
+        <div class="row-value">${dest ? escHtml(dest) : '<span class="no-tracking">—</span>'}</div>
+      </div>
+      <div class="card-row">
+        <div class="row-label">Shipped</div>
+        <div class="row-value">${s.dateShipped ? fmtDate(s.dateShipped) : '<span class="no-tracking">—</span>'}</div>
+      </div>
+      <div class="card-row">
+        <div class="row-label">ETA</div>
+        <div class="row-value">${etaHtml}</div>
+      </div>
+    </div>
+
+    ${eventHtml}
+
+    <div class="card-footer">
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <div class="card-rep">${escHtml(s.rep)}${amtStr ? ' · ' + amtStr : ''}</div>
+        ${updatedStr}
+      </div>
+      <div class="card-actions">
+        <a href="${s.dealUrl}" target="_blank" class="action-btn">HS ↗</a>
+        ${s.trackingUrl ? `<a href="${s.trackingUrl}" target="_blank" class="action-btn">Track ↗</a>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────
+function labelFor(status) {
+  const m = { in_transit: 'In Transit', out_for_delivery: 'Out for Delivery', delivered: 'Delivered',
+              exception: 'Exception', pending: 'Pending', pickup: 'Ready for Pickup', unknown: 'No Tracking' };
+  return m[status] || status;
+}
 
 function fmtDate(d) {
   if (!d) return '—';
-  const dt = new Date(d + 'T00:00:00');
+  const dt = new Date(d + (d.includes('T') ? '' : 'T12:00:00'));
   return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function fmtAmount(n) {
-  if (!n) return '—';
-  return '$' + parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+function fmtDateTime(d) {
+  if (!d) return '';
+  try {
+    return new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' });
+  } catch(e) { return d; }
 }
 
-function carrierLabel(c) {
-  const map = { OD: 'Old Dominion', ABF: 'ABF Freight', UPS: 'UPS', FedEx: 'FedEx', USPS: 'USPS', Other: 'Other' };
-  return map[c] || c;
+function fmtTimeAgo(d) {
+  if (!d) return '';
+  const diff = Math.round((Date.now() - new Date(d)) / 60000);
+  if (diff < 2)   return 'just now';
+  if (diff < 60)  return `${diff}m ago`;
+  if (diff < 1440) return `${Math.floor(diff/60)}h ago`;
+  return `${Math.floor(diff/1440)}d ago`;
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function copyTracking(btn, tracking) {
   navigator.clipboard.writeText(tracking).then(() => {
     btn.textContent = 'Copied!';
     btn.classList.add('copied');
-    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1800);
   });
 }
 
-function buildRow(s) {
-  const repColor = REP_COLORS[s.rep] || '#888';
-  const trackingCell = s.tracking
-    ? `<div style="display:flex;align-items:center;gap:6px">
-         ${s.trackingUrl
-           ? `<a href="${s.trackingUrl}" target="_blank" class="tracking-link" title="Track on carrier website">
-               ${s.tracking}
-               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-             </a>`
-           : `<span class="tracking-link" style="cursor:default">${s.tracking}</span>`
-         }
-         <button class="copy-btn" onclick="copyTracking(this,'${s.tracking}')">Copy</button>
-       </div>`
-    : `<span class="tracking-none">No tracking</span>`;
-
-  return `<tr data-carrier="${s.carrier}" data-rep="${s.rep}" data-search="${(s.dealName + ' ' + s.tracking + ' ' + s.address + ' ' + s.rep).toLowerCase()}">
-    <td>
-      <a href="${s.dealUrl}" target="_blank" class="deal-name" title="${s.dealName}">${s.dealName.replace(/\s*-\s*New Deal\s*$/i, '').trim()}</a>
-      ${s.address ? `<div class="deal-address">${s.address}</div>` : ''}
-    </td>
-    <td><span class="carrier-badge carrier-${s.carrier}">${s.carrier === 'OD' ? 'Old Dom.' : s.carrier}</span></td>
-    <td>${trackingCell}</td>
-    <td id="status-${s.tracking}">
-      ${s.tracking && s.trackingUrl
-        ? `<a href="${s.trackingUrl}" target="_blank" class="status-badge status-unknown">Track →</a>`
-        : `<span class="status-badge status-unknown">No tracking</span>`
-      }
-    </td>
-    <td class="hide-mobile" id="event-${s.tracking}" style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0">—</td>
-    <td class="date-cell hide-mobile" id="date-${s.dealId}">${fmtDate(s.dateShipped)}</td>
-    <td class="hide-mobile" id="dest-${s.tracking}" style="font-size:11px;color:var(--muted)">—</td>
-    <td class="hide-mobile" id="transit-${s.tracking}" style="font-size:11px;color:var(--muted);text-align:center">—</td>
-    <td>
-      <a href="${s.dealUrl}" target="_blank" class="hs-link" title="View Deal">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-      </a>
-    </td>
-  </tr>`;
-}
-
-function filterTable() {
-  const query = document.getElementById('searchInput').value.toLowerCase();
-  const carrier = document.getElementById('carrierFilter').value;
-  const rep = document.getElementById('repFilter').value;
-  const rows = document.querySelectorAll('#tableBody tr[data-carrier]');
-  let visible = 0;
-  rows.forEach(row => {
-    const matchSearch = !query || row.dataset.search.includes(query);
-    const matchCarrier = !carrier || row.dataset.carrier === carrier;
-    const matchRep = !rep || row.dataset.rep === rep;
-    const show = matchSearch && matchCarrier && matchRep;
-    row.style.display = show ? '' : 'none';
-    if (show) visible++;
-  });
-  document.getElementById('filterCount').textContent = visible !== allShipments.length
-    ? `Showing ${visible} of ${allShipments.length}` : '';
-}
-
-function updateStats(shipments) {
-  document.getElementById('statTotal').textContent = shipments.length;
-  document.getElementById('statABF').textContent = shipments.filter(s => s.carrier === 'ABF').length;
-  document.getElementById('statOD').textContent = shipments.filter(s => s.carrier === 'OD').length;
-  document.getElementById('statOther').textContent = shipments.filter(s => !['ABF','OD'].includes(s.carrier)).length;
-
-}
-
-function populateRepFilter(shipments) {
-  const reps = [...new Set(shipments.map(s => s.rep))].sort();
-  const sel = document.getElementById('repFilter');
-  sel.innerHTML = '<option value="">All Reps</option>';
-  reps.forEach(r => {
-    const opt = document.createElement('option');
-    opt.value = r; opt.textContent = r;
-    sel.appendChild(opt);
-  });
-}
-
-async function loadShipments() {
-  const btn = document.getElementById('refreshBtn');
-  btn.classList.add('spinning');
-  document.getElementById('tableBody').innerHTML = `<tr class="loading-row"><td colspan="7">
-    <div style="display:flex;flex-direction:column;gap:10px;padding:20px">
-      <div class="skeleton-line" style="width:100%"></div>
-      <div class="skeleton-line" style="width:85%"></div>
-      <div class="skeleton-line" style="width:92%"></div>
-      <div class="skeleton-line" style="width:78%"></div>
-    </div>
-  </td></tr>`;
-
-  try {
-    const res = await fetch('/api/shipping-board', { credentials: 'include' });
-    const data = await res.json();
-
-    if (!data.success) throw new Error(data.error || 'Failed to load');
-
-    allShipments = data.shipments;
-    updateStats(allShipments);
-    populateRepFilter(allShipments);
-
-    // Pre-register all tracking numbers with AfterShip in one batch call
-    // This ensures AfterShip has started polling carriers before we request status
-    const trackable = allShipments.filter(s => s.tracking && s.carrier);
-    if (trackable.length > 0) {
-      registerAllWithAfterShip(trackable);  // fire and forget
-      fetchAllStatuses(trackable);
-    }
-
-    if (allShipments.length === 0) {
-      document.getElementById('tableBody').innerHTML = `<tr><td colspan="7">
-        <div class="empty-state">
-          <div class="icon">📦</div>
-          <h3>No shipments found</h3>
-          <p>No deals in Shipped stage with tracking numbers.</p>
-        </div>
-      </td></tr>`;
-    } else {
-      document.getElementById('tableBody').innerHTML = allShipments.map(buildRow).join('');
-      filterTable();
-    }
-  } catch(e) {
-    document.getElementById('tableBody').innerHTML = `<tr><td colspan="7">
-      <div class="empty-state">
-        <div class="icon">⚠️</div>
-        <h3>Error loading shipments</h3>
-        <p style="color:var(--red)">${e.message}</p>
-      </div>
-    </td></tr>`;
-  } finally {
-    btn.classList.remove('spinning');
-  }
-}
-
-// ── Live tracking status ──────────────────────────────────────────
-// Pre-register all tracking numbers with AfterShip in one server call
-async function registerAllWithAfterShip(shipments) {
-  try {
-    await fetch('/api/register-trackings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(shipments.map(s => ({ tracking: s.tracking, carrier: s.carrier })))
-    });
-  } catch(e) { /* non-fatal */ }
-}
-
-async function fetchAllStatuses(shipments) {
-  // Fetch one at a time with 400ms delay to avoid AfterShip rate limiting
-  for (const s of shipments) {
-    await fetchStatus(s);
-    await new Promise(r => setTimeout(r, 400));
-  }
-}
-
-async function fetchStatus(s) {
-  const cell = document.getElementById('status-' + s.tracking);
-  if (!cell) return;
-  try {
-    const res = await fetch(`/api/track?carrier=${encodeURIComponent(s.carrier)}&tracking=${encodeURIComponent(s.tracking)}`, { credentials: 'include' });
-    const data = await res.json();
-    if (data.status) {
-      const cls   = statusClass(data.status);
-      const icon  = statusIcon(data.status);
-      const label = data.label || data.status;
-
-      // Build location/detail line
-      const locationStr = data.location ? ` · ${data.location}` : '';
-
-      // Tooltip: last event message
-      const tooltip = data.lastEvent || data.detail || '';
-
-      // ETA line (only show if not delivered)
-      let etaLine = '';
-      if (data.eta && data.status !== 'delivered') {
-        etaLine = `<div style="font-size:10px;color:var(--muted);margin-top:2px">ETA ${fmtDate(data.eta)}</div>`;
-      }
-
-      // Signed by line
-      let signedLine = '';
-      if (data.signedBy && data.status === 'delivered') {
-        signedLine = `<div style="font-size:10px;color:var(--muted);margin-top:1px">Signed: ${data.signedBy}</div>`;
-      }
-
-      const badge = s.trackingUrl
-        ? `<a href="${s.trackingUrl}" target="_blank" class="status-badge ${cls}" title="${tooltip}">${icon} ${label}${locationStr}</a>`
-        : `<span class="status-badge ${cls}" title="${tooltip}">${icon} ${label}${locationStr}</span>`;
-
-      cell.innerHTML = badge + etaLine + signedLine;
-
-      // Latest Event cell
-      const eventCell = document.getElementById('event-' + s.tracking);
-      if (eventCell && data.lastEvent) {
-        const evDate = data.lastEventTime ? `<span style="color:var(--muted);margin-right:4px">${fmtDate(data.lastEventTime)}</span>` : '';
-        eventCell.innerHTML = evDate + data.lastEvent;
-        eventCell.title = data.lastEvent;
-      }
-
-      // Destination cell — parse from address
-      const destCell = document.getElementById('dest-' + s.tracking);
-      if (destCell && s.address) {
-        // Extract city, state from address string
-        const parts = s.address.split(',').map(p => p.trim());
-        const dest = parts.length >= 2 ? parts.slice(-3, -1).join(', ') : s.address;
-        destCell.textContent = dest;
-      }
-
-      // Transit time cell — days between ship date and now (or delivery)
-      const transitCell = document.getElementById('transit-' + s.tracking);
-      if (transitCell && s.dateShipped) {
-        const start = new Date(s.dateShipped + 'T00:00:00');
-        const end = data.deliveredAt ? new Date(data.deliveredAt + 'T00:00:00') : new Date();
-        const days = Math.round((end - start) / (1000 * 60 * 60 * 24));
-        transitCell.textContent = days + 'd';
-        if (data.status === 'delivered') transitCell.style.color = 'var(--green)';
-      }
-
-      // If delivered, update date cell to show delivery date
-      const dateCell = document.getElementById('date-' + s.dealId);
-      if (dateCell) {
-        if (data.status === 'delivered' && data.deliveredAt) {
-          dateCell.innerHTML = `<span style="color:var(--green);font-weight:600">${fmtDate(data.deliveredAt)}</span><div style="font-size:10px;color:var(--muted)">Delivered</div>`;
-        } else if (data.lastEventTime) {
-          // Show last event date as a subtle update indicator
-          dateCell.innerHTML = `${fmtDate(s.dateShipped)}<div style="font-size:10px;color:var(--muted)">Updated ${fmtDate(data.lastEventTime)}</div>`;
-        }
-      }
-    } else {
-      cell.innerHTML = s.trackingUrl
-        ? `<a href="${s.trackingUrl}" target="_blank" class="status-badge status-unknown">Track →</a>`
-        : `<span class="status-badge status-unknown">No data</span>`;
-    }
-  } catch(e) {
-    if (cell) cell.innerHTML = s.trackingUrl
-      ? `<a href="${s.trackingUrl}" target="_blank" class="status-badge status-unknown">Track →</a>`
-      : `<span class="status-badge status-unknown">—</span>`;
-  }
-}
-
-function statusClass(status) {
-  const s = (status || '').toLowerCase();
-  if (s === 'delivered') return 'status-delivered';
-  if (s === 'out_for_delivery') return 'status-transit';
-  if (s === 'in_transit') return 'status-transit';
-  if (s === 'pickup') return 'status-pickup';
-  if (s === 'pending') return 'status-unknown';
-  if (s === 'exception') return 'status-exception';
-  return 'status-transit';
-}
-
-function statusIcon(status) {
-  const s = (status || '').toLowerCase();
-  if (s === 'delivered') return '✓';
-  if (s === 'out_for_delivery') return '🚚';
-  if (s === 'in_transit') return '→';
-  if (s === 'pickup') return '📦';
-  if (s === 'exception') return '⚠️';
-  if (s === 'pending') return '○';
-  return '→';
-}
-
-// ── Light / Dark mode ────────────────────────────────────────────
-function toggleMode() {
+// ── Theme ─────────────────────────────────────────────────────────
+function toggleTheme() {
   const isLight = document.documentElement.classList.toggle('light');
-  document.getElementById('modeIcon').textContent = isLight ? '🌙' : '☀️';
-  localStorage.setItem('wr_shipping_mode', isLight ? 'light' : 'dark');
+  document.getElementById('themeBtn').textContent = isLight ? '🌙' : '☀️';
+  localStorage.setItem('wr-theme', isLight ? 'light' : 'dark');
+}
+if (localStorage.getItem('wr-theme') === 'light') {
+  document.documentElement.classList.add('light');
+  document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('themeBtn');
+    if (btn) btn.textContent = '🌙';
+  });
 }
 
-// Restore saved mode on load
-(function() {
-  if (localStorage.getItem('wr_shipping_mode') === 'light') {
-    document.documentElement.classList.add('light');
-    document.addEventListener('DOMContentLoaded', () => {
-      const btn = document.getElementById('modeIcon');
-      if (btn) btn.textContent = '🌙';
-    });
-  }
-})();
-
-// Load on page open
-loadShipments();
-
-
-// ── Add Shipment Flow ─────────────────────────────────────────────
-let _selectedShipDeal = null;
-let _allClosedWonDeals = [];
-
-async function openAddShipment() {
-  // Reset form
-  _selectedShipDeal = null;
-  document.getElementById('shipDealSelected').style.display = 'none';
-  document.getElementById('shipDealPickerWrap').style.display = 'block';
-  document.getElementById('shipDealFilter').value = '';
-  document.getElementById('shipCarrier').value = '';
-  document.getElementById('shipTracking').value = '';
-  document.getElementById('shipErrorMsg').style.display = 'none';
-  document.getElementById('shipDate').value = new Date().toISOString().split('T')[0];
-  document.getElementById('addShipmentModal').style.display = 'flex';
-
-  // Load deals
-  renderDealList('<div style="padding:14px;font-size:12px;color:#666;text-align:center">Loading…</div>');
-  try {
-    const res = await fetch('/api/deals/closed-won', { credentials: 'include' });
-    const data = await res.json();
-    _allClosedWonDeals = data.results || [];
-    filterDealList('');
-  } catch(e) {
-    renderDealList('<div style="padding:14px;font-size:12px;color:#ef4444;text-align:center">Failed to load deals</div>');
-  }
-}
-
-function closeAddShipment() {
-  document.getElementById('addShipmentModal').style.display = 'none';
-}
-
-function renderDealList(html) {
-  document.getElementById('shipDealList').innerHTML = html;
-}
-
-function filterDealList(query) {
-  const q = query.toLowerCase();
-  const filtered = q
-    ? _allClosedWonDeals.filter(d => d.name.toLowerCase().includes(q))
-    : _allClosedWonDeals;
-
-  if (!filtered.length) {
-    renderDealList('<div style="padding:14px;font-size:12px;color:#666;text-align:center">No deals found</div>');
-    return;
-  }
-
-  renderDealList(filtered.map(d => `
-    <div onclick="selectShipDeal('${d.id}', this.dataset.name)"
-      data-name="${d.name.replace(/"/g,'&quot;')}"
-      style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #1e1e1e;font-size:13px;color:#e8e8e8;transition:background .1s"
-      onmouseover="this.style.background='#1a1a1a'" onmouseout="this.style.background='transparent'">
-      <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.name}</div>
-      ${d.amount ? `<div style="font-size:11px;color:#666;margin-top:2px">$${parseFloat(d.amount).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0})}</div>` : ''}
-    </div>
-  `).join(''));
-}
-
-function selectShipDeal(id, name) {
-  _selectedShipDeal = { id, name };
-  document.getElementById('shipDealSelectedName').textContent = name;
-  document.getElementById('shipDealSelected').style.display = 'flex';
-  document.getElementById('shipDealPickerWrap').style.display = 'none';
-  // Focus carrier next
-  document.getElementById('shipCarrier').focus();
-}
-
-function clearShipDeal() {
-  _selectedShipDeal = null;
-  document.getElementById('shipDealSelected').style.display = 'none';
-  document.getElementById('shipDealPickerWrap').style.display = 'block';
-  document.getElementById('shipDealFilter').value = '';
-  filterDealList('');
-}
-
-async function submitShipment() {
-  const errEl = document.getElementById('shipErrorMsg');
-  errEl.style.display = 'none';
-
-  const carrier  = document.getElementById('shipCarrier').value.trim();
-  const tracking = document.getElementById('shipTracking').value.trim();
-  const dateShipped = document.getElementById('shipDate').value;
-
-  if (!_selectedShipDeal) { errEl.textContent = 'Please select a deal.'; errEl.style.display = 'block'; return; }
-  if (!carrier)            { errEl.textContent = 'Please select a carrier.'; errEl.style.display = 'block'; return; }
-  if (!tracking)           { errEl.textContent = 'Please enter a tracking number.'; errEl.style.display = 'block'; return; }
-  if (!dateShipped)        { errEl.textContent = 'Please enter a ship date.'; errEl.style.display = 'block'; return; }
-
-  const btn = document.getElementById('shipSubmitBtn');
-  btn.disabled = true;
-  btn.textContent = 'Processing…';
-
-  try {
-    const res = await fetch('/api/ship-deal', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        dealId: _selectedShipDeal.id,
-        carrier,
-        tracking,
-        dateShipped
-      })
-    });
-    const data = await res.json();
-    if (data.success) {
-      closeAddShipment();
-      // Reload board to show new row
-      loadShipments();
-    } else {
-      throw new Error(data.error || 'Failed to mark as shipped');
-    }
-  } catch(e) {
-    errEl.textContent = e.message;
-    errEl.style.display = 'block';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Mark as Shipped';
-  }
-}
-
-
-// App version
-fetch('/api/version').then(r=>r.json()).then(d=>{
-  const el=document.getElementById("appVersion");
-  if(el&&d.version) el.textContent="v"+d.version;
-}).catch(()=>{});
+// ── Init ──────────────────────────────────────────────────────────
+loadBoard();
 </script>
-
-<!-- ADD SHIPMENT MODAL -->
-<div id="addShipmentModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:center;justify-content:center;padding:16px">
-  <div style="background:#1a1a1a;border:1px solid #2e2e2e;border-radius:12px;padding:32px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
-    <div style="font-size:16px;font-weight:700;color:#e8e8e8;margin-bottom:4px">Add Shipment</div>
-    <div style="font-size:12px;color:#888;margin-bottom:24px">Search for a Closed Won deal, enter tracking details, and mark as shipped.</div>
-
-    <!-- Deal List -->
-    <div style="margin-bottom:16px">
-      <label style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Deal (Closed Won)</label>
-
-      <!-- Selected state -->
-      <div id="shipDealSelected" style="display:none;background:rgba(238,98,22,.1);border:1px solid rgba(238,98,22,.3);border-radius:8px;padding:10px 14px;font-size:13px;color:#ee6216;align-items:center;justify-content:space-between">
-        <span id="shipDealSelectedName" style="font-weight:600"></span>
-        <button onclick="clearShipDeal()" style="background:none;border:none;color:#888;cursor:pointer;font-size:16px;padding:0 2px;line-height:1">✕</button>
-      </div>
-
-      <!-- Filter + list (hidden once deal selected) -->
-      <div id="shipDealPickerWrap">
-        <input id="shipDealFilter" type="text" placeholder="Filter deals…"
-          style="width:100%;background:#111;border:1px solid #333;color:#e8e8e8;padding:9px 12px;border-radius:8px 8px 0 0;font-size:13px;outline:none;font-family:inherit;border-bottom:none"
-          oninput="filterDealList(this.value)"
-          onfocus="this.style.borderColor='#ee6216';this.style.borderBottomColor='#333'" onblur="this.style.borderColor='#333'">
-        <div id="shipDealList" style="background:#111;border:1px solid #333;border-radius:0 0 8px 8px;max-height:200px;overflow-y:auto">
-          <div style="padding:14px;font-size:12px;color:#666;text-align:center">Loading deals…</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Carrier -->
-    <div style="margin-bottom:16px">
-      <label style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Freight Carrier</label>
-      <select id="shipCarrier" style="width:100%;background:#111;border:1px solid #333;color:#e8e8e8;padding:10px 12px;border-radius:8px;font-size:13px;outline:none;font-family:inherit;cursor:pointer"
-        onfocus="this.style.borderColor='#ee6216'" onblur="this.style.borderColor='#333'">
-        <option value="">Select carrier…</option>
-        <option value="ABF">ABF Freight</option>
-        <option value="OD">Old Dominion</option>
-        <option value="UPS">UPS</option>
-        <option value="FedEx">FedEx</option>
-        <option value="USPS">USPS</option>
-      </select>
-    </div>
-
-    <!-- Tracking Number -->
-    <div style="margin-bottom:16px">
-      <label style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Tracking Number</label>
-      <input id="shipTracking" type="text" placeholder="Enter tracking number…"
-        style="width:100%;background:#111;border:1px solid #333;color:#e8e8e8;padding:10px 12px;border-radius:8px;font-size:13px;outline:none;font-family:monospace"
-        onfocus="this.style.borderColor='#ee6216'" onblur="this.style.borderColor='#333'">
-    </div>
-
-    <!-- Date Shipped -->
-    <div style="margin-bottom:24px">
-      <label style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Date Shipped</label>
-      <input id="shipDate" type="date"
-        style="width:100%;background:#111;border:1px solid #333;color:#e8e8e8;padding:10px 12px;border-radius:8px;font-size:13px;outline:none;font-family:inherit;cursor:pointer"
-        onfocus="this.style.borderColor='#ee6216'" onblur="this.style.borderColor='#333'">
-    </div>
-
-    <div id="shipErrorMsg" style="display:none;color:#ef4444;font-size:12px;margin-bottom:12px"></div>
-
-    <div style="display:flex;gap:10px">
-      <button id="shipSubmitBtn" onclick="submitShipment()" style="flex:1;padding:13px;background:#ee6216;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
-        Mark as Shipped
-      </button>
-      <button onclick="closeAddShipment()" style="padding:13px 18px;background:rgba(255,255,255,.06);color:#888;border:1px solid #333;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
-        Cancel
-      </button>
-    </div>
-  </div>
-</div>
-
 </body>
 </html>

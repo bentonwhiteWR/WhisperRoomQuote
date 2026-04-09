@@ -6239,14 +6239,16 @@ tbody tr:hover td{background:#fdfcfb}
                 source:          'hubspot',
                 serialNumber:    p.description      || '',
                 productionNotes: p.deal_description || '',
-                shipped: (p.tracking_number || p.freight_carrier) ? {
-                  carrier:     p.freight_carrier || '',
-                  tracking:    p.tracking_number || '',
-                  date:        p.date_shipped    || '',
-                  boxes:       parseInt(p.box_count)    || 0,
-                  pallets:     parseInt(p.pallet_count) || 0,
-                  hardwareBox: p.hardware_box    || '',
-                } : null,
+                // Shipment fields pre-populate the drawer but shipped is always null —
+                // the rep explicitly marks shipped via Ship It. Don't infer shipped state
+                // from HubSpot fields since tracking/carrier may be set before pickup.
+                shipped:         null,
+                _hsCarrier:      p.freight_carrier  || '',
+                _hsTracking:     p.tracking_number  || '',
+                _hsDate:         p.date_shipped     || '',
+                _hsBoxes:        p.box_count        || '',
+                _hsPallets:      p.pallet_count     || '',
+                _hsHardwareBox:  p.hardware_box     || '',
               },
               json_snapshot: null,
               share_token:   null,

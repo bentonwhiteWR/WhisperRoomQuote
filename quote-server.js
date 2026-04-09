@@ -2985,6 +2985,105 @@ const server = http.createServer(async (req, res) => {
   }
 
 
+  // ── API: Deal timeline ──────────────────────────────────────────
+  const timelineMatch = pathname.match(/^\/api\/deals\/(\d+)\/timeline$/);
+  if (timelineMatch && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const dealId = timelineMatch[1];
+    try {
+      const events = [];
+
+      // 1. Deal properties (created date, stage, amount)
+      const dealRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/objects/deals/${dealId}?properties=dealname,dealstage,createdate,hs_lastmodifieddate,amount,hubspot_owner_id`,
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+      });
+      const dp = dealRes.body?.properties || {};
+      if (dp.createdate) events.push({ at: dp.createdate, type: 'deal_created', label: 'Deal created', detail: dp.dealname || '' });
+
+      // 2. DB quotes
+      if (db) {
+        const qr = await db.query(
+          `SELECT quote_number, total, created_at, json_snapshot FROM quotes WHERE deal_id = $1 ORDER BY created_at ASC`,
+          [dealId]
+        );
+        qr.rows.forEach(r => {
+          const snap = r.json_snapshot || {};
+          events.push({ at: r.created_at, type: 'quote_created', label: `Quote ${r.quote_number} created`, detail: `$${parseFloat(r.total||0).toLocaleString()}` });
+          if (snap.accepted) {
+            events.push({ at: snap.acceptedAt || r.created_at, type: 'quote_accepted', label: `Quote ${r.quote_number} accepted`, detail: snap.acceptedNote || '' });
+          }
+        });
+
+        // 3. Orders
+        const or = await db.query(
+          `SELECT quote_number, order_data, created_at FROM orders WHERE deal_id = $1 ORDER BY created_at ASC`,
+          [dealId]
+        );
+        or.rows.forEach(r => {
+          const od = r.order_data || {};
+          events.push({ at: r.created_at, type: 'order_created', label: `Order ${r.quote_number} processed`, detail: '' });
+          if (od.shipped?.date) {
+            events.push({ at: od.shipped.date + 'T12:00:00Z', type: 'shipped', label: 'Shipment sent',
+              detail: [od.shipped.carrier, od.shipped.tracking].filter(Boolean).join(' · ') });
+          }
+          (od.changeLog || []).forEach(cl => {
+            if (cl.summary && !cl.summary.includes('processed') && !cl.summary.includes('Shipped')) {
+              events.push({ at: cl.at, type: 'note', label: cl.summary, detail: cl.rep || '' });
+            }
+          });
+        });
+      }
+
+      // 4. HubSpot notes/emails (recent activity)
+      try {
+        const engRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/notes/search',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, {
+          filterGroups: [{ filters: [{ propertyName: 'associations.deal', operator: 'EQ', value: dealId }] }],
+          properties: ['hs_note_body', 'hs_timestamp', 'hubspot_owner_id'],
+          sorts: [{ propertyName: 'hs_timestamp', direction: 'DESCENDING' }],
+          limit: 10
+        });
+        (engRes.body?.results || []).forEach(n => {
+          const body = (n.properties?.hs_note_body || '').replace(/<[^>]+>/g, '').trim().slice(0, 120);
+          if (body) events.push({ at: n.properties?.hs_timestamp, type: 'note', label: 'Note', detail: body });
+        });
+      } catch(e) { /* non-fatal */ }
+
+      // Sort newest first
+      events.sort((a, b) => new Date(b.at) - new Date(a.at));
+      json({ events: events.slice(0, 40) });
+    } catch(e) {
+      console.error('[timeline] error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Create invoice (redirect to HubSpot) ───────────────────
+  // HubSpot API does not allow programmatic invoice creation with this account tier.
+  // Instead, return a direct link to create invoice from the deal in HubSpot UI.
+  if (pathname === '/api/create-invoice' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const body = JSON.parse(await readBody(req));
+      const { dealId } = body;
+      if (!dealId) { json({ error: 'dealId required' }, 400); return; }
+      // Return a link to the HubSpot deal where they can create an invoice manually
+      const hubspotUrl = `https://app.hubspot.com/contacts/5764220/record/0-3/${dealId}`;
+      json({ success: false, redirectToHubSpot: true, hubspotUrl,
+             message: 'Invoices must be created from HubSpot. Opening deal page.' });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+
   // ── API: Get freight quote ──
   if (pathname === '/api/freight' && req.method === 'POST') {
     try {

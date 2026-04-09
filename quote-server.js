@@ -976,6 +976,52 @@ async function initDb() {
 
 // Rep notified via HubSpot task
 
+const SERVER_REP_NUMBERS = {
+  '36303670':  '16', // Benton White
+  '38732178':  '17', // Kim Dalton
+  '36330944':  '11', // Jill Holdway
+  '38143901':  '18', // Sarah Smith
+  '117442978': '13', // Travis Singleton
+  '36320208':  '19', // Gabe White
+};
+
+// Generate a quote number that doesn't already exist in the DB.
+// Starts from the client-provided number's sequence and increments until free.
+async function generateFreeQuoteNumber(clientNumber, ownerId, dealId, contactId) {
+  if (!db) return clientNumber; // no DB — fall back to client number
+  const now = new Date();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const yy = String(now.getFullYear()).slice(-2);
+  const repNum = SERVER_REP_NUMBERS[String(ownerId)] || '00';
+  const dateKey = repNum + mm + dd + yy;
+
+  // Parse starting seq from client number, default to 1
+  let seq = 1;
+  if (clientNumber) {
+    const suffix = clientNumber.replace(/^W-/, '').replace(dateKey, '');
+    const parsed = parseInt(suffix);
+    if (!isNaN(parsed) && parsed > 0) seq = parsed;
+  }
+
+  // Try seq, seq+1, seq+2 ... until we find one not taken by a different deal/contact
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const candidate = `W-${dateKey}${String(seq).padStart(2, '0')}`;
+    const existing = await db.query(
+      `SELECT deal_id, contact_id FROM quotes WHERE quote_number = $1 LIMIT 1`,
+      [candidate]
+    );
+    if (existing.rows.length === 0) return candidate; // free
+    const ex = existing.rows[0];
+    const sameDeal    = dealId    && ex.deal_id    && ex.deal_id    === dealId;
+    const sameContact = contactId && ex.contact_id && ex.contact_id === contactId;
+    if (sameDeal || sameContact) return candidate; // revision of same deal — OK
+    seq++; // collision with different deal — try next
+  }
+  // Fallback: timestamp-based to guarantee uniqueness
+  return `W-${dateKey}${String(Date.now()).slice(-4)}`;
+}
+
 async function saveQuoteToDb(quoteData) {
   if (!db || !process.env.DATABASE_URL) return null;
   try {
@@ -2813,7 +2859,20 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, quoteNumber, billing, isRevision, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel } = body;
+      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, isRevision, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel } = body;
+      let { quoteNumber } = body;
+
+      // Resolve any quote number collision server-side before touching HubSpot
+      // This replaces the client error-and-retry flow with silent auto-increment
+      if (quoteNumber && db) {
+        const resolvedContactId = existingContactId ? String(existingContactId) : null;
+        const resolvedDealId    = existingDealId    ? String(existingDealId)    : null;
+        const free = await generateFreeQuoteNumber(quoteNumber, ownerId, resolvedDealId, resolvedContactId);
+        if (free !== quoteNumber) {
+          console.log(`[save] quote number collision: ${quoteNumber} → reassigned to ${free}`);
+          quoteNumber = free;
+        }
+      }
 
       // Find or create contact
       let contactId;

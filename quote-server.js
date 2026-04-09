@@ -308,9 +308,14 @@ async function initTrackingCache() {
       eta             TEXT,
       delivered_at    TEXT,
       signed_by       TEXT,
+      dest_city       TEXT,
+      dest_state      TEXT,
       updated_at      TIMESTAMPTZ DEFAULT NOW()
     )
   `).catch(e => console.warn('tracking_cache init error:', e.message));
+  // Add new columns if they don't exist (safe migration)
+  await db.query(`ALTER TABLE tracking_cache ADD COLUMN IF NOT EXISTS dest_city TEXT`).catch(()=>{});
+  await db.query(`ALTER TABLE tracking_cache ADD COLUMN IF NOT EXISTS dest_state TEXT`).catch(()=>{});
   console.log('Tracking cache ready');
   // Clear entries that have suspicious delivered status with no delivered_at (stale data)
   try {
@@ -333,14 +338,16 @@ async function saveTrackingToCache(trackingNumber, slug, data) {
   if (!db) return;
   try {
     await db.query(`
-      INSERT INTO tracking_cache (tracking_number, slug, status, label, location, last_event, last_event_time, eta, delivered_at, signed_by, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+      INSERT INTO tracking_cache (tracking_number, slug, status, label, location, last_event, last_event_time, eta, delivered_at, signed_by, dest_city, dest_state, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
       ON CONFLICT (tracking_number) DO UPDATE SET
         slug=$2, status=$3, label=$4, location=$5, last_event=$6,
-        last_event_time=$7, eta=$8, delivered_at=$9, signed_by=$10, updated_at=NOW()
+        last_event_time=$7, eta=$8, delivered_at=$9, signed_by=$10,
+        dest_city=$11, dest_state=$12, updated_at=NOW()
     `, [trackingNumber, slug, data.status||null, data.label||null, data.location||null,
         data.lastEvent||null, data.lastEventTime||null, data.eta||null,
-        data.deliveredAt||null, data.signedBy||null]);
+        data.deliveredAt||null, data.signedBy||null,
+        data.destCity||null, data.destState||null]);
   } catch(e) { console.warn('tracking cache save error:', e.message); }
 }
 
@@ -401,30 +408,42 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
     };
     const normalized = statusMap[tag] || { status: 'in_transit', label: tag || 'In Transit' };
 
+    // Checkpoints — AfterShip returns newest last
     const checkpoints = trackingData.checkpoints || trackingData.events || [];
     const lastCheck = checkpoints[checkpoints.length - 1];
+
+    // Location from checkpoint or top-level destination
     let location = null;
-    if (lastCheck) {
-      const parts = [lastCheck.city, lastCheck.state, lastCheck.country_iso3].filter(Boolean);
+    if (lastCheck?.location) {
+      location = lastCheck.location;
+    } else if (lastCheck) {
+      const parts = [lastCheck.city, lastCheck.state].filter(Boolean);
       if (parts.length) location = parts.join(', ');
     }
-
-    const eta = trackingData.expected_delivery || trackingData.aftership_estimated_delivery_date || null;
-    // Try multiple AfterShip field names for delivery time
-    const deliveredRaw = tag === 'Delivered'
-      ? (trackingData.delivery_time || trackingData.delivered_at || lastCheck?.checkpoint_time || lastCheck?.occurred_at || null)
-      : null;
-
-    // Build a meaningful last event message including location
-    let lastEventMsg = lastCheck?.message || lastCheck?.description || null;
-    if (lastEventMsg && lastCheck) {
-      const loc = [lastCheck.city, lastCheck.state].filter(Boolean).join(', ');
-      if (loc && !lastEventMsg.toLowerCase().includes(loc.toLowerCase())) {
-        lastEventMsg = `${lastEventMsg} — ${loc}`;
-      }
+    if (!location && trackingData.destination_city) {
+      location = [trackingData.destination_city, trackingData.destination_state].filter(Boolean).join(', ');
     }
 
-    const lastEventTime = lastCheck?.checkpoint_time || lastCheck?.occurred_at || null;
+    // ETA — try multiple field names
+    const eta = trackingData.aftership_estimated_delivery_date
+      || trackingData.expected_delivery
+      || trackingData.latest_estimated_delivery
+      || null;
+
+    // Delivered date
+    const deliveredRaw = tag === 'Delivered'
+      ? (trackingData.shipment_delivery_date || trackingData.delivery_time || lastCheck?.checkpoint_time || null)
+      : null;
+
+    // Last event message — checkpoint.message is the real field
+    let lastEventMsg = lastCheck?.message || lastCheck?.description || null;
+
+    // Last event time
+    const lastEventTime = lastCheck?.checkpoint_time || null;
+
+    // Destination city/state for display
+    const destCity  = trackingData.destination_city  || '';
+    const destState = trackingData.destination_state || '';
 
     const result = {
       ...normalized,
@@ -434,6 +453,8 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
       signedBy: trackingData.signed_by || null,
       lastEvent: lastEventMsg,
       lastEventTime: lastEventTime ? lastEventTime.split('T')[0] : null,
+      destCity,
+      destState,
     };
 
     await saveTrackingToCache(trackingNumber, slug, result);
@@ -2179,8 +2200,8 @@ const server = http.createServer(async (req, res) => {
           tracking,
           trackingUrl,
           dateShipped,
-          city:        p.shipping_city  || '',
-          state:       p.shipping_state || '',
+          city:        p.shipping_city  || cache?.dest_city  || '',
+          state:       p.shipping_state || cache?.dest_state || '',
           zip:         p.shipping_zipcode || '',
           address:     [p.shipping_address, p.shipping_city, p.shipping_state, p.shipping_zipcode].filter(Boolean).join(', '),
           rep:         ownerMap[p.hubspot_owner_id] || 'Unknown',

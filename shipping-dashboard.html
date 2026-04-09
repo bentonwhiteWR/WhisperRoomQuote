@@ -3,364 +3,1265 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Shipping — WhisperRoom</title>
+<title>WhisperRoom — Deal Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial Black,sans-serif' font-size='18' font-weight='900' fill='%23e8531a'>W</text></svg>">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#0f0f0f;--surface:#1a1a1a;--surface2:#222222;--surface3:#2a2a2a;
-  --border:#2e2e2e;--border2:#3a3a3a;
-  --text:#e8e8e8;--muted:#666;--muted2:#444;
-  --orange:#ee6216;--green:#22c55e;--green2:rgba(34,197,94,.12);
-  --red:#ef4444;--red2:rgba(239,68,68,.12);--blue:#60a5fa;--blue2:rgba(96,165,250,.12);
-  --yellow:#facc15;--yellow2:rgba(250,204,21,.12);--topbar:#0a0a0a;
-  --mono:'DM Mono',monospace;--row-h:60px;
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --bg:#0f0f0f; --surface:#1a1a1a; --surface2:#222; --surface3:#2a2a2a; --border:#2e2e2e;
+  --text:#e8e8e8; --text2:#aaa; --muted:#666;
+  --orange:#ee6216; --orange-dim:rgba(238,98,22,.12); --orange-border:rgba(238,98,22,.3);
+  --green:#22c55e; --green-dim:rgba(34,197,94,.1); --amber:#f59e0b; --red:#ef4444;
+  --mono:'JetBrains Mono','Consolas',monospace;
 }
-html.light{
-  --bg:#edeae4;--surface:#f5f2ec;--surface2:#e6e3dc;--surface3:#dedad2;
-  --border:rgba(0,0,0,.1);--border2:rgba(0,0,0,.16);
-  --text:#1a1a1a;--muted:#777;--muted2:#aaa;
-  --topbar:#0a0a0a;
+:root.light {
+  --bg:#edeae4; --surface:#f5f2ec; --surface2:#e6e3dc; --surface3:#dedad2; --border:rgba(0,0,0,.1);
+  --text:#1a1a1a; --text2:#444; --muted:#777;
+  --orange:#c94f0e; --orange-dim:rgba(201,79,14,.08); --orange-border:rgba(201,79,14,.25);
+  --green:#16a34a; --green-dim:rgba(22,163,74,.08); --amber:#d97706; --red:#dc2626;
 }
-body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:13px}
-.topbar{background:var(--topbar);border-bottom:1px solid rgba(255,255,255,.07);padding:0 20px;height:52px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100}
-.topbar-logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#f0ede8;flex-shrink:0;text-decoration:none}
-.topbar-logo span{color:#e8531a}
-.topbar-nav{display:flex;gap:6px}
-.nav-link{padding:5px 10px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:6px;color:rgba(255,255,255,.5);text-decoration:none;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);transition:all .15s}
-.nav-link:hover{color:rgba(255,255,255,.9);background:rgba(255,255,255,.12)}
-.nav-link.active{background:rgba(238,98,22,.2);color:#ee6216;border-color:rgba(238,98,22,.4)}
-.topbar-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0}
-.theme-btn{padding:5px 9px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#f0ede8;cursor:pointer;font-size:14px}
-.page{max-width:1600px;margin:0 auto;padding:24px 24px 60px}
-.page-title{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;margin-bottom:4px}
-.page-sub{font-size:12px;color:var(--muted);margin-bottom:20px}
-/* pills */
-.filter-bar{display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap}
-.pill{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:50px;border:1px solid var(--border);background:var(--surface);font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);cursor:pointer;transition:all .12s;user-select:none}
-.pill:hover{border-color:var(--border2);color:var(--text)}
-.pill.active{color:var(--text);background:var(--surface2);border-color:var(--border2)}
-.pill.active.ptransit{color:var(--blue);background:var(--blue2);border-color:rgba(96,165,250,.4)}
-.pill.active.pdelivered{color:var(--green);background:var(--green2);border-color:rgba(34,197,94,.4)}
-.pill.active.pexception{color:var(--red);background:var(--red2);border-color:rgba(239,68,68,.4)}
-.pill.active.pout{color:var(--yellow);background:var(--yellow2);border-color:rgba(250,204,21,.4)}
-.pdot{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0}
-.pill.ptransit .pdot{background:var(--blue)}
-.pill.pdelivered .pdot{background:var(--green)}
-.pill.pexception .pdot{background:var(--red)}
-.pill.pout .pdot{background:var(--yellow)}
-.pill:not(.active) .pdot{background:var(--muted)}
-.pcount{font-family:'Syne',sans-serif;font-size:13px;color:var(--text)}
-/* controls */
-.controls{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
-.swrap{position:relative;flex:1;min-width:180px;max-width:300px}
-.swrap svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);opacity:.3;pointer-events:none}
-.sinput{width:100%;padding:7px 10px 7px 30px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:12px;font-family:inherit;outline:none}
-.sinput:focus{border-color:var(--border2)}
-.sinput::placeholder{color:var(--muted2)}
-.cbtn{padding:7px 12px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--muted);font-size:11px;font-weight:700;font-family:inherit;letter-spacing:.04em;cursor:pointer;transition:all .12s;display:flex;align-items:center;gap:5px}
-.cbtn:hover{border-color:var(--border2);color:var(--text)}
-.cbtn.spinning svg{animation:spin .7s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.sselect{padding:7px 10px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:12px;font-family:inherit;outline:none;cursor:pointer}
-/* table */
-.twrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
-.cols{grid-template-columns:4px 180px 70px 140px 150px 2fr 106px 110px 120px 96px}
-.thead{display:grid;align-items:center;padding:0 16px;height:34px;border-bottom:1px solid var(--border);background:var(--surface2)}
-.thead.cols{padding:0 16px}
-.th{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:0 6px}
-.trow{display:grid;align-items:stretch;padding:0 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;position:relative}
-.trow:last-child{border-bottom:none}
-.trow:hover{background:var(--surface2)}
-.trow.open-row{background:var(--surface2)}
-@keyframes fadeUp{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
-/* stripe */
-.stripe{border-radius:2px;width:4px;margin-right:8px;align-self:stretch;flex-shrink:0}
-.s-in_transit{background:var(--blue)}
-.s-out_for_delivery{background:var(--yellow)}
-.s-delivered{background:var(--green)}
-.s-exception{background:var(--red)}
-.s-pending,.s-unknown,.s-null{background:var(--border2)}
-/* cells */
-.cell{padding:14px 6px;display:flex;flex-direction:column;justify-content:center;gap:3px;min-width:0}
-.dname{font-size:12px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
-.drep{font-size:10px;color:var(--muted)}
-.cbadge{display:inline-block;padding:2px 7px;font-size:10px;font-weight:700;letter-spacing:.06em;background:var(--surface3);border:1px solid var(--border2);border-radius:4px;color:var(--muted)}
-.tnum{font-family:var(--mono);font-size:11px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tcopy{font-size:9px;font-weight:700;background:none;border:none;color:var(--muted);cursor:pointer;font-family:inherit;padding:0;letter-spacing:.04em;text-transform:uppercase}
-.tcopy:hover{color:var(--text)}
-.tcopy.copied{color:var(--green)}
-.dv{font-size:12px;font-weight:500;color:var(--text);font-family:var(--mono)}
-.eta-soon{color:var(--yellow);font-weight:700}
-.eta-today{color:var(--green);font-weight:700}
-.eta-past{color:var(--muted)}
-.eta-del{color:var(--green);font-weight:700;font-size:11px}
-.notrack{color:var(--muted2);font-style:italic;font-size:11px}
-.sbadge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:50px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
-.bdot{width:5px;height:5px;border-radius:50%;background:currentColor}
-.b-in_transit{background:var(--blue2);color:var(--blue)}
-.b-out_for_delivery{background:var(--yellow2);color:var(--yellow)}
-.b-delivered{background:var(--green2);color:var(--green)}
-.b-exception{background:var(--red2);color:var(--red)}
-.b-pending,.b-unknown,.b-null{background:var(--surface3);color:var(--muted)}
-.acts{display:flex;align-items:center;justify-content:flex-end;gap:4px}
-.ab{padding:4px 8px;font-size:10px;font-weight:700;font-family:inherit;letter-spacing:.04em;background:var(--surface3);border:1px solid var(--border);border-radius:5px;color:var(--muted);cursor:pointer;text-decoration:none;transition:all .1s;display:inline-flex;align-items:center}
-.ab:hover{color:var(--text);border-color:var(--border2)}
-.ctime{font-size:9px;color:var(--muted2);margin-top:1px}
-/* expand */
-.expand{display:none;border-bottom:1px solid var(--border);background:var(--surface2);padding:10px 20px 14px 38px}
-.expand.eopen{display:block;animation:fadeUp .15s ease}
-.einner{display:flex;gap:28px;flex-wrap:wrap}
-.esec{display:flex;flex-direction:column;gap:2px}
-.elabel{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2);margin-bottom:2px}
-.eval{font-size:12px;color:var(--text);line-height:1.4;max-width:380px}
-.eval.mono{font-family:var(--mono);font-size:11px}
-/* skeleton */
-.skel{height:var(--row-h);background:var(--surface);border-bottom:1px solid var(--border);position:relative;overflow:hidden}
-.skel::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.03),transparent);animation:shimmer 1.4s ease infinite}
-@keyframes shimmer{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
-.empty{padding:60px 20px;text-align:center;color:var(--muted)}
-.emico{font-size:32px;margin-bottom:10px;opacity:.4}
+body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; -webkit-font-smoothing:antialiased; }
+.topbar { display:flex; align-items:center; padding:0 20px; min-height:52px; background:#1a1a1a; border-bottom:1px solid rgba(255,255,255,.1); position:sticky; top:0; z-index:200; gap:10px; }
+.topbar-logo { font-family:'Syne',sans-serif; font-size:20px; font-weight:800; color:#f0ede8; flex-shrink:0; margin-right:4px; }
+.topbar-logo span { color:#e8531a; }
+.topbar-nav { display:flex; gap:5px; align-items:center; flex:1; }
+.nav-link { padding:5px 10px; font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; border-radius:6px; color:rgba(255,255,255,.5); text-decoration:none; transition:.15s; white-space:nowrap; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); }
+.nav-link:hover { background:rgba(255,255,255,.12); color:rgba(255,255,255,.9); }
+.nav-link.active { background:rgba(238,98,22,.2); color:#ee6216; border-color:rgba(238,98,22,.4); }
+.topbar-spacer { flex:1; }
+.theme-btn { padding:5px 9px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:6px; color:#f0ede8; cursor:pointer; font-size:14px; line-height:1; flex-shrink:0; }
+.main { display:flex; height:calc(100vh - 52px); overflow:hidden; }
+.board-wrap { flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0; }
+.board-toolbar { padding:10px 16px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex-shrink:0; }
+.search-box { flex:1; min-width:180px; max-width:300px; position:relative; }
+.search-box input { width:100%; padding:7px 12px 7px 30px; background:var(--surface2); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:12px; font-family:inherit; outline:none; }
+.search-box input:focus { border-color:var(--orange-border); }
+.search-box::before { content:"🔍"; position:absolute; left:9px; top:50%; transform:translateY(-50%); font-size:11px; pointer-events:none; }
+.rep-select { padding:7px 10px; background:var(--surface2); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:12px; font-family:inherit; outline:none; cursor:pointer; }
+.board-count { font-size:11px; color:var(--muted); margin-left:auto; }
+.board { flex:1; display:grid; grid-template-columns:repeat(4,minmax(170px,1fr)); gap:0; overflow-x:auto; overflow-y:hidden; }
+.col { display:flex; flex-direction:column; border-right:1px solid var(--border); overflow:hidden; }
+.col:last-child { border-right:none; }
+.col-header { padding:10px 12px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+.col-title { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.07em; }
+.col-count { font-size:10px; font-weight:700; padding:2px 7px; border-radius:10px; }
+.col-cards { flex:1; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:6px; }
+.col-sent .col-title { color:#ee6216; } .col-sent .col-count { background:rgba(238,98,22,.12); color:#ee6216; }
+.col-verbal .col-title { color:#f59e0b; } .col-verbal .col-count { background:rgba(245,158,11,.12); color:#f59e0b; }
+.col-won .col-title { color:#22c55e; } .col-won .col-count { background:rgba(34,197,94,.12); color:#22c55e; }
+.col-shipped .col-title { color:#3b82f6; } .col-shipped .col-count { background:rgba(59,130,246,.12); color:#3b82f6; }
+.col-lost .col-title { color:var(--muted); } .col-lost .col-count { background:rgba(239,68,68,.08); color:var(--muted); }
+.deal-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:10px 12px; cursor:pointer; transition:border-color .15s, box-shadow .15s; }
+.deal-card:hover { border-color:var(--orange-border); box-shadow:0 2px 8px rgba(0,0,0,.12); }
+.deal-card.active { border-color:var(--orange); box-shadow:0 0 0 1px var(--orange); }
+.deal-card.accepted { border-color:rgba(34,197,94,.35); background:var(--green-dim); }
+.card-name { font-size:12px; font-weight:700; color:var(--text); line-height:1.3; margin-bottom:4px; }
+.card-mdl  { font-size:10px; font-family:var(--mono); color:var(--text2); margin-bottom:4px; }
+.card-meta { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
+.card-amount { font-size:11px; font-weight:700; color:var(--orange); }
+.card-rep    { font-size:10px; color:var(--muted); }
+.card-age    { font-size:10px; color:var(--muted); margin-left:auto; }
+.card-pay    { font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; }
+.card-quote  { font-size:9px; font-family:var(--mono); color:var(--muted); margin-top:3px; }
+.card-unintegrated-dot { width:6px; height:6px; border-radius:50%; background:var(--muted); opacity:.4; flex-shrink:0; margin-left:auto; margin-top:2px; }
+.deal-card.unintegrated { opacity:.65; }
+.deal-card.unintegrated .card-name { color:var(--text2); }
+.filter-toggle { padding:5px 10px; font-size:11px; font-weight:600; border-radius:5px; cursor:pointer; font-family:inherit; background:var(--surface2); border:1px solid var(--border); color:var(--muted); transition:.15s; white-space:nowrap; }
+.filter-toggle.active { background:rgba(238,98,22,.12); border-color:var(--orange-border); color:var(--orange); }
+.hub-panel { width:480px; flex-shrink:0; border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+.hub-empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; }
+.hub-empty-icon { font-size:40px; opacity:.2; }
+.hub-empty-text { font-size:13px; color:var(--muted); }
+.hub-scroll { flex:1; overflow-y:auto; }
+.hub-header { padding:18px 20px 14px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--surface); z-index:10; }
+.hub-name { font-size:17px; font-weight:800; color:var(--text); }
+.hub-meta { display:flex; align-items:center; gap:8px; margin-top:6px; flex-wrap:wrap; }
+.hub-actions { display:flex; gap:7px; margin-top:12px; flex-wrap:wrap; }
+.btn { padding:7px 14px; font-size:11px; font-weight:700; border-radius:6px; cursor:pointer; font-family:inherit; border:none; transition:.15s; text-decoration:none; display:inline-flex; align-items:center; gap:4px; }
+.btn-orange { background:var(--orange); color:#fff; }
+.btn-ghost  { background:var(--surface2); color:var(--text); border:1px solid var(--border); }
+.btn-ghost:hover { border-color:var(--orange-border); }
+.btn-green  { background:var(--green-dim); color:var(--green); border:1px solid rgba(34,197,94,.3); }
+.pipeline { display:flex; margin:12px 20px; border-radius:7px; overflow:hidden; border:1px solid var(--border); }
+.pipe-step { flex:1; padding:8px 4px; text-align:center; font-size:10px; font-weight:700; cursor:pointer; transition:.12s; border-right:1px solid var(--border); user-select:none; }
+.pipe-step:last-child { border-right:none; }
+.next-action { margin:0 20px 12px; padding:10px 14px; border-radius:7px; display:flex; align-items:flex-start; gap:10px; background:var(--orange-dim); border:1px solid var(--orange-border); }
+.na-icon { font-size:16px; flex-shrink:0; margin-top:1px; }
+.na-label { font-size:9px; font-weight:800; color:var(--orange); text-transform:uppercase; letter-spacing:.07em; }
+.na-text  { font-size:12px; font-weight:600; color:var(--text); margin-top:2px; line-height:1.4; }
+.hub-section { padding:0 20px 16px; }
+.section-label { font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin-bottom:8px; }
+.row-card { display:flex; align-items:center; gap:10px; padding:9px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:7px; margin-bottom:5px; cursor:pointer; transition:border-color .12s; }
+.row-card:hover { border-color:var(--orange-border); }
+.row-card.row-accepted { background:var(--green-dim); border-color:rgba(34,197,94,.3); }
+.row-card.row-accepted:hover { border-color:var(--green); }
+.row-card.row-paid { background:var(--green-dim); border-color:rgba(34,197,94,.3); cursor:default; }
+.row-link { font-size:10px; color:var(--muted); text-decoration:none; padding:2px 7px; border-radius:4px; border:1px solid var(--border); flex-shrink:0; }
+.row-link:hover { border-color:var(--orange-border); color:var(--orange); }
+.row-date { font-size:10px; color:var(--muted); flex-shrink:0; }
+.row-badge { font-size:9px; font-weight:800; padding:2px 6px; border-radius:3px; text-transform:uppercase; letter-spacing:.05em; flex-shrink:0; }
+.admin-toggle { padding:0 20px 8px; }
+.admin-btn { background:none; border:none; color:var(--muted); font-size:11px; font-weight:600; cursor:pointer; font-family:inherit; text-transform:uppercase; letter-spacing:.06em; display:flex; align-items:center; gap:5px; padding:6px 0; }
+.admin-inner { padding:0 20px 16px; display:none; }
+.admin-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.admin-label { font-size:9px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; display:block; margin-bottom:5px; }
+.admin-select { width:100%; padding:7px 9px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; font-family:inherit; outline:none; cursor:pointer; }
+#toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:9999; display:flex; flex-direction:column; gap:6px; pointer-events:none; }
+.toast-msg { padding:9px 18px; border-radius:7px; font-size:12px; font-weight:600; color:#fff; opacity:0; transition:opacity .25s; white-space:nowrap; }
+.toast-msg.show { opacity:1; }
+.toast-success { background:#1a7a4a; } .toast-error { background:#7a1a1a; } .toast-info { background:#1a3a7a; }
+::-webkit-scrollbar { width:5px; height:5px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+.timeline-wrap { padding:0 0 8px; }
+.tl-item { display:flex; gap:10px; padding:7px 0; position:relative; }
+.tl-item::before { content:''; position:absolute; left:14px; top:30px; bottom:-7px; width:1px; background:var(--border); }
+.tl-item:last-child::before { display:none; }
+.tl-icon { width:28px; height:28px; border-radius:50%; background:var(--surface2); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0; z-index:1; }
+.tl-item.highlight .tl-icon { background:var(--green-dim); border-color:rgba(34,197,94,.3); }
+.tl-body { flex:1; min-width:0; padding-top:3px; }
+.tl-label { font-size:12px; font-weight:700; color:var(--text); line-height:1.3; }
+.tl-item.highlight .tl-label { color:var(--green); }
+.tl-detail { font-size:10px; color:var(--muted); margin-top:1px; }
+.tl-time { font-size:10px; color:var(--muted); margin-top:2px; }
+.tl-amount { font-size:11px; font-weight:700; color:var(--orange); margin-top:1px; }
+
+/* Notifications */
+.notif-bell { position:relative; padding:5px 9px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:6px; color:#f0ede8; cursor:pointer; font-size:14px; line-height:1; transition:all .15s; flex-shrink:0; }
+.notif-bell:hover { background:rgba(255,255,255,.14); }
+.notif-badge { position:absolute; top:-4px; right:-4px; background:#ee6216; color:#fff; font-size:9px; font-weight:800; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 3px; }
+.notif-panel { position:fixed; top:52px; right:0; width:360px; height:calc(100vh - 52px); background:var(--surface); border-left:1px solid var(--border); box-shadow:-4px 0 20px rgba(0,0,0,.2); z-index:300; display:flex; flex-direction:column; transform:translateX(100%); transition:transform .25s ease; }
+.notif-panel.open { transform:translateX(0); }
+.notif-header { padding:14px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+.notif-title { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.07em; color:var(--text); }
+.notif-list { flex:1; overflow-y:auto; }
+.notif-item { padding:12px 18px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .1s; }
+.notif-item:hover { background:var(--surface2); }
+.notif-item.unread { border-left:3px solid var(--orange); }
+.notif-item.read { border-left:3px solid transparent; opacity:.7; }
+.notif-item-title { font-size:12px; font-weight:700; color:var(--text); margin-bottom:3px; }
+.notif-item-body { font-size:11px; color:var(--text2); line-height:1.4; }
+.notif-item-time { font-size:10px; color:var(--muted); margin-top:4px; }
+.notif-empty { padding:40px 20px; text-align:center; color:var(--muted); font-size:12px; }
 </style>
 </head>
 <body>
-<nav class="topbar">
-  <a href="/deals" class="topbar-logo">Whisper<span>Room</span></a>
-  <div class="topbar-nav">
-    <a href="/deals" class="nav-link">⬡ Deal Hub</a>
+
+<div class="topbar">
+  <div class="topbar-logo">Whisper<span>Room</span></div>
+  <nav class="topbar-nav">
+    <a href="/deals" class="nav-link active">⬡ Deal Hub</a>
     <a href="/quotes" class="nav-link">Quotes</a>
     <a href="/orders" class="nav-link">Orders</a>
-    <a href="/shipping" class="nav-link active">Shipping</a>
+    <a href="/shipping" class="nav-link">Shipping</a>
     <a href="/reports" class="nav-link">Reports</a>
+  <span id="appVersion" style="font-size:9px;font-weight:700;color:var(--muted,rgba(255,255,255,.25));letter-spacing:.06em;padding:2px 6px;border:1px solid rgba(255,255,255,.08);border-radius:4px;font-family:monospace;flex-shrink:0"></span>
+  </nav>
+  <div class="topbar-spacer"></div>
+  <div id="userBadge" style="display:none;align-items:center;gap:8px;flex-shrink:0">
+    <span id="userName" style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600"></span>
+    <a href="/auth/logout" style="padding:5px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.4);text-decoration:none;white-space:nowrap">Sign Out</a>
   </div>
-  <div class="topbar-right">
-    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀️</button>
-    <a href="/auth/logout" style="padding:5px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.4);text-decoration:none">Sign Out</a>
-  </div>
-</nav>
-<div class="page">
-  <div class="page-title">Shipments</div>
-  <div class="page-sub" id="pageSub">Loading…</div>
-  <div class="filter-bar">
-    <div class="pill active" onclick="setFilter('all',this)"><span class="pcount" id="cnt-all">—</span> All</div>
-    <div class="pill ptransit" onclick="setFilter('in_transit',this)"><span class="pdot"></span><span class="pcount" id="cnt-in_transit">—</span> In Transit</div>
-    <div class="pill pout" onclick="setFilter('out_for_delivery',this)"><span class="pdot"></span><span class="pcount" id="cnt-out_for_delivery">—</span> Out for Delivery</div>
-    <div class="pill pdelivered" onclick="setFilter('delivered',this)"><span class="pdot"></span><span class="pcount" id="cnt-delivered">—</span> Delivered</div>
-    <div class="pill pexception" onclick="setFilter('exception',this)"><span class="pdot"></span><span class="pcount" id="cnt-exception">—</span> Exception</div>
-    <div class="pill" onclick="setFilter('pending',this)"><span class="pdot"></span><span class="pcount" id="cnt-pending">—</span> Pending</div>
-  </div>
-  <div class="controls">
-    <div class="swrap">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input class="sinput" id="searchInput" placeholder="Search customer, tracking, rep…" oninput="renderTable()">
-    </div>
-    <select class="sselect" id="sortSelect" onchange="renderTable()">
-      <option value="date_desc">Date Shipped ↓</option>
-      <option value="date_asc">Date Shipped ↑</option>
-      <option value="status">Status</option>
-      <option value="amount_desc">Amount ↓</option>
-      <option value="eta">ETA</option>
-    </select>
-    <button class="cbtn" id="refreshBtn" onclick="loadBoard(true)">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
-      Refresh
-    </button>
-  </div>
-  <div class="twrap">
-    <div id="loadingRows"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
-    <div id="tableContent" style="display:none">
-      <div class="thead cols">
-        <div></div>
-        <div class="th" style="padding-left:4px">Customer</div>
-        <div class="th">Carrier</div>
-        <div class="th">Tracking</div>
-        <div class="th">Destination</div>
-        <div class="th">Last Event</div>
-        <div class="th">Shipped</div>
-        <div class="th">ETA / Delivered</div>
-        <div class="th">Status</div>
-        <div class="th" style="text-align:right">Actions</div>
+  <button onclick="newQuote()" style="padding:5px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(238,98,22,.2);border:1px solid rgba(238,98,22,.4);border-radius:6px;color:#ee6216;cursor:pointer;font-family:inherit;white-space:nowrap">+ New Quote</button>
+  <button class="notif-bell" id="notifBell" onclick="toggleNotifPanel()" title="Notifications">
+    🔔<span class="notif-badge" id="notifBadge" style="display:none">0</span>
+  </button>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">☀️</button>
+</div>
+
+<div class="main">
+  <div class="board-wrap">
+    <div class="board-toolbar">
+      <div class="search-box">
+        <input id="dealSearch" type="text" placeholder="Search name, company, quote #…" oninput="onSearch()">
       </div>
-      <div id="tableBody"></div>
+      <select class="rep-select" id="repFilter" onchange="onRepFilter()">
+        <option value="">All Reps</option>
+        <option value="36330944">Jill</option>
+        <option value="38143901">Sarah</option>
+        <option value="117442978">Travis</option>
+        <option value="36303670">Benton</option>
+        <option value="36320208">Gabe</option>
+        <option value="38732178">Kim</option>
+        <option value="38900892">Chet</option>
+        <option value="38732186">Jeromy</option>
+      </select>
+      <span class="board-count" id="boardCount"></span>
+      <button class="filter-toggle" id="hideUnintegratedBtn" onclick="toggleHideUnintegrated()" title="Toggle display of HubSpot-only deals with no quotes or orders">
+        ○ HubSpot Only
+      </button>
+    </div>
+    <div class="board" id="board">
+      <div style="padding:40px;text-align:center;color:var(--muted);grid-column:1/-1">Loading deals…</div>
+    </div>
+  </div>
+
+  <div class="hub-panel" id="hubPanel">
+    <div class="hub-empty" id="hubEmpty">
+      <div class="hub-empty-icon">⬡</div>
+      <div class="hub-empty-text">Select a deal</div>
+    </div>
+    <div id="hubContent" style="display:none" class="hub-scroll"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const REPS = {
+  '36330944':'Jill','38143901':'Sarah','117442978':'Travis',
+  '36303670':'Benton','36320208':'Gabe','38732178':'Kim',
+  '38900892':'Chet','38732186':'Jeromy'
+};
+const STAGES = {
+  'appointmentscheduled':'Sent Quote','qualifiedtobuy':'Updated Quote',
+  'contractsent':'Verbal Confirmation','closedwon':'Closed Won',
+  '845719':'Shipped','closedlost':'Closed Lost',
+};
+const COLUMNS = [
+  {key:'sent',   label:'Sent / Updated', stages:['appointmentscheduled','qualifiedtobuy'], cls:'col-sent'},
+  {key:'verbal', label:'Verbal Confirm', stages:['contractsent'],                         cls:'col-verbal'},
+  {key:'won',    label:'Closed Won',     stages:['closedwon'],                             cls:'col-won'},
+  {key:'shipped',label:'Shipped',        stages:['845719'],                                cls:'col-shipped'},
+
+];
+const PAY_COLORS = {paid:'#22c55e',po_received:'#f59e0b',not_paid:''};
+const PAY_LABELS = {paid:'✓ Paid',po_received:'PO Rcvd',not_paid:''};
+const PIPE_BG = {
+  appointmentscheduled:'#ee6216',qualifiedtobuy:'#ee6216',contractsent:'#f59e0b',
+  closedwon:'#22c55e','845719':'#3b82f6',closedlost:'#555'
+};
+
+let allDeals=[], filteredDeals=[], currentDealId=null, searchTimeout=null, currentRepFilter='';
+let hideUnintegrated = false;
+
+const fmt = n => '$'+parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
+const fmtAge = d => {
+  if(!d) return '';
+  const s=(Date.now()-new Date(d))/1000;
+  if(s<3600)  return Math.round(s/60)+'m';
+  if(s<86400) return Math.round(s/3600)+'h';
+  if(s<604800)return Math.round(s/86400)+'d';
+  return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'America/New_York'});
+};
+const fmtDate = d => d?new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'America/New_York'}):'—';
+
+async function loadDeals() {
+  try {
+    const qs=new URLSearchParams({limit:200});
+    if(currentRepFilter) qs.set('rep',currentRepFilter);
+    const res=await fetch('/api/deals/list?'+qs,{credentials:'include'});
+    const data=await res.json();
+    if(data.error) throw new Error(data.error);
+    allDeals=data.deals||[];
+    applyFilter();
+  } catch(e) {
+    document.getElementById('board').innerHTML=`<div style="padding:40px;color:#ef4444;grid-column:1/-1">Error: ${e.message}</div>`;
+  }
+}
+
+function applyFilter() {
+  const q=document.getElementById('dealSearch').value.trim().toLowerCase();
+  filteredDeals=!q?[...allDeals]:allDeals.filter(d=>
+    d.name?.toLowerCase().includes(q)||
+    d.latestQuote?.toLowerCase().includes(q)||
+    REPS[d.ownerId]?.toLowerCase().includes(q)
+  );
+  renderBoard();
+}
+
+function toggleHideUnintegrated() {
+  hideUnintegrated = !hideUnintegrated;
+  const btn = document.getElementById('hideUnintegratedBtn');
+  if (btn) {
+    btn.classList.toggle('active', hideUnintegrated);
+    btn.textContent = hideUnintegrated ? '● Hide HubSpot Only' : '○ HubSpot Only';
+  }
+  renderBoard();
+}
+
+function renderBoard() {
+  const board=document.getElementById('board');
+  board.innerHTML='';
+  let total=0;
+  COLUMNS.forEach(col => {
+    const deals=filteredDeals.filter(d=>col.stages.includes(d.stage))
+      .sort((a,b) => {
+        // Primary: most recently modified first
+        const tA = a.modified ? new Date(a.modified).getTime() : 0;
+        const tB = b.modified ? new Date(b.modified).getTime() : 0;
+        if (tB !== tA) return tB - tA;
+        // Secondary: larger amount first
+        return parseFloat(b.amount||0) - parseFloat(a.amount||0);
+      });
+    total+=deals.length;
+    const colEl=document.createElement('div');
+    colEl.className=`col ${col.cls}`;
+    colEl.innerHTML=`<div class="col-header"><span class="col-title">${col.label}</span><span class="col-count">${deals.length}</span></div>`;
+    const cardsEl=document.createElement('div');
+    cardsEl.className='col-cards';
+    if(!deals.length) {
+      cardsEl.innerHTML='<div style="font-size:11px;color:var(--muted);text-align:center;padding:16px 4px;font-style:italic">No deals</div>';
+    } else {
+      deals.forEach(d => {
+        // A deal is "unintegrated" if it has no quotes/orders in our system
+        // Only flag Sent/Updated Quote stages — not newer or further-along deals
+        const earlyStage = d.stage === 'appointmentscheduled' || d.stage === 'qualifiedtobuy';
+        const isUnintegrated = earlyStage && !d.latestQuote && !d.accepted && d.paymentStatus === 'not_paid';
+        if (hideUnintegrated && isUnintegrated) return;
+        const card=document.createElement('div');
+        const dealGreen = (d.accepted || d.paymentStatus==='paid' || d.paymentStatus==='po_received') && d.id!==currentDealId;
+        card.className='deal-card'+(d.id===currentDealId?' active':'')+(dealGreen?' accepted':'')+(isUnintegrated?' unintegrated':'');
+        card.onclick=()=>openDeal(d.id);
+        const ps=d.paymentStatus||'not_paid';
+        const payBg=ps==='paid'?'rgba(34,197,94,.12)':'rgba(245,158,11,.1)';
+        const payHtml=ps!=='not_paid'
+          ?`<span class="card-pay" style="color:${PAY_COLORS[ps]};background:${payBg};border:1px solid ${PAY_COLORS[ps]}">${PAY_LABELS[ps]}</span>`
+          :'';
+        card.innerHTML=`
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px">
+            <div class="card-name" style="flex:1">${d.name}</div>
+            ${isUnintegrated?`<div class="card-unintegrated-dot" title="HubSpot only — no quotes or orders in this system"></div>`:''}
+          </div>
+          ${d.firstMdl?`<div class="card-mdl">${d.firstMdl}</div>`:''}
+          <div class="card-meta">
+            ${d.amount&&parseFloat(d.amount)>0?`<span class="card-amount">${fmt(d.amount)}</span>`:''}
+            ${payHtml}
+            <span class="card-rep">${REPS[d.ownerId]||'—'}</span>
+            <span class="card-age">${fmtAge(d.modified)}</span>
+          </div>
+          ${d.latestQuote?`<div class="card-quote">${d.latestQuote}</div>`:''}
+        `;
+        cardsEl.appendChild(card);
+      });
+    }
+    colEl.appendChild(cardsEl);
+    board.appendChild(colEl);
+  });
+  document.getElementById('boardCount').textContent=`${total} deals`;
+}
+
+async function openDeal(dealId) {
+  currentDealId=dealId;
+  renderBoard();
+  _timelineLoaded = false;
+  document.getElementById('hubEmpty').style.display='none';
+  const hc=document.getElementById('hubContent');
+  hc.style.display='block';
+  hc.innerHTML='<div style="padding:48px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>';
+  try {
+    const res=await fetch(`/api/deals/${dealId}/hub`,{credentials:'include'});
+    const data=await res.json();
+    if(data.error) throw new Error(data.error);
+    renderHub(dealId,data);
+  } catch(e) {
+    hc.innerHTML=`<div style="padding:40px;color:#ef4444;font-size:13px">Error: ${e.message}</div>`;
+  }
+}
+
+function renderHub(dealId,data) {
+  window._lastHubData = data; // cache for invoice creation
+  const deal=allDeals.find(d=>d.id===dealId)||{};
+  // Store contact for email prefill
+  window._hubContact = data.contact || null;
+  const ps=data.paymentStatus||'not_paid';
+  const na={
+    appointmentscheduled:{icon:'📋',text:'Quote sent — follow up with the customer'},
+    qualifiedtobuy:      {icon:'📋',text:'Quote updated — follow up with customer'},
+    contractsent:        {icon:ps==='paid'||ps==='po_received'?'📦':'💳',
+                          text:ps==='paid'||ps==='po_received'?'Payment confirmed — process the order':'Quote accepted — collect payment (CC or PO)'},
+    closedwon:           {icon:'📦',text:'In production — ship when complete'},
+    '845719':            {icon:'✅',text:'Shipped — tracking active on shipping board'},
+  }[data.dealStage];
+
+  const pipeStages=[
+    {key:'appointmentscheduled',label:'Sent'},{key:'qualifiedtobuy',label:'Updated'},
+    {key:'contractsent',label:'Verbal'},{key:'closedwon',label:'Won'},{key:'845719',label:'Shipped'},
+  ];
+  const curIdx=pipeStages.findIndex(s=>s.key===data.dealStage);
+  const pipeHtml=pipeStages.map((s,i)=>{
+    const active=i===curIdx, past=i<curIdx;
+    const bg=active?PIPE_BG[s.key]||'#ee6216':past?'rgba(238,98,22,.15)':'var(--surface2)';
+    const color=active?'#fff':past?'rgba(238,98,22,.7)':'var(--muted)';
+    const border=active?PIPE_BG[s.key]||'#ee6216':past?'rgba(238,98,22,.2)':'var(--border)';
+    return `<div class="pipe-step" style="background:${bg};color:${color};border-color:${border}" onclick="doStageOverride('${s.key}','${s.label}')">${s.label}</div>`;
+  }).join('');
+
+  const payColor=PAY_COLORS[ps];
+  const payBadge=ps!=='not_paid'
+    ?`<span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;border:1px solid ${payColor};color:${payColor};background:${ps==='paid'?'rgba(34,197,94,.1)':'rgba(245,158,11,.1)'}">${ps==='paid'?'✓ Paid':'PO Received'}</span>`
+    :'<span style="font-size:11px;color:var(--muted)">Not Paid</span>';
+
+  const quotesHtml=!data.quotes?.length
+    ?'<div style="font-size:12px;color:var(--muted);font-style:italic;padding:6px 0">No quotes yet</div>'
+    :data.quotes.map(q=>{
+      const acc=q.accepted;
+      const qUrl=q.shareToken?`https://sales.whisperroom.com/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}`:'';
+      const dealPaid = (ps === 'paid');
+      const noteBar = acc && (q.acceptedFoam||q.acceptedHinge||q.acceptedNote) ? `
+        <div style="font-size:10px;color:var(--green);margin-top:2px;opacity:.8">
+          ${[q.acceptedFoam,q.acceptedHinge,q.acceptedNote?'"'+q.acceptedNote+'"':''].filter(Boolean).join(' · ')}
+        </div>` : '';
+      return `<div class="row-card ${acc?'row-accepted':''}" style="flex-direction:column;align-items:stretch;gap:6px;cursor:pointer" onclick="loadQuote('${q.quoteNumber}')">
+        <!-- Row 1: Quote #, Accepted, Amount, Date, View/Copy/Email, Load -->
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:700;color:var(--text);font-family:var(--mono)">${q.quoteNumber}</span>
+          ${acc?'<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>':''}
+          <span class="row-date">${fmtDate(q.date)}</span>
+          <div style="display:flex;gap:4px;margin-left:auto" onclick="event.stopPropagation()">
+            ${qUrl?`<a href="${qUrl}" target="_blank" class="row-link" title="View quote">View Quote ↗</a>`:''}
+            ${qUrl?`<button onclick="copyQuoteLink('${q.quoteNumber}','${q.shareToken||''}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit" title="Copy link">🔗</button>`:''}
+            <span style="font-size:10px;font-weight:700;color:${acc?'var(--green)':'var(--orange)'};padding:2px 4px">${acc?'✓ Load':'Load →'}</span>
+          </div>
+        </div>
+        <!-- Row 2: MDL + note on left, Invoice+Paid on right -->
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap" onclick="event.stopPropagation()">
+          ${q.firstMdl?`<span style="font-size:10px;color:var(--text2);font-family:var(--mono);font-weight:600">${q.firstMdl}</span>`:''}
+          <span style="font-size:12px;font-weight:700;color:${acc?'var(--green)':'var(--text)'}">${fmt(q.total)}</span>
+          ${noteBar}
+          <div style="margin-left:auto;display:flex;gap:5px">
+            <button onclick="createInvoiceForDeal(event,'${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:rgba(238,98,22,.1);font-family:inherit;color:var(--orange);border-color:var(--orange-border);font-weight:700;font-size:10px">+ Invoice</button>
+            ${dealPaid && (window._lastHubData?._paidQuoteNumber === q.quoteNumber || !window._lastHubData?._paidQuoteNumber)
+              ? `<span class="row-link" style="background:rgba(34,197,94,.12);color:var(--green);border-color:rgba(34,197,94,.3);font-weight:700;font-size:10px;cursor:default">✓ Paid</span>`
+              : `<button onclick="showPaymentPicker('${q.quoteNumber}',event)" class="row-link" style="cursor:pointer;background:none;font-family:inherit;color:var(--amber);border-color:rgba(245,158,11,.3);font-size:10px">$ Paid</button>`}
+            <button onclick="processOrderFromHub(event,'${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:rgba(59,130,246,.1);font-family:inherit;color:#3b82f6;border-color:rgba(59,130,246,.3);font-weight:700;font-size:10px">Process →</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+  const invHtml=!data.invoices?.length?'':`<div class="hub-section">
+    <div class="section-label">Invoices (${data.invoices.length})</div>
+    ${data.invoices.map(inv=>{
+      const paid=inv.status==='paid';
+      const sc={paid:'#22c55e',open:'#f59e0b',draft:'var(--muted)',voided:'var(--muted)',overdue:'#ef4444'}[inv.status]||'var(--muted)';
+      const pmLabel = inv.paymentMethod === 'ach' ? 'ACH' : inv.paymentMethod === 'card' ? 'CC' : '';
+      return `<div class="row-card ${paid?'row-paid':''}" style="cursor:default">
+        <div style="flex:1;min-width:0;display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:700;color:${paid?'var(--green)':'var(--text)'}">${inv.number||inv.title||'Invoice'}</span>
+          ${paid?'<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Paid</span>'
+                :`<span class="row-badge" style="color:${sc};border:1px solid ${sc}">${inv.status||'—'}</span>`}
+          ${paid && pmLabel ? `<span class="row-badge" style="background:rgba(99,102,241,.1);color:#818cf8;border:1px solid rgba(99,102,241,.25)">${pmLabel}</span>` : ''}
+          ${inv.quoteNumber?`<span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${inv.quoteNumber}</span>`:''}
+        </div>
+        <span style="font-size:12px;font-weight:700;color:${paid?'var(--green)':'var(--text)'}">${fmt(inv.amount)}</span>
+        <span class="row-date">${fmtDate(inv.date)}</span>
+        ${inv.paymentPageUrl?`<a href="${inv.paymentPageUrl}" target="_blank" class="row-link" style="color:var(--orange);border-color:var(--orange-border)">Invoice ↗</a>`:''}\n        ${inv.paymentPageUrl?`<button onclick="copyInvoiceLink('${inv.paymentPageUrl}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit" title="Copy invoice link">🔗</button>`:''}
+
+        ${inv.hubspotUrl?`<a href="${inv.hubspotUrl}" target="_blank" class="row-link">HS ↗</a>`:''}
+      </div>`;
+    }).join('')}
+  </div>`;
+
+  const ordHtml=!data.orders?.length?'':`<div class="hub-section">
+    <div class="section-label">Orders (${data.orders.length})</div>
+    ${data.orders.map(ord=>{
+      const shipped=ord.shipped?.tracking;
+      const matchQ=data.quotes?.find(q=>q.quoteNumber===ord.quoteNumber);
+      return `<div class="row-card ${shipped?'row-accepted':''}" style="cursor:default">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+            <span style="font-size:12px;font-weight:700;color:var(--text);font-family:var(--mono)">${ord.quoteNumber}</span>
+            ${shipped
+              ?`<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Shipped</span><span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${shipped}</span>`
+              :'<span class="row-badge" style="color:#f59e0b;border:1px solid rgba(245,158,11,.3)">In Production</span>'}
+          </div>
+          ${ord.foamColor?`<div style="font-size:10px;color:var(--muted);margin-top:2px">${ord.foamColor}${ord.hingePreference?' · '+ord.hingePreference:''}</div>`:''}
+        </div>
+        <div style="display:flex;gap:5px;flex-shrink:0">
+          ${matchQ?.shareToken?`<a href="https://sales.whisperroom.com/o/${encodeURIComponent(ord.quoteNumber)}?t=${matchQ.shareToken}" target="_blank" class="row-link">Order ↗</a>`:''}
+          <a href="/orders?openOrder=${encodeURIComponent(ord.quoteNumber)}" class="row-link" style="color:var(--orange);border-color:var(--orange-border)">Open in Orders →</a>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+
+  const stageOpts=Object.entries(STAGES).map(([k,v])=>`<option value="${k}" ${data.dealStage===k?'selected':''}>${v}</option>`).join('');
+
+  document.getElementById('hubContent').innerHTML=`
+    <div class="hub-header">
+      <!-- Row 1: Deal name + meta -->
+      <div class="hub-name">${deal.name||'Deal'}</div>
+      <div class="hub-meta">
+        ${deal.amount&&parseFloat(deal.amount)>0?`<span style="font-size:14px;font-weight:800;color:var(--orange)">${fmt(deal.amount)}</span>`:''}
+        ${data.dealStage?`<span style="font-size:10px;font-weight:700;padding:3px 7px;border-radius:4px;background:${PIPE_BG[data.dealStage]||'var(--surface2)'};color:#fff">${STAGES[data.dealStage]||data.dealStage}</span>`:''}
+        ${payBadge}
+        <span style="font-size:11px;color:var(--muted)">${REPS[deal.ownerId]||''}</span>
+      </div>
+      <!-- Row 2: Admin buttons -->
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px">
+        <a href="https://app.hubspot.com/contacts/5764220/deal/${dealId}" target="_blank" style="font-size:10px;color:var(--muted);text-decoration:none;padding:4px 8px;border-radius:5px;border:1px solid var(--border);flex-shrink:0">HS ↗</a>
+        ${data.driveFolderName ? `<button onclick="copyFolderPath('${data.driveFolderName.replace(/'/g,"\\'")}')" title="Copy local folder path to clipboard" style="font-size:10px;color:var(--muted);padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">📋 Copy Path</button>` : ''}
+        <button onclick="openMergeDeal('${dealId}')" title="Merge this deal into another deal" style="font-size:10px;color:#ef4444;padding:4px 8px;border-radius:5px;border:1px solid rgba(239,68,68,.3);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">⤤ Merge Into</button>
+        <button onclick="openMergeLegacy('${dealId}')" title="Merge a legacy AllContacts folder into this deal" style="font-size:10px;color:var(--muted);padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">📁 Merge Legacy</button>
+      </div>
+      <div class="hub-actions">
+        <button class="btn btn-orange" onclick="newQuoteForDeal('${dealId}','${(deal.name||'').replace(/'/g,"\\'")}')">+ New Quote</button>
+        ${data.quotes?.some(q=>q.accepted)?'<button class="btn btn-green" onclick="loadLatestAccepted(\''+dealId+'\')">Load Accepted</button>':''}
+        <a href="/orders" class="btn btn-ghost">Orders Board</a>
+      </div>
+    </div>
+    <div class="pipeline">${pipeHtml}</div>
+    ${na?`<div class="next-action"><div class="na-icon">${na.icon}</div><div><div class="na-label">Next Action</div><div class="na-text">${na.text}</div></div></div>`:''}
+    <div class="hub-section" style="margin-top:4px">
+      <div class="section-label">Quotes (${data.quotes?.length||0})</div>
+      ${quotesHtml}
+    </div>
+    ${invHtml}${ordHtml}
+    <div style="padding:0 20px 12px;border-top:1px solid var(--border);margin-top:4px">
+      <button onclick="toggleTimeline()" style="background:none;border:none;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:5px;padding:12px 0;width:100%">
+        📅 Activity Timeline <span id="timelineCaret" style="font-size:9px">▼</span>
+      </button>
+      <div id="timelineWrap" style="display:none">
+        <div id="timelineContent" class="timeline-wrap">
+          <div style="font-size:12px;color:var(--muted);text-align:center;padding:16px">Loading…</div>
+        </div>
+      </div>
+    </div>
+    <div class="admin-toggle">
+      <button class="admin-btn" onclick="toggleAdmin()">⚙ Admin Override <span id="adminCaret">▼</span></button>
+    </div>
+    <div class="admin-inner" id="adminInner">
+      <div class="admin-grid">
+        <div>
+          <label class="admin-label">Payment Status</label>
+          <select class="admin-select" onchange="doPaymentStatus(this.value)">
+            <option value="not_paid" ${ps==='not_paid'?'selected':''}>Not Paid</option>
+            <option value="po_received" ${ps==='po_received'?'selected':''}>PO Received</option>
+            <option value="paid" ${ps==='paid'?'selected':''}>Paid</option>
+          </select>
+        </div>
+        <div>
+          <label class="admin-label">Stage Override</label>
+          <select class="admin-select" id="adminStageSelect" onchange="doStageOverride(this.value,this.options[this.selectedIndex].text)">${stageOpts}</select>
+        </div>
+      </div>
+      <div class="admin-status" id="adminStatus"></div>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <button onclick="doDeleteDeal()" style="width:100%;padding:8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:6px;color:#ef4444;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
+          🗑 Delete Deal &amp; All Quotes
+        </button>
+      </div>
+    </div>
+    <div style="height:20px"></div>
+  `;
+}
+
+function loadQuote(quoteNumber) {
+  if(!quoteNumber) return;
+  window.location.href=`/quotes?loadQuote=${encodeURIComponent(quoteNumber)}&fromHub=${currentDealId||''}`; 
+}
+function loadLatestAccepted(dealId) {
+  const d=allDeals.find(d=>d.id===dealId);
+  if(d?.latestQuote) loadQuote(d.latestQuote);
+}
+function newQuote() { window.location.href='/quotes'; }
+function newQuoteForDeal(dealId,dealName) {
+  window.location.href=`/quotes?dealId=${dealId}&dealName=${encodeURIComponent(dealName)}&fromHub=${dealId}`;
+}
+
+// ── Timeline ───────────────────────────────────────────────────────
+let _timelineLoaded = false;
+
+function toggleTimeline() {
+  const wrap  = document.getElementById('timelineWrap');
+  const caret = document.getElementById('timelineCaret');
+  const open  = wrap.style.display === 'block';
+  wrap.style.display  = open ? 'none' : 'block';
+  caret.textContent   = open ? '▼' : '▲';
+  if (!open && !_timelineLoaded) {
+    _timelineLoaded = true;
+    loadTimeline();
+  }
+}
+
+async function loadTimeline() {
+  if (!currentDealId) return;
+  const el = document.getElementById('timelineContent');
+  el.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:16px">Loading…</div>';
+  try {
+    const res  = await fetch(`/api/deals/${currentDealId}/timeline`, { credentials:'include' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    renderTimeline(data.events || []);
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:var(--red);padding:12px">Error: ${e.message}</div>`;
+  }
+}
+
+function renderTimeline(events) {
+  const el = document.getElementById('timelineContent');
+  if (!events.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);font-style:italic;padding:8px 0">No activity recorded yet</div>';
+    return;
+  }
+
+  const fmtTs = iso => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'America/New_York'})
+      + ' · ' + d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
+  };
+  const fmtMoney = n => n ? ' $'+parseFloat(n).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}) : '';
+
+  // Render newest first
+  const reversed = [...events].reverse();
+  el.className = 'timeline-wrap';
+  el.innerHTML = reversed.map(e => `
+    <div class="tl-item${e.highlight?' highlight':''}">
+      <div class="tl-icon">${e.icon||'·'}</div>
+      <div class="tl-body">
+        <div class="tl-label">${e.label||''}</div>
+        ${e.detail?`<div class="tl-detail">${e.detail}</div>`:''}
+        ${e.amount?`<div class="tl-amount">${fmtMoney(e.amount)}</div>`:''}
+        ${e.rep?`<div class="tl-detail">${e.rep}</div>`:''}
+        <div class="tl-time">${fmtTs(e.at)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function copyQuoteLink(quoteNumber, shareToken) {
+  if (!shareToken) { showToast('No share token — push quote first', 'error'); return; }
+  const url = `https://sales.whisperroom.com/q/${encodeURIComponent(quoteNumber)}?t=${shareToken}`;
+  navigator.clipboard?.writeText(url).then(() => showToast('Link copied!', 'success'))
+    .catch(() => { prompt('Copy link:', url); });
+}
+
+function copyInvoiceLink(url) {
+  if (!url) { showToast('No invoice link available', 'error'); return; }
+  navigator.clipboard?.writeText(url).then(() => showToast('Invoice link copied!', 'success'))
+    .catch(() => { prompt('Copy invoice link:', url); });
+}
+
+function emailQuote(quoteNumber, shareToken) {
+  if (!shareToken) { showToast('No share token — push quote first', 'error'); return; }
+  const deal    = allDeals.find(d => d.id === currentDealId) || {};
+  const contact = window._hubContact || {};
+  const toEmail = contact.email || '';
+  const name    = [contact.firstName, contact.lastName].filter(Boolean).join(' ') || contact.company || 'there';
+  const url     = `https://sales.whisperroom.com/q/${encodeURIComponent(quoteNumber)}?t=${shareToken}`;
+  const subj    = encodeURIComponent(`Your WhisperRoom Quote — ${deal.name || quoteNumber}`);
+  const body    = encodeURIComponent(`Hi ${name},\n\nPlease find your WhisperRoom quote at the link below:\n\n${url}\n\nYou can review and accept your quote directly through the link above.\n\nIf you have any questions, please don't hesitate to reach out.\n\nBest regards,\nWhisperRoom, Inc.\n1-800-200-8168`);
+  window.open(`mailto:${toEmail}?subject=${subj}&body=${body}`, '_blank');
+}
+
+function emailInvoiceLink(invoiceUrl) {
+  const deal    = allDeals.find(d => d.id === currentDealId) || {};
+  const contact = window._hubContact || {};
+  const toEmail = contact.email || '';
+  const name    = [contact.firstName, contact.lastName].filter(Boolean).join(' ') || contact.company || 'there';
+  const subj    = encodeURIComponent(`Your WhisperRoom Invoice — ${deal.name || ''}`);
+  const body    = encodeURIComponent(`Hi ${name},\n\nPlease find your WhisperRoom invoice at the link below:\n\n${invoiceUrl}\n\nYou can view and pay your invoice securely through the link above.\n\nBest regards,\nWhisperRoom, Inc.\n1-800-200-8168`);
+  window.open(`mailto:${toEmail}?subject=${subj}&body=${body}`, '_blank');
+}
+
+async function createInvoiceForDeal(event, quoteNumber) {
+  event.stopPropagation();
+  if (!currentDealId) return;
+
+  // Find the accepted quote's snapshot data from the hub cache
+  const hubData = window._lastHubData;
+  const q = hubData?.quotes?.find(q => q.quoteNumber === quoteNumber) || hubData?.quotes?.find(q => q.accepted);
+  if (!q) { showToast('No accepted quote found', 'error'); return; }
+
+  // Fetch full snapshot for line items
+  if (!confirm(`Create invoice for ${quoteNumber}?`)) return;
+  const btn = event.target;
+  btn.textContent = '...';
+  btn.disabled = true;
+  try {
+    // Load snapshot from history endpoint
+    const snapRes = await fetch(`/api/quote-snapshot/${encodeURIComponent(q.quoteNumber)}`, { credentials:'include' });
+    const snap = await snapRes.json();
+    if (snap.error) throw new Error(snap.error);
+
+    const res = await fetch('/api/create-invoice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        dealId:     currentDealId,
+        quoteNumber: q.quoteNumber,
+        lineItems:  snap.lineItems  || [],
+        freight:    snap.freight    || null,
+        tax:        snap.tax        || null,
+        discount:   snap.discount   || { type:'pct', value:0 },
+        customer:   snap.customer   || {},
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast('✓ Invoice created!', 'success');
+      // Reload hub to show new invoice
+      setTimeout(() => openDeal(currentDealId), 800);
+    } else {
+      throw new Error(data.error || 'Invoice creation failed');
+    }
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    btn.textContent = '+ Invoice';
+    btn.disabled = false;
+  }
+}
+
+function processOrderFromHub(event, quoteNumber) {
+  event.stopPropagation();
+  if (!currentDealId) return;
+  window.location.href = `/quotes?loadQuote=${encodeURIComponent(quoteNumber)}&fromHub=${currentDealId}`;
+}
+
+function showPaymentPicker(quoteNumber, event) {
+  event.stopPropagation();
+  // Remove any existing picker
+  document.querySelectorAll('.payment-picker').forEach(el => el.remove());
+  const picker = document.createElement('div');
+  picker.className = 'payment-picker';
+  picker.style.cssText = 'position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:1000;min-width:150px;overflow:hidden';
+  const options = [
+    { value:'not_paid',   label:'Not Paid',    color:'var(--muted)' },
+    { value:'po_received',label:'PO Received', color:'var(--amber)' },
+    { value:'paid',       label:'✓ Paid',       color:'var(--green)' },
+  ];
+  options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.style.cssText = `display:block;width:100%;padding:9px 16px;background:none;border:none;text-align:left;font-size:12px;font-weight:600;color:${opt.color};cursor:pointer;font-family:inherit;border-bottom:1px solid var(--border)`;
+    btn.textContent = opt.label;
+    btn.onmouseenter = () => btn.style.background = 'var(--surface2)';
+    btn.onmouseleave = () => btn.style.background = 'none';
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      picker.remove();
+      setPaymentStatus(quoteNumber, opt.value);
+    };
+    picker.appendChild(btn);
+  });
+  // Remove last border
+  picker.lastChild.style.borderBottom = 'none';
+  // Position near button
+  const rect = event.target.getBoundingClientRect();
+  picker.style.left = rect.left + 'px';
+  picker.style.top  = (rect.bottom + 4) + 'px';
+  document.body.appendChild(picker);
+  // Close on outside click
+  setTimeout(() => document.addEventListener('click', () => picker.remove(), { once: true }), 0);
+}
+
+async function setPaymentStatus(quoteNumber, status) {
+  if (!currentDealId) return;
+  try {
+    const res = await fetch(`/api/deals/${currentDealId}/payment-status`, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'}, credentials: 'include',
+      body: JSON.stringify({ status })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    if (status === 'paid' && window._lastHubData) window._lastHubData._paidQuoteNumber = quoteNumber;
+    const d = allDeals.find(d => d.id === currentDealId);
+    if (d) { d.paymentStatus = status; renderBoard(); }
+    const labels = { paid:'✓ Paid', po_received:'PO Received', not_paid:'Not Paid' };
+    showToast(`${labels[status]} set`, 'success');
+    setTimeout(() => openDeal(currentDealId), 600);
+  } catch(e) { showToast('Error: '+e.message, 'error'); }
+}
+
+async function markQuotePaid(quoteNumber) {
+  showPaymentPicker(quoteNumber, { target: document.body, stopPropagation:()=>{} });
+}
+
+function toggleAdmin() {
+  const inner=document.getElementById('adminInner');
+  const caret=document.getElementById('adminCaret');
+  const open=inner.style.display==='block';
+  inner.style.display=open?'none':'block';
+  if(caret) caret.textContent=open?'▼':'▲';
+}
+function setAdminStatus(msg,color) {
+  const el=document.getElementById('adminStatus');
+  if(el){el.textContent=msg;el.style.color=color||'var(--muted)';}
+}
+async function doPaymentStatus(status) {
+  if(!currentDealId) return;
+  setAdminStatus('Saving…');
+  try {
+    const res=await fetch(`/api/deals/${currentDealId}/payment-status`,{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({status})});
+    const data=await res.json();
+    if(!data.success) throw new Error(data.error);
+    setAdminStatus('✓ Saved','var(--green)');
+    const d=allDeals.find(d=>d.id===currentDealId);
+    if(d){d.paymentStatus=status;renderBoard();}
+    setTimeout(()=>openDeal(currentDealId),600);
+  } catch(e){setAdminStatus('Error: '+e.message,'var(--red)');}
+}
+async function doDeleteDeal() {
+  if (!currentDealId) return;
+  const deal = allDeals.find(d => d.id === currentDealId);
+  const name = deal?.name || currentDealId;
+  if (!confirm(`Permanently delete "${name}" and ALL its quotes from the database and HubSpot?
+
+This cannot be undone.`)) return;
+  // Second confirmation for safety
+  if (!confirm(`Are you sure? This will delete the HubSpot deal and all associated DB records for "${name}".`)) return;
+  setAdminStatus('Deleting…');
+  try {
+    const res = await fetch(`/api/deals/${currentDealId}/delete`, {
+      method: 'DELETE',
+      credentials: 'include'
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    showToast(`"${name}" deleted`, 'success');
+    // Remove from local list and re-render
+    allDeals = allDeals.filter(d => d.id !== currentDealId);
+    filteredDeals = filteredDeals.filter(d => d.id !== currentDealId);
+    currentDealId = null;
+    document.getElementById('hubEmpty').style.display = 'flex';
+    document.getElementById('hubContent').style.display = 'none';
+    renderBoard();
+  } catch(e) {
+    setAdminStatus('Error: ' + e.message, 'var(--red)');
+    showToast('Delete failed: ' + e.message, 'error');
+  }
+}
+
+async function doStageOverride(stage,label) {
+  if(!currentDealId) return;
+  if(!confirm(`Move deal to "${label||STAGES[stage]||stage}"?`)){
+    const sel=document.getElementById('adminStageSelect');
+    const d=allDeals.find(d=>d.id===currentDealId);
+    if(sel&&d) sel.value=d.stage||'';
+    return;
+  }
+  setAdminStatus('Saving…');
+  try {
+    const res=await fetch(`/api/deals/${currentDealId}/stage`,{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({stage})});
+    const data=await res.json();
+    if(!data.success) throw new Error(data.error);
+    setAdminStatus('✓ Stage updated','var(--green)');
+    const d=allDeals.find(d=>d.id===currentDealId);
+    if(d){d.stage=stage;renderBoard();}
+    setTimeout(()=>openDeal(currentDealId),600);
+  } catch(e){setAdminStatus('Error: '+e.message,'var(--red)');}
+}
+function onSearch() {
+  clearTimeout(searchTimeout);
+  const q = document.getElementById('dealSearch').value.trim();
+  if (q.length === 0) {
+    // Back to cached deals
+    filteredDeals = [...allDeals];
+    renderBoard();
+  } else if (q.length >= 2) {
+    // Live HubSpot search for full history
+    searchTimeout = setTimeout(() => searchAllDeals(q), 300);
+  }
+}
+
+async function searchAllDeals(q) {
+  document.getElementById('boardCount').textContent = 'Searching…';
+  try {
+    const qs = new URLSearchParams({ q, limit: 50 });
+    if (currentRepFilter) qs.set('rep', currentRepFilter);
+    const res  = await fetch('/api/deals/list?' + qs, { credentials: 'include' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    filteredDeals = data.deals || [];
+    renderBoard();
+  } catch(e) {
+    document.getElementById('boardCount').textContent = 'Search error';
+  }
+}
+function onRepFilter() { currentRepFilter=document.getElementById('repFilter').value; loadDeals(); }
+function showToast(msg,type='info') {
+  const t=document.getElementById('toast');
+  const el=document.createElement('div');
+  el.className=`toast-msg toast-${type}`;
+  el.textContent=msg;
+  t.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  setTimeout(()=>{el.classList.remove('show');setTimeout(()=>el.remove(),300);},3000);
+}
+function toggleTheme() {
+  const isLight=document.documentElement.classList.toggle('light');
+  document.getElementById('themeBtn').textContent=isLight?'🌙':'☀️';
+  localStorage.setItem('wr-theme',isLight?'light':'dark');
+}
+if(localStorage.getItem('wr-theme')==='light'){
+  document.documentElement.classList.add('light');
+  document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('themeBtn');if(b)b.textContent='🌙';});
+}
+loadDeals();
+const _p=new URLSearchParams(window.location.search);
+const _od=_p.get('dealId');
+if(_od) setTimeout(()=>openDeal(_od),900);
+
+// ── Session user ──────────────────────────────────────────────────
+async function loadCurrentUser() {
+  try {
+    const res  = await fetch('/api/me', { credentials:'include' });
+    const data = await res.json();
+    if (data.name) {
+      const badge = document.getElementById('userBadge');
+      const name  = document.getElementById('userName');
+      if (badge) badge.style.display = 'flex';
+      if (name)  name.textContent = data.name;
+    }
+    // Auto-filter to logged-in rep's deals (they can clear it to see all)
+    if (data.ownerId) {
+      const repSel = document.getElementById('repFilter');
+      if (repSel) {
+        repSel.value = data.ownerId;
+        currentRepFilter = data.ownerId;
+      }
+    }
+  } catch(e) {}
+}
+loadCurrentUser();
+
+// Auto-redirect to login on 401 (session expired or revoked)
+const _origFetch = window.fetch;
+window.fetch = async function(...args) {
+  const res = await _origFetch(...args);
+  if (res.status === 401) {
+    const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
+    if (url.startsWith('/api/')) {
+      console.warn('401 on', url, '— redirecting to login');
+      window.location.href = '/';
+    }
+  }
+  return res;
+};
+
+
+// ── App version ───────────────────────────────────────────────────
+fetch('/api/version').then(r=>r.json()).then(d=>{
+  const el=document.getElementById('appVersion');
+  if(el&&d.version) el.textContent='v'+d.version;
+}).catch(()=>{});
+</script>
+
+<div class="notif-panel" id="notifPanel">
+  <div class="notif-header">
+    <span class="notif-title">🔔 Notifications</span>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button onclick="markAllRead()" style="font-size:10px;color:var(--muted);background:none;border:none;cursor:pointer;font-family:inherit;padding:0">Mark all read</button>
+      <button onclick="toggleNotifPanel()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0 4px">✕</button>
+    </div>
+  </div>
+  <div class="notif-list" id="notifList">
+    <div class="notif-empty">No notifications</div>
+  </div>
+</div>
+<!-- ── Merge Deal Modal ───────────────────────────────────────────── -->
+<div id="mergeDealModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:400;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border-radius:14px;padding:28px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+    <h2 style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px">⤴ Merge Into Deal</h2>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Wrong deal: <span id="mergeDealSourceName" style="color:#ef4444;font-weight:700"></span></div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:20px;padding:8px 10px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);border-radius:6px">
+      All quotes and orders will move to the target deal. The wrong deal will be permanently deleted from HubSpot.
+    </div>
+
+    <!-- Step 1: Search for target deal -->
+    <div id="mergeDealStep1">
+      <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px">Search for the correct deal</label>
+      <div style="display:flex;gap:8px">
+        <input id="mergeDealSearch" type="text" placeholder="Company name or deal name..."
+          style="flex:1;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none"
+          oninput="mergeDealSearchDebounce()" />
+        <button onclick="runMergeDealSearch()" style="padding:9px 14px;background:var(--orange);color:white;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Search</button>
+      </div>
+      <div id="mergeDealResults" style="margin-top:10px;max-height:220px;overflow-y:auto"></div>
+      <div style="margin-top:16px;text-align:right">
+        <button onclick="closeMergeDeal()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Confirm -->
+    <div id="mergeDealStep2" style="display:none">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Merge into this deal</div>
+        <div id="mergeDealTargetName" style="font-size:15px;font-weight:800;color:var(--green);margin-bottom:6px"></div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.5">
+          ✓ All quotes &amp; orders → moved to this deal<br>
+          ✓ Drive folder contents → merged<br>
+          ✗ Wrong deal → permanently deleted from HubSpot
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="mergeDealConfirmBtn" onclick="confirmMergeDeal()" style="flex:1;padding:13px;background:#ef4444;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">⤴ Confirm Merge &amp; Delete Wrong Deal</button>
+        <button onclick="mergeDealBack()" style="padding:13px 14px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit">← Back</button>
+      </div>
     </div>
   </div>
 </div>
+
 <script>
-let allShipments=[];
-let activeFilter='all';
-
-async function loadBoard(force=false){
-  const btn=document.getElementById('refreshBtn');
-  btn.classList.add('spinning');
-  try{
-    const res=await fetch('/api/shipping-board',{credentials:'include'});
-    if(res.status===401){window.location.href='/';return}
-    const data=await res.json();
-    allShipments=data.shipments||[];
-    updateCounts();
-    renderTable();
-    const t=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-    document.getElementById('pageSub').textContent=`${allShipments.length} shipments · updated ${t}`;
-  }catch(e){
-    document.getElementById('tableBody').innerHTML=`<div class="empty"><div class="emico">⚠️</div>Failed: ${e.message}</div>`;
-  }finally{
-    btn.classList.remove('spinning');
-    document.getElementById('loadingRows').style.display='none';
-    document.getElementById('tableContent').style.display='';
-  }
-}
-
-function updateCounts(){
-  const g={all:allShipments.length,in_transit:0,out_for_delivery:0,delivered:0,exception:0,pending:0};
-  allShipments.forEach(s=>{
-    if(!s.tracking)return; // exclude no-tracking from counts
-    const st=s.trackStatus||'pending';if(g[st]!==undefined)g[st]++;
-  });
-  g.all=allShipments.filter(s=>s.tracking).length;
-  Object.entries(g).forEach(([k,v])=>{const el=document.getElementById('cnt-'+k);if(el)el.textContent=v});
-}
-
-function setFilter(f,el){
-  activeFilter=f;
-  document.querySelectorAll('.pill').forEach(p=>p.classList.remove('active'));
-  el.classList.add('active');
-  renderTable();
-}
-
-const SO={out_for_delivery:0,exception:1,in_transit:2,pending:3,delivered:4};
-function sortRows(arr){
-  const s=document.getElementById('sortSelect').value;
-  return [...arr].sort((a,b)=>{
-    if(s==='date_desc')return(b.dateShipped||'').localeCompare(a.dateShipped||'');
-    if(s==='date_asc')return(a.dateShipped||'').localeCompare(b.dateShipped||'');
-    if(s==='status')return(SO[a.trackStatus??'pending']??3)-(SO[b.trackStatus??'pending']??3);
-    if(s==='amount_desc')return(b.amount||0)-(a.amount||0);
-    if(s==='eta'){const ae=a.trackEta||'9999',be=b.trackEta||'9999';return ae.localeCompare(be)}
-    return 0;
+// ── Copy folder path to clipboard ────────────────────────────────
+function copyFolderPath(folderName) {
+  const path = `Z:\\Sales1\\AllContacts\\${folderName}`;
+  navigator.clipboard.writeText(path).then(() => {
+    showToast(`📋 Copied: ${path}`, 'success');
+  }).catch(() => {
+    // Fallback for older browsers
+    const el = document.createElement('textarea');
+    el.value = path;
+    el.style.position = 'fixed';
+    el.style.opacity = '0';
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
+    showToast(`📋 Copied: ${path}`, 'success');
   });
 }
 
-function renderTable(){
-  const q=document.getElementById('searchInput').value.toLowerCase().trim();
-  let rows=allShipments.filter(s=>{
-    // Hide rows with no tracking data
-    if(!s.tracking)return false;
-    if(activeFilter!=='all'&&(s.trackStatus||'pending')!==activeFilter)return false;
-    if(q){const h=[s.dealName,s.tracking,s.rep,s.carrier,s.city,s.state].join(' ').toLowerCase();return h.includes(q)}
-    return true;
-  });
-  rows=sortRows(rows);
-  const body=document.getElementById('tableBody');
-  if(!rows.length){body.innerHTML='<div class="empty"><div class="emico">📦</div>No shipments match.</div>';return}
-  body.innerHTML=rows.map((s,i)=>buildRow(s,i)).join('');
+// ── Merge Deal ────────────────────────────────────────────────────
+let _mergeDealSourceId   = null;
+let _mergeDealTargetId   = null;
+let _mergeDealTargetName = null;
+let _mergeDealSearchTimer = null;
+
+function openMergeDeal(dealId) {
+  _mergeDealSourceId   = dealId;
+  _mergeDealTargetId   = null;
+  _mergeDealTargetName = null;
+  const deal = allDeals.find(d => d.id === dealId) || {};
+  document.getElementById('mergeDealSourceName').textContent = deal.name || dealId;
+  document.getElementById('mergeDealSearch').value = '';
+  document.getElementById('mergeDealResults').innerHTML = '';
+  document.getElementById('mergeDealStep1').style.display = 'block';
+  document.getElementById('mergeDealStep2').style.display = 'none';
+  document.getElementById('mergeDealModal').style.display = 'flex';
 }
 
-function buildRow(s,i){
-  const status=s.trackStatus||(s.tracking?'pending':'unknown');
-  const label=s.trackLabel||lbl(status);
-  const dest=[s.city,s.state].filter(Boolean).join(', ')||'—';
-  const id='rx'+i;
-  const amtStr=s.amount?'$'+Math.round(s.amount).toLocaleString():'';
+function closeMergeDeal() {
+  document.getElementById('mergeDealModal').style.display = 'none';
+  _mergeDealSourceId = _mergeDealTargetId = _mergeDealTargetName = null;
+}
 
-  let trackHtml='<span class="notrack">No tracking</span>';
-  if(s.tracking){
-    const ln=s.trackingUrl
-      ?`<a href="${s.trackingUrl}" target="_blank" class="tnum" style="color:inherit;text-decoration:none" onclick="event.stopPropagation()">${esc(s.tracking)}</a>`
-      :`<span class="tnum">${esc(s.tracking)}</span>`;
-    trackHtml=`${ln}<button class="tcopy" onclick="event.stopPropagation();cpTrack(this,'${esc(s.tracking)}')">Copy</button>`;
+function mergeDealBack() {
+  document.getElementById('mergeDealStep2').style.display = 'none';
+  document.getElementById('mergeDealStep1').style.display = 'block';
+  _mergeDealTargetId = _mergeDealTargetName = null;
+}
+
+function mergeDealSearchDebounce() {
+  clearTimeout(_mergeDealSearchTimer);
+  _mergeDealSearchTimer = setTimeout(runMergeDealSearch, 350);
+}
+
+async function runMergeDealSearch() {
+  const q = document.getElementById('mergeDealSearch').value.trim();
+  if (q.length < 2) return;
+  const el = document.getElementById('mergeDealResults');
+  el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px 0">Searching…</div>';
+  try {
+    const res  = await fetch(`/api/deals/list?q=${encodeURIComponent(q)}&limit=20`, { credentials: 'include' });
+    const data = await res.json();
+    const deals = (data.deals || []).filter(d => d.id !== _mergeDealSourceId);
+    if (!deals.length) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px 0">No deals found.</div>';
+      return;
+    }
+    el.innerHTML = deals.map(d => `
+      <div onclick="selectMergeDealTarget('${d.id}','${(d.name||'').replace(/'/g,"\\'")}','${d.stage||''}')"
+        style="padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;margin-bottom:5px;cursor:pointer;display:flex;align-items:center;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.name||'—'}</div>
+          <div style="font-size:10px;color:var(--muted)">${STAGES[d.stage]||d.stage||'—'} · ${d.amount&&parseFloat(d.amount)>0?'$'+parseFloat(d.amount).toLocaleString():'No amount'}</div>
+        </div>
+        <span style="font-size:10px;color:var(--orange);font-weight:700;flex-shrink:0">Select →</span>
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#ef4444;padding:6px 0">Error: ${e.message}</div>`;
   }
+}
 
-  let etaHtml='<span class="notrack">—</span>';
-  // Calculate transit days: ship date → ETA
-  const transitDays = (s.dateShipped && s.trackEta)
-    ? Math.round((new Date(s.trackEta) - new Date(s.dateShipped)) / 86400000)
-    : (s.dateShipped && s.trackDelivered)
-    ? Math.round((new Date(s.trackDelivered) - new Date(s.dateShipped)) / 86400000)
-    : null;
-  const transitStr = transitDays !== null ? `<div class="ctime">${transitDays} day transit</div>` : '';
+function selectMergeDealTarget(id, name) {
+  _mergeDealTargetId   = id;
+  _mergeDealTargetName = name;
+  document.getElementById('mergeDealTargetName').textContent = name;
+  document.getElementById('mergeDealStep1').style.display = 'none';
+  document.getElementById('mergeDealStep2').style.display = 'block';
+}
 
-  if(s.trackDelivered){
-    etaHtml=`<span class="eta-del">✓ ${fd(s.trackDelivered)}</span>`;
-    if(s.signedBy) etaHtml+=`<div class="ctime">Signed: ${esc(s.signedBy)}</div>`;
-    else if(transitStr) etaHtml+=transitStr;
-  }else if(s.trackEta){
-    const today=new Date();today.setHours(0,0,0,0);
-    const diff=Math.round((new Date(s.trackEta)-today)/86400000);
-    if(diff<0)      etaHtml=`<span class="eta-past">${fd(s.trackEta)}</span>`;
-    else if(diff===0)etaHtml=`<span class="eta-today">Today</span>`;
-    else if(diff===1)etaHtml=`<span class="eta-soon">Tomorrow</span>`;
-    else if(diff<=3) etaHtml=`<span class="eta-soon">${fd(s.trackEta)}</span>`;
-    else             etaHtml=`<span class="dv">${fd(s.trackEta)}</span>`;
-    etaHtml += transitStr;
+async function confirmMergeDeal() {
+  if (!_mergeDealSourceId || !_mergeDealTargetId) return;
+  const btn = document.getElementById('mergeDealConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Merging…';
+  try {
+    const res = await fetch(`/api/deals/${_mergeDealSourceId}/merge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ targetDealId: _mergeDealTargetId })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    closeMergeDeal();
+    // Remove source deal from board and open target deal
+    allDeals = allDeals.filter(d => d.id !== _mergeDealSourceId);
+    renderBoard();
+    showToast(`✓ Merged into ${_mergeDealTargetName}. ${data.quotes} quote${data.quotes!==1?'s':''} moved.`, 'success');
+    // Open the target deal panel
+    setTimeout(() => openDeal(_mergeDealTargetId), 300);
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⤴ Confirm Merge & Delete Wrong Deal';
   }
+}
+</script>
 
-  const evtShort=s.trackLastEvent?esc(s.trackLastEvent.slice(0,58))+(s.trackLastEvent.length>58?'…':''):'<span class="notrack">—</span>';
-  const cachedStr=s.trackUpdated?ago(s.trackUpdated):'';
-  const hasExp=!!(s.trackLastEvent||s.trackDelivered||s.signedBy||s.address);
+</body>
+<div id="mergeLegacyModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:400;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border-radius:14px;padding:28px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+    <h2 style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px">📁 Merge Legacy Folder</h2>
+    <div id="mergeLegacyDealName" style="font-size:12px;color:var(--muted);margin-bottom:20px"></div>
 
-  return `<div class="trow cols" onclick="toggleExp('${id}')" style="animation:fadeUp .18s ease ${i*.015}s both">
-  <div class="stripe s-${status}"></div>
-  <div class="cell" style="padding-left:4px">
-    <div class="dname" title="${esc(s.dealName)}">${esc(s.dealName)}</div>
-    <div class="drep">${esc(s.rep)}${amtStr?' · '+amtStr:''}</div>
-  </div>
-  <div class="cell"><span class="cbadge">${esc(s.carrier||'—')}</span></div>
-  <div class="cell">${trackHtml}</div>
-  <div class="cell">
-    <div class="dv" style="font-size:12px">${esc(dest)}</div>
-    ${s.zip?`<div class="ctime">${esc(s.zip)}</div>`:''}
-  </div>
-  <div class="cell" style="min-width:0">
-    <div style="font-size:12px;color:var(--muted);white-space:normal;line-height:1.4;word-break:break-word">${evtShort}</div>
-    ${cachedStr?`<div class="ctime">↻ ${cachedStr}</div>`:''}
-  </div>
-  <div class="cell"><span class="dv">${s.dateShipped?fd(s.dateShipped):'—'}</span></div>
-  <div class="cell">${etaHtml}</div>
-  <div class="cell"><span class="sbadge b-${status}"><span class="bdot"></span>${esc(label)}</span></div>
-  <div class="cell acts" onclick="event.stopPropagation()">
-    <a href="${s.dealUrl}" target="_blank" class="ab">HS ↗</a>
-    ${s.trackingUrl?`<a href="${s.trackingUrl}" target="_blank" class="ab">Track ↗</a>`:''}
-    ${s.tracking?`<button class="ab" onclick="rfsh('${esc(s.tracking)}','${esc(s.carrier)}',this)">↻</button>`:''}
+    <!-- Step 1: Search -->
+    <div id="mergeLegacyStep1">
+      <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px">Search AllContacts folder by name</label>
+      <div style="display:flex;gap:8px">
+        <input id="mergeLegacySearch" type="text" placeholder="e.g. Josie OGara or University of Texas"
+          style="flex:1;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none"
+          oninput="mergeLegacySearchDebounce()" />
+        <button onclick="runMergeLegacySearch()" style="padding:9px 14px;background:var(--orange);color:white;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Search</button>
+      </div>
+      <div id="mergeLegacyResults" style="margin-top:12px"></div>
+    </div>
+
+    <!-- Step 2: Confirm -->
+    <div id="mergeLegacyStep2" style="display:none">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Selected folder to merge</div>
+        <div id="mergeLegacySelectedName" style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px"></div>
+        <div style="font-size:11px;color:var(--muted)">All files will be moved into this deal's folder. The legacy folder will be deleted.</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="mergeLegacyConfirmBtn" onclick="confirmMergeLegacy()" style="flex:1;padding:13px;background:var(--green);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">✓ Confirm Merge</button>
+        <button onclick="mergeLegacyBack()" style="padding:13px 14px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">← Back</button>
+        <button onclick="closeMergeLegacy()" style="padding:13px 14px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Cancel (step 1) -->
+    <div id="mergeLegacyStep1Cancel" style="margin-top:16px;text-align:right">
+      <button onclick="closeMergeLegacy()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit">Cancel</button>
+    </div>
   </div>
 </div>
-<div class="expand" id="${id}">
-  <div class="einner">
-    ${s.trackLastEvent?`<div class="esec"><div class="elabel">Last Event</div><div class="eval">${esc(s.trackLastEvent)}</div></div>`:''}
-    ${s.trackLastTime?`<div class="esec"><div class="elabel">Event Time</div><div class="eval mono">${fd(s.trackLastTime)}</div></div>`:''}
-    ${s.trackLocation?`<div class="esec"><div class="elabel">Location</div><div class="eval">${esc(s.trackLocation)}</div></div>`:''}
-    ${s.trackDelivered?`<div class="esec"><div class="elabel">Delivered</div><div class="eval mono">${fd(s.trackDelivered)}</div></div>`:''}
-    ${s.signedBy?`<div class="esec"><div class="elabel">Signed By</div><div class="eval">${esc(s.signedBy)}</div></div>`:''}
-    ${s.address?`<div class="esec"><div class="elabel">Full Address</div><div class="eval">${esc(s.address)}</div></div>`:''}
-    ${s.trackUpdated?`<div class="esec"><div class="elabel">Cache Updated</div><div class="eval mono">${new Date(s.trackUpdated).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})}</div></div>`:''}
-  </div>
-</div>`;
+
+<script>
+// ── Merge Legacy Folder ───────────────────────────────────────────
+let _mergeLegacyDealId = null;
+let _mergeLegacySelectedFolder = null;
+let _mergeLegacySearchTimer = null;
+
+function openMergeLegacy(dealId) {
+  _mergeLegacyDealId = dealId;
+  _mergeLegacySelectedFolder = null;
+  const deal = allDeals.find(d => d.id === dealId) || {};
+  document.getElementById('mergeLegacyDealName').textContent = deal.name || dealId;
+  document.getElementById('mergeLegacySearch').value = deal.name
+    ? deal.name.replace(/\s*[·\-–—]\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\s*$/i, '').trim()
+    : '';
+  document.getElementById('mergeLegacyResults').innerHTML = '';
+  document.getElementById('mergeLegacyStep1').style.display = 'block';
+  document.getElementById('mergeLegacyStep1Cancel').style.display = 'block';
+  document.getElementById('mergeLegacyStep2').style.display = 'none';
+  document.getElementById('mergeLegacyModal').style.display = 'flex';
 }
 
-function toggleExp(id){
-  const el=document.getElementById(id);
-  if(!el||!el.innerHTML.trim())return;
-  const open=el.classList.contains('eopen');
-  document.querySelectorAll('.expand.eopen').forEach(e=>e.classList.remove('eopen'));
-  if(!open)el.classList.add('eopen');
+function closeMergeLegacy() {
+  document.getElementById('mergeLegacyModal').style.display = 'none';
+  _mergeLegacyDealId = null;
+  _mergeLegacySelectedFolder = null;
 }
 
-async function rfsh(tracking,carrier,btn){
-  const o=btn.textContent;btn.textContent='…';btn.disabled=true;
-  try{
-    await fetch('/api/shipping/refresh-tracking',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({tracking,carrier})});
-    await loadBoard();
-  }catch(e){btn.textContent='!';setTimeout(()=>{btn.textContent=o;btn.disabled=false},2000)}
+function mergeLegacyBack() {
+  document.getElementById('mergeLegacyStep2').style.display = 'none';
+  document.getElementById('mergeLegacyStep1').style.display = 'block';
+  document.getElementById('mergeLegacyStep1Cancel').style.display = 'block';
+  _mergeLegacySelectedFolder = null;
 }
 
-function lbl(s){return{in_transit:'In Transit',out_for_delivery:'Out for Delivery',delivered:'Delivered',exception:'Exception',pending:'Pending',unknown:'No Tracking',pickup:'Ready for Pickup'}[s]||s}
-function fd(d){if(!d)return'—';const dt=new Date(d.includes('T')?d:d+'T12:00:00');return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
-function ago(d){const diff=Math.round((Date.now()-new Date(d))/60000);if(diff<2)return'just now';if(diff<60)return diff+'m ago';if(diff<1440)return Math.floor(diff/60)+'h ago';return Math.floor(diff/1440)+'d ago'}
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-function cpTrack(btn,t){navigator.clipboard.writeText(t).then(()=>{btn.textContent='Copied';btn.classList.add('copied');setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied')},1800)})}
-function toggleTheme(){const l=document.documentElement.classList.toggle('light');document.getElementById('themeBtn').textContent=l?'🌙':'☀️';localStorage.setItem('wr-theme',l?'light':'dark')}
-if(localStorage.getItem('wr-theme')==='light'){document.documentElement.classList.add('light');document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('themeBtn');if(b)b.textContent='🌙'})}
-loadBoard();
+function mergeLegacySearchDebounce() {
+  clearTimeout(_mergeLegacySearchTimer);
+  _mergeLegacySearchTimer = setTimeout(runMergeLegacySearch, 400);
+}
+
+async function runMergeLegacySearch() {
+  const q = document.getElementById('mergeLegacySearch').value.trim();
+  if (!q) return;
+  const el = document.getElementById('mergeLegacyResults');
+  el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0">Searching…</div>';
+  try {
+    const res = await fetch(`/api/drive/search-legacy-folder?q=${encodeURIComponent(q)}`, { credentials: 'include' });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    if (!data.folders.length) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0">No folders found matching that name.</div>';
+      return;
+    }
+    el.innerHTML = data.folders.map(f => `
+      <div onclick="selectMergeLegacyFolder('${f.id}','${f.name.replace(/'/g,"\\'")}')"
+        style="padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;margin-bottom:6px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px">
+        📁 ${f.name}
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#ef4444;padding:8px 0">Error: ${e.message}</div>`;
+  }
+}
+
+function selectMergeLegacyFolder(id, name) {
+  _mergeLegacySelectedFolder = { id, name };
+  document.getElementById('mergeLegacySelectedName').textContent = name;
+  document.getElementById('mergeLegacyStep1').style.display = 'none';
+  document.getElementById('mergeLegacyStep1Cancel').style.display = 'none';
+  document.getElementById('mergeLegacyStep2').style.display = 'block';
+}
+
+async function confirmMergeLegacy() {
+  if (!_mergeLegacySelectedFolder || !_mergeLegacyDealId) return;
+  const deal = allDeals.find(d => d.id === _mergeLegacyDealId) || {};
+
+  // Find quote number for this deal if available
+  const hubData = window._lastHubData;
+  const quoteNumber = hubData?.quotes?.[0]?.quoteNumber || null;
+  const dealName = deal.name || '';
+  const companyName = hubData?.contact?.company || '';
+
+  const btn = document.getElementById('mergeLegacyConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Merging…';
+
+  try {
+    const res = await fetch('/api/drive/merge-legacy-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        legacyFolderId: _mergeLegacySelectedFolder.id,
+        quoteNumber,
+        dealName,
+        companyName,
+      })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    closeMergeLegacy();
+    showToast(`✓ ${data.message}`, 'success');
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✓ Confirm Merge';
+  }
+}
 </script>
+
 </body>
 </html>

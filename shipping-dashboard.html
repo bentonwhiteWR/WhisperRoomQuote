@@ -510,6 +510,31 @@
 let allShipments = [];
 let activeFilter = 'all';
 
+// ── Refresh single tracking ───────────────────────────────────────
+async function refreshTracking(tracking, carrier, btn) {
+  const orig = btn.textContent;
+  btn.textContent = '…';
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/shipping/refresh-tracking', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tracking, carrier }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      await loadBoard();
+    } else {
+      btn.textContent = '!';
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+    }
+  } catch(e) {
+    btn.textContent = '!';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+  }
+}
+
 // ── Load ──────────────────────────────────────────────────────────
 async function loadBoard(forceRefresh = false) {
   const btn = document.getElementById('refreshBtn');
@@ -695,6 +720,7 @@ function buildCard(s, i) {
       <div class="card-actions">
         <a href="${s.dealUrl}" target="_blank" class="action-btn">HS ↗</a>
         ${s.trackingUrl ? `<a href="${s.trackingUrl}" target="_blank" class="action-btn">Track ↗</a>` : ''}
+        ${s.tracking ? `<button class="action-btn" onclick="refreshTracking('${s.tracking}','${s.carrier}',this)" title="Force refresh from AfterShip">↻</button>` : ''}
       </div>
     </div>
   </div>`;

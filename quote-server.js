@@ -6106,6 +6106,23 @@ tbody tr:hover td{background:#fdfcfb}
   }
 
   // ── API: Unship order ────────────────────────────────────────────
+  // ── API: Delete Order ────────────────────────────────────────────
+  if (pathname.startsWith('/api/orders/') && pathname.endsWith('/delete') && req.method === 'DELETE') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').replace('/delete', '').trim());
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const result = await db.query('DELETE FROM orders WHERE quote_number = $1', [quoteNumber]);
+      if (result.rowCount === 0) { json({ error: 'Order not found' }, 404); return; }
+      console.log(`[orders] deleted order ${quoteNumber}`);
+      json({ success: true });
+    } catch(e) {
+      console.error('Delete order error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   if (pathname.startsWith('/api/orders/') && pathname.endsWith('/unship') && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').replace('/unship', '').trim());

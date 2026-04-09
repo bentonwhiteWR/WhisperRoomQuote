@@ -2005,6 +2005,16 @@ const server = http.createServer(async (req, res) => {
 
 
   // ── Shipping Board API ───────────────────────────────────────────
+  // Debug: dump tracking cache
+  if (pathname === '/api/debug/tracking-cache' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const rows = await db.query('SELECT tracking_number, slug, status, label, eta, last_event, updated_at FROM tracking_cache ORDER BY updated_at DESC');
+      json({ count: rows.rows.length, rows: rows.rows });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   if (pathname === '/api/shipping-board' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {

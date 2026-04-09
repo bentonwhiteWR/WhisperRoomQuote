@@ -2894,6 +2894,97 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── API: Deal stage override ────────────────────────────────────
+  const stageMatch = pathname.match(/^\/api\/deals\/(\d+)\/stage$/);
+  if (stageMatch && req.method === 'PATCH') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const dealId = stageMatch[1];
+    try {
+      const body = JSON.parse(await readBody(req));
+      const { stage } = body;
+      if (!stage) { json({ error: 'stage required' }, 400); return; }
+      await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/objects/deals/${dealId}`,
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, { properties: { dealstage: stage } });
+      json({ success: true, dealId, stage });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // ── API: Deal payment status ─────────────────────────────────────
+  const payMatch = pathname.match(/^\/api\/deals\/(\d+)\/payment-status$/);
+  if (payMatch && req.method === 'PATCH') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const dealId = payMatch[1];
+    try {
+      const body = JSON.parse(await readBody(req));
+      const { status } = body;
+      if (!status) { json({ error: 'status required' }, 400); return; }
+      await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/objects/deals/${dealId}`,
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, { properties: { payment_status: status } });
+      json({ success: true, dealId, status });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // ── API: Create invoice ──────────────────────────────────────────
+  if (pathname === '/api/create-invoice' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const body = JSON.parse(await readBody(req));
+      const { dealId, quoteNumber, amount, currency } = body;
+      if (!dealId) { json({ error: 'dealId required' }, 400); return; }
+
+      // 1. Create invoice in HubSpot
+      const now = new Date();
+      const dueDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const invoiceRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/objects/invoices',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, {
+        properties: {
+          hs_invoice_status: 'draft',
+          hs_currency_code:  currency || 'USD',
+          hs_due_date:       dueDate.toISOString().split('T')[0],
+          hs_number:         quoteNumber || '',
+          hs_amount_billed:  String(amount || ''),
+        }
+      });
+
+      const invoiceId = invoiceRes.body?.id;
+      if (!invoiceId) {
+        console.error('[invoice] create failed:', JSON.stringify(invoiceRes.body));
+        json({ error: 'Failed to create invoice in HubSpot' }, 500); return;
+      }
+
+      // 2. Associate invoice with deal
+      await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v4/objects/invoices/${invoiceId}/associations/deals/${dealId}`,
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 1 }]);
+
+      const invoiceUrl = `https://app.hubspot.com/contacts/5764220/record/0-53/${invoiceId}`;
+      console.log(`[invoice] created ${invoiceId} for deal ${dealId} quote ${quoteNumber}`);
+      json({ success: true, invoiceId, invoiceUrl });
+    } catch(e) {
+      console.error('[invoice] error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+
   // ── API: Get freight quote ──
   if (pathname === '/api/freight' && req.method === 'POST') {
     try {

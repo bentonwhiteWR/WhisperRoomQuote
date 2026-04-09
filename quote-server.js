@@ -4038,8 +4038,7 @@ tbody tr:hover td{background:#fdfcfb}
           headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
         }, {
           filterGroups: [
-            { filters: [{ propertyName: 'dealstage', operator: 'EQ', value: 'closedwon' }] },
-            { filters: [{ propertyName: 'dealstage', operator: 'EQ', value: '845719' }] }
+            { filters: [{ propertyName: 'dealstage', operator: 'EQ', value: 'closedwon' }] }
           ],
           properties: ['dealname','amount','hubspot_owner_id','closedate','dealstage',
                        'company','freight_carrier','tracking_number','date_shipped',
@@ -4052,7 +4051,6 @@ tbody tr:hover td{background:#fdfcfb}
           .filter(d => !dbDealIds.has(d.id))
           .map(d => {
             const p = d.properties || {};
-            const isShipped = p.dealstage === '845719';
             return {
               quote_number: `HS-${d.id}`,
               deal_id:      d.id,
@@ -4060,17 +4058,7 @@ tbody tr:hover td{background:#fdfcfb}
               customer_name: p.dealname || '',
               company:      p.company  || '',
               total:        p.amount   || null,
-              order_data: {
-                source: 'hubspot',
-                shipped: isShipped && p.tracking_number ? {
-                  carrier:     p.freight_carrier  || '',
-                  tracking:    p.tracking_number  || '',
-                  date:        p.date_shipped     || '',
-                  boxes:       parseInt(p.box_count)   || 0,
-                  pallets:     parseInt(p.pallet_count) || 0,
-                  hardwareBox: p.hardware_box     || '',
-                } : null,
-              },
+              order_data: { source: 'hubspot', shipped: null },
               json_snapshot: null,
               share_token:   null,
               created_at:   p.closedate || '',

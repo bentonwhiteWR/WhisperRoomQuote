@@ -2057,6 +2057,20 @@ const server = http.createServer(async (req, res) => {
         '117442978': 'Travis Singleton',
       };
 
+      // Batch fetch tracking cache for all tracking numbers
+      const trackingNumbers = deals.map(d => d.properties.tracking_number).filter(Boolean);
+      const cacheMap = {};
+      if (db && trackingNumbers.length) {
+        try {
+          const placeholders = trackingNumbers.map((_, i) => `$${i+1}`).join(',');
+          const cacheRows = await db.query(
+            `SELECT * FROM tracking_cache WHERE tracking_number IN (${placeholders})`,
+            trackingNumbers
+          );
+          cacheRows.rows.forEach(r => { cacheMap[r.tracking_number] = r; });
+        } catch(e) { console.warn('tracking cache batch fetch error:', e.message); }
+      }
+
       const results = deals.map(d => {
         const p = d.properties;
         const carrier = p.freight_carrier || '';
@@ -2068,19 +2082,46 @@ const server = http.createServer(async (req, res) => {
         if (carrier === 'FedEx') trackingUrl = `https://www.fedex.com/en-us/tracking.html?tracknumbers=${tracking}`;
         if (carrier === 'USPS') trackingUrl = `https://tools.usps.com/go/TrackConfirmAction?tLabels=${tracking}`;
 
+        const cache = cacheMap[tracking] || null;
+
         return {
-          dealId: d.id,
-          dealName: p.dealname,
-          amount: p.amount ? parseFloat(p.amount) : null,
+          dealId:      d.id,
+          dealName:    p.dealname,
+          amount:      p.amount ? parseFloat(p.amount) : null,
           carrier,
           tracking,
           trackingUrl,
-          dateShipped: p.date_shipped || p.closedate?.split('T')[0],
-          address: [p.shipping_address, p.shipping_city, p.shipping_state, p.shipping_zipcode].filter(Boolean).join(', '),
-          rep: ownerMap[p.hubspot_owner_id] || 'Unknown',
-          dealUrl: `https://app.hubspot.com/contacts/5764220/deal/${d.id}`,
+          dateShipped: p.date_shipped || p.closedate?.split('T')[0] || null,
+          city:        p.shipping_city  || '',
+          state:       p.shipping_state || '',
+          zip:         p.shipping_zipcode || '',
+          address:     [p.shipping_address, p.shipping_city, p.shipping_state, p.shipping_zipcode].filter(Boolean).join(', '),
+          rep:         ownerMap[p.hubspot_owner_id] || 'Unknown',
+          dealUrl:     `https://app.hubspot.com/contacts/5764220/deal/${d.id}`,
+          // AfterShip tracking data from cache
+          trackStatus:    cache?.status     || (tracking ? 'pending' : null),
+          trackLabel:     cache?.label      || (tracking ? 'Pending' : 'No Tracking'),
+          trackLastEvent: cache?.last_event || null,
+          trackLastTime:  cache?.last_event_time || null,
+          trackEta:       cache?.eta        || null,
+          trackLocation:  cache?.location   || null,
+          trackDelivered: cache?.delivered_at || null,
+          trackUpdated:   cache?.updated_at  || null,
         };
       });
+
+      // Also trigger background refresh for any tracking numbers not yet in cache
+      const uncached = deals.filter(d => d.properties.tracking_number && !cacheMap[d.properties.tracking_number]);
+      if (uncached.length > 0) {
+        (async () => {
+          for (const d of uncached.slice(0, 5)) { // max 5 at a time
+            try {
+              await fetchAndCacheTracking(d.properties.tracking_number, d.properties.freight_carrier);
+              await new Promise(r => setTimeout(r, 1000));
+            } catch(e) { /* silent */ }
+          }
+        })();
+      }
 
       json({ success: true, shipments: results, total: results.length });
     } catch(e) { json({ error: e.message }, 500); }

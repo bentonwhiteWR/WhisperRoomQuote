@@ -1736,12 +1736,13 @@ async function calculateTaxProper(toState, toZip, toCity, amount, shipping, toSt
 }
 
 // ── ABF Freight ───────────────────────────────────────────────────
-function buildAbfUrl(pallets, totalWeight, consCity, consState, consZip, isCanadian, accessories) {
+function buildAbfUrl(pallets, totalWeight, consCity, consState, consZip, isCanadian, accessories, servType) {
   const today = new Date();
   const parts = [
     'DL=2', `ID=${ABF_ID}`, `ShipAcct=${ABF_ACCT}`,
     'ShipPay=Y', 'Acc=ARR=Y'
   ];
+  if (servType) parts.push(`ServType=${servType}`);
   if (accessories.residential)   parts.push('Acc_RDEL=Y');
   if (accessories.liftgate)      parts.push('Acc_GRD_DEL=Y');
   if (accessories.limitedaccess) { parts.push('Acc_LAD=Y'); parts.push('LADType=M'); }
@@ -1786,6 +1787,22 @@ function parseAbfXml(xmlText) {
   return { cost: Math.round(cost * 100) / 100, dynDisc, transit };
 }
 
+
+// ── OD Book URL builder ───────────────────────────────────────────
+function buildOdBookUrl({ city, state, zip, pallets, totalWeight, acc }) {
+  // OD doesn't support fully pre-filled booking via URL params,
+  // but we can open their LTL booking page with dest zip pre-filled
+  // https://www.odfl.com/us/en/tools/ship-ltl-freight.html
+  const base = 'https://www.odfl.com/us/en/tools/ship-ltl-freight.html';
+  const params = new URLSearchParams();
+  if (zip)   params.set('destPostalCode', zip);
+  if (state) params.set('destState', state);
+  if (city)  params.set('destCity', city);
+  params.set('originPostalCode', '37813');
+  params.set('originState', 'TN');
+  params.set('originCity', 'Morristown');
+  return `${base}?${params.toString()}`;
+}
 
 // ── ABF Shipment Booking ──────────────────────────────────────────
 function buildAbfBookingUrl(params) {
@@ -5817,18 +5834,124 @@ tbody tr:hover td{background:#fdfcfb}
       const { pallets, totalWeight, city, state: rawState, zip, canadian, accessories } = body;
       const state = toStateAbbr(rawState);
       if (!pallets || !pallets.length) { json({ error: 'No pallet data' }, 400); return; }
-      if (!city || !state || !zip) { json({ error: 'Missing destination' }, 400); return; }
-      const abfUrl = buildAbfUrl(pallets, totalWeight, city, state, zip, canadian || false, accessories || {});
-      const res2 = await httpsGet(abfUrl);
-      const result = parseAbfXml(res2.body);
-      json({ carriers: [{
-        name: 'ABF Freight',
-        cost: result.cost,
-        markup: Math.round(result.cost * 0.25 * 100) / 100,
-        transit: result.transit,
-        total: Math.round((result.cost + result.cost * 0.25) * 100) / 100,
-      }]});
-    } catch(e) { json({ error: e.message }, 500); }
+      if (!city || !state || !zip)     { json({ error: 'Missing destination' }, 400); return; }
+      const acc = accessories || {};
+
+      // ── ABF: fetch standard + guaranteed + expedited in parallel ──
+      const ABF_SERVICE_TYPES = [
+        { code: null,   label: 'Standard LTL',  carrier: 'ABF' },
+        { code: 'GUAR', label: 'Guaranteed',    carrier: 'ABF' },
+        { code: 'SATU', label: 'Saturday',      carrier: 'ABF' },
+      ];
+
+      const abfResults = await Promise.all(ABF_SERVICE_TYPES.map(async svc => {
+        try {
+          const url = buildAbfUrl(pallets, totalWeight, city, state, zip, canadian || false, acc, svc.code);
+          const res2 = await httpsGet(url);
+          const result = parseAbfXml(res2.body);
+          return {
+            carrier:     'ABF Freight',
+            service:     svc.label,
+            serviceCode: svc.code || 'STND',
+            cost:        result.cost,
+            transit:     result.transit,
+            bookable:    true,
+          };
+        } catch(e) {
+          console.warn(`[orders-freight] ABF ${svc.label} failed: ${e.message}`);
+          return null;
+        }
+      }));
+
+      // ── OD: fetch via REST API ────────────────────────────────────
+      const odResults = [];
+      const OD_USER = process.env.OD_USER || '';
+      const OD_PASS = process.env.OD_PASS || '';
+      if (OD_USER && OD_PASS) {
+        try {
+          // Step 1: Auth
+          const authRes = await httpsRequest({
+            hostname: 'api.odfl.com',
+            path: '/auth/v1.0/token',
+            method: 'GET',
+            headers: {
+              'Authorization': 'Basic ' + Buffer.from(`${OD_USER}:${OD_PASS}`).toString('base64'),
+              'Accept': 'application/json',
+            }
+          });
+          const token = authRes.body?.access_token || authRes.body?.sessionToken || authRes.body?.token;
+
+          if (token) {
+            // Step 2: Rate quote
+            const totalPieces = pallets.reduce((s, p) => s + (parseInt(p.pieces) || 1), 0);
+            const rateBody = {
+              originZip:      SHIP_ZIP,
+              originCountry:  'US',
+              destZip:        zip,
+              destCountry:    canadian ? 'CA' : 'US',
+              shipDate:       new Date().toISOString().split('T')[0],
+              totalWeight:    Math.round(totalWeight || pallets.reduce((s,p)=>s+(parseFloat(p.weight)||0),0)),
+              totalPieces,
+              freightClass:   parseFloat(FREIGHT_CLASS),
+              paymentTerms:   'Prepaid',
+              pickupService:  false,
+              deliveryService: acc.liftgate || false,
+              residentialDelivery: acc.residential || false,
+            };
+
+            const rateRes = await httpsRequest({
+              hostname: 'api.odfl.com',
+              path: '/rating/v1.0/ratequote',
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+              }
+            }, rateBody);
+
+            const rateData = rateRes.body;
+            console.log('[orders-freight] OD rate response status:', rateRes.status);
+
+            // OD returns array of rate options
+            const rates = Array.isArray(rateData) ? rateData :
+                          Array.isArray(rateData?.rates) ? rateData.rates :
+                          rateData?.rateQuote ? [rateData.rateQuote] : [];
+
+            rates.forEach(r => {
+              const cost = parseFloat(r.totalCharges || r.netCharge || r.totalNetCharge || 0);
+              if (!cost) return;
+              const svcName = (r.serviceLevel || r.service || r.serviceCode || 'Standard').toString();
+              const transitDays = r.transitDays || r.estimatedTransitDays || null;
+              const transit = transitDays ? `${transitDays} day${transitDays !== 1 ? 's' : ''}` : '—';
+              odResults.push({
+                carrier:     'Old Dominion',
+                service:     svcName,
+                serviceCode: r.serviceCode || svcName,
+                cost:        Math.round(cost * 100) / 100,
+                transit,
+                bookable:    false, // OD booking via API not yet configured
+                odBookUrl:   buildOdBookUrl({ city, state, zip, pallets, totalWeight, acc }),
+              });
+            });
+          }
+        } catch(e) {
+          console.warn('[orders-freight] OD rating failed:', e.message);
+        }
+      }
+
+      const carriers = [
+        ...abfResults.filter(Boolean),
+        ...odResults,
+      ];
+
+      if (!carriers.length) throw new Error('No rates returned from any carrier');
+      json({ carriers });
+
+    } catch(e) {
+      console.error('[orders-freight] error:', e.message);
+      json({ error: e.message }, 500);
+    }
     return;
   }
 

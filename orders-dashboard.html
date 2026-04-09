@@ -683,22 +683,35 @@ async function runFreightQuote() {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
-    // Render carrier options
+    // Render carrier options grouped by carrier
     const list = document.getElementById('fqCarrierList');
-    list.innerHTML = (data.carriers || []).map(c => `
-      <div style="padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:border-color .15s"
-           onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='var(--border)'"
-           onclick="selectFreightOption('${c.name}', ${c.cost}, '${c.transit}')">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <div style="font-weight:700;color:var(--text);font-size:14px">${c.name}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:2px">Transit: ${c.transit} · Base: $${c.cost.toFixed(2)}</div>
+    const carriers = data.carriers || [];
+
+    // Group by carrier name
+    const grouped = {};
+    carriers.forEach(c => {
+      if (!grouped[c.carrier]) grouped[c.carrier] = [];
+      grouped[c.carrier].push(c);
+    });
+
+    list.innerHTML = Object.entries(grouped).map(([carrierName, options]) => `
+      <div style="margin-bottom:12px">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px">${carrierName}</div>
+        ${options.map(c => `
+          <div class="fq-rate-card" style="padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .15s;margin-bottom:6px"
+               onclick="selectFreightOption(this, '${c.carrier}', ${c.cost}, '${c.transit}', '${c.service}', ${c.bookable}, '${c.odBookUrl || ''}')">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <div style="font-weight:700;color:var(--text);font-size:13px">${c.service}</div>
+                <div style="font-size:11px;color:var(--muted);margin-top:1px">Transit: ${c.transit}</div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-size:17px;font-weight:800;color:var(--orange)">$${c.cost.toFixed(2)}</div>
+                <div style="font-size:10px;color:var(--muted)">actual cost</div>
+              </div>
+            </div>
           </div>
-          <div style="text-align:right">
-            <div style="font-size:18px;font-weight:800;color:var(--orange)">$${c.cost.toFixed(2)}</div>
-            <div style="font-size:10px;color:var(--muted)">actual cost</div>
-          </div>
-        </div>
+        `).join('')}
       </div>
     `).join('');
 
@@ -714,20 +727,26 @@ async function runFreightQuote() {
 
 let _selectedCarrier = null;
 let _selectedFreightCost = null;
+let _selectedService = null;
+let _selectedBookable = false;
+let _selectedOdBookUrl = '';
 
-function selectFreightOption(carrier, cost, transit) {
-  _selectedCarrier = carrier;
+function selectFreightOption(el, carrier, cost, transit, service, bookable, odBookUrl) {
+  _selectedCarrier    = carrier;
   _selectedFreightCost = cost;
+  _selectedService    = service;
+  _selectedBookable   = bookable;
+  _selectedOdBookUrl  = odBookUrl || '';
 
   // Highlight selected card
-  document.querySelectorAll('#fqCarrierList > div').forEach(el => {
-    el.style.borderColor = 'var(--border)';
-    el.style.background = 'var(--surface2)';
+  document.querySelectorAll('.fq-rate-card').forEach(card => {
+    card.style.borderColor = 'var(--border)';
+    card.style.background  = 'var(--surface2)';
   });
-  event.currentTarget.style.borderColor = 'var(--orange)';
-  event.currentTarget.style.background = 'rgba(238,98,22,.06)';
+  el.style.borderColor = 'var(--orange)';
+  el.style.background  = 'rgba(238,98,22,.06)';
 
-  // Show pickup date + book button
+  // Show action section
   let bookSection = document.getElementById('fqBookSection');
   if (!bookSection) {
     bookSection = document.createElement('div');
@@ -735,6 +754,9 @@ function selectFreightOption(carrier, cost, transit) {
     document.getElementById('fqResults').after(bookSection);
   }
   bookSection.style.display = 'block';
+
+  const isAbf = carrier === 'ABF Freight';
+
   bookSection.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
       <div style="display:flex;flex-direction:column;gap:5px">
@@ -747,16 +769,22 @@ function selectFreightOption(carrier, cost, transit) {
         <input type="text" id="fqConsPhone" placeholder="(000) 000-0000"
           style="padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
       </div>
-      <div style="display:flex;flex-direction:column;gap:5px;grid-column:1/-1">
+      ${isAbf ? `<div style="display:flex;flex-direction:column;gap:5px;grid-column:1/-1">
         <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Special Instructions (optional)</label>
         <input type="text" id="fqSpecialInst" placeholder="e.g. Call before delivery"
           style="padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
-      </div>
+      </div>` : ''}
     </div>
-    <div style="display:flex;gap:10px">
-      <button id="fqBookBtn" onclick="bookShipment()" style="flex:1;padding:12px;background:var(--green, #1a7a4a);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
-        &#x2713; Book ABF Shipment
-      </button>
+    <div style="display:flex;gap:8px">
+      ${isAbf ? `
+        <button id="fqBookBtn" onclick="bookShipment()" style="flex:1;padding:12px;background:var(--green,#1a7a4a);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+          &#x2713; Book ABF Shipment
+        </button>
+      ` : `
+        <a href="${odBookUrl}" target="_blank" style="flex:1;padding:12px;background:rgba(59,130,246,.15);color:#3b82f6;border:1px solid rgba(59,130,246,.3);border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px">
+          Book on OD.com ↗
+        </a>
+      `}
       <button onclick="applyRateOnly()" style="padding:12px 16px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">
         Rate Only
       </button>
@@ -767,15 +795,14 @@ function selectFreightOption(carrier, cost, transit) {
   // Pre-fill phone from order customer data
   const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
   const phone = order?.json_snapshot?.customer?.phone || '';
-  if (phone) document.getElementById('fqConsPhone').value = phone;
+  if (phone) { const el2 = document.getElementById('fqConsPhone'); if (el2) el2.value = phone; }
 }
 
 function applyRateOnly() {
-  // Just fill carrier + cost, don't book
   if (_selectedCarrier) document.getElementById('editCarrier').value = _selectedCarrier;
   if (_selectedFreightCost) document.getElementById('editFreightCost').value = _selectedFreightCost.toFixed(2);
   closeFreightModal();
-  showToast(`${_selectedCarrier} rate applied — $${_selectedFreightCost?.toFixed(2)}`, 'success');
+  showToast(`${_selectedCarrier} — ${_selectedService} applied · $${_selectedFreightCost?.toFixed(2)}`, 'success');
 }
 
 async function bookShipment() {
@@ -847,8 +874,11 @@ function closeFreightModal() {
   document.getElementById('freightModal').style.display = 'none';
   const bs = document.getElementById('fqBookSection');
   if (bs) bs.style.display = 'none';
-  _selectedCarrier = null;
+  _selectedCarrier     = null;
   _selectedFreightCost = null;
+  _selectedService     = null;
+  _selectedBookable    = false;
+  _selectedOdBookUrl   = '';
 }
 
 // ── Rep identity ──────────────────────────────────────────────────

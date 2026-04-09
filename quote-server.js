@@ -2262,6 +2262,35 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Debug: call AfterShip directly and return raw response
+  // Debug: test OD API raw response
+  if (pathname === '/api/debug/od-tracking' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const trackingNum = parsed.query.pro || '78078713803';
+    const OD_USER = process.env.OD_USER || '';
+    const OD_PASS = process.env.OD_PASS || '';
+    try {
+      const authRes = await httpsRequest({
+        hostname: 'api.odfl.com',
+        path: '/auth/v1.0/token',
+        method: 'GET',
+        headers: {
+          'Authorization': 'Basic ' + Buffer.from(`${OD_USER}:${OD_PASS}`).toString('base64'),
+          'Accept': 'application/json',
+        }
+      });
+      const token = authRes.body?.access_token || authRes.body?.token;
+      if (!token) { json({ error: 'auth failed', authStatus: authRes.status, authBody: authRes.body }); return; }
+      const trackRes = await httpsRequest({
+        hostname: 'api.odfl.com',
+        path: '/tracking/v2.0/shipment.track',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Accept': 'application/json' }
+      }, { referenceType: 'PRO', referenceNumber: trackingNum });
+      json({ authStatus: authRes.status, trackStatus: trackRes.status, trackBody: trackRes.body });
+    } catch(e) { json({ error: e.message }); }
+    return;
+  }
+
   // Debug: dump tracking cache
   if (pathname === '/api/debug/tracking-cache' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

@@ -3041,10 +3041,11 @@ const server = http.createServer(async (req, res) => {
 
       // If credits exist, adjust the anchor line item price
       let adjustedItems = positiveItems.map(i => ({ ...i }));
+      let anchor = null;
       if (creditTotal < 0 && adjustedItems.length > 0) {
         let anchorIdx = adjustedItems.findIndex(i => /^MDL\b/i.test(i.name || ''));
         if (anchorIdx === -1) anchorIdx = adjustedItems.reduce((maxIdx, item, idx, arr) => item.price > arr[maxIdx].price ? idx : maxIdx, 0);
-        const anchor = adjustedItems[anchorIdx];
+        anchor = adjustedItems[anchorIdx];
         const creditAmt = Math.abs(creditTotal);
         adjustedItems[anchorIdx] = {
           ...anchor,
@@ -3074,7 +3075,7 @@ const server = http.createServer(async (req, res) => {
           name: cr.name,
           quantity: '1',
           price: '0.00',
-          description: `Credit applied in ${anchor.name} above: -$${amt.toFixed(2)}${cr.description ? ' — ' + cr.description : ''}`,
+          description: `Credit applied${anchor ? ' in ' + anchor.name + ' above' : ''}: -$${amt.toFixed(2)}${cr.description ? ' — ' + cr.description : ''}`,
         });
         if (li.id) lineItemIds.push(li.id);
       }

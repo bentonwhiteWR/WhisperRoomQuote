@@ -962,8 +962,8 @@ async function loadOrders() {
     if (res.status === 401) { window.location.href = '/'; return; }
     const data = await res.json();
     allOrders = data.orders || [];
-    const inProd  = allOrders.filter(o => !o.order_data?.shipped?.tracking);
-    const shipped = allOrders.filter(o =>  o.order_data?.shipped?.tracking);
+    const inProd  = allOrders.filter(o => !o.order_data?.shipped?.tracking || o.order_data?.shipped?.unshipped);
+    const shipped = allOrders.filter(o =>  o.order_data?.shipped?.tracking && !o.order_data?.shipped?.unshipped);
     document.getElementById('productionCount').textContent = `(${inProd.length})`;
     document.getElementById('shippedCount').textContent    = `(${shipped.length})`;
     document.getElementById('allCount').textContent        = `(${allOrders.length})`;
@@ -1000,7 +1000,7 @@ function renderOrders(orders) {
     return;
   }
   tbody.innerHTML = orders.map(o => {
-    const isShipped = !!(o.order_data?.shipped?.tracking);
+    const isShipped = !!(o.order_data?.shipped?.tracking && !o.order_data?.shipped?.unshipped);
     const total     = o.total ? fmt(o.total) : '—';
     const pallets   = o.order_data?.shipped?.pallets || '—';
     const shipDate  = o.order_data?.shipped?.date
@@ -1054,9 +1054,9 @@ function filterOrders() {
     let filtered = allOrders;
     // Apply production/shipped/all filter
     if (currentOrderFilter === 'production') {
-      filtered = filtered.filter(o => !o.order_data?.shipped?.tracking);
+      filtered = filtered.filter(o => !o.order_data?.shipped?.tracking || o.order_data?.shipped?.unshipped);
     } else if (currentOrderFilter === 'shipped') {
-      filtered = filtered.filter(o =>  o.order_data?.shipped?.tracking);
+      filtered = filtered.filter(o =>  o.order_data?.shipped?.tracking && !o.order_data?.shipped?.unshipped);
     }
     // Apply search
     if (q) {
@@ -1116,6 +1116,7 @@ function openDrawer(quoteNumber) {
   document.getElementById('editDeliveryNotes').value   = od.deliveryNotes   || '';
 
   const shipped = od.shipped || {};
+  const isShipped = !!(shipped.tracking && !shipped.unshipped);
   // For HS-only orders, pre-populate shipment fields from HubSpot data (_hs* fields)
   // without marking the order as shipped
   document.getElementById('editCarrier').value      = shipped.carrier      || od._hsCarrier    || '';
@@ -1134,13 +1135,13 @@ function openDrawer(quoteNumber) {
   setShipEmailAddresses(savedTo, savedCc);
 
   const badge = document.getElementById('shippedBadge');
-  badge.style.display = shipped.tracking ? 'inline-flex' : 'none';
+  badge.style.display = isShipped ? 'inline-flex' : 'none';
 
   // Show Ship It only if not yet shipped; show Unship only if shipped
   const shipItBtn = document.getElementById('shipItBtn');
   const unshipBtn = document.getElementById('unshipBtn');
-  if (shipItBtn) shipItBtn.style.display = shipped.tracking ? 'none' : 'inline-flex';
-  if (unshipBtn) unshipBtn.style.display = shipped.tracking ? 'inline-flex' : 'none';
+  if (shipItBtn) shipItBtn.style.display = isShipped ? 'none' : 'inline-flex';
+  if (unshipBtn) unshipBtn.style.display = isShipped ? 'inline-flex' : 'none';
 
   const log = od.changeLog || [];
   const logSection = document.getElementById('changeLogSection');

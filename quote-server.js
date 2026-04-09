@@ -519,52 +519,63 @@ async function fetchAndCacheTracking(trackingNumber, carrier) {
         return null;
       }
 
-      // Parse response
-      const trace = data.traceInfo || data;
+      // Parse response — traceInfo is an array, first element is the shipment
+      const trace = Array.isArray(data.traceInfo) ? data.traceInfo[0] : (data.traceInfo || data);
       const events = trace.trackTraceDetail || [];
+      // Events are newest-first — index 0 is the most recent
+      const latestEvt = events[0];
 
-      // Status from latest event
+      // Status from most recent event
       let status = 'in_transit';
       let label = 'In Transit';
-      const lastEvt = events[events.length - 1];
-      if (lastEvt) {
-        const evtStatus = (lastEvt.status || '').toLowerCase();
-        if (evtStatus.includes('deliver') && evtStatus.includes('complet')) {
+      if (latestEvt) {
+        const evtStatus = (latestEvt.status || '').toLowerCase();
+        if (evtStatus.includes('delivery confirmed') || evtStatus.includes('delivered')) {
           status = 'delivered'; label = 'Delivered';
         } else if (evtStatus.includes('out for delivery')) {
           status = 'out_for_delivery'; label = 'Out for Delivery';
-        } else if (evtStatus.includes('pickup') || evtStatus.includes('picked up')) {
-          status = 'in_transit'; label = 'Picked Up';
+        } else if (evtStatus.includes('arrived at consignee')) {
+          status = 'out_for_delivery'; label = 'Out for Delivery';
+        } else if (evtStatus.includes('exception')) {
+          status = 'exception'; label = 'Exception';
         }
       }
 
-      // Last event message + location
+      // Last event — find the most recent one with a city/location for context
       let lastEvent = null;
       let lastEventTime = null;
-      if (lastEvt) {
-        lastEvent = [lastEvt.status, lastEvt.desc].filter(Boolean).join(' — ') || null;
-        if (lastEvt.city && lastEvt.state) {
-          lastEvent = lastEvent ? `${lastEvent} (${lastEvt.city}, ${lastEvt.state})` : `${lastEvt.city}, ${lastEvt.state}`;
+      const evtWithLocation = events.find(e => e.city && e.state);
+      const evtToShow = evtWithLocation || latestEvt;
+      if (evtToShow) {
+        lastEvent = [evtToShow.status, evtToShow.desc].filter(Boolean).join(' — ') || null;
+        if (evtToShow.city && evtToShow.state) {
+          lastEvent = lastEvent ? `${lastEvent} (${evtToShow.city}, ${evtToShow.state})` : `${evtToShow.city}, ${evtToShow.state}`;
         }
-        lastEventTime = lastEvt.dateTime ? lastEvt.dateTime.split('T')[0] : null;
+        lastEventTime = evtToShow.dateTime ? evtToShow.dateTime.split('T')[0] : null;
       }
 
       // ETA
       const eta = trace.updatedEta || trace.standardEta || null;
 
-      // Destination
-      const destCity  = trace.destSvcCity  || null;
-      const destState = trace.destSvcState || null;
+      // Destination — use consignee city/state if available
+      const destCity  = trace.consigneeCity  || trace.destSvcCity  || null;
+      const destState = trace.consigneeState || trace.destSvcState || null;
 
-      // Delivered date
-      const deliveredAt = (status === 'delivered' && lastEvt?.dateTime)
-        ? lastEvt.dateTime.split('T')[0] : null;
+      // Delivered date — find the actual "Delivered" event
+      let deliveredAt = null;
+      if (status === 'delivered') {
+        const delEvt = events.find(e => (e.status || '').toLowerCase().includes('delivered') && e.dateTime);
+        if (delEvt) deliveredAt = delEvt.dateTime.split('T')[0];
+      }
+
+      // Delivery signature
+      const signedBy = trace.deliverySign || null;
 
       const cacheData = {
         status, label, lastEvent, lastEventTime,
         eta:         eta ? eta.split('T')[0] : null,
         deliveredAt,
-        signedBy:    trace.deliverySign || null,
+        signedBy,
         location:    destCity ? [destCity, destState].filter(Boolean).join(', ') : null,
         destCity,
         destState,

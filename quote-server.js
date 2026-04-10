@@ -943,6 +943,25 @@ async function initDb() {
     `).catch(()=>{});
     await db.query(`CREATE INDEX IF NOT EXISTS idx_notif_owner ON notifications(owner_id, read, created_at DESC)`).catch(()=>{});
 
+    // Logs table — activity + error feed
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS logs (
+        id        SERIAL PRIMARY KEY,
+        at        TIMESTAMPTZ DEFAULT NOW(),
+        level     TEXT NOT NULL DEFAULT 'info',
+        event     TEXT NOT NULL,
+        rep       TEXT,
+        quote_num TEXT,
+        deal_id   TEXT,
+        deal_name TEXT,
+        message   TEXT NOT NULL,
+        meta      JSONB
+      )
+    `).catch(()=>{});
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_logs_at    ON logs(at DESC)`).catch(()=>{});
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level, at DESC)`).catch(()=>{});
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_logs_event ON logs(event, at DESC)`).catch(()=>{});
+
     console.log('Database ready');
     await initTrackingCache();
     startTrackingPoller();
@@ -973,6 +992,22 @@ async function initDb() {
 
 
 
+
+// ── Activity + Error Logger ───────────────────────────────────────
+// Fire-and-forget — never throws, never blocks a request
+function writelog(level, event, message, opts = {}) {
+  if (!db) return;
+  const { rep, quoteNum, dealId, dealName, meta } = opts;
+  db.query(
+    `INSERT INTO logs (level, event, rep, quote_num, deal_id, deal_name, message, meta)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [level, event, rep||null, quoteNum||null, dealId||null, dealName||null,
+     message, meta ? JSON.stringify(meta) : null]
+  ).catch(e => console.warn('[writelog] failed:', e.message));
+}
+const logInfo  = (event, msg, opts) => writelog('info',  event, msg, opts);
+const logError = (event, msg, opts) => writelog('error', event, msg, opts);
+const logWarn  = (event, msg, opts) => writelog('warn',  event, msg, opts);
 
 // Rep notified via HubSpot task
 
@@ -2874,6 +2909,7 @@ const server = http.createServer(async (req, res) => {
         const free = await generateFreeQuoteNumber(quoteNumber, ownerId, resolvedDealId, resolvedContactId);
         if (free !== quoteNumber) {
           console.log(`[save] quote number collision: ${quoteNumber} → reassigned to ${free}`);
+        logWarn('quote.collision', `Quote number reassigned: ${quoteNumber} → ${free}`, { rep: body.repName, dealName: body.dealName, quoteNum: free });
           quoteNumber = free;
         }
       }
@@ -3076,6 +3112,7 @@ const server = http.createServer(async (req, res) => {
         }
         dealId = deal.id;
         if (!dealId) throw new Error('Failed to create deal: ' + JSON.stringify(deal));
+        logInfo('deal.created', `Deal created: ${dealName || 'Unknown'}`, { rep: repName, dealId: String(dealId), dealName, quoteNum: quoteNumber });
       }
 
       // Associate contact with deal
@@ -5805,6 +5842,185 @@ tbody tr:hover td{background:#fdfcfb}
     return;
   }
 
+  // ── Admin Log Page ───────────────────────────────────────────────
+  if (pathname === '/admin-log' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Log — WhisperRoom</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0f0f0f;--surface:#1a1a1a;--surface2:#222;--border:#2a2a2a;--orange:#ee6216;--text:#e8e8e8;--muted:#888;--green:#22c55e;--red:#ef4444;--yellow:#f59e0b; }
+  * { box-sizing:border-box;margin:0;padding:0; }
+  body { font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh; }
+  .topbar { display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:52px;background:#1a1a1a;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:100; }
+  .logo { font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8; } .logo span { color:#e8531a; }
+  .back { font-size:11px;font-weight:700;color:var(--muted);text-decoration:none;padding:5px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;letter-spacing:.05em;text-transform:uppercase; }
+  .main { max-width:1300px;margin:0 auto;padding:28px 24px; }
+  h1 { font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin-bottom:4px; } h1 span { color:var(--orange); }
+  .subtitle { font-size:12px;color:var(--muted);margin-bottom:24px; }
+  .panels { display:grid;grid-template-columns:1fr 1fr;gap:20px; }
+  @media(max-width:900px) { .panels { grid-template-columns:1fr; } }
+  .panel { background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden; }
+  .panel-header { padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap; }
+  .panel-title { font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em; }
+  .activity-title { color:var(--green); } .error-title { color:var(--red); }
+  .filters { display:flex;gap:8px;align-items:center;flex-wrap:wrap; }
+  .filter-input { padding:5px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-family:inherit;outline:none; }
+  .filter-input:focus { border-color:var(--orange); }
+  .panel-body { overflow-y:auto;max-height:70vh; }
+  .log-row { padding:10px 18px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:140px 110px 1fr auto;gap:10px;align-items:start;font-size:12px; }
+  .log-row:last-child { border-bottom:none; }
+  .log-row:hover { background:rgba(255,255,255,.02); }
+  .log-time { color:var(--muted);font-size:11px;white-space:nowrap; }
+  .log-event { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:2px 7px;border-radius:4px;width:fit-content; }
+  .ev-deal\\.created { background:rgba(59,130,246,.15);color:#3b82f6; }
+  .ev-order\\.shipped { background:rgba(34,197,94,.12);color:var(--green); }
+  .ev-order\\.processed { background:rgba(34,197,94,.12);color:var(--green); }
+  .ev-order\\.unshipped { background:rgba(245,158,11,.12);color:var(--yellow); }
+  .ev-order\\.deleted { background:rgba(239,68,68,.12);color:var(--red); }
+  .ev-task\\.accounting { background:rgba(238,98,22,.12);color:var(--orange); }
+  .ev-quote\\.collision { background:rgba(245,158,11,.12);color:var(--yellow); }
+  .ev-hubspot\\.error,.ev-error { background:rgba(239,68,68,.12);color:var(--red); }
+  .log-msg { color:var(--text);line-height:1.4; }
+  .log-rep { font-size:10px;font-weight:700;color:var(--orange);white-space:nowrap; }
+  .meta-btn { font-size:10px;color:var(--muted);cursor:pointer;background:none;border:none;text-decoration:underline;font-family:inherit; }
+  .meta-row { display:none;padding:8px 18px;background:rgba(0,0,0,.2);font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);font-family:monospace;white-space:pre-wrap;word-break:break-all; }
+  .empty { padding:40px;text-align:center;color:var(--muted);font-size:13px; }
+  .refresh-btn { padding:5px 12px;background:var(--orange);color:white;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:.05em; }
+  .count { font-size:10px;color:var(--muted);font-weight:600; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="logo">Whisper<span>Room</span> — Admin Log</div>
+  <a href="/hub" class="back">← Back to Hub</a>
+</div>
+<div class="main">
+  <h1>System <span>Log</span></h1>
+  <div class="subtitle">Activity and errors. Auto-refreshes every 30 seconds.</div>
+  <div class="panels">
+    <div class="panel" id="activityPanel">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title activity-title">Activity Feed</div>
+          <div class="count" id="activityCount"></div>
+        </div>
+        <div class="filters">
+          <input class="filter-input" id="activityRep" placeholder="Filter by rep" oninput="renderActivity()">
+          <input class="filter-input" id="activitySearch" placeholder="Search..." oninput="renderActivity()">
+          <button class="refresh-btn" onclick="loadLogs()">↻</button>
+        </div>
+      </div>
+      <div class="panel-body" id="activityBody"><div class="empty">Loading…</div></div>
+    </div>
+    <div class="panel" id="errorPanel">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title error-title">Errors & Warnings</div>
+          <div class="count" id="errorCount"></div>
+        </div>
+        <div class="filters">
+          <input class="filter-input" id="errorSearch" placeholder="Search..." oninput="renderErrors()">
+          <button class="refresh-btn" onclick="loadLogs()">↻</button>
+        </div>
+      </div>
+      <div class="panel-body" id="errorBody"><div class="empty">Loading…</div></div>
+    </div>
+  </div>
+</div>
+<script>
+let _activity = [], _errors = [];
+
+async function loadLogs() {
+  try {
+    const res  = await fetch('/api/logs', { credentials: 'include' });
+    const data = await res.json();
+    _activity = (data.activity || []);
+    _errors   = (data.errors   || []);
+    renderActivity();
+    renderErrors();
+  } catch(e) {
+    document.getElementById('activityBody').innerHTML = '<div class="empty">Failed to load logs</div>';
+  }
+}
+
+function fmt(ts) {
+  const d = new Date(ts);
+  return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' ' +
+         d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true,timeZone:'America/New_York'});
+}
+
+function evClass(event) {
+  return 'ev-' + (event||'').replace(/\\./g, '\\\\.');
+}
+
+function rowHtml(r) {
+  const metaStr = r.meta ? JSON.stringify(r.meta, null, 2) : null;
+  const idx = r.id;
+  return \`<div class="log-row">
+    <div class="log-time">\${fmt(r.at)}</div>
+    <div class="log-event \${evClass(r.event)}">\${r.event || ''}</div>
+    <div>
+      <div class="log-msg">\${r.message || ''}</div>
+      \${r.quote_num ? \`<div style="font-size:10px;color:var(--muted);margin-top:2px">\${r.quote_num}\${r.deal_name ? ' · ' + r.deal_name : ''}</div>\` : ''}
+      \${metaStr ? \`<button class="meta-btn" onclick="toggleMeta('\${idx}')">details</button><div class="meta-row" id="meta-\${idx}">\${metaStr}</div>\` : ''}
+    </div>
+    <div class="log-rep">\${r.rep || ''}</div>
+  </div>\`;
+}
+
+function toggleMeta(id) {
+  const el = document.getElementById('meta-' + id);
+  if (el) el.style.display = el.style.display === 'block' ? 'none' : 'block';
+}
+
+function renderActivity() {
+  const rep    = document.getElementById('activityRep').value.trim().toLowerCase();
+  const search = document.getElementById('activitySearch').value.trim().toLowerCase();
+  let rows = _activity;
+  if (rep)    rows = rows.filter(r => (r.rep||'').toLowerCase().includes(rep));
+  if (search) rows = rows.filter(r => (r.message||'').toLowerCase().includes(search) || (r.deal_name||'').toLowerCase().includes(search) || (r.quote_num||'').toLowerCase().includes(search));
+  document.getElementById('activityCount').textContent = rows.length + ' events';
+  document.getElementById('activityBody').innerHTML = rows.length ? rows.map(rowHtml).join('') : '<div class="empty">No activity yet</div>';
+}
+
+function renderErrors() {
+  const search = document.getElementById('errorSearch').value.trim().toLowerCase();
+  let rows = _errors;
+  if (search) rows = rows.filter(r => (r.message||'').toLowerCase().includes(search) || (r.event||'').toLowerCase().includes(search));
+  document.getElementById('errorCount').textContent = rows.length + ' events';
+  document.getElementById('errorBody').innerHTML = rows.length ? rows.map(rowHtml).join('') : '<div class="empty">No errors logged</div>';
+}
+
+loadLogs();
+setInterval(loadLogs, 30000);
+</script>
+</body>
+</html>`);
+    return;
+  }
+
+  // ── API: Logs ────────────────────────────────────────────────────
+  if (pathname === '/api/logs' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      if (!db) { json({ activity: [], errors: [] }); return; }
+      const [actRes, errRes] = await Promise.all([
+        db.query(`SELECT * FROM logs WHERE level = 'info' ORDER BY at DESC LIMIT 500`),
+        db.query(`SELECT * FROM logs WHERE level IN ('error','warn') ORDER BY at DESC LIMIT 200`),
+      ]);
+      json({ activity: actRes.rows, errors: errRes.rows });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   if (pathname === '/orders' && req.method === 'GET') {
     const html = fs.readFileSync(path.join(__dirname, 'orders-dashboard.html'), 'utf8');
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -6222,6 +6438,7 @@ tbody tr:hover td{background:#fdfcfb}
       const result = await db.query('DELETE FROM orders WHERE quote_number = $1', [quoteNumber]);
       if (result.rowCount === 0) { json({ error: 'Order not found' }, 404); return; }
       console.log(`[orders] deleted order ${quoteNumber}`);
+      logWarn('order.deleted', `Order deleted: ${quoteNumber}`, { quoteNum: quoteNumber });
       json({ success: true });
     } catch(e) {
       console.error('Delete order error:', e.message);
@@ -6271,6 +6488,7 @@ tbody tr:hover td{background:#fdfcfb}
         } catch(e) { console.warn('[unship] HubSpot revert failed:', e.message); }
       }
 
+      logInfo('order.unshipped', `Unshipped: ${quoteNumber}`, { rep: repName, quoteNum: quoteNumber, dealId: String(dealId||'') });
       json({ success: true, quoteNumber });
     } catch(e) {
       json({ error: e.message }, 500);
@@ -6690,6 +6908,7 @@ tbody tr:hover td{background:#fdfcfb}
                   });
                 }
                 console.log(`[orders] HS-only accounting task created for ${dealNameT} (task ${taskId})`);
+                logInfo('order.shipped', `Shipped (HS): ${dealNameT} via ${sf.carrier || '—'} — PRO: ${sf.tracking || '—'}`, { quoteNum: quoteNumber, dealId: String(hsDealId), dealName: dealNameT, meta: { carrier: sf.carrier, tracking: sf.tracking, freightCost } });
               } catch(e) {
                 console.warn('[orders] HS-only Ship It post-processing failed:', e.message);
               }
@@ -6816,7 +7035,7 @@ tbody tr:hover td{background:#fdfcfb}
               headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
             }, { properties: hsProps });
             console.log(`[orders] HubSpot write status: ${hsRes.status} props: ${Object.keys(hsProps).join(',')}`);
-            if (hsRes.status >= 400) console.error('[orders] HubSpot error:', JSON.stringify(hsRes.body)?.slice(0,300));
+            if (hsRes.status >= 400) { console.error('[orders] HubSpot error:', JSON.stringify(hsRes.body)?.slice(0,300)); logError('hubspot.error', `HubSpot PATCH failed: ${hsRes.body?.message || hsRes.status}`, { quoteNum: quoteNumber, dealId: String(dealId||''), meta: { status: hsRes.status, body: JSON.stringify(hsRes.body)?.slice(0,300) } }); }
           }
 
           // Seed tracking cache immediately when tracking number is present (non-blocking)
@@ -6852,6 +7071,7 @@ tbody tr:hover td{background:#fdfcfb}
       }
 
       console.log(`Order ${quoteNumber} updated${isNowShipped && !wasShipped ? ' → SHIPPED' : ''}`);
+      if (isNowShipped && !wasShipped) { const _sf = updatedOrderData.shipped || {}; logInfo('order.shipped', `Shipped: ${order?.deal_name || quoteNumber} via ${_sf.carrier || '—'} — PRO: ${_sf.tracking || '—'}`, { rep: repName, quoteNum: quoteNumber, dealId: String(dealId||''), dealName: order?.deal_name, meta: { carrier: _sf.carrier, tracking: _sf.tracking, freightCost: updatedOrderData.freightCost } }); }
       json({ success: true, shipped: isNowShipped });
 
       // ── Accounting task when Jeromy ships ────────────────────────
@@ -6927,6 +7147,7 @@ tbody tr:hover td{background:#fdfcfb}
             });
 
             console.log(`[orders] accounting task created for ${dealNameT} (task ${taskId})`);
+            logInfo('task.accounting', `Accounting task created for ${dealNameT}`, { quoteNum: quoteNumber, dealId: String(dealId||''), dealName: dealNameT });
           } catch(e) {
             console.warn('[orders] accounting task failed:', e.message);
           }
@@ -7347,6 +7568,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       }
 
       console.log(`Order processed: ${quoteNumber}, deal ${dealId} → closedwon`);
+      logInfo('order.processed', `Order processed: ${quoteNumber} — ${dealName || ''}`, { rep: repName, quoteNum: quoteNumber, dealId: String(dealId||''), dealName });
       json({ success: true, orderUrl });
 
       // Upload order PDF to shared orders folder (non-blocking)

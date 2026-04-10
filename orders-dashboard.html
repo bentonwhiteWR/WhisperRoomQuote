@@ -414,6 +414,9 @@
       🗑 Delete Order
     </button>
   </div>
+
+<!-- Admin log button — fixed bottom right, Benton only -->
+<a id="adminLogBtn" href="/admin-log" target="_blank" style="display:none;position:fixed;bottom:20px;right:20px;padding:7px 14px;background:rgba(238,98,22,.12);border:1px solid rgba(238,98,22,.3);border-radius:8px;color:var(--orange);font-size:11px;font-weight:700;text-decoration:none;letter-spacing:.04em;text-transform:uppercase;z-index:50;backdrop-filter:blur(4px)">📋 Admin Log</a>
 </div>
 
 <!-- Freight Quote Modal -->
@@ -1580,6 +1583,9 @@ async function loadCurrentUser() {
       // Store for changelog attribution
       window._sessionRepName  = data.name;
       window._sessionOwnerId  = data.ownerId || null;
+      // Admin log button — visible to all
+      const logBtn = document.getElementById('adminLogBtn');
+      if (logBtn) logBtn.style.display = 'block';
       // Hide manual rep selector — we know who they are
       const repBar = document.getElementById('repBar');
       if (repBar) repBar.style.display = 'none';

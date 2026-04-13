@@ -3336,7 +3336,8 @@ const server = http.createServer(async (req, res) => {
 
       // HubSpot Notes write removed — DB is primary storage
 
-      writelog('info', 'deal.created', `Deal created: ${finalDealName || dealName || '—'} (${quoteNumber || '—'})`, { rep: String(ownerId || ''), quoteNum: quoteNumber || null, dealId: String(dealId || ''), dealName: finalDealName || dealName || null });
+      const isNewDeal = !existingDealId;
+      writelog('info', 'quote.pushed', `${isNewDeal ? 'New deal' : 'Revision'}: ${finalDealName || dealName || '—'} (${quoteNumber || '—'})${isNewDeal ? '' : ' — deal ' + dealId}`, { rep: String(ownerId || ''), quoteNum: quoteNumber || null, dealId: String(dealId || ''), dealName: finalDealName || dealName || null, meta: { isNewDeal, existingDealId: existingDealId || null } });
       json({
         success: true,
         dealId,

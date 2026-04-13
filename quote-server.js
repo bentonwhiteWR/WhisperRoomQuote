@@ -2677,7 +2677,6 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = JSON.parse(await readBody(req));
       await saveQuoteToDb(body);
-      writelog('info', 'quote.pushed', `Quote saved: ${body.quoteNumber || '—'} — ${body.dealName || ''}`, { rep: body.repName || null, quoteNum: body.quoteNumber || null, dealName: body.dealName || null });
       json({ success: true });
     } catch(e) { json({error: e.message}, 500); }
     return;
@@ -2902,12 +2901,11 @@ const server = http.createServer(async (req, res) => {
       json({ ...result, markup: Math.round(result.cost * 0.25 * 100) / 100 });
     } catch(e) {
       console.error(`[freight] error: ${e.message}`);
+      writelog('error', 'error.freight', `ABF rate failed: ${e.message}`, { meta: { zip: body?.zip, state: body?.state, city: body?.city } });
       json({error: e.message}, 500);
     }
     return;
   }
-
-  // ── API: Calculate tax ──
   if (pathname === '/api/tax' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
@@ -6312,6 +6310,7 @@ setInterval(loadLogs,30000);
         });
       } catch(e) {
         console.warn(`[orders-freight] ABF Standard failed: ${e.message}`);
+        writelog('error', 'error.freight', `ABF rate failed: ${e.message}`, { meta: { zip, state, city } });
       }
 
       // ── OD: SOAP XML rate API ─────────────────────────────────────
@@ -6464,13 +6463,11 @@ setInterval(loadLogs,30000);
 
     } catch(e) {
       console.error('[orders-freight] error:', e.message);
+      writelog('error', 'error.freight', `Orders freight failed: ${e.message}`, { meta: { zip, state, city } });
       json({ error: e.message }, 500);
     }
     return;
   }
-
-
-  // ── API: Book ABF Shipment ────────────────────────────────────────
   if (pathname === '/api/book-abf-shipment' && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {

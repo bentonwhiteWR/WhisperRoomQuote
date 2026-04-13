@@ -537,6 +537,11 @@ function renderHub(dealId,data) {
           <select class="admin-select" id="adminStageSelect" onchange="doStageOverride(this.value,this.options[this.selectedIndex].text)">${stageOpts}</select>
         </div>
       </div>
+      <div style="margin-top:10px">
+        <a href="/admin-log" target="_blank" style="display:block;width:100%;padding:8px;background:rgba(238,98,22,.1);border:1px solid rgba(238,98,22,.3);border-radius:6px;color:#ee6216;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase;text-decoration:none;text-align:center;box-sizing:border-box">
+          📋 View Admin Log
+        </a>
+      </div>
       <div class="admin-status" id="adminStatus"></div>
       <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
         <button onclick="doDeleteDeal()" style="width:100%;padding:8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:6px;color:#ef4444;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">

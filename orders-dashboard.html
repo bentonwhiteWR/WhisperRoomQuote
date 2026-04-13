@@ -1007,7 +1007,12 @@ function renderOrders(orders) {
     const total     = o.total ? fmt(o.total) : '—';
     const pallets   = o.order_data?.shipped?.pallets || '—';
     const shipDate  = o.order_data?.shipped?.date
-      ? new Date(o.order_data.shipped.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'America/New_York'})
+      ? (() => {
+          const raw = o.order_data.shipped.date;
+          // Date-only strings (YYYY-MM-DD) are parsed as UTC by JS — force local by appending T12:00
+          const d = new Date(raw.length === 10 ? raw + 'T12:00:00' : raw);
+          return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+        })()
       : '—';
     const orderUrl  = `https://sales.whisperroom.com/o/${encodeURIComponent(o.quote_number)}${o.share_token ? '?t=' + o.share_token : ''}`;
     return `<tr onclick="openDrawer('${o.quote_number}')">

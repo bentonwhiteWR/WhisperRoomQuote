@@ -1439,7 +1439,12 @@ async function getSessionAsync(req) {
   return null;
 }
 
-const HS_CLIENT_ID     = process.env.HS_CLIENT_ID     || '';
+// Quick helper — returns ownerId string for writelog rep field, never throws
+function getRepFromReq(req) {
+  try { return getSession(req)?.ownerId || null; } catch(e) { return null; }
+}
+
+
 const HS_CLIENT_SECRET = process.env.HS_CLIENT_SECRET || '';
 const HS_REDIRECT_URI  = process.env.HS_REDIRECT_URI  || 'https://sales.whisperroom.com/auth/callback';
 
@@ -2921,21 +2926,30 @@ const server = http.createServer(async (req, res) => {
       json({ ...result, markup: Math.round(result.cost * 0.25 * 100) / 100 });
     } catch(e) {
       console.error(`[freight] error: ${e.message}`);
-      writelog('error', 'error.freight', `ABF rate failed: ${e.message}`, { meta: { zip: body.zip || null, state: body.state || null, city: body.city || null } });
+      writelog('error', 'error.freight', `ABF rate failed: ${e.message}`, { rep: getRepFromReq(req), meta: { zip: body.zip || null, state: body.state || null, city: body.city || null } });
       json({error: e.message}, 500);
     }
     return;
   }
   if (pathname === '/api/tax' && req.method === 'POST') {
+    let body = {};
     try {
-      const body = JSON.parse(await readBody(req));
-      const { state: rawState, zip, city, subtotal, shipping, street } = body;
+      body = JSON.parse(await readBody(req));
+      const { state: rawState, zip, city, subtotal, shipping, street, rep } = body;
       const state = toStateAbbr(rawState);
       console.log(`[tax route] received: state=${state} zip=${zip} city=${city||'(none)'} street=${street||'(none)'} subtotal=${subtotal} shipping=${shipping}`);
       const result = await calculateTaxProper(state, zip, city, subtotal, shipping, street || '');
       console.log(`[tax route] result: tax=${result.tax} rate=${result.rate} inNexus=${result.inNexus} error=${result.error||'none'}`);
+      if (result.error) {
+        console.error(`[tax] error for ${state} ${zip}: ${result.error}`);
+        writelog('error', 'error.tax', `Tax failed: ${state} ${zip||'no zip'} — ${result.error}`, { rep: rep || null, meta: { state, zip: zip||null, city: city||null, error: result.error } });
+      }
       json(result);
-    } catch(e) { json({error: e.message}, 500); }
+    } catch(e) {
+      console.error(`[tax route] exception: ${e.message}`);
+      writelog('error', 'error.tax', `Tax exception: ${e.message}`, { rep: body.rep || null, meta: { state: body.state||null, zip: body.zip||null } });
+      json({error: e.message}, 500);
+    }
     return;
   }
 
@@ -3367,7 +3381,7 @@ const server = http.createServer(async (req, res) => {
       });
 
     } catch(e) {
-      writelog('error', 'error.save', `create-deal failed: ${e.message}`, {});
+      writelog('error', 'error.save', `create-deal failed: ${e.message}`, { rep: getRepFromReq(req) });
       json({error: e.message}, 500);
     }
     return;
@@ -4116,7 +4130,7 @@ tbody tr:hover td{background:#fdfcfb}
       }
 
       json({ success: true, results });
-    writelog('error','error.accept-quote',`accept-quote failed: ${e.message}`,{});
+    writelog('error','error.accept-quote',`accept-quote failed: ${e.message}`,{ rep: getRepFromReq(req) });
     } catch(e) { json({ error: e.message }, 500); }
     return;
   }
@@ -4239,7 +4253,7 @@ tbody tr:hover td{background:#fdfcfb}
       console.log(`[rename-deal] ${dealId}: "${oldName}" → "${newName}" drive=${driveRenamed}`);
       json({ success: true, driveRenamed });
     } catch(e) {
-      writelog('error', 'error.rename-deal', `rename-deal failed: ${e.message}`, { meta: {} });
+      writelog('error', 'error.rename-deal', `rename-deal failed: ${e.message}`, { rep: getRepFromReq(req) });
       json({ error: e.message }, 500);
     }
     return;
@@ -4657,7 +4671,7 @@ tbody tr:hover td{background:#fdfcfb}
       fetchAndCacheTracking(tracking, carrier).catch(e => console.warn('[ship-deal] cache seed failed:', e.message));
 
       json({ success: true });
-    writelog('error','error.ship-deal',`ship-deal failed: ${e.message}`,{});
+    writelog('error','error.ship-deal',`ship-deal failed: ${e.message}`,{ rep: getRepFromReq(req) });
     } catch(e) { json({ error: e.message }, 500); }
     return;
   }
@@ -5616,7 +5630,7 @@ tbody tr:hover td{background:#fdfcfb}
       json({ dealId, dealStage, dealAmount, paymentStatus, quotes, invoices, orders, contact, driveFolderId, driveFolderName });
     } catch(e) {
       console.error('Deal hub error:', e.message);
-      writelog('error','error.create-invoice',`create-invoice failed: ${e.message}`,{});
+      writelog('error','error.create-invoice',`create-invoice failed: ${e.message}`,{ rep: getRepFromReq(req) });
       json({ error: e.message }, 500);
     }
     return;
@@ -5916,7 +5930,7 @@ tbody tr:hover td{background:#fdfcfb}
 
     } catch(e) {
       console.error('Create invoice error:', e.message);
-      writelog('error','error.create-invoice',`create-invoice failed: ${e.message}`,{});
+      writelog('error','error.create-invoice',`create-invoice failed: ${e.message}`,{ rep: getRepFromReq(req) });
       json({ error: e.message }, 500);
     }
     return;
@@ -6383,7 +6397,7 @@ setInterval(loadLogs,30000);
         });
       } catch(e) {
         console.warn(`[orders-freight] ABF Standard failed: ${e.message}`);
-        writelog('error', 'error.freight', `ABF rate failed: ${e.message}`, { meta: { zip, state, city } });
+        writelog('error', 'error.freight', `ABF rate failed: ${e.message}`, { rep: getRepFromReq(req), meta: { zip, state, city } });
       }
 
       // ── OD: SOAP XML rate API ─────────────────────────────────────
@@ -6536,7 +6550,7 @@ setInterval(loadLogs,30000);
 
     } catch(e) {
       console.error('[orders-freight] error:', e.message);
-      writelog('error', 'error.freight', `Orders freight failed: ${e.message}`, { meta: { zip, state, city } });
+      writelog('error', 'error.freight', `Orders freight failed: ${e.message}`, { rep: getRepFromReq(req), meta: { zip, state, city } });
       json({ error: e.message }, 500);
     }
     return;
@@ -6627,7 +6641,7 @@ setInterval(loadLogs,30000);
 
     } catch(e) {
       console.error('ABF booking error:', e.message);
-      writelog('error','error.abf-booking',`abf-booking failed: ${e.message}`,{});
+      writelog('error','error.abf-booking',`abf-booking failed: ${e.message}`,{ rep: getRepFromReq(req) });
       json({ error: e.message }, 500);
     }
     return;
@@ -6647,7 +6661,7 @@ setInterval(loadLogs,30000);
       json({ success: true });
     } catch(e) {
       console.error('Delete order error:', e.message);
-      writelog('error','error.order-save',`order-save failed: ${e.message}`,{});
+      writelog('error','error.order-save',`order-save failed: ${e.message}`,{ rep: getRepFromReq(req) });
       json({ error: e.message }, 500);
     }
     return;
@@ -6696,7 +6710,7 @@ setInterval(loadLogs,30000);
       writelog('info', 'order.unshipped', `Unshipped: ${quoteNumber}`, { rep: repName, quoteNum: quoteNumber, dealId: String(dealId || '') });
       json({ success: true, quoteNumber });
     } catch(e) {
-      writelog('error','error.unship',`unship failed: ${e.message}`,{});
+      writelog('error','error.unship',`unship failed: ${e.message}`,{ rep: getRepFromReq(req) });
       json({ error: e.message }, 500);
     }
     return;
@@ -6980,7 +6994,7 @@ setInterval(loadLogs,30000);
       json({ orders: [...dbOrders, ...hsOrders] });
     } catch(e) {
       console.error('List orders error:', e.message);
-      writelog('error','error.orders-list',`list orders failed: ${e.message}`,{});
+      writelog('error','error.orders-list',`list orders failed: ${e.message}`,{ rep: getRepFromReq(req) });
       json({ error: e.message }, 500);
     }
     return;
@@ -7243,7 +7257,7 @@ setInterval(loadLogs,30000);
             console.log(`[orders] HubSpot write status: ${hsRes.status} props: ${Object.keys(hsProps).join(',')}`);
             if (hsRes.status >= 400) {
               console.error('[orders] HubSpot error:', JSON.stringify(hsRes.body)?.slice(0,300));
-              writelog('error', 'error.hubspot', `HubSpot PATCH failed (${hsRes.status}): ${hsRes.body?.message || '—'}`, { quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { status: hsRes.status, props: Object.keys(hsProps).join(',') } });
+              writelog('error', 'error.hubspot', `HubSpot PATCH failed (${hsRes.status}): ${hsRes.body?.message || '—'}`, { rep: getRepFromReq(req), quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { status: hsRes.status, props: Object.keys(hsProps).join(',') } });
             }
           }
 

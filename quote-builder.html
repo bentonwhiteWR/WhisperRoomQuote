@@ -2428,7 +2428,7 @@ async function getTax() {
     const res = await fetch('/api/tax', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state, zip, city, street, subtotal, shipping })
+      body: JSON.stringify({ state, zip, city, street, subtotal, shipping, rep: document.getElementById('repSelect')?.value || null })
     });
     const data = await res.json();
     taxData = data;
@@ -2437,7 +2437,15 @@ async function getTax() {
     if (!data.inNexus) {
       el.innerHTML = `<span style="color:var(--muted)">No tax nexus in ${state} — tax not applicable.</span>`;
     } else if (data.error) {
-      el.innerHTML = `<span style="color:var(--red)">TaxJar error: ${data.error}</span>`;
+      // Translate TaxJar errors into rep-friendly messages
+      let taxErrMsg = data.error;
+      if (/zip|postal/i.test(data.error))         taxErrMsg = 'Invalid ZIP code — please verify the ship-to ZIP and try again.';
+      else if (/city/i.test(data.error))           taxErrMsg = 'Invalid city — please verify the ship-to city and try again.';
+      else if (/state/i.test(data.error))          taxErrMsg = 'Invalid state — please verify the ship-to state and try again.';
+      else if (/api_key|unauthorized/i.test(data.error)) taxErrMsg = 'Tax service unavailable — contact Benton.';
+      else if (/timeout|timed out/i.test(data.error))    taxErrMsg = 'Tax service timed out — try again in a moment.';
+      else taxErrMsg = `Tax calculation failed — verify the ship-to address and try again. (${data.error})`;
+      el.innerHTML = `<span style="color:var(--red)">⚠ ${taxErrMsg}</span>`;
     } else {
       el.innerHTML = `
         <div style="display:flex;gap:24px;flex-wrap:wrap">

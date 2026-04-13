@@ -1485,13 +1485,17 @@ function httpsRequest(options, body, rawBody) {
   });
 }
 
-function httpsGet(urlStr) {
+function httpsGet(urlStr, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
-    https.get(urlStr, (res) => {
+    const req = https.get(urlStr, (res) => {
       let data = '';
       res.on('data', c => data += c);
       res.on('end', () => resolve({ status: res.statusCode, body: data }));
     }).on('error', reject);
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      reject(new Error('Freight API request timed out after 15 seconds'));
+    });
   });
 }
 
@@ -1883,6 +1887,21 @@ function buildAbfUrl(pallets, totalWeight, consCity, consState, consZip, isCanad
 }
 
 function parseAbfXml(xmlText) {
+  // Check for ABF error response first
+  const errMatch = xmlText.match(/<ERROR[^>]*>([^<]*)<\/ERROR>/i)
+                || xmlText.match(/<ERRORDESC[^>]*>([^<]*)<\/ERRORDESC>/i)
+                || xmlText.match(/<MSG[^>]*>([^<]*)<\/MSG>/i);
+  if (errMatch && errMatch[1].trim()) {
+    const abfMsg = errMatch[1].trim();
+    // Translate common ABF error codes into actionable messages
+    if (/zip|postal|destination/i.test(abfMsg)) throw new Error(`Invalid destination ZIP code — please verify and try again`);
+    if (/city/i.test(abfMsg))                    throw new Error(`Invalid destination city — please verify and try again`);
+    if (/state/i.test(abfMsg))                   throw new Error(`Invalid destination state — please verify and try again`);
+    if (/weight/i.test(abfMsg))                  throw new Error(`Invalid shipment weight — please verify and try again`);
+    if (/class/i.test(abfMsg))                   throw new Error(`Invalid freight class — contact Benton`);
+    throw new Error(`ABF error: ${abfMsg}`);
+  }
+
   let cost = 0, dynDisc = 0, transit = '—';
   const itemRe = /<ITEM[^>]+FOR="([^"]*)"[^>]+AMOUNT="([^"]*)"[^>]*/gi;
   let m;
@@ -1894,7 +1913,7 @@ function parseAbfXml(xmlText) {
   }
   const tMatch = xmlText.match(/<ADVERTISEDTRANSIT>([^<]*)<\/ADVERTISEDTRANSIT>/i);
   if (tMatch) transit = tMatch[1].trim();
-  if (cost === 0) throw new Error('Could not extract freight rate from ABF response');
+  if (cost === 0) throw new Error('No rate returned from ABF — please verify the destination ZIP, city, and state are correct');
   return { cost: Math.round(cost * 100) / 100, dynDisc, transit };
 }
 
@@ -2888,8 +2907,9 @@ const server = http.createServer(async (req, res) => {
 
   // ── API: Get freight quote ──
   if (pathname === '/api/freight' && req.method === 'POST') {
+    let body = {};
     try {
-      const body = JSON.parse(await readBody(req));
+      body = JSON.parse(await readBody(req));
       const { pallets, totalWeight, city, state: rawFreightState, zip, canadian, accessories } = body;
       const state = toStateAbbr(rawFreightState);
       const abfUrl = buildAbfUrl(pallets, totalWeight, city, state, zip, canadian, accessories || {});
@@ -2901,7 +2921,7 @@ const server = http.createServer(async (req, res) => {
       json({ ...result, markup: Math.round(result.cost * 0.25 * 100) / 100 });
     } catch(e) {
       console.error(`[freight] error: ${e.message}`);
-      writelog('error', 'error.freight', `ABF rate failed: ${e.message}`, { meta: { zip: body?.zip, state: body?.state, city: body?.city } });
+      writelog('error', 'error.freight', `ABF rate failed: ${e.message}`, { meta: { zip: body.zip || null, state: body.state || null, city: body.city || null } });
       json({error: e.message}, 500);
     }
     return;

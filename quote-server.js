@@ -2909,7 +2909,6 @@ const server = http.createServer(async (req, res) => {
         const free = await generateFreeQuoteNumber(quoteNumber, ownerId, resolvedDealId, resolvedContactId);
         if (free !== quoteNumber) {
           console.log(`[save] quote number collision: ${quoteNumber} → reassigned to ${free}`);
-        logWarn('quote.collision', `Quote number reassigned: ${quoteNumber} → ${free}`, { rep: body.repName, dealName: body.dealName, quoteNum: free });
           quoteNumber = free;
         }
       }
@@ -3112,7 +3111,6 @@ const server = http.createServer(async (req, res) => {
         }
         dealId = deal.id;
         if (!dealId) throw new Error('Failed to create deal: ' + JSON.stringify(deal));
-        logInfo('deal.created', `Deal created: ${dealName || 'Unknown'}`, { rep: repName, dealId: String(dealId), dealName, quoteNum: quoteNumber });
       }
 
       // Associate contact with deal
@@ -6438,7 +6436,6 @@ setInterval(loadLogs, 30000);
       const result = await db.query('DELETE FROM orders WHERE quote_number = $1', [quoteNumber]);
       if (result.rowCount === 0) { json({ error: 'Order not found' }, 404); return; }
       console.log(`[orders] deleted order ${quoteNumber}`);
-      logWarn('order.deleted', `Order deleted: ${quoteNumber}`, { quoteNum: quoteNumber });
       json({ success: true });
     } catch(e) {
       console.error('Delete order error:', e.message);
@@ -6487,8 +6484,6 @@ setInterval(loadLogs, 30000);
           console.log(`[unship] Deal ${dealId} reverted to Closed Won — all fields preserved`);
         } catch(e) { console.warn('[unship] HubSpot revert failed:', e.message); }
       }
-
-      logInfo('order.unshipped', `Unshipped: ${quoteNumber}`, { rep: repName, quoteNum: quoteNumber, dealId: String(dealId||'') });
       json({ success: true, quoteNumber });
     } catch(e) {
       json({ error: e.message }, 500);
@@ -6908,7 +6903,6 @@ setInterval(loadLogs, 30000);
                   });
                 }
                 console.log(`[orders] HS-only accounting task created for ${dealNameT} (task ${taskId})`);
-                logInfo('order.shipped', `Shipped (HS): ${dealNameT} via ${sf.carrier || '—'} — PRO: ${sf.tracking || '—'}`, { quoteNum: quoteNumber, dealId: String(hsDealId), dealName: dealNameT, meta: { carrier: sf.carrier, tracking: sf.tracking, freightCost } });
               } catch(e) {
                 console.warn('[orders] HS-only Ship It post-processing failed:', e.message);
               }
@@ -7035,7 +7029,7 @@ setInterval(loadLogs, 30000);
               headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
             }, { properties: hsProps });
             console.log(`[orders] HubSpot write status: ${hsRes.status} props: ${Object.keys(hsProps).join(',')}`);
-            if (hsRes.status >= 400) { console.error('[orders] HubSpot error:', JSON.stringify(hsRes.body)?.slice(0,300)); logError('hubspot.error', `HubSpot PATCH failed: ${hsRes.body?.message || hsRes.status}`, { quoteNum: quoteNumber, dealId: String(dealId||''), meta: { status: hsRes.status, body: JSON.stringify(hsRes.body)?.slice(0,300) } }); }
+            if (hsRes.status >= 400) { console.error('[orders] HubSpot error:', JSON.stringify(hsRes.body)?.slice(0,300)); }
           }
 
           // Seed tracking cache immediately when tracking number is present (non-blocking)
@@ -7071,7 +7065,7 @@ setInterval(loadLogs, 30000);
       }
 
       console.log(`Order ${quoteNumber} updated${isNowShipped && !wasShipped ? ' → SHIPPED' : ''}`);
-      if (isNowShipped && !wasShipped) { const _sf = updatedOrderData.shipped || {}; logInfo('order.shipped', `Shipped: ${order?.deal_name || quoteNumber} via ${_sf.carrier || '—'} — PRO: ${_sf.tracking || '—'}`, { rep: repName, quoteNum: quoteNumber, dealId: String(dealId||''), dealName: order?.deal_name, meta: { carrier: _sf.carrier, tracking: _sf.tracking, freightCost: updatedOrderData.freightCost } }); }
+      if (isNowShipped && !wasShipped) { const _sf = updatedOrderData.shipped || {}; }
       json({ success: true, shipped: isNowShipped });
 
       // ── Accounting task when Jeromy ships ────────────────────────
@@ -7147,7 +7141,6 @@ setInterval(loadLogs, 30000);
             });
 
             console.log(`[orders] accounting task created for ${dealNameT} (task ${taskId})`);
-            logInfo('task.accounting', `Accounting task created for ${dealNameT}`, { quoteNum: quoteNumber, dealId: String(dealId||''), dealName: dealNameT });
           } catch(e) {
             console.warn('[orders] accounting task failed:', e.message);
           }
@@ -7568,7 +7561,6 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       }
 
       console.log(`Order processed: ${quoteNumber}, deal ${dealId} → closedwon`);
-      logInfo('order.processed', `Order processed: ${quoteNumber} — ${dealName || ''}`, { rep: repName, quoteNum: quoteNumber, dealId: String(dealId||''), dealName });
       json({ success: true, orderUrl });
 
       // Upload order PDF to shared orders folder (non-blocking)

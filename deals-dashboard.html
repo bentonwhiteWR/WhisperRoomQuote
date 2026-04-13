@@ -495,6 +495,7 @@ function renderHub(dealId,data) {
         ${data.driveFolderName ? `<button onclick="copyFolderPath('${data.driveFolderName.replace(/'/g,"\\'")}')" title="Copy local folder path to clipboard" style="font-size:10px;color:var(--muted);padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">📋 Copy Path</button>` : ''}
         <button onclick="openMergeDeal('${dealId}')" title="Merge this deal into another deal" style="font-size:10px;color:#ef4444;padding:4px 8px;border-radius:5px;border:1px solid rgba(239,68,68,.3);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">⤤ Merge Into</button>
         <button onclick="openMergeLegacy('${dealId}')" title="Merge a legacy AllContacts folder into this deal" style="font-size:10px;color:var(--muted);padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">📁 Merge Legacy</button>
+        <button onclick="openRenameDeal('${dealId}','${(deal.name||'').replace(/'/g,"\\'")}')" title="Rename this deal in HubSpot, Drive, and dashboard" style="font-size:10px;color:#f59e0b;padding:4px 8px;border-radius:5px;border:1px solid rgba(245,158,11,.3);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">✏️ Rename</button>
       </div>
       <div class="hub-actions">
         <button class="btn btn-orange" onclick="newQuoteForDeal('${dealId}','${(deal.name||'').replace(/'/g,"\\'")}')">+ New Quote</button>
@@ -1029,6 +1030,26 @@ let _mergeDealSourceId   = null;
 let _mergeDealTargetId   = null;
 let _mergeDealTargetName = null;
 let _mergeDealSearchTimer = null;
+
+async function openRenameDeal(dealId, currentName) {
+  const newName = prompt('Rename deal:', currentName);
+  if (!newName || newName.trim() === currentName.trim()) return;
+  try {
+    const res = await fetch('/api/rename-deal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ dealId, newName: newName.trim() })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Rename failed');
+    showToast(`✓ Deal renamed to "${newName.trim()}"`, 'success');
+    loadDeal(dealId); // refresh the panel
+    loadBoard();      // refresh the board
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
 
 function openMergeDeal(dealId) {
   _mergeDealSourceId   = dealId;

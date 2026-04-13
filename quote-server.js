@@ -962,6 +962,25 @@ async function initDb() {
     await db.query(`CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level, at DESC)`).catch(()=>{});
     await db.query(`CREATE INDEX IF NOT EXISTS idx_logs_event ON logs(event, at DESC)`).catch(()=>{});
 
+    // Logs table — activity + error feed
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS logs (
+        id        SERIAL PRIMARY KEY,
+        at        TIMESTAMPTZ DEFAULT NOW(),
+        version   TEXT,
+        level     TEXT NOT NULL DEFAULT 'info',
+        event     TEXT NOT NULL,
+        rep       TEXT,
+        quote_num TEXT,
+        deal_id   TEXT,
+        deal_name TEXT,
+        message   TEXT NOT NULL,
+        meta      JSONB
+      )
+    `).catch(() => {});
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_logs_at    ON logs(at DESC)`).catch(() => {});
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level, at DESC)`).catch(() => {});
+
     console.log('Database ready');
     await initTrackingCache();
     startTrackingPoller();
@@ -993,21 +1012,7 @@ async function initDb() {
 
 
 
-// ── Activity + Error Logger ───────────────────────────────────────
-// Fire-and-forget — never throws, never blocks a request
-function writelog(level, event, message, opts = {}) {
-  if (!db) return;
-  const { rep, quoteNum, dealId, dealName, meta } = opts;
-  db.query(
-    `INSERT INTO logs (level, event, rep, quote_num, deal_id, deal_name, message, meta)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-    [level, event, rep||null, quoteNum||null, dealId||null, dealName||null,
-     message, meta ? JSON.stringify(meta) : null]
-  ).catch(e => console.warn('[writelog] failed:', e.message));
-}
-const logInfo  = (event, msg, opts) => writelog('info',  event, msg, opts);
-const logError = (event, msg, opts) => writelog('error', event, msg, opts);
-const logWarn  = (event, msg, opts) => writelog('warn',  event, msg, opts);
+
 
 // Rep notified via HubSpot task
 
@@ -1225,6 +1230,27 @@ const PORT         = process.env.PORT || 3457;
 const PASSWORD     = process.env.WR_PASSWORD || '';
 const HS_TOKEN     = process.env.HS_TOKEN || '';
 const APP_VERSION  = (() => { try { return require('./package.json').version; } catch(e) { return '1.0.0'; } })();
+
+// ── Activity + Error Logger ───────────────────────────────────────
+// setImmediate defers the DB write until after the response is sent.
+// A failure here CANNOT affect any request — fully isolated.
+function writelog(level, event, message, opts) {
+  setImmediate(() => {
+    if (!db) return;
+    const o = opts || {};
+    db.query(
+      `INSERT INTO logs (version,level,event,rep,quote_num,deal_id,deal_name,message,meta)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [ APP_VERSION, level, event,
+        o.rep      || null,
+        o.quoteNum || null,
+        o.dealId   || null,
+        o.dealName || null,
+        message,
+        o.meta ? JSON.stringify(o.meta) : null ]
+    ).catch(() => {});
+  });
+}
 
 // ── Products cache (avoids hammering HubSpot on every price book open) ──
 let _productsCache     = null;
@@ -2651,6 +2677,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = JSON.parse(await readBody(req));
       await saveQuoteToDb(body);
+      writelog('info', 'quote.pushed', `Quote saved: ${body.quoteNumber || '—'} — ${body.dealName || ''}`, { rep: body.repName || null, quoteNum: body.quoteNumber || null, dealName: body.dealName || null });
       json({ success: true });
     } catch(e) { json({error: e.message}, 500); }
     return;
@@ -3309,6 +3336,7 @@ const server = http.createServer(async (req, res) => {
 
       // HubSpot Notes write removed — DB is primary storage
 
+      writelog('info', 'deal.created', `Deal created: ${finalDealName || dealName || '—'} (${quoteNumber || '—'})`, { rep: String(ownerId || ''), quoteNum: quoteNumber || null, dealId: String(dealId || ''), dealName: finalDealName || dealName || null });
       json({
         success: true,
         dealId,
@@ -3320,6 +3348,7 @@ const server = http.createServer(async (req, res) => {
       });
 
     } catch(e) {
+      writelog('error', 'error.save', `create-deal failed: ${e.message}`, {});
       json({error: e.message}, 500);
     }
     return;
@@ -5800,6 +5829,7 @@ tbody tr:hover td{background:#fdfcfb}
       // 10. Return invoice page URL
       const invToken = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
       const invoicePageUrl = `https://sales.whisperroom.com/i/${quoteNumber}?t=${invToken}`;
+      writelog('info', 'invoice.created', `Invoice created: ${quoteNumber || '—'}`, { rep: String(ownerId || ''), quoteNum: quoteNumber || null, dealId: String(dealId || ''), meta: { invoiceId } });
       json({ success: true, invoiceUrl: invoicePageUrl, paymentUrl, invoiceId });
 
       // Upload invoice PDF to Google Drive (non-blocking)
@@ -6436,6 +6466,7 @@ setInterval(loadLogs, 30000);
       const result = await db.query('DELETE FROM orders WHERE quote_number = $1', [quoteNumber]);
       if (result.rowCount === 0) { json({ error: 'Order not found' }, 404); return; }
       console.log(`[orders] deleted order ${quoteNumber}`);
+      writelog('info', 'order.deleted', `Order deleted: ${quoteNumber}`, { quoteNum: quoteNumber });
       json({ success: true });
     } catch(e) {
       console.error('Delete order error:', e.message);
@@ -6484,6 +6515,7 @@ setInterval(loadLogs, 30000);
           console.log(`[unship] Deal ${dealId} reverted to Closed Won — all fields preserved`);
         } catch(e) { console.warn('[unship] HubSpot revert failed:', e.message); }
       }
+      writelog('info', 'order.unshipped', `Unshipped: ${quoteNumber}`, { rep: repName, quoteNum: quoteNumber, dealId: String(dealId || '') });
       json({ success: true, quoteNumber });
     } catch(e) {
       json({ error: e.message }, 500);
@@ -7029,7 +7061,10 @@ setInterval(loadLogs, 30000);
               headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
             }, { properties: hsProps });
             console.log(`[orders] HubSpot write status: ${hsRes.status} props: ${Object.keys(hsProps).join(',')}`);
-            if (hsRes.status >= 400) { console.error('[orders] HubSpot error:', JSON.stringify(hsRes.body)?.slice(0,300)); }
+            if (hsRes.status >= 400) {
+              console.error('[orders] HubSpot error:', JSON.stringify(hsRes.body)?.slice(0,300));
+              writelog('error', 'error.hubspot', `HubSpot PATCH failed (${hsRes.status}): ${hsRes.body?.message || '—'}`, { quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { status: hsRes.status, props: Object.keys(hsProps).join(',') } });
+            }
           }
 
           // Seed tracking cache immediately when tracking number is present (non-blocking)
@@ -7065,7 +7100,10 @@ setInterval(loadLogs, 30000);
       }
 
       console.log(`Order ${quoteNumber} updated${isNowShipped && !wasShipped ? ' → SHIPPED' : ''}`);
-      if (isNowShipped && !wasShipped) { const _sf = updatedOrderData.shipped || {}; }
+      if (isNowShipped && !wasShipped) {
+        const _sf = updatedOrderData.shipped || {};
+        writelog('info', 'order.shipped', `Shipped: ${quoteNumber} via ${_sf.carrier || '—'} PRO: ${_sf.tracking || '—'}`, { rep: repName || null, quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { carrier: _sf.carrier, tracking: _sf.tracking, freightCost: updatedOrderData.freightCost } });
+      }
       json({ success: true, shipped: isNowShipped });
 
       // ── Accounting task when Jeromy ships ────────────────────────
@@ -7561,6 +7599,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       }
 
       console.log(`Order processed: ${quoteNumber}, deal ${dealId} → closedwon`);
+      writelog('info', 'order.processed', `Order processed: ${quoteNumber} — ${dealName || '—'}`, { rep: String(ownerId || ''), quoteNum: quoteNumber, dealId: String(dealId || ''), dealName: dealName || null });
       json({ success: true, orderUrl });
 
       // Upload order PDF to shared orders folder (non-blocking)

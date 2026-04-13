@@ -4096,6 +4096,7 @@ tbody tr:hover td{background:#fdfcfb}
       }
 
       json({ success: true, results });
+    writelog('error','error.accept-quote',`accept-quote failed: ${e.message}`,{});
     } catch(e) { json({ error: e.message }, 500); }
     return;
   }
@@ -4587,6 +4588,7 @@ tbody tr:hover td{background:#fdfcfb}
       fetchAndCacheTracking(tracking, carrier).catch(e => console.warn('[ship-deal] cache seed failed:', e.message));
 
       json({ success: true });
+    writelog('error','error.ship-deal',`ship-deal failed: ${e.message}`,{});
     } catch(e) { json({ error: e.message }, 500); }
     return;
   }
@@ -5545,6 +5547,7 @@ tbody tr:hover td{background:#fdfcfb}
       json({ dealId, dealStage, dealAmount, paymentStatus, quotes, invoices, orders, contact, driveFolderId, driveFolderName });
     } catch(e) {
       console.error('Deal hub error:', e.message);
+      writelog('error','error.create-invoice',`create-invoice failed: ${e.message}`,{});
       json({ error: e.message }, 500);
     }
     return;
@@ -5844,6 +5847,7 @@ tbody tr:hover td{background:#fdfcfb}
 
     } catch(e) {
       console.error('Create invoice error:', e.message);
+      writelog('error','error.create-invoice',`create-invoice failed: ${e.message}`,{});
       json({ error: e.message }, 500);
     }
     return;
@@ -6554,6 +6558,7 @@ setInterval(loadLogs,30000);
 
     } catch(e) {
       console.error('ABF booking error:', e.message);
+      writelog('error','error.abf-booking',`abf-booking failed: ${e.message}`,{});
       json({ error: e.message }, 500);
     }
     return;
@@ -6573,6 +6578,7 @@ setInterval(loadLogs,30000);
       json({ success: true });
     } catch(e) {
       console.error('Delete order error:', e.message);
+      writelog('error','error.order-save',`order-save failed: ${e.message}`,{});
       json({ error: e.message }, 500);
     }
     return;
@@ -6621,6 +6627,7 @@ setInterval(loadLogs,30000);
       writelog('info', 'order.unshipped', `Unshipped: ${quoteNumber}`, { rep: repName, quoteNum: quoteNumber, dealId: String(dealId || '') });
       json({ success: true, quoteNumber });
     } catch(e) {
+      writelog('error','error.unship',`unship failed: ${e.message}`,{});
       json({ error: e.message }, 500);
     }
     return;
@@ -6904,6 +6911,7 @@ setInterval(loadLogs,30000);
       json({ orders: [...dbOrders, ...hsOrders] });
     } catch(e) {
       console.error('List orders error:', e.message);
+      writelog('error','error.orders-list',`list orders failed: ${e.message}`,{});
       json({ error: e.message }, 500);
     }
     return;

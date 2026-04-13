@@ -730,7 +730,10 @@ async function startTrackingPoller() {
       }
 
       if (refreshed > 0) console.log(`Tracking poller: refreshed ${refreshed} shipments`);
-    } catch(e) { console.warn('Tracking poller error:', e.message); }
+    } catch(e) {
+      console.warn('Tracking poller error:', e.message);
+      writelog('error', 'error.tracking-poller', `Tracking poller failed: ${e.message}`, {});
+    }
   };
 
   // Run immediately on startup, then every 30 minutes
@@ -2425,7 +2428,7 @@ const server = http.createServer(async (req, res) => {
       await db.query('DELETE FROM tracking_cache WHERE tracking_number = $1', [tracking]);
       const result = await fetchAndCacheTracking(tracking, carrier || '');
       json({ success: true, tracking, result });
-    } catch(e) { json({ error: e.message }, 500); }
+    } catch(e) { writelog('error','error.refresh-tracking',`refresh-tracking failed: ${e.message}`,{ rep: getRepFromReq(req) }); json({ error: e.message }, 500); }
     return;
   }
 
@@ -6361,6 +6364,7 @@ setInterval(loadLogs,30000);
 
     } catch(e) {
       console.error('Ship HubSpot deal error:', e.message);
+      writelog('error','error.ship-hubspot-deal',`ship-hubspot-deal failed: ${e.message}`,{ rep: getRepFromReq(req) });
       json({ error: e.message }, 500);
     }
     return;

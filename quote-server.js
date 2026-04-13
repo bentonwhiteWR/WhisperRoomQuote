@@ -4176,6 +4176,55 @@ tbody tr:hover td{background:#fdfcfb}
   }
 
   // ── Admin: Rename Drive folders to company-name format ────────
+  // ── API: Rename Deal ─────────────────────────────────────────────
+  if (pathname === '/api/rename-deal' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { dealId, newName } = JSON.parse(await readBody(req));
+      if (!dealId || !newName) { json({ error: 'Missing dealId or newName' }, 400); return; }
+
+      // 1. Update deal name in HubSpot
+      await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/objects/deals/${dealId}`,
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, { properties: { dealname: newName } });
+
+      // 2. Update all quotes in DB with this deal_id
+      let oldName = null;
+      let folderId = null;
+      if (db) {
+        const row = await db.query(
+          `SELECT deal_name, gdrive_folder_id FROM quotes WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 1`,
+          [dealId]
+        );
+        oldName  = row.rows[0]?.deal_name  || null;
+        folderId = row.rows[0]?.gdrive_folder_id || null;
+        await db.query(`UPDATE quotes SET deal_name = $1 WHERE deal_id = $2`, [newName, dealId]);
+      }
+
+      // 3. Rename Google Drive folder
+      let driveRenamed = false;
+      if (folderId) {
+        try {
+          const newFolderName = getCompanyFolderName(newName, '').replace(/[/\\:*?"<>|]/g, '-').trim();
+          await gdriveRenameFolder(folderId, newFolderName);
+          driveRenamed = true;
+          console.log(`[rename-deal] Drive folder renamed: "${oldName}" → "${newFolderName}"`);
+        } catch(e) { console.warn('[rename-deal] Drive rename failed:', e.message); }
+      }
+
+      writelog('info', 'deal.renamed', `Deal renamed: "${oldName}" → "${newName}"`, { dealId: String(dealId), dealName: newName });
+      console.log(`[rename-deal] ${dealId}: "${oldName}" → "${newName}" drive=${driveRenamed}`);
+      json({ success: true, driveRenamed });
+    } catch(e) {
+      writelog('error', 'error.rename-deal', `rename-deal failed: ${e.message}`, { meta: {} });
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   if (pathname === '/api/admin/rename-drive-folders' && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {

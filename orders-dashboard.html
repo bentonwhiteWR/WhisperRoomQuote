@@ -1334,6 +1334,10 @@ async function openShipFromDrawer() {
 
   try {
     const prevOd = order.order_data || {};
+    const newSerial    = document.getElementById('editSerialNumber')?.value.trim() || '';
+    const newProdNotes = document.getElementById('editProductionNotes')?.value.trim() || '';
+    const newFoam      = document.querySelector('input[name="editFoam"]:checked')?.value || '';
+    const newHinge     = document.querySelector('input[name="editHinge"]:checked')?.value || '';
     const res = await fetch(`/api/orders/${encodeURIComponent(currentQuoteNumber)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1346,6 +1350,10 @@ async function openShipFromDrawer() {
           boxes: parseInt(boxes)||0,
           hardwareBox: hardwareBox || '',
         },
+        serialNumber:    newSerial,
+        productionNotes: newProdNotes,
+        foamColor:       newFoam,
+        hingePreference: newHinge,
         freightCost: document.getElementById('editFreightCost')?.value ? parseFloat(document.getElementById('editFreightCost').value) : null,
         markShipped: true,
         changes: [`Marked Shipped — ${carrier}, ${tracking}`],

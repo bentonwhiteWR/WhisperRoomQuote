@@ -5881,81 +5881,136 @@ tbody tr:hover td{background:#fdfcfb}
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Admin Log — WhisperRoom</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-size='18'>📋</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#0f0f0f;--surface:#1a1a1a;--surface2:#222;--border:#2a2a2a;--orange:#ee6216;--text:#e8e8e8;--muted:#888;--green:#22c55e;--red:#ef4444;--yellow:#f59e0b; }
-  * { box-sizing:border-box;margin:0;padding:0; }
-  body { font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh; }
-  .topbar { display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:52px;background:#1a1a1a;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:100; }
-  .logo { font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8; } .logo span { color:#e8531a; }
-  .back { font-size:11px;font-weight:700;color:var(--muted);text-decoration:none;padding:5px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;letter-spacing:.05em;text-transform:uppercase; }
-  .main { max-width:1300px;margin:0 auto;padding:28px 24px; }
-  h1 { font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin-bottom:4px; } h1 span { color:var(--orange); }
-  .subtitle { font-size:12px;color:var(--muted);margin-bottom:24px; }
-  .panels { display:grid;grid-template-columns:1fr 1fr;gap:20px; }
-  @media(max-width:900px) { .panels { grid-template-columns:1fr; } }
-  .panel { background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden; }
-  .panel-header { padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap; }
-  .panel-title { font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em; }
-  .activity-title { color:var(--green); } .error-title { color:var(--red); }
-  .filters { display:flex;gap:8px;align-items:center;flex-wrap:wrap; }
-  .filter-input { padding:5px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-family:inherit;outline:none; }
-  .filter-input:focus { border-color:var(--orange); }
-  .panel-body { overflow-y:auto;max-height:70vh; }
-  .log-row { padding:10px 18px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:140px 110px 1fr auto;gap:10px;align-items:start;font-size:12px; }
-  .log-row:last-child { border-bottom:none; }
-  .log-row:hover { background:rgba(255,255,255,.02); }
-  .log-time { color:var(--muted);font-size:11px;white-space:nowrap; }
-  .log-event { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:2px 7px;border-radius:4px;width:fit-content; }
-  .ev-deal\\.created { background:rgba(59,130,246,.15);color:#3b82f6; }
-  .ev-order\\.shipped { background:rgba(34,197,94,.12);color:var(--green); }
-  .ev-order\\.processed { background:rgba(34,197,94,.12);color:var(--green); }
-  .ev-order\\.unshipped { background:rgba(245,158,11,.12);color:var(--yellow); }
-  .ev-order\\.deleted { background:rgba(239,68,68,.12);color:var(--red); }
-  .ev-task\\.accounting { background:rgba(238,98,22,.12);color:var(--orange); }
-  .ev-quote\\.collision { background:rgba(245,158,11,.12);color:var(--yellow); }
-  .ev-hubspot\\.error,.ev-error { background:rgba(239,68,68,.12);color:var(--red); }
-  .log-msg { color:var(--text);line-height:1.4; }
-  .log-rep { font-size:10px;font-weight:700;color:var(--orange);white-space:nowrap; }
-  .meta-btn { font-size:10px;color:var(--muted);cursor:pointer;background:none;border:none;text-decoration:underline;font-family:inherit; }
-  .meta-row { display:none;padding:8px 18px;background:rgba(0,0,0,.2);font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);font-family:monospace;white-space:pre-wrap;word-break:break-all; }
-  .empty { padding:40px;text-align:center;color:var(--muted);font-size:13px; }
-  .refresh-btn { padding:5px 12px;background:var(--orange);color:white;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:.05em; }
-  .count { font-size:10px;color:var(--muted);font-weight:600; }
+  :root{--bg:#0f0f0f;--surface:#1a1a1a;--surface2:#222;--border:#2a2a2a;--orange:#ee6216;--text:#e8e8e8;--muted:#888;--green:#22c55e;--red:#ef4444;--yellow:#f59e0b;--blue:#3b82f6;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:52px;background:#1a1a1a;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:100;gap:12px;}
+  .logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8;white-space:nowrap;}.logo span{color:#e8531a;}
+  .topbar-right{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+  .back{font-size:11px;font-weight:700;color:var(--muted);text-decoration:none;padding:5px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;letter-spacing:.05em;text-transform:uppercase;}
+  .live-dot{width:7px;height:7px;background:var(--green);border-radius:50%;animation:pulse 2s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  .last-updated{font-size:10px;color:var(--muted);}
+  .main{max-width:1400px;margin:0 auto;padding:24px;}
+  .page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;gap:16px;flex-wrap:wrap;}
+  h1{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;}h1 span{color:var(--orange);}
+  .subtitle{font-size:12px;color:var(--muted);margin-top:3px;}
+  .global-filters{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;}
+  .filter-group{display:flex;flex-direction:column;gap:4px;}
+  .filter-label{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;}
+  .filter-select,.filter-input{padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-family:inherit;outline:none;cursor:pointer;}
+  .filter-select:focus,.filter-input:focus{border-color:var(--orange);}
+  .btn-row{display:flex;gap:6px;}
+  .refresh-btn{padding:6px 14px;background:var(--orange);color:white;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:.05em;}
+  .clear-btn{padding:6px 12px;background:none;color:var(--muted);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;}
+  .stat-bar{display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 16px;min-width:110px;}
+  .stat-val{font-size:22px;font-weight:800;font-family:'Syne',sans-serif;}
+  .stat-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:2px;}
+  .panels{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:1000px){.panels{grid-template-columns:1fr;}}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+  .panel-header{padding:12px 16px;border-bottom:1px solid var(--border);}
+  .panel-header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+  .panel-title{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;}
+  .activity-title{color:var(--green);}.error-title{color:var(--red);}
+  .count{font-size:10px;color:var(--muted);font-weight:600;}
+  .panel-body{overflow-y:auto;max-height:66vh;}
+  .log-row{padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px;}
+  .log-row:last-child{border-bottom:none;}
+  .log-row:hover{background:rgba(255,255,255,.02);}
+  .log-row-main{display:grid;grid-template-columns:120px 115px 1fr 70px 48px;gap:8px;align-items:start;}
+  .log-time{color:var(--muted);font-size:10px;white-space:nowrap;padding-top:1px;}
+  .log-event{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:2px 6px;border-radius:4px;white-space:nowrap;width:fit-content;}
+  .ev-quote\\.pushed{background:rgba(59,130,246,.15);color:var(--blue);}
+  .ev-deal\\.created{background:rgba(59,130,246,.15);color:var(--blue);}
+  .ev-invoice\\.created{background:rgba(168,85,247,.15);color:#a855f7;}
+  .ev-order\\.shipped{background:rgba(34,197,94,.12);color:var(--green);}
+  .ev-order\\.processed{background:rgba(34,197,94,.12);color:var(--green);}
+  .ev-order\\.unshipped{background:rgba(245,158,11,.12);color:var(--yellow);}
+  .ev-order\\.deleted{background:rgba(239,68,68,.12);color:var(--red);}
+  .ev-task\\.accounting{background:rgba(238,98,22,.12);color:var(--orange);}
+  .ev-quote\\.collision{background:rgba(245,158,11,.12);color:var(--yellow);}
+  .ev-error\\.hubspot,.ev-error\\.save{background:rgba(239,68,68,.12);color:var(--red);}
+  .log-msg{color:var(--text);line-height:1.4;}
+  .log-sub{font-size:10px;color:var(--muted);margin-top:1px;}
+  .log-rep{font-size:10px;font-weight:700;color:var(--orange);white-space:nowrap;text-align:right;}
+  .log-ver{font-size:9px;color:rgba(255,255,255,.18);font-family:monospace;text-align:right;white-space:nowrap;}
+  .meta-btn{font-size:10px;color:var(--muted);cursor:pointer;background:none;border:none;text-decoration:underline;font-family:inherit;margin-top:3px;display:inline-block;}
+  .meta-row{display:none;margin:6px -14px -9px;padding:10px 14px;background:rgba(0,0,0,.3);font-size:10px;color:var(--muted);font-family:monospace;white-space:pre-wrap;word-break:break-all;border-top:1px solid var(--border);}
+  .empty{padding:40px;text-align:center;color:var(--muted);font-size:13px;}
 </style>
 </head>
 <body>
 <div class="topbar">
-  <div class="logo">Whisper<span>Room</span> — Admin Log</div>
-  <a href="/hub" class="back">← Back to Hub</a>
+  <div class="logo">Whisper<span>Room</span> — System Log</div>
+  <div class="topbar-right">
+    <div class="live-dot"></div>
+    <span class="last-updated" id="lastUpdated">Loading…</span>
+    <a href="/deals" class="back">← Deal Hub</a>
+  </div>
 </div>
 <div class="main">
-  <h1>System <span>Log</span></h1>
-  <div class="subtitle">Activity and errors. Auto-refreshes every 30 seconds.</div>
+  <div class="page-header">
+    <div>
+      <h1>System <span>Log</span></h1>
+      <div class="subtitle">Activity and errors — auto-refreshes every 30 seconds</div>
+    </div>
+    <div class="global-filters">
+      <div class="filter-group">
+        <span class="filter-label">Rep</span>
+        <select class="filter-select" id="globalRep" onchange="renderAll()">
+          <option value="">All Reps</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Event</span>
+        <select class="filter-select" id="globalEvent" onchange="renderAll()">
+          <option value="">All Events</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Date Range</span>
+        <select class="filter-select" id="globalDate" onchange="renderAll()">
+          <option value="">All Time</option>
+          <option value="today">Today</option>
+          <option value="week">This Week</option>
+          <option value="month">This Month</option>
+        </select>
+      </div>
+      <div class="btn-row">
+        <button class="refresh-btn" onclick="loadLogs()">↻ Refresh</button>
+        <button class="clear-btn" onclick="clearFilters()">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stat-bar" id="statBar"></div>
+
   <div class="panels">
-    <div class="panel" id="activityPanel">
+    <div class="panel">
       <div class="panel-header">
-        <div>
-          <div class="panel-title activity-title">Activity Feed</div>
-          <div class="count" id="activityCount"></div>
-        </div>
-        <div class="filters">
-          <input class="filter-input" id="activityRep" placeholder="Filter by rep" oninput="renderActivity()">
-          <input class="filter-input" id="activitySearch" placeholder="Search..." oninput="renderActivity()">
-          <button class="refresh-btn" onclick="loadLogs()">↻</button>
+        <div class="panel-header-top">
+          <div>
+            <div class="panel-title activity-title">Activity Feed</div>
+            <div class="count" id="activityCount"></div>
+          </div>
+          <input class="filter-input" id="activitySearch" placeholder="Search…" oninput="renderActivity()" style="width:150px">
         </div>
       </div>
       <div class="panel-body" id="activityBody"><div class="empty">Loading…</div></div>
     </div>
-    <div class="panel" id="errorPanel">
+    <div class="panel">
       <div class="panel-header">
-        <div>
-          <div class="panel-title error-title">Errors & Warnings</div>
-          <div class="count" id="errorCount"></div>
-        </div>
-        <div class="filters">
-          <input class="filter-input" id="errorSearch" placeholder="Search..." oninput="renderErrors()">
-          <button class="refresh-btn" onclick="loadLogs()">↻</button>
+        <div class="panel-header-top">
+          <div>
+            <div class="panel-title error-title">Errors &amp; Warnings</div>
+            <div class="count" id="errorCount"></div>
+          </div>
+          <input class="filter-input" id="errorSearch" placeholder="Search…" oninput="renderErrors()" style="width:150px">
         </div>
       </div>
       <div class="panel-body" id="errorBody"><div class="empty">Loading…</div></div>
@@ -5963,78 +6018,128 @@ tbody tr:hover td{background:#fdfcfb}
   </div>
 </div>
 <script>
-let _activity = [], _errors = [];
+let _activity=[], _errors=[];
+const REPS={'36303670':'Benton','36320208':'Gabe','38732178':'Kim','38900892':'Chet','38732186':'Jeromy','36330944':'Jill','38143901':'Sarah','117442978':'Travis'};
 
 async function loadLogs() {
   try {
-    const res  = await fetch('/api/logs', { credentials: 'include' });
-    const data = await res.json();
-    _activity = (data.activity || []);
-    _errors   = (data.errors   || []);
-    renderActivity();
-    renderErrors();
+    const res=await fetch('/api/logs',{credentials:'include'});
+    const data=await res.json();
+    _activity=data.activity||[];
+    _errors=data.errors||[];
+    populateDropdowns();
+    renderAll();
+    document.getElementById('lastUpdated').textContent='Updated '+new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
   } catch(e) {
-    document.getElementById('activityBody').innerHTML = '<div class="empty">Failed to load logs</div>';
+    document.getElementById('activityBody').innerHTML='<div class="empty">Failed to load — '+e.message+'</div>';
   }
 }
 
-function fmt(ts) {
-  const d = new Date(ts);
-  return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' ' +
-         d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true,timeZone:'America/New_York'});
+function populateDropdowns() {
+  const all=[..._activity,..._errors];
+  const repSel=document.getElementById('globalRep');
+  const curRep=repSel.value;
+  const reps=[...new Set(all.map(r=>r.rep).filter(Boolean))].sort();
+  repSel.innerHTML='<option value="">All Reps</option>'+reps.map(r=>'<option value="'+r+'"'+(r===curRep?' selected':'')+'>'+(REPS[r]||r)+'</option>').join('');
+  const evSel=document.getElementById('globalEvent');
+  const curEv=evSel.value;
+  const evs=[...new Set(all.map(r=>r.event).filter(Boolean))].sort();
+  evSel.innerHTML='<option value="">All Events</option>'+evs.map(e=>'<option value="'+e+'"'+(e===curEv?' selected':'')+'>'+e+'</option>').join('');
 }
 
-function evClass(event) {
-  return 'ev-' + (event||'').replace(/\\./g, '\\\\.');
+function getFilters() {
+  const rep=document.getElementById('globalRep').value;
+  const event=document.getElementById('globalEvent').value;
+  const date=document.getElementById('globalDate').value;
+  const now=new Date();
+  let since=null;
+  if(date==='today') since=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  else if(date==='week') since=new Date(now-7*86400000);
+  else if(date==='month') since=new Date(now.getFullYear(),now.getMonth(),1);
+  return {rep,event,since};
 }
+
+function applyFilters(rows) {
+  const {rep,event,since}=getFilters();
+  return rows.filter(r=>{
+    if(rep && r.rep!==rep) return false;
+    if(event && r.event!==event) return false;
+    if(since && new Date(r.at)<since) return false;
+    return true;
+  });
+}
+
+function renderAll(){renderActivity();renderErrors();renderStats();}
+function clearFilters(){
+  ['globalRep','globalEvent','globalDate','activitySearch','errorSearch'].forEach(id=>document.getElementById(id).value='');
+  renderAll();
+}
+
+function fmt(ts) {
+  const d=new Date(ts);
+  return d.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' '+d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true,timeZone:'America/New_York'});
+}
+
+function evCls(ev){return 'ev-'+(ev||'').replace(/[.]/g,'\\\\.');}
+function repLabel(r){return REPS[r]||r||'';}
 
 function rowHtml(r) {
-  const metaStr = r.meta ? JSON.stringify(r.meta, null, 2) : null;
-  const idx = r.id;
-  return \`<div class="log-row">
-    <div class="log-time">\${fmt(r.at)}</div>
-    <div class="log-event \${evClass(r.event)}">\${r.event || ''}</div>
-    <div>
-      <div class="log-msg">\${r.message || ''}</div>
-      \${r.quote_num ? \`<div style="font-size:10px;color:var(--muted);margin-top:2px">\${r.quote_num}\${r.deal_name ? ' · ' + r.deal_name : ''}</div>\` : ''}
-      \${metaStr ? \`<button class="meta-btn" onclick="toggleMeta('\${idx}')">details</button><div class="meta-row" id="meta-\${idx}">\${metaStr}</div>\` : ''}
-    </div>
-    <div class="log-rep">\${r.rep || ''}</div>
-  </div>\`;
+  const meta=r.meta?JSON.stringify(r.meta,null,2):null;
+  return '<div class="log-row"><div class="log-row-main">'
+    +'<div class="log-time">'+fmt(r.at)+'</div>'
+    +'<div class="log-event '+evCls(r.event)+'">'+r.event+'</div>'
+    +'<div><div class="log-msg">'+(r.message||'')+'</div>'
+    +((r.quote_num||r.deal_name)?'<div class="log-sub">'+[r.quote_num,r.deal_name].filter(Boolean).join(' · ')+'</div>':'')
+    +(meta?'<button class="meta-btn" onclick="toggleMeta('+r.id+')">▸ details</button>':'')
+    +'</div>'
+    +'<div class="log-rep">'+repLabel(r.rep)+'</div>'
+    +'<div class="log-ver">v'+(r.version||'—')+'</div>'
+    +'</div>'
+    +(meta?'<div class="meta-row" id="meta-'+r.id+'">'+meta+'</div>':'')
+    +'</div>';
 }
 
-function toggleMeta(id) {
-  const el = document.getElementById('meta-' + id);
-  if (el) el.style.display = el.style.display === 'block' ? 'none' : 'block';
-}
+function toggleMeta(id){const el=document.getElementById('meta-'+id);if(el)el.style.display=el.style.display==='block'?'none':'block';}
 
 function renderActivity() {
-  const rep    = document.getElementById('activityRep').value.trim().toLowerCase();
-  const search = document.getElementById('activitySearch').value.trim().toLowerCase();
-  let rows = _activity;
-  if (rep)    rows = rows.filter(r => (r.rep||'').toLowerCase().includes(rep));
-  if (search) rows = rows.filter(r => (r.message||'').toLowerCase().includes(search) || (r.deal_name||'').toLowerCase().includes(search) || (r.quote_num||'').toLowerCase().includes(search));
-  document.getElementById('activityCount').textContent = rows.length + ' events';
-  document.getElementById('activityBody').innerHTML = rows.length ? rows.map(rowHtml).join('') : '<div class="empty">No activity yet</div>';
+  const search=document.getElementById('activitySearch').value.trim().toLowerCase();
+  let rows=applyFilters(_activity);
+  if(search) rows=rows.filter(r=>(r.message||'').toLowerCase().includes(search)||(r.deal_name||'').toLowerCase().includes(search)||(r.quote_num||'').toLowerCase().includes(search));
+  document.getElementById('activityCount').textContent=rows.length+' events';
+  document.getElementById('activityBody').innerHTML=rows.length?rows.map(rowHtml).join(''):'<div class="empty">No activity matching filters</div>';
 }
 
 function renderErrors() {
-  const search = document.getElementById('errorSearch').value.trim().toLowerCase();
-  let rows = _errors;
-  if (search) rows = rows.filter(r => (r.message||'').toLowerCase().includes(search) || (r.event||'').toLowerCase().includes(search));
-  document.getElementById('errorCount').textContent = rows.length + ' events';
-  document.getElementById('errorBody').innerHTML = rows.length ? rows.map(rowHtml).join('') : '<div class="empty">No errors logged</div>';
+  const search=document.getElementById('errorSearch').value.trim().toLowerCase();
+  let rows=applyFilters(_errors);
+  if(search) rows=rows.filter(r=>(r.message||'').toLowerCase().includes(search)||(r.event||'').toLowerCase().includes(search));
+  document.getElementById('errorCount').textContent=rows.length+' events';
+  document.getElementById('errorBody').innerHTML=rows.length?rows.map(rowHtml).join(''):'<div class="empty">No errors logged</div>';
+}
+
+function renderStats() {
+  const f=applyFilters(_activity);
+  const quotes=f.filter(r=>r.event==='quote.pushed').length;
+  const shipped=f.filter(r=>r.event==='order.shipped').length;
+  const invoices=f.filter(r=>r.event==='invoice.created').length;
+  const errs=applyFilters(_errors).length;
+  document.getElementById('statBar').innerHTML=[
+    {v:quotes,l:'Quotes Pushed',c:'var(--blue)'},
+    {v:shipped,l:'Orders Shipped',c:'var(--green)'},
+    {v:invoices,l:'Invoices Created',c:'#a855f7'},
+    {v:errs,l:'Errors',c:errs>0?'var(--red)':'var(--muted)'},
+  ].map(s=>'<div class="stat"><div class="stat-val" style="color:'+s.c+'">'+s.v+'</div><div class="stat-label">'+s.l+'</div></div>').join('');
 }
 
 loadLogs();
-setInterval(loadLogs, 30000);
+setInterval(loadLogs,30000);
 </script>
 </body>
 </html>`);
     return;
   }
 
-  // ── API: Logs ────────────────────────────────────────────────────
+    // ── API: Logs ────────────────────────────────────────────────────
   if (pathname === '/api/logs' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {

@@ -278,6 +278,7 @@
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
       <a id="drawerHsBtn" href="#" target="_blank" style="display:none;font-size:10px;color:var(--muted);text-decoration:none;padding:4px 9px;border-radius:5px;border:1px solid var(--border);font-weight:600;font-family:inherit">HS ↗</a>
+      <button id="drawerFolderBtn" onclick="copyDrawerFolderPath()" style="display:none;font-size:10px;color:var(--muted);padding:4px 9px;border-radius:5px;border:1px solid var(--border);background:none;cursor:pointer;font-family:inherit;font-weight:600">📋 Copy Path</button>
       <button class="drawer-close" onclick="closeDrawer()">&#x2715;</button>
     </div>
   </div>
@@ -1104,6 +1105,24 @@ function openDrawer(quoteNumber) {
     }
   }
 
+  // Copy folder path button
+  const folderBtn = document.getElementById('drawerFolderBtn');
+  if (folderBtn) {
+    const company = order.company || order.q_company || order.json_snapshot?.customer?.company || '';
+    const dealName = order.deal_name || '';
+    // Derive folder name same as deals dashboard: company name, or strip date suffix from deal name
+    const folderName = company.trim() ||
+      dealName.replace(/\s*[·—\-–]\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\s*$/i, '').trim() ||
+      dealName;
+    if (folderName) {
+      window._drawerFolderName = folderName;
+      folderBtn.style.display = 'inline-block';
+    } else {
+      window._drawerFolderName = null;
+      folderBtn.style.display = 'none';
+    }
+  }
+
   const c  = order.json_snapshot?.customer || {};
   const od = order.order_data || {};
 
@@ -1178,6 +1197,14 @@ function openDrawer(quoteNumber) {
   // Show admin delete bar for all users
   const deleteBar = document.getElementById('adminDeleteBar');
   if (deleteBar) deleteBar.style.display = 'block';
+}
+
+function copyDrawerFolderPath() {
+  const folderName = window._drawerFolderName;
+  if (!folderName) return;
+  const path = `Z:\\Sales1\\AllContacts\\${folderName}`;
+  navigator.clipboard?.writeText(path).then(() => showToast('Folder path copied!', 'success'))
+    .catch(() => { prompt('Copy folder path:', path); });
 }
 
 function closeDrawer() {
@@ -1363,9 +1390,13 @@ async function openShipFromDrawer() {
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Failed');
     showToast('✓ Order shipped!', 'success');
-    openShipEmail(); // auto-open email draft
+    openShipEmail();
     closeDrawer();
     loadOrders();
+    // Scan Orders folder for matching files to move
+    if (data.quoteNumber && data.company) {
+      scanOrderFiles(data.quoteNumber, data.company);
+    }
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   } finally {
@@ -1636,3 +1667,149 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
 </script>
 </body>
 </html>
+
+<!-- ── Move Order Files Modal ────────────────────────────────────── -->
+<div id="moveFilesModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:3000;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface,#1a1a1a);border-radius:12px;padding:28px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);border:1px solid var(--border,#2e2e2e)">
+    <div style="font-size:15px;font-weight:800;color:var(--text,#e8e8e8);margin-bottom:4px">&#x1F4C2; Move Order Files</div>
+    <div id="moveFilesDestLine" style="font-size:12px;color:var(--muted,#666);margin-bottom:18px"></div>
+    <div id="moveFilesList" style="max-height:280px;overflow-y:auto;margin-bottom:18px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">
+      <span id="moveFilesStatus" style="font-size:12px;color:var(--muted,#666);flex:1"></span>
+      <button id="moveFilesSkipBtn" onclick="closeMoveFilesModal()" style="padding:9px 16px;background:none;border:none;color:var(--muted,#666);font-size:12px;cursor:pointer;font-family:inherit">Skip</button>
+      <button id="moveFilesConfirmBtn" onclick="confirmMoveFiles()" style="padding:9px 18px;background:var(--green,#1a7a4a);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Move All</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let _moveFilesData = null;
+
+async function scanOrderFiles(quoteNumber, company) {
+  try {
+    const res = await fetch('/api/drive/scan-orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ quoteNumber, company })
+    });
+    const data = await res.json();
+    if (data.error) { console.warn('[scan-orders]', data.error); return; }
+
+    // No files found — nothing to show
+    if (!data.files || data.files.length === 0) return;
+
+    _moveFilesData = data;
+    _moveFilesData.quoteNumber = quoteNumber;
+
+    // If no dest folder found, show search prompt instead
+    if (!data.destFolderId) {
+      showFolderSearchForMove(quoteNumber, company);
+      return;
+    }
+
+    showMoveFilesModal(data);
+  } catch(e) {
+    console.warn('[scan-orders] error:', e.message);
+  }
+}
+
+function showMoveFilesModal(data) {
+  const modal = document.getElementById('moveFilesModal');
+  const destLine = document.getElementById('moveFilesDestLine');
+  const list = document.getElementById('moveFilesList');
+  const status = document.getElementById('moveFilesStatus');
+  const confirmBtn = document.getElementById('moveFilesConfirmBtn');
+
+  destLine.innerHTML = 'Moving to: <strong style="color:var(--text,#e8e8e8)">' + (data.destFolderName || 'Contact Folder') + '</strong>';
+  status.textContent = data.files.length + ' file' + (data.files.length !== 1 ? 's' : '') + ' found';
+  confirmBtn.disabled = false;
+  confirmBtn.textContent = 'Move All (' + data.files.length + ')';
+
+  list.innerHTML = data.files.map(function(f) {
+    const icon = f.mimeType === 'application/pdf' ? '&#x1F4C4;' : '&#x1F4CE;';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;border:1px solid var(--border,#2e2e2e);margin-bottom:5px;background:var(--surface2,#222)">'
+      + '<span style="font-size:14px">' + icon + '</span>'
+      + '<span style="font-size:13px;color:var(--text,#e8e8e8);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + f.name + '</span>'
+      + '</div>';
+  }).join('');
+
+  modal.style.display = 'flex';
+}
+
+function closeMoveFilesModal() {
+  document.getElementById('moveFilesModal').style.display = 'none';
+  _moveFilesData = null;
+}
+
+async function confirmMoveFiles() {
+  if (!_moveFilesData) return;
+  const btn = document.getElementById('moveFilesConfirmBtn');
+  const status = document.getElementById('moveFilesStatus');
+  btn.disabled = true;
+  btn.textContent = 'Moving...';
+  status.textContent = '';
+
+  try {
+    const res = await fetch('/api/drive/move-order-files', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        fileIds: _moveFilesData.files.map(function(f) { return f.id; }),
+        destFolderId: _moveFilesData.destFolderId,
+        quoteNumber: _moveFilesData.quoteNumber
+      })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const movedCount = data.moved ? data.moved.length : 0;
+    const failCount  = data.failed ? data.failed.length : 0;
+    closeMoveFilesModal();
+    if (failCount > 0) {
+      showToast('Moved ' + movedCount + ' file(s). ' + failCount + ' failed — check error log.', 'error');
+    } else {
+      showToast('\u2713 Moved ' + movedCount + ' file(s) to contact folder', 'success');
+    }
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    btn.disabled = false;
+    btn.textContent = 'Retry';
+  }
+}
+
+// If no folder found — show a Drive search to bind one then proceed
+function showFolderSearchForMove(quoteNumber, company) {
+  // Reuse the folder search approach — show a simple prompt
+  const folderName = prompt('No Drive folder found for "' + company + '".\n\nEnter the folder name to search for, or Cancel to skip moving files:');
+  if (!folderName) return;
+
+  fetch('/api/drive/search-folders?q=' + encodeURIComponent(folderName), { credentials: 'include' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      const folders = data.folders || [];
+      if (!folders.length) { showToast('No folders found for "' + folderName + '"', 'error'); return; }
+      // Show a simple selection
+      const names = folders.map(function(f, i) { return (i+1) + '. ' + f.name; }).join('\n');
+      const choice = prompt('Select a folder (enter number):\n\n' + names);
+      const idx = parseInt(choice) - 1;
+      if (isNaN(idx) || idx < 0 || idx >= folders.length) return;
+      const picked = folders[idx];
+      // Bind and proceed
+      fetch('/api/drive/bind-folder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ quoteNumber, folderId: picked.id })
+      }).then(function() {
+        if (_moveFilesData) {
+          _moveFilesData.destFolderId = picked.id;
+          _moveFilesData.destFolderName = picked.name;
+          showMoveFilesModal(_moveFilesData);
+        }
+      });
+    })
+    .catch(function(e) { showToast('Search failed: ' + e.message, 'error'); });
+}
+</script>

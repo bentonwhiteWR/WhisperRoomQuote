@@ -4417,7 +4417,7 @@ tbody tr:hover td{background:#fdfcfb}
       if (allFiles.length > 0 && matches.length === 0) {
         console.warn(`[scan-orders] No match for "${needle}" among ${allFiles.length} files. Sample names:`, allFiles.slice(0,3).map(f => f.name));
       }
-      console.log(`[scan-orders] quote=${quoteNumber} company="${needle}" — ${allFiles.length} total files, ${matches.length} matches, destFolder=${destFolderId||'none'}`);
+      console.log(`[scan-orders] quote=${quoteNumber} company="\" — ${allFiles.length} total files, ${matches.length} matches, destFolder=${destFolderId||'none'}`);
 
       json({ files: matches, destFolderId, destFolderName });
     } catch(e) {
@@ -4427,7 +4427,9 @@ tbody tr:hover td{background:#fdfcfb}
     return;
   }
 
-  // ── API: Move files from Orders folder to contact folder ──────────
+  // ── API: Copy files from Orders folder to contact folder ─────────
+  // Uses copy+delete instead of re-parent PATCH — Contributor access on Shared Drives
+  // allows copying but not re-parenting. Delete is attempted but non-fatal.
   if (pathname === '/api/drive/move-order-files' && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
@@ -4440,25 +4442,46 @@ tbody tr:hover td{background:#fdfcfb}
       const results = [];
       for (const fileId of fileIds) {
         try {
-          const moveRes = await httpsRequest({
+          // Step 1: Copy to contact folder
+          const copyRes = await httpsRequest({
             hostname: 'www.googleapis.com',
-            path: `/drive/v3/files/${fileId}?addParents=${destFolderId}&removeParents=${SHARED_ORDERS_FOLDER}&supportsAllDrives=true&fields=id,name`,
-            method: 'PATCH',
+            path: `/drive/v3/files/${fileId}/copy?supportsAllDrives=true&fields=id,name`,
+            method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
-          }, {});
-          results.push({ id: fileId, name: moveRes.body?.name, success: !moveRes.body?.error });
-          if (moveRes.body?.error) {
-            console.warn(`[move-order-files] Drive move failed for ${fileId}:`, JSON.stringify(moveRes.body.error));
+          }, { parents: [destFolderId] });
+
+          if (copyRes.body?.error) {
+            console.warn(`[move-order-files] Copy failed for ${fileId}:`, JSON.stringify(copyRes.body.error));
+            results.push({ id: fileId, success: false, error: copyRes.body.error.message });
+            continue;
           }
+
+          const copiedName = copyRes.body.name;
+
+          // Step 2: Delete original — non-fatal if permissions deny it
+          try {
+            await httpsRequest({
+              hostname: 'www.googleapis.com',
+              path: `/drive/v3/files/${fileId}?supportsAllDrives=true`,
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            console.log(`[move-order-files] Copied + deleted "${copiedName}" → contact folder`);
+          } catch(delErr) {
+            console.warn(`[move-order-files] Copied but could not delete original "${copiedName}" — stays in orders folder (${delErr.message})`);
+          }
+
+          results.push({ id: fileId, name: copiedName, success: true });
         } catch(e) {
+          console.warn(`[move-order-files] Error on file ${fileId}:`, e.message);
           results.push({ id: fileId, success: false, error: e.message });
         }
       }
 
       const moved = results.filter(r => r.success).map(r => r.name);
       const failed = results.filter(r => !r.success);
-      writelog('info', 'order.files.moved', `Moved ${moved.length} file(s) to contact folder`, { quoteNum: quoteNumber, meta: { files: moved, destFolderId } });
-      if (failed.length) writelog('error', 'error.gdrive', `Failed to move ${failed.length} file(s)`, { quoteNum: quoteNumber, meta: { failed } });
+      writelog('info', 'order.files.moved', `Copied ${moved.length} file(s) to contact folder`, { quoteNum: quoteNumber, meta: { files: moved, destFolderId } });
+      if (failed.length) writelog('error', 'error.gdrive', `Failed to copy ${failed.length} file(s)`, { quoteNum: quoteNumber, meta: { failed } });
 
       json({ success: true, moved, failed });
     } catch(e) {
@@ -7978,7 +8001,7 @@ setInterval(loadLogs,30000);
         writelog('info', 'order.shipped', `Shipped: ${quoteNumber} via ${_sf.carrier || '—'} PRO: ${_sf.tracking || '—'}`, { rep: repName || null, quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { carrier: _sf.carrier, tracking: _sf.tracking, freightCost: updatedOrderData.freightCost } });
       }
 
-      // Look up company from quotes table — orderData doesn't store it, but quotes always does
+      // Look up company from quotes table — orderData doesn't store it, quotes always does
       let orderCompany = currentOrderData.company || '';
       if (!orderCompany && db) {
         try {

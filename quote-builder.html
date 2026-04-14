@@ -2498,6 +2498,8 @@ async function createDeal() {
   let _freshQuoteGenerated = false;
   if (window._historicalQuoteLoaded) {
     window._historicalQuoteLoaded = false;
+    document.getElementById('quoteNumHidden').value = '';  // clear first — prevents concatenation
+    document.getElementById('quoteNumDisplay').textContent = '—';
     updateQuoteNumber();
     document.getElementById('revisionNote').style.display = 'none';
     _freshQuoteGenerated = true;
@@ -4623,7 +4625,6 @@ function newQuote(skipConfirm = false) {
   window._contactSearchWarned = false;
 
   // Reset canadian/tax exempt
-  // Force canada/international OFF — don't use toggleAcc (which inverts state)
   const canadaEl = document.getElementById('canada');
   if (canadaEl) {
     canadaEl.checked = false;
@@ -4633,17 +4634,11 @@ function newQuote(skipConfirm = false) {
   document.getElementById('customsBrokerRow').style.display = 'none';
   const taxEl = document.getElementById('taxexempt');
   if (taxEl) { taxEl.checked = false; document.getElementById('taxExemptRow').style.display = 'none'; }
-  // Restore taxExempt from loaded quote
-  if (q.taxExempt && taxEl) {
-    taxEl.checked = true;
-    const taxLabel = document.getElementById('check-taxexempt');
-    if (taxLabel) taxLabel.classList.add('active');
-    document.getElementById('taxExemptRow').style.display = 'block';
-    const certEl = document.getElementById('taxExemptCert');
-    if (certEl) certEl.value = q.taxExemptCert || '';
-  }
 
-  // Regenerate quote number
+  // Regenerate quote number — clear first to prevent stale value concatenation
+  document.getElementById('quoteNumHidden').value = '';
+  document.getElementById('quoteNumDisplay').textContent = '—';
+  window._historicalQuoteLoaded = false;
   updateQuoteNumber();
   checkLinkBtnState();
   updateSummary();

@@ -2469,6 +2469,7 @@ async function getTax() {
 // ── Create Deal ───────────────────────────────────────────────────
 async function createDeal() {
   // Check if address differs from HubSpot contact and confirm override
+  // Only prompt when the HubSpot field already had a value AND it changed — never prompt blank -> filled
   const orig = window._loadedContactAddress;
   if (orig && window._loadedContactId) {
     const curAddr  = document.getElementById('shipAddress').value.trim();
@@ -2476,18 +2477,17 @@ async function createDeal() {
     const curState = document.getElementById('shipState').value.trim();
     const curZip   = document.getElementById('shipZip').value.trim();
     const curPhone = document.getElementById('phone').value.trim();
-    const addrChanged = (curAddr  && curAddr  !== orig.address) ||
-                        (curCity  && curCity  !== orig.city)    ||
-                        (curZip   && curZip   !== orig.zip)     ||
-                        (curPhone && curPhone !== orig.phone);
+    const addrChanged = (orig.address && curAddr  && curAddr  !== orig.address) ||
+                        (orig.city    && curCity  && curCity  !== orig.city)    ||
+                        (orig.zip     && curZip   && curZip   !== orig.zip)     ||
+                        (orig.phone   && curPhone && curPhone !== orig.phone);
     if (addrChanged) {
       const msg = 'The ship-to address differs from this contact\'s HubSpot record.\n\nUpdate the contact\'s address in HubSpot with this new address?\n\n' +
-        (curAddr  !== orig.address ? `Address: ${orig.address || '(blank)'} → ${curAddr}\n` : '') +
-        (curCity  !== orig.city    ? `City: ${orig.city || '(blank)'} → ${curCity}\n` : '') +
-        (curZip   !== orig.zip     ? `ZIP: ${orig.zip || '(blank)'} → ${curZip}\n` : '') +
-        (curPhone !== orig.phone   ? `Phone: ${orig.phone || '(blank)'} → ${curPhone}` : '');
+        (orig.address && curAddr  !== orig.address ? `Address: ${orig.address} → ${curAddr}\n` : '') +
+        (orig.city    && curCity  !== orig.city    ? `City: ${orig.city} → ${curCity}\n`       : '') +
+        (orig.zip     && curZip   !== orig.zip     ? `ZIP: ${orig.zip} → ${curZip}\n`         : '') +
+        (orig.phone   && curPhone !== orig.phone   ? `Phone: ${orig.phone} → ${curPhone}`      : '');
       const confirmOverride = confirm(msg);
-      // Pass flag to server
       window._confirmContactOverride = confirmOverride;
     } else {
       window._confirmContactOverride = false;
@@ -2524,9 +2524,8 @@ async function createDeal() {
   // For new deals: if folder check still in-flight, wait then retry
   if (!isRevision && window._loadedContactId && window._contactFolderInfo === null) {
     btn.disabled = false;
-    btn.innerHTML = isRevision ? 'Update Quote &amp; Deal' : 'Push to HubSpot';
     btn.innerHTML = '<span class="spinner-inline"></span> Checking folder...';
-    const waited = await new Promise(resolve => {
+    await new Promise(resolve => {
       let tries = 0;
       const poll = setInterval(() => {
         tries++;
@@ -2537,12 +2536,12 @@ async function createDeal() {
     });
     btn.disabled = false;
     btn.innerHTML = isRevision ? 'Update Quote &amp; Deal' : 'Push to HubSpot';
-    createDeal(); // re-call now that check is resolved
+    createDeal();
     return;
   }
 
-  // For new deals: if no folder found and no bind set, show the folder prompt
-  if (!isRevision && window._loadedContactId && !window._bindFolderId && window._contactFolderInfo === false) {
+  // For new deals: if no folder found and no bind set and not skipped, show the folder prompt
+  if (!isRevision && window._loadedContactId && !window._bindFolderId && window._contactFolderInfo === false && !window._skipFolderPrompt) {
     btn.disabled = false;
     btn.innerHTML = isRevision ? 'Update Quote &amp; Deal' : 'Push to HubSpot';
     showFolderPrompt();
@@ -2936,6 +2935,7 @@ function _doFillContact(contact) {
   window._loadedContactId = contact.id;
   window._bindFolderId = null;
   window._contactFolderInfo = null;
+  window._skipFolderPrompt = false;
   // Check if this contact has an existing Drive folder
   checkContactFolder(contact.id);
   window._loadedContactAddress = {
@@ -4685,9 +4685,12 @@ function newQuote(skipConfirm = false) {
 
   window._lastPushedContactId = null;
   window._lastPushedDealId = null;
-  window._loadedContactId = null;  // clear so deal suggestions don't auto-fire
+  window._loadedContactId = null;
   window._userUnlinked = false;
   window._historicalQuoteLoaded = false;
+  window._bindFolderId = null;
+  window._contactFolderInfo = null;
+  window._skipFolderPrompt = false;
   const addrNote = document.getElementById('addressNote');
   if (addrNote) addrNote.style.display = 'none';
   updatePushButtonText();
@@ -5903,7 +5906,7 @@ function closeFolderPrompt() {
 
 function folderPromptCreateNew() {
   window._bindFolderId = null;
-  window._contactFolderInfo = false;
+  window._skipFolderPrompt = true;
   closeFolderPrompt();
   createDeal();
 }
@@ -5939,7 +5942,7 @@ async function runFolderSearch() {
 
 function selectDriveFolder(folderId, folderName) {
   window._bindFolderId = folderId;
-  window._contactFolderInfo = false;
+  window._skipFolderPrompt = true;
   closeFolderPrompt();
   const box = document.getElementById('resultBox');
   if (box) {

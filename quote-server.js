@@ -1441,8 +1441,15 @@ async function getSessionAsync(req) {
 }
 
 // Quick helper — returns ownerId string for writelog rep field, never throws
-function getRepFromReq(req) {
-  try { return getSession(req)?.ownerId || null; } catch(e) { return null; }
+// Accepts optional pre-parsed body so error handlers can pass ownerId directly
+function getRepFromReq(req, body) {
+  try {
+    const fromSession = getSession(req)?.ownerId || null;
+    if (fromSession) return fromSession;
+    // Fall back to ownerId in pre-parsed body (available in route error handlers)
+    if (body?.ownerId) return String(body.ownerId);
+    return null;
+  } catch(e) { return null; }
 }
 
 
@@ -2965,7 +2972,7 @@ const server = http.createServer(async (req, res) => {
       json({ ...result, markup: Math.round(result.cost * 0.25 * 100) / 100 });
     } catch(e) {
       console.error(`[freight] error: ${e.message}`);
-      writelog('error', 'error.freight', `ABF rate failed: ${e.message}`, { rep: getRepFromReq(req), meta: { zip: body.zip || null, state: body.state || null, city: body.city || null } });
+      writelog('error', 'error.freight', `ABF rate failed: ${e.message}`, { rep: getRepFromReq(req, body), meta: { zip: body.zip || null, state: body.state || null, city: body.city || null } });
       json({error: e.message}, 500);
     }
     return;
@@ -3465,7 +3472,7 @@ const server = http.createServer(async (req, res) => {
       });
 
     } catch(e) {
-      writelog('error', 'error.save', `create-deal failed: ${e.message}`, { rep: getRepFromReq(req) });
+      writelog('error', 'error.save', `create-deal failed: ${e.message}`, { rep: getRepFromReq(req, body) });
       json({error: e.message}, 500);
     }
     return;
@@ -5771,7 +5778,7 @@ tbody tr:hover td{background:#fdfcfb}
       json({ dealId, dealStage, dealAmount, paymentStatus, quotes, invoices, orders, contact, driveFolderId, driveFolderName });
     } catch(e) {
       console.error('Deal hub error:', e.message);
-      writelog('error','error.create-invoice',`create-invoice failed: ${e.message}`,{ rep: getRepFromReq(req) });
+      writelog('error','error.create-invoice',`create-invoice failed: ${e.message}`,{ rep: getRepFromReq(req, body) });
       json({ error: e.message }, 500);
     }
     return;
@@ -6070,7 +6077,7 @@ tbody tr:hover td{background:#fdfcfb}
 
     } catch(e) {
       console.error('Create invoice error:', e.message);
-      writelog('error','error.create-invoice',`create-invoice failed: ${e.message}`,{ rep: getRepFromReq(req) });
+      writelog('error','error.create-invoice',`create-invoice failed: ${e.message}`,{ rep: getRepFromReq(req, body) });
       json({ error: e.message }, 500);
     }
     return;
@@ -6714,7 +6721,14 @@ function fmt(ts) {
 }
 
 function evCls(ev){return 'ev-'+(ev||'').replace(/[.]/g,'\\\\.');}
-function repLabel(r){return REPS[r]||r||'';}
+function repLabel(r){
+  if(!r) return '';
+  // If it's a known ownerId, map to name
+  if(REPS[r]) return REPS[r];
+  // If it looks like a numeric ownerId but isn't in REPS, show as-is
+  // Otherwise it's already a name string
+  return r;
+}
 
 function rowHtml(r) {
   const meta=r.meta?JSON.stringify(r.meta,null,2):null;
@@ -6946,7 +6960,7 @@ setInterval(loadLogs,30000);
         });
       } catch(e) {
         console.warn(`[orders-freight] ABF Standard failed: ${e.message}`);
-        writelog('error', 'error.freight', `ABF rate failed: ${e.message}`, { rep: getRepFromReq(req), meta: { zip, state, city } });
+        writelog('error', 'error.freight', `ABF rate failed: ${e.message}`, { rep: getRepFromReq(req, body), meta: { zip, state, city } });
       }
 
       // ── OD: SOAP XML rate API ─────────────────────────────────────
@@ -7099,7 +7113,7 @@ setInterval(loadLogs,30000);
 
     } catch(e) {
       console.error('[orders-freight] error:', e.message);
-      writelog('error', 'error.freight', `Orders freight failed: ${e.message}`, { rep: getRepFromReq(req), meta: { zip, state, city } });
+      writelog('error', 'error.freight', `Orders freight failed: ${e.message}`, { rep: getRepFromReq(req, body), meta: { zip, state, city } });
       json({ error: e.message }, 500);
     }
     return;
@@ -7190,7 +7204,7 @@ setInterval(loadLogs,30000);
 
     } catch(e) {
       console.error('ABF booking error:', e.message);
-      writelog('error','error.abf-booking',`abf-booking failed: ${e.message}`,{ rep: getRepFromReq(req) });
+      writelog('error','error.abf-booking',`abf-booking failed: ${e.message}`,{ rep: getRepFromReq(req, body) });
       json({ error: e.message }, 500);
     }
     return;
@@ -7210,7 +7224,7 @@ setInterval(loadLogs,30000);
       json({ success: true });
     } catch(e) {
       console.error('Delete order error:', e.message);
-      writelog('error','error.order-save',`order-save failed: ${e.message}`,{ rep: getRepFromReq(req) });
+      writelog('error','error.order-save',`order-save failed: ${e.message}`,{ rep: getRepFromReq(req, body) });
       json({ error: e.message }, 500);
     }
     return;
@@ -7259,7 +7273,7 @@ setInterval(loadLogs,30000);
       writelog('info', 'order.unshipped', `Unshipped: ${quoteNumber}`, { rep: repName, quoteNum: quoteNumber, dealId: String(dealId || '') });
       json({ success: true, quoteNumber });
     } catch(e) {
-      writelog('error','error.unship',`unship failed: ${e.message}`,{ rep: getRepFromReq(req) });
+      writelog('error','error.unship',`unship failed: ${e.message}`,{ rep: getRepFromReq(req, body) });
       json({ error: e.message }, 500);
     }
     return;
@@ -7808,7 +7822,7 @@ setInterval(loadLogs,30000);
             console.log(`[orders] HubSpot write status: ${hsRes.status} props: ${Object.keys(hsProps).join(',')}`);
             if (hsRes.status >= 400) {
               console.error('[orders] HubSpot error:', JSON.stringify(hsRes.body)?.slice(0,300));
-              writelog('error', 'error.hubspot', `HubSpot PATCH failed (${hsRes.status}): ${hsRes.body?.message || '—'}`, { rep: getRepFromReq(req), quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { status: hsRes.status, props: Object.keys(hsProps).join(',') } });
+              writelog('error', 'error.hubspot', `HubSpot PATCH failed (${hsRes.status}): ${hsRes.body?.message || '—'}`, { rep: getRepFromReq(req, body), quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { status: hsRes.status, props: Object.keys(hsProps).join(',') } });
             }
           }
 

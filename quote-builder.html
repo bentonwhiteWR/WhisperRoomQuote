@@ -2649,6 +2649,12 @@ async function createDeal() {
 
     if (data.success) {
       box.className = 'result-box success';
+      if (data.inPlaceUpdate) {
+        box.innerHTML = `&#x2713; Quote updated — same number kept (<strong>${data.quoteNumber}</strong>). Existing links still work.`;
+      } else {
+        const qUrl = data.quoteNumber ? `https://sales.whisperroom.com/q/${data.quoteNumber}${data.shareToken ? '?t=' + data.shareToken : ''}` : null;
+        box.innerHTML = `&#x2713; ${data.quoteNumber ? `Quote <strong>${data.quoteNumber}</strong> pushed to HubSpot.` : 'Pushed to HubSpot.'}${qUrl ? ` <a href="${qUrl}" target="_blank" style="color:#6fcf97;font-weight:700">View Quote ↗</a>` : ''}`;
+      }
       window._lastPushedContactId = data.contactId || null;
       window._lastPushedDealId = data.dealId || null;
       setQuoteAccepted(false);

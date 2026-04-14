@@ -1803,7 +1803,30 @@ async function hsBatchAssociateLineItems(dealId, lineItemIds) {
   return res.body;
 }
 
-// ── TaxJar API ────────────────────────────────────────────────────
+// Fetch and delete all existing line items on a deal — call before creating new ones
+async function hsClearDealLineItems(dealId) {
+  try {
+    // Fetch associated line item IDs
+    const assocRes = await httpsRequest({
+      hostname: 'api.hubapi.com',
+      path: `/crm/v3/objects/deals/${dealId}/associations/line_items`,
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+    });
+    const ids = (assocRes.body?.results || []).map(r => r.id).filter(Boolean);
+    if (!ids.length) return;
+    // Batch delete all line items
+    await httpsRequest({
+      hostname: 'api.hubapi.com',
+      path: '/crm/v3/objects/line_items/batch/archive',
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+    }, { inputs: ids.map(id => ({ id: String(id) })) });
+    console.log(`[line items] cleared ${ids.length} from deal ${dealId}`);
+  } catch(e) {
+    console.warn(`[line items] clear failed for deal ${dealId}: ${e.message}`);
+  }
+}
 async function calculateTaxProper(toState, toZip, toCity, amount, shipping, toStreet = '') {
   const stateUpper = toStateAbbr(toState);
   const inNexus = NEXUS_STATES[stateUpper];
@@ -3205,6 +3228,8 @@ const server = http.createServer(async (req, res) => {
       }
 
       const lineItemIds = [];
+      // Clear existing line items first so we don't accumulate on each quote push
+      await hsClearDealLineItems(dealId);
       for (const item of adjustedItems) {
         const li = await hsCreateLineItem({
           name: item.name,
@@ -8086,6 +8111,38 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
       }, { properties: { dealstage: 'closedwon' } });
+
+      // 1b. Reset line items to the processed quote's exact line items
+      try {
+        await hsClearDealLineItems(dealId);
+        const processedLineItemIds = [];
+        const regularItems = (lineItems||[]).filter(i => parseFloat(i.price) >= 0);
+        const creditItems2  = (lineItems||[]).filter(i => parseFloat(i.price) < 0);
+        for (const item of regularItems) {
+          const li = await hsCreateLineItem({
+            name: item.name, quantity: String(item.qty),
+            price: String(parseFloat(item.price).toFixed(2)),
+            hs_product_id: item.productId ? String(item.productId) : undefined,
+            description: item.description || '',
+          });
+          if (li.id) processedLineItemIds.push(li.id);
+        }
+        for (const cr of creditItems2) {
+          const amt = Math.abs(parseFloat(cr.price) * parseInt(cr.qty||1));
+          const li = await hsCreateLineItem({ name: cr.name, quantity:'1', price:'0.00', description:`Credit: -$${amt.toFixed(2)}` });
+          if (li.id) processedLineItemIds.push(li.id);
+        }
+        if (freight && freight.total > 0) {
+          const fli = await hsCreateLineItem({ name:'Freight', quantity:'1', price:String(parseFloat(freight.total||0).toFixed(2)), description:`LTL freight. Transit: ${freight.transit||'—'}` });
+          if (fli.id) processedLineItemIds.push(fli.id);
+        }
+        if (tax && tax.tax > 0) {
+          const tli = await hsCreateLineItem({ name:`Sales Tax (${(tax.rate*100).toFixed(3)}%)`, quantity:'1', price:String(parseFloat(tax.tax).toFixed(2)), description:`State: ${customer?.state||''}` });
+          if (tli.id) processedLineItemIds.push(tli.id);
+        }
+        if (processedLineItemIds.length > 0) await hsBatchAssociateLineItems(dealId, processedLineItemIds);
+        console.log(`[process-order] reset ${processedLineItemIds.length} line items on deal ${dealId}`);
+      } catch(e) { console.warn('[process-order] line item reset failed:', e.message); }
 
       // 2. Save order data to DB
       const orderToken = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';

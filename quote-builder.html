@@ -2520,6 +2520,34 @@ async function createDeal() {
   btn.disabled = true;
   const isRevision = !!(linkedDeal || selectedDeal);
   btn.innerHTML = '<span class="spinner-inline"></span>' + (isRevision ? 'Updating...' : 'Creating...');
+
+  // For new deals: if folder check still in-flight, wait then retry
+  if (!isRevision && window._loadedContactId && window._contactFolderInfo === null) {
+    btn.disabled = false;
+    btn.innerHTML = isRevision ? 'Update Quote &amp; Deal' : 'Push to HubSpot';
+    btn.innerHTML = '<span class="spinner-inline"></span> Checking folder...';
+    const waited = await new Promise(resolve => {
+      let tries = 0;
+      const poll = setInterval(() => {
+        tries++;
+        if (window._contactFolderInfo !== null || tries > 20) {
+          clearInterval(poll); resolve();
+        }
+      }, 150);
+    });
+    btn.disabled = false;
+    btn.innerHTML = isRevision ? 'Update Quote &amp; Deal' : 'Push to HubSpot';
+    createDeal(); // re-call now that check is resolved
+    return;
+  }
+
+  // For new deals: if no folder found and no bind set, show the folder prompt
+  if (!isRevision && window._loadedContactId && !window._bindFolderId && window._contactFolderInfo === false) {
+    btn.disabled = false;
+    btn.innerHTML = isRevision ? 'Update Quote &amp; Deal' : 'Push to HubSpot';
+    showFolderPrompt();
+    return;
+  }
   // Disable view/copy buttons during push to prevent stale quote number being used
   const viewBtn = document.getElementById('viewQuoteBtn');
   const linkBtn2 = document.getElementById('copyLinkBtn');
@@ -2613,6 +2641,7 @@ async function createDeal() {
         linkedDealId: linkedDeal ? linkedDeal.id : (selectedDeal ? selectedDeal.id : null),
         isRevision: !!(linkedDeal || selectedDeal), // updating existing = revision
         confirmContactOverride: window._confirmContactOverride || false,
+        bindFolderId: window._bindFolderId || null,
       })
     });
 
@@ -2905,6 +2934,10 @@ function _doFillContact(contact) {
   if (p.email) loadAccessorialPrefs(p.email);
   // Save contact ID and original address for override detection
   window._loadedContactId = contact.id;
+  window._bindFolderId = null;
+  window._contactFolderInfo = null;
+  // Check if this contact has an existing Drive folder
+  checkContactFolder(contact.id);
   window._loadedContactAddress = {
     address: p.address || '',
     city:    p.city    || '',
@@ -5813,5 +5846,109 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
     <div class="pb-loading">Loading products…</div>
   </div>
 </div>
+
+<!-- ── Drive Folder Prompt Modal ─────────────────────────────────── -->
+<div id="folderPromptModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2000;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface,#1a1a1a);border-radius:12px;padding:28px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);border:1px solid var(--border,#2e2e2e)">
+    <div style="font-size:15px;font-weight:800;color:var(--text,#e8e8e8);margin-bottom:6px">&#x1F4C1; Google Drive Folder</div>
+    <div id="folderPromptMsg" style="font-size:12px;color:var(--text2,#aaa);margin-bottom:20px;line-height:1.5"></div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <input id="folderSearchInput" type="text" placeholder="Search by company name..."
+        style="flex:1;padding:9px 12px;background:var(--surface2,#222);border:1px solid var(--border,#2e2e2e);border-radius:7px;color:var(--text,#e8e8e8);font-size:13px;font-family:inherit;outline:none"
+        oninput="folderSearchDebounce()" onkeydown="if(event.key==='Enter')runFolderSearch()">
+      <button onclick="runFolderSearch()" style="padding:9px 14px;background:var(--orange,#ee6216);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Search</button>
+    </div>
+    <div id="folderSearchResults" style="max-height:200px;overflow-y:auto;margin-bottom:16px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="folderPromptCreateNew()" style="padding:9px 16px;background:var(--surface2,#222);border:1px solid var(--border,#2e2e2e);border-radius:7px;color:var(--text2,#aaa);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Create New Folder</button>
+      <button onclick="closeFolderPrompt()" style="padding:9px 16px;background:none;border:none;color:var(--muted,#666);font-size:12px;cursor:pointer;font-family:inherit">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+async function checkContactFolder(contactId) {
+  window._contactFolderInfo = null;
+  window._bindFolderId = null;
+  try {
+    const res = await fetch('/api/drive/contact-folder?contactId=' + encodeURIComponent(contactId), { credentials: 'include' });
+    const data = await res.json();
+    if (data.folderId) {
+      window._contactFolderInfo = data;
+      window._bindFolderId = data.folderId;
+    } else {
+      window._contactFolderInfo = false;
+    }
+  } catch(e) {
+    window._contactFolderInfo = false;
+  }
+}
+
+function showFolderPrompt() {
+  const modal = document.getElementById('folderPromptModal');
+  const msg   = document.getElementById('folderPromptMsg');
+  const input = document.getElementById('folderSearchInput');
+  document.getElementById('folderSearchResults').innerHTML = '';
+  const company = document.getElementById('company').value.trim() ||
+    [document.getElementById('firstName').value.trim(), document.getElementById('lastName').value.trim()].filter(Boolean).join(' ');
+  msg.textContent = 'No Drive folder found for this contact. Search for an existing folder to link, or create a new one.';
+  input.value = company;
+  modal.style.display = 'flex';
+  if (company) setTimeout(runFolderSearch, 100);
+}
+
+function closeFolderPrompt() {
+  document.getElementById('folderPromptModal').style.display = 'none';
+}
+
+function folderPromptCreateNew() {
+  window._bindFolderId = null;
+  window._contactFolderInfo = false;
+  closeFolderPrompt();
+  createDeal();
+}
+
+let _folderSearchTimer = null;
+function folderSearchDebounce() {
+  clearTimeout(_folderSearchTimer);
+  _folderSearchTimer = setTimeout(runFolderSearch, 350);
+}
+
+async function runFolderSearch() {
+  const q = document.getElementById('folderSearchInput').value.trim();
+  const results = document.getElementById('folderSearchResults');
+  if (!q || q.length < 2) { results.innerHTML = ''; return; }
+  results.innerHTML = '<div style="font-size:12px;color:var(--muted,#666);padding:8px 0">Searching...</div>';
+  try {
+    const res = await fetch('/api/drive/search-folders?q=' + encodeURIComponent(q), { credentials: 'include' });
+    const data = await res.json();
+    const folders = data.folders || [];
+    if (!folders.length) {
+      results.innerHTML = '<div style="font-size:12px;color:var(--muted,#666);padding:8px 0">No folders found — try a different name</div>';
+      return;
+    }
+    results.innerHTML = folders.map(function(f) {
+      var sid = f.id.replace(/'/g, "\\'");
+      var sn  = f.name.replace(/'/g, "\\'");
+      return '<div onclick="selectDriveFolder(\'' + sid + '\',\'' + sn + '\')" style="padding:9px 12px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--text,#e8e8e8);border:1px solid var(--border,#2e2e2e);margin-bottom:5px;background:var(--surface2,#222)" onmouseenter="this.style.borderColor=\'var(--orange,#ee6216)\'" onmouseleave="this.style.borderColor=\'var(--border,#2e2e2e)\'">&#x1F4C1; ' + f.name + '</div>';
+    }).join('');
+  } catch(e) {
+    results.innerHTML = '<div style="font-size:12px;color:var(--red,#ef4444);padding:8px 0">Search failed</div>';
+  }
+}
+
+function selectDriveFolder(folderId, folderName) {
+  window._bindFolderId = folderId;
+  window._contactFolderInfo = false;
+  closeFolderPrompt();
+  const box = document.getElementById('resultBox');
+  if (box) {
+    box.className = 'result-box success';
+    box.style.display = 'block';
+    box.textContent = 'Linked to "' + folderName + '" — pushing quote...';
+  }
+  createDeal();
+}
+</script>
 </body>
 </html>

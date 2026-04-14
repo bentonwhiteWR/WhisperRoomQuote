@@ -169,10 +169,6 @@ async function gdriveCreateDealFolders(dealName, quoteNumber, companyName) {
     const dealFolder = await gdriveEnsureFolder(safeName, GDRIVE_ROOT_FOLDER);
     if (!dealFolder?.id) { console.warn('GDrive: failed to create deal folder'); return null; }
 
-    // Create subfolders inside deal folder
-    const subfolders = ['Quotes', 'Invoices', 'Purchase Orders', 'Drawings & Specs', 'Shipping', 'Final Order'];
-    await Promise.all(subfolders.map(name => gdriveEnsureFolder(name, dealFolder.id)));
-
     // Save folder ID to DB
     if (db && quoteNumber) {
       await db.query(
@@ -181,7 +177,7 @@ async function gdriveCreateDealFolders(dealName, quoteNumber, companyName) {
       ).catch(e => console.warn('GDrive folder ID save failed:', e.message));
     }
 
-    console.log(`GDrive: folder created for "${safeName}" — ${dealFolder.id}`);
+    console.log(`GDrive: folder created/found for "${safeName}" — ${dealFolder.id}`);
     return dealFolder;
   } catch(e) {
     console.warn('GDrive createDealFolders error:', e.message);
@@ -190,20 +186,22 @@ async function gdriveCreateDealFolders(dealName, quoteNumber, companyName) {
 }
 
 
-// Upload a PDF to a deal's subfolder (e.g. Quotes, Invoices, Final Order)
-async function gdriveSavePdfToDeal(quoteNumber, subfolderName, filename, pdfBuffer) {
+// Upload a PDF directly to a deal's folder (flat — no subfolders)
+async function gdriveSavePdfToDeal(quoteNumber, _subfolderName, filename, pdfBuffer) {
   try {
     if (!db) { console.warn('GDrive: no DB connection'); return; }
-    const row = await db.query('SELECT gdrive_folder_id FROM quotes WHERE quote_number = $1', [quoteNumber]);
-    const dealFolderId = row.rows[0]?.gdrive_folder_id;
-    if (!dealFolderId) { console.warn(`GDrive: no folder ID for quote ${quoteNumber}`); return; }
+    let row = await db.query('SELECT gdrive_folder_id FROM quotes WHERE quote_number = $1', [quoteNumber]);
+    let dealFolderId = row.rows[0]?.gdrive_folder_id;
+    // Retry once after a short delay — folder ID write may not have committed yet
+    if (!dealFolderId) {
+      await new Promise(r => setTimeout(r, 1500));
+      row = await db.query('SELECT gdrive_folder_id FROM quotes WHERE quote_number = $1', [quoteNumber]);
+      dealFolderId = row.rows[0]?.gdrive_folder_id;
+    }
+    if (!dealFolderId) { console.warn(`GDrive: no folder ID for quote ${quoteNumber} — skipping upload`); return; }
 
-    // Find or create the subfolder inside the deal folder
-    const subfolder = await gdriveEnsureFolder(subfolderName, dealFolderId);
-    if (!subfolder?.id) { console.warn(`GDrive: could not find/create ${subfolderName} subfolder`); return; }
-
-    console.log(`GDrive: uploading "${filename}" to ${subfolderName}/ (${subfolder.id})`);
-    const result = await gdriveUploadFilePdf(filename, pdfBuffer, subfolder.id);
+    console.log(`GDrive: uploading "${filename}" to folder ${dealFolderId}`);
+    const result = await gdriveUploadFilePdf(filename, pdfBuffer, dealFolderId);
     if (result?.error) {
       console.warn(`GDrive upload error:`, JSON.stringify(result.error));
     } else {
@@ -1731,7 +1729,7 @@ async function hsCreateContact(data) {
 async function hsSearchContact(email) {
   const body = {
     filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: email }] }],
-    properties: ['firstname', 'lastname', 'email', 'phone', 'hubspot_owner_id'],
+    properties: ['firstname', 'lastname', 'email', 'phone', 'company', 'address', 'city', 'state', 'zip', 'hubspot_owner_id'],
     limit: 1
   };
   const res = await httpsRequest({
@@ -3030,21 +3028,25 @@ const server = http.createServer(async (req, res) => {
             const updateProps = {};
 
             if (confirmContactOverride) {
-              // Rep confirmed — update all fields
-              if (customer.address) updateProps.address = customer.address;
-              if (customer.city)    updateProps.city    = customer.city;
-              if (customer.state)   updateProps.state   = toStateFull(customer.state) || customer.state;
-              if (customer.zip)     updateProps.zip     = customer.zip;
-              if (customer.phone)   updateProps.phone   = customer.phone;
-              if (customer.company) updateProps.company = customer.company;
+              // Rep confirmed — update all changed fields
+              if (customer.firstName) updateProps.firstname = customer.firstName;
+              if (customer.lastName)  updateProps.lastname  = customer.lastName;
+              if (customer.address)   updateProps.address   = customer.address;
+              if (customer.city)      updateProps.city      = customer.city;
+              if (customer.state)     updateProps.state     = toStateFull(customer.state) || customer.state;
+              if (customer.zip)       updateProps.zip       = customer.zip;
+              if (customer.phone)     updateProps.phone     = customer.phone;
+              if (customer.company)   updateProps.company   = customer.company;
             } else {
-              // Only fill blanks — never overwrite existing data
-              if (customer.address && !existingProps.address) updateProps.address = customer.address;
-              if (customer.city    && !existingProps.city)    updateProps.city    = customer.city;
-              if (customer.state   && !existingProps.state)   updateProps.state   = toStateFull(customer.state) || customer.state;
-              if (customer.zip     && !existingProps.zip)     updateProps.zip     = customer.zip;
-              if (customer.phone   && !existingProps.phone)   updateProps.phone   = customer.phone;
-              if (customer.company && !existingProps.company) updateProps.company = customer.company;
+              // Only fill blanks — never overwrite existing non-empty data without confirmation
+              if (customer.firstName && !existingProps.firstname) updateProps.firstname = customer.firstName;
+              if (customer.lastName  && !existingProps.lastname)  updateProps.lastname  = customer.lastName;
+              if (customer.address   && !existingProps.address)   updateProps.address   = customer.address;
+              if (customer.city      && !existingProps.city)      updateProps.city      = customer.city;
+              if (customer.state     && !existingProps.state)     updateProps.state     = toStateFull(customer.state) || customer.state;
+              if (customer.zip       && !existingProps.zip)       updateProps.zip       = customer.zip;
+              if (customer.phone     && !existingProps.phone)     updateProps.phone     = customer.phone;
+              if (customer.company   && !existingProps.company)   updateProps.company   = customer.company;
             }
 
             // Assign rep as contact owner if:
@@ -3138,23 +3140,42 @@ const server = http.createServer(async (req, res) => {
           });
           existingDealStage = dsRes.body?.properties?.dealstage || 'appointmentscheduled';
         } catch(e) { console.warn('Could not fetch deal stage:', e.message); }
-        // Update existing deal — amount + conditionally advance stage
-        await httpsRequest({
-          hostname: 'api.hubapi.com',
-          path: `/crm/v3/objects/deals/${dealId}`,
-          method: 'PATCH',
-          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-        }, { properties: {
+        // Update existing deal — amount + address fields always updated from latest quote
+        const dealPatchProps = {
           amount: total.toFixed(2),
-          // Only advance to Updated Quote if deal is still at Sent Quote stage
-          // Never move a deal backward — Closed Won/Shipped/Verbal should stay put
-          ...(() => {
-            const currentStage = existingDealStage;
-            const earlyStages = ['appointmentscheduled', 'qualifiedtobuy'];
-            return earlyStages.includes(currentStage) ? { dealstage: 'qualifiedtobuy' } : {};
-          })(),
+          // Always update shipping address from latest quote
+          shipping_address:  customer.address || '',
+          shipping_city:     customer.city    || '',
+          shipping_zipcode:  customer.zip     || '',
+          billing_address:   billing ? billing.address || '' : customer.address || '',
+          billing_city:      billing ? billing.city    || '' : customer.city    || '',
+          billing_zipcode:   billing ? billing.zip     || '' : customer.zip     || '',
           dealname: dealName || undefined,
-        } });
+          // Only advance to Updated Quote if deal is still at Sent Quote stage
+          ...(() => {
+            const earlyStages = ['appointmentscheduled', 'qualifiedtobuy'];
+            return earlyStages.includes(existingDealStage) ? { dealstage: 'qualifiedtobuy' } : {};
+          })(),
+        };
+        // State fields — try with them first, retry without if HubSpot rejects
+        const shipping_state = toStateFull(customer.state) || customer.state || '';
+        const billing_state  = billing ? (toStateFull(billing.state) || billing.state || '') : shipping_state;
+        try {
+          await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/deals/${dealId}`,
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, { properties: { ...dealPatchProps, shipping_state, billing_state } });
+        } catch(e) {
+          // Retry without state fields if HubSpot rejects (e.g. Canadian province)
+          await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/deals/${dealId}`,
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, { properties: dealPatchProps });
+        }
 
         // Rename Google Drive folder if deal name changed
         if (dealName && db) {

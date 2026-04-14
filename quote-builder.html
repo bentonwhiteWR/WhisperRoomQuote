@@ -2638,9 +2638,10 @@ async function createDeal() {
         })(),
         existingDealId: selectedDeal ? selectedDeal.id : null,
         linkedDealId: linkedDeal ? linkedDeal.id : (selectedDeal ? selectedDeal.id : null),
-        isRevision: !!(linkedDeal || selectedDeal), // updating existing = revision
+        isRevision: !!(linkedDeal || selectedDeal),
         confirmContactOverride: window._confirmContactOverride || false,
         bindFolderId: window._bindFolderId || null,
+        notes: document.getElementById('notes').value.trim(),
       })
     });
 
@@ -2682,20 +2683,22 @@ async function createDeal() {
         linkDealById(data.dealId, pushedDealName);
       }
       // Mark form as published — next push will generate a new quote number
-      if (data.quoteNumber && !_freshQuoteGenerated) {
-        // Only update quoteNumHidden from server response if we didn't already
-        // generate a fresh number this push (prevents server echo from reverting it)
-        document.getElementById('quoteNumHidden').value = data.quoteNumber;
-        // Always show quote number as primary display
-        document.getElementById('quoteNumDisplay').textContent = data.quoteNumber;
-        // Clear any sub-label if it exists
-        const qnSub = document.getElementById('quoteNumSub');
-        if (qnSub) qnSub.textContent = '';
+      if (data.quoteNumber) {
+        if (data.inPlaceUpdate || !_freshQuoteGenerated) {
+          // In-place: always use server's returned number (overrides client-generated)
+          // New quote without fresh gen: also use server's number
+          document.getElementById('quoteNumHidden').value = data.quoteNumber;
+          document.getElementById('quoteNumDisplay').textContent = data.quoteNumber;
+          const qnSub = document.getElementById('quoteNumSub');
+          if (qnSub) qnSub.textContent = '';
+        }
       }
-      // Advance session sequence counter so next quote number is correct
-      const repId = document.getElementById('repSelect').value;
-      advanceQuoteSeq(repId);
-      window._historicalQuoteLoaded = true; // treat as published — next push = new revision
+      // Advance session sequence counter — only for genuinely new quote numbers
+      if (!data.inPlaceUpdate) {
+        const repId = document.getElementById('repSelect').value;
+        advanceQuoteSeq(repId);
+      }
+      window._historicalQuoteLoaded = !data.inPlaceUpdate; // in-place: stay in revision mode, don't generate new number next push
       activateLinkBtn();
       updatePushButtonText(); // will show "Update Quote & Deal" + revision preview
       // Also activate PDF button

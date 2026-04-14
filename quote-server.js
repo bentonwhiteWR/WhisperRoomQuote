@@ -7977,7 +7977,17 @@ setInterval(loadLogs,30000);
         const _sf = updatedOrderData.shipped || {};
         writelog('info', 'order.shipped', `Shipped: ${quoteNumber} via ${_sf.carrier || '—'} PRO: ${_sf.tracking || '—'}`, { rep: repName || null, quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { carrier: _sf.carrier, tracking: _sf.tracking, freightCost: updatedOrderData.freightCost } });
       }
-      json({ success: true, shipped: isNowShipped, quoteNumber, company: currentOrderData.company || body.customer?.company || '' });
+
+      // Look up company from quotes table — orderData doesn't store it, but quotes always does
+      let orderCompany = currentOrderData.company || '';
+      if (!orderCompany && db) {
+        try {
+          const cRow = await db.query('SELECT company, customer_name FROM quotes WHERE quote_number = $1 LIMIT 1', [quoteNumber]);
+          orderCompany = cRow.rows[0]?.company || cRow.rows[0]?.customer_name || '';
+        } catch(e) { /* non-fatal */ }
+      }
+
+      json({ success: true, shipped: isNowShipped, quoteNumber, company: orderCompany });
 
       // ── Accounting task when Jeromy ships ────────────────────────
       // Fire when: Ship It is clicked AND shipper is Jeromy (38732186)

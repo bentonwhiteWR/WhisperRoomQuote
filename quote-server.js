@@ -3040,16 +3040,22 @@ const server = http.createServer(async (req, res) => {
           if (snapRow.rows.length > 0) {
             const stored = snapRow.rows[0];
             const storedTotal = parseFloat(stored.total) || 0;
-            const storedItems = stored.json_snapshot?.lineItems?.length || 0;
+            // Filter credits (negative price) from both sides for consistent comparison
+            const storedItems = (stored.json_snapshot?.lineItems || []).filter(i => parseFloat(i.price) >= 0).length;
             const newTotal    = parseFloat(total) || 0;
-            const newItems    = (lineItems || []).filter(i => i.price >= 0).length; // exclude credits from count
+            const newItems    = (lineItems || []).filter(i => parseFloat(i.price) >= 0).length;
             const totalMatch  = Math.abs(storedTotal - newTotal) < 0.01;
             const countMatch  = storedItems === newItems;
+            console.log(`[save] in-place check: deal=${existingDealId} storedTotal=${storedTotal} newTotal=${newTotal} storedItems=${storedItems} newItems=${newItems} totalMatch=${totalMatch} countMatch=${countMatch}`);
             if (totalMatch && countMatch) {
               _inPlaceUpdate = true;
               _existingQuoteNumber = stored.quote_number;
-              console.log(`[save] in-place update detected for deal ${existingDealId} — keeping quote number ${_existingQuoteNumber}`);
+              console.log(`[save] in-place update detected — keeping quote number ${_existingQuoteNumber}`);
+            } else {
+              console.log(`[save] new quote required — ${!totalMatch ? `total changed ($${storedTotal} → $${newTotal})` : `item count changed (${storedItems} → ${newItems})`}`);
             }
+          } else {
+            console.log(`[save] no stored snapshot for deal ${existingDealId} — treating as new quote`);
           }
         } catch(e) { console.warn('[save] in-place check failed:', e.message); }
       }
@@ -4497,23 +4503,36 @@ tbody tr:hover td{background:#fdfcfb}
       const results = [];
       for (const fileId of fileIds) {
         try {
-          // Reparent: move from Orders folder to contact folder in one API call
-          // No delete permission needed — just moves the file's parent
-          const moveRes = await httpsRequest({
+          // Step 1: Copy to contact folder (only needs read access on source)
+          const copyRes = await httpsRequest({
             hostname: 'www.googleapis.com',
-            path: `/drive/v3/files/${fileId}?addParents=${destFolderId}&removeParents=${SHARED_ORDERS_FOLDER}&supportsAllDrives=true&fields=id,name`,
-            method: 'PATCH',
+            path: `/drive/v3/files/${fileId}/copy?supportsAllDrives=true&fields=id,name`,
+            method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
-          }, {});
+          }, { parents: [destFolderId] });
 
-          if (moveRes.body?.error) {
-            console.warn(`[move-order-files] Reparent failed for ${fileId}:`, JSON.stringify(moveRes.body.error));
-            results.push({ id: fileId, success: false, error: moveRes.body.error.message });
+          if (copyRes.body?.error) {
+            console.warn(`[move-order-files] Copy failed for ${fileId}:`, JSON.stringify(copyRes.body.error));
+            results.push({ id: fileId, success: false, error: copyRes.body.error.message });
             continue;
           }
 
-          const movedName = moveRes.body?.name || fileId;
-          console.log(`[move-order-files] Moved "${movedName}" → contact folder ${destFolderId}`);
+          const movedName = copyRes.body?.name || fileId;
+
+          // Step 2: Trash the original (trash requires less permission than delete)
+          try {
+            await httpsRequest({
+              hostname: 'www.googleapis.com',
+              path: `/drive/v3/files/${fileId}?supportsAllDrives=true`,
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+            }, { trashed: true });
+            console.log(`[move-order-files] Moved "${movedName}" → contact folder (original trashed)`);
+          } catch(trashErr) {
+            // Non-fatal — file copied successfully, original stays in Orders folder
+            console.warn(`[move-order-files] Copied but could not trash "${movedName}": ${trashErr.message}`);
+          }
+
           results.push({ id: fileId, name: movedName, success: true });
         } catch(e) {
           console.warn(`[move-order-files] Error on file ${fileId}:`, e.message);
@@ -8048,11 +8067,29 @@ setInterval(loadLogs,30000);
       let orderCompany = currentOrderData.company || '';
       if (!orderCompany && db) {
         try {
-          const cRow = await db.query('SELECT company, customer_name FROM quotes WHERE quote_number = $1 LIMIT 1', [quoteNumber]);
-          orderCompany = cRow.rows[0]?.company || cRow.rows[0]?.customer_name || '';
-        } catch(e) { /* non-fatal */ }
+          const cRow = await db.query(
+            `SELECT q.company, q.customer_name, q.json_snapshot
+             FROM quotes q WHERE q.quote_number = $1 LIMIT 1`,
+            [quoteNumber]
+          );
+          if (cRow.rows[0]) {
+            orderCompany = cRow.rows[0].company ||
+              cRow.rows[0].json_snapshot?.customer?.company ||
+              cRow.rows[0].customer_name || '';
+          }
+          // If still empty, try looking up via deal_id
+          if (!orderCompany && dealId) {
+            const dRow = await db.query(
+              `SELECT company, customer_name, json_snapshot FROM quotes WHERE deal_id = $1 AND company IS NOT NULL AND company != '' ORDER BY created_at DESC LIMIT 1`,
+              [String(dealId)]
+            );
+            orderCompany = dRow.rows[0]?.company ||
+              dRow.rows[0]?.json_snapshot?.customer?.company ||
+              dRow.rows[0]?.customer_name || '';
+          }
+        } catch(e) { console.warn('[ship] company lookup failed:', e.message); }
       }
-
+      console.log(`[ship] company for file scan: "${orderCompany}" (quoteNumber=${quoteNumber})`);
       json({ success: true, shipped: isNowShipped, quoteNumber, company: orderCompany });
 
       // ── Accounting task when Jeromy ships ────────────────────────

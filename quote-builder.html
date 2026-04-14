@@ -2227,20 +2227,42 @@ async function searchProducts(q) {
     const res = await fetch(`/api/products?q=${encodeURIComponent(q)}`);
     const data = await res.json();
     const results = data.results || [];
-    if (results.length === 0) {
+
+    // Also search WR_CREDITS client-side
+    const ql = q.toLowerCase();
+    const matchingCredits = WR_CREDITS.filter(c =>
+      c.name.toLowerCase().includes(ql) || c.description.toLowerCase().includes(ql)
+    );
+
+    if (results.length === 0 && matchingCredits.length === 0) {
       dropdown.innerHTML = '<div class="product-option-empty">No products found</div>';
       return;
     }
-    // Store results in a map keyed by index to avoid JSON/HTML escaping issues
+
     window._productSearchResults = {};
-    dropdown.innerHTML = results.slice(0, 20).map((p, idx) => {
+    let html = results.slice(0, 20).map((p, idx) => {
       window._productSearchResults[idx] = p;
-      return `
-      <div class="product-option" onclick="addLineItem(window._productSearchResults[${idx}])">
+      return `<div class="product-option" onclick="addLineItem(window._productSearchResults[${idx}])">
         <div class="product-option-name">${p.properties.name}</div>
         <div class="product-option-price">${p.properties.hs_sku ? p.properties.hs_sku + ' · ' : ''}${fmt(p.properties.price)}</div>
       </div>`;
     }).join('');
+
+    // Append matching credits with red styling
+    if (matchingCredits.length > 0) {
+      if (results.length > 0) {
+        html += '<div style="padding:4px 10px;font-size:10px;font-weight:700;color:#ef4444;text-transform:uppercase;letter-spacing:.08em;opacity:.7;border-top:1px solid var(--border);margin-top:4px;padding-top:8px">Credits</div>';
+      }
+      html += matchingCredits.map(c => {
+        const safeName = c.name.replace(/'/g, "\\'");
+        return `<div class="product-option" onclick="addCreditItem('${safeName}')" style="border-left:2px solid rgba(239,68,68,.4)">
+          <div class="product-option-name" style="color:var(--text)">${c.name}</div>
+          <div class="product-option-price" style="color:#ef4444">${c.description} · ${fmt(c.price)}</div>
+        </div>`;
+      }).join('');
+    }
+
+    dropdown.innerHTML = html;
     dropdown.classList.add('open');
   } catch(e) {
     dropdown.innerHTML = '<div class="product-option-empty">Search error</div>';

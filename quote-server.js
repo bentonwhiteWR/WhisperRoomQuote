@@ -1827,6 +1827,16 @@ async function hsClearDealLineItems(dealId) {
     console.warn(`[line items] clear failed for deal ${dealId}: ${e.message}`);
   }
 }
+// Build consistent PDF filename: "Company Label QuoteNumber (Type).pdf"
+function buildPdfFilename(quoteData, quoteNumber, type) {
+  const c = quoteData?.customer || {};
+  const company = (c.company || '').trim();
+  const name = company || [c.firstName, c.lastName].filter(Boolean).join(' ');
+  const label = (quoteData?.quoteLabel || '').trim();
+  const parts = [name, label, quoteNumber].filter(Boolean);
+  const safe = parts.join(' ').replace(/[/\\:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
+  return type ? `${safe} (${type}).pdf` : `${safe}.pdf`;
+}
 async function calculateTaxProper(toState, toZip, toCity, amount, shipping, toStreet = '') {
   const stateUpper = toStateAbbr(toState);
   const inNexus = NEXUS_STATES[stateUpper];
@@ -2988,7 +2998,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, isRevision, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel } = body;
+      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, isRevision, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId } = body;
       let { quoteNumber } = body;
 
       // Resolve any quote number collision server-side before touching HubSpot
@@ -3380,13 +3390,33 @@ const server = http.createServer(async (req, res) => {
         // Create Google Drive folder and upload quote PDF (non-blocking)
         (async () => {
           try {
-            await gdriveCreateDealFolders(finalDealName, quoteNumber, customer?.company || '');
+            // 1. If rep explicitly bound an existing folder, save that ID
+            if (bindFolderId) {
+              await db?.query('UPDATE quotes SET gdrive_folder_id = $1 WHERE quote_number = $2', [bindFolderId, quoteNumber]);
+              console.log(`[drive] using bound folder ${bindFolderId} for ${quoteNumber}`);
+            } else {
+              // 2. Check if contact has a prior folder we can inherit
+              let inheritedFolderId = null;
+              if (contactId && db) {
+                const priorRow = await db.query(
+                  'SELECT gdrive_folder_id FROM quotes WHERE contact_id = $1 AND gdrive_folder_id IS NOT NULL ORDER BY created_at DESC LIMIT 1',
+                  [String(contactId)]
+                );
+                inheritedFolderId = priorRow.rows[0]?.gdrive_folder_id || null;
+              }
+              if (inheritedFolderId) {
+                await db?.query('UPDATE quotes SET gdrive_folder_id = $1 WHERE quote_number = $2', [inheritedFolderId, quoteNumber]);
+                console.log(`[drive] inherited folder ${inheritedFolderId} for ${quoteNumber}`);
+              } else {
+                // 3. Create new folder
+                await gdriveCreateDealFolders(finalDealName, quoteNumber, customer?.company || '');
+              }
+            }
             // Upload quote PDF to Google Drive
             const shareTokenQ = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
             const quoteUrl = `https://sales.whisperroom.com/q/${encodeURIComponent(quoteNumber)}${shareTokenQ ? '?t=' + shareTokenQ : ''}`;
             const pdfBufQ = await generatePdfBuffer(quoteUrl);
-            const safeNameQ = finalDealName.replace(/[/\\:*?"<>|]/g, '-').trim();
-            await gdriveSavePdfToDeal(quoteNumber, 'Quotes', `${quoteNumber} — ${safeNameQ}.pdf`, pdfBufQ);
+            await gdriveSavePdfToDeal(quoteNumber, 'Quotes', buildPdfFilename({ customer, quoteLabel }, quoteNumber, 'Quote'), pdfBufQ);
           } catch(e) { console.warn('GDrive quote upload error:', e.message, e.stack?.split('\n')[1]); }
         })();
 
@@ -4241,6 +4271,61 @@ tbody tr:hover td{background:#fdfcfb}
     } catch(e) {
       console.warn('[invoice-webhook] error:', e.message);
     }
+    return;
+  }
+
+  // ── API: Check if contact has existing Drive folder ───────────────
+  if (pathname === '/api/drive/contact-folder' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const contactId = parsed.query.contactId;
+    if (!contactId || !db) { json({ folderId: null }); return; }
+    try {
+      const row = await db.query(
+        'SELECT gdrive_folder_id, deal_name, company FROM quotes WHERE contact_id = $1 AND gdrive_folder_id IS NOT NULL ORDER BY created_at DESC LIMIT 1',
+        [String(contactId)]
+      );
+      if (!row.rows[0]) { json({ folderId: null }); return; }
+      const { gdrive_folder_id, deal_name, company } = row.rows[0];
+      const folderName = company || deal_name?.replace(/\s*[·—\-–]\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\s*$/i, '').trim() || '';
+      json({ folderId: gdrive_folder_id, folderName });
+    } catch(e) { json({ folderId: null }); }
+    return;
+  }
+
+  // ── API: Search Google Drive folders ─────────────────────────────
+  if (pathname === '/api/drive/search-folders' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const q = (parsed.query.q || '').trim();
+    if (!q || q.length < 2) { json({ folders: [] }); return; }
+    try {
+      const token = await getGDriveToken();
+      if (!token) { json({ error: 'Drive not configured' }, 500); return; }
+      const query = encodeURIComponent(
+        `name contains '${q.replace(/'/g,"\\'")}' and '${GDRIVE_ROOT_FOLDER}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
+      );
+      const res2 = await httpsRequest({
+        hostname: 'www.googleapis.com',
+        path: `/drive/v3/files?q=${query}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives&pageSize=20`,
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const folders = (res2.body?.files || []).map(f => ({ id: f.id, name: f.name }));
+      json({ folders });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // ── API: Bind existing Drive folder to a deal/contact ────────────
+  if (pathname === '/api/drive/bind-folder' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { quoteNumber, folderId } = JSON.parse(await readBody(req));
+      if (!quoteNumber || !folderId) { json({ error: 'Missing quoteNumber or folderId' }, 400); return; }
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      await db.query('UPDATE quotes SET gdrive_folder_id = $1 WHERE quote_number = $2', [folderId, quoteNumber]);
+      console.log(`[drive] bound folder ${folderId} to quote ${quoteNumber}`);
+      json({ success: true });
+    } catch(e) { json({ error: e.message }, 500); }
     return;
   }
 
@@ -5956,10 +6041,9 @@ tbody tr:hover td{background:#fdfcfb}
       (async () => {
         try {
           const pdfBufI = await generatePdfBuffer(invoicePageUrl);
-          const dnRowI = await db?.query('SELECT deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
-          const dnI = dnRowI?.rows[0]?.deal_name || quoteNumber;
-          const safeNameI = dnI.replace(/[/\\:*?"<>|]/g, '-').trim();
-          await gdriveSavePdfToDeal(quoteNumber, 'Invoices', `${quoteNumber} — ${safeNameI} (Invoice).pdf`, pdfBufI);
+          const snapRowI = await db?.query('SELECT json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
+          const snapI = snapRowI?.rows[0]?.json_snapshot || {};
+          await gdriveSavePdfToDeal(quoteNumber, 'Invoices', buildPdfFilename(snapI, quoteNumber, 'Invoice'), pdfBufI);
         } catch(e) { console.warn('GDrive invoice upload error:', e.message); }
       })();
 
@@ -7364,7 +7448,9 @@ setInterval(loadLogs,30000);
           COALESCE(q.deal_name,     o.order_data->>'dealName')     as deal_name,
           COALESCE(q.total::text,   o.order_data->>'total')        as total,
           q.json_snapshot,
-          q.share_token
+          q.share_token,
+          q.gdrive_folder_id,
+          q.company as q_company
         FROM orders o
         LEFT JOIN quotes q ON q.quote_number = o.quote_number
         ORDER BY o.created_at DESC
@@ -7832,8 +7918,9 @@ setInterval(loadLogs,30000);
             const dnO       = tokenRowO?.rows[0]?.deal_name   || quoteNumber;
             const orderUrl  = `https://sales.whisperroom.com/o/${encodeURIComponent(quoteNumber)}${tokenO ? '?t=' + tokenO : ''}`;
             const pdfBufO   = await generatePdfBuffer(orderUrl);
-            const safeNameO = dnO.replace(/[/\\:*?"<>|]/g, '-').trim();
-            await gdriveSavePdfToDeal(quoteNumber, 'Final Order', `${quoteNumber} — ${safeNameO} (Order).pdf`, pdfBufO);
+            const snapRowO  = await db?.query('SELECT json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
+            const snapO     = snapRowO?.rows[0]?.json_snapshot || {};
+            await gdriveSavePdfToDeal(quoteNumber, 'Final Order', buildPdfFilename(snapO, quoteNumber, 'Order'), pdfBufO);
           } catch(e) { console.warn('GDrive order PDF error:', e.message); }
         })();
       }
@@ -8277,9 +8364,10 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       (async () => {
         try {
           const SHARED_ORDERS_FOLDER = '0AKEFNM5_Dl8jUk9PVA';
-          const safeNameO = (dealName || quoteNumber).replace(/[/\\:*?"<>|]/g, '-').trim();
+          const snapRowP = await db?.query('SELECT json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
+          const snapP = snapRowP?.rows[0]?.json_snapshot || {};
           const pdfBufO = await generatePdfBuffer(orderUrl);
-          const filename = `${safeNameO} (Order).pdf`;
+          const filename = buildPdfFilename(snapP, quoteNumber, 'Order');
           await gdriveUploadFilePdf(filename, pdfBufO, SHARED_ORDERS_FOLDER);
           console.log(`[process-order] PDF saved to shared orders folder: ${filename}`);
         } catch(e) { console.warn('[process-order] GDrive PDF error:', e.message); }
@@ -8298,12 +8386,12 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
     if (!isAuth(req)) { res.writeHead(401); res.end('Unauthorized'); return; }
     const quoteNumber = decodeURIComponent(pathname.replace('/api/download-order/', '').trim());
     try {
-      const tokenRow = await db?.query('SELECT share_token, deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
+      const tokenRow = await db?.query('SELECT share_token, json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
       const token = tokenRow?.rows[0]?.share_token || '';
-      const dealName = tokenRow?.rows[0]?.deal_name || quoteNumber;
+      const snap = tokenRow?.rows[0]?.json_snapshot || {};
       const orderUrl = `https://sales.whisperroom.com/o/${encodeURIComponent(quoteNumber)}${token ? '?t=' + token : ''}`;
-      const safeName = `${quoteNumber} — ${dealName.replace(/[^\w\s—-]/g, '')} (Order)`.slice(0, 80);
-      await generatePdf(orderUrl, safeName + '.pdf', res, req);
+      const filename = buildPdfFilename(snap, quoteNumber, 'Order');
+      await generatePdf(orderUrl, filename, res, req);
     } catch(e) {
       res.writeHead(500); res.end('PDF error: ' + e.message);
     }
@@ -8320,10 +8408,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       const quoteData = await getQuoteFromDb(quoteNumber);
       if (!quoteData) { res.writeHead(404); res.end('Quote not found'); return; }
 
-      const dealName = quoteData.dealName || quoteData.customer?.company || quoteData.customer?.lastName || 'Quote';
-      const safeName = dealName.replace(/[<>:"/\|?*]/g, '').trim();
-      const filename = `${quoteNumber} — ${safeName}.pdf`;
-
+      const filename = buildPdfFilename(quoteData, quoteNumber, 'Quote');
       await generatePdf(
         `https://sales.whisperroom.com/q/${encodeURIComponent(quoteNumber)}`,
         filename, res, req
@@ -8345,10 +8430,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       const quoteData = await getQuoteFromDb(quoteNumber);
       if (!quoteData) { res.writeHead(404); res.end('Invoice not found'); return; }
 
-      const dealName = quoteData.dealName || quoteData.customer?.company || quoteData.customer?.lastName || 'Invoice';
-      const safeName = dealName.replace(/[<>:"/\|?*]/g, '').trim();
-      const filename = `${quoteNumber} — ${safeName} (Invoice).pdf`;
-
+      const filename = buildPdfFilename(quoteData, quoteNumber, 'Invoice');
       await generatePdf(
         `https://sales.whisperroom.com/i/${encodeURIComponent(quoteNumber)}`,
         filename, res, req

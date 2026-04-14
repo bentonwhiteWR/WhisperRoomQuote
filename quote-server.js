@@ -1861,6 +1861,12 @@ async function calculateTaxProper(toState, toZip, toCity, amount, shipping, toSt
 // ── ABF Freight ───────────────────────────────────────────────────
 function buildAbfUrl(pallets, totalWeight, consCity, consState, consZip, isCanadian, accessories, servType) {
   const today = new Date();
+  // Strip spaces from postal code — Canadian codes often entered as "M4W 1B7"
+  const cleanZip = (consZip || '').replace(/\s+/g, '');
+  // Canadian shipments use different NMFC codes
+  const nmfcItem = isCanadian ? '027880' : NMFC_ITEM;
+  const nmfcSub  = isCanadian ? '02'     : NMFC_SUB;
+
   const parts = [
     'DL=2', `ID=${ABF_ID}`, `ShipAcct=${ABF_ACCT}`,
     'ShipPay=Y', 'Acc=ARR=Y'
@@ -1869,13 +1875,12 @@ function buildAbfUrl(pallets, totalWeight, consCity, consState, consZip, isCanad
   if (accessories.residential)   parts.push('Acc_RDEL=Y');
   if (accessories.liftgate)      parts.push('Acc_GRD_DEL=Y');
   if (accessories.limitedaccess) { parts.push('Acc_LAD=Y'); parts.push('LADType=M'); }
-  // Loading dock: no param needed — ABF auto-applies based on destination zip
 
   parts.push(
     `ShipCity=${encodeURIComponent(SHIP_CITY)}`, `ShipState=${SHIP_STATE}`,
     `ShipZip=${SHIP_ZIP}`, 'ShipCountry=US',
     `ConsCity=${encodeURIComponent(consCity)}`, `ConsState=${consState}`,
-    `ConsZip=${consZip}`, `ConsCountry=${isCanadian ? 'CA' : 'US'}`,
+    `ConsZip=${cleanZip}`, `ConsCountry=${isCanadian ? 'CA' : 'US'}`,
     'FrtLWHType=IN'
   );
 
@@ -1884,7 +1889,7 @@ function buildAbfUrl(pallets, totalWeight, consCity, consState, consZip, isCanad
     parts.push(
       `FrtLng${n}=${pl.l}`, `FrtWdth${n}=${pl.w}`, `FrtHght${n}=${pl.h}`,
       `UnitType${n}=PLT`, `Wgt${n}=${pl.weight}`, `UnitNo${n}=1`,
-      `Class${n}=${FREIGHT_CLASS}`, `NMFCItem${n}=${NMFC_ITEM}`, `NMFCSub${n}=${NMFC_SUB}`
+      `Class${n}=${FREIGHT_CLASS}`, `NMFCItem${n}=${nmfcItem}`, `NMFCSub${n}=${nmfcSub}`
     );
   });
 

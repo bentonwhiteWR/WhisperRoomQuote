@@ -3026,9 +3026,42 @@ const server = http.createServer(async (req, res) => {
       const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, isRevision, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId } = body;
       let { quoteNumber } = body;
 
+      // ── In-place update detection ────────────────────────────────────
+      // If this is a revision and total + line item count haven't changed,
+      // update the snapshot in place — keep the same quote number, skip line item reset
+      let _inPlaceUpdate = false;
+      let _existingQuoteNumber = null;
+      if (existingDealId && db) {
+        try {
+          const snapRow = await db.query(
+            'SELECT quote_number, total, json_snapshot FROM quotes WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 1',
+            [String(existingDealId)]
+          );
+          if (snapRow.rows.length > 0) {
+            const stored = snapRow.rows[0];
+            const storedTotal = parseFloat(stored.total) || 0;
+            const storedItems = stored.json_snapshot?.lineItems?.length || 0;
+            const newTotal    = parseFloat(total) || 0;
+            const newItems    = (lineItems || []).filter(i => i.price >= 0).length; // exclude credits from count
+            const totalMatch  = Math.abs(storedTotal - newTotal) < 0.01;
+            const countMatch  = storedItems === newItems;
+            if (totalMatch && countMatch) {
+              _inPlaceUpdate = true;
+              _existingQuoteNumber = stored.quote_number;
+              console.log(`[save] in-place update detected for deal ${existingDealId} — keeping quote number ${_existingQuoteNumber}`);
+            }
+          }
+        } catch(e) { console.warn('[save] in-place check failed:', e.message); }
+      }
+
+      // If in-place, use existing quote number — skip generating a new one
+      if (_inPlaceUpdate && _existingQuoteNumber) {
+        quoteNumber = _existingQuoteNumber;
+      }
+
       // Resolve any quote number collision server-side before touching HubSpot
       // This replaces the client error-and-retry flow with silent auto-increment
-      if (quoteNumber && db) {
+      if (quoteNumber && db && !_inPlaceUpdate) {
         const resolvedContactId = existingContactId ? String(existingContactId) : null;
         const resolvedDealId    = existingDealId    ? String(existingDealId)    : null;
         const free = await generateFreeQuoteNumber(quoteNumber, ownerId, resolvedDealId, resolvedContactId);
@@ -3286,128 +3319,121 @@ const server = http.createServer(async (req, res) => {
       }
 
       const lineItemIds = [];
-      // Clear existing line items first so we don't accumulate on each quote push
-      await hsClearDealLineItems(dealId);
-      for (const item of adjustedItems) {
-        const li = await hsCreateLineItem({
-          name: item.name,
-          quantity: String(item.qty),
-          price: String(parseFloat(item.price).toFixed(2)),
-          hs_product_id: item.productId ? String(item.productId) : undefined,
-          description: item.description || '',
-          hs_discount_percentage: item.lineDiscount && item.lineDiscount > 0 ? String(item.lineDiscount) : undefined,
-        });
-        if (li.id) lineItemIds.push(li.id);
-      }
-
-      // Add each credit as a $0 descriptor line so HubSpot shows what's included
-      for (const cr of creditItems) {
-        const amt = Math.abs(parseFloat(cr.price) * parseInt(cr.qty || 1));
-        const li = await hsCreateLineItem({
-          name: cr.name,
-          quantity: '1',
-          price: '0.00',
-          description: `Credit applied${anchor ? ' in ' + anchor.name + ' above' : ''}: -$${amt.toFixed(2)}${cr.description ? ' — ' + cr.description : ''}`,
-        });
-        if (li.id) lineItemIds.push(li.id);
-      }
-
-      // Add freight line item
-      if (freight && freight.total > 0 && !freight.tbd) {
-        const fli = await hsCreateLineItem({
-          name: 'Freight',
-          quantity: '1',
-          price: String(freight.total.toFixed(2)),
-          description: `LTL freight estimate. Transit: ${freight.transit || '—'}. ${freight.dynDisc > 0 ? `Dynamic discount of $${freight.dynDisc} excluded.` : ''}`,
-        });
-        if (fli.id) lineItemIds.push(fli.id);
-      }
-
-      // Add tax line item if applicable
-      if (tax && tax.tax > 0) {
-        const tli = await hsCreateLineItem({
-          name: `Sales Tax (${(tax.rate * 100).toFixed(3)}%)`,
-          quantity: '1',
-          price: String(tax.tax.toFixed(2)),
-          description: `State: ${customer.state}. ${tax.freightTaxed ? 'Includes freight.' : 'Product only.'}`,
-        });
-        if (tli.id) lineItemIds.push(tli.id);
-      }
-
-      // Associate all line items with deal
-      if (lineItemIds.length > 0) {
-        await hsBatchAssociateLineItems(dealId, lineItemIds);
-      }
-
-      // Append quote link to deal (preserves all previous links)
-      if (quoteNumber) {
-        try {
-          const newLink = `https://sales.whisperroom.com/q/${quoteNumber}`;
-          const datestamp = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone:'America/New_York'});
-
-          // Read existing links
-          const existingDeal = await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/deals/${dealId}?properties=quote_link`,
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+      if (!_inPlaceUpdate) {
+        // Clear existing line items first so we don't accumulate on each quote push
+        await hsClearDealLineItems(dealId);
+        for (const item of adjustedItems) {
+          const li = await hsCreateLineItem({
+            name: item.name,
+            quantity: String(item.qty),
+            price: String(parseFloat(item.price).toFixed(2)),
+            hs_product_id: item.productId ? String(item.productId) : undefined,
+            description: item.description || '',
+            hs_discount_percentage: item.lineDiscount && item.lineDiscount > 0 ? String(item.lineDiscount) : undefined,
           });
-          const existingLinks = existingDeal.body?.properties?.quote_link || '';
-          const totalFmt = total ? ' — $' + parseFloat(total).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
-          const newEntry = `${datestamp}${totalFmt} — #${quoteNumber}: ${newLink}`;
-          const updatedLinks = existingLinks
-            ? newEntry + '\n' + existingLinks   // prepend newest
-            : newEntry;
+          if (li.id) lineItemIds.push(li.id);
+        }
 
-          await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/deals/${dealId}`,
-            method: 'PATCH',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-          }, { properties: { quote_link: updatedLinks } });
-        } catch(e) { console.warn('quote_link append failed:', e.message); }
-      }
-
-      // Append quote history to contact record
-      if (quoteNumber && contactId) {
-        try {
-          const newLink = `https://sales.whisperroom.com/q/${quoteNumber}`;
-          const datestamp = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone:'America/New_York'});
-          const totalFmt = total ? ' — $' + parseFloat(total).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
-          const dealLabel = dealName ? ` — ${dealName}` : '';
-
-          // Read existing contact quote history
-          const existingContact = await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/contacts/${contactId}?properties=quote_links,all_quote_numbers`,
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+        // Add each credit as a $0 descriptor line
+        for (const cr of creditItems) {
+          const amt = Math.abs(parseFloat(cr.price) * parseInt(cr.qty || 1));
+          const li = await hsCreateLineItem({
+            name: cr.name,
+            quantity: '1',
+            price: '0.00',
+            description: `Credit applied${anchor ? ' in ' + anchor.name + ' above' : ''}: -$${amt.toFixed(2)}${cr.description ? ' — ' + cr.description : ''}`,
           });
-          const existingLinks = existingContact.body?.properties?.quote_links || '';
-          const existingNums  = existingContact.body?.properties?.all_quote_numbers || '';
+          if (li.id) lineItemIds.push(li.id);
+        }
 
-          const newEntry = `${datestamp}${totalFmt}${dealLabel} — #${quoteNumber}: ${newLink}`;
-          const updatedLinks = existingLinks ? newEntry + '\n' + existingLinks : newEntry;
-
-          // all_quote_numbers: prepend newest, comma-separated
-          const numList = existingNums
-            ? quoteNumber + ', ' + existingNums
-            : quoteNumber;
-
-          await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/contacts/${contactId}`,
-            method: 'PATCH',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-          }, {
-            properties: {
-              quote_links:        updatedLinks,
-              quote_number:       quoteNumber,   // latest
-              all_quote_numbers:  numList,
-            }
+        // Add freight line item
+        if (freight && freight.total > 0 && !freight.tbd) {
+          const fli = await hsCreateLineItem({
+            name: 'Freight',
+            quantity: '1',
+            price: String(freight.total.toFixed(2)),
+            description: `LTL freight estimate. Transit: ${freight.transit || '—'}. ${freight.dynDisc > 0 ? `Dynamic discount of $${freight.dynDisc} excluded.` : ''}`,
           });
-        } catch(e) { console.warn('Contact quote history update failed:', e.message); }
-      }
+          if (fli.id) lineItemIds.push(fli.id);
+        }
+
+        // Add tax line item if applicable
+        if (tax && tax.tax > 0) {
+          const tli = await hsCreateLineItem({
+            name: `Sales Tax (${(tax.rate * 100).toFixed(3)}%)`,
+            quantity: '1',
+            price: String(tax.tax.toFixed(2)),
+            description: `State: ${customer.state}. ${tax.freightTaxed ? 'Includes freight.' : 'Product only.'}`,
+          });
+          if (tli.id) lineItemIds.push(tli.id);
+        }
+
+        // Associate all line items with deal
+        if (lineItemIds.length > 0) {
+          await hsBatchAssociateLineItems(dealId, lineItemIds);
+        }
+      } // end !_inPlaceUpdate
+
+      // Append quote link and contact history — only for new quotes, not in-place updates
+      if (!_inPlaceUpdate) {
+        // Append quote link to deal (preserves all previous links)
+        if (quoteNumber) {
+          try {
+            const newLink = `https://sales.whisperroom.com/q/${quoteNumber}`;
+            const datestamp = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone:'America/New_York'});
+            const existingDeal = await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/deals/${dealId}?properties=quote_link`,
+              method: 'GET',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+            });
+            const existingLinks = existingDeal.body?.properties?.quote_link || '';
+            const totalFmt = total ? ' — $' + parseFloat(total).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
+            const newEntry = `${datestamp}${totalFmt} — #${quoteNumber}: ${newLink}`;
+            const updatedLinks = existingLinks ? newEntry + '\n' + existingLinks : newEntry;
+            await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/deals/${dealId}`,
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, { properties: { quote_link: updatedLinks } });
+          } catch(e) { console.warn('quote_link append failed:', e.message); }
+        }
+
+        // Append quote history to contact record
+        if (quoteNumber && contactId) {
+          try {
+            const newLink = `https://sales.whisperroom.com/q/${quoteNumber}`;
+            const datestamp = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone:'America/New_York'});
+            const totalFmt = total ? ' — $' + parseFloat(total).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
+            const dealLabel = dealName ? ` — ${dealName}` : '';
+            const existingContact = await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/contacts/${contactId}?properties=quote_links,all_quote_numbers`,
+              method: 'GET',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+            });
+            const existingLinks = existingContact.body?.properties?.quote_links || '';
+            const existingNums  = existingContact.body?.properties?.all_quote_numbers || '';
+            const newEntry = `${datestamp}${totalFmt}${dealLabel} — #${quoteNumber}: ${newLink}`;
+            const updatedLinks = existingLinks ? newEntry + '\n' + existingLinks : newEntry;
+            const numList = existingNums ? quoteNumber + ', ' + existingNums : quoteNumber;
+
+            await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/contacts/${contactId}`,
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, {
+              properties: {
+                quote_links:        updatedLinks,
+                quote_number:       quoteNumber,
+                all_quote_numbers:  numList,
+              }
+            });
+          } catch(e) { console.warn('Contact quote history update failed:', e.message); }
+        }
+      } // end !_inPlaceUpdate
 
       // Save to PostgreSQL DB (primary storage)
       // Fetch actual deal name from HubSpot to ensure DB matches
@@ -3461,6 +3487,33 @@ const server = http.createServer(async (req, res) => {
               }
             }
             // Upload quote PDF to Google Drive
+            // For in-place updates: delete the existing PDF first to avoid duplicates
+            if (_inPlaceUpdate) {
+              try {
+                const folderRow = await db?.query('SELECT gdrive_folder_id FROM quotes WHERE quote_number = $1', [quoteNumber]);
+                const folderId = folderRow?.rows[0]?.gdrive_folder_id;
+                if (folderId) {
+                  const driveToken = await getGDriveToken();
+                  const pdfName = buildPdfFilename({ customer, quoteLabel }, quoteNumber, 'Quote');
+                  // Search for existing file with same name in folder
+                  const searchRes = await httpsRequest({
+                    hostname: 'www.googleapis.com',
+                    path: `/drive/v3/files?q=${encodeURIComponent(`'${folderId}' in parents and name='${pdfName.replace(/'/g,"\\'")}' and trashed=false`)}&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+                    method: 'GET',
+                    headers: { 'Authorization': `Bearer ${driveToken}` }
+                  });
+                  for (const f of (searchRes.body?.files || [])) {
+                    await httpsRequest({
+                      hostname: 'www.googleapis.com',
+                      path: `/drive/v3/files/${f.id}?supportsAllDrives=true`,
+                      method: 'DELETE',
+                      headers: { 'Authorization': `Bearer ${driveToken}` }
+                    });
+                    console.log(`[drive] deleted old PDF ${f.id} for in-place update`);
+                  }
+                }
+              } catch(delErr) { console.warn('[drive] could not delete old PDF:', delErr.message); }
+            }
             const shareTokenQ = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
             const quoteUrl = `https://sales.whisperroom.com/q/${encodeURIComponent(quoteNumber)}${shareTokenQ ? '?t=' + shareTokenQ : ''}`;
             const pdfBufQ = await generatePdfBuffer(quoteUrl);
@@ -3483,7 +3536,8 @@ const server = http.createServer(async (req, res) => {
       // HubSpot Notes write removed — DB is primary storage
 
       const isNewDeal = !existingDealId;
-      writelog('info', 'quote.pushed', `${isNewDeal ? 'New deal' : 'Revision'}: ${finalDealName || dealName || '—'} (${quoteNumber || '—'})${isNewDeal ? '' : ' — deal ' + dealId}`, { rep: String(ownerId || ''), quoteNum: quoteNumber || null, dealId: String(dealId || ''), dealName: finalDealName || dealName || null, meta: { isNewDeal, existingDealId: existingDealId || null } });
+      const updateType = isNewDeal ? 'New deal' : (_inPlaceUpdate ? 'In-place update' : 'Revision');
+      writelog('info', 'quote.pushed', `${updateType}: ${finalDealName || dealName || '—'} (${quoteNumber || '—'})${isNewDeal ? '' : ' — deal ' + dealId}`, { rep: String(ownerId || ''), quoteNum: quoteNumber || null, dealId: String(dealId || ''), dealName: finalDealName || dealName || null, meta: { isNewDeal, inPlaceUpdate: _inPlaceUpdate, existingDealId: existingDealId || null } });
       json({
         success: true,
         dealId,
@@ -3491,6 +3545,7 @@ const server = http.createServer(async (req, res) => {
         quoteNumber,
         shareToken,
         dealName: finalDealName,
+        inPlaceUpdate: _inPlaceUpdate,
         dealUrl: `https://app.hubspot.com/contacts/5764220/record/0-3/${dealId}`
       });
 

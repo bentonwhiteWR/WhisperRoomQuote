@@ -3023,7 +3023,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, isRevision, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId } = body;
+      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, isRevision, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, notes } = body;
       let { quoteNumber } = body;
 
       // ── In-place update detection ────────────────────────────────────
@@ -3462,6 +3462,7 @@ const server = http.createServer(async (req, res) => {
           date: new Date().toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}),
           customer, lineItems, discount, freight, tax,
           quoteLabel: quoteLabel || '',
+          notes: notes || '',
         });
         // Fetch the token we just saved
         const tokenRow = await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]);

@@ -19,7 +19,8 @@ try {
 
 
 // ── Google Drive Integration ──────────────────────────────────────
-const GDRIVE_ROOT_FOLDER = process.env.GDRIVE_ROOT_FOLDER || '';
+const GDRIVE_ROOT_FOLDER    = process.env.GDRIVE_ROOT_FOLDER || '';
+const SHARED_ORDERS_FOLDER  = '0AKEFNM5_Dl8jUk9PVA'; // WhisperRoom Orders folder
 
 let _gdriveToken = null;
 let _gdriveTokenExpiry = 0;
@@ -4382,6 +4383,86 @@ tbody tr:hover td{background:#fdfcfb}
     return;
   }
 
+  // ── API: Scan Orders folder for files matching a company name ─────
+  if (pathname === '/api/drive/scan-orders' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { quoteNumber, company } = JSON.parse(await readBody(req));
+      if (!company) { json({ files: [], destFolderId: null, destFolderName: null }); return; }
+
+      // Normalize company name for matching
+      const normalize = s => s.toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+      const needle = normalize(company);
+      if (needle.length < 4) { json({ files: [], destFolderId: null, destFolderName: null }); return; }
+
+      // Get dest folder ID from DB
+      let destFolderId = null, destFolderName = null;
+      if (db && quoteNumber) {
+        const row = await db.query('SELECT gdrive_folder_id, company, deal_name FROM quotes WHERE quote_number = $1 LIMIT 1', [quoteNumber]);
+        destFolderId   = row.rows[0]?.gdrive_folder_id || null;
+        destFolderName = row.rows[0]?.company || row.rows[0]?.deal_name || company;
+      }
+
+      // List files in the shared Orders folder
+      const token = await getGDriveToken();
+      if (!token) { json({ error: 'Drive not configured' }, 500); return; }
+      const listRes = await httpsRequest({
+        hostname: 'www.googleapis.com',
+        path: `/drive/v3/files?q=${encodeURIComponent(`'${SHARED_ORDERS_FOLDER}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`)}&fields=files(id,name,mimeType,size)&supportsAllDrives=true&includeItemsFromAllDrives=true&pageSize=200`,
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const allFiles = listRes.body?.files || [];
+
+      // Filter to files whose name contains the company name
+      const matches = allFiles.filter(f => normalize(f.name).includes(needle));
+
+      json({ files: matches, destFolderId, destFolderName });
+    } catch(e) {
+      console.warn('[scan-orders] error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Move files from Orders folder to contact folder ──────────
+  if (pathname === '/api/drive/move-order-files' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { fileIds, destFolderId, quoteNumber } = JSON.parse(await readBody(req));
+      if (!fileIds?.length || !destFolderId) { json({ error: 'Missing fileIds or destFolderId' }, 400); return; }
+
+      const token = await getGDriveToken();
+      if (!token) { json({ error: 'Drive not configured' }, 500); return; }
+
+      const results = [];
+      for (const fileId of fileIds) {
+        try {
+          const moveRes = await httpsRequest({
+            hostname: 'www.googleapis.com',
+            path: `/drive/v3/files/${fileId}?addParents=${destFolderId}&removeParents=${SHARED_ORDERS_FOLDER}&supportsAllDrives=true&fields=id,name`,
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+          }, {});
+          results.push({ id: fileId, name: moveRes.body?.name, success: !moveRes.body?.error });
+        } catch(e) {
+          results.push({ id: fileId, success: false, error: e.message });
+        }
+      }
+
+      const moved = results.filter(r => r.success).map(r => r.name);
+      const failed = results.filter(r => !r.success);
+      writelog('info', 'order.files.moved', `Moved ${moved.length} file(s) to contact folder`, { quoteNum: quoteNumber, meta: { files: moved, destFolderId } });
+      if (failed.length) writelog('error', 'error.gdrive', `Failed to move ${failed.length} file(s)`, { quoteNum: quoteNumber, meta: { failed } });
+
+      json({ success: true, moved, failed });
+    } catch(e) {
+      console.warn('[move-order-files] error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── Admin: Rename Drive folders to company-name format ────────
   // ── API: Rename Deal ─────────────────────────────────────────────
   if (pathname === '/api/rename-deal' && req.method === 'POST') {
@@ -7891,7 +7972,7 @@ setInterval(loadLogs,30000);
         const _sf = updatedOrderData.shipped || {};
         writelog('info', 'order.shipped', `Shipped: ${quoteNumber} via ${_sf.carrier || '—'} PRO: ${_sf.tracking || '—'}`, { rep: repName || null, quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { carrier: _sf.carrier, tracking: _sf.tracking, freightCost: updatedOrderData.freightCost } });
       }
-      json({ success: true, shipped: isNowShipped });
+      json({ success: true, shipped: isNowShipped, quoteNumber, company: currentOrderData.company || body.customer?.company || '' });
 
       // ── Accounting task when Jeromy ships ────────────────────────
       // Fire when: Ship It is clicked AND shipper is Jeromy (38732186)
@@ -8429,7 +8510,6 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       // Upload order PDF to shared orders folder (non-blocking)
       (async () => {
         try {
-          const SHARED_ORDERS_FOLDER = '0AKEFNM5_Dl8jUk9PVA';
           const snapRowP = await db?.query('SELECT json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
           const snapP = snapRowP?.rows[0]?.json_snapshot || {};
           const pdfBufO = await generatePdfBuffer(orderUrl);

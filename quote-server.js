@@ -198,17 +198,23 @@ async function gdriveSavePdfToDeal(quoteNumber, _subfolderName, filename, pdfBuf
       row = await db.query('SELECT gdrive_folder_id FROM quotes WHERE quote_number = $1', [quoteNumber]);
       dealFolderId = row.rows[0]?.gdrive_folder_id;
     }
-    if (!dealFolderId) { console.warn(`GDrive: no folder ID for quote ${quoteNumber} — skipping upload`); return; }
+    if (!dealFolderId) {
+      console.warn(`GDrive: no folder ID for quote ${quoteNumber} — skipping upload`);
+      writelog('error', 'error.gdrive', `No folder ID for ${quoteNumber} — PDF not uploaded: ${filename}`, { quoteNum: quoteNumber });
+      return;
+    }
 
     console.log(`GDrive: uploading "${filename}" to folder ${dealFolderId}`);
     const result = await gdriveUploadFilePdf(filename, pdfBuffer, dealFolderId);
     if (result?.error) {
       console.warn(`GDrive upload error:`, JSON.stringify(result.error));
+      writelog('error', 'error.gdrive', `Drive upload failed for ${filename}: ${JSON.stringify(result.error)}`, { quoteNum: quoteNumber });
     } else {
       console.log(`GDrive: uploaded "${filename}" — id:`, result?.id);
     }
   } catch(e) {
     console.warn(`GDrive savePdf error:`, e.message);
+    writelog('error', 'error.gdrive', `Drive savePdf threw: ${e.message}`, { quoteNum: quoteNumber });
   }
 }
 
@@ -268,13 +274,21 @@ async function generatePdfBuffer(pageUrl) {
     browser = await puppeteer.launch({
       args: ['--no-sandbox', '--disable-setuid-sandbox',
              '--disable-dev-shm-usage', '--disable-gpu',
-             '--single-process', '--no-zygote'],
+             '--single-process', '--no-zygote',
+             '--disable-web-security', '--disable-features=IsolateOrigins'],
       defaultViewport: { width: 1200, height: 900 },
       headless: 'new',
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     });
     const page = await browser.newPage();
-    await page.goto(pageUrl, { waitUntil: 'networkidle0', timeout: 25000 });
+    // Block fonts/images/analytics to speed up load on Railway
+    await page.setRequestInterception(true);
+    page.on('request', req => {
+      const rt = req.resourceType();
+      if (['image','media','font'].includes(rt)) { req.abort(); }
+      else { req.continue(); }
+    });
+    await page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 45000 });
     await page.addStyleTag({ content: '.action-bar{display:none!important}body{padding-bottom:0!important}' });
     const pdfBuffer = await page.pdf({
       format: 'Letter',
@@ -808,7 +822,14 @@ async function generatePdf(pageUrl, filename, res, req) {
       await page.setCookie({ name, value, domain: 'sales.whisperroom.com', path: '/', httpOnly: true });
     }
 
-    await page.goto(pageUrl, { waitUntil: 'networkidle0', timeout: 25000 });
+    // Block fonts/images to speed up load
+    await page.setRequestInterception(true);
+    page.on('request', req => {
+      const rt = req.resourceType();
+      if (['image','media','font'].includes(rt)) { req.abort(); }
+      else { req.continue(); }
+    });
+    await page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 45000 });
     await page.addStyleTag({ content: '.action-bar{display:none!important}body{padding-bottom:0!important}' });
 
     const pdfBuffer = await page.pdf({
@@ -1453,6 +1474,7 @@ function getRepFromReq(req, body) {
 }
 
 
+const HS_CLIENT_ID     = process.env.HS_CLIENT_ID     || '';
 const HS_CLIENT_SECRET = process.env.HS_CLIENT_SECRET || '';
 const HS_REDIRECT_URI  = process.env.HS_REDIRECT_URI  || 'https://sales.whisperroom.com/auth/callback';
 
@@ -3445,7 +3467,10 @@ const server = http.createServer(async (req, res) => {
             const quoteUrl = `https://sales.whisperroom.com/q/${encodeURIComponent(quoteNumber)}${shareTokenQ ? '?t=' + shareTokenQ : ''}`;
             const pdfBufQ = await generatePdfBuffer(quoteUrl);
             await gdriveSavePdfToDeal(quoteNumber, 'Quotes', buildPdfFilename({ customer, quoteLabel }, quoteNumber, 'Quote'), pdfBufQ);
-          } catch(e) { console.warn('GDrive quote upload error:', e.message, e.stack?.split('\n')[1]); }
+          } catch(e) {
+            console.warn('GDrive quote upload error:', e.message, e.stack?.split('\n')[1]);
+            writelog('error', 'error.gdrive', `Drive quote upload failed: ${e.message}`, { rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||''), meta: { step: 'quote-pdf' } });
+          }
         })();
 
       } catch(e) {
@@ -6072,7 +6097,10 @@ tbody tr:hover td{background:#fdfcfb}
           const snapRowI = await db?.query('SELECT json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
           const snapI = snapRowI?.rows[0]?.json_snapshot || {};
           await gdriveSavePdfToDeal(quoteNumber, 'Invoices', buildPdfFilename(snapI, quoteNumber, 'Invoice'), pdfBufI);
-        } catch(e) { console.warn('GDrive invoice upload error:', e.message); }
+        } catch(e) {
+          console.warn('GDrive invoice upload error:', e.message);
+          writelog('error', 'error.gdrive', `Drive invoice upload failed: ${e.message}`, { rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||''), meta: { step: 'invoice-pdf' } });
+        }
       })();
 
     } catch(e) {
@@ -7956,7 +7984,10 @@ setInterval(loadLogs,30000);
             const snapRowO  = await db?.query('SELECT json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
             const snapO     = snapRowO?.rows[0]?.json_snapshot || {};
             await gdriveSavePdfToDeal(quoteNumber, 'Final Order', buildPdfFilename(snapO, quoteNumber, 'Order'), pdfBufO);
-          } catch(e) { console.warn('GDrive order PDF error:', e.message); }
+          } catch(e) {
+            console.warn('GDrive order PDF error:', e.message);
+            writelog('error', 'error.gdrive', `Drive order upload failed: ${e.message}`, { quoteNum: quoteNumber, meta: { step: 'order-pdf' } });
+          }
         })();
       }
 

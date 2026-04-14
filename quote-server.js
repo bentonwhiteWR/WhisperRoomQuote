@@ -900,11 +900,8 @@ async function initDb() {
     await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS order_link    TEXT`).catch(() => {});
     await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS share_token      TEXT`).catch(() => {});
     await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS gdrive_folder_id TEXT`).catch(() => {});
-    // Backfill share tokens for existing quotes
-    await db.query(`
-      UPDATE quotes SET share_token = encode(gen_random_bytes(6), 'hex')
-      WHERE share_token IS NULL
-    `).catch(() => {});
+    // Backfill share tokens for existing quotes (using Node crypto — no pgcrypto needed)
+    // (handled below in the per-row backfill loop)
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS quotes (
@@ -4417,6 +4414,11 @@ tbody tr:hover td{background:#fdfcfb}
       // Filter to files whose name contains the company name
       const matches = allFiles.filter(f => normalize(f.name).includes(needle));
 
+      if (allFiles.length > 0 && matches.length === 0) {
+        console.warn(`[scan-orders] No match for "${needle}" among ${allFiles.length} files. Sample names:`, allFiles.slice(0,3).map(f => f.name));
+      }
+      console.log(`[scan-orders] quote=${quoteNumber} company="${needle}" — ${allFiles.length} total files, ${matches.length} matches, destFolder=${destFolderId||'none'}`);
+
       json({ files: matches, destFolderId, destFolderName });
     } catch(e) {
       console.warn('[scan-orders] error:', e.message);
@@ -4445,6 +4447,9 @@ tbody tr:hover td{background:#fdfcfb}
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
           }, {});
           results.push({ id: fileId, name: moveRes.body?.name, success: !moveRes.body?.error });
+          if (moveRes.body?.error) {
+            console.warn(`[move-order-files] Drive move failed for ${fileId}:`, JSON.stringify(moveRes.body.error));
+          }
         } catch(e) {
           results.push({ id: fileId, success: false, error: e.message });
         }

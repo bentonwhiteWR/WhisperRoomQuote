@@ -5965,6 +5965,260 @@ tbody tr:hover td{background:#fdfcfb}
   }
 
   // ── Admin Log Page ───────────────────────────────────────────────
+  // ── Changelog Page ───────────────────────────────────────────────
+  if (pathname === '/changelog' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Changelog — WhisperRoom</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-size='18'>📝</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0f0f0f;--surface:#1a1a1a;--surface2:#222;--border:#2a2a2a;--orange:#ee6216;--text:#e8e8e8;--muted:#888;--green:#22c55e;--red:#ef4444;--yellow:#f59e0b;--blue:#3b82f6;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:52px;background:#1a1a1a;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:100;}
+  .logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8;}.logo span{color:#e8531a;}
+  .back{font-size:11px;font-weight:700;color:var(--muted);text-decoration:none;padding:5px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;letter-spacing:.05em;text-transform:uppercase;}
+  .main{max-width:860px;margin:0 auto;padding:32px 24px;}
+  h1{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;margin-bottom:4px;}h1 span{color:var(--orange);}
+  .subtitle{font-size:12px;color:var(--muted);margin-bottom:32px;}
+  .version-block{margin-bottom:28px;border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+  .version-header{padding:12px 18px;background:var(--surface);display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);}
+  .version-num{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:var(--orange);}
+  .version-date{font-size:11px;color:var(--muted);}
+  .version-tag{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:2px 7px;border-radius:4px;margin-left:auto;}
+  .tag-fix{background:rgba(59,130,246,.15);color:var(--blue);}
+  .tag-feature{background:rgba(34,197,94,.12);color:var(--green);}
+  .tag-logging{background:rgba(238,98,22,.12);color:var(--orange);}
+  .tag-ui{background:rgba(168,85,247,.15);color:#a855f7;}
+  .version-body{padding:14px 18px;background:var(--surface);}
+  .change-item{display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px;line-height:1.5;}
+  .change-item:last-child{border-bottom:none;}
+  .change-type{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:2px 6px;border-radius:3px;white-space:nowrap;height:fit-content;margin-top:2px;}
+  .ct-fix{background:rgba(59,130,246,.15);color:var(--blue);}
+  .ct-add{background:rgba(34,197,94,.12);color:var(--green);}
+  .ct-log{background:rgba(238,98,22,.12);color:var(--orange);}
+  .ct-ui{background:rgba(168,85,247,.15);color:#a855f7;}
+  .ct-security{background:rgba(245,158,11,.12);color:var(--yellow);}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="logo">Whisper<span>Room</span> — Changelog</div>
+  <a href="/admin-log" class="back">← Admin Log</a>
+</div>
+<div class="main">
+  <h1>Patch <span>Notes</span></h1>
+  <div class="subtitle">Full history of changes to the WhisperRoom sales tool</div>
+
+  ${[
+    {
+      v:'1.1.14', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Canadian freight now uses correct NMFC codes (027880/02) matching legacy system'},
+        {t:'fix', d:'Postal code spaces stripped automatically — "M4W 1B7" and "M4W1B7" both work'},
+        {t:'fix', d:'Zip space stripping applied at server, freight request, and customer record save'},
+      ]
+    },
+    {
+      v:'1.1.13', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Ship It button now saves serial number, production notes, foam color, and hinge preference — same as Save Changes'},
+      ]
+    },
+    {
+      v:'1.1.12', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Ship date showing one day early — date-only strings (YYYY-MM-DD) were parsed as UTC midnight, now parsed as local noon to prevent timezone rollback'},
+      ]
+    },
+    {
+      v:'1.1.11', date:'Apr 13, 2026', tag:'logging',
+      changes:[
+        {t:'log', d:'Full shipping error coverage added: error.refresh-tracking, error.track, error.ship-deal, error.ship-hubspot-deal, error.shipping-board, error.order-ship'},
+        {t:'log', d:'Background tracking poller failures now log to error.tracking-poller'},
+        {t:'log', d:'All error log entries now include rep column via getRepFromReq(req)'},
+      ]
+    },
+    {
+      v:'1.1.10', date:'Apr 13, 2026', tag:'logging',
+      changes:[
+        {t:'log', d:'Rep name now shows in ALL error log entries — added getRepFromReq() helper'},
+        {t:'log', d:'Tax errors now include rep from request body'},
+        {t:'log', d:'All 16 error writelog calls updated to pass rep field'},
+      ]
+    },
+    {
+      v:'1.1.09', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'TaxJar errors now log to system log with state/zip/city in meta'},
+        {t:'fix', d:'Tax route body hoisted out of try block — prevents body is not defined crash'},
+        {t:'ui',  d:'Tax errors show plain English to reps: invalid ZIP/city/state/timeout messages'},
+        {t:'add', d:'Rep ID now sent with tax request for logging'},
+      ]
+    },
+    {
+      v:'1.1.08', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'TaxJar errors now logged to system log (error.tax event)'},
+        {t:'ui',  d:'Tax error messages translated to plain English for reps'},
+      ]
+    },
+    {
+      v:'1.1.07', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'httpsGet now has 15-second timeout — freight requests no longer hang for 5+ minutes'},
+        {t:'fix', d:'parseAbfXml now reads ABF ERROR/ERRORDESC/MSG tags and returns actionable messages'},
+        {t:'fix', d:'Freight error body scope fixed — body is not defined crash resolved'},
+        {t:'ui',  d:'Invalid ZIP/city/state/weight errors shown as plain English to reps'},
+      ]
+    },
+    {
+      v:'1.1.06', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Freight route body hoisted out of try block — prevented body is not defined unhandled rejection crash'},
+        {t:'log', d:'Freight errors now correctly log to system log with dest zip/state/city'},
+      ]
+    },
+    {
+      v:'1.1.05', date:'Apr 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Rename Deal button added to deal panel admin row — updates HubSpot, Google Drive folder, and all DB quotes in one click'},
+        {t:'log', d:'deal.renamed event logged to activity feed on success'},
+      ]
+    },
+    {
+      v:'1.1.04', date:'Apr 13, 2026', tag:'logging',
+      changes:[
+        {t:'log', d:'Full error logging coverage added to all critical routes: accept-quote, create-invoice, process-order, abf-booking, order-save, unship, orders-list, hubspot'},
+        {t:'add', d:'Gabe Troubleshooting Handbook added to handoff doc — error reference, Railway ops, common rep complaints, safe vs unsafe changes'},
+      ]
+    },
+    {
+      v:'1.1.03', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Duplicate quote.pushed log entries removed — was firing from both /api/history and /api/create-deal'},
+      ]
+    },
+    {
+      v:'1.1.02', date:'Apr 13, 2026', tag:'logging',
+      changes:[
+        {t:'log', d:'Freight error logging added to quote builder freight route, orders-freight outer catch, and ABF inner catch'},
+        {t:'log', d:'All three freight error log points include dest zip/state/city in meta'},
+      ]
+    },
+    {
+      v:'1.1.01', date:'Apr 13, 2026', tag:'ui',
+      changes:[
+        {t:'ui',  d:'Admin log page fully rebuilt — favicon, live dot, last-updated timestamp'},
+        {t:'ui',  d:'Rep dropdown filter auto-populated from actual log data, shows names not IDs'},
+        {t:'ui',  d:'Event type dropdown filter added'},
+        {t:'ui',  d:'Date range filter: Today / This Week / This Month / All Time'},
+        {t:'ui',  d:'Stats bar: Quotes Pushed, Orders Shipped, Invoices Created, Errors — all respond to filters'},
+        {t:'ui',  d:'Version badge on every log row'},
+        {t:'ui',  d:'Clear all filters button'},
+      ]
+    },
+    {
+      v:'1.1.00', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'quote.pushed log now correctly labels New deal vs Revision — meta includes isNewDeal and existingDealId'},
+      ]
+    },
+    {
+      v:'1.0.99', date:'Apr 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Admin Log button added inside Admin Override panel on deal cards'},
+      ]
+    },
+    {
+      v:'1.0.98', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'create-deal log now differentiates New deal vs Revision using existingDealId'},
+      ]
+    },
+    {
+      v:'1.0.97', date:'Apr 13, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'View Admin Log button added inside Admin Override panel on deals dashboard'},
+      ]
+    },
+    {
+      v:'1.0.96', date:'Apr 13, 2026', tag:'logging',
+      changes:[
+        {t:'add', d:'Logging system launched — logs table created in PostgreSQL'},
+        {t:'log', d:'writelog() helper added — fire-and-forget, never blocks requests'},
+        {t:'log', d:'Events: quote.pushed, deal.created, invoice.created, order.shipped, order.unshipped, order.deleted, order.processed, task.accounting'},
+        {t:'log', d:'Errors: error.freight, error.tax, error.hubspot, error.save'},
+        {t:'add', d:'Admin log page at /admin-log with activity feed and errors panel'},
+        {t:'add', d:'Version badge on every log row'},
+      ]
+    },
+    {
+      v:'1.0.95', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Accounting task on Ship It now fires for ALL reps, not just Jeromy — assigned to Kim Dalton'},
+        {t:'fix', d:'Task includes deal name, serial number, carrier, PRO/tracking, freight cost'},
+      ]
+    },
+    {
+      v:'1.0.94', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Unship now preserves all shipment data — only reverts HubSpot dealstage to Closed Won'},
+        {t:'fix', d:'Delete button now visible to all reps'},
+        {t:'fix', d:'HS-only orders: Ship It creates DB record so order persists on board'},
+      ]
+    },
+    {
+      v:'1.0.93', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Serial number field changed to textarea for multi-line support'},
+        {t:'fix', d:'HS-only orders (HS-{dealId}) save directly to HubSpot via PATCH — no DB record created until shipped'},
+      ]
+    },
+    {
+      v:'1.0.92', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Credits line items now created BEFORE the HubSpot loop — were never being sent'},
+        {t:'fix', d:'Credit descriptor line format: "Credit applied in MDL XXXX above: -$XX.XX"'},
+        {t:'fix', d:'anchor variable hoisted to outer scope — fixed ReferenceError on credit push'},
+      ]
+    },
+    {
+      v:'1.0.91', date:'Apr 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'OD Freight rating added alongside ABF — LTL, GTD (guaranteed), GTE (guaranteed by noon) via SOAP XML'},
+        {t:'add', d:'OD Book URL pre-fills dest zip on odfl.com'},
+        {t:'fix', d:'httpsGet timeout set to 15 seconds — was hanging indefinitely'},
+        {t:'fix', d:'parseAbfXml reads ABF ERROR tags and returns actionable messages'},
+      ]
+    },
+  ].map(v => `
+    <div class="version-block">
+      <div class="version-header">
+        <div class="version-num">v${v.v}</div>
+        <div class="version-date">${v.date}</div>
+        <div class="version-tag tag-${v.tag}">${v.tag}</div>
+      </div>
+      <div class="version-body">
+        ${v.changes.map(c => `
+          <div class="change-item">
+            <span class="change-type ct-${c.t === 'log' ? 'log' : c.t === 'add' ? 'add' : c.t === 'ui' ? 'ui' : c.t === 'security' ? 'security' : 'fix'}">${c.t === 'log' ? 'log' : c.t === 'add' ? 'new' : c.t === 'ui' ? 'ui' : c.t === 'security' ? 'sec' : 'fix'}</span>
+            <span>${c.d}</span>
+          </div>`).join('')}
+      </div>
+    </div>`).join('')}
+</div>
+</body>
+</html>`);
+    return;
+  }
+
   if (pathname === '/admin-log' && req.method === 'GET') {
     if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
     res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -6043,6 +6297,7 @@ tbody tr:hover td{background:#fdfcfb}
   <div class="topbar-right">
     <div class="live-dot"></div>
     <span class="last-updated" id="lastUpdated">Loading…</span>
+    <a href="/changelog" class="back">📝 Changelog</a>
     <a href="/deals" class="back">← Deal Hub</a>
   </div>
 </div>

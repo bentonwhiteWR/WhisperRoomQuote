@@ -4442,36 +4442,24 @@ tbody tr:hover td{background:#fdfcfb}
       const results = [];
       for (const fileId of fileIds) {
         try {
-          // Step 1: Copy to contact folder
-          const copyRes = await httpsRequest({
+          // Reparent: move from Orders folder to contact folder in one API call
+          // No delete permission needed — just moves the file's parent
+          const moveRes = await httpsRequest({
             hostname: 'www.googleapis.com',
-            path: `/drive/v3/files/${fileId}/copy?supportsAllDrives=true&fields=id,name`,
-            method: 'POST',
+            path: `/drive/v3/files/${fileId}?addParents=${destFolderId}&removeParents=${SHARED_ORDERS_FOLDER}&supportsAllDrives=true&fields=id,name`,
+            method: 'PATCH',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
-          }, { parents: [destFolderId] });
+          }, {});
 
-          if (copyRes.body?.error) {
-            console.warn(`[move-order-files] Copy failed for ${fileId}:`, JSON.stringify(copyRes.body.error));
-            results.push({ id: fileId, success: false, error: copyRes.body.error.message });
+          if (moveRes.body?.error) {
+            console.warn(`[move-order-files] Reparent failed for ${fileId}:`, JSON.stringify(moveRes.body.error));
+            results.push({ id: fileId, success: false, error: moveRes.body.error.message });
             continue;
           }
 
-          const copiedName = copyRes.body.name;
-
-          // Step 2: Delete original — non-fatal if permissions deny it
-          try {
-            await httpsRequest({
-              hostname: 'www.googleapis.com',
-              path: `/drive/v3/files/${fileId}?supportsAllDrives=true`,
-              method: 'DELETE',
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
-            console.log(`[move-order-files] Copied + deleted "${copiedName}" → contact folder`);
-          } catch(delErr) {
-            console.warn(`[move-order-files] Copied but could not delete original "${copiedName}" — stays in orders folder (${delErr.message})`);
-          }
-
-          results.push({ id: fileId, name: copiedName, success: true });
+          const movedName = moveRes.body?.name || fileId;
+          console.log(`[move-order-files] Moved "${movedName}" → contact folder ${destFolderId}`);
+          results.push({ id: fileId, name: movedName, success: true });
         } catch(e) {
           console.warn(`[move-order-files] Error on file ${fileId}:`, e.message);
           results.push({ id: fileId, success: false, error: e.message });
@@ -4480,8 +4468,8 @@ tbody tr:hover td{background:#fdfcfb}
 
       const moved = results.filter(r => r.success).map(r => r.name);
       const failed = results.filter(r => !r.success);
-      writelog('info', 'order.files.moved', `Copied ${moved.length} file(s) to contact folder`, { quoteNum: quoteNumber, meta: { files: moved, destFolderId } });
-      if (failed.length) writelog('error', 'error.gdrive', `Failed to copy ${failed.length} file(s)`, { quoteNum: quoteNumber, meta: { failed } });
+      writelog('info', 'order.files.moved', `Moved ${moved.length} file(s) to contact folder`, { quoteNum: quoteNumber, meta: { files: moved, destFolderId } });
+      if (failed.length) writelog('error', 'error.gdrive', `Failed to move ${failed.length} file(s)`, { quoteNum: quoteNumber, meta: { failed } });
 
       json({ success: true, moved, failed });
     } catch(e) {

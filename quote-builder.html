@@ -2292,7 +2292,7 @@ async function getFreightAndTax() {
 async function getFreight() {
   const city = document.getElementById('shipCity').value.trim();
   const state = document.getElementById('shipState').value.trim().toUpperCase();
-  const zip = document.getElementById('shipZip').value.trim();
+  const zip = document.getElementById('shipZip').value.trim().replace(/\s+/g, '');
 
   if (!city || !state || !zip) {
     alert('Please fill in the ship-to address first.');
@@ -2691,7 +2691,7 @@ async function createDeal() {
         date: new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}),
         rep: repName, ownerId: document.getElementById('repSelect').value,
         revision: existingRevision + 1, total,
-        customer: { firstName: document.getElementById('firstName').value.trim(), lastName: document.getElementById('lastName').value.trim(), email: customerEmail, phone: document.getElementById('phone').value.trim(), company: document.getElementById('company').value.trim(), address: document.getElementById('shipAddress').value.trim(), city: document.getElementById('shipCity').value.trim(), state: document.getElementById('shipState').value.trim().toUpperCase(), zip: document.getElementById('shipZip').value.trim() },
+        customer: { firstName: document.getElementById('firstName').value.trim(), lastName: document.getElementById('lastName').value.trim(), email: customerEmail, phone: document.getElementById('phone').value.trim(), company: document.getElementById('company').value.trim(), address: document.getElementById('shipAddress').value.trim(), city: document.getElementById('shipCity').value.trim(), state: document.getElementById('shipState').value.trim().toUpperCase(), zip: document.getElementById('shipZip').value.trim().replace(/\s+/g,'') },
         lineItems: JSON.parse(JSON.stringify(lineItems)),
         discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
         freight: freightData ? {...freightData} : null,

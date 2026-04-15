@@ -316,6 +316,30 @@
         <label class="sel-label"><input type="radio" name="editFoam" value="Burgundy" onchange="highlightSel('editFoam')"> Burgundy</label>
       </div>
     </div>
+
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">AP (Acoustic Package) Color</div>
+      <select id="editApColor" style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;font-family:inherit;outline:none;cursor:pointer">
+        <option value="">— No AP / Not applicable —</option>
+        <option value="Unknown">Unknown (follow up needed)</option>
+        <option value="Lemon">Lemon</option>
+        <option value="Vanilla">Vanilla</option>
+        <option value="Birch">Birch</option>
+        <option value="White">White</option>
+        <option value="Green Apple">Green Apple</option>
+        <option value="Fern">Fern</option>
+        <option value="Waterfall">Waterfall</option>
+        <option value="Asteriod">Asteriod</option>
+        <option value="Orchid">Orchid</option>
+        <option value="Pumpkin">Pumpkin</option>
+        <option value="Geranium">Geranium</option>
+        <option value="Lapis">Lapis</option>
+        <option value="Onyx">Onyx</option>
+        <option value="Graphite">Graphite</option>
+        <option value="Coffee Bean">Coffee Bean</option>
+        <option value="Quarry Blue">Quarry Blue</option>
+      </select>
+    </div>
     <div>
       <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Door Hinge</div>
       <div class="sel-grid" id="editHingeGrid">
@@ -1016,9 +1040,12 @@ function renderOrders(orders) {
         })()
       : '—';
     const orderUrl  = `https://sales.whisperroom.com/o/${encodeURIComponent(o.quote_number)}${o.share_token ? '?t=' + o.share_token : ''}`;
+    const apColor   = o.order_data?.apColor || '';
+    const apHex     = {'Lemon':'#f5c518','Vanilla':'#c8b97a','Birch':'#c4a882','White':'#f0eeea','Green Apple':'#8a9a3a','Fern':'#3d5a2a','Waterfall':'#2e8fa0','Asteriod':'#7a8a95','Orchid':'#7a1a3a','Pumpkin':'#c45c22','Geranium':'#c0282a','Lapis':'#1e3a6e','Onyx':'#1a1a1a','Graphite':'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'}[apColor] || null;
+    const apDot     = apHex ? `<span title="AP: ${apColor}" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${apHex};border:1px solid rgba(0,0,0,.25);margin-left:5px;vertical-align:middle;flex-shrink:0"></span>` : '';
     return `<tr onclick="openDrawer('${o.quote_number}')">
       <td><div class="td-main">${o.deal_name || o.quote_number}</div><div class="td-sub">${o.quote_number}</div></td>
-      <td><div class="td-mono" style="font-size:11px">${(()=>{const items=(o.json_snapshot?.lineItems||[]).filter(i=>i?.name?.startsWith('MDL'));return items.length?items.map(i=>i.name).join(', '):'—';})()}</div></td>
+      <td><div class="td-mono" style="font-size:11px;display:flex;align-items:center">${(()=>{const items=(o.json_snapshot?.lineItems||[]).filter(i=>i?.name?.startsWith('MDL'));return items.length?items.map(i=>i.name).join(', '):'—';})()}${apDot}</div></td>
       <td style="font-weight:600;color:var(--orange)">${total}</td>
       <td style="color:var(--muted);font-size:12px">${pallets}</td>
       <td style="color:var(--muted);font-size:12px">${shipDate}</td>
@@ -1138,6 +1165,7 @@ function openDrawer(quoteNumber) {
 
   setRadio('editFoam',  od.foamColor       || '');
   setRadio('editHinge', od.hingePreference || '');
+  setApColor(od.apColor || '');
   document.getElementById('editSerialNumber').value   = od.serialNumber    || '';
   document.getElementById('editProductionNotes').value = od.productionNotes || '';
   document.getElementById('editDeliveryNotes').value   = od.deliveryNotes   || '';
@@ -1226,6 +1254,16 @@ function highlightSel(name) {
   });
 }
 
+// ── AP Color dropdown ──────────────────────────────────────────────
+function setApColor(value) {
+  const sel = document.getElementById('editApColor');
+  if (sel) sel.value = value || '';
+}
+
+function getApColor() {
+  return document.getElementById('editApColor')?.value || '';
+}
+
 async function deleteOrder() {
   if (!currentQuoteNumber) return;
   const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
@@ -1260,6 +1298,7 @@ async function saveOrder() {
 
   const newFoam      = document.querySelector('input[name="editFoam"]:checked')?.value  || '';
   const newHinge     = document.querySelector('input[name="editHinge"]:checked')?.value || '';
+  const newApColor   = getApColor();
   const newSerial    = document.getElementById('editSerialNumber').value.trim();
   const newProdNotes = document.getElementById('editProductionNotes').value.trim();
   const newDelNotes  = document.getElementById('editDeliveryNotes').value.trim();
@@ -1282,6 +1321,7 @@ async function saveOrder() {
   const chk = (label, prev, next) => { if ((prev||'') !== (next||'') && (prev||next)) changes.push(`${label}: ${prev||'—'} → ${next||'—'}`); };
   chk('Foam Color',       prevOd.foamColor       || '', newFoam);
   chk('Door Hinge',       prevOd.hingePreference || '', newHinge);
+  chk('AP Color',         prevOd.apColor         || '', newApColor);
   chk('Serial Number',    prevOd.serialNumber    || '', newSerial);
   chk('Production Notes', prevOd.productionNotes || '', newProdNotes);
   chk('Delivery Notes',   prevOd.deliveryNotes   || '', newDelNotes);
@@ -1306,6 +1346,7 @@ async function saveOrder() {
     customer,
     foamColor:       newFoam,
     hingePreference: newHinge,
+    apColor:         newApColor,
     serialNumber:    newSerial,
     productionNotes: newProdNotes,
     deliveryNotes:   newDelNotes,
@@ -1365,6 +1406,7 @@ async function openShipFromDrawer() {
     const newProdNotes = document.getElementById('editProductionNotes')?.value.trim() || '';
     const newFoam      = document.querySelector('input[name="editFoam"]:checked')?.value || '';
     const newHinge     = document.querySelector('input[name="editHinge"]:checked')?.value || '';
+    const newApColor   = getApColor();
     const res = await fetch(`/api/orders/${encodeURIComponent(currentQuoteNumber)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1381,6 +1423,7 @@ async function openShipFromDrawer() {
         productionNotes: newProdNotes,
         foamColor:       newFoam,
         hingePreference: newHinge,
+        apColor:         newApColor,
         freightCost: document.getElementById('editFreightCost')?.value ? parseFloat(document.getElementById('editFreightCost').value) : null,
         markShipped: true,
         changes: [`Marked Shipped — ${carrier}, ${tracking}`],

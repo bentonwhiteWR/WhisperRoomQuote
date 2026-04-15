@@ -3753,8 +3753,19 @@ tbody tr:hover td{background:#fdfcfb}
     <p style="margin:0;font-size:12px;color:#166534"><strong style="color:#166534">Tax Exemption Required:</strong> A valid tax exemption certificate must be provided to WhisperRoom, Inc. before your order can be processed.${(q.taxExemptCert||q.taxExemptCertificate)?(' Certificate: '+(q.taxExemptCert||q.taxExemptCertificate)):''}</p>
   </div>`:''}
 
+  
+
+  ${(q.acceptedFoam || q.acceptedHinge || q.acceptedApColor) ? `<div class="card" style="border-left:3px solid #22c55e;background:#f0fdf4">
+    <div class="card-label" style="color:#166534">Your Selections</div>
+    <div class="info-grid">
+      ${q.acceptedFoam ? `<div class="info-item"><label>Foam Color</label><span style="color:#166534">${q.acceptedFoam}</span></div>` : ''}
+      ${q.acceptedHinge ? `<div class="info-item"><label>Door Hinge</label><span style="color:#166534">${q.acceptedHinge}</span></div>` : ''}
+      ${q.acceptedApColor ? `<div class="info-item"><label>AP Color</label><span style="color:#166534">${q.acceptedApColor}</span></div>` : ''}
+    </div>
+  </div>` : ''}
+
   <div class="card">
-    <div class="card-label">Payment Terms</div>
+    <div class="card-label">Payment Terms</div></div>
     <p class="terms">Payment is due upon receipt. We accept ACH bank transfer and major credit/debit cards. For questions regarding this invoice, contact us at <a href="mailto:info@whisperroom.com" style="color:#ee6216">info@whisperroom.com</a> or (865) 558-5364.</p>
   </div>
 
@@ -3809,6 +3820,7 @@ tbody tr:hover td{background:#fdfcfb}
       const q = quoteData;
       console.log(`[quote-page] ${quoteId} customer.phone="${q.customer?.phone||'MISSING'}" keys=${Object.keys(q.customer||{}).join(',')}`);
       const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+      const hasApOnQuote = (q.lineItems||[]).some(i => i.name && /^AP\s/i.test(i.name));
       const sub = (q.lineItems||[]).reduce((s,i)=>s+(i.price*i.qty),0);
       const disc = q.discount && q.discount.value > 0
         ? (q.discount.type==='pct' ? sub*q.discount.value/100 : q.discount.value) : 0;
@@ -3974,8 +3986,19 @@ tbody tr:hover td{background:#fdfcfb}
     <p style="margin:0;font-size:12px;color:#166534"><strong style="color:#166534">Tax Exemption Required:</strong> A valid tax exemption certificate must be provided to WhisperRoom, Inc. before your order can be processed.${(q.taxExemptCert||q.taxExemptCertificate)?(' Certificate: '+(q.taxExemptCert||q.taxExemptCertificate)):''}</p>
   </div>`:''}
 
+  
+
+  ${(q.acceptedFoam || q.acceptedHinge || q.acceptedApColor) ? `<div class="card" style="border-left:3px solid #22c55e;background:#f0fdf4">
+    <div class="card-label" style="color:#166534">Your Selections</div>
+    <div class="info-grid">
+      ${q.acceptedFoam ? `<div class="info-item"><label>Foam Color</label><span style="color:#166534">${q.acceptedFoam}</span></div>` : ''}
+      ${q.acceptedHinge ? `<div class="info-item"><label>Door Hinge</label><span style="color:#166534">${q.acceptedHinge}</span></div>` : ''}
+      ${q.acceptedApColor ? `<div class="info-item"><label>AP Color</label><span style="color:#166534">${q.acceptedApColor}</span></div>` : ''}
+    </div>
+  </div>` : ''}
+
   <div class="card">
-    <div class="card-label">Terms &amp; Conditions</div>
+    <div class="card-label">Terms &amp; Conditions</div></div>
     <p class="terms">I understand that WhisperRooms are not 100% soundproof. I understand that all products manufactured by WhisperRoom, Inc. are for indoor use only. Any returns will be at the sole discretion of WhisperRoom, Inc. and are subject to a restocking fee and freight charges. Any damage during shipping must be reported within five business days. Compliance with local, state and national building codes is my responsibility. Any alterations to the WhisperRoom will void the warranty.</p>
     <p class="terms" style="margin-top:8px">Standard delivery requires recipient to offload boxes from pallet. Standard delivery does not include extra services and fees related to those services such as Liftgate, Inside Delivery, Sort and Segregate and storage fees.</p>
   </div>
@@ -4018,6 +4041,24 @@ tbody tr:hover td{background:#fdfcfb}
       <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:8px">Message to WhisperRoom <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#bbb">(optional)</span></div>
       <textarea id="customer-note" rows="3" placeholder="Any questions, special instructions, or delivery notes..." style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
     </div>
+
+    ${(() => {
+      if (!hasApOnQuote) return '';
+      const apEntries = [['Lemon','#f5c518'],['Vanilla','#c8b97a'],['Birch','#c4a882'],['White','#f0eeea'],['Green Apple','#8a9a3a'],['Fern','#3d5a2a'],['Waterfall','#2e8fa0'],['Asteriod','#7a8a95'],['Orchid','#7a1a3a'],['Pumpkin','#c45c22'],['Geranium','#c0282a'],['Lapis','#1e3a6e'],['Onyx','#1a1a1a'],['Graphite','#3a3d40'],['Coffee Bean','#3d2010'],['Quarry Blue','#5a6e78']];
+      const swatches = apEntries.map(([name,hex]) =>
+        '<label onclick="selectApSwatch(this,\'' + name + '\')" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 4px;border:2px solid transparent;border-radius:8px;cursor:pointer;transition:all .15s" title="' + name + '">' +
+        '<input type="radio" name="ap_color" value="' + name + '" style="display:none">' +
+        '<div style="width:34px;height:34px;border-radius:50%;background:' + hex + ';border:1px solid rgba(0,0,0,.15);flex-shrink:0"></div>' +
+        '<span style="font-size:8px;font-weight:600;text-align:center;color:#777;line-height:1.2">' + name + '</span>' +
+        '</label>'
+      ).join('');
+      return '<div style="margin-bottom:20px">' +
+        '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:10px">Acoustic Package Color <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#bbb">(optional)</span></div>' +
+        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px" id="ap-swatch-grid">' + swatches + '</div>' +
+        '<label style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500" id="ap-undecided-label">' +
+        '<input type="radio" name="ap_color" value="Undecided" style="accent-color:#ee6216" onchange="clearApSwatches()"> Undecided — WhisperRoom will follow up</label>' +
+        '</div>';
+    })()}
 
     <p style="font-size:12px;color:#bbb;margin:0 0 16px;text-align:center">These selections are required before your order ships. Choose <em>Undecided</em> if you need more time — a WhisperRoom rep will follow up.</p>
 
@@ -4069,9 +4110,35 @@ tbody tr:hover td{background:#fdfcfb}
     if (modal) { modal.style.display = 'flex'; return; }
   }
 
+  function selectApSwatch(label, name) {
+    // Check the hidden radio
+    const radio = label.querySelector('input[type="radio"]');
+    if (radio) radio.checked = true;
+    // Clear undecided
+    const ud = document.getElementById('ap-undecided-label');
+    if (ud) { ud.style.borderColor = '#eee'; ud.style.background = 'white'; }
+    // Highlight selected swatch, clear others
+    document.querySelectorAll('#ap-swatch-grid label').forEach(l => {
+      l.style.borderColor = 'transparent';
+      l.style.background = '';
+    });
+    label.style.borderColor = '#ee6216';
+    label.style.background = '#fff8f0';
+  }
+
+  function clearApSwatches() {
+    document.querySelectorAll('#ap-swatch-grid label').forEach(l => {
+      l.style.borderColor = 'transparent';
+      l.style.background = '';
+    });
+    const ud = document.getElementById('ap-undecided-label');
+    if (ud) { ud.style.borderColor = '#ee6216'; ud.style.background = '#fff8f0'; }
+  }
+
   async function submitAcceptance() {
     const foam  = document.querySelector('input[name="foam"]:checked')?.value  || '';
     const hinge = document.querySelector('input[name="hinge"]:checked')?.value || '';
+    const apColor = document.querySelector('input[name="ap_color"]:checked')?.value || '';
     const customerNote = (document.getElementById('customer-note')?.value || '').trim();
     // Foam and hinge are optional — no validation required
 
@@ -4089,6 +4156,7 @@ tbody tr:hover td{background:#fdfcfb}
           contactEmail: '${q.customer ? (q.customer.email || "") : ""}',
           foamColor: foam,
           hingePreference: hinge,
+          apColor: apColor,
           customerNote: customerNote,
         })
       });
@@ -4216,12 +4284,15 @@ tbody tr:hover td{background:#fdfcfb}
               jsonb_set(
                 jsonb_set(
                   jsonb_set(
-                    jsonb_set(COALESCE(json_snapshot, '{}'), '{accepted}', 'true'),
-                    '{acceptedAt}', $2
+                    jsonb_set(
+                      jsonb_set(COALESCE(json_snapshot, '{}'), '{accepted}', 'true'),
+                      '{acceptedAt}', $2
+                    ),
+                    '{acceptedFoam}', $3
                   ),
-                  '{acceptedFoam}', $3
+                  '{acceptedHinge}', $4
                 ),
-                '{acceptedHinge}', $4
+                '{acceptedApColor}', $6
               ),
               '{acceptedNote}', $5
             ) WHERE quote_number = $1`,
@@ -4231,6 +4302,7 @@ tbody tr:hover td{background:#fdfcfb}
               JSON.stringify(body.foamColor || ''),
               JSON.stringify(body.hingePreference || ''),
               JSON.stringify(body.customerNote || ''),
+              JSON.stringify(body.apColor || ''),
             ]
           );
           console.log(`Quote ${quoteNumber} marked accepted in DB`);
@@ -4278,7 +4350,7 @@ tbody tr:hover td{background:#fdfcfb}
           }, {
             properties: {
               hs_task_subject: `🔔 ACCEPTED — ${dealName} — Quote #${quoteNumber}`,
-              hs_task_body: `Customer accepted quote #${quoteNumber} for ${dealName}. Ready to create invoice.\n\nFoam Color: ${body.foamColor || 'Not selected'}\nHinge: ${body.hingePreference || 'Not selected'}${body.customerNote ? '\n\nCustomer Note: "' + body.customerNote + '"' : ''}`,
+              hs_task_body: `Customer accepted quote #${quoteNumber} for ${dealName}. Ready to create invoice.\n\nFoam Color: ${body.foamColor || 'Not selected'}\nHinge: ${body.hingePreference || 'Not selected'}${body.apColor ? '\nAP Color: ' + body.apColor : ''}${body.customerNote ? '\n\nCustomer Note: "' + body.customerNote + '"' : ''}`,
               hubspot_owner_id: ownerId,
               hs_task_status: 'NOT_STARTED',
               hs_task_type: 'TODO',
@@ -4294,6 +4366,7 @@ tbody tr:hover td{background:#fdfcfb}
           const notePrefs = [
             body.foamColor ? `Foam: ${body.foamColor}` : null,
             body.hingePreference ? `Hinge: ${body.hingePreference}` : null,
+            body.apColor ? `AP: ${body.apColor}` : null,
             body.customerNote ? `Note: "${body.customerNote}"` : null,
           ].filter(Boolean).join(' · ');
           await notifyRep(ownerId, `✓ Quote Accepted — ${dealName}`,
@@ -4312,7 +4385,7 @@ tbody tr:hover td{background:#fdfcfb}
           headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
         }, {
           properties: {
-            hs_note_body: `✓ Quote #${quoteNumber} accepted by customer on ${new Date().toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'})}.\n\nFoam Color: ${body.foamColor || 'Not selected'}\nHinge Preference: ${body.hingePreference || 'Not selected'}${body.customerNote ? '\n\nCustomer Note: "' + body.customerNote + '"' : ''}`,
+            hs_note_body: `✓ Quote #${quoteNumber} accepted by customer on ${new Date().toLocaleDateString('en-US', {month:'long',day:'numeric',year:'numeric'})}.\n\nFoam Color: ${body.foamColor || 'Not selected'}\nHinge Preference: ${body.hingePreference || 'Not selected'}${body.apColor ? '\nAP Color: ' + body.apColor : ''}${body.customerNote ? '\n\nCustomer Note: "' + body.customerNote + '"' : ''}`,
             hs_timestamp: new Date().toISOString(),
           },
           associations: [{
@@ -7798,7 +7871,7 @@ setInterval(loadLogs,30000);
     const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').trim());
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, foamColor, hingePreference, productionNotes, deliveryNotes, shipped, changes, repName, freightCost, shipEmailTo, shipEmailCc, markShipped, serialNumber, shipmentFields } = body;
+      const { customer, foamColor, hingePreference, apColor, productionNotes, deliveryNotes, shipped, changes, repName, freightCost, shipEmailTo, shipEmailCc, markShipped, serialNumber, shipmentFields } = body;
 
       if (!db) { json({ error: 'No database' }, 500); return; }
 
@@ -7808,6 +7881,7 @@ setInterval(loadLogs,30000);
         try {
           const hsProps = {};
           if (serialNumber    !== undefined) hsProps.description      = String(serialNumber || '');
+          if (apColor !== undefined && apColor !== null) hsProps.ap_color = String(apColor || '');
           const sf = shipmentFields || shipped || {};
           if (sf.carrier    !== undefined && sf.carrier)  hsProps.freight_carrier   = hsCarrierEnum(sf.carrier);
           if (sf.tracking   !== undefined && sf.tracking) hsProps.tracking_number   = String(sf.tracking);
@@ -7983,6 +8057,7 @@ setInterval(loadLogs,30000);
         ...currentOrderData,
         foamColor:        foamColor        !== undefined ? foamColor        : currentOrderData.foamColor,
         hingePreference:  hingePreference  !== undefined ? hingePreference  : currentOrderData.hingePreference,
+        apColor:          apColor          !== undefined ? apColor          : currentOrderData.apColor,
         serialNumber:     serialNumber     !== undefined ? serialNumber     : currentOrderData.serialNumber,
         productionNotes:  productionNotes  !== undefined ? productionNotes  : currentOrderData.productionNotes,
         deliveryNotes:    deliveryNotes    !== undefined ? deliveryNotes    : currentOrderData.deliveryNotes,
@@ -8027,6 +8102,7 @@ setInterval(loadLogs,30000);
           const hsProps = {};
           if (serialNumber !== undefined)   hsProps.description       = String(serialNumber || '');
           if (productionNotes !== undefined) hsProps.production_notes  = String(productionNotes || '');
+          if (apColor !== undefined && apColor !== null) hsProps.ap_color = String(apColor || '');
           console.log(`[orders] serialNumber received: ${JSON.stringify(serialNumber)} | updatedOrderData.serialNumber: ${JSON.stringify(updatedOrderData.serialNumber)}`);
           if (sf.carrier !== undefined)     hsProps.freight_carrier = hsCarrierEnum(sf.carrier || '');
           if (sf.tracking !== undefined)    hsProps.tracking_number = String(sf.tracking || '');
@@ -8126,6 +8202,8 @@ setInterval(loadLogs,30000);
         (async () => {
           try {
             const sf2        = updatedOrderData.shipped || {};
+            const foamC      = updatedOrderData.foamColor     || currentOrderData.foamColor     || '—';
+            const apC        = updatedOrderData.apColor       || currentOrderData.apColor       || null;
             const serial     = updatedOrderData.serialNumber || currentOrderData.serialNumber || '—';
             const fc2        = updatedOrderData.freightCost   || currentOrderData.freightCost   || '—';
             const dealRow    = await db?.query('SELECT deal_name FROM quotes WHERE quote_number = $1 LIMIT 1', [quoteNumber]);
@@ -8135,10 +8213,12 @@ setInterval(loadLogs,30000);
             const taskBody = [
               `Deal: ${dealNameT}`,
               `Serial Number: ${serial}`,
+              `Foam Color: ${foamC}`,
+              apC ? `AP Color: ${apC}` : null,
               `Carrier: ${sf2.carrier || '—'}`,
               `PRO / Tracking: ${sf2.tracking || '—'}`,
               `Freight Cost: ${fcDisplay}`,
-            ].join('\n');
+            ].filter(Boolean).join('\n');
 
             // Create HubSpot task assigned to Jeromy, associated to the deal
             const taskRes = await httpsRequest({
@@ -8396,6 +8476,7 @@ tbody tr:last-child td{border-bottom:none}
     <div class="info-grid">
       <div class="info-item"><label>Foam Color</label><span>${o.foamColor||'Not specified'}</span></div>
       <div class="info-item"><label>Door Hinge</label><span>${o.hingePreference||'Not specified'}</span></div>
+      ${o.apColor ? `<div class="info-item"><label>AP Color</label><span style="display:inline-flex;align-items:center;gap:8px">${o.apColor}<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${({Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteriod:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'}[o.apColor]||'#aaa')};border:1px solid rgba(0,0,0,.2)"></span></span></div>` : `<div class="info-item"><label>AP Color</label><span style="color:#aaa">None</span></div>`}
     </div>
     ${o.productionNotes?`<div style="margin-top:16px"><div style="font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Production Notes</div><div class="notes-box">${o.productionNotes}</div></div>`:''}
     ${o.deliveryNotes?`<div style="margin-top:12px"><div style="font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Special Delivery Notes</div><div class="notes-box">${o.deliveryNotes}</div></div>`:''}
@@ -8483,18 +8564,20 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
     try {
       const body = JSON.parse(await readBody(req));
       const { dealId, quoteNumber, lineItems, freight, tax, discount,
-              customer, foamColor, hingePreference, productionNotes,
+              customer, foamColor, hingePreference, apColor, productionNotes,
               deliveryNotes, ownerId, dealName } = body;
 
       if (!dealId || !quoteNumber) { json({ error: 'Missing dealId or quoteNumber' }, 400); return; }
 
-      // 1. Advance deal to Closed Won
+      // 1. Advance deal to Closed Won + set ap_color if present
+      const closedWonProps = { dealstage: 'closedwon' };
+      if (apColor) closedWonProps.ap_color = apColor;
       await httpsRequest({
         hostname: 'api.hubapi.com',
         path: `/crm/v3/objects/deals/${dealId}`,
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-      }, { properties: { dealstage: 'closedwon' } });
+      }, { properties: closedWonProps });
 
       // 1b. Reset line items to the processed quote's exact line items
       try {
@@ -8531,7 +8614,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       // 2. Save order data to DB
       const orderToken = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
       const orderUrl = `https://sales.whisperroom.com/o/${encodeURIComponent(quoteNumber)}?t=${orderToken}`;
-      const orderData = { foamColor, hingePreference, productionNotes, deliveryNotes, processedAt: new Date().toISOString() };
+      const orderData = { foamColor, hingePreference, apColor, productionNotes, deliveryNotes, processedAt: new Date().toISOString() };
 
       if (db) {
         try {
@@ -8586,6 +8669,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         ``,
         `ORDER SPECIFICATIONS`,
         `Foam Color: ${foamColor||'Not specified'}`,
+        apColor ? `AP Color: ${apColor}` : `AP Color: None`,
         `Door Hinge: ${hingePreference||'Not specified'}`,
         productionNotes ? `Production Notes: ${productionNotes}` : null,
         deliveryNotes   ? `Delivery Notes: ${deliveryNotes}`     : null,
@@ -8654,6 +8738,34 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       console.log(`Order processed: ${quoteNumber}, deal ${dealId} → closedwon`);
       writelog('info', 'order.processed', `Order processed: ${quoteNumber} — ${dealName || '—'}`, { rep: String(ownerId || ''), quoteNum: quoteNumber, dealId: String(dealId || ''), dealName: dealName || null });
       json({ success: true, orderUrl });
+
+      // Create AP color task for Benton (non-blocking) if order has an AP item
+      const hasApItem = (lineItems || []).some(i => i.name && /^AP\s/i.test(i.name));
+      if (hasApItem) {
+        (async () => {
+          try {
+            const apColorLabel = apColor || 'Unknown';
+            const taskRes = await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: '/crm/v3/objects/tasks',
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, {
+              properties: {
+                hs_task_subject:  `🎨 AP Color Needed — ${dealName || quoteNumber}`,
+                hs_task_body:     `Order ${quoteNumber} includes an Acoustic Package.\n\nAP Color: ${apColorLabel}\n\nSubmit order to Audimute once color is confirmed.\n\nOrder: ${orderUrl}\nHubSpot Deal: https://app.hubspot.com/contacts/5764220/deal/${dealId}`,
+                hs_task_status:   'NOT_STARTED',
+                hs_task_type:     'TODO',
+                hs_task_priority: 'HIGH',
+                hubspot_owner_id: '36303670', // Benton
+                hs_timestamp:     new Date().toISOString(),
+              },
+              associations: [{ to: { id: String(dealId) }, types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 216 }] }]
+            });
+            console.log(`[process-order] AP task created: ${taskRes.body?.id}`);
+          } catch(e) { console.warn('[process-order] AP task failed:', e.message); }
+        })();
+      }
 
       // Upload order PDF to shared orders folder (non-blocking)
       (async () => {

@@ -1886,6 +1886,7 @@ function renderLineItems() {
   const tbody = document.getElementById('lineItemsBody');
   const table = document.getElementById('lineTable');
   const empty = document.getElementById('emptyState');
+  if (typeof refreshApColorRow === 'function') refreshApColorRow();
 
   if (lineItems.length === 0) {
     table.style.display = 'none';
@@ -3289,6 +3290,31 @@ ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</
       </div>
     </div>
 
+
+    <div class="ap-color-row" style="display:none;margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">AP Color <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Acoustic Package)</span></div>
+      <select id="orderApColor" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer" onchange="updateApSwatchPreview()">
+        <option value="">— Select color —</option>
+        <option value="Unknown">Unknown (follow up needed)</option>
+        <option value="Lemon">Lemon</option>
+        <option value="Vanilla">Vanilla</option>
+        <option value="Birch">Birch</option>
+        <option value="White">White</option>
+        <option value="Green Apple">Green Apple</option>
+        <option value="Fern">Fern</option>
+        <option value="Waterfall">Waterfall</option>
+        <option value="Asteriod">Asteriod</option>
+        <option value="Orchid">Orchid</option>
+        <option value="Pumpkin">Pumpkin</option>
+        <option value="Geranium">Geranium</option>
+        <option value="Lapis">Lapis</option>
+        <option value="Onyx">Onyx</option>
+        <option value="Graphite">Graphite</option>
+        <option value="Coffee Bean">Coffee Bean</option>
+        <option value="Quarry Blue">Quarry Blue</option>
+      </select>
+      <div id="apSwatchPreview" style="margin-top:8px;display:flex;align-items:center;gap:8px;min-height:20px"></div>
+    </div>
     <div style="margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Production Notes</div>
       <textarea id="orderProductionNotes" rows="3" placeholder="Internal notes for production team..." style="width:100%;padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;color:#f0ede8;box-sizing:border-box"></textarea>
@@ -3644,9 +3670,10 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   }
   // Set accepted state and customer preferences
   setQuoteAccepted(q.accepted || q._accepted || false);
-  window._acceptedFoam  = q.acceptedFoam  || q._acceptedFoam  || '';
-  window._acceptedHinge = q.acceptedHinge || q._acceptedHinge || '';
-  window._acceptedNote  = q.acceptedNote  || q._acceptedNote  || '';
+  window._acceptedFoam    = q.acceptedFoam    || q._acceptedFoam    || '';
+  window._acceptedHinge   = q.acceptedHinge   || q._acceptedHinge   || '';
+  window._acceptedApColor = q.acceptedApColor || q._acceptedApColor || '';
+  window._acceptedNote    = q.acceptedNote    || q._acceptedNote    || '';
   // Clear result box so invoice/order links from other quotes don't bleed through
   const resultBox = document.getElementById('resultBox');
   if (resultBox) { resultBox.className = 'result-box'; resultBox.innerHTML = ''; }
@@ -5470,9 +5497,10 @@ function openOrderModal() {
   const quoteNum = document.getElementById('quoteNumHidden').value;
   if (!quoteNum) { showToast('No quote loaded', 'error'); return; }
 
-  // Pre-fill foam/hinge from customer acceptance if available
-  const foam  = window._acceptedFoam  || '';
-  const hinge = window._acceptedHinge || '';
+  // Pre-fill foam/hinge/AP from customer acceptance if available
+  const foam    = window._acceptedFoam    || '';
+  const hinge   = window._acceptedHinge   || '';
+  const apColor = window._acceptedApColor || '';
   if (foam) {
     const foamInput = document.querySelector(`input[name="orderFoam"][value="${foam}"]`);
     if (foamInput) { foamInput.checked = true; highlightOrderSel('orderFoam'); }
@@ -5481,11 +5509,41 @@ function openOrderModal() {
     const hingeInput = document.querySelector(`input[name="orderHinge"][value="${hinge}"]`);
     if (hingeInput) { hingeInput.checked = true; highlightOrderSel('orderHinge'); }
   }
+  // Show/hide AP row and set dropdown
+  refreshApColorRow();
+  const apSel = document.getElementById('orderApColor');
+  if (apSel) apSel.value = apColor || '';
+
   document.getElementById('orderModal').style.display = 'flex';
 }
 
 function closeOrderModal() {
   document.getElementById('orderModal').style.display = 'none';
+}
+
+// ── AP Color helpers ──────────────────────────────────────────────
+const AP_COLORS = ['Lemon','Vanilla','Birch','White','Green Apple','Fern','Waterfall','Asteriod','Orchid','Pumpkin','Geranium','Lapis','Onyx','Graphite','Coffee Bean','Quarry Blue'];
+const AP_HEX    = {Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteriod:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'};
+
+function hasAP() {
+  return lineItems.some(i => i.name && /^AP\s/i.test(i.name));
+}
+
+function refreshApColorRow() {
+  document.querySelectorAll('.ap-color-row').forEach(el => {
+    el.style.display = hasAP() ? 'block' : 'none';
+  });
+}
+
+function updateApSwatchPreview() {
+  const val = document.getElementById('orderApColor')?.value || '';
+  const preview = document.getElementById('apSwatchPreview');
+  if (!preview) return;
+  if (val && val !== 'Unknown' && AP_HEX[val]) {
+    preview.innerHTML = `<span style="display:inline-block;width:18px;height:18px;border-radius:50%;background:${AP_HEX[val]};border:1px solid rgba(255,255,255,.2);flex-shrink:0"></span><span style="font-size:12px;color:rgba(255,255,255,.6)">${val}</span>`;
+  } else {
+    preview.innerHTML = '';
+  }
 }
 
 function highlightOrderSel(name) {
@@ -5507,9 +5565,15 @@ async function confirmProcessOrder() {
   const quoteNumber = document.getElementById('quoteNumHidden').value;
   if (!dealId || !quoteNumber) { showToast('No deal linked', 'error'); return; }
 
-  const foam  = document.querySelector('input[name="orderFoam"]:checked')?.value  || '';
-  const hinge = document.querySelector('input[name="orderHinge"]:checked')?.value || '';
+  const foam    = document.querySelector('input[name="orderFoam"]:checked')?.value  || '';
+  const hinge   = document.querySelector('input[name="orderHinge"]:checked')?.value || '';
+  const apColor = document.getElementById('orderApColor')?.value || '';
   // Foam and hinge are optional — allow processing with unknown selections
+  // AP color required only if AP is in order — enforced with 'Unknown' option
+  if (hasAP() && !apColor) {
+    showToast('Please select an AP color (or Unknown)', 'error');
+    return;
+  }
   const productionNotes = document.getElementById('orderProductionNotes').value.trim();
   const deliveryNotes   = document.getElementById('orderDeliveryNotes').value.trim();
 
@@ -5541,6 +5605,7 @@ async function confirmProcessOrder() {
         },
         foamColor:        foam,
         hingePreference:  hinge,
+        apColor:          apColor,
         productionNotes,
         deliveryNotes,
         ownerId: document.getElementById('repSelect').value,
@@ -5553,8 +5618,9 @@ async function confirmProcessOrder() {
       closeOrderModal();
 
       // Build mailto with all order details pre-filled
-      const foam  = document.querySelector('input[name="orderFoam"]:checked')?.value  || '';
-      const hinge = document.querySelector('input[name="orderHinge"]:checked')?.value || '';
+      const foam    = document.querySelector('input[name="orderFoam"]:checked')?.value  || '';
+      const hinge   = document.querySelector('input[name="orderHinge"]:checked')?.value || '';
+      const apColorVal = document.getElementById('orderApColor')?.value || '';
       const productionNotes = document.getElementById('orderProductionNotes').value.trim();
       const deliveryNotes   = document.getElementById('orderDeliveryNotes').value.trim();
       const quoteNum        = document.getElementById('quoteNumHidden').value;
@@ -5589,6 +5655,7 @@ async function confirmProcessOrder() {
         `ORDER SPECIFICATIONS`,
         `Foam Color: ${foam}`,
         `Door Hinge: ${hinge}`,
+        apColorVal ? `AP Color: ${apColorVal}` : null,
         productionNotes ? `Production Notes: ${productionNotes}` : null,
         deliveryNotes   ? `Delivery Notes: ${deliveryNotes}`     : null,
         ``,
@@ -5871,6 +5938,31 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
       </div>
     </div>
 
+
+    <div class="ap-color-row" style="display:none;margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">AP Color <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Acoustic Package)</span></div>
+      <select id="orderApColor" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer" onchange="updateApSwatchPreview()">
+        <option value="">— Select color —</option>
+        <option value="Unknown">Unknown (follow up needed)</option>
+        <option value="Lemon">Lemon</option>
+        <option value="Vanilla">Vanilla</option>
+        <option value="Birch">Birch</option>
+        <option value="White">White</option>
+        <option value="Green Apple">Green Apple</option>
+        <option value="Fern">Fern</option>
+        <option value="Waterfall">Waterfall</option>
+        <option value="Asteriod">Asteriod</option>
+        <option value="Orchid">Orchid</option>
+        <option value="Pumpkin">Pumpkin</option>
+        <option value="Geranium">Geranium</option>
+        <option value="Lapis">Lapis</option>
+        <option value="Onyx">Onyx</option>
+        <option value="Graphite">Graphite</option>
+        <option value="Coffee Bean">Coffee Bean</option>
+        <option value="Quarry Blue">Quarry Blue</option>
+      </select>
+      <div id="apSwatchPreview" style="margin-top:8px;display:flex;align-items:center;gap:8px;min-height:20px"></div>
+    </div>
     <div style="margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Production Notes</div>
       <textarea id="orderProductionNotes" rows="3" placeholder="Internal notes for production team..." style="width:100%;padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;color:#f0ede8;box-sizing:border-box"></textarea>

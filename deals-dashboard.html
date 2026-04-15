@@ -667,40 +667,85 @@ async function createInvoiceForDeal(event, quoteNumber) {
   event.stopPropagation();
   if (!currentDealId) return;
 
-  // Find the accepted quote's snapshot data from the hub cache
   const hubData = window._lastHubData;
   const q = hubData?.quotes?.find(q => q.quoteNumber === quoteNumber) || hubData?.quotes?.find(q => q.accepted);
   if (!q) { showToast('No accepted quote found', 'error'); return; }
 
-  // Fetch full snapshot for line items
-  if (!confirm(`Create invoice for ${quoteNumber}?`)) return;
+  // Fetch snapshot to get total for $50k warning
   const btn = event.target;
   btn.textContent = '...';
   btn.disabled = true;
   try {
-    // Load snapshot from history endpoint
     const snapRes = await fetch(`/api/quote-snapshot/${encodeURIComponent(q.quoteNumber)}`, { credentials:'include' });
     const snap = await snapRes.json();
     if (snap.error) throw new Error(snap.error);
 
+    // Store for use by confirmDealInvoice
+    window._pendingInvoice = { dealId: currentDealId, quoteNumber: q.quoteNumber, snap };
+
+    // Populate modal preview
+    const sub = (snap.lineItems || []).reduce((s, i) => s + (parseFloat(i.price) * parseInt(i.qty)), 0);
+    const discVal = snap.discount?.value || 0;
+    const disc = discVal > 0 ? (snap.discount?.type === 'pct' ? sub * discVal / 100 : discVal) : 0;
+    const freight = snap.freight?.total || 0;
+    const tax = snap.tax?.tax || 0;
+    const total = sub - disc + freight + tax;
+    const fmtTotal = '$' + total.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+    document.getElementById('dhInvoicePreviewName').textContent = q.dealName || q.quoteNumber;
+    document.getElementById('dhInvoicePreviewQuote').textContent = q.quoteNumber;
+    document.getElementById('dhInvoicePreviewTotal').textContent = fmtTotal;
+
+    // Reset checkboxes
+    document.getElementById('dhInvoiceAllowCC').checked = true;
+    document.getElementById('dhInvoiceAllowACH').checked = true;
+
+    // $50k warning
+    const warning = document.getElementById('dhInvoiceCCWarning');
+    const feeEl = document.getElementById('dhInvoiceCCFeeAmt');
+    if (total >= 50000) {
+      feeEl.textContent = '$' + Math.round(total * 0.034).toLocaleString();
+      warning.style.display = 'block';
+    } else {
+      warning.style.display = 'none';
+    }
+
+    document.getElementById('dhInvoiceModal').style.display = 'flex';
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  } finally {
+    btn.textContent = '+ Invoice';
+    btn.disabled = false;
+  }
+}
+
+async function confirmDealInvoice() {
+  const pending = window._pendingInvoice;
+  if (!pending) return;
+  const confirmBtn = document.getElementById('dhInvoiceConfirmBtn');
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = 'Creating…';
+  try {
     const res = await fetch('/api/create-invoice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({
-        dealId:     currentDealId,
-        quoteNumber: q.quoteNumber,
-        lineItems:  snap.lineItems  || [],
-        freight:    snap.freight    || null,
-        tax:        snap.tax        || null,
-        discount:   snap.discount   || { type:'pct', value:0 },
-        customer:   snap.customer   || {},
+        dealId:      pending.dealId,
+        quoteNumber: pending.quoteNumber,
+        lineItems:   pending.snap.lineItems  || [],
+        freight:     pending.snap.freight    || null,
+        tax:         pending.snap.tax        || null,
+        discount:    pending.snap.discount   || { type:'pct', value:0 },
+        customer:    pending.snap.customer   || {},
+        allowCC:     document.getElementById('dhInvoiceAllowCC').checked,
+        allowACH:    document.getElementById('dhInvoiceAllowACH').checked,
       })
     });
     const data = await res.json();
     if (data.success) {
+      closeDhInvoiceModal();
       showToast('✓ Invoice created!', 'success');
-      // Reload hub to show new invoice
       setTimeout(() => openDeal(currentDealId), 800);
     } else {
       throw new Error(data.error || 'Invoice creation failed');
@@ -708,9 +753,14 @@ async function createInvoiceForDeal(event, quoteNumber) {
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   } finally {
-    btn.textContent = '+ Invoice';
-    btn.disabled = false;
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = 'Create Invoice';
   }
+}
+
+function closeDhInvoiceModal() {
+  document.getElementById('dhInvoiceModal').style.display = 'none';
+  window._pendingInvoice = null;
 }
 
 function processOrderFromHub(event, quoteNumber) {
@@ -1292,6 +1342,61 @@ async function confirmMergeLegacy() {
   }
 }
 </script>
+
+<!-- ── Deal Hub Invoice Modal ────────────────────────────────────── -->
+<div id="dhInvoiceModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2000;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface,#1a1a1a);border:1px solid var(--border,#2e2e2e);border-radius:12px;padding:32px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+    <div style="font-size:16px;font-weight:700;color:var(--text,#e8e8e8);margin-bottom:6px">Create HubSpot Invoice</div>
+    <div style="font-size:12px;color:var(--muted,#666);margin-bottom:24px">This will create a live invoice in HubSpot.</div>
+
+    <div style="background:var(--surface2,#222);border:1px solid var(--border,#2e2e2e);border-radius:8px;padding:16px;margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:11px;color:var(--muted,#666);text-transform:uppercase;letter-spacing:.06em">Deal</span>
+        <span style="font-size:12px;font-weight:600;color:var(--text,#e8e8e8)" id="dhInvoicePreviewName">—</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:11px;color:var(--muted,#666);text-transform:uppercase;letter-spacing:.06em">Quote #</span>
+        <span style="font-size:12px;color:var(--text,#e8e8e8)" id="dhInvoicePreviewQuote">—</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border,#2e2e2e);padding-top:10px;margin-top:4px">
+        <span style="font-size:11px;color:var(--muted,#666);text-transform:uppercase;letter-spacing:.06em">Total</span>
+        <span style="font-size:14px;font-weight:700;color:var(--text,#e8e8e8)" id="dhInvoicePreviewTotal">—</span>
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted,#666);margin-bottom:10px">Accepted Payment Methods</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;background:var(--surface2,#222);border:1px solid var(--border,#2e2e2e);border-radius:7px">
+          <input type="checkbox" id="dhInvoiceAllowCC" checked style="accent-color:#ee6216;width:15px;height:15px;cursor:pointer">
+          <div style="flex:1">
+            <div style="font-size:13px;color:var(--text,#e8e8e8);font-weight:600">Credit / Debit Card</div>
+            <div style="font-size:11px;color:var(--muted,#666);margin-top:1px">Visa, Mastercard, Amex — ~3.4% processing fee</div>
+          </div>
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;background:var(--surface2,#222);border:1px solid var(--border,#2e2e2e);border-radius:7px">
+          <input type="checkbox" id="dhInvoiceAllowACH" checked style="accent-color:#ee6216;width:15px;height:15px;cursor:pointer">
+          <div style="flex:1">
+            <div style="font-size:13px;color:var(--text,#e8e8e8);font-weight:600">ACH / Bank Transfer</div>
+            <div style="font-size:11px;color:var(--muted,#666);margin-top:1px">Direct bank debit — lower processing fee</div>
+          </div>
+        </label>
+      </div>
+      <div id="dhInvoiceCCWarning" style="display:none;margin-top:10px;padding:9px 12px;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.25);border-radius:7px;font-size:11px;color:#ee6216;line-height:1.5">
+        &#x26A0; <strong>Recommendation:</strong> Consider disabling Credit Card for orders over $50,000 — the processing fee (~3.4%) would exceed <span id="dhInvoiceCCFeeAmt"></span>.
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button id="dhInvoiceConfirmBtn" onclick="confirmDealInvoice()" style="flex:1;padding:13px;background:#1a7a4a;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+        Create Invoice
+      </button>
+      <button onclick="closeDhInvoiceModal()" style="padding:13px 18px;background:var(--surface2,#222);color:var(--muted,#666);border:1px solid var(--border,#2e2e2e);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>

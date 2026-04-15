@@ -3212,15 +3212,19 @@ const server = http.createServer(async (req, res) => {
         // Update existing deal — amount + address fields always updated from latest quote
         const dealPatchProps = {
           amount: total.toFixed(2),
-          // Always update shipping address from latest quote
-          shipping_address:  customer.address || '',
-          shipping_city:     customer.city    || '',
-          shipping_zipcode:  customer.zip     || '',
-          billing_address:   billing ? billing.address || '' : customer.address || '',
-          billing_city:      billing ? billing.city    || '' : customer.city    || '',
-          billing_zipcode:   billing ? billing.zip     || '' : customer.zip     || '',
+          shipping_address:      customer.address    || '',
+          shipping_city:         customer.city       || '',
+          shipping_zipcode:      customer.zip        || '',
+          shipping_first_name:   customer.firstName  || '',
+          shipping_last_name:    customer.lastName   || '',
+          shipping_phone_number: customer.phone      || '',
+          billing_address:       billing ? billing.address || '' : customer.address || '',
+          billing_city:          billing ? billing.city    || '' : customer.city    || '',
+          billing_zipcode:       billing ? billing.zip     || '' : customer.zip     || '',
+          billing_first_name:    billing ? (billing.firstName || customer.firstName || '') : (customer.firstName || ''),
+          billing_last_name:     billing ? (billing.lastName  || customer.lastName  || '') : (customer.lastName  || ''),
+          billing_phone_number:  billing ? (billing.phone     || customer.phone     || '') : (customer.phone     || ''),
           dealname: dealName || undefined,
-          // Only advance to Updated Quote if deal is still at Sent Quote stage
           ...(() => {
             const earlyStages = ['appointmentscheduled', 'qualifiedtobuy'];
             return earlyStages.includes(existingDealStage) ? { dealstage: 'qualifiedtobuy' } : {};
@@ -3274,11 +3278,17 @@ const server = http.createServer(async (req, res) => {
           shipping_address: customer.address || '',
           shipping_city: customer.city || '',
           shipping_state: toStateFull(customer.state) || customer.state || '',
+          shipping_zipcode: customer.zip || '',
+          shipping_first_name: customer.firstName || '',
+          shipping_last_name: customer.lastName || '',
+          shipping_phone_number: customer.phone || '',
           billing_address: billing ? billing.address || '' : customer.address || '',
           billing_city: billing ? billing.city || '' : customer.city || '',
           billing_state: billing ? (toStateFull(billing.state) || billing.state || '') : (toStateFull(customer.state) || customer.state || ''),
-          shipping_zipcode: customer.zip || '',
           billing_zipcode: billing ? billing.zip || '' : customer.zip || '',
+          billing_first_name:    billing ? (billing.firstName || customer.firstName || '') : (customer.firstName || ''),
+          billing_last_name:     billing ? (billing.lastName  || customer.lastName  || '') : (customer.lastName  || ''),
+          billing_phone_number:  billing ? (billing.phone     || customer.phone     || '') : (customer.phone     || ''),
           pipeline: 'default',
           dealstage: isRevision ? 'qualifiedtobuy' : 'appointmentscheduled',
           amount: total.toFixed(2),
@@ -3707,6 +3717,7 @@ tbody tr:hover td{background:#fdfcfb}
       <div class="info-item"><label>Name</label><span>${c.firstName} ${c.lastName}</span></div>
       ${c.company?`<div class="info-item"><label>Company</label><span>${c.company}</span></div>`:''}
       ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
+      ${c.phone?`<div class="info-item"><label>Phone</label><span>${c.phone}</span></div>`:''}
       ${(c.address||c.city||c.state||c.zip)?`<div class="info-item"><label>Ship To</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}</span></div>`:''}
       ${q.billing && (q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
     </div>
@@ -3796,15 +3807,8 @@ tbody tr:hover td{background:#fdfcfb}
       }
 
       const q = quoteData;
+      console.log(`[quote-page] ${quoteId} customer.phone="${q.customer?.phone||'MISSING'}" keys=${Object.keys(q.customer||{}).join(',')}`);
       const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
-      const sub = (q.lineItems||[]).reduce((s,i)=>s+(i.price*i.qty),0);
-      const disc = q.discount && q.discount.value > 0
-        ? (q.discount.type==='pct' ? sub*q.discount.value/100 : q.discount.value) : 0;
-      const freightTbd = q.freight?.tbd === true;
-      const freight = (!freightTbd && q.freight) ? q.freight.total : 0;
-      const tax = q.tax ? q.tax.tax : 0;
-      const total = sub - disc + freight + tax;
-      const c = q.customer || {};
 
       const lineRows = (q.lineItems||[]).map(item =>
         `<tr>
@@ -3926,6 +3930,7 @@ tbody tr:hover td{background:#fdfcfb}
       <div class="info-item"><label>Name</label><span>${c.firstName} ${c.lastName}</span></div>
       ${c.company?`<div class="info-item"><label>Company</label><span>${c.company}</span></div>`:''}
       ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
+      ${c.phone?`<div class="info-item"><label>Phone</label><span>${c.phone}</span></div>`:''}
       ${(c.address||c.city||c.state||c.zip)?`<div class="info-item"><label>Ship To</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}</span></div>`:''}
       ${q.billing && (q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
     </div>
@@ -8372,6 +8377,7 @@ tbody tr:last-child td{border-bottom:none}
       ${c.firstName?`<div class="info-item"><label>Name</label><span>${c.firstName} ${c.lastName}</span></div>`:''}
       ${c.company?`<div class="info-item"><label>Company</label><span>${c.company}</span></div>`:''}
       ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
+      ${c.phone?`<div class="info-item"><label>Phone</label><span>${c.phone}</span></div>`:''}
       ${(c.address||c.city||c.state||c.zip)?`<div class="info-item"><label>Delivery Address</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}</span></div>`:''}
       ${q.billing && (q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
     </div>
@@ -8567,6 +8573,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         `Name: ${c.firstName||''} ${c.lastName||''}`.trim(),
         c.company ? `Company: ${c.company}` : null,
         c.email   ? `Email: ${c.email}`     : null,
+        c.phone   ? `Phone: ${c.phone}`     : null,
         c.address||c.city||c.state ? `Ship To: ${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}` : null,
         ``,
         `ORDER SPECIFICATIONS`,

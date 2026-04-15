@@ -2802,7 +2802,10 @@ const server = http.createServer(async (req, res) => {
         properties: ['dealname', 'amount', 'dealstage', 'hubspot_owner_id', 'hs_lastmodifieddate', 'closedate']
       });
 
+      const CLOSED_STAGES = new Set(['closedwon', '845719', 'closedlost']);
+
       const deals = (batchRes.body?.results || [])
+        .filter(d => !CLOSED_STAGES.has(d.properties.dealstage))
         .sort((a, b) => new Date(b.properties.hs_lastmodifieddate || 0) - new Date(a.properties.hs_lastmodifieddate || 0))
         .map(d => ({
           id: d.id,

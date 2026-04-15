@@ -1118,6 +1118,32 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     Create Quote &amp; Deal
   </button>
 
+  <!-- AP Color — only shown when an AP item is in the quote -->
+  <div id="sidebarApColorRow" style="display:none;margin-top:16px;padding:12px;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.25);border-radius:8px">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">🎨 AP Color</div>
+    <select id="sidebarApColor" style="width:100%;padding:7px 9px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);border-radius:6px;color:rgba(255,255,255,.85);font-size:12px;font-family:inherit;outline:none;cursor:pointer" onchange="onSidebarApColorChange()">
+      <option value="">— Select color —</option>
+      <option value="Unknown">Unknown (follow up needed)</option>
+      <option value="Lemon">Lemon</option>
+      <option value="Vanilla">Vanilla</option>
+      <option value="Birch">Birch</option>
+      <option value="White">White</option>
+      <option value="Green Apple">Green Apple</option>
+      <option value="Fern">Fern</option>
+      <option value="Waterfall">Waterfall</option>
+      <option value="Asteriod">Asteriod</option>
+      <option value="Orchid">Orchid</option>
+      <option value="Pumpkin">Pumpkin</option>
+      <option value="Geranium">Geranium</option>
+      <option value="Lapis">Lapis</option>
+      <option value="Onyx">Onyx</option>
+      <option value="Graphite">Graphite</option>
+      <option value="Coffee Bean">Coffee Bean</option>
+      <option value="Quarry Blue">Quarry Blue</option>
+    </select>
+    <div id="sidebarApSwatchDot" style="margin-top:7px;display:flex;align-items:center;gap:7px;min-height:18px"></div>
+  </div>
+
     <button class="create-btn" id="viewQuoteBtn" onclick="viewQuote()" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);margin-top:8px;opacity:.5;cursor:not-allowed" title="Push to HubSpot first" disabled>
       &#x1F517; View Quote ↗
     </button>
@@ -3676,6 +3702,11 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   window._acceptedHinge   = q.acceptedHinge   || q._acceptedHinge   || '';
   window._acceptedApColor = q.acceptedApColor || q._acceptedApColor || '';
   window._acceptedNote    = q.acceptedNote    || q._acceptedNote    || '';
+  // Pre-fill sidebar AP color if client already selected one
+  if (window._acceptedApColor) {
+    const sidebarSel = document.getElementById('sidebarApColor');
+    if (sidebarSel) { sidebarSel.value = window._acceptedApColor; onSidebarApColorChange(); }
+  }
   // Clear result box so invoice/order links from other quotes don't bleed through
   const resultBox = document.getElementById('resultBox');
   if (resultBox) { resultBox.className = 'result-box'; resultBox.innerHTML = ''; }
@@ -4868,10 +4899,47 @@ fetchHistory().then(() => {
     if (entry) {
       loadFromHistoryEntry(entry.id || allHistory.indexOf(entry), true);
     } else {
-      // Not in cache yet — try fetching
-      fetchHistory().then(() => {
+      // Not in local cache (quote older than LIMIT 200) — fetch directly from server
+      fetchHistory().then(async () => {
         const found = allHistory.find(h => h.quoteNumber === decoded || h.id === decoded);
-        if (found) loadFromHistoryEntry(found.id || allHistory.indexOf(found), true);
+        if (found) {
+          loadFromHistoryEntry(found.id || allHistory.indexOf(found), true);
+        } else {
+          // Still not found — fetch snapshot directly and inject into allHistory
+          try {
+            const res = await fetch(`/api/quote-snapshot/${encodeURIComponent(decoded)}`, { credentials: 'include' });
+            const snap = await res.json();
+            if (snap && !snap.error) {
+              // Build a synthetic history entry and inject it
+              const synth = {
+                id:          decoded,
+                quoteNumber: decoded,
+                dealId:      snap.dealId   || fromHub || null,
+                dealName:    snap.dealName || '',
+                customer:    snap.customer || {},
+                ownerId:     snap.ownerId  || null,
+                lineItems:   snap.lineItems || [],
+                freight:     snap.freight  || null,
+                tax:         snap.tax      || null,
+                discount:    snap.discount || { type: 'pct', value: 0 },
+                shareToken:  snap.shareToken || null,
+                notes:       snap.notes || '',
+                quoteLabel:  snap.quoteLabel || '',
+                billing:     snap.billing || null,
+                accepted:    snap.accepted || false,
+                acceptedFoam:    snap.acceptedFoam    || '',
+                acceptedHinge:   snap.acceptedHinge   || '',
+                acceptedApColor: snap.acceptedApColor || '',
+              };
+              allHistory.unshift(synth);
+              loadFromHistoryEntry(decoded, true);
+            } else {
+              showToast(`Quote ${decoded} not found in database`, 'error');
+            }
+          } catch(e) {
+            showToast(`Could not load quote ${decoded}`, 'error');
+          }
+        }
       });
     }
   }
@@ -5511,10 +5579,11 @@ function openOrderModal() {
     const hingeInput = document.querySelector(`input[name="orderHinge"][value="${hinge}"]`);
     if (hingeInput) { hingeInput.checked = true; highlightOrderSel('orderHinge'); }
   }
-  // Show/hide AP row and set dropdown
+  // Show/hide AP row and set dropdown — sidebar value takes priority over accepted value
   refreshApColorRow();
+  const sidebarVal = document.getElementById('sidebarApColor')?.value || '';
   const apSel = document.getElementById('orderApColor');
-  if (apSel) apSel.value = apColor || '';
+  if (apSel) apSel.value = sidebarVal || apColor || '';
 
   document.getElementById('orderModal').style.display = 'flex';
 }
@@ -5532,9 +5601,31 @@ function hasAP() {
 }
 
 function refreshApColorRow() {
+  const show = hasAP();
   document.querySelectorAll('.ap-color-row').forEach(el => {
-    el.style.display = hasAP() ? 'block' : 'none';
+    el.style.display = show ? 'block' : 'none';
   });
+  const sidebarRow = document.getElementById('sidebarApColorRow');
+  if (sidebarRow) sidebarRow.style.display = show ? 'block' : 'none';
+  if (!show) {
+    // Clear sidebar selection when AP removed from quote
+    const sel = document.getElementById('sidebarApColor');
+    if (sel) sel.value = '';
+    const dot = document.getElementById('sidebarApSwatchDot');
+    if (dot) dot.innerHTML = '';
+  }
+}
+
+function onSidebarApColorChange() {
+  const val = document.getElementById('sidebarApColor')?.value || '';
+  const dot = document.getElementById('sidebarApSwatchDot');
+  if (dot) {
+    if (val && val !== 'Unknown' && AP_HEX[val]) {
+      dot.innerHTML = `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${AP_HEX[val]};border:1px solid rgba(255,255,255,.2);flex-shrink:0"></span><span style="font-size:11px;color:rgba(255,255,255,.6)">${val}</span>`;
+    } else {
+      dot.innerHTML = val === 'Unknown' ? '<span style="font-size:11px;color:rgba(255,255,255,.4);font-style:italic">Follow up needed</span>' : '';
+    }
+  }
 }
 
 function updateApSwatchPreview() {

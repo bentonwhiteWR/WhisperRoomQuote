@@ -671,52 +671,58 @@ async function createInvoiceForDeal(event, quoteNumber) {
   const q = hubData?.quotes?.find(q => q.quoteNumber === quoteNumber) || hubData?.quotes?.find(q => q.accepted);
   if (!q) { showToast('No accepted quote found', 'error'); return; }
 
-  // Fetch snapshot to get total for $50k warning
   const btn = event.target;
   btn.textContent = '...';
   btn.disabled = true;
+
+  let snap = null;
   try {
     const snapRes = await fetch(`/api/quote-snapshot/${encodeURIComponent(q.quoteNumber)}`, { credentials:'include' });
-    const snap = await snapRes.json();
-    if (snap.error) throw new Error(snap.error);
-
-    // Store for use by confirmDealInvoice
-    window._pendingInvoice = { dealId: currentDealId, quoteNumber: q.quoteNumber, snap };
-
-    // Populate modal preview
-    const sub = (snap.lineItems || []).reduce((s, i) => s + (parseFloat(i.price) * parseInt(i.qty)), 0);
-    const discVal = snap.discount?.value || 0;
-    const disc = discVal > 0 ? (snap.discount?.type === 'pct' ? sub * discVal / 100 : discVal) : 0;
-    const freight = snap.freight?.total || 0;
-    const tax = snap.tax?.tax || 0;
-    const total = sub - disc + freight + tax;
-    const fmtTotal = '$' + total.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-
-    document.getElementById('dhInvoicePreviewName').textContent = q.dealName || q.quoteNumber;
-    document.getElementById('dhInvoicePreviewQuote').textContent = q.quoteNumber;
-    document.getElementById('dhInvoicePreviewTotal').textContent = fmtTotal;
-
-    // Reset checkboxes
-    document.getElementById('dhInvoiceAllowCC').checked = true;
-    document.getElementById('dhInvoiceAllowACH').checked = true;
-
-    // $50k warning
-    const warning = document.getElementById('dhInvoiceCCWarning');
-    const feeEl = document.getElementById('dhInvoiceCCFeeAmt');
-    if (total >= 50000) {
-      feeEl.textContent = '$' + Math.round(total * 0.034).toLocaleString();
-      warning.style.display = 'block';
-    } else {
-      warning.style.display = 'none';
-    }
-
-    document.getElementById('dhInvoiceModal').style.display = 'flex';
+    const snapData = await snapRes.json();
+    if (!snapData.error) snap = snapData;
   } catch(e) {
-    showToast('Error: ' + e.message, 'error');
-  } finally {
-    btn.textContent = '+ Invoice';
-    btn.disabled = false;
+    console.warn('[invoice] snapshot fetch failed:', e.message);
   }
+
+  // Fall back to hub data if snapshot unavailable
+  const lineItems = snap?.lineItems || q.lineItems || [];
+  const freight   = snap?.freight   || q.freight   || null;
+  const tax       = snap?.tax       || q.tax       || null;
+  const discount  = snap?.discount  || q.discount  || { type:'pct', value:0 };
+  const customer  = snap?.customer  || q.customer  || {};
+
+  window._pendingInvoice = { dealId: currentDealId, quoteNumber: q.quoteNumber, snap: { lineItems, freight, tax, discount, customer } };
+
+  // Calculate total for preview + $50k warning
+  const sub = lineItems.reduce((s, i) => s + (parseFloat(i.price||0) * parseInt(i.qty||1)), 0);
+  const discVal = discount?.value || 0;
+  const disc = discVal > 0 ? (discount?.type === 'pct' ? sub * discVal / 100 : discVal) : 0;
+  const freightTotal = freight?.total || 0;
+  const taxTotal = tax?.tax || 0;
+  const total = sub - disc + freightTotal + taxTotal;
+
+  // Use deal amount from hub as fallback if line items are empty
+  const displayTotal = total > 0 ? total : parseFloat(q.amount || 0);
+  const fmtTotal = '$' + displayTotal.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+  document.getElementById('dhInvoicePreviewName').textContent = q.dealName || q.quoteNumber || '—';
+  document.getElementById('dhInvoicePreviewQuote').textContent = q.quoteNumber || '—';
+  document.getElementById('dhInvoicePreviewTotal').textContent = fmtTotal;
+  document.getElementById('dhInvoiceAllowCC').checked = true;
+  document.getElementById('dhInvoiceAllowACH').checked = true;
+
+  const warning = document.getElementById('dhInvoiceCCWarning');
+  const feeEl   = document.getElementById('dhInvoiceCCFeeAmt');
+  if (displayTotal >= 50000) {
+    feeEl.textContent = '$' + Math.round(displayTotal * 0.034).toLocaleString();
+    warning.style.display = 'block';
+  } else {
+    warning.style.display = 'none';
+  }
+
+  btn.textContent = '+ Invoice';
+  btn.disabled = false;
+  document.getElementById('dhInvoiceModal').style.display = 'flex';
 }
 
 async function confirmDealInvoice() {

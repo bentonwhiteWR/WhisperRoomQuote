@@ -1131,7 +1131,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
       <option value="Green Apple">Green Apple</option>
       <option value="Fern">Fern</option>
       <option value="Waterfall">Waterfall</option>
-      <option value="Asteriod">Asteriod</option>
+      <option value="Asteroid">Asteroid</option>
       <option value="Orchid">Orchid</option>
       <option value="Pumpkin">Pumpkin</option>
       <option value="Geranium">Geranium</option>
@@ -3331,7 +3331,7 @@ ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</
         <option value="Green Apple">Green Apple</option>
         <option value="Fern">Fern</option>
         <option value="Waterfall">Waterfall</option>
-        <option value="Asteriod">Asteriod</option>
+        <option value="Asteroid">Asteroid</option>
         <option value="Orchid">Orchid</option>
         <option value="Pumpkin">Pumpkin</option>
         <option value="Geranium">Geranium</option>
@@ -5593,8 +5593,8 @@ function closeOrderModal() {
 }
 
 // ── AP Color helpers ──────────────────────────────────────────────
-const AP_COLORS = ['Lemon','Vanilla','Birch','White','Green Apple','Fern','Waterfall','Asteriod','Orchid','Pumpkin','Geranium','Lapis','Onyx','Graphite','Coffee Bean','Quarry Blue'];
-const AP_HEX    = {Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteriod:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'};
+const AP_COLORS = ['Lemon','Vanilla','Birch','White','Green Apple','Fern','Waterfall','Asteroid','Orchid','Pumpkin','Geranium','Lapis','Onyx','Graphite','Coffee Bean','Quarry Blue'];
+const AP_HEX    = {Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteroid:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'};
 
 function hasAP() {
   return lineItems.some(i => i.name && /^AP\s/i.test(i.name));
@@ -6044,7 +6044,7 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
         <option value="Green Apple">Green Apple</option>
         <option value="Fern">Fern</option>
         <option value="Waterfall">Waterfall</option>
-        <option value="Asteriod">Asteriod</option>
+        <option value="Asteroid">Asteroid</option>
         <option value="Orchid">Orchid</option>
         <option value="Pumpkin">Pumpkin</option>
         <option value="Geranium">Geranium</option>

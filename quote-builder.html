@@ -5680,6 +5680,21 @@ async function createInvoice() {
     const total = sub - disc + freight + tax;
     document.getElementById('invoicePreviewTotal').textContent = '$' + total.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
+    // Reset payment methods to defaults
+    document.getElementById('invoiceAllowCC').checked = true;
+    document.getElementById('invoiceAllowACH').checked = true;
+
+    // Show $50k CC warning if applicable
+    const warning = document.getElementById('invoiceCCWarning');
+    const feeEl = document.getElementById('invoiceCCFeeAmt');
+    if (total >= 50000) {
+      const fee = (total * 0.034).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      feeEl.textContent = '$' + fee;
+      warning.style.display = 'block';
+    } else {
+      warning.style.display = 'none';
+    }
+
     // Show modal
     document.getElementById('invoiceModal').style.display = 'flex';
 
@@ -5712,6 +5727,8 @@ async function confirmCreateInvoice() {
         tax: taxData,
         discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
         advanceStage: false,
+        allowCC:  document.getElementById('invoiceAllowCC')?.checked !== false,
+        allowACH: document.getElementById('invoiceAllowACH')?.checked !== false,
         ownerId: linkedDeal?.ownerId || window._lastPushedOwnerId || document.getElementById('repSelect').value || null,
         contactId: window._lastPushedContactId || null,
         customer: {
@@ -5773,8 +5790,6 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
     <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:6px;font-family:var(--sans)">Create HubSpot Invoice</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:24px">This will create a live invoice in HubSpot and open it in a new tab.</div>
 
-
-
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:24px">
       <div style="display:flex;justify-content:space-between;margin-bottom:8px">
         <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Deal</span>
@@ -5787,6 +5802,31 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
       <div style="display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
         <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Total</span>
         <span style="font-size:14px;font-weight:700;color:var(--text)" id="invoicePreviewTotal">—</span>
+      </div>
+    </div>
+
+    <!-- Payment Methods -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:10px">Accepted Payment Methods</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px">
+          <input type="checkbox" id="invoiceAllowCC" checked style="accent-color:var(--accent);width:15px;height:15px;cursor:pointer">
+          <div style="flex:1">
+            <div style="font-size:13px;color:var(--text);font-weight:600">Credit / Debit Card</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px">Visa, Mastercard, Amex — ~3.4% processing fee</div>
+          </div>
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px">
+          <input type="checkbox" id="invoiceAllowACH" checked style="accent-color:var(--accent);width:15px;height:15px;cursor:pointer">
+          <div style="flex:1">
+            <div style="font-size:13px;color:var(--text);font-weight:600">ACH / Bank Transfer</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px">Direct bank debit — lower processing fee</div>
+          </div>
+        </label>
+      </div>
+      <!-- $50k disclaimer — shown dynamically -->
+      <div id="invoiceCCWarning" style="display:none;margin-top:10px;padding:9px 12px;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.25);border-radius:7px;font-size:11px;color:var(--accent);line-height:1.5">
+        ⚠ <strong>Recommendation:</strong> Consider disabling Credit Card for orders over $50,000 — the processing fee (~3.4%) would exceed <span id="invoiceCCFeeAmt"></span>.
       </div>
     </div>
 

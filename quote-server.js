@@ -3765,7 +3765,7 @@ tbody tr:hover td{background:#fdfcfb}
   </div>` : ''}
 
   <div class="card">
-    <div class="card-label">Payment Terms</div></div>
+    <div class="card-label">Payment Terms</div>
     <p class="terms">Payment is due upon receipt. We accept ACH bank transfer and major credit/debit cards. For questions regarding this invoice, contact us at <a href="mailto:info@whisperroom.com" style="color:#ee6216">info@whisperroom.com</a> or (865) 558-5364.</p>
   </div>
 

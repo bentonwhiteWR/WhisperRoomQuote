@@ -4355,13 +4355,23 @@ async function suggestDealsForContact(contactId) {
       return;
     }
 
+    const STAGE_LABELS = {
+      'appointmentscheduled': 'Quote Sent',
+      'qualifiedtobuy': 'Updated Quote',
+      'contractsent': 'Contract Sent',
+      'closedwon': 'Closed Won',
+      'closedlost': 'Closed Lost',
+      '845719': 'Shipped',
+    };
+
     list.innerHTML = deals.map(d => {
       const amount = d.amount ? ' · $' + parseFloat(d.amount).toLocaleString('en-US', {minimumFractionDigits:0}) : '';
       const modified = d.modified ? ' · ' + new Date(d.modified).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '';
+      const stageLabel = STAGE_LABELS[d.stage] || d.stage || 'Open';
       const safeName = d.name.replace(/'/g, "\'");
       return `<div class="deal-suggestion-item" onclick="linkDealById('${d.id}', '${safeName}')">
         <div class="dsn">${d.name}</div>
-        <div class="dsm">${d.stage || 'Open'}${amount}${modified}</div>
+        <div class="dsm">${stageLabel}${amount}${modified}</div>
       </div>`;
     }).join('');
 

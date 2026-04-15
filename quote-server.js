@@ -5990,7 +5990,7 @@ tbody tr:hover td{background:#fdfcfb}
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
       const body = JSON.parse(await readBody(req));
-      const { dealId, quoteNumber, lineItems, freight, tax, discount, ownerId, contactId, customer } = body;
+      const { dealId, quoteNumber, lineItems, freight, tax, discount, ownerId, contactId, customer, allowCC, allowACH } = body;
 
       if (!dealId) { json({ error: 'No deal ID' }, 400); return; }
 
@@ -6094,12 +6094,23 @@ tbody tr:hover td{background:#fdfcfb}
 
       // 4. Create HubSpot invoice as draft
       const today = new Date().toISOString().split('T')[0];
+
+      // Build allowed payment methods — semicolon-separated enum values
+      const paymentMethods = [];
+      if (allowCC !== false)  paymentMethods.push('credit_or_debit_card');
+      if (allowACH !== false) paymentMethods.push('ach');
+      // Default to both if nothing passed
+      const allowedPayments = paymentMethods.length > 0
+        ? paymentMethods.join(';')
+        : 'credit_or_debit_card;ach';
+
       const invoiceProps = {
         hs_invoice_status: 'draft',
         hs_currency:       'USD',
         hs_title:          quoteNumber ? `Invoice — ${quoteNumber}` : 'Invoice',
         hs_invoice_date:   today,
         hs_due_date:       today,
+        hs_allowed_payment_methods: allowedPayments,
       };
       // Ship-to: patch contact's address so HubSpot invoice billing address populates
       if (resolvedContactId && customer?.address) {

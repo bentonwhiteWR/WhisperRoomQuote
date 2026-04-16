@@ -7929,7 +7929,8 @@ setInterval(loadLogs,30000);
           q.json_snapshot,
           q.share_token,
           q.gdrive_folder_id,
-          q.company as q_company
+          q.company as q_company,
+          q.rep_id
         FROM orders o
         LEFT JOIN quotes q ON q.quote_number = o.quote_number
         ORDER BY o.created_at DESC

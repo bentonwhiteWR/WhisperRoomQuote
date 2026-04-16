@@ -2856,28 +2856,86 @@ const server = http.createServer(async (req, res) => {
       const rep   = parsed.query.rep   || '';
       const limit = Math.min(parseInt(parsed.query.limit) || 200, 200);
 
+      // ── DB search for quote numbers / contact names / company names ──
+      // Run in parallel with HubSpot search when q is provided
+      let dbMatchDealIds = new Set();
+      if (q && db) {
+        try {
+          const dbSearch = await db.query(
+            `SELECT DISTINCT deal_id FROM quotes
+             WHERE deal_id IS NOT NULL AND (
+               lower(quote_number)   LIKE $1 OR
+               lower(customer_name)  LIKE $1 OR
+               lower(company)        LIKE $1 OR
+               lower(deal_name)      LIKE $1
+             )
+             LIMIT 50`,
+            [`%${q.toLowerCase()}%`]
+          );
+          dbSearch.rows.forEach(r => { if (r.deal_id) dbMatchDealIds.add(String(r.deal_id)); });
+        } catch(e) { console.warn('[deals list] DB search error:', e.message); }
+      }
+
       const filters = [];
       if (stage) filters.push({ propertyName: 'dealstage', operator: 'EQ', value: stage });
       if (rep)   filters.push({ propertyName: 'hubspot_owner_id', operator: 'EQ', value: rep });
 
-      const searchBody = {
-        filterGroups: filters.length ? [{ filters }] : [],
-        properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
-                     'closedate','payment_status','tracking_number','carrier__c',
-                     'hs_contact_id','phone','email'],
-        sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
-        limit,
-      };
-      if (q) searchBody.query = q;
+      // If DB matched deal IDs and no HubSpot text query needed, fetch by ID
+      let hsDeals = [];
+      if (q && dbMatchDealIds.size > 0) {
+        // Fetch matched deals by ID from HubSpot (up to 50)
+        const idFilters = [{ propertyName: 'hs_object_id', operator: 'IN', values: [...dbMatchDealIds] }];
+        if (rep) idFilters.push({ propertyName: 'hubspot_owner_id', operator: 'EQ', value: rep });
+        const idRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/deals/search',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, {
+          filterGroups: [{ filters: idFilters }],
+          properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
+                       'closedate','payment_status','tracking_number','carrier__c'],
+          limit: 50,
+        });
+        hsDeals = idRes.body?.results || [];
 
-      const res2 = await httpsRequest({
-        hostname: 'api.hubapi.com',
-        path: '/crm/v3/objects/deals/search',
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-      }, searchBody);
+        // Also run HubSpot name search and merge (deduped)
+        const nameRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/deals/search',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, {
+          filterGroups: filters.length ? [{ filters }] : [],
+          properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
+                       'closedate','payment_status','tracking_number','carrier__c'],
+          sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+          query: q,
+          limit: 50,
+        });
+        const nameDeals = nameRes.body?.results || [];
+        const seen = new Set(hsDeals.map(d => d.id));
+        nameDeals.forEach(d => { if (!seen.has(d.id)) { seen.add(d.id); hsDeals.push(d); } });
+      } else {
+        // Normal load — no search query
+        const searchBody = {
+          filterGroups: filters.length ? [{ filters }] : [],
+          properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
+                       'closedate','payment_status','tracking_number','carrier__c'],
+          sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+          limit,
+        };
+        if (q) searchBody.query = q;
+        const res2 = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/deals/search',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, searchBody);
+        hsDeals = res2.body?.results || [];
+      }
 
-      const deals = (res2.body?.results || []).map(d => ({
+      const deals = hsDeals.map(d => ({
         id:            d.id,
         name:          d.properties?.dealname || '—',
         stage:         d.properties?.dealstage || '',
@@ -2893,7 +2951,7 @@ const server = http.createServer(async (req, res) => {
       if (db && deals.length) {
         const ids = deals.map(d => d.id);
         const dbRes = await db.query(
-          `SELECT deal_id, quote_number, total,
+          `SELECT deal_id, quote_number, total, created_at,
                   (json_snapshot->>'accepted')::text as accepted,
                   json_snapshot->'lineItems' as line_items
            FROM quotes
@@ -2917,6 +2975,7 @@ const server = http.createServer(async (req, res) => {
               total: r.total,
               accepted: r.accepted === 'true',
               firstMdl,
+              lastQuoteAt: r.created_at || null,
             };
           } else if (r.accepted === 'true') {
             // Any quote for this deal being accepted marks the deal as accepted
@@ -2927,6 +2986,13 @@ const server = http.createServer(async (req, res) => {
           if (byDeal[d.id]) Object.assign(d, byDeal[d.id]);
         });
       }
+
+      // Re-sort by most recent activity: DB quote timestamp first, HubSpot modified as fallback
+      deals.sort((a, b) => {
+        const aTime = a.lastQuoteAt ? new Date(a.lastQuoteAt).getTime() : new Date(a.modified || 0).getTime();
+        const bTime = b.lastQuoteAt ? new Date(b.lastQuoteAt).getTime() : new Date(b.modified || 0).getTime();
+        return bTime - aTime;
+      });
 
       // Auto-sync: for any unpaid deals, check if their HubSpot invoice is actually paid
       // Run in background — don't block the response

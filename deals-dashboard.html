@@ -266,6 +266,7 @@ function applyFilter() {
   filteredDeals=!q?[...allDeals]:allDeals.filter(d=>
     d.name?.toLowerCase().includes(q)||
     d.latestQuote?.toLowerCase().includes(q)||
+    d.firstMdl?.toLowerCase().includes(q)||
     REPS[d.ownerId]?.toLowerCase().includes(q)
   );
   renderBoard();

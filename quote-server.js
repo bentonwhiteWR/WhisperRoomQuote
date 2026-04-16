@@ -3911,11 +3911,145 @@ tbody tr:hover td{background:#fdfcfb}
     ? `<button class="btn btn-pay" onclick="window.open('${paymentUrl}','_blank')">&#x1F4B3;&nbsp;&nbsp;Pay Now — ${fmt(total)}</button>`
     : `<button class="btn btn-pay" style="opacity:.5;cursor:not-allowed" title="Payment link not available">&#x1F4B3;&nbsp;&nbsp;Pay Now — ${fmt(total)}</button>`
   }
+  ${q.accepted ? `<button class="btn btn-secondary" onclick="openUpdateModal()" style="background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.15)">&#x270E;&nbsp;&nbsp;Change Specs</button>` : ''}
   <button class="btn btn-secondary" onclick="window.print()">&#x2B07;&nbsp;&nbsp;Download PDF</button>
+</div>
+
+<!-- Change Specs modal (post-acceptance) -->
+<div id="update-modal-i" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;align-items:center;justify-content:center;padding:16px;overflow-y:auto">
+  <div style="background:white;border-radius:14px;padding:32px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:90vh;overflow-y:auto;margin:auto">
+    <h2 style="font-size:18px;font-weight:800;color:#1a1a1a;margin-bottom:6px">Update Your Selections</h2>
+    <p style="font-size:13px;color:#888;margin-bottom:24px">Make any last-minute changes before your order ships. WhisperRoom will be notified.</p>
+
+    <div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:10px">Foam Color</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center" id="update-foam-grid-i">
+        ${[['Gray','#4a4a4a'],['Orange','#d4611a'],['Blue','#1a5fa8'],['Purple','#5c2a82'],['Burgundy','#6e1a2a']].map(([name,hex]) =>
+          `<label onclick="selectUpdateFoamI(this,'${name}')" style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 6px;border:2px solid #eee;border-radius:10px;cursor:pointer;transition:all .15s;flex:1;min-width:70px" title="${name}">
+            <input type="radio" name="update_foam_i" value="${name}" style="display:none"${(q.acceptedFoam||q.repFoamColor)===name?' checked':''}>
+            <div style="width:40px;height:40px;border-radius:50%;background:${hex};border:2px solid rgba(0,0,0,.15);flex-shrink:0"></div>
+            <span style="font-size:11px;font-weight:600;color:#555;text-align:center;line-height:1.2">${name}</span>
+          </label>`
+        ).join('')}
+        <label onclick="selectUpdateFoamI(this,'Undecided')" style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 6px;border:2px solid #eee;border-radius:10px;cursor:pointer;transition:all .15s;flex:1;min-width:70px" title="Undecided">
+          <input type="radio" name="update_foam_i" value="Undecided" style="display:none"${!(q.acceptedFoam||q.repFoamColor)?' checked':''}>
+          <div style="width:40px;height:40px;border-radius:50%;background:#e0e0e0;border:2px solid #ccc;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px">?</div>
+          <span style="font-size:11px;font-weight:600;color:#555;text-align:center;line-height:1.2">Undecided</span>
+        </label>
+      </div>
+    </div>
+
+    <div style="margin-bottom:28px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:10px">Door Hinge</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <label onclick="selectUpdateHingeI(this,'Left Hand')" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 8px;border:2px solid #eee;border-radius:10px;cursor:pointer;transition:all .15s;text-align:center${(q.acceptedHinge||q.repHingePreference)==='Left Hand'?';border-color:#ee6216;background:#fff8f0':''}">
+          <input type="radio" name="update_hinge_i" value="Left Hand" style="display:none"${(q.acceptedHinge||q.repHingePreference)==='Left Hand'?' checked':''}>
+          <span style="font-size:13px;font-weight:700;color:#333">Left Hand</span>
+          <span style="font-size:11px;color:#888;line-height:1.3">Hinges on left,<br>opens right</span>
+        </label>
+        <label onclick="selectUpdateHingeI(this,'Right Hand')" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 8px;border:2px solid #eee;border-radius:10px;cursor:pointer;transition:all .15s;text-align:center${(q.acceptedHinge||q.repHingePreference)==='Right Hand'?';border-color:#ee6216;background:#fff8f0':''}">
+          <input type="radio" name="update_hinge_i" value="Right Hand" style="display:none"${(q.acceptedHinge||q.repHingePreference)==='Right Hand'?' checked':''}>
+          <span style="font-size:13px;font-weight:700;color:#333">Right Hand</span>
+          <span style="font-size:11px;color:#888;line-height:1.3">Hinges on right,<br>opens left</span>
+        </label>
+      </div>
+      <label onclick="selectUpdateHingeI(this,'Undecided')" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;transition:all .15s">
+        <input type="radio" name="update_hinge_i" value="Undecided" style="display:none"${!(q.acceptedHinge||q.repHingePreference)?' checked':''}>
+        <span style="width:22px;height:22px;border-radius:50%;background:#e0e0e0;border:2px solid #ccc;display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">?</span>
+        Undecided — WhisperRoom will follow up
+      </label>
+    </div>
+
+    ${hasApOnQuote ? `<div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:10px">Acoustic Package Color</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px" id="update-ap-grid-i">
+        ${[['White','#f0eeea'],['Asteroid','#7a8a95'],['Graphite','#3a3d40'],['Onyx','#1a1a1a'],['Coffee Bean','#3d2010'],['Vanilla','#c8b97a'],['Birch','#c4a882'],['Fern','#3d5a2a'],['Green Apple','#8a9a3a'],['Waterfall','#2e8fa0'],['Quarry Blue','#5a6e78'],['Lapis','#1e3a6e'],['Lemon','#f5c518'],['Pumpkin','#c45c22'],['Geranium','#c0282a'],['Orchid','#7a1a3a']].map(([name,hex]) =>
+          `<label onclick="selectUpdateApI(this,'${name}')" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 4px;border:2px solid ${(q.acceptedApColor||q.repApColor)===name?'#ee6216':'transparent'};background:${(q.acceptedApColor||q.repApColor)===name?'#fff8f0':'transparent'};border-radius:8px;cursor:pointer;transition:all .15s" title="${name}">
+            <input type="radio" name="update_ap_i" value="${name}" style="display:none"${(q.acceptedApColor||q.repApColor)===name?' checked':''}>
+            <div style="width:34px;height:34px;border-radius:50%;background:${hex};border:1px solid rgba(0,0,0,.15);flex-shrink:0"></div>
+            <span style="font-size:8px;font-weight:600;text-align:center;color:#777;line-height:1.2">${name}</span>
+          </label>`
+        ).join('')}
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500" id="update-ap-undecided-i">
+        <input type="radio" name="update_ap_i" value="Undecided" style="accent-color:#ee6216" onchange="clearUpdateApI()"> Undecided — WhisperRoom will follow up
+      </label>
+    </div>` : ''}
+
+    <div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:8px">Message to WhisperRoom <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#bbb">(optional)</span></div>
+      <textarea id="update-note-i" rows="3" placeholder="Any questions, special instructions, or delivery notes..." style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
+    </div>
+
+    <div id="update-confirm-i" style="display:none;padding:12px;background:#f0fdf4;border:1px solid #22c55e;border-radius:8px;text-align:center;font-size:13px;color:#166534;font-weight:600;margin-bottom:16px">
+      ✓ WhisperRoom has been notified!
+    </div>
+
+    <div style="display:flex;gap:10px" id="update-btns-i">
+      <button onclick="submitUpdateSelectionsI()" style="flex:1;padding:13px;background:#ee6216;color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">
+        Save Changes
+      </button>
+      <button onclick="document.getElementById('update-modal-i').style.display='none'" style="padding:13px 18px;background:#f0f0f0;color:#555;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
+        Cancel
+      </button>
+    </div>
+  </div>
 </div>
 
 <script>
   document.title = 'Invoice ${q.quoteNumber||''}${q.dealName ? ' — ' + q.dealName.replace(/[<>]/g,'') : ''}';
+
+  function openUpdateModal() {
+    const modal = document.getElementById('update-modal-i');
+    modal.style.display = 'flex';
+    // Re-highlight current foam selection
+    document.querySelectorAll('#update-foam-grid-i label').forEach(l => {
+      const r = l.querySelector('input[type="radio"]');
+      if (r && r.checked) { l.style.borderColor = '#ee6216'; l.style.background = '#fff8f0'; }
+      else { l.style.borderColor = '#eee'; l.style.background = ''; }
+    });
+  }
+  function selectUpdateFoamI(label, value) {
+    const r = label.querySelector('input[type="radio"]'); if (r) r.checked = true;
+    document.querySelectorAll('#update-foam-grid-i label').forEach(l => { l.style.borderColor = '#eee'; l.style.background = ''; });
+    label.style.borderColor = '#ee6216'; label.style.background = '#fff8f0';
+  }
+  function selectUpdateHingeI(label, value) {
+    const r = label.querySelector('input[type="radio"]'); if (r) r.checked = true;
+    label.closest('div').querySelectorAll('label').forEach(l => { l.style.borderColor = '#eee'; l.style.background = ''; });
+    label.style.borderColor = '#ee6216'; label.style.background = '#fff8f0';
+  }
+  function selectUpdateApI(label, value) {
+    const r = label.querySelector('input[type="radio"]'); if (r) r.checked = true;
+    document.querySelectorAll('#update-ap-grid-i label').forEach(l => { l.style.borderColor = 'transparent'; l.style.background = 'transparent'; });
+    label.style.borderColor = '#ee6216'; label.style.background = '#fff8f0';
+    const u = document.getElementById('update-ap-undecided-i'); if (u) { const ri = u.querySelector('input'); if (ri) ri.checked = false; u.style.borderColor = '#eee'; }
+  }
+  function clearUpdateApI() {
+    document.querySelectorAll('#update-ap-grid-i label').forEach(l => { l.style.borderColor = 'transparent'; l.style.background = 'transparent'; const r = l.querySelector('input'); if (r) r.checked = false; });
+  }
+  async function submitUpdateSelectionsI() {
+    const foam  = document.querySelector('input[name="update_foam_i"]:checked')?.value  || '';
+    const hinge = document.querySelector('input[name="update_hinge_i"]:checked')?.value || '';
+    const apColor = document.querySelector('input[name="update_ap_i"]:checked')?.value  || '';
+    const note  = (document.getElementById('update-note-i')?.value || '').trim();
+    document.getElementById('update-btns-i').style.opacity = '.5';
+    document.getElementById('update-btns-i').style.pointerEvents = 'none';
+    try {
+      const res = await fetch('/api/update-specs', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shareToken: '${q.shareToken||''}', foamColor: foam, hingePreference: hinge, apColor: apColor, customerNote: note })
+      });
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById('update-confirm-i').style.display = 'block';
+        setTimeout(() => { document.getElementById('update-modal-i').style.display = 'none'; document.getElementById('update-confirm-i').style.display = 'none'; document.getElementById('update-btns-i').style.opacity='1'; document.getElementById('update-btns-i').style.pointerEvents='auto'; }, 2000);
+      } else {
+        document.getElementById('update-btns-i').style.opacity = '1'; document.getElementById('update-btns-i').style.pointerEvents = 'auto';
+        alert('Something went wrong. Please contact WhisperRoom at (865) 558-5364.');
+      }
+    } catch(e) { document.getElementById('update-btns-i').style.opacity = '1'; document.getElementById('update-btns-i').style.pointerEvents = 'auto'; }
+  }
 </script>
 </body>
 </html>`;
@@ -4252,7 +4386,89 @@ ${q.accepted ? `
 <div style="position:fixed;bottom:0;left:0;right:0;background:#1a7a4a;color:white;padding:20px 28px;z-index:100;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap">
   <span style="font-size:15px;font-weight:700">&#x2713;&nbsp;&nbsp;Quote Accepted</span>
   <span style="font-size:13px;opacity:.8">A WhisperRoom representative will be in touch shortly.</span>
+  <button onclick="document.getElementById('update-modal-q').style.display='flex'" style="padding:8px 16px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);border-radius:6px;color:white;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">&#x270E; Change Specs</button>
   <button onclick="window.print()" style="padding:8px 16px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);border-radius:6px;color:white;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">&#x2B07; Download PDF</button>
+</div>
+
+<!-- Change Specs modal (post-acceptance, /q/ page) -->
+<div id="update-modal-q" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;align-items:center;justify-content:center;padding:16px;overflow-y:auto">
+  <div style="background:white;border-radius:14px;padding:32px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:90vh;overflow-y:auto;margin:auto">
+    <h2 style="font-size:18px;font-weight:800;color:#1a1a1a;margin-bottom:6px">Update Your Selections</h2>
+    <p style="font-size:13px;color:#888;margin-bottom:24px">Make any last-minute changes. WhisperRoom will be notified of your updated preferences.</p>
+
+    <div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:10px">Foam Color</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center" id="update-foam-grid-q">
+        ${[['Gray','#4a4a4a'],['Orange','#d4611a'],['Blue','#1a5fa8'],['Purple','#5c2a82'],['Burgundy','#6e1a2a']].map(([name,hex]) =>
+          `<label onclick="selectUpdateFoamQ(this,'${name}')" style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 6px;border:2px solid ${(q.acceptedFoam||q.repFoamColor)===name?'#ee6216':'#eee'};background:${(q.acceptedFoam||q.repFoamColor)===name?'#fff8f0':''};border-radius:10px;cursor:pointer;transition:all .15s;flex:1;min-width:70px" title="${name}">
+            <input type="radio" name="update_foam_q" value="${name}" style="display:none"${(q.acceptedFoam||q.repFoamColor)===name?' checked':''}>
+            <div style="width:40px;height:40px;border-radius:50%;background:${hex};border:2px solid rgba(0,0,0,.15);flex-shrink:0"></div>
+            <span style="font-size:11px;font-weight:600;color:#555;text-align:center;line-height:1.2">${name}</span>
+          </label>`
+        ).join('')}
+        <label onclick="selectUpdateFoamQ(this,'Undecided')" style="display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 6px;border:2px solid #eee;border-radius:10px;cursor:pointer;transition:all .15s;flex:1;min-width:70px" title="Undecided">
+          <input type="radio" name="update_foam_q" value="Undecided" style="display:none"${!(q.acceptedFoam||q.repFoamColor)?' checked':''}>
+          <div style="width:40px;height:40px;border-radius:50%;background:#e0e0e0;border:2px solid #ccc;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px">?</div>
+          <span style="font-size:11px;font-weight:600;color:#555;text-align:center;line-height:1.2">Undecided</span>
+        </label>
+      </div>
+    </div>
+
+    <div style="margin-bottom:28px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:10px">Door Hinge</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px" id="update-hinge-grid-q">
+        <label onclick="selectUpdateHingeQ(this,'Left Hand')" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 8px;border:2px solid ${(q.acceptedHinge||q.repHingePreference)==='Left Hand'?'#ee6216':'#eee'};background:${(q.acceptedHinge||q.repHingePreference)==='Left Hand'?'#fff8f0':''};border-radius:10px;cursor:pointer;transition:all .15s;text-align:center">
+          <input type="radio" name="update_hinge_q" value="Left Hand" style="display:none"${(q.acceptedHinge||q.repHingePreference)==='Left Hand'?' checked':''}>
+          <span style="font-size:13px;font-weight:700;color:#333">Left Hand</span>
+          <span style="font-size:11px;color:#888;line-height:1.3">Hinges on left,<br>opens right</span>
+        </label>
+        <label onclick="selectUpdateHingeQ(this,'Right Hand')" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 8px;border:2px solid ${(q.acceptedHinge||q.repHingePreference)==='Right Hand'?'#ee6216':'#eee'};background:${(q.acceptedHinge||q.repHingePreference)==='Right Hand'?'#fff8f0':''};border-radius:10px;cursor:pointer;transition:all .15s;text-align:center">
+          <input type="radio" name="update_hinge_q" value="Right Hand" style="display:none"${(q.acceptedHinge||q.repHingePreference)==='Right Hand'?' checked':''}>
+          <span style="font-size:13px;font-weight:700;color:#333">Right Hand</span>
+          <span style="font-size:11px;color:#888;line-height:1.3">Hinges on right,<br>opens left</span>
+        </label>
+      </div>
+      <label onclick="selectUpdateHingeQ(this,'Undecided')" id="update-hinge-undecided-q" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;transition:all .15s">
+        <input type="radio" name="update_hinge_q" value="Undecided" style="display:none"${!(q.acceptedHinge||q.repHingePreference)?' checked':''}>
+        <span style="width:22px;height:22px;border-radius:50%;background:#e0e0e0;border:2px solid #ccc;display:inline-flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">?</span>
+        Undecided — WhisperRoom will follow up
+      </label>
+    </div>
+
+    ${hasApOnQuote ? `<div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:10px">Acoustic Package Color</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px" id="update-ap-grid-q">
+        ${[['White','#f0eeea'],['Asteroid','#7a8a95'],['Graphite','#3a3d40'],['Onyx','#1a1a1a'],['Coffee Bean','#3d2010'],['Vanilla','#c8b97a'],['Birch','#c4a882'],['Fern','#3d5a2a'],['Green Apple','#8a9a3a'],['Waterfall','#2e8fa0'],['Quarry Blue','#5a6e78'],['Lapis','#1e3a6e'],['Lemon','#f5c518'],['Pumpkin','#c45c22'],['Geranium','#c0282a'],['Orchid','#7a1a3a']].map(([name,hex]) =>
+          `<label onclick="selectUpdateApQ(this,'${name}')" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 4px;border:2px solid ${(q.acceptedApColor||q.repApColor)===name?'#ee6216':'transparent'};background:${(q.acceptedApColor||q.repApColor)===name?'#fff8f0':'transparent'};border-radius:8px;cursor:pointer;transition:all .15s" title="${name}">
+            <input type="radio" name="update_ap_q" value="${name}" style="display:none"${(q.acceptedApColor||q.repApColor)===name?' checked':''}>
+            <div style="width:34px;height:34px;border-radius:50%;background:${hex};border:1px solid rgba(0,0,0,.15);flex-shrink:0"></div>
+            <span style="font-size:8px;font-weight:600;text-align:center;color:#777;line-height:1.2">${name}</span>
+          </label>`
+        ).join('')}
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500" id="update-ap-undecided-q">
+        <input type="radio" name="update_ap_q" value="Undecided" style="accent-color:#ee6216" onchange="clearUpdateApQ()"> Undecided — WhisperRoom will follow up
+      </label>
+    </div>` : ''}
+
+    <div style="margin-bottom:20px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#555;margin-bottom:8px">Message to WhisperRoom <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#bbb">(optional)</span></div>
+      <textarea id="update-note-q" rows="3" placeholder="Any questions, special instructions, or delivery notes..." style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
+    </div>
+
+    <div id="update-confirm-q" style="display:none;padding:12px;background:#f0fdf4;border:1px solid #22c55e;border-radius:8px;text-align:center;font-size:13px;color:#166534;font-weight:600;margin-bottom:16px">
+      ✓ WhisperRoom has been notified!
+    </div>
+
+    <div style="display:flex;gap:10px" id="update-btns-q">
+      <button onclick="submitUpdateSelectionsQ()" style="flex:1;padding:13px;background:#ee6216;color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">
+        Save Changes
+      </button>
+      <button onclick="document.getElementById('update-modal-q').style.display='none'" style="padding:13px 18px;background:#f0f0f0;color:#555;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer">
+        Cancel
+      </button>
+    </div>
+  </div>
 </div>
 ` : `
 <div class="action-bar" id="action-bar">
@@ -4365,7 +4581,49 @@ ${q.accepted ? `
       }
     } catch(e) {
       if (btn) { btn.disabled = false; btn.innerHTML = '✓  Accept This Quote'; }
-    }
+    
+  function selectUpdateFoamQ(label, value) {
+    const r = label.querySelector('input[type="radio"]'); if (r) r.checked = true;
+    document.querySelectorAll('#update-foam-grid-q label').forEach(l => { l.style.borderColor = '#eee'; l.style.background = ''; });
+    label.style.borderColor = '#ee6216'; label.style.background = '#fff8f0';
+  }
+  function selectUpdateHingeQ(label, value) {
+    const r = label.querySelector('input[type="radio"]'); if (r) r.checked = true;
+    document.querySelectorAll('#update-hinge-grid-q label, #update-hinge-undecided-q').forEach(l => { l.style.borderColor = '#eee'; l.style.background = ''; });
+    label.style.borderColor = '#ee6216'; label.style.background = '#fff8f0';
+  }
+  function selectUpdateApQ(label, value) {
+    const r = label.querySelector('input[type="radio"]'); if (r) r.checked = true;
+    document.querySelectorAll('#update-ap-grid-q label').forEach(l => { l.style.borderColor = 'transparent'; l.style.background = 'transparent'; });
+    label.style.borderColor = '#ee6216'; label.style.background = '#fff8f0';
+    const u = document.getElementById('update-ap-undecided-q'); if (u) { const ri = u.querySelector('input'); if (ri) ri.checked = false; u.style.borderColor = '#eee'; }
+  }
+  function clearUpdateApQ() {
+    document.querySelectorAll('#update-ap-grid-q label').forEach(l => { l.style.borderColor = 'transparent'; l.style.background = 'transparent'; const r = l.querySelector('input'); if (r) r.checked = false; });
+  }
+  async function submitUpdateSelectionsQ() {
+    const foam  = document.querySelector('input[name="update_foam_q"]:checked')?.value  || '';
+    const hinge = document.querySelector('input[name="update_hinge_q"]:checked')?.value || '';
+    const apColor = document.querySelector('input[name="update_ap_q"]:checked')?.value  || '';
+    const note  = (document.getElementById('update-note-q')?.value || '').trim();
+    document.getElementById('update-btns-q').style.opacity = '.5';
+    document.getElementById('update-btns-q').style.pointerEvents = 'none';
+    try {
+      const res = await fetch('/api/update-specs', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shareToken: '${q.shareToken||""}', foamColor: foam, hingePreference: hinge, apColor: apColor, customerNote: note })
+      });
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById('update-confirm-q').style.display = 'block';
+        setTimeout(() => { document.getElementById('update-modal-q').style.display = 'none'; document.getElementById('update-confirm-q').style.display = 'none'; document.getElementById('update-btns-q').style.opacity='1'; document.getElementById('update-btns-q').style.pointerEvents='auto'; }, 2000);
+      } else {
+        document.getElementById('update-btns-q').style.opacity = '1'; document.getElementById('update-btns-q').style.pointerEvents = 'auto';
+        alert('Something went wrong. Please contact WhisperRoom at (865) 558-5364.');
+      }
+    } catch(e) { document.getElementById('update-btns-q').style.opacity = '1'; document.getElementById('update-btns-q').style.pointerEvents = 'auto'; }
+  }
+}
   }
 </script>
 </body>
@@ -4591,6 +4849,78 @@ ${q.accepted ? `
       }
 
       json({ success: true, results });
+  // -- API: Update specs post-acceptance --
+  if (pathname === '/api/update-specs' && req.method === 'POST') {
+    try {
+      const body = JSON.parse(await readBody(req));
+      const { shareToken, foamColor, hingePreference, apColor, customerNote } = body;
+      if (!shareToken) { json({ error: 'shareToken required' }, 400); return; }
+
+      const qr = await pool.query(
+        `SELECT id, quote_number, deal_id FROM quotes WHERE json_snapshot->>'shareToken' = $1 AND accepted = 'true' LIMIT 1`,
+        [shareToken]
+      );
+      if (!qr.rows.length) { json({ error: 'Quote not found or not accepted' }, 404); return; }
+
+      const row = qr.rows[0];
+      const quoteNumber = row.quote_number;
+      const dealId = row.deal_id;
+
+      // Update accepted fields in snapshot
+      await pool.query(
+        `UPDATE quotes SET json_snapshot = jsonb_set(
+          jsonb_set(
+            jsonb_set(
+              jsonb_set(json_snapshot, '{acceptedFoam}', $2),
+              '{acceptedHinge}', $3),
+            '{acceptedApColor}', $4),
+          '{acceptedNote}', $5)
+        WHERE id = $1`,
+        [row.id,
+         JSON.stringify(foamColor || ''),
+         JSON.stringify(hingePreference || ''),
+         JSON.stringify(apColor || ''),
+         JSON.stringify(customerNote || '')]
+      );
+
+      // Fire HubSpot note to rep — no stage change, no task
+      if (dealId) {
+        try {
+          const noteLines = [
+            `🔄 Customer updated specs on quote #${quoteNumber}.`,
+            '',
+            `Foam Color: ${foamColor || 'Not selected'}`,
+            `Hinge Preference: ${hingePreference || 'Not selected'}`,
+            apColor ? `Acoustic Package Color: ${apColor}` : null,
+            customerNote ? `\nCustomer Note: "${customerNote}"` : null,
+          ].filter(Boolean).join('\n');
+
+          const notePayload = {
+            engagement: { active: true, type: 'NOTE' },
+            associations: { dealIds: [dealId] },
+            metadata: { body: noteLines },
+          };
+          await fetch('https://api.hubapi.com/engagements/v1/engagements', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${process.env.HUBSPOT_ACCESS_TOKEN || process.env.HUBSPOT_API_KEY}`,
+            },
+            body: JSON.stringify(notePayload),
+          });
+        } catch(noteErr) {
+          writelog('warn','update-specs.note-failed', noteErr.message);
+        }
+      }
+
+      json({ success: true });
+    } catch(e) {
+      writelog('error','error.update-specs', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
     writelog('error','error.accept-quote',`accept-quote failed: ${e.message}`,{ rep: getRepFromReq(req) });
     } catch(e) { json({ error: e.message }, 500); }
     return;

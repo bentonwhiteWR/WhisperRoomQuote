@@ -3859,6 +3859,7 @@ const server = http.createServer(async (req, res) => {
 
       const q = quoteData;
       const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+      const hasApOnQuote = (q.lineItems||[]).some(i => i.name && /^AP\s/i.test(i.name));
       const sub = (q.lineItems||[]).reduce((s,i)=>s+(i.price*i.qty),0);
       const disc = q.discount && q.discount.value > 0
         ? (q.discount.type==='pct' ? sub*q.discount.value/100 : q.discount.value) : 0;

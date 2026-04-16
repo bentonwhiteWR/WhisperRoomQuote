@@ -5083,16 +5083,27 @@ ${q.accepted ? `
     try {
       const body = JSON.parse(await readBody(req));
       const { quoteNumber, dealId, foamColor, hingePreference, apColor, customerNote } = body;
-      if (!quoteNumber) { json({ error: 'quoteNumber required' }, 400); return; }
+      console.log('[update-specs] received body:', JSON.stringify({ quoteNumber, dealId, foamColor, hingePreference, apColor, customerNote }));
+      if (!quoteNumber) {
+        console.log('[update-specs] FAIL: no quoteNumber in body');
+        json({ error: 'quoteNumber required' }, 400); return;
+      }
 
+      console.log('[update-specs] querying DB for quoteNumber:', quoteNumber);
+      console.log('[update-specs] db available:', !!db);
       const qr = await db?.query(
         `SELECT id, quote_number, deal_id FROM quotes WHERE quote_number = $1 LIMIT 1`,
         [quoteNumber]
       );
-      if (!qr || !qr.rows.length) { json({ error: 'Quote not found' }, 404); return; }
+      console.log('[update-specs] DB result rows:', qr ? qr.rows.length : 'null (db was falsy)');
+      if (!qr || !qr.rows.length) {
+        console.log('[update-specs] FAIL: quote not found for quoteNumber:', quoteNumber);
+        json({ error: 'Quote not found' }, 404); return;
+      }
 
       const row = qr.rows[0];
       const resolvedDealId = dealId || row.deal_id;
+      console.log('[update-specs] found row id:', row.id, 'resolvedDealId:', resolvedDealId);
 
       // Update accepted fields in snapshot
       await db?.query(
@@ -5110,6 +5121,7 @@ ${q.accepted ? `
          JSON.stringify(apColor || ''),
          JSON.stringify(customerNote || '')]
       );
+      console.log('[update-specs] DB UPDATE complete for row id:', row.id);
 
       // Fire HubSpot note to rep — no stage change, no task
       if (resolvedDealId) {
@@ -5136,13 +5148,16 @@ ${q.accepted ? `
             },
             body: JSON.stringify(notePayload),
           });
+          console.log('[update-specs] HubSpot note fired for dealId:', resolvedDealId);
         } catch(noteErr) {
           writelog('warn','update-specs.note-failed', noteErr.message);
         }
       }
 
+      console.log('[update-specs] SUCCESS for quoteNumber:', quoteNumber);
       json({ success: true });
     } catch(e) {
+      console.log('[update-specs] EXCEPTION:', e.message, e.stack);
       writelog('error','error.update-specs', e.message);
       json({ error: e.message }, 500);
     }

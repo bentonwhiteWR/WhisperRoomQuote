@@ -692,16 +692,20 @@ async function createInvoiceForDeal(event, quoteNumber) {
   const tax       = snap?.tax       || q.tax       || null;
   const discount  = snap?.discount  || q.discount  || { type:'pct', value:0 };
   const customer  = snap?.customer  || q.customer  || {};
+  const install   = snap?.install   || q.install   || null;
 
-  window._pendingInvoice = { dealId: currentDealId, quoteNumber: q.quoteNumber, snap: { lineItems, freight, tax, discount, customer } };
+  window._pendingInvoice = { dealId: currentDealId, quoteNumber: q.quoteNumber, snap: { lineItems, freight, tax, discount, customer, install } };
 
-  // Calculate total for preview + $50k warning
+  // Calculate total for preview + $50k warning.
+  // When install mode is 'delivery_install', install REPLACES freight; otherwise it adds on top.
   const sub = lineItems.reduce((s, i) => s + (parseFloat(i.price||0) * parseInt(i.qty||1)), 0);
   const discVal = discount?.value || 0;
   const disc = discVal > 0 ? (discount?.type === 'pct' ? sub * discVal / 100 : discVal) : 0;
-  const freightTotal = freight?.total || 0;
+  const installMode   = install?.mode || 'none';
+  const installAmount = install?.amount ? parseFloat(install.amount) : 0;
+  const freightTotal  = (installMode === 'delivery_install' && installAmount > 0) ? 0 : (freight?.total || 0);
   const taxTotal = tax?.tax || 0;
-  const total = sub - disc + freightTotal + taxTotal;
+  const total = sub - disc + freightTotal + (installAmount > 0 ? installAmount : 0) + taxTotal;
 
   // Use deal amount from hub as fallback if line items are empty
   const displayTotal = total > 0 ? total : parseFloat(q.amount || 0);
@@ -744,6 +748,7 @@ async function confirmDealInvoice() {
         lineItems:   pending.snap.lineItems  || [],
         freight:     pending.snap.freight    || null,
         tax:         pending.snap.tax        || null,
+        install:     pending.snap.install    || null,
         discount:    pending.snap.discount   || { type:'pct', value:0 },
         customer:    pending.snap.customer   || {},
         allowCC:     document.getElementById('dhInvoiceAllowCC').checked,

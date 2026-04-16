@@ -967,6 +967,68 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
       <div style="margin-top:10px;font-size:11px;color:var(--muted)">Transit: <span id="freightTransit">—</span></div>
       <div class="freight-warning" id="freightWarning" style="display:none"></div>
     </div>
+
+    <!-- Install / Delivery add-on ─────────────────────────────────── -->
+    <div id="installBlock" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--text);letter-spacing:.03em">Delivery &amp; Installation</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Optional. Taxed as freight in nexus states.</div>
+        </div>
+        <button type="button" id="requestInstallBtn" onclick="openInstallRequestModal()"
+          style="padding:7px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
+          Request Installation
+        </button>
+      </div>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:6px">
+        <label class="acc-check" style="min-width:auto" onclick="setInstallMode('none')">
+          <input type="radio" name="installMode" id="installMode-none" checked>
+          <div class="acc-box"></div>None
+        </label>
+        <label class="acc-check" style="min-width:auto" onclick="setInstallMode('install_only')">
+          <input type="radio" name="installMode" id="installMode-install_only">
+          <div class="acc-box"></div>Just Installation
+        </label>
+        <label class="acc-check" style="min-width:auto" onclick="setInstallMode('delivery_install')">
+          <input type="radio" name="installMode" id="installMode-delivery_install">
+          <div class="acc-box"></div>Delivery &amp; Installation
+        </label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:11px;color:var(--muted)">Amount:</span>
+          <input type="number" id="installAmount" placeholder="$"
+            min="0" step="0.01" disabled
+            style="width:110px;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:12px"
+            oninput="onInstallAmountInput()"
+            title="Install / delivery amount">
+        </div>
+      </div>
+      <div id="installStatus" style="font-size:11px;color:var(--muted);margin-top:8px"></div>
+    </div>
+  </div>
+
+  <!-- Request Installation Modal ─────────────────────────────────── -->
+  <div id="installRequestOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9000;align-items:center;justify-content:center">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:22px 24px;max-width:520px;width:94%;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div style="font-size:16px;font-weight:700">&#x1F527; Request Installation</div>
+        <button onclick="closeInstallRequestModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:0 4px;line-height:1">&times;</button>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+        Sends an email to Benton and Josh with the quote link, the customer's shipping address, and the notes below.
+      </div>
+      <div class="field">
+        <label>Additional Notes (access, timing, stairs, contact onsite, etc.)</label>
+        <textarea id="installRequestNotes" rows="6" placeholder="Anything Benton / Josh should know before quoting install…" style="width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit;font-size:13px;line-height:1.5;resize:vertical"></textarea>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+        <button onclick="closeInstallRequestModal()" style="padding:8px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">
+          Cancel
+        </button>
+        <button onclick="submitInstallRequest()" style="padding:8px 16px;background:var(--accent);border:1px solid var(--accent);border-radius:6px;color:white;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
+          Open Draft Email
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- ⑤ TAX -->
@@ -1075,6 +1137,10 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
   <div class="summary-line">
     <span class="summary-label">Freight</span>
     <span class="summary-val" id="sumFreight">Not quoted</span>
+  </div>
+  <div class="summary-line" id="sumInstallLine" style="display:none">
+    <span class="summary-label" id="sumInstallLabel">Installation</span>
+    <span class="summary-val" id="sumInstall">—</span>
   </div>
   <div class="summary-line">
     <span class="summary-label">Sales Tax</span>
@@ -1472,6 +1538,7 @@ let lineItems = [];
 let discountType = 'pct'; // 'pct' or 'flat'
 let freightData = null;
 let taxData = null;
+let installData = null; // { mode: 'none'|'install_only'|'delivery_install', amount: number }
 let searchTimeout = null;
 
 // ── Product Data from freight tool (pallet/weight lookup) ─────────
@@ -2130,6 +2197,99 @@ function sendIntlShippingEmail() {
   document.getElementById('intlShippingOverlay').style.display = 'none';
 }
 
+// ── Request Installation ─────────────────────────────────────────
+// Opens a modal that builds a mailto: to Benton + Josh with the quote link,
+// shipping address, and rep notes. Requires the quote to have been pushed
+// to HubSpot (which is what makes /q/... a shareable link).
+function openInstallRequestModal() {
+  const quoteNumber = (document.getElementById('quoteNumHidden')?.value || '').trim();
+  const dealId = window._lastPushedDealId || null;
+
+  // Guard: quote must be pushed before a shareable link exists.
+  if (!quoteNumber || !dealId) {
+    alert('Please finish the quote and push it to HubSpot before requesting installation. The quote link is included in the email so it needs to exist first.');
+    return;
+  }
+
+  // Pre-fill notes textarea blank; user fills in details
+  const notesEl = document.getElementById('installRequestNotes');
+  if (notesEl) notesEl.value = '';
+
+  document.getElementById('installRequestOverlay').style.display = 'flex';
+  setTimeout(() => { notesEl?.focus(); }, 50);
+}
+
+function closeInstallRequestModal() {
+  document.getElementById('installRequestOverlay').style.display = 'none';
+}
+
+function submitInstallRequest() {
+  const quoteNumber = (document.getElementById('quoteNumHidden')?.value || '').trim();
+  const dealId = window._lastPushedDealId || null;
+  if (!quoteNumber || !dealId) {
+    alert('Quote must be pushed before requesting installation.');
+    return;
+  }
+
+  const notes = (document.getElementById('installRequestNotes')?.value || '').trim();
+
+  // Customer info
+  const firstName = document.getElementById('firstName').value.trim();
+  const lastName  = document.getElementById('lastName').value.trim();
+  const company   = document.getElementById('company').value.trim();
+  const phone     = document.getElementById('phone').value.trim();
+  const email     = document.getElementById('email').value.trim();
+  const custName  = [firstName, lastName].filter(Boolean).join(' ') || company || '—';
+
+  // Shipping address (per request — shipping not billing)
+  const address = document.getElementById('shipAddress').value.trim();
+  const city    = document.getElementById('shipCity').value.trim();
+  const state   = document.getElementById('shipState').value.trim();
+  const zip     = document.getElementById('shipZip').value.trim();
+  const shipBlock = [
+    address,
+    [city, state, zip].filter(Boolean).join(', '),
+  ].filter(Boolean).join('\n') || '[address not on quote]';
+
+  // Share link
+  const shareToken = window._lastPushedShareToken || '';
+  const quoteLink  = `https://sales.whisperroom.com/q/${quoteNumber}${shareToken ? '?t=' + shareToken : ''}`;
+
+  // Rep
+  const repSelect = document.getElementById('repSelect');
+  const repName = repSelect?.options?.[repSelect.selectedIndex]?.text || 'Rep';
+
+  const body = [
+    'Hey Benton and Josh,',
+    '',
+    `I have a customer interested in installation. Quote details below.`,
+    '',
+    `CUSTOMER: ${custName}${company && custName !== company ? ' (' + company + ')' : ''}`,
+    phone ? `PHONE: ${phone}` : null,
+    email ? `EMAIL: ${email}` : null,
+    '',
+    `SHIPPING ADDRESS:`,
+    shipBlock,
+    '',
+    `QUOTE #${quoteNumber}`,
+    quoteLink,
+    '',
+    `NOTES:`,
+    notes || '(none)',
+    '',
+    `— ${repName}`,
+  ].filter(l => l !== null).join('\n');
+
+  const to = 'bentonwhite@whisperroom.com;jfletcher@whisperroom.com';
+  const subject = `Install Request — ${custName}${company && custName !== company ? ' (' + company + ')' : ''} — Quote ${quoteNumber}`;
+
+  const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+  // Open the draft
+  window.location.href = mailto;
+  closeInstallRequestModal();
+}
+
 function bakeInDiscount() {
   const val = parseFloat(document.getElementById('discountValue').value) || 0;
   if (val <= 0) { alert('Set a discount value first.'); return; }
@@ -2171,6 +2331,53 @@ function getFreightTotal() {
   return freightData && !freightData.tbd ? freightData.total : 0;
 }
 
+// ── Install / Delivery helpers ─────────────────────────────────────
+function getInstallMode()   { return installData && installData.mode ? installData.mode : 'none'; }
+function getInstallAmount() { return installData && installData.amount ? parseFloat(installData.amount) || 0 : 0; }
+
+// When mode is 'delivery_install' the install amount REPLACES freight in the total.
+// When mode is 'install_only' it's ADDED on top of freight.
+function getEffectiveFreight() {
+  return (getInstallMode() === 'delivery_install' && getInstallAmount() > 0) ? 0 : getFreightTotal();
+}
+
+function setInstallMode(mode) {
+  const amtInput = document.getElementById('installAmount');
+  if (mode === 'none') {
+    installData = null;
+    if (amtInput) { amtInput.value = ''; amtInput.disabled = true; }
+    document.getElementById('installStatus').textContent = '';
+  } else {
+    const existingAmt = installData && installData.amount ? parseFloat(installData.amount) : 0;
+    installData = { mode, amount: existingAmt };
+    if (amtInput) {
+      amtInput.disabled = false;
+      if (!amtInput.value && existingAmt > 0) amtInput.value = String(existingAmt);
+    }
+    const label = mode === 'delivery_install' ? 'Delivery & Installation' : 'Installation';
+    document.getElementById('installStatus').textContent =
+      mode === 'delivery_install'
+        ? `${label} selected — this replaces the freight line on the quote.`
+        : `${label} selected — appears as its own line item below freight.`;
+  }
+  // Sync radio button visual state (the acc-check label click only toggles the input)
+  ['none','install_only','delivery_install'].forEach(m => {
+    const r = document.getElementById('installMode-'+m);
+    if (r) r.checked = (m === (installData?.mode || 'none'));
+  });
+  // Install may be taxed as freight — recompute tax if we already have a tax result.
+  if (taxData && taxData.inNexus) { getTax().catch(()=>{}); }
+  updateSummary();
+}
+
+function onInstallAmountInput() {
+  const v = parseFloat(document.getElementById('installAmount').value);
+  if (!installData) return; // shouldn't happen — field is disabled when mode is none
+  installData.amount = isFinite(v) && v > 0 ? v : 0;
+  if (taxData && taxData.inNexus) { getTax().catch(()=>{}); }
+  updateSummary();
+}
+
 let _freightTbd = false;
 function toggleFreightTbd() {
   _freightTbd = !_freightTbd;
@@ -2199,9 +2406,11 @@ function getTaxAmount() {
 function updateSummary() {
   const sub = getSubtotal();
   const disc = getDiscountAmount();
-  const freight = getFreightTotal();
+  const freight = getEffectiveFreight();
+  const installAmt = getInstallAmount();
+  const installMode = getInstallMode();
   const tax = getTaxAmount();
-  const total = sub - disc + freight + tax;
+  const total = sub - disc + freight + installAmt + tax;
 
   document.getElementById('sumSubtotal').textContent = fmt(sub);
 
@@ -2218,7 +2427,29 @@ function updateSummary() {
     document.getElementById('discountDisplay').textContent = '— $0.00';
   }
 
-  document.getElementById('sumFreight').textContent = freightData?.tbd ? 'TBD' : (freight > 0 ? fmt(freight) : 'Not quoted');
+  // Freight line — when mode is delivery_install, the freight slot shows "Included"
+  const sumFreightEl = document.getElementById('sumFreight');
+  if (installMode === 'delivery_install' && installAmt > 0) {
+    sumFreightEl.textContent = 'Included with install';
+    sumFreightEl.style.color = 'var(--muted)';
+    sumFreightEl.style.fontStyle = 'italic';
+  } else {
+    sumFreightEl.textContent = freightData?.tbd ? 'TBD' : (freight > 0 ? fmt(freight) : 'Not quoted');
+    sumFreightEl.style.color = '';
+    sumFreightEl.style.fontStyle = '';
+  }
+
+  // Install summary line
+  const sumInstallLine = document.getElementById('sumInstallLine');
+  if (installMode !== 'none' && installAmt > 0) {
+    sumInstallLine.style.display = 'flex';
+    document.getElementById('sumInstallLabel').textContent =
+      installMode === 'delivery_install' ? 'Delivery & Installation' : 'Installation';
+    document.getElementById('sumInstall').textContent = fmt(installAmt);
+  } else {
+    sumInstallLine.style.display = 'none';
+  }
+
   document.getElementById('sumTax').textContent = tax > 0 ? fmt(tax) : (taxData && !taxData.inNexus ? 'No nexus' : 'Not calculated');
   document.getElementById('sumTotal').textContent = fmt(total);
 
@@ -2493,6 +2724,7 @@ async function getTax() {
 
   const subtotal = getSubtotal() - getDiscountAmount();
   const shipping = getFreightTotal();
+  const installShipping = getInstallAmount();
 
   const btn = document.getElementById('taxBtn');
   btn.disabled = true;
@@ -2502,7 +2734,7 @@ async function getTax() {
     const res = await fetch('/api/tax', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state, zip, city, street, subtotal, shipping, rep: document.getElementById('repSelect')?.value || null })
+      body: JSON.stringify({ state, zip, city, street, subtotal, shipping, installShipping, rep: document.getElementById('repSelect')?.value || null })
     });
     const data = await res.json();
     taxData = data;
@@ -2696,6 +2928,7 @@ async function createDeal() {
         lineItems: discountedItems,
         freight: freightData,
         tax: taxData,
+        install: installData,
         taxExempt: !!(document.getElementById('taxexempt') && document.getElementById('taxexempt').checked),
         taxExemptCert: (document.getElementById('taxExemptCert') || {value:''}).value.trim() || '',
         discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0, amount: disc },
@@ -2735,6 +2968,7 @@ async function createDeal() {
       }
       window._lastPushedContactId = data.contactId || null;
       window._lastPushedDealId = data.dealId || null;
+      window._lastPushedShareToken = data.shareToken || null;
       setQuoteAccepted(false);
       // Show Back to Deal Hub button
       const backBtn = document.getElementById('backToDealHubBtn');
@@ -2812,6 +3046,7 @@ async function createDeal() {
         discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
         freight: freightData ? {...freightData} : null,
         tax: taxData ? {...taxData} : null,
+        install: installData ? {...installData} : null,
         accessories, notes: document.getElementById('notes').value.trim(),
         repFoamColor:       document.getElementById('repFoamColor')?.value || '',
         repHingePreference: document.getElementById('repHingePreference')?.value || '',
@@ -3787,6 +4022,28 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
 
   freightData = q.freight || null;
   taxData = q.tax || null;
+  installData = q.install || null;
+
+  // Restore install UI state
+  (function restoreInstallUi() {
+    const mode = installData?.mode || 'none';
+    const amt  = installData?.amount ? parseFloat(installData.amount) : 0;
+    ['none','install_only','delivery_install'].forEach(m => {
+      const r = document.getElementById('installMode-'+m);
+      if (r) r.checked = (m === mode);
+    });
+    const amtInput = document.getElementById('installAmount');
+    if (amtInput) {
+      amtInput.disabled = (mode === 'none');
+      amtInput.value = amt > 0 ? String(amt) : '';
+    }
+    const statusEl = document.getElementById('installStatus');
+    if (statusEl) {
+      if (mode === 'delivery_install') statusEl.textContent = 'Delivery & Installation selected — this replaces the freight line on the quote.';
+      else if (mode === 'install_only') statusEl.textContent = 'Installation selected — appears as its own line item below freight.';
+      else statusEl.textContent = '';
+    }
+  })();
 
   // Restore TBD state
   _freightTbd = !!(freightData?.tbd);
@@ -4760,12 +5017,23 @@ function newQuote(skipConfirm = false) {
   // Clear freight & tax
   freightData = null;
   taxData = null;
+  installData = null;
   window._abfFreightData = null;
   document.getElementById('freightResult').classList.remove('visible');
   document.getElementById('taxResult')?.classList.remove('visible');
   document.getElementById('freightOverride').value = '';
   const ol = document.getElementById('freightOverrideLabel');
   if (ol) ol.style.display = 'none';
+
+  // Clear install UI
+  ['none','install_only','delivery_install'].forEach(m => {
+    const r = document.getElementById('installMode-'+m);
+    if (r) r.checked = (m === 'none');
+  });
+  const instAmtInput = document.getElementById('installAmount');
+  if (instAmtInput) { instAmtInput.value = ''; instAmtInput.disabled = true; }
+  const instStatus = document.getElementById('installStatus');
+  if (instStatus) instStatus.textContent = '';
 
   // Clear discount
   discountType = 'pct';
@@ -5714,6 +5982,7 @@ async function confirmProcessOrder() {
         lineItems,
         freight: freightData,
         tax: taxData,
+        install: installData,
         discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
         customer: {
           firstName: document.getElementById('firstName').value.trim(),
@@ -5914,6 +6183,7 @@ async function confirmCreateInvoice() {
         lineItems,
         freight: freightData,
         tax: taxData,
+        install: installData,
         discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
         advanceStage: false,
         allowCC:  document.getElementById('invoiceAllowCC')?.checked !== false,

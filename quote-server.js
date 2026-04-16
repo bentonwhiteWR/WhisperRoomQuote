@@ -1929,7 +1929,7 @@ function buildPdfFilename(quoteData, quoteNumber, type, dealName) {
   const safe = parts.join(' ').replace(/[/\\:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
   return type ? `${safe} (${type}).pdf` : `${safe}.pdf`;
 }
-async function calculateTaxProper(toState, toZip, toCity, amount, shipping, toStreet = '') {
+async function calculateTaxProper(toState, toZip, toCity, amount, shipping, toStreet = '', installShipping = 0) {
   const stateUpper = toStateAbbr(toState);
   const inNexus = NEXUS_STATES[stateUpper];
   if (!inNexus) return { tax: 0, rate: 0, inNexus: false };
@@ -1941,7 +1941,11 @@ async function calculateTaxProper(toState, toZip, toCity, amount, shipping, toSt
     return { tax: 0, rate: 0, inNexus: true, error: 'No zip code provided' };
   }
 
-  const taxableShipping = inNexus.taxFreight ? shipping : 0;
+  // Install/delivery is classified as freight for nexus taxability purposes.
+  // Client passes them separately so install shows as its own line, but they
+  // combine into TaxJar's single `shipping` field when the state taxes freight.
+  const combinedShipping = (parseFloat(shipping) || 0) + (parseFloat(installShipping) || 0);
+  const taxableShipping = inNexus.taxFreight ? combinedShipping : 0;
   const body = {
     from_country: 'US', from_state: 'TN', from_zip: '37813', from_city: 'Morristown',
     from_street: '1313 S Davy Crockett Pkwy',
@@ -1953,7 +1957,7 @@ async function calculateTaxProper(toState, toZip, toCity, amount, shipping, toSt
   if (toCity && toCity.trim()) body.to_city = toCity.trim();
   if (toStreet && toStreet.trim()) body.to_street = toStreet.trim();
 
-  console.log(`[tax] calculating for ${toCity||'(no city)'}, ${stateUpper} ${toZip} — amount: ${amount}, shipping: ${taxableShipping}`);
+  console.log(`[tax] calculating for ${toCity||'(no city)'}, ${stateUpper} ${toZip} — amount: ${amount}, shipping: ${taxableShipping} (freight: ${shipping||0}, install: ${installShipping||0})`);
 
   console.log(`[tax] sending to TaxJar:`, JSON.stringify(body));
 
@@ -3212,10 +3216,10 @@ const server = http.createServer(async (req, res) => {
     let body = {};
     try {
       body = JSON.parse(await readBody(req));
-      const { state: rawState, zip, city, subtotal, shipping, street, rep } = body;
+      const { state: rawState, zip, city, subtotal, shipping, installShipping, street, rep } = body;
       const state = toStateAbbr(rawState);
-      console.log(`[tax route] received: state=${state} zip=${zip} city=${city||'(none)'} street=${street||'(none)'} subtotal=${subtotal} shipping=${shipping}`);
-      const result = await calculateTaxProper(state, zip, city, subtotal, shipping, street || '');
+      console.log(`[tax route] received: state=${state} zip=${zip} city=${city||'(none)'} street=${street||'(none)'} subtotal=${subtotal} shipping=${shipping} installShipping=${installShipping||0}`);
+      const result = await calculateTaxProper(state, zip, city, subtotal, shipping, street || '', installShipping || 0);
       console.log(`[tax route] result: tax=${result.tax} rate=${result.rate} inNexus=${result.inNexus} error=${result.error||'none'}`);
       if (result.error) {
         console.error(`[tax] error for ${state} ${zip}: ${result.error}`);
@@ -3234,7 +3238,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, isRevision, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, notes, repFoamColor, repHingePreference, repApColor } = body;
+      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, isRevision, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, notes, repFoamColor, repHingePreference, repApColor, install } = body;
       let { quoteNumber } = body;
 
       // ── In-place update detection ────────────────────────────────────
@@ -3481,7 +3485,14 @@ const server = http.createServer(async (req, res) => {
           })(),
           tax_rate: tax && tax.rate ? String((tax.rate * 100).toFixed(3)) : '',
           quote_number: quoteNumber || '',
-          freight_cost: freight && freight.total ? String(freight.total) : '',
+          freight_cost: (() => {
+            // When mode is "delivery_install", the combined charge IS the freight for this deal.
+            // For "install_only" or "none", freight_cost stays as the pure freight amount.
+            if (install && install.mode === 'delivery_install' && parseFloat(install.amount) > 0) {
+              return String(parseFloat(install.amount).toFixed(2));
+            }
+            return freight && freight.total ? String(freight.total) : '';
+          })(),
           discount: discount && discount.value ? String(discount.value) : '',
           shipping_address: customer.address || '',
           shipping_city: customer.city || '',
@@ -3573,24 +3584,53 @@ const server = http.createServer(async (req, res) => {
           if (li.id) lineItemIds.push(li.id);
         }
 
-        // Add freight line item
-        if (freight && freight.total > 0 && !freight.tbd) {
-          const fli = await hsCreateLineItem({
-            name: 'Freight',
+        // Add freight and/or install line items based on install mode.
+        //   mode "none"             → Freight line only (as before)
+        //   mode "install_only"     → Freight line + Installation line
+        //   mode "delivery_install" → single "Delivery and Installation" line (replaces freight)
+        const installMode   = (install && install.mode) ? install.mode : 'none';
+        const installAmount = install && install.amount ? parseFloat(install.amount) : 0;
+
+        if (installMode === 'delivery_install' && installAmount > 0) {
+          // Combined charge — one line, no separate freight line.
+          const dli = await hsCreateLineItem({
+            name: 'Delivery and Installation',
             quantity: '1',
-            price: String(freight.total.toFixed(2)),
-            description: `LTL freight estimate. Transit: ${freight.transit || '—'}. ${freight.dynDisc > 0 ? `Dynamic discount of $${freight.dynDisc} excluded.` : ''}`,
+            price: String(installAmount.toFixed(2)),
+            description: 'Delivery and installation by WhisperRoom.',
           });
-          if (fli.id) lineItemIds.push(fli.id);
+          if (dli.id) lineItemIds.push(dli.id);
+        } else {
+          // Freight line (same as before)
+          if (freight && freight.total > 0 && !freight.tbd) {
+            const fli = await hsCreateLineItem({
+              name: 'Freight',
+              quantity: '1',
+              price: String(freight.total.toFixed(2)),
+              description: `LTL freight estimate. Transit: ${freight.transit || '—'}. ${freight.dynDisc > 0 ? `Dynamic discount of $${freight.dynDisc} excluded.` : ''}`,
+            });
+            if (fli.id) lineItemIds.push(fli.id);
+          }
+          // Separate installation line
+          if (installMode === 'install_only' && installAmount > 0) {
+            const ili = await hsCreateLineItem({
+              name: 'Installation',
+              quantity: '1',
+              price: String(installAmount.toFixed(2)),
+              description: 'Installation service.',
+            });
+            if (ili.id) lineItemIds.push(ili.id);
+          }
         }
 
         // Add tax line item if applicable
         if (tax && tax.tax > 0) {
+          const taxIncludesInstall = tax.freightTaxed && installAmount > 0;
           const tli = await hsCreateLineItem({
             name: `Sales Tax (${(tax.rate * 100).toFixed(3)}%)`,
             quantity: '1',
             price: String(tax.tax.toFixed(2)),
-            description: `State: ${customer.state}. ${tax.freightTaxed ? 'Includes freight.' : 'Product only.'}`,
+            description: `State: ${customer.state}. ${tax.freightTaxed ? (taxIncludesInstall ? 'Includes freight and install.' : 'Includes freight.') : 'Product only.'}`,
           });
           if (tli.id) lineItemIds.push(tli.id);
         }
@@ -3682,6 +3722,7 @@ const server = http.createServer(async (req, res) => {
           quoteNumber, dealId, contactId, dealName: finalDealName, ownerId, total,
           date: new Date().toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}),
           customer, lineItems, discount, freight, tax,
+          install: install || null,
           quoteLabel: quoteLabel || '',
           notes: notes || '',
           repFoamColor:       repFoamColor       || '',
@@ -3822,9 +3863,15 @@ const server = http.createServer(async (req, res) => {
       const disc = q.discount && q.discount.value > 0
         ? (q.discount.type==='pct' ? sub*q.discount.value/100 : q.discount.value) : 0;
       const freightTbd = q.freight?.tbd === true;
-      const freightAmt = (!freightTbd && q.freight) ? q.freight.total : 0;
+      // Install/delivery state. Three modes: 'none' | 'install_only' | 'delivery_install'.
+      // In 'delivery_install' mode the install amount REPLACES freight in the totals.
+      const installMode   = (q.install && q.install.mode) ? q.install.mode : 'none';
+      const installAmt    = (q.install && q.install.amount) ? parseFloat(q.install.amount) : 0;
+      const freightAmt    = (installMode === 'delivery_install' && installAmt > 0)
+        ? 0
+        : ((!freightTbd && q.freight) ? q.freight.total : 0);
       const taxAmt = q.tax ? q.tax.tax : 0;
-      const total = sub - disc + freightAmt + taxAmt;
+      const total = sub - disc + freightAmt + (installAmt > 0 ? installAmt : 0) + taxAmt;
       const c = q.customer || {};
 
       const lineRows = (q.lineItems||[]).map(item =>
@@ -3966,6 +4013,7 @@ tbody tr:hover td{background:#fdfcfb}
           <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
           ${disc>0?`<div class="tot"><span>Discount${q.discount&&q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
           ${freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
+          ${installAmt>0?`<div class="tot"><span>${installMode==='delivery_install'?'Delivery and Installation':'Installation'}</span><span>${fmt(installAmt)}</span></div>`:''}
           ${taxAmt>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+(q.tax.rate*100).toFixed(2).replace(/\\.?0+$/,'')+'%)':''}</span><span>${fmt(taxAmt)}</span></div>`:''}
           ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
           <div class="tot grand"><span>Amount Due</span><span>${fmt(total)}</span></div>
@@ -4192,9 +4240,14 @@ tbody tr:hover td{background:#fdfcfb}
       const disc = q.discount && q.discount.value > 0
         ? (q.discount.type==='pct' ? sub*q.discount.value/100 : q.discount.value) : 0;
       const freightTbd = q.freight?.tbd === true;
-      const freight = (!freightTbd && q.freight) ? q.freight.total : 0;
+      // Install/delivery state. In 'delivery_install' mode install REPLACES freight.
+      const installMode = (q.install && q.install.mode) ? q.install.mode : 'none';
+      const installAmt  = (q.install && q.install.amount) ? parseFloat(q.install.amount) : 0;
+      const freight     = (installMode === 'delivery_install' && installAmt > 0)
+        ? 0
+        : ((!freightTbd && q.freight) ? q.freight.total : 0);
       const tax = q.tax ? q.tax.tax : 0;
-      const total = sub - disc + freight + tax;
+      const total = sub - disc + freight + (installAmt > 0 ? installAmt : 0) + tax;
       const c = q.customer || {};
 
       const lineRows = (q.lineItems||[]).map(item =>
@@ -4358,6 +4411,7 @@ tbody tr:hover td{background:#fdfcfb}
           <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
           ${disc>0?`<div class="tot"><span>Discount${q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
           ${freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freight>0?`<div class="tot"><span>Freight</span><span>${fmt(freight)}</span></div>`:''}
+          ${installAmt>0?`<div class="tot"><span>${installMode==='delivery_install'?'Delivery and Installation':'Installation'}</span><span>${fmt(installAmt)}</span></div>`:''}
           ${tax>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+( q.tax.rate*100).toFixed(2).replace(/\.?0+$/,'')+')%':''}</span><span>${fmt(tax)}</span></div>`:''}
           ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
           <div class="tot grand"><span>Total</span><span>${fmt(total)}</span></div>
@@ -6378,6 +6432,7 @@ ${q.accepted ? `
         lineItems:       snap.lineItems    || [],
         freight:         snap.freight      || null,
         tax:             snap.tax          || null,
+        install:         snap.install      || null,
         discount:        snap.discount     || { type:'pct', value:0 },
         customer:        snap.customer     || {},
         billing:         snap.billing      || null,
@@ -6811,7 +6866,7 @@ ${q.accepted ? `
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
       const body = JSON.parse(await readBody(req));
-      const { dealId, quoteNumber, lineItems, freight, tax, discount, ownerId, contactId, customer, allowCC, allowACH } = body;
+      const { dealId, quoteNumber, lineItems, freight, tax, discount, ownerId, contactId, customer, allowCC, allowACH, install } = body;
 
       if (!dealId) { json({ error: 'No deal ID' }, 400); return; }
 
@@ -6883,14 +6938,33 @@ ${q.accepted ? `
         console.log(`[create-invoice] deducted $${creditAmt.toFixed(2)} credits from "${anchor.name}" (${origPrice.toFixed(2)} → ${adjustedPrice.toFixed(2)})`);
       }
 
-      if (freightTotal > 0) invoiceLineItems.push({
-        name: 'Freight', qty: 1, price: freightTotal,
-        description: freight?.transit ? `LTL freight. Transit: ${freight.transit}` : 'LTL freight'
-      });
+      // Install/delivery handling — same three-mode logic as /api/create-deal.
+      const invInstallMode   = (install && install.mode) ? install.mode : 'none';
+      const invInstallAmount = install && install.amount ? parseFloat(install.amount) : 0;
+      const invInstallIncluded = invInstallAmount > 0;
+
+      if (invInstallMode === 'delivery_install' && invInstallAmount > 0) {
+        // Combined charge replaces freight line.
+        invoiceLineItems.push({
+          name: 'Delivery and Installation', qty: 1, price: invInstallAmount,
+          description: 'Delivery and installation by WhisperRoom.'
+        });
+      } else {
+        if (freightTotal > 0) invoiceLineItems.push({
+          name: 'Freight', qty: 1, price: freightTotal,
+          description: freight?.transit ? `LTL freight. Transit: ${freight.transit}` : 'LTL freight'
+        });
+        if (invInstallMode === 'install_only' && invInstallAmount > 0) {
+          invoiceLineItems.push({
+            name: 'Installation', qty: 1, price: invInstallAmount,
+            description: 'Installation service.'
+          });
+        }
+      }
       if (taxTotal > 0) invoiceLineItems.push({
         name: `Sales Tax (${tax?.rate ? (tax.rate * 100).toFixed(2).replace(/\.?0+$/,'') : ''}%)`,
         qty: 1, price: taxTotal,
-        description: tax?.freightTaxed ? 'State tax — includes freight.' : 'State tax — product only.'
+        description: tax?.freightTaxed ? (invInstallIncluded ? 'State tax — includes freight and install.' : 'State tax — includes freight.') : 'State tax — product only.'
       });
 
       const createdLineItemIds = [];
@@ -9100,9 +9174,14 @@ setInterval(loadLogs,30000);
       const disc = q.discount && q.discount.value > 0
         ? (q.discount.type==='pct' ? sub*q.discount.value/100 : q.discount.value) : 0;
       const freightTbd = q.freight?.tbd === true;
-      const freightAmt = (!freightTbd && q.freight) ? q.freight.total : 0;
+      // Install/delivery state. In 'delivery_install' mode install REPLACES freight.
+      const installMode = (q.install && q.install.mode) ? q.install.mode : 'none';
+      const installAmt  = (q.install && q.install.amount) ? parseFloat(q.install.amount) : 0;
+      const freightAmt  = (installMode === 'delivery_install' && installAmt > 0)
+        ? 0
+        : ((!freightTbd && q.freight) ? q.freight.total : 0);
       const taxAmt = q.tax ? q.tax.tax : 0;
-      const total = sub - disc + freightAmt + taxAmt;
+      const total = sub - disc + freightAmt + (installAmt > 0 ? installAmt : 0) + taxAmt;
       const totalWeight = (q.lineItems||[]).reduce((s,i) => s + ((parseFloat(i.weight)||0) * (parseInt(i.qty)||1)), 0);
       const c = q.customer || {};
       const issueDate = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'});
@@ -9234,6 +9313,7 @@ tbody tr:last-child td{border-bottom:none}
       <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
       ${disc>0?`<div class="tot"><span>Discount${q.discount&&q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
       ${freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
+      ${installAmt>0?`<div class="tot"><span>${installMode==='delivery_install'?'Delivery and Installation':'Installation'}</span><span>${fmt(installAmt)}</span></div>`:''}
       ${taxAmt>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+(q.tax.rate*100).toFixed(2).replace(/\.?0+$/,'')+'%)':''}</span><span>${fmt(taxAmt)}</span></div>`:''}
       ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
       <div class="tot grand"><span>Order Total</span><span>${fmt(total)}</span></div>
@@ -9299,7 +9379,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
       const body = JSON.parse(await readBody(req));
-      const { dealId, quoteNumber, lineItems, freight, tax, discount,
+      const { dealId, quoteNumber, lineItems, freight, tax, discount, install,
               customer, foamColor, hingePreference, apColor, productionNotes,
               deliveryNotes, ownerId, dealName } = body;
 
@@ -9335,9 +9415,29 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
           const li = await hsCreateLineItem({ name: cr.name, quantity:'1', price:'0.00', description:`Credit: -$${amt.toFixed(2)}` });
           if (li.id) processedLineItemIds.push(li.id);
         }
-        if (freight && freight.total > 0) {
-          const fli = await hsCreateLineItem({ name:'Freight', quantity:'1', price:String(parseFloat(freight.total||0).toFixed(2)), description:`LTL freight. Transit: ${freight.transit||'—'}` });
-          if (fli.id) processedLineItemIds.push(fli.id);
+        // Install / delivery — same three-mode logic as create-deal
+        const poInstallMode   = (install && install.mode) ? install.mode : 'none';
+        const poInstallAmount = install && install.amount ? parseFloat(install.amount) : 0;
+        if (poInstallMode === 'delivery_install' && poInstallAmount > 0) {
+          const dli = await hsCreateLineItem({
+            name:'Delivery and Installation', quantity:'1',
+            price:String(poInstallAmount.toFixed(2)),
+            description:'Delivery and installation by WhisperRoom.'
+          });
+          if (dli.id) processedLineItemIds.push(dli.id);
+        } else {
+          if (freight && freight.total > 0) {
+            const fli = await hsCreateLineItem({ name:'Freight', quantity:'1', price:String(parseFloat(freight.total||0).toFixed(2)), description:`LTL freight. Transit: ${freight.transit||'—'}` });
+            if (fli.id) processedLineItemIds.push(fli.id);
+          }
+          if (poInstallMode === 'install_only' && poInstallAmount > 0) {
+            const ili = await hsCreateLineItem({
+              name:'Installation', quantity:'1',
+              price:String(poInstallAmount.toFixed(2)),
+              description:'Installation service.'
+            });
+            if (ili.id) processedLineItemIds.push(ili.id);
+          }
         }
         if (tax && tax.tax > 0) {
           const tli = await hsCreateLineItem({ name:`Sales Tax (${(tax.rate*100).toFixed(3)}%)`, quantity:'1', price:String(parseFloat(tax.tax).toFixed(2)), description:`State: ${customer?.state||''}` });

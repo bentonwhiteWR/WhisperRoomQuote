@@ -981,15 +981,15 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
         </button>
       </div>
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:6px">
-        <label class="acc-check" style="min-width:auto" onclick="setInstallMode('none')">
+        <label class="acc-check active" id="installLabel-none" style="min-width:auto" onclick="setInstallMode('none')">
           <input type="radio" name="installMode" id="installMode-none" checked>
           <div class="acc-box"></div>None
         </label>
-        <label class="acc-check" style="min-width:auto" onclick="setInstallMode('install_only')">
+        <label class="acc-check" id="installLabel-install_only" style="min-width:auto" onclick="setInstallMode('install_only')">
           <input type="radio" name="installMode" id="installMode-install_only">
           <div class="acc-box"></div>Just Installation
         </label>
-        <label class="acc-check" style="min-width:auto" onclick="setInstallMode('delivery_install')">
+        <label class="acc-check" id="installLabel-delivery_install" style="min-width:auto" onclick="setInstallMode('delivery_install')">
           <input type="radio" name="installMode" id="installMode-delivery_install">
           <div class="acc-box"></div>Delivery &amp; Installation
         </label>
@@ -2360,14 +2360,22 @@ function setInstallMode(mode) {
         ? `${label} selected — this replaces the freight line on the quote.`
         : `${label} selected — appears as its own line item below freight.`;
   }
-  // Sync radio button visual state (the acc-check label click only toggles the input)
-  ['none','install_only','delivery_install'].forEach(m => {
-    const r = document.getElementById('installMode-'+m);
-    if (r) r.checked = (m === (installData?.mode || 'none'));
-  });
+  syncInstallRadioUi();
   // Install may be taxed as freight — recompute tax if we already have a tax result.
   if (taxData && taxData.inNexus) { getTax().catch(()=>{}); }
   updateSummary();
+}
+
+// Shared helper — keeps the radio input's .checked AND the label's .active class
+// in sync with installData. Used by setInstallMode, load-quote restore, and full clear.
+function syncInstallRadioUi() {
+  const active = installData?.mode || 'none';
+  ['none','install_only','delivery_install'].forEach(m => {
+    const r   = document.getElementById('installMode-'+m);
+    const lbl = document.getElementById('installLabel-'+m);
+    if (r)   r.checked = (m === active);
+    if (lbl) lbl.classList.toggle('active', m === active);
+  });
 }
 
 function onInstallAmountInput() {
@@ -2888,7 +2896,10 @@ async function createDeal() {
 
   const sub = getSubtotal();
   const disc = getDiscountAmount();
-  const total = sub - disc + getFreightTotal() + getTaxAmount();
+  // Total must include install so the server's in-place check correctly detects
+  // that something changed. getEffectiveFreight() returns 0 when mode is
+  // 'delivery_install' since install REPLACES freight in that mode.
+  const total = sub - disc + getEffectiveFreight() + getInstallAmount() + getTaxAmount();
 
   const discountedItems = lineItems.map(item => ({
     ...item,
@@ -4028,10 +4039,7 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   (function restoreInstallUi() {
     const mode = installData?.mode || 'none';
     const amt  = installData?.amount ? parseFloat(installData.amount) : 0;
-    ['none','install_only','delivery_install'].forEach(m => {
-      const r = document.getElementById('installMode-'+m);
-      if (r) r.checked = (m === mode);
-    });
+    syncInstallRadioUi();
     const amtInput = document.getElementById('installAmount');
     if (amtInput) {
       amtInput.disabled = (mode === 'none');
@@ -5026,10 +5034,7 @@ function newQuote(skipConfirm = false) {
   if (ol) ol.style.display = 'none';
 
   // Clear install UI
-  ['none','install_only','delivery_install'].forEach(m => {
-    const r = document.getElementById('installMode-'+m);
-    if (r) r.checked = (m === 'none');
-  });
+  syncInstallRadioUi();
   const instAmtInput = document.getElementById('installAmount');
   if (instAmtInput) { instAmtInput.value = ''; instAmtInput.disabled = true; }
   const instStatus = document.getElementById('installStatus');
@@ -5576,19 +5581,66 @@ function renderDealHub(data) {
 async function qbHubCreateInvoice(quoteNumber) {
   const dealId = linkedDeal?.id || window._lastPushedDealId;
   if (!dealId) { showToast('No deal linked', 'error'); return; }
-  if (!confirm(`Create invoice for ${quoteNumber}?`)) return;
+
   try {
+    // 1. Fetch the snapshot for this quote
     const snapRes = await fetch(`/api/quote-snapshot/${encodeURIComponent(quoteNumber)}`, { credentials:'include' });
     const snap = await snapRes.json();
     if (snap.error) throw new Error(snap.error);
-    const res = await fetch('/api/create-invoice', {
-      method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
-      body: JSON.stringify({ dealId, quoteNumber, lineItems:snap.lineItems||[], freight:snap.freight, tax:snap.tax, discount:snap.discount, customer:snap.customer })
-    });
-    const data = await res.json();
-    if (data.success) { showToast('✓ Invoice created!', 'success'); openDealHub(); }
-    else throw new Error(data.error);
-  } catch(e) { showToast('Error: '+e.message, 'error'); }
+
+    // 2. Compute preview total (install-aware)
+    const sub = (snap.lineItems || []).reduce((s, i) => s + (parseFloat(i.price||0) * parseInt(i.qty||1)), 0);
+    const discVal = snap.discount?.value || 0;
+    const disc = discVal > 0 ? (snap.discount?.type === 'pct' ? sub * discVal / 100 : discVal) : 0;
+    const installMode   = snap.install?.mode || 'none';
+    const installAmount = snap.install?.amount ? parseFloat(snap.install.amount) : 0;
+    const freightTotal  = (installMode === 'delivery_install' && installAmount > 0) ? 0 : (snap.freight?.total || 0);
+    const taxTotal      = snap.tax?.tax || 0;
+    const previewTotal  = sub - disc + freightTotal + (installAmount > 0 ? installAmount : 0) + taxTotal;
+
+    // 3. Stash for confirmCreateInvoice() to pick up
+    window._qbHubInvoicePending = {
+      dealId,
+      quoteNumber,
+      snap: {
+        lineItems: snap.lineItems || [],
+        freight:   snap.freight   || null,
+        tax:       snap.tax       || null,
+        install:   snap.install   || null,
+        discount:  snap.discount  || { type:'pct', value:0 },
+        customer:  snap.customer  || {},
+        ownerId:   snap.ownerId   || null,
+        contactId: snap.contactId || null,
+      }
+    };
+
+    // 4. Populate the shared invoice modal
+    const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    const dealLabel = snap.dealName || linkedDeal?.dealname || document.getElementById('dealName')?.value.trim() || quoteNumber;
+    document.getElementById('invoicePreviewName').textContent  = dealLabel;
+    document.getElementById('invoicePreviewQuote').textContent = quoteNumber;
+    document.getElementById('invoicePreviewTotal').textContent = fmt(previewTotal);
+
+    // Reset payment methods to defaults
+    document.getElementById('invoiceAllowCC').checked  = true;
+    document.getElementById('invoiceAllowACH').checked = true;
+
+    // Show $50k CC warning if applicable
+    const warning = document.getElementById('invoiceCCWarning');
+    const feeEl   = document.getElementById('invoiceCCFeeAmt');
+    if (previewTotal >= 50000) {
+      const fee = (previewTotal * 0.034).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      feeEl.textContent = '$' + fee;
+      warning.style.display = 'block';
+    } else {
+      warning.style.display = 'none';
+    }
+
+    // 5. Show modal — rep confirms + picks payment methods
+    document.getElementById('invoiceModal').style.display = 'flex';
+  } catch(e) {
+    showToast('Error loading quote: ' + e.message, 'error');
+  }
 }
 
 async function markDhQuotePaid(quoteNumber) {
@@ -6165,46 +6217,66 @@ async function createInvoice() {
 }
 
 async function confirmCreateInvoice() {
-  const dealId = window._lastPushedDealId || linkedDeal?.id;
-  const quoteNumber = document.getElementById('quoteNumHidden').value;
+  const pending = window._qbHubInvoicePending || null; // snapshot-based (from mini deal hub)
+
+  const dealId      = pending?.dealId      || window._lastPushedDealId || linkedDeal?.id;
+  const quoteNumber = pending?.quoteNumber || document.getElementById('quoteNumHidden').value;
 
   const confirmBtn = document.getElementById('invoiceConfirmBtn');
   confirmBtn.disabled = true;
   confirmBtn.textContent = 'Creating…';
+
+  // If pending hub invoice, use the stashed snapshot. Otherwise use current form state.
+  const payload = pending ? {
+    dealId,
+    quoteNumber,
+    lineItems: pending.snap.lineItems || [],
+    freight:   pending.snap.freight   || null,
+    tax:       pending.snap.tax       || null,
+    install:   pending.snap.install   || null,
+    discount:  pending.snap.discount  || { type:'pct', value:0 },
+    advanceStage: false,
+    allowCC:  document.getElementById('invoiceAllowCC')?.checked  !== false,
+    allowACH: document.getElementById('invoiceAllowACH')?.checked !== false,
+    ownerId:   pending.snap.ownerId   || linkedDeal?.ownerId || null,
+    contactId: pending.snap.contactId || null,
+    customer:  pending.snap.customer  || {},
+  } : {
+    dealId,
+    quoteNumber,
+    lineItems,
+    freight: freightData,
+    tax: taxData,
+    install: installData,
+    discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
+    advanceStage: false,
+    allowCC:  document.getElementById('invoiceAllowCC')?.checked !== false,
+    allowACH: document.getElementById('invoiceAllowACH')?.checked !== false,
+    ownerId: linkedDeal?.ownerId || window._lastPushedOwnerId || document.getElementById('repSelect').value || null,
+    contactId: window._lastPushedContactId || null,
+    customer: {
+      firstName: document.getElementById('firstName')?.value.trim() || '',
+      lastName:  document.getElementById('lastName')?.value.trim() || '',
+      company:   document.getElementById('company')?.value.trim() || '',
+      address:   document.getElementById('shipAddress')?.value.trim() || '',
+      city:      document.getElementById('shipCity')?.value.trim() || '',
+      state:     document.getElementById('shipState')?.value.trim() || '',
+      zip:       document.getElementById('shipZip')?.value.trim() || '',
+      country:   'US',
+    },
+  };
 
   try {
     const res = await fetch('/api/create-invoice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({
-        dealId,
-        quoteNumber,
-        lineItems,
-        freight: freightData,
-        tax: taxData,
-        install: installData,
-        discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
-        advanceStage: false,
-        allowCC:  document.getElementById('invoiceAllowCC')?.checked !== false,
-        allowACH: document.getElementById('invoiceAllowACH')?.checked !== false,
-        ownerId: linkedDeal?.ownerId || window._lastPushedOwnerId || document.getElementById('repSelect').value || null,
-        contactId: window._lastPushedContactId || null,
-        customer: {
-          firstName: document.getElementById('firstName')?.value.trim() || '',
-          lastName:  document.getElementById('lastName')?.value.trim() || '',
-          company:   document.getElementById('company')?.value.trim() || '',
-          address:   document.getElementById('shipAddress')?.value.trim() || '',
-          city:      document.getElementById('shipCity')?.value.trim() || '',
-          state:     document.getElementById('shipState')?.value.trim() || '',
-          zip:       document.getElementById('shipZip')?.value.trim() || '',
-          country:   'US',
-        },
-      })
+      body: JSON.stringify(payload)
     });
     const data = await res.json();
     if (data.success && data.invoiceUrl) {
       closeInvoiceModal();
+      window._qbHubInvoicePending = null; // clear stashed snapshot
       // Show invoice link in result box for rep to copy and send
       const box = document.getElementById('resultBox');
       if (box) {
@@ -6218,6 +6290,8 @@ async function confirmCreateInvoice() {
       enableOrderBtn();
       // Refresh invoice panel to show new invoice
       setTimeout(loadDealInvoices, 1500);
+      // If this was a hub invoice for the currently-loaded deal, refresh the hub too
+      if (pending && typeof openDealHub === 'function') setTimeout(openDealHub, 1500);
     } else {
       throw new Error(data.error || 'Invoice creation failed');
     }
@@ -6231,6 +6305,7 @@ async function confirmCreateInvoice() {
 
 function closeInvoiceModal() {
   document.getElementById('invoiceModal').style.display = 'none';
+  window._qbHubInvoicePending = null;
 }
 
 

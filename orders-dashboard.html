@@ -949,6 +949,18 @@ if (localStorage.getItem('wr-theme') === 'light') {
 }
 
 // ── State ─────────────────────────────────────────────────────────
+const REP_EMAILS = {
+  '36303670': 'bentonwhite@whisperroom.com',
+  '38732178': 'accounting@whisperroom.com',
+  '36330944': 'jholdway@whisperroom.com',
+  '38143901': 'ssmith@whisperroom.com',
+  '117442978':'tsingleton@whisperroom.com',
+  '36320208': 'gabrielwhite@whisperroom.com',
+  '38900892': 'cburgess@whisperroom.com',
+  '38732186': 'shipping@whisperroom.com',
+  '49384873': 'ecommerce@whisperroom.com',
+};
+
 let allOrders = [];
 let allHsDeals = [];
 let currentQuoteNumber = null;
@@ -1546,17 +1558,26 @@ function openShipEmail() {
   const { to: emailTo, cc: emailCc } = getShipEmailAddresses();
 
   let customerEmail = '';
+  let repEmail = '';
   if (currentQuoteNumber) {
     const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
     customerEmail = order?.json_snapshot?.customer?.email || '';
+    // Get rep email from rep_id on the order, fall back to current session user
+    const repId = order?.rep_id || order?.json_snapshot?.ownerId || window._sessionOwnerId || '';
+    repEmail = repId ? (REP_EMAILS[String(repId)] || '') : '';
   }
 
   const toAddress = emailTo || customerEmail || '';
 
-  // Open blank draft — addresses only, Jeromy loads template in client
-  const ccStr = emailCc.length ? emailCc.join(',') : '';
+  // Build CC list: saved CCs + rep email (deduped, skip if rep is already To or accounting)
+  const ccList = [...emailCc];
+  if (repEmail && repEmail !== toAddress && !ccList.includes(repEmail)) {
+    ccList.push(repEmail);
+  }
+
+  const ccStr = ccList.filter(Boolean).join(',');
   let mailto = `mailto:${toAddress}`;
-  if (ccStr) mailto += `?cc=${ccStr}`;
+  if (ccStr) mailto += `?cc=${encodeURIComponent(ccStr)}`;
   const emailWin = window.open(mailto, '_blank');
   if (!emailWin) window.location.href = mailto;
 }

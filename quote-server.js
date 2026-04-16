@@ -5078,6 +5078,14 @@ ${q.accepted ? `
       }
 
       json({ success: true, results });
+      return;
+    } catch(e) {
+      writelog('error','error.accept-quote',`accept-quote failed: ${e.message}`,{ rep: getRepFromReq(req) });
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // -- API: Update specs post-acceptance --
   if (pathname === '/api/update-specs' && req.method === 'POST') {
     try {
@@ -5161,11 +5169,6 @@ ${q.accepted ? `
       writelog('error','error.update-specs', e.message);
       json({ error: e.message }, 500);
     }
-    return;
-  }
-
-    writelog('error','error.accept-quote',`accept-quote failed: ${e.message}`,{ rep: getRepFromReq(req) });
-    } catch(e) { json({ error: e.message }, 500); }
     return;
   }
 

@@ -2854,8 +2854,8 @@ async function createDeal() {
     return;
   }
 
-  // For new deals: if no folder found and no bind set and not skipped, show the folder prompt
-  if (!isRevision && window._loadedContactId && !window._bindFolderId && window._contactFolderInfo === false && !window._skipFolderPrompt) {
+  // For any new quote: always prompt for folder unless already bound or skipped
+  if (!isRevision && !window._bindFolderId && !window._skipFolderPrompt) {
     btn.disabled = false;
     btn.innerHTML = isRevision ? 'Update Quote &amp; Deal' : 'Push to HubSpot';
     showFolderPrompt();

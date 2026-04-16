@@ -4196,7 +4196,7 @@ tbody tr:hover td{background:#fdfcfb}
     try {
       const res = await fetch('/api/update-specs', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shareToken: '${q.shareToken}',           foamColor: foam, hingePreference: hinge, apColor: apColor, customerNote: note })
+        body: JSON.stringify({ quoteNumber: '${q.quoteNumber||""}', dealId: '${q.dealId||""}', foamColor: foam, hingePreference: hinge, apColor: apColor, customerNote: note })
       });
       const data = await res.json();
       if (data.success) {
@@ -4822,7 +4822,7 @@ ${q.accepted ? `
     try {
       const res = await fetch('/api/update-specs', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shareToken: '${q.shareToken||""}', foamColor: foam, hingePreference: hinge, apColor: apColor, customerNote: note })
+        body: JSON.stringify({ quoteNumber: '${q.quoteNumber||""}', dealId: '${q.dealId||""}', foamColor: foam, hingePreference: hinge, apColor: apColor, customerNote: note })
       });
       const data = await res.json();
       if (data.success) {
@@ -5082,18 +5082,17 @@ ${q.accepted ? `
   if (pathname === '/api/update-specs' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { shareToken, foamColor, hingePreference, apColor, customerNote } = body;
-      if (!shareToken) { json({ error: 'shareToken required' }, 400); return; }
+      const { quoteNumber, dealId, foamColor, hingePreference, apColor, customerNote } = body;
+      if (!quoteNumber) { json({ error: 'quoteNumber required' }, 400); return; }
 
       const qr = await db?.query(
-        `SELECT id, quote_number, deal_id FROM quotes WHERE share_token = $1 LIMIT 1`,
-        [shareToken]
+        `SELECT id, quote_number, deal_id FROM quotes WHERE quote_number = $1 LIMIT 1`,
+        [quoteNumber]
       );
       if (!qr || !qr.rows.length) { json({ error: 'Quote not found' }, 404); return; }
 
       const row = qr.rows[0];
-      const quoteNumber = row.quote_number;
-      const dealId = row.deal_id;
+      const resolvedDealId = dealId || row.deal_id;
 
       // Update accepted fields in snapshot
       await db?.query(
@@ -5113,7 +5112,7 @@ ${q.accepted ? `
       );
 
       // Fire HubSpot note to rep — no stage change, no task
-      if (dealId) {
+      if (resolvedDealId) {
         try {
           const noteLines = [
             `🔄 Customer updated specs on quote #${quoteNumber}.`,
@@ -5126,7 +5125,7 @@ ${q.accepted ? `
 
           const notePayload = {
             engagement: { active: true, type: 'NOTE' },
-            associations: { dealIds: [dealId] },
+            associations: { dealIds: [resolvedDealId] },
             metadata: { body: noteLines },
           };
           await fetch('https://api.hubapi.com/engagements/v1/engagements', {

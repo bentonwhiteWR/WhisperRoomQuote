@@ -4632,19 +4632,47 @@ tbody tr:hover td{background:#fdfcfb}
       if (db && quoteNumber) {
         const row = await db.query('SELECT gdrive_folder_id, deal_id, company, deal_name FROM quotes WHERE quote_number = $1 LIMIT 1', [quoteNumber]);
         destFolderId   = row.rows[0]?.gdrive_folder_id || null;
-        destFolderName = row.rows[0]?.company || row.rows[0]?.deal_name || company;
+        // Use deal_name (reflects renames) over company (stale snapshot) for display
+        destFolderName = row.rows[0]?.deal_name || row.rows[0]?.company || company;
         destDealId     = row.rows[0]?.deal_id || null;
         // If no folder on this quote, check other quotes for the same deal
         if (!destFolderId && destDealId) {
           const fallback = await db.query(
-            'SELECT gdrive_folder_id FROM quotes WHERE deal_id = $1 AND gdrive_folder_id IS NOT NULL ORDER BY created_at DESC LIMIT 1',
+            'SELECT gdrive_folder_id, deal_name, company FROM quotes WHERE deal_id = $1 AND gdrive_folder_id IS NOT NULL ORDER BY created_at DESC LIMIT 1',
             [destDealId]
           );
           if (fallback.rows[0]?.gdrive_folder_id) {
-            destFolderId = fallback.rows[0].gdrive_folder_id;
+            destFolderId   = fallback.rows[0].gdrive_folder_id;
+            destFolderName = fallback.rows[0].deal_name || fallback.rows[0].company || destFolderName;
             console.log(`[scan-orders] used fallback folder from deal ${destDealId}: ${destFolderId}`);
           }
         }
+        // If still no folder, try any quote with this deal_id regardless of current quote
+        if (!destFolderId && destDealId) {
+          const anyQ = await db.query(
+            'SELECT gdrive_folder_id, deal_name FROM quotes WHERE deal_id = $1 AND gdrive_folder_id IS NOT NULL LIMIT 1',
+            [String(destDealId)]
+          );
+          if (anyQ.rows[0]?.gdrive_folder_id) {
+            destFolderId   = anyQ.rows[0].gdrive_folder_id;
+            destFolderName = anyQ.rows[0].deal_name || destFolderName;
+          }
+        }
+      }
+      // Fetch actual Drive folder name to show accurate destination
+      if (destFolderId) {
+        try {
+          const token = await getGDriveToken();
+          if (token) {
+            const folderMeta = await httpsRequest({
+              hostname: 'www.googleapis.com',
+              path: `/drive/v3/files/${destFolderId}?fields=name&supportsAllDrives=true`,
+              method: 'GET',
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (folderMeta.body?.name) destFolderName = folderMeta.body.name;
+          }
+        } catch(e) { /* non-fatal — display name only */ }
       }
 
       // List files in the shared Orders folder

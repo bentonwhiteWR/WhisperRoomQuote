@@ -4613,7 +4613,11 @@ function linkDealById(dealId, dealName) {
         if ([...sel.options].some(o => o.value === p.hubspot_owner_id)) {
           sel.value = p.hubspot_owner_id;
           localStorage.setItem('wr_default_rep', p.hubspot_owner_id);
-          updateQuoteNumber();
+          // Only generate a new quote number if we don't already have one in context
+          // (prevents async callback from overwriting a just-corrected in-place quote number)
+          if (!document.getElementById('quoteNumHidden').value) {
+            updateQuoteNumber();
+          }
         }
       }
 

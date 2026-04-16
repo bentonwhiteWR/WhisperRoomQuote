@@ -2965,12 +2965,19 @@ const server = http.createServer(async (req, res) => {
       if (db && deals.length) {
         const ids = deals.map(d => d.id);
         const dbRes = await db.query(
-          `SELECT deal_id, quote_number, total, created_at,
-                  (json_snapshot->>'accepted')::text as accepted,
-                  json_snapshot->'lineItems' as line_items
-           FROM quotes
-           WHERE deal_id = ANY($1)
-           ORDER BY created_at DESC`,
+          `SELECT
+             q.deal_id,
+             q.quote_number,
+             q.total,
+             q.created_at,
+             (q.json_snapshot->>'accepted')::text        as accepted,
+             (q.json_snapshot->>'acceptedAt')::text      as accepted_at,
+             q.json_snapshot->'lineItems'                as line_items,
+             o.created_at                               as order_at
+           FROM quotes q
+           LEFT JOIN orders o ON o.quote_number = q.quote_number
+           WHERE q.deal_id = ANY($1)
+           ORDER BY q.created_at DESC`,
           [ids]
         );
         // Group by deal_id — first row = latest quote, but check ALL rows for accepted status
@@ -2990,8 +2997,30 @@ const server = http.createServer(async (req, res) => {
               accepted: r.accepted === 'true',
               firstMdl,
               lastQuoteAt: r.created_at || null,
+              lastActivityAt: r.created_at || null,
             };
-          } else if (r.accepted === 'true') {
+          } else {
+            // Keep updating lastActivityAt with the most recent event across all quotes for this deal
+            const existing = byDeal[r.deal_id];
+            const ts = r.created_at ? new Date(r.created_at).getTime() : 0;
+            const currentBest = existing.lastActivityAt ? new Date(existing.lastActivityAt).getTime() : 0;
+            if (ts > currentBest) existing.lastActivityAt = r.created_at;
+          }
+          // Track order timestamp and acceptedAt as activity signals regardless of which quote
+          const dealEntry = byDeal[r.deal_id];
+          if (r.order_at) {
+            const orderTs = new Date(r.order_at).getTime();
+            const cur = dealEntry.lastActivityAt ? new Date(dealEntry.lastActivityAt).getTime() : 0;
+            if (orderTs > cur) dealEntry.lastActivityAt = r.order_at;
+          }
+          if (r.accepted_at) {
+            try {
+              const acceptTs = new Date(r.accepted_at).getTime();
+              const cur = dealEntry.lastActivityAt ? new Date(dealEntry.lastActivityAt).getTime() : 0;
+              if (acceptTs > cur) dealEntry.lastActivityAt = r.accepted_at;
+            } catch(e) {}
+          }
+          if (r.accepted === 'true') {
             // Any quote for this deal being accepted marks the deal as accepted
             byDeal[r.deal_id].accepted = true;
           }
@@ -3001,11 +3030,18 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
-      // Re-sort by most recent activity: DB quote timestamp first, HubSpot modified as fallback
+      // Sort by most meaningful activity: DB-tracked events (quote push, order, accept)
+      // Deals with no DB activity sort by HubSpot modified date at the bottom
       deals.sort((a, b) => {
-        const aTime = a.lastQuoteAt ? new Date(a.lastQuoteAt).getTime() : new Date(a.modified || 0).getTime();
-        const bTime = b.lastQuoteAt ? new Date(b.lastQuoteAt).getTime() : new Date(b.modified || 0).getTime();
-        return bTime - aTime;
+        const aTime = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : 0;
+        const bTime = b.lastActivityAt ? new Date(b.lastActivityAt).getTime() : 0;
+        // Both have DB activity — sort by that
+        if (aTime && bTime) return bTime - aTime;
+        // Only one has DB activity — it goes first
+        if (aTime && !bTime) return -1;
+        if (!aTime && bTime) return 1;
+        // Neither has DB activity — fall back to HubSpot modified date
+        return new Date(b.modified || 0).getTime() - new Date(a.modified || 0).getTime();
       });
 
       // Auto-sync: for any unpaid deals, check if their HubSpot invoice is actually paid
@@ -3853,7 +3889,7 @@ tbody tr:hover td{background:#fdfcfb}
     <div class="info-grid">
       ${foam  ? `<div class="info-item"><label>Foam Color</label><span style="color:#166534">${foam}</span></div>`  : ''}
       ${hinge ? `<div class="info-item"><label>Door Hinge</label><span style="color:#166534">${hinge}</span></div>` : ''}
-      ${ap    ? `<div class="info-item"><label>AP Color</label><span style="color:#166534">${ap}</span></div>`     : ''}
+      ${ap    ? `<div class="info-item"><label>Acoustic Package Color</label><span style="color:#166534">${ap}</span></div>`     : ''}
     </div>
   </div>`;
   })()}
@@ -4092,7 +4128,7 @@ tbody tr:hover td{background:#fdfcfb}
     <div class="info-grid">
       ${foam  ? `<div class="info-item"><label>Foam Color</label><span style="color:#166534">${foam}</span></div>`  : ''}
       ${hinge ? `<div class="info-item"><label>Door Hinge</label><span style="color:#166534">${hinge}</span></div>` : ''}
-      ${ap    ? `<div class="info-item"><label>AP Color</label><span style="color:#166534">${ap}</span></div>`     : ''}
+      ${ap    ? `<div class="info-item"><label>Acoustic Package Color</label><span style="color:#166534">${ap}</span></div>`     : ''}
     </div>
   </div>`;
   })()}
@@ -8724,7 +8760,7 @@ tbody tr:last-child td{border-bottom:none}
     <div class="info-grid">
       <div class="info-item"><label>Foam Color</label><span>${o.foamColor||'Not specified'}</span></div>
       <div class="info-item"><label>Door Hinge</label><span>${o.hingePreference||'Not specified'}</span></div>
-      ${o.apColor ? `<div class="info-item"><label>AP Color</label><span style="display:inline-flex;align-items:center;gap:8px">${o.apColor}<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${({Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteroid:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'}[o.apColor]||'#aaa')};border:1px solid rgba(0,0,0,.2)"></span></span></div>` : `<div class="info-item"><label>AP Color</label><span style="color:#aaa">None</span></div>`}
+      ${o.apColor ? `<div class="info-item"><label>Acoustic Package Color</label><span style="display:inline-flex;align-items:center;gap:8px">${o.apColor}<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${({Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteroid:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'}[o.apColor]||'#aaa')};border:1px solid rgba(0,0,0,.2)"></span></span></div>` : `<div class="info-item"><label>Acoustic Package Color</label><span style="color:#aaa">None</span></div>`}
     </div>
     ${o.productionNotes?`<div style="margin-top:16px"><div style="font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Production Notes</div><div class="notes-box">${o.productionNotes}</div></div>`:''}
     ${o.deliveryNotes?`<div style="margin-top:12px"><div style="font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Special Delivery Notes</div><div class="notes-box">${o.deliveryNotes}</div></div>`:''}

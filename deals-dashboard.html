@@ -493,6 +493,7 @@ function renderHub(dealId,data) {
       <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px">
         <a href="https://app.hubspot.com/contacts/5764220/deal/${dealId}" target="_blank" style="font-size:10px;color:var(--muted);text-decoration:none;padding:4px 8px;border-radius:5px;border:1px solid var(--border);flex-shrink:0">HS ↗</a>
         ${data.driveFolderName ? `<button onclick="copyFolderPath('${data.driveFolderName.replace(/'/g,"\\'")}')" title="Copy local folder path to clipboard" style="font-size:10px;color:var(--muted);padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">📋 Copy Path</button>` : ''}
+        <button onclick="openRebindFolder('${dealId}')" title="Change the Google Drive folder linked to this deal" style="font-size:10px;color:#3b82f6;padding:4px 8px;border-radius:5px;border:1px solid rgba(59,130,246,.3);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">📁 Rebind Folder</button>
         <button onclick="openMergeDeal('${dealId}')" title="Merge this deal into another deal" style="font-size:10px;color:#ef4444;padding:4px 8px;border-radius:5px;border:1px solid rgba(239,68,68,.3);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">⤤ Merge Into</button>
         <button onclick="openMergeLegacy('${dealId}')" title="Merge a legacy AllContacts folder into this deal" style="font-size:10px;color:var(--muted);padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">📁 Merge Legacy</button>
         <button onclick="openRenameDeal('${dealId}','${(deal.name||'').replace(/'/g,"\\'")}')" title="Rename this deal in HubSpot, Drive, and dashboard" style="font-size:10px;color:#f59e0b;padding:4px 8px;border-radius:5px;border:1px solid rgba(245,158,11,.3);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">✏️ Rename</button>
@@ -1018,6 +1019,40 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
     <div class="notif-empty">No notifications</div>
   </div>
 </div>
+<!-- ── Rebind Drive Folder Modal ──────────────────────────────────── -->
+<div id="rebindFolderModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:400;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border-radius:14px;padding:28px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+    <h2 style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px">📁 Rebind Drive Folder</h2>
+    <div id="rebindCurrentFolder" style="font-size:12px;color:var(--muted);margin-bottom:16px"></div>
+
+    <div style="margin-bottom:12px">
+      <input id="rebindFolderSearch" type="text" placeholder="Search folder name (e.g. University of Utah)..."
+        style="width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:inherit;outline:none;box-sizing:border-box"
+        oninput="onRebindSearchInput(this.value)">
+    </div>
+
+    <div id="rebindFolderResults" style="max-height:240px;overflow-y:auto;margin-bottom:16px">
+      <div style="font-size:12px;color:var(--muted);font-style:italic;padding:8px 0">Type to search Drive folders...</div>
+    </div>
+
+    <div id="rebindSelectedRow" style="display:none;padding:12px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.3);border-radius:8px;margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#3b82f6;margin-bottom:4px">Selected Folder</div>
+      <div id="rebindSelectedName" style="font-size:14px;font-weight:700;color:var(--text)"></div>
+      <div id="rebindSelectedId" style="font-size:10px;color:var(--muted);margin-top:2px;font-family:var(--mono)"></div>
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button id="rebindConfirmBtn" onclick="confirmRebindFolder()" disabled
+        style="flex:1;padding:13px;background:#3b82f6;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;opacity:.4">
+        ✓ Bind This Folder
+      </button>
+      <button onclick="closeRebindModal()" style="padding:13px 18px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Merge Deal Modal ───────────────────────────────────────────── -->
 <div id="mergeDealModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:400;align-items:center;justify-content:center;padding:16px">
   <div style="background:var(--surface);border-radius:14px;padding:28px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)">
@@ -1079,6 +1114,121 @@ function copyFolderPath(folderName) {
     document.body.removeChild(el);
     showToast(`📋 Copied: ${path}`, 'success');
   });
+}
+
+// ── Rebind Drive Folder ───────────────────────────────────────────
+let _rebindDealId      = null;
+let _rebindQuoteNumber = null;
+let _rebindFolderId    = null;
+let _rebindSearchTimer = null;
+
+function openRebindFolder(dealId) {
+  _rebindDealId      = dealId;
+  _rebindFolderId    = null;
+  _rebindQuoteNumber = null;
+
+  // Get latest quote number for this deal from cached hub data
+  const hubData = window._lastHubData;
+  if (hubData?.quotes?.length) {
+    _rebindQuoteNumber = hubData.quotes[0].quoteNumber;
+  }
+
+  // Show current folder if known
+  const currentName = hubData?.driveFolderName || null;
+  const currentId   = hubData?.driveFolderId   || null;
+  document.getElementById('rebindCurrentFolder').textContent =
+    currentName ? `Current folder: ${currentName}` : 'No folder currently linked to this deal';
+
+  // Reset UI
+  document.getElementById('rebindFolderSearch').value = '';
+  document.getElementById('rebindFolderResults').innerHTML =
+    '<div style="font-size:12px;color:var(--muted);font-style:italic;padding:8px 0">Type to search Drive folders...</div>';
+  document.getElementById('rebindSelectedRow').style.display = 'none';
+  const btn = document.getElementById('rebindConfirmBtn');
+  btn.disabled = true;
+  btn.style.opacity = '.4';
+
+  document.getElementById('rebindFolderModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('rebindFolderSearch').focus(), 100);
+}
+
+function closeRebindModal() {
+  document.getElementById('rebindFolderModal').style.display = 'none';
+}
+
+function onRebindSearchInput(val) {
+  clearTimeout(_rebindSearchTimer);
+  const q = val.trim();
+  if (q.length < 2) {
+    document.getElementById('rebindFolderResults').innerHTML =
+      '<div style="font-size:12px;color:var(--muted);font-style:italic;padding:8px 0">Type at least 2 characters...</div>';
+    return;
+  }
+  document.getElementById('rebindFolderResults').innerHTML =
+    '<div style="font-size:12px;color:var(--muted);font-style:italic;padding:8px 0">Searching...</div>';
+  _rebindSearchTimer = setTimeout(() => searchRebindFolders(q), 350);
+}
+
+async function searchRebindFolders(q) {
+  try {
+    const res = await fetch(`/api/drive/search-folders?q=${encodeURIComponent(q)}`, { credentials: 'include' });
+    const data = await res.json();
+    const el = document.getElementById('rebindFolderResults');
+    if (!data.folders?.length) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--muted);font-style:italic;padding:8px 0">No folders found — try a different search term</div>';
+      return;
+    }
+    el.innerHTML = data.folders.map(f => `
+      <div onclick="selectRebindFolder('${f.id}','${f.name.replace(/'/g,"\\'")}')"
+        style="padding:10px 12px;border:1px solid var(--border);border-radius:7px;cursor:pointer;margin-bottom:6px;transition:all .12s"
+        onmouseover="this.style.borderColor='#3b82f6';this.style.background='rgba(59,130,246,.06)'"
+        onmouseout="this.style.borderColor='var(--border)';this.style.background=''">
+        <div style="font-size:13px;font-weight:600;color:var(--text)">📁 ${f.name}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px;font-family:var(--mono)">${f.id}</div>
+      </div>
+    `).join('');
+  } catch(e) {
+    document.getElementById('rebindFolderResults').innerHTML =
+      `<div style="font-size:12px;color:var(--red);padding:8px 0">Search failed: ${e.message}</div>`;
+  }
+}
+
+function selectRebindFolder(id, name) {
+  _rebindFolderId = id;
+  document.getElementById('rebindSelectedRow').style.display = 'block';
+  document.getElementById('rebindSelectedName').textContent = '📁 ' + name;
+  document.getElementById('rebindSelectedId').textContent = id;
+  const btn = document.getElementById('rebindConfirmBtn');
+  btn.disabled = false;
+  btn.style.opacity = '1';
+}
+
+async function confirmRebindFolder() {
+  if (!_rebindFolderId || !_rebindQuoteNumber) {
+    showToast('No folder or quote selected', 'error');
+    return;
+  }
+  const btn = document.getElementById('rebindConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Binding...';
+  try {
+    const res = await fetch('/api/drive/bind-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ quoteNumber: _rebindQuoteNumber, folderId: _rebindFolderId })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Bind failed');
+    showToast('✓ Drive folder rebound successfully', 'success');
+    closeRebindModal();
+    loadDeal(_rebindDealId); // refresh hub panel
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = '✓ Bind This Folder';
+    btn.style.opacity = '1';
+  }
 }
 
 // ── Merge Deal ────────────────────────────────────────────────────

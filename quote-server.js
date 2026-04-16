@@ -4196,7 +4196,7 @@ tbody tr:hover td{background:#fdfcfb}
     try {
       const res = await fetch('/api/update-specs', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quoteNumber: '${q.quoteNumber||""}', dealId: '${q.dealId||""}', foamColor: foam, hingePreference: hinge, apColor: apColor, customerNote: note })
+        body: JSON.stringify({ quoteNumber: '${quoteId}', dealId: '${q.dealId||""}'   , foamColor: foam, hingePreference: hinge, apColor: apColor, customerNote: note })
       });
       const data = await res.json();
       if (data.success) {
@@ -4822,7 +4822,7 @@ ${q.accepted ? `
     try {
       const res = await fetch('/api/update-specs', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quoteNumber: '${q.quoteNumber||""}', dealId: '${q.dealId||""}', foamColor: foam, hingePreference: hinge, apColor: apColor, customerNote: note })
+        body: JSON.stringify({ quoteNumber: '${quoteId}', dealId: '${q.dealId||""}'   , foamColor: foam, hingePreference: hinge, apColor: apColor, customerNote: note })
       });
       const data = await res.json();
       if (data.success) {

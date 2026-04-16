@@ -3040,7 +3040,7 @@ const server = http.createServer(async (req, res) => {
         } catch(e) { console.warn('[deals list] auto-sync error:', e.message); }
       })();
 
-      json({ deals, total: res2.body?.total || deals.length });
+      json({ deals, total: deals.length });
     } catch(e) {
       console.error('Deals list error:', e.message);
       json({ error: e.message }, 500);

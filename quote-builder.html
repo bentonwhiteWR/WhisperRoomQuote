@@ -2251,8 +2251,8 @@ function submitInstallRequest() {
     [city, state, zip].filter(Boolean).join(', '),
   ].filter(Boolean).join('\n') || '[address not on quote]';
 
-  // Share link
-  const shareToken = window._lastPushedShareToken || '';
+  // Share link — use whichever token is available (pushed or loaded from history)
+  const shareToken = window._lastPushedShareToken || window._loadedShareToken || '';
   const quoteLink  = `https://sales.whisperroom.com/q/${quoteNumber}${shareToken ? '?t=' + shareToken : ''}`;
 
   // Rep
@@ -3959,6 +3959,10 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   window._loadedShareToken = q._shareToken || q.shareToken || null;
   window._lastShareToken   = null; // clear push token — loaded quote's token takes over
   console.log('[token] loaded quote:', q.quoteNumber, '| _shareToken:', q._shareToken, '| shareToken:', q.shareToken, '| set to:', window._loadedShareToken);
+  // Populate _lastPushedDealId + _lastPushedShareToken so the Request Installation
+  // button guard passes on loaded historical quotes (they've already been pushed)
+  window._lastPushedDealId     = q.dealId || null;
+  window._lastPushedShareToken = window._loadedShareToken || null;
 
   // If token is missing, fetch it directly from server
   if (!window._loadedShareToken && q.quoteNumber) {

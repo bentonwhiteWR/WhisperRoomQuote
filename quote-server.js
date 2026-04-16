@@ -1853,12 +1853,17 @@ async function hsClearDealLineItems(dealId) {
   }
 }
 // Build consistent PDF filename: "Company Label QuoteNumber (Type).pdf"
-function buildPdfFilename(quoteData, quoteNumber, type) {
+function buildPdfFilename(quoteData, quoteNumber, type, dealName) {
   const c = quoteData?.customer || {};
   const company = (c.company || '').trim();
-  const name = company || [c.firstName, c.lastName].filter(Boolean).join(' ');
+  // Prefer explicit dealName arg, then customer company, then snapshot dealName
+  // Strip date suffix from deal names (e.g. "Acme Corp - Apr 2026" → "Acme Corp")
+  const stripDateSuffix = s => (s||'').replace(/\s*[·—\-–]\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\s*$/i, '').trim();
+  const resolvedName = company
+    || stripDateSuffix(dealName || quoteData?.dealName || '')
+    || [c.firstName, c.lastName].filter(Boolean).join(' ');
   const label = (quoteData?.quoteLabel || '').trim();
-  const parts = [name, label, quoteNumber].filter(Boolean);
+  const parts = [resolvedName, label, quoteNumber].filter(Boolean);
   const safe = parts.join(' ').replace(/[/\\:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
   return type ? `${safe} (${type}).pdf` : `${safe}.pdf`;
 }
@@ -4609,6 +4614,19 @@ tbody tr:hover td{background:#fdfcfb}
       const needle = normalize(company);
       if (needle.length < 4) { json({ files: [], destFolderId: null, destFolderName: null }); return; }
 
+      // Build a list of needles to try — full name plus each comma-separated segment
+      // e.g. "University of Utah, Dept of Linguistics" → also try "UNIVERSITY OF UTAH"
+      const needles = [needle];
+      if (company.includes(',')) {
+        company.split(',').forEach(seg => {
+          const n = normalize(seg.trim());
+          if (n.length >= 4 && !needles.includes(n)) needles.push(n);
+        });
+      }
+      // Also try first two words as a fallback for very long names
+      const firstTwo = needle.split(' ').slice(0, 3).join(' ');
+      if (firstTwo.length >= 4 && !needles.includes(firstTwo)) needles.push(firstTwo);
+
       // Get dest folder ID from DB — try quote first, then fall back to any quote for the same deal
       let destFolderId = null, destFolderName = null, destDealId = null;
       if (db && quoteNumber) {
@@ -4640,15 +4658,21 @@ tbody tr:hover td{background:#fdfcfb}
       });
       const allFiles = listRes.body?.files || [];
 
-      // Filter to files whose name contains the company name
-      const matches = allFiles.filter(f => normalize(f.name).includes(needle));
+      // Match files whose name contains ANY of the needles (deduped)
+      const matches = allFiles.filter(f => {
+        const fn = normalize(f.name);
+        return needles.some(n => fn.includes(n));
+      });
+      // Dedupe by id in case multiple needles match the same file
+      const seen = new Set();
+      const uniqueMatches = matches.filter(f => seen.has(f.id) ? false : (seen.add(f.id), true));
 
-      if (allFiles.length > 0 && matches.length === 0) {
-        console.warn(`[scan-orders] No match for "${needle}" among ${allFiles.length} files. Sample names:`, allFiles.slice(0,3).map(f => f.name));
+      if (allFiles.length > 0 && uniqueMatches.length === 0) {
+        console.warn(`[scan-orders] No match for needles [${needles.join(', ')}] among ${allFiles.length} files. Sample names:`, allFiles.slice(0,3).map(f => f.name));
       }
-      console.log(`[scan-orders] quote=${quoteNumber} company="\" — ${allFiles.length} total files, ${matches.length} matches, destFolder=${destFolderId||'none'}`);
+      console.log(`[scan-orders] quote=${quoteNumber} needles=[${needles.join('|')}] — ${allFiles.length} total files, ${uniqueMatches.length} matches, destFolder=${destFolderId||'none'}`);
 
-      json({ files: matches, destFolderId, destFolderName });
+      json({ files: uniqueMatches, destFolderId, destFolderName });
     } catch(e) {
       console.warn('[scan-orders] error:', e.message);
       json({ error: e.message }, 500);
@@ -8382,7 +8406,7 @@ setInterval(loadLogs,30000);
             const pdfBufO   = await generatePdfBuffer(orderUrl);
             const snapRowO  = await db?.query('SELECT json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
             const snapO     = snapRowO?.rows[0]?.json_snapshot || {};
-            await gdriveSavePdfToDeal(quoteNumber, 'Final Order', buildPdfFilename(snapO, quoteNumber, 'Order'), pdfBufO);
+            await gdriveSavePdfToDeal(quoteNumber, 'Final Order', buildPdfFilename(snapO, quoteNumber, 'Order', dnO), pdfBufO);
           } catch(e) {
             console.warn('GDrive order PDF error:', e.message);
             writelog('error', 'error.gdrive', `Drive order upload failed: ${e.message}`, { quoteNum: quoteNumber, meta: { step: 'order-pdf' } });
@@ -8862,10 +8886,11 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       // Upload order PDF to shared orders folder (non-blocking)
       (async () => {
         try {
-          const snapRowP = await db?.query('SELECT json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
-          const snapP = snapRowP?.rows[0]?.json_snapshot || {};
-          const pdfBufO = await generatePdfBuffer(orderUrl);
-          const filename = buildPdfFilename(snapP, quoteNumber, 'Order');
+          const snapRowP = await db?.query('SELECT json_snapshot, deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
+          const snapP    = snapRowP?.rows[0]?.json_snapshot || {};
+          const dealNameP = snapRowP?.rows[0]?.deal_name || dealName || '';
+          const pdfBufO  = await generatePdfBuffer(orderUrl);
+          const filename = buildPdfFilename(snapP, quoteNumber, 'Order', dealNameP);
           await gdriveUploadFilePdf(filename, pdfBufO, SHARED_ORDERS_FOLDER);
           console.log(`[process-order] PDF saved to shared orders folder: ${filename}`);
         } catch(e) { console.warn('[process-order] GDrive PDF error:', e.message); }

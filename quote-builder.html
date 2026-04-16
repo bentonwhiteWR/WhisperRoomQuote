@@ -999,13 +999,59 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     <div class="tax-result" id="taxResult"></div>
   </div>
 
-  <!-- ⑥ NOTES -->
+  <!-- ⑥ NOTES & ORDER SPECS -->
   <div class="section">
     <div class="section-head">
       <div class="section-num">6</div>
-      <div class="section-title">Notes</div>
+      <div class="section-title">Notes &amp; Order Specs</div>
     </div>
-    <textarea class="notes-area" id="notes" placeholder="Internal notes, hinge preference, foam color, delivery instructions..."></textarea>
+    <textarea class="notes-area" id="notes" placeholder="Internal notes, delivery instructions..."></textarea>
+
+    <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px">Foam Color</div>
+        <select id="repFoamColor" style="width:100%;padding:7px 9px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;font-family:var(--mono);outline:none;cursor:pointer">
+          <option value="">— Not specified —</option>
+          <option value="Gray">Gray</option>
+          <option value="Blue">Blue</option>
+          <option value="Purple">Purple</option>
+          <option value="Orange">Orange</option>
+          <option value="Burgundy">Burgundy</option>
+        </select>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px">Door Hinge</div>
+        <select id="repHingePreference" style="width:100%;padding:7px 9px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;font-family:var(--mono);outline:none;cursor:pointer">
+          <option value="">— Not specified —</option>
+          <option value="Left Hand">Left Hand</option>
+          <option value="Right Hand">Right Hand</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="repApColorRow" style="display:none;margin-top:10px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px">AP Color <span style="color:var(--accent);font-size:9px">(Acoustic Package)</span></div>
+      <select id="repApColor" style="width:100%;padding:7px 9px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;font-family:var(--mono);outline:none;cursor:pointer">
+        <option value="">— Not specified —</option>
+        <option value="Unknown">Unknown (follow up needed)</option>
+        <option value="Lemon">Lemon</option>
+        <option value="Vanilla">Vanilla</option>
+        <option value="Birch">Birch</option>
+        <option value="White">White</option>
+        <option value="Green Apple">Green Apple</option>
+        <option value="Fern">Fern</option>
+        <option value="Waterfall">Waterfall</option>
+        <option value="Asteroid">Asteroid</option>
+        <option value="Orchid">Orchid</option>
+        <option value="Pumpkin">Pumpkin</option>
+        <option value="Geranium">Geranium</option>
+        <option value="Lapis">Lapis</option>
+        <option value="Onyx">Onyx</option>
+        <option value="Graphite">Graphite</option>
+        <option value="Coffee Bean">Coffee Bean</option>
+        <option value="Quarry Blue">Quarry Blue</option>
+      </select>
+    </div>
   </div>
 
 </div><!-- /main-col -->
@@ -2694,6 +2740,9 @@ async function createDeal() {
         confirmContactOverride: window._confirmContactOverride || false,
         bindFolderId: window._bindFolderId || null,
         notes: document.getElementById('notes').value.trim(),
+        repFoamColor:       document.getElementById('repFoamColor')?.value || '',
+        repHingePreference: document.getElementById('repHingePreference')?.value || '',
+        repApColor:         document.getElementById('repApColor')?.value || '',
       })
     });
 
@@ -2787,7 +2836,11 @@ async function createDeal() {
         discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
         freight: freightData ? {...freightData} : null,
         tax: taxData ? {...taxData} : null,
-        accessories, notes: document.getElementById('notes').value.trim(), hubspotUrl: data.dealUrl,
+        accessories, notes: document.getElementById('notes').value.trim(),
+        repFoamColor:       document.getElementById('repFoamColor')?.value || '',
+        repHingePreference: document.getElementById('repHingePreference')?.value || '',
+        repApColor:         document.getElementById('repApColor')?.value || '',
+        hubspotUrl: data.dealUrl,
         quoteLabel: (document.getElementById('quoteLabel') || {value:''}).value.trim(),
         billing: (() => {
           const same = document.getElementById('billsame') && document.getElementById('billsame').checked;
@@ -3722,6 +3775,13 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   document.getElementById('dealName').value = q.dealName || '';
   if (q.ownerId) document.getElementById('repSelect').value = q.ownerId;
   if (q.notes) document.getElementById('notes').value = q.notes;
+  // Restore rep order spec selections
+  const repFoamEl = document.getElementById('repFoamColor');
+  if (repFoamEl) repFoamEl.value = q.repFoamColor || '';
+  const repHingeEl = document.getElementById('repHingePreference');
+  if (repHingeEl) repHingeEl.value = q.repHingePreference || '';
+  const repApEl = document.getElementById('repApColor');
+  if (repApEl) repApEl.value = q.repApColor || '';
   const qlEl = document.getElementById('quoteLabel');
   if (qlEl) qlEl.value = q.quoteLabel || '';
 
@@ -5567,10 +5627,15 @@ function openOrderModal() {
   const quoteNum = document.getElementById('quoteNumHidden').value;
   if (!quoteNum) { showToast('No quote loaded', 'error'); return; }
 
-  // Pre-fill foam/hinge/AP from customer acceptance if available
-  const foam    = window._acceptedFoam    || '';
-  const hinge   = window._acceptedHinge   || '';
-  const apColor = window._acceptedApColor || '';
+  // Priority: rep selection → customer accepted → blank
+  const repFoam  = document.getElementById('repFoamColor')?.value  || '';
+  const repHinge = document.getElementById('repHingePreference')?.value || '';
+  const repAp    = document.getElementById('repApColor')?.value    || '';
+
+  const foam    = repFoam  || window._acceptedFoam    || '';
+  const hinge   = repHinge || window._acceptedHinge   || '';
+  const apColor = repAp    || document.getElementById('sidebarApColor')?.value || window._acceptedApColor || '';
+
   if (foam) {
     const foamInput = document.querySelector(`input[name="orderFoam"][value="${foam}"]`);
     if (foamInput) { foamInput.checked = true; highlightOrderSel('orderFoam'); }
@@ -5579,11 +5644,9 @@ function openOrderModal() {
     const hingeInput = document.querySelector(`input[name="orderHinge"][value="${hinge}"]`);
     if (hingeInput) { hingeInput.checked = true; highlightOrderSel('orderHinge'); }
   }
-  // Show/hide AP row and set dropdown — sidebar value takes priority over accepted value
   refreshApColorRow();
-  const sidebarVal = document.getElementById('sidebarApColor')?.value || '';
   const apSel = document.getElementById('orderApColor');
-  if (apSel) apSel.value = sidebarVal || apColor || '';
+  if (apSel) apSel.value = apColor;
 
   document.getElementById('orderModal').style.display = 'flex';
 }
@@ -5607,10 +5670,13 @@ function refreshApColorRow() {
   });
   const sidebarRow = document.getElementById('sidebarApColorRow');
   if (sidebarRow) sidebarRow.style.display = show ? 'block' : 'none';
+  const repRow = document.getElementById('repApColorRow');
+  if (repRow) repRow.style.display = show ? 'block' : 'none';
   if (!show) {
-    // Clear sidebar selection when AP removed from quote
     const sel = document.getElementById('sidebarApColor');
     if (sel) sel.value = '';
+    const repSel = document.getElementById('repApColor');
+    if (repSel) repSel.value = '';
     const dot = document.getElementById('sidebarApSwatchDot');
     if (dot) dot.innerHTML = '';
   }

@@ -3097,7 +3097,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, isRevision, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, notes } = body;
+      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, isRevision, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, notes, repFoamColor, repHingePreference, repApColor } = body;
       let { quoteNumber } = body;
 
       // ── In-place update detection ────────────────────────────────────
@@ -3547,6 +3547,9 @@ const server = http.createServer(async (req, res) => {
           customer, lineItems, discount, freight, tax,
           quoteLabel: quoteLabel || '',
           notes: notes || '',
+          repFoamColor:       repFoamColor       || '',
+          repHingePreference: repHingePreference || '',
+          repApColor:         repApColor         || '',
         });
         // Fetch the token we just saved
         const tokenRow = await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]);
@@ -3826,14 +3829,20 @@ tbody tr:hover td{background:#fdfcfb}
 
   
 
-  ${(q.acceptedFoam || q.acceptedHinge || q.acceptedApColor) ? `<div class="card" style="border-left:3px solid #22c55e;background:#f0fdf4">
-    <div class="card-label" style="color:#166534">Your Selections</div>
+  ${(() => {
+    const foam  = q.acceptedFoam  || q.repFoamColor       || '';
+    const hinge = q.acceptedHinge || q.repHingePreference || '';
+    const ap    = q.acceptedApColor || q.repApColor        || '';
+    if (!foam && !hinge && !ap) return '';
+    return `<div class="card" style="border-left:3px solid #22c55e;background:#f0fdf4">
+    <div class="card-label" style="color:#166534">Order Specs</div>
     <div class="info-grid">
-      ${q.acceptedFoam ? `<div class="info-item"><label>Foam Color</label><span style="color:#166534">${q.acceptedFoam}</span></div>` : ''}
-      ${q.acceptedHinge ? `<div class="info-item"><label>Door Hinge</label><span style="color:#166534">${q.acceptedHinge}</span></div>` : ''}
-      ${q.acceptedApColor ? `<div class="info-item"><label>AP Color</label><span style="color:#166534">${q.acceptedApColor}</span></div>` : ''}
+      ${foam  ? `<div class="info-item"><label>Foam Color</label><span style="color:#166534">${foam}</span></div>`  : ''}
+      ${hinge ? `<div class="info-item"><label>Door Hinge</label><span style="color:#166534">${hinge}</span></div>` : ''}
+      ${ap    ? `<div class="info-item"><label>AP Color</label><span style="color:#166534">${ap}</span></div>`     : ''}
     </div>
-  </div>` : ''}
+  </div>`;
+  })()}
 
   <div class="card">
     <div class="card-label">Payment Terms</div>
@@ -4059,14 +4068,20 @@ tbody tr:hover td{background:#fdfcfb}
 
   
 
-  ${(q.acceptedFoam || q.acceptedHinge || q.acceptedApColor) ? `<div class="card" style="border-left:3px solid #22c55e;background:#f0fdf4">
-    <div class="card-label" style="color:#166534">Your Selections</div>
+  ${(() => {
+    const foam  = q.acceptedFoam  || q.repFoamColor       || '';
+    const hinge = q.acceptedHinge || q.repHingePreference || '';
+    const ap    = q.acceptedApColor || q.repApColor        || '';
+    if (!foam && !hinge && !ap) return '';
+    return `<div class="card" style="border-left:3px solid #22c55e;background:#f0fdf4">
+    <div class="card-label" style="color:#166534">Order Specs</div>
     <div class="info-grid">
-      ${q.acceptedFoam ? `<div class="info-item"><label>Foam Color</label><span style="color:#166534">${q.acceptedFoam}</span></div>` : ''}
-      ${q.acceptedHinge ? `<div class="info-item"><label>Door Hinge</label><span style="color:#166534">${q.acceptedHinge}</span></div>` : ''}
-      ${q.acceptedApColor ? `<div class="info-item"><label>AP Color</label><span style="color:#166534">${q.acceptedApColor}</span></div>` : ''}
+      ${foam  ? `<div class="info-item"><label>Foam Color</label><span style="color:#166534">${foam}</span></div>`  : ''}
+      ${hinge ? `<div class="info-item"><label>Door Hinge</label><span style="color:#166534">${hinge}</span></div>` : ''}
+      ${ap    ? `<div class="info-item"><label>AP Color</label><span style="color:#166534">${ap}</span></div>`     : ''}
     </div>
-  </div>` : ''}
+  </div>`;
+  })()}
 
   <div class="card">
     <div class="card-label">Terms &amp; Conditions</div>
@@ -4183,6 +4198,13 @@ tbody tr:hover td{background:#fdfcfb}
   </div>
 </div>
 
+${q.accepted ? `
+<div style="position:fixed;bottom:0;left:0;right:0;background:#1a7a4a;color:white;padding:20px 28px;z-index:100;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap">
+  <span style="font-size:15px;font-weight:700">&#x2713;&nbsp;&nbsp;Quote Accepted</span>
+  <span style="font-size:13px;opacity:.8">A WhisperRoom representative will be in touch shortly.</span>
+  <button onclick="window.print()" style="padding:8px 16px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);border-radius:6px;color:white;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">&#x2B07; Download PDF</button>
+</div>
+` : `
 <div class="action-bar" id="action-bar">
   <button class="btn btn-accept" id="accept-btn" onclick="acceptQuote()">&#x2713;&nbsp;&nbsp;Accept This Quote</button>
   <button class="btn btn-primary" onclick="window.print()">&#x2B07;&nbsp;&nbsp;Download PDF</button>
@@ -4192,6 +4214,7 @@ tbody tr:hover td{background:#fdfcfb}
 <div id="accepted-bar" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#1a7a4a;color:white;text-align:center;padding:20px;font-size:15px;font-weight:700;z-index:100;font-family:inherit">
   &#x2713;&nbsp;&nbsp;Quote Accepted &mdash; A WhisperRoom representative will be in touch shortly.
 </div>
+`}
 
 <script>
   document.title = 'Quote ${q.quoteNumber||''}${q.dealName ? ' - ' + q.dealName.replace(/[<>]/g,'') : ''}';

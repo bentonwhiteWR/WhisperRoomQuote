@@ -1569,22 +1569,70 @@ async function hsSearchProducts(query, limit = 100, offset = 0) {
 
 // Search deals by name
 async function hsSearchDeals(query) {
-  const body = {
-    query: query.trim(),
-    limit: 10,
-    properties: ['dealname', 'dealstage', 'amount', 'hubspot_owner_id', 'pipeline', 'closedate'],
-    sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }]
-  };
-  const res = await httpsRequest({
+  const DEAL_PROPS = ['dealname', 'dealstage', 'amount', 'hubspot_owner_id', 'pipeline', 'closedate'];
+
+  // 1. Direct deal name search
+  const dealRes = await httpsRequest({
     hostname: 'api.hubapi.com',
     path: '/crm/v3/objects/deals/search',
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${HS_TOKEN}`,
-      'Content-Type': 'application/json'
+    headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+  }, {
+    query: query.trim(),
+    limit: 20,
+    properties: DEAL_PROPS,
+    sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }]
+  });
+  const dealResults = dealRes.body?.results || [];
+  const seen = new Set(dealResults.map(d => d.id));
+
+  // 2. Also search contacts by name → associated deals
+  // This catches old deals where the deal name doesn't match but the contact name does
+  try {
+    const contactRes = await httpsRequest({
+      hostname: 'api.hubapi.com',
+      path: '/crm/v3/objects/contacts/search',
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+    }, {
+      query: query.trim(),
+      limit: 10,
+      properties: ['firstname', 'lastname', 'email', 'company'],
+    });
+    const contacts = contactRes.body?.results || [];
+    if (contacts.length) {
+      const contactIds = contacts.map(c => c.id);
+      // Fetch deals associated with those contacts
+      const assocRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v4/associations/contacts/deals/batch/read',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, { inputs: contactIds.map(id => ({ id: String(id) })) });
+      const assocDealIds = [];
+      (assocRes.body?.results || []).forEach(r => {
+        (r.to || []).forEach(t => {
+          if (!seen.has(String(t.toObjectId))) assocDealIds.push(String(t.toObjectId));
+        });
+      });
+      if (assocDealIds.length) {
+        const dealsById = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/deals/batch/read',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, {
+          inputs: assocDealIds.slice(0, 20).map(id => ({ id })),
+          properties: DEAL_PROPS,
+        });
+        (dealsById.body?.results || []).forEach(d => {
+          if (!seen.has(d.id)) { seen.add(d.id); dealResults.push(d); }
+        });
+      }
     }
-  }, body);
-  return res.body;
+  } catch(e) { /* contact lookup failure is non-fatal */ }
+
+  return { results: dealResults, total: dealResults.length };
 }
 
 // Bidirectional state lookup
@@ -2930,6 +2978,45 @@ const server = http.createServer(async (req, res) => {
         const nameDeals = nameRes.body?.results || [];
         const seen = new Set(hsDeals.map(d => d.id));
         nameDeals.forEach(d => { if (!seen.has(d.id)) { seen.add(d.id); hsDeals.push(d); } });
+
+        // Also search by contact name → associated deals (catches old deals by customer name)
+        try {
+          const ctRes = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: '/crm/v3/objects/contacts/search',
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, { query: q, limit: 10, properties: ['firstname','lastname','email','company'] });
+          const ctContacts = ctRes.body?.results || [];
+          if (ctContacts.length) {
+            const ctIds = ctContacts.map(c => c.id);
+            const assocRes = await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: '/crm/v4/associations/contacts/deals/batch/read',
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, { inputs: ctIds.map(id => ({ id: String(id) })) });
+            const newDealIds = [];
+            (assocRes.body?.results || []).forEach(r => {
+              (r.to || []).forEach(t => { if (!seen.has(String(t.toObjectId))) newDealIds.push(String(t.toObjectId)); });
+            });
+            if (newDealIds.length) {
+              const batchRes = await httpsRequest({
+                hostname: 'api.hubapi.com',
+                path: '/crm/v3/objects/deals/batch/read',
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+              }, {
+                inputs: newDealIds.slice(0, 30).map(id => ({ id })),
+                properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
+                             'closedate','payment_status','tracking_number','carrier__c'],
+              });
+              (batchRes.body?.results || []).forEach(d => {
+                if (!seen.has(d.id)) { seen.add(d.id); hsDeals.push(d); }
+              });
+            }
+          }
+        } catch(e) { /* contact search failure non-fatal */ }
       } else {
         // Normal load — no search query
         const searchBody = {

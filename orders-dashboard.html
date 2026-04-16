@@ -279,6 +279,7 @@
     <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
       <a id="drawerHsBtn" href="#" target="_blank" style="display:none;font-size:10px;color:var(--muted);text-decoration:none;padding:4px 9px;border-radius:5px;border:1px solid var(--border);font-weight:600;font-family:inherit">HS ↗</a>
       <button id="drawerFolderBtn" onclick="copyDrawerFolderPath()" style="display:none;font-size:10px;color:var(--muted);padding:4px 9px;border-radius:5px;border:1px solid var(--border);background:none;cursor:pointer;font-family:inherit;font-weight:600">📋 Copy Path</button>
+      <button id="drawerMoveFilesBtn" onclick="triggerMoveFiles()" style="display:none;font-size:10px;color:#3b82f6;padding:4px 9px;border-radius:5px;border:1px solid rgba(59,130,246,.3);background:none;cursor:pointer;font-family:inherit;font-weight:600" title="Scan Orders folder and move PDFs to this deal's Drive folder">📂 Move Files</button>
       <button class="drawer-close" onclick="closeDrawer()">&#x2715;</button>
     </div>
   </div>
@@ -1134,6 +1135,7 @@ function openDrawer(quoteNumber) {
 
   // Copy folder path button
   const folderBtn = document.getElementById('drawerFolderBtn');
+  const moveFilesBtn = document.getElementById('drawerMoveFilesBtn');
   if (folderBtn) {
     const company = order.company || order.q_company || order.json_snapshot?.customer?.company || '';
     const dealName = order.deal_name || '';
@@ -1143,10 +1145,14 @@ function openDrawer(quoteNumber) {
       dealName;
     if (folderName) {
       window._drawerFolderName = folderName;
+      window._drawerCompany    = company || folderName;
       folderBtn.style.display = 'inline-block';
+      if (moveFilesBtn) moveFilesBtn.style.display = 'inline-block';
     } else {
       window._drawerFolderName = null;
+      window._drawerCompany    = null;
       folderBtn.style.display = 'none';
+      if (moveFilesBtn) moveFilesBtn.style.display = 'none';
     }
   }
 
@@ -1728,6 +1734,19 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
 <script>
 let _moveFilesData = null;
 
+async function triggerMoveFiles() {
+  const quoteNumber = currentQuoteNumber;
+  const company     = window._drawerCompany || window._drawerFolderName || '';
+  if (!quoteNumber || !company) { showToast('No order loaded', 'error'); return; }
+  const btn = document.getElementById('drawerMoveFilesBtn');
+  if (btn) { btn.textContent = '⏳ Scanning...'; btn.disabled = true; }
+  try {
+    await scanOrderFiles(quoteNumber, company);
+  } finally {
+    if (btn) { btn.textContent = '📂 Move Files'; btn.disabled = false; }
+  }
+}
+
 async function scanOrderFiles(quoteNumber, company) {
   try {
     const res = await fetch('/api/drive/scan-orders', {
@@ -1839,12 +1858,15 @@ function showFolderSearchForMove(quoteNumber, company) {
       const idx = parseInt(choice) - 1;
       if (isNaN(idx) || idx < 0 || idx >= folders.length) return;
       const picked = folders[idx];
+      // Look up dealId for this quote to bind all quotes for the deal
+      const order = allOrders.find(o => o.quote_number === quoteNumber);
+      const dealId = order?.deal_id || null;
       // Bind and proceed
       fetch('/api/drive/bind-folder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ quoteNumber, folderId: picked.id })
+        body: JSON.stringify({ quoteNumber, dealId, folderId: picked.id })
       }).then(function() {
         if (_moveFilesData) {
           _moveFilesData.destFolderId = picked.id;

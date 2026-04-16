@@ -4609,12 +4609,24 @@ tbody tr:hover td{background:#fdfcfb}
       const needle = normalize(company);
       if (needle.length < 4) { json({ files: [], destFolderId: null, destFolderName: null }); return; }
 
-      // Get dest folder ID from DB
-      let destFolderId = null, destFolderName = null;
+      // Get dest folder ID from DB — try quote first, then fall back to any quote for the same deal
+      let destFolderId = null, destFolderName = null, destDealId = null;
       if (db && quoteNumber) {
-        const row = await db.query('SELECT gdrive_folder_id, company, deal_name FROM quotes WHERE quote_number = $1 LIMIT 1', [quoteNumber]);
+        const row = await db.query('SELECT gdrive_folder_id, deal_id, company, deal_name FROM quotes WHERE quote_number = $1 LIMIT 1', [quoteNumber]);
         destFolderId   = row.rows[0]?.gdrive_folder_id || null;
         destFolderName = row.rows[0]?.company || row.rows[0]?.deal_name || company;
+        destDealId     = row.rows[0]?.deal_id || null;
+        // If no folder on this quote, check other quotes for the same deal
+        if (!destFolderId && destDealId) {
+          const fallback = await db.query(
+            'SELECT gdrive_folder_id FROM quotes WHERE deal_id = $1 AND gdrive_folder_id IS NOT NULL ORDER BY created_at DESC LIMIT 1',
+            [destDealId]
+          );
+          if (fallback.rows[0]?.gdrive_folder_id) {
+            destFolderId = fallback.rows[0].gdrive_folder_id;
+            console.log(`[scan-orders] used fallback folder from deal ${destDealId}: ${destFolderId}`);
+          }
+        }
       }
 
       // List files in the shared Orders folder

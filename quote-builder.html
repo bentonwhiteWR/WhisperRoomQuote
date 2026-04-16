@@ -3731,20 +3731,6 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   window._acceptedHinge   = q.acceptedHinge   || q._acceptedHinge   || '';
   window._acceptedApColor = q.acceptedApColor || q._acceptedApColor || '';
   window._acceptedNote    = q.acceptedNote    || q._acceptedNote    || '';
-
-  // Pre-fill section 6 dropdowns from accepted values if no rep value already set
-  const repFoamEl2 = document.getElementById('repFoamColor');
-  if (repFoamEl2 && !repFoamEl2.value && window._acceptedFoam && window._acceptedFoam !== 'Undecided') {
-    repFoamEl2.value = window._acceptedFoam;
-  }
-  const repHingeEl2 = document.getElementById('repHingePreference');
-  if (repHingeEl2 && !repHingeEl2.value && window._acceptedHinge && window._acceptedHinge !== 'Undecided') {
-    repHingeEl2.value = window._acceptedHinge;
-  }
-  const repApEl2 = document.getElementById('repApColor');
-  if (repApEl2 && !repApEl2.value && window._acceptedApColor && window._acceptedApColor !== 'Undecided') {
-    repApEl2.value = window._acceptedApColor;
-  }
   // Clear result box so invoice/order links from other quotes don't bleed through
   const resultBox = document.getElementById('resultBox');
   if (resultBox) { resultBox.className = 'result-box'; resultBox.innerHTML = ''; }
@@ -3760,13 +3746,23 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   document.getElementById('dealName').value = q.dealName || '';
   if (q.ownerId) document.getElementById('repSelect').value = q.ownerId;
   if (q.notes) document.getElementById('notes').value = q.notes;
-  // Restore rep order spec selections
+  // Restore rep order spec selections (from snapshot, saved by rep)
   const repFoamEl = document.getElementById('repFoamColor');
   if (repFoamEl) repFoamEl.value = q.repFoamColor || '';
   const repHingeEl = document.getElementById('repHingePreference');
   if (repHingeEl) repHingeEl.value = q.repHingePreference || '';
   const repApEl = document.getElementById('repApColor');
   if (repApEl) repApEl.value = q.repApColor || '';
+  // Pre-fill from accepted values if rep hasn't set anything
+  if (repFoamEl && !repFoamEl.value && window._acceptedFoam && window._acceptedFoam !== 'Undecided') {
+    repFoamEl.value = window._acceptedFoam;
+  }
+  if (repHingeEl && !repHingeEl.value && window._acceptedHinge && window._acceptedHinge !== 'Undecided') {
+    repHingeEl.value = window._acceptedHinge;
+  }
+  if (repApEl && !repApEl.value && window._acceptedApColor && window._acceptedApColor !== 'Undecided') {
+    repApEl.value = window._acceptedApColor;
+  }
   const qlEl = document.getElementById('quoteLabel');
   if (qlEl) qlEl.value = q.quoteLabel || '';
 

@@ -1078,8 +1078,22 @@ async function generateFreeQuoteNumber(clientNumber, ownerId, dealId, contactId)
     if (sameDeal || sameContact) return candidate; // revision of same deal — OK
     seq++; // collision with different deal — try next
   }
-  // Fallback: timestamp-based to guarantee uniqueness
-  return `W-${dateKey}${String(Date.now()).slice(-4)}`;
+  // Exhausted 20 attempts — extend to 3-digit seq
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const candidate = `W-${dateKey}${String(seq).padStart(2, '0')}`;
+    const existing = await db.query(
+      `SELECT deal_id, contact_id FROM quotes WHERE quote_number = $1 LIMIT 1`,
+      [candidate]
+    );
+    if (existing.rows.length === 0) return candidate;
+    const ex = existing.rows[0];
+    const sameDeal    = dealId    && ex.deal_id    && ex.deal_id    === dealId;
+    const sameContact = contactId && ex.contact_id && ex.contact_id === contactId;
+    if (sameDeal || sameContact) return candidate;
+    seq++;
+  }
+  // True last resort — should never reach here
+  return `W-${dateKey}${String(seq).padStart(2, '0')}`;
 }
 
 async function saveQuoteToDb(quoteData) {

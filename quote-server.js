@@ -4571,12 +4571,28 @@ tbody tr:hover td{background:#fdfcfb}
   if (pathname === '/api/drive/bind-folder' && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
-      const { quoteNumber, folderId } = JSON.parse(await readBody(req));
-      if (!quoteNumber || !folderId) { json({ error: 'Missing quoteNumber or folderId' }, 400); return; }
+      const { quoteNumber, dealId, folderId } = JSON.parse(await readBody(req));
+      if (!folderId) { json({ error: 'Missing folderId' }, 400); return; }
       if (!db) { json({ error: 'No database' }, 500); return; }
-      await db.query('UPDATE quotes SET gdrive_folder_id = $1 WHERE quote_number = $2', [folderId, quoteNumber]);
-      console.log(`[drive] bound folder ${folderId} to quote ${quoteNumber}`);
-      json({ success: true });
+      let updated = 0;
+      // Update all quotes for this deal if dealId provided
+      if (dealId) {
+        const r = await db.query(
+          'UPDATE quotes SET gdrive_folder_id = $1 WHERE deal_id = $2',
+          [folderId, String(dealId)]
+        );
+        updated = r.rowCount || 0;
+        console.log(`[drive] bound folder ${folderId} to all quotes for deal ${dealId} (${updated} rows)`);
+      }
+      // Also update by quoteNumber as fallback
+      if (quoteNumber) {
+        await db.query(
+          'UPDATE quotes SET gdrive_folder_id = $1 WHERE quote_number = $2',
+          [folderId, quoteNumber]
+        );
+        console.log(`[drive] bound folder ${folderId} to quote ${quoteNumber}`);
+      }
+      json({ success: true, updated });
     } catch(e) { json({ error: e.message }, 500); }
     return;
   }

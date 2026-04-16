@@ -1216,13 +1216,13 @@ async function confirmRebindFolder() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ quoteNumber: _rebindQuoteNumber, folderId: _rebindFolderId })
+      body: JSON.stringify({ quoteNumber: _rebindQuoteNumber, dealId: _rebindDealId, folderId: _rebindFolderId })
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Bind failed');
     showToast('✓ Drive folder rebound successfully', 'success');
     closeRebindModal();
-    loadDeal(_rebindDealId); // refresh hub panel
+    openDeal(_rebindDealId); // refresh hub panel
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
     btn.disabled = false;
@@ -1250,7 +1250,7 @@ async function openRenameDeal(dealId, currentName) {
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Rename failed');
     showToast(`✓ Deal renamed to "${newName.trim()}"`, 'success');
-    loadDeal(dealId); // refresh the panel
+    openDeal(dealId); // refresh the panel
     loadBoard();      // refresh the board
   } catch(e) {
     showToast('Error: ' + e.message, 'error');

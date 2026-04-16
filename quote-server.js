@@ -3889,14 +3889,30 @@ tbody tr:hover td{background:#fdfcfb}
 .footer a{color:#ee6216;text-decoration:none}
 .footer strong{color:#888;font-weight:600}
 @media(max-width:600px){
-  .header-card{padding:24px 20px;border-left:4px solid transparent}
-  .logo-img{height:30px}
-  .header-right{text-align:left}
-  .quote-num{font-size:26px}
-  .card{padding:22px 20px}
+  .page{padding:0 0 130px}
+  .header-card{padding:20px 16px;border-left:4px solid transparent;gap:12px}
+  .logo-img{height:28px}
+  .header-right{text-align:left;width:100%}
+  .quote-type{font-size:9px}
+  .quote-num{font-size:24px}
+  .quote-meta{font-size:11px}
+  .card{padding:18px 16px;margin:0 0 10px}
+  .card-label{margin-bottom:14px}
   .info-grid{grid-template-columns:1fr}
-  .action-bar{flex-direction:column;padding:14px 16px}
-  .btn{width:100%;text-align:center}
+  /* Line items table — hide unit price col on mobile */
+  thead th:nth-child(3){display:none}
+  tbody td:nth-child(3){display:none}
+  .item-name{font-size:13px}
+  .item-desc{font-size:11px}
+  tbody td:nth-child(2){width:36px;font-size:13px}
+  tbody td:nth-child(4){width:80px;font-size:13px}
+  .totals{max-width:100%;margin-top:20px}
+  .tot{font-size:13px}
+  .tot.grand{font-size:22px}
+  .action-bar{flex-direction:column;padding:12px 16px;gap:8px}
+  .btn{width:100%;text-align:center;padding:13px 16px}
+  .btn-pay{padding:14px 16px}
+  .footer{padding:20px 16px}
 }
 @media print{
   body{background:white}
@@ -4261,14 +4277,33 @@ tbody tr:hover td{background:#fdfcfb}
 .footer strong{color:#888;font-weight:600}
 
 @media(max-width:600px){
-  .header-card{padding:24px 20px;border-left:4px solid transparent;border-image:linear-gradient(to bottom,#ee6216 0%,rgba(238,98,22,.15) 70%,transparent 100%) 1}
-  .logo-img{height:30px}
-  .header-right{text-align:left}
-  .quote-num{font-size:26px}
-  .card{padding:22px 20px}
+  .page{padding:0 0 130px}
+  .header-card{padding:20px 16px;border-left:4px solid transparent;border-image:linear-gradient(to bottom,#ee6216 0%,rgba(238,98,22,.15) 70%,transparent 100%) 1;gap:12px}
+  .logo-img{height:28px}
+  .header-right{text-align:left;width:100%}
+  .quote-type{font-size:9px}
+  .quote-num{font-size:24px}
+  .quote-meta,.quote-valid-tag{font-size:11px}
+  .card{padding:18px 16px;margin:0 0 10px}
+  .card-label{margin-bottom:14px}
   .info-grid{grid-template-columns:1fr}
-  .action-bar{flex-direction:column;padding:14px 16px}
-  .btn{width:100%;text-align:center}
+  /* Line items table — hide unit price col, keep name/qty/total */
+  thead th:nth-child(3){display:none}
+  tbody td:nth-child(3){display:none}
+  .item-name{font-size:13px}
+  .item-desc{font-size:11px}
+  /* Make qty and total columns narrower */
+  tbody td:nth-child(2){width:36px;font-size:13px}
+  tbody td:nth-child(4){width:80px;font-size:13px}
+  /* Totals full width on mobile */
+  .totals{max-width:100%;margin-top:20px}
+  .tot{font-size:13px}
+  .tot.grand{font-size:22px}
+  /* Action bar */
+  .action-bar{flex-direction:column;padding:12px 16px;gap:8px}
+  .btn{width:100%;text-align:center;padding:13px 16px}
+  .btn-accept{padding:14px 16px}
+  .footer{padding:20px 16px}
 }
 @media print{
   body{background:white}

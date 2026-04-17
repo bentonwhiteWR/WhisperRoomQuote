@@ -146,6 +146,50 @@
   .order-link-btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 5px; font-size: 11px; font-weight: 600; color: var(--muted); text-decoration: none; transition: all .15s; }
   .order-link-btn:hover { color: var(--orange); border-color: var(--orange); }
 
+  /* Colored tab active states per tab */
+  #tab-shipped.active { color: var(--blue); border-bottom-color: var(--blue); }
+  #tab-all.active { color: var(--muted); border-bottom-color: var(--muted); }
+  #tab-hs.active { color: var(--green); border-bottom-color: var(--green); }
+
+  /* Production order cards */
+  .orders-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .order-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; cursor: pointer; transition: transform .15s, box-shadow .15s, border-color .15s; display: flex; flex-direction: column; }
+  .order-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.3); border-color: rgba(238,98,22,.35); }
+  .oc-accent-bar { height: 3px; flex-shrink: 0; background: var(--orange); }
+  .order-card.urgency-warn .oc-accent-bar { background: #f59e0b; }
+  .order-card.urgency-hot  .oc-accent-bar { background: #ef4444; }
+  .oc-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+  .oc-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .oc-name { font-weight: 700; font-size: 13px; color: var(--text); line-height: 1.35; }
+  .oc-amount { font-weight: 800; font-size: 15px; color: var(--orange); white-space: nowrap; flex-shrink: 0; }
+  .oc-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .oc-quote { font-size: 10px; font-family: monospace; color: var(--muted); background: var(--surface2); border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; }
+  .oc-models { font-size: 11px; color: var(--muted); }
+  .oc-ap-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(0,0,0,.25); flex-shrink: 0; }
+  .oc-footer { display: flex; align-items: center; gap: 8px; }
+  .oc-days { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 4px; }
+  .order-card.urgency-ok   .oc-days { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(238,98,22,.25); }
+  .order-card.urgency-warn .oc-days { background: rgba(245,158,11,.12); color: #f59e0b; border: 1px solid rgba(245,158,11,.25); }
+  .order-card.urgency-hot  .oc-days { background: rgba(239,68,68,.12); color: #ef4444; border: 1px solid rgba(239,68,68,.25); }
+  .oc-spacer { flex: 1; }
+  .oc-open-btn { font-size: 11px; font-weight: 600; color: var(--muted); padding: 4px 10px; border-radius: 5px; border: 1px solid var(--border); background: none; cursor: pointer; font-family: inherit; transition: all .15s; }
+  .order-card:hover .oc-open-btn { color: var(--orange); border-color: rgba(238,98,22,.4); }
+
+  /* HubSpot action queue */
+  .hs-queue-header { margin-bottom: 14px; padding: 12px 16px; background: rgba(34,197,94,.07); border: 1px solid rgba(34,197,94,.2); border-radius: 8px; font-size: 12px; color: var(--green); font-weight: 600; }
+  .hs-queue-list { display: flex; flex-direction: column; gap: 8px; }
+  .hs-queue-item { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--green); border-radius: 10px; padding: 16px 20px; display: flex; align-items: center; gap: 16px; transition: background .15s; }
+  .hs-queue-item:hover { background: rgba(34,197,94,.03); }
+  .hq-info { flex: 1; min-width: 0; }
+  .hq-name { font-weight: 700; font-size: 14px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hq-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .hq-amount { font-weight: 800; font-size: 16px; color: var(--orange); white-space: nowrap; flex-shrink: 0; }
+  .hq-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+  .hq-ship-btn { padding: 9px 18px; background: var(--green); color: white; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap; transition: opacity .15s; }
+  .hq-ship-btn:hover { opacity: .88; }
+  .hq-hs-link { padding: 8px 12px; background: var(--surface2); color: var(--muted); border: 1px solid var(--border); border-radius: 7px; font-size: 11px; font-weight: 600; text-decoration: none; white-space: nowrap; transition: all .15s; }
+  .hq-hs-link:hover { color: var(--text); border-color: rgba(255,255,255,.25); }
+
   /* Mobile */
   @media(max-width:640px) {
     .drawer { width: 100vw; }
@@ -214,19 +258,24 @@
 
   <!-- Tabs -->
   <div class="tab-bar">
-    <div class="tab active" id="tab-production" onclick="switchOrderFilter('production')">In Production <span id="productionCount" style="opacity:.5"></span></div>
-    <div class="tab" id="tab-shipped" onclick="switchOrderFilter('shipped')">Shipped <span id="shippedCount" style="opacity:.5"></span></div>
+    <div class="tab active" id="tab-production" onclick="switchOrderFilter('production')"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--orange);margin-right:5px;vertical-align:middle;opacity:.8"></span>In Production <span id="productionCount" style="opacity:.5"></span></div>
+    <div class="tab" id="tab-shipped" onclick="switchOrderFilter('shipped')"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--blue);margin-right:5px;vertical-align:middle;opacity:.8"></span>Shipped <span id="shippedCount" style="opacity:.5"></span></div>
     <div class="tab" id="tab-all" onclick="switchOrderFilter('all')">All Orders <span id="allCount" style="opacity:.5"></span></div>
-    <div class="tab" id="tab-hs" onclick="switchTab('hs')">HubSpot Closed Won <span id="hsCount" style="opacity:.5"></span></div>
+    <div class="tab" id="tab-hs" onclick="switchTab('hs')"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px;vertical-align:middle;opacity:.8"></span>HubSpot Closed Won <span id="hsCount" style="opacity:.5"></span></div>
   </div>
 
   <div class="filter-bar">
     <input type="text" class="search-input" id="searchInput" placeholder="Search by name, company, quote number..." oninput="filterOrders()">
   </div>
 
-  <!-- DB Orders table -->
+  <!-- DB Orders panel -->
   <div id="panel-db">
-    <div class="orders-table-wrap">
+    <!-- Card view — In Production -->
+    <div id="ordersCardsWrap" style="display:none">
+      <div class="orders-card-grid" id="ordersCards"></div>
+    </div>
+    <!-- Table view — Shipped / All Orders -->
+    <div id="ordersTableWrap" class="orders-table-wrap">
       <table>
         <thead>
           <tr>
@@ -246,23 +295,11 @@
     </div>
   </div>
 
-  <!-- HubSpot Deals table -->
+  <!-- HubSpot Closed Won — action queue -->
   <div id="panel-hs" style="display:none">
-    <div class="orders-table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Deal Name</th>
-            <th>Company</th>
-            <th>Amount</th>
-            <th>Close Date</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="hsDealsBody">
-          <tr><td colspan="5"><div style="padding:40px;text-align:center;color:var(--muted)">Loading HubSpot deals...</div></td></tr>
-        </tbody>
-      </table>
+    <div class="hs-queue-header">These Closed Won deals are ready to ship — create an order for each one.</div>
+    <div class="hs-queue-list" id="hsQueueList">
+      <div style="padding:40px;text-align:center;color:var(--muted)">Loading HubSpot deals...</div>
     </div>
   </div>
 </div>
@@ -1015,7 +1052,7 @@ async function loadOrders() {
 }
 
 async function loadHsDeals() {
-  document.getElementById('hsDealsBody').innerHTML = `<tr><td colspan="5"><div style="padding:40px;text-align:center;color:var(--muted)">Loading from HubSpot...</div></td></tr>`;
+  document.getElementById('hsQueueList').innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted)">Loading from HubSpot...</div>`;
   try {
     const res = await fetch('/api/orders/hubspot-deals', { credentials: 'include' });
     const data = await res.json();
@@ -1023,7 +1060,7 @@ async function loadHsDeals() {
     renderHsDeals(allHsDeals);
     document.getElementById('hsCount').textContent = `(${allHsDeals.length})`;
   } catch(e) {
-    document.getElementById('hsDealsBody').innerHTML = `<tr><td colspan="5"><div style="padding:40px;text-align:center;color:#ef4444">Failed: ${e.message}</div></td></tr>`;
+    document.getElementById('hsQueueList').innerHTML = `<div style="padding:40px;text-align:center;color:#ef4444">Failed: ${e.message}</div>`;
   }
 }
 
@@ -1033,7 +1070,63 @@ function fmt(n) {
 }
 
 // ── Render DB Orders ──────────────────────────────────────────────
+const AP_HEX = {'Lemon':'#f5c518','Vanilla':'#c8b97a','Birch':'#c4a882','White':'#f0eeea','Green Apple':'#8a9a3a','Fern':'#3d5a2a','Waterfall':'#2e8fa0','Asteroid':'#7a8a95','Orchid':'#7a1a3a','Pumpkin':'#c45c22','Geranium':'#c0282a','Lapis':'#1e3a6e','Onyx':'#1a1a1a','Graphite':'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'};
+
 function renderOrders(orders) {
+  if (currentOrderFilter === 'production') {
+    document.getElementById('ordersCardsWrap').style.display = '';
+    document.getElementById('ordersTableWrap').style.display = 'none';
+    const container = document.getElementById('ordersCards');
+    if (!orders.length) {
+      container.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📦</div><div class="empty-text">No orders in production</div></div>`;
+      return;
+    }
+    container.innerHTML = orders.map(o => {
+      const total   = o.total ? fmt(o.total) : '—';
+      const models  = (o.json_snapshot?.lineItems||[]).filter(i=>i?.name?.startsWith('MDL')).map(i=>i.name).join(', ') || '—';
+      const apColor = o.order_data?.apColor || '';
+      const apHex   = AP_HEX[apColor] || null;
+      const apDot   = apHex ? `<span class="oc-ap-dot" title="AP: ${apColor}" style="background:${apHex}"></span>` : '';
+      let daysHtml = '', urgencyClass = 'urgency-ok';
+      const createdAt = o.created_at || o.order_data?.createdAt || null;
+      if (createdAt) {
+        const days = Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000);
+        if (days >= 15) urgencyClass = 'urgency-hot';
+        else if (days >= 8) urgencyClass = 'urgency-warn';
+        daysHtml = `<span class="oc-days">&#9201; ${days}d in prod</span>`;
+      }
+      const name    = o.deal_name || o.customer_name || o.quote_number;
+      const company = o.company || o.json_snapshot?.customer?.company || '';
+      const qn      = o.quote_number.replace(/'/g, "\\'");
+      return `<div class="order-card ${urgencyClass}" onclick="openDrawer('${qn}')">
+        <div class="oc-accent-bar"></div>
+        <div class="oc-body">
+          <div class="oc-header">
+            <div>
+              <div class="oc-name">${name}</div>
+              ${company && company !== name ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${company}</div>` : ''}
+            </div>
+            <div class="oc-amount">${total}</div>
+          </div>
+          <div class="oc-meta">
+            <span class="oc-quote">${o.quote_number}</span>
+            <span class="oc-models">${models}</span>
+            ${apDot}
+          </div>
+          <div class="oc-footer">
+            ${daysHtml}
+            <span class="oc-spacer"></span>
+            <button class="oc-open-btn" onclick="event.stopPropagation();openDrawer('${qn}')">Edit →</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+    return;
+  }
+
+  // Table view — Shipped / All Orders
+  document.getElementById('ordersCardsWrap').style.display = 'none';
+  document.getElementById('ordersTableWrap').style.display = '';
   const tbody = document.getElementById('ordersBody');
   if (!orders.length) {
     tbody.innerHTML = `<tr><td colspan="7"><div class="empty"><div class="empty-icon">📦</div><div class="empty-text">No orders yet</div></div></td></tr>`;
@@ -1043,24 +1136,24 @@ function renderOrders(orders) {
     const isShipped = !!(o.order_data?.shipped?.tracking && !o.order_data?.shipped?.unshipped);
     const total     = o.total ? fmt(o.total) : '—';
     const pallets   = o.order_data?.shipped?.pallets || '—';
+    const carrier   = o.order_data?.shipped?.carrier || '';
     const shipDate  = o.order_data?.shipped?.date
       ? (() => {
           const raw = o.order_data.shipped.date;
-          // Date-only strings (YYYY-MM-DD) are parsed as UTC by JS — force local by appending T12:00
           const d = new Date(raw.length === 10 ? raw + 'T12:00:00' : raw);
           return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
         })()
       : '—';
     const orderUrl  = `${location.origin}/o/${encodeURIComponent(o.quote_number)}${o.share_token ? '?t=' + o.share_token : ''}`;
     const apColor   = o.order_data?.apColor || '';
-    const apHex     = {'Lemon':'#f5c518','Vanilla':'#c8b97a','Birch':'#c4a882','White':'#f0eeea','Green Apple':'#8a9a3a','Fern':'#3d5a2a','Waterfall':'#2e8fa0','Asteroid':'#7a8a95','Orchid':'#7a1a3a','Pumpkin':'#c45c22','Geranium':'#c0282a','Lapis':'#1e3a6e','Onyx':'#1a1a1a','Graphite':'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'}[apColor] || null;
+    const apHex     = AP_HEX[apColor] || null;
     const apDot     = apHex ? `<span title="AP: ${apColor}" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${apHex};border:1px solid rgba(0,0,0,.25);margin-left:5px;vertical-align:middle;flex-shrink:0"></span>` : '';
     return `<tr onclick="openDrawer('${o.quote_number}')">
       <td><div class="td-main">${o.deal_name || o.quote_number}</div><div class="td-sub">${o.quote_number}</div></td>
       <td><div class="td-mono" style="font-size:11px;display:flex;align-items:center">${(()=>{const items=(o.json_snapshot?.lineItems||[]).filter(i=>i?.name?.startsWith('MDL'));return items.length?items.map(i=>i.name).join(', '):'—';})()}${apDot}</div></td>
       <td style="font-weight:600;color:var(--orange)">${total}</td>
       <td style="color:var(--muted);font-size:12px">${pallets}</td>
-      <td style="color:var(--muted);font-size:12px">${shipDate}</td>
+      <td style="color:var(--muted);font-size:12px">${shipDate}${carrier ? `<div style="font-size:10px;color:var(--blue);margin-top:2px">${carrier}</div>` : ''}</td>
       <td>${isShipped
         ? `<span class="badge" style="background:var(--green-dim);color:var(--green);border:1px solid rgba(34,197,94,.25)">✓ Shipped</span>`
         : `<span class="badge badge-production">In Production</span>`}
@@ -1072,26 +1165,27 @@ function renderOrders(orders) {
 
 // ── Render HubSpot Deals ──────────────────────────────────────────
 function renderHsDeals(deals) {
-  const tbody = document.getElementById('hsDealsBody');
+  const container = document.getElementById('hsQueueList');
   if (!deals.length) {
-    tbody.innerHTML = `<tr><td colspan="5"><div class="empty"><div class="empty-icon">✓</div><div class="empty-text">All Closed Won deals have been processed</div></div></td></tr>`;
+    container.innerHTML = `<div class="empty"><div class="empty-icon">✓</div><div class="empty-text">All Closed Won deals have been processed</div></div>`;
     return;
   }
-  tbody.innerHTML = deals.map(d => {
+  container.innerHTML = deals.map(d => {
     const amount   = d.amount ? fmt(d.amount) : '—';
     const date     = d.closeDate ? new Date(d.closeDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
-    return `<tr>
-      <td><div class="td-main">${d.dealName}</div></td>
-      <td><div class="td-sub">${d.company || '—'}</div></td>
-      <td style="font-weight:600;color:var(--orange)">${amount}</td>
-      <td style="color:var(--muted);font-size:12px">${date}</td>
-      <td>
-        <div style="display:flex;gap:6px;align-items:center">
-          <button onclick="openHsShipModal('${d.id}','${d.dealName.replace(/'/g,'\\\'')}')" class="btn btn-primary" style="padding:6px 12px;font-size:11px;white-space:nowrap">&#x1F69A; Ship It</button>
-          <a href="${d.dealUrl}" target="_blank" class="order-link-btn">HubSpot ↗</a>
-        </div>
-      </td>
-    </tr>`;
+    const safeId   = d.id.replace(/'/g,"\\'");
+    const safeName = d.dealName.replace(/'/g,"\\'");
+    return `<div class="hs-queue-item">
+      <div class="hq-info">
+        <div class="hq-name">${d.dealName}</div>
+        <div class="hq-meta">${d.company ? d.company + ' · ' : ''}Closed ${date}</div>
+      </div>
+      <div class="hq-amount">${amount}</div>
+      <div class="hq-actions">
+        <button onclick="openHsShipModal('${safeId}','${safeName}')" class="hq-ship-btn">&#x1F69A; Ship It</button>
+        <a href="${d.dealUrl}" target="_blank" class="hq-hs-link">HubSpot ↗</a>
+      </div>
+    </div>`;
   }).join('');
 }
 

@@ -1052,7 +1052,7 @@ function renderOrders(orders) {
           return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
         })()
       : '—';
-    const orderUrl  = `https://sales.whisperroom.com/o/${encodeURIComponent(o.quote_number)}${o.share_token ? '?t=' + o.share_token : ''}`;
+    const orderUrl  = `${location.origin}/o/${encodeURIComponent(o.quote_number)}${o.share_token ? '?t=' + o.share_token : ''}`;
     const apColor   = o.order_data?.apColor || '';
     const apHex     = {'Lemon':'#f5c518','Vanilla':'#c8b97a','Birch':'#c4a882','White':'#f0eeea','Green Apple':'#8a9a3a','Fern':'#3d5a2a','Waterfall':'#2e8fa0','Asteroid':'#7a8a95','Orchid':'#7a1a3a','Pumpkin':'#c45c22','Geranium':'#c0282a','Lapis':'#1e3a6e','Onyx':'#1a1a1a','Graphite':'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'}[apColor] || null;
     const apDot     = apHex ? `<span title="AP: ${apColor}" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${apHex};border:1px solid rgba(0,0,0,.25);margin-left:5px;vertical-align:middle;flex-shrink:0"></span>` : '';
@@ -1232,7 +1232,7 @@ function openDrawer(quoteNumber) {
     logSection.style.display = 'none';
   }
 
-  const orderUrl = `https://sales.whisperroom.com/o/${encodeURIComponent(quoteNumber)}${order.share_token ? '?t=' + order.share_token : ''}`;
+  const orderUrl = `${location.origin}/o/${encodeURIComponent(quoteNumber)}${order.share_token ? '?t=' + order.share_token : ''}`;
   console.log('View Order URL:', orderUrl, 'token:', order.share_token);
   document.getElementById('viewOrderBtn').href = orderUrl;
 

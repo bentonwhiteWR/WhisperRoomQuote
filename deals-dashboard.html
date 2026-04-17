@@ -398,7 +398,7 @@ function renderHub(dealId,data) {
     ?'<div style="font-size:12px;color:var(--muted);font-style:italic;padding:6px 0">No quotes yet</div>'
     :data.quotes.map(q=>{
       const acc=q.accepted;
-      const qUrl=q.shareToken?`https://sales.whisperroom.com/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}`:'';
+      const qUrl=q.shareToken?`${location.origin}/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}`:'';
       const dealPaid = (ps === 'paid');
       const noteBar = acc && (q.acceptedFoam||q.acceptedHinge||q.acceptedNote) ? `
         <div style="font-size:10px;color:var(--green);margin-top:2px;opacity:.8">
@@ -471,7 +471,7 @@ function renderHub(dealId,data) {
           ${ord.foamColor?`<div style="font-size:10px;color:var(--muted);margin-top:2px">${ord.foamColor}${ord.hingePreference?' · '+ord.hingePreference:''}</div>`:''}
         </div>
         <div style="display:flex;gap:5px;flex-shrink:0">
-          ${matchQ?.shareToken?`<a href="https://sales.whisperroom.com/o/${encodeURIComponent(ord.quoteNumber)}?t=${matchQ.shareToken}" target="_blank" class="row-link">Order ↗</a>`:''}
+          ${matchQ?.shareToken?`<a href="${location.origin}/o/${encodeURIComponent(ord.quoteNumber)}?t=${matchQ.shareToken}" target="_blank" class="row-link">Order ↗</a>`:''}
           <a href="/orders?openOrder=${encodeURIComponent(ord.quoteNumber)}" class="row-link" style="color:var(--orange);border-color:var(--orange-border)">Open in Orders →</a>
         </div>
       </div>`;
@@ -632,7 +632,7 @@ function renderTimeline(events) {
 
 function copyQuoteLink(quoteNumber, shareToken) {
   if (!shareToken) { showToast('No share token — push quote first', 'error'); return; }
-  const url = `https://sales.whisperroom.com/q/${encodeURIComponent(quoteNumber)}?t=${shareToken}`;
+  const url = `${location.origin}/q/${encodeURIComponent(quoteNumber)}?t=${shareToken}`;
   navigator.clipboard?.writeText(url).then(() => showToast('Link copied!', 'success'))
     .catch(() => { prompt('Copy link:', url); });
 }
@@ -649,7 +649,7 @@ function emailQuote(quoteNumber, shareToken) {
   const contact = window._hubContact || {};
   const toEmail = contact.email || '';
   const name    = [contact.firstName, contact.lastName].filter(Boolean).join(' ') || contact.company || 'there';
-  const url     = `https://sales.whisperroom.com/q/${encodeURIComponent(quoteNumber)}?t=${shareToken}`;
+  const url     = `${location.origin}/q/${encodeURIComponent(quoteNumber)}?t=${shareToken}`;
   const subj    = encodeURIComponent(`Your WhisperRoom Quote — ${deal.name || quoteNumber}`);
   const body    = encodeURIComponent(`Hi ${name},\n\nPlease find your WhisperRoom quote at the link below:\n\n${url}\n\nYou can review and accept your quote directly through the link above.\n\nIf you have any questions, please don't hesitate to reach out.\n\nBest regards,\nWhisperRoom, Inc.\n1-800-200-8168`);
   window.open(`mailto:${toEmail}?subject=${subj}&body=${body}`, '_blank');

@@ -55,34 +55,11 @@ const {
 
 
 // ── Token validator for public quote/invoice/order links ─────────
-function validateShareToken(quoteData, requestedToken) {
-  if (!quoteData) return false;
-  const storedToken = quoteData._shareToken || quoteData.shareToken;
-  if (!storedToken) return true; // legacy quotes without token — allow during transition
-  if (!requestedToken) return false;
-  return storedToken === requestedToken;
-}
-
-// ── Rate limiter for public routes ───────────────────────────────
-const rateLimitMap = new Map(); // ip → { count, resetAt }
-function checkRateLimit(ip, max=30, windowMs=60000) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
-    return true;
-  }
-  if (entry.count >= max) return false;
-  entry.count++;
-  return true;
-}
-// Clean up old entries every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of rateLimitMap) {
-    if (now > entry.resetAt) rateLimitMap.delete(ip);
-  }
-}, 300000);
+const utils = require('./lib/utils');
+const {
+  generateToken, parseCookies, readBody,
+  validateShareToken, buildPdfFilename, checkRateLimit,
+} = utils;
 
 // ── Fix 3: Catch unhandled crashes — log and keep running ────────────
 process.on('uncaughtException', (err) => {
@@ -489,6 +466,10 @@ const PORT         = process.env.PORT || 3457;
 const PASSWORD     = process.env.WR_PASSWORD || '';
 const APP_VERSION  = (() => { try { return require('./package.json').version; } catch(e) { return '1.0.0'; } })();
 
+const logger = require('./lib/logger');
+const { writelog } = logger;
+logger.init({ getDb: () => db, appVersion: APP_VERSION });
+
 // ── HubSpot module (extracted) ────────────────────────────────────
 // httpsRequest is injected later via hubspot.init(...) once it is defined.
 const hubspot = require('./lib/hubspot');
@@ -514,24 +495,6 @@ const {
 // ── Activity + Error Logger ───────────────────────────────────────
 // setImmediate defers the DB write until after the response is sent.
 // A failure here CANNOT affect any request — fully isolated.
-function writelog(level, event, message, opts) {
-  setImmediate(() => {
-    if (!db) return;
-    const o = opts || {};
-    db.query(
-      `INSERT INTO logs (version,level,event,rep,quote_num,deal_id,deal_name,message,meta)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [ APP_VERSION, level, event,
-        o.rep      || null,
-        o.quoteNum || null,
-        o.dealId   || null,
-        o.dealName || null,
-        message,
-        o.meta ? JSON.stringify(o.meta) : null ]
-    ).catch(() => {});
-  });
-}
-
 const REPS = {
   '36330944':'Jill','38143901':'Sarah','117442978':'Travis',
   '36303670':'Benton','36320208':'Gabe','38732178':'Kim',
@@ -547,103 +510,13 @@ const { TAXJAR_KEY, calculateTaxProper } = taxjar;
 // taxjar.init(...) called after httpsRequest, NEXUS_STATES, toStateAbbr are defined
 
 
-const sessions      = new Set();       // password sessions (kept in-memory, rarely used)
-const oauthStates   = new Set();       // CSRF state tokens (short-lived, in-memory is fine)
-
-// DB-backed session helpers
-async function dbSessionSet(token, data) {
-  if (!db) return;
-  try {
-    await db.query(
-      `INSERT INTO sessions (token, email, name, owner_id, expires_at)
-       VALUES ($1,$2,$3,$4,$5)
-       ON CONFLICT (token) DO UPDATE SET expires_at=$5`,
-      [token, data.email||'', data.name||'', data.ownerId||null, new Date(data.expiresAt)]
-    );
-  } catch(e) { console.warn('dbSessionSet:', e.message); }
-}
-async function dbSessionGet(token) {
-  if (!db) return null;
-  try {
-    const r = await db.query(
-      'SELECT email, name, owner_id, expires_at FROM sessions WHERE token=$1 AND expires_at > NOW()',
-      [token]
-    );
-    if (!r.rows.length) return null;
-    const row = r.rows[0];
-    return { email: row.email, name: row.name, ownerId: row.owner_id, expiresAt: new Date(row.expires_at).getTime() };
-  } catch(e) { return null; }
-}
-async function dbSessionDelete(token) {
-  if (!db) return;
-  try { await db.query('DELETE FROM sessions WHERE token=$1', [token]); } catch(e) {}
-}
-
-// In-memory cache to avoid DB hit on every request (cleared on expiry)
-const _sessionCache = new Map();
-
-function isAuth(req) {
-  const c = parseCookies(req);
-  // Password session (in-memory fallback)
-  if (c.wr_qt_session && sessions.has(c.wr_qt_session)) return true;
-  // OAuth session — check cache first, then DB
-  if (c.wr_oauth_session) {
-    const cached = _sessionCache.get(c.wr_oauth_session);
-    if (cached) {
-      if (cached.expiresAt > Date.now()) return true;
-      _sessionCache.delete(c.wr_oauth_session);
-    }
-    // Will be resolved async — optimistic true if token exists in cache
-    return _sessionCache.has(c.wr_oauth_session);
-  }
-  return false;
-}
-
-async function isAuthAsync(req) {
-  const c = parseCookies(req);
-  if (c.wr_qt_session && sessions.has(c.wr_qt_session)) return true;
-  if (c.wr_oauth_session) {
-    // Check memory cache
-    const cached = _sessionCache.get(c.wr_oauth_session);
-    if (cached && cached.expiresAt > Date.now()) return true;
-    // Check DB
-    const sess = await dbSessionGet(c.wr_oauth_session);
-    if (sess) { _sessionCache.set(c.wr_oauth_session, sess); return true; }
-  }
-  return false;
-}
-
-function getSession(req) {
-  const c = parseCookies(req);
-  if (c.wr_oauth_session) {
-    const cached = _sessionCache.get(c.wr_oauth_session);
-    if (cached && cached.expiresAt > Date.now()) return cached;
-  }
-  return null;
-}
-
-async function getSessionAsync(req) {
-  const c = parseCookies(req);
-  if (c.wr_oauth_session) {
-    const cached = _sessionCache.get(c.wr_oauth_session);
-    if (cached && cached.expiresAt > Date.now()) return cached;
-    const sess = await dbSessionGet(c.wr_oauth_session);
-    if (sess) { _sessionCache.set(c.wr_oauth_session, sess); return sess; }
-  }
-  return null;
-}
-
-// Quick helper — returns ownerId string for writelog rep field, never throws
-// Accepts optional pre-parsed body so error handlers can pass ownerId directly
-function getRepFromReq(req, body) {
-  try {
-    const fromSession = getSession(req)?.ownerId || null;
-    if (fromSession) return fromSession;
-    // Fall back to ownerId in pre-parsed body (available in route error handlers)
-    if (body?.ownerId) return String(body.ownerId);
-    return null;
-  } catch(e) { return null; }
-}
+const auth = require('./lib/auth');
+auth.init({ getDb: () => db, parseCookies });
+const {
+  sessions, oauthStates, _sessionCache,
+  dbSessionSet, dbSessionGet, dbSessionDelete,
+  isAuth, isAuthAsync, getSession, getSessionAsync, getRepFromReq,
+} = auth;
 
 
 const HS_CLIENT_ID     = process.env.HS_CLIENT_ID     || '';
@@ -655,24 +528,11 @@ const HS_REDIRECT_URI  = process.env.HS_REDIRECT_URI  || 'https://sales.whisperr
 const PUBLIC_BASE_URL  = (process.env.PUBLIC_BASE_URL || 'https://sales.whisperroom.com').replace(/\/+$/, '');
 
 // ── Nexus states (freight taxability per state) ───────────────────
-const NEXUS_STATES = {
-  AZ: { taxFreight: true  },
-  CA: { taxFreight: true  },
-  CO: { taxFreight: true  },
-  FL: { taxFreight: false },
-  GA: { taxFreight: false },
-  IL: { taxFreight: true  },
-  MA: { taxFreight: false },
-  NC: { taxFreight: true  },
-  OH: { taxFreight: true  },
-  PA: { taxFreight: true  },
-  TN: { taxFreight: true  },
-  TX: { taxFreight: true  },
-  UT: { taxFreight: true  },
-  VA: { taxFreight: false },
-  WI: { taxFreight: true  },
-  WA: { taxFreight: true  },
-};
+const states = require('./lib/states');
+const {
+  NEXUS_STATES, STATE_ABBR_MAP, STATE_FULL_NAME,
+  toStateAbbr, toStateFull, isCanadianProvince,
+} = states;
 
 // ── HTTPS helper ──────────────────────────────────────────────────
 function httpsRequest(options, body, rawBody) {
@@ -717,105 +577,6 @@ taxjar.init({ httpsRequest, NEXUS_STATES, toStateAbbr });
 notify.init({ getDb: () => db });
 freight.init({ httpsRequest, getDb: () => db, writelog, puppeteer });
 
-// Bidirectional state lookup
-const STATE_ABBR_MAP = {
-  'alabama':'AL','alaska':'AK','arizona':'AZ','arkansas':'AR','california':'CA',
-  'colorado':'CO','connecticut':'CT','delaware':'DE','florida':'FL','georgia':'GA',
-  'hawaii':'HI','idaho':'ID','illinois':'IL','indiana':'IN','iowa':'IA',
-  'kansas':'KS','kentucky':'KY','louisiana':'LA','maine':'ME','maryland':'MD',
-  'massachusetts':'MA','michigan':'MI','minnesota':'MN','mississippi':'MS',
-  'missouri':'MO','montana':'MT','nebraska':'NE','nevada':'NV','new hampshire':'NH',
-  'new jersey':'NJ','new mexico':'NM','new york':'NY','north carolina':'NC',
-  'north dakota':'ND','ohio':'OH','oklahoma':'OK','oregon':'OR','pennsylvania':'PA',
-  'rhode island':'RI','south carolina':'SC','south dakota':'SD','tennessee':'TN',
-  'texas':'TX','utah':'UT','vermont':'VT','virginia':'VA','washington':'WA',
-  'west virginia':'WV','wisconsin':'WI','wyoming':'WY','washington dc':'DC',
-  'alberta':'AB','british columbia':'BC','manitoba':'MB','new brunswick':'NB',
-  'newfoundland and labrador':'NL','newfoundland':'NL','nova scotia':'NS',
-  'ontario':'ON','prince edward island':'PE','quebec':'QC','saskatchewan':'SK',
-};
-
-const STATE_FULL_NAME = {
-  'AL':'Alabama','AK':'Alaska','AZ':'Arizona','AR':'Arkansas','CA':'California',
-  'CO':'Colorado','CT':'Connecticut','DE':'Delaware','FL':'Florida','GA':'Georgia',
-  'HI':'Hawaii','ID':'Idaho','IL':'Illinois','IN':'Indiana','IA':'Iowa',
-  'KS':'Kansas','KY':'Kentucky','LA':'Louisiana','ME':'Maine','MD':'Maryland',
-  'MA':'Massachusetts','MI':'Michigan','MN':'Minnesota','MS':'Mississippi',
-  'MO':'Missouri','MT':'Montana','NE':'Nebraska','NV':'Nevada','NH':'New Hampshire',
-  'NJ':'New Jersey','NM':'New Mexico','NY':'New York','NC':'North Carolina',
-  'ND':'North Dakota','OH':'Ohio','OK':'Oklahoma','OR':'Oregon','PA':'Pennsylvania',
-  'RI':'Rhode Island','SC':'South Carolina','SD':'South Dakota','TN':'Tennessee',
-  'TX':'Texas','UT':'Utah','VT':'Vermont','VA':'Virginia','WA':'Washington',
-  'WV':'West Virginia','WI':'Wisconsin','WY':'Wyoming','DC':'Washington DC',
-  'AB':'Alberta','BC':'British Columbia','MB':'Manitoba','NB':'New Brunswick',
-  'NL':'Newfoundland and Labrador','NS':'Nova Scotia','ON':'Ontario',
-  'PE':'Prince Edward Island','QC':'Quebec','SK':'Saskatchewan',
-};
-
-// Always returns 2-letter abbreviation - used for freight/tax APIs
-function toStateAbbr(val) {
-  if (!val) return '';
-  const trimmed = val.trim();
-  if (trimmed.length === 2) return trimmed.toUpperCase();
-  return STATE_ABBR_MAP[trimmed.toLowerCase()] || trimmed.toUpperCase();
-}
-
-// Always returns full name - used for HubSpot contact creation
-function toStateFull(val) {
-  if (!val) return '';
-  const trimmed = val.trim();
-  // Already a full name
-  if (trimmed.length > 2) {
-    // Capitalize properly and return as-is if not in our map
-    const lower = trimmed.toLowerCase();
-    const abbr = STATE_ABBR_MAP[lower];
-    if (abbr) return STATE_FULL_NAME[abbr] || trimmed;
-    return trimmed;
-  }
-  // It's an abbreviation
-  const upper = trimmed.toUpperCase();
-  return STATE_FULL_NAME[upper] || trimmed;
-}
-
-// Returns true if the state/province abbreviation is Canadian
-function isCanadianProvince(stateAbbr) {
-  const CA_PROVINCES = new Set(['AB','BC','MB','NB','NL','NS','ON','PE','QC','SK','NT','NU','YT']);
-  return CA_PROVINCES.has((stateAbbr || '').toUpperCase().trim());
-}
-
-// Build consistent PDF filename: "Company Label QuoteNumber (Type).pdf"
-function buildPdfFilename(quoteData, quoteNumber, type, dealName) {
-  const c = quoteData?.customer || {};
-  const company = (c.company || '').trim();
-  // Prefer explicit dealName arg, then customer company, then snapshot dealName
-  // Strip date suffix from deal names (e.g. "Acme Corp - Apr 2026" → "Acme Corp")
-  const stripDateSuffix = s => (s||'').replace(/\s*[·—\-–]\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\s*$/i, '').trim();
-  const resolvedName = company
-    || stripDateSuffix(dealName || quoteData?.dealName || '')
-    || [c.firstName, c.lastName].filter(Boolean).join(' ');
-  const label = (quoteData?.quoteLabel || '').trim();
-  const parts = [resolvedName, label, quoteNumber].filter(Boolean);
-  const safe = parts.join(' ').replace(/[/\\:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
-  return type ? `${safe} (${type}).pdf` : `${safe}.pdf`;
-}
-// ── Auth ──────────────────────────────────────────────────────────
-function generateToken() { return crypto.randomBytes(32).toString('hex'); }
-function parseCookies(req) {
-  const list = {};
-  (req.headers.cookie || '').split(';').forEach(p => {
-    const parts = p.split('=');
-    if (parts[0]) list[parts[0].trim()] = (parts[1] || '').trim();
-  });
-  return list;
-}
-// ── Request body parser ───────────────────────────────────────────
-function readBody(req) {
-  return new Promise(resolve => {
-    let body = '';
-    req.on('data', c => body += c);
-    req.on('end', () => resolve(body));
-  });
-}
 
 // ── Login page HTML ───────────────────────────────────────────────
 const LOGIN_HTML = `<!DOCTYPE html><html><head><meta charset="UTF-8">

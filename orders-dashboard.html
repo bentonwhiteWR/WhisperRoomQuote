@@ -4,8 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WhisperRoom — Production Orders</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700,800&display=swap" rel="stylesheet">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial Black,sans-serif' font-size='18' font-weight='900' fill='%23e8531a'>W</text></svg>">
 <style>
   :root {
@@ -37,7 +36,7 @@
     --row-hover: rgba(0,0,0,.02);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+  body { font-family: 'Satoshi', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased; }
 
   /* Topbar — always dark regardless of light/dark mode */
   .topbar { display: flex; align-items: center; justify-content: space-between; padding: 0 20px; min-height: 52px; background: #1a1a1a; border-bottom: 1px solid rgba(255,255,255,.1); position: sticky; top: 0; z-index: 100; gap: 8px; flex-wrap: nowrap; }
@@ -64,7 +63,7 @@
   /* Main */
   .main { max-width: 1200px; margin: 0 auto; padding: 28px 24px; }
   .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
-  .page-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; }
+  .page-title { font-family: 'Satoshi', sans-serif; font-size: 22px; font-weight: 800; }
   .page-title span { color: var(--orange); }
   .order-count { font-size: 12px; color: var(--muted); margin-top: 3px; }
 
@@ -104,7 +103,7 @@
   .drawer { position: fixed; top: 0; right: -520px; width: 500px; max-width: 96vw; height: 100vh; background: var(--surface); border-left: 1px solid var(--border); z-index: 201; transition: right .25s ease; overflow-y: auto; padding: 28px 28px 40px; }
   .drawer.open { right: 0; }
   .drawer-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; }
-  .drawer-title { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800; }
+  .drawer-title { font-family: 'Satoshi', sans-serif; font-size: 18px; font-weight: 800; }
   .drawer-subtitle { font-size: 12px; color: var(--muted); margin-top: 4px; }
   .drawer-close { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; padding: 4px; line-height: 1; }
   .drawer-close:hover { color: var(--text); }

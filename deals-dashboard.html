@@ -326,7 +326,7 @@ function renderBoard() {
             <div class="card-name" style="flex:1">${d.name}</div>
             ${isUnintegrated?`<div class="card-unintegrated-dot" title="HubSpot only — no quotes or orders in this system"></div>`:''}
           </div>
-          ${d.firstMdl?`<div class="card-mdl">${d.firstMdl}</div>`:''}
+          ${(d.quoteLabel||d.firstMdl)?`<div class="card-mdl">${d.quoteLabel||d.firstMdl}</div>`:''}
           <div class="card-meta">
             ${d.amount&&parseFloat(d.amount)>0?`<span class="card-amount">${fmt(d.amount)}</span>`:''}
             ${payHtml}
@@ -419,7 +419,7 @@ function renderHub(dealId,data) {
         </div>
         <!-- Row 2: MDL + note on left, Invoice+Paid on right -->
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap" onclick="event.stopPropagation()">
-          ${q.firstMdl?`<span style="font-size:10px;color:var(--text2);font-family:var(--mono);font-weight:600">${q.firstMdl}</span>`:''}
+          ${(q.quoteLabel||q.firstMdl)?`<span style="font-size:10px;color:var(--text2);font-family:var(--mono);font-weight:600">${q.quoteLabel||q.firstMdl}</span>`:''}
           <span style="font-size:12px;font-weight:700;color:${acc?'var(--green)':'var(--text)'}">${fmt(q.total)}</span>
           ${noteBar}
           <div style="margin-left:auto;display:flex;gap:5px">

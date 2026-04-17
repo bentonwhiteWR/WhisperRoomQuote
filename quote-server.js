@@ -1072,6 +1072,7 @@ const server = http.createServer(async (req, res) => {
              q.created_at,
              (q.json_snapshot->>'accepted')::text        as accepted,
              (q.json_snapshot->>'acceptedAt')::text      as accepted_at,
+             q.json_snapshot->>'quoteLabel'              as quote_label,
              q.json_snapshot->'lineItems'                as line_items,
              o.created_at                               as order_at
            FROM quotes q
@@ -1096,6 +1097,7 @@ const server = http.createServer(async (req, res) => {
               total: r.total,
               accepted: r.accepted === 'true',
               firstMdl,
+              quoteLabel: r.quote_label || '',
               lastQuoteAt: r.created_at || null,
               lastActivityAt: r.created_at || null,
             };

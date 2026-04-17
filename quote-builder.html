@@ -3573,9 +3573,33 @@ ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</
 
 <!-- ORDER MODAL -->
 <div id="orderModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;align-items:center;justify-content:center;padding:16px">
-  <div style="background:#1e1e1e;border-radius:14px;padding:28px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);max-height:90vh;overflow-y:auto">
+  <div style="background:#1e1e1e;border-radius:14px;padding:28px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);max-height:90vh;overflow-y:auto">
     <h2 style="font-size:16px;font-weight:800;color:#f0ede8;margin-bottom:6px">&#x1F4E6; Process Order</h2>
-    <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:20px">This will advance the deal to Closed Won and notify shipping &amp; accounting.</p>
+    <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:16px">Advances deal to Closed Won, records payment, and notifies shipping &amp; accounting.</p>
+
+    <!-- Order Summary -->
+    <div id="orderSummaryBox" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px 14px;margin-bottom:20px;font-size:12px;color:rgba(255,255,255,.75)">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.45);margin-bottom:8px">Order Summary</div>
+      <div id="orderSummaryItems" style="margin-bottom:10px;line-height:1.65"></div>
+      <div id="orderSummaryTotals" style="border-top:1px solid rgba(255,255,255,.08);padding-top:8px;display:flex;flex-direction:column;gap:3px"></div>
+      <div id="orderSummaryShip" style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:rgba(255,255,255,.55);line-height:1.45"></div>
+    </div>
+
+    <!-- Payment Method -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Payment Method</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderPayType" value="hs" style="accent-color:#ee6216" onchange="selectOrderPayType('hs')"> HubSpot Invoice</label>
+        <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderPayType" value="cc" style="accent-color:#ee6216" onchange="selectOrderPayType('cc')"> Credit Card</label>
+        <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderPayType" value="ach" style="accent-color:#ee6216" onchange="selectOrderPayType('ach')"> ACH / Bank Deposit</label>
+        <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderPayType" value="po" style="accent-color:#ee6216" onchange="selectOrderPayType('po')"> PO</label>
+        <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8);grid-column:span 2"><input type="radio" name="orderPayType" value="other" style="accent-color:#ee6216" onchange="selectOrderPayType('other')"> Other</label>
+      </div>
+      <div id="orderPoNumberRow" style="display:none;margin-top:10px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:6px">PO Number</div>
+        <input id="orderPoNumber" type="text" placeholder="Enter PO #" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;box-sizing:border-box">
+      </div>
+    </div>
 
     <div style="margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Foam Color</div>
@@ -5935,7 +5959,7 @@ function enableOrderBtn() {
   btn.title = 'Process this order and notify shipping & accounting';
 }
 
-function openOrderModal() {
+async function openOrderModal() {
   const quoteNum = document.getElementById('quoteNumHidden').value;
   if (!quoteNum) { showToast('No quote loaded', 'error'); return; }
 
@@ -5960,7 +5984,117 @@ function openOrderModal() {
   const apSel = document.getElementById('orderApColor');
   if (apSel) apSel.value = apColor;
 
+  // Carry "Notes & Order Specs" → Production Notes (only if the field is empty, so rep edits aren't clobbered)
+  const pnBox = document.getElementById('orderProductionNotes');
+  if (pnBox && !pnBox.value) pnBox.value = (document.getElementById('notes')?.value || '').trim();
+  const dnBox = document.getElementById('orderDeliveryNotes');
+  if (dnBox && !dnBox.value) dnBox.value = '';
+
+  // Build order summary from the quote builder's live data
+  renderOrderSummaryQB();
+
+  // Reset payment method, then fetch hub data for auto-selection
+  selectOrderPayType('');
+  const poBox = document.getElementById('orderPoNumber');
+  if (poBox) poBox.value = '';
+  await prefillOrderPaymentFromHub();
+
   document.getElementById('orderModal').style.display = 'flex';
+}
+
+function renderOrderSummaryQB() {
+  const money = n => '$' + (parseFloat(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  const items = (typeof lineItems !== 'undefined' && Array.isArray(lineItems)) ? lineItems : [];
+  const itemsHtml = items.length
+    ? items.map(i => `<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:rgba(255,255,255,.85)">${(i.name||'').replace(/</g,'&lt;')}</span><span style="color:rgba(255,255,255,.45);font-family:var(--mono,monospace);flex-shrink:0">×${parseInt(i.qty)||1}</span></div>`).join('')
+    : '<div style="color:rgba(255,255,255,.4);font-style:italic">No items</div>';
+  document.getElementById('orderSummaryItems').innerHTML = itemsHtml;
+
+  const subtotal = items.reduce((s,i) => s + (parseFloat(i.price)||0) * (parseInt(i.qty)||1), 0);
+  const discVal = parseFloat(document.getElementById('discountValue')?.value) || 0;
+  const discType = (typeof discountType !== 'undefined') ? discountType : 'pct';
+  const discAmt = discVal > 0 ? (discType === 'pct' ? subtotal * discVal / 100 : discVal) : 0;
+
+  const install = (typeof installData !== 'undefined' && installData) ? installData : null;
+  const freight = (typeof freightData !== 'undefined' && freightData) ? freightData : null;
+  const tax     = (typeof taxData     !== 'undefined' && taxData)     ? taxData     : null;
+  const installMode = install?.mode || 'none';
+  const installAmt  = install?.amount ? parseFloat(install.amount) : 0;
+  let freightTotal = 0, installLine = 0;
+  if (installMode === 'delivery_install' && installAmt > 0) {
+    installLine = installAmt;
+  } else {
+    freightTotal = freight ? (parseFloat(freight.total)||0) : 0;
+    if (installMode === 'install_only' && installAmt > 0) installLine = installAmt;
+  }
+  const taxTotal = tax ? (parseFloat(tax.tax)||0) : 0;
+  const total = subtotal - discAmt + freightTotal + installLine + taxTotal;
+
+  const row = (label, val, emphasis) => `<div style="display:flex;justify-content:space-between;${emphasis?'font-weight:700;color:rgba(255,255,255,.95);padding-top:4px;border-top:1px solid rgba(255,255,255,.08);margin-top:2px':''}"><span${emphasis?'':' style="color:rgba(255,255,255,.55)"'}>${label}</span><span${emphasis?' style="font-family:var(--mono,monospace)"':' style="font-family:var(--mono,monospace);color:rgba(255,255,255,.75)"'}>${val}</span></div>`;
+  const totalsHtml = [
+    row('Subtotal', money(subtotal)),
+    discAmt > 0  ? row('Discount', '−' + money(discAmt)) : '',
+    (installMode === 'delivery_install' && installLine > 0) ? row('Delivery & Installation', money(installLine)) : '',
+    freightTotal > 0 ? row('Freight', money(freightTotal)) : '',
+    (installMode === 'install_only' && installLine > 0) ? row('Installation', money(installLine)) : '',
+    taxTotal > 0 ? row('Sales Tax', money(taxTotal)) : '',
+    row('Total', money(total), true),
+  ].filter(Boolean).join('');
+  document.getElementById('orderSummaryTotals').innerHTML = totalsHtml;
+
+  const firstName = document.getElementById('firstName')?.value.trim() || '';
+  const lastName  = document.getElementById('lastName')?.value.trim()  || '';
+  const company   = document.getElementById('company')?.value.trim()   || '';
+  const address   = document.getElementById('shipAddress')?.value.trim() || '';
+  const city      = document.getElementById('shipCity')?.value.trim()  || '';
+  const state     = document.getElementById('shipState')?.value.trim() || '';
+  const zip       = document.getElementById('shipZip')?.value.trim()   || '';
+  const name = [firstName, lastName].filter(Boolean).join(' ');
+  const cityStateZip = [city, [state, zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  const lines = [
+    name || company,
+    company && name ? company : '',
+    address,
+    cityStateZip,
+  ].filter(Boolean);
+  const shipHtml = lines.length
+    ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.45);margin-bottom:4px">Ship To</div>${lines.map(l => `<div>${(l||'').replace(/</g,'&lt;')}</div>`).join('')}`
+    : '';
+  document.getElementById('orderSummaryShip').innerHTML = shipHtml;
+}
+
+function selectOrderPayType(type) {
+  document.querySelectorAll('input[name="orderPayType"]').forEach(i => {
+    i.checked = (i.value === type);
+    const label = i.closest('.order-pay-label');
+    if (label) {
+      const on = i.checked;
+      label.style.borderColor = on ? '#ee6216' : 'rgba(255,255,255,.12)';
+      label.style.background  = on ? 'rgba(238,98,22,.15)' : 'transparent';
+    }
+  });
+  document.getElementById('orderPoNumberRow').style.display = (type === 'po') ? 'block' : 'none';
+}
+
+async function prefillOrderPaymentFromHub() {
+  const dealId = window._lastPushedDealId || linkedDeal?.id;
+  if (!dealId) return;
+  try {
+    const res = await fetch(`/api/deals/${dealId}/hub`, { credentials:'include' });
+    if (!res.ok) return;
+    const data = await res.json();
+    let preselect = data.paymentType || '';
+    if (!preselect) {
+      if ((data.invoices||[]).some(inv => inv.status === 'paid')) preselect = 'hs';
+      else if (data.po) preselect = 'po';
+    }
+    if (preselect) selectOrderPayType(preselect);
+    if (data.po) {
+      const poBox = document.getElementById('orderPoNumber');
+      if (poBox) poBox.value = data.po;
+    }
+  } catch(e) { /* non-fatal */ }
 }
 
 function closeOrderModal() {
@@ -6027,6 +6161,11 @@ async function confirmProcessOrder() {
     showToast('Please select an AP color (or Unknown)', 'error');
     return;
   }
+  const paymentType = document.querySelector('input[name="orderPayType"]:checked')?.value || '';
+  if (!paymentType) { showToast('Please select a payment method', 'error'); return; }
+  const poNumber = paymentType === 'po' ? document.getElementById('orderPoNumber').value.trim() : '';
+  if (paymentType === 'po' && !poNumber) { showToast('Please enter the PO number', 'error'); return; }
+
   const productionNotes = document.getElementById('orderProductionNotes').value.trim();
   const deliveryNotes   = document.getElementById('orderDeliveryNotes').value.trim();
 
@@ -6064,6 +6203,8 @@ async function confirmProcessOrder() {
         deliveryNotes,
         ownerId: document.getElementById('repSelect').value,
         dealName: document.getElementById('dealName').value.trim(),
+        paymentType,
+        poNumber,
       })
     });
 
@@ -6389,80 +6530,6 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
     </div>
   </div>
 </div>
-
-
-<!-- ORDER MODAL -->
-<div id="orderModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;align-items:center;justify-content:center;padding:16px">
-  <div style="background:#1e1e1e;border-radius:14px;padding:28px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);max-height:90vh;overflow-y:auto">
-    <h2 style="font-size:16px;font-weight:800;color:#f0ede8;margin-bottom:6px">&#x1F4E6; Process Order</h2>
-    <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:20px">This will advance the deal to Closed Won and notify shipping &amp; accounting.</p>
-
-    <div style="margin-bottom:16px">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Foam Color</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Gray" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Gray</label>
-        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Blue" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Blue</label>
-        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Purple" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Purple</label>
-        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Orange" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Orange</label>
-        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Burgundy" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Burgundy</label>
-      </div>
-    </div>
-
-    <div style="margin-bottom:16px">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Door Hinge</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderHinge" value="Left Hand" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> Left Hand</label>
-        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderHinge" value="Right Hand" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> Right Hand</label>
-      </div>
-    </div>
-
-
-    <div class="ap-color-row" style="display:none;margin-bottom:16px">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">AP Color <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Acoustic Package)</span></div>
-      <select id="orderApColor" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer" onchange="updateApSwatchPreview()">
-        <option value="">— Select color —</option>
-        <option value="Unknown">Unknown (follow up needed)</option>
-        <option value="Lemon">Lemon</option>
-        <option value="Vanilla">Vanilla</option>
-        <option value="Birch">Birch</option>
-        <option value="White">White</option>
-        <option value="Green Apple">Green Apple</option>
-        <option value="Fern">Fern</option>
-        <option value="Waterfall">Waterfall</option>
-        <option value="Asteroid">Asteroid</option>
-        <option value="Orchid">Orchid</option>
-        <option value="Pumpkin">Pumpkin</option>
-        <option value="Geranium">Geranium</option>
-        <option value="Lapis">Lapis</option>
-        <option value="Onyx">Onyx</option>
-        <option value="Graphite">Graphite</option>
-        <option value="Coffee Bean">Coffee Bean</option>
-        <option value="Quarry Blue">Quarry Blue</option>
-      </select>
-      <div id="apSwatchPreview" style="margin-top:8px;display:flex;align-items:center;gap:8px;min-height:20px"></div>
-    </div>
-    <div style="margin-bottom:16px">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Production Notes</div>
-      <textarea id="orderProductionNotes" rows="3" placeholder="Internal notes for production team..." style="width:100%;padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;color:#f0ede8;box-sizing:border-box"></textarea>
-    </div>
-
-    <div style="margin-bottom:24px">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Special Delivery Notes</div>
-      <textarea id="orderDeliveryNotes" rows="3" placeholder="Liftgate required, residential delivery, call before delivery, etc..." style="width:100%;padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;color:#f0ede8;box-sizing:border-box"></textarea>
-    </div>
-
-    <div style="display:flex;gap:10px">
-      <button id="orderConfirmBtn" onclick="confirmProcessOrder()" style="flex:1;padding:13px;background:#ee6216;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
-        Send Order &#x2192;
-      </button>
-      <button onclick="closeOrderModal()" style="padding:13px 18px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
-        Cancel
-      </button>
-    </div>
-  </div>
-</div>
-
-
 <!-- Price Book Overlay & Panel -->
 <div class="pb-overlay" id="pbOverlay" onclick="togglePriceBook()"></div>
 <div class="pb-panel" id="pbPanel">

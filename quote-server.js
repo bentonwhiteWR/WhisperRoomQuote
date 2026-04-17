@@ -5832,7 +5832,8 @@ ${q.accepted ? `
             headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
           }, { properties: addrProps });
           if (addrRes.body?.status === 'error') {
-            console.warn('Invoice address patch error:', addrRes.body?.message?.slice(0, 200));
+            console.warn('Invoice address patch error:', JSON.stringify(addrRes.body));
+            console.warn('Invoice address patch payload was:', JSON.stringify(addrProps));
           } else {
             console.log(`Invoice ${invoiceId} shipping address set`);
           }

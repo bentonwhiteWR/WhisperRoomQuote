@@ -1241,7 +1241,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     <button class="create-btn" id="invoiceBtn" onclick="createInvoice()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.4);margin-top:8px;opacity:.5;cursor:not-allowed" title="Push to HubSpot first" disabled>
       &#x1F4CB; Create Invoice in HubSpot
     </button>
-    <button class="create-btn" id="orderBtn" onclick="openOrderModal()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.4);margin-top:8px;opacity:.5;cursor:not-allowed" title="Create invoice first" disabled>
+    <button class="create-btn" id="orderBtn" onclick="console.log('[orderBtn] clicked',this.disabled);openOrderModal()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.4);margin-top:8px;opacity:.5;cursor:not-allowed" title="Create invoice first" disabled>
       &#x1F4E6; Process Order
     </button>
 
@@ -5960,8 +5960,14 @@ function enableOrderBtn() {
 }
 
 async function openOrderModal() {
+  console.log('[openOrderModal] fired');
+  const modalEl = document.getElementById('orderModal');
+  if (!modalEl) { console.error('[openOrderModal] orderModal element missing!'); return; }
+  // Show modal first — nothing below can block this
+  modalEl.style.display = 'flex';
+
   const quoteNum = document.getElementById('quoteNumHidden').value;
-  if (!quoteNum) { showToast('No quote loaded', 'error'); return; }
+  if (!quoteNum) { showToast('No quote loaded', 'error'); modalEl.style.display = 'none'; return; }
 
   // Priority: rep selection → customer accepted → blank
   const repFoam  = document.getElementById('repFoamColor')?.value  || '';
@@ -5998,8 +6004,7 @@ async function openOrderModal() {
   const poBox = document.getElementById('orderPoNumber');
   if (poBox) poBox.value = '';
 
-  // Show modal immediately, then fetch hub data for payment auto-selection
-  document.getElementById('orderModal').style.display = 'flex';
+  // Fetch hub data for payment auto-selection (modal already shown above)
   await prefillOrderPaymentFromHub();
 }
 

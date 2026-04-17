@@ -39,10 +39,10 @@
   body { font-family: 'Satoshi', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased; }
 
   /* Topbar — always dark regardless of light/dark mode */
-  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 0 20px; min-height: 52px; background: #1a1a1a; border-bottom: 1px solid rgba(255,255,255,.1); position: sticky; top: 0; z-index: 100; gap: 8px; flex-wrap: nowrap; }
-  .topbar-logo { flex-shrink: 0; display: flex; align-items: center; }
+  .topbar { display: flex; align-items: center; padding: 0 20px; min-height: 52px; background: #1a1a1a; border-bottom: 1px solid rgba(255,255,255,.1); position: sticky; top: 0; z-index: 100; gap: 8px; flex-wrap: nowrap; }
+  .topbar-logo { flex-shrink: 0; display: flex; align-items: center; margin-right: 4px; }
   .topbar-logo img { height: 26px; width: auto; display: block; }
-  .topbar-nav { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .topbar-nav { display: flex; gap: 6px; flex: 1; }
   .nav-link { padding: 5px 10px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; border-radius: 6px; color: rgba(255,255,255,.55); text-decoration: none; transition: all .15s; white-space: nowrap; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); }
   .nav-link:hover { background: rgba(255,255,255,.12); color: rgba(255,255,255,.9); }
   .nav-link.active { background: rgba(238,98,22,.2); color: #ee6216; border-color: rgba(238,98,22,.4); }

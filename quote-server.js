@@ -5216,6 +5216,11 @@ ${q.accepted ? `
           if (customer.zip)     addrProps.hs_recipient_shipping_zip          = customer.zip;
           addrProps.hs_recipient_shipping_country      = 'United States';
           addrProps.hs_recipient_shipping_country_code = 'US';
+          // HubSpot created the invoice with hs_collect_address_types defaulting to
+          // [shipping_address, billing_address] — meaning "ask the customer at
+          // checkout." Once we set the shipping address ourselves, HubSpot rejects
+          // the patch unless we also drop shipping from the "to collect" list.
+          addrProps.hs_collect_address_types = 'billing_address';
           const addrRes = await httpsRequest({
             hostname: 'api.hubapi.com',
             path: `/crm/v3/objects/invoices/${invoiceId}`,

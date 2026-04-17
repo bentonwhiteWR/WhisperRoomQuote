@@ -1456,6 +1456,9 @@ async function openProcessOrderModal(quoteNumber) {
   const apSel = document.getElementById('procApColor');
   if (apSel) { apSel.value = apCol || ''; updateProcApSwatch(); }
 
+  // Order Summary — items, totals, ship address
+  renderProcOrderSummary(snap);
+
   // Carry over "Notes & Order Specs" → Production Notes
   document.getElementById('procProductionNotes').value = snap.notes || '';
   document.getElementById('procDeliveryNotes').value   = '';
@@ -1512,6 +1515,67 @@ function updateProcApSwatch() {
   } else {
     preview.innerHTML = '';
   }
+}
+
+function renderProcOrderSummary(snap) {
+  const items    = snap.lineItems || [];
+  const freight  = snap.freight   || null;
+  const tax      = snap.tax       || null;
+  const install  = snap.install   || null;
+  const discount = snap.discount  || { type:'pct', value:0 };
+  const customer = snap.customer  || {};
+
+  const money = n => '$' + (parseFloat(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  // Items list — name + qty only (no description)
+  const itemsHtml = items.length
+    ? items.map(i => `<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:rgba(255,255,255,.85)">${(i.name||'').replace(/</g,'&lt;')}</span><span style="color:rgba(255,255,255,.45);font-family:var(--mono,monospace);flex-shrink:0">×${parseInt(i.qty)||1}</span></div>`).join('')
+    : '<div style="color:rgba(255,255,255,.4);font-style:italic">No items</div>';
+  document.getElementById('procSummaryItems').innerHTML = itemsHtml;
+
+  // Totals — mirror the server-side calc in /api/process-order
+  const subtotal = items.reduce((s,i) => s + (parseFloat(i.price)||0) * (parseInt(i.qty)||1), 0);
+  const discAmt = discount && discount.value > 0
+    ? (discount.type === 'pct' ? subtotal * discount.value / 100 : discount.value)
+    : 0;
+  const installMode = install?.mode || 'none';
+  const installAmt  = install?.amount ? parseFloat(install.amount) : 0;
+  let freightTotal = 0, installLine = 0;
+  if (installMode === 'delivery_install' && installAmt > 0) {
+    installLine = installAmt; // rolled into single "Delivery & Installation" line
+  } else {
+    freightTotal = freight ? (parseFloat(freight.total)||0) : 0;
+    if (installMode === 'install_only' && installAmt > 0) installLine = installAmt;
+  }
+  const taxTotal = tax ? (parseFloat(tax.tax)||0) : 0;
+  const total = subtotal - discAmt + freightTotal + installLine + taxTotal;
+
+  const row = (label, val, emphasis) => `<div style="display:flex;justify-content:space-between;${emphasis?'font-weight:700;color:rgba(255,255,255,.95);padding-top:4px;border-top:1px solid rgba(255,255,255,.08);margin-top:2px':''}"><span${emphasis?'':' style="color:rgba(255,255,255,.55)"'}>${label}</span><span${emphasis?' style="font-family:var(--mono,monospace)"':' style="font-family:var(--mono,monospace);color:rgba(255,255,255,.75)"'}>${val}</span></div>`;
+  const totalsHtml = [
+    row('Subtotal', money(subtotal)),
+    discAmt > 0  ? row('Discount', '−' + money(discAmt)) : '',
+    (installMode === 'delivery_install' && installLine > 0) ? row('Delivery & Installation', money(installLine)) : '',
+    freightTotal > 0 ? row('Freight', money(freightTotal)) : '',
+    (installMode === 'install_only' && installLine > 0) ? row('Installation', money(installLine)) : '',
+    taxTotal > 0 ? row('Sales Tax', money(taxTotal)) : '',
+    row('Total', money(total), true),
+  ].filter(Boolean).join('');
+  document.getElementById('procSummaryTotals').innerHTML = totalsHtml;
+
+  // Ship to
+  const c = customer;
+  const name = [c.firstName, c.lastName].filter(Boolean).join(' ').trim();
+  const cityStateZip = [c.city, [c.state, c.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  const lines = [
+    name || c.company || '',
+    c.company && name ? c.company : '',
+    c.address || '',
+    cityStateZip,
+  ].filter(Boolean);
+  const shipHtml = lines.length
+    ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.45);margin-bottom:4px">Ship To</div>${lines.map(l => `<div>${(l||'').replace(/</g,'&lt;')}</div>`).join('')}`
+    : '';
+  document.getElementById('procSummaryShip').innerHTML = shipHtml;
 }
 
 async function confirmProcessOrderFromHub() {
@@ -1633,7 +1697,15 @@ async function confirmProcessOrderFromHub() {
 <div id="processOrderModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2000;align-items:center;justify-content:center;padding:16px">
   <div style="background:#1e1e1e;border-radius:14px;padding:28px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);max-height:90vh;overflow-y:auto">
     <h2 style="font-size:16px;font-weight:800;color:#f0ede8;margin-bottom:6px">📦 Process Order</h2>
-    <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:20px">Advances deal to Closed Won, records payment, and notifies shipping &amp; accounting.</p>
+    <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:16px">Advances deal to Closed Won, records payment, and notifies shipping &amp; accounting.</p>
+
+    <!-- Order Summary -->
+    <div id="procOrderSummary" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px 14px;margin-bottom:20px;font-size:12px;color:rgba(255,255,255,.75)">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.45);margin-bottom:8px">Order Summary</div>
+      <div id="procSummaryItems" style="margin-bottom:10px;line-height:1.65"></div>
+      <div id="procSummaryTotals" style="border-top:1px solid rgba(255,255,255,.08);padding-top:8px;display:flex;flex-direction:column;gap:3px"></div>
+      <div id="procSummaryShip" style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:rgba(255,255,255,.55);line-height:1.45"></div>
+    </div>
 
     <!-- Payment Method -->
     <div style="margin-bottom:16px">

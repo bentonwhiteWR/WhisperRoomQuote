@@ -967,7 +967,7 @@ const server = http.createServer(async (req, res) => {
         }, {
           filterGroups: [{ filters: idFilters }],
           properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
-                       'closedate','payment_status','tracking_number','carrier__c'],
+                       'closedate','payment_status','payment_type','po_','tracking_number','carrier__c'],
           limit: 50,
         });
         hsDeals = idRes.body?.results || [];
@@ -981,7 +981,7 @@ const server = http.createServer(async (req, res) => {
         }, {
           filterGroups: filters.length ? [{ filters }] : [],
           properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
-                       'closedate','payment_status','tracking_number','carrier__c'],
+                       'closedate','payment_status','payment_type','po_','tracking_number','carrier__c'],
           sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
           query: q,
           limit: 50,
@@ -1020,7 +1020,7 @@ const server = http.createServer(async (req, res) => {
               }, {
                 inputs: newDealIds.slice(0, 30).map(id => ({ id })),
                 properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
-                             'closedate','payment_status','tracking_number','carrier__c'],
+                             'closedate','payment_status','payment_type','po_','tracking_number','carrier__c'],
               });
               (batchRes.body?.results || []).forEach(d => {
                 if (!seen.has(d.id)) { seen.add(d.id); hsDeals.push(d); }
@@ -1033,7 +1033,7 @@ const server = http.createServer(async (req, res) => {
         const searchBody = {
           filterGroups: filters.length ? [{ filters }] : [],
           properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
-                       'closedate','payment_status','tracking_number','carrier__c'],
+                       'closedate','payment_status','payment_type','po_','tracking_number','carrier__c'],
           sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
           limit,
         };
@@ -1055,6 +1055,8 @@ const server = http.createServer(async (req, res) => {
         ownerId:       d.properties?.hubspot_owner_id || '',
         modified:      d.properties?.hs_lastmodifieddate || '',
         paymentStatus: d.properties?.payment_status || 'not_paid',
+        paymentType:   d.properties?.payment_type   || '',
+        po:            d.properties?.po_            || '',
         tracking:      d.properties?.tracking_number || '',
         carrier:       d.properties?.carrier__c || '',
       }));
@@ -4693,7 +4695,7 @@ ${q.accepted ? `
         // 1. Deal properties from HubSpot
         httpsRequest({
           hostname: 'api.hubapi.com',
-          path: `/crm/v3/objects/deals/${dealId}?properties=dealname,dealstage,payment_status,amount,hubspot_owner_id`,
+          path: `/crm/v3/objects/deals/${dealId}?properties=dealname,dealstage,payment_status,payment_type,po_,amount,hubspot_owner_id`,
           method: 'GET',
           headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
         }).catch(() => ({ body: {} })),
@@ -4745,6 +4747,8 @@ ${q.accepted ? `
       const dealStage   = dp.dealstage   || null;
       const dealAmount  = dp.amount      || null;
       let paymentStatus = dp.payment_status || 'not_paid';
+      const paymentType = dp.payment_type || '';
+      const po          = dp.po_          || '';
 
       // If no quotes found by deal_id, try fallback by deal_name (legacy quotes)
       let qRows = quotesRes.rows || [];
@@ -4937,7 +4941,7 @@ ${q.accepted ? `
         } catch(e) { console.warn('[hub] folder name fetch failed:', e.message); }
       }
 
-      json({ dealId, dealStage, dealAmount, paymentStatus, quotes, invoices, orders, contact, driveFolderId, driveFolderName });
+      json({ dealId, dealStage, dealAmount, paymentStatus, paymentType, po, quotes, invoices, orders, contact, driveFolderId, driveFolderName });
     } catch(e) {
       console.error('Deal hub error:', e.message);
       writelog('error','error.create-invoice',`create-invoice failed: ${e.message}`,{ rep: getRepFromReq(req, body) });
@@ -6806,13 +6810,19 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       const body = JSON.parse(await readBody(req));
       const { dealId, quoteNumber, lineItems, freight, tax, discount, install,
               customer, foamColor, hingePreference, apColor, productionNotes,
-              deliveryNotes, ownerId, dealName } = body;
+              deliveryNotes, ownerId, dealName, paymentType, poNumber } = body;
 
       if (!dealId || !quoteNumber) { json({ error: 'Missing dealId or quoteNumber' }, 400); return; }
 
-      // 1. Advance deal to Closed Won + set ap_color if present
+      // 1. Advance deal to Closed Won + set ap_color, payment_type, po_ if present
       const closedWonProps = { dealstage: 'closedwon' };
       if (apColor) closedWonProps.ap_color = apColor;
+      if (paymentType) {
+        closedWonProps.payment_type = paymentType;
+        // Mirror payment_status so legacy "paid/po_received" consumers still work
+        closedWonProps.payment_status = paymentType === 'po' ? 'po_received' : 'paid';
+      }
+      if (paymentType === 'po' && poNumber) closedWonProps.po_ = poNumber;
       await httpsRequest({
         hostname: 'api.hubapi.com',
         path: `/crm/v3/objects/deals/${dealId}`,

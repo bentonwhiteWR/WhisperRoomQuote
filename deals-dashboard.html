@@ -226,8 +226,9 @@ const COLUMNS = [
   {key:'shipped',label:'Shipped',        stages:['845719'],                                cls:'col-shipped'},
 
 ];
-const PAY_COLORS = {paid:'#22c55e',po_received:'#f59e0b',not_paid:''};
-const PAY_LABELS = {paid:'✓ Paid',po_received:'PO Rcvd',not_paid:''};
+// Payment type → card badge. PO stays amber (promise); all others green (money in).
+const PAY_TYPE_COLORS = {hs:'#22c55e',cc:'#22c55e',ach:'#22c55e',other:'#22c55e',po:'#f59e0b'};
+const PAY_TYPE_LABELS = {hs:'✓ HS',cc:'✓ CC',ach:'✓ ACH',other:'✓ Other',po:'PO'};
 const PIPE_BG = {
   appointmentscheduled:'#ee6216',qualifiedtobuy:'#ee6216',contractsent:'#f59e0b',
   closedwon:'#22c55e','845719':'#3b82f6',closedlost:'#555'
@@ -309,16 +310,16 @@ function renderBoard() {
         // A deal is "unintegrated" if it has no quotes/orders in our system
         // Only flag Sent/Updated Quote stages — not newer or further-along deals
         const earlyStage = d.stage === 'appointmentscheduled' || d.stage === 'qualifiedtobuy';
-        const isUnintegrated = earlyStage && !d.latestQuote && !d.accepted && d.paymentStatus === 'not_paid';
+        const isUnintegrated = earlyStage && !d.latestQuote && !d.accepted && !d.paymentType;
         if (hideUnintegrated && isUnintegrated) return;
         const card=document.createElement('div');
-        const dealGreen = (d.accepted || d.paymentStatus==='paid' || d.paymentStatus==='po_received') && d.id!==currentDealId;
+        const dealGreen = (d.accepted || !!d.paymentType) && d.id!==currentDealId;
         card.className='deal-card'+(d.id===currentDealId?' active':'')+(dealGreen?' accepted':'')+(isUnintegrated?' unintegrated':'');
         card.onclick=()=>openDeal(d.id);
-        const ps=d.paymentStatus||'not_paid';
-        const payBg=ps==='paid'?'rgba(34,197,94,.12)':'rgba(245,158,11,.1)';
-        const payHtml=ps!=='not_paid'
-          ?`<span class="card-pay" style="color:${PAY_COLORS[ps]};background:${payBg};border:1px solid ${PAY_COLORS[ps]}">${PAY_LABELS[ps]}</span>`
+        const pt=d.paymentType||'';
+        const payBg=pt==='po'?'rgba(245,158,11,.1)':'rgba(34,197,94,.12)';
+        const payHtml=pt
+          ?`<span class="card-pay" style="color:${PAY_TYPE_COLORS[pt]};background:${payBg};border:1px solid ${PAY_TYPE_COLORS[pt]}">${PAY_TYPE_LABELS[pt]||pt.toUpperCase()}</span>`
           :'';
         card.innerHTML=`
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px">
@@ -366,12 +367,13 @@ function renderHub(dealId,data) {
   const deal=allDeals.find(d=>d.id===dealId)||{};
   // Store contact for email prefill
   window._hubContact = data.contact || null;
-  const ps=data.paymentStatus||'not_paid';
+  const pt=data.paymentType||'';
+  const paymentConfirmed = !!pt;
   const na={
     appointmentscheduled:{icon:'📋',text:'Quote sent — follow up with the customer'},
     qualifiedtobuy:      {icon:'📋',text:'Quote updated — follow up with customer'},
-    contractsent:        {icon:ps==='paid'||ps==='po_received'?'📦':'💳',
-                          text:ps==='paid'||ps==='po_received'?'Payment confirmed — process the order':'Quote accepted — collect payment (CC or PO)'},
+    contractsent:        {icon:paymentConfirmed?'📦':'💳',
+                          text:paymentConfirmed?'Payment confirmed — process the order':'Quote accepted — collect payment (CC or PO)'},
     closedwon:           {icon:'📦',text:'In production — ship when complete'},
     '845719':            {icon:'✅',text:'Shipped — tracking active on shipping board'},
   }[data.dealStage];
@@ -389,9 +391,9 @@ function renderHub(dealId,data) {
     return `<div class="pipe-step" style="background:${bg};color:${color};border-color:${border}" onclick="doStageOverride('${s.key}','${s.label}')">${s.label}</div>`;
   }).join('');
 
-  const payColor=PAY_COLORS[ps];
-  const payBadge=ps!=='not_paid'
-    ?`<span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;border:1px solid ${payColor};color:${payColor};background:${ps==='paid'?'rgba(34,197,94,.1)':'rgba(245,158,11,.1)'}">${ps==='paid'?'✓ Paid':'PO Received'}</span>`
+  const payColor=PAY_TYPE_COLORS[pt];
+  const payBadge=pt
+    ?`<span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;border:1px solid ${payColor};color:${payColor};background:${pt==='po'?'rgba(245,158,11,.1)':'rgba(34,197,94,.1)'}">${PAY_TYPE_LABELS[pt]||pt.toUpperCase()}</span>`
     :'<span style="font-size:11px;color:var(--muted)">Not Paid</span>';
 
   const quotesHtml=!data.quotes?.length
@@ -399,7 +401,6 @@ function renderHub(dealId,data) {
     :data.quotes.map(q=>{
       const acc=q.accepted;
       const qUrl=q.shareToken?`${location.origin}/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}`:'';
-      const dealPaid = (ps === 'paid');
       const noteBar = acc && (q.acceptedFoam||q.acceptedHinge||q.acceptedNote) ? `
         <div style="font-size:10px;color:var(--green);margin-top:2px;opacity:.8">
           ${[q.acceptedFoam,q.acceptedHinge,q.acceptedNote?'"'+q.acceptedNote+'"':''].filter(Boolean).join(' · ')}
@@ -423,9 +424,6 @@ function renderHub(dealId,data) {
           ${noteBar}
           <div style="margin-left:auto;display:flex;gap:5px">
             <button onclick="createInvoiceForDeal(event,'${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:rgba(238,98,22,.1);font-family:inherit;color:var(--orange);border-color:var(--orange-border);font-weight:700;font-size:10px">+ Invoice</button>
-            ${dealPaid && (window._lastHubData?._paidQuoteNumber === q.quoteNumber || !window._lastHubData?._paidQuoteNumber)
-              ? `<span class="row-link" style="background:rgba(34,197,94,.12);color:var(--green);border-color:rgba(34,197,94,.3);font-weight:700;font-size:10px;cursor:default">✓ Paid</span>`
-              : `<button onclick="showPaymentPicker('${q.quoteNumber}',event)" class="row-link" style="cursor:pointer;background:none;font-family:inherit;color:var(--amber);border-color:rgba(245,158,11,.3);font-size:10px">$ Paid</button>`}
             <button onclick="processOrderFromHub(event,'${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:rgba(59,130,246,.1);font-family:inherit;color:#3b82f6;border-color:rgba(59,130,246,.3);font-weight:700;font-size:10px">Process →</button>
           </div>
         </div>
@@ -527,14 +525,6 @@ function renderHub(dealId,data) {
     </div>
     <div class="admin-inner" id="adminInner">
       <div class="admin-grid">
-        <div>
-          <label class="admin-label">Payment Status</label>
-          <select class="admin-select" onchange="doPaymentStatus(this.value)">
-            <option value="not_paid" ${ps==='not_paid'?'selected':''}>Not Paid</option>
-            <option value="po_received" ${ps==='po_received'?'selected':''}>PO Received</option>
-            <option value="paid" ${ps==='paid'?'selected':''}>Paid</option>
-          </select>
-        </div>
         <div>
           <label class="admin-label">Stage Override</label>
           <select class="admin-select" id="adminStageSelect" onchange="doStageOverride(this.value,this.options[this.selectedIndex].text)">${stageOpts}</select>
@@ -776,68 +766,10 @@ function closeDhInvoiceModal() {
   window._pendingInvoice = null;
 }
 
-function processOrderFromHub(event, quoteNumber) {
+async function processOrderFromHub(event, quoteNumber) {
   event.stopPropagation();
   if (!currentDealId) return;
-  window.location.href = `/quotes?loadQuote=${encodeURIComponent(quoteNumber)}&fromHub=${currentDealId}`;
-}
-
-function showPaymentPicker(quoteNumber, event) {
-  event.stopPropagation();
-  // Remove any existing picker
-  document.querySelectorAll('.payment-picker').forEach(el => el.remove());
-  const picker = document.createElement('div');
-  picker.className = 'payment-picker';
-  picker.style.cssText = 'position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:1000;min-width:150px;overflow:hidden';
-  const options = [
-    { value:'not_paid',   label:'Not Paid',    color:'var(--muted)' },
-    { value:'po_received',label:'PO Received', color:'var(--amber)' },
-    { value:'paid',       label:'✓ Paid',       color:'var(--green)' },
-  ];
-  options.forEach(opt => {
-    const btn = document.createElement('button');
-    btn.style.cssText = `display:block;width:100%;padding:9px 16px;background:none;border:none;text-align:left;font-size:12px;font-weight:600;color:${opt.color};cursor:pointer;font-family:inherit;border-bottom:1px solid var(--border)`;
-    btn.textContent = opt.label;
-    btn.onmouseenter = () => btn.style.background = 'var(--surface2)';
-    btn.onmouseleave = () => btn.style.background = 'none';
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      picker.remove();
-      setPaymentStatus(quoteNumber, opt.value);
-    };
-    picker.appendChild(btn);
-  });
-  // Remove last border
-  picker.lastChild.style.borderBottom = 'none';
-  // Position near button
-  const rect = event.target.getBoundingClientRect();
-  picker.style.left = rect.left + 'px';
-  picker.style.top  = (rect.bottom + 4) + 'px';
-  document.body.appendChild(picker);
-  // Close on outside click
-  setTimeout(() => document.addEventListener('click', () => picker.remove(), { once: true }), 0);
-}
-
-async function setPaymentStatus(quoteNumber, status) {
-  if (!currentDealId) return;
-  try {
-    const res = await fetch(`/api/deals/${currentDealId}/payment-status`, {
-      method: 'PATCH', headers: {'Content-Type':'application/json'}, credentials: 'include',
-      body: JSON.stringify({ status })
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
-    if (status === 'paid' && window._lastHubData) window._lastHubData._paidQuoteNumber = quoteNumber;
-    const d = allDeals.find(d => d.id === currentDealId);
-    if (d) { d.paymentStatus = status; renderBoard(); }
-    const labels = { paid:'✓ Paid', po_received:'PO Received', not_paid:'Not Paid' };
-    showToast(`${labels[status]} set`, 'success');
-    setTimeout(() => openDeal(currentDealId), 600);
-  } catch(e) { showToast('Error: '+e.message, 'error'); }
-}
-
-async function markQuotePaid(quoteNumber) {
-  showPaymentPicker(quoteNumber, { target: document.body, stopPropagation:()=>{} });
+  await openProcessOrderModal(quoteNumber);
 }
 
 function toggleAdmin() {
@@ -850,19 +782,6 @@ function toggleAdmin() {
 function setAdminStatus(msg,color) {
   const el=document.getElementById('adminStatus');
   if(el){el.textContent=msg;el.style.color=color||'var(--muted)';}
-}
-async function doPaymentStatus(status) {
-  if(!currentDealId) return;
-  setAdminStatus('Saving…');
-  try {
-    const res=await fetch(`/api/deals/${currentDealId}/payment-status`,{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({status})});
-    const data=await res.json();
-    if(!data.success) throw new Error(data.error);
-    setAdminStatus('✓ Saved','var(--green)');
-    const d=allDeals.find(d=>d.id===currentDealId);
-    if(d){d.paymentStatus=status;renderBoard();}
-    setTimeout(()=>openDeal(currentDealId),600);
-  } catch(e){setAdminStatus('Error: '+e.message,'var(--red)');}
 }
 async function doDeleteDeal() {
   if (!currentDealId) return;
@@ -1503,6 +1422,156 @@ async function confirmMergeLegacy() {
     btn.textContent = '✓ Confirm Merge';
   }
 }
+
+// ── Process Order (from Deal Hub) ─────────────────────────────────
+const PO_AP_COLORS = ['Lemon','Vanilla','Birch','White','Green Apple','Fern','Waterfall','Asteroid','Orchid','Pumpkin','Geranium','Lapis','Onyx','Graphite','Coffee Bean','Quarry Blue'];
+const PO_AP_HEX    = {Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteroid:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'};
+
+async function openProcessOrderModal(quoteNumber) {
+  if (!currentDealId) { showToast('No deal selected','error'); return; }
+  const hub = window._lastHubData || {};
+  // Fetch quote snapshot (line items, freight, tax, install, customer, notes, accepted fields)
+  let snap;
+  try {
+    const res = await fetch(`/api/quote-snapshot/${encodeURIComponent(quoteNumber)}`, { credentials:'include' });
+    snap = await res.json();
+    if (snap.error) throw new Error(snap.error);
+  } catch(e) { showToast('Failed to load quote: '+e.message,'error'); return; }
+
+  // Prefill foam / hinge / ap (rep/accepted values take priority over empty)
+  window._procOrderSnapshot = snap;
+  window._procOrderQuoteNumber = quoteNumber;
+  const foam  = snap.acceptedFoam    || '';
+  const hinge = snap.acceptedHinge   || '';
+  const apCol = snap.acceptedApColor || '';
+
+  document.querySelectorAll('input[name="procFoam"]').forEach(i => { i.checked = (i.value === foam); });
+  document.querySelectorAll('input[name="procHinge"]').forEach(i => { i.checked = (i.value === hinge); });
+  highlightProcSel('procFoam');
+  highlightProcSel('procHinge');
+
+  // Show AP color row only if any line item is an AP item
+  const hasAP = (snap.lineItems||[]).some(i => i?.name && /^AP\s/i.test(i.name));
+  document.getElementById('procApColorRow').style.display = hasAP ? 'block' : 'none';
+  const apSel = document.getElementById('procApColor');
+  if (apSel) { apSel.value = apCol || ''; updateProcApSwatch(); }
+
+  // Carry over "Notes & Order Specs" → Production Notes
+  document.getElementById('procProductionNotes').value = snap.notes || '';
+  document.getElementById('procDeliveryNotes').value   = '';
+
+  // Pre-select payment method: existing deal payment_type, else HS if any invoice paid, else PO if po_ set
+  let preselect = hub.paymentType || '';
+  if (!preselect) {
+    if ((hub.invoices||[]).some(inv => inv.status === 'paid')) preselect = 'hs';
+    else if (hub.po) preselect = 'po';
+  }
+  selectPaymentType(preselect || '');
+
+  // Prefill PO number from existing deal
+  document.getElementById('procPoNumber').value = hub.po || '';
+
+  document.getElementById('processOrderModal').style.display = 'flex';
+}
+
+function closeProcessOrderModal() {
+  document.getElementById('processOrderModal').style.display = 'none';
+  window._procOrderSnapshot = null;
+  window._procOrderQuoteNumber = null;
+}
+
+function selectPaymentType(type) {
+  document.querySelectorAll('input[name="procPayType"]').forEach(i => {
+    i.checked = (i.value === type);
+    const label = i.closest('.proc-pay-label');
+    if (label) {
+      const on = i.checked;
+      label.style.borderColor = on ? '#ee6216' : 'rgba(255,255,255,.12)';
+      label.style.background  = on ? 'rgba(238,98,22,.15)' : 'transparent';
+    }
+  });
+  document.getElementById('procPoNumberRow').style.display = (type === 'po') ? 'block' : 'none';
+}
+
+function highlightProcSel(name) {
+  document.querySelectorAll(`input[name="${name}"]`).forEach(inp => {
+    const label = inp.closest('.proc-sel-label');
+    if (!label) return;
+    const on = inp.checked;
+    label.style.borderColor = on ? '#ee6216' : 'rgba(255,255,255,.12)';
+    label.style.background  = on ? 'rgba(238,98,22,.15)' : 'transparent';
+  });
+}
+
+function updateProcApSwatch() {
+  const val = document.getElementById('procApColor')?.value || '';
+  const preview = document.getElementById('procApSwatch');
+  if (!preview) return;
+  if (val && val !== 'Unknown' && PO_AP_HEX[val]) {
+    preview.innerHTML = `<span style="display:inline-block;width:18px;height:18px;border-radius:50%;background:${PO_AP_HEX[val]};border:1px solid rgba(255,255,255,.2)"></span><span style="font-size:12px;color:rgba(255,255,255,.6)">${val}</span>`;
+  } else {
+    preview.innerHTML = '';
+  }
+}
+
+async function confirmProcessOrderFromHub() {
+  const snap = window._procOrderSnapshot;
+  const quoteNumber = window._procOrderQuoteNumber;
+  const dealId = currentDealId;
+  if (!snap || !quoteNumber || !dealId) { showToast('Missing quote data','error'); return; }
+
+  const foam    = document.querySelector('input[name="procFoam"]:checked')?.value  || '';
+  const hinge   = document.querySelector('input[name="procHinge"]:checked')?.value || '';
+  const apColor = document.getElementById('procApColor')?.value || '';
+  const hasAP = (snap.lineItems||[]).some(i => i?.name && /^AP\s/i.test(i?.name));
+  if (hasAP && !apColor) { showToast('Please select an AP color (or Unknown)','error'); return; }
+
+  const productionNotes = document.getElementById('procProductionNotes').value.trim();
+  const deliveryNotes   = document.getElementById('procDeliveryNotes').value.trim();
+  const paymentType = document.querySelector('input[name="procPayType"]:checked')?.value || '';
+  if (!paymentType) { showToast('Please select a payment method','error'); return; }
+  const poNumber = paymentType === 'po' ? document.getElementById('procPoNumber').value.trim() : '';
+  if (paymentType === 'po' && !poNumber) { showToast('Please enter the PO number','error'); return; }
+
+  const btn = document.getElementById('procOrderConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Processing…';
+
+  try {
+    const res = await fetch('/api/process-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        dealId, quoteNumber,
+        lineItems: snap.lineItems || [],
+        freight:   snap.freight   || null,
+        tax:       snap.tax       || null,
+        install:   snap.install   || null,
+        discount:  snap.discount  || { type:'pct', value:0 },
+        customer:  snap.customer  || {},
+        foamColor: foam,
+        hingePreference: hinge,
+        apColor, productionNotes, deliveryNotes,
+        ownerId:  snap.ownerId || null,
+        dealName: snap.dealName || (window._lastHubData?.quotes?.[0]?.dealName || ''),
+        paymentType, poNumber,
+      })
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || 'Request failed');
+    showToast('✓ Order processed','success');
+    closeProcessOrderModal();
+    // Reload hub to show new state
+    openDeal(dealId);
+    // Refresh board cards so payment tag updates
+    loadDeals();
+  } catch(e) {
+    showToast('Error: '+e.message,'error');
+    btn.disabled = false;
+    btn.textContent = 'Send Order →';
+  }
+}
 </script>
 
 <!-- ── Deal Hub Invoice Modal ────────────────────────────────────── -->
@@ -1554,6 +1623,98 @@ async function confirmMergeLegacy() {
         Create Invoice
       </button>
       <button onclick="closeDhInvoiceModal()" style="padding:13px 18px;background:var(--surface2,#222);color:var(--muted,#666);border:1px solid var(--border,#2e2e2e);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Process Order Modal ──────────────────────────────────────── -->
+<div id="processOrderModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2000;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#1e1e1e;border-radius:14px;padding:28px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);max-height:90vh;overflow-y:auto">
+    <h2 style="font-size:16px;font-weight:800;color:#f0ede8;margin-bottom:6px">📦 Process Order</h2>
+    <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:20px">Advances deal to Closed Won, records payment, and notifies shipping &amp; accounting.</p>
+
+    <!-- Payment Method -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Payment Method</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <label class="proc-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procPayType" value="hs" style="accent-color:#ee6216" onchange="selectPaymentType('hs')"> HubSpot Invoice</label>
+        <label class="proc-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procPayType" value="cc" style="accent-color:#ee6216" onchange="selectPaymentType('cc')"> Credit Card</label>
+        <label class="proc-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procPayType" value="ach" style="accent-color:#ee6216" onchange="selectPaymentType('ach')"> ACH / Bank Deposit</label>
+        <label class="proc-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procPayType" value="po" style="accent-color:#ee6216" onchange="selectPaymentType('po')"> PO</label>
+        <label class="proc-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8);grid-column:span 2"><input type="radio" name="procPayType" value="other" style="accent-color:#ee6216" onchange="selectPaymentType('other')"> Other</label>
+      </div>
+      <div id="procPoNumberRow" style="display:none;margin-top:10px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:6px">PO Number</div>
+        <input id="procPoNumber" type="text" placeholder="Enter PO #" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;box-sizing:border-box">
+      </div>
+    </div>
+
+    <!-- Foam Color -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Foam Color</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <label class="proc-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procFoam" value="Gray" style="accent-color:#ee6216" onchange="highlightProcSel('procFoam')"> Gray</label>
+        <label class="proc-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procFoam" value="Blue" style="accent-color:#ee6216" onchange="highlightProcSel('procFoam')"> Blue</label>
+        <label class="proc-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procFoam" value="Purple" style="accent-color:#ee6216" onchange="highlightProcSel('procFoam')"> Purple</label>
+        <label class="proc-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procFoam" value="Orange" style="accent-color:#ee6216" onchange="highlightProcSel('procFoam')"> Orange</label>
+        <label class="proc-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procFoam" value="Burgundy" style="accent-color:#ee6216" onchange="highlightProcSel('procFoam')"> Burgundy</label>
+      </div>
+    </div>
+
+    <!-- Door Hinge -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Door Hinge</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <label class="proc-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procHinge" value="Left Hand" style="accent-color:#ee6216" onchange="highlightProcSel('procHinge')"> Left Hand</label>
+        <label class="proc-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procHinge" value="Right Hand" style="accent-color:#ee6216" onchange="highlightProcSel('procHinge')"> Right Hand</label>
+      </div>
+    </div>
+
+    <!-- AP Color (hidden unless order has an AP item) -->
+    <div id="procApColorRow" style="display:none;margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">AP Color <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Acoustic Package)</span></div>
+      <select id="procApColor" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer" onchange="updateProcApSwatch()">
+        <option value="">— Select color —</option>
+        <option value="Unknown">Unknown (follow up needed)</option>
+        <option value="Lemon">Lemon</option>
+        <option value="Vanilla">Vanilla</option>
+        <option value="Birch">Birch</option>
+        <option value="White">White</option>
+        <option value="Green Apple">Green Apple</option>
+        <option value="Fern">Fern</option>
+        <option value="Waterfall">Waterfall</option>
+        <option value="Asteroid">Asteroid</option>
+        <option value="Orchid">Orchid</option>
+        <option value="Pumpkin">Pumpkin</option>
+        <option value="Geranium">Geranium</option>
+        <option value="Lapis">Lapis</option>
+        <option value="Onyx">Onyx</option>
+        <option value="Graphite">Graphite</option>
+        <option value="Coffee Bean">Coffee Bean</option>
+        <option value="Quarry Blue">Quarry Blue</option>
+      </select>
+      <div id="procApSwatch" style="margin-top:8px;display:flex;align-items:center;gap:8px;min-height:20px"></div>
+    </div>
+
+    <!-- Production Notes (pre-filled from Notes & Order Specs) -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Production Notes</div>
+      <textarea id="procProductionNotes" rows="3" placeholder="Internal notes for production team..." style="width:100%;padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;color:#f0ede8;box-sizing:border-box"></textarea>
+    </div>
+
+    <!-- Delivery Notes -->
+    <div style="margin-bottom:24px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Special Delivery Notes</div>
+      <textarea id="procDeliveryNotes" rows="3" placeholder="Liftgate required, residential delivery, call before delivery, etc..." style="width:100%;padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;color:#f0ede8;box-sizing:border-box"></textarea>
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button id="procOrderConfirmBtn" onclick="confirmProcessOrderFromHub()" style="flex:1;padding:13px;background:#ee6216;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+        Send Order →
+      </button>
+      <button onclick="closeProcessOrderModal()" style="padding:13px 18px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
         Cancel
       </button>
     </div>

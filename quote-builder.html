@@ -5991,15 +5991,16 @@ async function openOrderModal() {
   if (dnBox && !dnBox.value) dnBox.value = '';
 
   // Build order summary from the quote builder's live data
-  renderOrderSummaryQB();
+  try { renderOrderSummaryQB(); } catch(e) { /* non-fatal */ }
 
-  // Reset payment method, then fetch hub data for auto-selection
+  // Reset payment method
   selectOrderPayType('');
   const poBox = document.getElementById('orderPoNumber');
   if (poBox) poBox.value = '';
-  await prefillOrderPaymentFromHub();
 
+  // Show modal immediately, then fetch hub data for payment auto-selection
   document.getElementById('orderModal').style.display = 'flex';
+  await prefillOrderPaymentFromHub();
 }
 
 function renderOrderSummaryQB() {

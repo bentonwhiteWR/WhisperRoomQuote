@@ -1,0 +1,405 @@
+// Changelog page template — extracted from quote-server.js
+// Returns the fully rendered HTML for /changelog.
+
+module.exports = function renderChangelog() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Changelog — WhisperRoom</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-size='18'>📝</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0f0f0f;--surface:#1a1a1a;--surface2:#222;--border:#2a2a2a;--orange:#ee6216;--text:#e8e8e8;--muted:#888;--green:#22c55e;--red:#ef4444;--yellow:#f59e0b;--blue:#3b82f6;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:52px;background:#1a1a1a;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:100;}
+  .logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8;}.logo span{color:#e8531a;}
+  .back{font-size:11px;font-weight:700;color:var(--muted);text-decoration:none;padding:5px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;letter-spacing:.05em;text-transform:uppercase;}
+  .main{max-width:860px;margin:0 auto;padding:32px 24px;}
+  h1{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;margin-bottom:4px;}h1 span{color:var(--orange);}
+  .subtitle{font-size:12px;color:var(--muted);margin-bottom:32px;}
+  .version-block{margin-bottom:28px;border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+  .version-header{padding:12px 18px;background:var(--surface);display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);}
+  .version-num{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:var(--orange);}
+  .version-date{font-size:11px;color:var(--muted);}
+  .version-tag{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:2px 7px;border-radius:4px;margin-left:auto;}
+  .tag-fix{background:rgba(59,130,246,.15);color:var(--blue);}
+  .tag-feature{background:rgba(34,197,94,.12);color:var(--green);}
+  .tag-logging{background:rgba(238,98,22,.12);color:var(--orange);}
+  .tag-ui{background:rgba(168,85,247,.15);color:#a855f7;}
+  .version-body{padding:14px 18px;background:var(--surface);}
+  .change-item{display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px;line-height:1.5;}
+  .change-item:last-child{border-bottom:none;}
+  .change-type{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:2px 6px;border-radius:3px;white-space:nowrap;height:fit-content;margin-top:2px;}
+  .ct-fix{background:rgba(59,130,246,.15);color:var(--blue);}
+  .ct-add{background:rgba(34,197,94,.12);color:var(--green);}
+  .ct-log{background:rgba(238,98,22,.12);color:var(--orange);}
+  .ct-ui{background:rgba(168,85,247,.15);color:#a855f7;}
+  .ct-security{background:rgba(245,158,11,.12);color:var(--yellow);}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="logo">Whisper<span>Room</span> — Changelog</div>
+  <a href="/admin-log" class="back">← Admin Log</a>
+</div>
+<div class="main">
+  <h1>Patch <span>Notes</span></h1>
+  <div class="subtitle">Full history of changes to the WhisperRoom sales tool</div>
+
+  ${[
+    {
+      v:'1.1.14', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Canadian freight now uses correct NMFC codes (027880/02) matching legacy system'},
+        {t:'fix', d:'Postal code spaces stripped automatically — "M4W 1B7" and "M4W1B7" both work'},
+        {t:'fix', d:'Zip space stripping applied at server, freight request, and customer record save'},
+      ]
+    },
+    {
+      v:'1.1.13', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Ship It button now saves serial number, production notes, foam color, and hinge preference — same as Save Changes'},
+      ]
+    },
+    {
+      v:'1.1.12', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Ship date showing one day early — YYYY-MM-DD strings parsed as UTC midnight, now treated as local noon'},
+      ]
+    },
+    {
+      v:'1.1.11', date:'Apr 13, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'Full shipping error coverage: error.refresh-tracking, error.track, error.ship-deal, error.ship-hubspot-deal, error.shipping-board, error.order-ship, error.tracking-poller'},
+        {t:'log', d:'All error log entries now include rep via getRepFromReq()'},
+      ]
+    },
+    {
+      v:'1.1.10', date:'Apr 13, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'Rep name now shows on ALL error log entries — getRepFromReq() helper added'},
+        {t:'log', d:'Tax errors include rep from request body'},
+      ]
+    },
+    {
+      v:'1.1.09', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'TaxJar errors now log to system log with state/zip/city'},
+        {t:'fix', d:'Tax route body hoisted out of try block — prevents body is not defined crash'},
+        {t:'ui',  d:'Tax errors show plain English: invalid ZIP/city/state/timeout messages'},
+      ]
+    },
+    {
+      v:'1.1.08', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'TaxJar errors now logged to system log (error.tax event)'},
+        {t:'ui',  d:'Tax error messages translated to plain English for reps'},
+      ]
+    },
+    {
+      v:'1.1.07', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'httpsGet 15-second timeout — freight no longer hangs for 5+ minutes'},
+        {t:'fix', d:'parseAbfXml reads ABF ERROR tags and returns actionable messages'},
+        {t:'fix', d:'Freight body scope fix — body is not defined crash resolved'},
+        {t:'ui',  d:'Invalid ZIP/city/state/weight shown as plain English to reps'},
+      ]
+    },
+    {
+      v:'1.1.06', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Freight route body hoisted — prevented unhandledRejection crash'},
+        {t:'log', d:'Freight errors now correctly log with dest zip/state/city'},
+      ]
+    },
+    {
+      v:'1.1.05', date:'Apr 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Rename Deal button in deal panel — updates HubSpot, Google Drive folder, and all DB quotes'},
+        {t:'log', d:'deal.renamed logged to activity feed on success'},
+      ]
+    },
+    {
+      v:'1.1.04', date:'Apr 13, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'Full error logging on all critical routes: accept-quote, create-invoice, process-order, abf-booking, order-save, unship, orders-list, hubspot'},
+        {t:'add', d:'Gabe Troubleshooting Handbook added to handoff doc'},
+      ]
+    },
+    {
+      v:'1.1.03', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Duplicate quote.pushed log removed — was firing from both /api/history and /api/create-deal'},
+      ]
+    },
+    {
+      v:'1.1.02', date:'Apr 13, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'Freight error logging added to quote builder, orders-freight, and ABF inner catch'},
+      ]
+    },
+    {
+      v:'1.1.01', date:'Apr 13, 2026', tag:'ui',
+      changes:[
+        {t:'ui',  d:'Admin log rebuilt — favicon, live dot, rep/event dropdowns, date range filter, stats bar, version badge, clear button'},
+      ]
+    },
+    {
+      v:'1.1.00', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'quote.pushed log correctly labels New deal vs Revision — meta includes isNewDeal and existingDealId'},
+      ]
+    },
+    {
+      v:'1.0.96', date:'Apr 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Logging system launched — logs table in PostgreSQL, writelog() helper, admin log page at /admin-log'},
+        {t:'log', d:'Events: quote.pushed, deal.created, invoice.created, order.shipped, order.unshipped, order.deleted, order.processed, task.accounting'},
+        {t:'log', d:'Errors: error.freight, error.tax, error.hubspot, error.save'},
+      ]
+    },
+    {
+      v:'1.0.95', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Accounting task on Ship It fires for ALL reps, not just Jeromy — assigned to Kim Dalton'},
+        {t:'fix', d:'Task includes deal name, serial number, carrier, PRO/tracking, freight cost'},
+      ]
+    },
+    {
+      v:'1.0.94', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Unship preserves all shipment data — only reverts HubSpot dealstage to Closed Won'},
+        {t:'fix', d:'Delete button now visible to all reps'},
+        {t:'fix', d:'HS-only orders: Ship It creates DB record so order persists on board'},
+      ]
+    },
+    {
+      v:'1.0.93', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Serial number field changed to textarea for multi-line support'},
+        {t:'fix', d:'HS-only orders (HS-{dealId}) save directly to HubSpot via PATCH'},
+      ]
+    },
+    {
+      v:'1.0.92', date:'Apr 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Credits line items created BEFORE the HubSpot loop — were never being sent'},
+        {t:'fix', d:'Credit descriptor line: "Credit applied in MDL XXXX above: -$XX.XX"'},
+        {t:'fix', d:'anchor variable hoisted to outer scope — fixed ReferenceError on credit push'},
+      ]
+    },
+    {
+      v:'1.0.91', date:'Apr 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'OD Freight rating added alongside ABF — LTL, GTD, GTE via SOAP XML'},
+        {t:'add', d:'OD Book URL pre-fills dest zip on odfl.com'},
+        {t:'fix', d:'httpsGet timeout 15 seconds, parseAbfXml reads ERROR tags'},
+      ]
+    },
+    {
+      v:'1.0.90', date:'Apr 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Freight rating modal on orders board — Get Freight button fetches ABF rate per order'},
+        {t:'add', d:'Orders board drag-and-drop sort with position persistence'},
+      ]
+    },
+    {
+      v:'1.0.89', date:'Apr 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Quote notes displayed on /q/ and /i/ client pages in orange-bordered box'},
+        {t:'fix', d:'Canadian province state handling — retry without state fields if HubSpot rejects'},
+      ]
+    },
+    {
+      v:'1.0.88', date:'Apr 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Orders dashboard — In Production / Shipped / All Orders / HubSpot Closed Won tabs'},
+        {t:'add', d:'Orders drawer with foam color, hinge, serial number, production notes, delivery notes'},
+        {t:'add', d:'Ship It button with carrier/tracking/date/pallets/boxes/hardware box fields'},
+        {t:'add', d:'HubSpot deal stage advances to Shipped (845719) on Ship It'},
+      ]
+    },
+    {
+      v:'1.0.87', date:'Apr 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Notifications system — bell icon in Deal Hub, fires on quote accept and payment marked'},
+        {t:'add', d:'HubSpot workflow: task on accept → emails rep via internal email notification'},
+      ]
+    },
+    {
+      v:'1.0.86', date:'Apr 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Merge Deal feature — move all quotes/orders to correct deal, delete wrong deal, merge Drive folders'},
+        {t:'add', d:'Merge Legacy folder — import old AllContacts Drive folders into deal structure'},
+      ]
+    },
+    {
+      v:'1.0.85', date:'Apr 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Deal hub panel load parallelized with Promise.all — 5 independent HubSpot calls fire simultaneously'},
+        {t:'fix', d:'Hub panel load time reduced from 5-7s to near-instant'},
+      ]
+    },
+    {
+      v:'1.0.84', date:'Apr 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Activity Timeline in deal panel — full HubSpot engagement history per deal'},
+        {t:'add', d:'Invoice panel in deal hub showing status, payment method, amounts'},
+        {t:'add', d:'Orders panel in deal hub showing production/shipped status'},
+      ]
+    },
+    {
+      v:'1.0.83', date:'Apr 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Create Invoice button per quote in deal hub — creates HubSpot invoice from quote snapshot'},
+        {t:'add', d:'Invoice linked to deal and contact in HubSpot'},
+        {t:'add', d:'Payment link fetched and stored in DB after invoice creation'},
+      ]
+    },
+    {
+      v:'1.0.82', date:'Apr 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Deal delete — removes HubSpot deal and all DB quote records'},
+        {t:'fix', d:'Stage override in admin panel — single click moves deal to any stage'},
+        {t:'fix', d:'Payment status picker — Not Paid / PO Received / Paid with color coding'},
+      ]
+    },
+    {
+      v:'1.0.81', date:'Apr 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Deal Hub kanban board — Sent/Updated, Verbal, Closed Won, Shipped columns'},
+        {t:'add', d:'Right-side hub panel with quotes, pipeline stepper, next action, admin overrides'},
+        {t:'add', d:'Auto-filters to logged-in rep deals on load'},
+        {t:'add', d:'HubSpot-only deal toggle to hide/show unintegrated deals'},
+      ]
+    },
+    {
+      v:'1.0.80', date:'Apr 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Share token stored in DB column only — stripped from json_snapshot before save'},
+        {t:'fix', d:'getShareToken() prefers _loadedShareToken over _lastShareToken'},
+        {t:'fix', d:'Both tokens synced on push, cleared on new quote, server fallback fetch if missing'},
+      ]
+    },
+    {
+      v:'1.0.79', date:'Apr 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Shareable quote links (/q/:quoteNumber) with token validation'},
+        {t:'add', d:'Customer-facing quote accept flow — foam color, hinge, notes captured on accept'},
+        {t:'add', d:'Shareable invoice links (/i/:quoteNumber)'},
+        {t:'add', d:'Customer-facing order status pages (/o/:quoteNumber)'},
+      ]
+    },
+    {
+      v:'1.0.78', date:'Apr 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'PDF download for quotes, invoices, orders via Puppeteer'},
+        {t:'add', d:'PDF semaphore — only one PDF generates at a time to stay within Railway memory limits'},
+        {t:'add', d:'Google Drive auto-upload: quotes to Quotes/, invoices to Invoices/'},
+      ]
+    },
+    {
+      v:'1.0.77', date:'Apr 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Google Drive integration — service account JWT auth, deal folder creation with subfolders'},
+        {t:'add', d:'Subfolders: Quotes, Invoices, Purchase Orders, Drawings & Specs, Shipping, Final Order'},
+        {t:'add', d:'Drive folder ID saved to DB, linked to quote record'},
+      ]
+    },
+    {
+      v:'1.0.76', date:'Apr 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Process Order flow — moves deal to Closed Won, creates order record, sends confirmation email'},
+        {t:'add', d:'Foam/hinge no longer required to process order'},
+        {t:'add', d:'Changelog uses OAuth session name (window._sessionRepName)'},
+      ]
+    },
+    {
+      v:'1.0.75', date:'Apr 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'TaxJar sales tax integration — nexus states, freight taxability per state'},
+        {t:'add', d:'Tax exempt checkbox per quote'},
+        {t:'add', d:'Tax included in HubSpot deal amount and order total'},
+      ]
+    },
+    {
+      v:'1.0.74', date:'Apr 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'ABF freight rate integration — pallets, weight, accessories (residential, liftgate, limited access)'},
+        {t:'add', d:'Freight accessorial preferences saved per customer email'},
+        {t:'add', d:'BOOTH_DATA for pallet dims, freight weight = sum of all line item weights'},
+      ]
+    },
+    {
+      v:'1.0.73', date:'Apr 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'OD tracking via direct REST API (api.odfl.com) — replaces AfterShip for OD shipments'},
+        {t:'add', d:'ABF tracking via XML API (abfs.com) — replaces AfterShip for ABF shipments'},
+        {t:'add', d:'UPS/FedEx/USPS tracking via Puppeteer scrape'},
+        {t:'add', d:'Shipping board — 90-day window of shipped deals with live tracking status'},
+      ]
+    },
+    {
+      v:'1.0.59', date:'Apr 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Credits tab in price book — 35 credit items from WR_CREDITS list, red CR badge styling'},
+        {t:'add', d:'Negative price inputs supported — custom items can have negative prices'},
+        {t:'fix', d:'Credits excluded from HubSpot line items — sum applied as hs_discount on invoice'},
+      ]
+    },
+    {
+      v:'1.0.58', date:'Apr 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'ABF delivered status false positives — now requires DELIVERYDATE in XML, not just status text match'},
+        {t:'add', d:'"Arrived at Terminal" label added for shipments at local service center'},
+      ]
+    },
+    {
+      v:'1.0.57', date:'Apr 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'AfterShip fully removed — all tracking now uses direct carrier APIs'},
+        {t:'fix', d:'Hub panel parallelized with Promise.all — 5 HubSpot calls fire simultaneously'},
+        {t:'add', d:'fetchAndCacheTracking() seeds cache immediately on Ship It instead of AfterShip'},
+      ]
+    },
+    {
+      v:'1.0.56', date:'Apr 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'fetchABFTracking() — ABF XML trace API, parses status/dates/signature/destination'},
+        {t:'add', d:'fetchABFTransitDays() — ABF transit time API for ETA backfill on shipping board'},
+        {t:'add', d:'fetchAndCacheTracking() rewritten — OD REST API, ABF direct XML, UPS/FedEx/USPS Puppeteer'},
+        {t:'add', d:'/api/debug/od-tracking — raw OD API debug endpoint'},
+        {t:'fix', d:'initTrackingCache — clears bogus same-day delivered_at entries'},
+      ]
+    },
+    {
+      v:'1.0.55', date:'Apr 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Initial import — full system on Railway: Node.js server, PostgreSQL, HubSpot OAuth'},
+        {t:'add', d:'Quote builder with product search, line items, customer fields, HubSpot push'},
+        {t:'add', d:'Quote history in DB, contact/deal search, quote numbering by rep'},
+        {t:'add', d:'HubSpot 30-day OAuth sessions, DB-backed, products cached with 15min TTL'},
+      ]
+    },
+    ].map(v => `
+    <div class="version-block">
+      <div class="version-header">
+        <div class="version-num">v${v.v}</div>
+        <div class="version-date">${v.date}</div>
+        <div class="version-tag tag-${v.tag}">${v.tag}</div>
+      </div>
+      <div class="version-body">
+        ${v.changes.map(c => `
+          <div class="change-item">
+            <span class="change-type ct-${c.t === 'log' ? 'log' : c.t === 'add' ? 'add' : c.t === 'ui' ? 'ui' : c.t === 'security' ? 'security' : 'fix'}">${c.t === 'log' ? 'log' : c.t === 'add' ? 'new' : c.t === 'ui' ? 'ui' : c.t === 'security' ? 'sec' : 'fix'}</span>
+            <span>${c.d}</span>
+          </div>`).join('')}
+      </div>
+    </div>`).join('')}
+</div>
+</body>
+</html>`;
+};

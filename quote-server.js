@@ -327,7 +327,7 @@ async function saveQuoteToDb(quoteData) {
     const { quoteNumber, dealId, contactId, dealName, customer, total, date, ownerId } = quoteData;
     const customerName = customer ? [customer.firstName, customer.lastName].filter(Boolean).join(' ') : '';
     const company = customer ? (customer.company || '') : '';
-    const quoteLink = quoteNumber ? `https://sales.whisperroom.com/q/${quoteNumber}` : null;
+    const quoteLink = quoteNumber ? `${PUBLIC_BASE_URL}/q/${quoteNumber}` : null;
 
     // ── Collision guard ─────────────────────────────────────────────
     // Check if this quote number already exists for a DIFFERENT deal or contact
@@ -650,6 +650,10 @@ const HS_CLIENT_ID     = process.env.HS_CLIENT_ID     || '';
 const HS_CLIENT_SECRET = process.env.HS_CLIENT_SECRET || '';
 const HS_REDIRECT_URI  = process.env.HS_REDIRECT_URI  || 'https://sales.whisperroom.com/auth/callback';
 
+// Public base URL used for customer-facing links (quote, invoice, order pages).
+// Override on staging via env var so reps can click through the full flow.
+const PUBLIC_BASE_URL  = (process.env.PUBLIC_BASE_URL || 'https://sales.whisperroom.com').replace(/\/+$/, '');
+
 // ── Nexus states (freight taxability per state) ───────────────────
 const NEXUS_STATES = {
   AZ: { taxFreight: true  },
@@ -860,9 +864,10 @@ const server = http.createServer(async (req, res) => {
   const pathname = parsed.pathname;
   const search = parsed.search || '';
 
-  const allowedOrigin = (req.headers.origin || '').includes('sales.whisperroom.com')
-    ? req.headers.origin
-    : 'https://sales.whisperroom.com';
+  const reqOrigin = req.headers.origin || '';
+  const allowedOrigin = (reqOrigin.includes('sales.whisperroom.com') || reqOrigin === PUBLIC_BASE_URL)
+    ? reqOrigin
+    : PUBLIC_BASE_URL;
   res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -2271,7 +2276,7 @@ const server = http.createServer(async (req, res) => {
         // Append quote link to deal (preserves all previous links)
         if (quoteNumber) {
           try {
-            const newLink = `https://sales.whisperroom.com/q/${quoteNumber}`;
+            const newLink = `${PUBLIC_BASE_URL}/q/${quoteNumber}`;
             const datestamp = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone:'America/New_York'});
             const existingDeal = await httpsRequest({
               hostname: 'api.hubapi.com',
@@ -2295,7 +2300,7 @@ const server = http.createServer(async (req, res) => {
         // Append quote history to contact record
         if (quoteNumber && contactId) {
           try {
-            const newLink = `https://sales.whisperroom.com/q/${quoteNumber}`;
+            const newLink = `${PUBLIC_BASE_URL}/q/${quoteNumber}`;
             const datestamp = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone:'America/New_York'});
             const totalFmt = total ? ' — $' + parseFloat(total).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
             const dealLabel = dealName ? ` — ${dealName}` : '';
@@ -2412,7 +2417,7 @@ const server = http.createServer(async (req, res) => {
               } catch(delErr) { console.warn('[drive] could not delete old PDF:', delErr.message); }
             }
             const shareTokenQ = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
-            const quoteUrl = `https://sales.whisperroom.com/q/${encodeURIComponent(quoteNumber)}${shareTokenQ ? '?t=' + shareTokenQ : ''}`;
+            const quoteUrl = `${PUBLIC_BASE_URL}/q/${encodeURIComponent(quoteNumber)}${shareTokenQ ? '?t=' + shareTokenQ : ''}`;
             const pdfBufQ = await generatePdfBuffer(quoteUrl);
             await gdriveSavePdfToDeal(quoteNumber, 'Quotes', buildPdfFilename({ customer, quoteLabel }, quoteNumber, 'Quote'), pdfBufQ);
           } catch(e) {
@@ -4630,14 +4635,14 @@ ${q.accepted ? `
         dbRows.rows.forEach(row => {
           const match = invoices.find(i => i.quoteNumber === row.quote_number);
           const invoicePage = row.quote_number && row.share_token
-            ? `https://sales.whisperroom.com/i/${row.quote_number}?t=${row.share_token}`
+            ? `${PUBLIC_BASE_URL}/i/${row.quote_number}?t=${row.share_token}`
             : row.payment_link;
           if (match) match.paymentPageUrl = invoicePage;
         });
         if (invoices.length === 1 && !invoices[0].paymentPageUrl && dbRows.rows.length > 0) {
           const row = dbRows.rows[0];
           invoices[0].paymentPageUrl = row.quote_number && row.share_token
-            ? `https://sales.whisperroom.com/i/${row.quote_number}?t=${row.share_token}`
+            ? `${PUBLIC_BASE_URL}/i/${row.quote_number}?t=${row.share_token}`
             : row.payment_link;
         }
       }
@@ -5461,7 +5466,7 @@ ${q.accepted ? `
             const dbMatch = dbRows.find(d => d.quote_number === inv.properties?.quote_number)
               || (dbRows.length === 1 ? dbRows[0] : null);
             const invPageUrl = dbMatch?.quote_number && dbMatch?.share_token
-              ? `https://sales.whisperroom.com/i/${dbMatch.quote_number}?t=${dbMatch.share_token}`
+              ? `${PUBLIC_BASE_URL}/i/${dbMatch.quote_number}?t=${dbMatch.share_token}`
               : dbMatch?.payment_link || null;
             return {
               id:             inv.id,
@@ -5863,7 +5868,7 @@ ${q.accepted ? `
 
       // 10. Return invoice page URL
       const invToken = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
-      const invoicePageUrl = `https://sales.whisperroom.com/i/${quoteNumber}?t=${invToken}`;
+      const invoicePageUrl = `${PUBLIC_BASE_URL}/i/${quoteNumber}?t=${invToken}`;
       writelog('info', 'invoice.created', `Invoice created: ${quoteNumber || '—'}`, { rep: String(ownerId || ''), quoteNum: quoteNumber || null, dealId: String(dealId || ''), meta: { invoiceId } });
       json({ success: true, invoiceUrl: invoicePageUrl, paymentUrl, invoiceId });
 
@@ -7792,7 +7797,7 @@ setInterval(loadLogs,30000);
             const tokenRowO = await db?.query('SELECT share_token, deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
             const tokenO    = tokenRowO?.rows[0]?.share_token || '';
             const dnO       = tokenRowO?.rows[0]?.deal_name   || quoteNumber;
-            const orderUrl  = `https://sales.whisperroom.com/o/${encodeURIComponent(quoteNumber)}${tokenO ? '?t=' + tokenO : ''}`;
+            const orderUrl  = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}${tokenO ? '?t=' + tokenO : ''}`;
             const pdfBufO   = await generatePdfBuffer(orderUrl);
             const snapRowO  = await db?.query('SELECT json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
             const snapO     = snapRowO?.rows[0]?.json_snapshot || {};
@@ -8145,7 +8150,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
 
       // 2. Save order data to DB
       const orderToken = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
-      const orderUrl = `https://sales.whisperroom.com/o/${encodeURIComponent(quoteNumber)}?t=${orderToken}`;
+      const orderUrl = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}?t=${orderToken}`;
       const orderData = { foamColor, hingePreference, apColor, productionNotes, deliveryNotes, processedAt: new Date().toISOString() };
 
       if (db) {
@@ -8328,7 +8333,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       const tokenRow = await db?.query('SELECT share_token, json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
       const token = tokenRow?.rows[0]?.share_token || '';
       const snap = tokenRow?.rows[0]?.json_snapshot || {};
-      const orderUrl = `https://sales.whisperroom.com/o/${encodeURIComponent(quoteNumber)}${token ? '?t=' + token : ''}`;
+      const orderUrl = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}${token ? '?t=' + token : ''}`;
       const filename = buildPdfFilename(snap, quoteNumber, 'Order');
       await generatePdf(orderUrl, filename, res, req);
     } catch(e) {
@@ -8349,7 +8354,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
 
       const filename = buildPdfFilename(quoteData, quoteNumber, 'Quote');
       await generatePdf(
-        `https://sales.whisperroom.com/q/${encodeURIComponent(quoteNumber)}`,
+        `${PUBLIC_BASE_URL}/q/${encodeURIComponent(quoteNumber)}`,
         filename, res, req
       );
     } catch(e) {
@@ -8371,7 +8376,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
 
       const filename = buildPdfFilename(quoteData, quoteNumber, 'Invoice');
       await generatePdf(
-        `https://sales.whisperroom.com/i/${encodeURIComponent(quoteNumber)}`,
+        `${PUBLIC_BASE_URL}/i/${encodeURIComponent(quoteNumber)}`,
         filename, res, req
       );
     } catch(e) {

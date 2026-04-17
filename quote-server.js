@@ -8,7 +8,7 @@ const path    = require('path');
 const url     = require('url');
 const crypto  = require('crypto');
 
-// ── Puppeteer PDF generation ──────────────────────────────────────
+// ── Puppeteer PDF generation (extracted) ─────────────────────────
 let puppeteer;
 try {
   puppeteer = require('puppeteer');
@@ -17,841 +17,52 @@ try {
   console.warn('Puppeteer not available:', e.message);
 }
 
-
-// ── Google Drive Integration ──────────────────────────────────────
-const GDRIVE_ROOT_FOLDER    = process.env.GDRIVE_ROOT_FOLDER || '';
-const SHARED_ORDERS_FOLDER  = '0AKEFNM5_Dl8jUk9PVA'; // WhisperRoom Orders folder
-
-let _gdriveToken = null;
-let _gdriveTokenExpiry = 0;
-
-async function getGDriveToken() {
-  if (_gdriveToken && Date.now() < _gdriveTokenExpiry) return _gdriveToken;
-
-  const sa = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  if (!sa) { console.warn('GOOGLE_SERVICE_ACCOUNT_JSON not set'); return null; }
-
-  let creds;
-  try {
-    // Handle both escaped \n and literal newlines in private key
-    const cleaned = sa.replace(/\\n/g, '\n');
-    creds = JSON.parse(cleaned);
-  } catch(e) {
-    try { creds = JSON.parse(sa); } catch(e2) {
-      console.warn('Invalid service account JSON:', e2.message); return null;
-    }
-  }
-
-  const now = Math.floor(Date.now() / 1000);
-  const header  = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
-  const payload = Buffer.from(JSON.stringify({
-    iss: creds.client_email,
-    scope: 'https://www.googleapis.com/auth/drive',
-    aud: 'https://oauth2.googleapis.com/token',
-    iat: now,
-    exp: now + 3600,
-  })).toString('base64url');
-
-  const crypto = require('crypto');
-  const sign = crypto.createSign('RSA-SHA256');
-  sign.update(`${header}.${payload}`);
-  const sig = sign.sign(creds.private_key).toString('base64url');
-  const jwt = `${header}.${payload}.${sig}`;
-
-  const tokenRes = await httpsRequest({
-    hostname: 'oauth2.googleapis.com',
-    path: '/token',
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-  }, `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`);
-
-  _gdriveToken = tokenRes.body?.access_token;
-  _gdriveTokenExpiry = Date.now() + 3500000;
-  return _gdriveToken;
-}
-
-async function gdriveRequest(method, path, body) {
-  const token = await getGDriveToken();
-  if (!token) return null;
-  const res = await httpsRequest({
-    hostname: 'www.googleapis.com',
-    path,
-    method,
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-    }
-  }, body || undefined);
-  return res.body;
-}
-
-async function gdriveCreateFolder(name, parentId) {
-  const res = await gdriveRequest('POST', '/drive/v3/files?supportsAllDrives=true', {
-    name,
-    mimeType: 'application/vnd.google-apps.folder',
-    parents: [parentId],
-  });
-  return res;
-}
-
-async function gdriveFindFolder(name, parentId) {
-  const q = encodeURIComponent(`name='${name.replace(/'/g,"\\'")}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-  const res = await gdriveRequest('GET', `/drive/v3/files?q=${q}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives`);
-  return res?.files?.[0] || null;
-}
-
-async function gdriveEnsureFolder(name, parentId) {
-  const existing = await gdriveFindFolder(name, parentId);
-  if (existing) return existing;
-  return await gdriveCreateFolder(name, parentId);
-}
-
-async function gdriveRenameFolder(folderId, newName) {
-  return await gdriveRequest('PATCH', `/drive/v3/files/${folderId}?supportsAllDrives=true`, { name: newName });
-}
-
-async function gdriveUploadFile(filename, mimeType, content, parentId) {
-  const token = await getGDriveToken();
-  if (!token) return null;
-  // Multipart upload
-  const boundary = 'wr_boundary_' + Date.now();
-  const meta = JSON.stringify({ name: filename, parents: [parentId] });
-  const body = [
-    `--${boundary}`,
-    'Content-Type: application/json; charset=UTF-8',
-    '',
-    meta,
-    `--${boundary}`,
-    `Content-Type: ${mimeType}`,
-    '',
-    typeof content === 'string' ? content : content.toString('base64'),
-    `--${boundary}--`,
-  ].join('\r\n');
-
-  const res = await httpsRequest({
-    hostname: 'www.googleapis.com',
-    path: '/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true',
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': `multipart/related; boundary=${boundary}`,
-    }
-  }, body, true);
-  return res.body;
-}
-
-// Create the standard deal folder structure
-function getCompanyFolderName(dealName, companyName) {
-  // Use company name if available, otherwise strip " - Mon YYYY" date suffix from deal name
-  if (companyName && companyName.trim()) return companyName.trim();
-  // Strip date suffix e.g. "GloNova - Apr 2026" → "GloNova"
-  return (dealName || '').replace(/\s*[·—\-–]\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\s*$/i, '').trim() || dealName;
-}
-
-
-// Map full carrier names to HubSpot freight_carrier enum values
-function hsCarrierEnum(carrier) {
-  if (!carrier) return '';
-  const c = carrier.toLowerCase();
-  if (c.includes('abf'))          return 'ABF';
-  if (c.includes('old dominion') || c === 'od') return 'OD';
-  if (c.includes('fedex'))        return 'FedEx';
-  if (c.includes('ups'))          return 'UPS';
-  if (c.includes('usps'))         return 'USPS';
-  if (c.includes('saia'))         return 'SAIA';
-  if (c.includes('yrc'))          return 'YRC';
-  return 'Other';
-}
-
-async function gdriveCreateDealFolders(dealName, quoteNumber, companyName) {
-  try {
-    const folderName = getCompanyFolderName(dealName, companyName);
-    const safeName = folderName.replace(/[/\:*?"<>|]/g, '-').trim();
-    const dealFolder = await gdriveEnsureFolder(safeName, GDRIVE_ROOT_FOLDER);
-    if (!dealFolder?.id) { console.warn('GDrive: failed to create deal folder'); return null; }
-
-    // Save folder ID to DB
-    if (db && quoteNumber) {
-      await db.query(
-        'UPDATE quotes SET gdrive_folder_id = $1 WHERE quote_number = $2',
-        [dealFolder.id, quoteNumber]
-      ).catch(e => console.warn('GDrive folder ID save failed:', e.message));
-    }
-
-    console.log(`GDrive: folder created/found for "${safeName}" — ${dealFolder.id}`);
-    return dealFolder;
-  } catch(e) {
-    console.warn('GDrive createDealFolders error:', e.message);
-    return null;
-  }
-}
-
-
-// Upload a PDF directly to a deal's folder (flat — no subfolders)
-async function gdriveSavePdfToDeal(quoteNumber, _subfolderName, filename, pdfBuffer) {
-  try {
-    if (!db) { console.warn('GDrive: no DB connection'); return; }
-    let row = await db.query('SELECT gdrive_folder_id FROM quotes WHERE quote_number = $1', [quoteNumber]);
-    let dealFolderId = row.rows[0]?.gdrive_folder_id;
-    // Retry once after a short delay — folder ID write may not have committed yet
-    if (!dealFolderId) {
-      await new Promise(r => setTimeout(r, 1500));
-      row = await db.query('SELECT gdrive_folder_id FROM quotes WHERE quote_number = $1', [quoteNumber]);
-      dealFolderId = row.rows[0]?.gdrive_folder_id;
-    }
-    if (!dealFolderId) {
-      console.warn(`GDrive: no folder ID for quote ${quoteNumber} — skipping upload`);
-      writelog('error', 'error.gdrive', `No folder ID for ${quoteNumber} — PDF not uploaded: ${filename}`, { quoteNum: quoteNumber });
-      return;
-    }
-
-    console.log(`GDrive: uploading "${filename}" to folder ${dealFolderId}`);
-    const result = await gdriveUploadFilePdf(filename, pdfBuffer, dealFolderId);
-    if (result?.error) {
-      console.warn(`GDrive upload error:`, JSON.stringify(result.error));
-      writelog('error', 'error.gdrive', `Drive upload failed for ${filename}: ${JSON.stringify(result.error)}`, { quoteNum: quoteNumber });
-    } else {
-      console.log(`GDrive: uploaded "${filename}" — id:`, result?.id);
-    }
-  } catch(e) {
-    console.warn(`GDrive savePdf error:`, e.message);
-    writelog('error', 'error.gdrive', `Drive savePdf threw: ${e.message}`, { quoteNum: quoteNumber });
-  }
-}
-
-// PDF-specific upload using proper binary multipart
-async function gdriveUploadFilePdf(filename, pdfBuffer, parentId) {
-  const token = await getGDriveToken();
-  if (!token) return null;
-
-  const boundary = 'wr_pdf_' + Date.now();
-  const meta = JSON.stringify({ name: filename, parents: [parentId], mimeType: 'application/pdf' });
-
-  // Build multipart body with binary PDF
-  const metaPart = Buffer.from(
-    `--${boundary}
-Content-Type: application/json; charset=UTF-8
-
-${meta}
---${boundary}
-Content-Type: application/pdf
-
-`
-  );
-  const closePart = Buffer.from(`
---${boundary}--`);
-  const body = Buffer.concat([metaPart, pdfBuffer, closePart]);
-
-  return new Promise((resolve, reject) => {
-    const req = require('https').request({
-      hostname: 'www.googleapis.com',
-      path: '/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true',
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': `multipart/related; boundary=${boundary}`,
-        'Content-Length': body.length,
-      }
-    }, res => {
-      let d = '';
-      res.on('data', c => d += c);
-      res.on('end', () => {
-        try { resolve(JSON.parse(d)); } catch(e) { resolve(d); }
-      });
-    });
-    req.on('error', reject);
-    req.write(body);
-    req.end();
-  });
-}
-
-
-// Generate PDF buffer from an internal page URL (uses Puppeteer)
-async function generatePdfBuffer(pageUrl) {
-  if (!puppeteer) throw new Error('Puppeteer not available');
-  console.log(`GDrive: generating PDF for ${pageUrl}`);
-  let browser;
-  try {
-    browser = await puppeteer.launch({
-      args: ['--no-sandbox', '--disable-setuid-sandbox',
-             '--disable-dev-shm-usage', '--disable-gpu',
-             '--single-process', '--no-zygote',
-             '--disable-web-security', '--disable-features=IsolateOrigins'],
-      defaultViewport: { width: 1200, height: 900 },
-      headless: 'new',
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    });
-    const page = await browser.newPage();
-    // Block fonts/images/analytics to speed up load on Railway
-    await page.setRequestInterception(true);
-    page.on('request', req => {
-      const rt = req.resourceType();
-      if (['image','media','font'].includes(rt)) { req.abort(); }
-      else { req.continue(); }
-    });
-    await page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 45000 });
-    await page.addStyleTag({ content: '.action-bar{display:none!important}body{padding-bottom:0!important}' });
-    const pdfBuffer = await page.pdf({
-      format: 'Letter',
-      printBackground: true,
-      margin: { top: '0', right: '0', bottom: '0', left: '0' },
-    });
-    return pdfBuffer;
-  } finally {
-    if (browser) await browser.close().catch(() => {});
-  }
-}
-
-
-// ── Tracking Status Cache ─────────────────────────────────────────
-// Caches AfterShip status in DB, refreshes in background every 30min
-// so page loads never hit AfterShip directly
-
-async function initTrackingCache() {
-  if (!db) return;
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS tracking_cache (
-      tracking_number TEXT PRIMARY KEY,
-      slug            TEXT,
-      status          TEXT,
-      label           TEXT,
-      location        TEXT,
-      last_event      TEXT,
-      last_event_time TEXT,
-      eta             TEXT,
-      delivered_at    TEXT,
-      signed_by       TEXT,
-      dest_city       TEXT,
-      dest_state      TEXT,
-      updated_at      TIMESTAMPTZ DEFAULT NOW()
-    )
-  `).catch(e => console.warn('tracking_cache init error:', e.message));
-  // Add new columns if they don't exist (safe migration)
-  await db.query(`ALTER TABLE tracking_cache ADD COLUMN IF NOT EXISTS dest_city TEXT`).catch(()=>{});
-  await db.query(`ALTER TABLE tracking_cache ADD COLUMN IF NOT EXISTS dest_state TEXT`).catch(()=>{});
-  console.log('Tracking cache ready');
-  // Clear entries with bogus delivered_at = today (fallback bug) or no delivered_at
-  try {
-    const today = new Date().toISOString().split('T')[0];
-    const wiped = await db.query(
-      "DELETE FROM tracking_cache WHERE status = 'delivered' AND (delivered_at IS NULL OR delivered_at = $1)",
-      [today]
-    );
-    if (wiped.rowCount > 0) console.log(`[tracking] cleared ${wiped.rowCount} stale/bogus cache entries`);
-  } catch(e) { /* silent */ }
-}
-
-async function getTrackingFromCache(trackingNumber) {
-  if (!db) return null;
-  try {
-    const r = await db.query('SELECT * FROM tracking_cache WHERE tracking_number = $1', [trackingNumber]);
-    return r.rows[0] || null;
-  } catch(e) { return null; }
-}
-
-async function saveTrackingToCache(trackingNumber, slug, data) {
-  if (!db) return;
-  try {
-    await db.query(`
-      INSERT INTO tracking_cache (tracking_number, slug, status, label, location, last_event, last_event_time, eta, delivered_at, signed_by, dest_city, dest_state, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
-      ON CONFLICT (tracking_number) DO UPDATE SET
-        slug=$2, status=$3, label=$4, location=$5, last_event=$6,
-        last_event_time=$7, eta=$8, delivered_at=$9, signed_by=$10,
-        dest_city=$11, dest_state=$12, updated_at=NOW()
-    `, [trackingNumber, slug, data.status||null, data.label||null, data.location||null,
-        data.lastEvent||null, data.lastEventTime||null, data.eta||null,
-        data.deliveredAt||null, data.signedBy||null,
-        data.destCity||null, data.destState||null]);
-  } catch(e) { console.warn('tracking cache save error:', e.message); }
-}
-
-async function fetchABFTracking(trackingNumber, apiKey) {
-  try {
-    const url = `https://www.abfs.com/xml/tracexml.asp?DL=2&ID=${encodeURIComponent(apiKey)}&RefNum=${encodeURIComponent(trackingNumber)}&RefType=A`;
-    const res = await httpsRequest({ hostname: 'www.abfs.com', path: url.replace('https://www.abfs.com', ''), method: 'GET', headers: { 'Accept': 'application/xml' } });
-    const xml = typeof res.body === 'string' ? res.body : JSON.stringify(res.body);
-
-    // Parse XML fields with simple regex — ABF returns flat XML
-    const get = (tag) => { const m = xml.match(new RegExp(`<${tag}>([^<]*)</${tag}>`, 'i')); return m ? m[1].trim() : null; };
-
-    const errors = get('NUMERRORS');
-    if (errors && errors !== '0') {
-      const errMsg = get('ERRORMESSAGE');
-      console.warn(`[ABF] tracking error for ${trackingNumber}: ${errMsg}`);
-      return null;
-    }
-
-    const shortStatus = get('SHORTSTATUS2') || get('SHORTSTATUS') || '';
-    const longStatus  = get('LONGSTATUS') || '';
-
-    // Dates — fetch these first so status logic can use them
-    const deliveryDate = get('DELIVERYDATE');   // actual delivery (delivered only)
-    const deliveryTime = get('DELIVERYTIME');
-    const dueDate      = get('DUEDATE');        // scheduled delivery date
-    const expectedDate = get('EXPECTEDDELIVERYDATE');
-    const pickupDate   = get('PICKUP');
-    const pickupTime   = get('PICKUPTIME');
-
-    // Map ABF status codes to normalized status
-    let status = 'in_transit', label = 'In Transit';
-    const ss = shortStatus.toUpperCase();
-    const ls = longStatus.toLowerCase();
-    // Use exact short-status code match OR unambiguous past-tense long status
-    // IMPORTANT: 'deliver' partial match is too broad — 'out for delivery', 'arrived for delivery' etc.
-    // Only mark delivered if short status is exactly 'D' AND there's an actual delivery date,
-    // OR the long status unambiguously says 'delivered' (past tense, not 'out for delivery')
-    const hasDeliveryDate = !!deliveryDate;
-    if ((ss === 'D' && hasDeliveryDate) || (ls.includes('delivered') && !ls.includes('out for delivery') && !ls.includes('arrived'))) {
-      status = 'delivered'; label = 'Delivered';
-    } else if (ss === 'OD' || ss === 'OFD' || ls.includes('out for delivery')) {
-      status = 'out_for_delivery'; label = 'Out for Delivery';
-    } else if (ls.includes('arrived') || ss === 'ARR') {
-      status = 'in_transit'; label = 'Arrived at Terminal';
-    } else if (ss === 'P' || ls.includes('picked up')) {
-      status = 'in_transit'; label = 'Picked Up';
-    } else if (ss === 'E' || ls.includes('exception')) {
-      status = 'exception'; label = 'Exception';
-    }
-
-    // ETA — prefer DUEDATE, fall back to EXPECTEDDELIVERYDATE
-    const etaRaw = dueDate || expectedDate || null;
-    let eta = null;
-    if (etaRaw) {
-      // ABF returns dates as MM/DD/YYYY
-      try {
-        const d = new Date(etaRaw);
-        if (!isNaN(d)) eta = d.toISOString().split('T')[0];
-      } catch(e) {}
-    }
-
-    // Delivery date (only when actually delivered)
-    let deliveredAt = null;
-    if (status === 'delivered' && deliveryDate) {
-      try {
-        const d = new Date(deliveryDate);
-        if (!isNaN(d)) deliveredAt = d.toISOString().split('T')[0];
-      } catch(e) {}
-    }
-
-    // Signature
-    const sigFirst = get('DELIVSIGFIRSTNAME') || '';
-    const sigLast  = get('DELIVSIGLASTNAME')  || '';
-    const signedBy = [sigFirst, sigLast].filter(Boolean).join(' ') || null;
-
-    // Destination
-    const destCity  = get('CONSIGNEECITY')  || null;
-    const destState = get('CONSIGNEESTATE') || null;
-
-    // Build last event from longStatus + pickup info
-    let lastEvent = longStatus || null;
-    let lastEventTime = null;
-    if (pickupDate) {
-      const pickupStr = [pickupDate, pickupTime].filter(Boolean).join(' ');
-      lastEventTime = pickupDate;
-      if (!lastEvent && pickupStr) lastEvent = `Picked up ${pickupStr}`;
-    }
-
-    return { status, label, lastEvent, lastEventTime, eta, deliveredAt, signedBy,
-             location: destCity ? [destCity, destState].filter(Boolean).join(', ') : null,
-             destCity, destState };
-  } catch(e) {
-    console.warn(`[ABF] API error for ${trackingNumber}: ${e.message}`);
-    return null;
-  }
-}
-
-async function fetchABFTransitDays(destZip, pickupDate, apiKey) {
-  // WhisperRoom always ships from Morristown TN 37813
-  try {
-    const pd = pickupDate ? new Date(pickupDate) : new Date();
-    const month = String(pd.getMonth() + 1).padStart(2, '0');
-    const day   = String(pd.getDate()).padStart(2, '0');
-    const year  = String(pd.getFullYear());
-    const path  = `/xml/transitxml.asp?DL=2&ID=${encodeURIComponent(apiKey)}&Shipper=Y&OriginZip=37813&OriginCountry=US&DestZip=${encodeURIComponent(destZip)}&DestCountry=US&PickupMonth=${month}&PickupDay=${day}&PickupYear=${year}`;
-    const res = await httpsRequest({ hostname: 'www.abfs.com', path, method: 'GET', headers: { 'Accept': 'application/xml' } });
-    const xml = typeof res.body === 'string' ? res.body : JSON.stringify(res.body);
-    const get = (tag) => { const m = xml.match(new RegExp(`<${tag}>([^<]*)</${tag}>`, 'i')); return m ? m[1].trim() : null; };
-    const errors = get('NUMERRORS');
-    if (errors && errors !== '0') return null;
-    const trDays  = get('TRDAYS');
-    const dueDate = get('DUEDATE');
-    let eta = null;
-    if (dueDate) { try { const d = new Date(dueDate); if (!isNaN(d)) eta = d.toISOString().split('T')[0]; } catch(e) {} }
-    return { transitDays: trDays ? parseInt(trDays) : null, eta };
-  } catch(e) {
-    console.warn(`[ABF] transit time error for ${destZip}: ${e.message}`);
-    return null;
-  }
-}
-
-
-async function fetchAndCacheTracking(trackingNumber, carrier) {
-  if (!trackingNumber) return null;
-
-  const carrierUpper = (carrier || '').toUpperCase();
-
-  // ── OD: REST API ────────────────────────────────────────────────
-  if (carrierUpper === 'OD' || carrierUpper.includes('DOMINION')) {
-    const OD_USER = process.env.OD_USER || '';
-    const OD_PASS = process.env.OD_PASS || '';
-    if (!OD_USER || !OD_PASS) {
-      console.warn('[tracking] OD credentials not set');
-      return null;
-    }
-    try {
-      console.log(`[tracking] OD API for ${trackingNumber}`);
-
-      // Step 1: Get session token
-      const authRes = await httpsRequest({
-        hostname: 'api.odfl.com',
-        path: '/auth/v1.0/token',
-        method: 'GET',
-        headers: {
-          'Authorization': 'Basic ' + Buffer.from(`${OD_USER}:${OD_PASS}`).toString('base64'),
-          'Accept': 'application/json',
-        }
-      });
-
-      const token = authRes.body?.access_token || authRes.body?.sessionToken || authRes.body?.token;
-      if (!token) {
-        console.warn('[tracking] OD auth failed:', JSON.stringify(authRes.body)?.slice(0, 200));
-        return null;
-      }
-
-      // Step 2: Track shipment
-      const trackRes = await httpsRequest({
-        hostname: 'api.odfl.com',
-        path: '/tracking/v2.0/shipment.track',
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        }
-      }, {
-        referenceType: 'PRO',
-        referenceNumber: trackingNumber,
-      });
-
-      const data = trackRes.body;
-      if (!data || trackRes.status >= 400) {
-        console.warn('[tracking] OD track failed:', JSON.stringify(data)?.slice(0, 200));
-        return null;
-      }
-
-      // Parse response — traceInfo is an array, first element is the shipment
-      const trace = Array.isArray(data.traceInfo) ? data.traceInfo[0] : (data.traceInfo || data);
-      const events = trace.trackTraceDetail || [];
-      // Events are newest-first — index 0 is the most recent
-      const latestEvt = events[0];
-
-      // Status from most recent event
-      let status = 'in_transit';
-      let label = 'In Transit';
-      if (latestEvt) {
-        const evtStatus = (latestEvt.status || '').toLowerCase();
-        if (evtStatus.includes('delivery confirmed') || evtStatus.includes('delivered')) {
-          status = 'delivered'; label = 'Delivered';
-        } else if (evtStatus.includes('out for delivery')) {
-          status = 'out_for_delivery'; label = 'Out for Delivery';
-        } else if (evtStatus.includes('arrived at consignee')) {
-          status = 'out_for_delivery'; label = 'Out for Delivery';
-        } else if (evtStatus.includes('exception')) {
-          status = 'exception'; label = 'Exception';
-        }
-      }
-
-      // Last event — find the most recent one with a city/location for context
-      let lastEvent = null;
-      let lastEventTime = null;
-      const evtWithLocation = events.find(e => e.city && e.state);
-      const evtToShow = evtWithLocation || latestEvt;
-      if (evtToShow) {
-        lastEvent = [evtToShow.status, evtToShow.desc].filter(Boolean).join(' — ') || null;
-        if (evtToShow.city && evtToShow.state) {
-          lastEvent = lastEvent ? `${lastEvent} (${evtToShow.city}, ${evtToShow.state})` : `${evtToShow.city}, ${evtToShow.state}`;
-        }
-        lastEventTime = evtToShow.dateTime ? evtToShow.dateTime.split('T')[0] : null;
-      }
-
-      // ETA
-      const eta = trace.updatedEta || trace.standardEta || null;
-
-      // Destination — use consignee city/state if available
-      const destCity  = trace.consigneeCity  || trace.destSvcCity  || null;
-      const destState = trace.consigneeState || trace.destSvcState || null;
-
-      // Delivered date — find the actual "Delivered" event
-      let deliveredAt = null;
-      if (status === 'delivered') {
-        const delEvt = events.find(e => (e.status || '').toLowerCase().includes('delivered') && e.dateTime);
-        if (delEvt) deliveredAt = delEvt.dateTime.split('T')[0];
-      }
-
-      // Delivery signature
-      const signedBy = trace.deliverySign || null;
-
-      const cacheData = {
-        status, label, lastEvent, lastEventTime,
-        eta:         eta ? eta.split('T')[0] : null,
-        deliveredAt,
-        signedBy,
-        location:    destCity ? [destCity, destState].filter(Boolean).join(', ') : null,
-        destCity,
-        destState,
-      };
-
-      await saveTrackingToCache(trackingNumber, 'OD', cacheData);
-      console.log(`[tracking] OD ${trackingNumber} → ${label}${lastEvent ? ' | ' + lastEvent.slice(0, 60) : ''}`);
-      return cacheData;
-
-    } catch(e) {
-      console.warn(`[tracking] OD error (${trackingNumber}): ${e.message}`);
-      return null;
-    }
-  }
-
-  // ── ABF: REST API ────────────────────────────────────────────────
-  if (carrierUpper === 'ABF') {
-    const ARCBEST_KEY = process.env.ARCBEST_API_KEY || '';
-    if (!ARCBEST_KEY) {
-      console.warn('[tracking] ARCBEST_API_KEY not set');
-      return null;
-    }
-    console.log(`[tracking] ABF API for ${trackingNumber}`);
-    const result = await fetchABFTracking(trackingNumber, ARCBEST_KEY);
-    if (!result) return null;
-
-    const cacheData = {
-      status:        result.status,
-      label:         result.label,
-      lastEvent:     result.lastEvent || null,
-      lastEventTime: result.lastEventTime || null,
-      eta:           result.eta || null,
-      deliveredAt:   result.deliveredAt || null,
-      signedBy:      result.signedBy || null,
-      location:      result.location || null,
-      destCity:      result.destCity || null,
-      destState:     result.destState || null,
-    };
-
-    await saveTrackingToCache(trackingNumber, 'ABF', cacheData);
-    console.log(`[tracking] ABF ${trackingNumber} → ${result.label}${result.lastEvent ? ' | ' + result.lastEvent.slice(0, 80) : ''}`);
-    return cacheData;
-  }
-
-  // ── UPS / FedEx / USPS: use Puppeteer to scrape tracking page ────
-  if (['UPS','FEDEX','USPS'].includes(carrierUpper)) {
-    if (!puppeteer) {
-      await saveTrackingToCache(trackingNumber, carrierUpper, { status: 'pending', label: 'Pending' });
-      return { status: 'pending', label: 'Pending' };
-    }
-    const urlMap = {
-      'UPS':   `https://www.ups.com/track?tracknum=${encodeURIComponent(trackingNumber)}&requester=ST/trackdetails`,
-      'FEDEX': `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(trackingNumber)}`,
-      'USPS':  `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(trackingNumber)}`,
-    };
-    const trackUrl = urlMap[carrierUpper];
-    let browser = null;
-    try {
-      console.log(`[tracking] ${carrierUpper} scrape for ${trackingNumber}`);
-      browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
-      const page = await browser.newPage();
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-      await page.goto(trackUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-      await new Promise(r => setTimeout(r, 3000));
-      const body = await page.evaluate(() => document.body.innerText);
-      const bodyLower = body.toLowerCase();
-
-      let status = 'in_transit', label = 'In Transit';
-      if (bodyLower.includes('delivered'))              { status = 'delivered';        label = 'Delivered'; }
-      else if (bodyLower.includes('out for delivery'))  { status = 'out_for_delivery'; label = 'Out for Delivery'; }
-      else if (bodyLower.includes('in transit') || bodyLower.includes('on the way')) { status = 'in_transit'; label = 'In Transit'; }
-
-      // Try to get a last event line
-      const lines = body.split('\n').map(l => l.trim()).filter(l => l.length > 10);
-      let lastEvent = null;
-      const dateRx = /\d{1,2}\/\d{1,2}\/\d{4}|\w+ \d{1,2},? \d{4}/;
-      const evtLine = lines.find(l => dateRx.test(l) && l.length < 200);
-      if (evtLine) lastEvent = evtLine;
-
-      const cacheData = { status, label, lastEvent, lastEventTime: null, eta: null,
-        deliveredAt: null, signedBy: null, location: null, destCity: null, destState: null };
-      await saveTrackingToCache(trackingNumber, carrierUpper, cacheData);
-      console.log(`[tracking] ${carrierUpper} ${trackingNumber} → ${label}`);
-      return cacheData;
-    } catch(e) {
-      console.warn(`[tracking] ${carrierUpper} error (${trackingNumber}): ${e.message}`);
-      return null;
-    } finally {
-      if (browser) await browser.close().catch(() => {});
-    }
-  }
-
-  // ── Other carriers: save pending ─────────────────────────────────
-  await saveTrackingToCache(trackingNumber, carrierUpper, { status: 'pending', label: 'Pending' });
-  return { status: 'pending', label: 'Pending' };
-}
-
-// Background poller — refreshes non-delivered shipments every 30 minutes
-async function startTrackingPoller() {
-  if (!db) return;
-  const poll = async () => {
-    try {
-      // Get active trackings from HubSpot shipped deals
-      const hsRes = await httpsRequest({
-        hostname: 'api.hubapi.com',
-        path: '/crm/v3/objects/deals/search',
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-      }, {
-        filterGroups: [{
-          filters: [
-            { propertyName: 'dealstage', operator: 'EQ', value: '845719' },
-            { propertyName: 'tracking_number', operator: 'HAS_PROPERTY' }
-          ]
-        }],
-        properties: ['tracking_number', 'freight_carrier'],
-        limit: 100
-      });
-
-      const deals = hsRes.body?.results || [];
-      let refreshed = 0;
-
-      for (const deal of deals) {
-        const tracking = deal.properties.tracking_number;
-        const carrier  = deal.properties.freight_carrier || '';
-        if (!tracking) continue;
-
-        const cached = await getTrackingFromCache(tracking);
-
-        // Skip delivered shipments that have confirmed delivery date — they're done
-        if (cached?.status === 'delivered' && cached?.delivered_at) continue;
-
-        // Skip if refreshed recently — 25 min for active, 4 hours for pending/no data
-        if (cached?.updated_at) {
-          const age = Date.now() - new Date(cached.updated_at).getTime();
-          const minAge = (cached.status && cached.status !== 'pending') ? 25 * 60 * 1000 : 4 * 60 * 60 * 1000;
-          if (age < minAge) continue;
-        }
-
-        await fetchAndCacheTracking(tracking, carrier);
-        refreshed++;
-        // 5 second gap between calls (Puppeteer scrapes are resource-heavy)
-        await new Promise(r => setTimeout(r, 5000));
-      }
-
-      if (refreshed > 0) console.log(`Tracking poller: refreshed ${refreshed} shipments`);
-    } catch(e) {
-      console.warn('Tracking poller error:', e.message);
-      writelog('error', 'error.tracking-poller', `Tracking poller failed: ${e.message}`, {});
-    }
-  };
-
-  // Run immediately on startup, then every 30 minutes
-  setTimeout(poll, 10000); // 10s delay on startup
-  setInterval(poll, 30 * 60 * 1000);
-  console.log('Tracking poller started (30min interval)');
-}
+const pdf = require('./lib/pdf');
+const { generatePdfBuffer, generatePdf } = pdf;
+pdf.init({ puppeteer });
+
+
+// ── Google Drive module (extracted) ──────────────────────────────
+// gdrive.init(...) is called after httpsRequest, db, and writelog are defined.
+const gdrive = require('./lib/gdrive');
+const {
+  GDRIVE_ROOT_FOLDER,
+  SHARED_ORDERS_FOLDER,
+  getGDriveToken,
+  gdriveRequest,
+  gdriveCreateFolder,
+  gdriveFindFolder,
+  gdriveEnsureFolder,
+  gdriveRenameFolder,
+  gdriveUploadFile,
+  getCompanyFolderName,
+  gdriveCreateDealFolders,
+  gdriveSavePdfToDeal,
+  gdriveUploadFilePdf,
+} = gdrive;
+
+
+const freight = require('./lib/freight');
+const {
+  ABF_ID, ABF_ACCT, SHIP_CITY, SHIP_STATE, SHIP_ZIP, NMFC_ITEM, NMFC_SUB, FREIGHT_CLASS,
+  initTrackingCache, getTrackingFromCache, saveTrackingToCache,
+  fetchABFTracking, fetchABFTransitDays, fetchAndCacheTracking,
+  startTrackingPoller,
+  buildAbfUrl, parseAbfXml, buildOdBookUrl, buildAbfBookingUrl, parseAbfBookingXml,
+} = freight;
+// freight.init(...) called after httpsRequest, writelog, puppeteer are defined
+
+
+
+const renderChangelog = require('./templates/changelog');
 
 // ── Token validator for public quote/invoice/order links ─────────
-function validateShareToken(quoteData, requestedToken) {
-  if (!quoteData) return false;
-  const storedToken = quoteData._shareToken || quoteData.shareToken;
-  if (!storedToken) return true; // legacy quotes without token — allow during transition
-  if (!requestedToken) return false;
-  return storedToken === requestedToken;
-}
+const utils = require('./lib/utils');
+const {
+  generateToken, parseCookies, readBody,
+  validateShareToken, buildPdfFilename, checkRateLimit,
+} = utils;
 
-// ── Rate limiter for public routes ───────────────────────────────
-const rateLimitMap = new Map(); // ip → { count, resetAt }
-function checkRateLimit(ip, max=30, windowMs=60000) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
-    return true;
-  }
-  if (entry.count >= max) return false;
-  entry.count++;
-  return true;
-}
-// Clean up old entries every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, entry] of rateLimitMap) {
-    if (now > entry.resetAt) rateLimitMap.delete(ip);
-  }
-}, 300000);
-
-// Semaphore — only one PDF at a time to stay within Hobby memory limits
-let _pdfBusy = false;
-async function generatePdf(pageUrl, filename, res, req) {
-  if (!puppeteer) {
-    res.writeHead(503); res.end('PDF generation not available'); return;
-  }
-  let waited = 0;
-  while (_pdfBusy) {
-    await new Promise(r => setTimeout(r, 300));
-    waited += 300;
-    if (waited > 30000) { res.writeHead(503); res.end('PDF busy — try again'); return; }
-  }
-  _pdfBusy = true;
-  let browser;
-  try {
-    const cookies = req.headers.cookie || '';
-    const sessionCookie = cookies.split(';')
-      .map(c => c.trim())
-      .find(c => c.startsWith('wr_qt_session=') || c.startsWith('wr_oauth_session='));
-
-    browser = await puppeteer.launch({
-      args: ['--no-sandbox', '--disable-setuid-sandbox',
-             '--disable-dev-shm-usage', '--disable-gpu',
-             '--single-process', '--no-zygote'],
-      defaultViewport: { width: 1200, height: 900 },
-      headless: 'new',
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    });
-
-    const page = await browser.newPage();
-
-    if (sessionCookie) {
-      const eqIdx = sessionCookie.indexOf('=');
-      const name  = sessionCookie.slice(0, eqIdx).trim();
-      const value = sessionCookie.slice(eqIdx + 1).trim();
-      await page.setCookie({ name, value, domain: 'sales.whisperroom.com', path: '/', httpOnly: true });
-    }
-
-    // Block fonts/images to speed up load
-    await page.setRequestInterception(true);
-    page.on('request', req => {
-      const rt = req.resourceType();
-      if (['image','media','font'].includes(rt)) { req.abort(); }
-      else { req.continue(); }
-    });
-    await page.goto(pageUrl, { waitUntil: 'networkidle2', timeout: 45000 });
-    await page.addStyleTag({ content: '.action-bar{display:none!important}body{padding-bottom:0!important}' });
-
-    const pdfBuffer = await page.pdf({
-      format: 'Letter',
-      printBackground: true,
-      margin: { top: '0', right: '0', bottom: '0', left: '0' },
-    });
-
-    const asciiName = filename.replace(/[^\x20-\x7E]/g, '-');
-    const encodedName = encodeURIComponent(filename);
-    res.writeHead(200, {
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`,
-      'Content-Length': pdfBuffer.length,
-    });
-    res.end(pdfBuffer);
-  } finally {
-    _pdfBusy = false;
-    if (browser) await browser.close().catch(() => {});
-  }
-}
 // ── Fix 3: Catch unhandled crashes — log and keep running ────────────
 process.on('uncaughtException', (err) => {
   console.error('[CRASH] uncaughtException:', err.message, err.stack?.split('\n')[1]);
@@ -860,18 +71,6 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
   console.error('[CRASH] unhandledRejection:', reason?.message || reason);
 });
-
-// ── Fix 4: Detect HubSpot 401 and force re-auth ──────────────────────
-// Wrap httpsRequest responses — if HubSpot returns 401, invalidate session
-async function hsRequest(options, body, rawBody) {
-  const res = await httpsRequest(options, body, rawBody);
-  if (res.status === 401 && options.hostname === 'api.hubapi.com') {
-    console.warn('[HubSpot] 401 received — private app token may be expired');
-    // Don't throw — let callers handle gracefully
-  }
-  return res;
-}
-
 
 let Pool, db;
 try {
@@ -893,622 +92,89 @@ try {
   db = null;
 }
 
-async function initDb() {
-  try {
-    // Migrations — add columns if they don't exist yet
-    await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payment_link  TEXT`).catch(() => {});
-    await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS order_link    TEXT`).catch(() => {});
-    await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS share_token      TEXT`).catch(() => {});
-    await db.query(`ALTER TABLE quotes ADD COLUMN IF NOT EXISTS gdrive_folder_id TEXT`).catch(() => {});
-    // Backfill share tokens for existing quotes (using Node crypto — no pgcrypto needed)
-    // (handled below in the per-row backfill loop)
-
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS quotes (
-        id            SERIAL PRIMARY KEY,
-        quote_number  TEXT UNIQUE NOT NULL,
-        deal_id       TEXT,
-        contact_id    TEXT,
-        deal_name     TEXT,
-        customer_name TEXT,
-        company       TEXT,
-        rep_id        TEXT,
-        total         NUMERIC(12,2),
-        date          TEXT,
-        quote_link    TEXT,
-        json_snapshot JSONB NOT NULL,
-        payment_link  TEXT,
-        order_link    TEXT,
-        share_token      TEXT,
-        gdrive_folder_id TEXT,
-        created_at       TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_quotes_quote_number ON quotes(quote_number)`);
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_quotes_deal_id      ON quotes(deal_id)`);
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_quotes_contact_id   ON quotes(contact_id)`);
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_quotes_rep_id       ON quotes(rep_id)`);
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_quotes_created_at   ON quotes(created_at DESC)`);
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_quotes_company      ON quotes(lower(company))`);
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_quotes_customer_name ON quotes(lower(customer_name))`);
-    // Sessions table for persistent auth (survives redeploys)
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS sessions (
-        token      TEXT PRIMARY KEY,
-        email      TEXT,
-        name       TEXT,
-        owner_id   TEXT,
-        expires_at TIMESTAMPTZ NOT NULL,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `).catch(()=>{});
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`).catch(()=>{});
-    // Clean expired sessions on startup
-    await db.query(`DELETE FROM sessions WHERE expires_at < NOW()`).catch(()=>{});
-
-    // Notifications table
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS notifications (
-        id         SERIAL PRIMARY KEY,
-        owner_id   TEXT NOT NULL,
-        type       TEXT NOT NULL,
-        title      TEXT NOT NULL,
-        body       TEXT,
-        deal_id    TEXT,
-        deal_name  TEXT,
-        quote_num  TEXT,
-        read       BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `).catch(()=>{});
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_notif_owner ON notifications(owner_id, read, created_at DESC)`).catch(()=>{});
-
-    // Logs table — activity + error feed
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS logs (
-        id        SERIAL PRIMARY KEY,
-        at        TIMESTAMPTZ DEFAULT NOW(),
-        level     TEXT NOT NULL DEFAULT 'info',
-        event     TEXT NOT NULL,
-        rep       TEXT,
-        quote_num TEXT,
-        deal_id   TEXT,
-        deal_name TEXT,
-        message   TEXT NOT NULL,
-        meta      JSONB
-      )
-    `).catch(()=>{});
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_logs_at    ON logs(at DESC)`).catch(()=>{});
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level, at DESC)`).catch(()=>{});
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_logs_event ON logs(event, at DESC)`).catch(()=>{});
-
-    // Logs table — activity + error feed
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS logs (
-        id        SERIAL PRIMARY KEY,
-        at        TIMESTAMPTZ DEFAULT NOW(),
-        version   TEXT,
-        level     TEXT NOT NULL DEFAULT 'info',
-        event     TEXT NOT NULL,
-        rep       TEXT,
-        quote_num TEXT,
-        deal_id   TEXT,
-        deal_name TEXT,
-        message   TEXT NOT NULL,
-        meta      JSONB
-      )
-    `).catch(() => {});
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_logs_at    ON logs(at DESC)`).catch(() => {});
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level, at DESC)`).catch(() => {});
-
-    console.log('Database ready');
-    await initTrackingCache();
-    startTrackingPoller();
-    // Clean expired sessions every hour
-    setInterval(async () => {
-      try { await db.query('DELETE FROM sessions WHERE expires_at < NOW()'); }
-      catch(e) { /* non-fatal */ }
-    }, 3600000);
-
-    // Backfill missing share tokens for any old quotes
-    try {
-      const missing = await db.query(
-        `SELECT id FROM quotes WHERE share_token IS NULL OR share_token = ''`
-      );
-      if (missing.rows.length > 0) {
-        for (const row of missing.rows) {
-          const tok = require('crypto').randomBytes(6).toString('hex');
-          await db.query(`UPDATE quotes SET share_token = $1 WHERE id = $2`, [tok, row.id]);
-        }
-        console.log(`[startup] backfilled share tokens for ${missing.rows.length} quotes`);
-      }
-    } catch(e) { console.warn('[startup] token backfill error:', e.message); }
-  } catch(e) {
-    console.warn('DB init skipped (no DATABASE_URL?):', e.message);
-  }
-}
-
-
-
-
-
-
-
-// Rep notified via HubSpot task
-
-const SERVER_REP_NUMBERS = {
-  '36303670':  '16', // Benton White
-  '38732178':  '17', // Kim Dalton
-  '36330944':  '11', // Jill Holdway
-  '38143901':  '18', // Sarah Smith
-  '117442978': '13', // Travis Singleton
-  '36320208':  '19', // Gabe White
-};
-
-// Generate a quote number that doesn't already exist in the DB.
-// Starts from the client-provided number's sequence and increments until free.
-async function generateFreeQuoteNumber(clientNumber, ownerId, dealId, contactId) {
-  if (!db) return clientNumber; // no DB — fall back to client number
-  const now = new Date();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  const yy = String(now.getFullYear()).slice(-2);
-  const repNum = SERVER_REP_NUMBERS[String(ownerId)] || '00';
-  const dateKey = repNum + mm + dd + yy;
-
-  // Parse starting seq from client number, default to 1
-  let seq = 1;
-  if (clientNumber) {
-    const suffix = clientNumber.replace(/^W-/, '').replace(dateKey, '');
-    const parsed = parseInt(suffix);
-    if (!isNaN(parsed) && parsed > 0) seq = parsed;
-  }
-
-  // Try seq, seq+1, seq+2 ... until we find one not taken by a different deal/contact
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const candidate = `W-${dateKey}${String(seq).padStart(2, '0')}`;
-    const existing = await db.query(
-      `SELECT deal_id, contact_id FROM quotes WHERE quote_number = $1 LIMIT 1`,
-      [candidate]
-    );
-    if (existing.rows.length === 0) return candidate; // free
-    const ex = existing.rows[0];
-    const sameDeal    = dealId    && ex.deal_id    && ex.deal_id    === dealId;
-    const sameContact = contactId && ex.contact_id && ex.contact_id === contactId;
-    if (sameDeal || sameContact) return candidate; // revision of same deal — OK
-    seq++; // collision with different deal — try next
-  }
-  // Exhausted 20 attempts — extend to 3-digit seq
-  for (let attempt = 0; attempt < 80; attempt++) {
-    const candidate = `W-${dateKey}${String(seq).padStart(2, '0')}`;
-    const existing = await db.query(
-      `SELECT deal_id, contact_id FROM quotes WHERE quote_number = $1 LIMIT 1`,
-      [candidate]
-    );
-    if (existing.rows.length === 0) return candidate;
-    const ex = existing.rows[0];
-    const sameDeal    = dealId    && ex.deal_id    && ex.deal_id    === dealId;
-    const sameContact = contactId && ex.contact_id && ex.contact_id === contactId;
-    if (sameDeal || sameContact) return candidate;
-    seq++;
-  }
-  // True last resort — should never reach here
-  return `W-${dateKey}${String(seq).padStart(2, '0')}`;
-}
-
-async function saveQuoteToDb(quoteData) {
-  if (!db || !process.env.DATABASE_URL) return null;
-  try {
-    const { quoteNumber, dealId, contactId, dealName, customer, total, date, ownerId } = quoteData;
-    const customerName = customer ? [customer.firstName, customer.lastName].filter(Boolean).join(' ') : '';
-    const company = customer ? (customer.company || '') : '';
-    const quoteLink = quoteNumber ? `https://sales.whisperroom.com/q/${quoteNumber}` : null;
-
-    // ── Collision guard ─────────────────────────────────────────────
-    // Check if this quote number already exists for a DIFFERENT deal or contact
-    // Legitimate revisions share the same deal_id — those are fine to update
-    if (quoteNumber) {
-      const existing = await db.query(
-        `SELECT deal_id, contact_id, customer_name FROM quotes WHERE quote_number = $1 LIMIT 1`,
-        [quoteNumber]
-      );
-      if (existing.rows.length > 0) {
-        const ex = existing.rows[0];
-        const sameDeal    = dealId    && ex.deal_id    && ex.deal_id    === dealId;
-        const sameContact = contactId && ex.contact_id && ex.contact_id === contactId;
-        // If neither deal nor contact matches — this is a collision, not a revision
-        if (!sameDeal && !sameContact) {
-          console.error(`[saveQuoteToDb] COLLISION: quote ${quoteNumber} already exists for "${ex.customer_name}" (deal ${ex.deal_id}). Rejecting save.`);
-          throw new Error(`Quote number ${quoteNumber} already exists for a different customer. Please refresh and push again to get a new number.`);
-        }
-      }
-    }
-    // ── End collision guard ─────────────────────────────────────────
-
-    const res = await db.query(`
-      INSERT INTO quotes
-        (quote_number, deal_id, contact_id, deal_name, customer_name, company, rep_id, total, date, quote_link, json_snapshot, share_token)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-      ON CONFLICT (quote_number) DO UPDATE SET
-        deal_id       = EXCLUDED.deal_id,
-        contact_id    = EXCLUDED.contact_id,
-        deal_name     = EXCLUDED.deal_name,
-        customer_name = EXCLUDED.customer_name,
-        company       = EXCLUDED.company,
-        rep_id        = EXCLUDED.rep_id,
-        total         = EXCLUDED.total,
-        date          = EXCLUDED.date,
-        quote_link    = EXCLUDED.quote_link,
-        payment_link  = COALESCE(EXCLUDED.payment_link, quotes.payment_link),
-        order_link    = COALESCE(EXCLUDED.order_link, quotes.order_link),
-        share_token   = COALESCE(quotes.share_token, EXCLUDED.share_token),
-        json_snapshot = EXCLUDED.json_snapshot
-      RETURNING id
-    `, (() => {
-      // Strip shareToken from snapshot — DB column is sole source of truth
-      const { shareToken: _s1, _shareToken: _s2, ...snapData } = quoteData;
-      return [
-        quoteNumber, dealId || null, contactId || null, dealName || null,
-        customerName, company, ownerId || null,
-        total ? parseFloat(total) : null,
-        date || null, quoteLink, JSON.stringify(snapData),
-        quoteData.shareToken || require('crypto').randomBytes(6).toString('hex')
-      ];
-    })());
-
-    return res.rows[0]?.id;
-  } catch(e) {
-    console.warn('DB save failed:', e.message);
-    return null;
-  }
-}
-
-async function getQuoteFromDb(quoteNumber) {
-  if (!db || !process.env.DATABASE_URL) return null;
-  try {
-    const res = await db.query(
-      'SELECT json_snapshot, share_token, deal_id FROM quotes WHERE quote_number = $1',
-      [quoteNumber]
-    );
-    if (res.rows.length === 0) return null;
-    if (!res.rows[0]) return null;
-    const snap = res.rows[0].json_snapshot || {};
-    snap._shareToken = res.rows[0].share_token;
-    // Ensure dealId is populated from DB column (more reliable than snapshot)
-    if (res.rows[0].deal_id && !snap.dealId) {
-      snap.dealId = res.rows[0].deal_id;
-    }
-    return snap;
-  } catch(e) {
-    console.warn('DB get failed:', e.message);
-    return null;
-  }
-}
-
-async function searchQuotesInDb(query, repId, limit = 100, offset = 0) {
-  if (!db || !process.env.DATABASE_URL) return null;
-  try {
-    let where = 'WHERE 1=1';
-    const params = [];
-    let p = 1;
-
-    if (query) {
-      params.push(`%${query.toLowerCase()}%`);
-      where += ` AND (lower(customer_name) LIKE $${p} OR lower(company) LIKE $${p} OR lower(deal_name) LIKE $${p} OR quote_number LIKE $${p})`;
-      p++;
-    }
-    if (repId) {
-      params.push(repId);
-      where += ` AND rep_id = $${p}`;
-      p++;
-    }
-
-    params.push(limit, offset);
-    const res = await db.query(`
-      SELECT id, quote_number, deal_id, deal_name, customer_name, company, rep_id, total, date, quote_link, share_token, created_at, json_snapshot
-      FROM quotes
-      ${where}
-      ORDER BY created_at DESC
-      LIMIT $${p} OFFSET $${p+1}
-    `, params);
-
-    const countRes = await db.query(`SELECT COUNT(*) FROM quotes ${where}`, params.slice(0, p-1));
-    return { results: res.rows, total: parseInt(countRes.rows[0].count) };
-  } catch(e) {
-    console.warn('DB search failed:', e.message);
-    return null;
-  }
-}
-
-// ── Quote History via HubSpot Notes ──────────────────────────────
-async function fetchQuoteHistory() {
-  // DB-only — notes system removed
-  if (!db) return [];
-  try {
-    const res = await db.query(`
-      SELECT quote_number, deal_id, deal_name, customer_name, company,
-             rep_id, total, date, quote_link, share_token, json_snapshot, created_at
-      FROM quotes ORDER BY created_at DESC LIMIT 200
-    `);
-    return res.rows.map(r => {
-      const snap = r.json_snapshot || {};
-      return {
-        id:          snap.id || r.quote_number,
-        quoteNumber: r.quote_number,
-        dealId:      r.deal_id,
-        dealName:    r.deal_name,
-        customer: {
-          firstName: r.customer_name?.split(' ')[0] || '',
-          lastName:  r.customer_name?.split(' ').slice(1).join(' ') || '',
-          company:   r.company || '',
-          ...snap.customer,
-        },
-        ownerId:    r.rep_id,
-        total:      r.total,
-        date:       r.date,
-        quoteLink:  r.quote_link,
-        shareToken: r.share_token,   // DB column wins — not overwritten by snapshot
-        savedAt:    r.created_at,
-        // Spread snapshot but never let it overwrite shareToken
-        ...snap,
-        shareToken: r.share_token,   // Re-assert after spread
-      };
-    });
-  } catch(e) {
-    console.warn('fetchQuoteHistory:', e.message);
-    return [];
-  }
-}
+const db_mod = require('./lib/db');
+const {
+  SERVER_REP_NUMBERS,
+  initDb,
+  generateFreeQuoteNumber,
+  saveQuoteToDb,
+  getQuoteFromDb,
+  searchQuotesInDb,
+  fetchQuoteHistory,
+} = db_mod;
+// db_mod.init(...) called after PUBLIC_BASE_URL + freight module available
 
 const PORT         = process.env.PORT || 3457;
 const PASSWORD     = process.env.WR_PASSWORD || '';
-const HS_TOKEN     = process.env.HS_TOKEN || '';
 const APP_VERSION  = (() => { try { return require('./package.json').version; } catch(e) { return '1.0.0'; } })();
+
+const logger = require('./lib/logger');
+const { writelog } = logger;
+logger.init({ getDb: () => db, appVersion: APP_VERSION });
+
+// ── HubSpot module (extracted) ────────────────────────────────────
+// httpsRequest is injected later via hubspot.init(...) once it is defined.
+const hubspot = require('./lib/hubspot');
+const {
+  HS_TOKEN,
+  hsCarrierEnum,
+  hsRequest,
+  fetchAllProducts,
+  getProductsCached,
+  hsSearchProducts,
+  hsSearchDeals,
+  hsSearchContacts,
+  hsGetDealWithDetails,
+  hsCreateContact,
+  hsSearchContact,
+  hsCreateDeal,
+  hsCreateLineItem,
+  hsAssociate,
+  hsBatchAssociateLineItems,
+  hsClearDealLineItems,
+} = hubspot;
 
 // ── Activity + Error Logger ───────────────────────────────────────
 // setImmediate defers the DB write until after the response is sent.
 // A failure here CANNOT affect any request — fully isolated.
-function writelog(level, event, message, opts) {
-  setImmediate(() => {
-    if (!db) return;
-    const o = opts || {};
-    db.query(
-      `INSERT INTO logs (version,level,event,rep,quote_num,deal_id,deal_name,message,meta)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [ APP_VERSION, level, event,
-        o.rep      || null,
-        o.quoteNum || null,
-        o.dealId   || null,
-        o.dealName || null,
-        message,
-        o.meta ? JSON.stringify(o.meta) : null ]
-    ).catch(() => {});
-  });
-}
-
-// ── Products cache (avoids hammering HubSpot on every price book open) ──
-let _productsCache     = null;
-let _productsCacheTime = 0;
-const PRODUCTS_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
-
-async function fetchAllProducts() {
-  let all = [], after = null, page = 0;
-  do {
-    let path = '/crm/v3/objects/products?limit=100&properties=name,price,description,weight,hs_sku,category';
-    if (after) path += `&after=${encodeURIComponent(after)}`;
-    const r = await httpsRequest({
-      hostname: 'api.hubapi.com', path, method: 'GET',
-      headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-    });
-    const results = r.body?.results || [];
-    all.push(...results);
-    after = r.body?.paging?.next?.after || null;
-    page++;
-    if (!after || results.length === 0) break;
-  } while (page < 20);
-  all.sort((a,b) => (a.properties?.name||'').localeCompare(b.properties?.name||''));
-  console.log(`[products cache] loaded ${all.length} products`);
-  return all;
-}
-
-async function getProductsCached() {
-  const now = Date.now();
-  if (_productsCache && (now - _productsCacheTime) < PRODUCTS_CACHE_TTL) {
-    return _productsCache;
-  }
-  _productsCache = await fetchAllProducts();
-  _productsCacheTime = Date.now();
-  return _productsCache;
-}
-
-// Warm cache on startup (after a short delay to let DB connect first)
-setTimeout(async () => {
-  if (!HS_TOKEN) return;
-  try { await getProductsCached(); }
-  catch(e) { console.warn('[products cache] warm failed:', e.message); }
-}, 8000);
-
-// Auto-refresh every 15 minutes
-setInterval(async () => {
-  if (!HS_TOKEN) return;
-  try {
-    _productsCache = await fetchAllProducts();
-    _productsCacheTime = Date.now();
-  } catch(e) { console.warn('[products cache] refresh failed:', e.message); }
-}, PRODUCTS_CACHE_TTL);
-
-
-
 const REPS = {
   '36330944':'Jill','38143901':'Sarah','117442978':'Travis',
   '36303670':'Benton','36320208':'Gabe','38732178':'Kim',
   '38900892':'Chet','38732186':'Jeromy'
 };
 
-// Rep email addresses for notifications
-const REP_EMAILS = {
-  '36330944': 'jill@whisperroom.com',
-  '38143901': 'sarah@whisperroom.com',
-  '117442978':'travis@whisperroom.com',
-  '36303670': 'bentonwhite@whisperroom.com',
-  '36320208': 'gabe@whisperroom.com',
-  '38732178': 'kim@whisperroom.com',
-  '38900892': 'chet@whisperroom.com',
-  '38732186': 'jeromy@whisperroom.com',
-};
+const notify = require('./lib/notify');
+const { REP_EMAILS, createNotification, notifyRep } = notify;
+// notify.init(...) called after db is available (below)
 
-async function createNotification(ownerId, type, title, body, { dealId, dealName, quoteNum } = {}) {
-  if (!db || !ownerId) return;
-  try {
-    await db.query(
-      `INSERT INTO notifications (owner_id, type, title, body, deal_id, deal_name, quote_num)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [String(ownerId), type, title, body || null, dealId || null, dealName || null, quoteNum || null]
-    );
-  } catch(e) { console.warn('[notify] DB insert failed:', e.message); }
-}
+const taxjar = require('./lib/taxjar');
+const { TAXJAR_KEY, calculateTaxProper } = taxjar;
+// taxjar.init(...) called after httpsRequest, NEXUS_STATES, toStateAbbr are defined
 
-async function notifyRep(ownerId, subject, bodyText, meta = {}) {
-  if (!ownerId) return;
-  // Create internal notification
-  await createNotification(ownerId, meta.type || 'info', subject, bodyText, meta);
-  // Log email intent (add SMTP later if needed)
-  const email = REP_EMAILS[String(ownerId)];
-  if (email) console.log(`[notify] ${email} — ${subject}`);
-}
 
-const TAXJAR_KEY   = process.env.TAXJAR_KEY || '';
-const ABF_ID       = 'Q8MZK7K1';
-const ABF_ACCT     = '189059-248A';
-const SHIP_CITY    = 'Morristown';
-const SHIP_STATE   = 'TN';
-const SHIP_ZIP     = '37813';
-const NMFC_ITEM    = '027880';
-const NMFC_SUB     = '02';
-const FREIGHT_CLASS = '100';
-
-const sessions      = new Set();       // password sessions (kept in-memory, rarely used)
-const oauthStates   = new Set();       // CSRF state tokens (short-lived, in-memory is fine)
-
-// DB-backed session helpers
-async function dbSessionSet(token, data) {
-  if (!db) return;
-  try {
-    await db.query(
-      `INSERT INTO sessions (token, email, name, owner_id, expires_at)
-       VALUES ($1,$2,$3,$4,$5)
-       ON CONFLICT (token) DO UPDATE SET expires_at=$5`,
-      [token, data.email||'', data.name||'', data.ownerId||null, new Date(data.expiresAt)]
-    );
-  } catch(e) { console.warn('dbSessionSet:', e.message); }
-}
-async function dbSessionGet(token) {
-  if (!db) return null;
-  try {
-    const r = await db.query(
-      'SELECT email, name, owner_id, expires_at FROM sessions WHERE token=$1 AND expires_at > NOW()',
-      [token]
-    );
-    if (!r.rows.length) return null;
-    const row = r.rows[0];
-    return { email: row.email, name: row.name, ownerId: row.owner_id, expiresAt: new Date(row.expires_at).getTime() };
-  } catch(e) { return null; }
-}
-async function dbSessionDelete(token) {
-  if (!db) return;
-  try { await db.query('DELETE FROM sessions WHERE token=$1', [token]); } catch(e) {}
-}
-
-// In-memory cache to avoid DB hit on every request (cleared on expiry)
-const _sessionCache = new Map();
-
-function isAuth(req) {
-  const c = parseCookies(req);
-  // Password session (in-memory fallback)
-  if (c.wr_qt_session && sessions.has(c.wr_qt_session)) return true;
-  // OAuth session — check cache first, then DB
-  if (c.wr_oauth_session) {
-    const cached = _sessionCache.get(c.wr_oauth_session);
-    if (cached) {
-      if (cached.expiresAt > Date.now()) return true;
-      _sessionCache.delete(c.wr_oauth_session);
-    }
-    // Will be resolved async — optimistic true if token exists in cache
-    return _sessionCache.has(c.wr_oauth_session);
-  }
-  return false;
-}
-
-async function isAuthAsync(req) {
-  const c = parseCookies(req);
-  if (c.wr_qt_session && sessions.has(c.wr_qt_session)) return true;
-  if (c.wr_oauth_session) {
-    // Check memory cache
-    const cached = _sessionCache.get(c.wr_oauth_session);
-    if (cached && cached.expiresAt > Date.now()) return true;
-    // Check DB
-    const sess = await dbSessionGet(c.wr_oauth_session);
-    if (sess) { _sessionCache.set(c.wr_oauth_session, sess); return true; }
-  }
-  return false;
-}
-
-function getSession(req) {
-  const c = parseCookies(req);
-  if (c.wr_oauth_session) {
-    const cached = _sessionCache.get(c.wr_oauth_session);
-    if (cached && cached.expiresAt > Date.now()) return cached;
-  }
-  return null;
-}
-
-async function getSessionAsync(req) {
-  const c = parseCookies(req);
-  if (c.wr_oauth_session) {
-    const cached = _sessionCache.get(c.wr_oauth_session);
-    if (cached && cached.expiresAt > Date.now()) return cached;
-    const sess = await dbSessionGet(c.wr_oauth_session);
-    if (sess) { _sessionCache.set(c.wr_oauth_session, sess); return sess; }
-  }
-  return null;
-}
-
-// Quick helper — returns ownerId string for writelog rep field, never throws
-// Accepts optional pre-parsed body so error handlers can pass ownerId directly
-function getRepFromReq(req, body) {
-  try {
-    const fromSession = getSession(req)?.ownerId || null;
-    if (fromSession) return fromSession;
-    // Fall back to ownerId in pre-parsed body (available in route error handlers)
-    if (body?.ownerId) return String(body.ownerId);
-    return null;
-  } catch(e) { return null; }
-}
+const auth = require('./lib/auth');
+auth.init({ getDb: () => db, parseCookies });
+const {
+  sessions, oauthStates, _sessionCache,
+  dbSessionSet, dbSessionGet, dbSessionDelete,
+  isAuth, isAuthAsync, getSession, getSessionAsync, getRepFromReq,
+} = auth;
 
 
 const HS_CLIENT_ID     = process.env.HS_CLIENT_ID     || '';
 const HS_CLIENT_SECRET = process.env.HS_CLIENT_SECRET || '';
 const HS_REDIRECT_URI  = process.env.HS_REDIRECT_URI  || 'https://sales.whisperroom.com/auth/callback';
 
+// Public base URL used for customer-facing links (quote, invoice, order pages).
+// Override on staging via env var so reps can click through the full flow.
+const PUBLIC_BASE_URL  = (process.env.PUBLIC_BASE_URL || 'https://sales.whisperroom.com').replace(/\/+$/, '');
+
 // ── Nexus states (freight taxability per state) ───────────────────
-const NEXUS_STATES = {
-  AZ: { taxFreight: true  },
-  CA: { taxFreight: true  },
-  CO: { taxFreight: true  },
-  FL: { taxFreight: false },
-  GA: { taxFreight: false },
-  IL: { taxFreight: true  },
-  MA: { taxFreight: false },
-  NC: { taxFreight: true  },
-  OH: { taxFreight: true  },
-  PA: { taxFreight: true  },
-  TN: { taxFreight: true  },
-  TX: { taxFreight: true  },
-  UT: { taxFreight: true  },
-  VA: { taxFreight: false },
-  WI: { taxFreight: true  },
-  WA: { taxFreight: true  },
-};
+const states = require('./lib/states');
+const {
+  NEXUS_STATES, STATE_ABBR_MAP, STATE_FULL_NAME,
+  toStateAbbr, toStateFull, isCanadianProvince,
+} = states;
 
 // ── HTTPS helper ──────────────────────────────────────────────────
 function httpsRequest(options, body, rawBody) {
@@ -1546,686 +212,24 @@ function httpsGet(urlStr, timeoutMs = 15000) {
   });
 }
 
-// ── HubSpot API ───────────────────────────────────────────────────
-async function hsSearchProducts(query, limit = 100, offset = 0) {
-  const body = {
-    limit,
-    after: offset,
-    properties: ['name', 'price', 'hs_sku', 'description', 'weight', 'category'],
-    sorts: [{ propertyName: 'name', direction: 'ASCENDING' }]
-  };
-  if (query && query.trim()) body.query = query.trim();
-  const res = await httpsRequest({
-    hostname: 'api.hubapi.com',
-    path: '/crm/v3/objects/products/search',
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${HS_TOKEN}`,
-      'Content-Type': 'application/json'
-    }
-  }, body);
-  return res.body;
-}
-
-// Search deals by name
-async function hsSearchDeals(query) {
-  const DEAL_PROPS = ['dealname', 'dealstage', 'amount', 'hubspot_owner_id', 'pipeline', 'closedate'];
-
-  // 1. Direct deal name search
-  const dealRes = await httpsRequest({
-    hostname: 'api.hubapi.com',
-    path: '/crm/v3/objects/deals/search',
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-  }, {
-    query: query.trim(),
-    limit: 20,
-    properties: DEAL_PROPS,
-    sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }]
-  });
-  const dealResults = dealRes.body?.results || [];
-  const seen = new Set(dealResults.map(d => d.id));
-
-  // 2. Also search contacts by name → associated deals
-  // This catches old deals where the deal name doesn't match but the contact name does
-  try {
-    const contactRes = await httpsRequest({
-      hostname: 'api.hubapi.com',
-      path: '/crm/v3/objects/contacts/search',
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-    }, {
-      query: query.trim(),
-      limit: 10,
-      properties: ['firstname', 'lastname', 'email', 'company'],
-    });
-    const contacts = contactRes.body?.results || [];
-    if (contacts.length) {
-      const contactIds = contacts.map(c => c.id);
-      // Fetch deals associated with those contacts
-      const assocRes = await httpsRequest({
-        hostname: 'api.hubapi.com',
-        path: '/crm/v4/associations/contacts/deals/batch/read',
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-      }, { inputs: contactIds.map(id => ({ id: String(id) })) });
-      const assocDealIds = [];
-      (assocRes.body?.results || []).forEach(r => {
-        (r.to || []).forEach(t => {
-          if (!seen.has(String(t.toObjectId))) assocDealIds.push(String(t.toObjectId));
-        });
-      });
-      if (assocDealIds.length) {
-        const dealsById = await httpsRequest({
-          hostname: 'api.hubapi.com',
-          path: '/crm/v3/objects/deals/batch/read',
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-        }, {
-          inputs: assocDealIds.slice(0, 20).map(id => ({ id })),
-          properties: DEAL_PROPS,
-        });
-        (dealsById.body?.results || []).forEach(d => {
-          if (!seen.has(d.id)) { seen.add(d.id); dealResults.push(d); }
-        });
-      }
-    }
-  } catch(e) { /* contact lookup failure is non-fatal */ }
-
-  return { results: dealResults, total: dealResults.length };
-}
-
-// Bidirectional state lookup
-const STATE_ABBR_MAP = {
-  'alabama':'AL','alaska':'AK','arizona':'AZ','arkansas':'AR','california':'CA',
-  'colorado':'CO','connecticut':'CT','delaware':'DE','florida':'FL','georgia':'GA',
-  'hawaii':'HI','idaho':'ID','illinois':'IL','indiana':'IN','iowa':'IA',
-  'kansas':'KS','kentucky':'KY','louisiana':'LA','maine':'ME','maryland':'MD',
-  'massachusetts':'MA','michigan':'MI','minnesota':'MN','mississippi':'MS',
-  'missouri':'MO','montana':'MT','nebraska':'NE','nevada':'NV','new hampshire':'NH',
-  'new jersey':'NJ','new mexico':'NM','new york':'NY','north carolina':'NC',
-  'north dakota':'ND','ohio':'OH','oklahoma':'OK','oregon':'OR','pennsylvania':'PA',
-  'rhode island':'RI','south carolina':'SC','south dakota':'SD','tennessee':'TN',
-  'texas':'TX','utah':'UT','vermont':'VT','virginia':'VA','washington':'WA',
-  'west virginia':'WV','wisconsin':'WI','wyoming':'WY','washington dc':'DC',
-  'alberta':'AB','british columbia':'BC','manitoba':'MB','new brunswick':'NB',
-  'newfoundland and labrador':'NL','newfoundland':'NL','nova scotia':'NS',
-  'ontario':'ON','prince edward island':'PE','quebec':'QC','saskatchewan':'SK',
-};
-
-const STATE_FULL_NAME = {
-  'AL':'Alabama','AK':'Alaska','AZ':'Arizona','AR':'Arkansas','CA':'California',
-  'CO':'Colorado','CT':'Connecticut','DE':'Delaware','FL':'Florida','GA':'Georgia',
-  'HI':'Hawaii','ID':'Idaho','IL':'Illinois','IN':'Indiana','IA':'Iowa',
-  'KS':'Kansas','KY':'Kentucky','LA':'Louisiana','ME':'Maine','MD':'Maryland',
-  'MA':'Massachusetts','MI':'Michigan','MN':'Minnesota','MS':'Mississippi',
-  'MO':'Missouri','MT':'Montana','NE':'Nebraska','NV':'Nevada','NH':'New Hampshire',
-  'NJ':'New Jersey','NM':'New Mexico','NY':'New York','NC':'North Carolina',
-  'ND':'North Dakota','OH':'Ohio','OK':'Oklahoma','OR':'Oregon','PA':'Pennsylvania',
-  'RI':'Rhode Island','SC':'South Carolina','SD':'South Dakota','TN':'Tennessee',
-  'TX':'Texas','UT':'Utah','VT':'Vermont','VA':'Virginia','WA':'Washington',
-  'WV':'West Virginia','WI':'Wisconsin','WY':'Wyoming','DC':'Washington DC',
-  'AB':'Alberta','BC':'British Columbia','MB':'Manitoba','NB':'New Brunswick',
-  'NL':'Newfoundland and Labrador','NS':'Nova Scotia','ON':'Ontario',
-  'PE':'Prince Edward Island','QC':'Quebec','SK':'Saskatchewan',
-};
-
-// Always returns 2-letter abbreviation - used for freight/tax APIs
-function toStateAbbr(val) {
-  if (!val) return '';
-  const trimmed = val.trim();
-  if (trimmed.length === 2) return trimmed.toUpperCase();
-  return STATE_ABBR_MAP[trimmed.toLowerCase()] || trimmed.toUpperCase();
-}
-
-// Always returns full name - used for HubSpot contact creation
-function toStateFull(val) {
-  if (!val) return '';
-  const trimmed = val.trim();
-  // Already a full name
-  if (trimmed.length > 2) {
-    // Capitalize properly and return as-is if not in our map
-    const lower = trimmed.toLowerCase();
-    const abbr = STATE_ABBR_MAP[lower];
-    if (abbr) return STATE_FULL_NAME[abbr] || trimmed;
-    return trimmed;
-  }
-  // It's an abbreviation
-  const upper = trimmed.toUpperCase();
-  return STATE_FULL_NAME[upper] || trimmed;
-}
-
-// Returns true if the state/province abbreviation is Canadian
-function isCanadianProvince(stateAbbr) {
-  const CA_PROVINCES = new Set(['AB','BC','MB','NB','NL','NS','ON','PE','QC','SK','NT','NU','YT']);
-  return CA_PROVINCES.has((stateAbbr || '').toUpperCase().trim());
-}
-async function hsSearchContacts(query) {
-  const body = {
-    query: query.trim(),
-    limit: 10,
-    properties: ['firstname', 'lastname', 'email', 'phone', 'company', 'address', 'city', 'state', 'zip'],
-    sorts: [{ propertyName: 'lastname', direction: 'ASCENDING' }]
-  };
-  const res = await httpsRequest({
-    hostname: 'api.hubapi.com',
-    path: '/crm/v3/objects/contacts/search',
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-  }, body);
-
-  if (!res.body || !res.body.results) return res.body;
-
-  // For contacts missing company name, fetch associated company
-  const enriched = await Promise.all(res.body.results.map(async contact => {
-    if (contact.properties.company) return contact;
-    try {
-      const assoc = await httpsRequest({
-        hostname: 'api.hubapi.com',
-        path: `/crm/v3/objects/contacts/${contact.id}/associations/companies`,
-        method: 'GET',
-        headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-      });
-      if (assoc.body && assoc.body.results && assoc.body.results.length > 0) {
-        const companyId = assoc.body.results[0].id;
-        const company = await httpsRequest({
-          hostname: 'api.hubapi.com',
-          path: `/crm/v3/objects/companies/${companyId}?properties=name`,
-          method: 'GET',
-          headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-        });
-        if (company.body && company.body.properties && company.body.properties.name) {
-          contact.properties.company = company.body.properties.name;
-        }
-      }
-    } catch(e) {}
-    return contact;
-  }));
-
-  return { ...res.body, results: enriched };
-}
-
-// Get deal with associated contact and owner
-async function hsGetDealWithDetails(dealId) {
-  const deal = await httpsRequest({
-    hostname: 'api.hubapi.com',
-    path: `/crm/v3/objects/deals/${dealId}?properties=dealname,hubspot_owner_id,dealstage,amount`,
-    method: 'GET',
-    headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-  });
-
-  if (!deal.body || !deal.body.id) return null;
-
-  // Get associated contacts
-  let contact = null;
-  try {
-    const assoc = await httpsRequest({
-      hostname: 'api.hubapi.com',
-      path: `/crm/v3/objects/deals/${dealId}/associations/contacts`,
-      method: 'GET',
-      headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-    });
-    if (assoc.body && assoc.body.results && assoc.body.results.length > 0) {
-      const contactId = assoc.body.results[0].id;
-      const contactRes = await httpsRequest({
-        hostname: 'api.hubapi.com',
-        path: `/crm/v3/objects/contacts/${contactId}?properties=firstname,lastname,email,phone,company,address,city,state,zip`,
-        method: 'GET',
-        headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-      });
-      if (contactRes.body && contactRes.body.properties) {
-        contact = contactRes.body;
-        // Fetch company if missing
-        if (!contact.properties.company) {
-          const compAssoc = await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/contacts/${contactId}/associations/companies`,
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-          });
-          if (compAssoc.body && compAssoc.body.results && compAssoc.body.results.length > 0) {
-            const compRes = await httpsRequest({
-              hostname: 'api.hubapi.com',
-              path: `/crm/v3/objects/companies/${compAssoc.body.results[0].id}?properties=name`,
-              method: 'GET',
-              headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-            });
-            if (compRes.body && compRes.body.properties && compRes.body.properties.name) {
-              contact.properties.company = compRes.body.properties.name;
-            }
-          }
-        }
-      }
-    }
-  } catch(e) {}
-
-  return { deal: deal.body, contact };
-}
-
-async function hsCreateContact(data) {
-  const res = await httpsRequest({
-    hostname: 'api.hubapi.com',
-    path: '/crm/v3/objects/contacts',
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${HS_TOKEN}`,
-      'Content-Type': 'application/json'
-    }
-  }, { properties: data });
-  return res.body;
-}
-
-async function hsSearchContact(email) {
-  const body = {
-    filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: email }] }],
-    properties: ['firstname', 'lastname', 'email', 'phone', 'company', 'address', 'city', 'state', 'zip', 'hubspot_owner_id'],
-    limit: 1
-  };
-  const res = await httpsRequest({
-    hostname: 'api.hubapi.com',
-    path: '/crm/v3/objects/contacts/search',
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${HS_TOKEN}`,
-      'Content-Type': 'application/json'
-    }
-  }, body);
-  return res.body;
-}
-
-async function hsCreateDeal(data) {
-  const res = await httpsRequest({
-    hostname: 'api.hubapi.com',
-    path: '/crm/v3/objects/deals',
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${HS_TOKEN}`,
-      'Content-Type': 'application/json'
-    }
-  }, { properties: data });
-  return res.body;
-}
-
-async function hsCreateLineItem(data) {
-  const res = await httpsRequest({
-    hostname: 'api.hubapi.com',
-    path: '/crm/v3/objects/line_items',
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${HS_TOKEN}`,
-      'Content-Type': 'application/json'
-    }
-  }, { properties: data });
-  return res.body;
-}
-
-async function hsAssociate(fromType, fromId, toType, toId, assocType) {
-  const res = await httpsRequest({
-    hostname: 'api.hubapi.com',
-    path: `/crm/v3/objects/${fromType}/${fromId}/associations/${toType}/${toId}/${assocType}`,
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${HS_TOKEN}`,
-      'Content-Type': 'application/json'
-    }
-  });
-  return res;
-}
-
-async function hsBatchAssociateLineItems(dealId, lineItemIds) {
-  const inputs = lineItemIds.map(id => ({
-    from: { id: String(id) },
-    to: { id: String(dealId) },
-    type: 'line_item_to_deal'
-  }));
-  const res = await httpsRequest({
-    hostname: 'api.hubapi.com',
-    path: '/crm/v3/associations/line_items/deals/batch/create',
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${HS_TOKEN}`,
-      'Content-Type': 'application/json'
-    }
-  }, { inputs });
-  return res.body;
-}
-
-// Fetch and delete all existing line items on a deal — call before creating new ones
-async function hsClearDealLineItems(dealId) {
-  try {
-    // Fetch associated line item IDs
-    const assocRes = await httpsRequest({
-      hostname: 'api.hubapi.com',
-      path: `/crm/v3/objects/deals/${dealId}/associations/line_items`,
-      method: 'GET',
-      headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-    });
-    const ids = (assocRes.body?.results || []).map(r => r.id).filter(Boolean);
-    if (!ids.length) return;
-    // Batch delete all line items
-    await httpsRequest({
-      hostname: 'api.hubapi.com',
-      path: '/crm/v3/objects/line_items/batch/archive',
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-    }, { inputs: ids.map(id => ({ id: String(id) })) });
-    console.log(`[line items] cleared ${ids.length} from deal ${dealId}`);
-  } catch(e) {
-    console.warn(`[line items] clear failed for deal ${dealId}: ${e.message}`);
-  }
-}
-// Build consistent PDF filename: "Company Label QuoteNumber (Type).pdf"
-function buildPdfFilename(quoteData, quoteNumber, type, dealName) {
-  const c = quoteData?.customer || {};
-  const company = (c.company || '').trim();
-  // Prefer explicit dealName arg, then customer company, then snapshot dealName
-  // Strip date suffix from deal names (e.g. "Acme Corp - Apr 2026" → "Acme Corp")
-  const stripDateSuffix = s => (s||'').replace(/\s*[·—\-–]\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\s*$/i, '').trim();
-  const resolvedName = company
-    || stripDateSuffix(dealName || quoteData?.dealName || '')
-    || [c.firstName, c.lastName].filter(Boolean).join(' ');
-  const label = (quoteData?.quoteLabel || '').trim();
-  const parts = [resolvedName, label, quoteNumber].filter(Boolean);
-  const safe = parts.join(' ').replace(/[/\\:*?"<>|]/g, '').replace(/\s+/g, ' ').trim();
-  return type ? `${safe} (${type}).pdf` : `${safe}.pdf`;
-}
-async function calculateTaxProper(toState, toZip, toCity, amount, shipping, toStreet = '', installShipping = 0) {
-  const stateUpper = toStateAbbr(toState);
-  const inNexus = NEXUS_STATES[stateUpper];
-  if (!inNexus) return { tax: 0, rate: 0, inNexus: false };
-
-  // TaxJar requires at minimum: to_state + to_zip
-  // City and street improve accuracy but are not required
-  if (!toZip) {
-    console.warn(`[tax] no zip for ${stateUpper} — cannot calculate`);
-    return { tax: 0, rate: 0, inNexus: true, error: 'No zip code provided' };
-  }
-
-  // Install/delivery is classified as freight for nexus taxability purposes.
-  // Client passes them separately so install shows as its own line, but they
-  // combine into TaxJar's single `shipping` field when the state taxes freight.
-  const combinedShipping = (parseFloat(shipping) || 0) + (parseFloat(installShipping) || 0);
-  const taxableShipping = inNexus.taxFreight ? combinedShipping : 0;
-  const body = {
-    from_country: 'US', from_state: 'TN', from_zip: '37813', from_city: 'Morristown',
-    from_street: '1313 S Davy Crockett Pkwy',
-    to_country: 'US', to_state: stateUpper, to_zip: String(toZip).trim(),
-    amount: parseFloat(amount.toFixed(2)),
-    shipping: parseFloat(taxableShipping.toFixed(2))
-  };
-  // Only add city/street if present — omitting is cleaner than sending empty string
-  if (toCity && toCity.trim()) body.to_city = toCity.trim();
-  if (toStreet && toStreet.trim()) body.to_street = toStreet.trim();
-
-  console.log(`[tax] calculating for ${toCity||'(no city)'}, ${stateUpper} ${toZip} — amount: ${amount}, shipping: ${taxableShipping} (freight: ${shipping||0}, install: ${installShipping||0})`);
-
-  console.log(`[tax] sending to TaxJar:`, JSON.stringify(body));
-
-  const res = await httpsRequest({
-    hostname: 'api.taxjar.com',
-    path: '/v2/taxes',
-    method: 'POST',
-    headers: {
-      'Authorization': `Token token="${TAXJAR_KEY}"`,
-      'Content-Type': 'application/json'
-    }
-  }, body);
-
-  console.log(`[tax] TaxJar response status: ${res.status}, body:`, JSON.stringify(res.body));
-
-  if (res.body && res.body.tax) {
-    return {
-      tax: res.body.tax.amount_to_collect || 0,
-      rate: res.body.tax.rate || 0,
-      inNexus: true,
-      freightTaxed: inNexus.taxFreight,
-      stateRate: res.body.tax.breakdown && res.body.tax.breakdown.state_tax_rate || 0
-    };
-  }
-  // Log the error for debugging
-  console.error('TaxJar error response:', JSON.stringify(res.body));
-  return { tax: 0, rate: 0, inNexus: true, error: typeof res.body === 'object' ? (res.body.error || res.body.detail || JSON.stringify(res.body)) : String(res.body) };
-}
-
-// ── ABF Freight ───────────────────────────────────────────────────
-function buildAbfUrl(pallets, totalWeight, consCity, consState, consZip, isCanadian, accessories, servType) {
-  const today = new Date();
-  // Strip spaces from postal code — Canadian codes often entered as "M4W 1B7"
-  const cleanZip = (consZip || '').replace(/\s+/g, '');
-  // Canadian shipments use different NMFC codes
-  const nmfcItem = isCanadian ? '027880' : NMFC_ITEM;
-  const nmfcSub  = isCanadian ? '02'     : NMFC_SUB;
-
-  const parts = [
-    'DL=2', `ID=${ABF_ID}`, `ShipAcct=${ABF_ACCT}`,
-    'ShipPay=Y', 'Acc=ARR=Y'
-  ];
-  if (servType) parts.push(`ServType=${servType}`);
-  if (accessories.residential)   parts.push('Acc_RDEL=Y');
-  if (accessories.liftgate)      parts.push('Acc_GRD_DEL=Y');
-  if (accessories.limitedaccess) { parts.push('Acc_LAD=Y'); parts.push('LADType=M'); }
-
-  parts.push(
-    `ShipCity=${encodeURIComponent(SHIP_CITY)}`, `ShipState=${SHIP_STATE}`,
-    `ShipZip=${SHIP_ZIP}`, 'ShipCountry=US',
-    `ConsCity=${encodeURIComponent(consCity)}`, `ConsState=${consState}`,
-    `ConsZip=${cleanZip}`, `ConsCountry=${isCanadian ? 'CA' : 'US'}`,
-    'FrtLWHType=IN'
-  );
-
-  pallets.forEach((pl, i) => {
-    const n = i + 1;
-    parts.push(
-      `FrtLng${n}=${pl.l}`, `FrtWdth${n}=${pl.w}`, `FrtHght${n}=${pl.h}`,
-      `UnitType${n}=PLT`, `Wgt${n}=${pl.weight}`, `UnitNo${n}=1`,
-      `Class${n}=${FREIGHT_CLASS}`, `NMFCItem${n}=${nmfcItem}`, `NMFCSub${n}=${nmfcSub}`
-    );
-  });
-
-  parts.push('ShipAff=Y', `ShipMonth=${today.getMonth()+1}`,
-    `ShipDay=${today.getDate()}`, `ShipYear=${today.getFullYear()}`);
-
-  return 'https://www.abfs.com/xml/aquotexml.asp?' + parts.join('&');
-}
-
-function parseAbfXml(xmlText) {
-  // Check for ABF error response first
-  const errMatch = xmlText.match(/<ERROR[^>]*>([^<]*)<\/ERROR>/i)
-                || xmlText.match(/<ERRORDESC[^>]*>([^<]*)<\/ERRORDESC>/i)
-                || xmlText.match(/<MSG[^>]*>([^<]*)<\/MSG>/i);
-  if (errMatch && errMatch[1].trim()) {
-    const abfMsg = errMatch[1].trim();
-    // Translate common ABF error codes into actionable messages
-    if (/zip|postal|destination/i.test(abfMsg)) throw new Error(`Invalid destination ZIP code — please verify and try again`);
-    if (/city/i.test(abfMsg))                    throw new Error(`Invalid destination city — please verify and try again`);
-    if (/state/i.test(abfMsg))                   throw new Error(`Invalid destination state — please verify and try again`);
-    if (/weight/i.test(abfMsg))                  throw new Error(`Invalid shipment weight — please verify and try again`);
-    if (/class/i.test(abfMsg))                   throw new Error(`Invalid freight class — contact Benton`);
-    throw new Error(`ABF error: ${abfMsg}`);
-  }
-
-  let cost = 0, dynDisc = 0, transit = '—';
-  const itemRe = /<ITEM[^>]+FOR="([^"]*)"[^>]+AMOUNT="([^"]*)"[^>]*/gi;
-  let m;
-  while ((m = itemRe.exec(xmlText)) !== null) {
-    const forAttr = m[1].toUpperCase();
-    const amount = parseFloat(m[2]);
-    if (forAttr === 'DYNDISC') dynDisc = Math.abs(amount);
-    else cost += amount;
-  }
-  const tMatch = xmlText.match(/<ADVERTISEDTRANSIT>([^<]*)<\/ADVERTISEDTRANSIT>/i);
-  if (tMatch) transit = tMatch[1].trim();
-  if (cost === 0) throw new Error('No rate returned from ABF — please verify the destination ZIP, city, and state are correct');
-  return { cost: Math.round(cost * 100) / 100, dynDisc, transit };
-}
+// Wire up HubSpot module now that httpsRequest is defined
+hubspot.init({ httpsRequest });
+gdrive.init({ httpsRequest, getDb: () => db, writelog });
+taxjar.init({ httpsRequest, NEXUS_STATES, toStateAbbr });
+notify.init({ getDb: () => db });
+freight.init({ httpsRequest, getDb: () => db, writelog, puppeteer });
+db_mod.init({
+  getDb: () => db,
+  publicBaseUrl: PUBLIC_BASE_URL,
+  onAfterInit: async () => {
+    await initTrackingCache();
+    startTrackingPoller();
+  },
+});
 
 
-// ── OD Book URL builder ───────────────────────────────────────────
-function buildOdBookUrl({ city, state, zip, pallets, totalWeight, acc }) {
-  // OD doesn't support fully pre-filled booking via URL params,
-  // but we can open their LTL booking page with dest zip pre-filled
-  // https://www.odfl.com/us/en/tools/ship-ltl-freight.html
-  const base = 'https://www.odfl.com/us/en/tools/ship-ltl-freight.html';
-  const params = new URLSearchParams();
-  if (zip)   params.set('destPostalCode', zip);
-  if (state) params.set('destState', state);
-  if (city)  params.set('destCity', city);
-  params.set('originPostalCode', '37813');
-  params.set('originState', 'TN');
-  params.set('originCity', 'Morristown');
-  return `${base}?${params.toString()}`;
-}
-
-// ── ABF Shipment Booking ──────────────────────────────────────────
-function buildAbfBookingUrl(params) {
-  const {
-    pallets, totalWeight,
-    consName, consAddr, consCity, consState, consZip, consCountry,
-    consPhone, consTaxId,
-    pickupDate, // YYYY-MM-DD
-    bolNumber,  // our reference number
-    specialInstructions,
-    accessories,
-  } = params;
-
-  const today = pickupDate ? new Date(pickupDate) : new Date();
-  const parts = [
-    'DL=2',
-    `ID=${ABF_ID}`,
-    `ShipAcct=${ABF_ACCT}`,
-    'ShipPay=Y',
-    // Shipper info
-    `ShipName=${encodeURIComponent('WhisperRoom Inc')}`,
-    `ShipAddr=${encodeURIComponent('322 Nancy Lynn Lane Suite 14')}`,
-    `ShipCity=${encodeURIComponent(SHIP_CITY)}`,
-    `ShipState=${SHIP_STATE}`,
-    `ShipZip=${SHIP_ZIP}`,
-    'ShipCountry=US',
-    `ShipPhone=${encodeURIComponent('8655585364')}`,
-    // Consignee info
-    `ConsName=${encodeURIComponent(consName || '')}`,
-    `ConsAddr=${encodeURIComponent(consAddr || '')}`,
-    `ConsCity=${encodeURIComponent(consCity || '')}`,
-    `ConsState=${consState || ''}`,
-    `ConsZip=${consZip || ''}`,
-    `ConsCountry=${consCountry || 'US'}`,
-    `ConsPhone=${encodeURIComponent(consPhone || '')}`,
-    // Pickup date
-    `ShipMonth=${today.getMonth()+1}`,
-    `ShipDay=${today.getDate()}`,
-    `ShipYear=${today.getFullYear()}`,
-    // Reference
-    `BOLRef1=${encodeURIComponent(bolNumber || '')}`,
-    'FrtLWHType=IN',
-    'Acc=ARR=Y',
-  ];
-
-  // Accessorials
-  if (accessories?.residential)   parts.push('Acc_RDEL=Y');
-  if (accessories?.liftgate)      parts.push('Acc_GRD_DEL=Y');
-  if (accessories?.limitedaccess) { parts.push('Acc_LAD=Y'); parts.push('LADType=M'); }
-  // Loading dock: no param needed — ABF auto-applies based on destination zip
-  if (specialInstructions)        parts.push(`SpcInst=${encodeURIComponent(specialInstructions)}`);
-
-  // Freight pieces
-  pallets.forEach((pl, i) => {
-    const n = i + 1;
-    parts.push(
-      `FrtLng${n}=${pl.l}`,
-      `FrtWdth${n}=${pl.w}`,
-      `FrtHght${n}=${pl.h}`,
-      `UnitType${n}=PLT`,
-      `Wgt${n}=${pl.weight}`,
-      `UnitNo${n}=1`,
-      `Class${n}=${FREIGHT_CLASS}`,
-      `NMFCItem${n}=${NMFC_ITEM}`,
-      `NMFCSub${n}=${NMFC_SUB}`,
-    );
-  });
-
-  return 'https://www.abfs.com/xml/ashipxml.asp?' + parts.join('&');
-}
-
-function parseAbfBookingXml(xmlText) {
-  // Extract PRO number
-  const proMatch = xmlText.match(/<PRO[^>]*>([^<]*)<\/PRO>/i)
-    || xmlText.match(/PRO["\s]*[:=]["\s]*([0-9-]+)/i)
-    || xmlText.match(/<PRONUMBER[^>]*>([^<]*)<\/PRONUMBER>/i);
-  const proNumber = proMatch ? proMatch[1].trim() : null;
-
-  // Extract confirmation/BOL number
-  const bolMatch = xmlText.match(/<BOL[^>]*>([^<]*)<\/BOL>/i)
-    || xmlText.match(/<BOLNUMBER[^>]*>([^<]*)<\/BOLNUMBER>/i);
-  const bolNumber = bolMatch ? bolMatch[1].trim() : null;
-
-  // Check for errors
-  const errMatch = xmlText.match(/<ERROR[^>]*>([^<]*)<\/ERROR>/i)
-    || xmlText.match(/<ERRORMSG[^>]*>([^<]*)<\/ERRORMSG>/i);
-  const error = errMatch ? errMatch[1].trim() : null;
-
-  // Extract pickup confirmation
-  const pickupMatch = xmlText.match(/<PICKUP[^>]*>([^<]*)<\/PICKUP>/i)
-    || xmlText.match(/<CONFIRMNO[^>]*>([^<]*)<\/CONFIRMNO>/i);
-  const pickupConfirm = pickupMatch ? pickupMatch[1].trim() : null;
-
-  return { proNumber, bolNumber, pickupConfirm, error, raw: xmlText.slice(0, 500) };
-}
-
-// ── Auth ──────────────────────────────────────────────────────────
-function generateToken() { return crypto.randomBytes(32).toString('hex'); }
-function parseCookies(req) {
-  const list = {};
-  (req.headers.cookie || '').split(';').forEach(p => {
-    const parts = p.split('=');
-    if (parts[0]) list[parts[0].trim()] = (parts[1] || '').trim();
-  });
-  return list;
-}
-// ── Request body parser ───────────────────────────────────────────
-function readBody(req) {
-  return new Promise(resolve => {
-    let body = '';
-    req.on('data', c => body += c);
-    req.on('end', () => resolve(body));
-  });
-}
-
-// ── Login page HTML ───────────────────────────────────────────────
-const LOGIN_HTML = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WhisperRoom — Login</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial Black,sans-serif' font-size='18' font-weight='900' fill='%23e8531a'>W</text></svg>">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:#0a0a0a;color:#f0ede8;font-family:'DM Mono',monospace;min-height:100vh;display:flex;align-items:center;justify-content:center}
-.box{width:360px;padding:40px}
-.logo{font-family:'Syne',sans-serif;font-size:30px;font-weight:800;margin-bottom:4px}
-.logo span{color:#e8531a}
-.sub{font-size:11px;color:#7a7672;text-transform:uppercase;letter-spacing:.1em;margin-bottom:32px}
-.hs-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:13px 20px;background:#ff7a59;border:none;border-radius:6px;color:#fff;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;text-decoration:none;margin-bottom:20px;transition:background .15s}
-.hs-btn:hover{background:#ff6a45}
-.divider{display:flex;align-items:center;gap:12px;margin-bottom:20px;color:#444;font-size:11px;text-transform:uppercase;letter-spacing:.08em}
-.divider::before,.divider::after{content:'';flex:1;height:1px;background:#2e2e2e}
-label{font-size:11px;color:#7a7672;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px}
-input{width:100%;background:#181818;border:1px solid #2e2e2e;border-radius:4px;color:#f0ede8;font-family:'DM Mono',monospace;font-size:14px;padding:12px;outline:none}
-input:focus{border-color:#e8531a}
-.pw-btn{margin-top:16px;width:100%;padding:14px;background:#333;border:none;border-radius:4px;color:#f0ede8;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;transition:background .15s}
-.pw-btn:hover{background:#444}
-.err{margin-top:12px;color:#e74c3c;font-size:12px;text-align:center}
-</style></head><body>
-<div class="box">
-  <div class="logo">Whisper<span>Room</span></div>
-  <div class="sub">Internal Tools</div>
-  {{HS_BTN}}
-  <div class="divider">or password</div>
-  <form method="POST" action="/login">
-    <label>Password</label>
-    <input type="password" name="password" placeholder="Enter password" autofocus>
-    <button type="submit" class="pw-btn">Sign In</button>
-    {{ERROR}}
-  </form>
-</div></body></html>`;
+// Login page template — placeholders {{HS_BTN}} and {{ERROR}} replaced at render time
+const LOGIN_HTML = fs.readFileSync(path.join(__dirname, 'login.html'), 'utf8');
 
 // ── Main HTML (served from file) ──────────────────────────────────
 const HSO_BTN = `<a href="/auth/hubspot" class="hs-btn"><svg width="18" height="18" viewBox="0 0 512 512" fill="white"><path d="M267.4 211.6c-25.1 23.7-40.8 57-40.8 93.8 0 29.3 9.7 56.3 26 78L203.1 434c-4.4-1.6-9.1-2.5-14-2.5-21.9 0-39.7 17.8-39.7 39.7S167.2 511 189.1 511s39.7-17.8 39.7-39.7c0-4.9-.9-9.6-2.5-14l49.2-50.4c22 16.4 49.2 26.1 78.7 26.1 73.5 0 133.1-59.6 133.1-133.1 0-67.7-50.6-123.5-116.1-131.8v-65.2c13.4-6.8 22.6-20.7 22.6-36.7 0-22.8-18.5-41.3-41.3-41.3-22.8 0-41.3 18.5-41.3 41.3 0 16 9.2 29.9 22.6 36.7v65.7c-22.5 2.9-43.1 11.5-60.4 24.6zM354.2 439.8c-46.6 0-84.4-37.8-84.4-84.4s37.8-84.4 84.4-84.4 84.4 37.8 84.4 84.4-37.8 84.4-84.4 84.4z"/></svg> Sign in with HubSpot</a>`;
@@ -2237,9 +241,10 @@ const server = http.createServer(async (req, res) => {
   const pathname = parsed.pathname;
   const search = parsed.search || '';
 
-  const allowedOrigin = (req.headers.origin || '').includes('sales.whisperroom.com')
-    ? req.headers.origin
-    : 'https://sales.whisperroom.com';
+  const reqOrigin = req.headers.origin || '';
+  const allowedOrigin = (reqOrigin.includes('sales.whisperroom.com') || reqOrigin === PUBLIC_BASE_URL)
+    ? reqOrigin
+    : PUBLIC_BASE_URL;
   res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -2331,8 +336,10 @@ const server = http.createServer(async (req, res) => {
   }
 
 
+  // Production redirect: any railway.app host → sales.whisperroom.com
+  // Skipped when STAGING_MODE=1 so the staging Railway URL works directly.
   const host = req.headers.host || '';
-  if (host.includes('railway.app') && !pathname.startsWith('/auth/')) {
+  if (host.includes('railway.app') && !pathname.startsWith('/auth/') && process.env.STAGING_MODE !== '1') {
     res.writeHead(301, { Location: `https://sales.whisperroom.com${req.url}` });
     res.end(); return;
   }
@@ -3369,7 +1376,8 @@ const server = http.createServer(async (req, res) => {
               company:            customer.company,
               address:            customer.address,
               city:               customer.city,
-              state:              toStateFull(customer.state),
+              // HubSpot's contact `state` is a US-only enum — skip for Canadian provinces
+              ...(isCanadianProvince(customer.state) ? {} : { state: toStateFull(customer.state) }),
               zip:                customer.zip,
               ...(ownerId ? { hubspot_owner_id: String(ownerId) } : {}),
             });
@@ -3442,16 +1450,23 @@ const server = http.createServer(async (req, res) => {
             return earlyStages.includes(existingDealStage) ? { dealstage: 'qualifiedtobuy' } : {};
           })(),
         };
-        // State fields — try with them first, retry without if HubSpot rejects
-        const shipping_state = toStateFull(customer.state) || customer.state || '';
-        const billing_state  = billing ? (toStateFull(billing.state) || billing.state || '') : shipping_state;
+        // HubSpot's shipping_state/billing_state are US-only enums — skip for Canadian provinces.
+        // Retry logic below still handles any other validation failure.
+        const stateProps = {};
+        if (!isCanadianProvince(customer.state)) {
+          stateProps.shipping_state = toStateFull(customer.state) || customer.state || '';
+        }
+        const billingStateVal = billing ? billing.state : customer.state;
+        if (!isCanadianProvince(billingStateVal)) {
+          stateProps.billing_state = billing ? (toStateFull(billing.state) || billing.state || '') : (stateProps.shipping_state || '');
+        }
         try {
           await httpsRequest({
             hostname: 'api.hubapi.com',
             path: `/crm/v3/objects/deals/${dealId}`,
             method: 'PATCH',
             headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-          }, { properties: { ...dealPatchProps, shipping_state, billing_state } });
+          }, { properties: { ...dealPatchProps, ...stateProps } });
         } catch(e) {
           // Retry without state fields if HubSpot rejects (e.g. Canadian province)
           await httpsRequest({
@@ -3496,14 +1511,15 @@ const server = http.createServer(async (req, res) => {
           discount: discount && discount.value ? String(discount.value) : '',
           shipping_address: customer.address || '',
           shipping_city: customer.city || '',
-          shipping_state: toStateFull(customer.state) || customer.state || '',
+          // HubSpot's shipping_state/billing_state are US-only enums — skip for Canadian provinces
+          ...(isCanadianProvince(customer.state) ? {} : { shipping_state: toStateFull(customer.state) || customer.state || '' }),
           shipping_zipcode: customer.zip || '',
           shipping_first_name: customer.firstName || '',
           shipping_last_name: customer.lastName || '',
           shipping_phone_number: customer.phone || '',
           billing_address: billing ? billing.address || '' : customer.address || '',
           billing_city: billing ? billing.city || '' : customer.city || '',
-          billing_state: billing ? (toStateFull(billing.state) || billing.state || '') : (toStateFull(customer.state) || customer.state || ''),
+          ...(isCanadianProvince(billing ? billing.state : customer.state) ? {} : { billing_state: billing ? (toStateFull(billing.state) || billing.state || '') : (toStateFull(customer.state) || customer.state || '') }),
           billing_zipcode: billing ? billing.zip || '' : customer.zip || '',
           billing_first_name:    billing ? (billing.firstName || customer.firstName || '') : (customer.firstName || ''),
           billing_last_name:     billing ? (billing.lastName  || customer.lastName  || '') : (customer.lastName  || ''),
@@ -3646,7 +1662,7 @@ const server = http.createServer(async (req, res) => {
         // Append quote link to deal (preserves all previous links)
         if (quoteNumber) {
           try {
-            const newLink = `https://sales.whisperroom.com/q/${quoteNumber}`;
+            const newLink = `${PUBLIC_BASE_URL}/q/${quoteNumber}`;
             const datestamp = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone:'America/New_York'});
             const existingDeal = await httpsRequest({
               hostname: 'api.hubapi.com',
@@ -3670,7 +1686,7 @@ const server = http.createServer(async (req, res) => {
         // Append quote history to contact record
         if (quoteNumber && contactId) {
           try {
-            const newLink = `https://sales.whisperroom.com/q/${quoteNumber}`;
+            const newLink = `${PUBLIC_BASE_URL}/q/${quoteNumber}`;
             const datestamp = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric', timeZone:'America/New_York'});
             const totalFmt = total ? ' — $' + parseFloat(total).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
             const dealLabel = dealName ? ` — ${dealName}` : '';
@@ -3787,7 +1803,7 @@ const server = http.createServer(async (req, res) => {
               } catch(delErr) { console.warn('[drive] could not delete old PDF:', delErr.message); }
             }
             const shareTokenQ = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
-            const quoteUrl = `https://sales.whisperroom.com/q/${encodeURIComponent(quoteNumber)}${shareTokenQ ? '?t=' + shareTokenQ : ''}`;
+            const quoteUrl = `${PUBLIC_BASE_URL}/q/${encodeURIComponent(quoteNumber)}${shareTokenQ ? '?t=' + shareTokenQ : ''}`;
             const pdfBufQ = await generatePdfBuffer(quoteUrl);
             await gdriveSavePdfToDeal(quoteNumber, 'Quotes', buildPdfFilename({ customer, quoteLabel }, quoteNumber, 'Quote'), pdfBufQ);
           } catch(e) {
@@ -6005,14 +4021,14 @@ ${q.accepted ? `
         dbRows.rows.forEach(row => {
           const match = invoices.find(i => i.quoteNumber === row.quote_number);
           const invoicePage = row.quote_number && row.share_token
-            ? `https://sales.whisperroom.com/i/${row.quote_number}?t=${row.share_token}`
+            ? `${PUBLIC_BASE_URL}/i/${row.quote_number}?t=${row.share_token}`
             : row.payment_link;
           if (match) match.paymentPageUrl = invoicePage;
         });
         if (invoices.length === 1 && !invoices[0].paymentPageUrl && dbRows.rows.length > 0) {
           const row = dbRows.rows[0];
           invoices[0].paymentPageUrl = row.quote_number && row.share_token
-            ? `https://sales.whisperroom.com/i/${row.quote_number}?t=${row.share_token}`
+            ? `${PUBLIC_BASE_URL}/i/${row.quote_number}?t=${row.share_token}`
             : row.payment_link;
         }
       }
@@ -6836,7 +4852,7 @@ ${q.accepted ? `
             const dbMatch = dbRows.find(d => d.quote_number === inv.properties?.quote_number)
               || (dbRows.length === 1 ? dbRows[0] : null);
             const invPageUrl = dbMatch?.quote_number && dbMatch?.share_token
-              ? `https://sales.whisperroom.com/i/${dbMatch.quote_number}?t=${dbMatch.share_token}`
+              ? `${PUBLIC_BASE_URL}/i/${dbMatch.quote_number}?t=${dbMatch.share_token}`
               : dbMatch?.payment_link || null;
             return {
               id:             inv.id,
@@ -7200,6 +5216,11 @@ ${q.accepted ? `
           if (customer.zip)     addrProps.hs_recipient_shipping_zip          = customer.zip;
           addrProps.hs_recipient_shipping_country      = 'United States';
           addrProps.hs_recipient_shipping_country_code = 'US';
+          // HubSpot created the invoice with hs_collect_address_types defaulting to
+          // [shipping_address, billing_address] — meaning "ask the customer at
+          // checkout." Once we set the shipping address ourselves, HubSpot rejects
+          // the patch unless we also drop shipping from the "to collect" list.
+          addrProps.hs_collect_address_types = 'billing_address';
           const addrRes = await httpsRequest({
             hostname: 'api.hubapi.com',
             path: `/crm/v3/objects/invoices/${invoiceId}`,
@@ -7207,7 +5228,8 @@ ${q.accepted ? `
             headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
           }, { properties: addrProps });
           if (addrRes.body?.status === 'error') {
-            console.warn('Invoice address patch error:', addrRes.body?.message?.slice(0, 200));
+            console.warn('Invoice address patch error:', JSON.stringify(addrRes.body));
+            console.warn('Invoice address patch payload was:', JSON.stringify(addrProps));
           } else {
             console.log(`Invoice ${invoiceId} shipping address set`);
           }
@@ -7237,7 +5259,7 @@ ${q.accepted ? `
 
       // 10. Return invoice page URL
       const invToken = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
-      const invoicePageUrl = `https://sales.whisperroom.com/i/${quoteNumber}?t=${invToken}`;
+      const invoicePageUrl = `${PUBLIC_BASE_URL}/i/${quoteNumber}?t=${invToken}`;
       writelog('info', 'invoice.created', `Invoice created: ${quoteNumber || '—'}`, { rep: String(ownerId || ''), quoteNum: quoteNumber || null, dealId: String(dealId || ''), meta: { invoiceId } });
       json({ success: true, invoiceUrl: invoicePageUrl, paymentUrl, invoiceId });
 
@@ -7287,681 +5309,14 @@ ${q.accepted ? `
   if (pathname === '/changelog' && req.method === 'GET') {
     if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
     res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Changelog — WhisperRoom</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-size='18'>📝</text></svg>">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-  :root{--bg:#0f0f0f;--surface:#1a1a1a;--surface2:#222;--border:#2a2a2a;--orange:#ee6216;--text:#e8e8e8;--muted:#888;--green:#22c55e;--red:#ef4444;--yellow:#f59e0b;--blue:#3b82f6;}
-  *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
-  .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:52px;background:#1a1a1a;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:100;}
-  .logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8;}.logo span{color:#e8531a;}
-  .back{font-size:11px;font-weight:700;color:var(--muted);text-decoration:none;padding:5px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;letter-spacing:.05em;text-transform:uppercase;}
-  .main{max-width:860px;margin:0 auto;padding:32px 24px;}
-  h1{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;margin-bottom:4px;}h1 span{color:var(--orange);}
-  .subtitle{font-size:12px;color:var(--muted);margin-bottom:32px;}
-  .version-block{margin-bottom:28px;border:1px solid var(--border);border-radius:10px;overflow:hidden;}
-  .version-header{padding:12px 18px;background:var(--surface);display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);}
-  .version-num{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:var(--orange);}
-  .version-date{font-size:11px;color:var(--muted);}
-  .version-tag{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:2px 7px;border-radius:4px;margin-left:auto;}
-  .tag-fix{background:rgba(59,130,246,.15);color:var(--blue);}
-  .tag-feature{background:rgba(34,197,94,.12);color:var(--green);}
-  .tag-logging{background:rgba(238,98,22,.12);color:var(--orange);}
-  .tag-ui{background:rgba(168,85,247,.15);color:#a855f7;}
-  .version-body{padding:14px 18px;background:var(--surface);}
-  .change-item{display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px;line-height:1.5;}
-  .change-item:last-child{border-bottom:none;}
-  .change-type{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:2px 6px;border-radius:3px;white-space:nowrap;height:fit-content;margin-top:2px;}
-  .ct-fix{background:rgba(59,130,246,.15);color:var(--blue);}
-  .ct-add{background:rgba(34,197,94,.12);color:var(--green);}
-  .ct-log{background:rgba(238,98,22,.12);color:var(--orange);}
-  .ct-ui{background:rgba(168,85,247,.15);color:#a855f7;}
-  .ct-security{background:rgba(245,158,11,.12);color:var(--yellow);}
-</style>
-</head>
-<body>
-<div class="topbar">
-  <div class="logo">Whisper<span>Room</span> — Changelog</div>
-  <a href="/admin-log" class="back">← Admin Log</a>
-</div>
-<div class="main">
-  <h1>Patch <span>Notes</span></h1>
-  <div class="subtitle">Full history of changes to the WhisperRoom sales tool</div>
-
-  ${[
-    {
-      v:'1.1.14', date:'Apr 13, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'Canadian freight now uses correct NMFC codes (027880/02) matching legacy system'},
-        {t:'fix', d:'Postal code spaces stripped automatically — "M4W 1B7" and "M4W1B7" both work'},
-        {t:'fix', d:'Zip space stripping applied at server, freight request, and customer record save'},
-      ]
-    },
-    {
-      v:'1.1.13', date:'Apr 13, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'Ship It button now saves serial number, production notes, foam color, and hinge preference — same as Save Changes'},
-      ]
-    },
-    {
-      v:'1.1.12', date:'Apr 13, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'Ship date showing one day early — YYYY-MM-DD strings parsed as UTC midnight, now treated as local noon'},
-      ]
-    },
-    {
-      v:'1.1.11', date:'Apr 13, 2026', tag:'log',
-      changes:[
-        {t:'log', d:'Full shipping error coverage: error.refresh-tracking, error.track, error.ship-deal, error.ship-hubspot-deal, error.shipping-board, error.order-ship, error.tracking-poller'},
-        {t:'log', d:'All error log entries now include rep via getRepFromReq()'},
-      ]
-    },
-    {
-      v:'1.1.10', date:'Apr 13, 2026', tag:'log',
-      changes:[
-        {t:'log', d:'Rep name now shows on ALL error log entries — getRepFromReq() helper added'},
-        {t:'log', d:'Tax errors include rep from request body'},
-      ]
-    },
-    {
-      v:'1.1.09', date:'Apr 13, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'TaxJar errors now log to system log with state/zip/city'},
-        {t:'fix', d:'Tax route body hoisted out of try block — prevents body is not defined crash'},
-        {t:'ui',  d:'Tax errors show plain English: invalid ZIP/city/state/timeout messages'},
-      ]
-    },
-    {
-      v:'1.1.08', date:'Apr 13, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'TaxJar errors now logged to system log (error.tax event)'},
-        {t:'ui',  d:'Tax error messages translated to plain English for reps'},
-      ]
-    },
-    {
-      v:'1.1.07', date:'Apr 13, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'httpsGet 15-second timeout — freight no longer hangs for 5+ minutes'},
-        {t:'fix', d:'parseAbfXml reads ABF ERROR tags and returns actionable messages'},
-        {t:'fix', d:'Freight body scope fix — body is not defined crash resolved'},
-        {t:'ui',  d:'Invalid ZIP/city/state/weight shown as plain English to reps'},
-      ]
-    },
-    {
-      v:'1.1.06', date:'Apr 13, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'Freight route body hoisted — prevented unhandledRejection crash'},
-        {t:'log', d:'Freight errors now correctly log with dest zip/state/city'},
-      ]
-    },
-    {
-      v:'1.1.05', date:'Apr 13, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'Rename Deal button in deal panel — updates HubSpot, Google Drive folder, and all DB quotes'},
-        {t:'log', d:'deal.renamed logged to activity feed on success'},
-      ]
-    },
-    {
-      v:'1.1.04', date:'Apr 13, 2026', tag:'log',
-      changes:[
-        {t:'log', d:'Full error logging on all critical routes: accept-quote, create-invoice, process-order, abf-booking, order-save, unship, orders-list, hubspot'},
-        {t:'add', d:'Gabe Troubleshooting Handbook added to handoff doc'},
-      ]
-    },
-    {
-      v:'1.1.03', date:'Apr 13, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'Duplicate quote.pushed log removed — was firing from both /api/history and /api/create-deal'},
-      ]
-    },
-    {
-      v:'1.1.02', date:'Apr 13, 2026', tag:'log',
-      changes:[
-        {t:'log', d:'Freight error logging added to quote builder, orders-freight, and ABF inner catch'},
-      ]
-    },
-    {
-      v:'1.1.01', date:'Apr 13, 2026', tag:'ui',
-      changes:[
-        {t:'ui',  d:'Admin log rebuilt — favicon, live dot, rep/event dropdowns, date range filter, stats bar, version badge, clear button'},
-      ]
-    },
-    {
-      v:'1.1.00', date:'Apr 13, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'quote.pushed log correctly labels New deal vs Revision — meta includes isNewDeal and existingDealId'},
-      ]
-    },
-    {
-      v:'1.0.96', date:'Apr 13, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'Logging system launched — logs table in PostgreSQL, writelog() helper, admin log page at /admin-log'},
-        {t:'log', d:'Events: quote.pushed, deal.created, invoice.created, order.shipped, order.unshipped, order.deleted, order.processed, task.accounting'},
-        {t:'log', d:'Errors: error.freight, error.tax, error.hubspot, error.save'},
-      ]
-    },
-    {
-      v:'1.0.95', date:'Apr 13, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'Accounting task on Ship It fires for ALL reps, not just Jeromy — assigned to Kim Dalton'},
-        {t:'fix', d:'Task includes deal name, serial number, carrier, PRO/tracking, freight cost'},
-      ]
-    },
-    {
-      v:'1.0.94', date:'Apr 13, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'Unship preserves all shipment data — only reverts HubSpot dealstage to Closed Won'},
-        {t:'fix', d:'Delete button now visible to all reps'},
-        {t:'fix', d:'HS-only orders: Ship It creates DB record so order persists on board'},
-      ]
-    },
-    {
-      v:'1.0.93', date:'Apr 13, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'Serial number field changed to textarea for multi-line support'},
-        {t:'fix', d:'HS-only orders (HS-{dealId}) save directly to HubSpot via PATCH'},
-      ]
-    },
-    {
-      v:'1.0.92', date:'Apr 13, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'Credits line items created BEFORE the HubSpot loop — were never being sent'},
-        {t:'fix', d:'Credit descriptor line: "Credit applied in MDL XXXX above: -$XX.XX"'},
-        {t:'fix', d:'anchor variable hoisted to outer scope — fixed ReferenceError on credit push'},
-      ]
-    },
-    {
-      v:'1.0.91', date:'Apr 13, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'OD Freight rating added alongside ABF — LTL, GTD, GTE via SOAP XML'},
-        {t:'add', d:'OD Book URL pre-fills dest zip on odfl.com'},
-        {t:'fix', d:'httpsGet timeout 15 seconds, parseAbfXml reads ERROR tags'},
-      ]
-    },
-    {
-      v:'1.0.90', date:'Apr 13, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'Freight rating modal on orders board — Get Freight button fetches ABF rate per order'},
-        {t:'add', d:'Orders board drag-and-drop sort with position persistence'},
-      ]
-    },
-    {
-      v:'1.0.89', date:'Apr 9, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'Quote notes displayed on /q/ and /i/ client pages in orange-bordered box'},
-        {t:'fix', d:'Canadian province state handling — retry without state fields if HubSpot rejects'},
-      ]
-    },
-    {
-      v:'1.0.88', date:'Apr 9, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'Orders dashboard — In Production / Shipped / All Orders / HubSpot Closed Won tabs'},
-        {t:'add', d:'Orders drawer with foam color, hinge, serial number, production notes, delivery notes'},
-        {t:'add', d:'Ship It button with carrier/tracking/date/pallets/boxes/hardware box fields'},
-        {t:'add', d:'HubSpot deal stage advances to Shipped (845719) on Ship It'},
-      ]
-    },
-    {
-      v:'1.0.87', date:'Apr 9, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'Notifications system — bell icon in Deal Hub, fires on quote accept and payment marked'},
-        {t:'add', d:'HubSpot workflow: task on accept → emails rep via internal email notification'},
-      ]
-    },
-    {
-      v:'1.0.86', date:'Apr 9, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'Merge Deal feature — move all quotes/orders to correct deal, delete wrong deal, merge Drive folders'},
-        {t:'add', d:'Merge Legacy folder — import old AllContacts Drive folders into deal structure'},
-      ]
-    },
-    {
-      v:'1.0.85', date:'Apr 9, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'Deal hub panel load parallelized with Promise.all — 5 independent HubSpot calls fire simultaneously'},
-        {t:'fix', d:'Hub panel load time reduced from 5-7s to near-instant'},
-      ]
-    },
-    {
-      v:'1.0.84', date:'Apr 9, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'Activity Timeline in deal panel — full HubSpot engagement history per deal'},
-        {t:'add', d:'Invoice panel in deal hub showing status, payment method, amounts'},
-        {t:'add', d:'Orders panel in deal hub showing production/shipped status'},
-      ]
-    },
-    {
-      v:'1.0.83', date:'Apr 9, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'Create Invoice button per quote in deal hub — creates HubSpot invoice from quote snapshot'},
-        {t:'add', d:'Invoice linked to deal and contact in HubSpot'},
-        {t:'add', d:'Payment link fetched and stored in DB after invoice creation'},
-      ]
-    },
-    {
-      v:'1.0.82', date:'Apr 9, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'Deal delete — removes HubSpot deal and all DB quote records'},
-        {t:'fix', d:'Stage override in admin panel — single click moves deal to any stage'},
-        {t:'fix', d:'Payment status picker — Not Paid / PO Received / Paid with color coding'},
-      ]
-    },
-    {
-      v:'1.0.81', date:'Apr 9, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'Deal Hub kanban board — Sent/Updated, Verbal, Closed Won, Shipped columns'},
-        {t:'add', d:'Right-side hub panel with quotes, pipeline stepper, next action, admin overrides'},
-        {t:'add', d:'Auto-filters to logged-in rep deals on load'},
-        {t:'add', d:'HubSpot-only deal toggle to hide/show unintegrated deals'},
-      ]
-    },
-    {
-      v:'1.0.80', date:'Apr 9, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'Share token stored in DB column only — stripped from json_snapshot before save'},
-        {t:'fix', d:'getShareToken() prefers _loadedShareToken over _lastShareToken'},
-        {t:'fix', d:'Both tokens synced on push, cleared on new quote, server fallback fetch if missing'},
-      ]
-    },
-    {
-      v:'1.0.79', date:'Apr 9, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'Shareable quote links (/q/:quoteNumber) with token validation'},
-        {t:'add', d:'Customer-facing quote accept flow — foam color, hinge, notes captured on accept'},
-        {t:'add', d:'Shareable invoice links (/i/:quoteNumber)'},
-        {t:'add', d:'Customer-facing order status pages (/o/:quoteNumber)'},
-      ]
-    },
-    {
-      v:'1.0.78', date:'Apr 9, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'PDF download for quotes, invoices, orders via Puppeteer'},
-        {t:'add', d:'PDF semaphore — only one PDF generates at a time to stay within Railway memory limits'},
-        {t:'add', d:'Google Drive auto-upload: quotes to Quotes/, invoices to Invoices/'},
-      ]
-    },
-    {
-      v:'1.0.77', date:'Apr 9, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'Google Drive integration — service account JWT auth, deal folder creation with subfolders'},
-        {t:'add', d:'Subfolders: Quotes, Invoices, Purchase Orders, Drawings & Specs, Shipping, Final Order'},
-        {t:'add', d:'Drive folder ID saved to DB, linked to quote record'},
-      ]
-    },
-    {
-      v:'1.0.76', date:'Apr 9, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'Process Order flow — moves deal to Closed Won, creates order record, sends confirmation email'},
-        {t:'add', d:'Foam/hinge no longer required to process order'},
-        {t:'add', d:'Changelog uses OAuth session name (window._sessionRepName)'},
-      ]
-    },
-    {
-      v:'1.0.75', date:'Apr 9, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'TaxJar sales tax integration — nexus states, freight taxability per state'},
-        {t:'add', d:'Tax exempt checkbox per quote'},
-        {t:'add', d:'Tax included in HubSpot deal amount and order total'},
-      ]
-    },
-    {
-      v:'1.0.74', date:'Apr 9, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'ABF freight rate integration — pallets, weight, accessories (residential, liftgate, limited access)'},
-        {t:'add', d:'Freight accessorial preferences saved per customer email'},
-        {t:'add', d:'BOOTH_DATA for pallet dims, freight weight = sum of all line item weights'},
-      ]
-    },
-    {
-      v:'1.0.73', date:'Apr 9, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'OD tracking via direct REST API (api.odfl.com) — replaces AfterShip for OD shipments'},
-        {t:'add', d:'ABF tracking via XML API (abfs.com) — replaces AfterShip for ABF shipments'},
-        {t:'add', d:'UPS/FedEx/USPS tracking via Puppeteer scrape'},
-        {t:'add', d:'Shipping board — 90-day window of shipped deals with live tracking status'},
-      ]
-    },
-    {
-      v:'1.0.59', date:'Apr 9, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'Credits tab in price book — 35 credit items from WR_CREDITS list, red CR badge styling'},
-        {t:'add', d:'Negative price inputs supported — custom items can have negative prices'},
-        {t:'fix', d:'Credits excluded from HubSpot line items — sum applied as hs_discount on invoice'},
-      ]
-    },
-    {
-      v:'1.0.58', date:'Apr 9, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'ABF delivered status false positives — now requires DELIVERYDATE in XML, not just status text match'},
-        {t:'add', d:'"Arrived at Terminal" label added for shipments at local service center'},
-      ]
-    },
-    {
-      v:'1.0.57', date:'Apr 9, 2026', tag:'fix',
-      changes:[
-        {t:'fix', d:'AfterShip fully removed — all tracking now uses direct carrier APIs'},
-        {t:'fix', d:'Hub panel parallelized with Promise.all — 5 HubSpot calls fire simultaneously'},
-        {t:'add', d:'fetchAndCacheTracking() seeds cache immediately on Ship It instead of AfterShip'},
-      ]
-    },
-    {
-      v:'1.0.56', date:'Apr 9, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'fetchABFTracking() — ABF XML trace API, parses status/dates/signature/destination'},
-        {t:'add', d:'fetchABFTransitDays() — ABF transit time API for ETA backfill on shipping board'},
-        {t:'add', d:'fetchAndCacheTracking() rewritten — OD REST API, ABF direct XML, UPS/FedEx/USPS Puppeteer'},
-        {t:'add', d:'/api/debug/od-tracking — raw OD API debug endpoint'},
-        {t:'fix', d:'initTrackingCache — clears bogus same-day delivered_at entries'},
-      ]
-    },
-    {
-      v:'1.0.55', date:'Apr 9, 2026', tag:'feature',
-      changes:[
-        {t:'add', d:'Initial import — full system on Railway: Node.js server, PostgreSQL, HubSpot OAuth'},
-        {t:'add', d:'Quote builder with product search, line items, customer fields, HubSpot push'},
-        {t:'add', d:'Quote history in DB, contact/deal search, quote numbering by rep'},
-        {t:'add', d:'HubSpot 30-day OAuth sessions, DB-backed, products cached with 15min TTL'},
-      ]
-    },
-    ].map(v => `
-    <div class="version-block">
-      <div class="version-header">
-        <div class="version-num">v${v.v}</div>
-        <div class="version-date">${v.date}</div>
-        <div class="version-tag tag-${v.tag}">${v.tag}</div>
-      </div>
-      <div class="version-body">
-        ${v.changes.map(c => `
-          <div class="change-item">
-            <span class="change-type ct-${c.t === 'log' ? 'log' : c.t === 'add' ? 'add' : c.t === 'ui' ? 'ui' : c.t === 'security' ? 'security' : 'fix'}">${c.t === 'log' ? 'log' : c.t === 'add' ? 'new' : c.t === 'ui' ? 'ui' : c.t === 'security' ? 'sec' : 'fix'}</span>
-            <span>${c.d}</span>
-          </div>`).join('')}
-      </div>
-    </div>`).join('')}
-</div>
-</body>
-</html>`);
+    res.end(renderChangelog());
     return;
   }
 
   if (pathname === '/admin-log' && req.method === 'GET') {
     if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
     res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Admin Log — WhisperRoom</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-size='18'>📋</text></svg>">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-  :root{--bg:#0f0f0f;--surface:#1a1a1a;--surface2:#222;--border:#2a2a2a;--orange:#ee6216;--text:#e8e8e8;--muted:#888;--green:#22c55e;--red:#ef4444;--yellow:#f59e0b;--blue:#3b82f6;}
-  *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
-  .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:52px;background:#1a1a1a;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:100;gap:12px;}
-  .logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8;white-space:nowrap;}.logo span{color:#e8531a;}
-  .topbar-right{display:flex;align-items:center;gap:10px;flex-shrink:0;}
-  .back{font-size:11px;font-weight:700;color:var(--muted);text-decoration:none;padding:5px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;letter-spacing:.05em;text-transform:uppercase;}
-  .live-dot{width:7px;height:7px;background:var(--green);border-radius:50%;animation:pulse 2s infinite;}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-  .last-updated{font-size:10px;color:var(--muted);}
-  .main{max-width:1400px;margin:0 auto;padding:24px;}
-  .page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;gap:16px;flex-wrap:wrap;}
-  h1{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;}h1 span{color:var(--orange);}
-  .subtitle{font-size:12px;color:var(--muted);margin-top:3px;}
-  .global-filters{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;}
-  .filter-group{display:flex;flex-direction:column;gap:4px;}
-  .filter-label{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;}
-  .filter-select,.filter-input{padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-family:inherit;outline:none;cursor:pointer;}
-  .filter-select:focus,.filter-input:focus{border-color:var(--orange);}
-  .btn-row{display:flex;gap:6px;}
-  .refresh-btn{padding:6px 14px;background:var(--orange);color:white;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:.05em;}
-  .clear-btn{padding:6px 12px;background:none;color:var(--muted);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;}
-  .stat-bar{display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;}
-  .stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 16px;min-width:110px;}
-  .stat-val{font-size:22px;font-weight:800;font-family:'Syne',sans-serif;}
-  .stat-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:2px;}
-  .panels{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
-  @media(max-width:1000px){.panels{grid-template-columns:1fr;}}
-  .panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
-  .panel-header{padding:12px 16px;border-bottom:1px solid var(--border);}
-  .panel-header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
-  .panel-title{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;}
-  .activity-title{color:var(--green);}.error-title{color:var(--red);}
-  .count{font-size:10px;color:var(--muted);font-weight:600;}
-  .panel-body{overflow-y:auto;max-height:66vh;}
-  .log-row{padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px;}
-  .log-row:last-child{border-bottom:none;}
-  .log-row:hover{background:rgba(255,255,255,.02);}
-  .log-row-main{display:grid;grid-template-columns:120px 115px 1fr 70px 48px;gap:8px;align-items:start;}
-  .log-time{color:var(--muted);font-size:10px;white-space:nowrap;padding-top:1px;}
-  .log-event{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:2px 6px;border-radius:4px;white-space:nowrap;width:fit-content;}
-  .ev-quote\\.pushed{background:rgba(59,130,246,.15);color:var(--blue);}
-  .ev-deal\\.created{background:rgba(59,130,246,.15);color:var(--blue);}
-  .ev-invoice\\.created{background:rgba(168,85,247,.15);color:#a855f7;}
-  .ev-order\\.shipped{background:rgba(34,197,94,.12);color:var(--green);}
-  .ev-order\\.processed{background:rgba(34,197,94,.12);color:var(--green);}
-  .ev-order\\.unshipped{background:rgba(245,158,11,.12);color:var(--yellow);}
-  .ev-order\\.deleted{background:rgba(239,68,68,.12);color:var(--red);}
-  .ev-task\\.accounting{background:rgba(238,98,22,.12);color:var(--orange);}
-  .ev-quote\\.collision{background:rgba(245,158,11,.12);color:var(--yellow);}
-  .ev-error\\.hubspot,.ev-error\\.save{background:rgba(239,68,68,.12);color:var(--red);}
-  .log-msg{color:var(--text);line-height:1.4;}
-  .log-sub{font-size:10px;color:var(--muted);margin-top:1px;}
-  .log-rep{font-size:10px;font-weight:700;color:var(--orange);white-space:nowrap;text-align:right;}
-  .log-ver{font-size:9px;color:rgba(255,255,255,.18);font-family:monospace;text-align:right;white-space:nowrap;}
-  .meta-btn{font-size:10px;color:var(--muted);cursor:pointer;background:none;border:none;text-decoration:underline;font-family:inherit;margin-top:3px;display:inline-block;}
-  .meta-row{display:none;margin:6px -14px -9px;padding:10px 14px;background:rgba(0,0,0,.3);font-size:10px;color:var(--muted);font-family:monospace;white-space:pre-wrap;word-break:break-all;border-top:1px solid var(--border);}
-  .empty{padding:40px;text-align:center;color:var(--muted);font-size:13px;}
-</style>
-</head>
-<body>
-<div class="topbar">
-  <div class="logo">Whisper<span>Room</span> — System Log</div>
-  <div class="topbar-right">
-    <div class="live-dot"></div>
-    <span class="last-updated" id="lastUpdated">Loading…</span>
-    <a href="/changelog" class="back">📝 Changelog</a>
-    <a href="/deals" class="back">← Deal Hub</a>
-  </div>
-</div>
-<div class="main">
-  <div class="page-header">
-    <div>
-      <h1>System <span>Log</span></h1>
-      <div class="subtitle">Activity and errors — auto-refreshes every 30 seconds</div>
-    </div>
-    <div class="global-filters">
-      <div class="filter-group">
-        <span class="filter-label">Rep</span>
-        <select class="filter-select" id="globalRep" onchange="renderAll()">
-          <option value="">All Reps</option>
-        </select>
-      </div>
-      <div class="filter-group">
-        <span class="filter-label">Event</span>
-        <select class="filter-select" id="globalEvent" onchange="renderAll()">
-          <option value="">All Events</option>
-        </select>
-      </div>
-      <div class="filter-group">
-        <span class="filter-label">Date Range</span>
-        <select class="filter-select" id="globalDate" onchange="renderAll()">
-          <option value="">All Time</option>
-          <option value="today">Today</option>
-          <option value="week">This Week</option>
-          <option value="month">This Month</option>
-        </select>
-      </div>
-      <div class="btn-row">
-        <button class="refresh-btn" onclick="loadLogs()">↻ Refresh</button>
-        <button class="clear-btn" onclick="clearFilters()">Clear</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="stat-bar" id="statBar"></div>
-
-  <div class="panels">
-    <div class="panel">
-      <div class="panel-header">
-        <div class="panel-header-top">
-          <div>
-            <div class="panel-title activity-title">Activity Feed</div>
-            <div class="count" id="activityCount"></div>
-          </div>
-          <input class="filter-input" id="activitySearch" placeholder="Search…" oninput="renderActivity()" style="width:150px">
-        </div>
-      </div>
-      <div class="panel-body" id="activityBody"><div class="empty">Loading…</div></div>
-    </div>
-    <div class="panel">
-      <div class="panel-header">
-        <div class="panel-header-top">
-          <div>
-            <div class="panel-title error-title">Errors &amp; Warnings</div>
-            <div class="count" id="errorCount"></div>
-          </div>
-          <input class="filter-input" id="errorSearch" placeholder="Search…" oninput="renderErrors()" style="width:150px">
-        </div>
-      </div>
-      <div class="panel-body" id="errorBody"><div class="empty">Loading…</div></div>
-    </div>
-  </div>
-</div>
-<script>
-let _activity=[], _errors=[];
-const REPS={'36303670':'Benton','36320208':'Gabe','38732178':'Kim','38900892':'Chet','38732186':'Jeromy','36330944':'Jill','38143901':'Sarah','117442978':'Travis'};
-
-async function loadLogs() {
-  try {
-    const res=await fetch('/api/logs',{credentials:'include'});
-    const data=await res.json();
-    _activity=data.activity||[];
-    _errors=data.errors||[];
-    populateDropdowns();
-    renderAll();
-    document.getElementById('lastUpdated').textContent='Updated '+new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
-  } catch(e) {
-    document.getElementById('activityBody').innerHTML='<div class="empty">Failed to load — '+e.message+'</div>';
-  }
-}
-
-function populateDropdowns() {
-  const all=[..._activity,..._errors];
-  const repSel=document.getElementById('globalRep');
-  const curRep=repSel.value;
-  const reps=[...new Set(all.map(r=>r.rep).filter(Boolean))].sort();
-  repSel.innerHTML='<option value="">All Reps</option>'+reps.map(r=>'<option value="'+r+'"'+(r===curRep?' selected':'')+'>'+(REPS[r]||r)+'</option>').join('');
-  const evSel=document.getElementById('globalEvent');
-  const curEv=evSel.value;
-  const evs=[...new Set(all.map(r=>r.event).filter(Boolean))].sort();
-  evSel.innerHTML='<option value="">All Events</option>'+evs.map(e=>'<option value="'+e+'"'+(e===curEv?' selected':'')+'>'+e+'</option>').join('');
-}
-
-function getFilters() {
-  const rep=document.getElementById('globalRep').value;
-  const event=document.getElementById('globalEvent').value;
-  const date=document.getElementById('globalDate').value;
-  const now=new Date();
-  let since=null;
-  if(date==='today') since=new Date(now.getFullYear(),now.getMonth(),now.getDate());
-  else if(date==='week') since=new Date(now-7*86400000);
-  else if(date==='month') since=new Date(now.getFullYear(),now.getMonth(),1);
-  return {rep,event,since};
-}
-
-function applyFilters(rows) {
-  const {rep,event,since}=getFilters();
-  return rows.filter(r=>{
-    if(rep && r.rep!==rep) return false;
-    if(event && r.event!==event) return false;
-    if(since && new Date(r.at)<since) return false;
-    return true;
-  });
-}
-
-function renderAll(){renderActivity();renderErrors();renderStats();}
-function clearFilters(){
-  ['globalRep','globalEvent','globalDate','activitySearch','errorSearch'].forEach(id=>document.getElementById(id).value='');
-  renderAll();
-}
-
-function fmt(ts) {
-  const d=new Date(ts);
-  return d.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' '+d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true,timeZone:'America/New_York'});
-}
-
-function evCls(ev){return 'ev-'+(ev||'').replace(/[.]/g,'\\\\.');}
-function repLabel(r){
-  if(!r) return '';
-  // If it's a known ownerId, map to name
-  if(REPS[r]) return REPS[r];
-  // If it looks like a numeric ownerId but isn't in REPS, show as-is
-  // Otherwise it's already a name string
-  return r;
-}
-
-function rowHtml(r) {
-  const meta=r.meta?JSON.stringify(r.meta,null,2):null;
-  return '<div class="log-row"><div class="log-row-main">'
-    +'<div class="log-time">'+fmt(r.at)+'</div>'
-    +'<div class="log-event '+evCls(r.event)+'">'+r.event+'</div>'
-    +'<div><div class="log-msg">'+(r.message||'')+'</div>'
-    +((r.quote_num||r.deal_name)?'<div class="log-sub">'+[r.quote_num,r.deal_name].filter(Boolean).join(' · ')+'</div>':'')
-    +(meta?'<button class="meta-btn" onclick="toggleMeta('+r.id+')">▸ details</button>':'')
-    +'</div>'
-    +'<div class="log-rep">'+repLabel(r.rep)+'</div>'
-    +'<div class="log-ver">v'+(r.version||'—')+'</div>'
-    +'</div>'
-    +(meta?'<div class="meta-row" id="meta-'+r.id+'">'+meta+'</div>':'')
-    +'</div>';
-}
-
-function toggleMeta(id){const el=document.getElementById('meta-'+id);if(el)el.style.display=el.style.display==='block'?'none':'block';}
-
-function renderActivity() {
-  const search=document.getElementById('activitySearch').value.trim().toLowerCase();
-  let rows=applyFilters(_activity);
-  if(search) rows=rows.filter(r=>(r.message||'').toLowerCase().includes(search)||(r.deal_name||'').toLowerCase().includes(search)||(r.quote_num||'').toLowerCase().includes(search));
-  document.getElementById('activityCount').textContent=rows.length+' events';
-  document.getElementById('activityBody').innerHTML=rows.length?rows.map(rowHtml).join(''):'<div class="empty">No activity matching filters</div>';
-}
-
-function renderErrors() {
-  const search=document.getElementById('errorSearch').value.trim().toLowerCase();
-  let rows=applyFilters(_errors);
-  if(search) rows=rows.filter(r=>(r.message||'').toLowerCase().includes(search)||(r.event||'').toLowerCase().includes(search));
-  document.getElementById('errorCount').textContent=rows.length+' events';
-  document.getElementById('errorBody').innerHTML=rows.length?rows.map(rowHtml).join(''):'<div class="empty">No errors logged</div>';
-}
-
-function renderStats() {
-  const f=applyFilters(_activity);
-  const quotes=f.filter(r=>r.event==='quote.pushed').length;
-  const shipped=f.filter(r=>r.event==='order.shipped').length;
-  const invoices=f.filter(r=>r.event==='invoice.created').length;
-  const errs=applyFilters(_errors).length;
-  document.getElementById('statBar').innerHTML=[
-    {v:quotes,l:'Quotes Pushed',c:'var(--blue)'},
-    {v:shipped,l:'Orders Shipped',c:'var(--green)'},
-    {v:invoices,l:'Invoices Created',c:'#a855f7'},
-    {v:errs,l:'Errors',c:errs>0?'var(--red)':'var(--muted)'},
-  ].map(s=>'<div class="stat"><div class="stat-val" style="color:'+s.c+'">'+s.v+'</div><div class="stat-label">'+s.l+'</div></div>').join('');
-}
-
-loadLogs();
-setInterval(loadLogs,30000);
-</script>
-</body>
-</html>`);
+    res.end(fs.readFileSync(path.join(__dirname, 'admin-log.html'), 'utf8'));
     return;
   }
 
@@ -9166,7 +6521,7 @@ setInterval(loadLogs,30000);
             const tokenRowO = await db?.query('SELECT share_token, deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
             const tokenO    = tokenRowO?.rows[0]?.share_token || '';
             const dnO       = tokenRowO?.rows[0]?.deal_name   || quoteNumber;
-            const orderUrl  = `https://sales.whisperroom.com/o/${encodeURIComponent(quoteNumber)}${tokenO ? '?t=' + tokenO : ''}`;
+            const orderUrl  = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}${tokenO ? '?t=' + tokenO : ''}`;
             const pdfBufO   = await generatePdfBuffer(orderUrl);
             const snapRowO  = await db?.query('SELECT json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
             const snapO     = snapRowO?.rows[0]?.json_snapshot || {};
@@ -9519,7 +6874,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
 
       // 2. Save order data to DB
       const orderToken = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
-      const orderUrl = `https://sales.whisperroom.com/o/${encodeURIComponent(quoteNumber)}?t=${orderToken}`;
+      const orderUrl = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}?t=${orderToken}`;
       const orderData = { foamColor, hingePreference, apColor, productionNotes, deliveryNotes, processedAt: new Date().toISOString() };
 
       if (db) {
@@ -9702,7 +7057,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       const tokenRow = await db?.query('SELECT share_token, json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
       const token = tokenRow?.rows[0]?.share_token || '';
       const snap = tokenRow?.rows[0]?.json_snapshot || {};
-      const orderUrl = `https://sales.whisperroom.com/o/${encodeURIComponent(quoteNumber)}${token ? '?t=' + token : ''}`;
+      const orderUrl = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}${token ? '?t=' + token : ''}`;
       const filename = buildPdfFilename(snap, quoteNumber, 'Order');
       await generatePdf(orderUrl, filename, res, req);
     } catch(e) {
@@ -9723,7 +7078,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
 
       const filename = buildPdfFilename(quoteData, quoteNumber, 'Quote');
       await generatePdf(
-        `https://sales.whisperroom.com/q/${encodeURIComponent(quoteNumber)}`,
+        `${PUBLIC_BASE_URL}/q/${encodeURIComponent(quoteNumber)}`,
         filename, res, req
       );
     } catch(e) {
@@ -9745,7 +7100,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
 
       const filename = buildPdfFilename(quoteData, quoteNumber, 'Invoice');
       await generatePdf(
-        `https://sales.whisperroom.com/i/${encodeURIComponent(quoteNumber)}`,
+        `${PUBLIC_BASE_URL}/i/${encodeURIComponent(quoteNumber)}`,
         filename, res, req
       );
     } catch(e) {

@@ -43,23 +43,43 @@ body { font-family:'Satoshi',sans-serif; background:var(--bg); color:var(--text)
 .board { flex:1; display:grid; grid-template-columns:repeat(4,minmax(170px,1fr)); gap:0; overflow-x:auto; overflow-y:hidden; }
 .col { display:flex; flex-direction:column; border-right:1px solid var(--border); overflow:hidden; }
 .col:last-child { border-right:none; }
-.col-header { padding:10px 12px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
-.col-title { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.07em; }
-.col-count { font-size:10px; font-weight:700; padding:2px 7px; border-radius:10px; }
+.col-header { padding:14px 14px 12px; background:var(--surface); border-bottom:2px solid var(--border); display:flex; flex-direction:column; gap:6px; flex-shrink:0; }
+.col-header-top { display:flex; align-items:center; justify-content:space-between; }
+.col-title { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+.col-count { font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; }
+.col-revenue { font-size:13px; font-weight:700; }
 .col-cards { flex:1; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:6px; }
-.col-sent .col-title { color:#ee6216; } .col-sent .col-count { background:rgba(238,98,22,.12); color:#ee6216; }
-.col-verbal .col-title { color:#f59e0b; } .col-verbal .col-count { background:rgba(245,158,11,.12); color:#f59e0b; }
-.col-won .col-title { color:#22c55e; } .col-won .col-count { background:rgba(34,197,94,.12); color:#22c55e; }
-.col-shipped .col-title { color:#3b82f6; } .col-shipped .col-count { background:rgba(59,130,246,.12); color:#3b82f6; }
-.col-lost .col-title { color:var(--muted); } .col-lost .col-count { background:rgba(239,68,68,.08); color:var(--muted); }
-.deal-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:10px 12px; cursor:pointer; transition:border-color .15s, box-shadow .15s; }
-.deal-card:hover { border-color:var(--orange-border); box-shadow:0 2px 8px rgba(0,0,0,.12); }
-.deal-card.active { border-color:var(--orange); box-shadow:0 0 0 1px var(--orange); }
+
+/* Column accent colors */
+.col-sent   { border-top:3px solid #ee6216; }
+.col-verbal { border-top:3px solid #f59e0b; }
+.col-won    { border-top:3px solid #22c55e; }
+.col-shipped{ border-top:3px solid #3b82f6; }
+.col-lost   { border-top:3px solid #555; }
+.col-sent .col-title    { color:#ee6216; } .col-sent .col-count    { background:rgba(238,98,22,.12); color:#ee6216; } .col-sent .col-revenue    { color:#ee6216; }
+.col-verbal .col-title  { color:#f59e0b; } .col-verbal .col-count  { background:rgba(245,158,11,.12); color:#f59e0b; } .col-verbal .col-revenue  { color:#f59e0b; }
+.col-won .col-title     { color:#22c55e; } .col-won .col-count     { background:rgba(34,197,94,.12);  color:#22c55e; } .col-won .col-revenue     { color:#22c55e; }
+.col-shipped .col-title { color:#3b82f6; } .col-shipped .col-count { background:rgba(59,130,246,.12); color:#3b82f6; } .col-shipped .col-revenue { color:#3b82f6; }
+.col-lost .col-title    { color:var(--muted); } .col-lost .col-count { background:rgba(239,68,68,.08); color:var(--muted); } .col-lost .col-revenue { color:var(--muted); }
+
+/* Cards */
+.deal-card { background:var(--surface); border:1px solid var(--border); border-left:3px solid transparent; border-radius:8px; padding:10px 12px; cursor:pointer; transition:border-color .15s, box-shadow .15s, transform .1s; }
+.deal-card:hover { box-shadow:0 4px 16px rgba(0,0,0,.25); transform:translateY(-1px); }
+.deal-card.active { box-shadow:0 0 0 1px var(--orange); }
 .deal-card.accepted { border-color:rgba(34,197,94,.35); background:var(--green-dim); }
+.col-sent    .deal-card { border-left-color:rgba(238,98,22,.5); }
+.col-sent    .deal-card:hover, .col-sent    .deal-card.active { border-left-color:#ee6216; }
+.col-verbal  .deal-card { border-left-color:rgba(245,158,11,.5); }
+.col-verbal  .deal-card:hover, .col-verbal  .deal-card.active { border-left-color:#f59e0b; }
+.col-won     .deal-card { border-left-color:rgba(34,197,94,.5); }
+.col-won     .deal-card:hover, .col-won     .deal-card.active { border-left-color:#22c55e; }
+.col-shipped .deal-card { border-left-color:rgba(59,130,246,.5); }
+.col-shipped .deal-card:hover, .col-shipped .deal-card.active { border-left-color:#3b82f6; }
+
 .card-name { font-size:12px; font-weight:700; color:var(--text); line-height:1.3; margin-bottom:4px; }
 .card-mdl  { font-size:10px; font-family:var(--mono); color:var(--text2); margin-bottom:4px; }
 .card-meta { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
-.card-amount { font-size:11px; font-weight:700; color:var(--orange); }
+.card-amount { font-size:12px; font-weight:800; color:var(--orange); }
 .card-rep    { font-size:10px; color:var(--muted); }
 .card-age    { font-size:10px; color:var(--muted); margin-left:auto; }
 .card-pay    { font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; }
@@ -298,7 +318,12 @@ function renderBoard() {
     total+=deals.length;
     const colEl=document.createElement('div');
     colEl.className=`col ${col.cls}`;
-    colEl.innerHTML=`<div class="col-header"><span class="col-title">${col.label}</span><span class="col-count">${deals.length}</span></div>`;
+    const colRevenue = deals.reduce((sum,d)=>sum+parseFloat(d.amount||0),0);
+    const colRevenueStr = colRevenue>0?fmt(colRevenue):'—';
+    colEl.innerHTML=`<div class="col-header">
+      <div class="col-header-top"><span class="col-title">${col.label}</span><span class="col-count">${deals.length}</span></div>
+      <div class="col-revenue">${colRevenueStr}</div>
+    </div>`;
     const cardsEl=document.createElement('div');
     cardsEl.className='col-cards';
     if(!deals.length) {

@@ -3232,34 +3232,70 @@ ${q.accepted ? `
           continue;
         }
 
-        // Set payment_status = 'paid' on the deal
+        // Fetch invoice amount and current deal state in parallel
+        let invoiceAmount = 0;
+        let existingDealAmount = 0;
+        let existingDealStage = '';
+        let dealName = `Deal ${dealId}`;
+        let ownerId = null;
+        try {
+          const [invRes, dealRes] = await Promise.all([
+            invoiceId ? httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/invoices/${invoiceId}?properties=hs_amount_billed`,
+              method: 'GET',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+            }) : Promise.resolve(null),
+            httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/deals/${dealId}?properties=dealname,hubspot_owner_id,amount,dealstage`,
+              method: 'GET',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+            })
+          ]);
+          invoiceAmount = parseFloat(invRes?.body?.properties?.hs_amount_billed || '0') || 0;
+          const dp = dealRes.body?.properties || {};
+          existingDealAmount = parseFloat(dp.amount || '0') || 0;
+          existingDealStage  = dp.dealstage || '';
+          dealName           = dp.dealname || dealName;
+          ownerId            = dp.hubspot_owner_id || null;
+        } catch(e) { console.warn('[invoice-webhook] fetch invoice/deal failed:', e.message); }
+
+        // For fulfilled locked deals (Closed Won or Shipped), add the invoice amount to the
+        // existing deal amount rather than replacing it. This handles supplemental charges
+        // (e.g. reconsignment fees) paid after the original deal closed.
+        // Closed Lost is excluded — not a fulfilled order.
+        const FULFILLED_LOCKED_STAGES = new Set(['closedwon', '845719']);
+        const dealPatch = { payment_status: 'paid' };
+        if (FULFILLED_LOCKED_STAGES.has(existingDealStage) && invoiceAmount > 0) {
+          const newAmount = (existingDealAmount + invoiceAmount).toFixed(2);
+          dealPatch.amount = newAmount;
+          console.log(`[invoice-webhook] deal ${dealId} locked (${existingDealStage}) — adding invoice $${invoiceAmount} to existing $${existingDealAmount} → $${newAmount}`);
+          writelog('info', 'deal_amount_additive',
+            `Invoice paid: added $${invoiceAmount} to locked deal ${dealId} ($${existingDealAmount} → $${newAmount})`);
+        }
+
+        // Patch deal
         try {
           await httpsRequest({
             hostname: 'api.hubapi.com',
             path: `/crm/v3/objects/deals/${dealId}`,
             method: 'PATCH',
             headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-          }, { properties: { payment_status: 'paid' } });
+          }, { properties: dealPatch });
           console.log(`[invoice-webhook] deal ${dealId} payment_status → paid`);
         } catch(e) { console.warn('[invoice-webhook] deal update failed:', e.message); }
 
         // Create internal notification for the deal's rep
         try {
-          const dealRes = await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/deals/${dealId}?properties=dealname,hubspot_owner_id,amount`,
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-          });
-          const dp = dealRes.body?.properties || {};
-          const ownerId = dp.hubspot_owner_id;
-          const dealName = dp.dealname || `Deal ${dealId}`;
-          const amount = dp.amount ? '$' + parseFloat(dp.amount).toLocaleString('en-US', {minimumFractionDigits:0,maximumFractionDigits:0}) : '';
+          const notifyAmount = dealPatch.amount
+            ? '$' + parseFloat(dealPatch.amount).toLocaleString('en-US', {minimumFractionDigits:0,maximumFractionDigits:0})
+            : (existingDealAmount ? '$' + existingDealAmount.toLocaleString('en-US', {minimumFractionDigits:0,maximumFractionDigits:0}) : '');
           if (ownerId) {
             await notifyRep(
               ownerId,
               `💰 Invoice Paid — ${dealName}`,
-              `Payment received${amount ? ' · ' + amount : ''}. Deal marked Paid.`,
+              `Payment received${notifyAmount ? ' · ' + notifyAmount : ''}. Deal marked Paid.`,
               { type: 'invoice_paid', dealId, dealName }
             );
           }

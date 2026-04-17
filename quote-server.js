@@ -1431,52 +1431,61 @@ const server = http.createServer(async (req, res) => {
           });
           existingDealStage = dsRes.body?.properties?.dealstage || 'appointmentscheduled';
         } catch(e) { console.warn('Could not fetch deal stage:', e.message); }
-        // Update existing deal — amount + address fields always updated from latest quote
-        const dealPatchProps = {
-          amount: total.toFixed(2),
-          shipping_address:      customer.address    || '',
-          shipping_city:         customer.city       || '',
-          shipping_zipcode:      customer.zip        || '',
-          shipping_first_name:   customer.firstName  || '',
-          shipping_last_name:    customer.lastName   || '',
-          shipping_phone_number: customer.phone      || '',
-          billing_address:       billing ? billing.address || '' : customer.address || '',
-          billing_city:          billing ? billing.city    || '' : customer.city    || '',
-          billing_zipcode:       billing ? billing.zip     || '' : customer.zip     || '',
-          billing_first_name:    billing ? (billing.firstName || customer.firstName || '') : (customer.firstName || ''),
-          billing_last_name:     billing ? (billing.lastName  || customer.lastName  || '') : (customer.lastName  || ''),
-          billing_phone_number:  billing ? (billing.phone     || customer.phone     || '') : (customer.phone     || ''),
-          dealname: dealName || undefined,
-          ...(() => {
-            const earlyStages = ['appointmentscheduled', 'qualifiedtobuy'];
-            return earlyStages.includes(existingDealStage) ? { dealstage: 'qualifiedtobuy' } : {};
-          })(),
-        };
-        // HubSpot's shipping_state/billing_state are US-only enums — skip for Canadian provinces.
-        // Retry logic below still handles any other validation failure.
-        const stateProps = {};
-        if (!isCanadianProvince(customer.state)) {
-          stateProps.shipping_state = toStateFull(customer.state) || customer.state || '';
-        }
-        const billingStateVal = billing ? billing.state : customer.state;
-        if (!isCanadianProvince(billingStateVal)) {
-          stateProps.billing_state = billing ? (toStateFull(billing.state) || billing.state || '') : (stateProps.shipping_state || '');
-        }
-        try {
-          await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/deals/${dealId}`,
-            method: 'PATCH',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-          }, { properties: { ...dealPatchProps, ...stateProps } });
-        } catch(e) {
-          // Retry without state fields if HubSpot rejects (e.g. Canadian province)
-          await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/deals/${dealId}`,
-            method: 'PATCH',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-          }, { properties: dealPatchProps });
+        // Closed Won, Shipped, and Closed Lost deals are locked — never overwrite amount or deal details.
+        // A new quote for a misc fee (e.g. reconsignment) must not clobber the original deal value.
+        const DEAL_LOCKED_STAGES = new Set(['closedwon', '845719', 'closedlost']);
+        if (DEAL_LOCKED_STAGES.has(existingDealStage)) {
+          writelog('info', 'deal_sync_locked',
+            `Skipped deal patch — deal ${dealId} is locked (stage: ${existingDealStage}, quote: ${quoteNumber || '?'})`);
+          console.log(`[deal sync] Skipping patch — deal ${dealId} locked in stage "${existingDealStage}"`);
+        } else {
+          // Update existing deal — amount + address fields updated from latest quote
+          const dealPatchProps = {
+            amount: total.toFixed(2),
+            shipping_address:      customer.address    || '',
+            shipping_city:         customer.city       || '',
+            shipping_zipcode:      customer.zip        || '',
+            shipping_first_name:   customer.firstName  || '',
+            shipping_last_name:    customer.lastName   || '',
+            shipping_phone_number: customer.phone      || '',
+            billing_address:       billing ? billing.address || '' : customer.address || '',
+            billing_city:          billing ? billing.city    || '' : customer.city    || '',
+            billing_zipcode:       billing ? billing.zip     || '' : customer.zip     || '',
+            billing_first_name:    billing ? (billing.firstName || customer.firstName || '') : (customer.firstName || ''),
+            billing_last_name:     billing ? (billing.lastName  || customer.lastName  || '') : (customer.lastName  || ''),
+            billing_phone_number:  billing ? (billing.phone     || customer.phone     || '') : (customer.phone     || ''),
+            dealname: dealName || undefined,
+            ...(() => {
+              const earlyStages = ['appointmentscheduled', 'qualifiedtobuy'];
+              return earlyStages.includes(existingDealStage) ? { dealstage: 'qualifiedtobuy' } : {};
+            })(),
+          };
+          // HubSpot's shipping_state/billing_state are US-only enums — skip for Canadian provinces.
+          // Retry logic below still handles any other validation failure.
+          const stateProps = {};
+          if (!isCanadianProvince(customer.state)) {
+            stateProps.shipping_state = toStateFull(customer.state) || customer.state || '';
+          }
+          const billingStateVal = billing ? billing.state : customer.state;
+          if (!isCanadianProvince(billingStateVal)) {
+            stateProps.billing_state = billing ? (toStateFull(billing.state) || billing.state || '') : (stateProps.shipping_state || '');
+          }
+          try {
+            await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/deals/${dealId}`,
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, { properties: { ...dealPatchProps, ...stateProps } });
+          } catch(e) {
+            // Retry without state fields if HubSpot rejects (e.g. Canadian province)
+            await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/deals/${dealId}`,
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, { properties: dealPatchProps });
+          }
         }
 
         // Rename Google Drive folder if deal name changed
@@ -3225,34 +3234,70 @@ ${q.accepted ? `
           continue;
         }
 
-        // Set payment_status = 'paid' on the deal
+        // Fetch invoice amount and current deal state in parallel
+        let invoiceAmount = 0;
+        let existingDealAmount = 0;
+        let existingDealStage = '';
+        let dealName = `Deal ${dealId}`;
+        let ownerId = null;
+        try {
+          const [invRes, dealRes] = await Promise.all([
+            invoiceId ? httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/invoices/${invoiceId}?properties=hs_amount_billed`,
+              method: 'GET',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+            }) : Promise.resolve(null),
+            httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/deals/${dealId}?properties=dealname,hubspot_owner_id,amount,dealstage`,
+              method: 'GET',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+            })
+          ]);
+          invoiceAmount = parseFloat(invRes?.body?.properties?.hs_amount_billed || '0') || 0;
+          const dp = dealRes.body?.properties || {};
+          existingDealAmount = parseFloat(dp.amount || '0') || 0;
+          existingDealStage  = dp.dealstage || '';
+          dealName           = dp.dealname || dealName;
+          ownerId            = dp.hubspot_owner_id || null;
+        } catch(e) { console.warn('[invoice-webhook] fetch invoice/deal failed:', e.message); }
+
+        // For fulfilled locked deals (Closed Won or Shipped), add the invoice amount to the
+        // existing deal amount rather than replacing it. This handles supplemental charges
+        // (e.g. reconsignment fees) paid after the original deal closed.
+        // Closed Lost is excluded — not a fulfilled order.
+        const FULFILLED_LOCKED_STAGES = new Set(['closedwon', '845719']);
+        const dealPatch = { payment_status: 'paid' };
+        if (FULFILLED_LOCKED_STAGES.has(existingDealStage) && invoiceAmount > 0) {
+          const newAmount = (existingDealAmount + invoiceAmount).toFixed(2);
+          dealPatch.amount = newAmount;
+          console.log(`[invoice-webhook] deal ${dealId} locked (${existingDealStage}) — adding invoice $${invoiceAmount} to existing $${existingDealAmount} → $${newAmount}`);
+          writelog('info', 'deal_amount_additive',
+            `Invoice paid: added $${invoiceAmount} to locked deal ${dealId} ($${existingDealAmount} → $${newAmount})`);
+        }
+
+        // Patch deal
         try {
           await httpsRequest({
             hostname: 'api.hubapi.com',
             path: `/crm/v3/objects/deals/${dealId}`,
             method: 'PATCH',
             headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-          }, { properties: { payment_status: 'paid' } });
+          }, { properties: dealPatch });
           console.log(`[invoice-webhook] deal ${dealId} payment_status → paid`);
         } catch(e) { console.warn('[invoice-webhook] deal update failed:', e.message); }
 
         // Create internal notification for the deal's rep
         try {
-          const dealRes = await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/deals/${dealId}?properties=dealname,hubspot_owner_id,amount`,
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-          });
-          const dp = dealRes.body?.properties || {};
-          const ownerId = dp.hubspot_owner_id;
-          const dealName = dp.dealname || `Deal ${dealId}`;
-          const amount = dp.amount ? '$' + parseFloat(dp.amount).toLocaleString('en-US', {minimumFractionDigits:0,maximumFractionDigits:0}) : '';
+          const notifyAmount = dealPatch.amount
+            ? '$' + parseFloat(dealPatch.amount).toLocaleString('en-US', {minimumFractionDigits:0,maximumFractionDigits:0})
+            : (existingDealAmount ? '$' + existingDealAmount.toLocaleString('en-US', {minimumFractionDigits:0,maximumFractionDigits:0}) : '');
           if (ownerId) {
             await notifyRep(
               ownerId,
               `💰 Invoice Paid — ${dealName}`,
-              `Payment received${amount ? ' · ' + amount : ''}. Deal marked Paid.`,
+              `Payment received${notifyAmount ? ' · ' + notifyAmount : ''}. Deal marked Paid.`,
               { type: 'invoice_paid', dealId, dealName }
             );
           }

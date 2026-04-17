@@ -276,12 +276,17 @@ async function generateFreeQuoteNumber(clientNumber, ownerId, dealId, contactId)
   const repNum = SERVER_REP_NUMBERS[String(ownerId)] || '00';
   const dateKey = repNum + mm + dd + yy;
 
-  // Parse starting seq from client number, default to 1
+  // Parse starting seq from client number, default to 1.
+  // Extract the trailing digits directly — safer than subtracting dateKey,
+  // which fails when client/server timezones disagree and leaves the whole
+  // date prefix in `suffix`, producing a huge bogus seq.
   let seq = 1;
   if (clientNumber) {
-    const suffix = clientNumber.replace(/^W-/, '').replace(dateKey, '');
-    const parsed = parseInt(suffix);
-    if (!isNaN(parsed) && parsed > 0) seq = parsed;
+    const m = String(clientNumber).match(/(\d{1,3})$/);
+    if (m) {
+      const parsed = parseInt(m[1]);
+      if (!isNaN(parsed) && parsed > 0) seq = parsed;
+    }
   }
 
   // Try seq, seq+1, seq+2 ... until we find one not taken by a different deal/contact
@@ -949,8 +954,10 @@ const server = http.createServer(async (req, res) => {
   }
 
 
+  // Production redirect: any railway.app host → sales.whisperroom.com
+  // Skipped when STAGING_MODE=1 so the staging Railway URL works directly.
   const host = req.headers.host || '';
-  if (host.includes('railway.app') && !pathname.startsWith('/auth/')) {
+  if (host.includes('railway.app') && !pathname.startsWith('/auth/') && process.env.STAGING_MODE !== '1') {
     res.writeHead(301, { Location: `https://sales.whisperroom.com${req.url}` });
     res.end(); return;
   }

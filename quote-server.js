@@ -7036,8 +7036,13 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
           const dealNameP = snapRowP?.rows[0]?.deal_name || dealName || '';
           const pdfBufO  = await generatePdfBuffer(orderUrl);
           const filename = buildPdfFilename(snapP, quoteNumber, 'Order', dealNameP);
-          await gdriveUploadFilePdf(filename, pdfBufO, SHARED_ORDERS_FOLDER);
-          console.log(`[process-order] PDF saved to shared orders folder: ${filename}`);
+          const result   = await gdriveUploadFilePdf(filename, pdfBufO, SHARED_ORDERS_FOLDER);
+          if (result?.id) {
+            console.log(`[process-order] PDF saved to shared orders folder: ${filename} — id: ${result.id}`);
+          } else {
+            console.warn(`[process-order] PDF upload FAILED for ${filename}:`, JSON.stringify(result));
+            writelog('error', 'error.gdrive', `Order PDF upload failed for ${filename}: ${JSON.stringify(result?.error || result)}`, { quoteNum: quoteNumber });
+          }
         } catch(e) { console.warn('[process-order] GDrive PDF error:', e.message); }
       })();
 

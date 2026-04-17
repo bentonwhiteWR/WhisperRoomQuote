@@ -1241,7 +1241,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     <button class="create-btn" id="invoiceBtn" onclick="createInvoice()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.4);margin-top:8px;opacity:.5;cursor:not-allowed" title="Push to HubSpot first" disabled>
       &#x1F4CB; Create Invoice in HubSpot
     </button>
-    <button class="create-btn" id="orderBtn" onclick="console.log('[orderBtn] clicked',this.disabled);openOrderModal()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.4);margin-top:8px;opacity:.5;cursor:not-allowed" title="Create invoice first" disabled>
+    <button class="create-btn" id="orderBtn" onclick="openOrderModal()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.4);margin-top:8px;opacity:.5;cursor:not-allowed" title="Create invoice first" disabled>
       &#x1F4E6; Process Order
     </button>
 
@@ -1530,6 +1530,101 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
     <span id="historyCount">Loading...</span>
   </div>
   <div class="history-list" id="historyList"></div>
+</div>
+
+<!-- ORDER MODAL -->
+<div id="orderModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#1e1e1e;border-radius:14px;padding:28px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);max-height:90vh;overflow-y:auto">
+    <h2 style="font-size:16px;font-weight:800;color:#f0ede8;margin-bottom:6px">&#x1F4E6; Process Order</h2>
+    <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:16px">Advances deal to Closed Won, records payment, and notifies shipping &amp; accounting.</p>
+
+    <!-- Order Summary -->
+    <div id="orderSummaryBox" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px 14px;margin-bottom:20px;font-size:12px;color:rgba(255,255,255,.75)">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.45);margin-bottom:8px">Order Summary</div>
+      <div id="orderSummaryItems" style="margin-bottom:10px;line-height:1.65"></div>
+      <div id="orderSummaryTotals" style="border-top:1px solid rgba(255,255,255,.08);padding-top:8px;display:flex;flex-direction:column;gap:3px"></div>
+      <div id="orderSummaryShip" style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:rgba(255,255,255,.55);line-height:1.45"></div>
+    </div>
+
+    <!-- Payment Method -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Payment Method</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderPayType" value="hs" style="accent-color:#ee6216" onchange="selectOrderPayType('hs')"> HubSpot Invoice</label>
+        <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderPayType" value="cc" style="accent-color:#ee6216" onchange="selectOrderPayType('cc')"> Credit Card</label>
+        <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderPayType" value="ach" style="accent-color:#ee6216" onchange="selectOrderPayType('ach')"> ACH / Bank Deposit</label>
+        <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderPayType" value="po" style="accent-color:#ee6216" onchange="selectOrderPayType('po')"> PO</label>
+        <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8);grid-column:span 2"><input type="radio" name="orderPayType" value="other" style="accent-color:#ee6216" onchange="selectOrderPayType('other')"> Other</label>
+      </div>
+      <div id="orderPoNumberRow" style="display:none;margin-top:10px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:6px">PO Number</div>
+        <input id="orderPoNumber" type="text" placeholder="Enter PO #" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;box-sizing:border-box">
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Foam Color</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Gray" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Gray</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Blue" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Blue</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Purple" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Purple</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Orange" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Orange</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderFoam" value="Burgundy" style="accent-color:#ee6216" onchange="highlightOrderSel('orderFoam')"> Burgundy</label>
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Door Hinge</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderHinge" value="Left Hand" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> Left Hand</label>
+        <label class="order-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderHinge" value="Right Hand" style="accent-color:#ee6216" onchange="highlightOrderSel('orderHinge')"> Right Hand</label>
+      </div>
+    </div>
+
+
+    <div class="ap-color-row" style="display:none;margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">AP Color <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Acoustic Package)</span></div>
+      <select id="orderApColor" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer" onchange="updateApSwatchPreview()">
+        <option value="">&mdash; Select color &mdash;</option>
+        <option value="Unknown">Unknown (follow up needed)</option>
+        <option value="Lemon">Lemon</option>
+        <option value="Vanilla">Vanilla</option>
+        <option value="Birch">Birch</option>
+        <option value="White">White</option>
+        <option value="Green Apple">Green Apple</option>
+        <option value="Fern">Fern</option>
+        <option value="Waterfall">Waterfall</option>
+        <option value="Asteroid">Asteroid</option>
+        <option value="Orchid">Orchid</option>
+        <option value="Pumpkin">Pumpkin</option>
+        <option value="Geranium">Geranium</option>
+        <option value="Lapis">Lapis</option>
+        <option value="Onyx">Onyx</option>
+        <option value="Graphite">Graphite</option>
+        <option value="Coffee Bean">Coffee Bean</option>
+        <option value="Quarry Blue">Quarry Blue</option>
+      </select>
+      <div id="apSwatchPreview" style="margin-top:8px;display:flex;align-items:center;gap:8px;min-height:20px"></div>
+    </div>
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Production Notes</div>
+      <textarea id="orderProductionNotes" rows="3" placeholder="Internal notes for production team..." style="width:100%;padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;color:#f0ede8;box-sizing:border-box"></textarea>
+    </div>
+
+    <div style="margin-bottom:24px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Special Delivery Notes</div>
+      <textarea id="orderDeliveryNotes" rows="3" placeholder="Liftgate required, residential delivery, call before delivery, etc..." style="width:100%;padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;color:#f0ede8;box-sizing:border-box"></textarea>
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button id="orderConfirmBtn" onclick="confirmProcessOrder()" style="flex:1;padding:13px;background:#ee6216;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+        Send Order &#x2192;
+      </button>
+      <button onclick="closeOrderModal()" style="padding:13px 18px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+        Cancel
+      </button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -5960,9 +6055,8 @@ function enableOrderBtn() {
 }
 
 async function openOrderModal() {
-  console.log('[openOrderModal] fired');
   const modalEl = document.getElementById('orderModal');
-  if (!modalEl) { console.error('[openOrderModal] orderModal element missing!'); return; }
+  if (!modalEl) return;
   // Show modal first — nothing below can block this
   modalEl.style.display = 'flex';
 

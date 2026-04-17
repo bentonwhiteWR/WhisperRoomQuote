@@ -1376,7 +1376,8 @@ const server = http.createServer(async (req, res) => {
               company:            customer.company,
               address:            customer.address,
               city:               customer.city,
-              state:              toStateFull(customer.state),
+              // HubSpot's contact `state` is a US-only enum — skip for Canadian provinces
+              ...(isCanadianProvince(customer.state) ? {} : { state: toStateFull(customer.state) }),
               zip:                customer.zip,
               ...(ownerId ? { hubspot_owner_id: String(ownerId) } : {}),
             });
@@ -1449,16 +1450,23 @@ const server = http.createServer(async (req, res) => {
             return earlyStages.includes(existingDealStage) ? { dealstage: 'qualifiedtobuy' } : {};
           })(),
         };
-        // State fields — try with them first, retry without if HubSpot rejects
-        const shipping_state = toStateFull(customer.state) || customer.state || '';
-        const billing_state  = billing ? (toStateFull(billing.state) || billing.state || '') : shipping_state;
+        // HubSpot's shipping_state/billing_state are US-only enums — skip for Canadian provinces.
+        // Retry logic below still handles any other validation failure.
+        const stateProps = {};
+        if (!isCanadianProvince(customer.state)) {
+          stateProps.shipping_state = toStateFull(customer.state) || customer.state || '';
+        }
+        const billingStateVal = billing ? billing.state : customer.state;
+        if (!isCanadianProvince(billingStateVal)) {
+          stateProps.billing_state = billing ? (toStateFull(billing.state) || billing.state || '') : (stateProps.shipping_state || '');
+        }
         try {
           await httpsRequest({
             hostname: 'api.hubapi.com',
             path: `/crm/v3/objects/deals/${dealId}`,
             method: 'PATCH',
             headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-          }, { properties: { ...dealPatchProps, shipping_state, billing_state } });
+          }, { properties: { ...dealPatchProps, ...stateProps } });
         } catch(e) {
           // Retry without state fields if HubSpot rejects (e.g. Canadian province)
           await httpsRequest({
@@ -1503,14 +1511,15 @@ const server = http.createServer(async (req, res) => {
           discount: discount && discount.value ? String(discount.value) : '',
           shipping_address: customer.address || '',
           shipping_city: customer.city || '',
-          shipping_state: toStateFull(customer.state) || customer.state || '',
+          // HubSpot's shipping_state/billing_state are US-only enums — skip for Canadian provinces
+          ...(isCanadianProvince(customer.state) ? {} : { shipping_state: toStateFull(customer.state) || customer.state || '' }),
           shipping_zipcode: customer.zip || '',
           shipping_first_name: customer.firstName || '',
           shipping_last_name: customer.lastName || '',
           shipping_phone_number: customer.phone || '',
           billing_address: billing ? billing.address || '' : customer.address || '',
           billing_city: billing ? billing.city || '' : customer.city || '',
-          billing_state: billing ? (toStateFull(billing.state) || billing.state || '') : (toStateFull(customer.state) || customer.state || ''),
+          ...(isCanadianProvince(billing ? billing.state : customer.state) ? {} : { billing_state: billing ? (toStateFull(billing.state) || billing.state || '') : (toStateFull(customer.state) || customer.state || '') }),
           billing_zipcode: billing ? billing.zip || '' : customer.zip || '',
           billing_first_name:    billing ? (billing.firstName || customer.firstName || '') : (customer.firstName || ''),
           billing_last_name:     billing ? (billing.lastName  || customer.lastName  || '') : (customer.lastName  || ''),

@@ -40,22 +40,21 @@ body{font-family:'Satoshi',sans-serif;background:var(--bg);color:var(--text);min
 .filter-bar{display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap}
 .pill{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:50px;border:1px solid var(--border);background:var(--surface);font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);cursor:pointer;transition:all .12s;user-select:none}
 .pill:hover{border-color:var(--border2);color:var(--text)}
-/* inactive colored pills — show their hue at reduced opacity */
-.pill.ptransit{color:rgba(96,165,250,.6)}
-.pill.pdelivered{color:rgba(34,197,94,.6)}
-.pill.pexception{color:rgba(239,68,68,.6)}
-.pill.pout{color:rgba(250,204,21,.6)}
-/* active state — full color + tinted background */
-.pill.active{background:var(--surface2);border-color:var(--border2)}
-.pill.active.ptransit{color:var(--blue);background:var(--blue2);border-color:rgba(96,165,250,.4)}
-.pill.active.pdelivered{color:var(--green);background:var(--green2);border-color:rgba(34,197,94,.4)}
-.pill.active.pexception{color:var(--red);background:var(--red2);border-color:rgba(239,68,68,.4)}
-.pill.active.pout{color:var(--yellow);background:var(--yellow2);border-color:rgba(250,204,21,.4)}
-.pdot{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0}
-.pill.ptransit .pdot{background:var(--blue)}
-.pill.pdelivered .pdot{background:var(--green)}
-.pill.pexception .pdot{background:var(--red)}
-.pill.pout .pdot{background:var(--yellow)}
+/* all colored pills always show their color */
+.pill.ptransit  { color:var(--blue);   border-color:rgba(96,165,250,.25);  }
+.pill.pdelivered{ color:var(--green);  border-color:rgba(34,197,94,.25);   }
+.pill.pexception{ color:var(--red);    border-color:rgba(239,68,68,.25);   }
+.pill.pout      { color:var(--yellow); border-color:rgba(250,204,21,.25);  }
+/* active state — filled background to show selected */
+.pill.active.ptransit  { background:var(--blue2);   border-color:rgba(96,165,250,.5);  }
+.pill.active.pdelivered{ background:var(--green2);  border-color:rgba(34,197,94,.5);   }
+.pill.active.pexception{ background:var(--red2);    border-color:rgba(239,68,68,.5);   }
+.pill.active.pout      { background:var(--yellow2); border-color:rgba(250,204,21,.5);  }
+.pdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.pill.ptransit  .pdot{ background:var(--blue);   }
+.pill.pdelivered .pdot{ background:var(--green);  }
+.pill.pexception .pdot{ background:var(--red);    }
+.pill.pout       .pdot{ background:var(--yellow); }
 .pcount{font-family:'Satoshi',sans-serif;font-size:13px;color:var(--text)}
 /* controls */
 .controls{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}

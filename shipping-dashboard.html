@@ -25,8 +25,8 @@ html.light{
 }
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:13px}
 .topbar{background:var(--topbar);border-bottom:1px solid rgba(255,255,255,.07);padding:0 20px;height:52px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100}
-.topbar-logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#f0ede8;flex-shrink:0;text-decoration:none}
-.topbar-logo span{color:#e8531a}
+.topbar-logo{flex-shrink:0;display:flex;align-items:center;text-decoration:none}
+.topbar-logo img{height:26px;width:auto;display:block}
 .topbar-nav{display:flex;gap:6px}
 .nav-link{padding:5px 10px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:6px;color:rgba(255,255,255,.5);text-decoration:none;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);transition:all .15s}
 .nav-link:hover{color:rgba(255,255,255,.9);background:rgba(255,255,255,.12)}
@@ -126,7 +126,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 </head>
 <body>
 <nav class="topbar">
-  <a href="/deals" class="topbar-logo">Whisper<span>Room</span></a>
+  <a href="/deals" class="topbar-logo"><img src="https://cdn.prod.website-files.com/6751b64d2d0008d27a0b6b30/6759949fd35fa166895d5a7b_Group%201707479066.svg" alt="WhisperRoom"></a>
   <div class="topbar-nav">
     <a href="/deals" class="nav-link">⬡ Deal Hub</a>
     <a href="/quotes" class="nav-link">Quotes</a>

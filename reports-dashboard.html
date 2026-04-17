@@ -26,8 +26,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 
 /* Nav */
 .topbar{display:flex;align-items:center;padding:0 20px;min-height:52px;background:#1a1a1a;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:200;gap:10px}
-.topbar-logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#f0ede8;flex-shrink:0}
-.topbar-logo span{color:#e8531a}
+.topbar-logo{flex-shrink:0;display:flex;align-items:center}
+.topbar-logo img{height:26px;width:auto;display:block}
 .topbar-nav{display:flex;gap:5px;align-items:center;flex:1}
 .nav-link{padding:5px 10px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:6px;color:rgba(255,255,255,.5);text-decoration:none;transition:.15s;white-space:nowrap;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1)}
 .nav-link:hover{background:rgba(255,255,255,.12);color:rgba(255,255,255,.9)}
@@ -159,7 +159,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 <body>
 
 <div class="topbar">
-  <div class="topbar-logo">Whisper<span>Room</span></div>
+  <div class="topbar-logo"><img src="https://cdn.prod.website-files.com/6751b64d2d0008d27a0b6b30/6759949fd35fa166895d5a7b_Group%201707479066.svg" alt="WhisperRoom"></div>
   <nav class="topbar-nav">
     <a href="/deals" class="nav-link">⬡ Deal Hub</a>
     <a href="/quotes" class="nav-link">Quotes</a>

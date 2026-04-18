@@ -60,7 +60,8 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .deal-card.active { border-color:var(--orange); box-shadow:0 0 0 1px var(--orange); }
 .deal-card.accepted { border-color:rgba(34,197,94,.35); background:var(--green-dim); }
 .card-name { font-size:12px; font-weight:700; color:var(--text); line-height:1.3; margin-bottom:4px; }
-.card-rm { display:inline-block; font-size:9px; font-weight:800; letter-spacing:.08em; padding:1px 5px; background:rgba(239,68,68,.18); color:var(--red); border-radius:3px; margin-left:5px; vertical-align:middle; }
+.card-rm   { display:inline-block; font-size:9px; font-weight:800; letter-spacing:.08em; padding:1px 5px; background:rgba(239,68,68,.18); color:var(--red); border-radius:3px; margin-left:5px; vertical-align:middle; }
+.card-cust { display:inline-block; font-size:9px; font-weight:800; letter-spacing:.08em; padding:1px 5px; background:rgba(245,158,11,.18); color:var(--amber); border-radius:3px; margin-left:5px; vertical-align:middle; }
 .card-mdl  { font-size:10px; font-family:var(--mono); color:var(--text2); margin-bottom:4px; }
 .card-meta { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
 .card-amount { font-size:11px; font-weight:700; color:var(--orange); }
@@ -453,9 +454,12 @@ function renderBoard() {
         const rmChip = d.hasRM
           ? `<span class="card-rm" title="Roof Mounted Ventilation — 1-month lead time">RM</span>`
           : '';
+        const custChip = d.hasCustomHole
+          ? `<span class="card-cust" title="Custom holes — 1-month lead time">CUST</span>`
+          : '';
         card.innerHTML=`
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px">
-            <div class="card-name" style="flex:1">${d.name}${rmChip}</div>
+            <div class="card-name" style="flex:1">${d.name}${rmChip}${custChip}</div>
             ${isUnintegrated?`<div class="card-unintegrated-dot" title="HubSpot only — no quotes or orders in this system"></div>`:''}
           </div>
           ${(d.quoteLabel||d.firstMdl)?`<div class="card-mdl">${d.quoteLabel||d.firstMdl}</div>`:''}
@@ -1842,6 +1846,7 @@ async function confirmProcessOrderFromHub() {
         paymentType, poNumber,
         orderUrl: data.orderUrl,
         hasRM: !!data.hasRM,
+        hasCustomHole: !!data.hasCustomHole,
       });
     } catch(err) { console.error('[deal-hub process-order] mailto failed:', err); }
 
@@ -1881,14 +1886,17 @@ function openShippingNotifyEmail(ctx) {
     `  - ${i.name} (x${i.qty}) — ${fmt((parseFloat(i.price)||0) * (parseInt(i.qty)||1))}${i.weight ? ' — ' + (parseFloat(i.weight)*parseInt(i.qty)) + ' lbs' : ''}`
   ).join('\n');
 
-  const hasRM = !!ctx.hasRM || items.some(i => /^RM\s/i.test(i?.name||''));
+  const hasRM         = !!ctx.hasRM         || items.some(i => /^RM\s/i.test(i?.name||''));
+  const hasCustomHole = !!ctx.hasCustomHole || items.some(i => /^CUST HOLE\b/i.test(i?.name||''));
+  const garyFlag      = hasRM || hasCustomHole;
   const dealNameVal = ctx.dealName || ctx.quoteNumber;
   const emailSubject = `New Order: ${dealNameVal} — ${ctx.quoteNumber}`;
   const emailBody = [
     `NEW ORDER — ${ctx.quoteNumber}`,
     `Deal: ${dealNameVal}`,
-    hasRM ? `` : null,
-    hasRM ? `Gary, this order includes Roof Mounted Ventilation.` : null,
+    garyFlag ? `` : null,
+    hasRM         ? `Gary, this order includes Roof Mounted Ventilation.` : null,
+    hasCustomHole ? `Gary, this order includes Custom Holes.`              : null,
     ``,
     `CUSTOMER`,
     customerName ? `Name: ${customerName}` : null,
@@ -1919,7 +1927,7 @@ function openShippingNotifyEmail(ctx) {
   ].filter(l => l !== null).join('\n');
 
   const ccList = ['accounting@whisperroom.com', 'bentonwhite@whisperroom.com'];
-  if (hasRM) ccList.push('gamos@whisperroom.com');
+  if (garyFlag) ccList.push('gamos@whisperroom.com');
   const mailto = `mailto:shipping@whisperroom.com?cc=${ccList.join(';')}&subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
 
   console.log('[deal-hub process-order] mailto prepared, length=', mailto.length, 'opening...');

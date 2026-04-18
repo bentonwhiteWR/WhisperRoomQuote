@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.1.103', date:'Apr 18, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Custom holes tracking: line items starting with "CUST HOLE " (CUST HOLE E or CUST HOLE S) now flag the order as Custom Holes — 1-month lead, Gary (production manager) notified.'},
+        {t:'add', d:'On Process Order: server prepends "CUSTOM HOLES — " to production notes (idempotent, survives re-processing). Shipping email CCs gamos@whisperroom.com (same as RM) and includes "Gary, this order includes Custom Holes." line when detected. Both flags can apply together — prefix becomes "RM + CUSTOM HOLES — " and both Gary lines appear.'},
+        {t:'ui',  d:'Amber "CUST" chip on Deal Hub board cards, orders dashboard table rows, and ship calendar cells. Distinct from the red "RM" chip so you can tell them apart at a glance; deals with both show both chips.'},
+      ]
+    },
+    {
       v:'1.1.102', date:'Apr 18, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Deal Hub admin override: new Payment Method dropdown in the admin panel lets you change a deal\\u2019s payment type (HubSpot Invoice / Credit Card / ACH / PO / Other) or clear it. Non-PO choices save automatically on change; PO shows a PO Number input + Save PO button so the number can be entered first.'},

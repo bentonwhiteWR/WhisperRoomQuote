@@ -6402,16 +6402,19 @@ async function confirmProcessOrder() {
         `  - ${i.name} (x${i.qty}) — ${fmt(i.price * i.qty)}${i.weight ? ' — ' + (parseFloat(i.weight)*parseInt(i.qty)) + ' lbs' : ''}`
       ).join('\n');
 
-      // Roof Mounted Ventilation: Gary (production mgr) needs 1-month lead time.
-      // Server also detects this and prepends "RM — " to productionNotes.
-      const hasRM = !!(data.hasRM || lineItems.some(i => /^RM\s/i.test(i?.name||'')));
+      // Production-manager flags: both 1-month lead. Server also detects these and
+      // prepends "RM — " / "CUSTOM HOLES — " to productionNotes.
+      const hasRM         = !!(data.hasRM         || lineItems.some(i => /^RM\s/i.test(i?.name||'')));
+      const hasCustomHole = !!(data.hasCustomHole || lineItems.some(i => /^CUST HOLE\b/i.test(i?.name||'')));
+      const garyFlag      = hasRM || hasCustomHole;
 
       const emailSubject = `New Order: ${dealNameVal} — ${quoteNum}`;
       const emailBody = [
         `NEW ORDER — ${quoteNum}`,
         `Deal: ${dealNameVal}`,
-        hasRM ? `` : null,
-        hasRM ? `Gary, this order includes Roof Mounted Ventilation.` : null,
+        garyFlag ? `` : null,
+        hasRM         ? `Gary, this order includes Roof Mounted Ventilation.` : null,
+        hasCustomHole ? `Gary, this order includes Custom Holes.`              : null,
         ``,
         `CUSTOMER`,
         customerName ? `Name: ${customerName}` : null,
@@ -6441,7 +6444,7 @@ async function confirmProcessOrder() {
       ].filter(l => l !== null).join('\n');
 
       const ccList = ['accounting@whisperroom.com', 'bentonwhite@whisperroom.com'];
-      if (hasRM) ccList.push('gamos@whisperroom.com');
+      if (garyFlag) ccList.push('gamos@whisperroom.com');
       const mailto = `mailto:shipping@whisperroom.com?cc=${ccList.join(';')}&subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
 
       // Open mail client via a programmatic anchor click. This is far more

@@ -1086,14 +1086,15 @@ const server = http.createServer(async (req, res) => {
         dbRes.rows.forEach(r => {
           if (!byDeal[r.deal_id]) {
             let firstMdl = '';
-            let hasRM = false;
+            let hasRM = false, hasCustomHole = false;
             try {
               const items = r.line_items || [];
               // Strict MDL-only match — ignore accessories with 4-digit codes
               const mdlItem = items.find(i => /^MDL\b/.test(i?.name||''));
               if (mdlItem) firstMdl = (mdlItem.name||'').split(' ').slice(0,3).join(' ');
-              // Roof Mounted Ventilation detection — production manager needs 1-month lead
-              hasRM = items.some(i => /^RM\s/i.test(i?.name||''));
+              // Production manager flags: both have 1-month lead time
+              hasRM         = items.some(i => /^RM\s/i.test(i?.name||''));
+              hasCustomHole = items.some(i => /^CUST HOLE\b/i.test(i?.name||''));
             } catch(e) {}
             byDeal[r.deal_id] = {
               latestQuote: r.quote_number,
@@ -1101,6 +1102,7 @@ const server = http.createServer(async (req, res) => {
               accepted: r.accepted === 'true',
               firstMdl,
               hasRM,
+              hasCustomHole,
               quoteLabel: r.quote_label || '',
               lastQuoteAt: r.created_at || null,
               lastActivityAt: r.created_at || null,
@@ -1111,11 +1113,12 @@ const server = http.createServer(async (req, res) => {
             const ts = r.created_at ? new Date(r.created_at).getTime() : 0;
             const currentBest = existing.lastActivityAt ? new Date(existing.lastActivityAt).getTime() : 0;
             if (ts > currentBest) existing.lastActivityAt = r.created_at;
-            // Flag RM if any quote on this deal has it
-            if (!existing.hasRM) {
+            // Flag RM / Custom Hole if any quote on this deal has them
+            if (!existing.hasRM || !existing.hasCustomHole) {
               try {
                 const items = r.line_items || [];
-                if (items.some(i => /^RM\s/i.test(i?.name||''))) existing.hasRM = true;
+                if (!existing.hasRM         && items.some(i => /^RM\s/i.test(i?.name||'')))        existing.hasRM = true;
+                if (!existing.hasCustomHole && items.some(i => /^CUST HOLE\b/i.test(i?.name||''))) existing.hasCustomHole = true;
               } catch(e) {}
             }
           }
@@ -7138,13 +7141,20 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         return sum + n * (parseInt(item.qty) || 1);
       }, 0);
 
-      // Detect Roof Mounted Ventilation. Gary (production manager) needs to know —
-      // RM has a 1-month lead time. We prepend "RM — " to production notes so it's
-      // durable on the order record + surfaces anywhere notes are shown.
-      const hasRM = (lineItems || []).some(i => i?.name && /^RM\s/i.test(i.name));
-      const effectiveProductionNotes = hasRM
-        ? ('RM — ' + (productionNotes || '').replace(/^\s*RM\s*[—-]\s*/i, ''))
-        : productionNotes;
+      // Detect production-manager flags. Both have 1-month lead time; Gary (production
+      // manager) needs to know. We prepend notes so they're durable on the order record
+      // and surface anywhere notes are shown.
+      const hasRM         = (lineItems || []).some(i => i?.name && /^RM\s/i.test(i.name));
+      const hasCustomHole = (lineItems || []).some(i => i?.name && /^CUST HOLE\b/i.test(i.name));
+      let effectiveProductionNotes = productionNotes || '';
+      // Strip any prior RM / CUSTOM HOLES prefixes so re-processing stays idempotent
+      effectiveProductionNotes = effectiveProductionNotes
+        .replace(/^\s*(RM|CUSTOM HOLES)\s*[—-]\s*/i, '')
+        .replace(/^\s*(RM|CUSTOM HOLES)\s*[—-]\s*/i, '');
+      const prefixes = [];
+      if (hasRM)         prefixes.push('RM');
+      if (hasCustomHole) prefixes.push('CUSTOM HOLES');
+      if (prefixes.length) effectiveProductionNotes = prefixes.join(' + ') + ' — ' + effectiveProductionNotes;
 
       const orderData = {
         foamColor, hingePreference, apColor,
@@ -7153,6 +7163,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         processedAt: new Date().toISOString(),
         shipped: { pallets: computedPallets }, // scheduled ship info; Jeromy fills in date/carrier/tracking later
         hasRM,
+        hasCustomHole,
       };
 
       if (db) {
@@ -7276,7 +7287,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
 
       console.log(`Order processed: ${quoteNumber}, deal ${dealId} → closedwon`);
       writelog('info', 'order.processed', `Order processed: ${quoteNumber} — ${dealName || '—'}`, { rep: String(ownerId || ''), quoteNum: quoteNumber, dealId: String(dealId || ''), dealName: dealName || null });
-      json({ success: true, orderUrl, hasRM });
+      json({ success: true, orderUrl, hasRM, hasCustomHole });
 
       // Create AP color task for Benton (non-blocking) if order has an AP item
       const hasApItem = (lineItems || []).some(i => i.name && /^AP\s/i.test(i.name));

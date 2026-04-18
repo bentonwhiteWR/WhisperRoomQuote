@@ -6720,12 +6720,29 @@ tbody tr:last-child td{border-bottom:none}
 .footer a{color:#ee6216;text-decoration:none}
 .footer strong{color:#888;font-weight:600}
 @media(max-width:600px){
-  .header-card{padding:24px 20px}
-  .logo-img{height:30px}
-  .header-right{text-align:left}
-  .order-num{font-size:26px}
-  .card{padding:20px}
+  .page{padding:0 0 32px}
+  .header-card{padding:20px 16px;border-left:4px solid transparent;gap:12px}
+  .logo-img{height:28px}
+  .header-right{text-align:left;width:100%}
+  .order-type{font-size:9px}
+  .order-num{font-size:24px}
+  .order-meta{font-size:11px}
+  .order-tag{font-size:9px}
+  .card{padding:18px 16px;margin:0 0 10px}
+  .card-label{margin-bottom:14px}
   .info-grid{grid-template-columns:1fr}
+  /* Line items table — hide unit-price + weight cols on mobile, keep name/qty/total */
+  thead th:nth-child(3),thead th:nth-child(4){display:none}
+  tbody td:nth-child(3),tbody td:nth-child(4){display:none}
+  .item-name{font-size:13px}
+  .item-desc{font-size:11px}
+  tbody td:nth-child(2){width:36px;font-size:13px}
+  tbody td:nth-child(5){width:80px;font-size:13px}
+  .totals{max-width:100%;margin-top:20px}
+  .tot{font-size:13px}
+  .tot.grand{font-size:22px}
+  .tot.weight-total{font-size:13px}
+  .footer{padding:20px 16px}
 }
 @media print{
   body{background:white}

@@ -143,6 +143,54 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .notif-item-body { font-size:11px; color:var(--text2); line-height:1.4; }
 .notif-item-time { font-size:10px; color:var(--muted); margin-top:4px; }
 .notif-empty { padding:40px 20px; text-align:center; color:var(--muted); font-size:12px; }
+
+/* ── Mobile (≤900px: Fold cover, phones, Fold unfolded) ────────────── */
+.mobile-back-btn { display:none; }
+@media (max-width: 900px) {
+  .topbar { padding:0 10px; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  .topbar::-webkit-scrollbar { display:none; }
+  .topbar-logo { font-size:17px; }
+  .topbar-spacer { display:none; }
+  .nav-link { padding:4px 8px; font-size:10px; }
+
+  .main { display:block; height:calc(100vh - 52px); position:relative; overflow:hidden; }
+  .board-wrap { width:100%; height:100%; }
+  .hub-panel {
+    position:absolute; inset:0; width:100%; border-left:none;
+    transform:translateX(100%); transition:transform .22s ease;
+    background:var(--bg); z-index:50;
+  }
+  .main.show-hub .hub-panel { transform:translateX(0); }
+  .main.show-hub .board-wrap { visibility:hidden; }
+
+  .mobile-back-btn {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:6px 10px; margin-bottom:10px;
+    background:var(--surface2); border:1px solid var(--border); border-radius:6px;
+    color:var(--text); font-size:12px; font-weight:700; cursor:pointer; font-family:inherit;
+  }
+  .mobile-back-btn:hover { border-color:var(--orange-border); color:var(--orange); }
+
+  .board-toolbar { padding:8px 10px; gap:6px; }
+  .search-box { min-width:0; max-width:none; flex:1 1 100%; }
+  .rep-select { flex:1; min-width:100px; }
+}
+
+/* ── Narrow phones / Fold cover (≤480px) ───────────────────────────── */
+@media (max-width: 480px) {
+  /* Stack Kanban columns vertically — full width each, scroll the page */
+  .board { display:flex; flex-direction:column; overflow-x:hidden; overflow-y:auto; }
+  .col { border-right:none; border-bottom:1px solid var(--border); min-height:auto; }
+  .col:last-child { border-bottom:none; }
+  .col-cards { max-height:60vh; }
+
+  .hub-header { padding:14px 14px 12px; }
+  .hub-section { padding:0 14px 14px; }
+  .pipeline { margin:12px 14px; }
+  .next-action { margin:0 14px 12px; }
+  .admin-toggle, .admin-inner { padding-left:14px; padding-right:14px; }
+  .admin-grid { grid-template-columns:1fr; }
+}
 </style>
 </head>
 <body>
@@ -344,11 +392,18 @@ function renderBoard() {
   document.getElementById('boardCount').textContent=`${total} deals`;
 }
 
+function closeDealMobile() {
+  document.querySelector('.main')?.classList.remove('show-hub');
+  currentDealId = null;
+  renderBoard();
+}
+
 async function openDeal(dealId) {
   currentDealId=dealId;
   renderBoard();
   _timelineLoaded = false;
   document.getElementById('hubEmpty').style.display='none';
+  document.querySelector('.main')?.classList.add('show-hub');
   const hc=document.getElementById('hubContent');
   hc.style.display='block';
   hc.innerHTML='<div style="padding:48px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>';
@@ -480,6 +535,7 @@ function renderHub(dealId,data) {
 
   document.getElementById('hubContent').innerHTML=`
     <div class="hub-header">
+      <button class="mobile-back-btn" onclick="closeDealMobile()">&larr; Back to deals</button>
       <!-- Row 1: Deal name + meta -->
       <div class="hub-name">${deal.name||'Deal'}</div>
       <div class="hub-meta">
@@ -807,6 +863,7 @@ This cannot be undone.`)) return;
     currentDealId = null;
     document.getElementById('hubEmpty').style.display = 'flex';
     document.getElementById('hubContent').style.display = 'none';
+    document.querySelector('.main')?.classList.remove('show-hub');
     renderBoard();
   } catch(e) {
     setAdminStatus('Error: ' + e.message, 'var(--red)');

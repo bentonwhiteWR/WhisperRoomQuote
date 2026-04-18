@@ -1055,7 +1055,7 @@ const server = http.createServer(async (req, res) => {
         ownerId:       d.properties?.hubspot_owner_id || '',
         modified:      d.properties?.hs_lastmodifieddate || '',
         paymentStatus: d.properties?.payment_status || 'not_paid',
-        paymentType:   d.properties?.payment_type   || '',
+        paymentType:   (d.properties?.payment_type || '').toLowerCase(),
         po:            d.properties?.po_            || '',
         tracking:      d.properties?.tracking_number || '',
         carrier:       d.properties?.carrier__c || '',
@@ -4892,7 +4892,7 @@ ${q.accepted ? `
       const dealStage   = dp.dealstage   || null;
       const dealAmount  = dp.amount      || null;
       let paymentStatus = dp.payment_status || 'not_paid';
-      const paymentType = dp.payment_type || '';
+      const paymentType = (dp.payment_type || '').toLowerCase();
       const po          = dp.po_          || '';
 
       // If no quotes found by deal_id, try fallback by deal_name (legacy quotes)
@@ -6977,10 +6977,14 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       if (!dealId || !quoteNumber) { json({ error: 'Missing dealId or quoteNumber' }, 400); return; }
 
       // 1. Advance deal to Closed Won + set ap_color, payment_type, po_ if present
+      // HubSpot's payment_type dropdown uses uppercase internal values: HS, CC, ACH, PO, Other.
+      // Client radios use lowercase ids. Map here at the boundary.
+      const PAY_TYPE_HS_VALUES = { hs: 'HS', cc: 'CC', ach: 'ACH', po: 'PO', other: 'Other' };
       const closedWonProps = { dealstage: 'closedwon' };
       if (apColor) closedWonProps.ap_color = apColor;
       if (paymentType) {
-        closedWonProps.payment_type = paymentType;
+        const hsPayType = PAY_TYPE_HS_VALUES[paymentType] || paymentType;
+        closedWonProps.payment_type = hsPayType;
         // Mirror payment_status so legacy "paid/po_received" consumers still work
         closedWonProps.payment_status = paymentType === 'po' ? 'po_received' : 'paid';
       }

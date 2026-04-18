@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.1.99', date:'Apr 18, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Process Order: HubSpot deal PATCH was failing with 400 because payment_type values were sent lowercase (hs/cc/ach/po/other) but HubSpot\\u2019s dropdown enum uses uppercase (HS, CC, ACH, PO, Other). Added a client\u2192HubSpot mapping at the server boundary and normalize incoming HubSpot values back to lowercase when we read them for the UI. Deals will now move to Closed Won correctly.'},
+      ]
+    },
+    {
       v:'1.1.98', date:'Apr 18, 2026', tag:'fix',
       changes:[
         {t:'ui',  d:'Process Order modal now adapts to light/dark theme — was hard-coded dark regardless of theme. In light mode the modal bg, text, inputs, and AP color picker all render light; in dark mode they stay dark. Fixes unreadable AP color options in Opera/Chrome where native select chrome ignored forced dark styling.'},

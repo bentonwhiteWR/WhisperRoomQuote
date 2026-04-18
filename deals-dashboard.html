@@ -147,6 +147,29 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .notif-item-time { font-size:10px; color:var(--muted); margin-top:4px; }
 .notif-empty { padding:40px 20px; text-align:center; color:var(--muted); font-size:12px; }
 
+/* Dropdown option legibility */
+select option { background: var(--surface); color: var(--text); }
+:root:not(.light) select { color-scheme: dark; }
+:root.light select { color-scheme: light; }
+
+/* Process Order modal — adapt to light theme (hard-dark in dark mode, light in light mode) */
+:root.light #processOrderModal > div {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  box-shadow: 0 20px 60px rgba(0,0,0,.15) !important;
+}
+:root.light #processOrderModal h2 { color: var(--text) !important; }
+:root.light #processOrderModal p { color: var(--muted) !important; }
+:root.light #processOrderModal input[type="text"],
+:root.light #processOrderModal textarea,
+:root.light #processOrderModal select {
+  background: var(--bg) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+  color-scheme: light !important;
+}
+:root.light #processOrderModal [style*="color:rgba(255,255,255"] { color: var(--muted) !important; }
+
 /* ── Mobile (≤900px: Fold cover, phones, Fold unfolded) ────────────── */
 .mobile-back-btn { display:none; }
 @media (max-width: 900px) {
@@ -1836,7 +1859,7 @@ async function confirmProcessOrderFromHub() {
     <!-- AP Color (hidden unless order has an AP item) -->
     <div id="procApColorRow" style="display:none;margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">AP Color <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Acoustic Package)</span></div>
-      <select id="procApColor" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer;color-scheme:dark" onchange="updateProcApSwatch()">
+      <select id="procApColor" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer" onchange="updateProcApSwatch()">
         <option value="">— Select color —</option>
         <option value="Unknown">Unknown (follow up needed)</option>
         <option value="Lemon">Lemon</option>

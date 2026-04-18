@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.1.98', date:'Apr 18, 2026', tag:'fix',
+      changes:[
+        {t:'ui',  d:'Process Order modal now adapts to light/dark theme — was hard-coded dark regardless of theme. In light mode the modal bg, text, inputs, and AP color picker all render light; in dark mode they stay dark. Fixes unreadable AP color options in Opera/Chrome where native select chrome ignored forced dark styling.'},
+        {t:'log', d:'Process Order deal PATCH failures now also log to Railway stdout (console.error) with status + HubSpot rejection body + sent props. No need to expand the admin log entry to diagnose.'},
+      ]
+    },
+    {
       v:'1.1.97', date:'Apr 18, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Process Order AP color picker options are now dark-themed on Chrome/Opera: added inline color-scheme:dark to the select so the browser renders the native dropdown with dark OS chrome. Previous fix via body.dark CSS only applied when the user had explicitly toggled dark theme.'},

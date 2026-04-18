@@ -6995,6 +6995,8 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
       }, { properties: closedWonProps });
       if (stageRes.status >= 400) {
+        // Railway-visible log so we don't have to expand the admin log to diagnose
+        console.error('[process-order] deal PATCH (full) failed:', stageRes.status, 'dealId:', dealId, 'sent:', JSON.stringify(closedWonProps), 'body:', JSON.stringify(stageRes.body));
         try { writelog('error', 'error.process-order.stage-patch', `HubSpot deal stage PATCH failed (${stageRes.status}) with extra props — retrying stage-only`, { dealId, status: stageRes.status, body: stageRes.body, sentProps: closedWonProps }); } catch(e) {}
         // Retry with just the dealstage so the deal at least moves.
         stageRes = await httpsRequest({
@@ -7004,7 +7006,10 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
           headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
         }, { properties: { dealstage: 'closedwon' } });
         if (stageRes.status >= 400) {
+          console.error('[process-order] deal PATCH (stage-only) also failed:', stageRes.status, 'dealId:', dealId, 'body:', JSON.stringify(stageRes.body));
           try { writelog('error', 'error.process-order.stage-patch-retry', `HubSpot deal stage-only PATCH also failed (${stageRes.status})`, { dealId, status: stageRes.status, body: stageRes.body }); } catch(e) {}
+        } else {
+          console.log('[process-order] stage-only retry succeeded, dealId:', dealId);
         }
       }
 

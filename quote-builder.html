@@ -227,9 +227,36 @@ body {
 .field select { cursor: pointer; }
 .field select option { background: var(--surface); color: var(--text); }
 body.dark .field input, body.dark .field select { color-scheme: dark; }
-/* Apply dark option styling to all selects on the page (e.g. Process Order modal's AP color picker) */
+/* Apply dark option styling to all selects on the page */
 select option { background: var(--surface, #1e1e1e); color: var(--text, #f0ede8); }
 body.dark select { color-scheme: dark; }
+/* Process Order modal AP picker is inside a dark-themed modal by default → force dark browser chrome */
+body.dark #orderModal select, body.dark #processOrderModal select { color-scheme: dark; }
+/* …but only when we're in dark mode; light mode handles this below */
+
+/* Process Order modal — adapt to light theme (modal is hard-dark in dark mode, light in light mode) */
+body:not(.dark) #orderModal > div {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  box-shadow: 0 20px 60px rgba(0,0,0,.18) !important;
+}
+body:not(.dark) #orderModal h2 { color: var(--text) !important; }
+body:not(.dark) #orderModal p { color: var(--muted) !important; }
+body:not(.dark) #orderModal input[type="text"],
+body:not(.dark) #orderModal textarea,
+body:not(.dark) #orderModal select {
+  background: var(--bg) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+  color-scheme: light !important;
+}
+body:not(.dark) #orderModal .order-sel-label,
+body:not(.dark) #orderModal .order-pay-label {
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+/* Any inline-muted text inside the modal (rgba on white) → use theme muted */
+body:not(.dark) #orderModal [style*="color:rgba(255,255,255"] { color: var(--muted) !important; }
 
 /* ── Product search ── */
 .product-search-wrap { position: relative; }
@@ -1596,7 +1623,7 @@ body.dark select { color-scheme: dark; }
 
     <div class="ap-color-row" style="display:none;margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">AP Color <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Acoustic Package)</span></div>
-      <select id="orderApColor" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer;color-scheme:dark" onchange="updateApSwatchPreview()">
+      <select id="orderApColor" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer" onchange="updateApSwatchPreview()">
         <option value="">&mdash; Select color &mdash;</option>
         <option value="Unknown">Unknown (follow up needed)</option>
         <option value="Lemon">Lemon</option>
@@ -3730,7 +3757,7 @@ ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</
 
     <div class="ap-color-row" style="display:none;margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">AP Color <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Acoustic Package)</span></div>
-      <select id="orderApColor" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer;color-scheme:dark" onchange="updateApSwatchPreview()">
+      <select id="orderApColor" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer" onchange="updateApSwatchPreview()">
         <option value="">— Select color —</option>
         <option value="Unknown">Unknown (follow up needed)</option>
         <option value="Lemon">Lemon</option>

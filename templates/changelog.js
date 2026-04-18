@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.1.95', date:'Apr 18, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Process Order HubSpot deal-stage PATCH was silently swallowing HubSpot errors — if HubSpot returned 4xx/5xx, the deal stayed in its previous stage but the order still saved and the UI showed success. Now surfaces a non-2xx response as error.process-order.stage-patch in the admin log so the issue is visible.'},
+        {t:'ui',  d:'Process Order success box now includes a manual "✉ Send Shipping Email" button alongside the order link. Auto-mailto (window.location.href = mailto:) can be blocked silently by the browser or OS, so the manual fallback guarantees the email can be opened.'},
+        {t:'ui',  d:'Toast text changed from "Email draft opened!" to "Order processed" since we can\\u2019t actually guarantee the mail client opened.'},
+      ]
+    },
+    {
       v:'1.1.94', date:'Apr 18, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Process Order AP color picker options are now readable — the dropdown options were using the browser default light gray (barely visible on dark theme). Applied dark-theme option styling globally so every select respects the theme.'},

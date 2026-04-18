@@ -6390,17 +6390,25 @@ async function confirmProcessOrder() {
       const ccList = ['accounting@whisperroom.com', 'bentonwhite@whisperroom.com'];
       if (hasRM) ccList.push('gamos@whisperroom.com');
       const mailto = `mailto:shipping@whisperroom.com?cc=${ccList.join(';')}&subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
-      window.location.href = mailto;
+      // Try to open the user's email client. Browsers block this sometimes (no
+      // registered mailto handler, or in-browser popup blocker). We always
+      // expose a manual "Send Shipping Email" button in the result box below as
+      // a fallback.
+      try { window.location.href = mailto; } catch(e) {}
 
-      // Show order link in result box
+      // Show order link + manual email button in result box
       const box = document.getElementById('resultBox');
       if (box) {
+        const mailtoAttr = mailto.replace(/"/g,'&quot;');
         box.className = 'result-box success';
-        box.innerHTML = `&#x2713; Order processed! Email draft opened.<br>
-          <a href="${data.orderUrl}" target="_blank" style="color:inherit;font-weight:700">View Order Page &#x2192;</a><br>
-          <button onclick="navigator.clipboard.writeText('${data.orderUrl}').then(()=>{this.textContent='✓ Copied!';setTimeout(()=>this.textContent='Copy Order Link',2000)})" style="margin-top:8px;padding:6px 14px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit">Copy Order Link</button>`;
+        box.innerHTML = `&#x2713; Order processed!<br>
+          <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+            <a href="${data.orderUrl}" target="_blank" style="padding:6px 14px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;font-size:11px;text-decoration:none;font-family:inherit">Order Page &#x2192;</a>
+            <a href="${mailtoAttr}" style="padding:6px 14px;background:rgba(238,98,22,.2);border:1px solid rgba(238,98,22,.5);color:#ee6216;border-radius:6px;font-size:11px;text-decoration:none;font-family:inherit">&#x2709; Send Shipping Email</a>
+            <button onclick="navigator.clipboard.writeText('${data.orderUrl}').then(()=>{this.textContent='✓ Copied!';setTimeout(()=>this.textContent='Copy Order Link',2000)})" style="padding:6px 14px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit">Copy Order Link</button>
+          </div>`;
       }
-      showToast('Email draft opened!', 'success');
+      showToast('Order processed', 'success');
       const orderBtn = document.getElementById('orderBtn');
       if (orderBtn) {
         orderBtn.disabled = true;

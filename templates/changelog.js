@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.1.100', date:'Apr 18, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Process Order mailto: switched from window.location.href / window.open to a programmatic anchor-click (create <a>, append, .click(), remove). This is the most reliable way to trigger native mailto handlers — browsers treat it as a user-initiated click instead of programmatic navigation, which bypasses popup blocker heuristics. Added console.log traces so the dispatch is visible in DevTools if it still doesn\\u2019t open.'},
+        {t:'ui',  d:'Removed the manual "Send Shipping Email" button from the success box — the email must open automatically, not require a click.'},
+        {t:'ui',  d:'Light-mode Process Order modal labels (Payment Method, Foam, Hinge, AP) now use --text instead of --muted for primary labels, darker --border lines, and adapted input backgrounds. Primary radio/selection labels were getting lost against the cream surface.'},
+      ]
+    },
+    {
       v:'1.1.99', date:'Apr 18, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Process Order: HubSpot deal PATCH was failing with 400 because payment_type values were sent lowercase (hs/cc/ach/po/other) but HubSpot\\u2019s dropdown enum uses uppercase (HS, CC, ACH, PO, Other). Added a client\u2192HubSpot mapping at the server boundary and normalize incoming HubSpot values back to lowercase when we read them for the UI. Deals will now move to Closed Won correctly.'},

@@ -168,7 +168,25 @@ select option { background: var(--surface); color: var(--text); }
   border-color: var(--border) !important;
   color-scheme: light !important;
 }
-:root.light #processOrderModal [style*="color:rgba(255,255,255"] { color: var(--muted) !important; }
+/* Radio/selection labels (Payment Method, Foam, Hinge) — use --text for primary label color */
+:root.light #processOrderModal label { color: var(--text) !important; border-color: var(--border) !important; }
+:root.light #processOrderModal label[style*="rgba(255,255,255,.06)"],
+:root.light #processOrderModal label[style*="rgba(255,255,255,.04)"] { background: var(--bg) !important; }
+/* Section sub-labels and helper text still muted */
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.4"],
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.45"],
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.5"] { color: var(--muted) !important; }
+/* Primary label text should NOT get muted treatment */
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.8"],
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.85"],
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.9"],
+:root.light #processOrderModal [style*="color:#f0ede8"] { color: var(--text) !important; }
+/* Borders in the modal — darken against the light surface */
+:root.light #processOrderModal [style*="border:1px solid rgba(255,255,255,.12"],
+:root.light #processOrderModal [style*="border:1px solid rgba(255,255,255,.2"],
+:root.light #processOrderModal [style*="border-top:1px solid rgba(255,255,255,.08"] {
+  border-color: var(--border) !important;
+}
 
 /* ── Mobile (≤900px: Fold cover, phones, Fold unfolded) ────────────── */
 .mobile-back-btn { display:none; }

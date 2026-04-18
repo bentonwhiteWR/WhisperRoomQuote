@@ -254,9 +254,31 @@ body:not(.dark) #orderModal .order-sel-label,
 body:not(.dark) #orderModal .order-pay-label {
   color: var(--text) !important;
   border-color: var(--border) !important;
+  background: var(--bg) !important;
 }
-/* Any inline-muted text inside the modal (rgba on white) → use theme muted */
-body:not(.dark) #orderModal [style*="color:rgba(255,255,255"] { color: var(--muted) !important; }
+/* Section sub-labels and muted helper text */
+body:not(.dark) #orderModal [style*="color:rgba(255,255,255,.4"],
+body:not(.dark) #orderModal [style*="color:rgba(255,255,255,.45"],
+body:not(.dark) #orderModal [style*="color:rgba(255,255,255,.5"],
+body:not(.dark) #orderModal [style*="color:rgba(255,255,255,.55"] { color: var(--muted) !important; }
+/* Primary label text — darken, not muted */
+body:not(.dark) #orderModal [style*="color:rgba(255,255,255,.8"],
+body:not(.dark) #orderModal [style*="color:rgba(255,255,255,.85"],
+body:not(.dark) #orderModal [style*="color:rgba(255,255,255,.9"],
+body:not(.dark) #orderModal [style*="color:rgba(255,255,255,.95"],
+body:not(.dark) #orderModal [style*="color:#f0ede8"] { color: var(--text) !important; }
+/* Borders in the modal — darken against light surface */
+body:not(.dark) #orderModal [style*="border:1px solid rgba(255,255,255,.08"],
+body:not(.dark) #orderModal [style*="border:1px solid rgba(255,255,255,.12"],
+body:not(.dark) #orderModal [style*="border:1px solid rgba(255,255,255,.2"],
+body:not(.dark) #orderModal [style*="border-top:1px solid rgba(255,255,255,.08"] {
+  border-color: var(--border) !important;
+}
+body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.04"],
+body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.06"],
+body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
+  background: var(--bg) !important;
+}
 
 /* ── Product search ── */
 .product-search-wrap { position: relative; }
@@ -6417,27 +6439,35 @@ async function confirmProcessOrder() {
       const ccList = ['accounting@whisperroom.com', 'bentonwhite@whisperroom.com'];
       if (hasRM) ccList.push('gamos@whisperroom.com');
       const mailto = `mailto:shipping@whisperroom.com?cc=${ccList.join(';')}&subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
-      // Try to open the user's email client. Browsers block this sometimes (no
-      // registered mailto handler, or in-browser popup blocker). We always
-      // expose a manual "Send Shipping Email" button in the result box below as
-      // a fallback.
-      try { window.open(mailto, '_self'); } catch(e) {
-        try { window.location.href = mailto; } catch(e2) {}
+
+      // Open mail client via a programmatic anchor click. This is far more
+      // reliable than window.location.href or window.open(mailto): the browser
+      // treats it as a real user click on a link, which most mailto handlers
+      // accept, while programmatic navigation is sometimes blocked.
+      console.log('[process-order] mailto prepared, length=', mailto.length, 'opening...');
+      try {
+        const a = document.createElement('a');
+        a.href = mailto;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => document.body.removeChild(a), 100);
+        console.log('[process-order] mailto click dispatched');
+      } catch(e) {
+        console.error('[process-order] mailto dispatch failed:', e);
       }
 
-      // Show order link + manual email button in result box
+      // Show order link in result box (no manual email fallback — the click above should always work)
       const box = document.getElementById('resultBox');
       if (box) {
-        const mailtoAttr = mailto.replace(/"/g,'&quot;');
         box.className = 'result-box success';
-        box.innerHTML = `&#x2713; Order processed!<br>
+        box.innerHTML = `&#x2713; Order processed! Email draft opened.<br>
           <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
             <a href="${data.orderUrl}" target="_blank" style="padding:6px 14px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;font-size:11px;text-decoration:none;font-family:inherit">Order Page &#x2192;</a>
-            <a href="${mailtoAttr}" style="padding:6px 14px;background:rgba(238,98,22,.2);border:1px solid rgba(238,98,22,.5);color:#ee6216;border-radius:6px;font-size:11px;text-decoration:none;font-family:inherit">&#x2709; Send Shipping Email</a>
             <button onclick="navigator.clipboard.writeText('${data.orderUrl}').then(()=>{this.textContent='✓ Copied!';setTimeout(()=>this.textContent='Copy Order Link',2000)})" style="padding:6px 14px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:white;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit">Copy Order Link</button>
           </div>`;
       }
-      showToast('Order processed', 'success');
+      showToast('Order processed — email draft opened', 'success');
       const orderBtn = document.getElementById('orderBtn');
       if (orderBtn) {
         orderBtn.disabled = true;

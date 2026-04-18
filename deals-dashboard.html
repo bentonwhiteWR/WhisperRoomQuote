@@ -182,7 +182,13 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
   .board { display:flex; flex-direction:column; overflow-x:hidden; overflow-y:auto; }
   .col { border-right:none; border-bottom:1px solid var(--border); min-height:auto; }
   .col:last-child { border-bottom:none; }
-  .col-cards { max-height:60vh; }
+  /* No nested scroll on mobile — let the page scroll naturally */
+  .col-cards { max-height:none; overflow:visible; }
+  /* Accordion: collapsed columns hide their cards and show a chevron */
+  .col-header { cursor:pointer; user-select:none; }
+  .col-header::after { content:"▾"; font-size:12px; color:var(--muted); margin-left:8px; transition:transform .15s; }
+  .col.collapsed .col-header::after { transform:rotate(-90deg); }
+  .col.collapsed .col-cards { display:none; }
 
   .hub-header { padding:14px 14px 12px; }
   .hub-section { padding:0 14px 14px; }
@@ -333,6 +339,13 @@ function toggleHideUnintegrated() {
 
 function renderBoard() {
   const board=document.getElementById('board');
+  const isMobile = window.matchMedia('(max-width: 480px)').matches;
+  // Preserve which columns are collapsed across re-renders (mobile only).
+  // Default: only the first column ("Sent / Updated") is open.
+  if (isMobile && !window._colCollapseState) {
+    window._colCollapseState = {};
+    COLUMNS.forEach((c, i) => { window._colCollapseState[c.key] = i !== 0; });
+  }
   board.innerHTML='';
   let total=0;
   COLUMNS.forEach(col => {
@@ -347,8 +360,16 @@ function renderBoard() {
       });
     total+=deals.length;
     const colEl=document.createElement('div');
-    colEl.className=`col ${col.cls}`;
-    colEl.innerHTML=`<div class="col-header"><span class="col-title">${col.label}</span><span class="col-count">${deals.length}</span></div>`;
+    const isCollapsed = isMobile && window._colCollapseState?.[col.key];
+    colEl.className=`col ${col.cls}${isCollapsed?' collapsed':''}`;
+    colEl.innerHTML=`<div class="col-header" data-col-key="${col.key}"><span class="col-title">${col.label}</span><span class="col-count">${deals.length}</span></div>`;
+    // Mobile accordion toggle
+    const headerEl = colEl.querySelector('.col-header');
+    headerEl.addEventListener('click', () => {
+      if (!window.matchMedia('(max-width: 480px)').matches) return;
+      window._colCollapseState[col.key] = !window._colCollapseState[col.key];
+      colEl.classList.toggle('collapsed', window._colCollapseState[col.key]);
+    });
     const cardsEl=document.createElement('div');
     cardsEl.className='col-cards';
     if(!deals.length) {

@@ -2110,7 +2110,7 @@ tbody tr:hover td{background:#fdfcfb}
     ? `<button class="btn btn-pay" onclick="window.open('${paymentUrl}','_blank')">&#x1F4B3;&nbsp;&nbsp;Pay Now — ${fmt(total)}</button>`
     : `<button class="btn btn-pay" style="opacity:.5;cursor:not-allowed" title="Payment link not available">&#x1F4B3;&nbsp;&nbsp;Pay Now — ${fmt(total)}</button>`
   }
-  ${q.accepted ? `<button class="btn btn-secondary" onclick="openUpdateModal()" style="background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.15)">&#x270E;&nbsp;&nbsp;Change Specs</button>` : ''}
+  <button class="btn btn-secondary" onclick="openUpdateModal()" style="background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.15)">&#x270E;&nbsp;&nbsp;Change Specs</button>
   <button class="btn btn-secondary" onclick="window.print()">&#x2B07;&nbsp;&nbsp;Download PDF</button>
 </div>
 

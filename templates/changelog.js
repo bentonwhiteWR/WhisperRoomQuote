@@ -51,6 +51,18 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.2.2', date:'Apr 18, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Versioning convention refined in HANDOFF.md: MINOR (1.2 → 1.3) now bumps only on meaningful new features (not on every merge to main). PATCH (1.2.0 → 1.2.1) for bug fixes and small tweaks. MAJOR (1 → 2) reserved for rewrites. Rule of thumb: if you\\u2019d say "I added X" → MINOR; "I fixed X" → PATCH.'},
+      ]
+    },
+    {
+      v:'1.2.1', date:'Apr 18, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Customer-facing invoice page: "Change Specs" button now always shows (was gated behind q.accepted, so it only appeared when the customer had clicked Accept on the /q/ page first — invoices sent directly by the rep had no spec-change path).'},
+      ]
+    },
+    {
       v:'1.2.0', date:'Apr 18, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Release bump: everything from 1.1.15 through 1.1.104 rolls into the 1.2.0 release milestone. Going forward: MINOR bump (1.2 \u2192 1.3) on every merge to main; PATCH counts commits on staging between releases; MAJOR reserved for rewrites. Documented in HANDOFF.md §3.'},

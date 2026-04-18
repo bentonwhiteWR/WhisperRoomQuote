@@ -669,6 +669,22 @@ function renderHub(dealId,data) {
           <label class="admin-label">Stage Override</label>
           <select class="admin-select" id="adminStageSelect" onchange="doStageOverride(this.value,this.options[this.selectedIndex].text)">${stageOpts}</select>
         </div>
+        <div>
+          <label class="admin-label">Payment Method</label>
+          <select class="admin-select" id="adminPayTypeSelect" onchange="onAdminPayTypeChange(this.value)">
+            <option value="" ${!data.paymentType?'selected':''}>— Not set —</option>
+            <option value="hs"    ${data.paymentType==='hs'?'selected':''}>HubSpot Invoice</option>
+            <option value="cc"    ${data.paymentType==='cc'?'selected':''}>Credit Card</option>
+            <option value="ach"   ${data.paymentType==='ach'?'selected':''}>ACH / Bank</option>
+            <option value="po"    ${data.paymentType==='po'?'selected':''}>PO</option>
+            <option value="other" ${data.paymentType==='other'?'selected':''}>Other</option>
+          </select>
+          <div id="adminPoRow" style="display:${data.paymentType==='po'?'block':'none'};margin-top:8px">
+            <label class="admin-label">PO Number</label>
+            <input type="text" id="adminPoInput" value="${(data.po||'').replace(/"/g,'&quot;')}" placeholder="PO #" style="width:100%;padding:7px 9px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;box-sizing:border-box">
+            <button onclick="doSavePaymentType()" style="width:100%;margin-top:6px;padding:7px;background:rgba(238,98,22,.12);border:1px solid rgba(238,98,22,.3);border-radius:6px;color:#ee6216;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Save PO</button>
+          </div>
+        </div>
       </div>
       <div style="margin-top:10px">
         <a href="/admin-log" target="_blank" style="display:block;width:100%;padding:8px;background:rgba(238,98,22,.1);border:1px solid rgba(238,98,22,.3);border-radius:6px;color:#ee6216;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase;text-decoration:none;text-align:center;box-sizing:border-box">
@@ -952,6 +968,46 @@ This cannot be undone.`)) return;
   } catch(e) {
     setAdminStatus('Error: ' + e.message, 'var(--red)');
     showToast('Delete failed: ' + e.message, 'error');
+  }
+}
+
+// Admin payment-type override — shows/hides PO input, auto-saves for non-PO choices,
+// waits for explicit save on PO so PO number can be entered first.
+function onAdminPayTypeChange(value) {
+  const poRow = document.getElementById('adminPoRow');
+  if (poRow) poRow.style.display = value === 'po' ? 'block' : 'none';
+  if (value === 'po') return; // wait for "Save PO" button
+  doSavePaymentType();
+}
+
+async function doSavePaymentType() {
+  if (!currentDealId) return;
+  const paymentType = document.getElementById('adminPayTypeSelect').value;
+  const poNumber    = paymentType === 'po'
+    ? (document.getElementById('adminPoInput')?.value || '').trim()
+    : '';
+  if (paymentType === 'po' && !poNumber) {
+    setAdminStatus('PO number required', 'var(--red)');
+    return;
+  }
+  setAdminStatus('Saving…');
+  try {
+    const res = await fetch(`/api/deals/${currentDealId}/payment-type`, {
+      method: 'PATCH',
+      headers: { 'Content-Type':'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ paymentType, poNumber })
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || 'Request failed');
+    setAdminStatus('✓ Payment method updated', 'var(--green)');
+    // Reflect in cached deal + re-render board so the badge updates
+    const d = allDeals.find(x => x.id === currentDealId);
+    if (d) { d.paymentType = paymentType; d.po = poNumber; renderBoard(); }
+    // Refresh hub to re-render invoice-side + payment badge
+    setTimeout(() => openDeal(currentDealId), 500);
+  } catch(e) {
+    setAdminStatus('Error: '+e.message, 'var(--red)');
   }
 }
 
@@ -1832,7 +1888,7 @@ function openShippingNotifyEmail(ctx) {
     `NEW ORDER — ${ctx.quoteNumber}`,
     `Deal: ${dealNameVal}`,
     hasRM ? `` : null,
-    hasRM ? `Gary, this order includes Roof Mounted Ventilation (1-month lead time).` : null,
+    hasRM ? `Gary, this order includes Roof Mounted Ventilation.` : null,
     ``,
     `CUSTOMER`,
     customerName ? `Name: ${customerName}` : null,

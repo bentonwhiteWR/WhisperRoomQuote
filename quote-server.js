@@ -4160,6 +4160,45 @@ ${q.accepted ? `
     return;
   }
 
+  // Admin override: change payment_type (+ po_ + payment_status mirror) on a deal
+  if (pathname.startsWith('/api/deals/') && pathname.endsWith('/payment-type') && req.method === 'PATCH') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const dealId = pathname.split('/')[3];
+    try {
+      const { paymentType, poNumber } = JSON.parse(await readBody(req));
+      const PAY_TYPE_HS_VALUES = { hs: 'HS', cc: 'CC', ach: 'ACH', po: 'PO', other: 'Other' };
+      const props = {};
+      if (paymentType) {
+        props.payment_type = PAY_TYPE_HS_VALUES[paymentType] || paymentType;
+        // Mirror legacy payment_status so "paid/po_received" consumers stay in sync
+        props.payment_status = paymentType === 'po' ? 'po_received' : 'paid';
+        if (paymentType === 'po') props.po_ = poNumber || '';
+        else props.po_ = '';
+      } else {
+        // Empty string clears the HubSpot enum and legacy status
+        props.payment_type = '';
+        props.payment_status = 'not_paid';
+        props.po_ = '';
+      }
+      const res2 = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/objects/deals/${dealId}`,
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, { properties: props });
+      if (res2.status >= 400) {
+        console.error('[payment-type override] PATCH failed:', res2.status, 'dealId:', dealId, 'sent:', JSON.stringify(props), 'body:', JSON.stringify(res2.body));
+        try { writelog('error', 'error.payment-type-override', `HubSpot payment_type override failed (${res2.status})`, { dealId, status: res2.status, body: res2.body, sentProps: props }); } catch(e) {}
+        json({ error: res2.body?.message || `HubSpot returned ${res2.status}` }, 500); return;
+      }
+      try { writelog('info', 'admin.payment-type-override', `Payment type set to ${paymentType || 'cleared'}`, { dealId, paymentType, poNumber }); } catch(e) {}
+      json({ success: true, paymentType, poNumber });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
 
   // ── API: Reports data ────────────────────────────────────────────
   if (pathname === '/api/reports' && req.method === 'GET') {

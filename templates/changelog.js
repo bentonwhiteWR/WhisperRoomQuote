@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.1.102', date:'Apr 18, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Deal Hub admin override: new Payment Method dropdown in the admin panel lets you change a deal\\u2019s payment type (HubSpot Invoice / Credit Card / ACH / PO / Other) or clear it. Non-PO choices save automatically on change; PO shows a PO Number input + Save PO button so the number can be entered first.'},
+        {t:'add', d:'New endpoint PATCH /api/deals/:id/payment-type \u2014 maps lowercase client values to HubSpot\\u2019s uppercase enum, mirrors payment_status, logs admin override to the admin log, logs HubSpot failures to Railway.'},
+        {t:'ui',  d:'Removed "(1-month lead time)" from the RM notice line in the shipping notification email \u2014 Gary already knows.'},
+      ]
+    },
+    {
       v:'1.1.101', date:'Apr 18, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Deal Hub Process Order now opens the shipping notification email (was only happening from the quote builder\\u2019s orange Process Order button). Added openShippingNotifyEmail() helper to deals-dashboard.html that mirrors the quote-builder email format: to=shipping@, cc=accounting@+bentonwhite@ (+ gamos@ if RM), subject, full order body with line items, totals, ship-to, production notes, and order URL.'},

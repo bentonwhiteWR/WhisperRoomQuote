@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.1.89', date:'Apr 18, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'"E" now labeled "Enhanced" (not "Electric") in the Standard vs Enhanced split'},
+        {t:'fix', d:'Top Customers by Value no longer double-counts quote revisions — was summing every revision as its own deal (e.g. AMP showing $528k for a $173k deal with 3 revisions). Now uses max total per unique deal_id.'},
+        {t:'ui',  d:'Replaced broken hand-drawn US sales map with an expanded "Top States" bar chart showing count + % share — accurate, readable, and mobile-friendly'},
+      ]
+    },
+    {
       v:'1.1.88', date:'Apr 18, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Reports rebuild Step 1: new "At a glance" hero row with 4 decision-oriented KPIs — Revenue MTD (vs last month), Pipeline Value, Win Rate (vs 90d avg), Avg Deal Size (vs 90d avg)'},

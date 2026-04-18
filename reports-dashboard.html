@@ -313,8 +313,6 @@ function renderAll(data) {
     <div style="height:40px"></div>
   `;
 
-  // Draw SVG map after render
-  setTimeout(() => drawMap(data.geography||{}), 100);
   // Draw donut charts
   setTimeout(() => drawSEDonut(data.seCounts||{}), 100);
 }
@@ -600,11 +598,11 @@ function renderProducts(data, period) {
             <div class="bar-val">${m.count}×</div>
           </div>`).join('') || '<div style="color:var(--muted);font-size:12px">No MDL data</div>'}
           <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
-            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">S vs E Split</div>
+            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Standard vs Enhanced</div>
             <div style="display:flex;gap:16px">
               <div><div style="font-size:20px;font-weight:800;color:var(--text)">${se.S||0}</div><div style="font-size:10px;color:var(--muted)">Standard</div></div>
-              <div><div style="font-size:20px;font-weight:800;color:var(--orange)">${se.E||0}</div><div style="font-size:10px;color:var(--muted)">Electric</div></div>
-              <div style="align-self:center;font-size:12px;color:var(--muted)">${se.S+se.E>0?Math.round(se.E/(se.S+se.E)*100)+'% electric':''}</div>
+              <div><div style="font-size:20px;font-weight:800;color:var(--orange)">${se.E||0}</div><div style="font-size:10px;color:var(--muted)">Enhanced</div></div>
+              <div style="align-self:center;font-size:12px;color:var(--muted)">${se.S+se.E>0?Math.round(se.E/(se.S+se.E)*100)+'% enhanced':''}</div>
             </div>
           </div>
         </div>
@@ -680,27 +678,22 @@ function renderCustomers(data) {
 function renderMapSection(data) {
   const geo = data.geography || {};
   const total = Object.values(geo).reduce((s,v)=>s+v,0);
-  const topStates = Object.entries(geo).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const topStates = Object.entries(geo).sort((a,b)=>b[1]-a[1]).slice(0,15);
+  const maxVal = Math.max(...topStates.map(s=>s[1]), 1);
 
   return `
-    <div class="section-title-bar">🗺 Geographic Distribution <span>All time · ${total} quotes</span></div>
-    <div class="card-grid two">
-      <div class="card">
-        <div class="card-head"><span class="card-title">US Sales Map</span></div>
-        <div class="card-body" style="padding:8px">
-          <svg id="usMap" viewBox="0 0 960 600" xmlns="http://www.w3.org/2000/svg"></svg>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-head"><span class="card-title">Top States</span></div>
-        <div class="card-body">
-          ${topStates.map(([state,count],i)=>`<div class="bar-row">
+    <div class="section-title-bar">🗺 Top States <span>All time · ${total} quotes</span></div>
+    <div class="card">
+      <div class="card-body">
+        ${topStates.length ? topStates.map(([state,count]) => {
+          const sharePct = total ? Math.round(count/total*100) : 0;
+          return `<div class="bar-row">
             <div class="bar-name" style="font-family:var(--mono);font-weight:700">${state}</div>
-            <div class="bar-track"><div class="bar-fill" style="width:${Math.round(count/Math.max(...topStates.map(s=>s[1]))*100)}%;background:var(--orange)"></div></div>
-            <div class="bar-val">${count}</div>
-          </div>`).join('') || '<div style="color:var(--muted);font-size:12px">No geographic data yet</div>'}
-          ${total===0?'<div style="margin-top:12px;font-size:11px;color:var(--muted)">Geographic data populates as quotes are pushed with shipping addresses.</div>':''}
-        </div>
+            <div class="bar-track"><div class="bar-fill" style="width:${Math.round(count/maxVal*100)}%;background:var(--orange)"></div></div>
+            <div class="bar-val">${count} <span style="color:var(--muted);font-weight:500">(${sharePct}%)</span></div>
+          </div>`;
+        }).join('') : '<div style="color:var(--muted);font-size:12px">No geographic data yet</div>'}
+        ${total===0?'<div style="margin-top:12px;font-size:11px;color:var(--muted)">Geographic data populates as quotes are pushed with shipping addresses.</div>':''}
       </div>
     </div>
   `;
@@ -752,121 +745,6 @@ function renderMonthly(data) {
 }
 
 // ── US Map drawing ─────────────────────────────────────────────────
-function drawMap(geo) {
-  const svg = document.getElementById('usMap');
-  if (!svg) return;
-
-  const maxCount = Math.max(...Object.values(geo), 1);
-  const getColor = count => {
-    if (!count) return null;
-    const intensity = Math.min(count / maxCount, 1);
-    const r = Math.round(238 - intensity * 40);
-    const g = Math.round(98 + intensity * 60);
-    const b = Math.round(22 - intensity * 10);
-    return `rgb(${r},${g},${b})`;
-  };
-
-  // US state paths — proper simplified coordinates at 960x600
-  const STATE_PATHS = {
-    WA:'M 117 73 L 169 65 L 178 77 L 197 73 L 201 93 L 185 103 L 183 122 L 165 120 L 162 130 L 150 133 L 131 126 L 120 107 Z',
-    OR:'M 116 130 L 164 123 L 182 126 L 183 165 L 183 188 L 108 188 L 108 162 Z',
-    CA:'M 107 188 L 183 188 L 185 225 L 181 270 L 162 310 L 148 330 L 120 340 L 103 305 L 92 270 L 100 240 Z',
-    NV:'M 183 165 L 220 153 L 233 200 L 226 272 L 181 270 L 183 225 Z',
-    ID:'M 183 88 L 213 82 L 225 100 L 228 145 L 220 153 L 183 165 L 183 122 L 185 103 L 197 93 Z',
-    MT:'M 196 70 L 315 62 L 318 93 L 308 135 L 240 138 L 225 100 L 213 82 Z',
-    WY:'M 225 138 L 308 135 L 315 175 L 310 215 L 231 215 L 226 175 Z',
-    UT:'M 220 215 L 230 215 L 232 272 L 234 310 L 183 310 L 183 270 L 225 272 Z',
-    CO:'M 232 215 L 315 212 L 316 260 L 234 260 L 234 215 Z',
-    AZ:'M 181 310 L 234 310 L 235 365 L 210 382 L 182 375 L 164 360 L 164 340 Z',
-    NM:'M 234 260 L 316 260 L 318 340 L 258 342 L 235 345 L 234 310 Z',
-    ND:'M 318 90 L 418 85 L 420 133 L 318 135 Z',
-    SD:'M 318 135 L 420 133 L 423 178 L 318 178 Z',
-    NE:'M 318 178 L 423 178 L 427 215 L 320 215 Z',
-    KS:'M 320 215 L 427 215 L 430 258 L 322 258 Z',
-    OK:'M 321 258 L 430 258 L 433 308 L 372 310 L 368 300 L 322 300 Z',
-    TX:'M 320 300 L 368 300 L 372 310 L 433 308 L 438 355 L 415 390 L 370 405 L 325 410 L 295 380 L 272 342 L 258 342 L 316 260 Z',
-    MN:'M 418 85 L 467 84 L 475 88 L 478 130 L 471 140 L 466 133 L 420 133 Z',
-    IA:'M 420 133 L 466 133 L 471 140 L 472 175 L 425 178 Z',
-    MO:'M 425 178 L 472 175 L 476 215 L 477 262 L 427 262 L 425 235 L 427 215 Z',
-    AR:'M 427 262 L 477 262 L 479 310 L 430 312 L 427 290 Z',
-    LA:'M 430 312 L 479 310 L 480 345 L 456 355 L 432 352 L 430 335 Z',
-    WI:'M 468 88 L 502 88 L 512 98 L 510 115 L 522 130 L 510 140 L 493 138 L 472 138 L 471 110 Z',
-    MI:'M 510 98 L 535 88 L 555 102 L 545 128 L 530 135 L 515 135 L 510 115 Z',
-    IL:'M 472 138 L 493 138 L 510 140 L 509 178 L 505 218 L 478 215 L 476 178 Z',
-    IN:'M 510 140 L 533 138 L 535 180 L 532 215 L 505 215 L 509 178 Z',
-    OH:'M 535 138 L 565 135 L 570 178 L 565 215 L 533 215 L 535 178 Z',
-    KY:'M 505 218 L 565 215 L 572 250 L 538 255 L 507 258 Z',
-    TN:'M 507 258 L 538 255 L 572 250 L 575 272 L 545 278 L 510 278 Z',
-    MS:'M 478 312 L 505 310 L 510 355 L 490 368 L 470 358 L 468 335 Z',
-    AL:'M 505 310 L 532 308 L 535 368 L 510 370 L 490 368 Z',
-    GA:'M 532 308 L 572 305 L 578 345 L 560 375 L 538 380 L 535 368 Z',
-    FL:'M 535 368 L 560 375 L 578 345 L 592 360 L 598 395 L 578 420 L 550 428 L 530 415 L 522 395 L 535 375 Z',
-    SC:'M 572 305 L 600 298 L 610 328 L 585 342 L 572 335 Z',
-    NC:'M 572 272 L 617 262 L 628 278 L 612 298 L 572 305 L 572 288 Z',
-    VA:'M 572 250 L 610 242 L 622 258 L 617 262 L 572 272 Z',
-    WV:'M 565 215 L 598 212 L 608 235 L 610 242 L 572 250 L 570 235 Z',
-    MD:'M 598 232 L 618 228 L 625 245 L 612 252 L 608 245 Z',
-    DE:'M 618 228 L 630 225 L 635 240 L 625 245 Z',
-    PA:'M 565 195 L 615 190 L 618 228 L 598 232 L 570 232 Z',
-    NY:'M 565 162 L 612 155 L 630 170 L 630 195 L 615 195 L 565 195 L 565 178 Z',
-    NJ:'M 615 190 L 630 188 L 635 210 L 620 215 L 615 205 Z',
-    CT:'M 630 178 L 645 175 L 648 190 L 632 192 Z',
-    RI:'M 645 175 L 652 173 L 655 183 L 647 185 Z',
-    MA:'M 612 158 L 648 150 L 652 168 L 630 172 L 615 170 Z',
-    VT:'M 612 135 L 625 132 L 628 155 L 612 158 Z',
-    NH:'M 625 118 L 638 115 L 642 148 L 628 152 L 626 135 Z',
-    ME:'M 638 100 L 660 95 L 665 135 L 645 148 L 638 130 Z',
-    AK:'M 70 440 L 155 425 L 168 445 L 158 465 L 115 472 L 75 465 Z',
-    HI:'M 200 480 L 265 470 L 268 488 L 205 492 Z',
-    DC:'M 608 245 L 615 242 L 617 250 L 610 252 Z',
-  };
-
-  const tooltip = document.getElementById('mapTooltip');
-  svg.innerHTML = '';
-
-  Object.entries(STATE_PATHS).forEach(([abbr, path]) => {
-    const count = geo[abbr] || 0;
-    const color = getColor(count);
-    const el = document.createElementNS('http://www.w3.org/2000/svg','path');
-    el.setAttribute('d', path);
-    el.setAttribute('class','state-path');
-    el.setAttribute('data-state', abbr);
-    el.setAttribute('data-count', count);
-    if (color) el.style.fill = color;
-
-    // Add state abbreviation label
-    const bounds = (() => {
-      const pts = path.match(/[\d.]+\s+[\d.]+/g)||[];
-      const xs=pts.map(p=>parseFloat(p.split(' ')[0]));
-      const ys=pts.map(p=>parseFloat(p.split(' ')[1]));
-      return {cx:(Math.min(...xs)+Math.max(...xs))/2,cy:(Math.min(...ys)+Math.max(...ys))/2};
-    })();
-
-    const text = document.createElementNS('http://www.w3.org/2000/svg','text');
-    text.setAttribute('x', bounds.cx);
-    text.setAttribute('y', bounds.cy+3);
-    text.setAttribute('text-anchor','middle');
-    text.setAttribute('font-size','7');
-    text.setAttribute('font-family','DM Sans,sans-serif');
-    text.setAttribute('font-weight','700');
-    text.setAttribute('fill', color ? '#fff' : 'var(--muted)');
-    text.setAttribute('pointer-events','none');
-    text.textContent = abbr;
-
-    el.addEventListener('mouseenter', e => {
-      tooltip.style.display = 'block';
-      tooltip.innerHTML = `<strong>${abbr}</strong> — ${count} quote${count!==1?'s':''}`;
-    });
-    el.addEventListener('mousemove', e => {
-      tooltip.style.left = e.clientX+12+'px';
-      tooltip.style.top  = e.clientY-28+'px';
-    });
-    el.addEventListener('mouseleave', () => { tooltip.style.display='none'; });
-
-    svg.appendChild(el);
-    if (!['AK','HI','RI','DC'].includes(abbr)) svg.appendChild(text);
-  });
-}
 
 function drawSEDonut(se) { /* reserved for future */ }
 

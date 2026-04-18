@@ -4392,16 +4392,36 @@ ${q.accepted ? `
 
         // ── Customer insights ─────────────────────────────────────
         // Group by company
-        const companies = {};
+        // Build per-deal max totals first, so revisions of the same deal don't double-count.
+        // For quotes without a deal_id we treat each quote as its own pseudo-deal.
+        const dealTotals = {}; // dealKey -> { company, total, accepted, repId, lastDate }
         qAllTime.rows.forEach(q => {
           const co = q.company || (q.deal_name?.split(/[·-]/)[0]?.trim()) || '—';
           if (!co || co==='—') return;
+          const dealKey = q.deal_id ? `d:${q.deal_id}` : `q:${q.quote_number}`;
+          const total = parseFloat(q.total||0);
+          const isAccepted = q.accepted === 'true';
+          if (!dealTotals[dealKey]) {
+            dealTotals[dealKey] = { company: co, total, accepted: isAccepted, repId: q.rep_id, lastDate: q.created_at };
+          } else {
+            // Use the max total across revisions (typically the most recent is highest)
+            if (total > dealTotals[dealKey].total) dealTotals[dealKey].total = total;
+            if (isAccepted) dealTotals[dealKey].accepted = true;
+            if (q.created_at > dealTotals[dealKey].lastDate) {
+              dealTotals[dealKey].lastDate = q.created_at;
+              dealTotals[dealKey].repId = q.rep_id;
+            }
+          }
+        });
+        const companies = {};
+        Object.entries(dealTotals).forEach(([dealKey, d]) => {
+          const co = d.company;
           if (!companies[co]) companies[co] = {deals:new Set(),totalValue:0,accepted:0,repIds:new Set(),lastDate:null};
-          if (q.deal_id) companies[co].deals.add(q.deal_id);
-          companies[co].totalValue += parseFloat(q.total||0);
-          if (q.accepted==='true') companies[co].accepted++;
-          if (q.rep_id) companies[co].repIds.add(q.rep_id);
-          if (!companies[co].lastDate || q.created_at > companies[co].lastDate) companies[co].lastDate = q.created_at;
+          companies[co].deals.add(dealKey);
+          companies[co].totalValue += d.total;
+          if (d.accepted) companies[co].accepted++;
+          if (d.repId) companies[co].repIds.add(d.repId);
+          if (!companies[co].lastDate || d.lastDate > companies[co].lastDate) companies[co].lastDate = d.lastDate;
         });
         const repeatCustomers = Object.entries(companies)
           .map(([name,d]) => ({

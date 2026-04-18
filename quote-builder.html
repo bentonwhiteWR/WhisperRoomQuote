@@ -1596,7 +1596,7 @@ body.dark select { color-scheme: dark; }
 
     <div class="ap-color-row" style="display:none;margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">AP Color <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Acoustic Package)</span></div>
-      <select id="orderApColor" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer" onchange="updateApSwatchPreview()">
+      <select id="orderApColor" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer;color-scheme:dark" onchange="updateApSwatchPreview()">
         <option value="">&mdash; Select color &mdash;</option>
         <option value="Unknown">Unknown (follow up needed)</option>
         <option value="Lemon">Lemon</option>
@@ -3730,7 +3730,7 @@ ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</
 
     <div class="ap-color-row" style="display:none;margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">AP Color <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Acoustic Package)</span></div>
-      <select id="orderApColor" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer" onchange="updateApSwatchPreview()">
+      <select id="orderApColor" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer;color-scheme:dark" onchange="updateApSwatchPreview()">
         <option value="">— Select color —</option>
         <option value="Unknown">Unknown (follow up needed)</option>
         <option value="Lemon">Lemon</option>
@@ -6394,7 +6394,9 @@ async function confirmProcessOrder() {
       // registered mailto handler, or in-browser popup blocker). We always
       // expose a manual "Send Shipping Email" button in the result box below as
       // a fallback.
-      try { window.location.href = mailto; } catch(e) {}
+      try { window.open(mailto, '_self'); } catch(e) {
+        try { window.location.href = mailto; } catch(e2) {}
+      }
 
       // Show order link + manual email button in result box
       const box = document.getElementById('resultBox');

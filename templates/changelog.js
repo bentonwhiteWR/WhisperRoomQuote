@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.1.97', date:'Apr 18, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Process Order AP color picker options are now dark-themed on Chrome/Opera: added inline color-scheme:dark to the select so the browser renders the native dropdown with dark OS chrome. Previous fix via body.dark CSS only applied when the user had explicitly toggled dark theme.'},
+        {t:'fix', d:'Process Order mailto now tries window.open first (with window.location.href as fallback) — more reliable across browsers when a mailto handler is registered but popup-style triggers behave differently than navigation-style.'},
+      ]
+    },
+    {
       v:'1.1.96', date:'Apr 18, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Process Order: if the full HubSpot deal PATCH (stage + ap_color + payment_type + po_) returns 400, we now automatically retry with just dealstage=closedwon so the deal at least moves. Both failures are logged (stage-patch + stage-patch-retry) with the full HubSpot response body and the props we sent — next time this happens we\\u2019ll have enough data to fix the actual bad property.'},

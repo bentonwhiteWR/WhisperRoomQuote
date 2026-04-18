@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.2.3', date:'Apr 18, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Deal Hub card sort: was secretly re-sorting client-side by HubSpot\\u2019s hs_lastmodifieddate, which treats any HubSpot activity (views, note edits, field touches) as a reason to bump a card up. Now strictly sorts by lastActivityAt from our system \u2014 quote pushed, order processed, quote accepted. Deals without any of those sink to the bottom by amount.'},
+        {t:'fix', d:'Unintegrated dot logic: was gated on a narrow stage list (only Sent/Updated Quote stages got the dot). Now any deal without a quote / accepted flag / payment type in our system gets dimmed + gray dot, regardless of HubSpot stage. Emily-Love-type cases (no quotes, not in early stage) are now correctly flagged.'},
+      ]
+    },
+    {
       v:'1.2.2', date:'Apr 18, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Versioning convention refined in HANDOFF.md: MINOR (1.2 → 1.3) now bumps only on meaningful new features (not on every merge to main). PATCH (1.2.0 → 1.2.1) for bug fixes and small tweaks. MAJOR (1 → 2) reserved for rewrites. Rule of thumb: if you\\u2019d say "I added X" → MINOR; "I fixed X" → PATCH.'},

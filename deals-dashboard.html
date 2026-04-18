@@ -407,11 +407,16 @@ function renderBoard() {
   COLUMNS.forEach(col => {
     const deals=filteredDeals.filter(d=>col.stages.includes(d.stage))
       .sort((a,b) => {
-        // Primary: most recently modified first
-        const tA = a.modified ? new Date(a.modified).getTime() : 0;
-        const tB = b.modified ? new Date(b.modified).getTime() : 0;
-        if (tB !== tA) return tB - tA;
-        // Secondary: larger amount first
+        // Primary: lastActivityAt from our system — quote pushed, order processed,
+        // quote accepted. HubSpot-modified dates (notes, field edits, views) are
+        // explicitly NOT used here; reps care about what they did, not HS noise.
+        const tA = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : 0;
+        const tB = b.lastActivityAt ? new Date(b.lastActivityAt).getTime() : 0;
+        if (tA && tB && tA !== tB) return tB - tA;
+        // One has activity, the other doesn't — activity wins
+        if (tA && !tB) return -1;
+        if (!tA && tB) return 1;
+        // Neither has activity (HubSpot-only deals) — largest amount first
         return parseFloat(b.amount||0) - parseFloat(a.amount||0);
       });
     total+=deals.length;
@@ -437,10 +442,9 @@ function renderBoard() {
       cardsEl.innerHTML='<div style="font-size:11px;color:var(--muted);text-align:center;padding:16px 4px;font-style:italic">No deals</div>';
     } else {
       deals.forEach(d => {
-        // A deal is "unintegrated" if it has no quotes/orders in our system
-        // Only flag Sent/Updated Quote stages — not newer or further-along deals
-        const earlyStage = d.stage === 'appointmentscheduled' || d.stage === 'qualifiedtobuy';
-        const isUnintegrated = earlyStage && !d.latestQuote && !d.accepted && !d.paymentType;
+        // A deal is "unintegrated" if it has no quotes / orders / accepted / payment
+        // in our system — it's HubSpot-only. Applies regardless of stage.
+        const isUnintegrated = !d.latestQuote && !d.accepted && !d.paymentType;
         if (hideUnintegrated && isUnintegrated) return;
         const card=document.createElement('div');
         const dealGreen = (d.accepted || !!d.paymentType) && d.id!==currentDealId;

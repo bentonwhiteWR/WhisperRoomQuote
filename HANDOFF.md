@@ -77,6 +77,38 @@ Use `--no-ff` so the merge commit preserves history. Railway auto-deploys both e
 
 **Rolling back:** Railway → service → Deployments → pick previous deploy → Redeploy. Takes ~60s. Keep this in mind — you don't need to be terrified of pushing.
 
+**Version + changelog discipline (important):**
+
+Versioning convention (semver-ish, adapted for a sales tool):
+- **MAJOR** (`1.x.x` → `2.x.x`): reserved for rewrites or breaking changes. Rare.
+- **MINOR** (`1.2.x` → `1.3.x`): **bump on every merge to `main`**. Represents a production release. PATCH resets to 0.
+- **PATCH** (`1.2.0` → `1.2.1`): bump on every commit to `staging` between releases.
+
+So the sequence looks like: work on staging → `1.2.1`, `1.2.2`, `1.2.3`… → merge to main → bump to `1.3.0` → continue on staging → `1.3.1`, `1.3.2`…
+
+Every push to `staging` should include:
+1. A patch version bump in `package.json` (e.g. `1.2.5` → `1.2.6`)
+2. A new entry at the top of `templates/changelog.js`
+
+When merging staging → main, bump `package.json` to the next MINOR (e.g. `1.2.11` → `1.3.0`) and add a release-summary entry to the changelog that rolls up what's in the release.
+
+This is not automated — it's a convention. Claude should do it as part of every commit without being asked. If Claude forgets, remind it.
+
+Changelog entry format (see existing entries):
+```js
+{
+  v:'1.1.87', date:'Apr 19, 2026', tag:'fix',  // tag: fix | feature | log | ui
+  changes:[
+    {t:'fix', d:'What changed, in one readable sentence'},
+    // t: fix | add | log | ui | security
+  ]
+},
+```
+
+The badge that says `v1.1.86` in the top-right of the dashboards is pulled from `package.json` via `/api/version`. The full history renders at `/changelog` (linked from `/admin-log`).
+
+**Why this matters:** reps see the version change and know something shipped. The changelog is the one place where we record WHAT shipped. Without it, debugging "when did X break?" becomes archaeology.
+
 ---
 
 ## 4. Repo layout (what lives where)
@@ -223,7 +255,7 @@ For small bug fixes, UI tweaks, and log noise — just do it. Staging first, con
 
 Paste this into Claude Code when starting a session:
 
-> Read `HANDOFF.md` for project context. I'm going to ask you to fix/add something. Follow the workflow in §3 — work on `staging`, don't touch `main` until I say it's tested. When you need to see logs, ask me to paste them from Railway. Don't hardcode URLs or secrets.
+> Read `HANDOFF.md` for project context. I'm going to ask you to fix/add something. Follow the workflow in §3 — work on `staging`, don't touch `main` until I say it's tested. Every push must bump `package.json` patch version and add a `templates/changelog.js` entry at the top (§3). When you need to see logs, ask me to paste them from Railway. Don't hardcode URLs or secrets.
 
 That's enough. Claude will ask clarifying questions from there.
 

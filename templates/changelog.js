@@ -51,6 +51,304 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.2.0', date:'Apr 18, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Release bump: everything from 1.1.15 through 1.1.104 rolls into the 1.2.0 release milestone. Going forward: MINOR bump (1.2 \u2192 1.3) on every merge to main; PATCH counts commits on staging between releases; MAJOR reserved for rewrites. Documented in HANDOFF.md §3.'},
+        {t:'add', d:'This release: Process Order overhaul (Deal Hub modal + quote builder parity), payment method tracking, Mobile overhaul (Deal Hub + quote builder + customer pages), Ship Calendar with pallet color coding, RM + Custom Holes production flags, Orders dashboard redesign, Reports rebuild Step 1 (hero KPIs + rep filter), retroactive changelog + version discipline, admin payment-method override.'},
+      ]
+    },
+    {
+      v:'1.1.104', date:'Apr 18, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Deal Hub detail panel quote rows now show RM / CUST chips per quote so you can tell which specific revision contains the flagged line items. Previously only the deal card (aggregate) showed them. /api/deals/:id/hub now returns hasRM + hasCustomHole on each quote.'},
+      ]
+    },
+    {
+      v:'1.1.103', date:'Apr 18, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Custom holes tracking: line items starting with "CUST HOLE " (CUST HOLE E or CUST HOLE S) now flag the order as Custom Holes — 1-month lead, Gary (production manager) notified.'},
+        {t:'add', d:'On Process Order: server prepends "CUSTOM HOLES — " to production notes (idempotent, survives re-processing). Shipping email CCs gamos@whisperroom.com (same as RM) and includes "Gary, this order includes Custom Holes." line when detected. Both flags can apply together — prefix becomes "RM + CUSTOM HOLES — " and both Gary lines appear.'},
+        {t:'ui',  d:'Amber "CUST" chip on Deal Hub board cards, orders dashboard table rows, and ship calendar cells. Distinct from the red "RM" chip so you can tell them apart at a glance; deals with both show both chips.'},
+      ]
+    },
+    {
+      v:'1.1.102', date:'Apr 18, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Deal Hub admin override: new Payment Method dropdown in the admin panel lets you change a deal\\u2019s payment type (HubSpot Invoice / Credit Card / ACH / PO / Other) or clear it. Non-PO choices save automatically on change; PO shows a PO Number input + Save PO button so the number can be entered first.'},
+        {t:'add', d:'New endpoint PATCH /api/deals/:id/payment-type \u2014 maps lowercase client values to HubSpot\\u2019s uppercase enum, mirrors payment_status, logs admin override to the admin log, logs HubSpot failures to Railway.'},
+        {t:'ui',  d:'Removed "(1-month lead time)" from the RM notice line in the shipping notification email \u2014 Gary already knows.'},
+      ]
+    },
+    {
+      v:'1.1.101', date:'Apr 18, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Deal Hub Process Order now opens the shipping notification email (was only happening from the quote builder\\u2019s orange Process Order button). Added openShippingNotifyEmail() helper to deals-dashboard.html that mirrors the quote-builder email format: to=shipping@, cc=accounting@+bentonwhite@ (+ gamos@ if RM), subject, full order body with line items, totals, ship-to, production notes, and order URL.'},
+        {t:'ui',  d:'Light-mode Process Order modal: Cancel button and other secondary controls used rgba(255,255,255,.6) text which fell through my CSS override. Extended coverage to include .6/.65/.7/.75 alpha whites as --text, and invisible .08 white backgrounds now use --bg so the button has a visible surface against the cream modal.'},
+      ]
+    },
+    {
+      v:'1.1.100', date:'Apr 18, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Process Order mailto: switched from window.location.href / window.open to a programmatic anchor-click (create <a>, append, .click(), remove). This is the most reliable way to trigger native mailto handlers — browsers treat it as a user-initiated click instead of programmatic navigation, which bypasses popup blocker heuristics. Added console.log traces so the dispatch is visible in DevTools if it still doesn\\u2019t open.'},
+        {t:'ui',  d:'Removed the manual "Send Shipping Email" button from the success box — the email must open automatically, not require a click.'},
+        {t:'ui',  d:'Light-mode Process Order modal labels (Payment Method, Foam, Hinge, AP) now use --text instead of --muted for primary labels, darker --border lines, and adapted input backgrounds. Primary radio/selection labels were getting lost against the cream surface.'},
+      ]
+    },
+    {
+      v:'1.1.99', date:'Apr 18, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Process Order: HubSpot deal PATCH was failing with 400 because payment_type values were sent lowercase (hs/cc/ach/po/other) but HubSpot\\u2019s dropdown enum uses uppercase (HS, CC, ACH, PO, Other). Added a client\u2192HubSpot mapping at the server boundary and normalize incoming HubSpot values back to lowercase when we read them for the UI. Deals will now move to Closed Won correctly.'},
+      ]
+    },
+    {
+      v:'1.1.98', date:'Apr 18, 2026', tag:'fix',
+      changes:[
+        {t:'ui',  d:'Process Order modal now adapts to light/dark theme — was hard-coded dark regardless of theme. In light mode the modal bg, text, inputs, and AP color picker all render light; in dark mode they stay dark. Fixes unreadable AP color options in Opera/Chrome where native select chrome ignored forced dark styling.'},
+        {t:'log', d:'Process Order deal PATCH failures now also log to Railway stdout (console.error) with status + HubSpot rejection body + sent props. No need to expand the admin log entry to diagnose.'},
+      ]
+    },
+    {
+      v:'1.1.97', date:'Apr 18, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Process Order AP color picker options are now dark-themed on Chrome/Opera: added inline color-scheme:dark to the select so the browser renders the native dropdown with dark OS chrome. Previous fix via body.dark CSS only applied when the user had explicitly toggled dark theme.'},
+        {t:'fix', d:'Process Order mailto now tries window.open first (with window.location.href as fallback) — more reliable across browsers when a mailto handler is registered but popup-style triggers behave differently than navigation-style.'},
+      ]
+    },
+    {
+      v:'1.1.96', date:'Apr 18, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Process Order: if the full HubSpot deal PATCH (stage + ap_color + payment_type + po_) returns 400, we now automatically retry with just dealstage=closedwon so the deal at least moves. Both failures are logged (stage-patch + stage-patch-retry) with the full HubSpot response body and the props we sent — next time this happens we\\u2019ll have enough data to fix the actual bad property.'},
+      ]
+    },
+    {
+      v:'1.1.95', date:'Apr 18, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Process Order HubSpot deal-stage PATCH was silently swallowing HubSpot errors — if HubSpot returned 4xx/5xx, the deal stayed in its previous stage but the order still saved and the UI showed success. Now surfaces a non-2xx response as error.process-order.stage-patch in the admin log so the issue is visible.'},
+        {t:'ui',  d:'Process Order success box now includes a manual "✉ Send Shipping Email" button alongside the order link. Auto-mailto (window.location.href = mailto:) can be blocked silently by the browser or OS, so the manual fallback guarantees the email can be opened.'},
+        {t:'ui',  d:'Toast text changed from "Email draft opened!" to "Order processed" since we can\\u2019t actually guarantee the mail client opened.'},
+      ]
+    },
+    {
+      v:'1.1.94', date:'Apr 18, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Process Order AP color picker options are now readable — the dropdown options were using the browser default light gray (barely visible on dark theme). Applied dark-theme option styling globally so every select respects the theme.'},
+      ]
+    },
+    {
+      v:'1.1.93', date:'Apr 18, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Roof Mounted Ventilation (RM) tracking: any line item starting with "RM " now flags the order for Gary (production manager) — 1-month lead time.'},
+        {t:'add', d:'On Process Order: server auto-prepends "RM — " to production notes; quote-builder mailto now cc\\u2019s gamos@whisperroom.com and includes "Gary, this order includes Roof Mounted Ventilation (1-month lead time)" in the email body.'},
+        {t:'ui',  d:'Red "RM" chip on Deal Hub board cards, orders dashboard rows, and ship calendar cells so the flag is visible everywhere a deal surfaces.'},
+        {t:'ui',  d:'Ship calendar now shows "Parts" instead of "?" for orders with 0 pallets and no MDL items (parts-only orders). "?" still appears for unknown/missing pallet data.'},
+      ]
+    },
+    {
+      v:'1.1.92', date:'Apr 18, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Ship calendar cells now wrap long deal names instead of truncating with ellipsis. Day cells grow vertically to fit the content.'},
+        {t:'ui', d:'Strips noise suffixes from calendar labels ("– New Deal", "— Quote", "— Revision", "— Updated Quote") so the meaningful part of the deal name shows through. Full original name still appears on hover.'},
+      ]
+    },
+    {
+      v:'1.1.91', date:'Apr 18, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Ship calendar cells now show the deal name as the primary label, with the MDL in muted type next to it (was: MDL only)'},
+      ]
+    },
+    {
+      v:'1.1.90', date:'Apr 18, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Orders dashboard: monthly ship calendar below the orders list — renders each order on its planned/actual ship date with click-through to the detail drawer'},
+        {t:'add', d:'Pallet cap color coding per day cell: green ≤3, yellow 4-5, red 6+ (soft indicator — does not prevent adding more)'},
+        {t:'add', d:'Pallet count auto-computed from line items when processing an order — saved to order_data.shipped.pallets. Jeromy can edit afterward in the drawer.'},
+        {t:'ui',  d:'Orders table now caps at ~10 rows with an internal scroll + sticky header instead of a long page scroll'},
+        {t:'ui',  d:'Day cells show total pallet count badge and list each shipment\\u2019s pallet qty + MDL'},
+        {t:'ui',  d:'Calendar month nav (Prev / Today / Next), Today cell highlighted in orange, outside-month days dimmed'},
+      ]
+    },
+    {
+      v:'1.1.89', date:'Apr 18, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'"E" now labeled "Enhanced" (not "Electric") in the Standard vs Enhanced split'},
+        {t:'fix', d:'Top Customers by Value no longer double-counts quote revisions — was summing every revision as its own deal (e.g. AMP showing $528k for a $173k deal with 3 revisions). Now uses max total per unique deal_id.'},
+        {t:'ui',  d:'Replaced broken hand-drawn US sales map with an expanded "Top States" bar chart showing count + % share — accurate, readable, and mobile-friendly'},
+      ]
+    },
+    {
+      v:'1.1.88', date:'Apr 18, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Reports rebuild Step 1: new "At a glance" hero row with 4 decision-oriented KPIs — Revenue MTD (vs last month), Pipeline Value, Win Rate (vs 90d avg), Avg Deal Size (vs 90d avg)'},
+        {t:'add', d:'Rep filter dropdown in the reports sidebar — all KPIs recompute scoped to the selected rep'},
+        {t:'ui',  d:'Mobile-responsive reports: sidebar collapses to a horizontal chip row, KPI strip switches to 2-column on tablet and 1-column on narrow'},
+        {t:'ui',  d:'Topbar scrolls horizontally on narrow screens to match Deal Hub pattern'},
+      ]
+    },
+    {
+      v:'1.1.87', date:'Apr 18, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'HANDOFF.md now documents the version-bump + changelog discipline — every push bumps package.json patch version and adds a templates/changelog.js entry'},
+      ]
+    },
+    {
+      v:'1.1.86', date:'Apr 18, 2026', tag:'ui',
+      changes:[
+        {t:'ui',  d:'Mobile overhaul of Deal Hub — hub panel slides in as overlay on narrow screens, topbar scrolls horizontally instead of clipping Sign Out'},
+        {t:'ui',  d:'Collapsible Kanban columns on Fold-cover / ≤480px — tap a column header to expand/collapse'},
+        {t:'ui',  d:'Column totals now displayed under each stage header (Sent, Verbal, Won, Shipped) — color-matched to the stage'},
+        {t:'ui',  d:'Quote builder topbar: fixed nav-button pile-up at tablet widths by switching to horizontal scroll ≤1024px'},
+        {t:'ui',  d:'Customer order page /o/:id: table collapses to name/qty/total on mobile (was overflowing with 5 columns)'},
+        {t:'add', d:'Retroactive changelog reconstruction from v1.1.15 to v1.1.86'},
+      ]
+    },
+    {
+      v:'1.1.85', date:'Apr 17, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Restore orderModal HTML to DOM — the div only existed inside a PDF template string, so document.getElementById returned null and the orange Process Order button did nothing'},
+        {t:'fix', d:'Open order modal before awaiting HubSpot payment-type prefill so a slow fetch never blocks the modal from appearing'},
+        {t:'fix', d:'Wrap renderOrderSummaryQB() in try/catch so a rendering error cannot block the modal from opening'},
+        {t:'fix', d:'Silence Puppeteer "old Headless" deprecation warning in UPS tracking scraper (headless: true → headless: "new")'},
+      ]
+    },
+    {
+      v:'1.1.84', date:'Apr 17, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Orange Process Order button in quote builder now opens the same modal used on the Deal Hub — collects payment type, PO number, order summary, and production notes'},
+        {t:'add', d:'Quote label surfaced on Deal Hub cards and quote rows — takes precedence over MDL model string when set'},
+      ]
+    },
+    {
+      v:'1.1.83', date:'Apr 17, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Deal Hub cards and column headers restyled — cleaner spacing, tighter type scale, clearer stage colors'},
+      ]
+    },
+    {
+      v:'1.1.82', date:'Apr 17, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Process Order modal now shows a live order summary — line items, discount, freight, tax, total, and ship-to address'},
+      ]
+    },
+    {
+      v:'1.1.81', date:'Apr 17, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Switched all internal dashboards to Satoshi font family for a more consistent brand feel'},
+      ]
+    },
+    {
+      v:'1.1.80', date:'Apr 17, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Process Order modal launched from the Deal Hub — previously the blue "Process" button redirected into the quote builder'},
+        {t:'add', d:'Payment method tracking via HubSpot custom properties payment_type (HS / CC / ACH / PO / Other) and po_ (PO number)'},
+        {t:'add', d:'Payment badges on Deal Hub cards now reflect specific payment method instead of generic paid/PO tag'},
+        {t:'add', d:'Notes & Order Specs carry over to Production Notes automatically when processing an order'},
+      ]
+    },
+    {
+      v:'1.1.78', date:'Apr 17, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Replaced text logo with WhisperRoom SVG logo across all pages (topbar, PDFs, customer-facing quote/invoice/order pages)'},
+      ]
+    },
+    {
+      v:'1.1.77', date:'Apr 17, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Locked deal payment amount is now additive — paying a second invoice adds to amount_paid instead of replacing it'},
+      ]
+    },
+    {
+      v:'1.1.75', date:'Apr 17, 2026', tag:'security',
+      changes:[
+        {t:'security', d:'Closed Won / Shipped deals locked against quote sync overwrites — prevents a late quote revision from rewriting a finalized deal'},
+      ]
+    },
+    {
+      v:'1.1.72', date:'Apr 17, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'HANDOFF.md onboarding doc — full project context, workflow, env vars, gotchas for new collaborators'},
+      ]
+    },
+    {
+      v:'1.1.70', date:'Apr 17, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'gdriveSavePdfToDeal: fall back to a sibling quote folder on the same deal when the current quote lacks gdrive_folder_id (covers legacy quotes)'},
+        {t:'log', d:'Surface the real error on order PDF upload instead of generic failure message'},
+        {t:'fix', d:'GDRIVE_ORDERS_FOLDER env var now overrides hardcoded orders folder ID'},
+      ]
+    },
+    {
+      v:'1.1.65', date:'Apr 17, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Phase 2 refactor: extracted inline HTML dashboards (deals, quotes, orders, shipping, reports, admin-log) from quote-server.js into separate .html files'},
+      ]
+    },
+    {
+      v:'1.1.60', date:'Apr 17, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Phase 1 refactor: extracted states, utils, logger, auth, db, hubspot, gdrive, pdf, taxjar, notify, and freight helpers from monolithic quote-server.js into lib/*.js modules'},
+        {t:'ui', d:'Each lib module exports init({ deps }) — dependencies wired once at server startup'},
+      ]
+    },
+    {
+      v:'1.1.55', date:'Apr 17, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Quote number collision handler no longer produces 11-digit numbers when the daily sequence rolls over'},
+      ]
+    },
+    {
+      v:'1.1.50', date:'Apr 17, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Skip US-only state enums up front for Canadian provinces instead of retrying on HubSpot rejection'},
+        {t:'fix', d:'Invoice address PATCH now includes hs_collect_address_types: "billing_address" — resolves HubSpot 400 conflict errors'},
+      ]
+    },
+    {
+      v:'1.1.45', date:'Apr 17, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Folder picker always prompts on new deals, even when the contact already has a prior Drive folder — each deal now gets its own folder'},
+        {t:'log', d:'Invoice address PATCH errors now log the full request body for diagnosis'},
+      ]
+    },
+    {
+      v:'1.1.40', date:'Apr 17, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'PUBLIC_BASE_URL env var for building customer-facing links — staging and prod now point to their own domains'},
+        {t:'fix', d:'Client-side links use location.origin instead of hardcoded sales.whisperroom.com'},
+        {t:'fix', d:'PDF cookie domain derived from request host instead of hardcoded'},
+      ]
+    },
+    {
+      v:'1.1.35', date:'Apr 17, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Quote number timezone bug — quote numbers now generate with correct local date (America/New_York) instead of UTC'},
+        {t:'fix', d:'Allow staging Railway URL in OAuth redirect allowlist'},
+      ]
+    },
+    {
+      v:'1.1.30', date:'Apr 16, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Catch-up: multiple iterations on Deal Hub — card layout, pipeline stages, filter toggles, deal search refinements'},
+      ]
+    },
+    {
+      v:'1.1.25', date:'Apr 16, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Catch-up: continued quote-server refinements — HubSpot deal matching, contact search, owner assignment edge cases'},
+      ]
+    },
+    {
+      v:'1.1.20', date:'Apr 15, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Catch-up: tracking and shipping polish — column headers, status badges, tracking link fallbacks'},
+      ]
+    },
+    {
+      v:'1.1.15', date:'Apr 15, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Catch-up: quote builder and orders dashboard iterations — freight display, invoice flow tweaks, small UI fixes'},
+      ]
+    },
+    {
       v:'1.1.14', date:'Apr 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Canadian freight now uses correct NMFC codes (027880/02) matching legacy system'},

@@ -44,20 +44,24 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .board { flex:1; display:grid; grid-template-columns:repeat(4,minmax(170px,1fr)); gap:0; overflow-x:auto; overflow-y:hidden; }
 .col { display:flex; flex-direction:column; border-right:1px solid var(--border); overflow:hidden; }
 .col:last-child { border-right:none; }
-.col-header { padding:10px 12px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+.col-header { padding:10px 12px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:3px; flex-shrink:0; }
+.col-header-top { display:flex; align-items:center; justify-content:space-between; }
 .col-title { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.07em; }
 .col-count { font-size:10px; font-weight:700; padding:2px 7px; border-radius:10px; }
+.col-total { font-size:12px; font-weight:700; font-variant-numeric:tabular-nums; }
 .col-cards { flex:1; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:6px; }
-.col-sent .col-title { color:#ee6216; } .col-sent .col-count { background:rgba(238,98,22,.12); color:#ee6216; }
-.col-verbal .col-title { color:#f59e0b; } .col-verbal .col-count { background:rgba(245,158,11,.12); color:#f59e0b; }
-.col-won .col-title { color:#22c55e; } .col-won .col-count { background:rgba(34,197,94,.12); color:#22c55e; }
-.col-shipped .col-title { color:#3b82f6; } .col-shipped .col-count { background:rgba(59,130,246,.12); color:#3b82f6; }
-.col-lost .col-title { color:var(--muted); } .col-lost .col-count { background:rgba(239,68,68,.08); color:var(--muted); }
+.col-sent .col-title, .col-sent .col-total { color:#ee6216; } .col-sent .col-count { background:rgba(238,98,22,.12); color:#ee6216; }
+.col-verbal .col-title, .col-verbal .col-total { color:#f59e0b; } .col-verbal .col-count { background:rgba(245,158,11,.12); color:#f59e0b; }
+.col-won .col-title, .col-won .col-total { color:#22c55e; } .col-won .col-count { background:rgba(34,197,94,.12); color:#22c55e; }
+.col-shipped .col-title, .col-shipped .col-total { color:#3b82f6; } .col-shipped .col-count { background:rgba(59,130,246,.12); color:#3b82f6; }
+.col-lost .col-title, .col-lost .col-total { color:var(--muted); } .col-lost .col-count { background:rgba(239,68,68,.08); color:var(--muted); }
 .deal-card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:10px 12px; cursor:pointer; transition:border-color .15s, box-shadow .15s; }
 .deal-card:hover { border-color:var(--orange-border); box-shadow:0 2px 8px rgba(0,0,0,.12); }
 .deal-card.active { border-color:var(--orange); box-shadow:0 0 0 1px var(--orange); }
 .deal-card.accepted { border-color:rgba(34,197,94,.35); background:var(--green-dim); }
 .card-name { font-size:12px; font-weight:700; color:var(--text); line-height:1.3; margin-bottom:4px; }
+.card-rm   { display:inline-block; font-size:9px; font-weight:800; letter-spacing:.08em; padding:1px 5px; background:rgba(239,68,68,.18); color:var(--red); border-radius:3px; margin-left:5px; vertical-align:middle; }
+.card-cust { display:inline-block; font-size:9px; font-weight:800; letter-spacing:.08em; padding:1px 5px; background:rgba(245,158,11,.18); color:var(--amber); border-radius:3px; margin-left:5px; vertical-align:middle; }
 .card-mdl  { font-size:10px; font-family:var(--mono); color:var(--text2); margin-bottom:4px; }
 .card-meta { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
 .card-amount { font-size:11px; font-weight:700; color:var(--orange); }
@@ -143,6 +147,112 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .notif-item-body { font-size:11px; color:var(--text2); line-height:1.4; }
 .notif-item-time { font-size:10px; color:var(--muted); margin-top:4px; }
 .notif-empty { padding:40px 20px; text-align:center; color:var(--muted); font-size:12px; }
+
+/* Dropdown option legibility */
+select option { background: var(--surface); color: var(--text); }
+:root:not(.light) select { color-scheme: dark; }
+:root.light select { color-scheme: light; }
+
+/* Process Order modal — adapt to light theme (hard-dark in dark mode, light in light mode) */
+:root.light #processOrderModal > div {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  box-shadow: 0 20px 60px rgba(0,0,0,.15) !important;
+}
+:root.light #processOrderModal h2 { color: var(--text) !important; }
+:root.light #processOrderModal p { color: var(--muted) !important; }
+:root.light #processOrderModal input[type="text"],
+:root.light #processOrderModal textarea,
+:root.light #processOrderModal select {
+  background: var(--bg) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+  color-scheme: light !important;
+}
+/* Radio/selection labels (Payment Method, Foam, Hinge) — use --text for primary label color */
+:root.light #processOrderModal label { color: var(--text) !important; border-color: var(--border) !important; }
+:root.light #processOrderModal label[style*="rgba(255,255,255,.06)"],
+:root.light #processOrderModal label[style*="rgba(255,255,255,.04)"] { background: var(--bg) !important; }
+/* Section sub-labels and helper text still muted */
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.4"],
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.45"],
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.5"] { color: var(--muted) !important; }
+/* Primary label text should NOT get muted treatment */
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.6"],
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.65"],
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.7"],
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.75"],
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.8"],
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.85"],
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.9"],
+:root.light #processOrderModal [style*="color:#f0ede8"] { color: var(--text) !important; }
+/* Borders in the modal — darken against the light surface */
+:root.light #processOrderModal [style*="border:1px solid rgba(255,255,255,.08"],
+:root.light #processOrderModal [style*="border:1px solid rgba(255,255,255,.12"],
+:root.light #processOrderModal [style*="border:1px solid rgba(255,255,255,.2"],
+:root.light #processOrderModal [style*="border-top:1px solid rgba(255,255,255,.08"] {
+  border-color: var(--border) !important;
+}
+/* Button + panel backgrounds that rely on white-alpha tints (invisible in light mode) */
+:root.light #processOrderModal [style*="background:rgba(255,255,255,.04"],
+:root.light #processOrderModal [style*="background:rgba(255,255,255,.06"],
+:root.light #processOrderModal [style*="background:rgba(255,255,255,.08"] {
+  background: var(--bg) !important;
+}
+
+/* ── Mobile (≤900px: Fold cover, phones, Fold unfolded) ────────────── */
+.mobile-back-btn { display:none; }
+@media (max-width: 900px) {
+  .topbar { padding:0 10px; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  .topbar::-webkit-scrollbar { display:none; }
+  .topbar-logo { font-size:17px; }
+  .topbar-spacer { display:none; }
+  .nav-link { padding:4px 8px; font-size:10px; }
+
+  .main { display:block; height:calc(100vh - 52px); position:relative; overflow:hidden; }
+  .board-wrap { width:100%; height:100%; }
+  .hub-panel {
+    position:absolute; inset:0; width:100%; border-left:none;
+    transform:translateX(100%); transition:transform .22s ease;
+    background:var(--bg); z-index:50;
+  }
+  .main.show-hub .hub-panel { transform:translateX(0); }
+  .main.show-hub .board-wrap { visibility:hidden; }
+
+  .mobile-back-btn {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:6px 10px; margin-bottom:10px;
+    background:var(--surface2); border:1px solid var(--border); border-radius:6px;
+    color:var(--text); font-size:12px; font-weight:700; cursor:pointer; font-family:inherit;
+  }
+  .mobile-back-btn:hover { border-color:var(--orange-border); color:var(--orange); }
+
+  .board-toolbar { padding:8px 10px; gap:6px; }
+  .search-box { min-width:0; max-width:none; flex:1 1 100%; }
+  .rep-select { flex:1; min-width:100px; }
+}
+
+/* ── Narrow phones / Fold cover (≤480px) ───────────────────────────── */
+@media (max-width: 480px) {
+  /* Stack Kanban columns vertically — full width each, scroll the page */
+  .board { display:flex; flex-direction:column; overflow-x:hidden; overflow-y:auto; }
+  .col { border-right:none; border-bottom:1px solid var(--border); min-height:auto; }
+  .col:last-child { border-bottom:none; }
+  /* No nested scroll on mobile — let the page scroll naturally */
+  .col-cards { max-height:none; overflow:visible; }
+  /* Accordion: collapsed columns hide their cards and show a chevron */
+  .col-header { cursor:pointer; user-select:none; }
+  .col-header::after { content:"▾"; font-size:12px; color:var(--muted); margin-left:8px; transition:transform .15s; }
+  .col.collapsed .col-header::after { transform:rotate(-90deg); }
+  .col.collapsed .col-cards { display:none; }
+
+  .hub-header { padding:14px 14px 12px; }
+  .hub-section { padding:0 14px 14px; }
+  .pipeline { margin:12px 14px; }
+  .next-action { margin:0 14px 12px; }
+  .admin-toggle, .admin-inner { padding-left:14px; padding-right:14px; }
+  .admin-grid { grid-template-columns:1fr; }
+}
 </style>
 </head>
 <body>
@@ -226,8 +336,9 @@ const COLUMNS = [
   {key:'shipped',label:'Shipped',        stages:['845719'],                                cls:'col-shipped'},
 
 ];
-const PAY_COLORS = {paid:'#22c55e',po_received:'#f59e0b',not_paid:''};
-const PAY_LABELS = {paid:'✓ Paid',po_received:'PO Rcvd',not_paid:''};
+// Payment type → card badge. PO stays amber (promise); all others green (money in).
+const PAY_TYPE_COLORS = {hs:'#22c55e',cc:'#22c55e',ach:'#22c55e',other:'#22c55e',po:'#f59e0b'};
+const PAY_TYPE_LABELS = {hs:'✓ HS',cc:'✓ CC',ach:'✓ ACH',other:'✓ Other',po:'PO'};
 const PIPE_BG = {
   appointmentscheduled:'#ee6216',qualifiedtobuy:'#ee6216',contractsent:'#f59e0b',
   closedwon:'#22c55e','845719':'#3b82f6',closedlost:'#555'
@@ -284,6 +395,13 @@ function toggleHideUnintegrated() {
 
 function renderBoard() {
   const board=document.getElementById('board');
+  const isMobile = window.matchMedia('(max-width: 480px)').matches;
+  // Preserve which columns are collapsed across re-renders (mobile only).
+  // Default: only the first column ("Sent / Updated") is open.
+  if (isMobile && !window._colCollapseState) {
+    window._colCollapseState = {};
+    COLUMNS.forEach((c, i) => { window._colCollapseState[c.key] = i !== 0; });
+  }
   board.innerHTML='';
   let total=0;
   COLUMNS.forEach(col => {
@@ -297,9 +415,22 @@ function renderBoard() {
         return parseFloat(b.amount||0) - parseFloat(a.amount||0);
       });
     total+=deals.length;
+    const colTotal = deals.reduce((s,d)=>s + (parseFloat(d.amount)||0), 0);
+    const colTotalFmt = '$' + Math.round(colTotal).toLocaleString('en-US');
     const colEl=document.createElement('div');
-    colEl.className=`col ${col.cls}`;
-    colEl.innerHTML=`<div class="col-header"><span class="col-title">${col.label}</span><span class="col-count">${deals.length}</span></div>`;
+    const isCollapsed = isMobile && window._colCollapseState?.[col.key];
+    colEl.className=`col ${col.cls}${isCollapsed?' collapsed':''}`;
+    colEl.innerHTML=`<div class="col-header" data-col-key="${col.key}">
+      <div class="col-header-top"><span class="col-title">${col.label}</span><span class="col-count">${deals.length}</span></div>
+      ${deals.length?`<div class="col-total">${colTotalFmt}</div>`:''}
+    </div>`;
+    // Mobile accordion toggle
+    const headerEl = colEl.querySelector('.col-header');
+    headerEl.addEventListener('click', () => {
+      if (!window.matchMedia('(max-width: 480px)').matches) return;
+      window._colCollapseState[col.key] = !window._colCollapseState[col.key];
+      colEl.classList.toggle('collapsed', window._colCollapseState[col.key]);
+    });
     const cardsEl=document.createElement('div');
     cardsEl.className='col-cards';
     if(!deals.length) {
@@ -309,23 +440,29 @@ function renderBoard() {
         // A deal is "unintegrated" if it has no quotes/orders in our system
         // Only flag Sent/Updated Quote stages — not newer or further-along deals
         const earlyStage = d.stage === 'appointmentscheduled' || d.stage === 'qualifiedtobuy';
-        const isUnintegrated = earlyStage && !d.latestQuote && !d.accepted && d.paymentStatus === 'not_paid';
+        const isUnintegrated = earlyStage && !d.latestQuote && !d.accepted && !d.paymentType;
         if (hideUnintegrated && isUnintegrated) return;
         const card=document.createElement('div');
-        const dealGreen = (d.accepted || d.paymentStatus==='paid' || d.paymentStatus==='po_received') && d.id!==currentDealId;
+        const dealGreen = (d.accepted || !!d.paymentType) && d.id!==currentDealId;
         card.className='deal-card'+(d.id===currentDealId?' active':'')+(dealGreen?' accepted':'')+(isUnintegrated?' unintegrated':'');
         card.onclick=()=>openDeal(d.id);
-        const ps=d.paymentStatus||'not_paid';
-        const payBg=ps==='paid'?'rgba(34,197,94,.12)':'rgba(245,158,11,.1)';
-        const payHtml=ps!=='not_paid'
-          ?`<span class="card-pay" style="color:${PAY_COLORS[ps]};background:${payBg};border:1px solid ${PAY_COLORS[ps]}">${PAY_LABELS[ps]}</span>`
+        const pt=d.paymentType||'';
+        const payBg=pt==='po'?'rgba(245,158,11,.1)':'rgba(34,197,94,.12)';
+        const payHtml=pt
+          ?`<span class="card-pay" style="color:${PAY_TYPE_COLORS[pt]};background:${payBg};border:1px solid ${PAY_TYPE_COLORS[pt]}">${PAY_TYPE_LABELS[pt]||pt.toUpperCase()}</span>`
           :'';
+        const rmChip = d.hasRM
+          ? `<span class="card-rm" title="Roof Mounted Ventilation — 1-month lead time">RM</span>`
+          : '';
+        const custChip = d.hasCustomHole
+          ? `<span class="card-cust" title="Custom holes — 1-month lead time">CUST</span>`
+          : '';
         card.innerHTML=`
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px">
-            <div class="card-name" style="flex:1">${d.name}</div>
+            <div class="card-name" style="flex:1">${d.name}${rmChip}${custChip}</div>
             ${isUnintegrated?`<div class="card-unintegrated-dot" title="HubSpot only — no quotes or orders in this system"></div>`:''}
           </div>
-          ${d.firstMdl?`<div class="card-mdl">${d.firstMdl}</div>`:''}
+          ${(d.quoteLabel||d.firstMdl)?`<div class="card-mdl">${d.quoteLabel||d.firstMdl}</div>`:''}
           <div class="card-meta">
             ${d.amount&&parseFloat(d.amount)>0?`<span class="card-amount">${fmt(d.amount)}</span>`:''}
             ${payHtml}
@@ -343,11 +480,18 @@ function renderBoard() {
   document.getElementById('boardCount').textContent=`${total} deals`;
 }
 
+function closeDealMobile() {
+  document.querySelector('.main')?.classList.remove('show-hub');
+  currentDealId = null;
+  renderBoard();
+}
+
 async function openDeal(dealId) {
   currentDealId=dealId;
   renderBoard();
   _timelineLoaded = false;
   document.getElementById('hubEmpty').style.display='none';
+  document.querySelector('.main')?.classList.add('show-hub');
   const hc=document.getElementById('hubContent');
   hc.style.display='block';
   hc.innerHTML='<div style="padding:48px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>';
@@ -366,12 +510,13 @@ function renderHub(dealId,data) {
   const deal=allDeals.find(d=>d.id===dealId)||{};
   // Store contact for email prefill
   window._hubContact = data.contact || null;
-  const ps=data.paymentStatus||'not_paid';
+  const pt=data.paymentType||'';
+  const paymentConfirmed = !!pt;
   const na={
     appointmentscheduled:{icon:'📋',text:'Quote sent — follow up with the customer'},
     qualifiedtobuy:      {icon:'📋',text:'Quote updated — follow up with customer'},
-    contractsent:        {icon:ps==='paid'||ps==='po_received'?'📦':'💳',
-                          text:ps==='paid'||ps==='po_received'?'Payment confirmed — process the order':'Quote accepted — collect payment (CC or PO)'},
+    contractsent:        {icon:paymentConfirmed?'📦':'💳',
+                          text:paymentConfirmed?'Payment confirmed — process the order':'Quote accepted — collect payment (CC or PO)'},
     closedwon:           {icon:'📦',text:'In production — ship when complete'},
     '845719':            {icon:'✅',text:'Shipped — tracking active on shipping board'},
   }[data.dealStage];
@@ -389,9 +534,9 @@ function renderHub(dealId,data) {
     return `<div class="pipe-step" style="background:${bg};color:${color};border-color:${border}" onclick="doStageOverride('${s.key}','${s.label}')">${s.label}</div>`;
   }).join('');
 
-  const payColor=PAY_COLORS[ps];
-  const payBadge=ps!=='not_paid'
-    ?`<span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;border:1px solid ${payColor};color:${payColor};background:${ps==='paid'?'rgba(34,197,94,.1)':'rgba(245,158,11,.1)'}">${ps==='paid'?'✓ Paid':'PO Received'}</span>`
+  const payColor=PAY_TYPE_COLORS[pt];
+  const payBadge=pt
+    ?`<span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;border:1px solid ${payColor};color:${payColor};background:${pt==='po'?'rgba(245,158,11,.1)':'rgba(34,197,94,.1)'}">${PAY_TYPE_LABELS[pt]||pt.toUpperCase()}</span>`
     :'<span style="font-size:11px;color:var(--muted)">Not Paid</span>';
 
   const quotesHtml=!data.quotes?.length
@@ -399,15 +544,17 @@ function renderHub(dealId,data) {
     :data.quotes.map(q=>{
       const acc=q.accepted;
       const qUrl=q.shareToken?`${location.origin}/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}`:'';
-      const dealPaid = (ps === 'paid');
       const noteBar = acc && (q.acceptedFoam||q.acceptedHinge||q.acceptedNote) ? `
         <div style="font-size:10px;color:var(--green);margin-top:2px;opacity:.8">
           ${[q.acceptedFoam,q.acceptedHinge,q.acceptedNote?'"'+q.acceptedNote+'"':''].filter(Boolean).join(' · ')}
         </div>` : '';
+      const qRmChip   = q.hasRM         ? `<span class="card-rm" title="Roof Mounted Ventilation — 1-month lead">RM</span>`   : '';
+      const qCustChip = q.hasCustomHole ? `<span class="card-cust" title="Custom holes — 1-month lead">CUST</span>` : '';
       return `<div class="row-card ${acc?'row-accepted':''}" style="flex-direction:column;align-items:stretch;gap:6px;cursor:pointer" onclick="loadQuote('${q.quoteNumber}')">
         <!-- Row 1: Quote #, Accepted, Amount, Date, View/Copy/Email, Load -->
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-size:12px;font-weight:700;color:var(--text);font-family:var(--mono)">${q.quoteNumber}</span>
+          ${qRmChip}${qCustChip}
           ${acc?'<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>':''}
           <span class="row-date">${fmtDate(q.date)}</span>
           <div style="display:flex;gap:4px;margin-left:auto" onclick="event.stopPropagation()">
@@ -418,14 +565,11 @@ function renderHub(dealId,data) {
         </div>
         <!-- Row 2: MDL + note on left, Invoice+Paid on right -->
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap" onclick="event.stopPropagation()">
-          ${q.firstMdl?`<span style="font-size:10px;color:var(--text2);font-family:var(--mono);font-weight:600">${q.firstMdl}</span>`:''}
+          ${(q.quoteLabel||q.firstMdl)?`<span style="font-size:10px;color:var(--text2);font-family:var(--mono);font-weight:600">${q.quoteLabel||q.firstMdl}</span>`:''}
           <span style="font-size:12px;font-weight:700;color:${acc?'var(--green)':'var(--text)'}">${fmt(q.total)}</span>
           ${noteBar}
           <div style="margin-left:auto;display:flex;gap:5px">
             <button onclick="createInvoiceForDeal(event,'${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:rgba(238,98,22,.1);font-family:inherit;color:var(--orange);border-color:var(--orange-border);font-weight:700;font-size:10px">+ Invoice</button>
-            ${dealPaid && (window._lastHubData?._paidQuoteNumber === q.quoteNumber || !window._lastHubData?._paidQuoteNumber)
-              ? `<span class="row-link" style="background:rgba(34,197,94,.12);color:var(--green);border-color:rgba(34,197,94,.3);font-weight:700;font-size:10px;cursor:default">✓ Paid</span>`
-              : `<button onclick="showPaymentPicker('${q.quoteNumber}',event)" class="row-link" style="cursor:pointer;background:none;font-family:inherit;color:var(--amber);border-color:rgba(245,158,11,.3);font-size:10px">$ Paid</button>`}
             <button onclick="processOrderFromHub(event,'${q.quoteNumber}')" class="row-link" style="cursor:pointer;background:rgba(59,130,246,.1);font-family:inherit;color:#3b82f6;border-color:rgba(59,130,246,.3);font-weight:700;font-size:10px">Process →</button>
           </div>
         </div>
@@ -482,6 +626,7 @@ function renderHub(dealId,data) {
 
   document.getElementById('hubContent').innerHTML=`
     <div class="hub-header">
+      <button class="mobile-back-btn" onclick="closeDealMobile()">&larr; Back to deals</button>
       <!-- Row 1: Deal name + meta -->
       <div class="hub-name">${deal.name||'Deal'}</div>
       <div class="hub-meta">
@@ -528,16 +673,24 @@ function renderHub(dealId,data) {
     <div class="admin-inner" id="adminInner">
       <div class="admin-grid">
         <div>
-          <label class="admin-label">Payment Status</label>
-          <select class="admin-select" onchange="doPaymentStatus(this.value)">
-            <option value="not_paid" ${ps==='not_paid'?'selected':''}>Not Paid</option>
-            <option value="po_received" ${ps==='po_received'?'selected':''}>PO Received</option>
-            <option value="paid" ${ps==='paid'?'selected':''}>Paid</option>
-          </select>
-        </div>
-        <div>
           <label class="admin-label">Stage Override</label>
           <select class="admin-select" id="adminStageSelect" onchange="doStageOverride(this.value,this.options[this.selectedIndex].text)">${stageOpts}</select>
+        </div>
+        <div>
+          <label class="admin-label">Payment Method</label>
+          <select class="admin-select" id="adminPayTypeSelect" onchange="onAdminPayTypeChange(this.value)">
+            <option value="" ${!data.paymentType?'selected':''}>— Not set —</option>
+            <option value="hs"    ${data.paymentType==='hs'?'selected':''}>HubSpot Invoice</option>
+            <option value="cc"    ${data.paymentType==='cc'?'selected':''}>Credit Card</option>
+            <option value="ach"   ${data.paymentType==='ach'?'selected':''}>ACH / Bank</option>
+            <option value="po"    ${data.paymentType==='po'?'selected':''}>PO</option>
+            <option value="other" ${data.paymentType==='other'?'selected':''}>Other</option>
+          </select>
+          <div id="adminPoRow" style="display:${data.paymentType==='po'?'block':'none'};margin-top:8px">
+            <label class="admin-label">PO Number</label>
+            <input type="text" id="adminPoInput" value="${(data.po||'').replace(/"/g,'&quot;')}" placeholder="PO #" style="width:100%;padding:7px 9px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;box-sizing:border-box">
+            <button onclick="doSavePaymentType()" style="width:100%;margin-top:6px;padding:7px;background:rgba(238,98,22,.12);border:1px solid rgba(238,98,22,.3);border-radius:6px;color:#ee6216;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Save PO</button>
+          </div>
         </div>
       </div>
       <div style="margin-top:10px">
@@ -776,68 +929,10 @@ function closeDhInvoiceModal() {
   window._pendingInvoice = null;
 }
 
-function processOrderFromHub(event, quoteNumber) {
+async function processOrderFromHub(event, quoteNumber) {
   event.stopPropagation();
   if (!currentDealId) return;
-  window.location.href = `/quotes?loadQuote=${encodeURIComponent(quoteNumber)}&fromHub=${currentDealId}`;
-}
-
-function showPaymentPicker(quoteNumber, event) {
-  event.stopPropagation();
-  // Remove any existing picker
-  document.querySelectorAll('.payment-picker').forEach(el => el.remove());
-  const picker = document.createElement('div');
-  picker.className = 'payment-picker';
-  picker.style.cssText = 'position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:1000;min-width:150px;overflow:hidden';
-  const options = [
-    { value:'not_paid',   label:'Not Paid',    color:'var(--muted)' },
-    { value:'po_received',label:'PO Received', color:'var(--amber)' },
-    { value:'paid',       label:'✓ Paid',       color:'var(--green)' },
-  ];
-  options.forEach(opt => {
-    const btn = document.createElement('button');
-    btn.style.cssText = `display:block;width:100%;padding:9px 16px;background:none;border:none;text-align:left;font-size:12px;font-weight:600;color:${opt.color};cursor:pointer;font-family:inherit;border-bottom:1px solid var(--border)`;
-    btn.textContent = opt.label;
-    btn.onmouseenter = () => btn.style.background = 'var(--surface2)';
-    btn.onmouseleave = () => btn.style.background = 'none';
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      picker.remove();
-      setPaymentStatus(quoteNumber, opt.value);
-    };
-    picker.appendChild(btn);
-  });
-  // Remove last border
-  picker.lastChild.style.borderBottom = 'none';
-  // Position near button
-  const rect = event.target.getBoundingClientRect();
-  picker.style.left = rect.left + 'px';
-  picker.style.top  = (rect.bottom + 4) + 'px';
-  document.body.appendChild(picker);
-  // Close on outside click
-  setTimeout(() => document.addEventListener('click', () => picker.remove(), { once: true }), 0);
-}
-
-async function setPaymentStatus(quoteNumber, status) {
-  if (!currentDealId) return;
-  try {
-    const res = await fetch(`/api/deals/${currentDealId}/payment-status`, {
-      method: 'PATCH', headers: {'Content-Type':'application/json'}, credentials: 'include',
-      body: JSON.stringify({ status })
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
-    if (status === 'paid' && window._lastHubData) window._lastHubData._paidQuoteNumber = quoteNumber;
-    const d = allDeals.find(d => d.id === currentDealId);
-    if (d) { d.paymentStatus = status; renderBoard(); }
-    const labels = { paid:'✓ Paid', po_received:'PO Received', not_paid:'Not Paid' };
-    showToast(`${labels[status]} set`, 'success');
-    setTimeout(() => openDeal(currentDealId), 600);
-  } catch(e) { showToast('Error: '+e.message, 'error'); }
-}
-
-async function markQuotePaid(quoteNumber) {
-  showPaymentPicker(quoteNumber, { target: document.body, stopPropagation:()=>{} });
+  await openProcessOrderModal(quoteNumber);
 }
 
 function toggleAdmin() {
@@ -850,19 +945,6 @@ function toggleAdmin() {
 function setAdminStatus(msg,color) {
   const el=document.getElementById('adminStatus');
   if(el){el.textContent=msg;el.style.color=color||'var(--muted)';}
-}
-async function doPaymentStatus(status) {
-  if(!currentDealId) return;
-  setAdminStatus('Saving…');
-  try {
-    const res=await fetch(`/api/deals/${currentDealId}/payment-status`,{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({status})});
-    const data=await res.json();
-    if(!data.success) throw new Error(data.error);
-    setAdminStatus('✓ Saved','var(--green)');
-    const d=allDeals.find(d=>d.id===currentDealId);
-    if(d){d.paymentStatus=status;renderBoard();}
-    setTimeout(()=>openDeal(currentDealId),600);
-  } catch(e){setAdminStatus('Error: '+e.message,'var(--red)');}
 }
 async function doDeleteDeal() {
   if (!currentDealId) return;
@@ -888,10 +970,51 @@ This cannot be undone.`)) return;
     currentDealId = null;
     document.getElementById('hubEmpty').style.display = 'flex';
     document.getElementById('hubContent').style.display = 'none';
+    document.querySelector('.main')?.classList.remove('show-hub');
     renderBoard();
   } catch(e) {
     setAdminStatus('Error: ' + e.message, 'var(--red)');
     showToast('Delete failed: ' + e.message, 'error');
+  }
+}
+
+// Admin payment-type override — shows/hides PO input, auto-saves for non-PO choices,
+// waits for explicit save on PO so PO number can be entered first.
+function onAdminPayTypeChange(value) {
+  const poRow = document.getElementById('adminPoRow');
+  if (poRow) poRow.style.display = value === 'po' ? 'block' : 'none';
+  if (value === 'po') return; // wait for "Save PO" button
+  doSavePaymentType();
+}
+
+async function doSavePaymentType() {
+  if (!currentDealId) return;
+  const paymentType = document.getElementById('adminPayTypeSelect').value;
+  const poNumber    = paymentType === 'po'
+    ? (document.getElementById('adminPoInput')?.value || '').trim()
+    : '';
+  if (paymentType === 'po' && !poNumber) {
+    setAdminStatus('PO number required', 'var(--red)');
+    return;
+  }
+  setAdminStatus('Saving…');
+  try {
+    const res = await fetch(`/api/deals/${currentDealId}/payment-type`, {
+      method: 'PATCH',
+      headers: { 'Content-Type':'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ paymentType, poNumber })
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || 'Request failed');
+    setAdminStatus('✓ Payment method updated', 'var(--green)');
+    // Reflect in cached deal + re-render board so the badge updates
+    const d = allDeals.find(x => x.id === currentDealId);
+    if (d) { d.paymentType = paymentType; d.po = poNumber; renderBoard(); }
+    // Refresh hub to re-render invoice-side + payment badge
+    setTimeout(() => openDeal(currentDealId), 500);
+  } catch(e) {
+    setAdminStatus('Error: '+e.message, 'var(--red)');
   }
 }
 
@@ -1503,6 +1626,322 @@ async function confirmMergeLegacy() {
     btn.textContent = '✓ Confirm Merge';
   }
 }
+
+// ── Process Order (from Deal Hub) ─────────────────────────────────
+const PO_AP_COLORS = ['Lemon','Vanilla','Birch','White','Green Apple','Fern','Waterfall','Asteroid','Orchid','Pumpkin','Geranium','Lapis','Onyx','Graphite','Coffee Bean','Quarry Blue'];
+const PO_AP_HEX    = {Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteroid:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'};
+
+async function openProcessOrderModal(quoteNumber) {
+  if (!currentDealId) { showToast('No deal selected','error'); return; }
+  const hub = window._lastHubData || {};
+  // Fetch quote snapshot (line items, freight, tax, install, customer, notes, accepted fields)
+  let snap;
+  try {
+    const res = await fetch(`/api/quote-snapshot/${encodeURIComponent(quoteNumber)}`, { credentials:'include' });
+    snap = await res.json();
+    if (snap.error) throw new Error(snap.error);
+  } catch(e) { showToast('Failed to load quote: '+e.message,'error'); return; }
+
+  // Prefill foam / hinge / ap (rep/accepted values take priority over empty)
+  window._procOrderSnapshot = snap;
+  window._procOrderQuoteNumber = quoteNumber;
+  const foam  = snap.acceptedFoam    || '';
+  const hinge = snap.acceptedHinge   || '';
+  const apCol = snap.acceptedApColor || '';
+
+  document.querySelectorAll('input[name="procFoam"]').forEach(i => { i.checked = (i.value === foam); });
+  document.querySelectorAll('input[name="procHinge"]').forEach(i => { i.checked = (i.value === hinge); });
+  highlightProcSel('procFoam');
+  highlightProcSel('procHinge');
+
+  // Show AP color row only if any line item is an AP item
+  const hasAP = (snap.lineItems||[]).some(i => i?.name && /^AP\s/i.test(i.name));
+  document.getElementById('procApColorRow').style.display = hasAP ? 'block' : 'none';
+  const apSel = document.getElementById('procApColor');
+  if (apSel) { apSel.value = apCol || ''; updateProcApSwatch(); }
+
+  // Order Summary — items, totals, ship address
+  renderProcOrderSummary(snap);
+
+  // Carry over "Notes & Order Specs" → Production Notes
+  document.getElementById('procProductionNotes').value = snap.notes || '';
+  document.getElementById('procDeliveryNotes').value   = '';
+
+  // Pre-select payment method: existing deal payment_type, else HS if any invoice paid, else PO if po_ set
+  let preselect = hub.paymentType || '';
+  if (!preselect) {
+    if ((hub.invoices||[]).some(inv => inv.status === 'paid')) preselect = 'hs';
+    else if (hub.po) preselect = 'po';
+  }
+  selectPaymentType(preselect || '');
+
+  // Prefill PO number from existing deal
+  document.getElementById('procPoNumber').value = hub.po || '';
+
+  document.getElementById('processOrderModal').style.display = 'flex';
+}
+
+function closeProcessOrderModal() {
+  document.getElementById('processOrderModal').style.display = 'none';
+  window._procOrderSnapshot = null;
+  window._procOrderQuoteNumber = null;
+}
+
+function selectPaymentType(type) {
+  document.querySelectorAll('input[name="procPayType"]').forEach(i => {
+    i.checked = (i.value === type);
+    const label = i.closest('.proc-pay-label');
+    if (label) {
+      const on = i.checked;
+      label.style.borderColor = on ? '#ee6216' : 'rgba(255,255,255,.12)';
+      label.style.background  = on ? 'rgba(238,98,22,.15)' : 'transparent';
+    }
+  });
+  document.getElementById('procPoNumberRow').style.display = (type === 'po') ? 'block' : 'none';
+}
+
+function highlightProcSel(name) {
+  document.querySelectorAll(`input[name="${name}"]`).forEach(inp => {
+    const label = inp.closest('.proc-sel-label');
+    if (!label) return;
+    const on = inp.checked;
+    label.style.borderColor = on ? '#ee6216' : 'rgba(255,255,255,.12)';
+    label.style.background  = on ? 'rgba(238,98,22,.15)' : 'transparent';
+  });
+}
+
+function updateProcApSwatch() {
+  const val = document.getElementById('procApColor')?.value || '';
+  const preview = document.getElementById('procApSwatch');
+  if (!preview) return;
+  if (val && val !== 'Unknown' && PO_AP_HEX[val]) {
+    preview.innerHTML = `<span style="display:inline-block;width:18px;height:18px;border-radius:50%;background:${PO_AP_HEX[val]};border:1px solid rgba(255,255,255,.2)"></span><span style="font-size:12px;color:rgba(255,255,255,.6)">${val}</span>`;
+  } else {
+    preview.innerHTML = '';
+  }
+}
+
+function renderProcOrderSummary(snap) {
+  const items    = snap.lineItems || [];
+  const freight  = snap.freight   || null;
+  const tax      = snap.tax       || null;
+  const install  = snap.install   || null;
+  const discount = snap.discount  || { type:'pct', value:0 };
+  const customer = snap.customer  || {};
+
+  const money = n => '$' + (parseFloat(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  // Items list — name + qty only (no description)
+  const itemsHtml = items.length
+    ? items.map(i => `<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:rgba(255,255,255,.85)">${(i.name||'').replace(/</g,'&lt;')}</span><span style="color:rgba(255,255,255,.45);font-family:var(--mono,monospace);flex-shrink:0">×${parseInt(i.qty)||1}</span></div>`).join('')
+    : '<div style="color:rgba(255,255,255,.4);font-style:italic">No items</div>';
+  document.getElementById('procSummaryItems').innerHTML = itemsHtml;
+
+  // Totals — mirror the server-side calc in /api/process-order
+  const subtotal = items.reduce((s,i) => s + (parseFloat(i.price)||0) * (parseInt(i.qty)||1), 0);
+  const discAmt = discount && discount.value > 0
+    ? (discount.type === 'pct' ? subtotal * discount.value / 100 : discount.value)
+    : 0;
+  const installMode = install?.mode || 'none';
+  const installAmt  = install?.amount ? parseFloat(install.amount) : 0;
+  let freightTotal = 0, installLine = 0;
+  if (installMode === 'delivery_install' && installAmt > 0) {
+    installLine = installAmt; // rolled into single "Delivery & Installation" line
+  } else {
+    freightTotal = freight ? (parseFloat(freight.total)||0) : 0;
+    if (installMode === 'install_only' && installAmt > 0) installLine = installAmt;
+  }
+  const taxTotal = tax ? (parseFloat(tax.tax)||0) : 0;
+  const total = subtotal - discAmt + freightTotal + installLine + taxTotal;
+
+  const row = (label, val, emphasis) => `<div style="display:flex;justify-content:space-between;${emphasis?'font-weight:700;color:rgba(255,255,255,.95);padding-top:4px;border-top:1px solid rgba(255,255,255,.08);margin-top:2px':''}"><span${emphasis?'':' style="color:rgba(255,255,255,.55)"'}>${label}</span><span${emphasis?' style="font-family:var(--mono,monospace)"':' style="font-family:var(--mono,monospace);color:rgba(255,255,255,.75)"'}>${val}</span></div>`;
+  const totalsHtml = [
+    row('Subtotal', money(subtotal)),
+    discAmt > 0  ? row('Discount', '−' + money(discAmt)) : '',
+    (installMode === 'delivery_install' && installLine > 0) ? row('Delivery & Installation', money(installLine)) : '',
+    freightTotal > 0 ? row('Freight', money(freightTotal)) : '',
+    (installMode === 'install_only' && installLine > 0) ? row('Installation', money(installLine)) : '',
+    taxTotal > 0 ? row('Sales Tax', money(taxTotal)) : '',
+    row('Total', money(total), true),
+  ].filter(Boolean).join('');
+  document.getElementById('procSummaryTotals').innerHTML = totalsHtml;
+
+  // Ship to
+  const c = customer;
+  const name = [c.firstName, c.lastName].filter(Boolean).join(' ').trim();
+  const cityStateZip = [c.city, [c.state, c.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  const lines = [
+    name || c.company || '',
+    c.company && name ? c.company : '',
+    c.address || '',
+    cityStateZip,
+  ].filter(Boolean);
+  const shipHtml = lines.length
+    ? `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.45);margin-bottom:4px">Ship To</div>${lines.map(l => `<div>${(l||'').replace(/</g,'&lt;')}</div>`).join('')}`
+    : '';
+  document.getElementById('procSummaryShip').innerHTML = shipHtml;
+}
+
+async function confirmProcessOrderFromHub() {
+  const snap = window._procOrderSnapshot;
+  const quoteNumber = window._procOrderQuoteNumber;
+  const dealId = currentDealId;
+  if (!snap || !quoteNumber || !dealId) { showToast('Missing quote data','error'); return; }
+
+  const foam    = document.querySelector('input[name="procFoam"]:checked')?.value  || '';
+  const hinge   = document.querySelector('input[name="procHinge"]:checked')?.value || '';
+  const apColor = document.getElementById('procApColor')?.value || '';
+  const hasAP = (snap.lineItems||[]).some(i => i?.name && /^AP\s/i.test(i?.name));
+  if (hasAP && !apColor) { showToast('Please select an AP color (or Unknown)','error'); return; }
+
+  const productionNotes = document.getElementById('procProductionNotes').value.trim();
+  const deliveryNotes   = document.getElementById('procDeliveryNotes').value.trim();
+  const paymentType = document.querySelector('input[name="procPayType"]:checked')?.value || '';
+  if (!paymentType) { showToast('Please select a payment method','error'); return; }
+  const poNumber = paymentType === 'po' ? document.getElementById('procPoNumber').value.trim() : '';
+  if (paymentType === 'po' && !poNumber) { showToast('Please enter the PO number','error'); return; }
+
+  const btn = document.getElementById('procOrderConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Processing…';
+
+  try {
+    const res = await fetch('/api/process-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        dealId, quoteNumber,
+        lineItems: snap.lineItems || [],
+        freight:   snap.freight   || null,
+        tax:       snap.tax       || null,
+        install:   snap.install   || null,
+        discount:  snap.discount  || { type:'pct', value:0 },
+        customer:  snap.customer  || {},
+        foamColor: foam,
+        hingePreference: hinge,
+        apColor, productionNotes, deliveryNotes,
+        ownerId:  snap.ownerId || null,
+        dealName: snap.dealName || (window._lastHubData?.quotes?.[0]?.dealName || ''),
+        paymentType, poNumber,
+      })
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || 'Request failed');
+
+    // Build + open the shipping-notification mailto (matches quote-builder's
+    // confirmProcessOrder behavior so both paths send the internal notify email)
+    try {
+      openShippingNotifyEmail({
+        quoteNumber,
+        dealName: snap.dealName || (window._lastHubData?.quotes?.[0]?.dealName || quoteNumber),
+        lineItems: snap.lineItems || [],
+        freight: snap.freight || null,
+        tax: snap.tax || null,
+        install: snap.install || null,
+        discount: snap.discount || { type:'pct', value:0 },
+        customer: snap.customer || {},
+        foamColor: foam,
+        hingePreference: hinge,
+        apColor,
+        productionNotes,
+        deliveryNotes,
+        paymentType, poNumber,
+        orderUrl: data.orderUrl,
+        hasRM: !!data.hasRM,
+        hasCustomHole: !!data.hasCustomHole,
+      });
+    } catch(err) { console.error('[deal-hub process-order] mailto failed:', err); }
+
+    showToast('Order processed — email draft opened','success');
+    closeProcessOrderModal();
+    // Reload hub to show new state
+    openDeal(dealId);
+    // Refresh board cards so payment tag updates
+    loadDeals();
+  } catch(e) {
+    showToast('Error: '+e.message,'error');
+    btn.disabled = false;
+    btn.textContent = 'Send Order →';
+  }
+}
+
+// Build + open the shipping/accounting notification email for a processed order.
+// Kept in sync with quote-builder's confirmProcessOrder email format.
+function openShippingNotifyEmail(ctx) {
+  const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+  const c = ctx.customer || {};
+  const items = ctx.lineItems || [];
+  const sub = items.reduce((s,i) => s + (parseFloat(i.price)||0) * (parseInt(i.qty)||1), 0);
+  const discVal = parseFloat(ctx.discount?.value) || 0;
+  const discAmt = discVal > 0 ? (ctx.discount?.type === 'pct' ? sub * discVal / 100 : discVal) : 0;
+  const installMode = ctx.install?.mode || 'none';
+  const installAmt  = ctx.install?.amount ? parseFloat(ctx.install.amount) : 0;
+  const freightAmt  = (installMode === 'delivery_install' && installAmt > 0) ? 0 : (ctx.freight ? parseFloat(ctx.freight.total||0) : 0);
+  const installLine = installAmt > 0 ? installAmt : 0;
+  const taxAmt      = ctx.tax ? parseFloat(ctx.tax.tax||0) : 0;
+  const total       = sub - discAmt + freightAmt + installLine + taxAmt;
+  const totalWeight = items.reduce((s,i) => s + ((parseFloat(i.weight)||0) * (parseInt(i.qty)||1)), 0);
+
+  const customerName = [c.firstName, c.lastName].filter(Boolean).join(' ');
+  const shipAddr = [c.address, c.city, c.state, c.zip].filter(Boolean).join(', ');
+  const lineList = items.map(i =>
+    `  - ${i.name} (x${i.qty}) — ${fmt((parseFloat(i.price)||0) * (parseInt(i.qty)||1))}${i.weight ? ' — ' + (parseFloat(i.weight)*parseInt(i.qty)) + ' lbs' : ''}`
+  ).join('\n');
+
+  const hasRM         = !!ctx.hasRM         || items.some(i => /^RM\s/i.test(i?.name||''));
+  const hasCustomHole = !!ctx.hasCustomHole || items.some(i => /^CUST HOLE\b/i.test(i?.name||''));
+  const garyFlag      = hasRM || hasCustomHole;
+  const dealNameVal = ctx.dealName || ctx.quoteNumber;
+  const emailSubject = `New Order: ${dealNameVal} — ${ctx.quoteNumber}`;
+  const emailBody = [
+    `NEW ORDER — ${ctx.quoteNumber}`,
+    `Deal: ${dealNameVal}`,
+    garyFlag ? `` : null,
+    hasRM         ? `Gary, this order includes Roof Mounted Ventilation.` : null,
+    hasCustomHole ? `Gary, this order includes Custom Holes.`              : null,
+    ``,
+    `CUSTOMER`,
+    customerName ? `Name: ${customerName}` : null,
+    c.company    ? `Company: ${c.company}` : null,
+    shipAddr     ? `Ship To: ${shipAddr}`  : null,
+    ``,
+    `ORDER SPECIFICATIONS`,
+    `Foam Color: ${ctx.foamColor || '(unknown)'}`,
+    `Door Hinge: ${ctx.hingePreference || '(unknown)'}`,
+    ctx.apColor ? `AP Color: ${ctx.apColor}` : null,
+    ctx.productionNotes ? `Production Notes: ${ctx.productionNotes}` : null,
+    ctx.deliveryNotes   ? `Delivery Notes: ${ctx.deliveryNotes}`     : null,
+    ``,
+    `LINE ITEMS`,
+    lineList,
+    ``,
+    `TOTALS`,
+    `Subtotal: ${fmt(sub)}`,
+    discAmt > 0    ? `Discount: -${fmt(discAmt)}`   : null,
+    freightAmt > 0 ? `Freight: ${fmt(freightAmt)}`  : null,
+    installLine > 0 ? (installMode === 'delivery_install' ? `Delivery & Installation: ${fmt(installLine)}` : `Installation: ${fmt(installLine)}`) : null,
+    taxAmt > 0     ? `Sales Tax: ${fmt(taxAmt)}`    : null,
+    `Order Total: ${fmt(total)}`,
+    totalWeight > 0 ? `Total Weight: ${totalWeight.toLocaleString()} lbs` : null,
+    ``,
+    `ORDER PAGE`,
+    ctx.orderUrl,
+  ].filter(l => l !== null).join('\n');
+
+  const ccList = ['accounting@whisperroom.com', 'bentonwhite@whisperroom.com'];
+  if (garyFlag) ccList.push('gamos@whisperroom.com');
+  const mailto = `mailto:shipping@whisperroom.com?cc=${ccList.join(';')}&subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+
+  console.log('[deal-hub process-order] mailto prepared, length=', mailto.length, 'opening...');
+  const a = document.createElement('a');
+  a.href = mailto;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => document.body.removeChild(a), 100);
+  console.log('[deal-hub process-order] mailto click dispatched');
+}
 </script>
 
 <!-- ── Deal Hub Invoice Modal ────────────────────────────────────── -->
@@ -1554,6 +1993,106 @@ async function confirmMergeLegacy() {
         Create Invoice
       </button>
       <button onclick="closeDhInvoiceModal()" style="padding:13px 18px;background:var(--surface2,#222);color:var(--muted,#666);border:1px solid var(--border,#2e2e2e);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Process Order Modal ──────────────────────────────────────── -->
+<div id="processOrderModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2000;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#1e1e1e;border-radius:14px;padding:28px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);max-height:90vh;overflow-y:auto">
+    <h2 style="font-size:16px;font-weight:800;color:#f0ede8;margin-bottom:6px">📦 Process Order</h2>
+    <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:16px">Advances deal to Closed Won, records payment, and notifies shipping &amp; accounting.</p>
+
+    <!-- Order Summary -->
+    <div id="procOrderSummary" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px 14px;margin-bottom:20px;font-size:12px;color:rgba(255,255,255,.75)">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.45);margin-bottom:8px">Order Summary</div>
+      <div id="procSummaryItems" style="margin-bottom:10px;line-height:1.65"></div>
+      <div id="procSummaryTotals" style="border-top:1px solid rgba(255,255,255,.08);padding-top:8px;display:flex;flex-direction:column;gap:3px"></div>
+      <div id="procSummaryShip" style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:rgba(255,255,255,.55);line-height:1.45"></div>
+    </div>
+
+    <!-- Payment Method -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Payment Method</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <label class="proc-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procPayType" value="hs" style="accent-color:#ee6216" onchange="selectPaymentType('hs')"> HubSpot Invoice</label>
+        <label class="proc-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procPayType" value="cc" style="accent-color:#ee6216" onchange="selectPaymentType('cc')"> Credit Card</label>
+        <label class="proc-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procPayType" value="ach" style="accent-color:#ee6216" onchange="selectPaymentType('ach')"> ACH / Bank Deposit</label>
+        <label class="proc-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procPayType" value="po" style="accent-color:#ee6216" onchange="selectPaymentType('po')"> PO</label>
+        <label class="proc-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8);grid-column:span 2"><input type="radio" name="procPayType" value="other" style="accent-color:#ee6216" onchange="selectPaymentType('other')"> Other</label>
+      </div>
+      <div id="procPoNumberRow" style="display:none;margin-top:10px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:6px">PO Number</div>
+        <input id="procPoNumber" type="text" placeholder="Enter PO #" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;box-sizing:border-box">
+      </div>
+    </div>
+
+    <!-- Foam Color -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Foam Color</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <label class="proc-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procFoam" value="Gray" style="accent-color:#ee6216" onchange="highlightProcSel('procFoam')"> Gray</label>
+        <label class="proc-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procFoam" value="Blue" style="accent-color:#ee6216" onchange="highlightProcSel('procFoam')"> Blue</label>
+        <label class="proc-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procFoam" value="Purple" style="accent-color:#ee6216" onchange="highlightProcSel('procFoam')"> Purple</label>
+        <label class="proc-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procFoam" value="Orange" style="accent-color:#ee6216" onchange="highlightProcSel('procFoam')"> Orange</label>
+        <label class="proc-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procFoam" value="Burgundy" style="accent-color:#ee6216" onchange="highlightProcSel('procFoam')"> Burgundy</label>
+      </div>
+    </div>
+
+    <!-- Door Hinge -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Door Hinge</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <label class="proc-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procHinge" value="Left Hand" style="accent-color:#ee6216" onchange="highlightProcSel('procHinge')"> Left Hand</label>
+        <label class="proc-sel-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procHinge" value="Right Hand" style="accent-color:#ee6216" onchange="highlightProcSel('procHinge')"> Right Hand</label>
+      </div>
+    </div>
+
+    <!-- AP Color (hidden unless order has an AP item) -->
+    <div id="procApColorRow" style="display:none;margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">AP Color <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Acoustic Package)</span></div>
+      <select id="procApColor" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer" onchange="updateProcApSwatch()">
+        <option value="">— Select color —</option>
+        <option value="Unknown">Unknown (follow up needed)</option>
+        <option value="Lemon">Lemon</option>
+        <option value="Vanilla">Vanilla</option>
+        <option value="Birch">Birch</option>
+        <option value="White">White</option>
+        <option value="Green Apple">Green Apple</option>
+        <option value="Fern">Fern</option>
+        <option value="Waterfall">Waterfall</option>
+        <option value="Asteroid">Asteroid</option>
+        <option value="Orchid">Orchid</option>
+        <option value="Pumpkin">Pumpkin</option>
+        <option value="Geranium">Geranium</option>
+        <option value="Lapis">Lapis</option>
+        <option value="Onyx">Onyx</option>
+        <option value="Graphite">Graphite</option>
+        <option value="Coffee Bean">Coffee Bean</option>
+        <option value="Quarry Blue">Quarry Blue</option>
+      </select>
+      <div id="procApSwatch" style="margin-top:8px;display:flex;align-items:center;gap:8px;min-height:20px"></div>
+    </div>
+
+    <!-- Production Notes (pre-filled from Notes & Order Specs) -->
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Production Notes</div>
+      <textarea id="procProductionNotes" rows="3" placeholder="Internal notes for production team..." style="width:100%;padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;color:#f0ede8;box-sizing:border-box"></textarea>
+    </div>
+
+    <!-- Delivery Notes -->
+    <div style="margin-bottom:24px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Special Delivery Notes</div>
+      <textarea id="procDeliveryNotes" rows="3" placeholder="Liftgate required, residential delivery, call before delivery, etc..." style="width:100%;padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;color:#f0ede8;box-sizing:border-box"></textarea>
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button id="procOrderConfirmBtn" onclick="confirmProcessOrderFromHub()" style="flex:1;padding:13px;background:#ee6216;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+        Send Order →
+      </button>
+      <button onclick="closeProcessOrderModal()" style="padding:13px 18px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
         Cancel
       </button>
     </div>

@@ -967,7 +967,7 @@ const server = http.createServer(async (req, res) => {
         }, {
           filterGroups: [{ filters: idFilters }],
           properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
-                       'closedate','payment_status','tracking_number','carrier__c'],
+                       'closedate','payment_status','payment_type','po_','tracking_number','carrier__c'],
           limit: 50,
         });
         hsDeals = idRes.body?.results || [];
@@ -981,7 +981,7 @@ const server = http.createServer(async (req, res) => {
         }, {
           filterGroups: filters.length ? [{ filters }] : [],
           properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
-                       'closedate','payment_status','tracking_number','carrier__c'],
+                       'closedate','payment_status','payment_type','po_','tracking_number','carrier__c'],
           sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
           query: q,
           limit: 50,
@@ -1020,7 +1020,7 @@ const server = http.createServer(async (req, res) => {
               }, {
                 inputs: newDealIds.slice(0, 30).map(id => ({ id })),
                 properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
-                             'closedate','payment_status','tracking_number','carrier__c'],
+                             'closedate','payment_status','payment_type','po_','tracking_number','carrier__c'],
               });
               (batchRes.body?.results || []).forEach(d => {
                 if (!seen.has(d.id)) { seen.add(d.id); hsDeals.push(d); }
@@ -1033,7 +1033,7 @@ const server = http.createServer(async (req, res) => {
         const searchBody = {
           filterGroups: filters.length ? [{ filters }] : [],
           properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
-                       'closedate','payment_status','tracking_number','carrier__c'],
+                       'closedate','payment_status','payment_type','po_','tracking_number','carrier__c'],
           sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
           limit,
         };
@@ -1055,6 +1055,8 @@ const server = http.createServer(async (req, res) => {
         ownerId:       d.properties?.hubspot_owner_id || '',
         modified:      d.properties?.hs_lastmodifieddate || '',
         paymentStatus: d.properties?.payment_status || 'not_paid',
+        paymentType:   (d.properties?.payment_type || '').toLowerCase(),
+        po:            d.properties?.po_            || '',
         tracking:      d.properties?.tracking_number || '',
         carrier:       d.properties?.carrier__c || '',
       }));
@@ -1070,6 +1072,7 @@ const server = http.createServer(async (req, res) => {
              q.created_at,
              (q.json_snapshot->>'accepted')::text        as accepted,
              (q.json_snapshot->>'acceptedAt')::text      as accepted_at,
+             q.json_snapshot->>'quoteLabel'              as quote_label,
              q.json_snapshot->'lineItems'                as line_items,
              o.created_at                               as order_at
            FROM quotes q
@@ -1083,17 +1086,24 @@ const server = http.createServer(async (req, res) => {
         dbRes.rows.forEach(r => {
           if (!byDeal[r.deal_id]) {
             let firstMdl = '';
+            let hasRM = false, hasCustomHole = false;
             try {
               const items = r.line_items || [];
               // Strict MDL-only match — ignore accessories with 4-digit codes
               const mdlItem = items.find(i => /^MDL\b/.test(i?.name||''));
               if (mdlItem) firstMdl = (mdlItem.name||'').split(' ').slice(0,3).join(' ');
+              // Production manager flags: both have 1-month lead time
+              hasRM         = items.some(i => /^RM\s/i.test(i?.name||''));
+              hasCustomHole = items.some(i => /^CUST HOLE\b/i.test(i?.name||''));
             } catch(e) {}
             byDeal[r.deal_id] = {
               latestQuote: r.quote_number,
               total: r.total,
               accepted: r.accepted === 'true',
               firstMdl,
+              hasRM,
+              hasCustomHole,
+              quoteLabel: r.quote_label || '',
               lastQuoteAt: r.created_at || null,
               lastActivityAt: r.created_at || null,
             };
@@ -1103,6 +1113,14 @@ const server = http.createServer(async (req, res) => {
             const ts = r.created_at ? new Date(r.created_at).getTime() : 0;
             const currentBest = existing.lastActivityAt ? new Date(existing.lastActivityAt).getTime() : 0;
             if (ts > currentBest) existing.lastActivityAt = r.created_at;
+            // Flag RM / Custom Hole if any quote on this deal has them
+            if (!existing.hasRM || !existing.hasCustomHole) {
+              try {
+                const items = r.line_items || [];
+                if (!existing.hasRM         && items.some(i => /^RM\s/i.test(i?.name||'')))        existing.hasRM = true;
+                if (!existing.hasCustomHole && items.some(i => /^CUST HOLE\b/i.test(i?.name||''))) existing.hasCustomHole = true;
+              } catch(e) {}
+            }
           }
           // Track order timestamp and acceptedAt as activity signals regardless of which quote
           const dealEntry = byDeal[r.deal_id];
@@ -4145,6 +4163,45 @@ ${q.accepted ? `
     return;
   }
 
+  // Admin override: change payment_type (+ po_ + payment_status mirror) on a deal
+  if (pathname.startsWith('/api/deals/') && pathname.endsWith('/payment-type') && req.method === 'PATCH') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const dealId = pathname.split('/')[3];
+    try {
+      const { paymentType, poNumber } = JSON.parse(await readBody(req));
+      const PAY_TYPE_HS_VALUES = { hs: 'HS', cc: 'CC', ach: 'ACH', po: 'PO', other: 'Other' };
+      const props = {};
+      if (paymentType) {
+        props.payment_type = PAY_TYPE_HS_VALUES[paymentType] || paymentType;
+        // Mirror legacy payment_status so "paid/po_received" consumers stay in sync
+        props.payment_status = paymentType === 'po' ? 'po_received' : 'paid';
+        if (paymentType === 'po') props.po_ = poNumber || '';
+        else props.po_ = '';
+      } else {
+        // Empty string clears the HubSpot enum and legacy status
+        props.payment_type = '';
+        props.payment_status = 'not_paid';
+        props.po_ = '';
+      }
+      const res2 = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/objects/deals/${dealId}`,
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, { properties: props });
+      if (res2.status >= 400) {
+        console.error('[payment-type override] PATCH failed:', res2.status, 'dealId:', dealId, 'sent:', JSON.stringify(props), 'body:', JSON.stringify(res2.body));
+        try { writelog('error', 'error.payment-type-override', `HubSpot payment_type override failed (${res2.status})`, { dealId, status: res2.status, body: res2.body, sentProps: props }); } catch(e) {}
+        json({ error: res2.body?.message || `HubSpot returned ${res2.status}` }, 500); return;
+      }
+      try { writelog('info', 'admin.payment-type-override', `Payment type set to ${paymentType || 'cleared'}`, { dealId, paymentType, poNumber }); } catch(e) {}
+      json({ success: true, paymentType, poNumber });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
 
   // ── API: Reports data ────────────────────────────────────────────
   if (pathname === '/api/reports' && req.method === 'GET') {
@@ -4152,13 +4209,19 @@ ${q.accepted ? `
     try {
       const period = parsed.query.period || '30';
       const days   = parseInt(period);
+      const repFilter = parsed.query.rep || ''; // optional rep_id filter
       const since  = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
       const nowEST = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
       const thisMonthStart = (() => {
         const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d.toISOString();
       })();
+      const lastMonthStart = (() => {
+        const d = new Date(); d.setDate(1); d.setMonth(d.getMonth()-1); d.setHours(0,0,0,0); return d.toISOString();
+      })();
+      const lastMonthEnd = thisMonthStart; // exclusive upper bound
+      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
 
-      const report = {};
+      const report = { period: days, repFilter };
 
       if (db) {
         // ── All quotes in period ──────────────────────────────────
@@ -4206,6 +4269,67 @@ ${q.accepted ? `
           report.quotes.byRep[rep].value += parseFloat(q.total||0);
           if (q.accepted==='true') report.quotes.byRep[rep].accepted++;
         });
+
+        // ── Hero KPIs ─────────────────────────────────────────────
+        // All-time quote rows filtered by rep (if rep filter set)
+        const qAllFiltered = repFilter
+          ? qAllTime.rows.filter(q => q.rep_id === repFilter)
+          : qAllTime.rows;
+        const quotesFiltered = repFilter
+          ? quotes.filter(q => q.rep_id === repFilter)
+          : quotes;
+
+        // Revenue MTD: accepted quotes with acceptedAt in current month
+        const acceptedThisMonth = qAllFiltered.filter(q =>
+          q.accepted === 'true' && q.accepted_at && q.accepted_at >= thisMonthStart
+        );
+        const revenueMTD = acceptedThisMonth.reduce((s,q) => s + parseFloat(q.total||0), 0);
+
+        // Revenue last month (full previous calendar month)
+        const acceptedLastMonth = qAllFiltered.filter(q =>
+          q.accepted === 'true' && q.accepted_at
+          && q.accepted_at >= lastMonthStart
+          && q.accepted_at < lastMonthEnd
+        );
+        const revenueLastMonth = acceptedLastMonth.reduce((s,q) => s + parseFloat(q.total||0), 0);
+        const revenueMoMPct = revenueLastMonth
+          ? Math.round(((revenueMTD - revenueLastMonth) / revenueLastMonth) * 100)
+          : null;
+
+        // Pipeline value: open (non-accepted) quotes created in window
+        const openInWindow = quotesFiltered.filter(q => q.accepted !== 'true');
+        const pipelineValue = openInWindow.reduce((s,q) => s + parseFloat(q.total||0), 0);
+
+        // Win rate in period vs 90-day rolling
+        const sentInPeriod = quotesFiltered.length;
+        const wonInPeriod  = quotesFiltered.filter(q => q.accepted === 'true').length;
+        const winRatePeriod = sentInPeriod ? Math.round(wonInPeriod / sentInPeriod * 100) : 0;
+
+        const sent90 = qAllFiltered.filter(q => q.created_at >= ninetyDaysAgo);
+        const won90  = sent90.filter(q => q.accepted === 'true');
+        const winRate90 = sent90.length ? Math.round(won90.length / sent90.length * 100) : 0;
+
+        // Avg deal size (accepted only) — in period vs 90-day
+        const acceptedInPeriod = quotesFiltered.filter(q => q.accepted === 'true');
+        const avgDealPeriod = acceptedInPeriod.length
+          ? Math.round(acceptedInPeriod.reduce((s,q) => s + parseFloat(q.total||0), 0) / acceptedInPeriod.length)
+          : 0;
+        const accepted90 = sent90.filter(q => q.accepted === 'true');
+        const avgDeal90 = accepted90.length
+          ? Math.round(accepted90.reduce((s,q) => s + parseFloat(q.total||0), 0) / accepted90.length)
+          : 0;
+
+        report.hero = {
+          revenueMTD,
+          revenueLastMonth,
+          revenueMoMPct,
+          pipelineValue,
+          pipelineCount: openInWindow.length,
+          winRatePeriod,
+          winRate90,
+          avgDealPeriod,
+          avgDeal90,
+        };
 
         // ── Rep leaderboard — this month ─────────────────────────
         const qMonth = await db.query(
@@ -4321,16 +4445,36 @@ ${q.accepted ? `
 
         // ── Customer insights ─────────────────────────────────────
         // Group by company
-        const companies = {};
+        // Build per-deal max totals first, so revisions of the same deal don't double-count.
+        // For quotes without a deal_id we treat each quote as its own pseudo-deal.
+        const dealTotals = {}; // dealKey -> { company, total, accepted, repId, lastDate }
         qAllTime.rows.forEach(q => {
           const co = q.company || (q.deal_name?.split(/[·-]/)[0]?.trim()) || '—';
           if (!co || co==='—') return;
+          const dealKey = q.deal_id ? `d:${q.deal_id}` : `q:${q.quote_number}`;
+          const total = parseFloat(q.total||0);
+          const isAccepted = q.accepted === 'true';
+          if (!dealTotals[dealKey]) {
+            dealTotals[dealKey] = { company: co, total, accepted: isAccepted, repId: q.rep_id, lastDate: q.created_at };
+          } else {
+            // Use the max total across revisions (typically the most recent is highest)
+            if (total > dealTotals[dealKey].total) dealTotals[dealKey].total = total;
+            if (isAccepted) dealTotals[dealKey].accepted = true;
+            if (q.created_at > dealTotals[dealKey].lastDate) {
+              dealTotals[dealKey].lastDate = q.created_at;
+              dealTotals[dealKey].repId = q.rep_id;
+            }
+          }
+        });
+        const companies = {};
+        Object.entries(dealTotals).forEach(([dealKey, d]) => {
+          const co = d.company;
           if (!companies[co]) companies[co] = {deals:new Set(),totalValue:0,accepted:0,repIds:new Set(),lastDate:null};
-          if (q.deal_id) companies[co].deals.add(q.deal_id);
-          companies[co].totalValue += parseFloat(q.total||0);
-          if (q.accepted==='true') companies[co].accepted++;
-          if (q.rep_id) companies[co].repIds.add(q.rep_id);
-          if (!companies[co].lastDate || q.created_at > companies[co].lastDate) companies[co].lastDate = q.created_at;
+          companies[co].deals.add(dealKey);
+          companies[co].totalValue += d.total;
+          if (d.accepted) companies[co].accepted++;
+          if (d.repId) companies[co].repIds.add(d.repId);
+          if (!companies[co].lastDate || d.lastDate > companies[co].lastDate) companies[co].lastDate = d.lastDate;
         });
         const repeatCustomers = Object.entries(companies)
           .map(([name,d]) => ({
@@ -4738,7 +4882,7 @@ ${q.accepted ? `
         // 1. Deal properties from HubSpot
         httpsRequest({
           hostname: 'api.hubapi.com',
-          path: `/crm/v3/objects/deals/${dealId}?properties=dealname,dealstage,payment_status,amount,hubspot_owner_id`,
+          path: `/crm/v3/objects/deals/${dealId}?properties=dealname,dealstage,payment_status,payment_type,po_,amount,hubspot_owner_id`,
           method: 'GET',
           headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
         }).catch(() => ({ body: {} })),
@@ -4790,6 +4934,8 @@ ${q.accepted ? `
       const dealStage   = dp.dealstage   || null;
       const dealAmount  = dp.amount      || null;
       let paymentStatus = dp.payment_status || 'not_paid';
+      const paymentType = (dp.payment_type || '').toLowerCase();
+      const po          = dp.po_          || '';
 
       // If no quotes found by deal_id, try fallback by deal_name (legacy quotes)
       let qRows = quotesRes.rows || [];
@@ -4820,9 +4966,13 @@ ${q.accepted ? `
 
       const quotes = qRows.map(r => {
         let firstMdl = '';
+        let hasRM = false, hasCustomHole = false;
         try {
-          const mdlItem = (r.line_items || []).find(i => i && /^MDL\b/.test(i.name || ''));
+          const items = r.line_items || [];
+          const mdlItem = items.find(i => i && /^MDL\b/.test(i.name || ''));
           if (mdlItem) firstMdl = (mdlItem.name || '').split(' ').slice(0, 3).join(' ');
+          hasRM         = items.some(i => /^RM\s/i.test(i?.name || ''));
+          hasCustomHole = items.some(i => /^CUST HOLE\b/i.test(i?.name || ''));
         } catch(e) {}
         return {
           quoteNumber:   r.quote_number,
@@ -4834,6 +4984,8 @@ ${q.accepted ? `
           paymentLink:   r.payment_link,
           accepted:      r.accepted === 'true',
           firstMdl,
+          hasRM,
+          hasCustomHole,
           acceptedFoam:  r.accepted_foam  || '',
           acceptedHinge: r.accepted_hinge || '',
           acceptedNote:  r.accepted_note  || '',
@@ -4982,7 +5134,7 @@ ${q.accepted ? `
         } catch(e) { console.warn('[hub] folder name fetch failed:', e.message); }
       }
 
-      json({ dealId, dealStage, dealAmount, paymentStatus, quotes, invoices, orders, contact, driveFolderId, driveFolderName });
+      json({ dealId, dealStage, dealAmount, paymentStatus, paymentType, po, quotes, invoices, orders, contact, driveFolderId, driveFolderName });
     } catch(e) {
       console.error('Deal hub error:', e.message);
       writelog('error','error.create-invoice',`create-invoice failed: ${e.message}`,{ rep: getRepFromReq(req, body) });
@@ -6714,12 +6866,29 @@ tbody tr:last-child td{border-bottom:none}
 .footer a{color:#ee6216;text-decoration:none}
 .footer strong{color:#888;font-weight:600}
 @media(max-width:600px){
-  .header-card{padding:24px 20px}
-  .logo-img{height:30px}
-  .header-right{text-align:left}
-  .order-num{font-size:26px}
-  .card{padding:20px}
+  .page{padding:0 0 32px}
+  .header-card{padding:20px 16px;border-left:4px solid transparent;gap:12px}
+  .logo-img{height:28px}
+  .header-right{text-align:left;width:100%}
+  .order-type{font-size:9px}
+  .order-num{font-size:24px}
+  .order-meta{font-size:11px}
+  .order-tag{font-size:9px}
+  .card{padding:18px 16px;margin:0 0 10px}
+  .card-label{margin-bottom:14px}
   .info-grid{grid-template-columns:1fr}
+  /* Line items table — hide unit-price + weight cols on mobile, keep name/qty/total */
+  thead th:nth-child(3),thead th:nth-child(4){display:none}
+  tbody td:nth-child(3),tbody td:nth-child(4){display:none}
+  .item-name{font-size:13px}
+  .item-desc{font-size:11px}
+  tbody td:nth-child(2){width:36px;font-size:13px}
+  tbody td:nth-child(5){width:80px;font-size:13px}
+  .totals{max-width:100%;margin-top:20px}
+  .tot{font-size:13px}
+  .tot.grand{font-size:22px}
+  .tot.weight-total{font-size:13px}
+  .footer{padding:20px 16px}
 }
 @media print{
   body{background:white}
@@ -6851,19 +7020,50 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       const body = JSON.parse(await readBody(req));
       const { dealId, quoteNumber, lineItems, freight, tax, discount, install,
               customer, foamColor, hingePreference, apColor, productionNotes,
-              deliveryNotes, ownerId, dealName } = body;
+              deliveryNotes, ownerId, dealName, paymentType, poNumber } = body;
 
       if (!dealId || !quoteNumber) { json({ error: 'Missing dealId or quoteNumber' }, 400); return; }
 
-      // 1. Advance deal to Closed Won + set ap_color if present
+      // 1. Advance deal to Closed Won + set ap_color, payment_type, po_ if present
+      // HubSpot's payment_type dropdown uses uppercase internal values: HS, CC, ACH, PO, Other.
+      // Client radios use lowercase ids. Map here at the boundary.
+      const PAY_TYPE_HS_VALUES = { hs: 'HS', cc: 'CC', ach: 'ACH', po: 'PO', other: 'Other' };
       const closedWonProps = { dealstage: 'closedwon' };
       if (apColor) closedWonProps.ap_color = apColor;
-      await httpsRequest({
+      if (paymentType) {
+        const hsPayType = PAY_TYPE_HS_VALUES[paymentType] || paymentType;
+        closedWonProps.payment_type = hsPayType;
+        // Mirror payment_status so legacy "paid/po_received" consumers still work
+        closedWonProps.payment_status = paymentType === 'po' ? 'po_received' : 'paid';
+      }
+      if (paymentType === 'po' && poNumber) closedWonProps.po_ = poNumber;
+      // First try the full PATCH (stage + extras). If HubSpot rejects (one of the
+      // extra props is an invalid enum value, property doesn't exist, etc.),
+      // fall back to stage-only so the deal at least moves to Closed Won.
+      let stageRes = await httpsRequest({
         hostname: 'api.hubapi.com',
         path: `/crm/v3/objects/deals/${dealId}`,
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
       }, { properties: closedWonProps });
+      if (stageRes.status >= 400) {
+        // Railway-visible log so we don't have to expand the admin log to diagnose
+        console.error('[process-order] deal PATCH (full) failed:', stageRes.status, 'dealId:', dealId, 'sent:', JSON.stringify(closedWonProps), 'body:', JSON.stringify(stageRes.body));
+        try { writelog('error', 'error.process-order.stage-patch', `HubSpot deal stage PATCH failed (${stageRes.status}) with extra props — retrying stage-only`, { dealId, status: stageRes.status, body: stageRes.body, sentProps: closedWonProps }); } catch(e) {}
+        // Retry with just the dealstage so the deal at least moves.
+        stageRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v3/objects/deals/${dealId}`,
+          method: 'PATCH',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, { properties: { dealstage: 'closedwon' } });
+        if (stageRes.status >= 400) {
+          console.error('[process-order] deal PATCH (stage-only) also failed:', stageRes.status, 'dealId:', dealId, 'body:', JSON.stringify(stageRes.body));
+          try { writelog('error', 'error.process-order.stage-patch-retry', `HubSpot deal stage-only PATCH also failed (${stageRes.status})`, { dealId, status: stageRes.status, body: stageRes.body }); } catch(e) {}
+        } else {
+          console.log('[process-order] stage-only retry succeeded, dealId:', dealId);
+        }
+      }
 
       // 1b. Reset line items to the processed quote's exact line items
       try {
@@ -6920,7 +7120,57 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       // 2. Save order data to DB
       const orderToken = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
       const orderUrl = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}?t=${orderToken}`;
-      const orderData = { foamColor, hingePreference, apColor, productionNotes, deliveryNotes, processedAt: new Date().toISOString() };
+      // Auto-compute pallet count from line items (kept in sync with BOOTH_DATA in quote-builder.html).
+      // Source of truth is pallet COUNT per product name; dimensions stay client-side where freight is priced.
+      const PALLETS_PER_MDL = {
+        'Voice Over Basic':1,'Voice Over Deluxe':1,'Audiology Basic':1,'Audiology Deluxe':1,
+        'Office Booth':1,'Work From Home Booth':1,'Drum Booth':3,'Audiology Basic Plus':1,
+        'Audiology Compact':1,'Audiology Ultra':2,'Audiology Premium':1,'Creator Basic':1,
+        'Creator Deluxe':2,'Practice Basic':1,'Practice Deluxe':2,'Recording Studio':2,
+        'Drum Studio':3,'Meeting Booth':1,'Maker Space':2,
+        'MDL 4230 E':1,'MDL 4230 S':1,'MDL 127 LP E':1,'MDL 127 LP S':1,
+        'MDL 4242 E':1,'MDL 4242 S':1,'MDL 4260 E':1,'MDL 4260 S':1,
+        'MDL 4284 E':2,'MDL 4284 S':1,'MDL 4848 E':1,'MDL 4848 S':1,
+        'MDL 4872 E':2,'MDL 4872 S':1,'MDL 4896 E':2,'MDL 4896 S':1,
+        'MDL 6060 E':2,'MDL 6060 S':1,'MDL 6084 E':2,'MDL 6084 S':1,
+        'MDL 7272 E':2,'MDL 7272 S':1,'MDL 7296 E':2,'MDL 7296 S':1,
+        'MDL 8484 E':3,'MDL 8484 S':2,'MDL 9696 E':3,'MDL 9696 S':2,
+        'MDL 10284 E':3,'MDL 10284 S':2,'MDL 84102 E':3,'MDL 84102 S':2,
+        'MDL 84126 E':3,'MDL 84126 S':2,'MDL 96120 E':3,'MDL 96120 S':2,
+        'MDL 96144 E':3,'MDL 96144 S':2,'MDL 96168 E':4,'MDL 96168 S':2,
+        'MDL 96192 E':5,'MDL 96192 S':3,'MDL 102102 E':3,'MDL 102102 S':2,
+        'MDL 102126 E':3,'MDL 102126 S':2,'MDL 102144 E':4,'MDL 102144 S':2,
+      };
+      const computedPallets = (lineItems || []).reduce((sum, item) => {
+        const n = PALLETS_PER_MDL[item?.name];
+        if (!n) return sum;
+        return sum + n * (parseInt(item.qty) || 1);
+      }, 0);
+
+      // Detect production-manager flags. Both have 1-month lead time; Gary (production
+      // manager) needs to know. We prepend notes so they're durable on the order record
+      // and surface anywhere notes are shown.
+      const hasRM         = (lineItems || []).some(i => i?.name && /^RM\s/i.test(i.name));
+      const hasCustomHole = (lineItems || []).some(i => i?.name && /^CUST HOLE\b/i.test(i.name));
+      let effectiveProductionNotes = productionNotes || '';
+      // Strip any prior RM / CUSTOM HOLES prefixes so re-processing stays idempotent
+      effectiveProductionNotes = effectiveProductionNotes
+        .replace(/^\s*(RM|CUSTOM HOLES)\s*[—-]\s*/i, '')
+        .replace(/^\s*(RM|CUSTOM HOLES)\s*[—-]\s*/i, '');
+      const prefixes = [];
+      if (hasRM)         prefixes.push('RM');
+      if (hasCustomHole) prefixes.push('CUSTOM HOLES');
+      if (prefixes.length) effectiveProductionNotes = prefixes.join(' + ') + ' — ' + effectiveProductionNotes;
+
+      const orderData = {
+        foamColor, hingePreference, apColor,
+        productionNotes: effectiveProductionNotes,
+        deliveryNotes,
+        processedAt: new Date().toISOString(),
+        shipped: { pallets: computedPallets }, // scheduled ship info; Jeromy fills in date/carrier/tracking later
+        hasRM,
+        hasCustomHole,
+      };
 
       if (db) {
         try {
@@ -7043,7 +7293,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
 
       console.log(`Order processed: ${quoteNumber}, deal ${dealId} → closedwon`);
       writelog('info', 'order.processed', `Order processed: ${quoteNumber} — ${dealName || '—'}`, { rep: String(ownerId || ''), quoteNum: quoteNumber, dealId: String(dealId || ''), dealName: dealName || null });
-      json({ success: true, orderUrl });
+      json({ success: true, orderUrl, hasRM, hasCustomHole });
 
       // Create AP color task for Benton (non-blocking) if order has an AP item
       const hasApItem = (lineItems || []).some(i => i.name && /^AP\s/i.test(i.name));

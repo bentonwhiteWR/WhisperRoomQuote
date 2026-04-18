@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.1.92', date:'Apr 18, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Ship calendar cells now wrap long deal names instead of truncating with ellipsis. Day cells grow vertically to fit the content.'},
+        {t:'ui', d:'Strips noise suffixes from calendar labels ("– New Deal", "— Quote", "— Revision", "— Updated Quote") so the meaningful part of the deal name shows through. Full original name still appears on hover.'},
+      ]
+    },
+    {
       v:'1.1.91', date:'Apr 18, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Ship calendar cells now show the deal name as the primary label, with the MDL in muted type next to it (was: MDL only)'},

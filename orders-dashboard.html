@@ -90,7 +90,7 @@
   .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); border-top: 1px solid var(--border); }
   .cal-dow { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); padding: 8px 10px; text-align: center; background: var(--surface); border-right: 1px solid var(--border); }
   .cal-dow:last-child { border-right: none; }
-  .cal-day { min-height: 86px; padding: 6px 8px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; font-size: 11px; position: relative; background: var(--surface); }
+  .cal-day { min-height: 86px; padding: 6px 8px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; font-size: 11px; position: relative; background: var(--surface); min-width: 0; }
   .cal-day:nth-child(7n+7) { border-right: none; }
   .cal-day.cal-outside { background: rgba(0,0,0,.12); opacity: .45; }
   .cal-day.cal-today .cal-day-num { color: var(--orange); font-weight: 800; }
@@ -102,7 +102,7 @@
   .cal-day.pallet-yellow .cal-day-tally { background: rgba(245,158,11,.18); color: var(--amber); }
   .cal-day.pallet-red    { background: rgba(239,68,68,.09); }
   .cal-day.pallet-red    .cal-day-tally { background: rgba(239,68,68,.22); color: var(--red); }
-  .cal-order { font-size: 10.5px; font-weight: 600; color: var(--text); padding: 3px 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; transition: border-color .1s; }
+  .cal-order { font-size: 10.5px; font-weight: 600; color: var(--text); padding: 3px 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; line-height: 1.3; transition: border-color .1s; word-break: break-word; overflow-wrap: anywhere; }
   .cal-order:hover { border-color: var(--orange); color: var(--orange); }
   .cal-order .cal-order-qty { display: inline-block; min-width: 14px; text-align: center; font-family: var(--mono, monospace); font-weight: 800; color: var(--orange); margin-right: 4px; }
   .cal-order.shipped { opacity: .6; text-decoration: line-through; }
@@ -1197,12 +1197,16 @@ function renderShipCalendar() {
 
     const ordersHtml = orders.map(o => {
       const mdl = (o.json_snapshot?.lineItems || []).find(i => i?.name?.startsWith('MDL'))?.name?.replace(/^MDL /, '') || '';
-      const name = o.deal_name || o.quote_number;
+      const rawName = o.deal_name || o.quote_number;
+      // Strip noise suffixes so the cell shows what actually distinguishes the deal
+      const cleanName = rawName
+        .replace(/\s*[–—-]\s*(New Deal|Quote|Revision|Updated Quote)\s*$/i, '')
+        .trim();
       const qty = parseInt(o.order_data?.shipped?.pallets) || 0;
       const isShipped = !!(o.order_data?.shipped?.tracking && !o.order_data?.shipped?.unshipped);
       const qn = (o.quote_number || '').replace(/'/g, "\\'");
-      const title = `${name}${mdl ? ' · ' + mdl : ''} — ${qty} pallet${qty===1?'':'s'}`;
-      return `<div class="cal-order${isShipped ? ' shipped' : ''}" title="${title.replace(/"/g,'&quot;')}" onclick="openDrawer('${qn}')"><span class="cal-order-qty">${qty || '?'}</span>${name.replace(/</g,'&lt;')}${mdl ? ` <span style="color:var(--muted);font-weight:500">${mdl}</span>` : ''}</div>`;
+      const title = `${rawName}${mdl ? ' · ' + mdl : ''} — ${qty} pallet${qty===1?'':'s'}`;
+      return `<div class="cal-order${isShipped ? ' shipped' : ''}" title="${title.replace(/"/g,'&quot;')}" onclick="openDrawer('${qn}')"><span class="cal-order-qty">${qty || '?'}</span>${cleanName.replace(/</g,'&lt;')}${mdl ? ` <span style="color:var(--muted);font-weight:500">${mdl}</span>` : ''}</div>`;
     }).join('');
 
     cellsHtml += `<div class="cal-day ${outside ? 'cal-outside' : ''} ${isToday ? 'cal-today' : ''} ${palletCls}">

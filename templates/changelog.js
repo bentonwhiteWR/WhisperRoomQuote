@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.1.87', date:'Apr 18, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'HANDOFF.md now documents the version-bump + changelog discipline — every push bumps package.json patch version and adds a templates/changelog.js entry'},
+      ]
+    },
+    {
       v:'1.1.86', date:'Apr 18, 2026', tag:'ui',
       changes:[
         {t:'ui',  d:'Mobile overhaul of Deal Hub — hub panel slides in as overlay on narrow screens, topbar scrolls horizontally instead of clipping Sign Out'},

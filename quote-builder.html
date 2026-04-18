@@ -79,6 +79,15 @@ body {
 .topbar-nav-btn:hover { background:rgba(255,255,255,.12);color:rgba(255,255,255,.9); }
 .topbar-nav-btn.active { background:rgba(238,98,22,.2);border-color:rgba(238,98,22,.4);color:#ee6216; }
 
+/* Tablet + mobile: let the topbar scroll horizontally instead of wrapping into a mess */
+@media (max-width: 1024px) {
+  .topbar { overflow-x: auto; overflow-y: hidden; flex-wrap: nowrap !important; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .topbar::-webkit-scrollbar { display: none; }
+  .topbar > * { flex-shrink: 0; }
+  .topbar nav { flex: 0 0 auto !important; flex-wrap: nowrap !important; }
+  #appVersion, #userName { display: none !important; }
+}
+
 /* ── Layout ── */
 .layout { display: grid; grid-template-columns: 1fr 340px; gap: 0; height: calc(100vh - 56px); overflow: hidden; }
 .main-col { padding: 32px; border-right: 1px solid var(--border); overflow-y: auto; background: var(--bg); }
@@ -661,7 +670,7 @@ body.dark .field input, body.dark .field select { color-scheme: dark; }
 
 <div class="topbar">
   <span id="topbarLogo" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;letter-spacing:-.3px;flex-shrink:0"><span id="logoWhisper" style="color:#f0ede8">Whisper</span><span style="color:#e8531a">Room</span></span>
-  <nav style="display:flex;gap:5px;align-items:center;flex:1;margin-left:8px;flex-wrap:wrap">
+  <nav style="display:flex;gap:5px;align-items:center;flex:1;margin-left:8px;flex-wrap:nowrap">
     <a href="/deals" class="topbar-nav-btn">⬡ Deal Hub</a>
     <a href="/quotes" class="topbar-nav-btn active">Quotes</a>
     <a href="/orders" class="topbar-nav-btn">Orders</a>

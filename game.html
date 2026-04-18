@@ -1,0 +1,2248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Saga of the Nine Realms — Viking Idle RPG</title>
+<style>
+/* ============ BASE ============ */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg-0: #0a0806;
+  --bg-1: #14100c;
+  --bg-2: #1c1712;
+  --bg-3: #2a2018;
+  --ink: #e8dcc4;
+  --ink-dim: #a89676;
+  --ink-faint: #6b5a44;
+  --gold: #d4a84a;
+  --gold-bright: #f4c870;
+  --blood: #9a2020;
+  --blood-bright: #d63030;
+  --iron: #6a7078;
+  --frost: #6a9cb8;
+  --moss: #5c7a3a;
+  --border: #3a2e1e;
+  --border-bright: #5c4a30;
+  --rare-common: #b8a888;
+  --rare-uncommon: #5cb85c;
+  --rare-rare: #4a90e2;
+  --rare-epic: #b06ad6;
+  --rare-legendary: #e8a545;
+  --rare-mythic: #e84545;
+  --rare-runic: #6ae8d6;
+}
+html, body {
+  background: var(--bg-0);
+  color: var(--ink);
+  font-family: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+  font-size: 14px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+body {
+  background:
+    radial-gradient(ellipse at top, rgba(80, 40, 20, 0.18), transparent 60%),
+    radial-gradient(ellipse at bottom, rgba(20, 40, 60, 0.12), transparent 50%),
+    var(--bg-0);
+}
+button {
+  font-family: inherit;
+  background: linear-gradient(180deg, var(--bg-3), var(--bg-2));
+  color: var(--ink);
+  border: 1px solid var(--border-bright);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.1s;
+  font-size: 13px;
+}
+button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #3a2e20, #2a2018);
+  border-color: var(--gold);
+  color: var(--gold-bright);
+}
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.primary {
+  background: linear-gradient(180deg, #5a3820, #3a2410);
+  border-color: var(--gold);
+  color: var(--gold-bright);
+  font-weight: bold;
+}
+button.primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #7a5030, #4a3420);
+}
+button.danger {
+  border-color: var(--blood);
+  color: #e8a0a0;
+}
+button.danger:hover:not(:disabled) {
+  background: linear-gradient(180deg, #4a1818, #2a0a0a);
+  color: var(--blood-bright);
+}
+
+/* ============ LAYOUT ============ */
+#app {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 100vh;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+header {
+  border-bottom: 2px solid var(--border);
+  padding: 10px 20px;
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+}
+.title {
+  font-size: 22px;
+  color: var(--gold-bright);
+  letter-spacing: 3px;
+  text-align: center;
+  text-shadow: 0 0 12px rgba(212, 168, 74, 0.4);
+}
+.subtitle {
+  font-size: 11px;
+  color: var(--ink-faint);
+  text-align: center;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+.resource-bar {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 8px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+.resource {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  min-width: 90px;
+}
+.resource .icon { font-size: 16px; }
+.resource .label { color: var(--ink-faint); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+.resource .value { color: var(--ink); font-weight: bold; }
+.resource.gold .value { color: var(--gold-bright); }
+.resource.runes .value { color: var(--rare-runic); }
+.resource.fame .value { color: var(--rare-mythic); }
+
+nav.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 20px;
+  border-bottom: 2px solid var(--border);
+  background: var(--bg-1);
+  overflow-x: auto;
+}
+.tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--ink-dim);
+  padding: 10px 16px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  font-size: 12px;
+  border-radius: 0;
+  white-space: nowrap;
+}
+.tab-btn:hover:not(:disabled) {
+  background: var(--bg-2);
+  color: var(--ink);
+}
+.tab-btn.active {
+  color: var(--gold-bright);
+  border-bottom-color: var(--gold);
+  background: var(--bg-2);
+}
+.tab-btn .notif {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--blood-bright);
+  border-radius: 50%;
+  margin-left: 6px;
+  vertical-align: middle;
+  animation: pulse 1.2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(1.3); }
+}
+
+main {
+  padding: 20px;
+  min-height: 600px;
+}
+.panel {
+  display: none;
+}
+.panel.active { display: block; }
+
+footer {
+  border-top: 1px solid var(--border);
+  padding: 8px 20px;
+  font-size: 11px;
+  color: var(--ink-faint);
+  display: flex;
+  justify-content: space-between;
+  background: var(--bg-1);
+}
+
+/* ============ CARDS ============ */
+.card {
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 14px;
+}
+.card h2, .card h3 {
+  color: var(--gold);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  font-weight: normal;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+  font-size: 14px;
+}
+.card h2 { font-size: 16px; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+@media (max-width: 900px) {
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+}
+
+.row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+.row .label { color: var(--ink-dim); font-size: 12px; }
+.row .value { color: var(--ink); font-weight: bold; }
+
+.log {
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 8px;
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+.log-entry { padding: 1px 0; }
+.log-entry.good { color: var(--moss); }
+.log-entry.bad { color: var(--blood-bright); }
+.log-entry.epic { color: var(--rare-epic); }
+.log-entry.legend { color: var(--rare-legendary); }
+
+/* ============ COMBAT ============ */
+.combat-area {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 900px) { .combat-area { grid-template-columns: 1fr; } }
+.enemy-card {
+  background:
+    radial-gradient(ellipse at top, rgba(154, 32, 32, 0.15), transparent 70%),
+    linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  border: 2px solid var(--border-bright);
+  padding: 20px;
+  text-align: center;
+  min-height: 320px;
+  border-radius: 3px;
+  position: relative;
+}
+.enemy-card.boss {
+  border-color: var(--blood);
+  box-shadow: 0 0 24px rgba(154, 32, 32, 0.3);
+}
+.stage-banner {
+  font-size: 12px;
+  color: var(--gold);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.enemy-name {
+  font-size: 24px;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.enemy-name.boss { color: var(--blood-bright); text-shadow: 0 0 12px rgba(214, 48, 48, 0.5); }
+.enemy-sigil {
+  font-size: 64px;
+  margin: 10px 0;
+  filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.6));
+  transition: transform 0.1s;
+}
+.enemy-sigil.hit { animation: hit 0.15s; }
+@keyframes hit {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.15) rotate(-3deg); filter: drop-shadow(0 0 16px rgba(214, 48, 48, 0.8)); }
+  100% { transform: scale(1); }
+}
+.hp-bar {
+  width: 100%;
+  height: 22px;
+  background: var(--bg-0);
+  border: 1px solid var(--border-bright);
+  position: relative;
+  margin: 8px 0;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.hp-fill {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  background: linear-gradient(90deg, var(--blood), var(--blood-bright));
+  transition: width 0.15s;
+}
+.hp-text {
+  position: absolute;
+  width: 100%; text-align: center;
+  line-height: 22px;
+  font-size: 12px;
+  color: var(--ink);
+  text-shadow: 0 0 4px black, 1px 1px 2px black;
+  font-weight: bold;
+}
+.attack-btn {
+  width: 100%;
+  padding: 16px;
+  font-size: 14px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #7a2020, #4a1010);
+  border: 2px solid var(--blood);
+  color: #ffe0e0;
+  margin-top: 12px;
+  cursor: pointer;
+  border-radius: 2px;
+}
+.attack-btn:hover { background: linear-gradient(180deg, #9a3030, #6a1818); }
+.attack-btn:active { transform: translateY(1px); }
+
+.damage-popup {
+  position: absolute;
+  pointer-events: none;
+  font-weight: bold;
+  font-size: 20px;
+  color: var(--blood-bright);
+  text-shadow: 0 0 4px black, 2px 2px 0 black;
+  animation: fly 0.9s ease-out forwards;
+}
+.damage-popup.crit { color: var(--gold-bright); font-size: 28px; }
+@keyframes fly {
+  0% { transform: translate(0, 0); opacity: 1; }
+  100% { transform: translate(var(--dx, 20px), -60px); opacity: 0; }
+}
+
+.stage-progress {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 2px;
+  margin-top: 10px;
+}
+.stage-dot {
+  height: 6px;
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+}
+.stage-dot.done { background: var(--moss); border-color: var(--moss); }
+.stage-dot.current { background: var(--gold); border-color: var(--gold); animation: pulse 1s infinite; }
+
+.stat-list { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+.stat-list .k { color: var(--ink-dim); }
+.stat-list .v { color: var(--ink); text-align: right; font-weight: bold; }
+
+/* ============ WORKERS ============ */
+.worker-card {
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  padding: 10px;
+  border-radius: 2px;
+  transition: border-color 0.2s;
+}
+.worker-card:hover { border-color: var(--border-bright); }
+.worker-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.worker-name { color: var(--gold); letter-spacing: 1px; font-size: 13px; }
+.worker-lvl { color: var(--ink-faint); font-size: 11px; }
+.worker-prod { font-size: 12px; color: var(--moss); margin: 4px 0; }
+.worker-cost { font-size: 11px; color: var(--ink-faint); margin-bottom: 6px; }
+.worker-btn { width: 100%; font-size: 12px; padding: 5px; }
+
+/* ============ GEAR ============ */
+.gear-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 16px;
+}
+@media (max-width: 900px) { .gear-layout { grid-template-columns: 1fr; } }
+.gear-slots {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+.gear-slot {
+  border: 1px solid var(--border);
+  background: var(--bg-0);
+  padding: 8px;
+  min-height: 64px;
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.15s;
+}
+.gear-slot:hover { border-color: var(--gold); background: var(--bg-2); }
+.gear-slot .slot-label {
+  color: var(--ink-faint);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.gear-slot .item-name { font-weight: bold; margin-top: 2px; }
+.gear-slot.empty .item-name { color: var(--ink-faint); font-style: italic; font-weight: normal; }
+
+.item-name.r-common { color: var(--rare-common); }
+.item-name.r-uncommon { color: var(--rare-uncommon); }
+.item-name.r-rare { color: var(--rare-rare); }
+.item-name.r-epic { color: var(--rare-epic); }
+.item-name.r-legendary { color: var(--rare-legendary); text-shadow: 0 0 6px rgba(232, 165, 69, 0.4); }
+.item-name.r-mythic { color: var(--rare-mythic); text-shadow: 0 0 6px rgba(232, 69, 69, 0.5); }
+.item-name.r-runic { color: var(--rare-runic); text-shadow: 0 0 8px rgba(106, 232, 214, 0.5); }
+
+.inventory {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  max-height: 540px;
+  overflow-y: auto;
+  padding: 4px;
+}
+.inv-item {
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  padding: 8px;
+  border-radius: 2px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+.inv-item:hover { border-color: var(--gold); }
+.inv-item.equipped { border-color: var(--gold); background: var(--bg-3); }
+.inv-item .slot { color: var(--ink-faint); font-size: 9px; text-transform: uppercase; letter-spacing: 1px; }
+.inv-item .affix { color: var(--ink-dim); font-size: 11px; }
+.inv-item .affix.set { color: var(--rare-runic); }
+.inv-item .actions { display: flex; gap: 4px; margin-top: 6px; }
+.inv-item .actions button { flex: 1; font-size: 10px; padding: 3px; }
+
+.set-badge {
+  display: inline-block;
+  font-size: 9px;
+  background: var(--bg-0);
+  border: 1px solid var(--rare-runic);
+  color: var(--rare-runic);
+  padding: 1px 5px;
+  border-radius: 2px;
+  margin-left: 4px;
+  letter-spacing: 1px;
+}
+
+/* ============ RESEARCH ============ */
+.research-tree {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+@media (max-width: 1100px) { .research-tree { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 700px) { .research-tree { grid-template-columns: 1fr; } }
+.research-branch {
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  padding: 10px;
+  border-radius: 2px;
+}
+.research-branch h3 { color: var(--gold); border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 8px; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; }
+.research-node {
+  border: 1px solid var(--border);
+  padding: 7px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  background: var(--bg-1);
+  border-radius: 2px;
+}
+.research-node.maxed { border-color: var(--gold); background: var(--bg-3); }
+.research-node.locked { opacity: 0.5; }
+.research-node .rn-name { color: var(--ink); font-weight: bold; }
+.research-node .rn-desc { color: var(--ink-dim); margin: 2px 0; }
+.research-node .rn-cost { color: var(--gold); font-size: 10px; }
+.research-node button { width: 100%; font-size: 10px; padding: 3px; margin-top: 4px; }
+
+/* ============ CLAN / PRESTIGE ============ */
+.clan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.clan-card {
+  border: 2px solid var(--border);
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  padding: 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.clan-card:hover { border-color: var(--gold); transform: translateY(-2px); }
+.clan-card.selected { border-color: var(--gold); background: var(--bg-3); box-shadow: 0 0 20px rgba(212, 168, 74, 0.25); }
+.clan-card.locked { opacity: 0.4; cursor: not-allowed; }
+.clan-sigil { font-size: 42px; text-align: center; margin: 6px 0; }
+.clan-name { color: var(--gold-bright); text-align: center; letter-spacing: 2px; font-size: 14px; }
+.clan-title { color: var(--ink-faint); text-align: center; font-size: 10px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 6px; }
+.clan-perk { font-size: 11px; color: var(--ink-dim); padding: 2px 0; }
+.clan-perk .mod { color: var(--moss); font-weight: bold; }
+.clan-perk .mod.neg { color: var(--blood-bright); }
+
+/* ============ TOOLTIP ============ */
+#tooltip {
+  position: fixed;
+  z-index: 1000;
+  background: var(--bg-0);
+  border: 1px solid var(--gold);
+  padding: 8px 10px;
+  font-size: 12px;
+  max-width: 260px;
+  pointer-events: none;
+  display: none;
+  border-radius: 2px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+}
+#tooltip .title { color: var(--gold-bright); letter-spacing: 1px; margin-bottom: 4px; font-size: 13px; }
+#tooltip .line { color: var(--ink-dim); }
+#tooltip .line.good { color: var(--moss); }
+
+/* ============ TOAST ============ */
+#toasts {
+  position: fixed;
+  top: 20px; right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 2000;
+  pointer-events: none;
+}
+.toast {
+  background: var(--bg-0);
+  border: 1px solid var(--gold);
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--ink);
+  animation: toast-in 0.3s, toast-out 0.4s 3s forwards;
+  max-width: 300px;
+  border-radius: 2px;
+}
+.toast.legend { border-color: var(--rare-legendary); color: var(--rare-legendary); }
+.toast.epic { border-color: var(--rare-epic); color: var(--rare-epic); }
+.toast.mythic { border-color: var(--rare-mythic); color: var(--rare-mythic); }
+.toast.runic { border-color: var(--rare-runic); color: var(--rare-runic); }
+@keyframes toast-in { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes toast-out { to { transform: translateX(120%); opacity: 0; } }
+
+/* ============ MODAL ============ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 500;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  border: 2px solid var(--gold);
+  max-width: 500px;
+  padding: 20px;
+  border-radius: 3px;
+  text-align: center;
+}
+.modal h2 { color: var(--gold-bright); margin-bottom: 10px; letter-spacing: 3px; }
+.modal p { color: var(--ink-dim); margin: 10px 0; line-height: 1.5; }
+.modal .actions { display: flex; gap: 10px; justify-content: center; margin-top: 16px; }
+
+.scroll-y { max-height: 400px; overflow-y: auto; }
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-1); }
+::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title">SAGA OF THE NINE REALMS</div>
+    <div class="subtitle">A Viking Idle Chronicle</div>
+    <div class="resource-bar" id="resource-bar"></div>
+  </header>
+  <nav class="tabs" id="tabs"></nav>
+  <main id="main">
+    <div class="panel active" id="panel-saga"></div>
+    <div class="panel" id="panel-longhouse"></div>
+    <div class="panel" id="panel-forge"></div>
+    <div class="panel" id="panel-runestones"></div>
+    <div class="panel" id="panel-clan"></div>
+    <div class="panel" id="panel-settings"></div>
+  </main>
+  <footer>
+    <span id="footer-left">Saga of the Nine Realms</span>
+    <span id="footer-right"></span>
+  </footer>
+</div>
+<div id="tooltip"></div>
+<div id="toasts"></div>
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal" id="modal-box"></div>
+</div>
+<script>
+"use strict";
+
+/* ============================================================
+ * CONSTANTS & DATA
+ * ============================================================ */
+
+const TICK_MS = 100;
+const SAVE_KEY = "saga_nine_realms_v1";
+const SAVE_INTERVAL_MS = 10000;
+
+const RESOURCES = ["gold", "wood", "stone", "iron", "food", "mead"];
+const RESOURCE_META = {
+  gold:  { icon: "⚜",  label: "Gold",  color: "var(--gold-bright)" },
+  wood:  { icon: "🪵", label: "Wood",  color: "#a07040" },
+  stone: { icon: "🪨", label: "Stone", color: "#9090a0" },
+  iron:  { icon: "⚒",  label: "Iron",  color: "#b0b8c0" },
+  food:  { icon: "🍖", label: "Food",  color: "#c08060" },
+  mead:  { icon: "🍺", label: "Mead",  color: "#d4a848" },
+};
+
+const RARITY = [
+  { id: "common",    name: "Common",    color: "var(--rare-common)",    weight: 1000, mult: 1.0,  affixes: 1 },
+  { id: "uncommon",  name: "Uncommon",  color: "var(--rare-uncommon)",  weight: 500,  mult: 1.6,  affixes: 2 },
+  { id: "rare",      name: "Rare",      color: "var(--rare-rare)",      weight: 180,  mult: 2.6,  affixes: 3 },
+  { id: "epic",      name: "Epic",      color: "var(--rare-epic)",      weight: 55,   mult: 4.4,  affixes: 4 },
+  { id: "legendary", name: "Legendary", color: "var(--rare-legendary)", weight: 14,   mult: 7.5,  affixes: 5 },
+  { id: "mythic",    name: "Mythic",    color: "var(--rare-mythic)",    weight: 3,    mult: 13.0, affixes: 6 },
+  { id: "runic",     name: "Runic",     color: "var(--rare-runic)",     weight: 0.4,  mult: 22.0, affixes: 7 },
+];
+
+const SLOTS = [
+  { id: "helm",    name: "Helm",     icon: "⛑" },
+  { id: "chest",   name: "Chest",    icon: "🛡" },
+  { id: "legs",    name: "Legs",     icon: "👖" },
+  { id: "weapon",  name: "Weapon",   icon: "⚔" },
+  { id: "shield",  name: "Shield",   icon: "🛡" },
+  { id: "boots",   name: "Boots",    icon: "👢" },
+  { id: "amulet",  name: "Amulet",   icon: "📿" },
+  { id: "ring",    name: "Ring",     icon: "💍" },
+];
+
+/* Each affix maps to a stat bonus. Values are per-tier base. */
+const AFFIXES = [
+  { id: "dmg_flat",   slots: ["weapon"],                         name: "of Sharpness",   stat: "dmgFlat",   base: 2,    scale: 1.18, fmt: v => `+${fmt(v)} damage` },
+  { id: "dmg_pct",    slots: ["weapon","ring","amulet"],         name: "of Fury",        stat: "dmgPct",    base: 0.05, scale: 1.10, fmt: v => `+${(v*100).toFixed(1)}% damage` },
+  { id: "crit_chance",slots: ["helm","ring","amulet","weapon"],  name: "of Precision",   stat: "critChance",base: 0.02, scale: 1.08, fmt: v => `+${(v*100).toFixed(1)}% crit chance` },
+  { id: "crit_mult",  slots: ["weapon","amulet","ring"],         name: "of Devastation", stat: "critMult",  base: 0.10, scale: 1.09, fmt: v => `+${(v*100).toFixed(1)}% crit damage` },
+  { id: "atk_spd",    slots: ["weapon","boots","ring"],          name: "of Swiftness",   stat: "atkSpd",    base: 0.03, scale: 1.08, fmt: v => `+${(v*100).toFixed(1)}% attack speed` },
+  { id: "hp_flat",    slots: ["chest","legs","helm"],            name: "of the Bear",    stat: "hpFlat",    base: 10,   scale: 1.18, fmt: v => `+${fmt(v)} health` },
+  { id: "hp_pct",     slots: ["chest","amulet","ring"],          name: "of Vitality",    stat: "hpPct",     base: 0.05, scale: 1.10, fmt: v => `+${(v*100).toFixed(1)}% health` },
+  { id: "armor",      slots: ["chest","legs","helm","shield"],   name: "of Warding",     stat: "armor",     base: 3,    scale: 1.17, fmt: v => `+${fmt(v)} armor` },
+  { id: "regen",      slots: ["amulet","chest","ring"],          name: "of the Troll",   stat: "regen",     base: 0.5,  scale: 1.15, fmt: v => `+${fmt(v,1)}/s regen` },
+  { id: "lifesteal",  slots: ["weapon","amulet","ring"],         name: "of Ravaging",    stat: "lifesteal", base: 0.01, scale: 1.09, fmt: v => `+${(v*100).toFixed(1)}% lifesteal` },
+  { id: "gold_find",  slots: ["helm","boots","ring","amulet"],   name: "of Avarice",     stat: "goldFind",  base: 0.06, scale: 1.10, fmt: v => `+${(v*100).toFixed(1)}% gold find` },
+  { id: "loot",       slots: ["helm","boots","ring","amulet"],   name: "of Plunder",     stat: "lootFind",  base: 0.04, scale: 1.09, fmt: v => `+${(v*100).toFixed(1)}% item drop` },
+  { id: "rarity",     slots: ["helm","amulet","ring"],           name: "of Fortune",     stat: "magicFind", base: 0.05, scale: 1.09, fmt: v => `+${(v*100).toFixed(1)}% magic find` },
+  { id: "thrall_spd", slots: ["boots","amulet","ring"],          name: "of the Jarl",    stat: "thrallSpd", base: 0.05, scale: 1.09, fmt: v => `+${(v*100).toFixed(1)}% thrall speed` },
+  { id: "thrall_yld", slots: ["amulet","ring","helm"],           name: "of Bounty",      stat: "thrallYld", base: 0.05, scale: 1.10, fmt: v => `+${(v*100).toFixed(1)}% thrall yield` },
+  { id: "rune_find",  slots: ["amulet","ring"],                  name: "of Wyrd",        stat: "runeFind",  base: 0.03, scale: 1.08, fmt: v => `+${(v*100).toFixed(1)}% rune gain` },
+];
+
+/* Gear sets — equipping multiple pieces from the same set grants bonuses. */
+const SETS = [
+  { id: "ragnar",   name: "Ragnar's Fury",
+    bonuses: {
+      2: { dmgPct: 0.25, critChance: 0.05, desc: "+25% damage, +5% crit" },
+      4: { dmgPct: 0.75, critMult: 0.50,   desc: "+75% damage, +50% crit damage" },
+      6: { dmgPct: 2.00, critChance: 0.15, critMult: 1.00, desc: "+200% damage, +15% crit, +100% crit damage" }
+    }},
+  { id: "odin",     name: "Odin's Wisdom",
+    bonuses: {
+      2: { researchSpd: 0.40, runeFind: 0.10, desc: "+40% research speed, +10% runes" },
+      4: { researchSpd: 1.20, runeFind: 0.35, desc: "+120% research, +35% runes" },
+      6: { researchSpd: 3.00, runeFind: 1.00, skillPower: 0.50, desc: "+300% research, +100% runes, +50% skill power" }
+    }},
+  { id: "thor",     name: "Thor's Might",
+    bonuses: {
+      2: { hpPct: 0.30, armor: 20, desc: "+30% HP, +20 armor" },
+      4: { hpPct: 1.00, dmgPct: 0.50, regen: 3, desc: "+100% HP, +50% damage, +3/s regen" },
+      6: { hpPct: 3.00, dmgPct: 1.50, regen: 15, desc: "+300% HP, +150% damage, +15/s regen" }
+    }},
+  { id: "loki",     name: "Loki's Cunning",
+    bonuses: {
+      2: { goldFind: 0.40, lootFind: 0.15, desc: "+40% gold, +15% loot" },
+      4: { goldFind: 1.50, lootFind: 0.60, magicFind: 0.30, desc: "+150% gold, +60% loot, +30% magic find" },
+      6: { goldFind: 5.00, lootFind: 2.00, magicFind: 1.00, desc: "+500% gold, +200% loot, +100% magic find" }
+    }},
+  { id: "freya",    name: "Freya's Grace",
+    bonuses: {
+      2: { atkSpd: 0.20, critChance: 0.05, desc: "+20% attack speed, +5% crit" },
+      4: { atkSpd: 0.60, critMult: 0.75, desc: "+60% attack speed, +75% crit damage" },
+      6: { atkSpd: 1.50, critChance: 0.25, critMult: 2.00, desc: "+150% attack speed, +25% crit, +200% crit damage" }
+    }},
+  { id: "heimdall", name: "Heimdall's Watch",
+    bonuses: {
+      2: { regen: 2, armor: 15, desc: "+2/s regen, +15 armor" },
+      4: { regen: 10, hpPct: 0.75, thrallYld: 0.25, desc: "+10/s regen, +75% HP, +25% thrall yield" },
+      6: { regen: 40, hpPct: 2.00, thrallYld: 1.00, thrallSpd: 0.50, desc: "+40/s regen, +200% HP, +100% yield, +50% speed" }
+    }},
+];
+
+/* ============================================================
+ * ENEMY & STAGE GENERATION
+ * ============================================================ */
+
+const ENEMY_TYPES = [
+  { name: "Marauder",   sigil: "🗡",  color: "#a06040" },
+  { name: "Draugr",     sigil: "💀",  color: "#8090a0" },
+  { name: "Troll",      sigil: "👹",  color: "#507040" },
+  { name: "Wolf",       sigil: "🐺",  color: "#a08060" },
+  { name: "Berserker",  sigil: "🪓",  color: "#b04030" },
+  { name: "Frost Giant",sigil: "❄",  color: "#80c0e0" },
+  { name: "Wyrm",       sigil: "🐉",  color: "#407040" },
+  { name: "Shade",      sigil: "👻",  color: "#8060a0" },
+  { name: "Ravager",    sigil: "🗡",  color: "#c06040" },
+  { name: "Ice Wraith", sigil: "☠",  color: "#a0c0e0" },
+];
+
+const BOSS_TYPES = [
+  { name: "Jörmungandr, the World Serpent", sigil: "🐍" },
+  { name: "Fenrir, the Great Wolf",         sigil: "🐺" },
+  { name: "Surtr of Muspelheim",            sigil: "🔥" },
+  { name: "Hel, Queen of the Dead",         sigil: "💀" },
+  { name: "Níðhöggr, the Corpse-Gnawer",    sigil: "🐉" },
+  { name: "Ymir, the Frost Titan",          sigil: "❄" },
+  { name: "Garmr of Helheim",               sigil: "🦴" },
+  { name: "Eikþyrnir, the Stag",            sigil: "🦌" },
+  { name: "Mánagarmr, Moon-Eater",          sigil: "🌙" },
+  { name: "Ragnarök Avatar",                sigil: "⚡" },
+];
+
+const REALMS = [
+  { name: "Midgard",    from: 1,   to: 30,  color: "#6a8c4a" },
+  { name: "Svartalfheim", from: 31, to: 70,  color: "#404060" },
+  { name: "Jotunheim",  from: 71,  to: 120, color: "#6090b0" },
+  { name: "Niflheim",   from: 121, to: 180, color: "#809cbc" },
+  { name: "Muspelheim", from: 181, to: 250, color: "#b05030" },
+  { name: "Helheim",    from: 251, to: 330, color: "#5c3a5c" },
+  { name: "Alfheim",    from: 331, to: 420, color: "#d4a848" },
+  { name: "Vanaheim",   from: 421, to: 520, color: "#70a070" },
+  { name: "Asgard",     from: 521, to: 9999,color: "#e8c460" },
+];
+
+function realmOf(stage) {
+  for (const r of REALMS) if (stage >= r.from && stage <= r.to) return r;
+  return REALMS[REALMS.length - 1];
+}
+
+function enemyForStage(stage) {
+  const isBoss = stage % 10 === 0;
+  const rngSeed = stage * 7919;
+  if (isBoss) {
+    const b = BOSS_TYPES[(Math.floor(stage / 10) - 1) % BOSS_TYPES.length];
+    const hp = Math.floor(12 * Math.pow(1.155, stage) * 8);
+    return { name: b.name, sigil: b.sigil, hp, maxHp: hp, boss: true, gold: Math.floor(3 * Math.pow(1.13, stage) * 15) };
+  }
+  const t = ENEMY_TYPES[rngSeed % ENEMY_TYPES.length];
+  const realm = realmOf(stage);
+  const hp = Math.floor(10 * Math.pow(1.155, stage));
+  return { name: `${realm.name} ${t.name}`, sigil: t.sigil, hp, maxHp: hp, boss: false, gold: Math.floor(2 * Math.pow(1.13, stage)) };
+}
+
+/* ============================================================
+ * WORKERS / THRALLS
+ * ============================================================ */
+
+const WORKERS = [
+  { id: "woodcutter", name: "Woodcutter Thrall",   icon: "🪓", res: "wood",  baseProd: 1.0, baseCost: { gold: 10 },               costScale: 1.15 },
+  { id: "miner",      name: "Stone Miner",         icon: "⛏", res: "stone", baseProd: 0.8, baseCost: { gold: 40 },               costScale: 1.17 },
+  { id: "ironsmith",  name: "Iron Forger",         icon: "🔨", res: "iron",  baseProd: 0.5, baseCost: { gold: 200, wood: 50 },    costScale: 1.19 },
+  { id: "farmer",     name: "Farmer",              icon: "🌾", res: "food",  baseProd: 1.2, baseCost: { gold: 80, wood: 20 },     costScale: 1.16 },
+  { id: "brewer",     name: "Mead Brewer",         icon: "🍺", res: "mead",  baseProd: 0.3, baseCost: { gold: 500, food: 100 },   costScale: 1.20 },
+  { id: "merchant",   name: "Merchant",            icon: "⚖", res: "gold",  baseProd: 2.5, baseCost: { gold: 1000, mead: 20 },   costScale: 1.22 },
+  { id: "hunter",     name: "Hunter",              icon: "🏹", res: "food",  baseProd: 3.0, baseCost: { gold: 5000, iron: 100 },  costScale: 1.18 },
+  { id: "berserker",  name: "Berserker Warband",   icon: "⚔", res: "gold",  baseProd: 8.0, baseCost: { gold: 25000, mead: 200 }, costScale: 1.23 },
+  { id: "skald",      name: "Skald Poet",          icon: "🎵", res: "fame",  baseProd: 0.01,baseCost: { gold: 100000, mead: 1000 }, costScale: 1.25 },
+];
+
+/* ============================================================
+ * RESEARCH TREE
+ * ============================================================ */
+
+const RESEARCH = [
+  { branch: "War",    name: "Sharpened Blades",    stat: "dmgPct",     perLvl: 0.05, maxLvl: 50,  baseCost: 5,   scale: 1.45 },
+  { branch: "War",    name: "Battle Trance",       stat: "atkSpd",     perLvl: 0.03, maxLvl: 30,  baseCost: 10,  scale: 1.50 },
+  { branch: "War",    name: "Keen Eye",            stat: "critChance", perLvl: 0.01, maxLvl: 25,  baseCost: 20,  scale: 1.55 },
+  { branch: "War",    name: "Savage Strikes",      stat: "critMult",   perLvl: 0.08, maxLvl: 30,  baseCost: 25,  scale: 1.55 },
+  { branch: "War",    name: "Bloodthirst",         stat: "lifesteal",  perLvl: 0.005,maxLvl: 20,  baseCost: 60,  scale: 1.65 },
+  { branch: "Hearth", name: "Thrall Discipline",   stat: "thrallSpd",  perLvl: 0.06, maxLvl: 40,  baseCost: 8,   scale: 1.45 },
+  { branch: "Hearth", name: "Plentiful Harvest",   stat: "thrallYld",  perLvl: 0.08, maxLvl: 40,  baseCost: 12,  scale: 1.48 },
+  { branch: "Hearth", name: "Coin of the Realm",   stat: "goldFind",   perLvl: 0.08, maxLvl: 50,  baseCost: 6,   scale: 1.42 },
+  { branch: "Hearth", name: "Trade Winds",         stat: "offlineEff", perLvl: 0.05, maxLvl: 20,  baseCost: 40,  scale: 1.60 },
+  { branch: "Hearth", name: "Longhouse Tactics",   stat: "workerDisc", perLvl: 0.03, maxLvl: 20,  baseCost: 80,  scale: 1.70 },
+  { branch: "Forge",  name: "Master Smithing",     stat: "lootFind",   perLvl: 0.05, maxLvl: 40,  baseCost: 15,  scale: 1.50 },
+  { branch: "Forge",  name: "Rune-Etching",        stat: "magicFind",  perLvl: 0.05, maxLvl: 40,  baseCost: 22,  scale: 1.55 },
+  { branch: "Forge",  name: "Set Lore",            stat: "setChance",  perLvl: 0.02, maxLvl: 20,  baseCost: 50,  scale: 1.65 },
+  { branch: "Forge",  name: "Dvergar Blessings",   stat: "affixRoll",  perLvl: 0.04, maxLvl: 25,  baseCost: 80,  scale: 1.70 },
+  { branch: "Forge",  name: "Mythic Reforging",    stat: "reforgePwr", perLvl: 0.10, maxLvl: 15,  baseCost: 200, scale: 1.80 },
+  { branch: "Wyrd",   name: "Rune Attunement",     stat: "runeFind",   perLvl: 0.04, maxLvl: 40,  baseCost: 30,  scale: 1.60 },
+  { branch: "Wyrd",   name: "Prestige Mastery",    stat: "prestigeMult",perLvl:0.05, maxLvl: 30,  baseCost: 60,  scale: 1.70 },
+  { branch: "Wyrd",   name: "Clan Resonance",      stat: "clanPower",  perLvl: 0.05, maxLvl: 25,  baseCost: 100, scale: 1.75 },
+  { branch: "Wyrd",   name: "Yggdrasil's Whisper", stat: "researchSpd",perLvl: 0.05, maxLvl: 30,  baseCost: 40,  scale: 1.55 },
+  { branch: "Wyrd",   name: "Norns' Favor",        stat: "allMult",    perLvl: 0.02, maxLvl: 50,  baseCost: 150, scale: 1.85 },
+];
+const RESEARCH_BRANCHES = [
+  { id: "War",    name: "Forge of War",     icon: "⚔", desc: "Paths of blood and steel" },
+  { id: "Hearth", name: "Hearth & Home",    icon: "🏠", desc: "Prosperity and the longhouse" },
+  { id: "Forge",  name: "Smith's Secrets",  icon: "🔨", desc: "Mastery of gear and runes" },
+  { id: "Wyrd",   name: "Ways of the Wyrd", icon: "🔯", desc: "Fate, clan, and the beyond" },
+];
+
+/* ============================================================
+ * CLANS (Prestige)
+ * ============================================================ */
+
+const CLANS = [
+  { id: "berserker", name: "Berserkers of Muspelheim", title: "Fire & Blood", sigil: "🔥",
+    perks: [
+      { desc: "+500% damage",               mult: { dmgPct: 5.0 } },
+      { desc: "+25% attack speed",          mult: { atkSpd: 0.25 } },
+      { desc: "+10% lifesteal",             mult: { lifesteal: 0.10 } },
+      { desc: "-50% max HP",                mult: { hpPct: -0.50 }, neg: true },
+    ],
+    active: "Wrath of Muspelheim — tripled damage for 15s" },
+  { id: "skald", name: "Skalds of Asgard", title: "Wealth & Verse", sigil: "🎶",
+    perks: [
+      { desc: "+400% gold find",            mult: { goldFind: 4.0 } },
+      { desc: "+200% resource yield",       mult: { thrallYld: 2.0 } },
+      { desc: "+50% offline gains",         mult: { offlineEff: 0.50 } },
+      { desc: "-25% damage dealt",          mult: { dmgPct: -0.25 }, neg: true },
+    ],
+    active: "Bragi's Song — +2000% gold find for 30s" },
+  { id: "jarl", name: "Jarls of Midgard", title: "Lords of Labor", sigil: "🏰",
+    perks: [
+      { desc: "+300% thrall production",    mult: { thrallYld: 3.0 } },
+      { desc: "+100% thrall speed",         mult: { thrallSpd: 1.0 } },
+      { desc: "+50% worker discount",       mult: { workerDisc: 0.50 } },
+      { desc: "-20% attack speed",          mult: { atkSpd: -0.20 }, neg: true },
+    ],
+    active: "Jarl's Decree — Thralls produce 50× for 20s" },
+  { id: "seer", name: "Seers of Urðarbrunnr", title: "Fate-Readers", sigil: "🔮",
+    perks: [
+      { desc: "+200% research speed",       mult: { researchSpd: 2.0 } },
+      { desc: "+150% rune gain",            mult: { runeFind: 1.5 } },
+      { desc: "+50% magic find",            mult: { magicFind: 0.50 } },
+      { desc: "-30% max HP",                mult: { hpPct: -0.30 }, neg: true },
+    ],
+    active: "Urd's Vision — Instant +10 research points" },
+  { id: "shieldmaiden", name: "Shieldmaidens of Valhalla", title: "Unbreakable", sigil: "🛡",
+    perks: [
+      { desc: "+300% max HP",               mult: { hpPct: 3.0 } },
+      { desc: "+100% regen",                mult: { regen: 1.0 } },
+      { desc: "+50 armor",                  flat: { armor: 50 } },
+      { desc: "+100% damage vs bosses",     mult: { bossDmg: 1.0 } },
+    ],
+    active: "Valkyrie's Call — Invulnerable for 10s" },
+  { id: "raven", name: "Ravens of Huginn", title: "Cunning & Swift", sigil: "🦅",
+    perks: [
+      { desc: "+100% crit chance",          mult: { critChance: 1.0 } },
+      { desc: "+200% crit damage",          mult: { critMult: 2.0 } },
+      { desc: "+100% attack speed",         mult: { atkSpd: 1.0 } },
+      { desc: "-50% max HP",                mult: { hpPct: -0.50 }, neg: true },
+    ],
+    active: "Huginn's Flight — Guaranteed crits for 12s" },
+];
+
+/* ============================================================
+ * HELPERS
+ * ============================================================ */
+
+function fmt(n, dec = 0) {
+  if (n === null || n === undefined || isNaN(n)) return "0";
+  if (!isFinite(n)) return "∞";
+  const abs = Math.abs(n);
+  if (abs < 1 && abs > 0 && dec === 0) return n.toFixed(2);
+  if (abs < 1000) return dec > 0 ? n.toFixed(dec) : Math.floor(n).toString();
+  const suffixes = ["", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc"];
+  let i = 0;
+  let v = n;
+  while (Math.abs(v) >= 1000 && i < suffixes.length - 1) { v /= 1000; i++; }
+  return v.toFixed(2) + suffixes[i];
+}
+
+function fmtTime(sec) {
+  if (sec < 60) return `${Math.floor(sec)}s`;
+  if (sec < 3600) return `${Math.floor(sec/60)}m ${Math.floor(sec%60)}s`;
+  if (sec < 86400) return `${Math.floor(sec/3600)}h ${Math.floor((sec%3600)/60)}m`;
+  return `${Math.floor(sec/86400)}d ${Math.floor((sec%86400)/3600)}h`;
+}
+
+function randInt(lo, hi) { return Math.floor(Math.random() * (hi - lo + 1)) + lo; }
+function rand(lo, hi) { return Math.random() * (hi - lo) + lo; }
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function weighted(arr, key = "weight") {
+  let total = 0;
+  for (const x of arr) total += x[key];
+  let roll = Math.random() * total;
+  for (const x of arr) { roll -= x[key]; if (roll <= 0) return x; }
+  return arr[arr.length - 1];
+}
+function uuid() { return Math.random().toString(36).slice(2, 11); }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+/* ============================================================
+ * GAME STATE
+ * ============================================================ */
+
+const Game = {
+  /* resources */
+  res: { gold: 0, wood: 0, stone: 0, iron: 0, food: 0, mead: 0, fame: 0, runes: 0, researchPts: 0 },
+
+  /* combat */
+  stage: 1,
+  maxStage: 1,
+  enemy: null,
+  hp: 100,
+  maxHpCurrent: 100,
+  atkCooldown: 0,
+  inCombat: true,
+  autoProgress: true,
+  stageFails: 0,
+
+  /* workers */
+  workers: Object.fromEntries(WORKERS.map(w => [w.id, 0])),
+
+  /* gear */
+  inventory: [],         // array of items
+  equipped: {},          // slotId -> item
+  invCap: 80,
+
+  /* research */
+  research: Object.fromEntries(RESEARCH.map((r, i) => [i, 0])),
+
+  /* clan / prestige */
+  clan: null,            // active clan id
+  clanLv: 0,             // prestige level
+  totalRunes: 0,
+
+  /* meta / rebirth */
+  rebirths: 0,
+  fame: 0,
+
+  /* skills */
+  activeSkill: { running: null, cd: {} },
+
+  /* misc */
+  log: [],
+  lastSave: 0,
+  lastTick: Date.now(),
+  totalPlayTime: 0,
+  settings: { autoSell: "common", showFloaties: true, autoEquip: true },
+};
+
+/* ============================================================
+ * DERIVED STATS (aggregate gear + research + clan + sets)
+ * ============================================================ */
+
+function computeStats() {
+  const s = {
+    dmgFlat: 1,
+    dmgPct: 0,
+    critChance: 0.05,
+    critMult: 1.5,
+    atkSpd: 1.0,            // attacks per second baseline
+    hpFlat: 100,
+    hpPct: 0,
+    armor: 0,
+    regen: 0,
+    lifesteal: 0,
+    goldFind: 0,
+    lootFind: 0,
+    magicFind: 0,
+    thrallSpd: 0,
+    thrallYld: 0,
+    runeFind: 0,
+    researchSpd: 0,
+    prestigeMult: 0,
+    clanPower: 0,
+    skillPower: 0,
+    setChance: 0,
+    affixRoll: 0,
+    reforgePwr: 0,
+    allMult: 0,
+    offlineEff: 0.50,       // base 50%
+    workerDisc: 0,
+    bossDmg: 0,
+  };
+
+  /* equipped gear */
+  const setCounts = {};
+  for (const slot of SLOTS) {
+    const it = Game.equipped[slot.id];
+    if (!it) continue;
+    for (const a of it.affixes) {
+      s[a.stat] = (s[a.stat] || 0) + a.value;
+    }
+    if (it.set) setCounts[it.set] = (setCounts[it.set] || 0) + 1;
+  }
+
+  /* set bonuses */
+  for (const set of SETS) {
+    const count = setCounts[set.id] || 0;
+    for (const [n, bonus] of Object.entries(set.bonuses)) {
+      if (count >= parseInt(n)) {
+        for (const [stat, val] of Object.entries(bonus)) {
+          if (stat === "desc") continue;
+          s[stat] = (s[stat] || 0) + val;
+        }
+      }
+    }
+  }
+
+  /* research */
+  RESEARCH.forEach((r, i) => {
+    const lv = Game.research[i] || 0;
+    if (lv > 0) s[r.stat] = (s[r.stat] || 0) + lv * r.perLvl;
+  });
+
+  /* clan */
+  if (Game.clan) {
+    const clan = CLANS.find(c => c.id === Game.clan);
+    const power = 1 + s.clanPower + Game.clanLv * 0.05;
+    for (const p of clan.perks) {
+      if (p.mult) for (const [k, v] of Object.entries(p.mult)) s[k] = (s[k] || 0) + v * power;
+      if (p.flat) for (const [k, v] of Object.entries(p.flat)) s[k] = (s[k] || 0) + v * power;
+    }
+  }
+
+  /* all-multiplier affects dmg, hp, gold, thrall */
+  const all = 1 + s.allMult;
+  s.dmgPct = (s.dmgPct + 1) * all - 1;
+  s.hpPct = (s.hpPct + 1) * all - 1;
+  s.goldFind = (s.goldFind + 1) * all - 1;
+  s.thrallYld = (s.thrallYld + 1) * all - 1;
+
+  /* derived finals */
+  s.attack = s.dmgFlat * (1 + s.dmgPct);
+  s.maxHp = s.hpFlat * (1 + s.hpPct);
+  s.dps = s.attack * s.atkSpd * (1 + s.critChance * (s.critMult - 1));
+
+  return s;
+}
+
+let Stats = computeStats();
+function refreshStats() { Stats = computeStats(); }
+
+/* ============================================================
+ * GEAR GENERATION
+ * ============================================================ */
+
+function generateItem(stage, overrideRarity = null) {
+  const slot = pick(SLOTS);
+  /* roll rarity, weighted and influenced by magicFind */
+  const mf = 1 + (Stats.magicFind || 0);
+  const adjusted = RARITY.map(r => ({ ...r, weight: r.weight * (r.id === "common" ? 1 : mf) }));
+  const rarity = overrideRarity ? RARITY.find(r => r.id === overrideRarity) : weighted(adjusted);
+
+  /* set roll */
+  let setId = null;
+  const setChance = 0.05 + (Stats.setChance || 0);
+  if (Math.random() < setChance * (rarity.mult / 2)) {
+    setId = pick(SETS).id;
+  }
+
+  /* choose valid affixes for the slot */
+  const validAffixes = AFFIXES.filter(a => a.slots.includes(slot.id));
+  const count = Math.min(rarity.affixes + (Math.random() < (Stats.affixRoll || 0) ? 1 : 0), validAffixes.length);
+  const chosen = [];
+  const pool = [...validAffixes];
+  for (let i = 0; i < count; i++) {
+    const idx = Math.floor(Math.random() * pool.length);
+    const [aff] = pool.splice(idx, 1);
+    const value = aff.base * Math.pow(aff.scale, stage) * rand(0.85, 1.15) * (1 + (Stats.affixRoll || 0));
+    chosen.push({ id: aff.id, stat: aff.stat, name: aff.name, value });
+  }
+
+  const prefix = rarity.id === "runic" ? "Runic " : rarity.id === "mythic" ? "Mythic " : "";
+  const nameBase = setId ? SETS.find(s => s.id === setId).name + " " + slot.name
+                         : `${prefix}${slot.name}`;
+  const suffix = chosen.length ? " " + chosen[0].name : "";
+
+  return {
+    uid: uuid(),
+    slot: slot.id,
+    slotName: slot.name,
+    name: nameBase + suffix,
+    rarity: rarity.id,
+    rarityName: rarity.name,
+    set: setId,
+    setName: setId ? SETS.find(s => s.id === setId).name : null,
+    stageFound: stage,
+    affixes: chosen,
+  };
+}
+
+function itemPower(it) {
+  if (!it) return 0;
+  let p = 0;
+  for (const a of it.affixes) {
+    /* normalize value roughly — weighted by stat importance */
+    const weights = {
+      dmgFlat: 1, dmgPct: 80, critChance: 400, critMult: 60, atkSpd: 150,
+      hpFlat: 0.1, hpPct: 50, armor: 2, regen: 20, lifesteal: 500,
+      goldFind: 40, lootFind: 60, magicFind: 70, thrallSpd: 30, thrallYld: 40,
+      runeFind: 100, researchSpd: 50, setChance: 200, affixRoll: 150, reforgePwr: 80, allMult: 500,
+      skillPower: 80, prestigeMult: 120, clanPower: 150,
+    };
+    p += (a.value || 0) * (weights[a.stat] || 10);
+  }
+  const rarityMult = RARITY.find(r => r.id === it.rarity).mult;
+  return Math.floor(p * rarityMult);
+}
+
+function autoSellCheck(item) {
+  const threshold = Game.settings.autoSell;
+  if (threshold === "off") return false;
+  const order = ["common","uncommon","rare","epic","legendary","mythic","runic"];
+  const tIdx = order.indexOf(threshold);
+  const iIdx = order.indexOf(item.rarity);
+  return iIdx <= tIdx;
+}
+
+function sellItem(uid) {
+  const idx = Game.inventory.findIndex(i => i.uid === uid);
+  if (idx < 0) return;
+  const it = Game.inventory[idx];
+  const rarMult = RARITY.find(r => r.id === it.rarity).mult;
+  const value = Math.floor(5 * Math.pow(1.13, it.stageFound) * rarMult);
+  Game.res.gold += value;
+  Game.inventory.splice(idx, 1);
+  log(`Sold ${it.name} for ${fmt(value)} gold`, "good");
+}
+
+function equipItem(uid) {
+  const idx = Game.inventory.findIndex(i => i.uid === uid);
+  if (idx < 0) return;
+  const it = Game.inventory[idx];
+  const current = Game.equipped[it.slot];
+  Game.equipped[it.slot] = it;
+  Game.inventory.splice(idx, 1);
+  if (current) Game.inventory.push(current);
+  refreshStats();
+  log(`Equipped ${it.name}`);
+}
+
+function unequipItem(slotId) {
+  const it = Game.equipped[slotId];
+  if (!it) return;
+  if (Game.inventory.length >= Game.invCap) { toast("Inventory full!", "mythic"); return; }
+  Game.inventory.push(it);
+  delete Game.equipped[slotId];
+  refreshStats();
+}
+
+function addItemToInventory(item) {
+  if (Game.settings.autoEquip) {
+    const cur = Game.equipped[item.slot];
+    if (!cur || itemPower(item) > itemPower(cur)) {
+      if (cur) {
+        if (Game.inventory.length < Game.invCap) Game.inventory.push(cur);
+      }
+      Game.equipped[item.slot] = item;
+      refreshStats();
+      if (RARITY.findIndex(r => r.id === item.rarity) >= 3) toast(`Equipped ${item.name}!`, item.rarity);
+      return;
+    }
+  }
+  if (autoSellCheck(item)) {
+    const rarMult = RARITY.find(r => r.id === item.rarity).mult;
+    Game.res.gold += Math.floor(5 * Math.pow(1.13, item.stageFound) * rarMult);
+    return;
+  }
+  if (Game.inventory.length >= Game.invCap) {
+    /* drop the lowest power item */
+    let worstIdx = 0, worstP = Infinity;
+    for (let i = 0; i < Game.inventory.length; i++) {
+      const p = itemPower(Game.inventory[i]);
+      if (p < worstP) { worstP = p; worstIdx = i; }
+    }
+    if (itemPower(item) > worstP) {
+      Game.inventory.splice(worstIdx, 1);
+      Game.inventory.push(item);
+    }
+  } else {
+    Game.inventory.push(item);
+  }
+  if (RARITY.findIndex(r => r.id === item.rarity) >= 4) toast(`Found ${item.name}!`, item.rarity);
+}
+
+/* ============================================================
+ * COMBAT
+ * ============================================================ */
+
+function spawnEnemy() {
+  Game.enemy = enemyForStage(Game.stage);
+}
+
+function damageEnemy(amount, isCrit) {
+  if (!Game.enemy) return;
+  Game.enemy.hp -= amount;
+  if (Stats.lifesteal > 0 && Game.hp < Game.maxHpCurrent) {
+    Game.hp = Math.min(Game.maxHpCurrent, Game.hp + amount * Stats.lifesteal);
+  }
+  spawnDamage(amount, isCrit);
+  shakeEnemy();
+  if (Game.enemy.hp <= 0) {
+    enemyDefeated();
+  }
+}
+
+function playerAttack(manual) {
+  if (!Game.enemy) return;
+  let dmg = Stats.attack;
+  if (Game.enemy.boss) dmg *= 1 + (Stats.bossDmg || 0);
+  let isCrit = Math.random() < Stats.critChance;
+  if (Game.activeSkill.running?.id === "raven") isCrit = true;
+  if (isCrit) dmg *= Stats.critMult;
+  if (Game.activeSkill.running?.id === "berserker") dmg *= 3;
+  damageEnemy(dmg, isCrit);
+}
+
+function enemyDefeated() {
+  const e = Game.enemy;
+  /* rewards */
+  let gold = e.gold * (1 + Stats.goldFind);
+  Game.res.gold += gold;
+
+  /* resource drop */
+  const rMap = [ ["wood", 0.3], ["stone", 0.15], ["iron", 0.06], ["food", 0.25], ["mead", 0.03] ];
+  for (const [r, base] of rMap) {
+    const amt = gold * base * 0.2 * (1 + Stats.thrallYld);
+    Game.res[r] += amt;
+  }
+
+  /* research pts */
+  if (e.boss || Math.random() < 0.05) {
+    const pts = (e.boss ? 3 : 1) * (1 + (Stats.researchSpd || 0));
+    Game.res.researchPts += pts;
+  }
+
+  /* loot roll */
+  let rolls = 1 + Math.floor(Stats.lootFind);
+  if (Math.random() < Stats.lootFind % 1) rolls++;
+  if (e.boss) rolls += 2;
+  const baseDropChance = e.boss ? 1.0 : 0.25;
+  for (let i = 0; i < rolls; i++) {
+    if (Math.random() < baseDropChance) {
+      addItemToInventory(generateItem(Game.stage));
+    }
+  }
+
+  /* stage advance */
+  if (e.boss) {
+    log(`Defeated ${e.name}! (Stage ${Game.stage})`, "legend");
+    toast(`Boss vanquished! ${e.name}`, "legend");
+  }
+  Game.stage++;
+  Game.stageFails = 0;
+  if (Game.stage > Game.maxStage) Game.maxStage = Game.stage;
+
+  Game.hp = Math.min(Game.maxHpCurrent, Game.hp + Game.maxHpCurrent * 0.15);
+  spawnEnemy();
+}
+
+function playerDeath() {
+  Game.stageFails++;
+  log(`You fell to the ${Game.enemy?.name || "enemy"}.`, "bad");
+  /* retreat a few stages when repeatedly failing */
+  if (Game.stageFails >= 3) {
+    const retreat = Math.min(5, Math.floor(Game.stage / 10));
+    Game.stage = Math.max(1, Game.stage - retreat);
+    Game.stageFails = 0;
+    log(`Retreating ${retreat} stages to regroup.`, "bad");
+  }
+  Game.hp = Game.maxHpCurrent;
+  spawnEnemy();
+}
+
+function combatTick(dt) {
+  refreshStats();
+  Game.maxHpCurrent = Stats.maxHp;
+  if (Game.hp > Game.maxHpCurrent) Game.hp = Game.maxHpCurrent;
+
+  /* regen */
+  if (Stats.regen > 0 && Game.hp < Game.maxHpCurrent) {
+    Game.hp = Math.min(Game.maxHpCurrent, Game.hp + Stats.regen * dt);
+  }
+
+  if (!Game.enemy) spawnEnemy();
+
+  /* auto attack cadence */
+  Game.atkCooldown -= dt * Stats.atkSpd;
+  while (Game.atkCooldown <= 0) {
+    playerAttack(false);
+    Game.atkCooldown += 1;
+  }
+
+  /* enemy counterattack: scaled to stage, tempered by armor */
+  if (Game.enemy && Game.enemy.hp > 0) {
+    const stageBase = 2 * Math.pow(1.14, Game.stage);
+    const armorReduction = Stats.armor / (Stats.armor + 30 + Game.stage * 4);
+    const incoming = stageBase * (1 - armorReduction) * dt;
+    let isInvuln = Game.activeSkill.running?.id === "shieldmaiden";
+    if (!isInvuln) Game.hp -= incoming;
+    if (Game.hp <= 0) playerDeath();
+  }
+
+  /* skill cooldowns */
+  for (const k of Object.keys(Game.activeSkill.cd)) {
+    Game.activeSkill.cd[k] = Math.max(0, Game.activeSkill.cd[k] - dt);
+  }
+  if (Game.activeSkill.running) {
+    Game.activeSkill.running.time -= dt;
+    if (Game.activeSkill.running.time <= 0) Game.activeSkill.running = null;
+  }
+}
+
+function activateClanSkill() {
+  if (!Game.clan) return;
+  if (Game.activeSkill.cd[Game.clan] > 0) return;
+  const durations = { berserker: 15, skald: 30, jarl: 20, seer: 0, shieldmaiden: 10, raven: 12 };
+  const cooldowns = { berserker: 60, skald: 90, jarl: 120, seer: 180, shieldmaiden: 180, raven: 75 };
+  const dur = durations[Game.clan];
+
+  if (Game.clan === "seer") {
+    Game.res.researchPts += 10 * (1 + Stats.skillPower);
+    toast("Urd's Vision grants insight!", "runic");
+  } else if (Game.clan === "jarl") {
+    Game.activeSkill.running = { id: "jarl", time: dur };
+  } else {
+    Game.activeSkill.running = { id: Game.clan, time: dur };
+  }
+  Game.activeSkill.cd[Game.clan] = cooldowns[Game.clan];
+  log(`Activated clan ability!`, "epic");
+}
+
+/* ============================================================
+ * WORKERS
+ * ============================================================ */
+
+function workerCost(w, levelsBought = 1) {
+  const cur = Game.workers[w.id];
+  const disc = 1 - (Stats.workerDisc || 0);
+  const out = {};
+  for (const [r, base] of Object.entries(w.baseCost)) {
+    let total = 0;
+    for (let i = 0; i < levelsBought; i++) {
+      total += base * Math.pow(w.costScale, cur + i);
+    }
+    out[r] = Math.ceil(total * disc);
+  }
+  return out;
+}
+
+function workerProduction(w) {
+  const lv = Game.workers[w.id];
+  if (lv === 0) return 0;
+  let prod = w.baseProd * lv * Math.pow(1.12, lv - 1);
+  prod *= (1 + Stats.thrallYld) * (1 + Stats.thrallSpd);
+  if (Game.activeSkill.running?.id === "jarl") prod *= 50;
+  return prod;
+}
+
+function canAfford(cost) {
+  for (const [r, v] of Object.entries(cost)) {
+    if ((Game.res[r] || 0) < v) return false;
+  }
+  return true;
+}
+
+function pay(cost) {
+  for (const [r, v] of Object.entries(cost)) {
+    Game.res[r] -= v;
+  }
+}
+
+function buyWorker(id, qty = 1) {
+  const w = WORKERS.find(w => w.id === id);
+  const cost = workerCost(w, qty);
+  if (!canAfford(cost)) return;
+  pay(cost);
+  Game.workers[id] += qty;
+  log(`Recruited ${qty}× ${w.name}`);
+}
+
+function workersTick(dt) {
+  for (const w of WORKERS) {
+    const prod = workerProduction(w);
+    if (prod > 0) {
+      if (w.res === "fame") Game.res.fame += prod * dt;
+      else Game.res[w.res] += prod * dt;
+    }
+  }
+}
+
+/* ============================================================
+ * RESEARCH
+ * ============================================================ */
+
+function researchCost(idx) {
+  const r = RESEARCH[idx];
+  const lv = Game.research[idx];
+  return Math.ceil(r.baseCost * Math.pow(r.scale, lv));
+}
+
+function buyResearch(idx) {
+  const r = RESEARCH[idx];
+  const lv = Game.research[idx];
+  if (lv >= r.maxLvl) return;
+  const cost = researchCost(idx);
+  if (Game.res.researchPts < cost) return;
+  Game.res.researchPts -= cost;
+  Game.research[idx]++;
+  refreshStats();
+  log(`Researched ${r.name} Lv ${Game.research[idx]}`, "good");
+}
+
+function researchTick(dt) {
+  /* slow passive research */
+  const rate = 0.02 * (1 + Stats.researchSpd) * (1 + Game.maxStage * 0.01);
+  Game.res.researchPts += rate * dt;
+}
+
+/* ============================================================
+ * PRESTIGE (CLAN ALLEGIANCE)
+ * ============================================================ */
+
+function prestigeRuneGain() {
+  if (Game.maxStage < 50) return 0;
+  const base = Math.floor(Math.pow((Game.maxStage - 40) / 10, 1.5));
+  return Math.floor(base * (1 + Stats.runeFind) * (1 + Stats.prestigeMult));
+}
+
+function canPrestige() { return Game.maxStage >= 50; }
+
+function prestige(clanId) {
+  const gain = prestigeRuneGain();
+  Game.res.runes += gain;
+  Game.totalRunes += gain;
+  Game.clan = clanId;
+  Game.clanLv++;
+  log(`Joined the ${CLANS.find(c => c.id === clanId).name}! +${fmt(gain)} runes`, "legend");
+  toast(`Clan allegiance — ${CLANS.find(c => c.id === clanId).name}!`, "legend");
+  doReset(false);
+}
+
+function doReset(full) {
+  Game.stage = 1;
+  Game.maxStage = full ? 1 : Game.maxStage;
+  Game.enemy = null;
+  Game.hp = 100;
+  Game.stageFails = 0;
+  Game.workers = Object.fromEntries(WORKERS.map(w => [w.id, 0]));
+  Game.res.gold = 0;
+  Game.res.wood = 0;
+  Game.res.stone = 0;
+  Game.res.iron = 0;
+  Game.res.food = 0;
+  Game.res.mead = 0;
+  if (full) {
+    Game.res.researchPts = 0;
+    Game.research = Object.fromEntries(RESEARCH.map((r, i) => [i, 0]));
+    Game.inventory = [];
+    Game.equipped = {};
+    Game.clanLv = 0;
+    Game.totalRunes = 0;
+    Game.res.runes = 0;
+  }
+  /* keep inventory+equipped on clan-prestige — they persist between runs */
+  refreshStats();
+  spawnEnemy();
+}
+
+function canRebirth() { return Game.clanLv >= 10 && Game.maxStage >= 500; }
+
+function rebirth() {
+  if (!canRebirth()) return;
+  const fameGain = Math.floor(Math.pow(Game.totalRunes / 100, 0.7));
+  Game.fame += fameGain;
+  Game.rebirths++;
+  Game.clan = null;
+  doReset(true);
+  log(`Rebirth! +${fmt(fameGain)} fame`, "legend");
+  toast(`Rebirth! Reality reshapes itself.`, "runic");
+}
+
+/* ============================================================
+ * PERSISTENCE
+ * ============================================================ */
+
+function saveGame() {
+  try {
+    const data = {
+      v: 1,
+      res: Game.res,
+      stage: Game.stage,
+      maxStage: Game.maxStage,
+      hp: Game.hp,
+      workers: Game.workers,
+      inventory: Game.inventory,
+      equipped: Game.equipped,
+      research: Game.research,
+      clan: Game.clan,
+      clanLv: Game.clanLv,
+      totalRunes: Game.totalRunes,
+      rebirths: Game.rebirths,
+      fame: Game.fame,
+      settings: Game.settings,
+      totalPlayTime: Game.totalPlayTime,
+      savedAt: Date.now(),
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    Game.lastSave = Date.now();
+  } catch (e) { console.error("Save failed", e); }
+}
+
+function loadGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return false;
+    const d = JSON.parse(raw);
+    Object.assign(Game.res, d.res || {});
+    Game.stage = d.stage || 1;
+    Game.maxStage = d.maxStage || 1;
+    Game.hp = d.hp || 100;
+    Game.workers = { ...Game.workers, ...(d.workers || {}) };
+    Game.inventory = d.inventory || [];
+    Game.equipped = d.equipped || {};
+    Game.research = { ...Game.research, ...(d.research || {}) };
+    Game.clan = d.clan || null;
+    Game.clanLv = d.clanLv || 0;
+    Game.totalRunes = d.totalRunes || 0;
+    Game.rebirths = d.rebirths || 0;
+    Game.fame = d.fame || 0;
+    Game.settings = { ...Game.settings, ...(d.settings || {}) };
+    Game.totalPlayTime = d.totalPlayTime || 0;
+
+    /* offline progress */
+    const now = Date.now();
+    const elapsed = Math.max(0, (now - (d.savedAt || now)) / 1000);
+    if (elapsed > 30) applyOfflineProgress(elapsed);
+    return true;
+  } catch (e) { console.error("Load failed", e); return false; }
+}
+
+function applyOfflineProgress(seconds) {
+  refreshStats();
+  const cap = 24 * 3600; /* 24h cap */
+  const t = Math.min(seconds, cap);
+  const eff = Stats.offlineEff || 0.5;
+  const effT = t * eff;
+
+  let gainedGold = 0;
+  for (const w of WORKERS) {
+    const prod = workerProduction(w);
+    const amt = prod * effT;
+    if (w.res === "gold") gainedGold += amt;
+    else if (w.res === "fame") Game.res.fame += amt;
+    else Game.res[w.res] += amt;
+  }
+  Game.res.gold += gainedGold;
+  Game.res.researchPts += 0.02 * (1 + Stats.researchSpd) * (1 + Game.maxStage * 0.01) * effT;
+
+  /* simulate a simplified combat grind: one enemy every X sec at current stage */
+  const killsPerSec = Math.max(0.01, Stats.dps / Math.max(1, Game.enemy?.maxHp || enemyForStage(Game.stage).maxHp));
+  const simulatedKills = Math.min(effT * killsPerSec, 1000);
+  let extraGold = 0;
+  for (let i = 0; i < simulatedKills; i++) {
+    const e = enemyForStage(Game.stage + Math.floor(i / 10));
+    extraGold += e.gold * (1 + Stats.goldFind);
+  }
+  Game.res.gold += extraGold;
+
+  setTimeout(() => toast(`Welcome back! Away ${fmtTime(t)} — earned ${fmt(gainedGold + extraGold)} gold`, "runic"), 500);
+}
+
+function wipeSave() {
+  localStorage.removeItem(SAVE_KEY);
+  location.reload();
+}
+
+/* ============================================================
+ * LOG & TOAST
+ * ============================================================ */
+
+function log(msg, kind = "") {
+  Game.log.unshift({ msg, kind, t: Date.now() });
+  if (Game.log.length > 80) Game.log.length = 80;
+  renderLog();
+}
+
+function toast(msg, kind = "") {
+  const t = document.createElement("div");
+  t.className = `toast ${kind}`;
+  t.textContent = msg;
+  document.getElementById("toasts").appendChild(t);
+  setTimeout(() => t.remove(), 3800);
+}
+
+/* ============================================================
+ * DAMAGE FLOATIES / ANIMATIONS
+ * ============================================================ */
+
+function spawnDamage(amount, crit) {
+  if (!Game.settings.showFloaties) return;
+  const host = document.querySelector(".enemy-card");
+  if (!host) return;
+  const d = document.createElement("div");
+  d.className = "damage-popup" + (crit ? " crit" : "");
+  d.textContent = fmt(amount) + (crit ? "!" : "");
+  const sigil = host.querySelector(".enemy-sigil");
+  const rect = sigil?.getBoundingClientRect();
+  const hostRect = host.getBoundingClientRect();
+  if (rect) {
+    d.style.left = (rect.left - hostRect.left + rand(0, rect.width)) + "px";
+    d.style.top  = (rect.top - hostRect.top + rand(0, rect.height)) + "px";
+  }
+  d.style.setProperty("--dx", (rand(-30, 30)) + "px");
+  host.appendChild(d);
+  setTimeout(() => d.remove(), 900);
+}
+
+function shakeEnemy() {
+  const sigil = document.querySelector(".enemy-sigil");
+  if (!sigil) return;
+  sigil.classList.remove("hit");
+  void sigil.offsetWidth;
+  sigil.classList.add("hit");
+}
+
+/* ============================================================
+ * MAIN LOOP
+ * ============================================================ */
+
+function tick() {
+  const now = Date.now();
+  const dt = (now - Game.lastTick) / 1000;
+  Game.lastTick = now;
+  Game.totalPlayTime += dt;
+
+  combatTick(dt);
+  workersTick(dt);
+  researchTick(dt);
+
+  if (now - Game.lastSave > SAVE_INTERVAL_MS) saveGame();
+
+  render();
+}
+
+function startLoop() {
+  Game.lastTick = Date.now();
+  setInterval(tick, TICK_MS);
+}
+
+/* ============================================================
+ * RENDER
+ * ============================================================ */
+
+function render() {
+  renderResourceBar();
+  renderSaga();
+  renderLonghouse();
+  renderForge();
+  renderRunestones();
+  renderClan();
+  renderFooter();
+}
+
+function renderResourceBar() {
+  const bar = document.getElementById("resource-bar");
+  const items = [];
+  for (const r of RESOURCES) {
+    const m = RESOURCE_META[r];
+    const v = Game.res[r] || 0;
+    if (r !== "gold" && r !== "wood" && v <= 0 && Game.maxStage < 5) continue;
+    items.push(`<div class="resource ${r}"><span class="icon">${m.icon}</span><div><div class="label">${m.label}</div><div class="value">${fmt(v)}</div></div></div>`);
+  }
+  if (Game.res.runes > 0 || Game.clan) {
+    items.push(`<div class="resource runes"><span class="icon">ᚱ</span><div><div class="label">Runes</div><div class="value">${fmt(Game.res.runes)}</div></div></div>`);
+  }
+  if (Game.res.researchPts > 0 || Game.maxStage >= 10) {
+    items.push(`<div class="resource"><span class="icon">📜</span><div><div class="label">Research</div><div class="value">${fmt(Game.res.researchPts)}</div></div></div>`);
+  }
+  if (Game.fame > 0) {
+    items.push(`<div class="resource fame"><span class="icon">✦</span><div><div class="label">Fame</div><div class="value">${fmt(Game.fame)}</div></div></div>`);
+  }
+  bar.innerHTML = items.join("");
+}
+
+function renderFooter() {
+  const l = document.getElementById("footer-left");
+  l.textContent = `Saga of the Nine Realms — Max Stage: ${Game.maxStage} · Rebirths: ${Game.rebirths}`;
+  const r = document.getElementById("footer-right");
+  r.textContent = `Playtime: ${fmtTime(Game.totalPlayTime)}`;
+}
+
+function renderLog() {
+  const el = document.querySelector("#combat-log");
+  if (!el) return;
+  el.innerHTML = Game.log.slice(0, 40).map(l =>
+    `<div class="log-entry ${l.kind}">${l.msg}</div>`
+  ).join("");
+}
+
+/* -------- SAGA (combat) -------- */
+function renderSaga() {
+  const p = document.getElementById("panel-saga");
+  if (!p.dataset.built) { buildSaga(p); p.dataset.built = "1"; }
+  if (!p.classList.contains("active")) return;
+
+  const e = Game.enemy || enemyForStage(Game.stage);
+  const realm = realmOf(Game.stage);
+  const bannerEl = p.querySelector("#stage-banner");
+  bannerEl.textContent = `${realm.name} · Stage ${Game.stage}`;
+  const nameEl = p.querySelector(".enemy-name");
+  nameEl.textContent = e.name;
+  nameEl.classList.toggle("boss", !!e.boss);
+  p.querySelector(".enemy-card").classList.toggle("boss", !!e.boss);
+  p.querySelector(".enemy-sigil").textContent = e.sigil;
+  const hpPct = e.hp > 0 ? (e.hp / e.maxHp) * 100 : 0;
+  p.querySelector(".hp-fill").style.width = hpPct + "%";
+  p.querySelector(".hp-text").textContent = `${fmt(Math.max(0, e.hp))} / ${fmt(e.maxHp)}`;
+
+  /* stage dots */
+  const dotsEl = p.querySelector("#stage-dots");
+  const bossStage = Math.ceil(Game.stage / 10) * 10;
+  const base = bossStage - 9;
+  let html = "";
+  for (let i = 0; i < 10; i++) {
+    const s = base + i;
+    let cls = "";
+    if (s < Game.stage) cls = "done";
+    if (s === Game.stage) cls = "current";
+    html += `<div class="stage-dot ${cls}" title="Stage ${s}"></div>`;
+  }
+  dotsEl.innerHTML = html;
+
+  /* player HP */
+  const pHp = p.querySelector("#player-hp-fill");
+  const pct = Game.maxHpCurrent > 0 ? (Game.hp / Game.maxHpCurrent) * 100 : 0;
+  pHp.style.width = pct + "%";
+  p.querySelector("#player-hp-text").textContent = `${fmt(Math.max(0, Game.hp))} / ${fmt(Game.maxHpCurrent)}`;
+
+  /* stat block */
+  const st = p.querySelector("#stat-list");
+  st.innerHTML = [
+    ["Attack", fmt(Stats.attack, 1)],
+    ["Attack Speed", fmt(Stats.atkSpd, 2) + "/s"],
+    ["DPS", fmt(Stats.dps, 1)],
+    ["Crit Chance", (Stats.critChance * 100).toFixed(1) + "%"],
+    ["Crit Damage", "×" + fmt(Stats.critMult, 2)],
+    ["Max HP", fmt(Stats.maxHp)],
+    ["Regen", fmt(Stats.regen, 1) + "/s"],
+    ["Armor", fmt(Stats.armor)],
+    ["Lifesteal", (Stats.lifesteal * 100).toFixed(1) + "%"],
+    ["Gold Find", "+" + (Stats.goldFind * 100).toFixed(0) + "%"],
+    ["Magic Find", "+" + (Stats.magicFind * 100).toFixed(0) + "%"],
+  ].map(([k, v]) => `<div class="k">${k}</div><div class="v">${v}</div>`).join("");
+
+  /* clan ability button */
+  const skill = p.querySelector("#clan-skill-btn");
+  if (Game.clan) {
+    const cd = Game.activeSkill.cd[Game.clan] || 0;
+    const clan = CLANS.find(c => c.id === Game.clan);
+    skill.style.display = "";
+    skill.disabled = cd > 0;
+    const running = Game.activeSkill.running?.id === Game.clan;
+    skill.textContent = running ? `${clan.sigil} ACTIVE (${Math.ceil(Game.activeSkill.running.time)}s)` :
+                        cd > 0  ? `${clan.sigil} Ready in ${Math.ceil(cd)}s`
+                                : `${clan.sigil} ${clan.name.split(" ")[0]}'s Call`;
+  } else {
+    skill.style.display = "none";
+  }
+
+  renderLog();
+}
+
+function buildSaga(p) {
+  p.innerHTML = `
+    <div class="combat-area">
+      <div>
+        <div class="enemy-card">
+          <div class="stage-banner" id="stage-banner">Stage 1</div>
+          <div class="enemy-name">—</div>
+          <div class="enemy-sigil">⚔</div>
+          <div class="hp-bar"><div class="hp-fill"></div><div class="hp-text">—</div></div>
+          <div class="stage-progress" id="stage-dots"></div>
+          <button class="attack-btn" id="attack-btn">⚔ Strike</button>
+          <button id="clan-skill-btn" style="margin-top:8px;width:100%;padding:10px;letter-spacing:2px;text-transform:uppercase;"></button>
+        </div>
+        <div class="card" style="margin-top:14px;">
+          <h3>Battle Log</h3>
+          <div class="log" id="combat-log"></div>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <h3>The Warrior</h3>
+          <div style="margin-bottom:10px;">
+            <div style="font-size:11px;color:var(--ink-faint);letter-spacing:1px;text-transform:uppercase;">Health</div>
+            <div class="hp-bar"><div class="hp-fill" id="player-hp-fill" style="background:linear-gradient(90deg,var(--moss),#8cc060);"></div><div class="hp-text" id="player-hp-text">—</div></div>
+          </div>
+          <div class="stat-list" id="stat-list"></div>
+        </div>
+        <div class="card" style="margin-top:14px;">
+          <h3>Auto-Advance</h3>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="auto-advance" checked /> <span>Auto-attack &amp; advance stages</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  `;
+  p.querySelector("#attack-btn").addEventListener("click", () => playerAttack(true));
+  p.querySelector("#clan-skill-btn").addEventListener("click", activateClanSkill);
+}
+
+/* -------- LONGHOUSE (workers) -------- */
+function renderLonghouse() {
+  const p = document.getElementById("panel-longhouse");
+  if (!p.classList.contains("active")) return;
+  const cards = WORKERS.map(w => {
+    const lv = Game.workers[w.id];
+    const cost1 = workerCost(w, 1);
+    const cost10 = workerCost(w, 10);
+    const prod = workerProduction(w);
+    const afford1 = canAfford(cost1);
+    const afford10 = canAfford(cost10);
+    const resIcon = RESOURCE_META[w.res]?.icon || "✦";
+    const costStr = Object.entries(cost1).map(([r, v]) => `${fmt(v)} ${RESOURCE_META[r]?.icon || r}`).join(" · ");
+    const cost10Str = Object.entries(cost10).map(([r, v]) => `${fmt(v)} ${RESOURCE_META[r]?.icon || r}`).join(" · ");
+    return `
+      <div class="worker-card">
+        <div class="worker-head">
+          <div class="worker-name">${w.icon} ${w.name}</div>
+          <div class="worker-lvl">Lv ${lv}</div>
+        </div>
+        <div class="worker-prod">${resIcon} ${fmt(prod, 2)}/s</div>
+        <div class="worker-cost">Cost: ${costStr}</div>
+        <div style="display:flex;gap:4px;">
+          <button class="worker-btn" data-buy="${w.id}" data-qty="1" ${afford1 ? "" : "disabled"}>+1</button>
+          <button class="worker-btn" data-buy="${w.id}" data-qty="10" ${afford10 ? "" : "disabled"} title="${cost10Str}">+10</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  const totalGold = fmt(WORKERS.filter(w => w.res === "gold").reduce((s, w) => s + workerProduction(w), 0), 2);
+  p.innerHTML = `
+    <div class="card">
+      <h2>The Longhouse</h2>
+      <p style="color:var(--ink-dim);font-size:12px;margin-bottom:10px;">Recruit thralls and warriors to toil while you raid. Idle gains scale exponentially with level.</p>
+      <div class="grid-3" style="gap:10px;">${cards}</div>
+    </div>
+    <div class="card" style="margin-top:14px;">
+      <h3>Longhouse Summary</h3>
+      <div class="row"><span class="label">Gold /sec</span><span class="value">${totalGold}</span></div>
+      <div class="row"><span class="label">Thrall yield mult</span><span class="value">+${(Stats.thrallYld*100).toFixed(0)}%</span></div>
+      <div class="row"><span class="label">Thrall speed mult</span><span class="value">+${(Stats.thrallSpd*100).toFixed(0)}%</span></div>
+      <div class="row"><span class="label">Worker discount</span><span class="value">-${(Stats.workerDisc*100).toFixed(0)}%</span></div>
+    </div>
+  `;
+  p.querySelectorAll("[data-buy]").forEach(b => b.addEventListener("click", () => {
+    buyWorker(b.dataset.buy, parseInt(b.dataset.qty));
+  }));
+}
+
+/* -------- FORGE (gear) -------- */
+function renderForge() {
+  const p = document.getElementById("panel-forge");
+  if (!p.classList.contains("active")) return;
+
+  const slotsHtml = SLOTS.map(s => {
+    const it = Game.equipped[s.id];
+    if (it) {
+      return `<div class="gear-slot" data-unequip="${s.id}">
+        <div class="slot-label">${s.icon} ${s.name}</div>
+        <div class="item-name r-${it.rarity}">${it.name}</div>
+        ${it.setName ? `<div class="set-badge">${it.setName.split(" ")[0]}</div>` : ""}
+      </div>`;
+    }
+    return `<div class="gear-slot empty"><div class="slot-label">${s.icon} ${s.name}</div><div class="item-name">(empty)</div></div>`;
+  }).join("");
+
+  /* set counts */
+  const setCounts = {};
+  for (const slot of SLOTS) {
+    const it = Game.equipped[slot.id];
+    if (it?.set) setCounts[it.set] = (setCounts[it.set] || 0) + 1;
+  }
+  const setsHtml = SETS.map(set => {
+    const count = setCounts[set.id] || 0;
+    const thresholds = Object.keys(set.bonuses).map(n => parseInt(n));
+    const bonusList = thresholds.map(n => {
+      const active = count >= n;
+      return `<div style="font-size:11px;color:${active ? 'var(--moss)' : 'var(--ink-faint)'};padding:2px 0;"><b>(${n})</b> ${set.bonuses[n].desc}${active ? ' ✓' : ''}</div>`;
+    }).join("");
+    return `
+      <div style="border:1px solid ${count > 0 ? 'var(--rare-runic)' : 'var(--border)'};padding:8px;margin-bottom:6px;border-radius:2px;background:var(--bg-1);">
+        <div style="color:var(--rare-runic);font-weight:bold;font-size:12px;">${set.name} (${count}/${Math.max(...thresholds)})</div>
+        ${bonusList}
+      </div>
+    `;
+  }).join("");
+
+  /* inventory */
+  const sorted = [...Game.inventory].sort((a, b) => {
+    const ra = RARITY.findIndex(r => r.id === a.rarity);
+    const rb = RARITY.findIndex(r => r.id === b.rarity);
+    if (ra !== rb) return rb - ra;
+    return itemPower(b) - itemPower(a);
+  });
+  const invHtml = sorted.map(it => {
+    const affixes = it.affixes.map(a => {
+      const affDef = AFFIXES.find(d => d.id === a.id);
+      return `<div class="affix">${affDef ? affDef.fmt(a.value) : a.stat}</div>`;
+    }).join("");
+    const setBadge = it.setName ? `<span class="set-badge">${it.setName.split("'")[0]}</span>` : "";
+    return `
+      <div class="inv-item" data-item="${it.uid}">
+        <div class="slot">${it.slotName} · Stage ${it.stageFound}</div>
+        <div class="item-name r-${it.rarity}">${it.name}${setBadge}</div>
+        ${affixes}
+        <div class="actions">
+          <button data-equip="${it.uid}">Equip</button>
+          <button data-sell="${it.uid}">Sell</button>
+        </div>
+      </div>
+    `;
+  }).join("") || `<div style="color:var(--ink-faint);padding:20px;text-align:center;">No items in inventory. Slay enemies to find gear.</div>`;
+
+  p.innerHTML = `
+    <div class="gear-layout">
+      <div>
+        <div class="card">
+          <h3>Equipment</h3>
+          <div class="gear-slots">${slotsHtml}</div>
+          <div style="margin-top:12px;font-size:11px;color:var(--ink-faint);text-align:center;">Click a slot to unequip</div>
+        </div>
+        <div class="card" style="margin-top:14px;">
+          <h3>Gear Sets</h3>
+          ${setsHtml}
+        </div>
+      </div>
+      <div class="card">
+        <h3>Inventory (${Game.inventory.length} / ${Game.invCap})</h3>
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+          <label style="font-size:11px;color:var(--ink-dim);">Auto-sell ≤
+            <select id="autosell-select" style="background:var(--bg-0);color:var(--ink);border:1px solid var(--border);padding:2px;">
+              <option value="off">Off</option>
+              <option value="common">Common</option>
+              <option value="uncommon">Uncommon</option>
+              <option value="rare">Rare</option>
+              <option value="epic">Epic</option>
+            </select>
+          </label>
+          <label style="font-size:11px;color:var(--ink-dim);">
+            <input type="checkbox" id="autoequip-check" ${Game.settings.autoEquip ? 'checked' : ''} /> Auto-equip upgrades
+          </label>
+          <button id="sell-all-trash" style="margin-left:auto;" class="danger">Sell Commons</button>
+        </div>
+        <div class="inventory">${invHtml}</div>
+      </div>
+    </div>
+  `;
+
+  p.querySelector("#autosell-select").value = Game.settings.autoSell;
+  p.querySelector("#autosell-select").addEventListener("change", e => { Game.settings.autoSell = e.target.value; });
+  p.querySelector("#autoequip-check").addEventListener("change", e => { Game.settings.autoEquip = e.target.checked; });
+  p.querySelector("#sell-all-trash").addEventListener("click", () => {
+    const before = Game.inventory.length;
+    Game.inventory = Game.inventory.filter(it => {
+      if (it.rarity === "common" || it.rarity === "uncommon") {
+        const rarMult = RARITY.find(r => r.id === it.rarity).mult;
+        Game.res.gold += Math.floor(5 * Math.pow(1.13, it.stageFound) * rarMult);
+        return false;
+      }
+      return true;
+    });
+    log(`Sold ${before - Game.inventory.length} common/uncommon items`, "good");
+  });
+  p.querySelectorAll("[data-equip]").forEach(b => b.addEventListener("click", e => {
+    e.stopPropagation(); equipItem(b.dataset.equip);
+  }));
+  p.querySelectorAll("[data-sell]").forEach(b => b.addEventListener("click", e => {
+    e.stopPropagation(); sellItem(b.dataset.sell);
+  }));
+  p.querySelectorAll("[data-unequip]").forEach(el => el.addEventListener("click", () => unequipItem(el.dataset.unequip)));
+}
+
+/* -------- RUNESTONES (research) -------- */
+function renderRunestones() {
+  const p = document.getElementById("panel-runestones");
+  if (!p.classList.contains("active")) return;
+
+  const branches = RESEARCH_BRANCHES.map(br => {
+    const nodes = RESEARCH.map((r, i) => ({ r, i })).filter(x => x.r.branch === br.id);
+    const nodeHtml = nodes.map(({ r, i }) => {
+      const lv = Game.research[i];
+      const maxed = lv >= r.maxLvl;
+      const cost = researchCost(i);
+      const affordable = Game.res.researchPts >= cost;
+      return `
+        <div class="research-node ${maxed ? 'maxed' : ''}">
+          <div class="rn-name">${r.name} <span style="color:var(--ink-faint);">Lv ${lv}/${r.maxLvl}</span></div>
+          <div class="rn-desc">+${r.perLvl > 0.1 ? (r.perLvl*100).toFixed(0)+'%' : (r.perLvl*100).toFixed(1)+'%'} ${r.stat} per level</div>
+          ${maxed ? '<div class="rn-cost">— MAXED —</div>' :
+          `<div class="rn-cost">Cost: ${fmt(cost)} pts</div>
+          <button ${affordable ? '' : 'disabled'} data-research="${i}">Research</button>`}
+        </div>
+      `;
+    }).join("");
+    return `<div class="research-branch"><h3>${br.icon} ${br.name}</h3><div style="font-size:10px;color:var(--ink-faint);margin-bottom:6px;">${br.desc}</div>${nodeHtml}</div>`;
+  }).join("");
+
+  const rate = 0.02 * (1 + Stats.researchSpd) * (1 + Game.maxStage * 0.01);
+
+  p.innerHTML = `
+    <div class="card" style="margin-bottom:14px;">
+      <h2>📜 The Runestones of Mimir</h2>
+      <p style="color:var(--ink-dim);font-size:12px;">Carved with wisdom from the World-Tree. Research points accrue passively and from slaying bosses.</p>
+      <div class="row"><span class="label">Research Points</span><span class="value">${fmt(Game.res.researchPts)}</span></div>
+      <div class="row"><span class="label">Passive rate</span><span class="value">${fmt(rate, 2)}/s</span></div>
+      <div class="row"><span class="label">Research speed mult</span><span class="value">+${(Stats.researchSpd*100).toFixed(0)}%</span></div>
+    </div>
+    <div class="research-tree">${branches}</div>
+  `;
+  p.querySelectorAll("[data-research]").forEach(b => b.addEventListener("click", () => {
+    buyResearch(parseInt(b.dataset.research));
+  }));
+}
+
+/* -------- CLAN (prestige) -------- */
+function renderClan() {
+  const p = document.getElementById("panel-clan");
+  if (!p.classList.contains("active")) return;
+
+  const canP = canPrestige();
+  const runeGain = prestigeRuneGain();
+  const curClan = Game.clan ? CLANS.find(c => c.id === Game.clan) : null;
+
+  const clanCards = CLANS.map(c => {
+    const selected = c.id === Game.clan;
+    return `
+      <div class="clan-card ${selected ? 'selected' : ''} ${canP ? '' : 'locked'}" data-clan="${c.id}">
+        <div class="clan-sigil">${c.sigil}</div>
+        <div class="clan-name">${c.name}</div>
+        <div class="clan-title">${c.title}</div>
+        ${c.perks.map(p => `<div class="clan-perk"><span class="mod ${p.neg ? 'neg' : ''}">${p.desc}</span></div>`).join("")}
+        <div style="margin-top:8px;font-size:10px;color:var(--rare-runic);">⚡ ${c.active}</div>
+      </div>
+    `;
+  }).join("");
+
+  const canReb = canRebirth();
+  const fameGain = canReb ? Math.floor(Math.pow(Game.totalRunes / 100, 0.7)) : 0;
+
+  p.innerHTML = `
+    <div class="card" style="margin-bottom:14px;">
+      <h2>⚜ The Clan Hall</h2>
+      <p style="color:var(--ink-dim);font-size:12px;">Swear allegiance to a clan. Prestiging resets your progress but grants <b style="color:var(--rare-runic);">runes</b> and empowers your path.</p>
+      <div class="grid-3" style="margin-top:10px;">
+        <div>
+          <div class="row"><span class="label">Max stage reached</span><span class="value">${Game.maxStage}</span></div>
+          <div class="row"><span class="label">Prestige count</span><span class="value">${Game.clanLv}</span></div>
+          <div class="row"><span class="label">Current clan</span><span class="value">${curClan ? curClan.name : '—'}</span></div>
+        </div>
+        <div>
+          <div class="row"><span class="label">Runes on prestige</span><span class="value" style="color:var(--rare-runic);">+${fmt(runeGain)}</span></div>
+          <div class="row"><span class="label">Total runes earned</span><span class="value">${fmt(Game.totalRunes)}</span></div>
+          <div class="row"><span class="label">Clan power</span><span class="value">×${(1 + Stats.clanPower + Game.clanLv * 0.05).toFixed(2)}</span></div>
+        </div>
+        <div>
+          <div class="row"><span class="label">Rebirths</span><span class="value">${Game.rebirths}</span></div>
+          <div class="row"><span class="label">Fame</span><span class="value" style="color:var(--rare-mythic);">${fmt(Game.fame)}</span></div>
+          <div class="row"><span class="label">Rebirth req</span><span class="value">10 prestige, Stage 500</span></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button id="rebirth-btn" class="primary" ${canReb ? '' : 'disabled'}>✦ Ragnarök Rebirth (+${fmt(fameGain)} fame)</button>
+      </div>
+      ${canP ? '' : `<div style="margin-top:8px;font-size:11px;color:var(--ink-faint);">Reach stage 50 to prestige.</div>`}
+    </div>
+    <div class="card">
+      <h3>Choose Your Clan (and Prestige)</h3>
+      <div class="clan-grid">${clanCards}</div>
+    </div>
+  `;
+
+  p.querySelectorAll("[data-clan]").forEach(card => card.addEventListener("click", () => {
+    if (!canP) { toast("Reach Stage 50 first.", "bad"); return; }
+    confirmModal(
+      `Swear to the ${CLANS.find(c => c.id === card.dataset.clan).name}?`,
+      `This will prestige — gaining ${fmt(runeGain)} runes but resetting your stage, resources, and workers. Gear and research persist.`,
+      "Prestige",
+      () => prestige(card.dataset.clan)
+    );
+  }));
+  p.querySelector("#rebirth-btn")?.addEventListener("click", () => {
+    if (!canReb) return;
+    confirmModal(
+      "Ragnarök Rebirth?",
+      `Reality resets. You gain ${fmt(fameGain)} fame for permanent power, but lose ALL progress including gear, research, and runes.`,
+      "Rebirth",
+      rebirth
+    );
+  });
+}
+
+/* -------- SETTINGS -------- */
+function renderSettings() {
+  const p = document.getElementById("panel-settings");
+  if (!p.classList.contains("active")) return;
+  p.innerHTML = `
+    <div class="card">
+      <h2>Settings</h2>
+      <div class="row"><span class="label">Show damage floaties</span>
+        <span><input type="checkbox" id="set-floaties" ${Game.settings.showFloaties ? 'checked' : ''}/></span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">
+        <button id="save-now">💾 Save Now</button>
+        <button id="export-save">📤 Export Save</button>
+        <button id="import-save">📥 Import Save</button>
+        <button class="danger" id="wipe-save">☠ Wipe Save</button>
+      </div>
+      <div style="margin-top:16px;font-size:11px;color:var(--ink-faint);line-height:1.6;">
+        <p>Auto-save every 10 seconds. Offline progression grants 50% efficiency (boosted by research). Cap 24 hours.</p>
+        <p style="margin-top:6px;"><b>Pro tips:</b> Stack gear set bonuses for massive power. Each clan rewards a different build path. Research the Wyrd branch to boost prestige gains.</p>
+      </div>
+    </div>
+  `;
+  p.querySelector("#set-floaties").addEventListener("change", e => { Game.settings.showFloaties = e.target.checked; });
+  p.querySelector("#save-now").addEventListener("click", () => { saveGame(); toast("Saved!", "good"); });
+  p.querySelector("#export-save").addEventListener("click", () => {
+    const data = localStorage.getItem(SAVE_KEY) || "";
+    const b64 = btoa(data);
+    prompt("Copy this save string:", b64);
+  });
+  p.querySelector("#import-save").addEventListener("click", () => {
+    const b64 = prompt("Paste save string:");
+    if (!b64) return;
+    try {
+      const data = atob(b64);
+      JSON.parse(data);
+      localStorage.setItem(SAVE_KEY, data);
+      location.reload();
+    } catch (e) { alert("Invalid save string"); }
+  });
+  p.querySelector("#wipe-save").addEventListener("click", () => {
+    confirmModal("Wipe Save?", "All progress permanently lost.", "Wipe", wipeSave);
+  });
+}
+
+/* -------- MODAL -------- */
+function confirmModal(title, body, btn, onConfirm) {
+  const ov = document.getElementById("modal-overlay");
+  const box = document.getElementById("modal-box");
+  box.innerHTML = `
+    <h2>${title}</h2>
+    <p>${body}</p>
+    <div class="actions">
+      <button id="modal-cancel">Cancel</button>
+      <button class="primary" id="modal-ok">${btn}</button>
+    </div>
+  `;
+  ov.classList.add("show");
+  box.querySelector("#modal-cancel").onclick = () => ov.classList.remove("show");
+  box.querySelector("#modal-ok").onclick = () => { ov.classList.remove("show"); onConfirm(); };
+}
+
+/* ============================================================
+ * TABS
+ * ============================================================ */
+
+const TABS = [
+  { id: "saga",       name: "Saga",       icon: "⚔" },
+  { id: "longhouse",  name: "Longhouse",  icon: "🏠" },
+  { id: "forge",      name: "Forge",      icon: "🔨" },
+  { id: "runestones", name: "Runestones", icon: "📜" },
+  { id: "clan",       name: "Clan",       icon: "⚜" },
+  { id: "settings",   name: "Settings",   icon: "⚙" },
+];
+
+function buildTabs() {
+  const nav = document.getElementById("tabs");
+  nav.innerHTML = TABS.map(t =>
+    `<button class="tab-btn" data-tab="${t.id}">${t.icon} ${t.name}</button>`
+  ).join("");
+  nav.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => switchTab(b.dataset.tab)));
+  switchTab("saga");
+}
+
+function switchTab(id) {
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === id));
+  document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === `panel-${id}`));
+  /* custom render for settings panel */
+  if (id === "settings") renderSettings();
+  render();
+}
+
+/* ============================================================
+ * INIT
+ * ============================================================ */
+
+function init() {
+  buildTabs();
+  const loaded = loadGame();
+  if (!loaded) {
+    log("Welcome, warrior. Your saga begins...", "epic");
+    Game.hp = 100;
+  } else {
+    log(`Welcome back. Saga resumed at stage ${Game.stage}.`);
+  }
+  refreshStats();
+  Game.maxHpCurrent = Stats.maxHp;
+  if (Game.hp <= 0 || !Game.hp) Game.hp = Game.maxHpCurrent;
+  if (!Game.enemy) spawnEnemy();
+  startLoop();
+  render();
+  window.addEventListener("beforeunload", saveGame);
+  /* keyboard: spacebar to attack */
+  window.addEventListener("keydown", e => {
+    if (e.code === "Space" && document.activeElement.tagName !== "INPUT") {
+      e.preventDefault();
+      playerAttack(true);
+    }
+  });
+}
+
+document.addEventListener("DOMContentLoaded", init);
+</script>
+</body>
+</html>

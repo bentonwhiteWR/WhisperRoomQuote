@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.2.0', date:'Apr 18, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Release bump: everything from 1.1.15 through 1.1.104 rolls into the 1.2.0 release milestone. Going forward: MINOR bump (1.2 \u2192 1.3) on every merge to main; PATCH counts commits on staging between releases; MAJOR reserved for rewrites. Documented in HANDOFF.md §3.'},
+        {t:'add', d:'This release: Process Order overhaul (Deal Hub modal + quote builder parity), payment method tracking, Mobile overhaul (Deal Hub + quote builder + customer pages), Ship Calendar with pallet color coding, RM + Custom Holes production flags, Orders dashboard redesign, Reports rebuild Step 1 (hero KPIs + rep filter), retroactive changelog + version discipline, admin payment-method override.'},
+      ]
+    },
+    {
       v:'1.1.104', date:'Apr 18, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Deal Hub detail panel quote rows now show RM / CUST chips per quote so you can tell which specific revision contains the flagged line items. Previously only the deal card (aggregate) showed them. /api/deals/:id/hub now returns hasRM + hasCustomHole on each quote.'},

@@ -79,9 +79,18 @@ Use `--no-ff` so the merge commit preserves history. Railway auto-deploys both e
 
 **Version + changelog discipline (important):**
 
+Versioning convention (semver-ish, adapted for a sales tool):
+- **MAJOR** (`1.x.x` → `2.x.x`): reserved for rewrites or breaking changes. Rare.
+- **MINOR** (`1.2.x` → `1.3.x`): **bump on every merge to `main`**. Represents a production release. PATCH resets to 0.
+- **PATCH** (`1.2.0` → `1.2.1`): bump on every commit to `staging` between releases.
+
+So the sequence looks like: work on staging → `1.2.1`, `1.2.2`, `1.2.3`… → merge to main → bump to `1.3.0` → continue on staging → `1.3.1`, `1.3.2`…
+
 Every push to `staging` should include:
-1. A patch version bump in `package.json` (e.g. `1.1.86` → `1.1.87`)
+1. A patch version bump in `package.json` (e.g. `1.2.5` → `1.2.6`)
 2. A new entry at the top of `templates/changelog.js`
+
+When merging staging → main, bump `package.json` to the next MINOR (e.g. `1.2.11` → `1.3.0`) and add a release-summary entry to the changelog that rolls up what's in the release.
 
 This is not automated — it's a convention. Claude should do it as part of every commit without being asked. If Claude forgets, remind it.
 

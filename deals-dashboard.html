@@ -60,6 +60,7 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .deal-card.active { border-color:var(--orange); box-shadow:0 0 0 1px var(--orange); }
 .deal-card.accepted { border-color:rgba(34,197,94,.35); background:var(--green-dim); }
 .card-name { font-size:12px; font-weight:700; color:var(--text); line-height:1.3; margin-bottom:4px; }
+.card-rm { display:inline-block; font-size:9px; font-weight:800; letter-spacing:.08em; padding:1px 5px; background:rgba(239,68,68,.18); color:var(--red); border-radius:3px; margin-left:5px; vertical-align:middle; }
 .card-mdl  { font-size:10px; font-family:var(--mono); color:var(--text2); margin-bottom:4px; }
 .card-meta { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
 .card-amount { font-size:11px; font-weight:700; color:var(--orange); }
@@ -397,9 +398,12 @@ function renderBoard() {
         const payHtml=pt
           ?`<span class="card-pay" style="color:${PAY_TYPE_COLORS[pt]};background:${payBg};border:1px solid ${PAY_TYPE_COLORS[pt]}">${PAY_TYPE_LABELS[pt]||pt.toUpperCase()}</span>`
           :'';
+        const rmChip = d.hasRM
+          ? `<span class="card-rm" title="Roof Mounted Ventilation — 1-month lead time">RM</span>`
+          : '';
         card.innerHTML=`
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px">
-            <div class="card-name" style="flex:1">${d.name}</div>
+            <div class="card-name" style="flex:1">${d.name}${rmChip}</div>
             ${isUnintegrated?`<div class="card-unintegrated-dot" title="HubSpot only — no quotes or orders in this system"></div>`:''}
           </div>
           ${(d.quoteLabel||d.firstMdl)?`<div class="card-mdl">${d.quoteLabel||d.firstMdl}</div>`:''}

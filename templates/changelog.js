@@ -51,6 +51,15 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.1.93', date:'Apr 18, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Roof Mounted Ventilation (RM) tracking: any line item starting with "RM " now flags the order for Gary (production manager) — 1-month lead time.'},
+        {t:'add', d:'On Process Order: server auto-prepends "RM — " to production notes; quote-builder mailto now cc\\u2019s gamos@whisperroom.com and includes "Gary, this order includes Roof Mounted Ventilation (1-month lead time)" in the email body.'},
+        {t:'ui',  d:'Red "RM" chip on Deal Hub board cards, orders dashboard rows, and ship calendar cells so the flag is visible everywhere a deal surfaces.'},
+        {t:'ui',  d:'Ship calendar now shows "Parts" instead of "?" for orders with 0 pallets and no MDL items (parts-only orders). "?" still appears for unknown/missing pallet data.'},
+      ]
+    },
+    {
       v:'1.1.92', date:'Apr 18, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Ship calendar cells now wrap long deal names instead of truncating with ellipsis. Day cells grow vertically to fit the content.'},

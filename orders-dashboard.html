@@ -106,6 +106,9 @@
   .cal-order:hover { border-color: var(--orange); color: var(--orange); }
   .cal-order .cal-order-qty { display: inline-block; min-width: 14px; text-align: center; font-family: var(--mono, monospace); font-weight: 800; color: var(--orange); margin-right: 4px; }
   .cal-order.shipped { opacity: .6; text-decoration: line-through; }
+  .cal-order.parts-order .cal-order-qty { font-size: 9px; min-width: auto; padding: 0 4px; background: rgba(59,130,246,.15); color: var(--blue); border-radius: 3px; letter-spacing: .04em; }
+  .rm-chip { display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: .08em; padding: 1px 5px; background: rgba(239,68,68,.18); color: var(--red); border-radius: 3px; margin-left: 4px; vertical-align: middle; }
+  .rm-chip-row { display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: .08em; padding: 2px 6px; background: rgba(239,68,68,.15); color: var(--red); border-radius: 3px; margin-left: 6px; vertical-align: middle; }
   .cal-empty-note { padding: 30px; text-align: center; color: var(--muted); font-size: 12px; }
   @media (max-width: 720px) {
     .cal-day { min-height: 64px; padding: 4px 5px; }
@@ -1113,8 +1116,10 @@ function renderOrders(orders) {
     const apColor   = o.order_data?.apColor || '';
     const apHex     = {'Lemon':'#f5c518','Vanilla':'#c8b97a','Birch':'#c4a882','White':'#f0eeea','Green Apple':'#8a9a3a','Fern':'#3d5a2a','Waterfall':'#2e8fa0','Asteroid':'#7a8a95','Orchid':'#7a1a3a','Pumpkin':'#c45c22','Geranium':'#c0282a','Lapis':'#1e3a6e','Onyx':'#1a1a1a','Graphite':'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'}[apColor] || null;
     const apDot     = apHex ? `<span title="AP: ${apColor}" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${apHex};border:1px solid rgba(0,0,0,.25);margin-left:5px;vertical-align:middle;flex-shrink:0"></span>` : '';
+    const rowHasRM  = (o.json_snapshot?.lineItems||[]).some(i => /^RM\s/i.test(i?.name||''));
+    const rowRmChip = rowHasRM ? `<span class="rm-chip-row" title="Roof Mounted Ventilation — 1-month lead">RM</span>` : '';
     return `<tr onclick="openDrawer('${o.quote_number}')">
-      <td><div class="td-main">${o.deal_name || o.quote_number}</div><div class="td-sub">${o.quote_number}</div></td>
+      <td><div class="td-main">${o.deal_name || o.quote_number}${rowRmChip}</div><div class="td-sub">${o.quote_number}</div></td>
       <td><div class="td-mono" style="font-size:11px;display:flex;align-items:center">${(()=>{const items=(o.json_snapshot?.lineItems||[]).filter(i=>i?.name?.startsWith('MDL'));return items.length?items.map(i=>i.name).join(', '):'—';})()}${apDot}</div></td>
       <td style="font-weight:600;color:var(--orange)">${total}</td>
       <td style="color:var(--muted);font-size:12px">${pallets}</td>
@@ -1196,17 +1201,28 @@ function renderShipCalendar() {
     }
 
     const ordersHtml = orders.map(o => {
-      const mdl = (o.json_snapshot?.lineItems || []).find(i => i?.name?.startsWith('MDL'))?.name?.replace(/^MDL /, '') || '';
+      const items = o.json_snapshot?.lineItems || [];
+      const mdl = items.find(i => i?.name?.startsWith('MDL'))?.name?.replace(/^MDL /, '') || '';
+      const hasRM = items.some(i => /^RM\s/i.test(i?.name||''));
+      const hasMDL = items.some(i => /^MDL\b/.test(i?.name||''));
       const rawName = o.deal_name || o.quote_number;
       // Strip noise suffixes so the cell shows what actually distinguishes the deal
       const cleanName = rawName
         .replace(/\s*[–—-]\s*(New Deal|Quote|Revision|Updated Quote)\s*$/i, '')
         .trim();
-      const qty = parseInt(o.order_data?.shipped?.pallets) || 0;
+      const palletsRaw = o.order_data?.shipped?.pallets;
+      const hasPalletValue = palletsRaw !== undefined && palletsRaw !== null && palletsRaw !== '';
+      const qty = hasPalletValue ? parseInt(palletsRaw) : NaN;
+      // Display: 0 pallets + no MDL = Parts order; 0 + MDL = data missing; NaN = unknown
+      let qtyLabel;
+      if (qty > 0)             qtyLabel = String(qty);
+      else if (qty === 0 && !hasMDL) qtyLabel = 'Parts';
+      else                     qtyLabel = '?';
       const isShipped = !!(o.order_data?.shipped?.tracking && !o.order_data?.shipped?.unshipped);
       const qn = (o.quote_number || '').replace(/'/g, "\\'");
-      const title = `${rawName}${mdl ? ' · ' + mdl : ''} — ${qty} pallet${qty===1?'':'s'}`;
-      return `<div class="cal-order${isShipped ? ' shipped' : ''}" title="${title.replace(/"/g,'&quot;')}" onclick="openDrawer('${qn}')"><span class="cal-order-qty">${qty || '?'}</span>${cleanName.replace(/</g,'&lt;')}${mdl ? ` <span style="color:var(--muted);font-weight:500">${mdl}</span>` : ''}</div>`;
+      const title = `${rawName}${mdl ? ' · ' + mdl : ''} — ${qtyLabel === 'Parts' ? 'Parts order' : qtyLabel + ' pallet' + (qty===1?'':'s')}${hasRM ? ' · Roof Mounted Ventilation' : ''}`;
+      const rmChip = hasRM ? ` <span class="rm-chip" title="Roof Mounted Ventilation — 1-month lead">RM</span>` : '';
+      return `<div class="cal-order${isShipped ? ' shipped' : ''}${qtyLabel === 'Parts' ? ' parts-order' : ''}" title="${title.replace(/"/g,'&quot;')}" onclick="openDrawer('${qn}')"><span class="cal-order-qty">${qtyLabel}</span>${cleanName.replace(/</g,'&lt;')}${mdl ? ` <span style="color:var(--muted);font-weight:500">${mdl}</span>` : ''}${rmChip}</div>`;
     }).join('');
 
     cellsHtml += `<div class="cal-day ${outside ? 'cal-outside' : ''} ${isToday ? 'cal-today' : ''} ${palletCls}">

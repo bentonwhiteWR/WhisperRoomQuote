@@ -4156,13 +4156,19 @@ ${q.accepted ? `
     try {
       const period = parsed.query.period || '30';
       const days   = parseInt(period);
+      const repFilter = parsed.query.rep || ''; // optional rep_id filter
       const since  = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
       const nowEST = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
       const thisMonthStart = (() => {
         const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d.toISOString();
       })();
+      const lastMonthStart = (() => {
+        const d = new Date(); d.setDate(1); d.setMonth(d.getMonth()-1); d.setHours(0,0,0,0); return d.toISOString();
+      })();
+      const lastMonthEnd = thisMonthStart; // exclusive upper bound
+      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
 
-      const report = {};
+      const report = { period: days, repFilter };
 
       if (db) {
         // ── All quotes in period ──────────────────────────────────
@@ -4210,6 +4216,67 @@ ${q.accepted ? `
           report.quotes.byRep[rep].value += parseFloat(q.total||0);
           if (q.accepted==='true') report.quotes.byRep[rep].accepted++;
         });
+
+        // ── Hero KPIs ─────────────────────────────────────────────
+        // All-time quote rows filtered by rep (if rep filter set)
+        const qAllFiltered = repFilter
+          ? qAllTime.rows.filter(q => q.rep_id === repFilter)
+          : qAllTime.rows;
+        const quotesFiltered = repFilter
+          ? quotes.filter(q => q.rep_id === repFilter)
+          : quotes;
+
+        // Revenue MTD: accepted quotes with acceptedAt in current month
+        const acceptedThisMonth = qAllFiltered.filter(q =>
+          q.accepted === 'true' && q.accepted_at && q.accepted_at >= thisMonthStart
+        );
+        const revenueMTD = acceptedThisMonth.reduce((s,q) => s + parseFloat(q.total||0), 0);
+
+        // Revenue last month (full previous calendar month)
+        const acceptedLastMonth = qAllFiltered.filter(q =>
+          q.accepted === 'true' && q.accepted_at
+          && q.accepted_at >= lastMonthStart
+          && q.accepted_at < lastMonthEnd
+        );
+        const revenueLastMonth = acceptedLastMonth.reduce((s,q) => s + parseFloat(q.total||0), 0);
+        const revenueMoMPct = revenueLastMonth
+          ? Math.round(((revenueMTD - revenueLastMonth) / revenueLastMonth) * 100)
+          : null;
+
+        // Pipeline value: open (non-accepted) quotes created in window
+        const openInWindow = quotesFiltered.filter(q => q.accepted !== 'true');
+        const pipelineValue = openInWindow.reduce((s,q) => s + parseFloat(q.total||0), 0);
+
+        // Win rate in period vs 90-day rolling
+        const sentInPeriod = quotesFiltered.length;
+        const wonInPeriod  = quotesFiltered.filter(q => q.accepted === 'true').length;
+        const winRatePeriod = sentInPeriod ? Math.round(wonInPeriod / sentInPeriod * 100) : 0;
+
+        const sent90 = qAllFiltered.filter(q => q.created_at >= ninetyDaysAgo);
+        const won90  = sent90.filter(q => q.accepted === 'true');
+        const winRate90 = sent90.length ? Math.round(won90.length / sent90.length * 100) : 0;
+
+        // Avg deal size (accepted only) — in period vs 90-day
+        const acceptedInPeriod = quotesFiltered.filter(q => q.accepted === 'true');
+        const avgDealPeriod = acceptedInPeriod.length
+          ? Math.round(acceptedInPeriod.reduce((s,q) => s + parseFloat(q.total||0), 0) / acceptedInPeriod.length)
+          : 0;
+        const accepted90 = sent90.filter(q => q.accepted === 'true');
+        const avgDeal90 = accepted90.length
+          ? Math.round(accepted90.reduce((s,q) => s + parseFloat(q.total||0), 0) / accepted90.length)
+          : 0;
+
+        report.hero = {
+          revenueMTD,
+          revenueLastMonth,
+          revenueMoMPct,
+          pipelineValue,
+          pipelineCount: openInWindow.length,
+          winRatePeriod,
+          winRate90,
+          avgDealPeriod,
+          avgDeal90,
+        };
 
         // ── Rep leaderboard — this month ─────────────────────────
         const qMonth = await db.query(

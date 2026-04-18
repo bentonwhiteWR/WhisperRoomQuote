@@ -51,6 +51,15 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.1.88', date:'Apr 18, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Reports rebuild Step 1: new "At a glance" hero row with 4 decision-oriented KPIs — Revenue MTD (vs last month), Pipeline Value, Win Rate (vs 90d avg), Avg Deal Size (vs 90d avg)'},
+        {t:'add', d:'Rep filter dropdown in the reports sidebar — all KPIs recompute scoped to the selected rep'},
+        {t:'ui',  d:'Mobile-responsive reports: sidebar collapses to a horizontal chip row, KPI strip switches to 2-column on tablet and 1-column on narrow'},
+        {t:'ui',  d:'Topbar scrolls horizontally on narrow screens to match Deal Hub pattern'},
+      ]
+    },
+    {
       v:'1.1.87', date:'Apr 18, 2026', tag:'feature',
       changes:[
         {t:'add', d:'HANDOFF.md now documents the version-bump + changelog discipline — every push bumps package.json patch version and adds a templates/changelog.js entry'},

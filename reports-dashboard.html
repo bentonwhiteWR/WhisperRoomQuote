@@ -61,6 +61,30 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .kpi.amber .kpi-val{color:var(--amber)}
 .kpi.blue .kpi-val{color:var(--blue)}
 
+/* Mobile reports layout */
+@media (max-width: 900px) {
+  .topbar { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .topbar::-webkit-scrollbar { display: none; }
+  .topbar > * { flex-shrink: 0; }
+  .main { flex-direction: column; }
+  .sidebar { width: 100%; height: auto; position: static; border-right: none; border-bottom: 1px solid var(--border); padding: 12px; }
+  .sidebar-section { margin-bottom: 12px; }
+  /* Collapse nav buttons into a horizontal chip row on mobile */
+  .sidebar-section:nth-child(3) { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; }
+  .sidebar-section:nth-child(3)::-webkit-scrollbar { display: none; }
+  .sidebar-section:nth-child(3) .sidebar-label { display: none; }
+  .sidebar-section:nth-child(3) .sidebar-btn { width: auto; flex-shrink: 0; margin-bottom: 0; padding: 6px 10px; white-space: nowrap; }
+  .content { padding: 14px; }
+  .kpi-strip { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .kpi { padding: 12px 14px; }
+  .kpi-val { font-size: 20px; }
+  .card-grid.two, .card-grid.three { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .kpi-strip { grid-template-columns: 1fr; }
+  .kpi-val { font-size: 22px; }
+}
+
 /* Cards */
 .card-grid{display:grid;gap:14px;margin-bottom:14px}
 .card-grid.two{grid-template-columns:1fr 1fr}
@@ -192,6 +216,20 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
       </select>
     </div>
     <div class="sidebar-section">
+      <span class="sidebar-label">Rep</span>
+      <select class="sidebar-select" id="repSelect" onchange="loadReport()">
+        <option value="">All Reps</option>
+        <option value="36330944">Jill</option>
+        <option value="38143901">Sarah</option>
+        <option value="117442978">Travis</option>
+        <option value="36303670">Benton</option>
+        <option value="36320208">Gabe</option>
+        <option value="38732178">Kim</option>
+        <option value="38900892">Chet</option>
+        <option value="38732186">Jeromy</option>
+      </select>
+    </div>
+    <div class="sidebar-section">
       <span class="sidebar-label">Sections</span>
       <button class="sidebar-btn active" onclick="navScrollTo('overview')">📊 Overview</button>
       <button class="sidebar-btn" onclick="navScrollTo('leaderboard')">🏆 Rep Leaderboard</button>
@@ -220,6 +258,11 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 <div id="toast"></div>
 
 <script>
+const REPS_CLIENT = {
+  '36330944':'Jill','38143901':'Sarah','117442978':'Travis',
+  '36303670':'Benton','36320208':'Gabe','38732178':'Kim',
+  '38900892':'Chet','38732186':'Jeromy',
+};
 const fmt  = n => '$'+parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
 const fmtK = n => { const v=parseFloat(n||0); if(v>=1000000) return '$'+(v/1000000).toFixed(1)+'M'; if(v>=1000) return '$'+(v/1000).toFixed(0)+'K'; return fmt(v); };
 const pct  = (n,d) => d ? Math.round(n/d*100)+'%' : '—';
@@ -234,10 +277,12 @@ function navScrollTo(id) {
 
 async function loadReport() {
   const period = document.getElementById('periodSelect').value;
+  const rep    = document.getElementById('repSelect')?.value || '';
   document.getElementById('loadingState').style.display = 'block';
   document.getElementById('reportContent').style.display = 'none';
   try {
-    const res  = await fetch(`/api/reports?period=${period}`, { credentials:'include' });
+    const url = `/api/reports?period=${period}` + (rep ? `&rep=${encodeURIComponent(rep)}` : '');
+    const res  = await fetch(url, { credentials:'include' });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     renderAll(data);
@@ -274,54 +319,44 @@ function renderAll(data) {
   setTimeout(() => drawSEDonut(data.seCounts||{}), 100);
 }
 
-// ── Overview KPIs ──────────────────────────────────────────────────
+// ── Hero KPIs — the 4 tiles that answer "Are we on track?" ──────────
 function renderOverview(data, period) {
-  const q  = data.quotes   || {};
-  const o  = data.orders   || {};
-  const p  = data.pipeline || {};
-  const at = data.allTime  || {};
+  const h = data.hero || {};
+  const arrow = n => n == null ? '' : (n > 0 ? '▲' : n < 0 ? '▼' : '●');
+  const arrowColor = n => n == null ? 'var(--muted)' : (n > 0 ? 'var(--green)' : n < 0 ? 'var(--red)' : 'var(--muted)');
+  const delta = (now, prev, label) => {
+    if (prev == null || prev === 0) return `<div class="kpi-sub">${label}: —</div>`;
+    const diff = now - prev;
+    const diffPct = Math.round((diff / prev) * 100);
+    const diffFmt = Math.abs(diff) >= 1000 ? fmtK(Math.abs(diff)) : Math.abs(Math.round(diff));
+    return `<div class="kpi-sub" style="color:${arrowColor(diff)}">${arrow(diff)} ${diffPct >= 0 ? '+' : ''}${diffPct}% ${label}</div>`;
+  };
+  const momLabel = h.revenueMoMPct != null
+    ? `<div class="kpi-sub" style="color:${arrowColor(h.revenueMoMPct)}">${arrow(h.revenueMoMPct)} ${h.revenueMoMPct >= 0 ? '+' : ''}${h.revenueMoMPct}% vs last month</div>`
+    : `<div class="kpi-sub">vs last month: —</div>`;
+
   return `
-    <div class="section-title-bar">📊 Overview <span>Last ${period} days</span></div>
+    <div class="section-title-bar">📊 At a glance <span>Period: last ${period} days${data.repFilter ? ' · ' + (REPS_CLIENT[data.repFilter] || 'Rep') : ''}</span></div>
     <div class="kpi-strip">
       <div class="kpi orange">
-        <div class="kpi-label">Quotes Sent</div>
-        <div class="kpi-val">${q.total||0}</div>
-        <div class="kpi-sub">${fmtK(q.totalValue)} total value</div>
-      </div>
-      <div class="kpi green">
-        <div class="kpi-label">Accepted</div>
-        <div class="kpi-val">${q.accepted||0}</div>
-        <div class="kpi-sub">${q.acceptRate||0}% accept rate</div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-label">Pipeline Value</div>
-        <div class="kpi-val">${fmtK(p.totalValue)}</div>
-        <div class="kpi-sub">${p.totalDeals||0} active deals</div>
+        <div class="kpi-label">Revenue MTD</div>
+        <div class="kpi-val">${fmtK(h.revenueMTD || 0)}</div>
+        ${momLabel}
       </div>
       <div class="kpi blue">
-        <div class="kpi-label">Weighted Forecast</div>
-        <div class="kpi-val">${fmtK(p.weightedForecast)}</div>
-        <div class="kpi-sub">Based on stage probability</div>
+        <div class="kpi-label">Pipeline Value</div>
+        <div class="kpi-val">${fmtK(h.pipelineValue || 0)}</div>
+        <div class="kpi-sub">${h.pipelineCount || 0} open quotes in period</div>
       </div>
-      <div class="kpi ${(p.winRate||0)>=50?'green':''}">
+      <div class="kpi ${(h.winRatePeriod || 0) >= (h.winRate90 || 0) ? 'green' : ''}">
         <div class="kpi-label">Win Rate</div>
-        <div class="kpi-val">${p.winRate!=null?p.winRate+'%':'—'}</div>
-        <div class="kpi-sub">Closed won vs lost</div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-label">Orders Shipped</div>
-        <div class="kpi-val">${o.shipped||0}</div>
-        <div class="kpi-sub">${o.inProduction||0} in production</div>
+        <div class="kpi-val">${h.winRatePeriod != null ? h.winRatePeriod + '%' : '—'}</div>
+        ${delta(h.winRatePeriod, h.winRate90, 'vs 90d avg')}
       </div>
       <div class="kpi amber">
-        <div class="kpi-label">Avg Days to Ship</div>
-        <div class="kpi-val">${o.avgFulfillDays!=null?o.avgFulfillDays:'—'}</div>
-        <div class="kpi-sub">From order to shipment</div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-label">All-Time Quotes</div>
-        <div class="kpi-val">${(at.totalQuotes||0).toLocaleString()}</div>
-        <div class="kpi-sub">${at.uniqueCompanies||0} unique companies</div>
+        <div class="kpi-label">Avg Deal Size</div>
+        <div class="kpi-val">${fmtK(h.avgDealPeriod || 0)}</div>
+        ${delta(h.avgDealPeriod, h.avgDeal90, 'vs 90d avg')}
       </div>
     </div>
   `;

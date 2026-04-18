@@ -227,6 +227,9 @@ body {
 .field select { cursor: pointer; }
 .field select option { background: var(--surface); color: var(--text); }
 body.dark .field input, body.dark .field select { color-scheme: dark; }
+/* Apply dark option styling to all selects on the page (e.g. Process Order modal's AP color picker) */
+select option { background: var(--surface, #1e1e1e); color: var(--text, #f0ede8); }
+body.dark select { color-scheme: dark; }
 
 /* ── Product search ── */
 .product-search-wrap { position: relative; }

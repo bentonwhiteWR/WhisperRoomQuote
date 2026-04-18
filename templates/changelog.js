@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.1.94', date:'Apr 18, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Process Order AP color picker options are now readable — the dropdown options were using the browser default light gray (barely visible on dark theme). Applied dark-theme option styling globally so every select respects the theme.'},
+      ]
+    },
+    {
       v:'1.1.93', date:'Apr 18, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Roof Mounted Ventilation (RM) tracking: any line item starting with "RM " now flags the order for Gary (production manager) — 1-month lead time.'},

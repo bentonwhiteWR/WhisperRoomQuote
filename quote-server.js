@@ -6985,15 +6985,27 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         closedWonProps.payment_status = paymentType === 'po' ? 'po_received' : 'paid';
       }
       if (paymentType === 'po' && poNumber) closedWonProps.po_ = poNumber;
-      const stageRes = await httpsRequest({
+      // First try the full PATCH (stage + extras). If HubSpot rejects (one of the
+      // extra props is an invalid enum value, property doesn't exist, etc.),
+      // fall back to stage-only so the deal at least moves to Closed Won.
+      let stageRes = await httpsRequest({
         hostname: 'api.hubapi.com',
         path: `/crm/v3/objects/deals/${dealId}`,
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
       }, { properties: closedWonProps });
       if (stageRes.status >= 400) {
-        // Don't fail the whole order over this, but surface it so it doesn't go unnoticed
-        try { writelog('error', 'error.process-order.stage-patch', `HubSpot deal stage PATCH failed (${stageRes.status})`, { dealId, status: stageRes.status, body: stageRes.body }); } catch(e) {}
+        try { writelog('error', 'error.process-order.stage-patch', `HubSpot deal stage PATCH failed (${stageRes.status}) with extra props — retrying stage-only`, { dealId, status: stageRes.status, body: stageRes.body, sentProps: closedWonProps }); } catch(e) {}
+        // Retry with just the dealstage so the deal at least moves.
+        stageRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: `/crm/v3/objects/deals/${dealId}`,
+          method: 'PATCH',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, { properties: { dealstage: 'closedwon' } });
+        if (stageRes.status >= 400) {
+          try { writelog('error', 'error.process-order.stage-patch-retry', `HubSpot deal stage-only PATCH also failed (${stageRes.status})`, { dealId, status: stageRes.status, body: stageRes.body }); } catch(e) {}
+        }
       }
 
       // 1b. Reset line items to the processed quote's exact line items

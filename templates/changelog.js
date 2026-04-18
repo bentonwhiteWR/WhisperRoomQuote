@@ -51,6 +51,164 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.1.86', date:'Apr 18, 2026', tag:'ui',
+      changes:[
+        {t:'ui',  d:'Mobile overhaul of Deal Hub — hub panel slides in as overlay on narrow screens, topbar scrolls horizontally instead of clipping Sign Out'},
+        {t:'ui',  d:'Collapsible Kanban columns on Fold-cover / ≤480px — tap a column header to expand/collapse'},
+        {t:'ui',  d:'Column totals now displayed under each stage header (Sent, Verbal, Won, Shipped) — color-matched to the stage'},
+        {t:'ui',  d:'Quote builder topbar: fixed nav-button pile-up at tablet widths by switching to horizontal scroll ≤1024px'},
+        {t:'ui',  d:'Customer order page /o/:id: table collapses to name/qty/total on mobile (was overflowing with 5 columns)'},
+        {t:'add', d:'Retroactive changelog reconstruction from v1.1.15 to v1.1.86'},
+      ]
+    },
+    {
+      v:'1.1.85', date:'Apr 17, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Restore orderModal HTML to DOM — the div only existed inside a PDF template string, so document.getElementById returned null and the orange Process Order button did nothing'},
+        {t:'fix', d:'Open order modal before awaiting HubSpot payment-type prefill so a slow fetch never blocks the modal from appearing'},
+        {t:'fix', d:'Wrap renderOrderSummaryQB() in try/catch so a rendering error cannot block the modal from opening'},
+        {t:'fix', d:'Silence Puppeteer "old Headless" deprecation warning in UPS tracking scraper (headless: true → headless: "new")'},
+      ]
+    },
+    {
+      v:'1.1.84', date:'Apr 17, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Orange Process Order button in quote builder now opens the same modal used on the Deal Hub — collects payment type, PO number, order summary, and production notes'},
+        {t:'add', d:'Quote label surfaced on Deal Hub cards and quote rows — takes precedence over MDL model string when set'},
+      ]
+    },
+    {
+      v:'1.1.83', date:'Apr 17, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Deal Hub cards and column headers restyled — cleaner spacing, tighter type scale, clearer stage colors'},
+      ]
+    },
+    {
+      v:'1.1.82', date:'Apr 17, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Process Order modal now shows a live order summary — line items, discount, freight, tax, total, and ship-to address'},
+      ]
+    },
+    {
+      v:'1.1.81', date:'Apr 17, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Switched all internal dashboards to Satoshi font family for a more consistent brand feel'},
+      ]
+    },
+    {
+      v:'1.1.80', date:'Apr 17, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Process Order modal launched from the Deal Hub — previously the blue "Process" button redirected into the quote builder'},
+        {t:'add', d:'Payment method tracking via HubSpot custom properties payment_type (HS / CC / ACH / PO / Other) and po_ (PO number)'},
+        {t:'add', d:'Payment badges on Deal Hub cards now reflect specific payment method instead of generic paid/PO tag'},
+        {t:'add', d:'Notes & Order Specs carry over to Production Notes automatically when processing an order'},
+      ]
+    },
+    {
+      v:'1.1.78', date:'Apr 17, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Replaced text logo with WhisperRoom SVG logo across all pages (topbar, PDFs, customer-facing quote/invoice/order pages)'},
+      ]
+    },
+    {
+      v:'1.1.77', date:'Apr 17, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Locked deal payment amount is now additive — paying a second invoice adds to amount_paid instead of replacing it'},
+      ]
+    },
+    {
+      v:'1.1.75', date:'Apr 17, 2026', tag:'security',
+      changes:[
+        {t:'security', d:'Closed Won / Shipped deals locked against quote sync overwrites — prevents a late quote revision from rewriting a finalized deal'},
+      ]
+    },
+    {
+      v:'1.1.72', date:'Apr 17, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'HANDOFF.md onboarding doc — full project context, workflow, env vars, gotchas for new collaborators'},
+      ]
+    },
+    {
+      v:'1.1.70', date:'Apr 17, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'gdriveSavePdfToDeal: fall back to a sibling quote folder on the same deal when the current quote lacks gdrive_folder_id (covers legacy quotes)'},
+        {t:'log', d:'Surface the real error on order PDF upload instead of generic failure message'},
+        {t:'fix', d:'GDRIVE_ORDERS_FOLDER env var now overrides hardcoded orders folder ID'},
+      ]
+    },
+    {
+      v:'1.1.65', date:'Apr 17, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Phase 2 refactor: extracted inline HTML dashboards (deals, quotes, orders, shipping, reports, admin-log) from quote-server.js into separate .html files'},
+      ]
+    },
+    {
+      v:'1.1.60', date:'Apr 17, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Phase 1 refactor: extracted states, utils, logger, auth, db, hubspot, gdrive, pdf, taxjar, notify, and freight helpers from monolithic quote-server.js into lib/*.js modules'},
+        {t:'ui', d:'Each lib module exports init({ deps }) — dependencies wired once at server startup'},
+      ]
+    },
+    {
+      v:'1.1.55', date:'Apr 17, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Quote number collision handler no longer produces 11-digit numbers when the daily sequence rolls over'},
+      ]
+    },
+    {
+      v:'1.1.50', date:'Apr 17, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Skip US-only state enums up front for Canadian provinces instead of retrying on HubSpot rejection'},
+        {t:'fix', d:'Invoice address PATCH now includes hs_collect_address_types: "billing_address" — resolves HubSpot 400 conflict errors'},
+      ]
+    },
+    {
+      v:'1.1.45', date:'Apr 17, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Folder picker always prompts on new deals, even when the contact already has a prior Drive folder — each deal now gets its own folder'},
+        {t:'log', d:'Invoice address PATCH errors now log the full request body for diagnosis'},
+      ]
+    },
+    {
+      v:'1.1.40', date:'Apr 17, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'PUBLIC_BASE_URL env var for building customer-facing links — staging and prod now point to their own domains'},
+        {t:'fix', d:'Client-side links use location.origin instead of hardcoded sales.whisperroom.com'},
+        {t:'fix', d:'PDF cookie domain derived from request host instead of hardcoded'},
+      ]
+    },
+    {
+      v:'1.1.35', date:'Apr 17, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Quote number timezone bug — quote numbers now generate with correct local date (America/New_York) instead of UTC'},
+        {t:'fix', d:'Allow staging Railway URL in OAuth redirect allowlist'},
+      ]
+    },
+    {
+      v:'1.1.30', date:'Apr 16, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Catch-up: multiple iterations on Deal Hub — card layout, pipeline stages, filter toggles, deal search refinements'},
+      ]
+    },
+    {
+      v:'1.1.25', date:'Apr 16, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Catch-up: continued quote-server refinements — HubSpot deal matching, contact search, owner assignment edge cases'},
+      ]
+    },
+    {
+      v:'1.1.20', date:'Apr 15, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Catch-up: tracking and shipping polish — column headers, status badges, tracking link fallbacks'},
+      ]
+    },
+    {
+      v:'1.1.15', date:'Apr 15, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Catch-up: quote builder and orders dashboard iterations — freight display, invoice flow tweaks, small UI fixes'},
+      ]
+    },
+    {
       v:'1.1.14', date:'Apr 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Canadian freight now uses correct NMFC codes (027880/02) matching legacy system'},

@@ -51,6 +51,17 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.1.90', date:'Apr 18, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Orders dashboard: monthly ship calendar below the orders list — renders each order on its planned/actual ship date with click-through to the detail drawer'},
+        {t:'add', d:'Pallet cap color coding per day cell: green ≤3, yellow 4-5, red 6+ (soft indicator — does not prevent adding more)'},
+        {t:'add', d:'Pallet count auto-computed from line items when processing an order — saved to order_data.shipped.pallets. Jeromy can edit afterward in the drawer.'},
+        {t:'ui',  d:'Orders table now caps at ~10 rows with an internal scroll + sticky header instead of a long page scroll'},
+        {t:'ui',  d:'Day cells show total pallet count badge and list each shipment\\u2019s pallet qty + MDL'},
+        {t:'ui',  d:'Calendar month nav (Prev / Today / Next), Today cell highlighted in orange, outside-month days dimmed'},
+      ]
+    },
+    {
       v:'1.1.89', date:'Apr 18, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'"E" now labeled "Enhanced" (not "Electric") in the Standard vs Enhanced split'},

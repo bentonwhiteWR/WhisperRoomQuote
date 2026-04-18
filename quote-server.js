@@ -7036,7 +7036,38 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       // 2. Save order data to DB
       const orderToken = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
       const orderUrl = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}?t=${orderToken}`;
-      const orderData = { foamColor, hingePreference, apColor, productionNotes, deliveryNotes, processedAt: new Date().toISOString() };
+      // Auto-compute pallet count from line items (kept in sync with BOOTH_DATA in quote-builder.html).
+      // Source of truth is pallet COUNT per product name; dimensions stay client-side where freight is priced.
+      const PALLETS_PER_MDL = {
+        'Voice Over Basic':1,'Voice Over Deluxe':1,'Audiology Basic':1,'Audiology Deluxe':1,
+        'Office Booth':1,'Work From Home Booth':1,'Drum Booth':3,'Audiology Basic Plus':1,
+        'Audiology Compact':1,'Audiology Ultra':2,'Audiology Premium':1,'Creator Basic':1,
+        'Creator Deluxe':2,'Practice Basic':1,'Practice Deluxe':2,'Recording Studio':2,
+        'Drum Studio':3,'Meeting Booth':1,'Maker Space':2,
+        'MDL 4230 E':1,'MDL 4230 S':1,'MDL 127 LP E':1,'MDL 127 LP S':1,
+        'MDL 4242 E':1,'MDL 4242 S':1,'MDL 4260 E':1,'MDL 4260 S':1,
+        'MDL 4284 E':2,'MDL 4284 S':1,'MDL 4848 E':1,'MDL 4848 S':1,
+        'MDL 4872 E':2,'MDL 4872 S':1,'MDL 4896 E':2,'MDL 4896 S':1,
+        'MDL 6060 E':2,'MDL 6060 S':1,'MDL 6084 E':2,'MDL 6084 S':1,
+        'MDL 7272 E':2,'MDL 7272 S':1,'MDL 7296 E':2,'MDL 7296 S':1,
+        'MDL 8484 E':3,'MDL 8484 S':2,'MDL 9696 E':3,'MDL 9696 S':2,
+        'MDL 10284 E':3,'MDL 10284 S':2,'MDL 84102 E':3,'MDL 84102 S':2,
+        'MDL 84126 E':3,'MDL 84126 S':2,'MDL 96120 E':3,'MDL 96120 S':2,
+        'MDL 96144 E':3,'MDL 96144 S':2,'MDL 96168 E':4,'MDL 96168 S':2,
+        'MDL 96192 E':5,'MDL 96192 S':3,'MDL 102102 E':3,'MDL 102102 S':2,
+        'MDL 102126 E':3,'MDL 102126 S':2,'MDL 102144 E':4,'MDL 102144 S':2,
+      };
+      const computedPallets = (lineItems || []).reduce((sum, item) => {
+        const n = PALLETS_PER_MDL[item?.name];
+        if (!n) return sum;
+        return sum + n * (parseInt(item.qty) || 1);
+      }, 0);
+
+      const orderData = {
+        foamColor, hingePreference, apColor, productionNotes, deliveryNotes,
+        processedAt: new Date().toISOString(),
+        shipped: { pallets: computedPallets }, // scheduled ship info; Jeromy fills in date/carrier/tracking later
+      };
 
       if (db) {
         try {

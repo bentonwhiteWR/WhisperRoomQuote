@@ -79,18 +79,18 @@ Use `--no-ff` so the merge commit preserves history. Railway auto-deploys both e
 
 **Version + changelog discipline (important):**
 
-Versioning convention (semver-ish, adapted for a sales tool):
-- **MAJOR** (`1.x.x` → `2.x.x`): reserved for rewrites or breaking changes. Rare.
-- **MINOR** (`1.2.x` → `1.3.x`): **bump on every merge to `main`**. Represents a production release. PATCH resets to 0.
-- **PATCH** (`1.2.0` → `1.2.1`): bump on every commit to `staging` between releases.
+Versioning convention (semver, interpreted for a sales tool):
+- **MAJOR** (`1.x.x` → `2.0.0`): reserved for rewrites, paradigm shifts, or breaking changes visible to users. Rare — "app v2" territory.
+- **MINOR** (`1.2.x` → `1.3.0`): bump when you ship a meaningful new feature or batch of features (Process Order rebuild, Ship Calendar, Reports overhaul, mobile redesign, etc.). The kind of change worth announcing. PATCH resets to 0.
+- **PATCH** (`1.2.0` → `1.2.1`): bump on every commit that's a bug fix, small UI tweak, copy change, or minor polish. This is most commits.
 
-So the sequence looks like: work on staging → `1.2.1`, `1.2.2`, `1.2.3`… → merge to main → bump to `1.3.0` → continue on staging → `1.3.1`, `1.3.2`…
+**Rule of thumb:** if you'd say "I added X" to a user, that's a MINOR. If you'd say "I fixed X", that's a PATCH.
 
 Every push to `staging` should include:
-1. A patch version bump in `package.json` (e.g. `1.2.5` → `1.2.6`)
+1. A version bump in `package.json` (usually PATCH; bump MINOR when you're shipping a real feature)
 2. A new entry at the top of `templates/changelog.js`
 
-When merging staging → main, bump `package.json` to the next MINOR (e.g. `1.2.11` → `1.3.0`) and add a release-summary entry to the changelog that rolls up what's in the release.
+When merging staging → main, no additional bump is needed — main takes whatever the latest staging version is. If the merge includes a new feature and you forgot to bump MINOR during the work, do it in the same commit as the merge.
 
 This is not automated — it's a convention. Claude should do it as part of every commit without being asked. If Claude forgets, remind it.
 

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.1.91', date:'Apr 18, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Ship calendar cells now show the deal name as the primary label, with the MDL in muted type next to it (was: MDL only)'},
+      ]
+    },
+    {
       v:'1.1.90', date:'Apr 18, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Orders dashboard: monthly ship calendar below the orders list — renders each order on its planned/actual ship date with click-through to the detail drawer'},

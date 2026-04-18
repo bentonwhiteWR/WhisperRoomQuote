@@ -1202,7 +1202,7 @@ function renderShipCalendar() {
       const isShipped = !!(o.order_data?.shipped?.tracking && !o.order_data?.shipped?.unshipped);
       const qn = (o.quote_number || '').replace(/'/g, "\\'");
       const title = `${name}${mdl ? ' · ' + mdl : ''} — ${qty} pallet${qty===1?'':'s'}`;
-      return `<div class="cal-order${isShipped ? ' shipped' : ''}" title="${title.replace(/"/g,'&quot;')}" onclick="openDrawer('${qn}')"><span class="cal-order-qty">${qty || '?'}</span>${(mdl || name).replace(/</g,'&lt;')}</div>`;
+      return `<div class="cal-order${isShipped ? ' shipped' : ''}" title="${title.replace(/"/g,'&quot;')}" onclick="openDrawer('${qn}')"><span class="cal-order-qty">${qty || '?'}</span>${name.replace(/</g,'&lt;')}${mdl ? ` <span style="color:var(--muted);font-weight:500">${mdl}</span>` : ''}</div>`;
     }).join('');
 
     cellsHtml += `<div class="cal-day ${outside ? 'cal-outside' : ''} ${isToday ? 'cal-today' : ''} ${palletCls}">

@@ -177,15 +177,26 @@ select option { background: var(--surface); color: var(--text); }
 :root.light #processOrderModal [style*="color:rgba(255,255,255,.45"],
 :root.light #processOrderModal [style*="color:rgba(255,255,255,.5"] { color: var(--muted) !important; }
 /* Primary label text should NOT get muted treatment */
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.6"],
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.65"],
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.7"],
+:root.light #processOrderModal [style*="color:rgba(255,255,255,.75"],
 :root.light #processOrderModal [style*="color:rgba(255,255,255,.8"],
 :root.light #processOrderModal [style*="color:rgba(255,255,255,.85"],
 :root.light #processOrderModal [style*="color:rgba(255,255,255,.9"],
 :root.light #processOrderModal [style*="color:#f0ede8"] { color: var(--text) !important; }
 /* Borders in the modal — darken against the light surface */
+:root.light #processOrderModal [style*="border:1px solid rgba(255,255,255,.08"],
 :root.light #processOrderModal [style*="border:1px solid rgba(255,255,255,.12"],
 :root.light #processOrderModal [style*="border:1px solid rgba(255,255,255,.2"],
 :root.light #processOrderModal [style*="border-top:1px solid rgba(255,255,255,.08"] {
   border-color: var(--border) !important;
+}
+/* Button + panel backgrounds that rely on white-alpha tints (invisible in light mode) */
+:root.light #processOrderModal [style*="background:rgba(255,255,255,.04"],
+:root.light #processOrderModal [style*="background:rgba(255,255,255,.06"],
+:root.light #processOrderModal [style*="background:rgba(255,255,255,.08"] {
+  background: var(--bg) !important;
 }
 
 /* ── Mobile (≤900px: Fold cover, phones, Fold unfolded) ────────────── */
@@ -1754,7 +1765,31 @@ async function confirmProcessOrderFromHub() {
     });
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || 'Request failed');
-    showToast('✓ Order processed','success');
+
+    // Build + open the shipping-notification mailto (matches quote-builder's
+    // confirmProcessOrder behavior so both paths send the internal notify email)
+    try {
+      openShippingNotifyEmail({
+        quoteNumber,
+        dealName: snap.dealName || (window._lastHubData?.quotes?.[0]?.dealName || quoteNumber),
+        lineItems: snap.lineItems || [],
+        freight: snap.freight || null,
+        tax: snap.tax || null,
+        install: snap.install || null,
+        discount: snap.discount || { type:'pct', value:0 },
+        customer: snap.customer || {},
+        foamColor: foam,
+        hingePreference: hinge,
+        apColor,
+        productionNotes,
+        deliveryNotes,
+        paymentType, poNumber,
+        orderUrl: data.orderUrl,
+        hasRM: !!data.hasRM,
+      });
+    } catch(err) { console.error('[deal-hub process-order] mailto failed:', err); }
+
+    showToast('Order processed — email draft opened','success');
     closeProcessOrderModal();
     // Reload hub to show new state
     openDeal(dealId);
@@ -1765,6 +1800,80 @@ async function confirmProcessOrderFromHub() {
     btn.disabled = false;
     btn.textContent = 'Send Order →';
   }
+}
+
+// Build + open the shipping/accounting notification email for a processed order.
+// Kept in sync with quote-builder's confirmProcessOrder email format.
+function openShippingNotifyEmail(ctx) {
+  const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+  const c = ctx.customer || {};
+  const items = ctx.lineItems || [];
+  const sub = items.reduce((s,i) => s + (parseFloat(i.price)||0) * (parseInt(i.qty)||1), 0);
+  const discVal = parseFloat(ctx.discount?.value) || 0;
+  const discAmt = discVal > 0 ? (ctx.discount?.type === 'pct' ? sub * discVal / 100 : discVal) : 0;
+  const installMode = ctx.install?.mode || 'none';
+  const installAmt  = ctx.install?.amount ? parseFloat(ctx.install.amount) : 0;
+  const freightAmt  = (installMode === 'delivery_install' && installAmt > 0) ? 0 : (ctx.freight ? parseFloat(ctx.freight.total||0) : 0);
+  const installLine = installAmt > 0 ? installAmt : 0;
+  const taxAmt      = ctx.tax ? parseFloat(ctx.tax.tax||0) : 0;
+  const total       = sub - discAmt + freightAmt + installLine + taxAmt;
+  const totalWeight = items.reduce((s,i) => s + ((parseFloat(i.weight)||0) * (parseInt(i.qty)||1)), 0);
+
+  const customerName = [c.firstName, c.lastName].filter(Boolean).join(' ');
+  const shipAddr = [c.address, c.city, c.state, c.zip].filter(Boolean).join(', ');
+  const lineList = items.map(i =>
+    `  - ${i.name} (x${i.qty}) — ${fmt((parseFloat(i.price)||0) * (parseInt(i.qty)||1))}${i.weight ? ' — ' + (parseFloat(i.weight)*parseInt(i.qty)) + ' lbs' : ''}`
+  ).join('\n');
+
+  const hasRM = !!ctx.hasRM || items.some(i => /^RM\s/i.test(i?.name||''));
+  const dealNameVal = ctx.dealName || ctx.quoteNumber;
+  const emailSubject = `New Order: ${dealNameVal} — ${ctx.quoteNumber}`;
+  const emailBody = [
+    `NEW ORDER — ${ctx.quoteNumber}`,
+    `Deal: ${dealNameVal}`,
+    hasRM ? `` : null,
+    hasRM ? `Gary, this order includes Roof Mounted Ventilation (1-month lead time).` : null,
+    ``,
+    `CUSTOMER`,
+    customerName ? `Name: ${customerName}` : null,
+    c.company    ? `Company: ${c.company}` : null,
+    shipAddr     ? `Ship To: ${shipAddr}`  : null,
+    ``,
+    `ORDER SPECIFICATIONS`,
+    `Foam Color: ${ctx.foamColor || '(unknown)'}`,
+    `Door Hinge: ${ctx.hingePreference || '(unknown)'}`,
+    ctx.apColor ? `AP Color: ${ctx.apColor}` : null,
+    ctx.productionNotes ? `Production Notes: ${ctx.productionNotes}` : null,
+    ctx.deliveryNotes   ? `Delivery Notes: ${ctx.deliveryNotes}`     : null,
+    ``,
+    `LINE ITEMS`,
+    lineList,
+    ``,
+    `TOTALS`,
+    `Subtotal: ${fmt(sub)}`,
+    discAmt > 0    ? `Discount: -${fmt(discAmt)}`   : null,
+    freightAmt > 0 ? `Freight: ${fmt(freightAmt)}`  : null,
+    installLine > 0 ? (installMode === 'delivery_install' ? `Delivery & Installation: ${fmt(installLine)}` : `Installation: ${fmt(installLine)}`) : null,
+    taxAmt > 0     ? `Sales Tax: ${fmt(taxAmt)}`    : null,
+    `Order Total: ${fmt(total)}`,
+    totalWeight > 0 ? `Total Weight: ${totalWeight.toLocaleString()} lbs` : null,
+    ``,
+    `ORDER PAGE`,
+    ctx.orderUrl,
+  ].filter(l => l !== null).join('\n');
+
+  const ccList = ['accounting@whisperroom.com', 'bentonwhite@whisperroom.com'];
+  if (hasRM) ccList.push('gamos@whisperroom.com');
+  const mailto = `mailto:shipping@whisperroom.com?cc=${ccList.join(';')}&subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+
+  console.log('[deal-hub process-order] mailto prepared, length=', mailto.length, 'opening...');
+  const a = document.createElement('a');
+  a.href = mailto;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => document.body.removeChild(a), 100);
+  console.log('[deal-hub process-order] mailto click dispatched');
 }
 </script>
 

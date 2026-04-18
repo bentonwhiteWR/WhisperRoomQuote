@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.1.101', date:'Apr 18, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Deal Hub Process Order now opens the shipping notification email (was only happening from the quote builder\\u2019s orange Process Order button). Added openShippingNotifyEmail() helper to deals-dashboard.html that mirrors the quote-builder email format: to=shipping@, cc=accounting@+bentonwhite@ (+ gamos@ if RM), subject, full order body with line items, totals, ship-to, production notes, and order URL.'},
+        {t:'ui',  d:'Light-mode Process Order modal: Cancel button and other secondary controls used rgba(255,255,255,.6) text which fell through my CSS override. Extended coverage to include .6/.65/.7/.75 alpha whites as --text, and invisible .08 white backgrounds now use --bg so the button has a visible surface against the cream modal.'},
+      ]
+    },
+    {
       v:'1.1.100', date:'Apr 18, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Process Order mailto: switched from window.location.href / window.open to a programmatic anchor-click (create <a>, append, .click(), remove). This is the most reliable way to trigger native mailto handlers — browsers treat it as a user-initiated click instead of programmatic navigation, which bypasses popup blocker heuristics. Added console.log traces so the dispatch is visible in DevTools if it still doesn\\u2019t open.'},

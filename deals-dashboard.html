@@ -548,10 +548,13 @@ function renderHub(dealId,data) {
         <div style="font-size:10px;color:var(--green);margin-top:2px;opacity:.8">
           ${[q.acceptedFoam,q.acceptedHinge,q.acceptedNote?'"'+q.acceptedNote+'"':''].filter(Boolean).join(' · ')}
         </div>` : '';
+      const qRmChip   = q.hasRM         ? `<span class="card-rm" title="Roof Mounted Ventilation — 1-month lead">RM</span>`   : '';
+      const qCustChip = q.hasCustomHole ? `<span class="card-cust" title="Custom holes — 1-month lead">CUST</span>` : '';
       return `<div class="row-card ${acc?'row-accepted':''}" style="flex-direction:column;align-items:stretch;gap:6px;cursor:pointer" onclick="loadQuote('${q.quoteNumber}')">
         <!-- Row 1: Quote #, Accepted, Amount, Date, View/Copy/Email, Load -->
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-size:12px;font-weight:700;color:var(--text);font-family:var(--mono)">${q.quoteNumber}</span>
+          ${qRmChip}${qCustChip}
           ${acc?'<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>':''}
           <span class="row-date">${fmtDate(q.date)}</span>
           <div style="display:flex;gap:4px;margin-left:auto" onclick="event.stopPropagation()">

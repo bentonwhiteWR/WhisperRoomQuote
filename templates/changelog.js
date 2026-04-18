@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.1.104', date:'Apr 18, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Deal Hub detail panel quote rows now show RM / CUST chips per quote so you can tell which specific revision contains the flagged line items. Previously only the deal card (aggregate) showed them. /api/deals/:id/hub now returns hasRM + hasCustomHole on each quote.'},
+      ]
+    },
+    {
       v:'1.1.103', date:'Apr 18, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Custom holes tracking: line items starting with "CUST HOLE " (CUST HOLE E or CUST HOLE S) now flag the order as Custom Holes — 1-month lead, Gary (production manager) notified.'},

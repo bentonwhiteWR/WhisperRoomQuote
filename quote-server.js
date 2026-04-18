@@ -4966,9 +4966,13 @@ ${q.accepted ? `
 
       const quotes = qRows.map(r => {
         let firstMdl = '';
+        let hasRM = false, hasCustomHole = false;
         try {
-          const mdlItem = (r.line_items || []).find(i => i && /^MDL\b/.test(i.name || ''));
+          const items = r.line_items || [];
+          const mdlItem = items.find(i => i && /^MDL\b/.test(i.name || ''));
           if (mdlItem) firstMdl = (mdlItem.name || '').split(' ').slice(0, 3).join(' ');
+          hasRM         = items.some(i => /^RM\s/i.test(i?.name || ''));
+          hasCustomHole = items.some(i => /^CUST HOLE\b/i.test(i?.name || ''));
         } catch(e) {}
         return {
           quoteNumber:   r.quote_number,
@@ -4980,6 +4984,8 @@ ${q.accepted ? `
           paymentLink:   r.payment_link,
           accepted:      r.accepted === 'true',
           firstMdl,
+          hasRM,
+          hasCustomHole,
           acceptedFoam:  r.accepted_foam  || '',
           acceptedHinge: r.accepted_hinge || '',
           acceptedNote:  r.accepted_note  || '',

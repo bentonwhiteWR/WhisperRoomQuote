@@ -1470,6 +1470,7 @@ const server = http.createServer(async (req, res) => {
             billing_first_name:    billing ? (billing.firstName || customer.firstName || '') : (customer.firstName || ''),
             billing_last_name:     billing ? (billing.lastName  || customer.lastName  || '') : (customer.lastName  || ''),
             billing_phone_number:  billing ? (billing.phone     || customer.phone     || '') : (customer.phone     || ''),
+            ...(billing && billing.name ? { bill_to_name: billing.name } : {}),
             dealname: dealName || undefined,
             ...(() => {
               const earlyStages = ['appointmentscheduled', 'qualifiedtobuy'];
@@ -1551,6 +1552,7 @@ const server = http.createServer(async (req, res) => {
           billing_first_name:    billing ? (billing.firstName || customer.firstName || '') : (customer.firstName || ''),
           billing_last_name:     billing ? (billing.lastName  || customer.lastName  || '') : (customer.lastName  || ''),
           billing_phone_number:  billing ? (billing.phone     || customer.phone     || '') : (customer.phone     || ''),
+          ...(billing && billing.name ? { bill_to_name: billing.name } : {}),
           pipeline: 'default',
           dealstage: isRevision ? 'qualifiedtobuy' : 'appointmentscheduled',
           amount: total.toFixed(2),
@@ -2037,7 +2039,7 @@ tbody tr:hover td{background:#fdfcfb}
       ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
       ${c.phone?`<div class="info-item"><label>Phone</label><span>${c.phone}</span></div>`:''}
       ${(c.address||c.city||c.state||c.zip)?`<div class="info-item"><label>Ship To</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}</span></div>`:''}
-      ${q.billing && (q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
+      ${q.billing && (q.billing.name || q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.name||'',q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
     </div>
   </div>` : ''}
 
@@ -2461,7 +2463,7 @@ tbody tr:hover td{background:#fdfcfb}
       ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
       ${c.phone?`<div class="info-item"><label>Phone</label><span>${c.phone}</span></div>`:''}
       ${(c.address||c.city||c.state||c.zip)?`<div class="info-item"><label>Ship To</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}</span></div>`:''}
-      ${q.billing && (q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
+      ${q.billing && (q.billing.name || q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.name||'',q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
     </div>
   </div>` : ''}
 
@@ -6921,7 +6923,7 @@ tbody tr:last-child td{border-bottom:none}
       ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
       ${c.phone?`<div class="info-item"><label>Phone</label><span>${c.phone}</span></div>`:''}
       ${(c.address||c.city||c.state||c.zip)?`<div class="info-item"><label>Delivery Address</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}</span></div>`:''}
-      ${q.billing && (q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
+      ${q.billing && (q.billing.name || q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.name||'',q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
     </div>
   </div>` : ''}
 

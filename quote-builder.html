@@ -792,6 +792,7 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
           <option value="36303670">Benton White</option>
           <option value="38732178">Kim Dalton</option>
           <option value="36320208">Gabe White</option>
+          <option value="ecommerce">Ecommerce</option>
         </select>
       </div>
     </div>
@@ -829,6 +830,7 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
         </label>
       </div>
       <div id="billingFields" style="display:none">
+        <div class="field"><label>Bill To Name</label><input type="text" id="billToName" placeholder="Company, department, attention…"></div>
         <div class="field"><label>Billing Email</label><input type="text" id="billEmail" placeholder="billing@company.com"></div>
         <div class="field"><label>Address</label><input type="text" id="billAddress" placeholder="123 Main St"></div>
         <div class="form-grid cols-2">
@@ -3090,6 +3092,7 @@ async function createDeal() {
           const same = document.getElementById('billsame') && document.getElementById('billsame').checked;
           if (same) return null;
           return {
+            name:    (document.getElementById('billToName')  || {value:''}).value.trim(),
             email:   (document.getElementById('billEmail')   || {value:''}).value.trim(),
             address: (document.getElementById('billAddress') || {value:''}).value.trim(),
             city:    (document.getElementById('billCity')    || {value:''}).value.trim(),
@@ -3231,6 +3234,7 @@ async function createDeal() {
           const same = document.getElementById('billsame') && document.getElementById('billsame').checked;
           if (same) return null;
           return {
+            name:    (document.getElementById('billToName')  || {value:''}).value.trim(),
             email:   (document.getElementById('billEmail')   || {value:''}).value.trim(),
             address: (document.getElementById('billAddress') || {value:''}).value.trim(),
             city:    (document.getElementById('billCity')    || {value:''}).value.trim(),
@@ -3914,6 +3918,7 @@ const REP_NAMES = {
   '38143901': 'Sarah Smith',
   '117442978': 'Travis Singleton',
   '36320208': 'Gabe White',
+  'ecommerce': 'Ecommerce',
 };
 
 const REP_NUMBERS = {
@@ -3923,6 +3928,7 @@ const REP_NUMBERS = {
   '38143901': '18', // Sarah Smith
   '117442978': '13', // Travis Singleton
   '36320208': '19', // Gabe White
+  'ecommerce': '21', // Ecommerce
 };
 
 // Track sequence per rep per day in session
@@ -4098,7 +4104,7 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
     document.getElementById('shipZip').value = q.customer.zip || '';
 
   // Restore billing fields
-  if (q.billing && (q.billing.address || q.billing.email)) {
+  if (q.billing && (q.billing.name || q.billing.address || q.billing.email)) {
     // Uncheck "same as shipping"
     const sameChk = document.getElementById('billsame');
     if (sameChk) { sameChk.checked = false; }
@@ -4106,6 +4112,7 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
     if (billFields) billFields.style.display = 'block';
     const checkLabel = document.getElementById('check-billsame');
     if (checkLabel) checkLabel.classList.remove('active');
+    document.getElementById('billToName')  && (document.getElementById('billToName').value  = q.billing.name    || '');
     document.getElementById('billEmail')   && (document.getElementById('billEmail').value   = q.billing.email   || '');
     document.getElementById('billAddress') && (document.getElementById('billAddress').value = q.billing.address || '');
     document.getElementById('billCity')    && (document.getElementById('billCity').value    = q.billing.city    || '');
@@ -4798,8 +4805,14 @@ function linkDealById(dealId, dealName) {
       linkedDeal.amount = p.amount;
       linkedDeal.stage = p.dealstage;
 
-      // Set rep to deal owner
-      if (p.hubspot_owner_id) {
+      // Set rep to deal owner — Shopify deals always go to Ecommerce
+      const isShopify = /shopify/i.test(dealName);
+      if (isShopify) {
+        const sel = document.getElementById('repSelect');
+        sel.value = 'ecommerce';
+        localStorage.setItem('wr_default_rep', 'ecommerce');
+        if (!document.getElementById('quoteNumHidden').value) updateQuoteNumber();
+      } else if (p.hubspot_owner_id) {
         const sel = document.getElementById('repSelect');
         if ([...sel.options].some(o => o.value === p.hubspot_owner_id)) {
           sel.value = p.hubspot_owner_id;
@@ -5208,7 +5221,7 @@ function newQuote(skipConfirm = false) {
   // Clear customer fields
   ['firstName','lastName','email','phone','company',
    'shipAddress','shipCity','shipState','shipZip',
-   'billAddress','billCity','billState','billZip','billEmail'].forEach(id => {
+   'billAddress','billCity','billState','billZip','billEmail','billToName'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });

@@ -51,6 +51,18 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.2.6', date:'Apr 20, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Bill To Name field added to quote builder (above billing email); appears on quote, invoice, and order PDFs, and syncs to HubSpot bill_to_name property.'},
+      ]
+    },
+    {
+      v:'1.2.5', date:'Apr 20, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Ecommerce added to rep dropdown; deals with "Shopify" in the name auto-assign to Ecommerce when linked.'},
+      ]
+    },
+    {
       v:'1.2.4', date:'Apr 20, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Corrected pallet dimensions for MDL 9696 E and Drum Booth: two pallets at 90×52×45 and one at 102×52×45.'},

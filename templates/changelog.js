@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.2.4', date:'Apr 20, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Corrected pallet dimensions for MDL 9696 E and Drum Booth: two pallets at 90×52×45 and one at 102×52×45.'},
+      ]
+    },
+    {
       v:'1.2.3', date:'Apr 18, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Deal Hub card sort: was secretly re-sorting client-side by HubSpot\\u2019s hs_lastmodifieddate, which treats any HubSpot activity (views, note edits, field touches) as a reason to bump a card up. Now strictly sorts by lastActivityAt from our system \u2014 quote pushed, order processed, quote accepted. Deals without any of those sink to the bottom by amount.'},

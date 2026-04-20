@@ -792,6 +792,7 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
           <option value="36303670">Benton White</option>
           <option value="38732178">Kim Dalton</option>
           <option value="36320208">Gabe White</option>
+          <option value="ecommerce">Ecommerce</option>
         </select>
       </div>
     </div>
@@ -3914,6 +3915,7 @@ const REP_NAMES = {
   '38143901': 'Sarah Smith',
   '117442978': 'Travis Singleton',
   '36320208': 'Gabe White',
+  'ecommerce': 'Ecommerce',
 };
 
 const REP_NUMBERS = {
@@ -3923,6 +3925,7 @@ const REP_NUMBERS = {
   '38143901': '18', // Sarah Smith
   '117442978': '13', // Travis Singleton
   '36320208': '19', // Gabe White
+  'ecommerce': '21', // Ecommerce
 };
 
 // Track sequence per rep per day in session
@@ -4798,8 +4801,14 @@ function linkDealById(dealId, dealName) {
       linkedDeal.amount = p.amount;
       linkedDeal.stage = p.dealstage;
 
-      // Set rep to deal owner
-      if (p.hubspot_owner_id) {
+      // Set rep to deal owner — Shopify deals always go to Ecommerce
+      const isShopify = /shopify/i.test(dealName);
+      if (isShopify) {
+        const sel = document.getElementById('repSelect');
+        sel.value = 'ecommerce';
+        localStorage.setItem('wr_default_rep', 'ecommerce');
+        if (!document.getElementById('quoteNumHidden').value) updateQuoteNumber();
+      } else if (p.hubspot_owner_id) {
         const sel = document.getElementById('repSelect');
         if ([...sel.options].some(o => o.value === p.hubspot_owner_id)) {
           sel.value = p.hubspot_owner_id;

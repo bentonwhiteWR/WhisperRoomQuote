@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.2.7', date:'Apr 20, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Pickup Fee button added to freight section — overrides freight with a non-taxable pickup amount; shows as "Pickup Fee" on quote, invoice, and order PDFs.'},
+      ]
+    },
+    {
       v:'1.2.6', date:'Apr 20, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Bill To Name field added to quote builder (above billing email); appears on quote, invoice, and order PDFs, and syncs to HubSpot bill_to_name property.'},

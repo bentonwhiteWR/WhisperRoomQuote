@@ -1013,6 +1013,16 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
           oninput="applyFreightOverride(this.value)"
           title="Override freight amount manually">
       </div>
+      <button id="pickupFeeBtn" onclick="togglePickupFeeInput()"
+        style="padding:7px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.03em">
+        Pickup Fee (empty)
+      </button>
+      <div id="pickupFeeRow" style="display:none;align-items:center;gap:6px">
+        <span style="font-size:11px;color:var(--muted)">$</span>
+        <input type="number" id="pickupFeeInput" placeholder="0" min="0" step="0.01"
+          style="width:100px;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:12px"
+          oninput="applyPickupFee(this.value)">
+      </div>
     </div>
     <span style="font-size:11px;color:var(--muted)" id="freightStatus"></span>
     <div class="freight-result" id="freightResult">
@@ -1701,6 +1711,7 @@ let discountType = 'pct'; // 'pct' or 'flat'
 let freightData = null;
 let taxData = null;
 let installData = null; // { mode: 'none'|'install_only'|'delivery_install', amount: number }
+let pickupFee = null; // number when set, replaces freight (non-taxable)
 let searchTimeout = null;
 
 // ── Product Data from freight tool (pallet/weight lookup) ─────────
@@ -2012,8 +2023,15 @@ function addLineItem(product) {
   updateSummary();
   freightData = null;
   _freightTbd = false;
+  pickupFee = null;
   const tbdBtn = document.getElementById('freightTbdBtn');
   if (tbdBtn) { tbdBtn.style.background='var(--surface2)'; tbdBtn.style.borderColor='var(--border)'; tbdBtn.style.color='var(--muted)'; }
+  const pfBtn = document.getElementById('pickupFeeBtn');
+  if (pfBtn) pfBtn.textContent = 'Pickup Fee (empty)';
+  const pfRow = document.getElementById('pickupFeeRow');
+  if (pfRow) pfRow.style.display = 'none';
+  const pfInput = document.getElementById('pickupFeeInput');
+  if (pfInput) pfInput.value = '';
   taxData = null;
   document.getElementById('freightResult').classList.remove('visible');
   document.getElementById('taxResult').classList.remove('visible');
@@ -2499,8 +2517,28 @@ function getInstallAmount() { return installData && installData.amount ? parseFl
 
 // When mode is 'delivery_install' the install amount REPLACES freight in the total.
 // When mode is 'install_only' it's ADDED on top of freight.
+// Pickup fee also fully replaces freight (non-taxable).
 function getEffectiveFreight() {
+  if (pickupFee) return 0;
   return (getInstallMode() === 'delivery_install' && getInstallAmount() > 0) ? 0 : getFreightTotal();
+}
+
+function getPickupFee() { return pickupFee ? parseFloat(pickupFee) : 0; }
+
+function applyPickupFee(val) {
+  const amt = parseFloat(val);
+  pickupFee = (val !== '' && !isNaN(amt) && amt > 0) ? amt : null;
+  const btn = document.getElementById('pickupFeeBtn');
+  if (btn) btn.textContent = pickupFee ? `Pickup Fee $${pickupFee.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}` : 'Pickup Fee (empty)';
+  updateSummary();
+}
+
+function togglePickupFeeInput() {
+  const row = document.getElementById('pickupFeeRow');
+  if (!row) return;
+  const showing = row.style.display !== 'none';
+  row.style.display = showing ? 'none' : 'flex';
+  if (!showing) document.getElementById('pickupFeeInput')?.focus();
 }
 
 function setInstallMode(mode) {
@@ -2577,10 +2615,11 @@ function updateSummary() {
   const sub = getSubtotal();
   const disc = getDiscountAmount();
   const freight = getEffectiveFreight();
+  const pFee = getPickupFee();
   const installAmt = getInstallAmount();
   const installMode = getInstallMode();
   const tax = getTaxAmount();
-  const total = sub - disc + freight + installAmt + tax;
+  const total = sub - disc + freight + pFee + installAmt + tax;
 
   document.getElementById('sumSubtotal').textContent = fmt(sub);
 
@@ -2597,13 +2636,21 @@ function updateSummary() {
     document.getElementById('discountDisplay').textContent = '— $0.00';
   }
 
-  // Freight line — when mode is delivery_install, the freight slot shows "Included"
+  // Freight line — pickup fee overrides freight; delivery_install shows "Included"
   const sumFreightEl = document.getElementById('sumFreight');
-  if (installMode === 'delivery_install' && installAmt > 0) {
+  const sumFreightLabel = sumFreightEl?.previousElementSibling;
+  if (pFee > 0) {
+    if (sumFreightLabel) sumFreightLabel.textContent = 'Pickup Fee';
+    sumFreightEl.textContent = fmt(pFee);
+    sumFreightEl.style.color = '';
+    sumFreightEl.style.fontStyle = '';
+  } else if (installMode === 'delivery_install' && installAmt > 0) {
+    if (sumFreightLabel) sumFreightLabel.textContent = 'Freight';
     sumFreightEl.textContent = 'Included with install';
     sumFreightEl.style.color = 'var(--muted)';
     sumFreightEl.style.fontStyle = 'italic';
   } else {
+    if (sumFreightLabel) sumFreightLabel.textContent = 'Freight';
     sumFreightEl.textContent = freightData?.tbd ? 'TBD' : (freight > 0 ? fmt(freight) : 'Not quoted');
     sumFreightEl.style.color = '';
     sumFreightEl.style.fontStyle = '';
@@ -3064,7 +3111,7 @@ async function createDeal() {
   // Total must include install so the server's in-place check correctly detects
   // that something changed. getEffectiveFreight() returns 0 when mode is
   // 'delivery_install' since install REPLACES freight in that mode.
-  const total = sub - disc + getEffectiveFreight() + getInstallAmount() + getTaxAmount();
+  const total = sub - disc + getEffectiveFreight() + getPickupFee() + getInstallAmount() + getTaxAmount();
 
   const discountedItems = lineItems.map(item => ({
     ...item,
@@ -3104,6 +3151,7 @@ async function createDeal() {
         quoteNumber: document.getElementById('quoteNumHidden').value,
         lineItems: discountedItems,
         freight: freightData,
+        pickupFee: pickupFee || null,
         tax: taxData,
         install: installData,
         taxExempt: !!(document.getElementById('taxexempt') && document.getElementById('taxexempt').checked),
@@ -3222,6 +3270,7 @@ async function createDeal() {
         lineItems: JSON.parse(JSON.stringify(lineItems)),
         discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
         freight: freightData ? {...freightData} : null,
+        pickupFee: pickupFee || null,
         tax: taxData ? {...taxData} : null,
         install: installData ? {...installData} : null,
         accessories, notes: document.getElementById('notes').value.trim(),
@@ -3536,9 +3585,10 @@ function generatePDF() {
 
   const sub      = getSubtotal();
   const disc     = getDiscountAmount();
-  const freight  = getFreightTotal();
+  const freight  = pickupFee ? 0 : getFreightTotal();
+  const pFeePreview = getPickupFee();
   const tax      = getTaxAmount();
-  const total    = sub - disc + freight + tax;
+  const total    = sub - disc + freight + pFeePreview + tax;
   const today    = new Date().toLocaleDateString('en-US', {year:'numeric',month:'long',day:'numeric'});
   const quoteNum = document.getElementById('quoteNumHidden').value || ('WR-' + Date.now().toString().slice(-8));
 
@@ -3698,7 +3748,7 @@ function generatePDF() {
   <div class="totals">
     <div class="totals-row"><span class="totals-label">Subtotal</span><span class="totals-val">${fmt(sub)}</span></div>
     ${disc > 0 ? `<div class="totals-row discount"><span class="totals-label">Discount${discPct ? ` (${discVal}%)` : ''}</span><span class="totals-val">−${fmt(disc)}</span></div>` : ''}
-    ${freight > 0 ? `<div class="totals-row"><span class="totals-label">Freight</span><span class="totals-val">${fmt(freight)}</span></div>` : '<div class="totals-row"><span class="totals-label">Freight</span><span class="totals-val" style="color:#888">TBD</span></div>'}
+    ${pFeePreview > 0 ? `<div class="totals-row"><span class="totals-label">Pickup Fee</span><span class="totals-val">${fmt(pFeePreview)}</span></div>` : freight > 0 ? `<div class="totals-row"><span class="totals-label">Freight</span><span class="totals-val">${fmt(freight)}</span></div>` : '<div class="totals-row"><span class="totals-label">Freight</span><span class="totals-val" style="color:#888">TBD</span></div>'}
     ${tax > 0 ? `<div class="totals-row"><span class="totals-label">Sales Tax${taxData ? ` (${(taxData.rate*100).toFixed(3)}%)` : ''}</span><span class="totals-val">${fmt(tax)}</span></div>` : ''}
     ${isTaxExempt ? `<div class="totals-row"><span class="totals-label" style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span class="totals-val" style="color:#22c55e">${taxExemptCert ? taxExemptCert : 'Exempt'}</span></div>` : ''}
     <div class="totals-row grand"><span class="totals-label">Total USD</span><span class="totals-val">${fmt(total)}</span></div>
@@ -4250,6 +4300,21 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
       else statusEl.textContent = '';
     }
   })();
+
+  // Restore pickup fee
+  pickupFee = q.pickupFee ? parseFloat(q.pickupFee) : null;
+  const pfInputEl = document.getElementById('pickupFeeInput');
+  const pfBtnEl   = document.getElementById('pickupFeeBtn');
+  const pfRowEl   = document.getElementById('pickupFeeRow');
+  if (pickupFee) {
+    if (pfInputEl) pfInputEl.value = pickupFee;
+    if (pfBtnEl)   pfBtnEl.textContent = `Pickup Fee $${pickupFee.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+    if (pfRowEl)   pfRowEl.style.display = 'flex';
+  } else {
+    if (pfInputEl) pfInputEl.value = '';
+    if (pfBtnEl)   pfBtnEl.textContent = 'Pickup Fee (empty)';
+    if (pfRowEl)   pfRowEl.style.display = 'none';
+  }
 
   // Restore TBD state
   _freightTbd = !!(freightData?.tbd);

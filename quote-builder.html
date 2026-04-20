@@ -446,6 +446,8 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
 .acc-check.active .acc-box { background: var(--accent); border-color: var(--accent); }
 .acc-box::after { content: '✓'; font-size: 9px; color: white; display: none; }
 .acc-check.active .acc-box::after { display: block; }
+.acc-check-green.active { border-color: var(--green); color: var(--charcoal); background: var(--green-dim); font-weight: 500; }
+.acc-check-green.active .acc-box { background: var(--green); border-color: var(--green); }
 
 /* ── Tax section ── */
 .tax-result {
@@ -1013,11 +1015,10 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
           oninput="applyFreightOverride(this.value)"
           title="Override freight amount manually">
       </div>
-      <button id="pickupFeeBtn" onclick="togglePickupFeeInput()"
-        style="padding:7px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.03em">
-        Pickup Fee (empty)
-      </button>
-      <div id="pickupFeeRow" style="display:none;align-items:center;gap:6px">
+      <label class="acc-check acc-check-green" id="check-pickupFee" onclick="togglePickupFeeActive(this)">
+        <input type="checkbox" id="pickupFeeCheck"><div class="acc-box"></div>Pickup Fee
+      </label>
+      <div style="display:flex;align-items:center;gap:4px">
         <span style="font-size:11px;color:var(--muted)">$</span>
         <input type="number" id="pickupFeeInput" placeholder="0" min="0" step="0.01"
           style="width:100px;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:12px"
@@ -2026,11 +2027,11 @@ function addLineItem(product) {
   pickupFee = null;
   const tbdBtn = document.getElementById('freightTbdBtn');
   if (tbdBtn) { tbdBtn.style.background='var(--surface2)'; tbdBtn.style.borderColor='var(--border)'; tbdBtn.style.color='var(--muted)'; }
-  const pfBtn = document.getElementById('pickupFeeBtn');
-  if (pfBtn) pfBtn.textContent = 'Pickup Fee (empty)';
-  const pfRow = document.getElementById('pickupFeeRow');
-  if (pfRow) pfRow.style.display = 'none';
+  const pfChk   = document.getElementById('pickupFeeCheck');
+  const pfLabel = document.getElementById('check-pickupFee');
   const pfInput = document.getElementById('pickupFeeInput');
+  if (pfChk)   pfChk.checked = false;
+  if (pfLabel) pfLabel.classList.remove('active');
   if (pfInput) pfInput.value = '';
   taxData = null;
   document.getElementById('freightResult').classList.remove('visible');
@@ -2526,19 +2527,28 @@ function getEffectiveFreight() {
 function getPickupFee() { return pickupFee ? parseFloat(pickupFee) : 0; }
 
 function applyPickupFee(val) {
+  const chk = document.getElementById('pickupFeeCheck');
+  const active = chk && chk.checked;
   const amt = parseFloat(val);
-  pickupFee = (val !== '' && !isNaN(amt) && amt > 0) ? amt : null;
-  const btn = document.getElementById('pickupFeeBtn');
-  if (btn) btn.textContent = pickupFee ? `Pickup Fee $${pickupFee.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}` : 'Pickup Fee (empty)';
+  pickupFee = (active && val !== '' && !isNaN(amt) && amt > 0) ? amt : null;
   updateSummary();
 }
 
-function togglePickupFeeInput() {
-  const row = document.getElementById('pickupFeeRow');
-  if (!row) return;
-  const showing = row.style.display !== 'none';
-  row.style.display = showing ? 'none' : 'flex';
-  if (!showing) document.getElementById('pickupFeeInput')?.focus();
+function togglePickupFeeActive(label) {
+  const chk = document.getElementById('pickupFeeCheck');
+  if (!chk) return;
+  chk.checked = !chk.checked;
+  if (chk.checked) {
+    label.classList.add('active');
+    document.getElementById('pickupFeeInput')?.focus();
+  } else {
+    label.classList.remove('active');
+    pickupFee = null;
+    updateSummary();
+  }
+  // re-apply current input value now that checkbox state changed
+  const input = document.getElementById('pickupFeeInput');
+  if (input) applyPickupFee(input.value);
 }
 
 function setInstallMode(mode) {
@@ -4304,16 +4314,16 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   // Restore pickup fee
   pickupFee = q.pickupFee ? parseFloat(q.pickupFee) : null;
   const pfInputEl = document.getElementById('pickupFeeInput');
-  const pfBtnEl   = document.getElementById('pickupFeeBtn');
-  const pfRowEl   = document.getElementById('pickupFeeRow');
+  const pfChkEl   = document.getElementById('pickupFeeCheck');
+  const pfLblEl   = document.getElementById('check-pickupFee');
   if (pickupFee) {
     if (pfInputEl) pfInputEl.value = pickupFee;
-    if (pfBtnEl)   pfBtnEl.textContent = `Pickup Fee $${pickupFee.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-    if (pfRowEl)   pfRowEl.style.display = 'flex';
+    if (pfChkEl)   pfChkEl.checked = true;
+    if (pfLblEl)   pfLblEl.classList.add('active');
   } else {
     if (pfInputEl) pfInputEl.value = '';
-    if (pfBtnEl)   pfBtnEl.textContent = 'Pickup Fee (empty)';
-    if (pfRowEl)   pfRowEl.style.display = 'none';
+    if (pfChkEl)   pfChkEl.checked = false;
+    if (pfLblEl)   pfLblEl.classList.remove('active');
   }
 
   // Restore TBD state

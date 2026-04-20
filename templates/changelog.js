@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.2.8', date:'Apr 20, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Pickup Fee redesigned as a green checkbox with always-visible $ input; removed "(empty)" label text.'},
+      ]
+    },
+    {
       v:'1.2.7', date:'Apr 20, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Pickup Fee button added to freight section — overrides freight with a non-taxable pickup amount; shows as "Pickup Fee" on quote, invoice, and order PDFs.'},

@@ -6498,8 +6498,8 @@ async function confirmProcessOrder() {
 
       const emailSubject = `New Order: ${dealNameVal} — ${quoteNum}`;
       const PAY_LABELS = { hs: 'HubSpot Invoice', cc: 'Credit Card', ach: 'ACH / Bank Deposit', po: 'PO', other: 'Other' };
-      const payTypeLine = paymentType
-        ? `Payment Type: ${PAY_LABELS[paymentType] || paymentType}${paymentType === 'po' && poNumber ? ' — PO #' + poNumber : ''}`
+      const payTypeLine = data.paymentType
+        ? `Payment Type: ${PAY_LABELS[data.paymentType] || data.paymentType}${data.paymentType === 'po' && data.poNumber ? ' — PO #' + data.poNumber : ''}`
         : null;
       const emailBody = [
         `NEW ORDER — ${quoteNum}`,

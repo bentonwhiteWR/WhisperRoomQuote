@@ -7330,7 +7330,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
 
       console.log(`Order processed: ${quoteNumber}, deal ${dealId} → closedwon`);
       writelog('info', 'order.processed', `Order processed: ${quoteNumber} — ${dealName || '—'}`, { rep: String(ownerId || ''), quoteNum: quoteNumber, dealId: String(dealId || ''), dealName: dealName || null });
-      json({ success: true, orderUrl, hasRM, hasCustomHole });
+      json({ success: true, orderUrl, hasRM, hasCustomHole, paymentType, poNumber });
 
       // Create AP color task for Benton (non-blocking) if order has an AP item
       const hasApItem = (lineItems || []).some(i => i.name && /^AP\s/i.test(i.name));

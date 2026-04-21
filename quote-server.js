@@ -7269,14 +7269,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         taxTotal > 0 ? `Sales Tax: ${fmt(taxTotal)}` : null,
         `Order Total: ${fmt(total)}`,
         totalWeight > 0 ? `Total Weight: ${totalWeight.toLocaleString()} lbs` : null,
-        (() => {
-          if (!paymentType) return null;
-          const labels = { hs: 'HubSpot Invoice', cc: 'Credit Card', ach: 'ACH / Bank Deposit', po: 'PO', other: 'Other' };
-          const label = labels[paymentType] || paymentType;
-          return paymentType === 'po' && poNumber
-            ? `Payment Type: ${label} — PO #${poNumber}`
-            : `Payment Type: ${label}`;
-        })(),
+        `Payment Type: ${{ hs:'HubSpot Invoice', cc:'Credit Card', ach:'ACH / Bank Deposit', po:'PO', other:'Other' }[paymentType] || paymentType || '—'}${paymentType === 'po' && poNumber ? ` — PO #${poNumber}` : ''}`,
         ``,
         `VIEW ORDER PAGE`,
         orderUrl,

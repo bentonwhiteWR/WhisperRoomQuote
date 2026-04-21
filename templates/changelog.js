@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.3.2', date:'Apr 21, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Orders dashboard: Delete Order moved inside a collapsed "Admin Override" drawer to prevent accidental clicks.'},
+      ]
+    },
+    {
       v:'1.3.1', date:'Apr 21, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Payment type now included in the mailto email that opens after order processing (was only added to the server-side HubSpot note, not the mail client template).'},

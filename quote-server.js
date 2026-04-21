@@ -6794,6 +6794,18 @@ ${q.accepted ? `
         } catch(e) {}
       }
 
+      // Back-fill paymentType from HubSpot for orders processed before it was stored locally
+      const dealIdForPayment = quoteData?.dealId || (db ? (await db.query('SELECT deal_id FROM orders WHERE quote_number = $1', [quoteId]).catch(()=>({rows:[]})))?.rows[0]?.deal_id : null);
+      if (orderData && !orderData.paymentType && dealIdForPayment && HS_TOKEN) {
+        try {
+          const dr = await httpsRequest({ hostname: 'api.hubapi.com', path: `/crm/v3/objects/deals/${dealIdForPayment}?properties=payment_type,po_`, method: 'GET', headers: { 'Authorization': `Bearer ${HS_TOKEN}` } });
+          if (dr.body?.properties?.payment_type) {
+            orderData.paymentType = (dr.body.properties.payment_type || '').toLowerCase();
+            orderData.poNumber    = dr.body.properties.po_ || null;
+          }
+        } catch(e) {}
+      }
+
       const q = quoteData;
       const o = orderData || {};
       const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');

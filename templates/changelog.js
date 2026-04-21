@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.3.0', date:'Apr 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Payment type now visible on order PDF and order link for all orders, including those processed before v1.2.9 — falls back to a live HubSpot deal lookup when not stored locally.'},
+      ]
+    },
+    {
       v:'1.2.9', date:'Apr 21, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Payment type now shown in order processed email (after total weight) and on the order PDF / order link totals section; PO number included when payment type is PO.'},

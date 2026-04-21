@@ -6526,6 +6526,12 @@ async function confirmProcessOrder() {
         taxAmt > 0      ? `Sales Tax: ${fmt(taxAmt)}`      : null,
         `Order Total: ${fmt(total)}`,
         totalWeight > 0 ? `Total Weight: ${totalWeight.toLocaleString()} lbs` : null,
+        (() => {
+          if (!paymentType) return null;
+          const labels = { hs: 'HubSpot Invoice', cc: 'Credit Card', ach: 'ACH / Bank Deposit', po: 'PO', other: 'Other' };
+          const label = labels[paymentType] || paymentType;
+          return (paymentType === 'po' && poNumber) ? `Payment Type: ${label} — PO #${poNumber}` : `Payment Type: ${label}`;
+        })(),
         ``,
         `ORDER PAGE`,
         data.orderUrl,

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.3.1', date:'Apr 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Payment type now included in the mailto email that opens after order processing (was only added to the server-side HubSpot note, not the mail client template).'},
+      ]
+    },
+    {
       v:'1.3.0', date:'Apr 21, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Payment type now visible on order PDF and order link for all orders, including those processed before v1.2.9 — falls back to a live HubSpot deal lookup when not stored locally.'},

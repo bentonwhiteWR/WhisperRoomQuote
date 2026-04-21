@@ -1898,6 +1898,9 @@ function openShippingNotifyEmail(ctx) {
   const garyFlag      = hasRM || hasCustomHole;
   const dealNameVal = ctx.dealName || ctx.quoteNumber;
   const emailSubject = `New Order: ${dealNameVal} — ${ctx.quoteNumber}`;
+  const payLabelMap = { hs: 'HubSpot Invoice', cc: 'CC', ach: 'ACH', po: 'PO', other: 'Other' };
+  const payLabel = payLabelMap[ctx.paymentType] || (ctx.paymentType || '').toUpperCase();
+  const payDisplay = (ctx.paymentType === 'po' && ctx.poNumber) ? payLabel + ' — PO #' + ctx.poNumber : payLabel;
   const emailBody = [
     `NEW ORDER — ${ctx.quoteNumber}`,
     `Deal: ${dealNameVal}`,
@@ -1928,6 +1931,7 @@ function openShippingNotifyEmail(ctx) {
     taxAmt > 0     ? `Sales Tax: ${fmt(taxAmt)}`    : null,
     `Order Total: ${fmt(total)}`,
     totalWeight > 0 ? `Total Weight: ${totalWeight.toLocaleString()} lbs` : null,
+    `Payment Type: ${payDisplay}`,
     ``,
     `ORDER PAGE`,
     ctx.orderUrl,

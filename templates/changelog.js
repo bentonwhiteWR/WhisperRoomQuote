@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.3.3', date:'Apr 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Payment type now reliably included in the mailto email after order processing — replaced inline IIFE with a pre-computed variable to avoid potential closure evaluation issues.'},
+      ]
+    },
+    {
       v:'1.3.2', date:'Apr 21, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Orders dashboard: Delete Order moved inside a collapsed "Admin Override" drawer to prevent accidental clicks.'},

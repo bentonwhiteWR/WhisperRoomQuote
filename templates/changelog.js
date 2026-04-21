@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.2.9', date:'Apr 21, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Payment type now shown in order processed email (after total weight) and on the order PDF / order link totals section; PO number included when payment type is PO.'},
+      ]
+    },
+    {
       v:'1.2.8', date:'Apr 20, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Pickup Fee redesigned as a green checkbox with always-visible $ input; removed "(empty)" label text.'},

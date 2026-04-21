@@ -6965,6 +6965,13 @@ tbody tr:last-child td{border-bottom:none}
       ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
       <div class="tot grand"><span>Order Total</span><span>${fmt(total)}</span></div>
       ${totalWeight>0?`<div class="tot weight-total"><span>&#x2696; Total Weight</span><span>${totalWeight.toLocaleString()} lbs</span></div>`:''}
+      ${(() => {
+        if (!o.paymentType) return '';
+        const labels = { hs: 'HubSpot Invoice', cc: 'Credit Card', ach: 'ACH / Bank Deposit', po: 'PO', other: 'Other' };
+        const label = labels[o.paymentType] || o.paymentType;
+        const display = (o.paymentType === 'po' && o.poNumber) ? `${label} — PO #${o.poNumber}` : label;
+        return `<div class="tot" style="margin-top:8px;padding-top:8px;border-top:1px solid #eee"><span>Payment Type</span><span>${display}</span></div>`;
+      })()}
     </div>
   </div>
   ${freightTbd?`<div class="card" style="border-left:3px solid #ee6216;background:#fff8f5">
@@ -7178,6 +7185,8 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         shipped: { pallets: computedPallets }, // scheduled ship info; Jeromy fills in date/carrier/tracking later
         hasRM,
         hasCustomHole,
+        paymentType: paymentType || null,
+        poNumber: (paymentType === 'po' && poNumber) ? poNumber : null,
       };
 
       if (db) {
@@ -7248,6 +7257,14 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         taxTotal > 0 ? `Sales Tax: ${fmt(taxTotal)}` : null,
         `Order Total: ${fmt(total)}`,
         totalWeight > 0 ? `Total Weight: ${totalWeight.toLocaleString()} lbs` : null,
+        (() => {
+          if (!paymentType) return null;
+          const labels = { hs: 'HubSpot Invoice', cc: 'Credit Card', ach: 'ACH / Bank Deposit', po: 'PO', other: 'Other' };
+          const label = labels[paymentType] || paymentType;
+          return paymentType === 'po' && poNumber
+            ? `Payment Type: ${label} — PO #${poNumber}`
+            : `Payment Type: ${label}`;
+        })(),
         ``,
         `VIEW ORDER PAGE`,
         orderUrl,

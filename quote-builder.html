@@ -6497,10 +6497,6 @@ async function confirmProcessOrder() {
       const garyFlag      = hasRM || hasCustomHole;
 
       const emailSubject = `New Order: ${dealNameVal} — ${quoteNum}`;
-      const PAY_LABELS = { hs: 'HubSpot Invoice', cc: 'Credit Card', ach: 'ACH / Bank Deposit', po: 'PO', other: 'Other' };
-      const payTypeLine = data.paymentType
-        ? `Payment Type: ${PAY_LABELS[data.paymentType] || data.paymentType}${data.paymentType === 'po' && data.poNumber ? ' — PO #' + data.poNumber : ''}`
-        : null;
       const emailBody = [
         `NEW ORDER — ${quoteNum}`,
         `Deal: ${dealNameVal}`,
@@ -6530,7 +6526,7 @@ async function confirmProcessOrder() {
         taxAmt > 0      ? `Sales Tax: ${fmt(taxAmt)}`      : null,
         `Order Total: ${fmt(total)}`,
         totalWeight > 0 ? `Total Weight: ${totalWeight.toLocaleString()} lbs` : null,
-        payTypeLine,
+        `Payment Type: ${{ hs:'HubSpot Invoice', cc:'Credit Card', ach:'ACH / Bank Deposit', po:'PO', other:'Other' }[data.paymentType] || data.paymentType || '—'}${data.paymentType === 'po' && data.poNumber ? ' — PO #' + data.poNumber : ''}`,
         ``,
         `ORDER PAGE`,
         data.orderUrl,

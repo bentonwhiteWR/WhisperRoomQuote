@@ -1909,15 +1909,17 @@ const server = http.createServer(async (req, res) => {
       const disc = q.discount && q.discount.value > 0
         ? (q.discount.type==='pct' ? sub*q.discount.value/100 : q.discount.value) : 0;
       const freightTbd = q.freight?.tbd === true;
+      const pickupFeeAmt = q.pickupFee ? parseFloat(q.pickupFee) : 0;
       // Install/delivery state. Three modes: 'none' | 'install_only' | 'delivery_install'.
       // In 'delivery_install' mode the install amount REPLACES freight in the totals.
+      // Pickup fee also replaces freight (non-taxable).
       const installMode   = (q.install && q.install.mode) ? q.install.mode : 'none';
       const installAmt    = (q.install && q.install.amount) ? parseFloat(q.install.amount) : 0;
-      const freightAmt    = (installMode === 'delivery_install' && installAmt > 0)
+      const freightAmt    = (pickupFeeAmt > 0 || (installMode === 'delivery_install' && installAmt > 0))
         ? 0
         : ((!freightTbd && q.freight) ? q.freight.total : 0);
       const taxAmt = q.tax ? q.tax.tax : 0;
-      const total = sub - disc + freightAmt + (installAmt > 0 ? installAmt : 0) + taxAmt;
+      const total = sub - disc + freightAmt + pickupFeeAmt + (installAmt > 0 ? installAmt : 0) + taxAmt;
       const c = q.customer || {};
 
       const lineRows = (q.lineItems||[]).map(item =>
@@ -2058,7 +2060,7 @@ tbody tr:hover td{background:#fdfcfb}
         <div class="totals" style="margin-top:0">
           <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
           ${disc>0?`<div class="tot"><span>Discount${q.discount&&q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
-          ${freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
+          ${pickupFeeAmt>0?`<div class="tot"><span>Pickup Fee</span><span>${fmt(pickupFeeAmt)}</span></div>`:freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
           ${installAmt>0?`<div class="tot"><span>${installMode==='delivery_install'?'Delivery and Installation':'Installation'}</span><span>${fmt(installAmt)}</span></div>`:''}
           ${taxAmt>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+(q.tax.rate*100).toFixed(2).replace(/\\.?0+$/,'')+'%)':''}</span><span>${fmt(taxAmt)}</span></div>`:''}
           ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
@@ -2312,14 +2314,16 @@ tbody tr:hover td{background:#fdfcfb}
       const disc = q.discount && q.discount.value > 0
         ? (q.discount.type==='pct' ? sub*q.discount.value/100 : q.discount.value) : 0;
       const freightTbd = q.freight?.tbd === true;
+      const pickupFeeAmt = q.pickupFee ? parseFloat(q.pickupFee) : 0;
       // Install/delivery state. In 'delivery_install' mode install REPLACES freight.
+      // Pickup fee also replaces freight (non-taxable).
       const installMode = (q.install && q.install.mode) ? q.install.mode : 'none';
       const installAmt  = (q.install && q.install.amount) ? parseFloat(q.install.amount) : 0;
-      const freight     = (installMode === 'delivery_install' && installAmt > 0)
+      const freight     = (pickupFeeAmt > 0 || (installMode === 'delivery_install' && installAmt > 0))
         ? 0
         : ((!freightTbd && q.freight) ? q.freight.total : 0);
       const tax = q.tax ? q.tax.tax : 0;
-      const total = sub - disc + freight + (installAmt > 0 ? installAmt : 0) + tax;
+      const total = sub - disc + freight + pickupFeeAmt + (installAmt > 0 ? installAmt : 0) + tax;
       const c = q.customer || {};
 
       const lineRows = (q.lineItems||[]).map(item =>
@@ -2482,7 +2486,7 @@ tbody tr:hover td{background:#fdfcfb}
         <div class="totals" style="margin-top:0">
           <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
           ${disc>0?`<div class="tot"><span>Discount${q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
-          ${freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freight>0?`<div class="tot"><span>Freight</span><span>${fmt(freight)}</span></div>`:''}
+          ${pickupFeeAmt>0?`<div class="tot"><span>Pickup Fee</span><span>${fmt(pickupFeeAmt)}</span></div>`:freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freight>0?`<div class="tot"><span>Freight</span><span>${fmt(freight)}</span></div>`:''}
           ${installAmt>0?`<div class="tot"><span>${installMode==='delivery_install'?'Delivery and Installation':'Installation'}</span><span>${fmt(installAmt)}</span></div>`:''}
           ${tax>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+( q.tax.rate*100).toFixed(2).replace(/\.?0+$/,'')+')%':''}</span><span>${fmt(tax)}</span></div>`:''}
           ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
@@ -6790,6 +6794,18 @@ ${q.accepted ? `
         } catch(e) {}
       }
 
+      // Back-fill paymentType from HubSpot for orders processed before it was stored locally
+      const dealIdForPayment = quoteData?.dealId || (db ? (await db.query('SELECT deal_id FROM orders WHERE quote_number = $1', [quoteId]).catch(()=>({rows:[]})))?.rows[0]?.deal_id : null);
+      if (orderData && !orderData.paymentType && dealIdForPayment && HS_TOKEN) {
+        try {
+          const dr = await httpsRequest({ hostname: 'api.hubapi.com', path: `/crm/v3/objects/deals/${dealIdForPayment}?properties=payment_type,po_`, method: 'GET', headers: { 'Authorization': `Bearer ${HS_TOKEN}` } });
+          if (dr.body?.properties?.payment_type) {
+            orderData.paymentType = (dr.body.properties.payment_type || '').toLowerCase();
+            orderData.poNumber    = dr.body.properties.po_ || null;
+          }
+        } catch(e) {}
+      }
+
       const q = quoteData;
       const o = orderData || {};
       const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
@@ -6798,14 +6814,16 @@ ${q.accepted ? `
       const disc = q.discount && q.discount.value > 0
         ? (q.discount.type==='pct' ? sub*q.discount.value/100 : q.discount.value) : 0;
       const freightTbd = q.freight?.tbd === true;
+      const pickupFeeAmt = q.pickupFee ? parseFloat(q.pickupFee) : 0;
       // Install/delivery state. In 'delivery_install' mode install REPLACES freight.
+      // Pickup fee also replaces freight (non-taxable).
       const installMode = (q.install && q.install.mode) ? q.install.mode : 'none';
       const installAmt  = (q.install && q.install.amount) ? parseFloat(q.install.amount) : 0;
-      const freightAmt  = (installMode === 'delivery_install' && installAmt > 0)
+      const freightAmt  = (pickupFeeAmt > 0 || (installMode === 'delivery_install' && installAmt > 0))
         ? 0
         : ((!freightTbd && q.freight) ? q.freight.total : 0);
       const taxAmt = q.tax ? q.tax.tax : 0;
-      const total = sub - disc + freightAmt + (installAmt > 0 ? installAmt : 0) + taxAmt;
+      const total = sub - disc + freightAmt + pickupFeeAmt + (installAmt > 0 ? installAmt : 0) + taxAmt;
       const totalWeight = (q.lineItems||[]).reduce((s,i) => s + ((parseFloat(i.weight)||0) * (parseInt(i.qty)||1)), 0);
       const c = q.customer || {};
       const issueDate = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'});
@@ -6953,12 +6971,19 @@ tbody tr:last-child td{border-bottom:none}
     <div class="totals">
       <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
       ${disc>0?`<div class="tot"><span>Discount${q.discount&&q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
-      ${freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
+      ${pickupFeeAmt>0?`<div class="tot"><span>Pickup Fee</span><span>${fmt(pickupFeeAmt)}</span></div>`:freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
       ${installAmt>0?`<div class="tot"><span>${installMode==='delivery_install'?'Delivery and Installation':'Installation'}</span><span>${fmt(installAmt)}</span></div>`:''}
       ${taxAmt>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+(q.tax.rate*100).toFixed(2).replace(/\.?0+$/,'')+'%)':''}</span><span>${fmt(taxAmt)}</span></div>`:''}
       ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
       <div class="tot grand"><span>Order Total</span><span>${fmt(total)}</span></div>
       ${totalWeight>0?`<div class="tot weight-total"><span>&#x2696; Total Weight</span><span>${totalWeight.toLocaleString()} lbs</span></div>`:''}
+      ${(() => {
+        if (!o.paymentType) return '';
+        const labels = { hs: 'HubSpot Invoice', cc: 'Credit Card', ach: 'ACH / Bank Deposit', po: 'PO', other: 'Other' };
+        const label = labels[o.paymentType] || o.paymentType;
+        const display = (o.paymentType === 'po' && o.poNumber) ? `${label} — PO #${o.poNumber}` : label;
+        return `<div class="tot" style="margin-top:8px;padding-top:8px;border-top:1px solid #eee"><span>Payment Type</span><span>${display}</span></div>`;
+      })()}
     </div>
   </div>
   ${freightTbd?`<div class="card" style="border-left:3px solid #ee6216;background:#fff8f5">
@@ -7172,6 +7197,8 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         shipped: { pallets: computedPallets }, // scheduled ship info; Jeromy fills in date/carrier/tracking later
         hasRM,
         hasCustomHole,
+        paymentType: paymentType || null,
+        poNumber: (paymentType === 'po' && poNumber) ? poNumber : null,
       };
 
       if (db) {
@@ -7242,6 +7269,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         taxTotal > 0 ? `Sales Tax: ${fmt(taxTotal)}` : null,
         `Order Total: ${fmt(total)}`,
         totalWeight > 0 ? `Total Weight: ${totalWeight.toLocaleString()} lbs` : null,
+        `Payment Type: ${{ hs:'HubSpot Invoice', cc:'Credit Card', ach:'ACH / Bank Deposit', po:'PO', other:'Other' }[paymentType] || paymentType || '—'}${paymentType === 'po' && poNumber ? ` — PO #${poNumber}` : ''}`,
         ``,
         `VIEW ORDER PAGE`,
         orderUrl,
@@ -7295,7 +7323,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
 
       console.log(`Order processed: ${quoteNumber}, deal ${dealId} → closedwon`);
       writelog('info', 'order.processed', `Order processed: ${quoteNumber} — ${dealName || '—'}`, { rep: String(ownerId || ''), quoteNum: quoteNumber, dealId: String(dealId || ''), dealName: dealName || null });
-      json({ success: true, orderUrl, hasRM, hasCustomHole });
+      json({ success: true, orderUrl, hasRM, hasCustomHole, paymentType, poNumber });
 
       // Create AP color task for Benton (non-blocking) if order has an AP item
       const hasApItem = (lineItems || []).some(i => i.name && /^AP\s/i.test(i.name));

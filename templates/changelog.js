@@ -51,6 +51,48 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.3.3', date:'Apr 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Payment type now reliably included in the mailto email after order processing — replaced inline IIFE with a pre-computed variable to avoid potential closure evaluation issues.'},
+      ]
+    },
+    {
+      v:'1.3.2', date:'Apr 21, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Orders dashboard: Delete Order moved inside a collapsed "Admin Override" drawer to prevent accidental clicks.'},
+      ]
+    },
+    {
+      v:'1.3.1', date:'Apr 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Payment type now included in the mailto email that opens after order processing (was only added to the server-side HubSpot note, not the mail client template).'},
+      ]
+    },
+    {
+      v:'1.3.0', date:'Apr 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Payment type now visible on order PDF and order link for all orders, including those processed before v1.2.9 — falls back to a live HubSpot deal lookup when not stored locally.'},
+      ]
+    },
+    {
+      v:'1.2.9', date:'Apr 21, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Payment type now shown in order processed email (after total weight) and on the order PDF / order link totals section; PO number included when payment type is PO.'},
+      ]
+    },
+    {
+      v:'1.2.8', date:'Apr 20, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Pickup Fee redesigned as a green checkbox with always-visible $ input; removed "(empty)" label text.'},
+      ]
+    },
+    {
+      v:'1.2.7', date:'Apr 20, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Pickup Fee button added to freight section — overrides freight with a non-taxable pickup amount; shows as "Pickup Fee" on quote, invoice, and order PDFs.'},
+      ]
+    },
+    {
       v:'1.2.6', date:'Apr 20, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Bill To Name field added to quote builder (above billing email); appears on quote, invoice, and order PDFs, and syncs to HubSpot bill_to_name property.'},

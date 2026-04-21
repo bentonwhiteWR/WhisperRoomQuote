@@ -175,6 +175,10 @@
   .btn { padding: 11px 20px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; font-family: inherit; transition: all .15s; }
   .btn-primary { background: var(--orange); color: white; flex: 1; }
   .btn-primary:hover { background: #d4561a; }
+  /* Admin override drawer */
+  .admin-toggle { padding: 8px 20px 4px; }
+  .admin-btn { background: none; border: none; color: var(--muted); font-size: 11px; font-weight: 600; cursor: pointer; font-family: inherit; text-transform: uppercase; letter-spacing: .06em; display: flex; align-items: center; gap: 5px; padding: 6px 0; }
+  .admin-inner { padding: 0 20px 16px; display: none; }
   .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
   .btn-secondary { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
   .btn-secondary:hover { color: var(--text); }
@@ -493,10 +497,15 @@
     <a id="viewOrderBtn" href="#" target="_blank" class="btn btn-secondary" style="text-decoration:none;display:flex;align-items:center">View Order ↗</a>
     <button class="btn btn-secondary" onclick="closeDrawer()">Cancel</button>
   </div>
-  <div id="adminDeleteBar" style="display:none;padding:12px 20px;border-top:1px solid rgba(239,68,68,.15);background:rgba(239,68,68,.03)">
-    <button onclick="deleteOrder()" style="width:100%;padding:8px;background:none;border:1px solid rgba(239,68,68,.3);border-radius:6px;color:#ef4444;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
-      🗑 Delete Order
-    </button>
+  <div id="adminOverrideWrap" style="display:none;border-top:1px solid var(--border)">
+    <div class="admin-toggle">
+      <button class="admin-btn" onclick="toggleOrderAdmin()">⚙ Admin Override <span id="orderAdminCaret">▼</span></button>
+    </div>
+    <div class="admin-inner" id="orderAdminInner">
+      <button onclick="deleteOrder()" style="width:100%;padding:8px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.3);border-radius:6px;color:#ef4444;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
+        🗑 Delete Order
+      </button>
+    </div>
   </div>
 
 <!-- Admin log button — fixed bottom right, Benton only -->
@@ -1416,9 +1425,15 @@ function openDrawer(quoteNumber) {
   document.getElementById('drawerOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
 
-  // Show admin delete bar for all users
-  const deleteBar = document.getElementById('adminDeleteBar');
-  if (deleteBar) deleteBar.style.display = 'block';
+  // Show admin override section (collapsed by default)
+  const overrideWrap = document.getElementById('adminOverrideWrap');
+  if (overrideWrap) {
+    overrideWrap.style.display = 'block';
+    const inner = document.getElementById('orderAdminInner');
+    const caret = document.getElementById('orderAdminCaret');
+    if (inner) inner.style.display = 'none';
+    if (caret) caret.textContent = '▼';
+  }
 }
 
 function copyDrawerFolderPath() {
@@ -1446,6 +1461,15 @@ function highlightSel(name) {
     const label = inp.closest('.sel-label');
     if (label) label.classList.toggle('selected', inp.checked);
   });
+}
+
+function toggleOrderAdmin() {
+  const inner = document.getElementById('orderAdminInner');
+  const caret = document.getElementById('orderAdminCaret');
+  if (!inner) return;
+  const open = inner.style.display === 'block';
+  inner.style.display = open ? 'none' : 'block';
+  if (caret) caret.textContent = open ? '▼' : '▲';
 }
 
 // ── AP Color dropdown ──────────────────────────────────────────────

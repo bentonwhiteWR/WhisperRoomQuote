@@ -1459,6 +1459,7 @@ const server = http.createServer(async (req, res) => {
           const dealPatchProps = {
             amount: total.toFixed(2),
             tax_rate: tax && tax.rate ? String(parseFloat((tax.rate * 100).toFixed(4))) : '',
+            discount: discount && discount.value ? String(discount.value) : '',
             shipping_address:      customer.address    || '',
             shipping_city:         customer.city       || '',
             shipping_zipcode:      customer.zip        || '',

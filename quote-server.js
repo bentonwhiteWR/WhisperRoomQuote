@@ -1458,6 +1458,7 @@ const server = http.createServer(async (req, res) => {
           // Update existing deal — amount + address fields updated from latest quote
           const dealPatchProps = {
             amount: total.toFixed(2),
+            tax_rate: tax && tax.rate ? String(parseFloat((tax.rate * 100).toFixed(4))) : '',
             shipping_address:      customer.address    || '',
             shipping_city:         customer.city       || '',
             shipping_zipcode:      customer.zip        || '',
@@ -1526,7 +1527,7 @@ const server = http.createServer(async (req, res) => {
           dealname: dealName || (() => {
             return customer.company || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || 'Customer';
           })(),
-          tax_rate: tax && tax.rate ? String((tax.rate * 100).toFixed(3)) : '',
+          tax_rate: tax && tax.rate ? String(parseFloat((tax.rate * 100).toFixed(4))) : '',
           quote_number: quoteNumber || '',
           freight_cost: (() => {
             // When mode is "delivery_install", the combined charge IS the freight for this deal.

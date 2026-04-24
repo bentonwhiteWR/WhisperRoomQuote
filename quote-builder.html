@@ -6156,6 +6156,10 @@ async function confirmProcessOrder() {
         customerName ? `Name: ${customerName}` : null,
         company      ? `Company: ${company}`    : null,
         shipAddr     ? `Ship To: ${shipAddr}`   : null,
+        // Broker line: show whenever broker text exists, regardless of the
+        // Canadian flag. Broker field is only filled for Canadian orders, so
+        // a US order has this as '' → line skipped.
+        effectiveBroker ? `Broker info - ${effectiveBroker}` : null,
         ``,
         `ORDER SPECIFICATIONS`,
         `Foam Color: ${foam}`,

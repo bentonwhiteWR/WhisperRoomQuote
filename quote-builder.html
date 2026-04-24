@@ -4848,15 +4848,15 @@ async function confirmAddPackage() {
     document.getElementById('addPackageStatus').textContent = 'No preset found for ' + presetName;
     return;
   }
-  document.getElementById('addPackageRow').style.display = 'none';
   document.getElementById('addPackageStatus').textContent = 'Loading ' + skus.length + ' items...';
   addSel.disabled = true;
   const isPackage = PACKAGE_DISCOUNT_NAMES.includes(presetName);
   const allSkus = isPackage ? skus : [presetName, ...skus];
   await loadPreset(presetName, allSkus);
+  addSel.value = '';
   addSel.disabled = false;
-  document.getElementById('addPackageStatus').textContent = lineItems.length + ' total items loaded.';
-  setTimeout(() => document.getElementById('addPackageStatus').textContent = '', 5000);
+  document.getElementById('addPackageStatus').textContent = lineItems.length + ' total items. Pick another package or close.';
+  setTimeout(() => document.getElementById('addPackageStatus').textContent = '', 6000);
 }
 
 // ── Preset selector ──────────────────────────────────────────────

@@ -2525,6 +2525,12 @@ tbody tr:hover td{background:#fdfcfb}
   </div>`;
   })()}
 
+  ${q.canadian ? `<div class="card" style="border-left:3px solid #ee6216;background:#fff8f0">
+    <div class="card-label" style="color:#ee6216">International / Canadian Order</div>
+    <p class="terms" style="color:#555">Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.</p>
+    ${q.customsBroker ? `<p class="terms" style="margin-top:8px;color:#333"><strong style="color:#ee6216">Customs Broker:</strong> ${String(q.customsBroker).replace(/</g,'&lt;')}</p>` : ''}
+  </div>` : ''}
+
   <div class="card">
     <div class="card-label">Terms &amp; Conditions</div>
     <p class="terms">I understand that WhisperRooms are not 100% soundproof. I understand that all products manufactured by WhisperRoom, Inc. are for indoor use only. Any returns will be at the sole discretion of WhisperRoom, Inc. and are subject to a restocking fee and freight charges. Any damage during shipping must be reported within five business days. Compliance with local, state and national building codes is my responsibility. Any alterations to the WhisperRoom will void the warranty.</p>
@@ -6958,6 +6964,12 @@ tbody tr:last-child td{border-bottom:none}
     ${o.deliveryNotes?`<div style="margin-top:12px"><div style="font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Special Delivery Notes</div><div class="notes-box">${o.deliveryNotes}</div></div>`:''}
   </div>
 
+  ${(q.canadian || o.canadian) ? `<div class="card" style="border-left:3px solid #ee6216;background:#fff8f0">
+    <div class="card-label" style="color:#ee6216">International / Canadian Order</div>
+    <p style="margin:0;font-size:12px;color:#555;line-height:1.6">Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.</p>
+    ${(q.customsBroker || o.customsBroker) ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0e0cc"><div style="font-size:10px;color:#ee6216;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;font-weight:700">Customs Broker</div><div style="font-size:13px;color:#333">${String(q.customsBroker || o.customsBroker).replace(/</g,'&lt;')}</div></div>` : ''}
+  </div>` : ''}
+
   <div class="card">
     <div class="card-label">Line Items</div>
     <table>
@@ -7049,7 +7061,8 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       const body = JSON.parse(await readBody(req));
       const { dealId, quoteNumber, lineItems, freight, tax, discount, install,
               customer, foamColor, hingePreference, apColor, productionNotes,
-              deliveryNotes, ownerId, dealName, paymentType, poNumber } = body;
+              deliveryNotes, ownerId, dealName, paymentType, poNumber,
+              canadian, customsBroker } = body;
 
       if (!dealId || !quoteNumber) { json({ error: 'Missing dealId or quoteNumber' }, 400); return; }
 
@@ -7201,6 +7214,8 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         hasCustomHole,
         paymentType: paymentType || null,
         poNumber: (paymentType === 'po' && poNumber) ? poNumber : null,
+        canadian: !!canadian,
+        customsBroker: customsBroker || '',
       };
 
       if (db) {

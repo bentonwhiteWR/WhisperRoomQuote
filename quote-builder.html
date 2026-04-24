@@ -923,6 +923,15 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
         </select>
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:6px" id="presetStatus"></div>
+      <div style="margin-top:8px">
+        <button id="addPackageBtn" onclick="showAddPackageRow()" style="padding:5px 12px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:rgba(238,98,22,.12);border:1px solid rgba(238,98,22,.3);border-radius:6px;color:var(--accent);cursor:pointer;font-family:inherit">+ Add Another Package</button>
+      </div>
+      <div id="addPackageRow" style="display:none;margin-top:8px;align-items:center;gap:6px;flex-wrap:wrap">
+        <select id="addPackageSelect" style="font-size:13px;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit;flex:1;min-width:200px"></select>
+        <button onclick="confirmAddPackage()" style="padding:7px 14px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:var(--accent);border:none;border-radius:6px;color:white;cursor:pointer;font-family:inherit;white-space:nowrap">Add Items</button>
+        <button onclick="document.getElementById('addPackageRow').style.display='none'" style="padding:7px 12px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);cursor:pointer;font-family:inherit">Cancel</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px" id="addPackageStatus"></div>
     </div>
 
     <div id="lineItemsContainer">
@@ -4819,6 +4828,35 @@ function updateQuoteNumber() {
   const qn = generateQuoteNumber(ownerId);
   document.getElementById('quoteNumDisplay').textContent = qn;
   document.getElementById('quoteNumHidden').value = qn;
+}
+
+// ── Add-another-package ──────────────────────────────────────────
+function showAddPackageRow() {
+  const row = document.getElementById('addPackageRow');
+  const addSel = document.getElementById('addPackageSelect');
+  addSel.innerHTML = document.getElementById('presetSelect').innerHTML;
+  addSel.value = '';
+  row.style.display = 'flex';
+}
+
+async function confirmAddPackage() {
+  const addSel = document.getElementById('addPackageSelect');
+  const presetName = addSel.value;
+  if (!presetName) return;
+  const skus = BOOTH_PRESETS[presetName];
+  if (!skus || skus.length === 0) {
+    document.getElementById('addPackageStatus').textContent = 'No preset found for ' + presetName;
+    return;
+  }
+  document.getElementById('addPackageRow').style.display = 'none';
+  document.getElementById('addPackageStatus').textContent = 'Loading ' + skus.length + ' items...';
+  addSel.disabled = true;
+  const isPackage = PACKAGE_DISCOUNT_NAMES.includes(presetName);
+  const allSkus = isPackage ? skus : [presetName, ...skus];
+  await loadPreset(presetName, allSkus);
+  addSel.disabled = false;
+  document.getElementById('addPackageStatus').textContent = lineItems.length + ' total items loaded.';
+  setTimeout(() => document.getElementById('addPackageStatus').textContent = '', 5000);
 }
 
 // ── Preset selector ──────────────────────────────────────────────

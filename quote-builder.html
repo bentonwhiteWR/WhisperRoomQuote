@@ -3062,6 +3062,8 @@ async function createDeal() {
         tax: taxData ? {...taxData} : null,
         install: installData ? {...installData} : null,
         accessories, notes: document.getElementById('notes').value.trim(),
+        canadian:      !!(document.getElementById('canada') && document.getElementById('canada').checked),
+        customsBroker: (document.getElementById('customsBroker') || {value:''}).value.trim() || '',
         repFoamColor:       document.getElementById('repFoamColor')?.value || '',
         repHingePreference: document.getElementById('repHingePreference')?.value || '',
         repApColor:         document.getElementById('repApColor')?.value || '',
@@ -4094,6 +4096,19 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
         label.classList.toggle('active', !!q.accessories[id]);
       }
     });
+  }
+
+  // Restore Canadian / customs broker state (only applies if saved as Canadian)
+  {
+    const canChk   = document.getElementById('canada');
+    const canLabel = document.getElementById('check-canada');
+    const brokerEl = document.getElementById('customsBroker');
+    const brokerRow  = document.getElementById('customsBrokerRow');
+    const isCa = !!q.canadian;
+    if (canChk) canChk.checked = isCa;
+    if (canLabel) canLabel.classList.toggle('active', isCa);
+    if (brokerEl) brokerEl.value = q.customsBroker || '';
+    if (brokerRow) brokerRow.style.display = isCa ? 'block' : 'none';
   }
 
   // Set the quote number to the HISTORICAL quote number so copy link works correctly
@@ -6064,6 +6079,8 @@ async function confirmProcessOrder() {
         deliveryNotes,
         ownerId: document.getElementById('repSelect').value,
         dealName: document.getElementById('dealName').value.trim(),
+        canadian:      !!(document.getElementById('canada') && document.getElementById('canada').checked),
+        customsBroker: (document.getElementById('customsBroker') || {value:''}).value.trim() || '',
       })
     });
 
@@ -6096,11 +6113,18 @@ async function confirmProcessOrder() {
         `  - ${i.name} (x${i.qty}) — ${fmt(i.price * i.qty)}${i.weight ? ' — ' + (parseFloat(i.weight)*parseInt(i.qty)) + ' lbs' : ''}`
       ).join('\n');
 
-      const emailSubject = `New Order: ${dealNameVal} — ${quoteNum}`;
+      const isCanadian = !!(document.getElementById('canada') && document.getElementById('canada').checked);
+      const customsBrokerVal = (document.getElementById('customsBroker') || {value:''}).value.trim();
+
+      const emailSubject = `${isCanadian ? '[CANADIAN ORDER] ' : ''}New Order: ${dealNameVal} — ${quoteNum}`;
       const emailBody = [
         `NEW ORDER — ${quoteNum}`,
         `Deal: ${dealNameVal}`,
         ``,
+        isCanadian ? `*** INTERNATIONAL / CANADIAN ORDER ***`                    : null,
+        isCanadian ? `Customer is responsible for all duties, taxes & import fees.` : null,
+        isCanadian && customsBrokerVal ? `Customs Broker: ${customsBrokerVal}`   : null,
+        isCanadian ? ``                                                          : null,
         `CUSTOMER`,
         customerName ? `Name: ${customerName}` : null,
         company      ? `Company: ${company}`    : null,

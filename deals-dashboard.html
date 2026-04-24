@@ -1854,6 +1854,10 @@ async function confirmProcessOrderFromHub() {
         orderUrl: data.orderUrl,
         hasRM: !!data.hasRM,
         hasCustomHole: !!data.hasCustomHole,
+        // Server returns effective canadian/broker (falls back to quote snapshot
+        // if POST body was empty). Pass through so email can render them.
+        canadian: !!data.canadian,
+        customsBroker: data.customsBroker || '',
       });
     } catch(err) { console.error('[deal-hub process-order] mailto failed:', err); }
 
@@ -1896,8 +1900,10 @@ function openShippingNotifyEmail(ctx) {
   const hasRM         = !!ctx.hasRM         || items.some(i => /^RM\s/i.test(i?.name||''));
   const hasCustomHole = !!ctx.hasCustomHole || items.some(i => /^CUST HOLE\b/i.test(i?.name||''));
   const garyFlag      = hasRM || hasCustomHole;
+  const isCanadian    = !!ctx.canadian;
+  const effectiveBroker = (ctx.customsBroker || '').trim();
   const dealNameVal = ctx.dealName || ctx.quoteNumber;
-  const emailSubject = `New Order: ${dealNameVal} — ${ctx.quoteNumber}`;
+  const emailSubject = `${isCanadian ? '[CANADIAN ORDER] ' : ''}New Order: ${dealNameVal} — ${ctx.quoteNumber}`;
   const payLabelMap = { hs: 'HubSpot Invoice', cc: 'CC', ach: 'ACH', po: 'PO', other: 'Other' };
   const payLabel = payLabelMap[ctx.paymentType] || (ctx.paymentType || '').toUpperCase();
   const payDisplay = (ctx.paymentType === 'po' && ctx.poNumber) ? payLabel + ' — PO #' + ctx.poNumber : payLabel;
@@ -1908,10 +1914,17 @@ function openShippingNotifyEmail(ctx) {
     hasRM         ? `Gary, this order includes Roof Mounted Ventilation.` : null,
     hasCustomHole ? `Gary, this order includes Custom Holes.`              : null,
     ``,
+    isCanadian ? `*** INTERNATIONAL / CANADIAN ORDER ***`                     : null,
+    isCanadian ? `Customer is responsible for all duties, taxes & import fees.` : null,
+    isCanadian && effectiveBroker ? `Customs Broker: ${effectiveBroker}`      : null,
+    isCanadian ? ``                                                           : null,
     `CUSTOMER`,
     customerName ? `Name: ${customerName}` : null,
     c.company    ? `Company: ${c.company}` : null,
     shipAddr     ? `Ship To: ${shipAddr}`  : null,
+    // Broker line right under Ship To — show whenever broker text exists.
+    // US orders have customsBroker = '' so this is skipped.
+    effectiveBroker ? `Broker info - ${effectiveBroker}` : null,
     ``,
     `ORDER SPECIFICATIONS`,
     `Foam Color: ${ctx.foamColor || '(unknown)'}`,

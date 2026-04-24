@@ -3284,6 +3284,8 @@ async function createDeal() {
         tax: taxData ? {...taxData} : null,
         install: installData ? {...installData} : null,
         accessories, notes: document.getElementById('notes').value.trim(),
+        canadian:      !!(document.getElementById('canada') && document.getElementById('canada').checked),
+        customsBroker: (document.getElementById('customsBroker') || {value:''}).value.trim() || '',
         repFoamColor:       document.getElementById('repFoamColor')?.value || '',
         repHingePreference: document.getElementById('repHingePreference')?.value || '',
         repApColor:         document.getElementById('repApColor')?.value || '',
@@ -4360,6 +4362,19 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
         label.classList.toggle('active', !!q.accessories[id]);
       }
     });
+  }
+
+  // Restore Canadian / customs broker state (only applies if saved as Canadian)
+  {
+    const canChk   = document.getElementById('canada');
+    const canLabel = document.getElementById('check-canada');
+    const brokerEl = document.getElementById('customsBroker');
+    const brokerRow  = document.getElementById('customsBrokerRow');
+    const isCa = !!q.canadian;
+    if (canChk) canChk.checked = isCa;
+    if (canLabel) canLabel.classList.toggle('active', isCa);
+    if (brokerEl) brokerEl.value = q.customsBroker || '';
+    if (brokerRow) brokerRow.style.display = isCa ? 'block' : 'none';
   }
 
   // Set the quote number to the HISTORICAL quote number so copy link works correctly
@@ -6216,6 +6231,15 @@ async function openOrderModal() {
   const quoteNum = document.getElementById('quoteNumHidden').value;
   if (!quoteNum) { showToast('No quote loaded', 'error'); modalEl.style.display = 'none'; return; }
 
+  // Snapshot Canadian state the MOMENT the user opens the modal. Something
+  // downstream (re-renders, HubSpot prefill, modal close) was clearing
+  // #canada before confirmProcessOrder could read it — capture at the known-
+  // good instant and stash on window so it survives any later DOM churn.
+  const _canEl = document.getElementById('canada');
+  const _brkEl = document.getElementById('customsBroker');
+  window._orderModalCanadian = !!(_canEl && _canEl.checked);
+  window._orderModalBroker   = (_brkEl && _brkEl.value || '').trim();
+
   // Priority: rep selection → customer accepted → blank
   const repFoam  = document.getElementById('repFoamColor')?.value  || '';
   const repHinge = document.getElementById('repHingePreference')?.value || '';
@@ -6419,6 +6443,20 @@ async function confirmProcessOrder() {
   const poNumber = paymentType === 'po' ? document.getElementById('orderPoNumber').value.trim() : '';
   if (paymentType === 'po' && !poNumber) { showToast('Please enter the PO number', 'error'); return; }
 
+  // Capture Canadian state ONCE up front — re-reading the DOM after the POST
+  // response can race with modal-close / form re-render and drop the checkbox.
+  // Prefer the snapshot taken at openOrderModal — the live DOM gets cleared
+  // between modal open and confirm (observed in production). Fall back to
+  // live DOM if snapshot wasn't captured (legacy code paths).
+  const _liveCanEl = document.getElementById('canada');
+  const _liveBrkEl = document.getElementById('customsBroker');
+  const _liveCan   = !!(_liveCanEl && _liveCanEl.checked);
+  const _liveBrk   = (_liveBrkEl && _liveBrkEl.value || '').trim();
+  const canadianFlag =
+    (typeof window._orderModalCanadian === 'boolean' ? window._orderModalCanadian : _liveCan) ||
+    !!(window._orderModalBroker) || !!_liveBrk; // broker typed ⇒ intended as Canadian
+  const customsBrokerVal = (window._orderModalBroker || _liveBrk || '');
+
   const productionNotes = document.getElementById('orderProductionNotes').value.trim();
   const deliveryNotes   = document.getElementById('orderDeliveryNotes').value.trim();
 
@@ -6458,6 +6496,8 @@ async function confirmProcessOrder() {
         dealName: document.getElementById('dealName').value.trim(),
         paymentType,
         poNumber,
+        canadian:      canadianFlag,
+        customsBroker: customsBrokerVal,
       })
     });
 
@@ -6496,7 +6536,13 @@ async function confirmProcessOrder() {
       const hasCustomHole = !!(data.hasCustomHole || lineItems.some(i => /^CUST HOLE\b/i.test(i?.name||'')));
       const garyFlag      = hasRM || hasCustomHole;
 
-      const emailSubject = `New Order: ${dealNameVal} — ${quoteNum}`;
+      // Server is the source of truth for Canadian: /api/process-order falls
+      // back to the saved quote snapshot when the POST body came through empty
+      // (DOM has been observed to drop #canada between modal open and confirm).
+      const isCanadian       = !!(data.canadian || canadianFlag);
+      const effectiveBroker  = (data.customsBroker || customsBrokerVal || '').trim();
+
+      const emailSubject = `${isCanadian ? '[CANADIAN ORDER] ' : ''}New Order: ${dealNameVal} — ${quoteNum}`;
       const payLabelMap = { hs: 'HubSpot Invoice', cc: 'CC', ach: 'ACH', po: 'PO', other: 'Other' };
       const payLabel = payLabelMap[paymentType] || paymentType.toUpperCase();
       const payDisplay = (paymentType === 'po' && poNumber) ? payLabel + ' — PO #' + poNumber : payLabel;
@@ -6507,10 +6553,18 @@ async function confirmProcessOrder() {
         hasRM         ? `Gary, this order includes Roof Mounted Ventilation.` : null,
         hasCustomHole ? `Gary, this order includes Custom Holes.`              : null,
         ``,
+        isCanadian ? `*** INTERNATIONAL / CANADIAN ORDER ***`                    : null,
+        isCanadian ? `Customer is responsible for all duties, taxes & import fees.` : null,
+        isCanadian && effectiveBroker  ? `Customs Broker: ${effectiveBroker}`    : null,
+        isCanadian ? ``                                                          : null,
         `CUSTOMER`,
         customerName ? `Name: ${customerName}` : null,
         company      ? `Company: ${company}`    : null,
         shipAddr     ? `Ship To: ${shipAddr}`   : null,
+        // Broker line: show whenever broker text exists, regardless of the
+        // Canadian flag. Broker field is only filled for Canadian orders, so
+        // a US order has this as '' → line skipped.
+        effectiveBroker ? `Broker info - ${effectiveBroker}` : null,
         ``,
         `ORDER SPECIFICATIONS`,
         `Foam Color: ${foam}`,

@@ -2525,6 +2525,12 @@ tbody tr:hover td{background:#fdfcfb}
   </div>`;
   })()}
 
+  ${q.canadian ? `<div class="card" style="border-left:3px solid #ee6216;background:#fff8f0">
+    <div class="card-label" style="color:#ee6216">International / Canadian Order</div>
+    <p class="terms" style="color:#555">Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.</p>
+    ${q.customsBroker ? `<p class="terms" style="margin-top:8px;color:#333"><strong style="color:#ee6216">Customs Broker:</strong> ${String(q.customsBroker).replace(/</g,'&lt;')}</p>` : ''}
+  </div>` : ''}
+
   <div class="card">
     <div class="card-label">Terms &amp; Conditions</div>
     <p class="terms">I understand that WhisperRooms are not 100% soundproof. I understand that all products manufactured by WhisperRoom, Inc. are for indoor use only. Any returns will be at the sole discretion of WhisperRoom, Inc. and are subject to a restocking fee and freight charges. Any damage during shipping must be reported within five business days. Compliance with local, state and national building codes is my responsibility. Any alterations to the WhisperRoom will void the warranty.</p>
@@ -6958,6 +6964,12 @@ tbody tr:last-child td{border-bottom:none}
     ${o.deliveryNotes?`<div style="margin-top:12px"><div style="font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Special Delivery Notes</div><div class="notes-box">${o.deliveryNotes}</div></div>`:''}
   </div>
 
+  ${(q.canadian || o.canadian) ? `<div class="card" style="border-left:3px solid #ee6216;background:#fff8f0">
+    <div class="card-label" style="color:#ee6216">International / Canadian Order</div>
+    <p style="margin:0;font-size:12px;color:#555;line-height:1.6">Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.</p>
+    ${(q.customsBroker || o.customsBroker) ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0e0cc"><div style="font-size:10px;color:#ee6216;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;font-weight:700">Customs Broker</div><div style="font-size:13px;color:#333">${String(q.customsBroker || o.customsBroker).replace(/</g,'&lt;')}</div></div>` : ''}
+  </div>` : ''}
+
   <div class="card">
     <div class="card-label">Line Items</div>
     <table>
@@ -7049,7 +7061,8 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       const body = JSON.parse(await readBody(req));
       const { dealId, quoteNumber, lineItems, freight, tax, discount, install,
               customer, foamColor, hingePreference, apColor, productionNotes,
-              deliveryNotes, ownerId, dealName, paymentType, poNumber } = body;
+              deliveryNotes, ownerId, dealName, paymentType, poNumber,
+              canadian, customsBroker } = body;
 
       if (!dealId || !quoteNumber) { json({ error: 'Missing dealId or quoteNumber' }, 400); return; }
 
@@ -7147,7 +7160,13 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       } catch(e) { console.warn('[process-order] line item reset failed:', e.message); }
 
       // 2. Save order data to DB
-      const orderToken = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
+      // Pull share_token AND the latest quote snapshot — we use the snapshot as a
+      // fallback source of truth for Canadian flag + broker. The client DOM has
+      // been observed to drop #canada between modal open and confirm, so if the
+      // POST body doesn't carry it but the saved quote does, honour the quote.
+      const quoteRow  = (await db?.query('SELECT share_token, json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0];
+      const orderToken = quoteRow?.share_token || '';
+      const quoteSnap  = quoteRow?.json_snapshot || {};
       const orderUrl = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}?t=${orderToken}`;
       // Auto-compute pallet count from line items (kept in sync with BOOTH_DATA in quote-builder.html).
       // Source of truth is pallet COUNT per product name; dimensions stay client-side where freight is priced.
@@ -7191,6 +7210,11 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       if (hasCustomHole) prefixes.push('CUSTOM HOLES');
       if (prefixes.length) effectiveProductionNotes = prefixes.join(' + ') + ' — ' + effectiveProductionNotes;
 
+      // Effective Canadian state: POST body wins if truthy; otherwise fall back
+      // to the saved quote snapshot. Broker: body first, snapshot second.
+      const effectiveCanadian      = !!(canadian || quoteSnap.canadian);
+      const effectiveCustomsBroker = (customsBroker && customsBroker.trim()) || (quoteSnap.customsBroker || '') || '';
+
       const orderData = {
         foamColor, hingePreference, apColor,
         productionNotes: effectiveProductionNotes,
@@ -7201,6 +7225,8 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         hasCustomHole,
         paymentType: paymentType || null,
         poNumber: (paymentType === 'po' && poNumber) ? poNumber : null,
+        canadian: effectiveCanadian,
+        customsBroker: effectiveCustomsBroker,
       };
 
       if (db) {
@@ -7325,7 +7351,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
 
       console.log(`Order processed: ${quoteNumber}, deal ${dealId} → closedwon`);
       writelog('info', 'order.processed', `Order processed: ${quoteNumber} — ${dealName || '—'}`, { rep: String(ownerId || ''), quoteNum: quoteNumber, dealId: String(dealId || ''), dealName: dealName || null });
-      json({ success: true, orderUrl, hasRM, hasCustomHole, paymentType, poNumber });
+      json({ success: true, orderUrl, hasRM, hasCustomHole, paymentType, poNumber, canadian: effectiveCanadian, customsBroker: effectiveCustomsBroker });
 
       // Create AP color task for Benton (non-blocking) if order has an AP item
       const hasApItem = (lineItems || []).some(i => i.name && /^AP\s/i.test(i.name));

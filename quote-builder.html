@@ -6042,6 +6042,11 @@ async function confirmProcessOrder() {
     showToast('Please select an AP color (or Unknown)', 'error');
     return;
   }
+  // Capture Canadian state ONCE up front — re-reading the DOM after the POST
+  // response can race with modal-close / form re-render and drop the checkbox.
+  const canadianFlag = !!(document.getElementById('canada') && document.getElementById('canada').checked);
+  const customsBrokerVal = (document.getElementById('customsBroker') || {value:''}).value.trim() || '';
+
   const productionNotes = document.getElementById('orderProductionNotes').value.trim();
   const deliveryNotes   = document.getElementById('orderDeliveryNotes').value.trim();
 
@@ -6079,8 +6084,8 @@ async function confirmProcessOrder() {
         deliveryNotes,
         ownerId: document.getElementById('repSelect').value,
         dealName: document.getElementById('dealName').value.trim(),
-        canadian:      !!(document.getElementById('canada') && document.getElementById('canada').checked),
-        customsBroker: (document.getElementById('customsBroker') || {value:''}).value.trim() || '',
+        canadian:      canadianFlag,
+        customsBroker: customsBrokerVal,
       })
     });
 
@@ -6113,8 +6118,10 @@ async function confirmProcessOrder() {
         `  - ${i.name} (x${i.qty}) — ${fmt(i.price * i.qty)}${i.weight ? ' — ' + (parseFloat(i.weight)*parseInt(i.qty)) + ' lbs' : ''}`
       ).join('\n');
 
-      const isCanadian = !!(document.getElementById('canada') && document.getElementById('canada').checked);
-      const customsBrokerVal = (document.getElementById('customsBroker') || {value:''}).value.trim();
+      // Reuse the values captured at the top of the function — do NOT
+      // re-read the DOM here; the Canadian checkbox can get cleared during
+      // post-POST UI updates.
+      const isCanadian = canadianFlag;
 
       const emailSubject = `${isCanadian ? '[CANADIAN ORDER] ' : ''}New Order: ${dealNameVal} — ${quoteNum}`;
       const emailBody = [

@@ -6930,9 +6930,19 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       } catch(e) { console.warn('[process-order] line item reset failed:', e.message); }
 
       // 2. Save order data to DB
-      const orderToken = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
+      // Pull share_token AND the latest quote snapshot — we use the snapshot as a
+      // fallback source of truth for Canadian flag + broker. The client DOM has
+      // been observed to drop #canada between modal open and confirm, so if the
+      // POST body doesn't carry it but the saved quote does, honour the quote.
+      const quoteRow  = (await db?.query('SELECT share_token, json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0];
+      const orderToken = quoteRow?.share_token || '';
+      const quoteSnap  = quoteRow?.json_snapshot || {};
       const orderUrl = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}?t=${orderToken}`;
-      const orderData = { foamColor, hingePreference, apColor, productionNotes, deliveryNotes, canadian: !!canadian, customsBroker: customsBroker || '', processedAt: new Date().toISOString() };
+      // Effective Canadian state: POST body wins if truthy; otherwise fall back
+      // to the saved quote snapshot. Broker: body first, snapshot second.
+      const effectiveCanadian     = !!(canadian || quoteSnap.canadian);
+      const effectiveCustomsBroker = (customsBroker && customsBroker.trim()) || (quoteSnap.customsBroker || '') || '';
+      const orderData = { foamColor, hingePreference, apColor, productionNotes, deliveryNotes, canadian: effectiveCanadian, customsBroker: effectiveCustomsBroker, processedAt: new Date().toISOString() };
 
       if (db) {
         try {
@@ -7055,7 +7065,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
 
       console.log(`Order processed: ${quoteNumber}, deal ${dealId} → closedwon`);
       writelog('info', 'order.processed', `Order processed: ${quoteNumber} — ${dealName || '—'}`, { rep: String(ownerId || ''), quoteNum: quoteNumber, dealId: String(dealId || ''), dealName: dealName || null });
-      json({ success: true, orderUrl });
+      json({ success: true, orderUrl, canadian: effectiveCanadian, customsBroker: effectiveCustomsBroker });
 
       // Create AP color task for Benton (non-blocking) if order has an AP item
       const hasApItem = (lineItems || []).some(i => i.name && /^AP\s/i.test(i.name));

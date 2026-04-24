@@ -6136,10 +6136,12 @@ async function confirmProcessOrder() {
         `  - ${i.name} (x${i.qty}) — ${fmt(i.price * i.qty)}${i.weight ? ' — ' + (parseFloat(i.weight)*parseInt(i.qty)) + ' lbs' : ''}`
       ).join('\n');
 
-      // Reuse the values captured at the top of the function — do NOT
-      // re-read the DOM here; the Canadian checkbox can get cleared during
-      // post-POST UI updates.
-      const isCanadian = canadianFlag;
+      // Server is the source of truth: /api/process-order falls back to the
+      // saved quote snapshot if the POST body's canadian/broker came through
+      // empty (the DOM has been observed to drop #canada between modal open
+      // and confirm). Use the server's effective values for the email.
+      const isCanadian       = !!(data.canadian || canadianFlag);
+      const effectiveBroker  = (data.customsBroker || customsBrokerVal || '').trim();
 
       const emailSubject = `${isCanadian ? '[CANADIAN ORDER] ' : ''}New Order: ${dealNameVal} — ${quoteNum}`;
       const emailBody = [
@@ -6148,7 +6150,7 @@ async function confirmProcessOrder() {
         ``,
         isCanadian ? `*** INTERNATIONAL / CANADIAN ORDER ***`                    : null,
         isCanadian ? `Customer is responsible for all duties, taxes & import fees.` : null,
-        isCanadian && customsBrokerVal ? `Customs Broker: ${customsBrokerVal}`   : null,
+        isCanadian && effectiveBroker  ? `Customs Broker: ${effectiveBroker}`    : null,
         isCanadian ? ``                                                          : null,
         `CUSTOMER`,
         customerName ? `Name: ${customerName}` : null,

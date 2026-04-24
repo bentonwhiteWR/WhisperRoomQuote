@@ -6434,6 +6434,11 @@ async function confirmProcessOrder() {
   const poNumber = paymentType === 'po' ? document.getElementById('orderPoNumber').value.trim() : '';
   if (paymentType === 'po' && !poNumber) { showToast('Please enter the PO number', 'error'); return; }
 
+  // Capture Canadian state ONCE up front — re-reading the DOM after the POST
+  // response can race with modal-close / form re-render and drop the checkbox.
+  const canadianFlag = !!(document.getElementById('canada') && document.getElementById('canada').checked);
+  const customsBrokerVal = (document.getElementById('customsBroker') || {value:''}).value.trim() || '';
+
   const productionNotes = document.getElementById('orderProductionNotes').value.trim();
   const deliveryNotes   = document.getElementById('orderDeliveryNotes').value.trim();
 
@@ -6473,8 +6478,8 @@ async function confirmProcessOrder() {
         dealName: document.getElementById('dealName').value.trim(),
         paymentType,
         poNumber,
-        canadian:      !!(document.getElementById('canada') && document.getElementById('canada').checked),
-        customsBroker: (document.getElementById('customsBroker') || {value:''}).value.trim() || '',
+        canadian:      canadianFlag,
+        customsBroker: customsBrokerVal,
       })
     });
 
@@ -6513,8 +6518,10 @@ async function confirmProcessOrder() {
       const hasCustomHole = !!(data.hasCustomHole || lineItems.some(i => /^CUST HOLE\b/i.test(i?.name||'')));
       const garyFlag      = hasRM || hasCustomHole;
 
-      const isCanadian = !!(document.getElementById('canada') && document.getElementById('canada').checked);
-      const customsBrokerVal = (document.getElementById('customsBroker') || {value:''}).value.trim();
+      // Reuse the values captured at the top of the function — do NOT
+      // re-read the DOM here; the Canadian checkbox gets cleared during
+      // post-POST UI updates (modal close / form re-render).
+      const isCanadian = canadianFlag;
 
       const emailSubject = `${isCanadian ? '[CANADIAN ORDER] ' : ''}New Order: ${dealNameVal} — ${quoteNum}`;
       const payLabelMap = { hs: 'HubSpot Invoice', cc: 'CC', ach: 'ACH', po: 'PO', other: 'Other' };

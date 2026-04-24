@@ -6536,10 +6536,11 @@ async function confirmProcessOrder() {
       const hasCustomHole = !!(data.hasCustomHole || lineItems.some(i => /^CUST HOLE\b/i.test(i?.name||'')));
       const garyFlag      = hasRM || hasCustomHole;
 
-      // Reuse the values captured at the top of the function — do NOT
-      // re-read the DOM here; the Canadian checkbox gets cleared during
-      // post-POST UI updates (modal close / form re-render).
-      const isCanadian = canadianFlag;
+      // Server is the source of truth for Canadian: /api/process-order falls
+      // back to the saved quote snapshot when the POST body came through empty
+      // (DOM has been observed to drop #canada between modal open and confirm).
+      const isCanadian       = !!(data.canadian || canadianFlag);
+      const effectiveBroker  = (data.customsBroker || customsBrokerVal || '').trim();
 
       const emailSubject = `${isCanadian ? '[CANADIAN ORDER] ' : ''}New Order: ${dealNameVal} — ${quoteNum}`;
       const payLabelMap = { hs: 'HubSpot Invoice', cc: 'CC', ach: 'ACH', po: 'PO', other: 'Other' };
@@ -6554,7 +6555,7 @@ async function confirmProcessOrder() {
         ``,
         isCanadian ? `*** INTERNATIONAL / CANADIAN ORDER ***`                    : null,
         isCanadian ? `Customer is responsible for all duties, taxes & import fees.` : null,
-        isCanadian && customsBrokerVal ? `Customs Broker: ${customsBrokerVal}`   : null,
+        isCanadian && effectiveBroker  ? `Customs Broker: ${effectiveBroker}`    : null,
         isCanadian ? ``                                                          : null,
         `CUSTOMER`,
         customerName ? `Name: ${customerName}` : null,

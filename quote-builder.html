@@ -5954,6 +5954,15 @@ function openOrderModal() {
   const quoteNum = document.getElementById('quoteNumHidden').value;
   if (!quoteNum) { showToast('No quote loaded', 'error'); return; }
 
+  // Snapshot Canadian state the MOMENT the user opens the modal. Something
+  // downstream (re-renders, HubSpot prefill, modal close) was clearing
+  // #canada before confirmProcessOrder could read it — capture at the known-
+  // good instant and stash on window so it survives any later DOM churn.
+  const _canEl = document.getElementById('canada');
+  const _brkEl = document.getElementById('customsBroker');
+  window._orderModalCanadian = !!(_canEl && _canEl.checked);
+  window._orderModalBroker   = (_brkEl && _brkEl.value || '').trim();
+
   // Priority: rep selection → customer accepted → blank
   const repFoam  = document.getElementById('repFoamColor')?.value  || '';
   const repHinge = document.getElementById('repHingePreference')?.value || '';
@@ -6044,8 +6053,17 @@ async function confirmProcessOrder() {
   }
   // Capture Canadian state ONCE up front — re-reading the DOM after the POST
   // response can race with modal-close / form re-render and drop the checkbox.
-  const canadianFlag = !!(document.getElementById('canada') && document.getElementById('canada').checked);
-  const customsBrokerVal = (document.getElementById('customsBroker') || {value:''}).value.trim() || '';
+  // Prefer the snapshot taken at openOrderModal — the live DOM gets cleared
+  // between modal open and confirm (observed in production). Fall back to
+  // live DOM if snapshot wasn't captured (legacy code paths).
+  const _liveCanEl = document.getElementById('canada');
+  const _liveBrkEl = document.getElementById('customsBroker');
+  const _liveCan   = !!(_liveCanEl && _liveCanEl.checked);
+  const _liveBrk   = (_liveBrkEl && _liveBrkEl.value || '').trim();
+  const canadianFlag =
+    (typeof window._orderModalCanadian === 'boolean' ? window._orderModalCanadian : _liveCan) ||
+    !!(window._orderModalBroker) || !!_liveBrk; // broker typed ⇒ intended as Canadian
+  const customsBrokerVal = (window._orderModalBroker || _liveBrk || '');
 
   const productionNotes = document.getElementById('orderProductionNotes').value.trim();
   const deliveryNotes   = document.getElementById('orderDeliveryNotes').value.trim();

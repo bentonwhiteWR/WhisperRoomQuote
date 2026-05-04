@@ -276,6 +276,79 @@ const server = http.createServer(async (req, res) => {
   }
 
 
+  // ── TEMP: one-time MDL description fix ──────────────────────────
+  // GET  /api/admin/fix-mdl-descriptions        → dry-run plan (JSON)
+  // POST /api/admin/fix-mdl-descriptions        → apply changes
+  // Remove this endpoint after use.
+  if (pathname === '/api/admin/fix-mdl-descriptions') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const apply = req.method === 'POST';
+
+      // Fetch all products
+      let all = [], after = null, page = 0;
+      do {
+        let p = '/crm/v3/objects/products?limit=100&properties=name,description,hs_sku';
+        if (after) p += `&after=${encodeURIComponent(after)}`;
+        const r = await httpsRequest({ hostname:'api.hubapi.com', path:p, method:'GET', headers:{ 'Authorization':`Bearer ${HS_TOKEN}` } });
+        const results = r.body?.results || [];
+        all.push(...results);
+        after = r.body?.paging?.next?.after || null;
+        page++;
+        if (!after || results.length === 0) break;
+      } while (page < 20);
+
+      const mdl = all.filter(p => /^MDL\b/i.test(p.properties?.name || ''));
+
+      const parseDesc = desc => {
+        if (!desc) return [];
+        if (desc.includes('\n')) return desc.split('\n').map(l => l.trim()).filter(Boolean);
+        const parts = desc.split(/\.\s+/).map(p => p.trim()).filter(Boolean);
+        if (parts.length && parts[parts.length-1].endsWith('.')) parts[parts.length-1] = parts[parts.length-1].slice(0,-1).trim();
+        if (parts.length) parts[0] = parts[0].replace(/;\s+/g,' ').replace(/(\d)\s+'/g,"$1'");
+        return parts;
+      };
+      const extractCount = line => { const m = line.match(/\((\d+)\)/); return m ? parseInt(m[1]) : null; };
+
+      const fixDesc = desc => {
+        const lines = parseDesc(desc);
+        if (!lines.length) return desc;
+        const ventIdx   = lines.findIndex(l => /ventilation systems?/i.test(l));
+        const lightIdx  = lines.findIndex(l => /\blight/i.test(l));
+        const ventCount = ventIdx >= 0 ? extractCount(lines[ventIdx]) : null;
+        if (ventCount !== null && lightIdx >= 0 && extractCount(lines[lightIdx]) !== ventCount) {
+          lines[lightIdx] = lines[lightIdx].replace(/\(\d+\)/, `(${ventCount})`);
+        }
+        return lines.join('\n');
+      };
+
+      const changes = [];
+      for (const prod of mdl) {
+        const name = prod.properties?.name || '';
+        const oldDesc = prod.properties?.description || '';
+        const newDesc = fixDesc(oldDesc);
+        if (newDesc !== oldDesc) changes.push({ id: prod.id, name, oldDesc, newDesc });
+      }
+
+      if (!apply) {
+        json({ dryRun: true, totalMdl: mdl.length, changes: changes.length, plan: changes });
+        return;
+      }
+
+      // Apply
+      const results = [];
+      for (const c of changes) {
+        const r = await httpsRequest({
+          hostname:'api.hubapi.com', path:`/crm/v3/objects/products/${c.id}`,
+          method:'PATCH', headers:{ 'Authorization':`Bearer ${HS_TOKEN}`, 'Content-Type':'application/json' }
+        }, { properties: { description: c.newDesc } });
+        results.push({ name: c.name, status: r.status });
+      }
+      json({ applied: true, results });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   if (pathname === '/api/pricebook-export' && req.method === 'GET') {
     if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
     try {

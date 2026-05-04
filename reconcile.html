@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>QB ↔ HubSpot Reconciliation</title>
+<link rel="icon" href="/assets/favicon.avif">
 <style>
   :root {
     --bg: #0f1117; --surface: #1a1d27; --surface2: #22263a;
@@ -327,9 +328,9 @@ function match(hsDeals, qbInvoices) {
   }
 
   // Remaining unmatched QB invoices
-  for (let i = 0; i < qb.length; i++) {
+  for (let i = 0; i < qbNorm.length; i++) {
     if (usedQb.has(i)) continue;
-    const q = qb[i];
+    const q = qbNorm[i];
     rows.push({ status: 'MISSING_HS', hsDate: null, hsName: null, hsAmount: null, qbDate: q.date, qbName: q.customer, qbAmount: q.amount, delta: null, notes: '', hsId: null, qbRef: q.ref });
   }
 

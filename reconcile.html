@@ -80,14 +80,24 @@
   <!-- Date range + run -->
   <div class="card">
     <div class="card-title">Reconcile Period</div>
+    <div class="row" style="margin-bottom:12px">
+      <div>
+        <label>Quick Pick</label>
+        <select id="monthPick" onchange="onMonthPick()" style="min-width:160px">
+          <option value="thisMonth">This Month</option>
+          <option value="lastMonth" selected>Last Month</option>
+        </select>
+      </div>
+      <div style="font-size:11px;color:var(--muted);padding-bottom:10px">— or pick a custom range —</div>
+    </div>
     <div class="row">
       <div>
         <label>From</label>
-        <input type="date" id="fromDate">
+        <input type="date" id="fromDate" onchange="document.getElementById('monthPick').value=''">
       </div>
       <div>
         <label>To</label>
-        <input type="date" id="toDate">
+        <input type="date" id="toDate" onchange="document.getElementById('monthPick').value=''">
       </div>
       <button class="btn btn-orange" id="runBtn" onclick="runReconcile()" disabled>Run Reconcile</button>
     </div>
@@ -196,14 +206,53 @@ async function disconnectQb() {
   loadQbStatus();
 }
 
-// ── Default date range: current month ────────────────────────────
-function initDates() {
+// ── Month picker + date range helpers ────────────────────────────
+function setMonthRange(year, monthIdx) {
+  // monthIdx is 0-based
+  const m   = String(monthIdx + 1).padStart(2, '0');
+  const last = new Date(year, monthIdx + 1, 0).getDate();
+  document.getElementById('fromDate').value = `${year}-${m}-01`;
+  document.getElementById('toDate').value   = `${year}-${m}-${String(last).padStart(2, '0')}`;
+}
+
+function onMonthPick() {
+  const v = document.getElementById('monthPick').value;
+  if (!v) return;
   const now = new Date();
-  const y   = now.getFullYear();
-  const m   = String(now.getMonth() + 1).padStart(2, '0');
-  const last = new Date(y, now.getMonth() + 1, 0).getDate();
-  document.getElementById('fromDate').value = `${y}-${m}-01`;
-  document.getElementById('toDate').value   = `${y}-${m}-${last}`;
+  if (v === 'thisMonth')      setMonthRange(now.getFullYear(), now.getMonth());
+  else if (v === 'lastMonth') {
+    const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    setMonthRange(lm.getFullYear(), lm.getMonth());
+  } else {
+    // value is "YYYY-MM"
+    const [y, m] = v.split('-').map(Number);
+    setMonthRange(y, m - 1);
+  }
+}
+
+function buildMonthOptions() {
+  const sel = document.getElementById('monthPick');
+  const now = new Date();
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  // Build last 24 months
+  let html = '<option value="thisMonth">This Month</option><option value="lastMonth" selected>Last Month</option>';
+  html += '<option disabled>──────</option>';
+  for (let i = 0; i < 24; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    const val = `${y}-${String(m + 1).padStart(2, '0')}`;
+    html += `<option value="${val}">${months[m]} ${y}</option>`;
+  }
+  sel.innerHTML = html;
+}
+
+function initDates() {
+  buildMonthOptions();
+  // Default to last month
+  const now = new Date();
+  const lm  = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  setMonthRange(lm.getFullYear(), lm.getMonth());
 }
 
 // ── Run reconcile ─────────────────────────────────────────────────

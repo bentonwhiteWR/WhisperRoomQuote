@@ -948,7 +948,13 @@ const server = http.createServer(async (req, res) => {
           stage:     d.properties?.dealstage,
           name:      d.properties?.dealname || '',
           customer:  (d.properties?.dealname || '').replace(/\s*[-—]\s*(new deal|quote)?\s*$/i, '').trim(),
-          closedate: d.properties?.closedate ? new Date(parseInt(d.properties.closedate)).toISOString().slice(0,10) : null,
+          closedate: (() => {
+            const cd = d.properties?.closedate;
+            if (!cd) return null;
+            const ms = Number(cd);
+            const dt = (!isNaN(ms) && ms > 0) ? new Date(ms) : new Date(cd);
+            return isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 10);
+          })(),
           subtotal:  Math.round(subtotal * 100) / 100,
           freight,
           taxRate,

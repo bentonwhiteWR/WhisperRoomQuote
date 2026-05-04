@@ -855,6 +855,16 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Diagnostic: fetch CompanyInfo and return raw response for debugging
+  if (pathname === '/api/qb/test' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const r = await qb.getCompanyInfo();
+      json(r);
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   // Fetch invoices for a date range: /api/qb/invoices?from=YYYY-MM-DD&to=YYYY-MM-DD
   if (pathname === '/api/qb/invoices' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

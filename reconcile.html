@@ -125,10 +125,15 @@
             <th>Status</th>
             <th>Date</th>
             <th>HS Customer</th>
-            <th>HS Amount</th>
+            <th style="text-align:right">Subtotal</th>
+            <th style="text-align:right">Freight</th>
+            <th style="text-align:right">Tax %</th>
+            <th style="text-align:right">Tax $</th>
+            <th style="text-align:right">Discount</th>
+            <th style="text-align:right">HS Total</th>
             <th>QB Customer</th>
-            <th>QB Amount</th>
-            <th>Delta</th>
+            <th style="text-align:right">QB Total</th>
+            <th style="text-align:right">Delta</th>
             <th>Notes</th>
           </tr>
         </thead>
@@ -273,7 +278,7 @@ function match(hsDeals, qbInvoices) {
   const usedQb = new Set();
 
   // Normalize QB invoices once
-  const qb = qbInvoices.map(inv => ({
+  const qbNorm = qbInvoices.map(inv => ({
     _raw:     inv,
     date:     inv.TxnDate,
     customer: inv.CustomerRef?.name || '',
@@ -282,16 +287,15 @@ function match(hsDeals, qbInvoices) {
   }));
 
   for (const hs of hsDeals) {
-    const hsAmt  = parseFloat(hs.amount || 0);
-    const hsName = hs.customer || hs.name || '';
-    const hsDate = hs.closedate ? hs.closedate.slice(0, 10) : '';
+    const hsTotal = parseFloat(hs.total || hs.amount || 0);
+    const hsName  = hs.customer || hs.name || '';
+    const hsDate  = hs.closedate ? hs.closedate.slice(0, 10) : '';
 
-    // Try exact amount + exact name first
     let matched = null, matchType = null;
-    for (let i = 0; i < qb.length; i++) {
+    for (let i = 0; i < qbNorm.length; i++) {
       if (usedQb.has(i)) continue;
-      const q = qb[i];
-      const amtDiff = Math.abs(q.amount - hsAmt);
+      const q = qbNorm[i];
+      const amtDiff = Math.abs(q.amount - hsTotal);
       const sim = nameSimilar(hsName, q.customer);
       if (!sim) continue;
       if (amtDiff <= TOLERANCE) {
@@ -300,14 +304,25 @@ function match(hsDeals, qbInvoices) {
       }
     }
 
+    const base = {
+      hsDate, hsName,
+      subtotal: hs.subtotal || 0,
+      freight:  hs.freight  || 0,
+      taxRate:  hs.taxRate  || 0,
+      taxAmt:   hs.taxAmt   || 0,
+      discount: hs.discount || 0,
+      hsAmount: hsTotal,
+      hsId:     hs.dealId,
+    };
+
     if (matched) {
       usedQb.add(matched.i);
       const notes = [];
-      if (matched.amtDiff >= 0.01) notes.push(`Δ$${matched.amtDiff.toFixed(2)} (tax rounding?)`);
+      if (matched.amtDiff >= 0.01) notes.push(`Δ$${matched.amtDiff.toFixed(2)}`);
       if (matchType === 'FUZZY') notes.push('Name mismatch');
-      rows.push({ status: matchType, hsDate, hsName, hsAmount: hsAmt, qbDate: matched.q.date, qbName: matched.q.customer, qbAmount: matched.q.amount, delta: matched.q.amount - hsAmt, notes: notes.join(' · '), hsId: hs.dealId, qbRef: matched.q.ref });
+      rows.push({ ...base, status: matchType, qbDate: matched.q.date, qbName: matched.q.customer, qbAmount: matched.q.amount, delta: matched.q.amount - hsTotal, notes: notes.join(' · '), qbRef: matched.q.ref });
     } else {
-      rows.push({ status: 'MISSING_QB', hsDate, hsName, hsAmount: hsAmt, qbDate: null, qbName: null, qbAmount: null, delta: null, notes: '', hsId: hs.dealId, qbRef: null });
+      rows.push({ ...base, status: 'MISSING_QB', qbDate: null, qbName: null, qbAmount: null, delta: null, notes: '', qbRef: null });
     }
   }
 
@@ -368,15 +383,21 @@ function renderResults(rows) {
 
   document.getElementById('resultsBody').innerHTML = rows.map(r => {
     const dCls = r.delta != null && Math.abs(r.delta) >= 0.01 ? 'delta-warn' : 'delta-ok';
+    const fmtN = n => n ? fmt(n) : '<span style="color:var(--muted)">—</span>';
     return `<tr>
       <td>${BADGE[r.status] || r.status}</td>
-      <td style="color:var(--muted)">${r.hsDate || r.qbDate || '—'}</td>
+      <td style="color:var(--muted);white-space:nowrap">${r.hsDate || r.qbDate || '—'}</td>
       <td>${r.hsName || '—'}</td>
-      <td style="text-align:right">${r.hsAmount != null ? fmt(r.hsAmount) : '—'}</td>
+      <td style="text-align:right;color:var(--muted)">${r.subtotal  ? fmt(r.subtotal)  : '—'}</td>
+      <td style="text-align:right;color:var(--muted)">${r.freight   ? fmt(r.freight)   : '—'}</td>
+      <td style="text-align:right;color:var(--muted)">${r.taxRate   ? r.taxRate + '%'  : '—'}</td>
+      <td style="text-align:right;color:var(--muted)">${r.taxAmt    ? fmt(r.taxAmt)    : '—'}</td>
+      <td style="text-align:right;color:var(--muted)">${r.discount  ? fmt(r.discount)  : '—'}</td>
+      <td style="text-align:right;font-weight:700">${r.hsAmount != null ? fmt(r.hsAmount) : '—'}</td>
       <td>${r.qbName || '—'}</td>
-      <td style="text-align:right">${r.qbAmount != null ? fmt(r.qbAmount) : '—'}</td>
-      <td style="text-align:right" class="${dCls}">${r.delta != null ? fmtD(r.delta) : '—'}</td>
-      <td style="color:var(--muted);font-size:11px">${r.notes || ''}</td>
+      <td style="text-align:right;font-weight:700">${r.qbAmount != null ? fmt(r.qbAmount) : '—'}</td>
+      <td style="text-align:right;font-weight:700" class="${dCls}">${r.delta != null ? fmtD(r.delta) : '—'}</td>
+      <td style="color:var(--muted);font-size:11px;white-space:nowrap">${r.notes || ''}</td>
     </tr>`;
   }).join('');
 }

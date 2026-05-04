@@ -878,35 +878,86 @@ const server = http.createServer(async (req, res) => {
   }
 
 
-  // Fetch closed-won HS deals for a date range (for reconciliation)
+  // Fetch closed-won + shipped HS deals for a date range (for reconciliation)
   if (pathname === '/api/reconcile/hs-deals' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
       const { from, to } = parsed.query;
       if (!from || !to) { json({ error: 'from and to params required' }, 400); return; }
-      const body = {
-        limit: 200,
-        filters: [
-          { propertyName: 'dealstage', operator: 'EQ', value: 'closedwon' },
-          { propertyName: 'closedate', operator: 'GTE', value: new Date(from).getTime().toString() },
-          { propertyName: 'closedate', operator: 'LTE', value: new Date(to + 'T23:59:59Z').getTime().toString() },
-        ],
-        properties: ['dealname', 'amount', 'closedate', 'hubspot_owner_id'],
-        sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
-      };
-      const r = await httpsRequest({
-        hostname: 'api.hubapi.com',
-        path: '/crm/v3/objects/deals/search',
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
-      }, body);
-      const deals = (r.body?.results || []).map(d => ({
-        dealId:   d.id,
-        name:     d.properties?.dealname || '',
-        customer: (d.properties?.dealname || '').replace(/\s*[-—]\s*(new deal|quote)?\s*$/i, '').trim(),
-        amount:   parseFloat(d.properties?.amount || 0),
-        closedate: d.properties?.closedate ? new Date(parseInt(d.properties.closedate)).toISOString().slice(0,10) : null,
-      }));
+      const fromTs = new Date(from).getTime().toString();
+      const toTs   = new Date(to + 'T23:59:59Z').getTime().toString();
+
+      // Paginate through all matching deals
+      let allDeals = [], after = null;
+      do {
+        const searchBody = {
+          limit: 200,
+          ...(after ? { after } : {}),
+          filterGroups: [{
+            filters: [
+              { propertyName: 'dealstage', operator: 'IN',  values: ['closedwon', '845719'] },
+              { propertyName: 'closedate', operator: 'GTE', value: fromTs },
+              { propertyName: 'closedate', operator: 'LTE', value: toTs },
+            ]
+          }],
+          properties: ['dealname', 'amount', 'closedate', 'hubspot_owner_id', 'dealstage', 'tax_rate', 'discount'],
+          sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
+        };
+        const r = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/deals/search',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+        }, searchBody);
+        const results = r.body?.results || [];
+        allDeals.push(...results);
+        after = r.body?.paging?.next?.after || null;
+      } while (after);
+
+      // Enrich with freight/tax/subtotal breakdown from our DB quote snapshots
+      let snapshotMap = {};
+      if (db && allDeals.length > 0) {
+        try {
+          const dealIds = allDeals.map(d => d.id);
+          const snapRes = await db.query(
+            `SELECT DISTINCT ON (deal_id) deal_id, json_snapshot
+             FROM quotes WHERE deal_id = ANY($1::text[])
+             ORDER BY deal_id, created_at DESC`,
+            [dealIds]
+          );
+          for (const row of snapRes.rows) {
+            snapshotMap[row.deal_id] = row.json_snapshot;
+          }
+        } catch(e) { console.warn('[reconcile] snapshot enrich failed:', e.message); }
+      }
+
+      const deals = allDeals.map(d => {
+        const snap     = snapshotMap[d.id] || {};
+        const freight  = parseFloat(snap.freight?.amount ?? snap.freight ?? 0) || 0;
+        const taxAmt   = parseFloat(snap.tax?.amount ?? snap.taxAmount ?? 0) || 0;
+        const taxRate  = parseFloat(d.properties?.tax_rate || snap.tax?.rate || 0) || 0;
+        const discount = parseFloat(d.properties?.discount || snap.discount || 0) || 0;
+        const total    = parseFloat(d.properties?.amount || 0);
+        const subtotal = snap.lineItems
+          ? snap.lineItems.filter(i => parseFloat(i.price) > 0)
+              .reduce((s, i) => s + (parseFloat(i.price) || 0) * (parseFloat(i.qty || i.quantity || 1)), 0)
+          : (total - freight - taxAmt + discount);
+
+        return {
+          dealId:    d.id,
+          stage:     d.properties?.dealstage,
+          name:      d.properties?.dealname || '',
+          customer:  (d.properties?.dealname || '').replace(/\s*[-—]\s*(new deal|quote)?\s*$/i, '').trim(),
+          closedate: d.properties?.closedate ? new Date(parseInt(d.properties.closedate)).toISOString().slice(0,10) : null,
+          subtotal:  Math.round(subtotal * 100) / 100,
+          freight,
+          taxRate,
+          taxAmt:    Math.round(taxAmt * 100) / 100,
+          discount,
+          total,
+        };
+      });
+
       json({ results: deals, total: deals.length });
     } catch(e) { json({ error: e.message }, 500); }
     return;

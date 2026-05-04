@@ -1612,7 +1612,8 @@ async function openShipFromDrawer() {
   const boxes       = document.getElementById('editBoxes').value;
   const hardwareBox = document.getElementById('editHardwareBox').value.trim();
 
-  if (!carrier)  { showToast('Please select a carrier', 'error'); return; }
+  if (!carrier)  { showToast('Please select a carrier before shipping', 'error'); return; }
+  if (!tracking) { showToast('Please enter a tracking number before shipping', 'error'); return; }
 
   const btn = document.getElementById('shipItBtn');
   btn.disabled = true;

@@ -1279,20 +1279,24 @@ const server = http.createServer(async (req, res) => {
           );
           if (snapRow.rows.length > 0) {
             const stored = snapRow.rows[0];
-            const storedTotal = parseFloat(stored.total) || 0;
             // Filter credits (negative price) from both sides for consistent comparison
-            const storedItems = (stored.json_snapshot?.lineItems || []).filter(i => parseFloat(i.price) >= 0).length;
-            const newTotal    = parseFloat(total) || 0;
-            const newItems    = (lineItems || []).filter(i => parseFloat(i.price) >= 0).length;
-            const totalMatch  = Math.abs(storedTotal - newTotal) < 0.01;
+            const storedLineItems = (stored.json_snapshot?.lineItems || []).filter(i => parseFloat(i.price) >= 0);
+            const newLineItems    = (lineItems || []).filter(i => parseFloat(i.price) >= 0);
+            const storedItems = storedLineItems.length;
+            const newItems    = newLineItems.length;
             const countMatch  = storedItems === newItems;
-            console.log(`[save] in-place check: deal=${existingDealId} storedTotal=${storedTotal} newTotal=${newTotal} storedItems=${storedItems} newItems=${newItems} totalMatch=${totalMatch} countMatch=${countMatch}`);
-            if (totalMatch && countMatch) {
+            // Compare only price+qty per item (sorted by SKU) — description/label changes don't trigger a new quote
+            const priceKey = arr => arr
+              .map(i => `${(i.sku || i.SKU || '').toLowerCase()}:${parseFloat(i.price) || 0}:${parseFloat(i.qty || i.quantity || 1)}`)
+              .sort().join('|');
+            const priceMatch = countMatch && priceKey(storedLineItems) === priceKey(newLineItems);
+            console.log(`[save] in-place check: deal=${existingDealId} storedItems=${storedItems} newItems=${newItems} countMatch=${countMatch} priceMatch=${priceMatch}`);
+            if (countMatch && priceMatch) {
               _inPlaceUpdate = true;
               _existingQuoteNumber = stored.quote_number;
               console.log(`[save] in-place update detected — keeping quote number ${_existingQuoteNumber}`);
             } else {
-              console.log(`[save] new quote required — ${!totalMatch ? `total changed ($${storedTotal} → $${newTotal})` : `item count changed (${storedItems} → ${newItems})`}`);
+              console.log(`[save] new quote required — ${!countMatch ? `item count changed (${storedItems} → ${newItems})` : 'prices changed'}`);
             }
           } else {
             console.log(`[save] no stored snapshot for deal ${existingDealId} — treating as new quote`);

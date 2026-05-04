@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QB ↔ HubSpot Reconciliation</title>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --surface2: #22263a;
+    --border: rgba(255,255,255,.08); --text: #e8eaf0; --muted: #8b90a0;
+    --orange: #ee6216; --green: #22c55e; --red: #ef4444; --yellow: #f59e0b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size: 14px; }
+  .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; height: 52px; display: flex; align-items: center; gap: 16px; }
+  .topbar-title { font-weight: 800; font-size: 15px; color: var(--orange); }
+  .topbar a { color: var(--muted); font-size: 12px; text-decoration: none; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+  .card-title { font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 14px; }
+  .status-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .dot-green { background: var(--green); }
+  .dot-red { background: var(--red); }
+  .dot-yellow { background: var(--yellow); }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 7px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; text-decoration: none; }
+  .btn-orange { background: var(--orange); color: #fff; }
+  .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-red { background: rgba(239,68,68,.15); color: var(--red); border: 1px solid rgba(239,68,68,.3); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+  label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 5px; }
+  input[type=date], select { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; font-family: inherit; padding: 8px 10px; outline: none; }
+  input[type=date]:focus, select:focus { border-color: var(--orange); }
+  .msg { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 18px; }
+  .msg.ok { color: var(--green); }
+  .msg.err { color: var(--red); }
+  /* Table */
+  .tbl-wrap { overflow-x: auto; margin-top: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+  td { padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,.04); vertical-align: middle; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+  .badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+  .badge-match   { background: rgba(34,197,94,.15);  color: var(--green); }
+  .badge-fuzzy   { background: rgba(245,158,11,.15); color: var(--yellow); }
+  .badge-missing { background: rgba(239,68,68,.15);  color: var(--red); }
+  .badge-extra   { background: rgba(139,144,160,.15); color: var(--muted); }
+  .delta-warn { color: var(--yellow); }
+  .delta-ok   { color: var(--muted); }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(140px,1fr)); gap: 12px; margin-bottom: 20px; }
+  .summary-box { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .summary-box .val { font-size: 20px; font-weight: 800; color: var(--orange); margin-top: 4px; }
+  .summary-box .lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .empty { text-align: center; color: var(--muted); padding: 40px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="topbar-title">QB ↔ HubSpot</span>
+  <a href="/deals">← Deals</a>
+  <span style="flex:1"></span>
+  <span id="qbStatusBadge" style="font-size:11px;color:var(--muted)">Checking QB…</span>
+</div>
+
+<div class="container">
+
+  <!-- QuickBooks connection card -->
+  <div class="card" id="qbCard">
+    <div class="card-title">QuickBooks Connection</div>
+    <div class="status-row">
+      <div class="dot" id="qbDot"></div>
+      <span id="qbStatusText" style="font-size:13px">Loading…</span>
+    </div>
+    <div id="qbActions"></div>
+  </div>
+
+  <!-- Date range + run -->
+  <div class="card">
+    <div class="card-title">Reconcile Period</div>
+    <div class="row">
+      <div>
+        <label>From</label>
+        <input type="date" id="fromDate">
+      </div>
+      <div>
+        <label>To</label>
+        <input type="date" id="toDate">
+      </div>
+      <button class="btn btn-orange" id="runBtn" onclick="runReconcile()" disabled>Run Reconcile</button>
+    </div>
+    <div class="msg" id="runMsg"></div>
+  </div>
+
+  <!-- Summary -->
+  <div id="summaryWrap" style="display:none">
+    <div class="summary-grid">
+      <div class="summary-box"><div class="lbl">Total HS</div><div class="val" id="sumHsTotal">—</div></div>
+      <div class="summary-box"><div class="lbl">Total QB</div><div class="val" id="sumQbTotal">—</div></div>
+      <div class="summary-box"><div class="lbl">Delta</div><div class="val" id="sumDelta">—</div></div>
+      <div class="summary-box"><div class="lbl">Matched</div><div class="val" id="sumMatched">—</div></div>
+      <div class="summary-box"><div class="lbl">Fuzzy</div><div class="val" id="sumFuzzy">—</div></div>
+      <div class="summary-box"><div class="lbl">Missing QB</div><div class="val" id="sumMissingQb">—</div></div>
+      <div class="summary-box"><div class="lbl">Missing HS</div><div class="val" id="sumMissingHs">—</div></div>
+    </div>
+  </div>
+
+  <!-- Results table -->
+  <div class="card" id="resultsCard" style="display:none">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <span class="card-title" style="margin:0">Results</span>
+      <select id="filterStatus" onchange="applyFilter()" style="margin-left:auto">
+        <option value="">All statuses</option>
+        <option value="MATCH">Match</option>
+        <option value="FUZZY">Fuzzy</option>
+        <option value="MISSING_QB">Missing in QB</option>
+        <option value="MISSING_HS">Missing in HS</option>
+      </select>
+    </div>
+    <div class="tbl-wrap">
+      <table id="resultsTable">
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Date</th>
+            <th>HS Customer</th>
+            <th>HS Amount</th>
+            <th>QB Customer</th>
+            <th>QB Amount</th>
+            <th>Delta</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const fmt  = n => n != null ? '$' + parseFloat(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+const fmtD = n => n == null ? '—' : (n >= 0 ? '+' : '') + fmt(n).replace('$','') ;
+
+let _allRows = [];
+
+// ── QB connection status ──────────────────────────────────────────
+async function loadQbStatus() {
+  const r = await fetch('/api/qb/status').then(r => r.json());
+  const dot  = document.getElementById('qbDot');
+  const text = document.getElementById('qbStatusText');
+  const acts = document.getElementById('qbActions');
+  const badge = document.getElementById('qbStatusBadge');
+
+  if (r.connected && !r.refreshExpired) {
+    dot.className  = 'dot dot-green';
+    text.textContent = `Connected — Realm ${r.realmId}`;
+    badge.textContent = '✓ QB Connected';
+    badge.style.color = 'var(--green)';
+    acts.innerHTML = `<button class="btn btn-red" onclick="disconnectQb()" style="margin-top:10px">Disconnect</button>`;
+    document.getElementById('runBtn').disabled = false;
+
+    // Check if refresh token is expiring soon (< 14 days)
+    if (r.refreshExpiresAt) {
+      const daysLeft = Math.floor((r.refreshExpiresAt - Date.now()) / 86400000);
+      if (daysLeft < 14) {
+        dot.className = 'dot dot-yellow';
+        text.textContent += ` — refresh token expires in ${daysLeft} days`;
+      }
+    }
+  } else if (r.connected && r.refreshExpired) {
+    dot.className  = 'dot dot-red';
+    text.textContent = 'Refresh token expired — reconnect required';
+    badge.textContent = '✗ QB Expired';
+    badge.style.color = 'var(--red)';
+    acts.innerHTML = `<a class="btn btn-orange" href="/api/qb/connect" style="margin-top:10px">Reconnect QuickBooks</a>`;
+  } else {
+    dot.className  = 'dot dot-red';
+    text.textContent = 'Not connected';
+    badge.textContent = '✗ QB Not Connected';
+    badge.style.color = 'var(--red)';
+    acts.innerHTML = `<a class="btn btn-orange" href="/api/qb/connect" style="margin-top:10px">Connect QuickBooks</a>`;
+  }
+}
+
+async function disconnectQb() {
+  if (!confirm('Disconnect QuickBooks? You will need to re-authenticate.')) return;
+  await fetch('/api/qb/disconnect', { method: 'POST' });
+  loadQbStatus();
+}
+
+// ── Default date range: current month ────────────────────────────
+function initDates() {
+  const now = new Date();
+  const y   = now.getFullYear();
+  const m   = String(now.getMonth() + 1).padStart(2, '0');
+  const last = new Date(y, now.getMonth() + 1, 0).getDate();
+  document.getElementById('fromDate').value = `${y}-${m}-01`;
+  document.getElementById('toDate').value   = `${y}-${m}-${last}`;
+}
+
+// ── Run reconcile ─────────────────────────────────────────────────
+async function runReconcile() {
+  const from = document.getElementById('fromDate').value;
+  const to   = document.getElementById('toDate').value;
+  if (!from || !to) return;
+
+  const btn = document.getElementById('runBtn');
+  const msg = document.getElementById('runMsg');
+  btn.disabled = true;
+  btn.textContent = 'Loading…';
+  msg.className = 'msg';
+  msg.textContent = 'Fetching QB invoices and HubSpot deals…';
+
+  try {
+    const [qbRes, hsRes] = await Promise.all([
+      fetch(`/api/qb/invoices?from=${from}&to=${to}`).then(r => r.json()),
+      fetch(`/api/reconcile/hs-deals?from=${from}&to=${to}`).then(r => r.json()),
+    ]);
+
+    if (qbRes.error) throw new Error('QB: ' + qbRes.error);
+    if (hsRes.error) throw new Error('HS: ' + hsRes.error);
+
+    const rows = match(hsRes.results || [], qbRes.results || []);
+    _allRows = rows;
+    renderResults(rows);
+    msg.className = 'msg ok';
+    msg.textContent = `Fetched ${qbRes.total} QB invoices + ${hsRes.total} HS deals. ${rows.length} rows.`;
+  } catch(e) {
+    msg.className = 'msg err';
+    msg.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Run Reconcile';
+  }
+}
+
+// ── Matching engine (client-side for now) ─────────────────────────
+function normName(s) {
+  return (s || '')
+    .toLowerCase()
+    .replace(/\b(llc|inc|corp|ltd|co|the|new deal|—|new)\b/g, '')
+    .replace(/[^a-z0-9 ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({length: m+1}, (_, i) => Array.from({length: n+1}, (_, j) => i === 0 ? j : j === 0 ? i : 0));
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) {
+    dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+  }
+  return dp[m][n];
+}
+
+function nameSimilar(a, b) {
+  const na = normName(a), nb = normName(b);
+  if (na === nb) return 'exact';
+  if (na.includes(nb) || nb.includes(na)) return 'fuzzy';
+  if (levenshtein(na, nb) <= 4) return 'fuzzy';
+  // shared significant word (≥4 chars)
+  const wa = na.split(' ').filter(w => w.length >= 4);
+  const wb = new Set(nb.split(' ').filter(w => w.length >= 4));
+  if (wa.some(w => wb.has(w))) return 'fuzzy';
+  return null;
+}
+
+function match(hsDeals, qbInvoices) {
+  const TOLERANCE = 1.00; // max $ diff for a match
+  const rows = [];
+  const usedQb = new Set();
+
+  // Normalize QB invoices once
+  const qb = qbInvoices.map(inv => ({
+    _raw:     inv,
+    date:     inv.TxnDate,
+    customer: inv.CustomerRef?.name || '',
+    amount:   parseFloat(inv.TotalAmt || 0),
+    ref:      inv.DocNumber || inv.Id,
+  }));
+
+  for (const hs of hsDeals) {
+    const hsAmt  = parseFloat(hs.amount || 0);
+    const hsName = hs.customer || hs.name || '';
+    const hsDate = hs.closedate ? hs.closedate.slice(0, 10) : '';
+
+    // Try exact amount + exact name first
+    let matched = null, matchType = null;
+    for (let i = 0; i < qb.length; i++) {
+      if (usedQb.has(i)) continue;
+      const q = qb[i];
+      const amtDiff = Math.abs(q.amount - hsAmt);
+      const sim = nameSimilar(hsName, q.customer);
+      if (!sim) continue;
+      if (amtDiff <= TOLERANCE) {
+        if (sim === 'exact' && amtDiff < 0.01) { matched = { i, q, amtDiff }; matchType = 'MATCH'; break; }
+        if (!matched || amtDiff < matched.amtDiff) { matched = { i, q, amtDiff }; matchType = sim === 'exact' ? 'MATCH' : 'FUZZY'; }
+      }
+    }
+
+    if (matched) {
+      usedQb.add(matched.i);
+      const notes = [];
+      if (matched.amtDiff >= 0.01) notes.push(`Δ$${matched.amtDiff.toFixed(2)} (tax rounding?)`);
+      if (matchType === 'FUZZY') notes.push('Name mismatch');
+      rows.push({ status: matchType, hsDate, hsName, hsAmount: hsAmt, qbDate: matched.q.date, qbName: matched.q.customer, qbAmount: matched.q.amount, delta: matched.q.amount - hsAmt, notes: notes.join(' · '), hsId: hs.dealId, qbRef: matched.q.ref });
+    } else {
+      rows.push({ status: 'MISSING_QB', hsDate, hsName, hsAmount: hsAmt, qbDate: null, qbName: null, qbAmount: null, delta: null, notes: '', hsId: hs.dealId, qbRef: null });
+    }
+  }
+
+  // Remaining unmatched QB invoices
+  for (let i = 0; i < qb.length; i++) {
+    if (usedQb.has(i)) continue;
+    const q = qb[i];
+    rows.push({ status: 'MISSING_HS', hsDate: null, hsName: null, hsAmount: null, qbDate: q.date, qbName: q.customer, qbAmount: q.amount, delta: null, notes: '', hsId: null, qbRef: q.ref });
+  }
+
+  // Sort by date descending
+  rows.sort((a, b) => {
+    const da = a.hsDate || a.qbDate || '';
+    const db2 = b.hsDate || b.qbDate || '';
+    return db2.localeCompare(da);
+  });
+
+  return rows;
+}
+
+function applyFilter() {
+  const f = document.getElementById('filterStatus').value;
+  renderResults(f ? _allRows.filter(r => r.status === f) : _allRows);
+}
+
+function renderResults(rows) {
+  const BADGE = {
+    MATCH:      '<span class="badge badge-match">MATCH</span>',
+    FUZZY:      '<span class="badge badge-fuzzy">FUZZY</span>',
+    MISSING_QB: '<span class="badge badge-missing">MISSING QB</span>',
+    MISSING_HS: '<span class="badge badge-extra">MISSING HS</span>',
+  };
+
+  // Summary
+  const matched    = rows.filter(r => r.status === 'MATCH').length;
+  const fuzzy      = rows.filter(r => r.status === 'FUZZY').length;
+  const missingQb  = rows.filter(r => r.status === 'MISSING_QB').length;
+  const missingHs  = rows.filter(r => r.status === 'MISSING_HS').length;
+  const hsTotal    = rows.reduce((s, r) => s + (r.hsAmount || 0), 0);
+  const qbTotal    = rows.reduce((s, r) => s + (r.qbAmount || 0), 0);
+  const delta      = qbTotal - hsTotal;
+
+  document.getElementById('sumHsTotal').textContent  = fmt(hsTotal);
+  document.getElementById('sumQbTotal').textContent  = fmt(qbTotal);
+  document.getElementById('sumDelta').textContent    = fmtD(delta);
+  document.getElementById('sumDelta').style.color    = Math.abs(delta) < 1 ? 'var(--green)' : 'var(--yellow)';
+  document.getElementById('sumMatched').textContent  = matched;
+  document.getElementById('sumFuzzy').textContent    = fuzzy;
+  document.getElementById('sumMissingQb').textContent = missingQb;
+  document.getElementById('sumMissingHs').textContent = missingHs;
+  document.getElementById('summaryWrap').style.display = '';
+
+  if (!rows.length) {
+    document.getElementById('resultsCard').style.display = 'none';
+    return;
+  }
+  document.getElementById('resultsCard').style.display = '';
+
+  document.getElementById('resultsBody').innerHTML = rows.map(r => {
+    const dCls = r.delta != null && Math.abs(r.delta) >= 0.01 ? 'delta-warn' : 'delta-ok';
+    return `<tr>
+      <td>${BADGE[r.status] || r.status}</td>
+      <td style="color:var(--muted)">${r.hsDate || r.qbDate || '—'}</td>
+      <td>${r.hsName || '—'}</td>
+      <td style="text-align:right">${r.hsAmount != null ? fmt(r.hsAmount) : '—'}</td>
+      <td>${r.qbName || '—'}</td>
+      <td style="text-align:right">${r.qbAmount != null ? fmt(r.qbAmount) : '—'}</td>
+      <td style="text-align:right" class="${dCls}">${r.delta != null ? fmtD(r.delta) : '—'}</td>
+      <td style="color:var(--muted);font-size:11px">${r.notes || ''}</td>
+    </tr>`;
+  }).join('');
+}
+
+// Check if QB=connected query param and show confirmation
+if (new URLSearchParams(location.search).get('qb') === 'connected') {
+  document.getElementById('runMsg') && (document.getElementById('runMsg').className = 'msg ok');
+  document.getElementById('runMsg') && (document.getElementById('runMsg').textContent = 'QuickBooks connected successfully!');
+}
+
+initDates();
+loadQbStatus();
+</script>
+
+</body>
+</html>

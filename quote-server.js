@@ -151,6 +151,9 @@ const taxjar = require('./lib/taxjar');
 const { TAXJAR_KEY, calculateTaxProper } = taxjar;
 // taxjar.init(...) called after httpsRequest, NEXUS_STATES, toStateAbbr are defined
 
+const qb = require('./lib/quickbooks');
+qb.init({ getDb: () => db });
+
 
 const auth = require('./lib/auth');
 auth.init({ getDb: () => db, parseCookies });
@@ -798,6 +801,106 @@ const server = http.createServer(async (req, res) => {
     json({ version: APP_VERSION }); return;
   }
 
+  // ── QuickBooks OAuth + API ────────────────────────────────────────
+
+  // Step 1: kick off OAuth — redirect browser to Intuit's consent screen
+  if (pathname === '/api/qb/connect' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    const redirectUri = `${PUBLIC_BASE_URL}/api/qb/callback`;
+    const authUrl = qb.getAuthUrl(redirectUri);
+    res.writeHead(302, { Location: authUrl });
+    res.end();
+    return;
+  }
+
+  // Step 2: Intuit redirects here with code + state + realmId
+  if (pathname === '/api/qb/callback' && req.method === 'GET') {
+    try {
+      const { code, state, realmId, error: oauthError } = parsed.query;
+      if (oauthError) {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`<p style="font-family:sans-serif;color:red">QuickBooks auth error: ${oauthError}. <a href="/reconcile">Back</a></p>`);
+        return;
+      }
+      const { tokens } = await qb.exchangeCode(code, state);
+      const now = Date.now();
+      await qb.saveTokens({
+        realmId,
+        accessToken:      tokens.access_token,
+        refreshToken:     tokens.refresh_token,
+        accessExpiresAt:  now + (tokens.expires_in                 || 3600)    * 1000,
+        refreshExpiresAt: now + (tokens.x_refresh_token_expires_in || 8726400) * 1000,
+      });
+      res.writeHead(302, { Location: '/reconcile?qb=connected' });
+      res.end();
+    } catch(e) {
+      console.error('[qb/callback]', e.message);
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(`<p style="font-family:sans-serif;color:red">Error: ${e.message}. <a href="/reconcile">Back</a></p>`);
+    }
+    return;
+  }
+
+  // Connection status
+  if (pathname === '/api/qb/status' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try { json(await qb.getStatus()); } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // Disconnect
+  if (pathname === '/api/qb/disconnect' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try { await qb.clearTokens(); json({ ok: true }); } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // Fetch invoices for a date range: /api/qb/invoices?from=YYYY-MM-DD&to=YYYY-MM-DD
+  if (pathname === '/api/qb/invoices' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { from, to } = parsed.query;
+      if (!from || !to) { json({ error: 'from and to params required' }, 400); return; }
+      const invoices = await qb.fetchInvoices(from, to);
+      json({ results: invoices, total: invoices.length });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+
+  // Fetch closed-won HS deals for a date range (for reconciliation)
+  if (pathname === '/api/reconcile/hs-deals' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { from, to } = parsed.query;
+      if (!from || !to) { json({ error: 'from and to params required' }, 400); return; }
+      const body = {
+        limit: 200,
+        filters: [
+          { propertyName: 'dealstage', operator: 'EQ', value: 'closedwon' },
+          { propertyName: 'closedate', operator: 'GTE', value: new Date(from).getTime().toString() },
+          { propertyName: 'closedate', operator: 'LTE', value: new Date(to + 'T23:59:59Z').getTime().toString() },
+        ],
+        properties: ['dealname', 'amount', 'closedate', 'hubspot_owner_id'],
+        sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
+      };
+      const r = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/objects/deals/search',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+      }, body);
+      const deals = (r.body?.results || []).map(d => ({
+        dealId:   d.id,
+        name:     d.properties?.dealname || '',
+        customer: (d.properties?.dealname || '').replace(/\s*[-—]\s*(new deal|quote)?\s*$/i, '').trim(),
+        amount:   parseFloat(d.properties?.amount || 0),
+        closedate: d.properties?.closedate ? new Date(parseInt(d.properties.closedate)).toISOString().slice(0,10) : null,
+      }));
+      json({ results: deals, total: deals.length });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
 
   if (pathname === '/api/products-all' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
@@ -5525,6 +5628,13 @@ ${q.accepted ? `
     if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(renderChangelog());
+    return;
+  }
+
+  if (pathname === '/reconcile' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(fs.readFileSync(path.join(__dirname, 'reconcile.html'), 'utf8'));
     return;
   }
 

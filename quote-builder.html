@@ -2673,7 +2673,15 @@ function toggleFreightTbd() {
 }
 
 function getTaxAmount() {
-  return taxData ? taxData.tax : 0;
+  if (!taxData) return 0;
+  // Flat-dollar override stays fixed regardless of subtotal changes.
+  if (taxData.override && taxData.overrideMode === 'amount') return taxData.tax || 0;
+  // Otherwise recompute live from rate × current taxable base so tax stays in
+  // sync as products / freight / discount change without re-running TaxJar.
+  if (!taxData.inNexus || !taxData.rate) return 0;
+  const taxableBase = (getSubtotal() - getDiscountAmount()) + (taxData.freightTaxed ? getFreightTotal() : 0);
+  if (taxableBase <= 0) return 0;
+  return Math.round(taxableBase * taxData.rate * 100) / 100;
 }
 
 // Render the Step 5 tax result box from the current taxData. Used both after
@@ -2701,10 +2709,14 @@ function renderTaxResult() {
   const overrideBadge = isOverride
     ? `<span style="font-size:9px;background:#ee6216;color:#fff;padding:1px 5px;border-radius:3px;font-family:var(--mono);margin-left:6px;letter-spacing:.04em">MANUAL</span>`
     : '';
+  // Use live computed amount (reflects current subtotal/freight/discount)
+  // unless this is a flat-dollar override, in which case getTaxAmount returns
+  // the fixed dollar value.
+  const liveTax = getTaxAmount();
   el.innerHTML = `
     <div style="display:flex;gap:24px;flex-wrap:wrap">
       <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Tax Rate</div><div style="font-size:16px;margin-top:2px">${rate.toFixed(3)}%${overrideBadge}</div></div>
-      <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Tax Amount</div><div style="font-size:16px;color:var(--green);margin-top:2px">${fmt(taxData.tax || 0)}</div></div>
+      <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Tax Amount</div><div style="font-size:16px;color:var(--green);margin-top:2px">${fmt(liveTax)}</div></div>
       <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Freight Taxed</div><div style="font-size:16px;margin-top:2px">${taxData.freightTaxed ? 'Yes' : 'No'}</div></div>
     </div>`;
   el.classList.add('visible');
@@ -2728,12 +2740,16 @@ function applyTaxOverride(mode, val) {
     if (mode === 'rate') {
       const r = num / 100;
       const taxableBase = sub + (freightTaxed ? freight : 0);
-      taxData = { rate: r, tax: Math.round(taxableBase * r * 100) / 100, freightTaxed, inNexus: true, override: true };
+      // overrideMode 'rate' stays dynamic — getTaxAmount recomputes against
+      // the live taxable base, so the dollar figure tracks product changes.
+      taxData = { rate: r, tax: Math.round(taxableBase * r * 100) / 100, freightTaxed, inNexus: true, override: true, overrideMode: 'rate' };
     } else {
-      // Dollar override — back-compute an effective rate for display only
+      // Dollar override — back-compute an effective rate for display only.
+      // overrideMode 'amount' is treated as fixed: the dollar figure does NOT
+      // change when products/freight change.
       const taxableBase = sub + (freightTaxed ? freight : 0);
       const r = taxableBase > 0 ? num / taxableBase : 0;
-      taxData = { rate: r, tax: num, freightTaxed, inNexus: true, override: true };
+      taxData = { rate: r, tax: num, freightTaxed, inNexus: true, override: true, overrideMode: 'amount' };
     }
   } else {
     // Revert to TaxJar estimate if one is cached, else clear
@@ -2833,6 +2849,13 @@ function updateSummary() {
 
   document.getElementById('sumTax').textContent = tax > 0 ? fmt(tax) : (taxData && !taxData.inNexus ? 'No nexus' : 'Not calculated');
   document.getElementById('sumTotal').textContent = fmt(total);
+
+  // Keep the Step 5 tax box in sync — getTaxAmount() recomputes live, so the
+  // displayed dollar figure must update whenever subtotal/freight/discount
+  // change, not only after pressing "Calculate Tax".
+  if (taxData && document.getElementById('taxResult')?.classList.contains('visible')) {
+    renderTaxResult();
+  }
 
   // Weight — sum ALL line items (booth + accessories all ship together on the booth pallet)
   // Pallet dims — from BOOTH_DATA only

@@ -1003,11 +1003,15 @@ const server = http.createServer(async (req, res) => {
 
         // Tax: compute directly from the HubSpot tax_rate property.
         // If tax_rate is blank/0 the deal has no tax (no nexus, exempt, etc.).
+        // The stored tax_rate is the effective rate TaxJar computed against
+        // (subtotal - discount). Freight taxability is already embedded in that
+        // rate, so we do NOT add freight to the base here — doing so causes
+        // double-counting that makes reconciled rows look like they differ.
         let taxAmt = 0;
         if (taxRate > 0) {
           const r = taxRate / 100;
-          const taxableBase = (subtotal - discountAmt) + (freightTaxable ? freight : 0);
-          taxAmt = Math.round(Math.max(0, taxableBase) * r * 100) / 100;
+          const taxableBase = Math.max(0, subtotal - discountAmt);
+          taxAmt = Math.round(taxableBase * r * 100) / 100;
         }
 
         return {

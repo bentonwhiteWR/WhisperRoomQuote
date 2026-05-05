@@ -3094,8 +3094,6 @@ async function createDeal() {
   btn.disabled = true;
   const isRevision = !!(linkedDeal || selectedDeal);
   btn.innerHTML = '<span class="spinner-inline"></span>' + (isRevision ? 'Updating...' : 'Creating...');
-  // Show full-screen overlay so the rep doesn't navigate away mid-submit
-  showSubmitOverlay(isRevision ? 'Updating quote…' : 'Creating quote…');
 
   // For new deals: if folder check still in-flight, wait then retry
   if (!isRevision && window._loadedContactId && window._contactFolderInfo === null) {
@@ -3172,6 +3170,11 @@ async function createDeal() {
       ? (parseFloat(document.getElementById('discountValue').value) || 0)
       : 0
   }));
+
+  // Show full-screen overlay only now — after folder picker, duplicate check,
+  // and any other prompts have completed. Showing earlier would block them
+  // (their z-index is lower than the overlay's).
+  showSubmitOverlay(isRevision ? 'Updating quote…' : 'Creating quote…');
 
   try {
     const res = await fetch('/api/create-deal', {

@@ -97,6 +97,7 @@ const {
   SERVER_REP_NUMBERS,
   initDb,
   generateFreeQuoteNumber,
+  previewNextQuoteNumber,
   saveQuoteToDb,
   getQuoteFromDb,
   searchQuotesInDb,
@@ -810,6 +811,22 @@ const server = http.createServer(async (req, res) => {
   // ── API: Version ────────────────────────────────────────────────
   if (pathname === '/api/version' && req.method === 'GET') {
     json({ version: APP_VERSION }); return;
+  }
+
+  // GET /api/quote-number/preview?ownerId=X[&dealId=Y]
+  // Returns the quote number that would be assigned next for this rep today,
+  // without reserving it. Used by the quote builder to show the rep what
+  // number they're about to create — flags duplicate-submission scenarios
+  // (e.g. seq jumps from 01 to 02 unexpectedly) before they happen.
+  if (pathname === '/api/quote-number/preview' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const ownerId = parsed.query.ownerId || '';
+      const dealId  = parsed.query.dealId  || null;
+      const next = await previewNextQuoteNumber(ownerId, dealId);
+      json({ next });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
   }
 
   // ── QuickBooks OAuth + API ────────────────────────────────────────

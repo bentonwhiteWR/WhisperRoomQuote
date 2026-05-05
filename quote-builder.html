@@ -629,6 +629,37 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
 .spinner-inline { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.3); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 6px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── Submit overlay (blocking, while quote is uploading) ── */
+.submit-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.78); backdrop-filter: blur(4px); z-index: 9999; display: none; align-items: center; justify-content: center; }
+.submit-overlay.visible { display: flex; }
+.submit-overlay-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 36px 48px; text-align: center; max-width: 440px; box-shadow: 0 30px 80px rgba(0,0,0,.7); }
+.submit-overlay-spinner { width: 52px; height: 52px; border: 4px solid rgba(255,255,255,.15); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 22px; }
+.submit-overlay-title { font-size: 18px; font-weight: 800; color: #fff; margin-bottom: 8px; letter-spacing: .01em; }
+.submit-overlay-msg { font-size: 13px; color: rgba(255,255,255,.7); line-height: 1.5; }
+.submit-overlay-warning { margin-top: 18px; padding: 10px 14px; background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.3); border-radius: 8px; font-size: 12px; color: #f59e0b; font-weight: 600; }
+
+/* ── Success modal (big "Quote Created!" confirmation) ── */
+.success-modal { position: fixed; inset: 0; background: rgba(0,0,0,.65); backdrop-filter: blur(4px); z-index: 9998; display: none; align-items: center; justify-content: center; padding: 20px; }
+.success-modal.visible { display: flex; }
+.success-modal-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 36px; max-width: 480px; width: 100%; text-align: center; box-shadow: 0 30px 80px rgba(0,0,0,.7); animation: pop .25s ease-out; }
+@keyframes pop { from { transform: scale(.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.success-modal-icon { width: 68px; height: 68px; border-radius: 50%; background: rgba(34,197,94,.15); border: 2px solid rgba(34,197,94,.5); color: #22c55e; font-size: 36px; line-height: 64px; margin: 0 auto 18px; font-weight: 900; }
+.success-modal-title { font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 6px; }
+.success-modal-quotenum { font-family: monospace; font-size: 16px; color: var(--accent); background: var(--accent-dim); padding: 6px 14px; border-radius: 6px; display: inline-block; margin: 8px 0 18px; font-weight: 700; letter-spacing: .04em; }
+.success-modal-msg { font-size: 13px; color: rgba(255,255,255,.65); line-height: 1.55; margin-bottom: 22px; }
+.success-modal-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.success-modal-actions button, .success-modal-actions a { padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; font-family: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+.success-modal-actions .btn-primary { background: var(--accent); color: #fff; }
+.success-modal-actions .btn-secondary { background: var(--surface2); color: rgba(255,255,255,.85); border: 1px solid var(--border); }
+
+/* ── Quote-number preview pill ── */
+.quote-num-preview { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 6px; font-family: monospace; font-size: 11px; color: rgba(255,255,255,.7); margin-top: 6px; }
+.quote-num-preview strong { color: var(--accent); font-weight: 700; }
+
+/* ── Recent-submission warning banner ── */
+.recent-submit-banner { background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.4); border-radius: 8px; padding: 12px 16px; margin: 12px 0; font-size: 13px; color: #f59e0b; display: flex; align-items: center; gap: 10px; }
+.recent-submit-banner button { margin-left: auto; padding: 4px 10px; background: rgba(245,158,11,.2); border: 1px solid rgba(245,158,11,.4); border-radius: 5px; color: #fbbf24; font-size: 11px; font-weight: 700; cursor: pointer; font-family: inherit; }
+
 .empty-state { text-align: center; padding: 32px; color: var(--muted); font-size: 12px; background: var(--surface); border: 1px dashed var(--border); border-radius: 4px; }
 
 .notes-area {
@@ -1132,6 +1163,20 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
       <button class="get-freight-btn" id="taxBtn" onclick="getTax()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:11px;padding:7px 14px">
         Calculate Tax Only
       </button>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:11px;color:var(--muted)">Override:</span>
+        <input type="number" id="taxRateOverride" placeholder="%"
+          min="0" step="0.001" max="50"
+          style="width:70px;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:12px"
+          oninput="applyTaxOverride('rate', this.value)"
+          title="Manually set tax rate as a percentage (e.g. 7.5 for 7.5%)">
+        <span style="font-size:11px;color:var(--muted)">or</span>
+        <input type="number" id="taxAmtOverride" placeholder="$"
+          min="0" step="0.01"
+          style="width:90px;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:12px"
+          oninput="applyTaxOverride('amount', this.value)"
+          title="Manually set tax as a dollar amount">
+      </div>
       <label class="acc-check" id="check-taxexempt" onclick="toggleAcc(this,'taxexempt');document.getElementById('taxExemptRow').style.display=document.getElementById('taxexempt').checked?'block':'none';if(document.getElementById('taxexempt').checked){taxData=null;document.getElementById('taxResult').classList.remove('visible');updateSummary();}">
         <input type="checkbox" id="taxexempt">
         <div class="acc-box"></div>
@@ -1257,6 +1302,7 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
     </div>
     <div style="margin-top:8px;font-family:var(--mono);font-size:14px;font-weight:600;color:var(--accent);letter-spacing:.05em;" id="quoteNumDisplay">—</div>
     <input type="hidden" id="quoteNumHidden" value="">
+    <div class="quote-num-preview" id="quoteNumPreview" style="display:none">—</div>
 
   </div>
 
@@ -2630,6 +2676,105 @@ function getTaxAmount() {
   return taxData ? taxData.tax : 0;
 }
 
+// Render the Step 5 tax result box from the current taxData. Used both after
+// a TaxJar fetch and when a historical quote is loaded back into the form.
+function renderTaxResult() {
+  const el = document.getElementById('taxResult');
+  if (!el) return;
+  if (!taxData || (!taxData.rate && !taxData.tax)) {
+    el.classList.remove('visible');
+    el.innerHTML = '';
+    return;
+  }
+  if (taxData.error) {
+    el.innerHTML = `<span style="color:var(--red)">⚠ ${taxData.error}</span>`;
+    el.classList.add('visible');
+    return;
+  }
+  if (taxData.inNexus === false) {
+    el.innerHTML = `<span style="color:var(--muted)">No tax nexus — tax not applicable.</span>`;
+    el.classList.add('visible');
+    return;
+  }
+  const rate = (taxData.rate || 0) * 100;
+  const isOverride = !!taxData.override;
+  const overrideBadge = isOverride
+    ? `<span style="font-size:9px;background:#ee6216;color:#fff;padding:1px 5px;border-radius:3px;font-family:var(--mono);margin-left:6px;letter-spacing:.04em">MANUAL</span>`
+    : '';
+  el.innerHTML = `
+    <div style="display:flex;gap:24px;flex-wrap:wrap">
+      <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Tax Rate</div><div style="font-size:16px;margin-top:2px">${rate.toFixed(3)}%${overrideBadge}</div></div>
+      <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Tax Amount</div><div style="font-size:16px;color:var(--green);margin-top:2px">${fmt(taxData.tax || 0)}</div></div>
+      <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Freight Taxed</div><div style="font-size:16px;margin-top:2px">${taxData.freightTaxed ? 'Yes' : 'No'}</div></div>
+    </div>`;
+  el.classList.add('visible');
+}
+
+// Manually override tax rate or amount. Mode 'rate' applies a percent against
+// (subtotal − discount) + (freight if state taxes freight); mode 'amount'
+// is a flat dollar override. Clearing the input reverts to the TaxJar
+// estimate (window._taxjarData) if one was previously calculated.
+function applyTaxOverride(mode, val) {
+  const num = parseFloat(val) || 0;
+  const otherId = mode === 'rate' ? 'taxAmtOverride' : 'taxRateOverride';
+  const otherEl = document.getElementById(otherId);
+
+  if (num > 0) {
+    // Clear the other input so the two override inputs don't fight
+    if (otherEl && otherEl.value) otherEl.value = '';
+    const sub = getSubtotal() - getDiscountAmount();
+    const freight = getFreightTotal();
+    const freightTaxed = !!(window._taxjarData?.freightTaxed);
+    if (mode === 'rate') {
+      const r = num / 100;
+      const taxableBase = sub + (freightTaxed ? freight : 0);
+      taxData = { rate: r, tax: Math.round(taxableBase * r * 100) / 100, freightTaxed, inNexus: true, override: true };
+    } else {
+      // Dollar override — back-compute an effective rate for display only
+      const taxableBase = sub + (freightTaxed ? freight : 0);
+      const r = taxableBase > 0 ? num / taxableBase : 0;
+      taxData = { rate: r, tax: num, freightTaxed, inNexus: true, override: true };
+    }
+  } else {
+    // Revert to TaxJar estimate if one is cached, else clear
+    if (window._taxjarData) {
+      taxData = { ...window._taxjarData };
+    } else {
+      taxData = null;
+    }
+  }
+  renderTaxResult();
+  updateSummary();
+}
+
+// Wrap fetch with automatic retry for transient upstream errors (socket
+// hang up, ECONNRESET, timeouts). The freight + tax APIs proxy through
+// to TaxJar/ABF which occasionally drop connections; previously the rep
+// had to manually click the button again. Now we retry up to 2x silently
+// with exponential backoff, surfacing a status update on retry.
+const TRANSIENT_RX = /socket hang up|ECONNRESET|EAI_AGAIN|ETIMEDOUT|ENOTFOUND|EPIPE|fetch failed|timeout|timed out/i;
+async function fetchWithRetry(url, options, { retries = 2, delays = [1000, 2500], onRetry } = {}) {
+  let lastErr = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, options);
+      let data;
+      try { data = await res.json(); } catch (_) { data = {}; }
+      const transientServerErr = data && data.error && TRANSIENT_RX.test(String(data.error));
+      if (!transientServerErr) return data;
+      lastErr = new Error(data.error);
+    } catch (e) {
+      lastErr = e;
+      if (!TRANSIENT_RX.test(String(e.message || ''))) throw e;
+    }
+    if (attempt < retries) {
+      if (onRetry) onRetry(attempt + 1, retries + 1);
+      await new Promise(r => setTimeout(r, delays[attempt] ?? 2000));
+    }
+  }
+  throw lastErr || new Error('Request failed after retries');
+}
+
 function updateSummary() {
   const sub = getSubtotal();
   const disc = getDiscountAmount();
@@ -2884,7 +3029,7 @@ async function getFreight() {
   status.textContent = 'Fetching ABF rate...';
 
   try {
-    const res = await fetch('/api/freight', {
+    const data = await fetchWithRetry('/api/freight', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2899,8 +3044,9 @@ async function getFreight() {
           loadingdock: document.getElementById('loadingdock').checked,
         }
       })
+    }, {
+      onRetry: (n, total) => { status.textContent = `ABF connection dropped — retrying (${n}/${total - 1})…`; }
     });
-    const data = await res.json();
     if (data.error) throw new Error(data.error);
 
     const total = data.cost + data.markup;
@@ -2967,17 +3113,21 @@ async function getTax() {
   btn.textContent = 'Calculating...';
 
   try {
-    const res = await fetch('/api/tax', {
+    const data = await fetchWithRetry('/api/tax', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ state, zip, city, street, subtotal, shipping, installShipping, rep: document.getElementById('repSelect')?.value || null })
+    }, {
+      onRetry: (n, total) => { btn.textContent = `Retrying (${n}/${total - 1})…`; }
     });
-    const data = await res.json();
     taxData = data;
+    // Cache the raw TaxJar result so override clear can revert to it
+    if (data && !data.error && data.inNexus !== false) window._taxjarData = { ...data };
 
     const el = document.getElementById('taxResult');
     if (!data.inNexus) {
       el.innerHTML = `<span style="color:var(--muted)">No tax nexus in ${state} — tax not applicable.</span>`;
+      el.classList.add('visible');
     } else if (data.error) {
       // Translate TaxJar errors into rep-friendly messages
       let taxErrMsg = data.error;
@@ -2988,16 +3138,10 @@ async function getTax() {
       else if (/timeout|timed out/i.test(data.error))    taxErrMsg = 'Tax service timed out — try again in a moment.';
       else taxErrMsg = `Tax calculation failed — verify the ship-to address and try again. (${data.error})`;
       el.innerHTML = `<span style="color:var(--red)">⚠ ${taxErrMsg}</span>`;
+      el.classList.add('visible');
     } else {
-      el.innerHTML = `
-        <div style="display:flex;gap:24px;flex-wrap:wrap">
-          <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Tax Rate</div><div style="font-size:16px;margin-top:2px">${(data.rate * 100).toFixed(3)}%</div></div>
-          <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Tax Amount</div><div style="font-size:16px;color:var(--green);margin-top:2px">${fmt(data.tax)}</div></div>
-          <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Freight Taxed</div><div style="font-size:16px;margin-top:2px">${data.freightTaxed ? 'Yes' : 'No'}</div></div>
-        </div>
-      `;
+      renderTaxResult();
     }
-    el.classList.add('visible');
     updateSummary();
   } catch(e) {
     document.getElementById('taxResult').innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
@@ -3139,6 +3283,11 @@ async function createDeal() {
       : 0
   }));
 
+  // Show full-screen overlay only now — after folder picker, duplicate check,
+  // and any other prompts have completed. Showing earlier would block them
+  // (their z-index is lower than the overlay's).
+  showSubmitOverlay(isRevision ? 'Updating quote…' : 'Creating quote…');
+
   try {
     const res = await fetch('/api/create-deal', {
       method: 'POST',
@@ -3210,6 +3359,24 @@ async function createDeal() {
         const qUrl = data.quoteNumber ? `${location.origin}/q/${data.quoteNumber}${data.shareToken ? '?t=' + data.shareToken : ''}` : null;
         box.innerHTML = `&#x2713; ${data.quoteNumber ? `Quote <strong>${data.quoteNumber}</strong> pushed to HubSpot.` : 'Pushed to HubSpot.'}${qUrl ? ` <a href="${qUrl}" target="_blank" style="color:#6fcf97;font-weight:700">View Quote ↗</a>` : ''}`;
       }
+      // Big success modal — much harder to miss than the inline result box
+      const _qUrl = data.quoteNumber ? `${location.origin}/q/${data.quoteNumber}${data.shareToken ? '?t=' + data.shareToken : ''}` : null;
+      showSuccessModal({
+        title: data.inPlaceUpdate ? 'Quote Updated!' : 'Quote Created!',
+        quoteNumber: data.quoteNumber,
+        message: data.inPlaceUpdate
+          ? 'The quote was updated in place — the same number was kept and existing links still work.'
+          : 'Your quote has been pushed to HubSpot successfully.',
+        viewUrl: _qUrl,
+      });
+      // Persist last-pushed timestamp for the duplicate-warning banner on next page load
+      try {
+        localStorage.setItem('wr_lastPush', JSON.stringify({
+          quoteNumber: data.quoteNumber,
+          dealId: data.dealId,
+          ts: Date.now(),
+        }));
+      } catch(_) {}
       window._lastPushedContactId = data.contactId || null;
       window._lastPushedDealId = data.dealId || null;
       window._lastPushedShareToken = data.shareToken || null;
@@ -3328,6 +3495,7 @@ async function createDeal() {
     document.getElementById('resultBox').className = 'result-box error';
     document.getElementById('resultBox').innerHTML = `✕ ${e.message}`;
   } finally {
+    hideSubmitOverlay();
     btn.disabled = false;
     updatePushButtonText();
     // Re-enable view/copy buttons — they now have correct _lastPushedQuoteNumber
@@ -3335,8 +3503,119 @@ async function createDeal() {
     const lBtn2 = document.getElementById('copyLinkBtn');
     if (vBtn2 && window._lastPushedQuoteNumber) vBtn2.disabled = false;
     if (lBtn2 && window._lastPushedQuoteNumber) lBtn2.disabled = false;
+    // Reset the folder-prompt skip flag so the NEXT quote in this session
+    // shows the folder picker again. The flag is set true after the rep
+    // selects a folder (so the recursive createDeal() call doesn't re-prompt),
+    // but it leaks into the next submission unless we clear it here.
+    window._skipFolderPrompt = false;
   }
 }
+
+// ── Submit overlay helpers ──────────────────────────────────────────
+function showSubmitOverlay(title) {
+  const el = document.getElementById('submitOverlay');
+  if (!el) return;
+  document.getElementById('submitOverlayTitle').textContent = title || 'Creating quote…';
+  el.classList.add('visible');
+  el.setAttribute('aria-hidden', 'false');
+  // Block accidental tab close while the request is in flight
+  window.addEventListener('beforeunload', _blockUnload);
+}
+function hideSubmitOverlay() {
+  const el = document.getElementById('submitOverlay');
+  if (!el) return;
+  el.classList.remove('visible');
+  el.setAttribute('aria-hidden', 'true');
+  window.removeEventListener('beforeunload', _blockUnload);
+}
+function _blockUnload(e) {
+  e.preventDefault();
+  e.returnValue = 'Your quote is still being created. Are you sure you want to leave?';
+  return e.returnValue;
+}
+
+// ── Success modal helpers ──────────────────────────────────────────
+function showSuccessModal({ title, quoteNumber, message, viewUrl }) {
+  const m = document.getElementById('successModal');
+  if (!m) return;
+  document.getElementById('successModalTitle').textContent = title || 'Quote Created!';
+  document.getElementById('successModalQuoteNum').textContent = quoteNumber || '—';
+  document.getElementById('successModalMsg').textContent = message || 'Your quote has been pushed to HubSpot.';
+  const view = document.getElementById('successModalView');
+  if (viewUrl) { view.href = viewUrl; view.style.display = 'inline-flex'; }
+  else { view.style.display = 'none'; }
+  m.classList.add('visible');
+  m.setAttribute('aria-hidden', 'false');
+}
+function closeSuccessModal() {
+  const m = document.getElementById('successModal');
+  if (!m) return;
+  m.classList.remove('visible');
+  m.setAttribute('aria-hidden', 'true');
+}
+
+// ── bfcache guard ──────────────────────────────────────────────────
+// When the browser restores this page from the back-forward cache (e.g. user
+// navigated to another tab and hit back), the in-memory state — including
+// selectedDeal — is restored too. That can cause a "fresh" quote submission
+// to silently attach to a previously-selected deal. Force a clean reload so
+// the rep starts fresh.
+window.addEventListener('pageshow', e => {
+  if (e.persisted) {
+    location.reload();
+  }
+});
+
+// ── Quote-number preview ────────────────────────────────────────────
+// Fetch the next quote number for the current rep and show it under the
+// quote-number display. This gives the rep a visual anchor before they
+// submit — an unexpected jump from 01 → 02 (or higher) signals that
+// something else used a slot.
+async function refreshQuoteNumberPreview() {
+  try {
+    const ownerId = document.getElementById('repSelect')?.value;
+    if (!ownerId) return;
+    const dealId = (linkedDeal?.id) || (selectedDeal?.id) || '';
+    const params = new URLSearchParams({ ownerId });
+    if (dealId) params.set('dealId', dealId);
+    const r = await fetch('/api/quote-number/preview?' + params.toString());
+    if (!r.ok) return;
+    const j = await r.json();
+    const el = document.getElementById('quoteNumPreview');
+    if (el && j.next) {
+      el.innerHTML = `Next # will be <strong>${j.next}</strong>`;
+      el.style.display = 'inline-flex';
+    }
+  } catch(_) {}
+}
+
+// ── Recent-submission warning banner ───────────────────────────────
+// On page load, check localStorage for a recent push (< 5 min ago) and
+// show a dismissible banner asking the rep to confirm this is intentional.
+(function checkRecentPush() {
+  try {
+    const raw = localStorage.getItem('wr_lastPush');
+    if (!raw) return;
+    const last = JSON.parse(raw);
+    if (!last || !last.ts) return;
+    const ageSec = Math.floor((Date.now() - last.ts) / 1000);
+    if (ageSec > 300) return; // older than 5 min — ignore
+    const banner = document.createElement('div');
+    banner.className = 'recent-submit-banner';
+    const ageLabel = ageSec < 60 ? `${ageSec} sec ago` : `${Math.floor(ageSec/60)} min ago`;
+    banner.innerHTML = `⚠ Your last quote (<strong>${last.quoteNumber || '?'}</strong>) was created ${ageLabel}. Make sure this is a new quote, not a duplicate.
+      <button onclick="this.parentNode.remove(); localStorage.removeItem('wr_lastPush')">Got it</button>`;
+    // Insert at top of main layout
+    const target = document.querySelector('.layout') || document.body.firstElementChild;
+    if (target && target.parentNode) target.parentNode.insertBefore(banner, target);
+  } catch(_) {}
+})();
+
+// Refresh quote-number preview when rep changes or deal links change
+window.addEventListener('load', () => {
+  refreshQuoteNumberPreview();
+  document.getElementById('repSelect')?.addEventListener('change', refreshQuoteNumberPreview);
+});
 
 // ── Deal search ──────────────────────────────────────────────────
 let selectedDeal = null;
@@ -4098,6 +4377,16 @@ function renderHistory() {
     return matchSearch && matchRep;
   });
 
+  // Sort newest first. Prefer savedAt timestamp (most accurate); fall back to
+  // parsing the human-readable date string; otherwise compare quote numbers
+  // (which have date encoded in them: W-{rep}{MM}{DD}{YY}{seq}).
+  filtered.sort((a, b) => {
+    const ta = a.savedAt ? new Date(a.savedAt).getTime() : (a.date ? new Date(a.date).getTime() : 0);
+    const tb = b.savedAt ? new Date(b.savedAt).getTime() : (b.date ? new Date(b.date).getTime() : 0);
+    if (tb !== ta) return tb - ta;
+    return (b.quoteNumber || '').localeCompare(a.quoteNumber || '');
+  });
+
   if (countEl) countEl.textContent = filtered.length + ' quote' + (filtered.length !== 1 ? 's' : '');
 
   if (filtered.length === 0) {
@@ -4119,7 +4408,7 @@ function renderHistory() {
             <span>${date}</span>
             <span style="color:var(--accent)">${repName}</span>
           </div>
-          ${q.quoteNumber ? '<div style="font-size:10px;color:var(--dim);margin-top:2px;font-family:var(--mono)">' + q.quoteNumber + '</div>' : ''}
+          ${q.quoteNumber ? '<div style="display:inline-block;font-size:11px;color:var(--accent);background:var(--accent-dim);padding:2px 7px;border-radius:4px;margin-top:5px;font-family:var(--mono);font-weight:600;letter-spacing:.03em">' + q.quoteNumber + '</div>' : ''}
           <div class="history-item-total">${fmt(q.total || 0)}</div>
         </div>
         <div style="display:flex;gap:5px;flex-shrink:0">
@@ -4362,6 +4651,23 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
     document.getElementById('freightResult').classList.add('visible');
   }
 
+  // Restore Step 5 tax UI — rate, amount, freight-taxed flag, override badge
+  // if the loaded quote had a manual tax. Previously this section just stayed
+  // blank when loading historical quotes even though tax was being applied
+  // to the totals.
+  const rateEl = document.getElementById('taxRateOverride');
+  const amtEl  = document.getElementById('taxAmtOverride');
+  if (rateEl) rateEl.value = '';
+  if (amtEl)  amtEl.value  = '';
+  if (taxData && taxData.override) {
+    if (taxData.tax > 0 && rateEl) rateEl.value = ((taxData.rate || 0) * 100).toFixed(3).replace(/\.?0+$/, '');
+  }
+  // Cache the loaded data as the "TaxJar baseline" so clearing an override reverts
+  if (taxData && !taxData.error && taxData.inNexus !== false) {
+    window._taxjarData = { ...taxData, override: false };
+  }
+  renderTaxResult();
+
   if (q.accessories) {
     ['residential','liftgate','limitedaccess','loadingdock'].forEach(id => {
       const cb = document.getElementById(id);
@@ -4447,7 +4753,21 @@ function toggleHistory() {
   const overlay = document.getElementById('historyOverlay');
   const isOpen = panel.classList.toggle('open');
   overlay.classList.toggle('open', isOpen);
-  if (isOpen) { 
+  if (isOpen) {
+    // Default the rep filter to the currently-selected rep on the form. The
+    // rep can clear it back to "All Reps" if they want; we just don't make
+    // them filter manually each time. Only set it if nothing is set yet —
+    // preserve any explicit choice the rep made earlier in the session.
+    const repSel  = document.getElementById('repSelect');
+    const histSel = document.getElementById('historyRepFilter');
+    if (repSel && histSel && !histSel.dataset.userTouched && repSel.value) {
+      histSel.value = repSel.value;
+    }
+    // Mark when the rep manually changes the filter so we don't overwrite next open
+    if (histSel && !histSel.dataset.bound) {
+      histSel.dataset.bound = '1';
+      histSel.addEventListener('change', () => { histSel.dataset.userTouched = '1'; });
+    }
 // ── Auto-redirect to login on 401 (session expired) ──────────────
 const _origFetch = window.fetch;
 window.fetch = async function(...args) {
@@ -7057,6 +7377,32 @@ function selectDriveFolder(folderId, folderName) {
   createDeal();
 }
 </script>
+
+<!-- ── Submit overlay (shown while quote is being created/updated) ── -->
+<div class="submit-overlay" id="submitOverlay" aria-hidden="true">
+  <div class="submit-overlay-card">
+    <div class="submit-overlay-spinner"></div>
+    <div class="submit-overlay-title" id="submitOverlayTitle">Creating quote…</div>
+    <div class="submit-overlay-msg">Pushing to HubSpot. This usually takes a few seconds.</div>
+    <div class="submit-overlay-warning">⚠ Please don't close this tab or refresh the page.</div>
+  </div>
+</div>
+
+<!-- ── Success modal (shown after a successful create/update) ── -->
+<div class="success-modal" id="successModal" aria-hidden="true">
+  <div class="success-modal-card">
+    <div class="success-modal-icon">✓</div>
+    <div class="success-modal-title" id="successModalTitle">Quote Created!</div>
+    <div class="success-modal-quotenum" id="successModalQuoteNum">—</div>
+    <div class="success-modal-msg" id="successModalMsg">Your quote has been pushed to HubSpot.</div>
+    <div class="success-modal-actions">
+      <a id="successModalView" href="#" target="_blank" class="btn-primary" style="display:none">View Quote ↗</a>
+      <button class="btn-secondary" onclick="closeSuccessModal()">Close</button>
+      <button class="btn-secondary" onclick="closeSuccessModal(); newQuote && newQuote()">Start New Quote</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
 
@@ -7158,7 +7504,7 @@ async function confirmPartsFreight() {
   status.textContent = 'Fetching ABF rate...';
 
   try {
-    const res = await fetch('/api/freight', {
+    const data = await fetchWithRetry('/api/freight', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -7173,8 +7519,9 @@ async function confirmPartsFreight() {
           loadingdock: document.getElementById('loadingdock').checked,
         }
       })
+    }, {
+      onRetry: (n, total) => { status.textContent = `ABF connection dropped — retrying (${n}/${total - 1})…`; }
     });
-    const data = await res.json();
     if (data.error) throw new Error(data.error);
 
     const total = data.cost + data.markup;

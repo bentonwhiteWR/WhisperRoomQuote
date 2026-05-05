@@ -67,6 +67,11 @@ input[type=date]:focus, select:focus { border-color:var(--orange); }
 .tbl-wrap { overflow-x:auto; margin-top:14px; }
 table { width:100%; border-collapse:collapse; font-size:12px; }
 th { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); color:var(--text2); font-weight:700; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; font-size:10px; }
+th.sortable { cursor:pointer; user-select:none; }
+th.sortable:hover { color:var(--text); background:var(--surface2); }
+th.sortable .sort-indicator { display:inline-block; margin-left:4px; opacity:.3; font-size:9px; }
+th.sortable.active { color:var(--orange); }
+th.sortable.active .sort-indicator { opacity:1; color:var(--orange); }
 td { padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
 tr:hover td { background:var(--surface2); }
 
@@ -208,20 +213,20 @@ tr:hover td { background:var(--surface2); }
     <div class="tbl-wrap">
       <table id="resultsTable">
         <thead>
-          <tr>
-            <th>Status</th>
-            <th>Date</th>
-            <th>HS Customer</th>
-            <th style="text-align:right">HS Subtotal</th>
-            <th style="text-align:right">HS Freight</th>
-            <th style="text-align:right">HS Tax %</th>
-            <th style="text-align:right">HS Tax $</th>
-            <th style="text-align:right">HS Total</th>
-            <th>QB Customer</th>
-            <th style="text-align:right">QB Freight</th>
-            <th style="text-align:right">QB Tax</th>
-            <th style="text-align:right">QB Total</th>
-            <th style="text-align:right">Delta</th>
+          <tr id="resultsHead">
+            <th class="sortable" data-sort="status">Status<span class="sort-indicator">▾</span></th>
+            <th class="sortable" data-sort="date">Date<span class="sort-indicator">▾</span></th>
+            <th class="sortable" data-sort="hsName">HS Customer<span class="sort-indicator">▾</span></th>
+            <th class="sortable" data-sort="subtotal" style="text-align:right">HS Subtotal<span class="sort-indicator">▾</span></th>
+            <th class="sortable" data-sort="freight" style="text-align:right">HS Freight<span class="sort-indicator">▾</span></th>
+            <th class="sortable" data-sort="taxRate" style="text-align:right">HS Tax %<span class="sort-indicator">▾</span></th>
+            <th class="sortable" data-sort="taxAmt" style="text-align:right">HS Tax $<span class="sort-indicator">▾</span></th>
+            <th class="sortable" data-sort="hsAmount" style="text-align:right">HS Total<span class="sort-indicator">▾</span></th>
+            <th class="sortable" data-sort="qbName">QB Customer<span class="sort-indicator">▾</span></th>
+            <th class="sortable" data-sort="qbFreight" style="text-align:right">QB Freight<span class="sort-indicator">▾</span></th>
+            <th class="sortable" data-sort="qbTaxAmt" style="text-align:right">QB Tax<span class="sort-indicator">▾</span></th>
+            <th class="sortable" data-sort="qbAmount" style="text-align:right">QB Total<span class="sort-indicator">▾</span></th>
+            <th class="sortable" data-sort="delta" style="text-align:right">Delta<span class="sort-indicator">▾</span></th>
             <th>Action</th>
           </tr>
         </thead>
@@ -273,6 +278,8 @@ let _savedLinks  = []; // [{ hs_deal_id, qb_invoice_id }]
 let _savedBlocks = []; // [{ hs_deal_id, qb_invoice_id }]
 let _rawQb       = [];
 let _rawHs       = [];
+let _sortKey     = 'date';
+let _sortDir     = 'desc'; // 'asc' | 'desc'
 let _realmId     = null;
 let _portalId    = null;
 
@@ -631,11 +638,6 @@ function match(hsDeals, qbInvoices, savedLinks = [], savedBlocks = []) {
     rows.push({ status:'MISSING_HS', manual:false, isCredit:q.isCredit, isRefund:q.isRefund, hsDate:null, hsName:null, hsAmount:null, subtotal:0, freight:0, taxRate:0, taxAmt:0, qbDate:q.date, qbName:q.customer, qbAmount:q.amount, qbFreight:q.freight, qbTaxAmt:q.taxAmt, delta:null, notes:'', hsId:null, qbRef:q.ref, qbId:q.id, qbIds:[q.id] });
   }
 
-  rows.sort((a, b) => {
-    const da = a.hsDate || a.qbDate || '';
-    const db = b.hsDate || b.qbDate || '';
-    return db.localeCompare(da);
-  });
   return rows;
 }
 
@@ -875,11 +877,62 @@ function rowNeedsReview(r) {
   return false;
 }
 
+function getSortValue(r, key) {
+  if (key === 'date')   return r.hsDate || r.qbDate || '';
+  if (key === 'status') return r.status || '';
+  if (key === 'hsName' || key === 'qbName') return (r[key] || '').toLowerCase();
+  return r[key];
+}
+
+function sortRows(rows) {
+  const key = _sortKey, dir = _sortDir === 'asc' ? 1 : -1;
+  return rows.slice().sort((a, b) => {
+    const av = getSortValue(a, key);
+    const bv = getSortValue(b, key);
+    // null/undefined always sink to bottom regardless of direction
+    const aNull = av == null || av === '';
+    const bNull = bv == null || bv === '';
+    if (aNull && bNull) return 0;
+    if (aNull) return 1;
+    if (bNull) return -1;
+    if (typeof av === 'string' && typeof bv === 'string') return av.localeCompare(bv) * dir;
+    return ((av < bv) ? -1 : (av > bv) ? 1 : 0) * dir;
+  });
+}
+
+function setSort(key) {
+  if (_sortKey === key) {
+    _sortDir = _sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _sortKey = key;
+    // Numeric/date columns default to desc (highest first); names default to asc.
+    _sortDir = (key === 'hsName' || key === 'qbName' || key === 'status') ? 'asc' : 'desc';
+  }
+  applyFilter();
+}
+
+function updateSortIndicators() {
+  document.querySelectorAll('#resultsHead th.sortable').forEach(th => {
+    const key = th.dataset.sort;
+    const ind = th.querySelector('.sort-indicator');
+    if (key === _sortKey) {
+      th.classList.add('active');
+      if (ind) ind.textContent = _sortDir === 'asc' ? '▴' : '▾';
+    } else {
+      th.classList.remove('active');
+      if (ind) ind.textContent = '▾';
+    }
+  });
+}
+
 function applyFilter() {
   const f = document.getElementById('filterStatus').value;
-  if (!f)                  { renderResults(_allRows); return; }
-  if (f === 'NEEDS_REVIEW') { renderResults(_allRows.filter(rowNeedsReview)); return; }
-  renderResults(_allRows.filter(r => r.status === f));
+  let rows;
+  if (!f)                       rows = _allRows;
+  else if (f === 'NEEDS_REVIEW') rows = _allRows.filter(rowNeedsReview);
+  else                          rows = _allRows.filter(r => r.status === f);
+  renderResults(sortRows(rows));
+  updateSortIndicators();
 }
 
 function renderResults(rows) {
@@ -1004,6 +1057,13 @@ if (new URLSearchParams(location.search).get('qb') === 'connected') {
 initDates();
 loadQbStatus();
 loadPortalId();
+
+// Header click → sort
+document.getElementById('resultsHead')?.addEventListener('click', e => {
+  const th = e.target.closest('th.sortable');
+  if (!th || !th.dataset.sort) return;
+  setSort(th.dataset.sort);
+});
 fetch('/api/version').then(r => r.json()).then(d => {
   const el = document.getElementById('appVersion');
   if (el && d.version) el.textContent = 'v' + d.version;

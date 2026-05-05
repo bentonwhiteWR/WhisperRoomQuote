@@ -969,6 +969,47 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // GET /api/reconcile/links — return all saved manual links
+  if (pathname === '/api/reconcile/links' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      if (!db) { json({ results: [] }); return; }
+      const r = await db.query('SELECT hs_deal_id, qb_invoice_id FROM reconcile_links ORDER BY created_at DESC');
+      json({ results: r.rows });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // POST /api/reconcile/link — save a manual HS↔QB link
+  if (pathname === '/api/reconcile/link' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { hsDealId, qbInvoiceId } = JSON.parse(await readBody(req));
+      if (!hsDealId || !qbInvoiceId) { json({ error: 'hsDealId and qbInvoiceId required' }, 400); return; }
+      if (!db) { json({ error: 'No DB' }, 500); return; }
+      await db.query(
+        `INSERT INTO reconcile_links (hs_deal_id, qb_invoice_id) VALUES ($1, $2)
+         ON CONFLICT (hs_deal_id) DO UPDATE SET qb_invoice_id = EXCLUDED.qb_invoice_id, created_at = NOW()`,
+        [hsDealId, qbInvoiceId]
+      );
+      json({ ok: true });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // DELETE /api/reconcile/link — remove a manual link
+  if (pathname === '/api/reconcile/link' && req.method === 'DELETE') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { hsDealId } = JSON.parse(await readBody(req));
+      if (!hsDealId) { json({ error: 'hsDealId required' }, 400); return; }
+      if (!db) { json({ error: 'No DB' }, 500); return; }
+      await db.query('DELETE FROM reconcile_links WHERE hs_deal_id = $1', [hsDealId]);
+      json({ ok: true });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   if (pathname === '/api/products-all' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {

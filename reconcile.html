@@ -16,7 +16,7 @@
   .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; height: 52px; display: flex; align-items: center; gap: 16px; }
   .topbar-title { font-weight: 800; font-size: 15px; color: var(--orange); }
   .topbar a { color: var(--muted); font-size: 12px; text-decoration: none; }
-  .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .container { max-width: 1300px; margin: 0 auto; padding: 24px; }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
   .card-title { font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 14px; }
   .status-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
@@ -28,6 +28,7 @@
   .btn-orange { background: var(--orange); color: #fff; }
   .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
   .btn-red { background: rgba(239,68,68,.15); color: var(--red); border: 1px solid rgba(239,68,68,.3); }
+  .btn-sm { padding: 4px 10px; font-size: 11px; border-radius: 5px; }
   .btn:disabled { opacity: .4; cursor: not-allowed; }
   .row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
   label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 5px; }
@@ -44,7 +45,7 @@
   tr:hover td { background: rgba(255,255,255,.02); }
   .badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: .04em; }
   .badge-match   { background: rgba(34,197,94,.15);  color: var(--green); }
-  .badge-fuzzy   { background: rgba(245,158,11,.15); color: var(--yellow); }
+  .badge-manual  { background: rgba(238,98,22,.15);  color: var(--orange); }
   .badge-missing { background: rgba(239,68,68,.15);  color: var(--red); }
   .badge-extra   { background: rgba(139,144,160,.15); color: var(--muted); }
   .delta-warn { color: var(--yellow); }
@@ -54,6 +55,9 @@
   .summary-box .val { font-size: 20px; font-weight: 800; color: var(--orange); margin-top: 4px; }
   .summary-box .lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
   .empty { text-align: center; color: var(--muted); padding: 40px; }
+  /* Link picker */
+  .link-picker { display: flex; gap: 6px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+  .link-picker select { font-size: 11px; padding: 4px 6px; max-width: 220px; }
 </style>
 </head>
 <body>
@@ -111,7 +115,6 @@
       <div class="summary-box"><div class="lbl">Total QB</div><div class="val" id="sumQbTotal">—</div></div>
       <div class="summary-box"><div class="lbl">Delta</div><div class="val" id="sumDelta">—</div></div>
       <div class="summary-box"><div class="lbl">Matched</div><div class="val" id="sumMatched">—</div></div>
-      <div class="summary-box"><div class="lbl">Fuzzy</div><div class="val" id="sumFuzzy">—</div></div>
       <div class="summary-box"><div class="lbl">Missing QB</div><div class="val" id="sumMissingQb">—</div></div>
       <div class="summary-box"><div class="lbl">Missing HS</div><div class="val" id="sumMissingHs">—</div></div>
     </div>
@@ -124,7 +127,6 @@
       <select id="filterStatus" onchange="applyFilter()" style="margin-left:auto">
         <option value="">All statuses</option>
         <option value="MATCH">Match</option>
-        <option value="FUZZY">Fuzzy</option>
         <option value="MISSING_QB">Missing in QB</option>
         <option value="MISSING_HS">Missing in HS</option>
       </select>
@@ -145,7 +147,7 @@
             <th>QB Customer</th>
             <th style="text-align:right">QB Total</th>
             <th style="text-align:right">Delta</th>
-            <th>Notes</th>
+            <th>Notes / Link</th>
           </tr>
         </thead>
         <tbody id="resultsBody"></tbody>
@@ -157,9 +159,12 @@
 
 <script>
 const fmt  = n => n != null ? '$' + parseFloat(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
-const fmtD = n => n == null ? '—' : (n >= 0 ? '+' : '') + fmt(n).replace('$','') ;
+const fmtD = n => n == null ? '—' : (n >= 0 ? '+' : '') + '$' + Math.abs(parseFloat(n)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 
-let _allRows = [];
+let _allRows   = [];
+let _savedLinks = []; // [{ hs_deal_id, qb_invoice_id }]
+let _rawQb     = []; // raw QB invoice list from last run
+let _rawHs     = []; // raw HS deal list from last run
 
 // ── QB connection status ──────────────────────────────────────────
 async function loadQbStatus() {
@@ -177,7 +182,6 @@ async function loadQbStatus() {
     acts.innerHTML = `<button class="btn btn-red" onclick="disconnectQb()" style="margin-top:10px">Disconnect</button>`;
     document.getElementById('runBtn').disabled = false;
 
-    // Check if refresh token is expiring soon (< 14 days)
     if (r.refreshExpiresAt) {
       const daysLeft = Math.floor((r.refreshExpiresAt - Date.now()) / 86400000);
       if (daysLeft < 14) {
@@ -208,7 +212,6 @@ async function disconnectQb() {
 
 // ── Month picker + date range helpers ────────────────────────────
 function setMonthRange(year, monthIdx) {
-  // monthIdx is 0-based
   const m   = String(monthIdx + 1).padStart(2, '0');
   const last = new Date(year, monthIdx + 1, 0).getDate();
   document.getElementById('fromDate').value = `${year}-${m}-01`;
@@ -224,7 +227,6 @@ function onMonthPick() {
     const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     setMonthRange(lm.getFullYear(), lm.getMonth());
   } else {
-    // value is "YYYY-MM"
     const [y, m] = v.split('-').map(Number);
     setMonthRange(y, m - 1);
   }
@@ -234,7 +236,6 @@ function buildMonthOptions() {
   const sel = document.getElementById('monthPick');
   const now = new Date();
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  // Build last 24 months
   let html = '<option value="thisMonth">This Month</option><option value="lastMonth" selected>Last Month</option>';
   html += '<option disabled>──────</option>';
   for (let i = 0; i < 24; i++) {
@@ -249,7 +250,6 @@ function buildMonthOptions() {
 
 function initDates() {
   buildMonthOptions();
-  // Default to last month
   const now = new Date();
   const lm  = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   setMonthRange(lm.getFullYear(), lm.getMonth());
@@ -269,15 +269,20 @@ async function runReconcile() {
   msg.textContent = 'Fetching QB invoices and HubSpot deals…';
 
   try {
-    const [qbRes, hsRes] = await Promise.all([
+    const [qbRes, hsRes, linksRes] = await Promise.all([
       fetch(`/api/qb/invoices?from=${from}&to=${to}`).then(r => r.json()),
       fetch(`/api/reconcile/hs-deals?from=${from}&to=${to}`).then(r => r.json()),
+      fetch('/api/reconcile/links').then(r => r.json()),
     ]);
 
     if (qbRes.error) throw new Error('QB: ' + qbRes.error);
     if (hsRes.error) throw new Error('HS: ' + hsRes.error);
 
-    const rows = match(hsRes.results || [], qbRes.results || []);
+    _rawQb      = qbRes.results  || [];
+    _rawHs      = hsRes.results  || [];
+    _savedLinks = linksRes.results || [];
+
+    const rows = match(_rawHs, _rawQb, _savedLinks);
     _allRows = rows;
     renderResults(rows);
     msg.className = 'msg ok';
@@ -291,11 +296,14 @@ async function runReconcile() {
   }
 }
 
-// ── Matching engine (client-side for now) ─────────────────────────
+// ── Matching engine ───────────────────────────────────────────────
+// Amount is the primary match criterion.
+// Name similarity is only used to rank candidates when amounts are tied.
+// No FUZZY status — if amount matches it's MATCH, otherwise MISSING_QB.
 function normName(s) {
   return (s || '')
     .toLowerCase()
-    .replace(/\b(llc|inc|corp|ltd|co|the|new deal|—|new)\b/g, '')
+    .replace(/\b(llc|inc|corp|ltd|co|the|new deal|new)\b/g, '')
     .replace(/[^a-z0-9 ]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -310,69 +318,92 @@ function levenshtein(a, b) {
   return dp[m][n];
 }
 
-function nameSimilar(a, b) {
+function nameSimilarity(a, b) {
+  // Returns 0=exact, 1=fuzzy, 2=none
   const na = normName(a), nb = normName(b);
-  if (na === nb) return 'exact';
-  if (na.includes(nb) || nb.includes(na)) return 'fuzzy';
-  if (levenshtein(na, nb) <= 4) return 'fuzzy';
-  // shared significant word (≥4 chars)
+  if (na === nb) return 0;
+  if (na.includes(nb) || nb.includes(na)) return 1;
+  if (levenshtein(na, nb) <= 4) return 1;
   const wa = na.split(' ').filter(w => w.length >= 4);
   const wb = new Set(nb.split(' ').filter(w => w.length >= 4));
-  if (wa.some(w => wb.has(w))) return 'fuzzy';
-  return null;
+  if (wa.some(w => wb.has(w))) return 1;
+  return 2;
 }
 
-function match(hsDeals, qbInvoices) {
-  const TOLERANCE = 1.00; // max $ diff for a match
+function match(hsDeals, qbInvoices, savedLinks = []) {
+  const AMT_TOLERANCE = 1.00;
   const rows = [];
   const usedQb = new Set();
 
-  // Normalize QB invoices once
-  const qbNorm = qbInvoices.map(inv => ({
-    _raw:     inv,
+  const qbNorm = qbInvoices.map((inv, idx) => ({
+    idx,
     date:     inv.TxnDate,
     customer: inv.CustomerRef?.name || '',
     amount:   parseFloat(inv.TotalAmt || 0),
     ref:      inv.DocNumber || inv.Id,
+    id:       inv.Id,
   }));
 
-  for (const hs of hsDeals) {
-    const hsTotal = parseFloat(hs.total || hs.amount || 0);
-    const hsName  = hs.customer || hs.name || '';
-    const hsDate  = hs.closedate ? hs.closedate.slice(0, 10) : '';
+  // Build saved link maps
+  const savedLinkMap   = new Map(); // hsDealId → qbInvoiceId
+  const savedLinkQbIds = new Set(); // qbInvoiceIds reserved by manual links
+  for (const lnk of savedLinks) {
+    savedLinkMap.set(lnk.hs_deal_id, lnk.qb_invoice_id);
+    savedLinkQbIds.add(lnk.qb_invoice_id);
+  }
 
-    let matched = null, matchType = null;
-    for (let i = 0; i < qbNorm.length; i++) {
-      if (usedQb.has(i)) continue;
-      const q = qbNorm[i];
-      const amtDiff = Math.abs(q.amount - hsTotal);
-      const sim = nameSimilar(hsName, q.customer);
-      if (!sim) continue;
-      if (amtDiff <= TOLERANCE) {
-        if (sim === 'exact' && amtDiff < 0.01) { matched = { i, q, amtDiff }; matchType = 'MATCH'; break; }
-        if (!matched || amtDiff < matched.amtDiff) { matched = { i, q, amtDiff }; matchType = sim === 'exact' ? 'MATCH' : 'FUZZY'; }
-      }
-    }
+  for (const hs of hsDeals) {
+    const hsTotal = parseFloat(hs.total || 0);
+    const hsName  = hs.customer || hs.name || '';
+    const hsId    = hs.dealId;
 
     const base = {
-      hsDate, hsName,
+      hsDate:   hs.closedate ? hs.closedate.slice(0, 10) : '',
+      hsName,
       subtotal: hs.subtotal || 0,
       freight:  hs.freight  || 0,
       taxRate:  hs.taxRate  || 0,
       taxAmt:   hs.taxAmt   || 0,
       discount: hs.discount || 0,
       hsAmount: hsTotal,
-      hsId:     hs.dealId,
+      hsId,
     };
 
-    if (matched) {
-      usedQb.add(matched.i);
-      const notes = [];
-      if (matched.amtDiff >= 0.01) notes.push(`Δ$${matched.amtDiff.toFixed(2)}`);
-      if (matchType === 'FUZZY') notes.push('Name mismatch');
-      rows.push({ ...base, status: matchType, qbDate: matched.q.date, qbName: matched.q.customer, qbAmount: matched.q.amount, delta: matched.q.amount - hsTotal, notes: notes.join(' · '), qbRef: matched.q.ref });
+    // Apply saved manual link first
+    if (savedLinkMap.has(hsId)) {
+      const qbId = savedLinkMap.get(hsId);
+      const qbIdx = qbNorm.findIndex(q => q.id === qbId && !usedQb.has(q.idx));
+      if (qbIdx >= 0) {
+        const q = qbNorm[qbIdx];
+        usedQb.add(q.idx);
+        const delta = q.amount - hsTotal;
+        rows.push({ ...base, status: 'MATCH', manual: true, qbDate: q.date, qbName: q.customer, qbAmount: q.amount, delta, notes: 'Manual link', qbRef: q.ref, qbId: q.id });
+        continue;
+      }
+    }
+
+    // Primary: find all QB invoices within amount tolerance, excluding manually-reserved ones
+    const candidates = [];
+    for (let i = 0; i < qbNorm.length; i++) {
+      if (usedQb.has(i)) continue;
+      if (savedLinkQbIds.has(qbNorm[i].id)) continue; // reserved for another manual link
+      const q = qbNorm[i];
+      const amtDiff = Math.abs(q.amount - hsTotal);
+      if (amtDiff <= AMT_TOLERANCE) {
+        candidates.push({ i, q, amtDiff, nameSim: nameSimilarity(hsName, q.customer) });
+      }
+    }
+
+    if (candidates.length > 0) {
+      // Rank: name similarity first (0=exact best), then amtDiff
+      candidates.sort((a, b) => (a.nameSim - b.nameSim) || (a.amtDiff - b.amtDiff));
+      const best = candidates[0];
+      usedQb.add(best.i);
+      const delta = best.q.amount - hsTotal;
+      const notes = best.amtDiff >= 0.01 ? `Δ${fmtD(delta)}` : '';
+      rows.push({ ...base, status: 'MATCH', manual: false, qbDate: best.q.date, qbName: best.q.customer, qbAmount: best.q.amount, delta, notes, qbRef: best.q.ref, qbId: best.q.id });
     } else {
-      rows.push({ ...base, status: 'MISSING_QB', qbDate: null, qbName: null, qbAmount: null, delta: null, notes: '', qbRef: null });
+      rows.push({ ...base, status: 'MISSING_QB', manual: false, qbDate: null, qbName: null, qbAmount: null, delta: null, notes: '', qbRef: null, qbId: null });
     }
   }
 
@@ -380,10 +411,9 @@ function match(hsDeals, qbInvoices) {
   for (let i = 0; i < qbNorm.length; i++) {
     if (usedQb.has(i)) continue;
     const q = qbNorm[i];
-    rows.push({ status: 'MISSING_HS', hsDate: null, hsName: null, hsAmount: null, qbDate: q.date, qbName: q.customer, qbAmount: q.amount, delta: null, notes: '', hsId: null, qbRef: q.ref });
+    rows.push({ status: 'MISSING_HS', manual: false, hsDate: null, hsName: null, hsAmount: null, subtotal: 0, freight: 0, taxRate: 0, taxAmt: 0, discount: 0, qbDate: q.date, qbName: q.customer, qbAmount: q.amount, delta: null, notes: '', hsId: null, qbRef: q.ref, qbId: q.id });
   }
 
-  // Sort by date descending
   rows.sort((a, b) => {
     const da = a.hsDate || a.qbDate || '';
     const db2 = b.hsDate || b.qbDate || '';
@@ -393,6 +423,71 @@ function match(hsDeals, qbInvoices) {
   return rows;
 }
 
+// ── Manual link actions ───────────────────────────────────────────
+function getMissingQbOptions(currentHsId) {
+  // Collect unmatched QB invoices (MISSING_HS rows)
+  return _allRows
+    .filter(r => r.status === 'MISSING_HS' && r.qbId)
+    .map(r => `<option value="${r.qbId}">${escHtml(r.qbName || '—')} — ${fmt(r.qbAmount)} (${r.qbDate || '?'})</option>`)
+    .join('');
+}
+
+function toggleLinkPicker(hsId) {
+  const el = document.getElementById(`picker-${hsId}`);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+  if (el.style.display !== 'none') {
+    // Refresh options (other rows may have changed)
+    const sel = el.querySelector('select');
+    if (sel) sel.innerHTML = '<option value="">— pick QB invoice —</option>' + getMissingQbOptions(hsId);
+  }
+}
+
+async function saveLink(hsId) {
+  const sel = document.querySelector(`#picker-${hsId} select`);
+  if (!sel || !sel.value) { alert('Please select a QB invoice to link.'); return; }
+  const qbId = sel.value;
+  const btn = document.querySelector(`#picker-${hsId} .save-link-btn`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const r = await fetch('/api/reconcile/link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hsDealId: hsId, qbInvoiceId: qbId }),
+    }).then(r => r.json());
+    if (r.error) throw new Error(r.error);
+    // Update saved links and re-match
+    _savedLinks = _savedLinks.filter(l => l.hs_deal_id !== hsId);
+    _savedLinks.push({ hs_deal_id: hsId, qb_invoice_id: qbId });
+    _allRows = match(_rawHs, _rawQb, _savedLinks);
+    applyFilter();
+  } catch(e) {
+    alert('Failed to save link: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Link'; }
+  }
+}
+
+async function removeLink(hsId) {
+  if (!confirm('Remove this manual link? The system will re-match automatically.')) return;
+  try {
+    const r = await fetch('/api/reconcile/link', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hsDealId: hsId }),
+    }).then(r => r.json());
+    if (r.error) throw new Error(r.error);
+    _savedLinks = _savedLinks.filter(l => l.hs_deal_id !== hsId);
+    _allRows = match(_rawHs, _rawQb, _savedLinks);
+    applyFilter();
+  } catch(e) {
+    alert('Failed to remove link: ' + e.message);
+  }
+}
+
+function escHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 function applyFilter() {
   const f = document.getElementById('filterStatus').value;
   renderResults(f ? _allRows.filter(r => r.status === f) : _allRows);
@@ -400,27 +495,25 @@ function applyFilter() {
 
 function renderResults(rows) {
   const BADGE = {
-    MATCH:      '<span class="badge badge-match">MATCH</span>',
-    FUZZY:      '<span class="badge badge-fuzzy">FUZZY</span>',
-    MISSING_QB: '<span class="badge badge-missing">MISSING QB</span>',
-    MISSING_HS: '<span class="badge badge-extra">MISSING HS</span>',
+    MATCH:      (r) => r.manual
+      ? '<span class="badge badge-manual">MANUAL</span>'
+      : '<span class="badge badge-match">MATCH</span>',
+    MISSING_QB: () => '<span class="badge badge-missing">MISSING QB</span>',
+    MISSING_HS: () => '<span class="badge badge-extra">MISSING HS</span>',
   };
 
-  // Summary
-  const matched    = rows.filter(r => r.status === 'MATCH').length;
-  const fuzzy      = rows.filter(r => r.status === 'FUZZY').length;
-  const missingQb  = rows.filter(r => r.status === 'MISSING_QB').length;
-  const missingHs  = rows.filter(r => r.status === 'MISSING_HS').length;
-  const hsTotal    = rows.reduce((s, r) => s + (r.hsAmount || 0), 0);
-  const qbTotal    = rows.reduce((s, r) => s + (r.qbAmount || 0), 0);
-  const delta      = qbTotal - hsTotal;
+  const matched   = _allRows.filter(r => r.status === 'MATCH').length;
+  const missingQb = _allRows.filter(r => r.status === 'MISSING_QB').length;
+  const missingHs = _allRows.filter(r => r.status === 'MISSING_HS').length;
+  const hsTotal   = _allRows.reduce((s, r) => s + (r.hsAmount || 0), 0);
+  const qbTotal   = _allRows.reduce((s, r) => s + (r.qbAmount || 0), 0);
+  const delta     = qbTotal - hsTotal;
 
-  document.getElementById('sumHsTotal').textContent  = fmt(hsTotal);
-  document.getElementById('sumQbTotal').textContent  = fmt(qbTotal);
-  document.getElementById('sumDelta').textContent    = fmtD(delta);
-  document.getElementById('sumDelta').style.color    = Math.abs(delta) < 1 ? 'var(--green)' : 'var(--yellow)';
-  document.getElementById('sumMatched').textContent  = matched;
-  document.getElementById('sumFuzzy').textContent    = fuzzy;
+  document.getElementById('sumHsTotal').textContent   = fmt(hsTotal);
+  document.getElementById('sumQbTotal').textContent   = fmt(qbTotal);
+  document.getElementById('sumDelta').textContent     = fmtD(delta);
+  document.getElementById('sumDelta').style.color     = Math.abs(delta) < 1 ? 'var(--green)' : 'var(--yellow)';
+  document.getElementById('sumMatched').textContent   = matched;
   document.getElementById('sumMissingQb').textContent = missingQb;
   document.getElementById('sumMissingHs').textContent = missingHs;
   document.getElementById('summaryWrap').style.display = '';
@@ -431,28 +524,49 @@ function renderResults(rows) {
   }
   document.getElementById('resultsCard').style.display = '';
 
+  // Build a set of MISSING_HS qbIds for the picker
+  const hasUnmatchedQb = _allRows.some(r => r.status === 'MISSING_HS' && r.qbId);
+
   document.getElementById('resultsBody').innerHTML = rows.map(r => {
     const dCls = r.delta != null && Math.abs(r.delta) >= 0.01 ? 'delta-warn' : 'delta-ok';
-    const fmtN = n => n ? fmt(n) : '<span style="color:var(--muted)">—</span>';
+
+    let linkCell = '';
+    if (r.status === 'MISSING_QB' && r.hsId) {
+      const pickerId = `picker-${r.hsId}`;
+      if (hasUnmatchedQb) {
+        linkCell = `
+          <button class="btn btn-ghost btn-sm" onclick="toggleLinkPicker('${r.hsId}')">🔗 Link</button>
+          <div class="link-picker" id="${pickerId}" style="display:none">
+            <select><option value="">— pick QB invoice —</option>${getMissingQbOptions(r.hsId)}</select>
+            <button class="btn btn-orange btn-sm save-link-btn" onclick="saveLink('${r.hsId}')">Save</button>
+          </div>`;
+      } else {
+        linkCell = '<span style="color:var(--muted);font-size:11px">No unmatched QB rows</span>';
+      }
+    } else if (r.status === 'MATCH' && r.manual && r.hsId) {
+      linkCell = `<button class="btn btn-red btn-sm" onclick="removeLink('${r.hsId}')">Unlink</button>`;
+    } else if (r.notes) {
+      linkCell = `<span style="color:var(--muted);font-size:11px">${escHtml(r.notes)}</span>`;
+    }
+
     return `<tr>
-      <td>${BADGE[r.status] || r.status}</td>
+      <td>${(BADGE[r.status] || (() => r.status))(r)}</td>
       <td style="color:var(--muted);white-space:nowrap">${r.hsDate || r.qbDate || '—'}</td>
-      <td>${r.hsName || '—'}</td>
+      <td>${escHtml(r.hsName) || '—'}</td>
       <td style="text-align:right;color:var(--muted)">${r.subtotal  ? fmt(r.subtotal)  : '—'}</td>
       <td style="text-align:right;color:var(--muted)">${r.freight   ? fmt(r.freight)   : '—'}</td>
       <td style="text-align:right;color:var(--muted)">${r.taxRate   ? r.taxRate + '%'  : '—'}</td>
       <td style="text-align:right;color:var(--muted)">${r.taxAmt    ? fmt(r.taxAmt)    : '—'}</td>
       <td style="text-align:right;color:var(--muted)">${r.discount  ? fmt(r.discount)  : '—'}</td>
       <td style="text-align:right;font-weight:700">${r.hsAmount != null ? fmt(r.hsAmount) : '—'}</td>
-      <td>${r.qbName || '—'}</td>
+      <td>${escHtml(r.qbName) || '—'}</td>
       <td style="text-align:right;font-weight:700">${r.qbAmount != null ? fmt(r.qbAmount) : '—'}</td>
       <td style="text-align:right;font-weight:700" class="${dCls}">${r.delta != null ? fmtD(r.delta) : '—'}</td>
-      <td style="color:var(--muted);font-size:11px;white-space:nowrap">${r.notes || ''}</td>
+      <td style="white-space:nowrap">${linkCell}</td>
     </tr>`;
   }).join('');
 }
 
-// Check if QB=connected query param and show confirmation
 if (new URLSearchParams(location.search).get('qb') === 'connected') {
   document.getElementById('runMsg') && (document.getElementById('runMsg').className = 'msg ok');
   document.getElementById('runMsg') && (document.getElementById('runMsg').textContent = 'QuickBooks connected successfully!');

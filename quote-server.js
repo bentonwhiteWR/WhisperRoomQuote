@@ -106,7 +106,18 @@ const {
 
 const PORT         = process.env.PORT || 3457;
 const PASSWORD     = process.env.WR_PASSWORD || '';
-const APP_VERSION  = (() => { try { return require('./package.json').version; } catch(e) { return '1.0.0'; } })();
+const APP_VERSION  = (() => {
+  let base = '1.0.0';
+  try { base = require('./package.json').version; } catch(e) {}
+  // Append the current git short SHA so each deploy has a unique build id.
+  try {
+    const sha = require('child_process')
+      .execSync('git rev-parse --short HEAD', { stdio: ['ignore','pipe','ignore'], cwd: __dirname })
+      .toString().trim();
+    if (sha) return `${base}+${sha}`;
+  } catch(e) {}
+  return base;
+})();
 
 const logger = require('./lib/logger');
 const { writelog } = logger;
@@ -871,13 +882,15 @@ const server = http.createServer(async (req, res) => {
     try {
       const { from, to } = parsed.query;
       if (!from || !to) { json({ error: 'from and to params required' }, 400); return; }
-      const [invoices, credits] = await Promise.all([
+      const [invoices, credits, refunds] = await Promise.all([
         qb.fetchInvoices(from, to),
-        qb.fetchCreditMemos(from, to),
+        qb.fetchCreditMemos(from, to).catch(e => { console.warn('[reconcile] fetchCreditMemos failed:', e.message); return []; }),
+        qb.fetchRefundReceipts(from, to).catch(e => { console.warn('[reconcile] fetchRefundReceipts failed:', e.message); return []; }),
       ]);
-      // Tag credit memos so the frontend can distinguish them.
+      // Tag non-invoices so the frontend can distinguish them.
       for (const c of credits) c._type = 'credit_memo';
-      const results = [...invoices, ...credits];
+      for (const r of refunds) r._type = 'refund_receipt';
+      const results = [...invoices, ...credits, ...refunds];
       json({ results, total: results.length });
     } catch(e) { json({ error: e.message }, 500); }
     return;

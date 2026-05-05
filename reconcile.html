@@ -77,6 +77,7 @@ tr:hover td { background:var(--surface2); }
 .badge-missing { background:rgba(239,68,68,.15); color:var(--red); }
 .badge-extra { background:rgba(139,144,160,.15); color:var(--text2); }
 .badge-credit { background:rgba(245,158,11,.15); color:var(--amber); }
+.badge-refund { background:rgba(239,68,68,.12); color:var(--red); }
 .delta-warn { color:var(--amber); }
 .delta-ok { color:var(--text2); }
 
@@ -142,6 +143,7 @@ tr:hover td { background:var(--surface2); }
     <a href="/reconcile" class="nav-link active">Reconcile</a>
   </nav>
   <div class="topbar-right">
+    <span id="appVersion" style="font-size:9px;font-weight:700;color:rgba(255,255,255,.25);letter-spacing:.06em;padding:2px 6px;border:1px solid rgba(255,255,255,.08);border-radius:4px;font-family:monospace;flex-shrink:0"></span>
     <span id="qbStatusBadge" class="qb-pill">Checking QB…</span>
     <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">☀️</button>
   </div>
@@ -172,6 +174,7 @@ tr:hover td { background:var(--surface2); }
         <input type="date" id="toDate" onchange="document.getElementById('monthPick').value=''">
       </div>
       <button class="btn btn-orange" id="runBtn" onclick="runReconcile()" disabled>Run Reconcile</button>
+      <button class="btn btn-ghost" id="refreshBtn" onclick="runReconcile(true)" disabled title="Re-fetch QB invoices and HS deals for the current period">↻ Refresh</button>
     </div>
     <div class="msg" id="runMsg"></div>
   </div>
@@ -289,6 +292,7 @@ async function loadQbStatus() {
     badge.className = 'qb-pill ok';
     acts.innerHTML = `<button class="btn btn-red" onclick="disconnectQb()" style="margin-top:10px">Disconnect</button>`;
     document.getElementById('runBtn').disabled = false;
+    document.getElementById('refreshBtn').disabled = false;
 
     if (r.refreshExpiresAt) {
       const daysLeft = Math.floor((r.refreshExpiresAt - Date.now()) / 86400000);
@@ -359,17 +363,20 @@ function initDates() {
 }
 
 // ── Run reconcile ─────────────────────────────────────────────────
-async function runReconcile() {
+async function runReconcile(isRefresh) {
   const from = document.getElementById('fromDate').value;
   const to   = document.getElementById('toDate').value;
   if (!from || !to) return;
 
-  const btn = document.getElementById('runBtn');
-  const msg = document.getElementById('runMsg');
-  btn.disabled = true;
-  btn.textContent = 'Loading…';
+  const runBtn     = document.getElementById('runBtn');
+  const refreshBtn = document.getElementById('refreshBtn');
+  const msg        = document.getElementById('runMsg');
+  const activeBtn  = isRefresh ? refreshBtn : runBtn;
+  const activeOrig = isRefresh ? '↻ Refresh' : 'Run Reconcile';
+  runBtn.disabled = true; refreshBtn.disabled = true;
+  activeBtn.textContent = isRefresh ? 'Refreshing…' : 'Loading…';
   msg.className = 'msg';
-  msg.textContent = 'Fetching QB invoices and HubSpot deals…';
+  msg.textContent = isRefresh ? 'Refreshing QB invoices and HubSpot deals…' : 'Fetching QB invoices and HubSpot deals…';
 
   try {
     const [qbRes, hsRes, linksRes, blocksRes] = await Promise.all([
@@ -387,15 +394,16 @@ async function runReconcile() {
     _savedBlocks = blocksRes.results || [];
 
     _allRows = match(_rawHs, _rawQb, _savedLinks, _savedBlocks);
-    renderResults(_allRows);
+    applyFilter();
     msg.className = 'msg ok';
-    msg.textContent = `Fetched ${qbRes.total} QB invoices + ${hsRes.total} HS deals. ${_allRows.length} rows.`;
+    const stamp = new Date().toLocaleTimeString();
+    msg.textContent = `${isRefresh ? 'Refreshed' : 'Fetched'} ${qbRes.total} QB · ${hsRes.total} HS · ${_allRows.length} rows · ${stamp}`;
   } catch(e) {
     msg.className = 'msg err';
     msg.textContent = e.message;
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Run Reconcile';
+    runBtn.disabled = false; refreshBtn.disabled = false;
+    activeBtn.textContent = activeOrig;
   }
 }
 
@@ -407,6 +415,37 @@ function getLineItemName(ln) {
   return ln.SalesItemLineDetail?.ItemRef?.name
       || ln.GroupLineDetail?.GroupItemRef?.name
       || '';
+}
+
+// Match line-item names that explicitly represent tax (used as a fallback
+// when TxnTaxDetail.TotalTax is empty — common for invoices that bake the
+// tax into a regular line item).
+const TAX_RX = /^(sales\s*)?tax\b|^(state|local|county|city|gst|hst|pst|vat)\s*tax\b|^tax\s*(amount|total|charge|line)?\b/i;
+
+function extractQbTax(inv) {
+  const detail = inv.TxnTaxDetail || {};
+  // 1. Prefer TotalTax when present and positive
+  let total = parseFloat(detail.TotalTax || 0) || 0;
+  if (total > 0) return total;
+  // 2. Sum TaxLine[].Amount (for invoices that have tax lines but no aggregate)
+  if (Array.isArray(detail.TaxLine)) {
+    for (const tl of detail.TaxLine) {
+      total += parseFloat(tl.Amount || 0) || 0;
+    }
+    if (total > 0) return total;
+  }
+  // 3. Fallback: scan line items for an explicit tax line
+  if (Array.isArray(inv.Line)) {
+    for (const ln of inv.Line) {
+      if (ln.DetailType === 'SubTotalLineDetail') continue;
+      const itemName = getLineItemName(ln);
+      const desc     = ln.Description || '';
+      if (TAX_RX.test(itemName) || TAX_RX.test(desc)) {
+        total += parseFloat(ln.Amount || 0) || 0;
+      }
+    }
+  }
+  return total;
 }
 
 function extractQbFreight(inv) {
@@ -477,19 +516,22 @@ function match(hsDeals, qbInvoices, savedLinks = [], savedBlocks = []) {
 
   const qbNorm = qbInvoices.map((inv, idx) => {
     const isCredit = inv._type === 'credit_memo';
-    const taxAmt   = parseFloat(inv.TxnTaxDetail?.TotalTax || 0) || 0;
+    const isRefund = inv._type === 'refund_receipt';
+    const isNeg    = isCredit || isRefund;
+    const taxAmt   = extractQbTax(inv);
     const freight  = extractQbFreight(inv);
     const rawAmt   = parseFloat(inv.TotalAmt || 0);
     return {
       idx,
       date:     inv.TxnDate,
       customer: inv.CustomerRef?.name || '',
-      amount:   isCredit ? -rawAmt : rawAmt,
-      taxAmt:   Math.round((isCredit ? -taxAmt : taxAmt) * 100) / 100,
-      freight:  Math.round(freight * 100) / 100,
+      amount:   isNeg ? -rawAmt : rawAmt,
+      taxAmt:   Math.round((isNeg ? -taxAmt : taxAmt) * 100) / 100,
+      freight:  Math.round((isNeg ? -freight : freight) * 100) / 100,
       ref:      inv.DocNumber || inv.Id,
       id:       inv.Id,
       isCredit,
+      isRefund,
     };
   });
 
@@ -586,7 +628,7 @@ function match(hsDeals, qbInvoices, savedLinks = [], savedBlocks = []) {
   for (let i = 0; i < qbNorm.length; i++) {
     if (usedQb.has(i)) continue;
     const q = qbNorm[i];
-    rows.push({ status:'MISSING_HS', manual:false, isCredit:q.isCredit, hsDate:null, hsName:null, hsAmount:null, subtotal:0, freight:0, taxRate:0, taxAmt:0, qbDate:q.date, qbName:q.customer, qbAmount:q.amount, qbFreight:q.freight, qbTaxAmt:q.taxAmt, delta:null, notes:'', hsId:null, qbRef:q.ref, qbId:q.id, qbIds:[q.id] });
+    rows.push({ status:'MISSING_HS', manual:false, isCredit:q.isCredit, isRefund:q.isRefund, hsDate:null, hsName:null, hsAmount:null, subtotal:0, freight:0, taxRate:0, taxAmt:0, qbDate:q.date, qbName:q.customer, qbAmount:q.amount, qbFreight:q.freight, qbTaxAmt:q.taxAmt, delta:null, notes:'', hsId:null, qbRef:q.ref, qbId:q.id, qbIds:[q.id] });
   }
 
   rows.sort((a, b) => {
@@ -603,9 +645,8 @@ function getMissingQbOptions() {
   return _allRows
     .filter(r => r.status === 'MISSING_HS' && r.qbId)
     .map(r => {
-      const label = r.isCredit
-        ? `[CREDIT] ${escHtml(r.qbName || '—')} — ${fmt(r.qbAmount)} (${r.qbDate || '?'})`
-        : `${escHtml(r.qbName || '—')} — ${fmt(r.qbAmount)} (${r.qbDate || '?'})`;
+      const tag = r.isRefund ? '[REFUND] ' : r.isCredit ? '[CREDIT] ' : '';
+      const label = `${tag}${escHtml(r.qbName || '—')} — ${fmt(r.qbAmount)} (${r.qbDate || '?'})`;
       return `<option value="${r.qbId}">${label}</option>`;
     })
     .join('');
@@ -746,14 +787,26 @@ function renderQbInvoiceBlock(qbId, parentHsId) {
   const rawInv = _rawQb.find(inv => inv.Id === qbId);
   if (!rawInv) return '';
   const lines    = extractQbLines(rawInv);
-  const total    = parseFloat(rawInv.TotalAmt || 0);
-  const tax      = parseFloat(rawInv.TxnTaxDetail?.TotalTax || 0);
-  const freight  = (() => { try { return extractQbFreight(rawInv); } catch(e) { return 0; } })();
-  const subtotal = Math.max(0, total - tax - freight);
+  const isCredit = rawInv._type === 'credit_memo';
+  const isRefund = rawInv._type === 'refund_receipt';
+  const isNeg    = isCredit || isRefund;
+  const totalRaw = parseFloat(rawInv.TotalAmt || 0);
+  const taxRaw   = extractQbTax(rawInv);
+  const freightRaw = (() => { try { return extractQbFreight(rawInv); } catch(e) { return 0; } })();
+  const total    = isNeg ? -totalRaw   : totalRaw;
+  const tax      = isNeg ? -taxRaw     : taxRaw;
+  const freight  = isNeg ? -freightRaw : freightRaw;
+  const subtotal = total - tax - freight;
+  const taxDeclared = parseFloat(rawInv.TxnTaxDetail?.TotalTax || 0) || 0;
+  const taxFromLines = (taxRaw > 0 && taxDeclared === 0);
   const ref      = rawInv.DocNumber || rawInv.Id;
   const customer = rawInv.CustomerRef?.name || '';
   const date     = rawInv.TxnDate || '';
-  const qbLink   = _realmId ? `https://app.qbo.intuit.com/app/invoice?txnId=${qbId}` : null;
+  const qbPath   = isCredit ? 'creditmemo' : isRefund ? 'refundreceipt' : 'invoice';
+  const qbLink   = _realmId ? `https://app.qbo.intuit.com/app/${qbPath}?txnId=${qbId}` : null;
+  const typeLabel = isRefund ? '<span class="badge badge-refund" style="margin-left:6px">REFUND</span>'
+                  : isCredit ? '<span class="badge badge-credit" style="margin-left:6px">CREDIT</span>'
+                  : '';
   const removeBtn = parentHsId
     ? `<button class="btn btn-red btn-sm" onclick="removeLink('${parentHsId}','${qbId}')" style="margin-left:auto">Remove from link</button>`
     : '';
@@ -770,7 +823,7 @@ function renderQbInvoiceBlock(qbId, parentHsId) {
   return `
     <div style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-        <div style="font-weight:700;font-size:13px">${escHtml(customer || '—')}</div>
+        <div style="font-weight:700;font-size:13px">${escHtml(customer || '—')}</div>${typeLabel}
         ${ref ? `<div style="color:var(--text2);font-size:11px">#${escHtml(String(ref))}</div>` : ''}
         ${qbLink ? `<a href="${qbLink}" target="_blank" rel="noopener" style="color:var(--orange);font-size:11px;text-decoration:none">Open ↗</a>` : ''}
         ${removeBtn}
@@ -779,7 +832,7 @@ function renderQbInvoiceBlock(qbId, parentHsId) {
         ${detailRow('Date', date || '—')}
         ${detailRow('Subtotal', fmt(subtotal))}
         ${freight ? detailRow('Freight', fmt(freight)) : detailRow('Freight', '<span style="color:var(--text2)">— (not detected)</span>')}
-        ${tax ? detailRow('Tax $', fmt(tax)) : ''}
+        ${tax ? detailRow('Tax $', `${fmt(tax)}${taxFromLines ? ' <span style="font-size:10px;color:var(--amber)">(from line items)</span>' : ''}`) : detailRow('Tax $', '<span style="color:var(--text2)">— (not detected)</span>')}
         ${detailRow('Total', `<span style="color:var(--orange)">${fmt(total)}</span>`)}
       </div>
       ${linesHtml}
@@ -821,9 +874,11 @@ function renderResults(rows) {
   const BADGE = {
     MATCH:      r => r.manual ? '<span class="badge badge-manual">MANUAL</span>' : '<span class="badge badge-match">MATCH</span>',
     MISSING_QB: () => '<span class="badge badge-missing">MISSING QB</span>',
-    MISSING_HS: r => r.isCredit
-      ? '<span class="badge badge-credit">CREDIT</span>'
-      : '<span class="badge badge-extra">MISSING HS</span>',
+    MISSING_HS: r => r.isRefund
+      ? '<span class="badge badge-refund">REFUND</span>'
+      : r.isCredit
+        ? '<span class="badge badge-credit">CREDIT</span>'
+        : '<span class="badge badge-extra">MISSING HS</span>',
   };
 
   const matched   = _allRows.filter(r => r.status === 'MATCH').length;
@@ -929,6 +984,10 @@ if (new URLSearchParams(location.search).get('qb') === 'connected') {
 initDates();
 loadQbStatus();
 loadPortalId();
+fetch('/api/version').then(r => r.json()).then(d => {
+  const el = document.getElementById('appVersion');
+  if (el && d.version) el.textContent = 'v' + d.version;
+}).catch(() => {});
 </script>
 
 </body>

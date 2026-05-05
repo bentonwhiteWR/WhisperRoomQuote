@@ -136,6 +136,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
     <a href="/reconcile" class="nav-link">Reconcile</a>
   </div>
   <div class="topbar-right">
+    <span id="appVersion" style="font-size:9px;font-weight:700;color:rgba(255,255,255,.25);letter-spacing:.06em;padding:2px 6px;border:1px solid rgba(255,255,255,.08);border-radius:4px;font-family:monospace;flex-shrink:0"></span>
     <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀️</button>
     <a href="/auth/logout" style="padding:5px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.4);text-decoration:none">Sign Out</a>
   </div>
@@ -362,6 +363,7 @@ function cpTrack(btn,t){navigator.clipboard.writeText(t).then(()=>{btn.textConte
 function toggleTheme(){const l=document.documentElement.classList.toggle('light');document.getElementById('themeBtn').textContent=l?'🌙':'☀️';localStorage.setItem('wr-theme',l?'light':'dark')}
 if(localStorage.getItem('wr-theme')==='light'){document.documentElement.classList.add('light');document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('themeBtn');if(b)b.textContent='🌙'})}
 loadBoard();
+fetch('/api/version').then(r=>r.json()).then(d=>{const el=document.getElementById('appVersion');if(el&&d.version)el.textContent='v'+d.version}).catch(()=>{});
 </script>
 </body>
 </html>

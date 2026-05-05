@@ -151,13 +151,14 @@
             <th>Status</th>
             <th>Date</th>
             <th>HS Customer</th>
-            <th style="text-align:right">Subtotal</th>
-            <th style="text-align:right">Freight</th>
-            <th style="text-align:right">Tax %</th>
-            <th style="text-align:right">Tax $</th>
-            <th style="text-align:right">Discount</th>
+            <th style="text-align:right">HS Subtotal</th>
+            <th style="text-align:right">HS Freight</th>
+            <th style="text-align:right">HS Tax %</th>
+            <th style="text-align:right">HS Tax $</th>
             <th style="text-align:right">HS Total</th>
             <th>QB Customer</th>
+            <th style="text-align:right">QB Freight</th>
+            <th style="text-align:right">QB Tax</th>
             <th style="text-align:right">QB Total</th>
             <th style="text-align:right">Delta</th>
             <th>Notes / Link</th>
@@ -370,14 +371,30 @@ function match(hsDeals, qbInvoices, savedLinks = []) {
   const rows = [];
   const usedQb = new Set();
 
-  const qbNorm = qbInvoices.map((inv, idx) => ({
-    idx,
-    date:     inv.TxnDate,
-    customer: inv.CustomerRef?.name || '',
-    amount:   parseFloat(inv.TotalAmt || 0),
-    ref:      inv.DocNumber || inv.Id,
-    id:       inv.Id,
-  }));
+  const qbNorm = qbInvoices.map((inv, idx) => {
+    const taxAmt = parseFloat(inv.TxnTaxDetail?.TotalTax || 0) || 0;
+    // Freight in QB is a regular line item — sum any line whose item name
+    // matches freight/shipping/delivery/install patterns.
+    let freight = 0;
+    if (Array.isArray(inv.Line)) {
+      for (const ln of inv.Line) {
+        const itemName = ln.SalesItemLineDetail?.ItemRef?.name || '';
+        if (/freight|shipping|delivery|install/i.test(itemName)) {
+          freight += parseFloat(ln.Amount || 0) || 0;
+        }
+      }
+    }
+    return {
+      idx,
+      date:     inv.TxnDate,
+      customer: inv.CustomerRef?.name || '',
+      amount:   parseFloat(inv.TotalAmt || 0),
+      taxAmt:   Math.round(taxAmt * 100) / 100,
+      freight:  Math.round(freight * 100) / 100,
+      ref:      inv.DocNumber || inv.Id,
+      id:       inv.Id,
+    };
+  });
 
   // Build saved link maps
   const savedLinkMap   = new Map(); // hsDealId → qbInvoiceId
@@ -399,7 +416,6 @@ function match(hsDeals, qbInvoices, savedLinks = []) {
       freight:  hs.freight  || 0,
       taxRate:  hs.taxRate  || 0,
       taxAmt:   hs.taxAmt   || 0,
-      discount: hs.discount || 0,
       hsAmount: hsTotal,
       hsId,
     };
@@ -412,7 +428,7 @@ function match(hsDeals, qbInvoices, savedLinks = []) {
         const q = qbNorm[qbIdx];
         usedQb.add(q.idx);
         const delta = q.amount - hsTotal;
-        rows.push({ ...base, status: 'MATCH', manual: true, qbDate: q.date, qbName: q.customer, qbAmount: q.amount, delta, notes: 'Manual link', qbRef: q.ref, qbId: q.id });
+        rows.push({ ...base, status: 'MATCH', manual: true, qbDate: q.date, qbName: q.customer, qbAmount: q.amount, qbFreight: q.freight, qbTaxAmt: q.taxAmt, delta, notes: 'Manual link', qbRef: q.ref, qbId: q.id });
         continue;
       }
     }
@@ -441,9 +457,9 @@ function match(hsDeals, qbInvoices, savedLinks = []) {
       usedQb.add(best.i);
       const delta = best.q.amount - hsTotal;
       const notes = best.amtDiff >= 0.01 ? `Δ${fmtD(delta)}` : '';
-      rows.push({ ...base, status: 'MATCH', manual: false, qbDate: best.q.date, qbName: best.q.customer, qbAmount: best.q.amount, delta, notes, qbRef: best.q.ref, qbId: best.q.id });
+      rows.push({ ...base, status: 'MATCH', manual: false, qbDate: best.q.date, qbName: best.q.customer, qbAmount: best.q.amount, qbFreight: best.q.freight, qbTaxAmt: best.q.taxAmt, delta, notes, qbRef: best.q.ref, qbId: best.q.id });
     } else {
-      rows.push({ ...base, status: 'MISSING_QB', manual: false, qbDate: null, qbName: null, qbAmount: null, delta: null, notes: '', qbRef: null, qbId: null });
+      rows.push({ ...base, status: 'MISSING_QB', manual: false, qbDate: null, qbName: null, qbAmount: null, qbFreight: null, qbTaxAmt: null, delta: null, notes: '', qbRef: null, qbId: null });
     }
   }
 
@@ -451,7 +467,7 @@ function match(hsDeals, qbInvoices, savedLinks = []) {
   for (let i = 0; i < qbNorm.length; i++) {
     if (usedQb.has(i)) continue;
     const q = qbNorm[i];
-    rows.push({ status: 'MISSING_HS', manual: false, hsDate: null, hsName: null, hsAmount: null, subtotal: 0, freight: 0, taxRate: 0, taxAmt: 0, discount: 0, qbDate: q.date, qbName: q.customer, qbAmount: q.amount, delta: null, notes: '', hsId: null, qbRef: q.ref, qbId: q.id });
+    rows.push({ status: 'MISSING_HS', manual: false, hsDate: null, hsName: null, hsAmount: null, subtotal: 0, freight: 0, taxRate: 0, taxAmt: 0, qbDate: q.date, qbName: q.customer, qbAmount: q.amount, qbFreight: q.freight, qbTaxAmt: q.taxAmt, delta: null, notes: '', hsId: null, qbRef: q.ref, qbId: q.id });
   }
 
   rows.sort((a, b) => {
@@ -561,7 +577,6 @@ function showHsPopup(hsId) {
       ${row.freight   ? detailRow('Freight',  fmt(row.freight))   : ''}
       ${row.taxRate   ? detailRow('Tax Rate', row.taxRate + '%')  : ''}
       ${row.taxAmt    ? detailRow('Tax $',    fmt(row.taxAmt))    : ''}
-      ${row.discount  ? detailRow('Discount', fmt(row.discount))  : ''}
       ${detailRow('Total', `<span style="color:var(--orange)">${fmt(row.hsAmount)}</span>`)}
     </div>
     <div class="modal-actions">
@@ -577,13 +592,20 @@ function showQbPopup(qbId) {
     ? `https://app.qbo.intuit.com/app/invoice?txnId=${qbId}`
     : null;
 
+  const qbSubtotal = (row.qbAmount != null)
+    ? Math.max(0, row.qbAmount - (row.qbFreight || 0) - (row.qbTaxAmt || 0))
+    : null;
+
   document.getElementById('infoModalBody').innerHTML = `
     <div class="modal-label">QuickBooks Invoice</div>
     <div class="modal-name">${escHtml(row.qbName) || '—'}</div>
     <div class="modal-grid">
       ${row.qbRef ? detailRow('Invoice #', escHtml(row.qbRef)) : ''}
       ${detailRow('Date', row.qbDate || '—')}
-      ${detailRow('Amount', `<span style="color:var(--orange)">${fmt(row.qbAmount)}</span>`)}
+      ${qbSubtotal != null ? detailRow('Subtotal', fmt(qbSubtotal)) : ''}
+      ${row.qbFreight ? detailRow('Freight', fmt(row.qbFreight)) : ''}
+      ${row.qbTaxAmt  ? detailRow('Tax $',   fmt(row.qbTaxAmt))  : ''}
+      ${detailRow('Total', `<span style="color:var(--orange)">${fmt(row.qbAmount)}</span>`)}
     </div>
     <div class="modal-actions">
       ${qbLink ? `<a href="${qbLink}" target="_blank" rel="noopener" class="btn btn-orange" style="flex:1;justify-content:center">Open in QuickBooks ↗</a>` : '<span style="font-size:11px;color:var(--muted)">QB not connected</span>'}
@@ -667,9 +689,10 @@ function renderResults(rows) {
       <td style="text-align:right;color:var(--muted)">${r.freight   ? fmt(r.freight)   : '—'}</td>
       <td style="text-align:right;color:var(--muted)">${r.taxRate   ? r.taxRate + '%'  : '—'}</td>
       <td style="text-align:right;color:var(--muted)">${r.taxAmt    ? fmt(r.taxAmt)    : '—'}</td>
-      <td style="text-align:right;color:var(--muted)">${r.discount  ? fmt(r.discount)  : '—'}</td>
       <td style="text-align:right;font-weight:700">${r.hsAmount != null ? fmt(r.hsAmount) : '—'}</td>
       <td>${qbNameCell}</td>
+      <td style="text-align:right;color:var(--muted)">${r.qbFreight ? fmt(r.qbFreight) : '—'}</td>
+      <td style="text-align:right;color:var(--muted)">${r.qbTaxAmt  ? fmt(r.qbTaxAmt)  : '—'}</td>
       <td style="text-align:right;font-weight:700">${r.qbAmount != null ? fmt(r.qbAmount) : '—'}</td>
       <td style="text-align:right;font-weight:700" class="${dCls}">${r.delta != null ? fmtD(r.delta) : '—'}</td>
       <td style="white-space:nowrap">${linkCell}</td>

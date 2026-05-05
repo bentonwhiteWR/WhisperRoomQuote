@@ -900,7 +900,7 @@ const server = http.createServer(async (req, res) => {
               { propertyName: 'closedate', operator: 'LTE', value: toTs },
             ]
           }],
-          properties: ['dealname', 'amount', 'closedate', 'hubspot_owner_id', 'dealstage', 'tax_rate', 'discount'],
+          properties: ['dealname', 'amount', 'closedate', 'hubspot_owner_id', 'dealstage', 'tax_rate', 'freight_cost'],
           sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
         };
         const r = await httpsRequest({
@@ -933,15 +933,29 @@ const server = http.createServer(async (req, res) => {
 
       const deals = allDeals.map(d => {
         const snap     = snapshotMap[d.id] || {};
-        const freight  = parseFloat(snap.freight?.amount ?? snap.freight ?? 0) || 0;
-        const taxAmt   = parseFloat(snap.tax?.amount ?? snap.taxAmount ?? 0) || 0;
+        // Freight: prefer the HubSpot deal property (always populated for deals
+        // created via this app), fall back to snapshot for legacy deals.
+        const freight  = parseFloat(d.properties?.freight_cost || snap.freight?.amount || snap.freight || 0) || 0;
         const taxRate  = parseFloat(d.properties?.tax_rate || snap.tax?.rate || 0) || 0;
-        const discount = parseFloat(d.properties?.discount || snap.discount || 0) || 0;
         const total    = parseFloat(d.properties?.amount || 0);
-        const subtotal = snap.lineItems
-          ? snap.lineItems.filter(i => parseFloat(i.price) > 0)
-              .reduce((s, i) => s + (parseFloat(i.price) || 0) * (parseFloat(i.qty || i.quantity || 1)), 0)
-          : (total - freight - taxAmt + discount);
+
+        // Subtotal + tax breakdown:
+        // 1. Snapshot has line items + tax → use exact values
+        // 2. No snapshot but we have a tax rate → reverse-engineer from total
+        // 3. Otherwise: subtotal = total - freight, tax = 0
+        let subtotal, taxAmt;
+        if (snap.lineItems && snap.lineItems.length) {
+          subtotal = snap.lineItems
+            .filter(i => parseFloat(i.price) > 0)
+            .reduce((s, i) => s + (parseFloat(i.price) || 0) * (parseFloat(i.qty || i.quantity || 1)), 0);
+          taxAmt   = parseFloat(snap.tax?.amount ?? snap.taxAmount ?? Math.max(0, total - subtotal - freight)) || 0;
+        } else if (taxRate > 0) {
+          subtotal = (total - freight) / (1 + taxRate / 100);
+          taxAmt   = total - freight - subtotal;
+        } else {
+          subtotal = Math.max(0, total - freight);
+          taxAmt   = 0;
+        }
 
         return {
           dealId:    d.id,
@@ -956,10 +970,9 @@ const server = http.createServer(async (req, res) => {
             return isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 10);
           })(),
           subtotal:  Math.round(subtotal * 100) / 100,
-          freight,
+          freight:   Math.round(freight * 100) / 100,
           taxRate,
           taxAmt:    Math.round(taxAmt * 100) / 100,
-          discount,
           total,
         };
       });

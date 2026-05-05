@@ -900,7 +900,7 @@ const server = http.createServer(async (req, res) => {
               { propertyName: 'closedate', operator: 'LTE', value: toTs },
             ]
           }],
-          properties: ['dealname', 'amount', 'closedate', 'hubspot_owner_id', 'dealstage', 'tax_rate', 'freight_cost'],
+          properties: ['dealname', 'amount', 'closedate', 'hubspot_owner_id', 'dealstage', 'tax_rate', 'freight_cost', 'shipping_state'],
           sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
         };
         const r = await httpsRequest({
@@ -939,9 +939,15 @@ const server = http.createServer(async (req, res) => {
         const taxRate  = parseFloat(d.properties?.tax_rate || snap.tax?.rate || 0) || 0;
         const total    = parseFloat(d.properties?.amount || 0);
 
+        // State taxes freight? Look up nexus map.
+        const rawState = d.properties?.shipping_state || snap.ship?.state || snap.shipState || '';
+        const stateAbbr = toStateAbbr(rawState);
+        const freightTaxable = !!(NEXUS_STATES[stateAbbr]?.taxFreight);
+
         // Subtotal + tax breakdown:
         // 1. Snapshot has line items + tax → use exact values
-        // 2. No snapshot but we have a tax rate → reverse-engineer from total
+        // 2. No snapshot but we have a tax rate → reverse-engineer from total,
+        //    accounting for whether freight is part of the taxable base
         // 3. Otherwise: subtotal = total - freight, tax = 0
         let subtotal, taxAmt;
         if (snap.lineItems && snap.lineItems.length) {
@@ -950,8 +956,13 @@ const server = http.createServer(async (req, res) => {
             .reduce((s, i) => s + (parseFloat(i.price) || 0) * (parseFloat(i.qty || i.quantity || 1)), 0);
           taxAmt   = parseFloat(snap.tax?.amount ?? snap.taxAmount ?? Math.max(0, total - subtotal - freight)) || 0;
         } else if (taxRate > 0) {
-          subtotal = (total - freight) / (1 + taxRate / 100);
-          taxAmt   = total - freight - subtotal;
+          // total = subtotal + freight + tax
+          // tax = (subtotal + freight*[taxable])*rate/100
+          // → subtotal = (total - freight*(1 + (taxable?rate/100:0))) / (1 + rate/100)
+          const r = taxRate / 100;
+          const freightTaxedAmt = freightTaxable ? freight * r : 0;
+          subtotal = (total - freight - freightTaxedAmt) / (1 + r);
+          taxAmt   = subtotal * r + freightTaxedAmt;
         } else {
           subtotal = Math.max(0, total - freight);
           taxAmt   = 0;
@@ -973,6 +984,8 @@ const server = http.createServer(async (req, res) => {
           freight:   Math.round(freight * 100) / 100,
           taxRate,
           taxAmt:    Math.round(taxAmt * 100) / 100,
+          state:     stateAbbr || null,
+          freightTaxable,
           total,
         };
       });
@@ -993,7 +1006,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // POST /api/reconcile/link — save a manual HS↔QB link
+  // POST /api/reconcile/link — save a manual HS↔QB link.
+  // Multiple QB invoices may be linked to the same HS deal (combined matching).
   if (pathname === '/api/reconcile/link' && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
@@ -1002,7 +1016,7 @@ const server = http.createServer(async (req, res) => {
       if (!db) { json({ error: 'No DB' }, 500); return; }
       await db.query(
         `INSERT INTO reconcile_links (hs_deal_id, qb_invoice_id) VALUES ($1, $2)
-         ON CONFLICT (hs_deal_id) DO UPDATE SET qb_invoice_id = EXCLUDED.qb_invoice_id, created_at = NOW()`,
+         ON CONFLICT (hs_deal_id, qb_invoice_id) DO NOTHING`,
         [hsDealId, qbInvoiceId]
       );
       json({ ok: true });
@@ -1010,14 +1024,20 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // DELETE /api/reconcile/link — remove a manual link
+  // DELETE /api/reconcile/link — remove a manual link.
+  // If qbInvoiceId provided, removes only that pairing; otherwise removes all
+  // pairings for the HS deal.
   if (pathname === '/api/reconcile/link' && req.method === 'DELETE') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
-      const { hsDealId } = JSON.parse(await readBody(req));
+      const { hsDealId, qbInvoiceId } = JSON.parse(await readBody(req));
       if (!hsDealId) { json({ error: 'hsDealId required' }, 400); return; }
       if (!db) { json({ error: 'No DB' }, 500); return; }
-      await db.query('DELETE FROM reconcile_links WHERE hs_deal_id = $1', [hsDealId]);
+      if (qbInvoiceId) {
+        await db.query('DELETE FROM reconcile_links WHERE hs_deal_id = $1 AND qb_invoice_id = $2', [hsDealId, qbInvoiceId]);
+      } else {
+        await db.query('DELETE FROM reconcile_links WHERE hs_deal_id = $1', [hsDealId]);
+      }
       json({ ok: true });
     } catch(e) { json({ error: e.message }, 500); }
     return;

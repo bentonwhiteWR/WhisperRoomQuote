@@ -82,7 +82,7 @@ tr:hover td { background:var(--surface2); }
 /* Summary */
 .summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-bottom:20px; }
 .summary-box { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px; }
-.summary-box .val { font-size:20px; font-weight:800; color:var(--orange); margin-top:4px; font-family:'Syne',sans-serif; }
+.summary-box .val { font-size:22px; font-weight:700; color:var(--orange); margin-top:6px; font-family:'DM Sans',sans-serif; font-variant-numeric:tabular-nums; letter-spacing:-0.01em; }
 .summary-box .lbl { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--text2); }
 
 /* Status dot */
@@ -396,13 +396,22 @@ async function runReconcile() {
 }
 
 // ── QB invoice helpers ────────────────────────────────────────────
-const FREIGHT_RX = /freight|shipping|delivery|deliver|install|truck|crating|carrier|frt|transport/i;
+// Match any line whose item name OR description hints at freight/shipping/install.
+const FREIGHT_RX = /freight|shipping|ship\b|delivery|deliver|install|setup|set-up|truck|crating|crate|carrier|frt|transport|logistic|handling|haul|fuel surcharge/i;
+
+function getLineItemName(ln) {
+  return ln.SalesItemLineDetail?.ItemRef?.name
+      || ln.GroupLineDetail?.GroupItemRef?.name
+      || '';
+}
 
 function extractQbFreight(inv) {
   if (!Array.isArray(inv.Line)) return 0;
   let freight = 0;
   for (const ln of inv.Line) {
-    const itemName = ln.SalesItemLineDetail?.ItemRef?.name || '';
+    // Skip subtotal/discount lines — they're never freight.
+    if (ln.DetailType === 'SubTotalLineDetail' || ln.DetailType === 'DiscountLineDetail') continue;
+    const itemName = getLineItemName(ln);
     const desc     = ln.Description || '';
     if (FREIGHT_RX.test(`${itemName} ${desc}`)) {
       freight += parseFloat(ln.Amount || 0) || 0;
@@ -414,12 +423,16 @@ function extractQbFreight(inv) {
 function extractQbLines(inv) {
   if (!Array.isArray(inv.Line)) return [];
   return inv.Line
-    .filter(ln => ln.DetailType === 'SalesItemLineDetail' && ln.Amount != null)
-    .map(ln => ({
-      name:   ln.SalesItemLineDetail?.ItemRef?.name || ln.Description || '(unnamed)',
-      desc:   ln.Description || '',
-      amount: parseFloat(ln.Amount) || 0,
-    }));
+    .filter(ln => ln.Amount != null && ln.DetailType !== 'SubTotalLineDetail')
+    .map(ln => {
+      const name = getLineItemName(ln) || ln.Description || '(unnamed)';
+      return {
+        name,
+        desc:   ln.Description || '',
+        amount: parseFloat(ln.Amount) || 0,
+        type:   ln.DetailType || '',
+      };
+    });
 }
 
 // ── Matching engine ───────────────────────────────────────────────
@@ -473,10 +486,14 @@ function match(hsDeals, qbInvoices, savedLinks = [], savedBlocks = []) {
     };
   });
 
-  // Saved links + blocks
-  const savedLinkMap   = new Map();
+  // Saved links + blocks. One HS deal may be linked to multiple QB invoices.
+  const savedLinkMap   = new Map(); // hs_deal_id → [qb_invoice_id, …]
   const savedLinkQbIds = new Set();
-  for (const l of savedLinks) { savedLinkMap.set(l.hs_deal_id, l.qb_invoice_id); savedLinkQbIds.add(l.qb_invoice_id); }
+  for (const l of savedLinks) {
+    if (!savedLinkMap.has(l.hs_deal_id)) savedLinkMap.set(l.hs_deal_id, []);
+    savedLinkMap.get(l.hs_deal_id).push(l.qb_invoice_id);
+    savedLinkQbIds.add(l.qb_invoice_id);
+  }
   const blockSet = new Set(savedBlocks.map(b => `${b.hs_deal_id}::${b.qb_invoice_id}`));
 
   for (const hs of hsDeals) {
@@ -490,18 +507,42 @@ function match(hsDeals, qbInvoices, savedLinks = [], savedBlocks = []) {
       freight:  hs.freight  || 0,
       taxRate:  hs.taxRate  || 0,
       taxAmt:   hs.taxAmt   || 0,
+      state:    hs.state    || null,
+      freightTaxable: !!hs.freightTaxable,
       hsAmount: hsTotal,
       hsId,
     };
 
-    // Manual link first
+    // Manual link first — may map to one or many QB invoices.
     if (savedLinkMap.has(hsId)) {
-      const qbId = savedLinkMap.get(hsId);
-      const qIdx = qbNorm.findIndex(q => q.id === qbId && !usedQb.has(q.idx));
-      if (qIdx >= 0) {
-        const q = qbNorm[qIdx];
-        usedQb.add(q.idx);
-        rows.push({ ...base, status:'MATCH', manual:true, qbDate:q.date, qbName:q.customer, qbAmount:q.amount, qbFreight:q.freight, qbTaxAmt:q.taxAmt, delta:q.amount - hsTotal, notes:'Manual link', qbRef:q.ref, qbId:q.id });
+      const linkedIds = savedLinkMap.get(hsId);
+      const matchedQbs = [];
+      for (const lid of linkedIds) {
+        const idx = qbNorm.findIndex(q => q.id === lid && !usedQb.has(q.idx));
+        if (idx >= 0) { matchedQbs.push(qbNorm[idx]); usedQb.add(qbNorm[idx].idx); }
+      }
+      if (matchedQbs.length) {
+        const sumAmount  = matchedQbs.reduce((s, q) => s + (q.amount || 0),  0);
+        const sumFreight = matchedQbs.reduce((s, q) => s + (q.freight || 0), 0);
+        const sumTax     = matchedQbs.reduce((s, q) => s + (q.taxAmt || 0),  0);
+        const uniqueNames = [...new Set(matchedQbs.map(q => q.customer).filter(Boolean))];
+        const refs       = matchedQbs.map(q => q.ref).join(', ');
+        const latestDate = matchedQbs.map(q => q.date).filter(Boolean).sort().slice(-1)[0] || matchedQbs[0].date;
+        rows.push({
+          ...base,
+          status:    'MATCH',
+          manual:    true,
+          qbDate:    latestDate,
+          qbName:    uniqueNames.join(' / ') || matchedQbs[0].customer,
+          qbAmount:  sumAmount,
+          qbFreight: sumFreight,
+          qbTaxAmt:  sumTax,
+          delta:     sumAmount - hsTotal,
+          notes:     matchedQbs.length > 1 ? `Manual link (×${matchedQbs.length})` : 'Manual link',
+          qbRef:     refs,
+          qbId:      matchedQbs[0].id,
+          qbIds:     matchedQbs.map(q => q.id),
+        });
         continue;
       }
     }
@@ -529,16 +570,16 @@ function match(hsDeals, qbInvoices, savedLinks = [], savedBlocks = []) {
       usedQb.add(best.i);
       const delta = best.q.amount - hsTotal;
       const notes = best.amtDiff >= 0.01 ? `Δ${fmtD(delta)}` : '';
-      rows.push({ ...base, status:'MATCH', manual:false, qbDate:best.q.date, qbName:best.q.customer, qbAmount:best.q.amount, qbFreight:best.q.freight, qbTaxAmt:best.q.taxAmt, delta, notes, qbRef:best.q.ref, qbId:best.q.id });
+      rows.push({ ...base, status:'MATCH', manual:false, qbDate:best.q.date, qbName:best.q.customer, qbAmount:best.q.amount, qbFreight:best.q.freight, qbTaxAmt:best.q.taxAmt, delta, notes, qbRef:best.q.ref, qbId:best.q.id, qbIds:[best.q.id] });
     } else {
-      rows.push({ ...base, status:'MISSING_QB', manual:false, qbDate:null, qbName:null, qbAmount:null, qbFreight:null, qbTaxAmt:null, delta:null, notes:'', qbRef:null, qbId:null });
+      rows.push({ ...base, status:'MISSING_QB', manual:false, qbDate:null, qbName:null, qbAmount:null, qbFreight:null, qbTaxAmt:null, delta:null, notes:'', qbRef:null, qbId:null, qbIds:[] });
     }
   }
 
   for (let i = 0; i < qbNorm.length; i++) {
     if (usedQb.has(i)) continue;
     const q = qbNorm[i];
-    rows.push({ status:'MISSING_HS', manual:false, hsDate:null, hsName:null, hsAmount:null, subtotal:0, freight:0, taxRate:0, taxAmt:0, qbDate:q.date, qbName:q.customer, qbAmount:q.amount, qbFreight:q.freight, qbTaxAmt:q.taxAmt, delta:null, notes:'', hsId:null, qbRef:q.ref, qbId:q.id });
+    rows.push({ status:'MISSING_HS', manual:false, hsDate:null, hsName:null, hsAmount:null, subtotal:0, freight:0, taxRate:0, taxAmt:0, qbDate:q.date, qbName:q.customer, qbAmount:q.amount, qbFreight:q.freight, qbTaxAmt:q.taxAmt, delta:null, notes:'', hsId:null, qbRef:q.ref, qbId:q.id, qbIds:[q.id] });
   }
 
   rows.sort((a, b) => {
@@ -574,8 +615,10 @@ async function saveLink(hsId) {
   try {
     const r = await fetch('/api/reconcile/link', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ hsDealId:hsId, qbInvoiceId:qbId }) }).then(r => r.json());
     if (r.error) throw new Error(r.error);
-    _savedLinks = _savedLinks.filter(l => l.hs_deal_id !== hsId);
-    _savedLinks.push({ hs_deal_id: hsId, qb_invoice_id: qbId });
+    // Append (don't replace) — supports linking multiple QB invoices to one HS.
+    if (!_savedLinks.some(l => l.hs_deal_id === hsId && l.qb_invoice_id === qbId)) {
+      _savedLinks.push({ hs_deal_id: hsId, qb_invoice_id: qbId });
+    }
     _allRows = match(_rawHs, _rawQb, _savedLinks, _savedBlocks);
     applyFilter();
   } catch(e) {
@@ -583,12 +626,22 @@ async function saveLink(hsId) {
     if (btn) { btn.disabled = false; btn.textContent = 'Link'; }
   }
 }
-async function removeLink(hsId) {
-  if (!confirm('Remove this manual link?')) return;
+async function removeLink(hsId, qbId) {
+  const linksForHs = _savedLinks.filter(l => l.hs_deal_id === hsId);
+  const hasMany    = linksForHs.length > 1;
+  let confirmMsg;
+  if (qbId)        confirmMsg = 'Remove this QB invoice from the manual link?';
+  else if (hasMany) confirmMsg = `Remove ALL ${linksForHs.length} QB invoices linked to this HS deal?`;
+  else             confirmMsg = 'Remove this manual link?';
+  if (!confirm(confirmMsg)) return;
   try {
-    const r = await fetch('/api/reconcile/link', { method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ hsDealId:hsId }) }).then(r => r.json());
+    const body = qbId ? { hsDealId:hsId, qbInvoiceId:qbId } : { hsDealId:hsId };
+    const r = await fetch('/api/reconcile/link', { method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) }).then(r => r.json());
     if (r.error) throw new Error(r.error);
-    _savedLinks = _savedLinks.filter(l => l.hs_deal_id !== hsId);
+    _savedLinks = qbId
+      ? _savedLinks.filter(l => !(l.hs_deal_id === hsId && l.qb_invoice_id === qbId))
+      : _savedLinks.filter(l => l.hs_deal_id !== hsId);
+    closeModal();
     _allRows = match(_rawHs, _rawQb, _savedLinks, _savedBlocks);
     applyFilter();
   } catch(e) { alert('Failed to remove link: ' + e.message); }
@@ -628,6 +681,7 @@ function showHsPopup(hsId) {
     <div class="modal-grid">
       ${detailRow('Deal ID', escHtml(hsId))}
       ${detailRow('Date', row.hsDate || '—')}
+      ${row.state    ? detailRow('Ship State', `${escHtml(row.state)}${row.freight ? ` <span style="font-size:10px;color:var(--text2)">(freight ${row.freightTaxable ? 'taxed' : 'not taxed'})</span>` : ''}`) : ''}
       ${row.subtotal ? detailRow('Subtotal', fmt(row.subtotal)) : ''}
       ${row.freight  ? detailRow('Freight',  fmt(row.freight))  : ''}
       ${row.taxRate  ? detailRow('Tax Rate', row.taxRate + '%') : ''}
@@ -640,35 +694,67 @@ function showHsPopup(hsId) {
   document.getElementById('infoModal').style.display = 'flex';
 }
 
-function showQbPopup(qbId) {
-  const row = _allRows.find(r => r.qbId === qbId);
-  if (!row) return;
+function renderQbInvoiceBlock(qbId, parentHsId) {
   const rawInv = _rawQb.find(inv => inv.Id === qbId);
-  const lines  = rawInv ? extractQbLines(rawInv) : [];
-  const qbLink = _realmId ? `https://app.qbo.intuit.com/app/invoice?txnId=${qbId}` : null;
-  const qbSubtotal = (row.qbAmount != null) ? Math.max(0, row.qbAmount - (row.qbFreight || 0) - (row.qbTaxAmt || 0)) : null;
+  if (!rawInv) return '';
+  const lines    = extractQbLines(rawInv);
+  const total    = parseFloat(rawInv.TotalAmt || 0);
+  const tax      = parseFloat(rawInv.TxnTaxDetail?.TotalTax || 0);
+  const freight  = (() => { try { return extractQbFreight(rawInv); } catch(e) { return 0; } })();
+  const subtotal = Math.max(0, total - tax - freight);
+  const ref      = rawInv.DocNumber || rawInv.Id;
+  const customer = rawInv.CustomerRef?.name || '';
+  const date     = rawInv.TxnDate || '';
+  const qbLink   = _realmId ? `https://app.qbo.intuit.com/app/invoice?txnId=${qbId}` : null;
+  const removeBtn = parentHsId
+    ? `<button class="btn btn-red btn-sm" onclick="removeLink('${parentHsId}','${qbId}')" style="margin-left:auto">Remove from link</button>`
+    : '';
 
   const linesHtml = lines.length ? `
     <div class="modal-lines">
       <div class="modal-lines-title">Line items (${lines.length})</div>
-      ${lines.map(l => `<div class="modal-line"><span class="nm">${escHtml(l.name)}</span><span class="am">${fmt(l.amount)}</span></div>`).join('')}
+      ${lines.map(l => {
+        const showDesc = l.desc && l.desc !== l.name;
+        return `<div class="modal-line"><span class="nm">${escHtml(l.name)}${showDesc ? `<br><span style="font-size:10px;color:var(--muted)">${escHtml(l.desc).slice(0,80)}</span>` : ''}</span><span class="am">${fmt(l.amount)}</span></div>`;
+      }).join('')}
     </div>` : '';
 
+  return `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <div style="font-weight:700;font-size:13px">${escHtml(customer || '—')}</div>
+        ${ref ? `<div style="color:var(--text2);font-size:11px">#${escHtml(String(ref))}</div>` : ''}
+        ${qbLink ? `<a href="${qbLink}" target="_blank" rel="noopener" style="color:var(--orange);font-size:11px;text-decoration:none">Open ↗</a>` : ''}
+        ${removeBtn}
+      </div>
+      <div class="modal-grid" style="margin-bottom:0">
+        ${detailRow('Date', date || '—')}
+        ${detailRow('Subtotal', fmt(subtotal))}
+        ${freight ? detailRow('Freight', fmt(freight)) : detailRow('Freight', '<span style="color:var(--text2)">— (not detected)</span>')}
+        ${tax ? detailRow('Tax $', fmt(tax)) : ''}
+        ${detailRow('Total', `<span style="color:var(--orange)">${fmt(total)}</span>`)}
+      </div>
+      ${linesHtml}
+    </div>`;
+}
+
+function showQbPopup(qbId) {
+  const row = _allRows.find(r => r.qbId === qbId || (r.qbIds || []).includes(qbId));
+  if (!row) return;
+  const ids = (row.qbIds && row.qbIds.length) ? row.qbIds : [qbId];
+  const isMulti  = ids.length > 1;
+  const parentHs = (row.manual && row.hsId) ? row.hsId : null;
+
+  const header = isMulti
+    ? `<div class="modal-label">QuickBooks Invoices (${ids.length})</div>
+       <div class="modal-name">${escHtml(row.qbName) || '—'}</div>
+       <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Combined total: <strong style="color:var(--orange)">${fmt(row.qbAmount)}</strong> · Combined freight ${fmt(row.qbFreight)} · Combined tax ${fmt(row.qbTaxAmt)}</div>`
+    : `<div class="modal-label">QuickBooks Invoice</div>
+       <div class="modal-name">${escHtml(row.qbName) || '—'}</div>`;
+
   document.getElementById('infoModalBody').innerHTML = `
-    <div class="modal-label">QuickBooks Invoice</div>
-    <div class="modal-name">${escHtml(row.qbName) || '—'}</div>
-    <div class="modal-grid">
-      ${row.qbRef ? detailRow('Invoice #', escHtml(row.qbRef)) : ''}
-      ${detailRow('Date', row.qbDate || '—')}
-      ${qbSubtotal != null ? detailRow('Subtotal', fmt(qbSubtotal)) : ''}
-      ${row.qbFreight ? detailRow('Freight', fmt(row.qbFreight)) : detailRow('Freight', '<span style="color:var(--text2)">— (not detected)</span>')}
-      ${row.qbTaxAmt  ? detailRow('Tax $',   fmt(row.qbTaxAmt))  : ''}
-      ${detailRow('Total', `<span style="color:var(--orange)">${fmt(row.qbAmount)}</span>`)}
-    </div>
-    <div class="modal-actions">
-      ${qbLink ? `<a href="${qbLink}" target="_blank" rel="noopener" class="btn btn-orange" style="flex:1;justify-content:center">Open in QuickBooks ↗</a>` : '<span style="font-size:11px;color:var(--text2)">QB not connected</span>'}
-    </div>
-    ${linesHtml}`;
+    ${header}
+    ${ids.map(id => renderQbInvoiceBlock(id, parentHs)).join('')}`;
   document.getElementById('infoModal').style.display = 'flex';
 }
 
@@ -722,7 +808,18 @@ function renderResults(rows) {
         actionCell = '<span style="color:var(--text2);font-size:11px">No unmatched QB rows</span>';
       }
     } else if (r.status === 'MATCH' && r.manual && r.hsId) {
-      actionCell = `<button class="btn btn-red btn-sm" onclick="removeLink('${r.hsId}')">Unlink</button>`;
+      const pickerId = `picker-${r.hsId}`;
+      const addBtn = hasUnmatchedQb
+        ? `<button class="btn btn-ghost btn-sm" onclick="toggleLinkPicker('${r.hsId}')" title="Add another QB invoice to this deal">+ Add QB</button>`
+        : '';
+      actionCell = `
+        ${addBtn}
+        <button class="btn btn-red btn-sm" onclick="removeLink('${r.hsId}')">Unlink</button>
+        ${hasUnmatchedQb ? `<div class="link-picker" id="${pickerId}" style="display:none">
+          <select><option value="">— pick QB invoice —</option>${getMissingQbOptions()}</select>
+          <button class="btn btn-orange btn-sm save-link-btn" onclick="saveLink('${r.hsId}')">Save</button>
+        </div>` : ''}`;
+      if (r.notes) actionCell = `<span style="color:var(--text2);font-size:11px;margin-right:8px">${escHtml(r.notes)}</span>` + actionCell;
     } else if (r.status === 'MATCH' && !r.manual && r.hsId && r.qbId) {
       actionCell = `<button class="btn btn-red btn-sm" onclick="blockMatch('${r.hsId}','${r.qbId}')">Unlink</button>`;
       if (r.notes) actionCell = `<span style="color:var(--text2);font-size:11px;margin-right:8px">${escHtml(r.notes)}</span>` + actionCell;

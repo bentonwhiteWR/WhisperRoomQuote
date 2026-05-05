@@ -4260,6 +4260,16 @@ function renderHistory() {
     return matchSearch && matchRep;
   });
 
+  // Sort newest first. Prefer savedAt timestamp (most accurate); fall back to
+  // parsing the human-readable date string; otherwise compare quote numbers
+  // (which have date encoded in them: W-{rep}{MM}{DD}{YY}{seq}).
+  filtered.sort((a, b) => {
+    const ta = a.savedAt ? new Date(a.savedAt).getTime() : (a.date ? new Date(a.date).getTime() : 0);
+    const tb = b.savedAt ? new Date(b.savedAt).getTime() : (b.date ? new Date(b.date).getTime() : 0);
+    if (tb !== ta) return tb - ta;
+    return (b.quoteNumber || '').localeCompare(a.quoteNumber || '');
+  });
+
   if (countEl) countEl.textContent = filtered.length + ' quote' + (filtered.length !== 1 ? 's' : '');
 
   if (filtered.length === 0) {
@@ -4281,7 +4291,7 @@ function renderHistory() {
             <span>${date}</span>
             <span style="color:var(--accent)">${repName}</span>
           </div>
-          ${q.quoteNumber ? '<div style="font-size:10px;color:var(--dim);margin-top:2px;font-family:var(--mono)">' + q.quoteNumber + '</div>' : ''}
+          ${q.quoteNumber ? '<div style="display:inline-block;font-size:11px;color:var(--accent);background:var(--accent-dim);padding:2px 7px;border-radius:4px;margin-top:5px;font-family:var(--mono);font-weight:600;letter-spacing:.03em">' + q.quoteNumber + '</div>' : ''}
           <div class="history-item-total">${fmt(q.total || 0)}</div>
         </div>
         <div style="display:flex;gap:5px;flex-shrink:0">
@@ -4609,7 +4619,21 @@ function toggleHistory() {
   const overlay = document.getElementById('historyOverlay');
   const isOpen = panel.classList.toggle('open');
   overlay.classList.toggle('open', isOpen);
-  if (isOpen) { 
+  if (isOpen) {
+    // Default the rep filter to the currently-selected rep on the form. The
+    // rep can clear it back to "All Reps" if they want; we just don't make
+    // them filter manually each time. Only set it if nothing is set yet —
+    // preserve any explicit choice the rep made earlier in the session.
+    const repSel  = document.getElementById('repSelect');
+    const histSel = document.getElementById('historyRepFilter');
+    if (repSel && histSel && !histSel.dataset.userTouched && repSel.value) {
+      histSel.value = repSel.value;
+    }
+    // Mark when the rep manually changes the filter so we don't overwrite next open
+    if (histSel && !histSel.dataset.bound) {
+      histSel.dataset.bound = '1';
+      histSel.addEventListener('change', () => { histSel.dataset.userTouched = '1'; });
+    }
 // ── Auto-redirect to login on 401 (session expired) ──────────────
 const _origFetch = window.fetch;
 window.fetch = async function(...args) {

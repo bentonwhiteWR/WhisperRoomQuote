@@ -4339,6 +4339,102 @@ ${q.accepted ? `
     return;
   }
 
+  // ── Admin: Backfill total_tax_amount into HubSpot deals ──────────
+  // GET ?dry=true  → preview: shows counts + sample, no writes
+  // POST           → runs backfill in background (150 ms between PATCHes)
+  // GET (no dry)   → check status via /api/admin/backfill-tax-status
+  if (pathname === '/api/admin/backfill-tax-amount' && (req.method === 'GET' || req.method === 'POST')) {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const dry = req.method === 'GET' && parsed.query.dry === 'true';
+    if (!dry && req.method === 'GET') {
+      json(global._taxBackfillStatus || { done: false, message: 'Not started. POST to begin.' });
+      return;
+    }
+
+    async function runTaxBackfill() {
+      // 1. All deals in our DB that have a stored tax.tax > 0
+      const dbRes = await db.query(`
+        SELECT DISTINCT ON (deal_id)
+          deal_id,
+          (json_snapshot->'tax'->>'tax')::numeric AS tax_amount
+        FROM quotes
+        WHERE deal_id IS NOT NULL
+          AND json_snapshot->'tax'->>'tax' IS NOT NULL
+          AND (json_snapshot->'tax'->>'tax')::numeric > 0
+        ORDER BY deal_id, created_at DESC
+      `);
+      const candidates = dbRes.rows;
+
+      // 2. Batch-read current total_tax_amount from HubSpot (100 at a time)
+      const hsMap = {};
+      const dealIds = candidates.map(r => r.deal_id);
+      for (let i = 0; i < dealIds.length; i += 100) {
+        const batch = dealIds.slice(i, i + 100);
+        const res = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/deals/batch/read',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, { inputs: batch.map(id => ({ id })), properties: ['total_tax_amount'] });
+        for (const deal of (res.body?.results || [])) {
+          hsMap[deal.id] = deal.properties?.total_tax_amount || null;
+        }
+      }
+
+      // 3. Only update deals where HS field is absent or zero
+      const toUpdate = candidates.filter(r => {
+        const v = hsMap[r.deal_id];
+        return !v || v === '0' || v === '0.00';
+      });
+      const alreadySet = candidates.length - toUpdate.length;
+
+      if (dry) {
+        return {
+          dry: true,
+          totalInDb: candidates.length,
+          toUpdate: toUpdate.length,
+          alreadySet,
+          sample: toUpdate.slice(0, 20).map(r => ({
+            dealId: r.deal_id,
+            taxAmount: parseFloat(r.tax_amount).toFixed(2)
+          }))
+        };
+      }
+
+      // 4. PATCH each deal — one at a time with 150 ms gap (safe rate limit)
+      let updated = 0, failed = 0;
+      const errors = [];
+      for (const row of toUpdate) {
+        try {
+          await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/deals/${row.deal_id}`,
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, { properties: { total_tax_amount: String(parseFloat(row.tax_amount).toFixed(2)) } });
+          updated++;
+        } catch(e) {
+          failed++;
+          errors.push({ dealId: row.deal_id, error: e.message });
+        }
+        global._taxBackfillStatus = { done: false, updated, total: toUpdate.length, failed };
+        await new Promise(r => setTimeout(r, 150));
+      }
+      return { done: true, totalInDb: candidates.length, toUpdate: toUpdate.length, alreadySet, updated, failed, errors };
+    }
+
+    if (dry) {
+      try { json(await runTaxBackfill()); }
+      catch(e) { json({ error: e.message }, 500); }
+    } else {
+      json({ success: true, message: 'Backfill started. Poll /api/admin/backfill-tax-amount for progress.' });
+      runTaxBackfill()
+        .then(result => { global._taxBackfillStatus = result; console.log('[backfill-tax] done:', result); })
+        .catch(e  => { global._taxBackfillStatus = { done: true, error: e.message }; console.error('[backfill-tax] error:', e.message); });
+    }
+    return;
+  }
+
 
   // ── API: Search Closed Won deals (for Add Shipment modal) ────────
   if (pathname === '/api/deals/closed-won' && req.method === 'GET') {

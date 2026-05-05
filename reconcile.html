@@ -194,6 +194,16 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
       </div>
       <button class="btn btn-orange" id="runBtn" onclick="runReconcile()" disabled>Run Reconcile</button>
       <button class="btn btn-ghost" id="refreshBtn" onclick="runReconcile(true)" disabled title="Re-fetch QB invoices and HS deals for the current period">↻ Refresh</button>
+      <select id="filterStatus" onchange="applyFilter()" style="margin-left:auto;min-width:220px">
+        <option value="">All</option>
+        <option value="NEEDS_REVIEW">Needs Review (unmatched / delta / tax off)</option>
+        <option value="MATCH">Matched</option>
+        <option value="UNMATCHED">Unmatched (strict)</option>
+        <option value="MISSING_QB">Missing in QB</option>
+        <option value="MISSING_HS">Missing in HS</option>
+        <option value="CREDITS">Credits</option>
+        <option value="REFUNDS">Refunds</option>
+      </select>
     </div>
     <div class="msg" id="runMsg"></div>
   </div>
@@ -214,18 +224,8 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
 
   <!-- Results table -->
   <div class="card" id="resultsCard" style="display:none">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-      <span class="card-title" style="margin:0">Results</span>
-      <select id="filterStatus" onchange="applyFilter()" style="margin-left:auto">
-        <option value="">All</option>
-        <option value="NEEDS_REVIEW">Needs Review (unmatched / delta / tax off)</option>
-        <option value="MATCH">Matched</option>
-        <option value="UNMATCHED">Unmatched (strict)</option>
-        <option value="MISSING_QB">Missing in QB</option>
-        <option value="MISSING_HS">Missing in HS</option>
-        <option value="CREDITS">Credits</option>
-        <option value="REFUNDS">Refunds</option>
-      </select>
+    <div style="margin-bottom:14px">
+      <span class="card-title">Results</span>
     </div>
     <div class="tbl-wrap">
       <table id="resultsTable">
@@ -236,7 +236,6 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
             <th class="sortable col-hs first" data-sort="hsName">HS Customer<span class="sort-indicator">▾</span></th>
             <th class="sortable col-hs" data-sort="subtotal" style="text-align:right">HS Subtotal<span class="sort-indicator">▾</span></th>
             <th class="sortable col-hs" data-sort="freight" style="text-align:right">HS Freight<span class="sort-indicator">▾</span></th>
-            <th class="sortable col-hs" data-sort="taxRate" style="text-align:right">HS Tax %<span class="sort-indicator">▾</span></th>
             <th class="sortable col-hs" data-sort="taxAmt" style="text-align:right">HS Tax $<span class="sort-indicator">▾</span></th>
             <th class="sortable col-hs" data-sort="hsAmount" style="text-align:right">HS Total<span class="sort-indicator">▾</span></th>
             <th class="sortable col-qb first" data-sort="qbName">QB Customer<span class="sort-indicator">▾</span></th>
@@ -1102,7 +1101,6 @@ function renderResults(rows) {
       <td class="col-hs first">${hsNameCell}</td>
       <td class="col-hs" style="text-align:right;color:var(--text2)">${r.subtotal  ? fmt(r.subtotal)  : '—'}</td>
       <td class="col-hs" style="text-align:right;color:var(--text2)">${r.freight   ? fmt(r.freight)   : '—'}</td>
-      <td class="col-hs" style="text-align:right;color:var(--text2)">${r.taxRate   ? r.taxRate + '%'  : '—'}</td>
       <td class="col-hs" style="text-align:right;${taxWarnStyle}">${hsTax ? fmt(hsTax) : '—'}${taxMismatch ? ' ⚠' : ''}</td>
       <td class="col-hs" style="text-align:right;font-weight:700">${r.hsAmount != null ? fmt(r.hsAmount) : '—'}</td>
       <td class="col-qb first">${qbNameCell}</td>

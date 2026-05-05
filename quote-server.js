@@ -871,8 +871,14 @@ const server = http.createServer(async (req, res) => {
     try {
       const { from, to } = parsed.query;
       if (!from || !to) { json({ error: 'from and to params required' }, 400); return; }
-      const invoices = await qb.fetchInvoices(from, to);
-      json({ results: invoices, total: invoices.length });
+      const [invoices, credits] = await Promise.all([
+        qb.fetchInvoices(from, to),
+        qb.fetchCreditMemos(from, to),
+      ]);
+      // Tag credit memos so the frontend can distinguish them.
+      for (const c of credits) c._type = 'credit_memo';
+      const results = [...invoices, ...credits];
+      json({ results, total: results.length });
     } catch(e) { json({ error: e.message }, 500); }
     return;
   }

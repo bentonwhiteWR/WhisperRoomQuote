@@ -76,6 +76,7 @@ tr:hover td { background:var(--surface2); }
 .badge-manual { background:rgba(238,98,22,.15); color:var(--orange); }
 .badge-missing { background:rgba(239,68,68,.15); color:var(--red); }
 .badge-extra { background:rgba(139,144,160,.15); color:var(--text2); }
+.badge-credit { background:rgba(245,158,11,.15); color:var(--amber); }
 .delta-warn { color:var(--amber); }
 .delta-ok { color:var(--text2); }
 
@@ -475,17 +476,20 @@ function match(hsDeals, qbInvoices, savedLinks = [], savedBlocks = []) {
   const usedQb = new Set();
 
   const qbNorm = qbInvoices.map((inv, idx) => {
-    const taxAmt  = parseFloat(inv.TxnTaxDetail?.TotalTax || 0) || 0;
-    const freight = extractQbFreight(inv);
+    const isCredit = inv._type === 'credit_memo';
+    const taxAmt   = parseFloat(inv.TxnTaxDetail?.TotalTax || 0) || 0;
+    const freight  = extractQbFreight(inv);
+    const rawAmt   = parseFloat(inv.TotalAmt || 0);
     return {
       idx,
       date:     inv.TxnDate,
       customer: inv.CustomerRef?.name || '',
-      amount:   parseFloat(inv.TotalAmt || 0),
-      taxAmt:   Math.round(taxAmt * 100) / 100,
+      amount:   isCredit ? -rawAmt : rawAmt,
+      taxAmt:   Math.round((isCredit ? -taxAmt : taxAmt) * 100) / 100,
       freight:  Math.round(freight * 100) / 100,
       ref:      inv.DocNumber || inv.Id,
       id:       inv.Id,
+      isCredit,
     };
   });
 
@@ -582,7 +586,7 @@ function match(hsDeals, qbInvoices, savedLinks = [], savedBlocks = []) {
   for (let i = 0; i < qbNorm.length; i++) {
     if (usedQb.has(i)) continue;
     const q = qbNorm[i];
-    rows.push({ status:'MISSING_HS', manual:false, hsDate:null, hsName:null, hsAmount:null, subtotal:0, freight:0, taxRate:0, taxAmt:0, qbDate:q.date, qbName:q.customer, qbAmount:q.amount, qbFreight:q.freight, qbTaxAmt:q.taxAmt, delta:null, notes:'', hsId:null, qbRef:q.ref, qbId:q.id, qbIds:[q.id] });
+    rows.push({ status:'MISSING_HS', manual:false, isCredit:q.isCredit, hsDate:null, hsName:null, hsAmount:null, subtotal:0, freight:0, taxRate:0, taxAmt:0, qbDate:q.date, qbName:q.customer, qbAmount:q.amount, qbFreight:q.freight, qbTaxAmt:q.taxAmt, delta:null, notes:'', hsId:null, qbRef:q.ref, qbId:q.id, qbIds:[q.id] });
   }
 
   rows.sort((a, b) => {
@@ -594,11 +598,52 @@ function match(hsDeals, qbInvoices, savedLinks = [], savedBlocks = []) {
 }
 
 // ── Manual link / unlink / block ─────────────────────────────────
+// Options for "Link" picker on MISSING_QB rows — lists orphan QB invoices/credits
 function getMissingQbOptions() {
   return _allRows
     .filter(r => r.status === 'MISSING_HS' && r.qbId)
-    .map(r => `<option value="${r.qbId}">${escHtml(r.qbName || '—')} — ${fmt(r.qbAmount)} (${r.qbDate || '?'})</option>`)
+    .map(r => {
+      const label = r.isCredit
+        ? `[CREDIT] ${escHtml(r.qbName || '—')} — ${fmt(r.qbAmount)} (${r.qbDate || '?'})`
+        : `${escHtml(r.qbName || '—')} — ${fmt(r.qbAmount)} (${r.qbDate || '?'})`;
+      return `<option value="${r.qbId}">${label}</option>`;
+    })
     .join('');
+}
+// Options for "Link to HS" picker on MISSING_HS rows — lists orphan HS deals
+function getMissingHsOptions() {
+  return _allRows
+    .filter(r => r.status === 'MISSING_QB' && r.hsId)
+    .map(r => `<option value="${r.hsId}">${escHtml(r.hsName || '—')} — ${fmt(r.hsAmount)} (${r.hsDate || '?'})</option>`)
+    .join('');
+}
+function toggleHsLinkPicker(qbId) {
+  const el = document.getElementById(`hs-picker-${qbId}`);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+  if (el.style.display !== 'none') {
+    const sel = el.querySelector('select');
+    if (sel) sel.innerHTML = '<option value="">— pick HS deal —</option>' + getMissingHsOptions();
+  }
+}
+async function saveHsLink(qbId) {
+  const sel = document.querySelector(`#hs-picker-${qbId} select`);
+  if (!sel || !sel.value) { alert('Please select an HS deal to link.'); return; }
+  const hsId = sel.value;
+  const btn  = document.querySelector(`#hs-picker-${qbId} .save-link-btn`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const r = await fetch('/api/reconcile/link', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ hsDealId:hsId, qbInvoiceId:qbId }) }).then(r => r.json());
+    if (r.error) throw new Error(r.error);
+    if (!_savedLinks.some(l => l.hs_deal_id === hsId && l.qb_invoice_id === qbId)) {
+      _savedLinks.push({ hs_deal_id: hsId, qb_invoice_id: qbId });
+    }
+    _allRows = match(_rawHs, _rawQb, _savedLinks, _savedBlocks);
+    applyFilter();
+  } catch(e) {
+    alert('Failed to save link: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Link'; }
+  }
 }
 function toggleLinkPicker(hsId) {
   const el = document.getElementById(`picker-${hsId}`);
@@ -776,7 +821,9 @@ function renderResults(rows) {
   const BADGE = {
     MATCH:      r => r.manual ? '<span class="badge badge-manual">MANUAL</span>' : '<span class="badge badge-match">MATCH</span>',
     MISSING_QB: () => '<span class="badge badge-missing">MISSING QB</span>',
-    MISSING_HS: () => '<span class="badge badge-extra">MISSING HS</span>',
+    MISSING_HS: r => r.isCredit
+      ? '<span class="badge badge-credit">CREDIT</span>'
+      : '<span class="badge badge-extra">MISSING HS</span>',
   };
 
   const matched   = _allRows.filter(r => r.status === 'MATCH').length;
@@ -802,12 +849,25 @@ function renderResults(rows) {
   if (!rows.length) { document.getElementById('resultsCard').style.display = 'none'; return; }
   document.getElementById('resultsCard').style.display = '';
   const hasUnmatchedQb = _allRows.some(r => r.status === 'MISSING_HS' && r.qbId);
+  const hasUnmatchedHs = _allRows.some(r => r.status === 'MISSING_QB' && r.hsId);
 
   document.getElementById('resultsBody').innerHTML = rows.map(r => {
     const dCls = r.delta != null && Math.abs(r.delta) >= 0.01 ? 'delta-warn' : 'delta-ok';
 
     let actionCell = '';
-    if (r.status === 'MISSING_QB' && r.hsId) {
+    if (r.status === 'MISSING_HS' && r.qbId) {
+      const pickerId = `hs-picker-${r.qbId}`;
+      if (hasUnmatchedHs) {
+        actionCell = `
+          <button class="btn btn-ghost btn-sm" onclick="toggleHsLinkPicker('${r.qbId}')">🔗 Link to HS</button>
+          <div class="link-picker" id="${pickerId}" style="display:none">
+            <select><option value="">— pick HS deal —</option>${getMissingHsOptions()}</select>
+            <button class="btn btn-orange btn-sm save-link-btn" onclick="saveHsLink('${r.qbId}')">Save</button>
+          </div>`;
+      } else {
+        actionCell = '<span style="color:var(--text2);font-size:11px">No unmatched HS deals</span>';
+      }
+    } else if (r.status === 'MISSING_QB' && r.hsId) {
       const pickerId = `picker-${r.hsId}`;
       if (hasUnmatchedQb) {
         actionCell = `

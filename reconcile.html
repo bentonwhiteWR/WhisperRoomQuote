@@ -181,6 +181,8 @@ tr:hover td { background:var(--surface2); }
       <div class="summary-box"><div class="lbl">Total HS</div><div class="val" id="sumHsTotal">—</div></div>
       <div class="summary-box"><div class="lbl">Total QB</div><div class="val" id="sumQbTotal">—</div></div>
       <div class="summary-box"><div class="lbl">Delta</div><div class="val" id="sumDelta">—</div></div>
+      <div class="summary-box"><div class="lbl">HS Tax</div><div class="val" id="sumHsTax">—</div></div>
+      <div class="summary-box"><div class="lbl">QB Tax</div><div class="val" id="sumQbTax">—</div></div>
       <div class="summary-box"><div class="lbl">Matched</div><div class="val" id="sumMatched">—</div></div>
       <div class="summary-box"><div class="lbl">Missing QB</div><div class="val" id="sumMissingQb">—</div></div>
       <div class="summary-box"><div class="lbl">Missing HS</div><div class="val" id="sumMissingHs">—</div></div>
@@ -193,6 +195,7 @@ tr:hover td { background:var(--surface2); }
       <span class="card-title" style="margin:0">Results</span>
       <select id="filterStatus" onchange="applyFilter()" style="margin-left:auto">
         <option value="">All statuses</option>
+        <option value="NOT_MATCHED">Not Matched (any)</option>
         <option value="MATCH">Match</option>
         <option value="MISSING_QB">Missing in QB</option>
         <option value="MISSING_HS">Missing in HS</option>
@@ -761,7 +764,12 @@ function showQbPopup(qbId) {
 // ── Render ────────────────────────────────────────────────────────
 function applyFilter() {
   const f = document.getElementById('filterStatus').value;
-  renderResults(f ? _allRows.filter(r => r.status === f) : _allRows);
+  if (!f) { renderResults(_allRows); return; }
+  if (f === 'NOT_MATCHED') {
+    renderResults(_allRows.filter(r => r.status === 'MISSING_QB' || r.status === 'MISSING_HS'));
+    return;
+  }
+  renderResults(_allRows.filter(r => r.status === f));
 }
 
 function renderResults(rows) {
@@ -776,12 +784,16 @@ function renderResults(rows) {
   const missingHs = _allRows.filter(r => r.status === 'MISSING_HS').length;
   const hsTotal   = _allRows.reduce((s, r) => s + (r.hsAmount || 0), 0);
   const qbTotal   = _allRows.reduce((s, r) => s + (r.qbAmount || 0), 0);
+  const hsTax     = _allRows.reduce((s, r) => s + (r.taxAmt   || 0), 0);
+  const qbTax     = _allRows.reduce((s, r) => s + (r.qbTaxAmt || 0), 0);
   const delta     = qbTotal - hsTotal;
 
   document.getElementById('sumHsTotal').textContent   = fmt(hsTotal);
   document.getElementById('sumQbTotal').textContent   = fmt(qbTotal);
   document.getElementById('sumDelta').textContent     = fmtD(delta);
   document.getElementById('sumDelta').style.color     = Math.abs(delta) < 1 ? 'var(--green)' : 'var(--amber)';
+  document.getElementById('sumHsTax').textContent     = fmt(hsTax);
+  document.getElementById('sumQbTax').textContent     = fmt(qbTax);
   document.getElementById('sumMatched').textContent   = matched;
   document.getElementById('sumMissingQb').textContent = missingQb;
   document.getElementById('sumMissingHs').textContent = missingHs;

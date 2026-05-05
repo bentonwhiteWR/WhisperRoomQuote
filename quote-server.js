@@ -993,43 +993,21 @@ const server = http.createServer(async (req, res) => {
           discountAmt = snap.discount.type === 'pct' ? lineSubtotal * dv / 100 : dv;
         }
 
-        // Subtotal + tax breakdown:
-        // 1. Snapshot has line items: subtotal = sum of items; tax = stored or
-        //    computed from totals accounting for discount.
-        // 2. No snapshot but we have a tax rate: reverse-engineer from total.
-        // 3. Otherwise: subtotal = total - freight, tax = 0
-        let subtotal, taxAmt;
+        // Subtotal: use snapshot line items when available, otherwise approximate.
+        let subtotal;
         if (snap.lineItems && snap.lineItems.length) {
           subtotal = lineSubtotal;
-          if (snap.tax?.inNexus === false) {
-            // TaxJar confirmed no nexus for this state — tax is definitively $0.
-            taxAmt = 0;
-          } else if (snap.tax?.tax != null) {
-            // Primary field: TaxJar result stored as snap.tax.tax
-            taxAmt = parseFloat(snap.tax.tax) || 0;
-          } else if (snap.tax?.amount != null) {
-            // Legacy field name
-            taxAmt = parseFloat(snap.tax.amount) || 0;
-          } else if (snap.taxAmount != null) {
-            taxAmt = parseFloat(snap.taxAmount) || 0;
-          } else {
-            // Last-resort formula. Account for install_only and pickup fees that
-            // are included in the deal total but separate from freight_cost, so
-            // they don't get misattributed as tax.
-            const installMode = snap.install?.mode || 'none';
-            const installAmt  = parseFloat(snap.install?.amount) || 0;
-            const pickupFee   = parseFloat(snap.pickupFee) || 0;
-            const installOnly = (installMode === 'install_only' && installAmt > 0) ? installAmt : 0;
-            taxAmt = Math.max(0, total - (subtotal - discountAmt) - freight - installOnly - pickupFee);
-          }
-        } else if (taxRate > 0) {
-          const r = taxRate / 100;
-          const freightTaxedAmt = freightTaxable ? freight * r : 0;
-          subtotal = (total - freight - freightTaxedAmt) / (1 + r);
-          taxAmt   = subtotal * r + freightTaxedAmt;
         } else {
           subtotal = Math.max(0, total - freight);
-          taxAmt   = 0;
+        }
+
+        // Tax: compute directly from the HubSpot tax_rate property.
+        // If tax_rate is blank/0 the deal has no tax (no nexus, exempt, etc.).
+        let taxAmt = 0;
+        if (taxRate > 0) {
+          const r = taxRate / 100;
+          const taxableBase = (subtotal - discountAmt) + (freightTaxable ? freight : 0);
+          taxAmt = Math.round(Math.max(0, taxableBase) * r * 100) / 100;
         }
 
         return {

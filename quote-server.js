@@ -1001,17 +1001,18 @@ const server = http.createServer(async (req, res) => {
           subtotal = Math.max(0, total - freight);
         }
 
-        // Tax: compute directly from the HubSpot tax_rate property.
+        // Tax: back-calculate from the tax-inclusive deal total using the stored
+        // HubSpot tax_rate. Mirrors the Excel/VBA formula:
+        //   preTaxBase = Total / (1 + rate)
+        //   tax = Round((preTaxBase - freight) * rate, 2) + Round(freight * rate, 2)
         // If tax_rate is blank/0 the deal has no tax (no nexus, exempt, etc.).
-        // The stored tax_rate is the effective rate TaxJar computed against
-        // (subtotal - discount). Freight taxability is already embedded in that
-        // rate, so we do NOT add freight to the base here — doing so causes
-        // double-counting that makes reconciled rows look like they differ.
         let taxAmt = 0;
         if (taxRate > 0) {
           const r = taxRate / 100;
-          const taxableBase = Math.max(0, subtotal - discountAmt);
-          taxAmt = Math.round(taxableBase * r * 100) / 100;
+          const preTaxBase  = total / (1 + r);
+          const productTax  = Math.round((preTaxBase - freight) * r * 100) / 100;
+          const freightTax  = Math.round(freight * r * 100) / 100;
+          taxAmt = Math.max(0, productTax + freightTax);
         }
 
         return {

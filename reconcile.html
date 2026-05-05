@@ -855,7 +855,16 @@ function renderQbInvoiceBlock(qbId, parentHsId) {
         ${detailRow('Total', `<span style="color:var(--orange)">${fmt(total)}</span>`)}
       </div>
       ${linesHtml}
+      <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
+        <button class="btn btn-sm" onclick="toggleRawJson('${qbId}')" style="font-size:10px">⌄ Show raw QB JSON (debug)</button>
+        <pre id="rawJson_${qbId}" style="display:none;margin-top:8px;background:#000;color:#9cdcfe;padding:10px;border-radius:6px;font-size:10px;max-height:400px;overflow:auto;white-space:pre-wrap;word-break:break-all">${escHtml(JSON.stringify(rawInv, null, 2))}</pre>
+      </div>
     </div>`;
+}
+
+function toggleRawJson(qbId) {
+  const el = document.getElementById(`rawJson_${qbId}`);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 function showQbPopup(qbId) {

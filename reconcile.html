@@ -459,11 +459,14 @@ function extractQbFreight(inv) {
   if (!Array.isArray(inv.Line)) return 0;
   let freight = 0;
   for (const ln of inv.Line) {
-    // Skip subtotal/discount lines — they're never freight.
     if (ln.DetailType === 'SubTotalLineDetail' || ln.DetailType === 'DiscountLineDetail') continue;
-    const itemName = getLineItemName(ln);
-    const desc     = ln.Description || '';
-    if (FREIGHT_RX.test(`${itemName} ${desc}`)) {
+    const itemName = (ln.SalesItemLineDetail?.ItemRef?.name
+                   || ln.GroupLineDetail?.GroupItemRef?.name
+                   || '').trim();
+    // For DescriptionOnlyLineDetail (and any other type), also check Description
+    const desc = (ln.Description || '').trim();
+    const combined = `${itemName} ${desc}`.trim();
+    if (combined && FREIGHT_RX.test(combined)) {
       freight += parseFloat(ln.Amount || 0) || 0;
     }
   }
@@ -813,12 +816,26 @@ function renderQbInvoiceBlock(qbId, parentHsId) {
     ? `<button class="btn btn-red btn-sm" onclick="removeLink('${parentHsId}','${qbId}')" style="margin-left:auto">Remove from link</button>`
     : '';
 
-  const linesHtml = lines.length ? `
+  // Build extended line list with raw QB fields for freight debugging
+  const rawLines = Array.isArray(rawInv.Line) ? rawInv.Line.filter(ln => ln.DetailType !== 'SubTotalLineDetail') : [];
+  const linesHtml = rawLines.length ? `
     <div class="modal-lines">
-      <div class="modal-lines-title">Line items (${lines.length})</div>
-      ${lines.map(l => {
-        const showDesc = l.desc && l.desc !== l.name;
-        return `<div class="modal-line"><span class="nm">${escHtml(l.name)}${showDesc ? `<br><span style="font-size:10px;color:var(--muted)">${escHtml(l.desc).slice(0,80)}</span>` : ''}</span><span class="am">${fmt(l.amount)}</span></div>`;
+      <div class="modal-lines-title">Line items (${rawLines.length})</div>
+      ${rawLines.map(ln => {
+        const itemName = ln.SalesItemLineDetail?.ItemRef?.name || ln.GroupLineDetail?.GroupItemRef?.name || '';
+        const desc     = ln.Description || '';
+        const dispName = itemName || desc || '(unnamed)';
+        const showDesc = desc && desc !== itemName;
+        const isFrt    = FREIGHT_RX.test(`${itemName} ${desc}`);
+        const amt      = parseFloat(ln.Amount || 0) || 0;
+        const dtShort  = (ln.DetailType || '').replace('LineDetail','');
+        return `<div class="modal-line">
+          <span class="nm">
+            ${escHtml(dispName)}${showDesc ? `<br><span style="font-size:10px;color:var(--muted)">${escHtml(desc).slice(0,80)}</span>` : ''}
+            <br><span style="font-size:9px;color:var(--muted);font-family:monospace">${escHtml(dtShort)}${isFrt ? ' <span style="color:var(--amber)">→freight</span>' : ''}</span>
+          </span>
+          <span class="am">${fmt(amt)}</span>
+        </div>`;
       }).join('')}
     </div>` : '';
 

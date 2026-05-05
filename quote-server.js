@@ -106,7 +106,18 @@ const {
 
 const PORT         = process.env.PORT || 3457;
 const PASSWORD     = process.env.WR_PASSWORD || '';
-const APP_VERSION  = (() => { try { return require('./package.json').version; } catch(e) { return '1.0.0'; } })();
+const APP_VERSION  = (() => {
+  let base = '1.0.0';
+  try { base = require('./package.json').version; } catch(e) {}
+  // Append the current git short SHA so each deploy has a unique build id.
+  try {
+    const sha = require('child_process')
+      .execSync('git rev-parse --short HEAD', { stdio: ['ignore','pipe','ignore'], cwd: __dirname })
+      .toString().trim();
+    if (sha) return `${base}+${sha}`;
+  } catch(e) {}
+  return base;
+})();
 
 const logger = require('./lib/logger');
 const { writelog } = logger;
@@ -150,6 +161,9 @@ const { REP_EMAILS, createNotification, notifyRep } = notify;
 const taxjar = require('./lib/taxjar');
 const { TAXJAR_KEY, calculateTaxProper } = taxjar;
 // taxjar.init(...) called after httpsRequest, NEXUS_STATES, toStateAbbr are defined
+
+const qb = require('./lib/quickbooks');
+qb.init({ getDb: () => db });
 
 
 const auth = require('./lib/auth');
@@ -798,6 +812,321 @@ const server = http.createServer(async (req, res) => {
     json({ version: APP_VERSION }); return;
   }
 
+  // ── QuickBooks OAuth + API ────────────────────────────────────────
+
+  // Step 1: kick off OAuth — redirect browser to Intuit's consent screen
+  if (pathname === '/api/qb/connect' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    const redirectUri = `${PUBLIC_BASE_URL}/api/qb/callback`;
+    const authUrl = qb.getAuthUrl(redirectUri);
+    res.writeHead(302, { Location: authUrl });
+    res.end();
+    return;
+  }
+
+  // Step 2: Intuit redirects here with code + state + realmId
+  if (pathname === '/api/qb/callback' && req.method === 'GET') {
+    try {
+      const { code, state, realmId, error: oauthError } = parsed.query;
+      if (oauthError) {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`<p style="font-family:sans-serif;color:red">QuickBooks auth error: ${oauthError}. <a href="/reconcile">Back</a></p>`);
+        return;
+      }
+      const { tokens } = await qb.exchangeCode(code, state);
+      const now = Date.now();
+      await qb.saveTokens({
+        realmId,
+        accessToken:      tokens.access_token,
+        refreshToken:     tokens.refresh_token,
+        accessExpiresAt:  now + (tokens.expires_in                 || 3600)    * 1000,
+        refreshExpiresAt: now + (tokens.x_refresh_token_expires_in || 8726400) * 1000,
+      });
+      res.writeHead(302, { Location: '/reconcile?qb=connected' });
+      res.end();
+    } catch(e) {
+      console.error('[qb/callback]', e.message);
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(`<p style="font-family:sans-serif;color:red">Error: ${e.message}. <a href="/reconcile">Back</a></p>`);
+    }
+    return;
+  }
+
+  // Connection status
+  if (pathname === '/api/qb/status' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try { json(await qb.getStatus()); } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // Disconnect
+  if (pathname === '/api/qb/disconnect' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try { await qb.clearTokens(); json({ ok: true }); } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // Diagnostic: fetch CompanyInfo and return raw response for debugging
+  if (pathname === '/api/qb/test' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const r = await qb.getCompanyInfo();
+      json(r);
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // Fetch invoices for a date range: /api/qb/invoices?from=YYYY-MM-DD&to=YYYY-MM-DD
+  if (pathname === '/api/qb/invoices' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { from, to } = parsed.query;
+      if (!from || !to) { json({ error: 'from and to params required' }, 400); return; }
+      const [invoices, credits, refunds] = await Promise.all([
+        qb.fetchInvoices(from, to),
+        qb.fetchCreditMemos(from, to).catch(e => { console.warn('[reconcile] fetchCreditMemos failed:', e.message); return []; }),
+        qb.fetchRefundReceipts(from, to).catch(e => { console.warn('[reconcile] fetchRefundReceipts failed:', e.message); return []; }),
+      ]);
+      // Tag non-invoices so the frontend can distinguish them.
+      for (const c of credits) c._type = 'credit_memo';
+      for (const r of refunds) r._type = 'refund_receipt';
+      const results = [...invoices, ...credits, ...refunds];
+      json({ results, total: results.length });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+
+  // Fetch closed-won + shipped HS deals for a date range (for reconciliation)
+  if (pathname === '/api/reconcile/hs-deals' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { from, to } = parsed.query;
+      if (!from || !to) { json({ error: 'from and to params required' }, 400); return; }
+      const fromTs = new Date(from).getTime().toString();
+      const toTs   = new Date(to + 'T23:59:59Z').getTime().toString();
+
+      // Paginate through all matching deals
+      let allDeals = [], after = null;
+      do {
+        const searchBody = {
+          limit: 200,
+          ...(after ? { after } : {}),
+          filterGroups: [{
+            filters: [
+              { propertyName: 'dealstage', operator: 'IN',  values: ['closedwon', '845719'] },
+              { propertyName: 'closedate', operator: 'GTE', value: fromTs },
+              { propertyName: 'closedate', operator: 'LTE', value: toTs },
+            ]
+          }],
+          properties: ['dealname', 'amount', 'closedate', 'hubspot_owner_id', 'dealstage', 'tax_rate', 'freight_cost', 'shipping_state'],
+          sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
+        };
+        const r = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/deals/search',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+        }, searchBody);
+        const results = r.body?.results || [];
+        allDeals.push(...results);
+        after = r.body?.paging?.next?.after || null;
+      } while (after);
+
+      // Enrich with freight/tax/subtotal breakdown from our DB quote snapshots
+      let snapshotMap = {};
+      if (db && allDeals.length > 0) {
+        try {
+          const dealIds = allDeals.map(d => d.id);
+          const snapRes = await db.query(
+            `SELECT DISTINCT ON (deal_id) deal_id, json_snapshot
+             FROM quotes WHERE deal_id = ANY($1::text[])
+             ORDER BY deal_id, created_at DESC`,
+            [dealIds]
+          );
+          for (const row of snapRes.rows) {
+            snapshotMap[row.deal_id] = row.json_snapshot;
+          }
+        } catch(e) { console.warn('[reconcile] snapshot enrich failed:', e.message); }
+      }
+
+      const deals = allDeals.map(d => {
+        const snap     = snapshotMap[d.id] || {};
+        // Freight: prefer the HubSpot deal property (always populated for deals
+        // created via this app), fall back to snapshot for legacy deals.
+        const freight  = parseFloat(d.properties?.freight_cost || snap.freight?.amount || snap.freight || 0) || 0;
+        const taxRate  = parseFloat(d.properties?.tax_rate || snap.tax?.rate || 0) || 0;
+        const total    = parseFloat(d.properties?.amount || 0);
+
+        // State taxes freight? Look up nexus map.
+        const rawState = d.properties?.shipping_state || snap.ship?.state || snap.shipState || '';
+        const stateAbbr = toStateAbbr(rawState);
+        const freightTaxable = !!(NEXUS_STATES[stateAbbr]?.taxFreight);
+
+        // Compute pre-discount subtotal from line items if present
+        const lineSubtotal = (snap.lineItems && snap.lineItems.length)
+          ? snap.lineItems.filter(i => parseFloat(i.price) > 0)
+              .reduce((s, i) => s + (parseFloat(i.price) || 0) * (parseFloat(i.qty || i.quantity || 1)), 0)
+          : 0;
+
+        // Compute discount amount from snapshot.discount = { value, type: 'pct'|'flat' }
+        let discountAmt = 0;
+        if (snap.discount && parseFloat(snap.discount.value) > 0) {
+          const dv = parseFloat(snap.discount.value);
+          discountAmt = snap.discount.type === 'pct' ? lineSubtotal * dv / 100 : dv;
+        }
+
+        // Subtotal + tax breakdown:
+        // 1. Snapshot has line items: subtotal = sum of items; tax = stored or
+        //    computed from totals accounting for discount.
+        // 2. No snapshot but we have a tax rate: reverse-engineer from total.
+        // 3. Otherwise: subtotal = total - freight, tax = 0
+        let subtotal, taxAmt;
+        if (snap.lineItems && snap.lineItems.length) {
+          subtotal = lineSubtotal;
+          // Fallback now correctly accounts for discount: total = subtotal - discount + freight + tax
+          taxAmt   = parseFloat(snap.tax?.amount ?? snap.taxAmount ?? Math.max(0, total - (subtotal - discountAmt) - freight)) || 0;
+        } else if (taxRate > 0) {
+          const r = taxRate / 100;
+          const freightTaxedAmt = freightTaxable ? freight * r : 0;
+          subtotal = (total - freight - freightTaxedAmt) / (1 + r);
+          taxAmt   = subtotal * r + freightTaxedAmt;
+        } else {
+          subtotal = Math.max(0, total - freight);
+          taxAmt   = 0;
+        }
+
+        return {
+          dealId:    d.id,
+          stage:     d.properties?.dealstage,
+          name:      d.properties?.dealname || '',
+          customer:  (d.properties?.dealname || '').replace(/\s*[-—]\s*(new deal|quote)?\s*$/i, '').trim(),
+          closedate: (() => {
+            const cd = d.properties?.closedate;
+            if (!cd) return null;
+            const ms = Number(cd);
+            const dt = (!isNaN(ms) && ms > 0) ? new Date(ms) : new Date(cd);
+            return isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 10);
+          })(),
+          subtotal:  Math.round(subtotal * 100) / 100,
+          discount:  Math.round(discountAmt * 100) / 100,
+          freight:   Math.round(freight * 100) / 100,
+          taxRate,
+          taxAmt:    Math.round(taxAmt * 100) / 100,
+          state:     stateAbbr || null,
+          freightTaxable,
+          total,
+        };
+      });
+
+      json({ results: deals, total: deals.length });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // GET /api/reconcile/links — return all saved manual links
+  if (pathname === '/api/reconcile/links' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      if (!db) { json({ results: [] }); return; }
+      const r = await db.query('SELECT hs_deal_id, qb_invoice_id FROM reconcile_links ORDER BY created_at DESC');
+      json({ results: r.rows });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // POST /api/reconcile/link — save a manual HS↔QB link.
+  // Multiple QB invoices may be linked to the same HS deal (combined matching).
+  if (pathname === '/api/reconcile/link' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { hsDealId, qbInvoiceId } = JSON.parse(await readBody(req));
+      if (!hsDealId || !qbInvoiceId) { json({ error: 'hsDealId and qbInvoiceId required' }, 400); return; }
+      if (!db) { json({ error: 'No DB' }, 500); return; }
+      await db.query(
+        `INSERT INTO reconcile_links (hs_deal_id, qb_invoice_id) VALUES ($1, $2)
+         ON CONFLICT (hs_deal_id, qb_invoice_id) DO NOTHING`,
+        [hsDealId, qbInvoiceId]
+      );
+      json({ ok: true });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // DELETE /api/reconcile/link — remove a manual link.
+  // If qbInvoiceId provided, removes only that pairing; otherwise removes all
+  // pairings for the HS deal.
+  if (pathname === '/api/reconcile/link' && req.method === 'DELETE') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { hsDealId, qbInvoiceId } = JSON.parse(await readBody(req));
+      if (!hsDealId) { json({ error: 'hsDealId required' }, 400); return; }
+      if (!db) { json({ error: 'No DB' }, 500); return; }
+      if (qbInvoiceId) {
+        await db.query('DELETE FROM reconcile_links WHERE hs_deal_id = $1 AND qb_invoice_id = $2', [hsDealId, qbInvoiceId]);
+      } else {
+        await db.query('DELETE FROM reconcile_links WHERE hs_deal_id = $1', [hsDealId]);
+      }
+      json({ ok: true });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // GET /api/reconcile/blocks — return all blocked auto-match pairs
+  if (pathname === '/api/reconcile/blocks' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      if (!db) { json({ results: [] }); return; }
+      const r = await db.query('SELECT hs_deal_id, qb_invoice_id FROM reconcile_blocks ORDER BY created_at DESC');
+      json({ results: r.rows });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // POST /api/reconcile/block — block a wrong auto-match (HS↔QB pair)
+  if (pathname === '/api/reconcile/block' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { hsDealId, qbInvoiceId } = JSON.parse(await readBody(req));
+      if (!hsDealId || !qbInvoiceId) { json({ error: 'hsDealId and qbInvoiceId required' }, 400); return; }
+      if (!db) { json({ error: 'No DB' }, 500); return; }
+      await db.query(
+        `INSERT INTO reconcile_blocks (hs_deal_id, qb_invoice_id) VALUES ($1, $2)
+         ON CONFLICT (hs_deal_id, qb_invoice_id) DO NOTHING`,
+        [hsDealId, qbInvoiceId]
+      );
+      json({ ok: true });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // DELETE /api/reconcile/block — remove a block (allow auto-match again)
+  if (pathname === '/api/reconcile/block' && req.method === 'DELETE') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { hsDealId, qbInvoiceId } = JSON.parse(await readBody(req));
+      if (!hsDealId || !qbInvoiceId) { json({ error: 'hsDealId and qbInvoiceId required' }, 400); return; }
+      if (!db) { json({ error: 'No DB' }, 500); return; }
+      await db.query('DELETE FROM reconcile_blocks WHERE hs_deal_id = $1 AND qb_invoice_id = $2', [hsDealId, qbInvoiceId]);
+      json({ ok: true });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // GET /api/hs/portal-id — returns HubSpot portal/hub ID for building deal URLs
+  if (pathname === '/api/hs/portal-id' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const r = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/account-info/v3/details',
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Accept': 'application/json' },
+      });
+      json({ portalId: r.body?.portalId });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
 
   if (pathname === '/api/products-all' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
@@ -5525,6 +5854,13 @@ ${q.accepted ? `
     if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(renderChangelog());
+    return;
+  }
+
+  if (pathname === '/reconcile' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(fs.readFileSync(path.join(__dirname, 'reconcile.html'), 'utf8'));
     return;
   }
 

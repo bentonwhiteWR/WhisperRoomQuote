@@ -226,6 +226,7 @@
     <a href="/orders" class="nav-link active">Orders</a>
     <a href="/shipping" class="nav-link">Shipping</a>
     <a href="/reports" class="nav-link">Reports</a>
+    <a href="/reconcile" class="nav-link">Reconcile</a>
   </nav>
   <span id="appVersion" style="font-size:9px;font-weight:700;color:var(--muted,rgba(255,255,255,.25));letter-spacing:.06em;padding:2px 6px;border:1px solid rgba(255,255,255,.08);border-radius:4px;font-family:monospace;flex-shrink:0"></span>
   <div id="userBadge" style="display:none;align-items:center;gap:8px;flex-shrink:0">
@@ -1612,7 +1613,8 @@ async function openShipFromDrawer() {
   const boxes       = document.getElementById('editBoxes').value;
   const hardwareBox = document.getElementById('editHardwareBox').value.trim();
 
-  if (!carrier)  { showToast('Please select a carrier', 'error'); return; }
+  if (!carrier)  { showToast('Please select a carrier before shipping', 'error'); return; }
+  if (!tracking) { showToast('Please enter a tracking number before shipping', 'error'); return; }
 
   const btn = document.getElementById('shipItBtn');
   btn.disabled = true;

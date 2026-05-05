@@ -866,7 +866,6 @@ function renderQbInvoiceBlock(qbId, parentHsId) {
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
         <div style="font-weight:700;font-size:13px">${escHtml(customer || '—')}</div>${typeLabel}
         ${ref ? `<div style="color:var(--text2);font-size:11px">#${escHtml(String(ref))}</div>` : ''}
-        ${qbLink ? `<a href="${qbLink}" target="_blank" rel="noopener" style="color:var(--orange);font-size:11px;text-decoration:none">Open ↗</a>` : ''}
         ${removeBtn}
       </div>
       <div class="modal-grid" style="margin-bottom:0">
@@ -877,14 +876,13 @@ function renderQbInvoiceBlock(qbId, parentHsId) {
         ${detailRow('Total', `<span style="color:var(--orange)">${fmt(total)}</span>`)}
       </div>
       ${linesHtml}
-      <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
-        <button class="btn btn-sm" onclick="toggleRawJson('${qbId}')" style="font-size:10px">⌄ Show raw QB JSON (debug)</button>
-        <pre id="rawJson_${qbId}" style="display:none;margin-top:8px;background:#000;color:#9cdcfe;padding:10px;border-radius:6px;font-size:10px;max-height:400px;overflow:auto;white-space:pre-wrap;word-break:break-all">${escHtml(JSON.stringify(rawInv, null, 2))}</pre>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        ${qbLink ? `<a href="${qbLink}" target="_blank" rel="noopener" class="btn btn-orange" style="flex:1;justify-content:center">Open in QuickBooks ↗</a>` : '<span style="font-size:11px;color:var(--text2)">QB realm ID not available</span>'}
       </div>
     </div>`;
 }
 
-function toggleRawJson(qbId) {
+function toggleRawJson(qbId) { // kept for console debugging
   const el = document.getElementById(`rawJson_${qbId}`);
   if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }

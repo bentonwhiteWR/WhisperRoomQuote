@@ -81,6 +81,10 @@ tr:hover td.col-hs { background:rgba(238,98,22,.10); }
 tr:hover td.col-qb { background:rgba(80,140,210,.11); }
 th.col-hs.first, td.col-hs.first { border-left:2px solid rgba(238,98,22,.2); }
 th.col-qb.first, td.col-qb.first { border-left:2px solid rgba(80,140,210,.2); }
+/* Customer-name columns get a generous min-width so long names like
+   "Ear, Nose, Throat & Allergy Specialist" wrap to 2 lines instead of 4. */
+th.col-hs.first, td.col-hs.first,
+th.col-qb.first, td.col-qb.first { min-width:180px; word-break:normal; overflow-wrap:break-word; }
 :root.light th.col-hs, :root.light td.col-hs { background:rgba(201,79,14,.05); }
 :root.light th.col-qb, :root.light td.col-qb { background:rgba(70,130,200,.06); }
 
@@ -216,8 +220,11 @@ th.col-qb.first, td.col-qb.first { border-left:2px solid rgba(80,140,210,.2); }
         <option value="">All</option>
         <option value="NEEDS_REVIEW">Needs Review (unmatched / delta / tax off)</option>
         <option value="MATCH">Matched</option>
+        <option value="UNMATCHED">Unmatched (strict)</option>
         <option value="MISSING_QB">Missing in QB</option>
-        <option value="MISSING_HS">Missing in HS / Credits</option>
+        <option value="MISSING_HS">Missing in HS</option>
+        <option value="CREDITS">Credits</option>
+        <option value="REFUNDS">Refunds</option>
       </select>
     </div>
     <div class="tbl-wrap">
@@ -969,9 +976,25 @@ function updateSortIndicators() {
 function applyFilter() {
   const f = document.getElementById('filterStatus').value;
   let rows;
-  if (!f)                       rows = _allRows;
-  else if (f === 'NEEDS_REVIEW') rows = _allRows.filter(rowNeedsReview);
-  else                          rows = _allRows.filter(r => r.status === f);
+  if (!f) {
+    rows = _allRows;
+  } else if (f === 'NEEDS_REVIEW') {
+    rows = _allRows.filter(rowNeedsReview);
+  } else if (f === 'UNMATCHED') {
+    // Strict unmatched: missing on either side, but exclude credits/refunds
+    // since those are intentional QB-only artifacts.
+    rows = _allRows.filter(r =>
+      (r.status === 'MISSING_QB' || r.status === 'MISSING_HS') && !r.isCredit && !r.isRefund);
+  } else if (f === 'CREDITS') {
+    rows = _allRows.filter(r => r.isCredit);
+  } else if (f === 'REFUNDS') {
+    rows = _allRows.filter(r => r.isRefund);
+  } else if (f === 'MISSING_HS') {
+    // "Missing in HS" excludes credits/refunds — those have their own buckets.
+    rows = _allRows.filter(r => r.status === 'MISSING_HS' && !r.isCredit && !r.isRefund);
+  } else {
+    rows = _allRows.filter(r => r.status === f);
+  }
   renderResults(sortRows(rows));
   updateSortIndicators();
 }

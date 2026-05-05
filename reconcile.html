@@ -2,97 +2,151 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>QB ↔ HubSpot Reconciliation</title>
-<link rel="icon" href="/assets/favicon.avif">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>WhisperRoom — Reconciler</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial Black,sans-serif' font-size='18' font-weight='900' fill='%23e8531a'>W</text></svg>">
 <style>
-  :root {
-    --bg: #0f1117; --surface: #1a1d27; --surface2: #22263a;
-    --border: rgba(255,255,255,.08); --text: #e8eaf0; --muted: #8b90a0;
-    --orange: #ee6216; --green: #22c55e; --red: #ef4444; --yellow: #f59e0b;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size: 14px; }
-  .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; height: 52px; display: flex; align-items: center; gap: 16px; }
-  .topbar-title { font-weight: 800; font-size: 15px; color: var(--orange); }
-  .topbar a { color: var(--muted); font-size: 12px; text-decoration: none; }
-  .container { max-width: 1300px; margin: 0 auto; padding: 24px; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
-  .card-title { font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 14px; }
-  .status-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-  .dot-green { background: var(--green); }
-  .dot-red { background: var(--red); }
-  .dot-yellow { background: var(--yellow); }
-  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 7px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; text-decoration: none; }
-  .btn-orange { background: var(--orange); color: #fff; }
-  .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
-  .btn-red { background: rgba(239,68,68,.15); color: var(--red); border: 1px solid rgba(239,68,68,.3); }
-  .btn-sm { padding: 4px 10px; font-size: 11px; border-radius: 5px; }
-  .btn:disabled { opacity: .4; cursor: not-allowed; }
-  .row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
-  label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 5px; }
-  input[type=date], select { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; font-family: inherit; padding: 8px 10px; outline: none; }
-  input[type=date]:focus, select:focus { border-color: var(--orange); }
-  .msg { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 18px; }
-  .msg.ok { color: var(--green); }
-  .msg.err { color: var(--red); }
-  /* Table */
-  .tbl-wrap { overflow-x: auto; margin-top: 16px; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
-  td { padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,.04); vertical-align: middle; }
-  tr:hover td { background: rgba(255,255,255,.02); }
-  .badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: .04em; }
-  .badge-match   { background: rgba(34,197,94,.15);  color: var(--green); }
-  .badge-manual  { background: rgba(238,98,22,.15);  color: var(--orange); }
-  .badge-missing { background: rgba(239,68,68,.15);  color: var(--red); }
-  .badge-extra   { background: rgba(139,144,160,.15); color: var(--muted); }
-  .delta-warn { color: var(--yellow); }
-  .delta-ok   { color: var(--muted); }
-  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(140px,1fr)); gap: 12px; margin-bottom: 20px; }
-  .summary-box { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
-  .summary-box .val { font-size: 20px; font-weight: 800; color: var(--orange); margin-top: 4px; }
-  .summary-box .lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
-  .empty { text-align: center; color: var(--muted); padding: 40px; }
-  /* Link picker */
-  .link-picker { display: flex; gap: 6px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
-  .link-picker select { font-size: 11px; padding: 4px 6px; max-width: 220px; }
-  /* Info popup */
-  .clickable-name { cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
-  .clickable-name:hover { color: var(--orange); }
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 1000; display: flex; align-items: center; justify-content: center; }
-  .modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 380px; max-width: 92vw; position: relative; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
-  .modal-close { position: absolute; top: 14px; right: 16px; background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; line-height: 1; }
-  .modal-close:hover { color: var(--text); }
-  .modal-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 4px; }
-  .modal-name { font-size: 17px; font-weight: 800; margin-bottom: 18px; line-height: 1.3; }
-  .modal-grid { display: grid; grid-template-columns: 110px 1fr; gap: 6px 12px; font-size: 12px; margin-bottom: 18px; }
-  .modal-grid .k { color: var(--muted); }
-  .modal-grid .v { font-weight: 600; }
-  .modal-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --bg:#0f0f0f; --surface:#1a1a1a; --surface2:#222; --surface3:#2a2a2a; --border:#2e2e2e;
+  --text:#e8e8e8; --text2:#aaa; --muted:#666;
+  --orange:#ee6216; --orange-dim:rgba(238,98,22,.12); --orange-border:rgba(238,98,22,.3);
+  --green:#22c55e; --green-dim:rgba(34,197,94,.1); --amber:#f59e0b; --red:#ef4444;
+}
+:root.light {
+  --bg:#edeae4; --surface:#f5f2ec; --surface2:#e6e3dc; --surface3:#dedad2; --border:rgba(0,0,0,.1);
+  --text:#1a1a1a; --text2:#444; --muted:#777;
+  --orange:#c94f0e; --orange-dim:rgba(201,79,14,.08); --orange-border:rgba(201,79,14,.25);
+  --green:#16a34a; --green-dim:rgba(22,163,74,.08); --amber:#d97706; --red:#dc2626;
+}
+body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; -webkit-font-smoothing:antialiased; }
+
+/* Topbar — matches deals/orders/etc */
+.topbar { display:flex; align-items:center; padding:0 20px; min-height:52px; background:#1a1a1a; border-bottom:1px solid rgba(255,255,255,.1); position:sticky; top:0; z-index:200; gap:10px; }
+.topbar-logo { font-family:'Syne',sans-serif; font-size:20px; font-weight:800; color:#f0ede8; flex-shrink:0; margin-right:4px; display:flex; align-items:baseline; gap:8px; }
+.topbar-logo span { color:#e8531a; }
+.topbar-logo small { font-family:'DM Sans',sans-serif; font-size:11px; font-weight:600; color:rgba(255,255,255,.4); text-transform:uppercase; letter-spacing:.08em; }
+.topbar-nav { display:flex; gap:5px; align-items:center; flex:1; }
+.nav-link { padding:5px 10px; font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; border-radius:6px; color:rgba(255,255,255,.5); text-decoration:none; transition:.15s; white-space:nowrap; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); }
+.nav-link:hover { background:rgba(255,255,255,.12); color:rgba(255,255,255,.9); }
+.nav-link.active { background:rgba(238,98,22,.2); color:#ee6216; border-color:rgba(238,98,22,.4); }
+.topbar-right { display:flex; align-items:center; gap:10px; flex-shrink:0; }
+.qb-pill { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; padding:4px 9px; border-radius:5px; border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.06); color:rgba(255,255,255,.55); white-space:nowrap; }
+.qb-pill.ok { color:var(--green); border-color:rgba(34,197,94,.3); background:rgba(34,197,94,.08); }
+.qb-pill.bad { color:var(--red); border-color:rgba(239,68,68,.3); background:rgba(239,68,68,.08); }
+.theme-btn { padding:5px 9px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:6px; color:#f0ede8; cursor:pointer; font-size:14px; line-height:1; }
+
+/* Container + cards */
+.container { max-width:1400px; margin:0 auto; padding:24px 20px; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:20px; margin-bottom:20px; }
+.card-title { font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:.07em; color:var(--text2); margin-bottom:14px; }
+
+/* Buttons */
+.btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:7px; border:none; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; text-decoration:none; }
+.btn-orange { background:var(--orange); color:#fff; }
+.btn-orange:hover { filter:brightness(1.08); }
+.btn-ghost { background:var(--surface2); color:var(--text); border:1px solid var(--border); }
+.btn-ghost:hover { background:var(--surface3); }
+.btn-red { background:rgba(239,68,68,.15); color:var(--red); border:1px solid rgba(239,68,68,.3); }
+.btn-red:hover { background:rgba(239,68,68,.25); }
+.btn-sm { padding:4px 10px; font-size:11px; border-radius:5px; }
+.btn:disabled { opacity:.4; cursor:not-allowed; }
+
+/* Form controls */
+.row { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; }
+label { display:block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--text2); margin-bottom:5px; }
+input[type=date], select { background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; font-family:inherit; padding:8px 10px; outline:none; }
+input[type=date]:focus, select:focus { border-color:var(--orange); }
+.msg { font-size:12px; color:var(--text2); margin-top:8px; min-height:18px; }
+.msg.ok { color:var(--green); }
+.msg.err { color:var(--red); }
+
+/* Table */
+.tbl-wrap { overflow-x:auto; margin-top:14px; }
+table { width:100%; border-collapse:collapse; font-size:12px; }
+th { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); color:var(--text2); font-weight:700; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; font-size:10px; }
+td { padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
+tr:hover td { background:var(--surface2); }
+
+/* Badges */
+.badge { display:inline-block; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; letter-spacing:.04em; }
+.badge-match { background:rgba(34,197,94,.15); color:var(--green); }
+.badge-manual { background:rgba(238,98,22,.15); color:var(--orange); }
+.badge-missing { background:rgba(239,68,68,.15); color:var(--red); }
+.badge-extra { background:rgba(139,144,160,.15); color:var(--text2); }
+.delta-warn { color:var(--amber); }
+.delta-ok { color:var(--text2); }
+
+/* Summary */
+.summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-bottom:20px; }
+.summary-box { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px; }
+.summary-box .val { font-size:20px; font-weight:800; color:var(--orange); margin-top:4px; font-family:'Syne',sans-serif; }
+.summary-box .lbl { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--text2); }
+
+/* Status dot */
+.status-row { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.dot-green { background:var(--green); }
+.dot-red { background:var(--red); }
+.dot-yellow { background:var(--amber); }
+
+/* Link picker */
+.link-picker { display:flex; gap:6px; align-items:center; margin-top:4px; flex-wrap:wrap; }
+.link-picker select { font-size:11px; padding:4px 6px; max-width:220px; }
+
+/* Customer name link */
+.clickable-name { cursor:pointer; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px; }
+.clickable-name:hover { color:var(--orange); }
+
+/* Modal */
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:1000; display:flex; align-items:center; justify-content:center; }
+.modal-box { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:24px; width:420px; max-width:92vw; max-height:90vh; overflow-y:auto; position:relative; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+.modal-close { position:absolute; top:14px; right:16px; background:none; border:none; color:var(--text2); font-size:18px; cursor:pointer; line-height:1; }
+.modal-close:hover { color:var(--text); }
+.modal-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--text2); margin-bottom:4px; }
+.modal-name { font-size:17px; font-weight:800; margin-bottom:18px; line-height:1.3; font-family:'Syne',sans-serif; }
+.modal-grid { display:grid; grid-template-columns:110px 1fr; gap:6px 12px; font-size:12px; margin-bottom:18px; }
+.modal-grid .k { color:var(--text2); }
+.modal-grid .v { font-weight:600; }
+.modal-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.modal-lines { margin-top:10px; padding-top:14px; border-top:1px solid var(--border); }
+.modal-lines-title { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--text2); margin-bottom:8px; }
+.modal-line { display:flex; justify-content:space-between; gap:12px; font-size:12px; padding:4px 0; }
+.modal-line .nm { color:var(--text); }
+.modal-line .am { font-weight:600; color:var(--text2); white-space:nowrap; }
+
+/* Mobile */
+@media (max-width:768px) {
+  .topbar { padding:0 10px; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  .topbar::-webkit-scrollbar { display:none; }
+  .topbar-logo { font-size:17px; }
+  .topbar-logo small { display:none; }
+  .nav-link { padding:4px 8px; font-size:10px; }
+  .container { padding:16px 12px; }
+}
 </style>
 </head>
 <body>
 
 <div class="topbar">
-  <span class="topbar-title">QB ↔ HubSpot</span>
-  <a href="/deals">← Deals</a>
-  <span style="flex:1"></span>
-  <span id="qbStatusBadge" style="font-size:11px;color:var(--muted)">Checking QB…</span>
+  <div class="topbar-logo">Whisper<span>Room</span> <small>Reconciler</small></div>
+  <nav class="topbar-nav">
+    <a href="/deals" class="nav-link">⬡ Deal Hub</a>
+    <a href="/quotes" class="nav-link">Quotes</a>
+    <a href="/orders" class="nav-link">Orders</a>
+    <a href="/shipping" class="nav-link">Shipping</a>
+    <a href="/reports" class="nav-link">Reports</a>
+    <a href="/reconcile" class="nav-link active">Reconcile</a>
+  </nav>
+  <div class="topbar-right">
+    <span id="qbStatusBadge" class="qb-pill">Checking QB…</span>
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">☀️</button>
+  </div>
 </div>
 
 <div class="container">
-
-  <!-- QuickBooks connection card -->
-  <div class="card" id="qbCard">
-    <div class="card-title">QuickBooks Connection</div>
-    <div class="status-row">
-      <div class="dot" id="qbDot"></div>
-      <span id="qbStatusText" style="font-size:13px">Loading…</span>
-    </div>
-    <div id="qbActions"></div>
-  </div>
 
   <!-- Date range + run -->
   <div class="card">
@@ -105,7 +159,7 @@
           <option value="lastMonth" selected>Last Month</option>
         </select>
       </div>
-      <div style="font-size:11px;color:var(--muted);padding-bottom:10px">— or pick a custom range —</div>
+      <div style="font-size:11px;color:var(--text2);padding-bottom:10px">— or pick a custom range —</div>
     </div>
     <div class="row">
       <div>
@@ -161,12 +215,22 @@
             <th style="text-align:right">QB Tax</th>
             <th style="text-align:right">QB Total</th>
             <th style="text-align:right">Delta</th>
-            <th>Notes / Link</th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody id="resultsBody"></tbody>
       </table>
     </div>
+  </div>
+
+  <!-- QuickBooks connection (moved to bottom) -->
+  <div class="card" id="qbCard">
+    <div class="card-title">QuickBooks Connection</div>
+    <div class="status-row">
+      <div class="dot" id="qbDot"></div>
+      <span id="qbStatusText" style="font-size:13px">Loading…</span>
+    </div>
+    <div id="qbActions"></div>
   </div>
 
 </div>
@@ -180,30 +244,45 @@
 </div>
 
 <script>
+// ── Theme toggle (matches other dashboards) ───────────────────────
+function toggleTheme() {
+  const isLight = document.documentElement.classList.toggle('light');
+  localStorage.setItem('theme', isLight ? 'light' : 'dark');
+  document.getElementById('themeBtn').textContent = isLight ? '🌙' : '☀️';
+}
+(function initTheme() {
+  if (localStorage.getItem('theme') === 'light') {
+    document.documentElement.classList.add('light');
+  }
+  const btn = document.getElementById('themeBtn');
+  if (btn) btn.textContent = document.documentElement.classList.contains('light') ? '🌙' : '☀️';
+})();
+
 const fmt  = n => n != null ? '$' + parseFloat(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
 const fmtD = n => n == null ? '—' : (n >= 0 ? '+' : '') + '$' + Math.abs(parseFloat(n)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 
-let _allRows    = [];
-let _savedLinks = []; // [{ hs_deal_id, qb_invoice_id }]
-let _rawQb      = []; // raw QB invoice list from last run
-let _rawHs      = []; // raw HS deal list from last run
-let _realmId    = null; // QB realm ID — for building QB invoice URLs
-let _portalId   = null; // HubSpot portal ID — for building deal URLs
+let _allRows     = [];
+let _savedLinks  = []; // [{ hs_deal_id, qb_invoice_id }]
+let _savedBlocks = []; // [{ hs_deal_id, qb_invoice_id }]
+let _rawQb       = [];
+let _rawHs       = [];
+let _realmId     = null;
+let _portalId    = null;
 
 // ── QB connection status ──────────────────────────────────────────
 async function loadQbStatus() {
   const r = await fetch('/api/qb/status').then(r => r.json());
-  const dot  = document.getElementById('qbDot');
-  const text = document.getElementById('qbStatusText');
-  const acts = document.getElementById('qbActions');
+  const dot   = document.getElementById('qbDot');
+  const text  = document.getElementById('qbStatusText');
+  const acts  = document.getElementById('qbActions');
   const badge = document.getElementById('qbStatusBadge');
 
   if (r.connected && !r.refreshExpired) {
     _realmId = r.realmId || null;
-    dot.className  = 'dot dot-green';
+    dot.className = 'dot dot-green';
     text.textContent = `Connected — Realm ${r.realmId}`;
     badge.textContent = '✓ QB Connected';
-    badge.style.color = 'var(--green)';
+    badge.className = 'qb-pill ok';
     acts.innerHTML = `<button class="btn btn-red" onclick="disconnectQb()" style="margin-top:10px">Disconnect</button>`;
     document.getElementById('runBtn').disabled = false;
 
@@ -215,16 +294,16 @@ async function loadQbStatus() {
       }
     }
   } else if (r.connected && r.refreshExpired) {
-    dot.className  = 'dot dot-red';
+    dot.className = 'dot dot-red';
     text.textContent = 'Refresh token expired — reconnect required';
     badge.textContent = '✗ QB Expired';
-    badge.style.color = 'var(--red)';
+    badge.className = 'qb-pill bad';
     acts.innerHTML = `<a class="btn btn-orange" href="/api/qb/connect" style="margin-top:10px">Reconnect QuickBooks</a>`;
   } else {
-    dot.className  = 'dot dot-red';
+    dot.className = 'dot dot-red';
     text.textContent = 'Not connected';
     badge.textContent = '✗ QB Not Connected';
-    badge.style.color = 'var(--red)';
+    badge.className = 'qb-pill bad';
     acts.innerHTML = `<a class="btn btn-orange" href="/api/qb/connect" style="margin-top:10px">Connect QuickBooks</a>`;
   }
 }
@@ -235,14 +314,13 @@ async function disconnectQb() {
   loadQbStatus();
 }
 
-// ── Month picker + date range helpers ────────────────────────────
+// ── Month picker + date helpers ──────────────────────────────────
 function setMonthRange(year, monthIdx) {
-  const m   = String(monthIdx + 1).padStart(2, '0');
+  const m = String(monthIdx + 1).padStart(2, '0');
   const last = new Date(year, monthIdx + 1, 0).getDate();
   document.getElementById('fromDate').value = `${year}-${m}-01`;
   document.getElementById('toDate').value   = `${year}-${m}-${String(last).padStart(2, '0')}`;
 }
-
 function onMonthPick() {
   const v = document.getElementById('monthPick').value;
   if (!v) return;
@@ -256,7 +334,6 @@ function onMonthPick() {
     setMonthRange(y, m - 1);
   }
 }
-
 function buildMonthOptions() {
   const sel = document.getElementById('monthPick');
   const now = new Date();
@@ -265,14 +342,11 @@ function buildMonthOptions() {
   html += '<option disabled>──────</option>';
   for (let i = 0; i < 24; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const y = d.getFullYear();
-    const m = d.getMonth();
-    const val = `${y}-${String(m + 1).padStart(2, '0')}`;
-    html += `<option value="${val}">${months[m]} ${y}</option>`;
+    const y = d.getFullYear(), m = d.getMonth();
+    html += `<option value="${y}-${String(m + 1).padStart(2, '0')}">${months[m]} ${y}</option>`;
   }
   sel.innerHTML = html;
 }
-
 function initDates() {
   buildMonthOptions();
   const now = new Date();
@@ -294,24 +368,24 @@ async function runReconcile() {
   msg.textContent = 'Fetching QB invoices and HubSpot deals…';
 
   try {
-    const [qbRes, hsRes, linksRes] = await Promise.all([
+    const [qbRes, hsRes, linksRes, blocksRes] = await Promise.all([
       fetch(`/api/qb/invoices?from=${from}&to=${to}`).then(r => r.json()),
       fetch(`/api/reconcile/hs-deals?from=${from}&to=${to}`).then(r => r.json()),
       fetch('/api/reconcile/links').then(r => r.json()),
+      fetch('/api/reconcile/blocks').then(r => r.json()),
     ]);
-
     if (qbRes.error) throw new Error('QB: ' + qbRes.error);
     if (hsRes.error) throw new Error('HS: ' + hsRes.error);
 
-    _rawQb      = qbRes.results  || [];
-    _rawHs      = hsRes.results  || [];
-    _savedLinks = linksRes.results || [];
+    _rawQb       = qbRes.results    || [];
+    _rawHs       = hsRes.results    || [];
+    _savedLinks  = linksRes.results || [];
+    _savedBlocks = blocksRes.results || [];
 
-    const rows = match(_rawHs, _rawQb, _savedLinks);
-    _allRows = rows;
-    renderResults(rows);
+    _allRows = match(_rawHs, _rawQb, _savedLinks, _savedBlocks);
+    renderResults(_allRows);
     msg.className = 'msg ok';
-    msg.textContent = `Fetched ${qbRes.total} QB invoices + ${hsRes.total} HS deals. ${rows.length} rows.`;
+    msg.textContent = `Fetched ${qbRes.total} QB invoices + ${hsRes.total} HS deals. ${_allRows.length} rows.`;
   } catch(e) {
     msg.className = 'msg err';
     msg.textContent = e.message;
@@ -321,10 +395,34 @@ async function runReconcile() {
   }
 }
 
+// ── QB invoice helpers ────────────────────────────────────────────
+const FREIGHT_RX = /freight|shipping|delivery|deliver|install|truck|crating|carrier|frt|transport/i;
+
+function extractQbFreight(inv) {
+  if (!Array.isArray(inv.Line)) return 0;
+  let freight = 0;
+  for (const ln of inv.Line) {
+    const itemName = ln.SalesItemLineDetail?.ItemRef?.name || '';
+    const desc     = ln.Description || '';
+    if (FREIGHT_RX.test(`${itemName} ${desc}`)) {
+      freight += parseFloat(ln.Amount || 0) || 0;
+    }
+  }
+  return freight;
+}
+
+function extractQbLines(inv) {
+  if (!Array.isArray(inv.Line)) return [];
+  return inv.Line
+    .filter(ln => ln.DetailType === 'SalesItemLineDetail' && ln.Amount != null)
+    .map(ln => ({
+      name:   ln.SalesItemLineDetail?.ItemRef?.name || ln.Description || '(unnamed)',
+      desc:   ln.Description || '',
+      amount: parseFloat(ln.Amount) || 0,
+    }));
+}
+
 // ── Matching engine ───────────────────────────────────────────────
-// Amount is the primary match criterion.
-// Name similarity is only used to rank candidates when amounts are tied.
-// No FUZZY status — if amount matches it's MATCH, otherwise MISSING_QB.
 function normName(s) {
   return (s || '')
     .toLowerCase()
@@ -333,57 +431,36 @@ function normName(s) {
     .replace(/\s+/g, ' ')
     .trim();
 }
-
 function levenshtein(a, b) {
   const m = a.length, n = b.length;
-  const dp = Array.from({length: m+1}, (_, i) => Array.from({length: n+1}, (_, j) => i === 0 ? j : j === 0 ? i : 0));
-  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) {
+  const dp = Array.from({length:m+1}, (_, i) => Array.from({length:n+1}, (_, j) => i === 0 ? j : j === 0 ? i : 0));
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++)
     dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
-  }
   return dp[m][n];
 }
-
 function nameSimilarity(a, b) {
-  // Returns 0=exact, 1=close, 2=different (don't auto-match)
-  // "Daemen University" vs "Daemen College" must return 2 — sharing one
-  // word is not enough; the second significant word differs.
   const na = normName(a), nb = normName(b);
   if (!na || !nb) return 2;
   if (na === nb) return 0;
   if (na.includes(nb) || nb.includes(na)) return 1;
   if (levenshtein(na, nb) <= 4) return 1;
-
-  // Token check: every significant token of the shorter name must
-  // prefix-match a token in the longer name. Catches "Daemen Univ"
-  // vs "Daemen University" but rejects "Daemen University" vs "Daemen College".
   const ta = na.split(' ').filter(w => w.length >= 3);
   const tb = nb.split(' ').filter(w => w.length >= 3);
   if (ta.length && tb.length) {
     const [shorter, longer] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
-    const allMatch = shorter.every(w => longer.some(lw => lw.startsWith(w) || w.startsWith(lw)));
-    if (allMatch) return 1;
+    if (shorter.every(w => longer.some(lw => lw.startsWith(w) || w.startsWith(lw)))) return 1;
   }
   return 2;
 }
 
-function match(hsDeals, qbInvoices, savedLinks = []) {
+function match(hsDeals, qbInvoices, savedLinks = [], savedBlocks = []) {
   const AMT_TOLERANCE = 1.00;
   const rows = [];
   const usedQb = new Set();
 
   const qbNorm = qbInvoices.map((inv, idx) => {
-    const taxAmt = parseFloat(inv.TxnTaxDetail?.TotalTax || 0) || 0;
-    // Freight in QB is a regular line item — sum any line whose item name
-    // matches freight/shipping/delivery/install patterns.
-    let freight = 0;
-    if (Array.isArray(inv.Line)) {
-      for (const ln of inv.Line) {
-        const itemName = ln.SalesItemLineDetail?.ItemRef?.name || '';
-        if (/freight|shipping|delivery|install/i.test(itemName)) {
-          freight += parseFloat(ln.Amount || 0) || 0;
-        }
-      }
-    }
+    const taxAmt  = parseFloat(inv.TxnTaxDetail?.TotalTax || 0) || 0;
+    const freight = extractQbFreight(inv);
     return {
       idx,
       date:     inv.TxnDate,
@@ -396,19 +473,16 @@ function match(hsDeals, qbInvoices, savedLinks = []) {
     };
   });
 
-  // Build saved link maps
-  const savedLinkMap   = new Map(); // hsDealId → qbInvoiceId
-  const savedLinkQbIds = new Set(); // qbInvoiceIds reserved by manual links
-  for (const lnk of savedLinks) {
-    savedLinkMap.set(lnk.hs_deal_id, lnk.qb_invoice_id);
-    savedLinkQbIds.add(lnk.qb_invoice_id);
-  }
+  // Saved links + blocks
+  const savedLinkMap   = new Map();
+  const savedLinkQbIds = new Set();
+  for (const l of savedLinks) { savedLinkMap.set(l.hs_deal_id, l.qb_invoice_id); savedLinkQbIds.add(l.qb_invoice_id); }
+  const blockSet = new Set(savedBlocks.map(b => `${b.hs_deal_id}::${b.qb_invoice_id}`));
 
   for (const hs of hsDeals) {
     const hsTotal = parseFloat(hs.total || 0);
     const hsName  = hs.customer || hs.name || '';
     const hsId    = hs.dealId;
-
     const base = {
       hsDate:   hs.closedate ? hs.closedate.slice(0, 10) : '',
       hsName,
@@ -420,90 +494,77 @@ function match(hsDeals, qbInvoices, savedLinks = []) {
       hsId,
     };
 
-    // Apply saved manual link first
+    // Manual link first
     if (savedLinkMap.has(hsId)) {
       const qbId = savedLinkMap.get(hsId);
-      const qbIdx = qbNorm.findIndex(q => q.id === qbId && !usedQb.has(q.idx));
-      if (qbIdx >= 0) {
-        const q = qbNorm[qbIdx];
+      const qIdx = qbNorm.findIndex(q => q.id === qbId && !usedQb.has(q.idx));
+      if (qIdx >= 0) {
+        const q = qbNorm[qIdx];
         usedQb.add(q.idx);
-        const delta = q.amount - hsTotal;
-        rows.push({ ...base, status: 'MATCH', manual: true, qbDate: q.date, qbName: q.customer, qbAmount: q.amount, qbFreight: q.freight, qbTaxAmt: q.taxAmt, delta, notes: 'Manual link', qbRef: q.ref, qbId: q.id });
+        rows.push({ ...base, status:'MATCH', manual:true, qbDate:q.date, qbName:q.customer, qbAmount:q.amount, qbFreight:q.freight, qbTaxAmt:q.taxAmt, delta:q.amount - hsTotal, notes:'Manual link', qbRef:q.ref, qbId:q.id });
         continue;
       }
     }
 
-    // Two tiers:
-    //   Exact amount (< $0.01 diff): always a candidate — same-cent totals in
-    //   the same month are almost certainly the same transaction regardless of
-    //   how the name is formatted ("NHL Andre Carrington" vs "NHL Enterprises LP").
-    //   Name similarity is only used to rank when multiple QB invoices share the
-    //   same exact amount.
-    //
-    //   Near-match amount ($0.01–$1.00 diff): require some name similarity
-    //   (nameSim < 2) to avoid false positives on coincidental amounts.
+    // Auto-match candidates:
+    //   exact-amount (< $0.01 diff) → always candidate, name ranks ties
+    //   $0.01–$1.00 diff → require nameSim < 2
+    //   blocked pairs are excluded
     const candidates = [];
     for (let i = 0; i < qbNorm.length; i++) {
       if (usedQb.has(i)) continue;
       if (savedLinkQbIds.has(qbNorm[i].id)) continue;
+      if (blockSet.has(`${hsId}::${qbNorm[i].id}`)) continue;
       const q = qbNorm[i];
       const amtDiff = Math.abs(q.amount - hsTotal);
       if (amtDiff > AMT_TOLERANCE) continue;
       const nameSim = nameSimilarity(hsName, q.customer);
-      // Near-match (not exact): require name recognition
       if (amtDiff >= 0.01 && nameSim >= 2) continue;
       candidates.push({ i, q, amtDiff, nameSim });
     }
 
     if (candidates.length > 0) {
-      // Rank: name similarity first (0=exact best), then amtDiff
       candidates.sort((a, b) => (a.nameSim - b.nameSim) || (a.amtDiff - b.amtDiff));
       const best = candidates[0];
       usedQb.add(best.i);
       const delta = best.q.amount - hsTotal;
       const notes = best.amtDiff >= 0.01 ? `Δ${fmtD(delta)}` : '';
-      rows.push({ ...base, status: 'MATCH', manual: false, qbDate: best.q.date, qbName: best.q.customer, qbAmount: best.q.amount, qbFreight: best.q.freight, qbTaxAmt: best.q.taxAmt, delta, notes, qbRef: best.q.ref, qbId: best.q.id });
+      rows.push({ ...base, status:'MATCH', manual:false, qbDate:best.q.date, qbName:best.q.customer, qbAmount:best.q.amount, qbFreight:best.q.freight, qbTaxAmt:best.q.taxAmt, delta, notes, qbRef:best.q.ref, qbId:best.q.id });
     } else {
-      rows.push({ ...base, status: 'MISSING_QB', manual: false, qbDate: null, qbName: null, qbAmount: null, qbFreight: null, qbTaxAmt: null, delta: null, notes: '', qbRef: null, qbId: null });
+      rows.push({ ...base, status:'MISSING_QB', manual:false, qbDate:null, qbName:null, qbAmount:null, qbFreight:null, qbTaxAmt:null, delta:null, notes:'', qbRef:null, qbId:null });
     }
   }
 
-  // Remaining unmatched QB invoices
   for (let i = 0; i < qbNorm.length; i++) {
     if (usedQb.has(i)) continue;
     const q = qbNorm[i];
-    rows.push({ status: 'MISSING_HS', manual: false, hsDate: null, hsName: null, hsAmount: null, subtotal: 0, freight: 0, taxRate: 0, taxAmt: 0, qbDate: q.date, qbName: q.customer, qbAmount: q.amount, qbFreight: q.freight, qbTaxAmt: q.taxAmt, delta: null, notes: '', hsId: null, qbRef: q.ref, qbId: q.id });
+    rows.push({ status:'MISSING_HS', manual:false, hsDate:null, hsName:null, hsAmount:null, subtotal:0, freight:0, taxRate:0, taxAmt:0, qbDate:q.date, qbName:q.customer, qbAmount:q.amount, qbFreight:q.freight, qbTaxAmt:q.taxAmt, delta:null, notes:'', hsId:null, qbRef:q.ref, qbId:q.id });
   }
 
   rows.sort((a, b) => {
     const da = a.hsDate || a.qbDate || '';
-    const db2 = b.hsDate || b.qbDate || '';
-    return db2.localeCompare(da);
+    const db = b.hsDate || b.qbDate || '';
+    return db.localeCompare(da);
   });
-
   return rows;
 }
 
-// ── Manual link actions ───────────────────────────────────────────
-function getMissingQbOptions(currentHsId) {
-  // Collect unmatched QB invoices (MISSING_HS rows)
+// ── Manual link / unlink / block ─────────────────────────────────
+function getMissingQbOptions() {
   return _allRows
     .filter(r => r.status === 'MISSING_HS' && r.qbId)
     .map(r => `<option value="${r.qbId}">${escHtml(r.qbName || '—')} — ${fmt(r.qbAmount)} (${r.qbDate || '?'})</option>`)
     .join('');
 }
-
 function toggleLinkPicker(hsId) {
   const el = document.getElementById(`picker-${hsId}`);
   if (!el) return;
   el.style.display = el.style.display === 'none' ? 'flex' : 'none';
   if (el.style.display !== 'none') {
-    // Refresh options (other rows may have changed)
     const sel = el.querySelector('select');
-    if (sel) sel.innerHTML = '<option value="">— pick QB invoice —</option>' + getMissingQbOptions(hsId);
+    if (sel) sel.innerHTML = '<option value="">— pick QB invoice —</option>' + getMissingQbOptions();
   }
 }
-
 async function saveLink(hsId) {
   const sel = document.querySelector(`#picker-${hsId} select`);
   if (!sel || !sel.value) { alert('Please select a QB invoice to link.'); return; }
@@ -511,81 +572,70 @@ async function saveLink(hsId) {
   const btn = document.querySelector(`#picker-${hsId} .save-link-btn`);
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
   try {
-    const r = await fetch('/api/reconcile/link', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hsDealId: hsId, qbInvoiceId: qbId }),
-    }).then(r => r.json());
+    const r = await fetch('/api/reconcile/link', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ hsDealId:hsId, qbInvoiceId:qbId }) }).then(r => r.json());
     if (r.error) throw new Error(r.error);
-    // Update saved links and re-match
     _savedLinks = _savedLinks.filter(l => l.hs_deal_id !== hsId);
     _savedLinks.push({ hs_deal_id: hsId, qb_invoice_id: qbId });
-    _allRows = match(_rawHs, _rawQb, _savedLinks);
+    _allRows = match(_rawHs, _rawQb, _savedLinks, _savedBlocks);
     applyFilter();
   } catch(e) {
     alert('Failed to save link: ' + e.message);
     if (btn) { btn.disabled = false; btn.textContent = 'Link'; }
   }
 }
-
 async function removeLink(hsId) {
-  if (!confirm('Remove this manual link? The system will re-match automatically.')) return;
+  if (!confirm('Remove this manual link?')) return;
   try {
-    const r = await fetch('/api/reconcile/link', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hsDealId: hsId }),
-    }).then(r => r.json());
+    const r = await fetch('/api/reconcile/link', { method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ hsDealId:hsId }) }).then(r => r.json());
     if (r.error) throw new Error(r.error);
     _savedLinks = _savedLinks.filter(l => l.hs_deal_id !== hsId);
-    _allRows = match(_rawHs, _rawQb, _savedLinks);
+    _allRows = match(_rawHs, _rawQb, _savedLinks, _savedBlocks);
     applyFilter();
-  } catch(e) {
-    alert('Failed to remove link: ' + e.message);
-  }
+  } catch(e) { alert('Failed to remove link: ' + e.message); }
+}
+async function blockMatch(hsId, qbId) {
+  if (!confirm('Unlink this auto-match? This pair will not be auto-matched again.')) return;
+  try {
+    const r = await fetch('/api/reconcile/block', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ hsDealId:hsId, qbInvoiceId:qbId }) }).then(r => r.json());
+    if (r.error) throw new Error(r.error);
+    _savedBlocks.push({ hs_deal_id: hsId, qb_invoice_id: qbId });
+    _allRows = match(_rawHs, _rawQb, _savedLinks, _savedBlocks);
+    applyFilter();
+  } catch(e) { alert('Failed to block match: ' + e.message); }
 }
 
 function escHtml(s) {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ── Info popups ───────────────────────────────────────────────────
+// ── Popups ────────────────────────────────────────────────────────
 async function loadPortalId() {
   try {
     const r = await fetch('/api/hs/portal-id').then(r => r.json());
     if (r.portalId) _portalId = r.portalId;
-  } catch(e) { /* non-critical */ }
+  } catch(e) {}
 }
-
-function detailRow(k, v) {
-  return `<div class="k">${k}</div><div class="v">${v}</div>`;
-}
-
-function closeModal() {
-  document.getElementById('infoModal').style.display = 'none';
-}
+function detailRow(k, v) { return `<div class="k">${k}</div><div class="v">${v}</div>`; }
+function closeModal() { document.getElementById('infoModal').style.display = 'none'; }
 
 function showHsPopup(hsId) {
   const row = _allRows.find(r => r.hsId === hsId);
   if (!row) return;
-  const hsLink = _portalId
-    ? `https://app.hubspot.com/contacts/${_portalId}/deal/${hsId}`
-    : null;
-
+  const hsLink = _portalId ? `https://app.hubspot.com/contacts/${_portalId}/deal/${hsId}` : null;
   document.getElementById('infoModalBody').innerHTML = `
     <div class="modal-label">HubSpot Deal</div>
     <div class="modal-name">${escHtml(row.hsName) || '—'}</div>
     <div class="modal-grid">
       ${detailRow('Deal ID', escHtml(hsId))}
       ${detailRow('Date', row.hsDate || '—')}
-      ${row.subtotal  ? detailRow('Subtotal', fmt(row.subtotal))  : ''}
-      ${row.freight   ? detailRow('Freight',  fmt(row.freight))   : ''}
-      ${row.taxRate   ? detailRow('Tax Rate', row.taxRate + '%')  : ''}
-      ${row.taxAmt    ? detailRow('Tax $',    fmt(row.taxAmt))    : ''}
+      ${row.subtotal ? detailRow('Subtotal', fmt(row.subtotal)) : ''}
+      ${row.freight  ? detailRow('Freight',  fmt(row.freight))  : ''}
+      ${row.taxRate  ? detailRow('Tax Rate', row.taxRate + '%') : ''}
+      ${row.taxAmt   ? detailRow('Tax $',    fmt(row.taxAmt))   : ''}
       ${detailRow('Total', `<span style="color:var(--orange)">${fmt(row.hsAmount)}</span>`)}
     </div>
     <div class="modal-actions">
-      ${hsLink ? `<a href="${hsLink}" target="_blank" rel="noopener" class="btn btn-orange" style="flex:1;justify-content:center">Open in HubSpot ↗</a>` : '<span style="font-size:11px;color:var(--muted)">HS portal ID not available</span>'}
+      ${hsLink ? `<a href="${hsLink}" target="_blank" rel="noopener" class="btn btn-orange" style="flex:1;justify-content:center">Open in HubSpot ↗</a>` : '<span style="font-size:11px;color:var(--text2)">HS portal ID not available</span>'}
     </div>`;
   document.getElementById('infoModal').style.display = 'flex';
 }
@@ -593,13 +643,16 @@ function showHsPopup(hsId) {
 function showQbPopup(qbId) {
   const row = _allRows.find(r => r.qbId === qbId);
   if (!row) return;
-  const qbLink = _realmId
-    ? `https://app.qbo.intuit.com/app/invoice?txnId=${qbId}`
-    : null;
+  const rawInv = _rawQb.find(inv => inv.Id === qbId);
+  const lines  = rawInv ? extractQbLines(rawInv) : [];
+  const qbLink = _realmId ? `https://app.qbo.intuit.com/app/invoice?txnId=${qbId}` : null;
+  const qbSubtotal = (row.qbAmount != null) ? Math.max(0, row.qbAmount - (row.qbFreight || 0) - (row.qbTaxAmt || 0)) : null;
 
-  const qbSubtotal = (row.qbAmount != null)
-    ? Math.max(0, row.qbAmount - (row.qbFreight || 0) - (row.qbTaxAmt || 0))
-    : null;
+  const linesHtml = lines.length ? `
+    <div class="modal-lines">
+      <div class="modal-lines-title">Line items (${lines.length})</div>
+      ${lines.map(l => `<div class="modal-line"><span class="nm">${escHtml(l.name)}</span><span class="am">${fmt(l.amount)}</span></div>`).join('')}
+    </div>` : '';
 
   document.getElementById('infoModalBody').innerHTML = `
     <div class="modal-label">QuickBooks Invoice</div>
@@ -608,16 +661,18 @@ function showQbPopup(qbId) {
       ${row.qbRef ? detailRow('Invoice #', escHtml(row.qbRef)) : ''}
       ${detailRow('Date', row.qbDate || '—')}
       ${qbSubtotal != null ? detailRow('Subtotal', fmt(qbSubtotal)) : ''}
-      ${row.qbFreight ? detailRow('Freight', fmt(row.qbFreight)) : ''}
+      ${row.qbFreight ? detailRow('Freight', fmt(row.qbFreight)) : detailRow('Freight', '<span style="color:var(--text2)">— (not detected)</span>')}
       ${row.qbTaxAmt  ? detailRow('Tax $',   fmt(row.qbTaxAmt))  : ''}
       ${detailRow('Total', `<span style="color:var(--orange)">${fmt(row.qbAmount)}</span>`)}
     </div>
     <div class="modal-actions">
-      ${qbLink ? `<a href="${qbLink}" target="_blank" rel="noopener" class="btn btn-orange" style="flex:1;justify-content:center">Open in QuickBooks ↗</a>` : '<span style="font-size:11px;color:var(--muted)">QB not connected</span>'}
-    </div>`;
+      ${qbLink ? `<a href="${qbLink}" target="_blank" rel="noopener" class="btn btn-orange" style="flex:1;justify-content:center">Open in QuickBooks ↗</a>` : '<span style="font-size:11px;color:var(--text2)">QB not connected</span>'}
+    </div>
+    ${linesHtml}`;
   document.getElementById('infoModal').style.display = 'flex';
 }
 
+// ── Render ────────────────────────────────────────────────────────
 function applyFilter() {
   const f = document.getElementById('filterStatus').value;
   renderResults(f ? _allRows.filter(r => r.status === f) : _allRows);
@@ -625,9 +680,7 @@ function applyFilter() {
 
 function renderResults(rows) {
   const BADGE = {
-    MATCH:      (r) => r.manual
-      ? '<span class="badge badge-manual">MANUAL</span>'
-      : '<span class="badge badge-match">MATCH</span>',
+    MATCH:      r => r.manual ? '<span class="badge badge-manual">MANUAL</span>' : '<span class="badge badge-match">MATCH</span>',
     MISSING_QB: () => '<span class="badge badge-missing">MISSING QB</span>',
     MISSING_HS: () => '<span class="badge badge-extra">MISSING HS</span>',
   };
@@ -642,72 +695,66 @@ function renderResults(rows) {
   document.getElementById('sumHsTotal').textContent   = fmt(hsTotal);
   document.getElementById('sumQbTotal').textContent   = fmt(qbTotal);
   document.getElementById('sumDelta').textContent     = fmtD(delta);
-  document.getElementById('sumDelta').style.color     = Math.abs(delta) < 1 ? 'var(--green)' : 'var(--yellow)';
+  document.getElementById('sumDelta').style.color     = Math.abs(delta) < 1 ? 'var(--green)' : 'var(--amber)';
   document.getElementById('sumMatched').textContent   = matched;
   document.getElementById('sumMissingQb').textContent = missingQb;
   document.getElementById('sumMissingHs').textContent = missingHs;
   document.getElementById('summaryWrap').style.display = '';
 
-  if (!rows.length) {
-    document.getElementById('resultsCard').style.display = 'none';
-    return;
-  }
+  if (!rows.length) { document.getElementById('resultsCard').style.display = 'none'; return; }
   document.getElementById('resultsCard').style.display = '';
-
-  // Build a set of MISSING_HS qbIds for the picker
   const hasUnmatchedQb = _allRows.some(r => r.status === 'MISSING_HS' && r.qbId);
 
   document.getElementById('resultsBody').innerHTML = rows.map(r => {
     const dCls = r.delta != null && Math.abs(r.delta) >= 0.01 ? 'delta-warn' : 'delta-ok';
 
-    let linkCell = '';
+    let actionCell = '';
     if (r.status === 'MISSING_QB' && r.hsId) {
       const pickerId = `picker-${r.hsId}`;
       if (hasUnmatchedQb) {
-        linkCell = `
+        actionCell = `
           <button class="btn btn-ghost btn-sm" onclick="toggleLinkPicker('${r.hsId}')">🔗 Link</button>
           <div class="link-picker" id="${pickerId}" style="display:none">
-            <select><option value="">— pick QB invoice —</option>${getMissingQbOptions(r.hsId)}</select>
+            <select><option value="">— pick QB invoice —</option>${getMissingQbOptions()}</select>
             <button class="btn btn-orange btn-sm save-link-btn" onclick="saveLink('${r.hsId}')">Save</button>
           </div>`;
       } else {
-        linkCell = '<span style="color:var(--muted);font-size:11px">No unmatched QB rows</span>';
+        actionCell = '<span style="color:var(--text2);font-size:11px">No unmatched QB rows</span>';
       }
     } else if (r.status === 'MATCH' && r.manual && r.hsId) {
-      linkCell = `<button class="btn btn-red btn-sm" onclick="removeLink('${r.hsId}')">Unlink</button>`;
+      actionCell = `<button class="btn btn-red btn-sm" onclick="removeLink('${r.hsId}')">Unlink</button>`;
+    } else if (r.status === 'MATCH' && !r.manual && r.hsId && r.qbId) {
+      actionCell = `<button class="btn btn-red btn-sm" onclick="blockMatch('${r.hsId}','${r.qbId}')">Unlink</button>`;
+      if (r.notes) actionCell = `<span style="color:var(--text2);font-size:11px;margin-right:8px">${escHtml(r.notes)}</span>` + actionCell;
     } else if (r.notes) {
-      linkCell = `<span style="color:var(--muted);font-size:11px">${escHtml(r.notes)}</span>`;
+      actionCell = `<span style="color:var(--text2);font-size:11px">${escHtml(r.notes)}</span>`;
     }
 
-    const hsNameCell = r.hsId && r.hsName
-      ? `<span class="clickable-name" onclick="showHsPopup('${r.hsId}')">${escHtml(r.hsName)}</span>`
-      : (escHtml(r.hsName) || '—');
-    const qbNameCell = r.qbId && r.qbName
-      ? `<span class="clickable-name" onclick="showQbPopup('${r.qbId}')">${escHtml(r.qbName)}</span>`
-      : (escHtml(r.qbName) || '—');
+    const hsNameCell = r.hsId && r.hsName ? `<span class="clickable-name" onclick="showHsPopup('${r.hsId}')">${escHtml(r.hsName)}</span>` : (escHtml(r.hsName) || '—');
+    const qbNameCell = r.qbId && r.qbName ? `<span class="clickable-name" onclick="showQbPopup('${r.qbId}')">${escHtml(r.qbName)}</span>` : (escHtml(r.qbName) || '—');
 
     return `<tr>
       <td>${(BADGE[r.status] || (() => r.status))(r)}</td>
-      <td style="color:var(--muted);white-space:nowrap">${r.hsDate || r.qbDate || '—'}</td>
+      <td style="color:var(--text2);white-space:nowrap">${r.hsDate || r.qbDate || '—'}</td>
       <td>${hsNameCell}</td>
-      <td style="text-align:right;color:var(--muted)">${r.subtotal  ? fmt(r.subtotal)  : '—'}</td>
-      <td style="text-align:right;color:var(--muted)">${r.freight   ? fmt(r.freight)   : '—'}</td>
-      <td style="text-align:right;color:var(--muted)">${r.taxRate   ? r.taxRate + '%'  : '—'}</td>
-      <td style="text-align:right;color:var(--muted)">${r.taxAmt    ? fmt(r.taxAmt)    : '—'}</td>
+      <td style="text-align:right;color:var(--text2)">${r.subtotal  ? fmt(r.subtotal)  : '—'}</td>
+      <td style="text-align:right;color:var(--text2)">${r.freight   ? fmt(r.freight)   : '—'}</td>
+      <td style="text-align:right;color:var(--text2)">${r.taxRate   ? r.taxRate + '%'  : '—'}</td>
+      <td style="text-align:right;color:var(--text2)">${r.taxAmt    ? fmt(r.taxAmt)    : '—'}</td>
       <td style="text-align:right;font-weight:700">${r.hsAmount != null ? fmt(r.hsAmount) : '—'}</td>
       <td>${qbNameCell}</td>
-      <td style="text-align:right;color:var(--muted)">${r.qbFreight ? fmt(r.qbFreight) : '—'}</td>
-      <td style="text-align:right;color:var(--muted)">${r.qbTaxAmt  ? fmt(r.qbTaxAmt)  : '—'}</td>
+      <td style="text-align:right;color:var(--text2)">${r.qbFreight ? fmt(r.qbFreight) : '—'}</td>
+      <td style="text-align:right;color:var(--text2)">${r.qbTaxAmt  ? fmt(r.qbTaxAmt)  : '—'}</td>
       <td style="text-align:right;font-weight:700">${r.qbAmount != null ? fmt(r.qbAmount) : '—'}</td>
       <td style="text-align:right;font-weight:700" class="${dCls}">${r.delta != null ? fmtD(r.delta) : '—'}</td>
-      <td style="white-space:nowrap">${linkCell}</td>
+      <td style="white-space:nowrap">${actionCell}</td>
     </tr>`;
   }).join('');
 }
 
 if (new URLSearchParams(location.search).get('qb') === 'connected') {
-  document.getElementById('runMsg') && (document.getElementById('runMsg').className = 'msg ok');
-  document.getElementById('runMsg') && (document.getElementById('runMsg').textContent = 'QuickBooks connected successfully!');
+  const m = document.getElementById('runMsg');
+  if (m) { m.className = 'msg ok'; m.textContent = 'QuickBooks connected successfully!'; }
 }
 
 initDates();

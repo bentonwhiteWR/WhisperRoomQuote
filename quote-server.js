@@ -1023,6 +1023,47 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // GET /api/reconcile/blocks — return all blocked auto-match pairs
+  if (pathname === '/api/reconcile/blocks' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      if (!db) { json({ results: [] }); return; }
+      const r = await db.query('SELECT hs_deal_id, qb_invoice_id FROM reconcile_blocks ORDER BY created_at DESC');
+      json({ results: r.rows });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // POST /api/reconcile/block — block a wrong auto-match (HS↔QB pair)
+  if (pathname === '/api/reconcile/block' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { hsDealId, qbInvoiceId } = JSON.parse(await readBody(req));
+      if (!hsDealId || !qbInvoiceId) { json({ error: 'hsDealId and qbInvoiceId required' }, 400); return; }
+      if (!db) { json({ error: 'No DB' }, 500); return; }
+      await db.query(
+        `INSERT INTO reconcile_blocks (hs_deal_id, qb_invoice_id) VALUES ($1, $2)
+         ON CONFLICT (hs_deal_id, qb_invoice_id) DO NOTHING`,
+        [hsDealId, qbInvoiceId]
+      );
+      json({ ok: true });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // DELETE /api/reconcile/block — remove a block (allow auto-match again)
+  if (pathname === '/api/reconcile/block' && req.method === 'DELETE') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { hsDealId, qbInvoiceId } = JSON.parse(await readBody(req));
+      if (!hsDealId || !qbInvoiceId) { json({ error: 'hsDealId and qbInvoiceId required' }, 400); return; }
+      if (!db) { json({ error: 'No DB' }, 500); return; }
+      await db.query('DELETE FROM reconcile_blocks WHERE hs_deal_id = $1 AND qb_invoice_id = $2', [hsDealId, qbInvoiceId]);
+      json({ ok: true });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   // GET /api/hs/portal-id — returns HubSpot portal/hub ID for building deal URLs
   if (pathname === '/api/hs/portal-id' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

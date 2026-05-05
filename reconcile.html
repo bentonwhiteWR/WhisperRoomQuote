@@ -460,12 +460,13 @@ function extractQbFreight(inv) {
   let freight = 0;
   for (const ln of inv.Line) {
     if (ln.DetailType === 'SubTotalLineDetail' || ln.DetailType === 'DiscountLineDetail') continue;
-    const itemName = (ln.SalesItemLineDetail?.ItemRef?.name
-                   || ln.GroupLineDetail?.GroupItemRef?.name
-                   || '').trim();
-    // For DescriptionOnlyLineDetail (and any other type), also check Description
-    const desc = (ln.Description || '').trim();
-    const combined = `${itemName} ${desc}`.trim();
+    const itemName  = (ln.SalesItemLineDetail?.ItemRef?.name
+                    || ln.GroupLineDetail?.GroupItemRef?.name
+                    || '').trim();
+    // QB shipping lines use ItemRef.value = "SHIPPING_ITEM_ID" with no name or description
+    const itemValue = (ln.SalesItemLineDetail?.ItemRef?.value || '').trim();
+    const desc      = (ln.Description || '').trim();
+    const combined  = `${itemName} ${itemValue} ${desc}`.trim();
     if (combined && FREIGHT_RX.test(combined)) {
       freight += parseFloat(ln.Amount || 0) || 0;
     }
@@ -822,11 +823,13 @@ function renderQbInvoiceBlock(qbId, parentHsId) {
     <div class="modal-lines">
       <div class="modal-lines-title">Line items (${rawLines.length})</div>
       ${rawLines.map(ln => {
-        const itemName = ln.SalesItemLineDetail?.ItemRef?.name || ln.GroupLineDetail?.GroupItemRef?.name || '';
-        const desc     = ln.Description || '';
-        const dispName = itemName || desc || '(unnamed)';
-        const showDesc = desc && desc !== itemName;
-        const isFrt    = FREIGHT_RX.test(`${itemName} ${desc}`);
+        const itemName  = ln.SalesItemLineDetail?.ItemRef?.name || ln.GroupLineDetail?.GroupItemRef?.name || '';
+        const itemValue = ln.SalesItemLineDetail?.ItemRef?.value || '';
+        const desc      = ln.Description || '';
+        // Show item name, or description, or internal QB ID (e.g. SHIPPING_ITEM_ID → "Shipping")
+        const dispName  = itemName || desc || (itemValue ? itemValue.replace(/_ITEM_ID$/i,'').toLowerCase().replace(/^./, c => c.toUpperCase()) : '(unnamed)');
+        const showDesc  = desc && desc !== itemName;
+        const isFrt     = FREIGHT_RX.test(`${itemName} ${itemValue} ${desc}`);
         const amt      = parseFloat(ln.Amount || 0) || 0;
         const dtShort  = (ln.DetailType || '').replace('LineDetail','');
         return `<div class="modal-line">

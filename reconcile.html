@@ -319,14 +319,25 @@ function levenshtein(a, b) {
 }
 
 function nameSimilarity(a, b) {
-  // Returns 0=exact, 1=fuzzy, 2=none
+  // Returns 0=exact, 1=close, 2=different (don't auto-match)
+  // "Daemen University" vs "Daemen College" must return 2 — sharing one
+  // word is not enough; the second significant word differs.
   const na = normName(a), nb = normName(b);
+  if (!na || !nb) return 2;
   if (na === nb) return 0;
   if (na.includes(nb) || nb.includes(na)) return 1;
   if (levenshtein(na, nb) <= 4) return 1;
-  const wa = na.split(' ').filter(w => w.length >= 4);
-  const wb = new Set(nb.split(' ').filter(w => w.length >= 4));
-  if (wa.some(w => wb.has(w))) return 1;
+
+  // Token check: every significant token of the shorter name must
+  // prefix-match a token in the longer name. Catches "Daemen Univ"
+  // vs "Daemen University" but rejects "Daemen University" vs "Daemen College".
+  const ta = na.split(' ').filter(w => w.length >= 3);
+  const tb = nb.split(' ').filter(w => w.length >= 3);
+  if (ta.length && tb.length) {
+    const [shorter, longer] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+    const allMatch = shorter.every(w => longer.some(lw => lw.startsWith(w) || w.startsWith(lw)));
+    if (allMatch) return 1;
+  }
   return 2;
 }
 
@@ -382,16 +393,21 @@ function match(hsDeals, qbInvoices, savedLinks = []) {
       }
     }
 
-    // Primary: find all QB invoices within amount tolerance, excluding manually-reserved ones
+    // Primary: find QB invoices within amount tolerance AND with a recognisable
+    // name match. Sharing a single word ("Daemen") is no longer enough —
+    // nameSim must be 0 (exact) or 1 (substring/levenshtein/all-tokens-prefix).
+    // Truly different orgs with matching amounts fall through to MISSING_QB
+    // and can be linked manually.
     const candidates = [];
     for (let i = 0; i < qbNorm.length; i++) {
       if (usedQb.has(i)) continue;
       if (savedLinkQbIds.has(qbNorm[i].id)) continue; // reserved for another manual link
       const q = qbNorm[i];
       const amtDiff = Math.abs(q.amount - hsTotal);
-      if (amtDiff <= AMT_TOLERANCE) {
-        candidates.push({ i, q, amtDiff, nameSim: nameSimilarity(hsName, q.customer) });
-      }
+      if (amtDiff > AMT_TOLERANCE) continue;
+      const nameSim = nameSimilarity(hsName, q.customer);
+      if (nameSim >= 2) continue;
+      candidates.push({ i, q, amtDiff, nameSim });
     }
 
     if (candidates.length > 0) {

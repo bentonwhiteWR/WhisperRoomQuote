@@ -1010,6 +1010,21 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // GET /api/hs/portal-id — returns HubSpot portal/hub ID for building deal URLs
+  if (pathname === '/api/hs/portal-id' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const r = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/account-info/v3/details',
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Accept': 'application/json' },
+      });
+      json({ portalId: r.body?.portalId });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   if (pathname === '/api/products-all' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {

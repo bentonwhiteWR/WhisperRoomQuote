@@ -564,6 +564,7 @@ function match(hsDeals, qbInvoices, savedLinks = [], savedBlocks = []) {
       hsDate:   hs.closedate ? hs.closedate.slice(0, 10) : '',
       hsName,
       subtotal: hs.subtotal || 0,
+      discount: hs.discount || 0,
       freight:  hs.freight  || 0,
       taxRate:  hs.taxRate  || 0,
       taxAmt:   hs.taxAmt   || 0,
@@ -778,6 +779,7 @@ function showHsPopup(hsId) {
       ${detailRow('Date', row.hsDate || '—')}
       ${row.state    ? detailRow('Ship State', `${escHtml(row.state)}${row.freight ? ` <span style="font-size:10px;color:var(--text2)">(freight ${row.freightTaxable ? 'taxed' : 'not taxed'})</span>` : ''}`) : ''}
       ${row.subtotal ? detailRow('Subtotal', fmt(row.subtotal)) : ''}
+      ${row.discount ? detailRow('Discount', `<span style="color:var(--green)">−${fmt(row.discount)}</span>`) : ''}
       ${row.freight  ? detailRow('Freight',  fmt(row.freight))  : ''}
       ${row.taxRate  ? detailRow('Tax Rate', row.taxRate + '%') : ''}
       ${row.taxAmt   ? detailRow('Tax $',    fmt(row.taxAmt))   : ''}

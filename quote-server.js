@@ -963,21 +963,30 @@ const server = http.createServer(async (req, res) => {
         const stateAbbr = toStateAbbr(rawState);
         const freightTaxable = !!(NEXUS_STATES[stateAbbr]?.taxFreight);
 
+        // Compute pre-discount subtotal from line items if present
+        const lineSubtotal = (snap.lineItems && snap.lineItems.length)
+          ? snap.lineItems.filter(i => parseFloat(i.price) > 0)
+              .reduce((s, i) => s + (parseFloat(i.price) || 0) * (parseFloat(i.qty || i.quantity || 1)), 0)
+          : 0;
+
+        // Compute discount amount from snapshot.discount = { value, type: 'pct'|'flat' }
+        let discountAmt = 0;
+        if (snap.discount && parseFloat(snap.discount.value) > 0) {
+          const dv = parseFloat(snap.discount.value);
+          discountAmt = snap.discount.type === 'pct' ? lineSubtotal * dv / 100 : dv;
+        }
+
         // Subtotal + tax breakdown:
-        // 1. Snapshot has line items + tax → use exact values
-        // 2. No snapshot but we have a tax rate → reverse-engineer from total,
-        //    accounting for whether freight is part of the taxable base
+        // 1. Snapshot has line items: subtotal = sum of items; tax = stored or
+        //    computed from totals accounting for discount.
+        // 2. No snapshot but we have a tax rate: reverse-engineer from total.
         // 3. Otherwise: subtotal = total - freight, tax = 0
         let subtotal, taxAmt;
         if (snap.lineItems && snap.lineItems.length) {
-          subtotal = snap.lineItems
-            .filter(i => parseFloat(i.price) > 0)
-            .reduce((s, i) => s + (parseFloat(i.price) || 0) * (parseFloat(i.qty || i.quantity || 1)), 0);
-          taxAmt   = parseFloat(snap.tax?.amount ?? snap.taxAmount ?? Math.max(0, total - subtotal - freight)) || 0;
+          subtotal = lineSubtotal;
+          // Fallback now correctly accounts for discount: total = subtotal - discount + freight + tax
+          taxAmt   = parseFloat(snap.tax?.amount ?? snap.taxAmount ?? Math.max(0, total - (subtotal - discountAmt) - freight)) || 0;
         } else if (taxRate > 0) {
-          // total = subtotal + freight + tax
-          // tax = (subtotal + freight*[taxable])*rate/100
-          // → subtotal = (total - freight*(1 + (taxable?rate/100:0))) / (1 + rate/100)
           const r = taxRate / 100;
           const freightTaxedAmt = freightTaxable ? freight * r : 0;
           subtotal = (total - freight - freightTaxedAmt) / (1 + r);
@@ -1000,6 +1009,7 @@ const server = http.createServer(async (req, res) => {
             return isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 10);
           })(),
           subtotal:  Math.round(subtotal * 100) / 100,
+          discount:  Math.round(discountAmt * 100) / 100,
           freight:   Math.round(freight * 100) / 100,
           taxRate,
           taxAmt:    Math.round(taxAmt * 100) / 100,

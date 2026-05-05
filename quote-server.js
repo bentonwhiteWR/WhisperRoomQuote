@@ -1001,8 +1001,27 @@ const server = http.createServer(async (req, res) => {
         let subtotal, taxAmt;
         if (snap.lineItems && snap.lineItems.length) {
           subtotal = lineSubtotal;
-          // Fallback now correctly accounts for discount: total = subtotal - discount + freight + tax
-          taxAmt   = parseFloat(snap.tax?.amount ?? snap.taxAmount ?? Math.max(0, total - (subtotal - discountAmt) - freight)) || 0;
+          if (snap.tax?.inNexus === false) {
+            // TaxJar confirmed no nexus for this state — tax is definitively $0.
+            taxAmt = 0;
+          } else if (snap.tax?.tax != null) {
+            // Primary field: TaxJar result stored as snap.tax.tax
+            taxAmt = parseFloat(snap.tax.tax) || 0;
+          } else if (snap.tax?.amount != null) {
+            // Legacy field name
+            taxAmt = parseFloat(snap.tax.amount) || 0;
+          } else if (snap.taxAmount != null) {
+            taxAmt = parseFloat(snap.taxAmount) || 0;
+          } else {
+            // Last-resort formula. Account for install_only and pickup fees that
+            // are included in the deal total but separate from freight_cost, so
+            // they don't get misattributed as tax.
+            const installMode = snap.install?.mode || 'none';
+            const installAmt  = parseFloat(snap.install?.amount) || 0;
+            const pickupFee   = parseFloat(snap.pickupFee) || 0;
+            const installOnly = (installMode === 'install_only' && installAmt > 0) ? installAmt : 0;
+            taxAmt = Math.max(0, total - (subtotal - discountAmt) - freight - installOnly - pickupFee);
+          }
         } else if (taxRate > 0) {
           const r = taxRate / 100;
           const freightTaxedAmt = freightTaxable ? freight * r : 0;

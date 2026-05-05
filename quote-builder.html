@@ -1163,6 +1163,20 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
       <button class="get-freight-btn" id="taxBtn" onclick="getTax()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:11px;padding:7px 14px">
         Calculate Tax Only
       </button>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:11px;color:var(--muted)">Override:</span>
+        <input type="number" id="taxRateOverride" placeholder="%"
+          min="0" step="0.001" max="50"
+          style="width:70px;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:12px"
+          oninput="applyTaxOverride('rate', this.value)"
+          title="Manually set tax rate as a percentage (e.g. 7.5 for 7.5%)">
+        <span style="font-size:11px;color:var(--muted)">or</span>
+        <input type="number" id="taxAmtOverride" placeholder="$"
+          min="0" step="0.01"
+          style="width:90px;padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:12px"
+          oninput="applyTaxOverride('amount', this.value)"
+          title="Manually set tax as a dollar amount">
+      </div>
       <label class="acc-check" id="check-taxexempt" onclick="toggleAcc(this,'taxexempt');document.getElementById('taxExemptRow').style.display=document.getElementById('taxexempt').checked?'block':'none';if(document.getElementById('taxexempt').checked){taxData=null;document.getElementById('taxResult').classList.remove('visible');updateSummary();}">
         <input type="checkbox" id="taxexempt">
         <div class="acc-box"></div>
@@ -2662,6 +2676,105 @@ function getTaxAmount() {
   return taxData ? taxData.tax : 0;
 }
 
+// Render the Step 5 tax result box from the current taxData. Used both after
+// a TaxJar fetch and when a historical quote is loaded back into the form.
+function renderTaxResult() {
+  const el = document.getElementById('taxResult');
+  if (!el) return;
+  if (!taxData || (!taxData.rate && !taxData.tax)) {
+    el.classList.remove('visible');
+    el.innerHTML = '';
+    return;
+  }
+  if (taxData.error) {
+    el.innerHTML = `<span style="color:var(--red)">⚠ ${taxData.error}</span>`;
+    el.classList.add('visible');
+    return;
+  }
+  if (taxData.inNexus === false) {
+    el.innerHTML = `<span style="color:var(--muted)">No tax nexus — tax not applicable.</span>`;
+    el.classList.add('visible');
+    return;
+  }
+  const rate = (taxData.rate || 0) * 100;
+  const isOverride = !!taxData.override;
+  const overrideBadge = isOverride
+    ? `<span style="font-size:9px;background:#ee6216;color:#fff;padding:1px 5px;border-radius:3px;font-family:var(--mono);margin-left:6px;letter-spacing:.04em">MANUAL</span>`
+    : '';
+  el.innerHTML = `
+    <div style="display:flex;gap:24px;flex-wrap:wrap">
+      <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Tax Rate</div><div style="font-size:16px;margin-top:2px">${rate.toFixed(3)}%${overrideBadge}</div></div>
+      <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Tax Amount</div><div style="font-size:16px;color:var(--green);margin-top:2px">${fmt(taxData.tax || 0)}</div></div>
+      <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Freight Taxed</div><div style="font-size:16px;margin-top:2px">${taxData.freightTaxed ? 'Yes' : 'No'}</div></div>
+    </div>`;
+  el.classList.add('visible');
+}
+
+// Manually override tax rate or amount. Mode 'rate' applies a percent against
+// (subtotal − discount) + (freight if state taxes freight); mode 'amount'
+// is a flat dollar override. Clearing the input reverts to the TaxJar
+// estimate (window._taxjarData) if one was previously calculated.
+function applyTaxOverride(mode, val) {
+  const num = parseFloat(val) || 0;
+  const otherId = mode === 'rate' ? 'taxAmtOverride' : 'taxRateOverride';
+  const otherEl = document.getElementById(otherId);
+
+  if (num > 0) {
+    // Clear the other input so the two override inputs don't fight
+    if (otherEl && otherEl.value) otherEl.value = '';
+    const sub = getSubtotal() - getDiscountAmount();
+    const freight = getFreightTotal();
+    const freightTaxed = !!(window._taxjarData?.freightTaxed);
+    if (mode === 'rate') {
+      const r = num / 100;
+      const taxableBase = sub + (freightTaxed ? freight : 0);
+      taxData = { rate: r, tax: Math.round(taxableBase * r * 100) / 100, freightTaxed, inNexus: true, override: true };
+    } else {
+      // Dollar override — back-compute an effective rate for display only
+      const taxableBase = sub + (freightTaxed ? freight : 0);
+      const r = taxableBase > 0 ? num / taxableBase : 0;
+      taxData = { rate: r, tax: num, freightTaxed, inNexus: true, override: true };
+    }
+  } else {
+    // Revert to TaxJar estimate if one is cached, else clear
+    if (window._taxjarData) {
+      taxData = { ...window._taxjarData };
+    } else {
+      taxData = null;
+    }
+  }
+  renderTaxResult();
+  updateSummary();
+}
+
+// Wrap fetch with automatic retry for transient upstream errors (socket
+// hang up, ECONNRESET, timeouts). The freight + tax APIs proxy through
+// to TaxJar/ABF which occasionally drop connections; previously the rep
+// had to manually click the button again. Now we retry up to 2x silently
+// with exponential backoff, surfacing a status update on retry.
+const TRANSIENT_RX = /socket hang up|ECONNRESET|EAI_AGAIN|ETIMEDOUT|ENOTFOUND|EPIPE|fetch failed|timeout|timed out/i;
+async function fetchWithRetry(url, options, { retries = 2, delays = [1000, 2500], onRetry } = {}) {
+  let lastErr = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, options);
+      let data;
+      try { data = await res.json(); } catch (_) { data = {}; }
+      const transientServerErr = data && data.error && TRANSIENT_RX.test(String(data.error));
+      if (!transientServerErr) return data;
+      lastErr = new Error(data.error);
+    } catch (e) {
+      lastErr = e;
+      if (!TRANSIENT_RX.test(String(e.message || ''))) throw e;
+    }
+    if (attempt < retries) {
+      if (onRetry) onRetry(attempt + 1, retries + 1);
+      await new Promise(r => setTimeout(r, delays[attempt] ?? 2000));
+    }
+  }
+  throw lastErr || new Error('Request failed after retries');
+}
+
 function updateSummary() {
   const sub = getSubtotal();
   const disc = getDiscountAmount();
@@ -2916,7 +3029,7 @@ async function getFreight() {
   status.textContent = 'Fetching ABF rate...';
 
   try {
-    const res = await fetch('/api/freight', {
+    const data = await fetchWithRetry('/api/freight', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2931,8 +3044,9 @@ async function getFreight() {
           loadingdock: document.getElementById('loadingdock').checked,
         }
       })
+    }, {
+      onRetry: (n, total) => { status.textContent = `ABF connection dropped — retrying (${n}/${total - 1})…`; }
     });
-    const data = await res.json();
     if (data.error) throw new Error(data.error);
 
     const total = data.cost + data.markup;
@@ -2999,17 +3113,21 @@ async function getTax() {
   btn.textContent = 'Calculating...';
 
   try {
-    const res = await fetch('/api/tax', {
+    const data = await fetchWithRetry('/api/tax', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ state, zip, city, street, subtotal, shipping, installShipping, rep: document.getElementById('repSelect')?.value || null })
+    }, {
+      onRetry: (n, total) => { btn.textContent = `Retrying (${n}/${total - 1})…`; }
     });
-    const data = await res.json();
     taxData = data;
+    // Cache the raw TaxJar result so override clear can revert to it
+    if (data && !data.error && data.inNexus !== false) window._taxjarData = { ...data };
 
     const el = document.getElementById('taxResult');
     if (!data.inNexus) {
       el.innerHTML = `<span style="color:var(--muted)">No tax nexus in ${state} — tax not applicable.</span>`;
+      el.classList.add('visible');
     } else if (data.error) {
       // Translate TaxJar errors into rep-friendly messages
       let taxErrMsg = data.error;
@@ -3020,16 +3138,10 @@ async function getTax() {
       else if (/timeout|timed out/i.test(data.error))    taxErrMsg = 'Tax service timed out — try again in a moment.';
       else taxErrMsg = `Tax calculation failed — verify the ship-to address and try again. (${data.error})`;
       el.innerHTML = `<span style="color:var(--red)">⚠ ${taxErrMsg}</span>`;
+      el.classList.add('visible');
     } else {
-      el.innerHTML = `
-        <div style="display:flex;gap:24px;flex-wrap:wrap">
-          <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Tax Rate</div><div style="font-size:16px;margin-top:2px">${(data.rate * 100).toFixed(3)}%</div></div>
-          <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Tax Amount</div><div style="font-size:16px;color:var(--green);margin-top:2px">${fmt(data.tax)}</div></div>
-          <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Freight Taxed</div><div style="font-size:16px;margin-top:2px">${data.freightTaxed ? 'Yes' : 'No'}</div></div>
-        </div>
-      `;
+      renderTaxResult();
     }
-    el.classList.add('visible');
     updateSummary();
   } catch(e) {
     document.getElementById('taxResult').innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
@@ -3391,6 +3503,11 @@ async function createDeal() {
     const lBtn2 = document.getElementById('copyLinkBtn');
     if (vBtn2 && window._lastPushedQuoteNumber) vBtn2.disabled = false;
     if (lBtn2 && window._lastPushedQuoteNumber) lBtn2.disabled = false;
+    // Reset the folder-prompt skip flag so the NEXT quote in this session
+    // shows the folder picker again. The flag is set true after the rep
+    // selects a folder (so the recursive createDeal() call doesn't re-prompt),
+    // but it leaks into the next submission unless we clear it here.
+    window._skipFolderPrompt = false;
   }
 }
 
@@ -4533,6 +4650,23 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
     document.getElementById('freightTransit').textContent = freightData.transit || '—';
     document.getElementById('freightResult').classList.add('visible');
   }
+
+  // Restore Step 5 tax UI — rate, amount, freight-taxed flag, override badge
+  // if the loaded quote had a manual tax. Previously this section just stayed
+  // blank when loading historical quotes even though tax was being applied
+  // to the totals.
+  const rateEl = document.getElementById('taxRateOverride');
+  const amtEl  = document.getElementById('taxAmtOverride');
+  if (rateEl) rateEl.value = '';
+  if (amtEl)  amtEl.value  = '';
+  if (taxData && taxData.override) {
+    if (taxData.tax > 0 && rateEl) rateEl.value = ((taxData.rate || 0) * 100).toFixed(3).replace(/\.?0+$/, '');
+  }
+  // Cache the loaded data as the "TaxJar baseline" so clearing an override reverts
+  if (taxData && !taxData.error && taxData.inNexus !== false) {
+    window._taxjarData = { ...taxData, override: false };
+  }
+  renderTaxResult();
 
   if (q.accessories) {
     ['residential','liftgate','limitedaccess','loadingdock'].forEach(id => {
@@ -7370,7 +7504,7 @@ async function confirmPartsFreight() {
   status.textContent = 'Fetching ABF rate...';
 
   try {
-    const res = await fetch('/api/freight', {
+    const data = await fetchWithRetry('/api/freight', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -7385,8 +7519,9 @@ async function confirmPartsFreight() {
           loadingdock: document.getElementById('loadingdock').checked,
         }
       })
+    }, {
+      onRetry: (n, total) => { status.textContent = `ABF connection dropped — retrying (${n}/${total - 1})…`; }
     });
-    const data = await res.json();
     if (data.error) throw new Error(data.error);
 
     const total = data.cost + data.markup;

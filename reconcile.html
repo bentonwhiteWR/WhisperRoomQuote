@@ -433,20 +433,25 @@ function match(hsDeals, qbInvoices, savedLinks = []) {
       }
     }
 
-    // Primary: find QB invoices within amount tolerance AND with a recognisable
-    // name match. Sharing a single word ("Daemen") is no longer enough —
-    // nameSim must be 0 (exact) or 1 (substring/levenshtein/all-tokens-prefix).
-    // Truly different orgs with matching amounts fall through to MISSING_QB
-    // and can be linked manually.
+    // Two tiers:
+    //   Exact amount (< $0.01 diff): always a candidate — same-cent totals in
+    //   the same month are almost certainly the same transaction regardless of
+    //   how the name is formatted ("NHL Andre Carrington" vs "NHL Enterprises LP").
+    //   Name similarity is only used to rank when multiple QB invoices share the
+    //   same exact amount.
+    //
+    //   Near-match amount ($0.01–$1.00 diff): require some name similarity
+    //   (nameSim < 2) to avoid false positives on coincidental amounts.
     const candidates = [];
     for (let i = 0; i < qbNorm.length; i++) {
       if (usedQb.has(i)) continue;
-      if (savedLinkQbIds.has(qbNorm[i].id)) continue; // reserved for another manual link
+      if (savedLinkQbIds.has(qbNorm[i].id)) continue;
       const q = qbNorm[i];
       const amtDiff = Math.abs(q.amount - hsTotal);
       if (amtDiff > AMT_TOLERANCE) continue;
       const nameSim = nameSimilarity(hsName, q.customer);
-      if (nameSim >= 2) continue;
+      // Near-match (not exact): require name recognition
+      if (amtDiff >= 0.01 && nameSim >= 2) continue;
       candidates.push({ i, q, amtDiff, nameSim });
     }
 

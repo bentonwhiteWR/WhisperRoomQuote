@@ -936,7 +936,7 @@ const server = http.createServer(async (req, res) => {
               { propertyName: 'closedate', operator: 'LTE', value: toTs },
             ]
           }],
-          properties: ['dealname', 'amount', 'closedate', 'hubspot_owner_id', 'dealstage', 'tax_rate', 'freight_cost', 'shipping_state'],
+          properties: ['dealname', 'amount', 'closedate', 'hubspot_owner_id', 'dealstage', 'tax_rate', 'total_tax_amount', 'freight_cost', 'shipping_state'],
           sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
         };
         const r = await httpsRequest({
@@ -1811,6 +1811,7 @@ const server = http.createServer(async (req, res) => {
           const dealPatchProps = {
             amount: total.toFixed(2),
             tax_rate: tax && tax.rate ? String(parseFloat((tax.rate * 100).toFixed(4))) : '',
+            total_tax_amount: tax && tax.tax != null ? String(parseFloat(tax.tax).toFixed(2)) : '0',
             discount: discount && discount.value ? String(discount.value) : '',
             shipping_address:      customer.address    || '',
             shipping_city:         customer.city       || '',
@@ -1881,6 +1882,7 @@ const server = http.createServer(async (req, res) => {
             return customer.company || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || 'Customer';
           })(),
           tax_rate: tax && tax.rate ? String(parseFloat((tax.rate * 100).toFixed(4))) : '',
+          total_tax_amount: tax && tax.tax != null ? String(parseFloat(tax.tax).toFixed(2)) : '0',
           quote_number: quoteNumber || '',
           freight_cost: (() => {
             // When mode is "delivery_install", the combined charge IS the freight for this deal.
@@ -7430,6 +7432,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       // Client radios use lowercase ids. Map here at the boundary.
       const PAY_TYPE_HS_VALUES = { hs: 'HS', cc: 'CC', ach: 'ACH', po: 'PO', other: 'Other' };
       const closedWonProps = { dealstage: 'closedwon' };
+      if (tax && tax.tax != null) closedWonProps.total_tax_amount = String(parseFloat(tax.tax).toFixed(2));
       if (apColor) closedWonProps.ap_color = apColor;
       if (paymentType) {
         const hsPayType = PAY_TYPE_HS_VALUES[paymentType] || paymentType;

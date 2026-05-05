@@ -1002,17 +1002,23 @@ const server = http.createServer(async (req, res) => {
         }
 
         // Tax: back-calculate from the tax-inclusive deal total using the stored
-        // HubSpot tax_rate. Mirrors the Excel/VBA formula:
-        //   preTaxBase = Total / (1 + rate)
-        //   tax = Round((preTaxBase - freight) * rate, 2) + Round(freight * rate, 2)
+        // HubSpot tax_rate. Branches on whether the state taxes freight:
+        //   Freight taxable:  total = (productBase + freight) × (1 + r)
+        //     → tax = Round((total/(1+r) - freight) × r, 2) + Round(freight × r, 2)
+        //   Freight not taxable: total = productBase × (1 + r) + freight
+        //     → tax = Round((total - freight) × r / (1 + r), 2)
         // If tax_rate is blank/0 the deal has no tax (no nexus, exempt, etc.).
         let taxAmt = 0;
         if (taxRate > 0) {
           const r = taxRate / 100;
-          const preTaxBase  = total / (1 + r);
-          const productTax  = Math.round((preTaxBase - freight) * r * 100) / 100;
-          const freightTax  = Math.round(freight * r * 100) / 100;
-          taxAmt = Math.max(0, productTax + freightTax);
+          if (freightTaxable) {
+            const preTaxBase = total / (1 + r);
+            const productTax = Math.round((preTaxBase - freight) * r * 100) / 100;
+            const freightTax = Math.round(freight * r * 100) / 100;
+            taxAmt = Math.max(0, productTax + freightTax);
+          } else {
+            taxAmt = Math.round(Math.max(0, (total - freight) * r / (1 + r)) * 100) / 100;
+          }
         }
 
         return {

@@ -3309,7 +3309,7 @@ async function createDeal() {
   // Show full-screen overlay only now — after folder picker, duplicate check,
   // and any other prompts have completed. Showing earlier would block them
   // (their z-index is lower than the overlay's).
-  showSubmitOverlay(isRevision ? 'Updating quote…' : 'Creating quote…');
+  showSubmitOverlay(isRevision ? 'Revising Quote…' : 'Creating New Quote…');
 
   try {
     const res = await fetch('/api/create-deal', {
@@ -3538,7 +3538,7 @@ async function createDeal() {
 function showSubmitOverlay(title) {
   const el = document.getElementById('submitOverlay');
   if (!el) return;
-  document.getElementById('submitOverlayTitle').textContent = title || 'Creating quote…';
+  document.getElementById('submitOverlayTitle').textContent = title || 'Creating New Quote…';
   el.classList.add('visible');
   el.setAttribute('aria-hidden', 'false');
   // Block accidental tab close while the request is in flight
@@ -3553,7 +3553,7 @@ function hideSubmitOverlay() {
 }
 function _blockUnload(e) {
   e.preventDefault();
-  e.returnValue = 'Your quote is still being created. Are you sure you want to leave?';
+  e.returnValue = 'Your quote is still being submitted. Are you sure you want to leave?';
   return e.returnValue;
 }
 
@@ -7405,8 +7405,8 @@ function selectDriveFolder(folderId, folderName) {
 <div class="submit-overlay" id="submitOverlay" aria-hidden="true">
   <div class="submit-overlay-card">
     <div class="submit-overlay-spinner"></div>
-    <div class="submit-overlay-title" id="submitOverlayTitle">Creating quote…</div>
-    <div class="submit-overlay-msg">Pushing to HubSpot. This usually takes a few seconds.</div>
+    <div class="submit-overlay-title" id="submitOverlayTitle">Creating New Quote…</div>
+    <div class="submit-overlay-msg" id="submitOverlayMsg">Pushing to HubSpot. This usually takes a few seconds.</div>
     <div class="submit-overlay-warning">⚠ Please don't close this tab or refresh the page.</div>
   </div>
 </div>

@@ -3227,8 +3227,11 @@ async function createDeal() {
 
   const btn = document.getElementById('createBtn');
   btn.disabled = true;
-  const isRevision = !!(linkedDeal || selectedDeal);
-  btn.innerHTML = '<span class="spinner-inline"></span>' + (isRevision ? 'Updating...' : 'Creating...');
+  // Revision = user explicitly loaded a historical quote to update.
+  // Linking to an existing deal alone does NOT make this a revision — the user
+  // may simply be adding a new quote to an existing deal.
+  const isRevision = !!window._historicalQuoteLoaded;
+  btn.innerHTML = '<span class="spinner-inline"></span>' + (isRevision ? 'Revising Quote…' : 'Creating New Quote…');
 
   // For new deals: if folder check still in-flight, wait then retry
   if (!isRevision && window._loadedContactId && window._contactFolderInfo === null) {
@@ -3361,7 +3364,7 @@ async function createDeal() {
         })(),
         existingDealId: selectedDeal ? selectedDeal.id : null,
         linkedDealId: linkedDeal ? linkedDeal.id : (selectedDeal ? selectedDeal.id : null),
-        isRevision: !!(linkedDeal || selectedDeal),
+        isRevision: !!window._historicalQuoteLoaded,
         confirmContactOverride: window._confirmContactOverride || false,
         bindFolderId: window._bindFolderId || null,
         notes: document.getElementById('notes').value.trim(),
@@ -7318,7 +7321,9 @@ async function checkContactFolder(contactId) {
     const data = await res.json();
     if (data.folderId) {
       window._contactFolderInfo = data;
-      window._bindFolderId = data.folderId;
+      // Do NOT auto-bind to the prior folder. The folder prompt will offer
+      // it as a default but the rep must explicitly confirm or pick a new one,
+      // otherwise files for a new deal would silently land in an old folder.
     } else {
       window._contactFolderInfo = false;
     }
@@ -7338,7 +7343,10 @@ function showFolderPrompt() {
 
   const prior = window._contactFolderInfo;
   if (prior && prior.folderId) {
-    msg.textContent = `This contact already has a Drive folder ("${prior.folderName || 'existing'}"). Use it, pick a different one, or create a new folder for this deal.`;
+    msg.textContent = `This contact already has a Drive folder ("${prior.folderName || 'existing'}"). Click below to reuse it, or pick a different one / create new.`;
+    const sid = prior.folderId.replace(/'/g, "\\'");
+    const sn  = (prior.folderName || 'Existing folder').replace(/'/g, "\\'");
+    results.innerHTML = '<div onclick="selectDriveFolder(\'' + sid + '\',\'' + sn + '\')" style="padding:9px 12px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--text,#e8e8e8);border:1px solid rgba(62,207,142,.4);margin-bottom:8px;background:rgba(62,207,142,.08)">&#x2705; Use existing: ' + (prior.folderName || 'Existing folder') + '</div>';
   } else {
     msg.textContent = 'Search for an existing Drive folder to link this deal to, or create a new one.';
   }

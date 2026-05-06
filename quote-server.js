@@ -1621,11 +1621,14 @@ const server = http.createServer(async (req, res) => {
       let { quoteNumber } = body;
 
       // ── In-place update detection ────────────────────────────────────
-      // If this is a revision and total + line item count haven't changed,
-      // update the snapshot in place — keep the same quote number, skip line item reset
+      // If this is a revision and line items haven't changed, update the
+      // snapshot in place — keep the same quote number, skip line item reset.
+      // ONLY runs when the frontend explicitly flagged isRevision=true (user
+      // loaded a historical quote to update). A linked deal alone is not
+      // enough — adding a new quote to an existing deal must get a new number.
       let _inPlaceUpdate = false;
       let _existingQuoteNumber = null;
-      if (existingDealId && db) {
+      if (isRevision && existingDealId && db) {
         try {
           const snapRow = await db.query(
             'SELECT quote_number, total, json_snapshot FROM quotes WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 1',

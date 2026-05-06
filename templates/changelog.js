@@ -53,8 +53,8 @@ module.exports = function renderChangelog() {
     {
       v:'1.6.4', date:'May 6, 2026', tag:'fix',
       changes:[
-        {t:'fix', d:'KNOWN BUG #1 (fix pending): Quotes with different prices are reusing existing quote numbers instead of generating a new one — the system is treating new quotes as revisions of the previous quote even when they should be distinct. Investigating quote number assignment logic.'},
-        {t:'fix', d:'KNOWN BUG #2 (fix pending): When a contact is already linked to an existing deal, files (PDFs, quotes, invoices) are still saved to the previous deal\'s Drive folder even when a different folder is specified. New folder selection is being ignored in favor of the inherited folder from the prior contact association.'},
+        {t:'fix', d:'New quotes on existing deals now always get a fresh quote number. Previously, linking a deal made the system treat any new quote as an in-place revision — silently reusing the prior quote number even when prices/discount/freight differed. Revision-mode is now triggered only when a rep explicitly loads a historical quote to update.'},
+        {t:'fix', d:'Folder picker now opens for every new quote, even when the contact has a prior Drive folder. The existing folder is offered as a one-click option but is no longer auto-bound. Files for new deals on returning customers no longer silently land in the old folder.'},
       ]
     },
     {

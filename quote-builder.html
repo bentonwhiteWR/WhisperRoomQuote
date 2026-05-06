@@ -3365,6 +3365,7 @@ async function createDeal() {
         isRevision: !!window._historicalQuoteLoaded,
         confirmContactOverride: window._confirmContactOverride || false,
         bindFolderId: window._bindFolderId || null,
+        forceNewFolder: !!window._forceNewFolder,
         notes: document.getElementById('notes').value.trim(),
         repFoamColor:       document.getElementById('repFoamColor')?.value || '',
         repHingePreference: document.getElementById('repHingePreference')?.value || '',
@@ -3532,6 +3533,7 @@ async function createDeal() {
     // selects a folder (so the recursive createDeal() call doesn't re-prompt),
     // but it leaks into the next submission unless we clear it here.
     window._skipFolderPrompt = false;
+    window._forceNewFolder = false;
   }
 }
 
@@ -3812,6 +3814,7 @@ function _doFillContact(contact) {
   window._bindFolderId = null;
   window._contactFolderInfo = null;
   window._skipFolderPrompt = false;
+  window._forceNewFolder = false;
   // Check if this contact has an existing Drive folder
   checkContactFolder(contact.id);
   window._loadedContactAddress = {
@@ -5787,6 +5790,7 @@ function newQuote(skipConfirm = false) {
   window._bindFolderId = null;
   window._contactFolderInfo = null;
   window._skipFolderPrompt = false;
+  window._forceNewFolder = false;
   const addrNote = document.getElementById('addressNote');
   if (addrNote) addrNote.style.display = 'none';
   updatePushButtonText();
@@ -7349,6 +7353,7 @@ function closeFolderPrompt() {
 
 function folderPromptCreateNew() {
   window._bindFolderId = null;
+  window._forceNewFolder = true;
   window._skipFolderPrompt = true;
   closeFolderPrompt();
   createDeal();

@@ -637,6 +637,9 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
 .submit-overlay-title { font-size: 18px; font-weight: 800; color: #fff; margin-bottom: 8px; letter-spacing: .01em; }
 .submit-overlay-msg { font-size: 13px; color: rgba(255,255,255,.7); line-height: 1.5; }
 .submit-overlay-warning { margin-top: 18px; padding: 10px 14px; background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.3); border-radius: 8px; font-size: 12px; color: #f59e0b; font-weight: 600; }
+body:not(.dark) .submit-overlay-spinner { border-color: rgba(0,0,0,.12); }
+body:not(.dark) .submit-overlay-title { color: var(--text) !important; }
+body:not(.dark) .submit-overlay-msg { color: var(--muted) !important; }
 
 /* ── Success modal (big "Quote Created!" confirmation) ── */
 .success-modal { position: fixed; inset: 0; background: rgba(0,0,0,.65); backdrop-filter: blur(4px); z-index: 9998; display: none; align-items: center; justify-content: center; padding: 20px; }
@@ -1715,6 +1718,12 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
       </div>
     </div>
 
+    <div id="orderWaTypeRow" class="wa-type-order-row" style="display:none;margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">WA Type <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Wide Access)</span></div>
+      <select id="orderWaType" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer">
+        <option value="">— Select type —</option>
+      </select>
+    </div>
 
     <div class="ap-color-row" style="display:none;margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">AP Color <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Acoustic Package)</span></div>
@@ -4121,6 +4130,12 @@ ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</
       </div>
     </div>
 
+    <div class="wa-type-order-row" style="display:none;margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">WA Type <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Wide Access)</span></div>
+      <select class="orderWaTypeSelect" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer">
+        <option value="">— Select type —</option>
+      </select>
+    </div>
 
     <div class="ap-color-row" style="display:none;margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">AP Color <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Acoustic Package)</span></div>
@@ -6632,6 +6647,22 @@ async function openOrderModal() {
   const apSel = document.getElementById('orderApColor');
   if (apSel) apSel.value = apColor;
 
+  // WA Type row — show/hide and populate based on booth options
+  const waOpts    = getWATypeOptions();
+  const repWaVal  = document.getElementById('repWaType')?.value || '';
+  document.querySelectorAll('.wa-type-order-row').forEach(row => {
+    row.style.display = waOpts.length > 0 ? 'block' : 'none';
+    const sel = row.querySelector('select');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— Select type —</option>';
+    waOpts.forEach(t => {
+      const o = document.createElement('option');
+      o.value = t; o.textContent = t;
+      if (t === repWaVal) o.selected = true;
+      sel.appendChild(o);
+    });
+  });
+
   // Carry "Notes & Order Specs" → Production Notes (only if the field is empty, so rep edits aren't clobbered)
   const pnBox = document.getElementById('orderProductionNotes');
   if (pnBox && !pnBox.value) pnBox.value = (document.getElementById('notes')?.value || '').trim();
@@ -6950,7 +6981,7 @@ async function confirmProcessOrder() {
         foamColor:        foam,
         hingePreference:  hinge,
         apColor:          apColor,
-        waType:           document.getElementById('repWaType')?.value || '',
+        waType:           (() => { const r=document.getElementById('orderWaTypeRow'); return (r&&r.style.display!=='none') ? (document.getElementById('orderWaType')?.value||'') : (document.getElementById('repWaType')?.value||''); })(),
         productionNotes,
         deliveryNotes,
         ownerId: document.getElementById('repSelect').value,

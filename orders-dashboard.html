@@ -411,6 +411,16 @@
         <label class="sel-label"><input type="radio" name="editHinge" value="Right Hand" onchange="highlightSel('editHinge')"> Right Hand</label>
       </div>
     </div>
+    <div id="editWaTypeSection" style="display:none;margin-top:14px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">WA Type <span style="font-weight:400;text-transform:none;font-size:10px;letter-spacing:0">(Wide Access)</span></div>
+      <select id="editWaType" style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;font-family:inherit;outline:none;cursor:pointer">
+        <option value="">— Not specified —</option>
+        <option value="4016">4016</option>
+        <option value="4040">4040</option>
+        <option value="4622">4622</option>
+        <option value="4646">4646</option>
+      </select>
+    </div>
   </div>
 
   <div class="drawer-section">
@@ -1370,6 +1380,11 @@ function openDrawer(quoteNumber) {
   setRadio('editFoam',  od.foamColor       || '');
   setRadio('editHinge', od.hingePreference || '');
   setApColor(od.apColor || '');
+  const _waType = od.waType || order.json_snapshot?.repWaType || '';
+  const _waSection = document.getElementById('editWaTypeSection');
+  if (_waSection) _waSection.style.display = _waType ? 'block' : 'none';
+  const _waSelect = document.getElementById('editWaType');
+  if (_waSelect) _waSelect.value = _waType;
   document.getElementById('editSerialNumber').value   = od.serialNumber    || '';
   document.getElementById('editProductionNotes').value = od.productionNotes || '';
   document.getElementById('editDeliveryNotes').value   = od.deliveryNotes   || '';
@@ -1518,6 +1533,7 @@ async function saveOrder() {
   const newFoam      = document.querySelector('input[name="editFoam"]:checked')?.value  || '';
   const newHinge     = document.querySelector('input[name="editHinge"]:checked')?.value || '';
   const newApColor   = getApColor();
+  const newWaType    = document.getElementById('editWaType')?.value || '';
   const newSerial    = document.getElementById('editSerialNumber').value.trim();
   const newProdNotes = document.getElementById('editProductionNotes').value.trim();
   const newDelNotes  = document.getElementById('editDeliveryNotes').value.trim();
@@ -1541,6 +1557,7 @@ async function saveOrder() {
   chk('Foam Color',       prevOd.foamColor       || '', newFoam);
   chk('Door Hinge',       prevOd.hingePreference || '', newHinge);
   chk('AP Color',         prevOd.apColor         || '', newApColor);
+  chk('WA Type',          prevOd.waType          || '', newWaType);
   chk('Serial Number',    prevOd.serialNumber    || '', newSerial);
   chk('Production Notes', prevOd.productionNotes || '', newProdNotes);
   chk('Delivery Notes',   prevOd.deliveryNotes   || '', newDelNotes);
@@ -1566,6 +1583,7 @@ async function saveOrder() {
     foamColor:       newFoam,
     hingePreference: newHinge,
     apColor:         newApColor,
+    waType:          newWaType,
     serialNumber:    newSerial,
     productionNotes: newProdNotes,
     deliveryNotes:   newDelNotes,

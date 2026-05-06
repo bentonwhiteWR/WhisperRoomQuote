@@ -6932,7 +6932,7 @@ ${q.accepted ? `
     const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').trim());
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, foamColor, hingePreference, apColor, productionNotes, deliveryNotes, shipped, changes, repName, freightCost, shipEmailTo, shipEmailCc, markShipped, serialNumber, shipmentFields } = body;
+      const { customer, foamColor, hingePreference, apColor, waType, productionNotes, deliveryNotes, shipped, changes, repName, freightCost, shipEmailTo, shipEmailCc, markShipped, serialNumber, shipmentFields } = body;
 
       if (!db) { json({ error: 'No database' }, 500); return; }
 
@@ -7119,6 +7119,7 @@ ${q.accepted ? `
         foamColor:        foamColor        !== undefined ? foamColor        : currentOrderData.foamColor,
         hingePreference:  hingePreference  !== undefined ? hingePreference  : currentOrderData.hingePreference,
         apColor:          apColor          !== undefined ? apColor          : currentOrderData.apColor,
+        waType:           waType           !== undefined ? waType           : currentOrderData.waType,
         serialNumber:     serialNumber     !== undefined ? serialNumber     : currentOrderData.serialNumber,
         productionNotes:  productionNotes  !== undefined ? productionNotes  : currentOrderData.productionNotes,
         deliveryNotes:    deliveryNotes    !== undefined ? deliveryNotes    : currentOrderData.deliveryNotes,

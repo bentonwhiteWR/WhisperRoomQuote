@@ -4517,13 +4517,17 @@ ${q.accepted ? `
           global._driveCleanupStatus = { done: false, action: 'delete-orphans', total: orphans.length, deleted, failed, errors };
           for (const f of orphans) {
             try {
-              await gdriveRequest('DELETE', `/drive/v3/files/${f.id}?supportsAllDrives=true`);
+              await gdriveRequest('PATCH', `/drive/v3/files/${f.id}?supportsAllDrives=true`, { trashed: true });
               deleted++;
             } catch(e) {
-              failed++;
-              const errEntry = { id: f.id, name: f.name, error: e.message };
-              errors.push(errEntry);
-              if (failed <= 3) console.error(`[drive-cleanup] delete failed for "${f.name}" (${f.id}): ${e.message}`);
+              if (e.message.includes('404')) {
+                deleted++; // already gone — count as done
+              } else {
+                failed++;
+                const errEntry = { id: f.id, name: f.name, error: e.message };
+                errors.push(errEntry);
+                if (failed <= 3) console.error(`[drive-cleanup] delete failed for "${f.name}" (${f.id}): ${e.message}`);
+              }
             }
             global._driveCleanupStatus = { done: false, action: 'delete-orphans', total: orphans.length, deleted, failed, recentErrors: errors.slice(-3) };
             await new Promise(r => setTimeout(r, 100));

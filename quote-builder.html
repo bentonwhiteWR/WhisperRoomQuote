@@ -5345,6 +5345,19 @@ function updatePushButtonText() {
       if (labelEl) { labelEl.textContent = isRevision ? '↪ Revision of:' : '↪ New quote from:'; labelEl.style.color = color; }
       nextNum.style.color = color;
       note.style.display = 'block';
+
+      // Quote-number display mirrors the badge state so the rep sees what they
+      // will get on push: revision → loaded number; new quote → predicted next.
+      // We update the visible display only; quoteNumHidden stays at the loaded
+      // number so View Quote / Copy Link / PDF buttons keep targeting the saved
+      // quote until the push actually completes.
+      const dispEl = document.getElementById('quoteNumDisplay');
+      if (dispEl) {
+        const ownerId = document.getElementById('repSelect')?.value;
+        dispEl.textContent = isRevision
+          ? window._loadedQuoteNumber
+          : (ownerId ? generateQuoteNumber(ownerId) : window._loadedQuoteNumber);
+      }
     } else {
       note.style.display = 'none';
     }

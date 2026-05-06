@@ -4537,22 +4537,24 @@ ${q.accepted ? `
     }
 
     if (action === 'move-remaining') {
+      // oldFolder can be passed explicitly via ?from=FOLDER_ID to override GDRIVE_ROOT_FOLDER
+      const oldFolder = parsed.query.from || GDRIVE_ROOT_FOLDER;
       json({ success: true, message: 'Moving folders in background. Poll /api/admin/drive-cleanup/status.' });
       (async () => {
         try {
-          if (!GDRIVE_ROOT_FOLDER) throw new Error('GDRIVE_ROOT_FOLDER not set — nothing to move from');
+          if (!oldFolder) throw new Error('No source folder — pass ?from=FOLDER_ID');
           const dbRes = await db.query(
             `SELECT DISTINCT gdrive_folder_id FROM quotes WHERE gdrive_folder_id IS NOT NULL AND gdrive_folder_id != ''`
           );
           const realIds   = new Set(dbRes.rows.map(r => r.gdrive_folder_id));
-          const oldFolders = await driveListAllFolders(GDRIVE_ROOT_FOLDER);
+          const oldFolders = await driveListAllFolders(oldFolder);
           const needsMove  = oldFolders.filter(f => realIds.has(f.id));
           let moved = 0, failed = 0, errors = [];
           global._driveCleanupStatus = { done: false, action: 'move-remaining', total: needsMove.length, moved, failed };
           for (const f of needsMove) {
             try {
               await gdriveRequest('PATCH',
-                `/drive/v3/files/${f.id}?addParents=${NEW_ALL_CONTACTS}&removeParents=${GDRIVE_ROOT_FOLDER}&supportsAllDrives=true&fields=id`,
+                `/drive/v3/files/${f.id}?addParents=${NEW_ALL_CONTACTS}&removeParents=${oldFolder}&supportsAllDrives=true&fields=id`,
                 {}
               );
               moved++;

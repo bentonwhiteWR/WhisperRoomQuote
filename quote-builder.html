@@ -653,8 +653,6 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
 .success-modal-actions .btn-secondary { background: var(--surface2); color: rgba(255,255,255,.85); border: 1px solid var(--border); }
 
 /* ── Quote-number preview pill ── */
-.quote-num-preview { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 6px; font-family: monospace; font-size: 11px; color: rgba(255,255,255,.7); margin-top: 6px; }
-.quote-num-preview strong { color: var(--accent); font-weight: 700; }
 
 
 .empty-state { text-align: center; padding: 32px; color: var(--muted); font-size: 12px; background: var(--surface); border: 1px dashed var(--border); border-radius: 4px; }
@@ -1299,7 +1297,6 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
     </div>
     <div style="margin-top:8px;font-family:var(--mono);font-size:14px;font-weight:600;color:var(--accent);letter-spacing:.05em;" id="quoteNumDisplay">—</div>
     <input type="hidden" id="quoteNumHidden" value="">
-    <div class="quote-num-preview" id="quoteNumPreview" style="display:none">—</div>
 
   </div>
 
@@ -3593,36 +3590,6 @@ window.addEventListener('pageshow', e => {
   if (e.persisted) {
     location.reload();
   }
-});
-
-// ── Quote-number preview ────────────────────────────────────────────
-// Fetch the next quote number for the current rep and show it under the
-// quote-number display. This gives the rep a visual anchor before they
-// submit — an unexpected jump from 01 → 02 (or higher) signals that
-// something else used a slot.
-async function refreshQuoteNumberPreview() {
-  try {
-    const ownerId = document.getElementById('repSelect')?.value;
-    if (!ownerId) return;
-    const dealId = (linkedDeal?.id) || (selectedDeal?.id) || '';
-    const params = new URLSearchParams({ ownerId });
-    if (dealId) params.set('dealId', dealId);
-    const r = await fetch('/api/quote-number/preview?' + params.toString());
-    if (!r.ok) return;
-    const j = await r.json();
-    const el = document.getElementById('quoteNumPreview');
-    if (el && j.next) {
-      el.innerHTML = `Next # will be <strong>${j.next}</strong>`;
-      el.style.display = 'inline-flex';
-    }
-  } catch(_) {}
-}
-
-
-// Refresh quote-number preview when rep changes or deal links change
-window.addEventListener('load', () => {
-  refreshQuoteNumberPreview();
-  document.getElementById('repSelect')?.addEventListener('change', refreshQuoteNumberPreview);
 });
 
 // ── Deal search ──────────────────────────────────────────────────

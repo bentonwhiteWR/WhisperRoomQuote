@@ -202,9 +202,9 @@ function httpsRequest(options, body, rawBody) {
         catch(e) { resolve({ status: res.statusCode, body: data }); }
       });
     });
-    req.setTimeout(15000, () => {
+    req.setTimeout(options.timeoutMs || 15000, () => {
       req.destroy();
-      reject(new Error(`HubSpot API timeout: ${options.path?.slice(0,60)}`));
+      reject(new Error(`API timeout: ${options.hostname}${options.path?.slice(0,60)}`));
     });
     req.on('error', reject);
     if (rawBody) req.write(rawBody);

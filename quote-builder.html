@@ -3252,9 +3252,9 @@ async function createDeal() {
     return;
   }
 
-  // For new quotes with no prior folder bound: prompt to pick/create a folder.
-  // If the contact already has a Drive folder, it was auto-bound above — skip the prompt.
-  if (!isRevision && !window._bindFolderId && !window._skipFolderPrompt) {
+  // Prompt for folder only when creating a brand-new deal with no folder yet.
+  // Skip if: historical revision, existing deal selected, or contact already has a bound folder.
+  if (!isRevision && !(linkedDeal || selectedDeal) && !window._bindFolderId && !window._skipFolderPrompt) {
     btn.disabled = false;
     btn.innerHTML = isRevision ? 'Update Quote &amp; Deal' : 'Push to HubSpot';
     showFolderPrompt();

@@ -1627,57 +1627,39 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, isRevision, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, forceNewFolder, newFolderName, notes, repFoamColor, repHingePreference, repApColor, install } = body;
+      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, loadedQuoteNumber, loadedQuoteTotal, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, forceNewFolder, newFolderName, notes, repFoamColor, repHingePreference, repApColor, install } = body;
       let { quoteNumber } = body;
 
-      // ── In-place update detection ────────────────────────────────────
-      // If this is a revision and line items haven't changed, update the
-      // snapshot in place — keep the same quote number, skip line item reset.
-      // ONLY runs when the frontend explicitly flagged isRevision=true (user
-      // loaded a historical quote to update). A linked deal alone is not
-      // enough — adding a new quote to an existing deal must get a new number.
+      // ── Revision vs new-quote decision ───────────────────────────────
+      // Simple rule per product spec: if the rep is editing a specific loaded
+      // quote AND the new total matches that quote's total → revision (reuse
+      // its number, in-place update). Anything else → new quote (next number).
       let _inPlaceUpdate = false;
       let _existingQuoteNumber = null;
-      if (isRevision && existingDealId && db) {
-        try {
-          const snapRow = await db.query(
-            'SELECT quote_number, total, json_snapshot FROM quotes WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 1',
-            [String(existingDealId)]
-          );
-          if (snapRow.rows.length > 0) {
-            const stored = snapRow.rows[0];
-            // Compare total price only — if total is identical it's a revision (color/address/notes change);
-            // any price change means a genuinely different quote and needs a new number.
-            const storedTotal = parseFloat(stored.total || 0);
-            const newTotal    = parseFloat(total || 0);
-            const totalMatch  = Math.abs(storedTotal - newTotal) < 0.01;
-            console.log(`[save] in-place check: deal=${existingDealId} storedTotal=${storedTotal} newTotal=${newTotal} totalMatch=${totalMatch}`);
-            if (totalMatch) {
-              _inPlaceUpdate = true;
-              _existingQuoteNumber = stored.quote_number;
-              console.log(`[save] in-place update detected — keeping quote number ${_existingQuoteNumber}`);
-            } else {
-              console.log(`[save] new quote required — total changed (${storedTotal} → ${newTotal})`);
-            }
-          } else {
-            console.log(`[save] no stored snapshot for deal ${existingDealId} — treating as new quote`);
-          }
-        } catch(e) { console.warn('[save] in-place check failed:', e.message); }
-      }
-
-      // If in-place, use existing quote number — skip generating a new one
-      if (_inPlaceUpdate && _existingQuoteNumber) {
-        quoteNumber = _existingQuoteNumber;
+      if (loadedQuoteNumber && loadedQuoteTotal != null) {
+        const baselineTotal = parseFloat(loadedQuoteTotal);
+        const newTotal      = parseFloat(total || 0);
+        const totalMatch    = Math.abs(baselineTotal - newTotal) < 0.01;
+        console.log(`[save] revision check: loaded=${loadedQuoteNumber} baseline=${baselineTotal} new=${newTotal} match=${totalMatch}`);
+        if (totalMatch) {
+          _inPlaceUpdate = true;
+          _existingQuoteNumber = String(loadedQuoteNumber);
+          quoteNumber = _existingQuoteNumber;
+        }
+      } else {
+        console.log(`[save] no loaded quote — treating as new quote`);
       }
 
       // Resolve any quote number collision server-side before touching HubSpot
-      // This replaces the client error-and-retry flow with silent auto-increment
+      // This replaces the client error-and-retry flow with silent auto-increment.
+      // Pass null for dealId so the same-deal shortcut in generateFreeQuoteNumber
+      // is bypassed — for non-in-place pushes we always need a genuinely new number,
+      // even if the loaded quote already belongs to this deal.
       if (quoteNumber && db && !_inPlaceUpdate) {
         const resolvedContactId = existingContactId ? String(existingContactId) : null;
-        const resolvedDealId    = existingDealId    ? String(existingDealId)    : null;
-        const free = await generateFreeQuoteNumber(quoteNumber, ownerId, resolvedDealId, resolvedContactId);
+        const free = await generateFreeQuoteNumber(quoteNumber, ownerId, null, resolvedContactId);
         if (free !== quoteNumber) {
-          console.log(`[save] quote number collision: ${quoteNumber} → reassigned to ${free}`);
+          console.log(`[save] quote number: ${quoteNumber} → assigned ${free}`);
           quoteNumber = free;
         }
       }
@@ -1923,7 +1905,7 @@ const server = http.createServer(async (req, res) => {
           billing_phone_number:  billing ? (billing.phone     || customer.phone     || '') : (customer.phone     || ''),
           ...(billing && billing.name ? { bill_to_name: billing.name } : {}),
           pipeline: 'default',
-          dealstage: isRevision ? 'qualifiedtobuy' : 'appointmentscheduled',
+          dealstage: 'appointmentscheduled',
           amount: total.toFixed(2),
           hubspot_owner_id: String(ownerId),
           closedate: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],

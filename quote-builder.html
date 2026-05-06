@@ -653,8 +653,6 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
 .success-modal-actions .btn-secondary { background: var(--surface2); color: rgba(255,255,255,.85); border: 1px solid var(--border); }
 
 /* ── Quote-number preview pill ── */
-.quote-num-preview { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 6px; font-family: monospace; font-size: 11px; color: rgba(255,255,255,.7); margin-top: 6px; }
-.quote-num-preview strong { color: var(--accent); font-weight: 700; }
 
 
 .empty-state { text-align: center; padding: 32px; color: var(--muted); font-size: 12px; background: var(--surface); border: 1px dashed var(--border); border-radius: 4px; }
@@ -1295,11 +1293,10 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
   <div style="margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,.1)">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div class="summary-title" style="margin-bottom:0">Quote Number</div>
-      <div id="revisionNote" style="display:none;font-size:10px;color:rgba(238,98,22,.8);font-weight:600;letter-spacing:.03em">&#x21AA; Rev: <span id="revisionNextNum"></span></div>
+      <div id="revisionNote" style="display:none;font-size:10px;font-weight:600;letter-spacing:.03em"><span id="revisionNoteLabel" style="color:rgba(238,98,22,.8)">&#x21AA; Revision of:</span> <span id="revisionNextNum" style="color:rgba(238,98,22,.8)"></span></div>
     </div>
     <div style="margin-top:8px;font-family:var(--mono);font-size:14px;font-weight:600;color:var(--accent);letter-spacing:.05em;" id="quoteNumDisplay">—</div>
     <input type="hidden" id="quoteNumHidden" value="">
-    <div class="quote-num-preview" id="quoteNumPreview" style="display:none">—</div>
 
   </div>
 
@@ -2882,6 +2879,8 @@ function updateSummary() {
       dimsEl.style.display = 'none';
     }
   }
+  // Keep revision badge in sync whenever totals change
+  updatePushButtonText();
 }
 
 // ── Product search ────────────────────────────────────────────────
@@ -3200,17 +3199,6 @@ async function createDeal() {
     }
   }
 
-  // If revising a historical quote, generate a fresh quote number now
-  let _freshQuoteGenerated = false;
-  if (window._historicalQuoteLoaded) {
-    window._historicalQuoteLoaded = false;
-    document.getElementById('quoteNumHidden').value = '';  // clear first — prevents concatenation
-    document.getElementById('quoteNumDisplay').textContent = '—';
-    updateQuoteNumber();
-    document.getElementById('revisionNote').style.display = 'none';
-    _freshQuoteGenerated = true;
-  }
-
   const firstName = document.getElementById('firstName').value.trim();
   const lastName = document.getElementById('lastName').value.trim();
   const email = document.getElementById('email').value.trim();
@@ -3224,14 +3212,18 @@ async function createDeal() {
 
   const btn = document.getElementById('createBtn');
   btn.disabled = true;
-  // Revision = user explicitly loaded a historical quote to update.
-  // Linking to an existing deal alone does NOT make this a revision — the user
-  // may simply be adding a new quote to an existing deal.
-  const isRevision = !!window._historicalQuoteLoaded;
-  btn.innerHTML = '<span class="spinner-inline"></span>' + (isRevision ? 'Revising Quote…' : 'Creating New Quote…');
+  // Decide spinner text from the only thing that matters: does the current total
+  // match the total of the specific quote we loaded? If yes → revision (same
+  // number stays). If no (or no quote loaded) → new quote number.
+  const _previewTotal = getSubtotal() - getDiscountAmount() + getEffectiveFreight() + getPickupFee() + getInstallAmount() + getTaxAmount();
+  const willBeRevision = !!window._loadedQuoteNumber
+    && window._loadedQuoteTotal != null
+    && Math.abs(parseFloat(window._loadedQuoteTotal) - _previewTotal) < 0.01;
+  btn.innerHTML = '<span class="spinner-inline"></span>' + (willBeRevision ? 'Revising Quote…' : 'Creating New Quote…');
 
   // For new deals: if folder check still in-flight, wait then retry
-  if (!isRevision && window._loadedContactId && window._contactFolderInfo === null) {
+  const _hasLoadedQuote = !!window._loadedQuoteNumber;
+  if (!_hasLoadedQuote && window._loadedContactId && window._contactFolderInfo === null) {
     btn.disabled = false;
     btn.innerHTML = '<span class="spinner-inline"></span> Checking folder...';
     await new Promise(resolve => {
@@ -3244,16 +3236,16 @@ async function createDeal() {
       }, 150);
     });
     btn.disabled = false;
-    btn.innerHTML = isRevision ? 'Update Quote &amp; Deal' : 'Push to HubSpot';
+    btn.innerHTML = _hasLoadedQuote ? 'Update Quote &amp; Deal' : 'Push to HubSpot';
     createDeal();
     return;
   }
 
   // Prompt for folder only when creating a brand-new deal with no folder yet.
-  // Skip if: historical revision, existing deal selected, or contact already has a bound folder.
-  if (!isRevision && !(linkedDeal || selectedDeal) && !window._bindFolderId && !window._skipFolderPrompt) {
+  // Skip if: a quote is loaded, deal already linked, or contact already has a bound folder.
+  if (!_hasLoadedQuote && !(linkedDeal || selectedDeal) && !window._bindFolderId && !window._skipFolderPrompt) {
     btn.disabled = false;
-    btn.innerHTML = isRevision ? 'Update Quote &amp; Deal' : 'Push to HubSpot';
+    btn.innerHTML = 'Push to HubSpot';
     showFolderPrompt();
     return;
   }
@@ -3282,8 +3274,7 @@ async function createDeal() {
         const choice = await showDupModal(dupContact, customerForCheck);
         existingContactId = choice.useExisting ? dupContact.id : null;
         btn.disabled = true;
-        const isRevision = !!(linkedDeal || selectedDeal);
-  btn.innerHTML = '<span class="spinner-inline"></span>' + (isRevision ? 'Updating...' : 'Creating...');
+        btn.innerHTML = '<span class="spinner-inline"></span>' + (willBeRevision ? 'Revising Quote…' : 'Creating New Quote…');
       }
     }
   } catch(dupErr) {
@@ -3307,7 +3298,11 @@ async function createDeal() {
   // Show full-screen overlay only now — after folder picker, duplicate check,
   // and any other prompts have completed. Showing earlier would block them
   // (their z-index is lower than the overlay's).
-  showSubmitOverlay(isRevision ? 'Revising Quote…' : 'Creating New Quote…');
+  // Recompute against the final total in case anything shifted during prompts.
+  const _willBeRevisionFinal = !!window._loadedQuoteNumber
+    && window._loadedQuoteTotal != null
+    && Math.abs(parseFloat(window._loadedQuoteTotal) - total) < 0.01;
+  showSubmitOverlay(_willBeRevisionFinal ? 'Revising Quote…' : 'Creating New Quote…');
 
   try {
     const res = await fetch('/api/create-deal', {
@@ -3359,7 +3354,8 @@ async function createDeal() {
         })(),
         existingDealId: selectedDeal ? selectedDeal.id : null,
         linkedDealId: linkedDeal ? linkedDeal.id : (selectedDeal ? selectedDeal.id : null),
-        isRevision: !!window._historicalQuoteLoaded,
+        loadedQuoteNumber: window._loadedQuoteNumber || null,
+        loadedQuoteTotal: window._loadedQuoteTotal != null ? window._loadedQuoteTotal : null,
         confirmContactOverride: window._confirmContactOverride || false,
         bindFolderId: window._bindFolderId || null,
         forceNewFolder: !!window._forceNewFolder,
@@ -3428,23 +3424,23 @@ async function createDeal() {
           document.getElementById('quoteNumDisplay').textContent;
         linkDealById(data.dealId, pushedDealName);
       }
-      // Mark form as published — next push will generate a new quote number
+      // Always reflect the server's authoritative quote number (in-place or new).
       if (data.quoteNumber) {
-        if (data.inPlaceUpdate || !_freshQuoteGenerated) {
-          // In-place: always use server's returned number (overrides client-generated)
-          // New quote without fresh gen: also use server's number
-          document.getElementById('quoteNumHidden').value = data.quoteNumber;
-          document.getElementById('quoteNumDisplay').textContent = data.quoteNumber;
-          const qnSub = document.getElementById('quoteNumSub');
-          if (qnSub) qnSub.textContent = '';
-        }
+        document.getElementById('quoteNumHidden').value = data.quoteNumber;
+        document.getElementById('quoteNumDisplay').textContent = data.quoteNumber;
+        const qnSub = document.getElementById('quoteNumSub');
+        if (qnSub) qnSub.textContent = '';
       }
       // Advance session sequence counter — only for genuinely new quote numbers
       if (!data.inPlaceUpdate) {
         const repId = document.getElementById('repSelect').value;
         advanceQuoteSeq(repId);
       }
-      window._historicalQuoteLoaded = !data.inPlaceUpdate; // in-place: stay in revision mode, don't generate new number next push
+      // Whatever was just pushed becomes the new baseline. Next push compares
+      // against THIS quote — if total stays the same, it'll be a same-number
+      // revision; if it changes, a new number gets generated.
+      window._loadedQuoteNumber = data.quoteNumber || null;
+      window._loadedQuoteTotal  = parseFloat(total) || 0;
       activateLinkBtn();
       updatePushButtonText(); // will show "Update Quote & Deal" + revision preview
       // Also activate PDF button
@@ -3509,8 +3505,12 @@ async function createDeal() {
       // Special handling for quote number collision
       if (data.error && data.error.includes('already exists for a different customer')) {
         box.innerHTML = `✕ Quote number collision — this number was already used. <strong>Click Push again</strong> to get a new number.`;
-        // Force a fresh quote number so the next push uses a new one
-        window._historicalQuoteLoaded = true;
+        // Force a fresh quote number on next push by clearing the loaded baseline.
+        window._loadedQuoteNumber = null;
+        window._loadedQuoteTotal = null;
+        document.getElementById('quoteNumHidden').value = '';
+        document.getElementById('quoteNumDisplay').textContent = '—';
+        updateQuoteNumber();
       } else {
         box.innerHTML = `✕ Error: ${data.error}`;
       }
@@ -3590,36 +3590,6 @@ window.addEventListener('pageshow', e => {
   if (e.persisted) {
     location.reload();
   }
-});
-
-// ── Quote-number preview ────────────────────────────────────────────
-// Fetch the next quote number for the current rep and show it under the
-// quote-number display. This gives the rep a visual anchor before they
-// submit — an unexpected jump from 01 → 02 (or higher) signals that
-// something else used a slot.
-async function refreshQuoteNumberPreview() {
-  try {
-    const ownerId = document.getElementById('repSelect')?.value;
-    if (!ownerId) return;
-    const dealId = (linkedDeal?.id) || (selectedDeal?.id) || '';
-    const params = new URLSearchParams({ ownerId });
-    if (dealId) params.set('dealId', dealId);
-    const r = await fetch('/api/quote-number/preview?' + params.toString());
-    if (!r.ok) return;
-    const j = await r.json();
-    const el = document.getElementById('quoteNumPreview');
-    if (el && j.next) {
-      el.innerHTML = `Next # will be <strong>${j.next}</strong>`;
-      el.style.display = 'inline-flex';
-    }
-  } catch(_) {}
-}
-
-
-// Refresh quote-number preview when rep changes or deal links change
-window.addEventListener('load', () => {
-  refreshQuoteNumberPreview();
-  document.getElementById('repSelect')?.addEventListener('change', refreshQuoteNumberPreview);
 });
 
 // ── Deal search ──────────────────────────────────────────────────
@@ -4699,10 +4669,11 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
     if (brokerRow) brokerRow.style.display = isCa ? 'block' : 'none';
   }
 
-  // Set the quote number to the HISTORICAL quote number so copy link works correctly
-  // If the rep pushes again, a new quote number will be generated at that point
+  // Capture the loaded quote's number AND total — these are the baseline for
+  // the revision-vs-new-quote decision on the next push.
   if (q.quoteNumber) {
-    window._historicalQuoteLoaded = true; // prevent updateQuoteNumber overwrite
+    window._loadedQuoteNumber = q.quoteNumber;
+    window._loadedQuoteTotal  = parseFloat(q.total || 0);
     updatePushButtonText();
     document.getElementById('quoteNumHidden').value = q.quoteNumber;
     // Always show quote number as primary display
@@ -5149,8 +5120,8 @@ function updateRevisionBadge() {
 }
 
 function updateQuoteNumber() {
-  // Don't overwrite if a historical quote is loaded — rep must push first
-  if (window._historicalQuoteLoaded) return;
+  // Don't overwrite if a quote is loaded — rep must push first
+  if (window._loadedQuoteNumber) return;
   const ownerId = document.getElementById('repSelect').value;
   const qn = generateQuoteNumber(ownerId);
   document.getElementById('quoteNumDisplay').textContent = qn;
@@ -5317,25 +5288,43 @@ function onDealSearchInput(val) {
 function updatePushButtonText() {
   const btn = document.getElementById('createBtn');
   if (!btn) return;
+  const hasLoadedQuote = !!window._loadedQuoteNumber;
   const hasLinkedDeal = !!(linkedDeal || selectedDeal);
-  const isHistorical = window._historicalQuoteLoaded;
 
-  if (isHistorical || hasLinkedDeal) {
+  if (hasLoadedQuote || hasLinkedDeal) {
     btn.innerHTML = 'Update Quote &amp; Deal';
   } else {
     btn.innerHTML = 'Create Quote &amp; Deal';
   }
 
-  // Show "Revision will be: XXXX" when historical quote is loaded
+  // Badge: show whether the next push will be a revision (same total) or a new
+  // quote (price changed). Recomputes live so the rep sees it update as they edit.
   const note = document.getElementById('revisionNote');
   const nextNum = document.getElementById('revisionNextNum');
+  const labelEl = document.getElementById('revisionNoteLabel');
   if (note && nextNum) {
-    if (isHistorical) {
-      // Preview the next quote number without committing it
-      const ownerId = document.getElementById('repSelect').value;
-      const previewNum = generateQuoteNumber(ownerId);
-      nextNum.textContent = previewNum;
+    if (hasLoadedQuote) {
+      nextNum.textContent = window._loadedQuoteNumber;
+      const currentTotal = getSubtotal() - getDiscountAmount() + getEffectiveFreight() + getPickupFee() + getInstallAmount() + getTaxAmount();
+      const isRevision = window._loadedQuoteTotal != null
+        && Math.abs(parseFloat(window._loadedQuoteTotal) - currentTotal) < 0.01;
+      const color = isRevision ? 'rgba(238,98,22,.8)' : 'rgba(34,197,94,.9)';
+      if (labelEl) { labelEl.textContent = isRevision ? '↪ Revision of:' : '↪ New quote from:'; labelEl.style.color = color; }
+      nextNum.style.color = color;
       note.style.display = 'block';
+
+      // Quote-number display mirrors the badge state so the rep sees what they
+      // will get on push: revision → loaded number; new quote → predicted next.
+      // We update the visible display only; quoteNumHidden stays at the loaded
+      // number so View Quote / Copy Link / PDF buttons keep targeting the saved
+      // quote until the push actually completes.
+      const dispEl = document.getElementById('quoteNumDisplay');
+      if (dispEl) {
+        const ownerId = document.getElementById('repSelect')?.value;
+        dispEl.textContent = isRevision
+          ? window._loadedQuoteNumber
+          : (ownerId ? generateQuoteNumber(ownerId) : window._loadedQuoteNumber);
+      }
     } else {
       note.style.display = 'none';
     }
@@ -5750,7 +5739,8 @@ function newQuote(skipConfirm = false) {
   // Regenerate quote number — clear first to prevent stale value concatenation
   document.getElementById('quoteNumHidden').value = '';
   document.getElementById('quoteNumDisplay').textContent = '—';
-  window._historicalQuoteLoaded = false;
+  window._loadedQuoteNumber = null;
+  window._loadedQuoteTotal = null;
   updateQuoteNumber();
   checkLinkBtnState();
   updateSummary();
@@ -5766,7 +5756,8 @@ function newQuote(skipConfirm = false) {
   window._lastPushedDealId = null;
   window._loadedContactId = null;
   window._userUnlinked = false;
-  window._historicalQuoteLoaded = false;
+  window._loadedQuoteNumber = null;
+  window._loadedQuoteTotal = null;
   window._bindFolderId = null;
   window._contactFolderInfo = null;
   window._skipFolderPrompt = false;

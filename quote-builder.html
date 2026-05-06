@@ -656,9 +656,6 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
 .quote-num-preview { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 6px; font-family: monospace; font-size: 11px; color: rgba(255,255,255,.7); margin-top: 6px; }
 .quote-num-preview strong { color: var(--accent); font-weight: 700; }
 
-/* ── Recent-submission warning banner ── */
-.recent-submit-banner { background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.4); border-radius: 8px; padding: 12px 16px; margin: 12px 0; font-size: 13px; color: #f59e0b; display: flex; align-items: center; gap: 10px; }
-.recent-submit-banner button { margin-left: auto; padding: 4px 10px; background: rgba(245,158,11,.2); border: 1px solid rgba(245,158,11,.4); border-radius: 5px; color: #fbbf24; font-size: 11px; font-weight: 700; cursor: pointer; font-family: inherit; }
 
 .empty-state { text-align: center; padding: 32px; color: var(--muted); font-size: 12px; background: var(--surface); border: 1px dashed var(--border); border-radius: 4px; }
 
@@ -3395,17 +3392,18 @@ async function createDeal() {
           : 'Your quote has been pushed to HubSpot successfully.',
         viewUrl: _qUrl,
       });
-      // Persist last-pushed timestamp for the duplicate-warning banner on next page load
-      try {
-        localStorage.setItem('wr_lastPush', JSON.stringify({
-          quoteNumber: data.quoteNumber,
-          dealId: data.dealId,
-          ts: Date.now(),
-        }));
-      } catch(_) {}
+      // Clear any stale banner state
+      try { localStorage.removeItem('wr_lastPush'); } catch(_) {}
       window._lastPushedContactId = data.contactId || null;
       window._lastPushedDealId = data.dealId || null;
       window._lastPushedShareToken = data.shareToken || null;
+      // Bind the new deal ID so subsequent pushes in this session have existingDealId
+      // set for the in-place revision check (without this, the check is skipped and
+      // a new quote number is generated even when total price hasn't changed).
+      if (data.dealId) {
+        if (!linkedDeal?.id) linkedDeal = { id: data.dealId, name: data.dealName || '' };
+        if (!selectedDeal?.id) selectedDeal = { id: data.dealId, name: data.dealName || '' };
+      }
       setQuoteAccepted(false);
       // Show Back to Deal Hub button
       const backBtn = document.getElementById('backToDealHubBtn');
@@ -3617,27 +3615,6 @@ async function refreshQuoteNumberPreview() {
   } catch(_) {}
 }
 
-// ── Recent-submission warning banner ───────────────────────────────
-// On page load, check localStorage for a recent push (< 5 min ago) and
-// show a dismissible banner asking the rep to confirm this is intentional.
-(function checkRecentPush() {
-  try {
-    const raw = localStorage.getItem('wr_lastPush');
-    if (!raw) return;
-    const last = JSON.parse(raw);
-    if (!last || !last.ts) return;
-    const ageSec = Math.floor((Date.now() - last.ts) / 1000);
-    if (ageSec > 300) return; // older than 5 min — ignore
-    const banner = document.createElement('div');
-    banner.className = 'recent-submit-banner';
-    const ageLabel = ageSec < 60 ? `${ageSec} sec ago` : `${Math.floor(ageSec/60)} min ago`;
-    banner.innerHTML = `⚠ Your last quote (<strong>${last.quoteNumber || '?'}</strong>) was created ${ageLabel}. Make sure this is a new quote, not a duplicate.
-      <button onclick="this.parentNode.remove(); localStorage.removeItem('wr_lastPush')">Got it</button>`;
-    // Insert at top of main layout
-    const target = document.querySelector('.layout') || document.body.firstElementChild;
-    if (target && target.parentNode) target.parentNode.insertBefore(banner, target);
-  } catch(_) {}
-})();
 
 // Refresh quote-number preview when rep changes or deal links change
 window.addEventListener('load', () => {

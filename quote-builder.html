@@ -6783,9 +6783,11 @@ function highlightOrderSel(name) {
 }
 
 async function confirmProcessOrder() {
-  const dealId     = window._lastPushedDealId || linkedDeal?.id;
-  const quoteNumber = document.getElementById('quoteNumHidden').value;
-  if (!dealId || !quoteNumber) { showToast('No deal linked', 'error'); return; }
+  // Initial deal/quote check — must already be linked, since auto-save below
+  // is meant to update an existing record, not create a new deal.
+  if (!(window._lastPushedDealId || linkedDeal?.id) || !document.getElementById('quoteNumHidden').value) {
+    showToast('No deal linked', 'error'); return;
+  }
 
   const foam    = document.querySelector('input[name="orderFoam"]:checked')?.value  || '';
   const hinge   = document.querySelector('input[name="orderHinge"]:checked')?.value || '';
@@ -6800,6 +6802,22 @@ async function confirmProcessOrder() {
   if (!paymentType) { showToast('Please select a payment method', 'error'); return; }
   const poNumber = paymentType === 'po' ? document.getElementById('orderPoNumber').value.trim() : '';
   if (paymentType === 'po' && !poNumber) { showToast('Please enter the PO number', 'error'); return; }
+
+  // Auto-save the current quote first so any unsaved edits (billing changes,
+  // line item tweaks, etc.) are persisted before we process. Reuses createDeal
+  // so a same-total edit becomes an in-place revision and a price-changing edit
+  // generates a new quote number — same as a normal "Update Quote & Deal" press.
+  const _orderBtn = document.getElementById('orderConfirmBtn');
+  if (_orderBtn) { _orderBtn.disabled = true; _orderBtn.textContent = 'Saving quote…'; }
+  try { await createDeal(); }
+  catch(e) { console.warn('[process-order] auto-save failed:', e); }
+  if (_orderBtn) _orderBtn.textContent = 'Processing…';
+
+  // Re-read after save — createDeal() may have assigned a new quote number if
+  // the rep made price-affecting changes since loading.
+  const dealId     = window._lastPushedDealId || linkedDeal?.id;
+  const quoteNumber = document.getElementById('quoteNumHidden').value;
+  if (!dealId || !quoteNumber) { showToast('Deal lost during save', 'error'); if (_orderBtn) { _orderBtn.disabled = false; _orderBtn.textContent = 'Process Order'; } return; }
 
   // Capture Canadian state ONCE up front — re-reading the DOM after the POST
   // response can race with modal-close / form re-render and drop the checkbox.
@@ -6900,7 +6918,7 @@ async function confirmProcessOrder() {
       const isCanadian       = !!(data.canadian || canadianFlag);
       const effectiveBroker  = (data.customsBroker || customsBrokerVal || '').trim();
 
-      const emailSubject = `${isCanadian ? '[CANADIAN ORDER] ' : ''}New Order: ${dealNameVal} — ${quoteNum}`;
+      const emailSubject = `New Order: ${dealNameVal} — ${quoteNum}`;
       const payLabelMap = { hs: 'HubSpot Invoice', cc: 'CC', ach: 'ACH', po: 'PO', other: 'Other' };
       const payLabel = payLabelMap[paymentType] || paymentType.toUpperCase();
       const payDisplay = (paymentType === 'po' && poNumber) ? payLabel + ' — PO #' + poNumber : payLabel;

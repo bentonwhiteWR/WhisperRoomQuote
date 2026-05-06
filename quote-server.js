@@ -4435,6 +4435,148 @@ ${q.accepted ? `
     return;
   }
 
+  // ── Admin: Drive folder cleanup / migration ──────────────────────
+  // New "All Contacts" folder inside the Server shared drive
+  const NEW_ALL_CONTACTS = '1UwChoNIa02BoUhT4IzUxEhLsp5OmDzbE';
+
+  // List every subfolder of a given Drive parent (handles pagination)
+  async function driveListAllFolders(parentId) {
+    const folders = [];
+    let pageToken = null;
+    do {
+      const q = encodeURIComponent(`'${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+      let path = `/drive/v3/files?q=${q}&fields=files(id,name),nextPageToken&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives&pageSize=1000`;
+      if (pageToken) path += `&pageToken=${encodeURIComponent(pageToken)}`;
+      const res = await gdriveRequest('GET', path);
+      folders.push(...(res?.files || []));
+      pageToken = res?.nextPageToken || null;
+    } while (pageToken);
+    return folders;
+  }
+
+  // GET  → scan (synchronous report, no writes)
+  // POST → action=delete-orphans | action=move-remaining (fire-and-forget)
+  // GET  /api/admin/drive-cleanup/status → poll progress
+  if (pathname === '/api/admin/drive-cleanup/status' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    json(global._driveCleanupStatus || { done: false, message: 'Not started' });
+    return;
+  }
+
+  if (pathname === '/api/admin/drive-cleanup' && (req.method === 'GET' || req.method === 'POST')) {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+
+    const action = parsed.query.action || (req.method === 'GET' ? 'scan' : '');
+
+    if (action === 'scan') {
+      try {
+        // 1. All real folder IDs from DB
+        const dbRes = await db.query(
+          `SELECT DISTINCT gdrive_folder_id FROM quotes WHERE gdrive_folder_id IS NOT NULL AND gdrive_folder_id != ''`
+        );
+        const realIds = new Set(dbRes.rows.map(r => r.gdrive_folder_id));
+
+        // 2. List folders in both locations
+        const [newFolders, oldFolders] = await Promise.all([
+          driveListAllFolders(NEW_ALL_CONTACTS),
+          GDRIVE_ROOT_FOLDER ? driveListAllFolders(GDRIVE_ROOT_FOLDER) : Promise.resolve([]),
+        ]);
+
+        const newLinked   = newFolders.filter(f =>  realIds.has(f.id));
+        const orphans     = newFolders.filter(f => !realIds.has(f.id));
+        const needsMove   = oldFolders.filter(f =>  realIds.has(f.id));
+        const oldUnlinked = oldFolders.filter(f => !realIds.has(f.id));
+
+        json({
+          summary: {
+            realFolderIdsInDb:       realIds.size,
+            inNewLocation:           newFolders.length,
+            alreadyMigrated:         newLinked.length,
+            orphansInNewLocation:    orphans.length,
+            stillInOldLocation:      needsMove.length,
+            unlinkedInOldLocation:   oldUnlinked.length,
+          },
+          orphans:   orphans.map(f => ({ id: f.id, name: f.name })),
+          needsMove: needsMove.map(f => ({ id: f.id, name: f.name })),
+        });
+      } catch(e) { json({ error: e.message }, 500); }
+      return;
+    }
+
+    if (action === 'delete-orphans') {
+      json({ success: true, message: 'Deleting orphans in background. Poll /api/admin/drive-cleanup/status.' });
+      (async () => {
+        try {
+          const dbRes = await db.query(
+            `SELECT DISTINCT gdrive_folder_id FROM quotes WHERE gdrive_folder_id IS NOT NULL AND gdrive_folder_id != ''`
+          );
+          const realIds  = new Set(dbRes.rows.map(r => r.gdrive_folder_id));
+          const folders  = await driveListAllFolders(NEW_ALL_CONTACTS);
+          const orphans  = folders.filter(f => !realIds.has(f.id));
+          let deleted = 0, failed = 0, errors = [];
+          global._driveCleanupStatus = { done: false, action: 'delete-orphans', total: orphans.length, deleted, failed };
+          for (const f of orphans) {
+            try {
+              await gdriveRequest('DELETE', `/drive/v3/files/${f.id}?supportsAllDrives=true`);
+              deleted++;
+            } catch(e) {
+              failed++;
+              errors.push({ id: f.id, name: f.name, error: e.message });
+            }
+            global._driveCleanupStatus = { done: false, action: 'delete-orphans', total: orphans.length, deleted, failed };
+            await new Promise(r => setTimeout(r, 100));
+          }
+          global._driveCleanupStatus = { done: true, action: 'delete-orphans', total: orphans.length, deleted, failed, errors };
+          console.log(`[drive-cleanup] delete-orphans done: ${deleted} deleted, ${failed} failed`);
+        } catch(e) {
+          global._driveCleanupStatus = { done: true, action: 'delete-orphans', error: e.message };
+          console.error('[drive-cleanup] delete-orphans error:', e.message);
+        }
+      })();
+      return;
+    }
+
+    if (action === 'move-remaining') {
+      json({ success: true, message: 'Moving folders in background. Poll /api/admin/drive-cleanup/status.' });
+      (async () => {
+        try {
+          if (!GDRIVE_ROOT_FOLDER) throw new Error('GDRIVE_ROOT_FOLDER not set — nothing to move from');
+          const dbRes = await db.query(
+            `SELECT DISTINCT gdrive_folder_id FROM quotes WHERE gdrive_folder_id IS NOT NULL AND gdrive_folder_id != ''`
+          );
+          const realIds   = new Set(dbRes.rows.map(r => r.gdrive_folder_id));
+          const oldFolders = await driveListAllFolders(GDRIVE_ROOT_FOLDER);
+          const needsMove  = oldFolders.filter(f => realIds.has(f.id));
+          let moved = 0, failed = 0, errors = [];
+          global._driveCleanupStatus = { done: false, action: 'move-remaining', total: needsMove.length, moved, failed };
+          for (const f of needsMove) {
+            try {
+              await gdriveRequest('PATCH',
+                `/drive/v3/files/${f.id}?addParents=${NEW_ALL_CONTACTS}&removeParents=${GDRIVE_ROOT_FOLDER}&supportsAllDrives=true&fields=id`,
+                {}
+              );
+              moved++;
+            } catch(e) {
+              failed++;
+              errors.push({ id: f.id, name: f.name, error: e.message });
+            }
+            global._driveCleanupStatus = { done: false, action: 'move-remaining', total: needsMove.length, moved, failed };
+            await new Promise(r => setTimeout(r, 100));
+          }
+          global._driveCleanupStatus = { done: true, action: 'move-remaining', total: needsMove.length, moved, failed, errors };
+          console.log(`[drive-cleanup] move-remaining done: ${moved} moved, ${failed} failed`);
+        } catch(e) {
+          global._driveCleanupStatus = { done: true, action: 'move-remaining', error: e.message };
+          console.error('[drive-cleanup] move-remaining error:', e.message);
+        }
+      })();
+      return;
+    }
+
+    json({ error: 'Unknown action. Use ?action=scan|delete-orphans|move-remaining' }, 400);
+    return;
+  }
+
 
   // ── API: Search Closed Won deals (for Add Shipment modal) ────────
   if (pathname === '/api/deals/closed-won' && req.method === 'GET') {

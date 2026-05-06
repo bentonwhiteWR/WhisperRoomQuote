@@ -3252,11 +3252,9 @@ async function createDeal() {
     return;
   }
 
-  // For any new quote (not revision): always prompt for folder unless user
-  // already clicked "Create New" on this push attempt. Even if the contact
-  // has a prior bound folder, the rep should still get a chance to pick a
-  // different folder for this specific deal.
-  if (!isRevision && !window._skipFolderPrompt) {
+  // For new quotes with no prior folder bound: prompt to pick/create a folder.
+  // If the contact already has a Drive folder, it was auto-bound above — skip the prompt.
+  if (!isRevision && !window._bindFolderId && !window._skipFolderPrompt) {
     btn.disabled = false;
     btn.innerHTML = isRevision ? 'Update Quote &amp; Deal' : 'Push to HubSpot';
     showFolderPrompt();
@@ -7321,9 +7319,7 @@ async function checkContactFolder(contactId) {
     const data = await res.json();
     if (data.folderId) {
       window._contactFolderInfo = data;
-      // Do NOT auto-bind to the prior folder. The folder prompt will offer
-      // it as a default but the rep must explicitly confirm or pick a new one,
-      // otherwise files for a new deal would silently land in an old folder.
+      window._bindFolderId = data.folderId;
     } else {
       window._contactFolderInfo = false;
     }
@@ -7341,15 +7337,7 @@ function showFolderPrompt() {
   const company = document.getElementById('company').value.trim() ||
     [document.getElementById('firstName').value.trim(), document.getElementById('lastName').value.trim()].filter(Boolean).join(' ');
 
-  const prior = window._contactFolderInfo;
-  if (prior && prior.folderId) {
-    msg.textContent = `This contact already has a Drive folder ("${prior.folderName || 'existing'}"). Click below to reuse it, or pick a different one / create new.`;
-    const sid = prior.folderId.replace(/'/g, "\\'");
-    const sn  = (prior.folderName || 'Existing folder').replace(/'/g, "\\'");
-    results.innerHTML = '<div onclick="selectDriveFolder(\'' + sid + '\',\'' + sn + '\')" style="padding:9px 12px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--text,#e8e8e8);border:1px solid rgba(62,207,142,.4);margin-bottom:8px;background:rgba(62,207,142,.08)">&#x2705; Use existing: ' + (prior.folderName || 'Existing folder') + '</div>';
-  } else {
-    msg.textContent = 'Search for an existing Drive folder to link this deal to, or create a new one.';
-  }
+  msg.textContent = 'Search for an existing Drive folder to link this deal to, or create a new one.';
   input.value = company;
   modal.style.display = 'flex';
   if (company) setTimeout(runFolderSearch, 100);

@@ -1627,7 +1627,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, loadedQuoteNumber, loadedQuoteTotal, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, forceNewFolder, newFolderName, notes, repFoamColor, repHingePreference, repApColor, install } = body;
+      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, loadedQuoteNumber, loadedQuoteTotal, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, forceNewFolder, newFolderName, notes, repFoamColor, repHingePreference, repApColor, repWaType, install } = body;
       let { quoteNumber } = body;
 
       // ── Revision vs new-quote decision ───────────────────────────────
@@ -2124,6 +2124,7 @@ const server = http.createServer(async (req, res) => {
           repFoamColor:       repFoamColor       || '',
           repHingePreference: repHingePreference || '',
           repApColor:         repApColor         || '',
+          repWaType:          repWaType          || '',
         });
         // Fetch the token we just saved
         const tokenRow = await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]);

@@ -1440,7 +1440,7 @@ function openDrawer(quoteNumber) {
 function copyDrawerFolderPath() {
   const folderName = window._drawerFolderName;
   if (!folderName) return;
-  const path = `Z:\\Sales1\\AllContacts\\${folderName}`;
+  const path = `G:\\Shared drives\\Server\\All Contacts\\${folderName}`;
   navigator.clipboard?.writeText(path).then(() => showToast('Folder path copied!', 'success'))
     .catch(() => { prompt('Copy folder path:', path); });
 }

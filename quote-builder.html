@@ -3366,6 +3366,7 @@ async function createDeal() {
         confirmContactOverride: window._confirmContactOverride || false,
         bindFolderId: window._bindFolderId || null,
         forceNewFolder: !!window._forceNewFolder,
+        newFolderName: window._newFolderName || null,
         notes: document.getElementById('notes').value.trim(),
         repFoamColor:       document.getElementById('repFoamColor')?.value || '',
         repHingePreference: document.getElementById('repHingePreference')?.value || '',
@@ -3534,6 +3535,7 @@ async function createDeal() {
     // but it leaks into the next submission unless we clear it here.
     window._skipFolderPrompt = false;
     window._forceNewFolder = false;
+    window._newFolderName = null;
   }
 }
 
@@ -3815,6 +3817,7 @@ function _doFillContact(contact) {
   window._contactFolderInfo = null;
   window._skipFolderPrompt = false;
   window._forceNewFolder = false;
+  window._newFolderName = null;
   // Check if this contact has an existing Drive folder
   checkContactFolder(contact.id);
   window._loadedContactAddress = {
@@ -5791,6 +5794,7 @@ function newQuote(skipConfirm = false) {
   window._contactFolderInfo = null;
   window._skipFolderPrompt = false;
   window._forceNewFolder = false;
+  window._newFolderName = null;
   const addrNote = document.getElementById('addressNote');
   if (addrNote) addrNote.style.display = 'none';
   updatePushButtonText();
@@ -7341,7 +7345,7 @@ function showFolderPrompt() {
   const company = document.getElementById('company').value.trim() ||
     [document.getElementById('firstName').value.trim(), document.getElementById('lastName').value.trim()].filter(Boolean).join(' ');
 
-  msg.textContent = 'Search for an existing Drive folder to link this deal to, or create a new one.';
+  msg.textContent = 'Type a folder name. Click an existing match to use it, or click "Create New Folder" to make a new one with the name you typed.';
   input.value = company;
   modal.style.display = 'flex';
   if (company) setTimeout(runFolderSearch, 100);
@@ -7352,8 +7356,10 @@ function closeFolderPrompt() {
 }
 
 function folderPromptCreateNew() {
+  const typed = (document.getElementById('folderSearchInput').value || '').trim();
   window._bindFolderId = null;
   window._forceNewFolder = true;
+  window._newFolderName = typed || null;
   window._skipFolderPrompt = true;
   closeFolderPrompt();
   createDeal();

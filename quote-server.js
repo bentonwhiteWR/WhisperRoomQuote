@@ -1617,7 +1617,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, isRevision, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, forceNewFolder, notes, repFoamColor, repHingePreference, repApColor, install } = body;
+      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, isRevision, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, forceNewFolder, newFolderName, notes, repFoamColor, repHingePreference, repApColor, install } = body;
       let { quoteNumber } = body;
 
       // ── In-place update detection ────────────────────────────────────
@@ -2145,8 +2145,10 @@ const server = http.createServer(async (req, res) => {
               await db?.query('UPDATE quotes SET gdrive_folder_id = $1 WHERE quote_number = $2', [bindFolderId, quoteNumber]);
               console.log(`[drive] using bound folder ${bindFolderId} for ${quoteNumber}`);
             } else if (forceNewFolder) {
-              // 2a. Rep explicitly chose "Create New Folder" — skip inheritance, always create fresh
-              await gdriveCreateDealFolders(finalDealName, quoteNumber, customer?.company || '', true);
+              // 2a. Rep explicitly chose "Create New Folder" — skip inheritance, always create fresh.
+              // If they typed a name in the prompt, use it as the folder name; otherwise fall back to company.
+              const folderNameOverride = (newFolderName && String(newFolderName).trim()) || (customer?.company || '');
+              await gdriveCreateDealFolders(finalDealName, quoteNumber, folderNameOverride, true);
             } else {
               // 2b. Check if contact has a prior folder we can inherit
               let inheritedFolderId = null;

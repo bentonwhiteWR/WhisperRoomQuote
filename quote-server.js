@@ -272,6 +272,16 @@ const server = http.createServer(async (req, res) => {
   };
 
   // ── API: Admin — backfill missing share tokens ───────────────────
+  if (pathname === '/api/admin/drive-config' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    json({
+      GDRIVE_ROOT_FOLDER,
+      rootFolderUrl: `https://drive.google.com/drive/folders/${GDRIVE_ROOT_FOLDER}`,
+      envOverride: !!process.env.GDRIVE_ROOT_FOLDER,
+    });
+    return;
+  }
+
   if (pathname === '/api/admin/backfill-tokens' && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
@@ -3737,7 +3747,8 @@ ${q.accepted ? `
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const folders = (res2.body?.files || []).map(f => ({ id: f.id, name: f.name }));
-      json({ folders });
+      console.log(`[drive-search] q="${q}" rootFolder=${GDRIVE_ROOT_FOLDER} found=${folders.length}`);
+      json({ folders, _debug: { rootFolderId: GDRIVE_ROOT_FOLDER } });
     } catch(e) { json({ error: e.message }, 500); }
     return;
   }

@@ -1295,7 +1295,7 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
   <div style="margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,.1)">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
       <div class="summary-title" style="margin-bottom:0">Quote Number</div>
-      <div id="revisionNote" style="display:none;font-size:10px;color:rgba(238,98,22,.8);font-weight:600;letter-spacing:.03em">&#x21AA; Editing: <span id="revisionNextNum"></span></div>
+      <div id="revisionNote" style="display:none;font-size:10px;font-weight:600;letter-spacing:.03em"><span id="revisionNoteLabel" style="color:rgba(238,98,22,.8)">&#x21AA; Revision of:</span> <span id="revisionNextNum" style="color:rgba(238,98,22,.8)"></span></div>
     </div>
     <div style="margin-top:8px;font-family:var(--mono);font-size:14px;font-weight:600;color:var(--accent);letter-spacing:.05em;" id="quoteNumDisplay">—</div>
     <input type="hidden" id="quoteNumHidden" value="">
@@ -2882,6 +2882,8 @@ function updateSummary() {
       dimsEl.style.display = 'none';
     }
   }
+  // Keep revision badge in sync whenever totals change
+  updatePushButtonText();
 }
 
 // ── Product search ────────────────────────────────────────────────
@@ -5328,14 +5330,20 @@ function updatePushButtonText() {
     btn.innerHTML = 'Create Quote &amp; Deal';
   }
 
-  // Badge: show the loaded quote number so the rep knows which quote they're
-  // editing. Whether this push becomes a revision (same number) or a new quote
-  // (next number) depends on whether the total ends up matching at push time.
+  // Badge: show whether the next push will be a revision (same total) or a new
+  // quote (price changed). Recomputes live so the rep sees it update as they edit.
   const note = document.getElementById('revisionNote');
   const nextNum = document.getElementById('revisionNextNum');
+  const labelEl = document.getElementById('revisionNoteLabel');
   if (note && nextNum) {
     if (hasLoadedQuote) {
       nextNum.textContent = window._loadedQuoteNumber;
+      const currentTotal = getSubtotal() - getDiscountAmount() + getEffectiveFreight() + getPickupFee() + getInstallAmount() + getTaxAmount();
+      const isRevision = window._loadedQuoteTotal != null
+        && Math.abs(parseFloat(window._loadedQuoteTotal) - currentTotal) < 0.01;
+      const color = isRevision ? 'rgba(238,98,22,.8)' : 'rgba(34,197,94,.9)';
+      if (labelEl) { labelEl.textContent = isRevision ? '↪ Revision of:' : '↪ New quote from:'; labelEl.style.color = color; }
+      nextNum.style.color = color;
       note.style.display = 'block';
     } else {
       note.style.display = 'none';

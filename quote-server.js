@@ -1651,13 +1651,15 @@ const server = http.createServer(async (req, res) => {
       }
 
       // Resolve any quote number collision server-side before touching HubSpot
-      // This replaces the client error-and-retry flow with silent auto-increment
+      // This replaces the client error-and-retry flow with silent auto-increment.
+      // Pass null for dealId so the same-deal shortcut in generateFreeQuoteNumber
+      // is bypassed — for non-in-place pushes we always need a genuinely new number,
+      // even if the loaded quote already belongs to this deal.
       if (quoteNumber && db && !_inPlaceUpdate) {
         const resolvedContactId = existingContactId ? String(existingContactId) : null;
-        const resolvedDealId    = existingDealId    ? String(existingDealId)    : null;
-        const free = await generateFreeQuoteNumber(quoteNumber, ownerId, resolvedDealId, resolvedContactId);
+        const free = await generateFreeQuoteNumber(quoteNumber, ownerId, null, resolvedContactId);
         if (free !== quoteNumber) {
-          console.log(`[save] quote number collision: ${quoteNumber} → reassigned to ${free}`);
+          console.log(`[save] quote number: ${quoteNumber} → assigned ${free}`);
           quoteNumber = free;
         }
       }

@@ -6793,6 +6793,13 @@ function getWATypeOptions() {
   return [...opts].sort();
 }
 
+// Per-package WA Type defaults (used when the package has multiple eligible types
+// and we want one to win automatically — e.g. Audiology Premium ships with the
+// 4646 layout even though MDL 7296 supports both 4646 and 4622).
+const _PACKAGE_WA_DEFAULT = {
+  'Audiology Premium': '4646',
+};
+
 function refreshWATypeRow() {
   const row = document.getElementById('repWaTypeRow');
   if (!row) return;
@@ -6812,7 +6819,13 @@ function refreshWATypeRow() {
     if (t === cur) o.selected = true;
     sel.appendChild(o);
   });
-  if (opts.length === 1 && !sel.value) sel.value = opts[0];
+  if (sel.value) return;
+  if (opts.length === 1) { sel.value = opts[0]; return; }
+  // Package-driven default takes precedence when multiple options exist
+  for (const item of lineItems) {
+    const def = _PACKAGE_WA_DEFAULT[item.name];
+    if (def && opts.includes(def)) { sel.value = def; return; }
+  }
 }
 
 function refreshApColorRow() {
@@ -6937,6 +6950,7 @@ async function confirmProcessOrder() {
         foamColor:        foam,
         hingePreference:  hinge,
         apColor:          apColor,
+        waType:           document.getElementById('repWaType')?.value || '',
         productionNotes,
         deliveryNotes,
         ownerId: document.getElementById('repSelect').value,

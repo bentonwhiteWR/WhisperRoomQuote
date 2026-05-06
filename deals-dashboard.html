@@ -1234,7 +1234,7 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
 <script>
 // ── Copy folder path to clipboard ────────────────────────────────
 function copyFolderPath(folderName) {
-  const path = `Z:\\Sales1\\AllContacts\\${folderName}`;
+  const path = `G:\\Shared drives\\Server\\All Contacts\\${folderName}`;
   navigator.clipboard.writeText(path).then(() => {
     showToast(`📋 Copied: ${path}`, 'success');
   }).catch(() => {

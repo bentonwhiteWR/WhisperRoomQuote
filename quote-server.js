@@ -4514,19 +4514,21 @@ ${q.accepted ? `
           const folders  = await driveListAllFolders(NEW_ALL_CONTACTS);
           const orphans  = folders.filter(f => !realIds.has(f.id));
           let deleted = 0, failed = 0, errors = [];
-          global._driveCleanupStatus = { done: false, action: 'delete-orphans', total: orphans.length, deleted, failed };
+          global._driveCleanupStatus = { done: false, action: 'delete-orphans', total: orphans.length, deleted, failed, errors };
           for (const f of orphans) {
             try {
               await gdriveRequest('DELETE', `/drive/v3/files/${f.id}?supportsAllDrives=true`);
               deleted++;
             } catch(e) {
               failed++;
-              errors.push({ id: f.id, name: f.name, error: e.message });
+              const errEntry = { id: f.id, name: f.name, error: e.message };
+              errors.push(errEntry);
+              if (failed <= 3) console.error(`[drive-cleanup] delete failed for "${f.name}" (${f.id}): ${e.message}`);
             }
-            global._driveCleanupStatus = { done: false, action: 'delete-orphans', total: orphans.length, deleted, failed };
+            global._driveCleanupStatus = { done: false, action: 'delete-orphans', total: orphans.length, deleted, failed, recentErrors: errors.slice(-3) };
             await new Promise(r => setTimeout(r, 100));
           }
-          global._driveCleanupStatus = { done: true, action: 'delete-orphans', total: orphans.length, deleted, failed, errors };
+          global._driveCleanupStatus = { done: true, action: 'delete-orphans', total: orphans.length, deleted, failed, errors: errors.slice(0, 20) };
           console.log(`[drive-cleanup] delete-orphans done: ${deleted} deleted, ${failed} failed`);
         } catch(e) {
           global._driveCleanupStatus = { done: true, action: 'delete-orphans', error: e.message };

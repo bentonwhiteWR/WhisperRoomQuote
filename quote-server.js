@@ -1627,7 +1627,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, loadedQuoteNumber, loadedQuoteTotal, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, forceNewFolder, newFolderName, notes, repFoamColor, repHingePreference, repApColor, install } = body;
+      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, loadedQuoteNumber, loadedQuoteTotal, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, forceNewFolder, newFolderName, notes, repFoamColor, repHingePreference, repApColor, repWaType, install } = body;
       let { quoteNumber } = body;
 
       // ── Revision vs new-quote decision ───────────────────────────────
@@ -2124,6 +2124,7 @@ const server = http.createServer(async (req, res) => {
           repFoamColor:       repFoamColor       || '',
           repHingePreference: repHingePreference || '',
           repApColor:         repApColor         || '',
+          repWaType:          repWaType          || '',
         });
         // Fetch the token we just saved
         const tokenRow = await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]);
@@ -2438,17 +2439,19 @@ tbody tr:hover td{background:#fdfcfb}
     const foam  = q.acceptedFoam  || q.repFoamColor       || '';
     const hinge = q.acceptedHinge || q.repHingePreference || '';
     const ap    = q.acceptedApColor || q.repApColor        || '';
+    const wa    = q.repWaType || '';
     const FOAM_HEX = {Gray:'#4a4a4a',Orange:'#d4611a',Blue:'#1a5fa8',Purple:'#5c2a82',Burgundy:'#6e1a2a'};
     const AP_HEX   = {Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteroid:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'};
     const foamSwatch = foam && FOAM_HEX[foam] ? `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${FOAM_HEX[foam]};border:1px solid rgba(0,0,0,.2);vertical-align:middle;margin-right:5px;flex-shrink:0"></span>` : '';
     const apSwatch   = ap   && AP_HEX[ap]     ? `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${AP_HEX[ap]};border:1px solid rgba(0,0,0,.2);vertical-align:middle;margin-right:5px;flex-shrink:0"></span>` : '';
-    if (!foam && !hinge && !ap) return '<div id="specs-card-i" style="display:none"></div>';
+    if (!foam && !hinge && !ap && !wa) return '<div id="specs-card-i" style="display:none"></div>';
     return `<div id="specs-card-i" class="card" style="border-left:3px solid #22c55e;background:#f0fdf4">
     <div class="card-label" style="color:#166534">Order Specs</div>
     <div class="info-grid">
       ${foam  ? `<div class="info-item"><label>Foam Color</label><span style="color:#166534;display:flex;align-items:center">${foamSwatch}${foam}</span></div>`  : ''}
       ${hinge ? `<div class="info-item"><label>Door Hinge</label><span style="color:#166534">${hinge}</span></div>` : ''}
       ${ap    ? `<div class="info-item"><label>Acoustic Package Color</label><span style="color:#166534;display:flex;align-items:center">${apSwatch}${ap}</span></div>` : ''}
+      ${wa    ? `<div class="info-item"><label>WA Type</label><span style="color:#166534">${wa}</span></div>` : ''}
     </div>
   </div>`;
   })()}
@@ -2606,24 +2609,25 @@ tbody tr:hover td{background:#fdfcfb}
         document.getElementById('update-confirm-i').style.display = 'block';
 
         // Live-update the Order Specs card on the page so customer sees change immediately
-        (function updateSpecsCard(cardId, foam, hinge, ap) {
+        (function updateSpecsCard(cardId, foam, hinge, ap, wa) {
           const FHEX = {Gray:'#4a4a4a',Orange:'#d4611a',Blue:'#1a5fa8',Purple:'#5c2a82',Burgundy:'#6e1a2a'};
           const AHEX = {Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteroid:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'};
           const card = document.getElementById(cardId);
           if (!card) return;
-          if (!foam && !hinge && !ap) { card.style.display = 'none'; return; }
+          if (!foam && !hinge && !ap && !wa) { card.style.display = 'none'; return; }
           const sw = function(hex) { return hex ? '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:' + hex + ';border:1px solid rgba(0,0,0,.2);vertical-align:middle;margin-right:5px;flex-shrink:0"></span>' : ''; };
           const fswHex = FHEX[foam] || ''; const aswHex = AHEX[ap] || '';
           let html = '<div class="card-label" style="color:#166534">Order Specs</div><div class="info-grid">';
           if (foam)  html += '<div class="info-item"><label>Foam Color</label><span style="color:#166534;display:flex;align-items:center">' + sw(fswHex) + foam + '</span></div>';
           if (hinge) html += '<div class="info-item"><label>Door Hinge</label><span style="color:#166534">' + hinge + '</span></div>';
           if (ap)    html += '<div class="info-item"><label>Acoustic Package Color</label><span style="color:#166534;display:flex;align-items:center">' + sw(aswHex) + ap + '</span></div>';
+          if (wa)    html += '<div class="info-item"><label>WA Type</label><span style="color:#166534">' + wa + '</span></div>';
           html += '</div>';
           card.innerHTML = html;
           card.style.display = '';
           card.style.borderLeft = '3px solid #22c55e';
           card.style.background = '#f0fdf4';
-        })('specs-card-i', foam, hinge, apColor);
+        })('specs-card-i', foam, hinge, apColor, '${(q.repWaType || '').replace(/'/g, "\\'")}');
         setTimeout(() => { document.getElementById('update-modal-i').style.display = 'none'; document.getElementById('update-confirm-i').style.display = 'none'; document.getElementById('update-btns-i').style.opacity='1'; document.getElementById('update-btns-i').style.pointerEvents='auto'; }, 2000);
       } else {
         document.getElementById('update-btns-i').style.opacity = '1'; document.getElementById('update-btns-i').style.pointerEvents = 'auto';
@@ -2864,17 +2868,19 @@ tbody tr:hover td{background:#fdfcfb}
     const foam  = q.acceptedFoam  || q.repFoamColor       || '';
     const hinge = q.acceptedHinge || q.repHingePreference || '';
     const ap    = q.acceptedApColor || q.repApColor        || '';
+    const wa    = q.repWaType || '';
     const FOAM_HEX = {Gray:'#4a4a4a',Orange:'#d4611a',Blue:'#1a5fa8',Purple:'#5c2a82',Burgundy:'#6e1a2a'};
     const AP_HEX   = {Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteroid:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'};
     const foamSwatch = foam && FOAM_HEX[foam] ? `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${FOAM_HEX[foam]};border:1px solid rgba(0,0,0,.2);vertical-align:middle;margin-right:5px;flex-shrink:0"></span>` : '';
     const apSwatch   = ap   && AP_HEX[ap]     ? `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${AP_HEX[ap]};border:1px solid rgba(0,0,0,.2);vertical-align:middle;margin-right:5px;flex-shrink:0"></span>` : '';
-    if (!foam && !hinge && !ap) return '<div id="specs-card-q" style="display:none"></div>';
+    if (!foam && !hinge && !ap && !wa) return '<div id="specs-card-q" style="display:none"></div>';
     return `<div id="specs-card-q" class="card" style="border-left:3px solid #22c55e;background:#f0fdf4">
     <div class="card-label" style="color:#166534">Order Specs</div>
     <div class="info-grid">
       ${foam  ? `<div class="info-item"><label>Foam Color</label><span style="color:#166334;display:flex;align-items:center">${foamSwatch}${foam}</span></div>`  : ''}
       ${hinge ? `<div class="info-item"><label>Door Hinge</label><span style="color:#166334">${hinge}</span></div>` : ''}
       ${ap    ? `<div class="info-item"><label>Acoustic Package Color</label><span style="color:#166334;display:flex;align-items:center">${apSwatch}${ap}</span></div>` : ''}
+      ${wa    ? `<div class="info-item"><label>WA Type</label><span style="color:#166334">${wa}</span></div>` : ''}
     </div>
   </div>`;
   })()}
@@ -3240,24 +3246,25 @@ ${q.accepted ? `
         document.getElementById('update-confirm-q').style.display = 'block';
 
         // Live-update the Order Specs card on the page so customer sees change immediately
-        (function updateSpecsCard(cardId, foam, hinge, ap) {
+        (function updateSpecsCard(cardId, foam, hinge, ap, wa) {
           const FHEX = {Gray:'#4a4a4a',Orange:'#d4611a',Blue:'#1a5fa8',Purple:'#5c2a82',Burgundy:'#6e1a2a'};
           const AHEX = {Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteroid:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'};
           const card = document.getElementById(cardId);
           if (!card) return;
-          if (!foam && !hinge && !ap) { card.style.display = 'none'; return; }
+          if (!foam && !hinge && !ap && !wa) { card.style.display = 'none'; return; }
           const sw = function(hex) { return hex ? '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:' + hex + ';border:1px solid rgba(0,0,0,.2);vertical-align:middle;margin-right:5px;flex-shrink:0"></span>' : ''; };
           const fswHex = FHEX[foam] || ''; const aswHex = AHEX[ap] || '';
           let html = '<div class="card-label" style="color:#166534">Order Specs</div><div class="info-grid">';
           if (foam)  html += '<div class="info-item"><label>Foam Color</label><span style="color:#166534;display:flex;align-items:center">' + sw(fswHex) + foam + '</span></div>';
           if (hinge) html += '<div class="info-item"><label>Door Hinge</label><span style="color:#166534">' + hinge + '</span></div>';
           if (ap)    html += '<div class="info-item"><label>Acoustic Package Color</label><span style="color:#166534;display:flex;align-items:center">' + sw(aswHex) + ap + '</span></div>';
+          if (wa)    html += '<div class="info-item"><label>WA Type</label><span style="color:#166534">' + wa + '</span></div>';
           html += '</div>';
           card.innerHTML = html;
           card.style.display = '';
           card.style.borderLeft = '3px solid #22c55e';
           card.style.background = '#f0fdf4';
-        })('specs-card-q', foam, hinge, apColor);
+        })('specs-card-q', foam, hinge, apColor, '${(q.repWaType || '').replace(/'/g, "\\'")}');
         setTimeout(() => { document.getElementById('update-modal-q').style.display = 'none'; document.getElementById('update-confirm-q').style.display = 'none'; document.getElementById('update-btns-q').style.opacity='1'; document.getElementById('update-btns-q').style.pointerEvents='auto'; }, 2000);
       } else {
         document.getElementById('update-btns-q').style.opacity = '1'; document.getElementById('update-btns-q').style.pointerEvents = 'auto';
@@ -6925,7 +6932,7 @@ ${q.accepted ? `
     const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').trim());
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, foamColor, hingePreference, apColor, productionNotes, deliveryNotes, shipped, changes, repName, freightCost, shipEmailTo, shipEmailCc, markShipped, serialNumber, shipmentFields } = body;
+      const { customer, foamColor, hingePreference, apColor, waType, productionNotes, deliveryNotes, shipped, changes, repName, freightCost, shipEmailTo, shipEmailCc, markShipped, serialNumber, shipmentFields } = body;
 
       if (!db) { json({ error: 'No database' }, 500); return; }
 
@@ -7112,6 +7119,7 @@ ${q.accepted ? `
         foamColor:        foamColor        !== undefined ? foamColor        : currentOrderData.foamColor,
         hingePreference:  hingePreference  !== undefined ? hingePreference  : currentOrderData.hingePreference,
         apColor:          apColor          !== undefined ? apColor          : currentOrderData.apColor,
+        waType:           waType           !== undefined ? waType           : currentOrderData.waType,
         serialNumber:     serialNumber     !== undefined ? serialNumber     : currentOrderData.serialNumber,
         productionNotes:  productionNotes  !== undefined ? productionNotes  : currentOrderData.productionNotes,
         deliveryNotes:    deliveryNotes    !== undefined ? deliveryNotes    : currentOrderData.deliveryNotes,
@@ -7567,6 +7575,7 @@ tbody tr:last-child td{border-bottom:none}
       <div class="info-item"><label>Foam Color</label><span>${o.foamColor||'Not specified'}</span></div>
       <div class="info-item"><label>Door Hinge</label><span>${o.hingePreference||'Not specified'}</span></div>
       ${o.apColor ? `<div class="info-item"><label>Acoustic Package Color</label><span style="display:inline-flex;align-items:center;gap:8px">${o.apColor}<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${({Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteroid:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'}[o.apColor]||'#aaa')};border:1px solid rgba(0,0,0,.2)"></span></span></div>` : `<div class="info-item"><label>Acoustic Package Color</label><span style="color:#aaa">None</span></div>`}
+      ${(o.waType || q.repWaType) ? `<div class="info-item"><label>WA Type</label><span>${o.waType || q.repWaType}</span></div>` : ''}
     </div>
     ${o.productionNotes?`<div style="margin-top:16px"><div style="font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Production Notes</div><div class="notes-box">${o.productionNotes}</div></div>`:''}
     ${o.deliveryNotes?`<div style="margin-top:12px"><div style="font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Special Delivery Notes</div><div class="notes-box">${o.deliveryNotes}</div></div>`:''}
@@ -7668,7 +7677,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
     try {
       const body = JSON.parse(await readBody(req));
       const { dealId, quoteNumber, lineItems, freight, tax, discount, install,
-              customer, foamColor, hingePreference, apColor, productionNotes,
+              customer, foamColor, hingePreference, apColor, waType, productionNotes,
               deliveryNotes, ownerId, dealName, paymentType, poNumber,
               canadian, customsBroker } = body;
 
@@ -7825,7 +7834,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       const effectiveCustomsBroker = (customsBroker && customsBroker.trim()) || (quoteSnap.customsBroker || '') || '';
 
       const orderData = {
-        foamColor, hingePreference, apColor,
+        foamColor, hingePreference, apColor, waType,
         productionNotes: effectiveProductionNotes,
         deliveryNotes,
         processedAt: new Date().toISOString(),

@@ -637,6 +637,9 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
 .submit-overlay-title { font-size: 18px; font-weight: 800; color: #fff; margin-bottom: 8px; letter-spacing: .01em; }
 .submit-overlay-msg { font-size: 13px; color: rgba(255,255,255,.7); line-height: 1.5; }
 .submit-overlay-warning { margin-top: 18px; padding: 10px 14px; background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.3); border-radius: 8px; font-size: 12px; color: #f59e0b; font-weight: 600; }
+body:not(.dark) .submit-overlay-spinner { border-color: rgba(0,0,0,.12); }
+body:not(.dark) .submit-overlay-title { color: var(--text) !important; }
+body:not(.dark) .submit-overlay-msg { color: var(--muted) !important; }
 
 /* ── Success modal (big "Quote Created!" confirmation) ── */
 .success-modal { position: fixed; inset: 0; background: rgba(0,0,0,.65); backdrop-filter: blur(4px); z-index: 9998; display: none; align-items: center; justify-content: center; padding: 20px; }
@@ -1241,6 +1244,13 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
         <option value="Quarry Blue">Quarry Blue</option>
       </select>
     </div>
+
+    <div id="repWaTypeRow" style="display:none;margin-top:10px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px">WA Type <span style="color:var(--accent);font-size:9px">(Wide Access)</span></div>
+      <select id="repWaType" style="width:100%;padding:7px 9px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:12px;font-family:var(--mono);outline:none;cursor:pointer">
+        <option value="">— Not specified —</option>
+      </select>
+    </div>
   </div>
 
 </div><!-- /main-col -->
@@ -1708,6 +1718,12 @@ body:not(.dark) #orderModal [style*="background:rgba(255,255,255,.08"] {
       </div>
     </div>
 
+    <div id="orderWaTypeRow" class="wa-type-order-row" style="display:none;margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">WA Type <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Wide Access)</span></div>
+      <select id="orderWaType" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer">
+        <option value="">— Select type —</option>
+      </select>
+    </div>
 
     <div class="ap-color-row" style="display:none;margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">AP Color <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Acoustic Package)</span></div>
@@ -2233,7 +2249,8 @@ function renderLineItems() {
   const tbody = document.getElementById('lineItemsBody');
   const table = document.getElementById('lineTable');
   const empty = document.getElementById('emptyState');
-  if (typeof refreshApColorRow === 'function') refreshApColorRow();
+  if (typeof refreshApColorRow  === 'function') refreshApColorRow();
+  if (typeof refreshWATypeRow   === 'function') refreshWATypeRow();
 
   if (lineItems.length === 0) {
     table.style.display = 'none';
@@ -3364,6 +3381,7 @@ async function createDeal() {
         repFoamColor:       document.getElementById('repFoamColor')?.value || '',
         repHingePreference: document.getElementById('repHingePreference')?.value || '',
         repApColor:         document.getElementById('repApColor')?.value || '',
+        repWaType:          document.getElementById('repWaType')?.value  || '',
       })
     });
 
@@ -3485,6 +3503,7 @@ async function createDeal() {
         repFoamColor:       document.getElementById('repFoamColor')?.value || '',
         repHingePreference: document.getElementById('repHingePreference')?.value || '',
         repApColor:         document.getElementById('repApColor')?.value || '',
+        repWaType:          document.getElementById('repWaType')?.value  || '',
         hubspotUrl: data.dealUrl,
         quoteLabel: (document.getElementById('quoteLabel') || {value:''}).value.trim(),
         billing: (() => {
@@ -4111,6 +4130,12 @@ ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</
       </div>
     </div>
 
+    <div class="wa-type-order-row" style="display:none;margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">WA Type <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Wide Access)</span></div>
+      <select class="orderWaTypeSelect" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer">
+        <option value="">— Select type —</option>
+      </select>
+    </div>
 
     <div class="ap-color-row" style="display:none;margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">AP Color <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Acoustic Package)</span></div>
@@ -4534,6 +4559,9 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   if (repHingeEl) repHingeEl.value = q.repHingePreference || '';
   const repApEl = document.getElementById('repApColor');
   if (repApEl) repApEl.value = q.repApColor || '';
+  // WA Type: refreshWATypeRow() rebuilds options after lineItems are loaded;
+  // set the saved value after the row is visible (called below via renderLineItems).
+  window._pendingWaType = q.repWaType || '';
   // Pre-fill from accepted values if rep hasn't set anything
   if (repFoamEl && !repFoamEl.value && window._acceptedFoam && window._acceptedFoam !== 'Undecided') {
     repFoamEl.value = window._acceptedFoam;
@@ -6619,6 +6647,22 @@ async function openOrderModal() {
   const apSel = document.getElementById('orderApColor');
   if (apSel) apSel.value = apColor;
 
+  // WA Type row — show/hide and populate based on booth options
+  const waOpts    = getWATypeOptions();
+  const repWaVal  = document.getElementById('repWaType')?.value || '';
+  document.querySelectorAll('.wa-type-order-row').forEach(row => {
+    row.style.display = waOpts.length > 0 ? 'block' : 'none';
+    const sel = row.querySelector('select');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— Select type —</option>';
+    waOpts.forEach(t => {
+      const o = document.createElement('option');
+      o.value = t; o.textContent = t;
+      if (t === repWaVal) o.selected = true;
+      sel.appendChild(o);
+    });
+  });
+
   // Carry "Notes & Order Specs" → Production Notes (only if the field is empty, so rep edits aren't clobbered)
   const pnBox = document.getElementById('orderProductionNotes');
   if (pnBox && !pnBox.value) pnBox.value = (document.getElementById('notes')?.value || '').trim();
@@ -6744,6 +6788,77 @@ function hasAP() {
   return lineItems.some(i => i.name && /^AP\s/i.test(i.name));
 }
 
+// ── WA Type detection ────────────────────────────────────────────────
+// WA type per eligible side dimension, keyed by wall series.
+const _WA_40 = { 60:'4016', 84:'4040', 102:'4016', 126:'4040', 144:'4016', 168:'4040', 186:'4016' };
+const _WA_46 = { 72:'4622', 96:'4646', 120:'4622', 144:'4646', 168:'4622', 192:'4646' };
+// Dims that unambiguously identify the series; 144/168 are resolved from the other dim.
+const _DIMS_40 = new Set([42, 60, 84, 102, 126, 186]);
+const _DIMS_46 = new Set([48, 72, 96, 120, 192]);
+const _ALL_BOOTH_DIMS = [30, 42, 48, 60, 72, 84, 96, 102, 120, 126, 144, 168, 186, 192];
+
+function _parseBoothDims(numStr) {
+  for (let i = 1; i < numStr.length; i++) {
+    const a = parseInt(numStr.slice(0, i), 10);
+    const b = parseInt(numStr.slice(i), 10);
+    if (_ALL_BOOTH_DIMS.includes(a) && _ALL_BOOTH_DIMS.includes(b)) return [a, b];
+  }
+  return [null, null];
+}
+
+function getWATypeOptions() {
+  const hasWAItem = lineItems.some(i => /^(ADA|WA UPG)\s/i.test(i.name || ''));
+  if (!hasWAItem) return [];
+  const opts = new Set();
+  for (const item of lineItems) {
+    const m = (item.name || '').match(/^(?:MDL|ADA)\s+(\d+)/i);
+    if (!m) continue;
+    const [a, b] = _parseBoothDims(m[1]);
+    if (!a || !b) continue;
+    const series = _DIMS_40.has(a) || _DIMS_40.has(b) ? '40'
+                 : _DIMS_46.has(a) || _DIMS_46.has(b) ? '46' : null;
+    if (!series) continue;
+    const table = series === '40' ? _WA_40 : _WA_46;
+    [a, b].filter(d => d >= 60).forEach(d => { if (table[d]) opts.add(table[d]); });
+  }
+  return [...opts].sort();
+}
+
+// Per-package WA Type defaults (used when the package has multiple eligible types
+// and we want one to win automatically — e.g. Audiology Premium ships with the
+// 4646 layout even though MDL 7296 supports both 4646 and 4622).
+const _PACKAGE_WA_DEFAULT = {
+  'Audiology Premium': '4646',
+};
+
+function refreshWATypeRow() {
+  const row = document.getElementById('repWaTypeRow');
+  if (!row) return;
+  const opts = getWATypeOptions();
+  row.style.display = opts.length > 0 ? 'block' : 'none';
+  const sel = document.getElementById('repWaType');
+  if (!sel) return;
+  if (opts.length === 0) { sel.value = ''; return; }
+  // Apply pending value from a history load (set before renderLineItems rebuilt options)
+  const pending = window._pendingWaType;
+  if (pending !== undefined) { window._pendingWaType = undefined; }
+  const cur = pending !== undefined ? pending : sel.value;
+  sel.innerHTML = '<option value="">— Not specified —</option>';
+  opts.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t; o.textContent = t;
+    if (t === cur) o.selected = true;
+    sel.appendChild(o);
+  });
+  if (sel.value) return;
+  if (opts.length === 1) { sel.value = opts[0]; return; }
+  // Package-driven default takes precedence when multiple options exist
+  for (const item of lineItems) {
+    const def = _PACKAGE_WA_DEFAULT[item.name];
+    if (def && opts.includes(def)) { sel.value = def; return; }
+  }
+}
+
 function refreshApColorRow() {
   const show = hasAP();
   document.querySelectorAll('.ap-color-row').forEach(el => {
@@ -6866,6 +6981,7 @@ async function confirmProcessOrder() {
         foamColor:        foam,
         hingePreference:  hinge,
         apColor:          apColor,
+        waType:           (() => { const r=document.getElementById('orderWaTypeRow'); return (r&&r.style.display!=='none') ? (document.getElementById('orderWaType')?.value||'') : (document.getElementById('repWaType')?.value||''); })(),
         productionNotes,
         deliveryNotes,
         ownerId: document.getElementById('repSelect').value,
@@ -6946,6 +7062,7 @@ async function confirmProcessOrder() {
         `Foam Color: ${foam}`,
         `Door Hinge: ${hinge}`,
         apColorVal ? `AP Color: ${apColorVal}` : null,
+        (() => { const wa = document.getElementById('repWaType')?.value; return wa ? `WA Type: ${wa}` : null; })(),
         productionNotes ? `Production Notes: ${productionNotes}` : null,
         deliveryNotes   ? `Delivery Notes: ${deliveryNotes}`     : null,
         ``,

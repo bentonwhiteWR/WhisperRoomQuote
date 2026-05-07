@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.19', date:'May 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'When an order is marked shipped, the QB invoice "Memo on statement (hidden)" field (PrivateNote) is now populated with "Freight Cost: $XXX.XX" alongside the existing carrier, tracking, ship date, and serial number updates. Internal-only — does not appear on the customer-facing invoice.'},
+      ]
+    },
+    {
       v:'1.7.18', date:'May 7, 2026', tag:'ui',
       changes:[
         {t:'ui',  d:'QB Invoices is now the first tab on the Accounting page and auto-loads the last 90 days when you open the page.'},

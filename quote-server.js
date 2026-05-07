@@ -7453,6 +7453,8 @@ ${q.accepted ? `
             }
             const sf3      = updatedOrderData.shipped || {};
             const serial3  = updatedOrderData.serialNumber || currentOrderData.serialNumber || '';
+            const fc3raw   = updatedOrderData.freightCost ?? currentOrderData.freightCost;
+            const fc3      = (fc3raw !== undefined && fc3raw !== null && fc3raw !== '') ? parseFloat(fc3raw) : NaN;
             const updateFields = {};
             if (sf3.carrier)  updateFields.ShipMethodRef = { value: String(sf3.carrier) };
             if (sf3.tracking) updateFields.TrackingNum   = String(sf3.tracking);
@@ -7462,13 +7464,16 @@ ${q.accepted ? `
                 { DefinitionId: '3', Name: 'Serial Number', Type: 'StringType', StringValue: String(serial3) },
               ];
             }
+            if (Number.isFinite(fc3)) {
+              updateFields.PrivateNote = `Freight Cost: $${fc3.toFixed(2)}`;
+            }
             if (Object.keys(updateFields).length === 0) {
               console.log(`[orders] QB shipping update skipped — nothing to update for ${quoteNumber}`);
               return;
             }
             const updated = await qb.updateInvoice(qbInvoiceId, updateFields);
             console.log(`[orders] QB invoice ${qbInvoiceId} (DocNumber=${updated?.DocNumber}) updated with shipping:`, JSON.stringify({
-              ShipMethod: updated?.ShipMethodRef?.value, TrackingNum: updated?.TrackingNum, ShipDate: updated?.ShipDate,
+              ShipMethod: updated?.ShipMethodRef?.value, TrackingNum: updated?.TrackingNum, ShipDate: updated?.ShipDate, PrivateNote: updated?.PrivateNote,
             }));
           } catch(e) {
             console.warn('[orders] QB invoice shipping update failed:', e.message);

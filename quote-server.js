@@ -184,6 +184,11 @@ const HS_REDIRECT_URI  = process.env.HS_REDIRECT_URI  || 'https://sales.whisperr
 // Override on staging via env var so reps can click through the full flow.
 const PUBLIC_BASE_URL  = (process.env.PUBLIC_BASE_URL || 'https://sales.whisperroom.com').replace(/\/+$/, '');
 
+// HubSpot owner IDs allowed to delete QB invoices. Defaults to Benton + Kim.
+// Override with comma-separated IDs via env: QB_INVOICE_DELETE_OWNERS=...
+const INVOICE_DELETE_OWNER_IDS = (process.env.QB_INVOICE_DELETE_OWNERS || '36303670,38732178')
+  .split(',').map(s => s.trim()).filter(Boolean);
+
 // HubSpot owner ID → display name. Used for sales rep attribution on QB invoices,
 // shipping board rep column, etc.
 const OWNER_MAP = {
@@ -481,7 +486,13 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/me' && req.method === 'GET') {
     if (!await isAuthAsync(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const sess = await getSessionAsync(req);
-    json({ name: sess?.name || 'User', email: sess?.email || '', ownerId: sess?.ownerId || null });
+    const ownerId = sess?.ownerId || null;
+    json({
+      name:    sess?.name || 'User',
+      email:   sess?.email || '',
+      ownerId,
+      canDeleteInvoices: !!(ownerId && INVOICE_DELETE_OWNER_IDS.includes(String(ownerId))),
+    });
     return;
   }
 
@@ -945,6 +956,52 @@ const server = http.createServer(async (req, res) => {
       for (const r of refunds) r._type = 'refund_receipt';
       const results = [...invoices, ...credits, ...refunds];
       json({ results, total: results.length });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // Accounts Receivable: all open (Balance > 0) invoices, regardless of date.
+  // Returns the same shape as /api/qb/invoices for table reuse on the frontend.
+  if (pathname === '/api/qb/ar' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const results = await qb.fetchOpenInvoices();
+      json({ results, total: results.length });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // Delete a QB invoice. Restricted to ownerIds in INVOICE_DELETE_OWNER_IDS
+  // (Benton + Kim by default). Also clears qbInvoiceId from any local order it was attached to.
+  if (pathname.startsWith('/api/qb/invoice/') && req.method === 'DELETE') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const sess = await getSessionAsync(req);
+    if (!sess?.ownerId || !INVOICE_DELETE_OWNER_IDS.includes(String(sess.ownerId))) {
+      console.warn(`[qb-invoice-delete] forbidden: user ${sess?.email || 'unknown'} (ownerId=${sess?.ownerId || 'none'}) attempted to delete invoice`);
+      json({ error: 'Forbidden — only authorized accounting users can delete QB invoices.' }, 403);
+      return;
+    }
+    try {
+      const invoiceId = pathname.replace('/api/qb/invoice/', '').trim();
+      if (!invoiceId) { json({ error: 'invoice id required' }, 400); return; }
+      const deleted = await qb.deleteInvoice(invoiceId);
+      if (db) {
+        try {
+          await db.query(
+            `UPDATE orders
+             SET order_data = order_data - 'qbInvoiceId' - 'qbDocNumber'
+             WHERE order_data->>'qbInvoiceId' = $1`,
+            [String(invoiceId)]
+          );
+        } catch(e) { console.warn('[qb-invoice-delete] local order cleanup failed:', e.message); }
+      }
+      try {
+        writelog('info', 'qb.invoice.deleted',
+          `${sess.name || sess.email} deleted QB invoice ${deleted?.DocNumber || invoiceId}`,
+          { rep: String(sess.ownerId), meta: { invoiceId, docNumber: deleted?.DocNumber || null, customer: deleted?.CustomerRef?.name || null, total: deleted?.TotalAmt || null } }
+        );
+      } catch(e) {}
+      json({ success: true, deleted });
     } catch(e) { json({ error: e.message }, 500); }
     return;
   }
@@ -5378,6 +5435,10 @@ ${q.accepted ? `
         acceptedFoam:    snap.acceptedFoam    || '',
         acceptedHinge:   snap.acceptedHinge   || '',
         acceptedApColor: snap.acceptedApColor || '',
+        repFoamColor:       snap.repFoamColor       || '',
+        repHingePreference: snap.repHingePreference || '',
+        repApColor:         snap.repApColor         || '',
+        repWaType:          snap.repWaType          || '',
       });
     } catch(e) { json({ error: e.message }, 500); }
     return;

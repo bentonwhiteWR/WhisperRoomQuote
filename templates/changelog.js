@@ -51,6 +51,39 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.7', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Deal Hub Process Order modal now pre-fills foam color, door hinge, AP color, and WA type from the rep\'s saved selections (with fallback to customer-accepted values) — matching the quote builder. Previously the snapshot endpoint stripped out the rep fields, so the modal opened blank even when those values had been chosen at quote time.'},
+      ]
+    },
+    {
+      v:'1.7.6', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'WA Type selector now appears in the Deal Hub Process Order modal when the order contains a WA UPG or ADA item — matching the quote builder behavior. The selector pre-populates from the snapshot\'s saved WA type (if any) and lets the rep override it before sending. Both the deal hub and quote builder now behave consistently.'},
+      ]
+    },
+    {
+      v:'1.7.5', date:'May 7, 2026', tag:'security',
+      changes:[
+        {t:'security', d:'QB invoice deletion is now restricted to Benton + Kim only (by HubSpot ownerId). Server returns 403 for other users; the Delete button is hidden in the UI for everyone else. Successful deletions are logged with user, invoice #, customer, and total. Override the allowlist with QB_INVOICE_DELETE_OWNERS env var (comma-separated ownerIds). Note: requires HubSpot OAuth login — password-only sessions cannot delete.'},
+      ]
+    },
+    {
+      v:'1.7.4', date:'May 7, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Top-nav "Reconcile" link renamed to "Accounting" — the page now hosts Reconcile, QB Invoices, and AR sub-tabs. Page title and header subtitle updated to match.'},
+      ]
+    },
+    {
+      v:'1.7.3', date:'May 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Reconciler → Accounts Receivable tab. Shows all open (unpaid) QB invoices with aging summary boxes (Current / 1–30 / 31–60 / 61–90 / 90+ days late) — counts and dollar totals per bucket. Filterable by bucket, sorted oldest-due first.'},
+        {t:'add', d:'QB Invoices tab now shows Terms (Net 30, Due on receipt) and a smart Status column ("Paid", "Due in Nd", "N days late") color-coded green/gray/amber/red.'},
+        {t:'add', d:'Status filter on QB Invoices tab: All / Paid / Open / Due Soon (≤7d) / Overdue.'},
+        {t:'add', d:'Per-row Delete button on both QB Invoices and AR tabs — opens a confirmation modal showing customer + total before permanently deleting from QuickBooks. Also clears the qbInvoiceId from the linked local order if any.'},
+      ]
+    },
+    {
       v:'1.7.2', date:'May 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Reconciler: new "QB Invoices" tab shows all QB invoices in a date range (defaults to last 90 days), with Paid/Open status badges and a direct "Open in QB" link to pull up each invoice in QuickBooks Online.'},

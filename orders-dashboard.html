@@ -474,7 +474,7 @@
       </div>
       <div class="field">
         <label>Freight Cost (actual)</label>
-        <input type="number" id="editFreightCost" placeholder="0.00" min="0" step="0.01">
+        <input type="text" inputmode="decimal" id="editFreightCost" placeholder="$0.00">
       </div>
     </div>
 
@@ -679,6 +679,16 @@ const BOOTH_DATA = {
 };
 
 // ── Freight Modal ─────────────────────────────────────────────────
+// Parse a freight-cost text input that may contain "$", commas, or whitespace.
+// Returns a finite number, or null if the field is empty/invalid.
+function parseFreightCost(val) {
+  if (val == null) return null;
+  const cleaned = String(val).replace(/[$,\s]/g, '');
+  if (!cleaned) return null;
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
 let _freightPallets = [];
 
 function openFreightModal() {
@@ -1607,7 +1617,7 @@ async function saveOrder() {
   const newSerial    = document.getElementById('editSerialNumber').value.trim();
   const newProdNotes = document.getElementById('editProductionNotes').value.trim();
   const newDelNotes  = document.getElementById('editDeliveryNotes').value.trim();
-  const freightCost  = parseFloat(document.getElementById('editFreightCost').value) || null;
+  const freightCost  = parseFreightCost(document.getElementById('editFreightCost').value);
 
   const customer = {
     firstName: document.getElementById('editFirstName').value.trim(),
@@ -1732,7 +1742,7 @@ async function openShipFromDrawer() {
         foamColor:       newFoam,
         hingePreference: newHinge,
         apColor:         newApColor,
-        freightCost: document.getElementById('editFreightCost')?.value ? parseFloat(document.getElementById('editFreightCost').value) : null,
+        freightCost: parseFreightCost(document.getElementById('editFreightCost')?.value),
         markShipped: true,
         changes: [`Marked Shipped — ${carrier}, ${tracking}`],
         repName: getCurrentRep(),
@@ -1897,7 +1907,7 @@ async function confirmHsShip() {
         credentials: 'include',
         body: JSON.stringify({
           shipped: { carrier, tracking, date: shipDate, pallets: parseInt(pallets)||0, boxes: parseInt(boxes)||0 },
-          freightCost: document.getElementById('editFreightCost')?.value ? parseFloat(document.getElementById('editFreightCost').value) : null,
+          freightCost: parseFreightCost(document.getElementById('editFreightCost')?.value),
           markShipped: true,
           changes: [`Marked Shipped — ${carrier}, ${tracking}`],
           repName: getCurrentRep(),

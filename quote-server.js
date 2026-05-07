@@ -184,6 +184,19 @@ const HS_REDIRECT_URI  = process.env.HS_REDIRECT_URI  || 'https://sales.whisperr
 // Override on staging via env var so reps can click through the full flow.
 const PUBLIC_BASE_URL  = (process.env.PUBLIC_BASE_URL || 'https://sales.whisperroom.com').replace(/\/+$/, '');
 
+// HubSpot owner ID → display name. Used for sales rep attribution on QB invoices,
+// shipping board rep column, etc.
+const OWNER_MAP = {
+  '36303670':  'Benton White',
+  '36320208':  'Gabe White',
+  '36330944':  'Jill Holdway',
+  '38143901':  'Sarah Smith',
+  '38732178':  'Kim Dalton',
+  '38732186':  'Jeromy Packwood',
+  '38900892':  'Chet Burgess',
+  '117442978': 'Travis Singleton',
+};
+
 // ── Nexus states (freight taxability per state) ───────────────────
 const states = require('./lib/states');
 const {
@@ -669,16 +682,7 @@ const server = http.createServer(async (req, res) => {
       const deals = searchRes.body.results || [];
 
       // Map owner IDs to names
-      const ownerMap = {
-        '36303670': 'Benton White',
-        '36320208': 'Gabe White',
-        '36330944': 'Jill Holdway',
-        '38143901': 'Sarah Smith',
-        '38732178': 'Kim Dalton',
-        '38732186': 'Jeromy Packwood',
-        '38900892': 'Chet Burgess',
-        '117442978': 'Travis Singleton',
-      };
+      const ownerMap = OWNER_MAP;
 
       // Batch fetch tracking cache for all tracking numbers
       const trackingNumbers = deals.map(d => d.properties.tracking_number).filter(Boolean);
@@ -899,6 +903,28 @@ const server = http.createServer(async (req, res) => {
     try {
       const r = await qb.getCompanyInfo();
       json(r);
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // Fetch a single QB invoice by DocNumber: /api/qb/invoice?docNumber=WR-12345
+  if (pathname === '/api/qb/invoice' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { docNumber } = parsed.query;
+      if (!docNumber) { json({ error: 'docNumber param required' }, 400); return; }
+      const data = await qb.qbQueryRaw(`SELECT * FROM Invoice WHERE DocNumber = '${String(docNumber).replace(/'/g,"''")}'`);
+      json(data);
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // Fetch QB company preferences (helps diagnose shipping item config)
+  if (pathname === '/api/qb/preferences' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const data = await qb.getPreferences();
+      json(data);
     } catch(e) { json({ error: e.message }, 500); }
     return;
   }
@@ -7341,6 +7367,42 @@ ${q.accepted ? `
         })();
       }
 
+      // ── Update QB invoice with shipping info when shipped ─────────────
+      // Jeromy clicks Ship It → patch existing QB invoice with ShipMethodRef
+      // (carrier), TrackingNum, ShipDate, and CustomField[Serial Number].
+      if (isNowShipped && !wasShipped) {
+        (async () => {
+          try {
+            const qbInvoiceId = updatedOrderData.qbInvoiceId || currentOrderData.qbInvoiceId;
+            if (!qbInvoiceId) {
+              console.log(`[orders] QB shipping update skipped — no qbInvoiceId on order ${quoteNumber}`);
+              return;
+            }
+            const sf3      = updatedOrderData.shipped || {};
+            const serial3  = updatedOrderData.serialNumber || currentOrderData.serialNumber || '';
+            const updateFields = {};
+            if (sf3.carrier)  updateFields.ShipMethodRef = { value: String(sf3.carrier) };
+            if (sf3.tracking) updateFields.TrackingNum   = String(sf3.tracking);
+            if (sf3.date)     updateFields.ShipDate      = String(sf3.date);
+            if (serial3) {
+              updateFields.CustomField = [
+                { DefinitionId: '3', Name: 'Serial Number', Type: 'StringType', StringValue: String(serial3) },
+              ];
+            }
+            if (Object.keys(updateFields).length === 0) {
+              console.log(`[orders] QB shipping update skipped — nothing to update for ${quoteNumber}`);
+              return;
+            }
+            const updated = await qb.updateInvoice(qbInvoiceId, updateFields);
+            console.log(`[orders] QB invoice ${qbInvoiceId} (DocNumber=${updated?.DocNumber}) updated with shipping:`, JSON.stringify({
+              ShipMethod: updated?.ShipMethodRef?.value, TrackingNum: updated?.TrackingNum, ShipDate: updated?.ShipDate,
+            }));
+          } catch(e) {
+            console.warn('[orders] QB invoice shipping update failed:', e.message);
+          }
+        })();
+      }
+
       // Upload order PDF to Google Drive when shipped (non-blocking)
       if (isNowShipped && !wasShipped) {
         (async () => {
@@ -8034,7 +8096,8 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
           } : null;
 
           const cust = await qb.findOrCreateCustomer({
-            displayName: [c.firstName, c.lastName].filter(Boolean).join(' ') || c.company || c.email || 'Unknown',
+            // Company is primary when present (B2B). Falls back to person name, then email.
+            displayName: c.company || [c.firstName, c.lastName].filter(Boolean).join(' ') || c.email || 'Unknown',
             givenName:   c.firstName  || '',
             familyName:  c.lastName   || '',
             email:       c.email      || '',
@@ -8069,41 +8132,79 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
               item.name
             ));
           }
-          if (freightTotal > 0) {
-            const freightItemName = process.env.QB_FREIGHT_ITEM_NAME || 'Shipping';
-            const freightMatched  = (await qb.findItemByName(freightItemName)) ||
-                                    (await qb.findItemByName('Freight'));
-            const freightRef = freightMatched || fallback;
-            if (!freightMatched) {
-              console.warn(`[process-order] QB shipping item not found ("${freightItemName}" or "Freight") — freight added as regular line; create an Item in QB tied to your Freight Revenue account (or set QB_FREIGHT_ITEM_NAME) to populate the dedicated Shipping totals line`);
-            }
-            const amt = parseFloat(freightTotal.toFixed(2));
-            qbLines.push({
-              Amount:      amt,
-              DetailType:  'SalesItemLineDetail',
-              Description: 'Freight',
-              SalesItemLineDetail: { ItemRef: { value: freightRef.value }, UnitPrice: amt, Qty: 1, TaxCodeRef: taxableRef },
-            });
-          }
+          // Discount BEFORE freight — QB applies DiscountLineDetail to the running subtotal
+          // of all preceding lines, so freight (added after) is excluded from the discount.
           if (discAmt > 0) {
-            // DiscountLineDetail: Amount at the Line level is the discount; no DiscountAmount inside the detail
             qbLines.push({
               Amount:     parseFloat(discAmt.toFixed(2)),
               DetailType: 'DiscountLineDetail',
               DiscountLineDetail: { PercentBased: false },
             });
           }
+
+          // Freight: per Intuit support, the dedicated Shipping totals row in QB is
+          // populated by a SalesItemLineDetail line whose ItemRef.value is the LITERAL
+          // string 'SHIPPING_ITEM_ID' (a magic value that QB resolves to the shipping
+          // item configured in Account & Settings → Sales → Shipping). Requires
+          // SalesFormsPrefs.AllowShipping = true. Freight is added AFTER the discount
+          // line so DiscountLineDetail doesn't reduce it.
+          if (freightTotal > 0) {
+            const EXEMPT_CODE    = process.env.QB_EXEMPT_CODE || 'NON';
+            const freightTaxCode = tax?.freightTaxed ? TAX_CODE : EXEMPT_CODE;
+            const SHIPPING_ITEM  = process.env.QB_SHIPPING_ITEM_ID || 'SHIPPING_ITEM_ID';
+            const amt = parseFloat(freightTotal.toFixed(2));
+            qbLines.push({
+              Amount:      amt,
+              DetailType:  'SalesItemLineDetail',
+              Description: 'Freight',
+              SalesItemLineDetail: {
+                ItemRef:    { value: SHIPPING_ITEM },
+                TaxCodeRef: { value: freightTaxCode },
+              },
+            });
+          }
           if (unmatched.length) console.warn(`[process-order] QB items not matched (used fallback "${fallback.name}"):`, unmatched);
-          console.log('[process-order] QB invoice payload:', JSON.stringify({ customerRef: { value: cust.Id }, lineCount: qbLines.length, lineTypes: qbLines.map(l=>l.DetailType) }));
+          console.log('[process-order] QB lines:', JSON.stringify(qbLines.map(l => ({
+            type: l.DetailType, amount: l.Amount,
+            itemRef: l.SalesItemLineDetail?.ItemRef?.value,
+            taxCode: l.SalesItemLineDetail?.TaxCodeRef?.value,
+          }))));
+
+          // QB Custom Fields (defined in QB Account & Settings → Sales → Custom Fields).
+          // DefinitionIds: 1=P.O. Number, 2=Sales Rep, 3=Serial Number.
+          const repName = OWNER_MAP[ownerId] || '';
+          const customFields = [];
+          if (repName) {
+            customFields.push({ DefinitionId: '2', Name: 'Sales Rep', Type: 'StringType', StringValue: repName });
+          }
+          if (paymentType === 'po' && poNumber) {
+            customFields.push({ DefinitionId: '1', Name: 'P.O. Number', Type: 'StringType', StringValue: String(poNumber) });
+          }
+
+          // Payment terms: Net 30 for PO orders, Due on receipt for everything else.
+          const termName = paymentType === 'po'
+            ? (process.env.QB_TERM_NET30         || 'Net 30')
+            : (process.env.QB_TERM_UPON_RECEIPT  || 'Due on receipt');
+          let salesTermRef = null;
+          try {
+            const term = await qb.findTermByName(termName);
+            if (term) salesTermRef = { value: String(term.Id) };
+            else console.warn(`[process-order] QB term "${termName}" not found — invoice will use QB default terms`);
+          } catch (e) {
+            console.warn('[process-order] QB term lookup failed, skipping SalesTermRef:', e.message);
+          }
 
           const invoice = await qb.createInvoice({
-            customerRef: { value: cust.Id },
-            docNumber:   quoteNumber,
-            txnDate:     new Date().toISOString().split('T')[0],
-            lines:       qbLines,
-            memo:        dealName || quoteNumber,
-            billAddr:    shipAddr,
+            customerRef:  { value: cust.Id },
+            docNumber:    quoteNumber,
+            txnDate:      new Date().toISOString().split('T')[0],
+            lines:        qbLines,
+            memo:         dealName || quoteNumber,
+            billAddr:     shipAddr,
             shipAddr,
+            billEmail:    c.email || null,
+            customFields: customFields.length ? customFields : null,
+            salesTermRef,
           });
 
           if (invoice?.Id) {

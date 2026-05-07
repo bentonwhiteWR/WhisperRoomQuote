@@ -51,6 +51,25 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.1', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'QB Custom Field DefinitionIds were swapped — P.O. Number was writing to the Serial Number field and vice versa. Corrected: DefinitionId 1 = P.O. Number, 3 = Serial Number.'},
+        {t:'add', d:'QB invoice now sets payment terms automatically: PO orders use Net 30, all other payment types use Due on receipt. Term names are configurable via QB_TERM_NET30 / QB_TERM_UPON_RECEIPT env vars.'},
+      ]
+    },
+    {
+      v:'1.7.0', date:'May 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'QuickBooks invoice is now auto-created when an order is processed. Line items are matched to QB items by exact name (falls back to a generic "Product" item). Freight uses QB\'s dedicated Shipping totals row via the SHIPPING_ITEM_ID magic value — not a line item. Discount is excluded from freight. Sales tax handled by QB\'s Automated Sales Tax / TaxJar using the ship-to address.'},
+        {t:'add', d:'QB invoice is updated automatically when Jeromy ships an order — carrier populates ShipMethodRef, tracking number populates TrackingNum, ship date populates ShipDate, and serial number fills Custom Field "Serial Number".'},
+        {t:'add', d:'QB invoice now carries Sales Rep (Custom Field), P.O. Number (Custom Field, when payment type is PO), and BillEmail from the order.'},
+        {t:'fix', d:'QB customer DisplayName now defaults to company name when present (B2B), falling back to person name. Previously only the individual\'s name was used.'},
+        {t:'fix', d:'Freight taxability on QB invoice now follows WR\'s own TaxJar calculation (freightTaxed flag) — prevents QB from adding freight tax in states where WR didn\'t charge it.'},
+        {t:'add', d:'WA Type selector added to the Process Order modal (auto-populated from quote, dynamic options from line items). WA Type also shown in the Orders dashboard right-side drawer.'},
+        {t:'fix', d:'Submit overlay text unreadable in light mode — title and message text now use correct theme variables.'},
+      ]
+    },
+    {
       v:'1.6.4', date:'May 6, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'New quotes on existing deals now always get a fresh quote number. Previously, linking a deal made the system treat any new quote as an in-place revision — silently reusing the prior quote number even when prices/discount/freight differed. Revision-mode is now triggered only when a rep explicitly loads a historical quote to update.'},

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.16', date:'May 7, 2026', tag:'ui',
+      changes:[
+        {t:'add', d:'Search box on the Accounts Receivable tab. Filters the visible rows by company name or doc number as you type (case-insensitive substring match). Works in combination with the existing aging-bucket filter — search applies on top of whichever bucket is selected. Aging summary boxes still reflect the full open-invoice picture.'},
+      ]
+    },
+    {
       v:'1.7.15', date:'May 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'QB invoice "Note to customer" (CustomerMemo) is now hardcoded to: "Finance charges of 1.5% per month will be added to invoices not paid by the due date." Previously the field carried the deal name, which was redundant with the invoice number and customer company already on the invoice.'},

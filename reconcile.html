@@ -1253,6 +1253,16 @@ function switchTab(name) {
 // ── Shared invoice helpers ────────────────────────────────────────
 let _qbInvoices = null;  // cache of last QB Invoices fetch
 let _arInvoices = null;  // cache of last AR fetch
+let _canDeleteInvoices = false;  // gated by /api/me — Benton + Kim only
+let _mePromise = null;
+function loadMe() {
+  if (!_mePromise) {
+    _mePromise = fetch('/api/me').then(r => r.json()).then(me => {
+      _canDeleteInvoices = !!me.canDeleteInvoices;
+    }).catch(() => { _canDeleteInvoices = false; });
+  }
+  return _mePromise;
+}
 
 function todayMidnight() {
   const t = new Date(); t.setHours(0,0,0,0); return t;
@@ -1294,7 +1304,7 @@ function renderInvoiceRow(inv) {
     <td style="white-space:nowrap;color:${st.color};font-weight:600;font-size:12px">${escHtml(st.label)}</td>
     <td style="white-space:nowrap">
       <a href="${qbUrl}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Open in QB ↗</a>
-      <button class="btn btn-red btn-sm" data-invoice-id="${escHtml(inv.Id)}" data-doc-num="${escHtml(docNum)}" data-customer="${escHtml(inv.CustomerRef?.name || '')}" data-total="${parseFloat(inv.TotalAmt || 0)}" onclick="confirmDeleteInvoice(this)">Delete</button>
+      ${_canDeleteInvoices ? `<button class="btn btn-red btn-sm" data-invoice-id="${escHtml(inv.Id)}" data-doc-num="${escHtml(docNum)}" data-customer="${escHtml(inv.CustomerRef?.name || '')}" data-total="${parseFloat(inv.TotalAmt || 0)}" onclick="confirmDeleteInvoice(this)">Delete</button>` : ''}
     </td>
   </tr>`;
 }
@@ -1317,6 +1327,7 @@ async function loadQbInvoices() {
   if (!from || !to) { msg.textContent = 'Select a date range.'; msg.className = 'msg err'; return; }
   msg.textContent = 'Loading…'; msg.className = 'msg'; btn.disabled = true; wrap.style.display = 'none';
   try {
+    await loadMe();
     const data = await fetch(`/api/qb/invoices?from=${from}&to=${to}`).then(r => r.json());
     if (data.error) throw new Error(data.error);
     _qbInvoices = (data.results || [])
@@ -1357,6 +1368,7 @@ async function loadAr(force) {
   const btn = document.getElementById('arBtn');
   msg.textContent = 'Loading open invoices…'; msg.className = 'msg'; btn.disabled = true;
   try {
+    await loadMe();
     const data = await fetch('/api/qb/ar').then(r => r.json());
     if (data.error) throw new Error(data.error);
     _arInvoices = (data.results || []).sort((a, b) => {
@@ -1449,6 +1461,7 @@ initDates();
 initQbInvDates();
 loadQbStatus();
 loadPortalId();
+loadMe();
 
 // Header click → sort
 document.getElementById('resultsHead')?.addEventListener('click', e => {

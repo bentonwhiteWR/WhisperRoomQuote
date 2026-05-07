@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.5', date:'May 7, 2026', tag:'security',
+      changes:[
+        {t:'security', d:'QB invoice deletion is now restricted to Benton + Kim only (by HubSpot ownerId). Server returns 403 for other users; the Delete button is hidden in the UI for everyone else. Successful deletions are logged with user, invoice #, customer, and total. Override the allowlist with QB_INVOICE_DELETE_OWNERS env var (comma-separated ownerIds). Note: requires HubSpot OAuth login — password-only sessions cannot delete.'},
+      ]
+    },
+    {
       v:'1.7.4', date:'May 7, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Top-nav "Reconcile" link renamed to "Accounting" — the page now hosts Reconcile, QB Invoices, and AR sub-tabs. Page title and header subtitle updated to match.'},

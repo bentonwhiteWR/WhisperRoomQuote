@@ -53,11 +53,11 @@ module.exports = function renderChangelog() {
     {
       v:'1.7.30', date:'May 7, 2026', tag:'feature',
       changes:[
-        {t:'add', d:'Audimute PO document overhauled with full BOM. Each AP SKU now resolves to its panel breakdown (2\\'x4\\', 1\\'x4\\', 1\\'x2\\') and Audimute wholesale cost from a single source-of-truth mapping (lib/ap-packages.js). Items table is now QTY | ITEM | DESCRIPTION | COLOR | UNIT COST | TOTAL — description shows "Includes: N - 2\\'x4\\' panels. N - 1\\'x2\\' panels." plus "N total WhisperRoom Velcro Hang Tab Packs" per item.'},
-        {t:'add', d:'Panel Totals summary block below the items table aggregates panel counts × qty across all line items: shows total 2\\'x4\\', 1\\'x4\\', 1\\'x2\\' panels needed, plus a grand total of WhisperRoom Velcro Hang Tab Packs (1 per panel). This is the pull list Audimute fulfills against.'},
-        {t:'fix', d:'PO pricing now uses Audimute wholesale cost (e.g. AP 9696 = $588) instead of the customer-facing retail price from the snapshot. Set at PO creation time so each PO is self-contained. Falls back to the snapshot price only if the SKU isn\\'t in the mapping.'},
+        {t:'add', d:'Audimute PO document overhauled with full BOM. Each AP SKU now resolves to its panel breakdown (2\'x4\', 1\'x4\', 1\'x2\') and Audimute wholesale cost from a single source-of-truth mapping (lib/ap-packages.js). Items table is now QTY | ITEM | DESCRIPTION | COLOR | UNIT COST | TOTAL — description shows "Includes: N - 2\'x4\' panels. N - 1\'x2\' panels." plus "N total WhisperRoom Velcro Hang Tab Packs" per item.'},
+        {t:'add', d:'Panel Totals summary block below the items table aggregates panel counts × qty across all line items: shows total 2\'x4\', 1\'x4\', 1\'x2\' panels needed, plus a grand total of WhisperRoom Velcro Hang Tab Packs (1 per panel). This is the pull list Audimute fulfills against.'},
+        {t:'fix', d:'PO pricing now uses Audimute wholesale cost (e.g. AP 9696 = $588) instead of the customer-facing retail price from the snapshot. Set at PO creation time so each PO is self-contained. Falls back to the snapshot price only if the SKU isn\'t in the mapping.'},
         {t:'ui',  d:'Removed the "From" (WhisperRoom) block from the PO. Vendor block updated to: Audimute / Attn: Elizabeth Wade / 23700 Aurora Road / Bedford Heights, Ohio 44146 / (216) 591-1891 x320 / ewade@audimute.com. Parties row is now 2-column (Vendor + Ship To).'},
-        {t:'ui',  d:'Items missing a color show "— TBD —" in red on the PO so it\\'s obvious what still needs an answer before sending.'},
+        {t:'ui',  d:'Items missing a color show "— TBD —" in red on the PO so it\'s obvious what still needs an answer before sending.'},
       ]
     },
     {

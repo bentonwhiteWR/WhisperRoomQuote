@@ -949,6 +949,39 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Accounts Receivable: all open (Balance > 0) invoices, regardless of date.
+  // Returns the same shape as /api/qb/invoices for table reuse on the frontend.
+  if (pathname === '/api/qb/ar' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const results = await qb.fetchOpenInvoices();
+      json({ results, total: results.length });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // Delete a QB invoice. Also clears qbInvoiceId from any local order it was attached to.
+  if (pathname.startsWith('/api/qb/invoice/') && req.method === 'DELETE') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const invoiceId = pathname.replace('/api/qb/invoice/', '').trim();
+      if (!invoiceId) { json({ error: 'invoice id required' }, 400); return; }
+      const deleted = await qb.deleteInvoice(invoiceId);
+      if (db) {
+        try {
+          await db.query(
+            `UPDATE orders
+             SET order_data = order_data - 'qbInvoiceId' - 'qbDocNumber'
+             WHERE order_data->>'qbInvoiceId' = $1`,
+            [String(invoiceId)]
+          );
+        } catch(e) { console.warn('[qb-invoice-delete] local order cleanup failed:', e.message); }
+      }
+      json({ success: true, deleted });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
 
   // Fetch closed-won + shipped HS deals for a date range (for reconciliation)
   if (pathname === '/api/reconcile/hs-deals' && req.method === 'GET') {

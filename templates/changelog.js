@@ -51,6 +51,15 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.3', date:'May 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Reconciler → Accounts Receivable tab. Shows all open (unpaid) QB invoices with aging summary boxes (Current / 1–30 / 31–60 / 61–90 / 90+ days late) — counts and dollar totals per bucket. Filterable by bucket, sorted oldest-due first.'},
+        {t:'add', d:'QB Invoices tab now shows Terms (Net 30, Due on receipt) and a smart Status column ("Paid", "Due in Nd", "N days late") color-coded green/gray/amber/red.'},
+        {t:'add', d:'Status filter on QB Invoices tab: All / Paid / Open / Due Soon (≤7d) / Overdue.'},
+        {t:'add', d:'Per-row Delete button on both QB Invoices and AR tabs — opens a confirmation modal showing customer + total before permanently deleting from QuickBooks. Also clears the qbInvoiceId from the linked local order if any.'},
+      ]
+    },
+    {
       v:'1.7.2', date:'May 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Reconciler: new "QB Invoices" tab shows all QB invoices in a date range (defaults to last 90 days), with Paid/Open status badges and a direct "Open in QB" link to pull up each invoice in QuickBooks Online.'},

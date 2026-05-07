@@ -180,6 +180,7 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
   <div class="tab-bar">
     <button class="tab-btn active" data-tab="reconcile" onclick="switchTab('reconcile')">Reconcile</button>
     <button class="tab-btn" data-tab="qb-invoices" onclick="switchTab('qb-invoices')">QB Invoices</button>
+    <button class="tab-btn" data-tab="ar" onclick="switchTab('ar')">Accounts Receivable</button>
   </div>
 
   <!-- ── Reconcile tab ── -->
@@ -292,6 +293,13 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
           <input type="date" id="qbInvTo">
         </div>
         <button class="btn btn-orange" id="qbInvBtn" onclick="loadQbInvoices()">Load</button>
+        <select id="qbInvFilter" onchange="renderQbInvoices()" style="margin-left:auto;min-width:180px">
+          <option value="">All</option>
+          <option value="paid">Paid</option>
+          <option value="open">Open (any)</option>
+          <option value="due-soon">Due Soon (≤7d)</option>
+          <option value="overdue">Overdue</option>
+        </select>
       </div>
       <div class="msg" id="qbInvMsg"></div>
       <div class="tbl-wrap" id="qbInvWrap" style="display:none;margin-top:14px">
@@ -301,6 +309,7 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
               <th>Date</th>
               <th>Doc #</th>
               <th>Customer</th>
+              <th>Terms</th>
               <th style="text-align:right">Total</th>
               <th style="text-align:right">Balance</th>
               <th>Status</th>
@@ -313,6 +322,67 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
     </div>
   </div><!-- /tabQbInvoices -->
 
+  <!-- ── Accounts Receivable tab ── -->
+  <div id="tabAr" style="display:none">
+    <div class="card">
+      <div class="card-title">Accounts Receivable — Open Invoices</div>
+      <div class="row" style="margin-bottom:10px">
+        <button class="btn btn-orange" id="arBtn" onclick="loadAr()">Load</button>
+        <button class="btn btn-ghost btn-sm" onclick="loadAr(true)" title="Re-fetch from QB">↻ Refresh</button>
+        <select id="arFilter" onchange="renderAr()" style="margin-left:auto;min-width:180px">
+          <option value="">All Open</option>
+          <option value="current">Current (not yet due)</option>
+          <option value="1-30">1–30 days late</option>
+          <option value="31-60">31–60 days late</option>
+          <option value="61-90">61–90 days late</option>
+          <option value="90+">90+ days late</option>
+        </select>
+      </div>
+      <div class="msg" id="arMsg"></div>
+      <div id="arSummaryWrap" style="display:none;margin-top:14px">
+        <div class="summary-grid">
+          <div class="summary-box ar-bucket" data-bucket="current"><div class="lbl">Current</div><div class="val" id="arSumCurrent">—</div><div class="sublbl"><span id="arCntCurrent">0</span> invoices</div></div>
+          <div class="summary-box ar-bucket" data-bucket="1-30"><div class="lbl">1–30 Late</div><div class="val" id="arSum1_30">—</div><div class="sublbl"><span id="arCnt1_30">0</span> invoices</div></div>
+          <div class="summary-box ar-bucket" data-bucket="31-60"><div class="lbl">31–60 Late</div><div class="val" id="arSum31_60">—</div><div class="sublbl"><span id="arCnt31_60">0</span> invoices</div></div>
+          <div class="summary-box ar-bucket" data-bucket="61-90"><div class="lbl">61–90 Late</div><div class="val" id="arSum61_90">—</div><div class="sublbl"><span id="arCnt61_90">0</span> invoices</div></div>
+          <div class="summary-box ar-bucket" data-bucket="90+"><div class="lbl">90+ Late</div><div class="val" id="arSum90Plus">—</div><div class="sublbl"><span id="arCnt90Plus">0</span> invoices</div></div>
+          <div class="summary-box"><div class="lbl">Total AR</div><div class="val" id="arSumTotal">—</div><div class="sublbl"><span id="arCntTotal">0</span> invoices</div></div>
+        </div>
+      </div>
+      <div class="tbl-wrap" id="arWrap" style="display:none;margin-top:14px">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Doc #</th>
+              <th>Customer</th>
+              <th>Terms</th>
+              <th style="text-align:right">Total</th>
+              <th style="text-align:right">Balance</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="arBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /tabAr -->
+
+</div>
+
+<!-- Delete confirmation modal -->
+<div id="confirmModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeConfirm()">
+  <div class="modal-box" style="width:380px">
+    <button class="modal-close" onclick="closeConfirm()">✕</button>
+    <div class="modal-label">Delete invoice</div>
+    <div class="modal-name" id="confirmTitle">Are you sure?</div>
+    <div id="confirmBody" style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:18px"></div>
+    <div class="modal-actions" style="justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeConfirm()">Cancel</button>
+      <button class="btn btn-red" id="confirmYes">Delete</button>
+    </div>
+  </div>
 </div>
 
 <!-- Info popup modal -->
@@ -1174,11 +1244,59 @@ if (new URLSearchParams(location.search).get('qb') === 'connected') {
 function switchTab(name) {
   document.getElementById('tabReconcile').style.display   = name === 'reconcile'    ? '' : 'none';
   document.getElementById('tabQbInvoices').style.display  = name === 'qb-invoices'  ? '' : 'none';
+  document.getElementById('tabAr').style.display          = name === 'ar'           ? '' : 'none';
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
-  if (name === 'qb-invoices' && document.getElementById('qbInvWrap').style.display === 'none'
-      && document.getElementById('qbInvMsg').textContent === '') {
-    loadQbInvoices();
+  if (name === 'qb-invoices' && _qbInvoices == null) loadQbInvoices();
+  if (name === 'ar'          && _arInvoices == null) loadAr();
+}
+
+// ── Shared invoice helpers ────────────────────────────────────────
+let _qbInvoices = null;  // cache of last QB Invoices fetch
+let _arInvoices = null;  // cache of last AR fetch
+
+function todayMidnight() {
+  const t = new Date(); t.setHours(0,0,0,0); return t;
+}
+
+// Returns { label, color, daysLate, daysToDue, bucket } from invoice's Balance + DueDate
+function invoiceStatus(inv) {
+  const paid = parseFloat(inv.Balance || 0) < 0.01;
+  if (paid) return { label: 'Paid', color: 'var(--green)', bucket: 'paid' };
+  if (!inv.DueDate) return { label: 'Open', color: 'var(--text2)', bucket: 'open-no-due' };
+  const due  = new Date(inv.DueDate + 'T00:00:00');
+  const diff = Math.round((due - todayMidnight()) / 86400000);
+  if (diff < 0) {
+    const late = -diff;
+    let bucket = '90+';
+    if (late <= 30)      bucket = '1-30';
+    else if (late <= 60) bucket = '31-60';
+    else if (late <= 90) bucket = '61-90';
+    return { label: `${late} day${late !== 1 ? 's' : ''} late`, color: 'var(--red)', daysLate: late, bucket };
   }
+  if (diff === 0)  return { label: 'Due today',  color: 'var(--amber)', daysToDue: 0, bucket: 'current' };
+  if (diff <= 7)   return { label: `Due in ${diff}d`, color: 'var(--amber)', daysToDue: diff, bucket: 'current' };
+  return { label: `Due in ${diff}d`, color: 'var(--text2)', daysToDue: diff, bucket: 'current' };
+}
+
+function renderInvoiceRow(inv) {
+  const st     = invoiceStatus(inv);
+  const paid   = st.bucket === 'paid';
+  const qbUrl  = `https://app.qbo.intuit.com/app/invoice?txnId=${encodeURIComponent(inv.Id)}`;
+  const terms  = inv.SalesTermRef?.name || '—';
+  const docNum = inv.DocNumber || inv.Id;
+  return `<tr>
+    <td style="color:var(--text2);white-space:nowrap">${escHtml(inv.TxnDate || '—')}</td>
+    <td style="font-weight:600">${escHtml(docNum)}</td>
+    <td>${escHtml(inv.CustomerRef?.name || '—')}</td>
+    <td style="color:var(--text2);white-space:nowrap">${escHtml(terms)}</td>
+    <td style="text-align:right;font-weight:700">${fmt(inv.TotalAmt)}</td>
+    <td style="text-align:right;color:${paid ? 'var(--green)' : 'var(--amber)'}">${fmt(inv.Balance)}</td>
+    <td style="white-space:nowrap;color:${st.color};font-weight:600;font-size:12px">${escHtml(st.label)}</td>
+    <td style="white-space:nowrap">
+      <a href="${qbUrl}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Open in QB ↗</a>
+      <button class="btn btn-red btn-sm" data-invoice-id="${escHtml(inv.Id)}" data-doc-num="${escHtml(docNum)}" data-customer="${escHtml(inv.CustomerRef?.name || '')}" data-total="${parseFloat(inv.TotalAmt || 0)}" onclick="confirmDeleteInvoice(this)">Delete</button>
+    </td>
+  </tr>`;
 }
 
 // ── QB Invoices tab ───────────────────────────────────────────────
@@ -1201,30 +1319,131 @@ async function loadQbInvoices() {
   try {
     const data = await fetch(`/api/qb/invoices?from=${from}&to=${to}`).then(r => r.json());
     if (data.error) throw new Error(data.error);
-    const invoices = (data.results || [])
+    _qbInvoices = (data.results || [])
       .filter(i => !i._type)
       .sort((a, b) => new Date(b.TxnDate || 0) - new Date(a.TxnDate || 0));
-    document.getElementById('qbInvBody').innerHTML = invoices.map(inv => {
-      const paid   = parseFloat(inv.Balance || 0) < 0.01;
-      const qbUrl  = `https://app.qbo.intuit.com/app/invoice?txnId=${encodeURIComponent(inv.Id)}`;
-      return `<tr>
-        <td style="color:var(--text2);white-space:nowrap">${escHtml(inv.TxnDate || '—')}</td>
-        <td style="font-weight:600">${escHtml(inv.DocNumber || inv.Id)}</td>
-        <td>${escHtml(inv.CustomerRef?.name || '—')}</td>
-        <td style="text-align:right;font-weight:700">${fmt(inv.TotalAmt)}</td>
-        <td style="text-align:right;color:${paid ? 'var(--green)' : 'var(--amber)'}">${fmt(inv.Balance)}</td>
-        <td><span class="badge ${paid ? 'badge-match' : 'badge-credit'}">${paid ? 'Paid' : 'Open'}</span></td>
-        <td><a href="${qbUrl}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="white-space:nowrap">Open in QB ↗</a></td>
-      </tr>`;
-    }).join('') || `<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:24px">No invoices found for this period.</td></tr>`;
-    msg.textContent = `${invoices.length} invoice${invoices.length !== 1 ? 's' : ''} — ${from} to ${to}`;
-    msg.className = 'msg ok';
-    wrap.style.display = '';
+    renderQbInvoices();
   } catch(e) {
     msg.textContent = 'Error: ' + e.message; msg.className = 'msg err';
   }
   btn.disabled = false;
 }
+
+function renderQbInvoices() {
+  if (!_qbInvoices) return;
+  const filter = document.getElementById('qbInvFilter').value;
+  const from   = document.getElementById('qbInvFrom').value;
+  const to     = document.getElementById('qbInvTo').value;
+  const msg    = document.getElementById('qbInvMsg');
+  const wrap   = document.getElementById('qbInvWrap');
+  let list = _qbInvoices;
+  if (filter === 'paid')      list = list.filter(i => parseFloat(i.Balance || 0) < 0.01);
+  else if (filter === 'open') list = list.filter(i => parseFloat(i.Balance || 0) >= 0.01);
+  else if (filter === 'overdue')  list = list.filter(i => { const s = invoiceStatus(i); return s.daysLate > 0; });
+  else if (filter === 'due-soon') list = list.filter(i => { const s = invoiceStatus(i); return s.daysToDue != null && s.daysToDue <= 7; });
+
+  document.getElementById('qbInvBody').innerHTML =
+    list.map(renderInvoiceRow).join('')
+    || `<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:24px">No invoices match this filter.</td></tr>`;
+  msg.textContent = `${list.length} of ${_qbInvoices.length} invoice${_qbInvoices.length !== 1 ? 's' : ''} — ${from} to ${to}`;
+  msg.className = 'msg ok';
+  wrap.style.display = '';
+}
+
+// ── Accounts Receivable tab ───────────────────────────────────────
+async function loadAr(force) {
+  if (_arInvoices && !force) { renderAr(); return; }
+  const msg = document.getElementById('arMsg');
+  const btn = document.getElementById('arBtn');
+  msg.textContent = 'Loading open invoices…'; msg.className = 'msg'; btn.disabled = true;
+  try {
+    const data = await fetch('/api/qb/ar').then(r => r.json());
+    if (data.error) throw new Error(data.error);
+    _arInvoices = (data.results || []).sort((a, b) => {
+      const ad = a.DueDate || a.TxnDate || ''; const bd = b.DueDate || b.TxnDate || '';
+      return ad.localeCompare(bd); // oldest-due first
+    });
+    renderAr();
+  } catch(e) { msg.textContent = 'Error: ' + e.message; msg.className = 'msg err'; }
+  btn.disabled = false;
+}
+
+function renderAr() {
+  if (!_arInvoices) return;
+  // Compute aging buckets
+  const buckets = { current: [], '1-30': [], '31-60': [], '61-90': [], '90+': [] };
+  _arInvoices.forEach(inv => {
+    const st = invoiceStatus(inv);
+    if (buckets[st.bucket]) buckets[st.bucket].push(inv);
+  });
+  const sumOf = arr => arr.reduce((s, i) => s + parseFloat(i.Balance || 0), 0);
+  document.getElementById('arSumCurrent').textContent  = fmt(sumOf(buckets.current));
+  document.getElementById('arSum1_30').textContent     = fmt(sumOf(buckets['1-30']));
+  document.getElementById('arSum31_60').textContent    = fmt(sumOf(buckets['31-60']));
+  document.getElementById('arSum61_90').textContent    = fmt(sumOf(buckets['61-90']));
+  document.getElementById('arSum90Plus').textContent   = fmt(sumOf(buckets['90+']));
+  document.getElementById('arSumTotal').textContent    = fmt(sumOf(_arInvoices));
+  document.getElementById('arCntCurrent').textContent  = buckets.current.length;
+  document.getElementById('arCnt1_30').textContent     = buckets['1-30'].length;
+  document.getElementById('arCnt31_60').textContent    = buckets['31-60'].length;
+  document.getElementById('arCnt61_90').textContent    = buckets['61-90'].length;
+  document.getElementById('arCnt90Plus').textContent   = buckets['90+'].length;
+  document.getElementById('arCntTotal').textContent    = _arInvoices.length;
+  document.getElementById('arSummaryWrap').style.display = '';
+
+  // Apply filter
+  const filter = document.getElementById('arFilter').value;
+  let list = _arInvoices;
+  if (filter && buckets[filter]) list = buckets[filter];
+
+  document.getElementById('arBody').innerHTML =
+    list.map(renderInvoiceRow).join('')
+    || `<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:24px">No open invoices in this bucket.</td></tr>`;
+  document.getElementById('arWrap').style.display = '';
+  const msg = document.getElementById('arMsg');
+  msg.textContent = `${list.length} of ${_arInvoices.length} open invoice${_arInvoices.length !== 1 ? 's' : ''} — ${fmt(sumOf(list))} of ${fmt(sumOf(_arInvoices))}`;
+  msg.className = 'msg ok';
+}
+
+// ── Delete confirmation ──────────────────────────────────────────
+let _confirmInvoiceId = null;
+function confirmDeleteInvoice(btn) {
+  const id       = btn.dataset.invoiceId;
+  const docNum   = btn.dataset.docNum || id;
+  const customer = btn.dataset.customer || '';
+  const total    = parseFloat(btn.dataset.total || 0);
+  _confirmInvoiceId = id;
+  document.getElementById('confirmTitle').textContent = `Delete invoice ${docNum}?`;
+  document.getElementById('confirmBody').innerHTML =
+    `Customer: <strong>${escHtml(customer) || '—'}</strong><br>` +
+    `Total: <strong>${fmt(total)}</strong><br><br>` +
+    `This <strong>permanently deletes</strong> the invoice from QuickBooks. ` +
+    `If it was created from an order, the QB link on that order will also be cleared.`;
+  document.getElementById('confirmModal').style.display = 'flex';
+}
+function closeConfirm() {
+  document.getElementById('confirmModal').style.display = 'none';
+  _confirmInvoiceId = null;
+}
+document.getElementById('confirmYes').addEventListener('click', async () => {
+  if (!_confirmInvoiceId) return;
+  const id = _confirmInvoiceId;
+  const btn = document.getElementById('confirmYes');
+  btn.disabled = true; btn.textContent = 'Deleting…';
+  try {
+    const r = await fetch(`/api/qb/invoice/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(r => r.json());
+    if (r.error) throw new Error(r.error);
+    // Drop from caches and re-render
+    if (_qbInvoices) _qbInvoices = _qbInvoices.filter(i => String(i.Id) !== String(id));
+    if (_arInvoices) _arInvoices = _arInvoices.filter(i => String(i.Id) !== String(id));
+    if (document.getElementById('qbInvWrap').style.display !== 'none') renderQbInvoices();
+    if (document.getElementById('arWrap').style.display    !== 'none') renderAr();
+    closeConfirm();
+  } catch(e) {
+    alert('Delete failed: ' + e.message);
+  }
+  btn.disabled = false; btn.textContent = 'Delete';
+});
 
 initDates();
 initQbInvDates();

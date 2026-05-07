@@ -8017,6 +8017,77 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         } catch(e) { console.warn('[process-order] GDrive PDF error:', e.message); }
       })();
 
+      // Create QuickBooks invoice (non-blocking — failure is logged, never fatal)
+      (async () => {
+        try {
+          const itemRef = await qb.getDefaultItem();
+
+          const cust = await qb.findOrCreateCustomer({
+            displayName: [c.firstName, c.lastName].filter(Boolean).join(' ') || c.company || c.email || 'Unknown',
+            givenName:   c.firstName  || '',
+            familyName:  c.lastName   || '',
+            email:       c.email      || '',
+            companyName: c.company    || '',
+          });
+
+          // Build QB invoice lines from WR line items
+          const qbLines = [];
+          for (const item of (lineItems || [])) {
+            const amt = parseFloat(item.price) * parseInt(item.qty || 1);
+            if (!amt) continue;
+            qbLines.push({
+              Amount:     parseFloat(amt.toFixed(2)),
+              DetailType: 'SalesItemLineDetail',
+              Description: `${item.name}${parseInt(item.qty) > 1 ? ` ×${item.qty}` : ''}`,
+              SalesItemLineDetail: { ItemRef: itemRef, UnitPrice: parseFloat(amt.toFixed(2)), Qty: 1 },
+            });
+          }
+          if (discAmt > 0) {
+            qbLines.push({
+              Amount:     parseFloat(discAmt.toFixed(2)),
+              DetailType: 'DiscountLineDetail',
+              DiscountLineDetail: { PercentBased: false, DiscountAmount: parseFloat(discAmt.toFixed(2)) },
+            });
+          }
+          if (freightTotal > 0) {
+            qbLines.push({
+              Amount:     parseFloat(freightTotal.toFixed(2)),
+              DetailType: 'SalesItemLineDetail',
+              Description: 'Freight',
+              SalesItemLineDetail: { ItemRef: itemRef, UnitPrice: parseFloat(freightTotal.toFixed(2)), Qty: 1 },
+            });
+          }
+          if (taxTotal > 0) {
+            qbLines.push({
+              Amount:     parseFloat(taxTotal.toFixed(2)),
+              DetailType: 'SalesItemLineDetail',
+              Description: 'Sales Tax',
+              SalesItemLineDetail: { ItemRef: itemRef, UnitPrice: parseFloat(taxTotal.toFixed(2)), Qty: 1 },
+            });
+          }
+
+          const invoice = await qb.createInvoice({
+            customerRef: { value: cust.Id, name: cust.DisplayName },
+            docNumber:   quoteNumber,
+            txnDate:     new Date().toISOString().split('T')[0],
+            lines:       qbLines,
+            memo:        dealName || quoteNumber,
+          });
+
+          if (invoice?.Id) {
+            console.log(`[process-order] QB invoice created: id=${invoice.Id} DocNumber=${invoice.DocNumber}`);
+            if (db) {
+              await db.query(
+                `UPDATE orders SET order_data = order_data || $1::jsonb WHERE quote_number = $2`,
+                [JSON.stringify({ qbInvoiceId: invoice.Id, qbDocNumber: invoice.DocNumber }), quoteNumber]
+              );
+            }
+          }
+        } catch(e) {
+          console.warn('[process-order] QB invoice creation skipped:', e.message);
+        }
+      })();
+
     } catch(e) {
       console.error('Process order error:', e.message);
       json({ error: e.message }, 500);

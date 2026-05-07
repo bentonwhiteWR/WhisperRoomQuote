@@ -166,6 +166,8 @@ const { TAXJAR_KEY, calculateTaxProper } = taxjar;
 const qb = require('./lib/quickbooks');
 qb.init({ getDb: () => db });
 
+const apPackages = require('./lib/ap-packages');
+
 
 const auth = require('./lib/auth');
 auth.init({ getDb: () => db, parseCookies });
@@ -7197,19 +7199,21 @@ ${q.accepted ? `
 
       // If the dialog supplied per-item rows (with colors), use them — otherwise
       // synthesize from detected items with the order's default color.
+      // Always override price with the Audimute wholesale cost from the mapping
+      // so the PO reflects what Audimute will invoice us. Falls back to the
+      // snapshot price only if the SKU isn't in the mapping.
+      const buildItem = (i, color) => {
+        const pkg = apPackages.getApPackage(i.name || i.productName);
+        return {
+          name:  String(i.name || i.productName || '').trim(),
+          qty:   parseInt(i.qty || 1, 10),
+          price: pkg ? pkg.cost : parseFloat(i.price || 0),
+          color: String(color || '').trim(),
+        };
+      };
       const apItems = (Array.isArray(bodyApItems) && bodyApItems.length)
-        ? bodyApItems.map(i => ({
-            name:  String(i.name || '').trim(),
-            qty:   parseInt(i.qty || 1, 10),
-            price: parseFloat(i.price || 0),
-            color: String(i.color || defaultColor || '').trim(),
-          })).filter(i => i.name)
-        : detectedApItems.map(i => ({
-            name:  i.name || i.productName || '',
-            qty:   parseInt(i.qty || 1, 10),
-            price: parseFloat(i.price || 0),
-            color: defaultColor,
-          }));
+        ? bodyApItems.map(i => buildItem(i, i.color || defaultColor)).filter(i => i.name)
+        : detectedApItems.map(i => buildItem(i, defaultColor));
       if (!apItems.length) { json({ error: 'No AP items provided' }, 400); return; }
 
       const customer  = snap?.customer || {};
@@ -8083,21 +8087,35 @@ ${q.accepted ? `
       const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
       const escHtmlPo = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
+      // Aggregate panel totals across all line items × qty
+      let grand2x4 = 0, grand1x4 = 0, grand1x2 = 0;
       const itemRows = (d.apItems||[]).map(item => {
+        const qty = parseInt(item.qty||1, 10);
         const color = (item.color || d.apColor || '').trim();
-        const colorChip = color
-          ? `<span style="display:inline-block;font-size:10px;font-weight:700;color:#ee6216;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.25);padding:2px 8px;border-radius:4px;margin-top:4px">Color: ${escHtmlPo(color)}</span>`
-          : '';
+        const pkg = apPackages.getApPackage(item.name);
+        if (pkg) {
+          grand2x4 += (pkg.p2x4||0) * qty;
+          grand1x4 += (pkg.p1x4||0) * qty;
+          grand1x2 += (pkg.p1x2||0) * qty;
+        }
+        const breakdown = pkg ? apPackages.formatBreakdown(pkg) : '';
+        const totalTabs = pkg ? apPackages.totalPanels(pkg) : 0;
+        const desc = pkg
+          ? `${escHtmlPo(breakdown)}<div class="item-tabs">${totalTabs} total WhisperRoom Velcro Hang Tab Packs</div>`
+          : (item.description ? `<div class="item-note">${escHtmlPo(item.description)}</div>` : '<div class="item-note" style="color:#bb6;">SKU not in package mapping — confirm panel count manually</div>');
         return `
         <tr>
-          <td class="td-desc">${escHtmlPo(item.name)}${item.description ? `<div class="item-note">${escHtmlPo(item.description)}</div>` : ''}${colorChip ? `<div>${colorChip}</div>` : ''}</td>
-          <td class="td-num">${item.qty||1}</td>
+          <td class="td-num">${qty}</td>
+          <td class="td-item">${escHtmlPo(item.name)}</td>
+          <td class="td-desc">${desc}</td>
+          <td class="td-color">${color ? escHtmlPo(color).toUpperCase() : '<span style="color:#c33;font-weight:700">— TBD —</span>'}</td>
           <td class="td-num">${fmt(item.price)}</td>
-          <td class="td-num">${fmt((item.price||0)*(item.qty||1))}</td>
+          <td class="td-num">${fmt((item.price||0)*qty)}</td>
         </tr>`;
       }).join('');
 
       const subtotal = (d.apItems||[]).reduce((s,i) => s + (parseFloat(i.price||0)*parseInt(i.qty||1)), 0);
+      const grandTabs = grand2x4 + grand1x4 + grand1x2;
       const shipTo   = [c.address, c.city, c.state && c.zip ? `${c.state} ${c.zip}` : (c.state||c.zip)].filter(Boolean).join(', ');
 
       const poHtml = `<!DOCTYPE html>
@@ -8121,17 +8139,25 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
 .po-label{font-size:28px;font-weight:800;color:#1a1a1a;letter-spacing:-.5px}
 .po-number{font-size:14px;font-weight:700;color:#ee6216;margin-top:4px}
 .po-date{font-size:12px;color:#888;margin-top:2px}
-.parties{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-bottom:32px}
+.parties{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px}
 .party-block h4{font-size:9px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}
 .party-block .name{font-size:13px;font-weight:700;color:#1a1a1a;margin-bottom:3px}
 .party-block .line{font-size:12px;color:#555;line-height:1.6}
-.items-table{width:100%;border-collapse:collapse;margin-bottom:24px;font-size:13px}
+.items-table{width:100%;border-collapse:collapse;margin-bottom:18px;font-size:13px}
 .items-table thead tr{background:#1a1a1a;color:#fff}
 .items-table th{padding:10px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
 .items-table th.th-num{text-align:right}
-.td-desc{padding:14px 12px;border-bottom:1px solid #f0f0f0;vertical-align:top;font-weight:600}
+.items-table th.th-center{text-align:center}
+.td-item{padding:14px 12px;border-bottom:1px solid #f0f0f0;vertical-align:top;font-weight:700;color:#1a1a1a;font-family:'DM Sans',sans-serif;letter-spacing:.02em}
+.td-desc{padding:14px 12px;border-bottom:1px solid #f0f0f0;vertical-align:top;font-weight:600;color:#333;line-height:1.5}
+.td-color{padding:14px 12px;border-bottom:1px solid #f0f0f0;vertical-align:top;font-weight:700;letter-spacing:.05em;color:#1a1a1a;text-transform:uppercase;font-size:12px}
 .item-note{font-size:11px;color:#777;font-weight:400;margin-top:3px}
+.item-tabs{font-size:11px;color:#555;font-weight:700;margin-top:4px}
 .td-num{padding:14px 12px;border-bottom:1px solid #f0f0f0;text-align:right;vertical-align:top;color:#555}
+.panel-totals{margin-top:0;margin-bottom:24px;background:#f9f9f9;border:1px solid #eee;border-radius:8px;padding:18px 20px}
+.panel-totals h4{font-size:11px;font-weight:800;color:#1a1a1a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px}
+.panel-totals .row{display:flex;justify-content:space-between;font-size:13px;padding:5px 0;color:#333}
+.panel-totals .row.grand{margin-top:8px;padding-top:10px;border-top:2px solid #ee6216;font-weight:800;color:#1a1a1a;font-size:14px}
 .totals{margin-left:auto;width:240px;font-size:13px}
 .totals-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0}
 .totals-row.grand{font-weight:800;font-size:15px;color:#1a1a1a;border-bottom:none;padding-top:10px;border-top:2px solid #1a1a1a}
@@ -8168,14 +8194,9 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
 
   <div class="parties">
     <div class="party-block">
-      <h4>From</h4>
-      <div class="name">WhisperRoom, Inc.</div>
-      <div class="line">5765 Commerce Blvd<br>Morristown, TN 37814<br>info@whisperroom.com<br>(865) 558-5364</div>
-    </div>
-    <div class="party-block">
       <h4>Vendor</h4>
-      <div class="name">Audimute Serenity</div>
-      <div class="line">Elizabeth Wade<br>ewade@audimute.com<br>Cleveland, OH</div>
+      <div class="name">Audimute</div>
+      <div class="line">Attn: Elizabeth Wade<br>23700 Aurora Road<br>Bedford Heights, Ohio 44146<br>(216) 591-1891 x320<br>ewade@audimute.com</div>
     </div>
     <div class="party-block">
       <h4>Ship To</h4>
@@ -8187,9 +8208,11 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
   <table class="items-table">
     <thead>
       <tr>
-        <th>Item / Description</th>
-        <th class="th-num">Qty</th>
-        <th class="th-num">Unit Price</th>
+        <th class="th-center">Qty</th>
+        <th>Item</th>
+        <th>Description</th>
+        <th>Color</th>
+        <th class="th-num">Unit Cost</th>
         <th class="th-num">Total</th>
       </tr>
     </thead>
@@ -8197,6 +8220,15 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
       ${itemRows}
     </tbody>
   </table>
+
+  ${grandTabs > 0 ? `
+  <div class="panel-totals">
+    <h4>Panel Totals (1 Velcro Hang Tab Pack per panel)</h4>
+    ${grand2x4 ? `<div class="row"><span>2'x4' panels</span><span>${grand2x4}</span></div>` : ''}
+    ${grand1x4 ? `<div class="row"><span>1'x4' panels</span><span>${grand1x4}</span></div>` : ''}
+    ${grand1x2 ? `<div class="row"><span>1'x2' panels</span><span>${grand1x2}</span></div>` : ''}
+    <div class="row grand"><span>Total WhisperRoom Velcro Hang Tab Packs</span><span>${grandTabs}</span></div>
+  </div>` : ''}
 
   <div class="totals">
     <div class="totals-row grand"><span>Order Total</span><span>${fmt(subtotal)}</span></div>

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.12', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Billing address now actually transfers to the QB invoice. The server-side fix from v1.7.9 was reading body.billing, but neither the quote builder\'s confirmProcessOrder nor the deal hub\'s confirmProcessOrderFromHub was sending it — only the customer (ship-to) object. Both clients now include the billing object in the process-order POST: quote builder pulls from the live #bill* form fields (null when "Same as ship-to" is checked), and the deal hub passes through snap.billing from the loaded snapshot.'},
+      ]
+    },
+    {
       v:'1.7.11', date:'May 7, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Reverted the TxnTaxDetail QB tax override introduced in v1.7.9–v1.7.10. The root cause of the tax/discount mismatch was a QB Online setting ("apply tax before/after discount") rather than a code issue. With that setting flipped to post-discount and AST re-enabled, QB AST naturally taxes the correct base — no API override required. The billing address fix from v1.7.9 (using the rep\'s separate billing object instead of always copying the ship address) is retained.'},

@@ -6978,6 +6978,18 @@ async function confirmProcessOrder() {
           state:     document.getElementById('shipState').value.trim(),
           zip:       document.getElementById('shipZip').value.trim(),
         },
+        billing: (() => {
+          const same = document.getElementById('billsame') && document.getElementById('billsame').checked;
+          if (same) return null;
+          return {
+            name:    (document.getElementById('billToName')  || {value:''}).value.trim(),
+            email:   (document.getElementById('billEmail')   || {value:''}).value.trim(),
+            address: (document.getElementById('billAddress') || {value:''}).value.trim(),
+            city:    (document.getElementById('billCity')    || {value:''}).value.trim(),
+            state:   (document.getElementById('billState')   || {value:''}).value.trim(),
+            zip:     (document.getElementById('billZip')     || {value:''}).value.trim(),
+          };
+        })(),
         foamColor:        foam,
         hingePreference:  hinge,
         apColor:          apColor,

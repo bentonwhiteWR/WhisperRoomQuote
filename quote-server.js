@@ -8052,7 +8052,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
               Amount:      amt,
               DetailType:  'SalesItemLineDetail',
               Description: description,
-              SalesItemLineDetail: { ItemRef: ref, UnitPrice: amt, Qty: qty || 1, TaxCodeRef: taxableRef },
+              SalesItemLineDetail: { ItemRef: { value: ref.value }, UnitPrice: amt, Qty: qty || 1, TaxCodeRef: taxableRef },
             };
           };
 
@@ -8069,7 +8069,6 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             ));
           }
           if (freightTotal > 0) {
-            // Try the QB shipping/freight item; falls back if neither exists
             const freightRef = (await qb.findItemByName('Shipping')) ||
                                (await qb.findItemByName('Freight'))  ||
                                fallback;
@@ -8078,20 +8077,22 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
               Amount:      amt,
               DetailType:  'SalesItemLineDetail',
               Description: 'Freight',
-              SalesItemLineDetail: { ItemRef: freightRef, UnitPrice: amt, Qty: 1, TaxCodeRef: taxableRef },
+              SalesItemLineDetail: { ItemRef: { value: freightRef.value }, UnitPrice: amt, Qty: 1, TaxCodeRef: taxableRef },
             });
           }
           if (discAmt > 0) {
+            // DiscountLineDetail: Amount at the Line level is the discount; no DiscountAmount inside the detail
             qbLines.push({
               Amount:     parseFloat(discAmt.toFixed(2)),
               DetailType: 'DiscountLineDetail',
-              DiscountLineDetail: { PercentBased: false, DiscountAmount: parseFloat(discAmt.toFixed(2)) },
+              DiscountLineDetail: { PercentBased: false },
             });
           }
           if (unmatched.length) console.warn(`[process-order] QB items not matched (used fallback "${fallback.name}"):`, unmatched);
+          console.log('[process-order] QB invoice payload:', JSON.stringify({ customerRef: { value: cust.Id }, lineCount: qbLines.length, lineTypes: qbLines.map(l=>l.DetailType) }));
 
           const invoice = await qb.createInvoice({
-            customerRef: { value: cust.Id, name: cust.DisplayName },
+            customerRef: { value: cust.Id },
             docNumber:   quoteNumber,
             txnDate:     new Date().toISOString().split('T')[0],
             lines:       qbLines,

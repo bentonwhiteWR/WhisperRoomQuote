@@ -184,6 +184,19 @@ const HS_REDIRECT_URI  = process.env.HS_REDIRECT_URI  || 'https://sales.whisperr
 // Override on staging via env var so reps can click through the full flow.
 const PUBLIC_BASE_URL  = (process.env.PUBLIC_BASE_URL || 'https://sales.whisperroom.com').replace(/\/+$/, '');
 
+// HubSpot owner ID → display name. Used for sales rep attribution on QB invoices,
+// shipping board rep column, etc.
+const OWNER_MAP = {
+  '36303670':  'Benton White',
+  '36320208':  'Gabe White',
+  '36330944':  'Jill Holdway',
+  '38143901':  'Sarah Smith',
+  '38732178':  'Kim Dalton',
+  '38732186':  'Jeromy Packwood',
+  '38900892':  'Chet Burgess',
+  '117442978': 'Travis Singleton',
+};
+
 // ── Nexus states (freight taxability per state) ───────────────────
 const states = require('./lib/states');
 const {
@@ -669,16 +682,7 @@ const server = http.createServer(async (req, res) => {
       const deals = searchRes.body.results || [];
 
       // Map owner IDs to names
-      const ownerMap = {
-        '36303670': 'Benton White',
-        '36320208': 'Gabe White',
-        '36330944': 'Jill Holdway',
-        '38143901': 'Sarah Smith',
-        '38732178': 'Kim Dalton',
-        '38732186': 'Jeromy Packwood',
-        '38900892': 'Chet Burgess',
-        '117442978': 'Travis Singleton',
-      };
+      const ownerMap = OWNER_MAP;
 
       // Batch fetch tracking cache for all tracking numbers
       const trackingNumbers = deals.map(d => d.properties.tracking_number).filter(Boolean);
@@ -8056,7 +8060,8 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
           } : null;
 
           const cust = await qb.findOrCreateCustomer({
-            displayName: [c.firstName, c.lastName].filter(Boolean).join(' ') || c.company || c.email || 'Unknown',
+            // Company is primary when present (B2B). Falls back to person name, then email.
+            displayName: c.company || [c.firstName, c.lastName].filter(Boolean).join(' ') || c.email || 'Unknown',
             givenName:   c.firstName  || '',
             familyName:  c.lastName   || '',
             email:       c.email      || '',
@@ -8129,6 +8134,17 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             taxCode: l.SalesItemLineDetail?.TaxCodeRef?.value,
           }))));
 
+          // QB Custom Fields (defined in QB Account & Settings → Sales → Custom Fields).
+          // DefinitionIds: 1=Serial Number, 2=Sales Rep, 3=P.O. Number.
+          const repName = OWNER_MAP[ownerId] || '';
+          const customFields = [];
+          if (repName) {
+            customFields.push({ DefinitionId: '2', Name: 'Sales Rep', Type: 'StringType', StringValue: repName });
+          }
+          if (paymentType === 'po' && poNumber) {
+            customFields.push({ DefinitionId: '3', Name: 'P.O. Number', Type: 'StringType', StringValue: String(poNumber) });
+          }
+
           const invoice = await qb.createInvoice({
             customerRef:  { value: cust.Id },
             docNumber:    quoteNumber,
@@ -8137,6 +8153,8 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             memo:         dealName || quoteNumber,
             billAddr:     shipAddr,
             shipAddr,
+            billEmail:    c.email || null,
+            customFields: customFields.length ? customFields : null,
           });
 
           if (invoice?.Id) {

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.4', date:'May 7, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Top-nav "Reconcile" link renamed to "Accounting" — the page now hosts Reconcile, QB Invoices, and AR sub-tabs. Page title and header subtitle updated to match.'},
+      ]
+    },
+    {
       v:'1.7.3', date:'May 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Reconciler → Accounts Receivable tab. Shows all open (unpaid) QB invoices with aging summary boxes (Current / 1–30 / 31–60 / 61–90 / 90+ days late) — counts and dollar totals per bucket. Filterable by bucket, sorted oldest-due first.'},

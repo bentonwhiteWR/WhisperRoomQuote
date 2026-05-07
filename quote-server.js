@@ -246,6 +246,20 @@ function httpsGet(urlStr, timeoutMs = 15000) {
   });
 }
 
+// ── PO number generator ──────────────────────────────────────────
+async function nextPoNumber() {
+  if (!db) return `WR-PO-${new Date().toISOString().slice(0,7).replace('-','')}-0001`;
+  const ym = new Date().toISOString().slice(0,7).replace('-',''); // e.g. "202605"
+  const prefix = `WR-PO-${ym}-`;
+  const row = await db.query(
+    `SELECT po_number FROM supplier_pos WHERE po_number LIKE $1 ORDER BY po_number DESC LIMIT 1`,
+    [prefix + '%']
+  );
+  if (row.rows.length === 0) return prefix + '0001';
+  const last = parseInt(row.rows[0].po_number.split('-').pop(), 10);
+  return prefix + String(last + 1).padStart(4, '0');
+}
+
 // Wire up HubSpot module now that httpsRequest is defined
 hubspot.init({ httpsRequest });
 gdrive.init({ httpsRequest, getDb: () => db, writelog });
@@ -519,7 +533,7 @@ const server = http.createServer(async (req, res) => {
 
   // ── Auth gate ──
   // Public routes — no auth required but rate limited + token validated
-  const isPublicRoute = pathname.startsWith('/q/') || pathname.startsWith('/i/') || pathname.startsWith('/o/') || pathname === '/api/accept-quote' || pathname === '/api/update-specs';
+  const isPublicRoute = pathname.startsWith('/q/') || pathname.startsWith('/i/') || pathname.startsWith('/o/') || pathname.startsWith('/po/') || pathname === '/api/accept-quote' || pathname === '/api/update-specs';
   if (isPublicRoute) {
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
     if (!checkRateLimit(ip, 30, 60000)) {
@@ -6245,6 +6259,13 @@ ${q.accepted ? `
     return;
   }
 
+  if (pathname === '/suppliers' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(fs.readFileSync(path.join(__dirname, 'suppliers-dashboard.html'), 'utf8'));
+    return;
+  }
+
     // ── API: Logs ────────────────────────────────────────────────────
   if (pathname === '/api/logs' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
@@ -6899,6 +6920,120 @@ ${q.accepted ? `
       json({ success: true, qbInvoiceId: invoice.Id, qbDocNumber: invoice.DocNumber });
     } catch(e) {
       console.error('[create-qb-invoice] Error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Supplier POs — list ─────────────────────────────────────
+  if (pathname === '/api/supplier-pos' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      if (!db) { json({ pos: [] }); return; }
+      const result = await db.query(
+        `SELECT * FROM supplier_pos ORDER BY created_at DESC LIMIT 200`
+      );
+      json({ pos: result.rows });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Supplier POs — create ────────────────────────────────────
+  if (pathname === '/api/supplier-pos' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const body = await readBody(req);
+    const { quoteNumber } = body;
+    if (!quoteNumber) { json({ error: 'quoteNumber required' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+
+      // Load order + snapshot
+      const row = await db.query(
+        `SELECT o.order_data, o.deal_id, q.json_snapshot, q.deal_name, q.share_token
+         FROM orders o
+         LEFT JOIN quotes q ON q.quote_number = o.quote_number
+         WHERE o.quote_number = $1`,
+        [quoteNumber]
+      );
+      if (!row.rows.length) { json({ error: `Order ${quoteNumber} not found` }, 404); return; }
+      const { order_data: od, deal_id: dealId, json_snapshot: snap, deal_name: dealName } = row.rows[0];
+
+      // Extract AP line items only
+      const allItems = snap?.lineItems || [];
+      const apItems  = allItems.filter(i => i.name && /^AP\s/i.test(i.name));
+      if (!apItems.length) { json({ error: 'No AP items found on this order' }, 400); return; }
+
+      const customer  = snap?.customer || {};
+      const apColor   = od?.apColor || '';
+      const poNumber  = await nextPoNumber();
+      const shareToken = generateToken();
+
+      const poData = {
+        quoteNumber,
+        dealId,
+        dealName: dealName || od?.dealName || quoteNumber,
+        customer,
+        apItems,
+        apColor,
+        notes: od?.productionNotes || '',
+        issueDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' }),
+      };
+
+      const repName = getRepFromReq(req, body);
+      await db.query(
+        `INSERT INTO supplier_pos
+           (po_number, quote_number, deal_id, deal_name, supplier, supplier_email, share_token, status, po_data, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9)
+         ON CONFLICT (po_number) DO NOTHING`,
+        [poNumber, quoteNumber, dealId, poData.dealName, 'audimute', 'ewade@audimute.com', shareToken, JSON.stringify(poData), repName]
+      );
+
+      const poUrl = `${PUBLIC_BASE_URL}/po/${encodeURIComponent(poNumber)}?t=${shareToken}`;
+      writelog('info', 'supplier-po.created', `Created PO ${poNumber} for ${quoteNumber}`, { rep: repName, quoteNum: quoteNumber });
+      json({ success: true, poNumber, poUrl, shareToken });
+    } catch(e) {
+      console.error('[supplier-pos create] error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Supplier POs — update (status, tracking, ship date, notes) ──
+  if (pathname.startsWith('/api/supplier-pos/') && req.method === 'PATCH') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const poNumber = decodeURIComponent(pathname.replace('/api/supplier-pos/', '').trim());
+    const body = await readBody(req);
+    const allowed = ['status', 'expected_ship_date', 'tracking_number', 'notes', 'sent_at', 'shipped_at'];
+    const sets = [], vals = [];
+    for (const key of allowed) {
+      if (body[key] !== undefined) {
+        sets.push(`${key} = $${vals.length + 1}`);
+        vals.push(body[key] || null);
+      }
+    }
+    if (!sets.length) { json({ error: 'Nothing to update' }, 400); return; }
+    vals.push(poNumber);
+    try {
+      await db.query(`UPDATE supplier_pos SET ${sets.join(', ')} WHERE po_number = $${vals.length}`, vals);
+      const updated = await db.query('SELECT * FROM supplier_pos WHERE po_number = $1', [poNumber]);
+      json({ success: true, po: updated.rows[0] });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Supplier POs — get single ───────────────────────────────
+  if (pathname.startsWith('/api/supplier-pos/') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const poNumber = decodeURIComponent(pathname.replace('/api/supplier-pos/', '').trim());
+    try {
+      const result = await db.query('SELECT * FROM supplier_pos WHERE po_number = $1', [poNumber]);
+      if (!result.rows.length) { json({ error: 'Not found' }, 404); return; }
+      json({ po: result.rows[0] });
+    } catch(e) {
       json({ error: e.message }, 500);
     }
     return;
@@ -7673,6 +7808,177 @@ ${q.accepted ? `
     return;
   }
 
+
+  // ── Supplier PO Document (/po/:poNumber) ─────────────────────────
+  if (pathname.startsWith('/po/') && req.method === 'GET') {
+    const poNumber = decodeURIComponent(pathname.replace('/po/', '').trim());
+    if (!poNumber) { res.writeHead(404); res.end('Not found'); return; }
+    const reqToken = new URLSearchParams(search).get('t');
+    try {
+      if (!db) { res.writeHead(503); res.end('Database unavailable'); return; }
+      const row = await db.query('SELECT * FROM supplier_pos WHERE po_number = $1', [poNumber]);
+      if (!row.rows.length) {
+        res.writeHead(404, { 'Content-Type': 'text/html' });
+        res.end('<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px"><h2>Purchase Order Not Found</h2></body></html>');
+        return;
+      }
+      const po = row.rows[0];
+      // Auth: logged-in rep OR valid share token
+      if (!isAuth(req) && reqToken !== po.share_token) {
+        res.writeHead(403, { 'Content-Type': 'text/html' });
+        res.end('<!DOCTYPE html><html><head><title>Link Expired</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#f5f5f5}div{text-align:center}</style></head><body><div><h2 style="color:#ee6216">This link is no longer valid</h2><p style="color:#888;margin-top:8px">Please contact WhisperRoom for an updated link.</p></div></body></html>');
+        return;
+      }
+
+      const d = po.po_data || {};
+      const c = d.customer || {};
+      const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      const escHtmlPo = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+      const itemRows = (d.apItems||[]).map(item => `
+        <tr>
+          <td class="td-desc">${escHtmlPo(item.name)}${item.description ? `<div class="item-note">${escHtmlPo(item.description)}</div>` : ''}</td>
+          <td class="td-num">${item.qty||1}</td>
+          <td class="td-num">${fmt(item.price)}</td>
+          <td class="td-num">${fmt((item.price||0)*(item.qty||1))}</td>
+        </tr>`).join('');
+
+      const subtotal = (d.apItems||[]).reduce((s,i) => s + (parseFloat(i.price||0)*parseInt(i.qty||1)), 0);
+      const shipTo   = [c.address, c.city, c.state && c.zip ? `${c.state} ${c.zip}` : (c.state||c.zip)].filter(Boolean).join(', ');
+
+      const poHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PO ${escHtmlPo(poNumber)}</title>
+<link rel="icon" href="/assets/favicon.avif">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-font-smoothing:antialiased;padding:32px 16px}
+.page{background:#fff;max-width:780px;margin:0 auto;padding:48px 52px;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.08)}
+.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:36px;padding-bottom:24px;border-bottom:2px solid #ee6216}
+.logo-wrap{display:flex;flex-direction:column;gap:4px}
+.logo{font-family:'DM Sans',sans-serif;font-size:26px;font-weight:800;color:#1a1a1a;letter-spacing:-.5px}
+.logo span{color:#ee6216}
+.logo-sub{font-size:11px;color:#888;font-weight:500}
+.po-title{text-align:right}
+.po-label{font-size:28px;font-weight:800;color:#1a1a1a;letter-spacing:-.5px}
+.po-number{font-size:14px;font-weight:700;color:#ee6216;margin-top:4px}
+.po-date{font-size:12px;color:#888;margin-top:2px}
+.parties{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-bottom:32px}
+.party-block h4{font-size:9px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}
+.party-block .name{font-size:13px;font-weight:700;color:#1a1a1a;margin-bottom:3px}
+.party-block .line{font-size:12px;color:#555;line-height:1.6}
+.items-table{width:100%;border-collapse:collapse;margin-bottom:24px;font-size:13px}
+.items-table thead tr{background:#1a1a1a;color:#fff}
+.items-table th{padding:10px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.items-table th.th-num{text-align:right}
+.td-desc{padding:14px 12px;border-bottom:1px solid #f0f0f0;vertical-align:top;font-weight:600}
+.item-note{font-size:11px;color:#777;font-weight:400;margin-top:3px}
+.td-num{padding:14px 12px;border-bottom:1px solid #f0f0f0;text-align:right;vertical-align:top;color:#555}
+.totals{margin-left:auto;width:240px;font-size:13px}
+.totals-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0}
+.totals-row.grand{font-weight:800;font-size:15px;color:#1a1a1a;border-bottom:none;padding-top:10px;border-top:2px solid #1a1a1a}
+.notes-block{margin-top:32px;padding:20px;background:#f9f9f9;border-radius:8px;border-left:3px solid #ee6216}
+.notes-block h4{font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}
+.notes-block p{font-size:13px;color:#333;line-height:1.6}
+.footer{margin-top:40px;padding-top:20px;border-top:1px solid #eee;text-align:center;font-size:11px;color:#aaa}
+.status-bar{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#fff8f5;border:1px solid rgba(238,98,22,.2);border-radius:8px;margin-bottom:24px;font-size:12px;color:#888}
+.status-dot{width:8px;height:8px;border-radius:50%;background:#ee6216;flex-shrink:0}
+.btn-print{padding:9px 18px;background:#1a1a1a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em}
+.btn-print:hover{background:#333}
+@media print{.status-bar{display:none}.btn-print{display:none}body{background:#fff;padding:0}.page{box-shadow:none;border-radius:0}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div class="logo-wrap">
+      <div class="logo">Whisper<span>Room</span></div>
+      <div class="logo-sub">5765 Commerce Blvd, Morristown, TN 37814<br>(865) 558-5364 · info@whisperroom.com</div>
+    </div>
+    <div class="po-title">
+      <div class="po-label">PURCHASE ORDER</div>
+      <div class="po-number">${escHtmlPo(poNumber)}</div>
+      <div class="po-date">Issued: ${escHtmlPo(d.issueDate||new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}))}</div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-dot"></div>
+    <span>Status: <strong>${escHtmlPo(po.status||'pending')}</strong>${po.expected_ship_date ? ` &nbsp;·&nbsp; Expected Ship: <strong>${new Date(po.expected_ship_date+'T12:00:00Z').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</strong>` : ''}${po.tracking_number ? ` &nbsp;·&nbsp; Tracking: <strong>${escHtmlPo(po.tracking_number)}</strong>` : ''}</span>
+    <button class="btn-print" onclick="window.print()" style="margin-left:auto">🖨 Print / Save PDF</button>
+  </div>
+
+  <div class="parties">
+    <div class="party-block">
+      <h4>From</h4>
+      <div class="name">WhisperRoom, Inc.</div>
+      <div class="line">5765 Commerce Blvd<br>Morristown, TN 37814<br>info@whisperroom.com<br>(865) 558-5364</div>
+    </div>
+    <div class="party-block">
+      <h4>Vendor</h4>
+      <div class="name">Audimute Serenity</div>
+      <div class="line">Elizabeth Wade<br>ewade@audimute.com<br>Cleveland, OH</div>
+    </div>
+    <div class="party-block">
+      <h4>Ship To</h4>
+      <div class="name">${escHtmlPo([c.firstName,c.lastName].filter(Boolean).join(' ')||c.company||'Customer')}</div>
+      <div class="line">${c.company ? escHtmlPo(c.company)+'<br>' : ''}${c.phone ? escHtmlPo(c.phone)+'<br>' : ''}${c.email ? escHtmlPo(c.email)+'<br>' : ''}${escHtmlPo(shipTo)||'(address on file)'}</div>
+    </div>
+  </div>
+
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th>Item / Description</th>
+        <th class="th-num">Qty</th>
+        <th class="th-num">Unit Price</th>
+        <th class="th-num">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${itemRows}
+    </tbody>
+  </table>
+
+  <div class="totals">
+    <div class="totals-row grand"><span>Order Total</span><span>${fmt(subtotal)}</span></div>
+  </div>
+
+  ${d.apColor ? `
+  <div class="notes-block" style="margin-top:24px">
+    <h4>Acoustic Package Specifications</h4>
+    <p><strong>Color:</strong> ${escHtmlPo(d.apColor)}</p>
+    ${d.notes ? `<p style="margin-top:8px"><strong>Production Notes:</strong> ${escHtmlPo(d.notes)}</p>` : ''}
+  </div>` : (d.notes ? `
+  <div class="notes-block" style="margin-top:24px">
+    <h4>Notes</h4>
+    <p>${escHtmlPo(d.notes)}</p>
+  </div>` : '')}
+
+  <div class="notes-block" style="margin-top:16px;background:#fff;border-left-color:#1a1a1a">
+    <h4>Reference</h4>
+    <p>WhisperRoom Order: <strong>${escHtmlPo(d.quoteNumber||poNumber)}</strong>${d.dealName ? ` &nbsp;·&nbsp; ${escHtmlPo(d.dealName)}` : ''}</p>
+  </div>
+
+  <div class="footer">
+    WhisperRoom, Inc. &middot; whisperroom.com &middot; 1-800-200-8168 &middot; This is an official purchase order. Please confirm receipt.
+  </div>
+</div>
+</body>
+</html>`;
+
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(poHtml);
+    } catch(e) {
+      console.error('[po page] error:', e.message);
+      res.writeHead(500); res.end('Server error');
+    }
+    return;
+  }
 
   // ── Order Page (/o/:quoteNumber) ─────────────────────────────────
   if (pathname.startsWith('/o/') && req.method === 'GET') {

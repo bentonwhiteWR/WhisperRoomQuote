@@ -5697,6 +5697,7 @@ ${q.accepted ? `
           `SELECT
              o.quote_number, o.order_data, o.created_at,
              q.json_snapshot->'lineItems' as line_items,
+             q.json_snapshot->'customer'  as snap_customer,
              sp.po_number     as po_number,
              sp.status        as po_status,
              sp.share_token   as po_share_token,
@@ -5805,6 +5806,8 @@ ${q.accepted ? `
         const fields = [i?.name, i?.productName, i?.sku, i?.description].filter(Boolean);
         return fields.some(f => /^AP[\s\-_]?\d/i.test(f) || /^Acoustic\s+Package/i.test(f));
       };
+      // Need the snapshot's customer object for ship-to on the AP PO dialog.
+      // Pull it from the row (json_snapshot was joined in the orders query above).
       const orders = (ordersRes.rows || []).map(r => {
         const items   = Array.isArray(r.line_items) ? r.line_items : [];
         const apItems = items.filter(isApItem).map(i => ({
@@ -5813,6 +5816,19 @@ ${q.accepted ? `
           price: parseFloat(i.price || 0),
         }));
         const apColor = (r.order_data?.apColor || '').trim();
+        // Build ship-to from the snapshot customer (preferred) and fall back to order_data fields.
+        const snapCustomer = r.snap_customer || {};
+        const customer = {
+          firstName: snapCustomer.firstName || r.order_data?.customer?.firstName || '',
+          lastName:  snapCustomer.lastName  || r.order_data?.customer?.lastName  || '',
+          email:     snapCustomer.email     || r.order_data?.customer?.email     || '',
+          phone:     snapCustomer.phone     || r.order_data?.customer?.phone     || '',
+          company:   snapCustomer.company   || r.order_data?.customer?.company   || '',
+          address:   snapCustomer.address   || r.order_data?.customer?.address   || '',
+          city:      snapCustomer.city      || r.order_data?.customer?.city      || '',
+          state:     snapCustomer.state     || r.order_data?.customer?.state     || '',
+          zip:       snapCustomer.zip       || r.order_data?.customer?.zip       || '',
+        };
         const po = r.po_number ? {
           poNumber:          r.po_number,
           status:            r.po_status,
@@ -5831,6 +5847,7 @@ ${q.accepted ? `
           createdAt:       r.created_at,
           apItems,
           apColor,
+          customer,
           po,
         };
       });
@@ -7030,7 +7047,9 @@ ${q.accepted ? `
   if (pathname.startsWith('/api/orders/') && pathname.endsWith('/mark-paid') && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').replace('/mark-paid', '').trim());
-    const body = await readBody(req);
+    let body;
+    try { body = JSON.parse(await readBody(req) || '{}'); }
+    catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
     try {
       if (!db) { json({ error: 'No database' }, 500); return; }
 
@@ -7145,7 +7164,9 @@ ${q.accepted ? `
   // ── API: Supplier POs — create ────────────────────────────────────
   if (pathname === '/api/supplier-pos' && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
-    const body = await readBody(req);
+    let body;
+    try { body = JSON.parse(await readBody(req) || '{}'); }
+    catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
     const { quoteNumber, apItems: bodyApItems, notes: bodyNotes } = body;
     if (!quoteNumber) { json({ error: 'quoteNumber required' }, 400); return; }
     try {
@@ -7229,7 +7250,9 @@ ${q.accepted ? `
   if (pathname.startsWith('/api/supplier-pos/') && req.method === 'PATCH') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const poNumber = decodeURIComponent(pathname.replace('/api/supplier-pos/', '').trim());
-    const body = await readBody(req);
+    let body;
+    try { body = JSON.parse(await readBody(req) || '{}'); }
+    catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
     const allowed = ['status', 'expected_ship_date', 'tracking_number', 'notes', 'sent_at', 'shipped_at'];
     const sets = [], vals = [];
     for (const key of allowed) {

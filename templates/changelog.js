@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.29', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'"Create Audimute PO" was failing with "quoteNumber required" because the request body was being read as a string and never JSON.parse\'d. Same bug existed silently on the supplier-pos PATCH endpoint (status/tracking updates from the Suppliers board) and the orders mark-paid endpoint (custom amount/date/method overrides were ignored). All three now JSON.parse the body correctly.'},
+        {t:'fix', d:'AP PO dialog was always showing "no shipping address on file" because it was reading the deal\'s HubSpot contact instead of the order\'s snapshot customer (which has the actual ship-to). The hub endpoint now returns the snapshot customer per order and the dialog uses it first, falling back to the deal contact only if the snapshot is empty.'},
+        {t:'ui',  d:'Renamed AP chip states for clarity: "AP !" red = not submitted (was gray), "AP ⏳" yellow = PO in flight, "AP ✓" green = delivered. Quote-row chip stays a neutral orange since it\'s a presence indicator only (PO state lives on the order). Same scheme on pipeline deal cards and order cards in the deal hub.'},
+      ]
+    },
+    {
       v:'1.7.28', date:'May 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'AP chip now appears on the deal card itself in the pipeline (alongside RM and CUST), with status-aware coloring: gray "AP" = no PO yet, yellow "AP ⏳" = at least one Audimute PO in flight, green "AP ✓" = all PO orders delivered. Aggregate is computed across every quote+order on the deal so you can see Audimute status at a glance from the kanban board.'},

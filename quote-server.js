@@ -942,16 +942,16 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Fetch invoices for a date range: /api/qb/invoices?from=YYYY-MM-DD&to=YYYY-MM-DD
+  // Fetch invoices: /api/qb/invoices?from=YYYY-MM-DD&to=YYYY-MM-DD
+  // Omit from/to to fetch all invoices (no date filter).
   if (pathname === '/api/qb/invoices' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
       const { from, to } = parsed.query;
-      if (!from || !to) { json({ error: 'from and to params required' }, 400); return; }
       const [invoices, credits, refunds] = await Promise.all([
-        qb.fetchInvoices(from, to),
-        qb.fetchCreditMemos(from, to).catch(e => { console.warn('[reconcile] fetchCreditMemos failed:', e.message); return []; }),
-        qb.fetchRefundReceipts(from, to).catch(e => { console.warn('[reconcile] fetchRefundReceipts failed:', e.message); return []; }),
+        qb.fetchInvoices(from || null, to || null),
+        (from && to) ? qb.fetchCreditMemos(from, to).catch(e => { console.warn('[reconcile] fetchCreditMemos failed:', e.message); return []; }) : Promise.resolve([]),
+        (from && to) ? qb.fetchRefundReceipts(from, to).catch(e => { console.warn('[reconcile] fetchRefundReceipts failed:', e.message); return []; }) : Promise.resolve([]),
       ]);
       // Tag non-invoices so the frontend can distinguish them.
       for (const c of credits) c._type = 'credit_memo';
@@ -7453,6 +7453,8 @@ ${q.accepted ? `
             }
             const sf3      = updatedOrderData.shipped || {};
             const serial3  = updatedOrderData.serialNumber || currentOrderData.serialNumber || '';
+            const fc3raw   = updatedOrderData.freightCost ?? currentOrderData.freightCost;
+            const fc3      = (fc3raw !== undefined && fc3raw !== null && fc3raw !== '') ? parseFloat(fc3raw) : NaN;
             const updateFields = {};
             if (sf3.carrier)  updateFields.ShipMethodRef = { value: String(sf3.carrier) };
             if (sf3.tracking) updateFields.TrackingNum   = String(sf3.tracking);
@@ -7462,13 +7464,16 @@ ${q.accepted ? `
                 { DefinitionId: '3', Name: 'Serial Number', Type: 'StringType', StringValue: String(serial3) },
               ];
             }
+            if (Number.isFinite(fc3)) {
+              updateFields.PrivateNote = `Freight Cost: $${fc3.toFixed(2)}`;
+            }
             if (Object.keys(updateFields).length === 0) {
               console.log(`[orders] QB shipping update skipped — nothing to update for ${quoteNumber}`);
               return;
             }
             const updated = await qb.updateInvoice(qbInvoiceId, updateFields);
             console.log(`[orders] QB invoice ${qbInvoiceId} (DocNumber=${updated?.DocNumber}) updated with shipping:`, JSON.stringify({
-              ShipMethod: updated?.ShipMethodRef?.value, TrackingNum: updated?.TrackingNum, ShipDate: updated?.ShipDate,
+              ShipMethod: updated?.ShipMethodRef?.value, TrackingNum: updated?.TrackingNum, ShipDate: updated?.ShipDate, PrivateNote: updated?.PrivateNote,
             }));
           } catch(e) {
             console.warn('[orders] QB invoice shipping update failed:', e.message);

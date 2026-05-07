@@ -178,13 +178,13 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
 
   <!-- Tab switcher -->
   <div class="tab-bar">
-    <button class="tab-btn active" data-tab="reconcile" onclick="switchTab('reconcile')">Reconcile</button>
-    <button class="tab-btn" data-tab="qb-invoices" onclick="switchTab('qb-invoices')">QB Invoices</button>
+    <button class="tab-btn active" data-tab="qb-invoices" onclick="switchTab('qb-invoices')">QB Invoices</button>
     <button class="tab-btn" data-tab="ar" onclick="switchTab('ar')">Accounts Receivable</button>
+    <button class="tab-btn" data-tab="reconcile" onclick="switchTab('reconcile')">Reconcile</button>
   </div>
 
   <!-- ── Reconcile tab ── -->
-  <div id="tabReconcile">
+  <div id="tabReconcile" style="display:none">
 
   <!-- Date range + run -->
   <div class="card">
@@ -280,7 +280,7 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
   </div><!-- /tabReconcile -->
 
   <!-- ── QB Invoices tab ── -->
-  <div id="tabQbInvoices" style="display:none">
+  <div id="tabQbInvoices">
     <div class="card">
       <div class="card-title">QB Invoices</div>
       <div class="row" style="margin-bottom:10px">
@@ -293,7 +293,11 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
           <input type="date" id="qbInvTo">
         </div>
         <button class="btn btn-orange" id="qbInvBtn" onclick="loadQbInvoices()">Load</button>
-        <select id="qbInvFilter" onchange="renderQbInvoices()" style="margin-left:auto;min-width:180px">
+        <input type="text" id="qbInvSearch" placeholder="Search invoices… (Enter = search all time)"
+               oninput="renderQbInvoices()" onkeydown="if(event.key==='Enter') searchAllQbInvoices()"
+               style="margin-left:auto;min-width:260px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+        <button class="btn btn-ghost btn-sm" onclick="searchAllQbInvoices()" title="Search all invoices (no date filter)">Search All</button>
+        <select id="qbInvFilter" onchange="renderQbInvoices()" style="min-width:180px">
           <option value="">All</option>
           <option value="paid">Paid</option>
           <option value="open">Open (any)</option>
@@ -1253,8 +1257,9 @@ function switchTab(name) {
 }
 
 // ── Shared invoice helpers ────────────────────────────────────────
-let _qbInvoices = null;  // cache of last QB Invoices fetch
-let _arInvoices = null;  // cache of last AR fetch
+let _qbInvoices  = null;   // cache of last QB Invoices fetch
+let _qbSearchAll = false;  // true when _qbInvoices was fetched with no date filter
+let _arInvoices  = null;   // cache of last AR fetch
 let _canDeleteInvoices = false;  // gated by /api/me — Benton + Kim only
 let _mePromise = null;
 function loadMe() {
@@ -1332,9 +1337,26 @@ async function loadQbInvoices() {
     await loadMe();
     const data = await fetch(`/api/qb/invoices?from=${from}&to=${to}`).then(r => r.json());
     if (data.error) throw new Error(data.error);
-    _qbInvoices = (data.results || [])
-      .filter(i => !i._type)
-      .sort((a, b) => new Date(b.TxnDate || 0) - new Date(a.TxnDate || 0));
+    _qbInvoices  = (data.results || []).filter(i => !i._type).sort((a, b) => new Date(b.TxnDate || 0) - new Date(a.TxnDate || 0));
+    _qbSearchAll = false;
+    renderQbInvoices();
+  } catch(e) {
+    msg.textContent = 'Error: ' + e.message; msg.className = 'msg err';
+  }
+  btn.disabled = false;
+}
+
+async function searchAllQbInvoices() {
+  const msg  = document.getElementById('qbInvMsg');
+  const wrap = document.getElementById('qbInvWrap');
+  const btn  = document.getElementById('qbInvBtn');
+  msg.textContent = 'Fetching all invoices…'; msg.className = 'msg'; btn.disabled = true; wrap.style.display = 'none';
+  try {
+    await loadMe();
+    const data = await fetch('/api/qb/invoices').then(r => r.json());
+    if (data.error) throw new Error(data.error);
+    _qbInvoices  = (data.results || []).filter(i => !i._type).sort((a, b) => new Date(b.TxnDate || 0) - new Date(a.TxnDate || 0));
+    _qbSearchAll = true;
     renderQbInvoices();
   } catch(e) {
     msg.textContent = 'Error: ' + e.message; msg.className = 'msg err';
@@ -1345,20 +1367,33 @@ async function loadQbInvoices() {
 function renderQbInvoices() {
   if (!_qbInvoices) return;
   const filter = document.getElementById('qbInvFilter').value;
+  const q      = (document.getElementById('qbInvSearch')?.value || '').trim().toLowerCase();
   const from   = document.getElementById('qbInvFrom').value;
   const to     = document.getElementById('qbInvTo').value;
   const msg    = document.getElementById('qbInvMsg');
   const wrap   = document.getElementById('qbInvWrap');
   let list = _qbInvoices;
-  if (filter === 'paid')      list = list.filter(i => parseFloat(i.Balance || 0) < 0.01);
-  else if (filter === 'open') list = list.filter(i => parseFloat(i.Balance || 0) >= 0.01);
+
+  // Text search (case-insensitive): customer name, doc number, or bill email
+  if (q) {
+    list = list.filter(inv => {
+      const cust  = (inv.CustomerRef?.name || '').toLowerCase();
+      const doc   = String(inv.DocNumber || inv.Id || '').toLowerCase();
+      const email = (inv.BillEmail?.Address || '').toLowerCase();
+      return cust.includes(q) || doc.includes(q) || email.includes(q);
+    });
+  }
+
+  if (filter === 'paid')          list = list.filter(i => parseFloat(i.Balance || 0) < 0.01);
+  else if (filter === 'open')     list = list.filter(i => parseFloat(i.Balance || 0) >= 0.01);
   else if (filter === 'overdue')  list = list.filter(i => { const s = invoiceStatus(i); return s.daysLate > 0; });
   else if (filter === 'due-soon') list = list.filter(i => { const s = invoiceStatus(i); return s.daysToDue != null && s.daysToDue <= 7; });
 
   document.getElementById('qbInvBody').innerHTML =
     list.map(renderInvoiceRow).join('')
-    || `<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:24px">No invoices match this filter.</td></tr>`;
-  msg.textContent = `${list.length} of ${_qbInvoices.length} invoice${_qbInvoices.length !== 1 ? 's' : ''} — ${from} to ${to}`;
+    || `<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:24px">No invoices match.</td></tr>`;
+  const rangeLabel = _qbSearchAll ? 'all time' : `${from} to ${to}`;
+  msg.textContent = `${list.length} of ${_qbInvoices.length} invoice${_qbInvoices.length !== 1 ? 's' : ''} — ${rangeLabel}`;
   msg.className = 'msg ok';
   wrap.style.display = '';
 }
@@ -1474,6 +1509,7 @@ initQbInvDates();
 loadQbStatus();
 loadPortalId();
 loadMe();
+loadQbInvoices();
 
 // Header click → sort
 document.getElementById('resultsHead')?.addEventListener('click', e => {

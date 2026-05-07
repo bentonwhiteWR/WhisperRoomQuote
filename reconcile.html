@@ -329,7 +329,9 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
       <div class="row" style="margin-bottom:10px">
         <button class="btn btn-orange" id="arBtn" onclick="loadAr()">Load</button>
         <button class="btn btn-ghost btn-sm" onclick="loadAr(true)" title="Re-fetch from QB">↻ Refresh</button>
-        <select id="arFilter" onchange="renderAr()" style="margin-left:auto;min-width:180px">
+        <input type="text" id="arSearch" placeholder="Search company or doc #…" oninput="renderAr()"
+               style="margin-left:auto;min-width:240px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+        <select id="arFilter" onchange="renderAr()" style="min-width:180px">
           <option value="">All Open</option>
           <option value="current">Current (not yet due)</option>
           <option value="1-30">1–30 days late</option>
@@ -1408,9 +1410,19 @@ function renderAr() {
   let list = _arInvoices;
   if (filter && buckets[filter]) list = buckets[filter];
 
+  // Apply search (matches customer name OR doc number, case-insensitive)
+  const q = (document.getElementById('arSearch')?.value || '').trim().toLowerCase();
+  if (q) {
+    list = list.filter(inv => {
+      const cust = (inv.CustomerRef?.name || '').toLowerCase();
+      const doc  = String(inv.DocNumber || inv.Id || '').toLowerCase();
+      return cust.includes(q) || doc.includes(q);
+    });
+  }
+
   document.getElementById('arBody').innerHTML =
     list.map(renderInvoiceRow).join('')
-    || `<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:24px">No open invoices in this bucket.</td></tr>`;
+    || `<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:24px">${q ? 'No matches.' : 'No open invoices in this bucket.'}</td></tr>`;
   document.getElementById('arWrap').style.display = '';
   const msg = document.getElementById('arMsg');
   msg.textContent = `${list.length} of ${_arInvoices.length} open invoice${_arInvoices.length !== 1 ? 's' : ''} — ${fmt(sumOf(list))} of ${fmt(sumOf(_arInvoices))}`;

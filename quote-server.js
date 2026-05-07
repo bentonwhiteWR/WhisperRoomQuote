@@ -7367,6 +7367,42 @@ ${q.accepted ? `
         })();
       }
 
+      // ── Update QB invoice with shipping info when shipped ─────────────
+      // Jeromy clicks Ship It → patch existing QB invoice with ShipMethodRef
+      // (carrier), TrackingNum, ShipDate, and CustomField[Serial Number].
+      if (isNowShipped && !wasShipped) {
+        (async () => {
+          try {
+            const qbInvoiceId = updatedOrderData.qbInvoiceId || currentOrderData.qbInvoiceId;
+            if (!qbInvoiceId) {
+              console.log(`[orders] QB shipping update skipped — no qbInvoiceId on order ${quoteNumber}`);
+              return;
+            }
+            const sf3      = updatedOrderData.shipped || {};
+            const serial3  = updatedOrderData.serialNumber || currentOrderData.serialNumber || '';
+            const updateFields = {};
+            if (sf3.carrier)  updateFields.ShipMethodRef = { value: String(sf3.carrier) };
+            if (sf3.tracking) updateFields.TrackingNum   = String(sf3.tracking);
+            if (sf3.date)     updateFields.ShipDate      = String(sf3.date);
+            if (serial3) {
+              updateFields.CustomField = [
+                { DefinitionId: '1', Name: 'Serial Number', Type: 'StringType', StringValue: String(serial3) },
+              ];
+            }
+            if (Object.keys(updateFields).length === 0) {
+              console.log(`[orders] QB shipping update skipped — nothing to update for ${quoteNumber}`);
+              return;
+            }
+            const updated = await qb.updateInvoice(qbInvoiceId, updateFields);
+            console.log(`[orders] QB invoice ${qbInvoiceId} (DocNumber=${updated?.DocNumber}) updated with shipping:`, JSON.stringify({
+              ShipMethod: updated?.ShipMethodRef?.value, TrackingNum: updated?.TrackingNum, ShipDate: updated?.ShipDate,
+            }));
+          } catch(e) {
+            console.warn('[orders] QB invoice shipping update failed:', e.message);
+          }
+        })();
+      }
+
       // Upload order PDF to Google Drive when shipped (non-blocking)
       if (isNowShipped && !wasShipped) {
         (async () => {

@@ -1537,31 +1537,56 @@ const server = http.createServer(async (req, res) => {
       // Enrich with DB quote data (latest quote number, accepted status)
       if (db && deals.length) {
         const ids = deals.map(d => d.id);
-        const dbRes = await db.query(
-          `SELECT
-             q.deal_id,
-             q.quote_number,
-             q.total,
-             q.created_at,
-             (q.json_snapshot->>'accepted')::text        as accepted,
-             (q.json_snapshot->>'acceptedAt')::text      as accepted_at,
-             q.json_snapshot->>'quoteLabel'              as quote_label,
-             q.json_snapshot->'lineItems'                as line_items,
-             o.created_at                               as order_at
-           FROM quotes q
-           LEFT JOIN orders o ON o.quote_number = q.quote_number
-           WHERE q.deal_id = ANY($1)
-           ORDER BY q.created_at DESC`,
-          [ids]
-        );
+        const isApItemForList = (i) => {
+          const fields = [i?.name, i?.productName, i?.sku, i?.description].filter(Boolean);
+          return fields.some(f => /^AP[\s\-_]?\d/i.test(f) || /^Acoustic\s+Package/i.test(f));
+        };
+        const [dbRes, poRes] = await Promise.all([
+          db.query(
+            `SELECT
+               q.deal_id,
+               q.quote_number,
+               q.total,
+               q.created_at,
+               (q.json_snapshot->>'accepted')::text        as accepted,
+               (q.json_snapshot->>'acceptedAt')::text      as accepted_at,
+               q.json_snapshot->>'quoteLabel'              as quote_label,
+               q.json_snapshot->'lineItems'                as line_items,
+               o.created_at                               as order_at
+             FROM quotes q
+             LEFT JOIN orders o ON o.quote_number = q.quote_number
+             WHERE q.deal_id = ANY($1)
+             ORDER BY q.created_at DESC`,
+            [ids]
+          ),
+          // All supplier POs across all the deals' quote numbers — used to
+          // compute aggregate AP status per deal (none/submitted/delivered).
+          db.query(
+            `SELECT sp.deal_id, sp.quote_number, sp.status
+             FROM supplier_pos sp
+             WHERE sp.deal_id = ANY($1)`,
+            [ids]
+          ).catch(() => ({ rows: [] })),
+        ]);
+        // Index latest PO status per quote_number (within each deal)
+        const poByQuote = {};
+        (poRes.rows || []).forEach(r => {
+          // status precedence: complete > anything else > nothing.
+          // Latest row wins on equal precedence (rows come back unordered, so
+          // promote "complete" if seen, else keep first non-complete).
+          const cur = poByQuote[r.quote_number];
+          if (!cur || r.status === 'complete') poByQuote[r.quote_number] = r.status;
+        });
         // Group by deal_id — first row = latest quote, but check ALL rows for accepted status
         const byDeal = {};
         dbRes.rows.forEach(r => {
+          const items = r.line_items || [];
+          const quoteHasAP = (() => { try { return items.some(isApItemForList); } catch(e) { return false; } })();
+          const quotePoStatus = poByQuote[r.quote_number] || null;
           if (!byDeal[r.deal_id]) {
             let firstMdl = '';
             let hasRM = false, hasCustomHole = false;
             try {
-              const items = r.line_items || [];
               // Strict MDL-only match — ignore accessories with 4-digit codes
               const mdlItem = items.find(i => /^MDL\b/.test(i?.name||''));
               if (mdlItem) firstMdl = (mdlItem.name||'').split(' ').slice(0,3).join(' ');
@@ -1576,6 +1601,9 @@ const server = http.createServer(async (req, res) => {
               firstMdl,
               hasRM,
               hasCustomHole,
+              hasAP:       quoteHasAP,
+              // _apQuotes: { 'W-...': { hasAP, poStatus } } — used to compute final apStatus
+              _apQuotes: { [r.quote_number]: { hasAP: quoteHasAP, poStatus: quotePoStatus } },
               quoteLabel: r.quote_label || '',
               lastQuoteAt: r.created_at || null,
               lastActivityAt: r.created_at || null,
@@ -1586,14 +1614,15 @@ const server = http.createServer(async (req, res) => {
             const ts = r.created_at ? new Date(r.created_at).getTime() : 0;
             const currentBest = existing.lastActivityAt ? new Date(existing.lastActivityAt).getTime() : 0;
             if (ts > currentBest) existing.lastActivityAt = r.created_at;
-            // Flag RM / Custom Hole if any quote on this deal has them
-            if (!existing.hasRM || !existing.hasCustomHole) {
+            // Flag RM / Custom Hole / AP if any quote on this deal has them
+            if (!existing.hasRM || !existing.hasCustomHole || !existing.hasAP) {
               try {
-                const items = r.line_items || [];
                 if (!existing.hasRM         && items.some(i => /^RM\s/i.test(i?.name||'')))        existing.hasRM = true;
                 if (!existing.hasCustomHole && items.some(i => /^CUST HOLE\b/i.test(i?.name||''))) existing.hasCustomHole = true;
+                if (!existing.hasAP         && quoteHasAP)                                          existing.hasAP = true;
               } catch(e) {}
             }
+            existing._apQuotes[r.quote_number] = { hasAP: quoteHasAP, poStatus: quotePoStatus };
           }
           // Track order timestamp and acceptedAt as activity signals regardless of which quote
           const dealEntry = byDeal[r.deal_id];
@@ -1615,7 +1644,26 @@ const server = http.createServer(async (req, res) => {
           }
         });
         deals.forEach(d => {
-          if (byDeal[d.id]) Object.assign(d, byDeal[d.id]);
+          if (byDeal[d.id]) {
+            const data = byDeal[d.id];
+            // Compute aggregate AP status from _apQuotes:
+            //   delivered = at least one PO has status=complete AND no in-flight POs
+            //   submitted = any PO exists in a non-complete status
+            //   none      = deal has AP items but no PO yet (or no AP at all)
+            let apStatus = 'none';
+            const apQuotes = Object.values(data._apQuotes || {}).filter(q => q.hasAP);
+            if (apQuotes.length) {
+              const statuses = apQuotes.map(q => q.poStatus).filter(Boolean);
+              const hasInFlight = statuses.some(s => s && s !== 'complete' && s !== 'cancelled');
+              const allComplete = statuses.length === apQuotes.length && statuses.every(s => s === 'complete');
+              if (allComplete) apStatus = 'delivered';
+              else if (hasInFlight) apStatus = 'submitted';
+              else if (statuses.some(s => s === 'complete')) apStatus = 'submitted'; // some delivered, others not yet POed
+            }
+            data.apStatus = apStatus;
+            delete data._apQuotes;
+            Object.assign(d, data);
+          }
         });
       }
 
@@ -5717,15 +5765,20 @@ ${q.accepted ? `
       }
       console.log(`[hub] deal ${dealId} (${dealName}) quotes: ${qRows.length}`);
 
+      const isApItemHub = (i) => {
+        const fields = [i?.name, i?.productName, i?.sku, i?.description].filter(Boolean);
+        return fields.some(f => /^AP[\s\-_]?\d/i.test(f) || /^Acoustic\s+Package/i.test(f));
+      };
       const quotes = qRows.map(r => {
         let firstMdl = '';
-        let hasRM = false, hasCustomHole = false;
+        let hasRM = false, hasCustomHole = false, hasAP = false;
         try {
           const items = r.line_items || [];
           const mdlItem = items.find(i => i && /^MDL\b/.test(i.name || ''));
           if (mdlItem) firstMdl = (mdlItem.name || '').split(' ').slice(0, 3).join(' ');
           hasRM         = items.some(i => /^RM\s/i.test(i?.name || ''));
           hasCustomHole = items.some(i => /^CUST HOLE\b/i.test(i?.name || ''));
+          hasAP         = items.some(isApItemHub);
         } catch(e) {}
         return {
           quoteNumber:   r.quote_number,
@@ -5739,6 +5792,7 @@ ${q.accepted ? `
           firstMdl,
           hasRM,
           hasCustomHole,
+          hasAP,
           acceptedFoam:  r.accepted_foam  || '',
           acceptedHinge: r.accepted_hinge || '',
           acceptedNote:  r.accepted_note  || '',

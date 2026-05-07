@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.28', date:'May 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'AP chip now appears on the deal card itself in the pipeline (alongside RM and CUST), with status-aware coloring: gray "AP" = no PO yet, yellow "AP ⏳" = at least one Audimute PO in flight, green "AP ✓" = all PO orders delivered. Aggregate is computed across every quote+order on the deal so you can see Audimute status at a glance from the kanban board.'},
+        {t:'add', d:'AP chip also appears on each quote row inside the deal hub right panel — flagged on whichever specific quote(s) include AP line items.'},
+        {t:'log', d:'/api/deals/list now returns hasAP and apStatus per deal (single LATERAL-style supplier_pos lookup batched for the whole page); /api/deals/:id/hub returns hasAP per quote.'},
+      ]
+    },
+    {
       v:'1.7.27', date:'May 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Audimute PO management moved to the Deal Hub. Each order in the deal hub right panel now shows an "AP" badge if the order contains acoustic-package line items. Three states: gray (no PO yet — click to create), yellow ⏳ (PO submitted to Audimute, in flight), green ✓ (delivered). Status flips to green when the Suppliers board status is set to "complete".'},

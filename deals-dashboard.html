@@ -62,6 +62,9 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .card-name { font-size:12px; font-weight:700; color:var(--text); line-height:1.3; margin-bottom:4px; }
 .card-rm   { display:inline-block; font-size:9px; font-weight:800; letter-spacing:.08em; padding:1px 5px; background:rgba(239,68,68,.18); color:var(--red); border-radius:3px; margin-left:5px; vertical-align:middle; }
 .card-cust { display:inline-block; font-size:9px; font-weight:800; letter-spacing:.08em; padding:1px 5px; background:rgba(245,158,11,.18); color:var(--amber); border-radius:3px; margin-left:5px; vertical-align:middle; }
+.card-ap         { display:inline-block; font-size:9px; font-weight:800; letter-spacing:.08em; padding:1px 5px; background:rgba(255,255,255,.06); color:var(--muted); border:1px solid var(--border); border-radius:3px; margin-left:5px; vertical-align:middle; }
+.card-ap-yellow  { background:rgba(245,158,11,.18); color:#f59e0b; border-color:rgba(245,158,11,.35); }
+.card-ap-green   { background:rgba(34,197,94,.16); color:var(--green); border-color:rgba(34,197,94,.35); }
 .card-mdl  { font-size:10px; font-family:var(--mono); color:var(--text2); margin-bottom:4px; }
 .card-meta { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
 .card-amount { font-size:11px; font-weight:700; color:var(--orange); }
@@ -463,9 +466,10 @@ function renderBoard() {
         const custChip = d.hasCustomHole
           ? `<span class="card-cust" title="Custom holes — 1-month lead time">CUST</span>`
           : '';
+        const apChip = d.hasAP ? renderApChipFromStatus(d.apStatus) : '';
         card.innerHTML=`
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px">
-            <div class="card-name" style="flex:1">${d.name}${rmChip}${custChip}</div>
+            <div class="card-name" style="flex:1">${d.name}${rmChip}${custChip}${apChip}</div>
             ${isUnintegrated?`<div class="card-unintegrated-dot" title="HubSpot only — no quotes or orders in this system"></div>`:''}
           </div>
           ${(d.quoteLabel||d.firstMdl)?`<div class="card-mdl">${d.quoteLabel||d.firstMdl}</div>`:''}
@@ -556,11 +560,12 @@ function renderHub(dealId,data) {
         </div>` : '';
       const qRmChip   = q.hasRM         ? `<span class="card-rm" title="Roof Mounted Ventilation — 1-month lead">RM</span>`   : '';
       const qCustChip = q.hasCustomHole ? `<span class="card-cust" title="Custom holes — 1-month lead">CUST</span>` : '';
+      const qApChip   = q.hasAP         ? `<span class="card-ap" title="This quote includes an Audimute Acoustic Package">AP</span>` : '';
       return `<div class="row-card ${acc?'row-accepted':''}" style="flex-direction:column;align-items:stretch;gap:6px;cursor:pointer" onclick="loadQuote('${q.quoteNumber}')">
         <!-- Row 1: Quote #, Accepted, Amount, Date, View/Copy/Email, Load -->
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-size:12px;font-weight:700;color:var(--text);font-family:var(--mono)">${q.quoteNumber}</span>
-          ${qRmChip}${qCustChip}
+          ${qRmChip}${qCustChip}${qApChip}
           ${acc?'<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>':''}
           <span class="row-date">${fmtDate(q.date)}</span>
           <div style="display:flex;gap:4px;margin-left:auto" onclick="event.stopPropagation()">
@@ -2058,6 +2063,13 @@ function apBadgeStateForPo(po) {
   if (!po) return 'none'; // no PO yet
   if (po.status === 'complete') return 'delivered';
   return 'submitted';
+}
+
+// Pipeline-card chip (small "AP" badge driven by aggregate apStatus).
+function renderApChipFromStatus(apStatus) {
+  if (apStatus === 'delivered') return `<span class="card-ap card-ap-green" title="Audimute package delivered">AP ✓</span>`;
+  if (apStatus === 'submitted') return `<span class="card-ap card-ap-yellow" title="Audimute PO in flight">AP ⏳</span>`;
+  return `<span class="card-ap" title="Acoustic Package — PO not yet submitted">AP</span>`;
 }
 
 function renderApBadge(ord) {

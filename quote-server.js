@@ -903,6 +903,28 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Fetch a single QB invoice by DocNumber: /api/qb/invoice?docNumber=WR-12345
+  if (pathname === '/api/qb/invoice' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { docNumber } = parsed.query;
+      if (!docNumber) { json({ error: 'docNumber param required' }, 400); return; }
+      const data = await qb.qbQueryRaw(`SELECT * FROM Invoice WHERE DocNumber = '${String(docNumber).replace(/'/g,"''")}'`);
+      json(data);
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // Fetch QB company preferences (helps diagnose shipping item config)
+  if (pathname === '/api/qb/preferences' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const data = await qb.getPreferences();
+      json(data);
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   // Fetch invoices for a date range: /api/qb/invoices?from=YYYY-MM-DD&to=YYYY-MM-DD
   if (pathname === '/api/qb/invoices' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
@@ -8069,32 +8091,48 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
               item.name
             ));
           }
-          if (freightTotal > 0) {
-            const freightItemName = process.env.QB_FREIGHT_ITEM_NAME || 'Shipping';
-            const freightMatched  = (await qb.findItemByName(freightItemName)) ||
-                                    (await qb.findItemByName('Freight'));
-            const freightRef = freightMatched || fallback;
-            if (!freightMatched) {
-              console.warn(`[process-order] QB shipping item not found ("${freightItemName}" or "Freight") — freight added as regular line; create an Item in QB tied to your Freight Revenue account (or set QB_FREIGHT_ITEM_NAME) to populate the dedicated Shipping totals line`);
-            }
-            const amt = parseFloat(freightTotal.toFixed(2));
-            qbLines.push({
-              Amount:      amt,
-              DetailType:  'SalesItemLineDetail',
-              Description: 'Freight',
-              SalesItemLineDetail: { ItemRef: { value: freightRef.value }, UnitPrice: amt, Qty: 1, TaxCodeRef: taxableRef },
-            });
-          }
+          // Discount BEFORE freight — QB applies DiscountLineDetail to the running subtotal
+          // of all preceding lines, so freight (added after) is excluded from the discount.
           if (discAmt > 0) {
-            // DiscountLineDetail: Amount at the Line level is the discount; no DiscountAmount inside the detail
             qbLines.push({
               Amount:     parseFloat(discAmt.toFixed(2)),
               DetailType: 'DiscountLineDetail',
               DiscountLineDetail: { PercentBased: false },
             });
           }
+
+          // Freight comes after discount so it is never discounted.
+          // Taxability follows WR/TaxJar: freightTaxed=true → 'TAX' (AST decides rate),
+          // false/unknown → 'NON' (exempt) so QB doesn't add freight tax WR didn't charge.
+          if (freightTotal > 0) {
+            const freightItemName = process.env.QB_FREIGHT_ITEM_NAME || 'Shipping';
+            const freightMatched  = (await qb.findItemByName(freightItemName)) ||
+                                    (await qb.findItemByName('Freight'));
+            const freightRef = freightMatched || fallback;
+            if (!freightMatched) {
+              console.warn(`[process-order] QB shipping item not found ("${freightItemName}" or "Freight") — freight added as fallback item. To show freight in QB's dedicated Shipping totals row, enable Shipping in QB Account & Settings → Sales → Shipping and ensure the item name matches QB_FREIGHT_ITEM_NAME.`);
+            }
+            const EXEMPT_CODE    = process.env.QB_EXEMPT_CODE || 'NON';
+            const freightTaxCode = tax?.freightTaxed ? TAX_CODE : EXEMPT_CODE;
+            const amt = parseFloat(freightTotal.toFixed(2));
+            qbLines.push({
+              Amount:      amt,
+              DetailType:  'SalesItemLineDetail',
+              Description: 'Freight',
+              SalesItemLineDetail: {
+                ItemRef:    { value: freightRef.value },
+                UnitPrice:  amt,
+                Qty:        1,
+                TaxCodeRef: { value: freightTaxCode },
+              },
+            });
+          }
           if (unmatched.length) console.warn(`[process-order] QB items not matched (used fallback "${fallback.name}"):`, unmatched);
-          console.log('[process-order] QB invoice payload:', JSON.stringify({ customerRef: { value: cust.Id }, lineCount: qbLines.length, lineTypes: qbLines.map(l=>l.DetailType) }));
+          console.log('[process-order] QB lines:', JSON.stringify(qbLines.map(l => ({
+            type: l.DetailType, amount: l.Amount, desc: l.Description,
+            itemRef: l.SalesItemLineDetail?.ItemRef?.value,
+            taxCode: l.SalesItemLineDetail?.TaxCodeRef?.value,
+          }))));
 
           const invoice = await qb.createInvoice({
             customerRef: { value: cust.Id },

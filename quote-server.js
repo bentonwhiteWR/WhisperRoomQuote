@@ -1317,7 +1317,7 @@ const server = http.createServer(async (req, res) => {
       const q     = parsed.query.q     || '';
       const stage = parsed.query.stage || '';
       const rep   = parsed.query.rep   || '';
-      const limit = Math.min(parseInt(parsed.query.limit) || 200, 200);
+      const limit = Math.min(parseInt(parsed.query.limit) || 1000, 1000);
 
       // ── DB search for quote numbers / contact names / company names ──
       // Run in parallel with HubSpot search when q is provided
@@ -1419,22 +1419,31 @@ const server = http.createServer(async (req, res) => {
           }
         } catch(e) { /* contact search failure non-fatal */ }
       } else {
-        // Normal load — no search query
-        const searchBody = {
-          filterGroups: filters.length ? [{ filters }] : [],
-          properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
-                       'closedate','payment_status','payment_type','po_','tracking_number','carrier__c'],
-          sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
-          limit,
-        };
-        if (q) searchBody.query = q;
-        const res2 = await httpsRequest({
-          hostname: 'api.hubapi.com',
-          path: '/crm/v3/objects/deals/search',
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-        }, searchBody);
-        hsDeals = res2.body?.results || [];
+        // Normal load — paginate HubSpot up to `limit` deals (200 per page max)
+        let afterCursor = undefined;
+        while (hsDeals.length < limit) {
+          const pageSize = Math.min(200, limit - hsDeals.length);
+          const searchBody = {
+            filterGroups: filters.length ? [{ filters }] : [],
+            properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
+                         'closedate','payment_status','payment_type','po_','tracking_number','carrier__c'],
+            sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+            limit: pageSize,
+            ...(afterCursor ? { after: afterCursor } : {}),
+          };
+          if (q) searchBody.query = q;
+          const res2 = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: '/crm/v3/objects/deals/search',
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, searchBody);
+          const page = res2.body?.results || [];
+          hsDeals.push(...page);
+          const nextAfter = res2.body?.paging?.next?.after;
+          if (!nextAfter || page.length < pageSize) break;
+          afterCursor = String(nextAfter);
+        }
       }
 
       const deals = hsDeals.map(d => ({

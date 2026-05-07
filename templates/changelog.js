@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.2', date:'May 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Reconciler: new "QB Invoices" tab shows all QB invoices in a date range (defaults to last 90 days), with Paid/Open status badges and a direct "Open in QB" link to pull up each invoice in QuickBooks Online.'},
+        {t:'fix', d:'Deal Hub now loads up to 1,000 deals by default (was capped at 200) using cursor-based HubSpot pagination.'},
+      ]
+    },
+    {
       v:'1.7.1', date:'May 7, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'QB Custom Field DefinitionIds were swapped — P.O. Number was writing to the Serial Number field and vice versa. Corrected: DefinitionId 1 = P.O. Number, 3 = Serial Number.'},

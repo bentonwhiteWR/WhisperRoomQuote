@@ -138,6 +138,12 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
 .modal-line .nm { color:var(--text); }
 .modal-line .am { font-weight:600; color:var(--text2); white-space:nowrap; }
 
+/* Tab bar */
+.tab-bar { display:flex; gap:0; margin-bottom:20px; border-bottom:2px solid var(--border); }
+.tab-btn { padding:10px 20px; font-size:12px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; border:none; background:none; color:var(--text2); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-2px; font-family:inherit; transition:.15s; }
+.tab-btn:hover { color:var(--text); }
+.tab-btn.active { color:var(--orange); border-bottom-color:var(--orange); }
+
 /* Mobile */
 @media (max-width:768px) {
   .topbar { padding:0 10px; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
@@ -169,6 +175,15 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
 </div>
 
 <div class="container">
+
+  <!-- Tab switcher -->
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="reconcile" onclick="switchTab('reconcile')">Reconcile</button>
+    <button class="tab-btn" data-tab="qb-invoices" onclick="switchTab('qb-invoices')">QB Invoices</button>
+  </div>
+
+  <!-- ── Reconcile tab ── -->
+  <div id="tabReconcile">
 
   <!-- Date range + run -->
   <div class="card">
@@ -260,6 +275,43 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
     </div>
     <div id="qbActions"></div>
   </div>
+
+  </div><!-- /tabReconcile -->
+
+  <!-- ── QB Invoices tab ── -->
+  <div id="tabQbInvoices" style="display:none">
+    <div class="card">
+      <div class="card-title">QB Invoices</div>
+      <div class="row" style="margin-bottom:10px">
+        <div>
+          <label>From</label>
+          <input type="date" id="qbInvFrom">
+        </div>
+        <div>
+          <label>To</label>
+          <input type="date" id="qbInvTo">
+        </div>
+        <button class="btn btn-orange" id="qbInvBtn" onclick="loadQbInvoices()">Load</button>
+      </div>
+      <div class="msg" id="qbInvMsg"></div>
+      <div class="tbl-wrap" id="qbInvWrap" style="display:none;margin-top:14px">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Doc #</th>
+              <th>Customer</th>
+              <th style="text-align:right">Total</th>
+              <th style="text-align:right">Balance</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="qbInvBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /tabQbInvoices -->
 
 </div>
 
@@ -1118,7 +1170,64 @@ if (new URLSearchParams(location.search).get('qb') === 'connected') {
   if (m) { m.className = 'msg ok'; m.textContent = 'QuickBooks connected successfully!'; }
 }
 
+// ── Tab switching ─────────────────────────────────────────────────
+function switchTab(name) {
+  document.getElementById('tabReconcile').style.display   = name === 'reconcile'    ? '' : 'none';
+  document.getElementById('tabQbInvoices').style.display  = name === 'qb-invoices'  ? '' : 'none';
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  if (name === 'qb-invoices' && document.getElementById('qbInvWrap').style.display === 'none'
+      && document.getElementById('qbInvMsg').textContent === '') {
+    loadQbInvoices();
+  }
+}
+
+// ── QB Invoices tab ───────────────────────────────────────────────
+function initQbInvDates() {
+  const to   = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - 90);
+  document.getElementById('qbInvFrom').value = from.toISOString().split('T')[0];
+  document.getElementById('qbInvTo').value   = to.toISOString().split('T')[0];
+}
+
+async function loadQbInvoices() {
+  const from = document.getElementById('qbInvFrom').value;
+  const to   = document.getElementById('qbInvTo').value;
+  const msg  = document.getElementById('qbInvMsg');
+  const wrap = document.getElementById('qbInvWrap');
+  const btn  = document.getElementById('qbInvBtn');
+  if (!from || !to) { msg.textContent = 'Select a date range.'; msg.className = 'msg err'; return; }
+  msg.textContent = 'Loading…'; msg.className = 'msg'; btn.disabled = true; wrap.style.display = 'none';
+  try {
+    const data = await fetch(`/api/qb/invoices?from=${from}&to=${to}`).then(r => r.json());
+    if (data.error) throw new Error(data.error);
+    const invoices = (data.results || [])
+      .filter(i => !i._type)
+      .sort((a, b) => new Date(b.TxnDate || 0) - new Date(a.TxnDate || 0));
+    document.getElementById('qbInvBody').innerHTML = invoices.map(inv => {
+      const paid   = parseFloat(inv.Balance || 0) < 0.01;
+      const qbUrl  = `https://app.qbo.intuit.com/app/invoice?txnId=${encodeURIComponent(inv.Id)}`;
+      return `<tr>
+        <td style="color:var(--text2);white-space:nowrap">${escHtml(inv.TxnDate || '—')}</td>
+        <td style="font-weight:600">${escHtml(inv.DocNumber || inv.Id)}</td>
+        <td>${escHtml(inv.CustomerRef?.name || '—')}</td>
+        <td style="text-align:right;font-weight:700">${fmt(inv.TotalAmt)}</td>
+        <td style="text-align:right;color:${paid ? 'var(--green)' : 'var(--amber)'}">${fmt(inv.Balance)}</td>
+        <td><span class="badge ${paid ? 'badge-match' : 'badge-credit'}">${paid ? 'Paid' : 'Open'}</span></td>
+        <td><a href="${qbUrl}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="white-space:nowrap">Open in QB ↗</a></td>
+      </tr>`;
+    }).join('') || `<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:24px">No invoices found for this period.</td></tr>`;
+    msg.textContent = `${invoices.length} invoice${invoices.length !== 1 ? 's' : ''} — ${from} to ${to}`;
+    msg.className = 'msg ok';
+    wrap.style.display = '';
+  } catch(e) {
+    msg.textContent = 'Error: ' + e.message; msg.className = 'msg err';
+  }
+  btn.disabled = false;
+}
+
 initDates();
+initQbInvDates();
 loadQbStatus();
 loadPortalId();
 

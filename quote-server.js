@@ -8288,6 +8288,9 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             billEmail:    c.email || null,
             customFields: customFields.length ? customFields : null,
             salesTermRef,
+            // Apply discount BEFORE tax (toggle off in the QB UI's More Options).
+            // Matches TaxJar's calc: tax base = post-discount subtotal.
+            applyTaxAfterDiscount: true,
           });
 
           if (invoice?.Id) {

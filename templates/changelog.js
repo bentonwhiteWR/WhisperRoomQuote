@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.13', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'QB invoices now default to "apply discount before sales tax" automatically. Sets ApplyTaxAfterDiscount: true on every invoice we create via the API, so the More Options toggle in QB starts in the correct state without needing to flip it manually each time. Result: taxable subtotal = post-discount, matching TaxJar exactly.'},
+      ]
+    },
+    {
       v:'1.7.12', date:'May 7, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Billing address now actually transfers to the QB invoice. The server-side fix from v1.7.9 was reading body.billing, but neither the quote builder\'s confirmProcessOrder nor the deal hub\'s confirmProcessOrderFromHub was sending it — only the customer (ship-to) object. Both clients now include the billing object in the process-order POST: quote builder pulls from the live #bill* form fields (null when "Same as ship-to" is checked), and the deal hub passes through snap.billing from the loaded snapshot.'},

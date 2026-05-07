@@ -8886,6 +8886,62 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
                 [JSON.stringify({ qbInvoiceId: invoice.Id, qbDocNumber: invoice.DocNumber }), quoteNumber]
               );
             }
+
+            // Auto-create QB Payment for non-PO orders. PO orders stay open
+            // since payment hasn't actually arrived yet — those get marked
+            // paid manually when the customer pays against the PO.
+            if (paymentType && paymentType !== 'po') {
+              try {
+                const pmName = process.env.QB_PAYMENT_METHOD_NAME || 'Hubspot';
+                const acctName = process.env.QB_DEPOSIT_ACCOUNT_NAME || 'Southeast Bank Regular Checking 2545';
+                const [pm, acct] = await Promise.all([
+                  qb.findPaymentMethodByName(pmName),
+                  qb.findAccountByName(acctName),
+                ]);
+                if (!pm)   throw new Error(`PaymentMethod "${pmName}" not found in QB`);
+                if (!acct) throw new Error(`Account "${acctName}" not found in QB`);
+
+                const invTotal = parseFloat(invoice.TotalAmt || 0);
+                const payment = await qb.createPayment({
+                  customerRef:         invoice.CustomerRef,
+                  invoiceId:           invoice.Id,
+                  amount:              invTotal,
+                  paymentMethodRef:    { value: pm.Id, name: pm.Name },
+                  depositToAccountRef: { value: acct.Id, name: acct.Name },
+                  txnDate:             new Date().toISOString().split('T')[0],
+                  privateNote:         `Auto-payment on order processing (${paymentType.toUpperCase()}). Order ${quoteNumber}.`,
+                });
+                console.log(`[process-order] QB payment created: id=${payment.Id} amount=$${invTotal.toFixed(2)}`);
+                if (db) {
+                  await db.query(
+                    `UPDATE orders SET order_data = order_data || $1::jsonb WHERE quote_number = $2`,
+                    [JSON.stringify({
+                      qbPayments: [{
+                        paymentId: payment.Id,
+                        amount: invTotal,
+                        date: new Date().toISOString().split('T')[0],
+                        method: pm.Name,
+                        account: acct.Name,
+                        markedAt: new Date().toISOString(),
+                        auto: true,
+                        paymentType,
+                      }],
+                      qbPaidAt: new Date().toISOString(),
+                    }), quoteNumber]
+                  );
+                }
+                writelog('info', 'order.qb-payment-auto', `Auto-paid: ${quoteNumber} → $${invTotal.toFixed(2)} (${paymentType})`, {
+                  quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { paymentId: payment.Id, paymentType }
+                });
+              } catch(e) {
+                console.warn('[process-order] Auto-payment failed (invoice still created):', e.message);
+                writelog('warn', 'order.qb-payment-auto-failed', `Auto-payment failed for ${quoteNumber}: ${e.message}`, {
+                  quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { paymentType }
+                });
+              }
+            } else if (paymentType === 'po') {
+              console.log(`[process-order] Skipping auto-payment — PO order ${quoteNumber}`);
+            }
           }
         } catch(e) {
           console.warn('[process-order] QB invoice creation skipped:', e.message);

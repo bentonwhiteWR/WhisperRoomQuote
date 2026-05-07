@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.24', date:'May 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Auto-create QB Payment when an order is processed, for all payment types EXCEPT PO. Runs immediately after the QB invoice is created using the same defaults as the manual Mark Paid flow (PaymentMethod "Hubspot", deposit "Southeast Bank Regular Checking 2545"). PO orders stay open until payment actually arrives — those can still be marked paid manually from the orders drawer. Auto-payment failures are logged but don\'t block invoice creation.'},
+      ]
+    },
+    {
       v:'1.7.23', date:'May 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'"Mark as Paid" button in the Orders admin dropdown — creates a QB Payment record applied to the linked invoice. Mirrors the QB "Receive Payment" screen exactly: payment method "Hubspot", deposit to "Southeast Bank Regular Checking 2545", payment date today. All three values can be overridden in the dialog. Amount pre-filled with current invoice balance and accepts $/comma formatting. Supports partial payments — click again to record the balance later. Dialog defaults configurable via QB_PAYMENT_METHOD_NAME / QB_DEPOSIT_ACCOUNT_NAME env vars.'},

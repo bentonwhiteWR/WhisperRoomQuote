@@ -8052,9 +8052,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             return {
               Amount:      amt,
               DetailType:  'SalesItemLineDetail',
-              // Only set Description when we fell back to a generic item — for matched
-              // items we let QB auto-fill from the item's saved description.
-              ...(matched ? {} : { Description: description }),
+              Description: description,
               SalesItemLineDetail: { ItemRef: { value: ref.value }, UnitPrice: amt, Qty: qty || 1, TaxCodeRef: taxableRef },
             };
           };
@@ -8065,7 +8063,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             const lineAmt = parseFloat(item.price) * parseInt(item.qty || 1);
             if (!lineAmt) continue;
             qbLines.push(await buildLine(
-              `${item.name}${parseInt(item.qty) > 1 ? ` ×${item.qty}` : ''}`,
+              item.description || `${item.name}${parseInt(item.qty) > 1 ? ` ×${item.qty}` : ''}`,
               lineAmt,
               1,
               item.name
@@ -8077,13 +8075,13 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
                                     (await qb.findItemByName('Freight'));
             const freightRef = freightMatched || fallback;
             if (!freightMatched) {
-              console.warn(`[process-order] QB shipping item not found ("${freightItemName}" or "Freight") — freight added as regular line; set QB_FREIGHT_ITEM_NAME or create a "Shipping" item in QB to populate the special Shipping totals line`);
+              console.warn(`[process-order] QB shipping item not found ("${freightItemName}" or "Freight") — freight added as regular line; create an Item in QB tied to your Freight Revenue account (or set QB_FREIGHT_ITEM_NAME) to populate the dedicated Shipping totals line`);
             }
             const amt = parseFloat(freightTotal.toFixed(2));
             qbLines.push({
               Amount:      amt,
               DetailType:  'SalesItemLineDetail',
-              ...(freightMatched ? {} : { Description: 'Freight' }),
+              Description: 'Freight',
               SalesItemLineDetail: { ItemRef: { value: freightRef.value }, UnitPrice: amt, Qty: 1, TaxCodeRef: taxableRef },
             });
           }

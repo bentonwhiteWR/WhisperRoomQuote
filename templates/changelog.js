@@ -51,6 +51,16 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.27', date:'May 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Audimute PO management moved to the Deal Hub. Each order in the deal hub right panel now shows an "AP" badge if the order contains acoustic-package line items. Three states: gray (no PO yet — click to create), yellow ⏳ (PO submitted to Audimute, in flight), green ✓ (delivered). Status flips to green when the Suppliers board status is set to "complete".'},
+        {t:'add', d:'New Create Audimute PO dialog. Triggered from the AP badge click. Lists every AP line item from the order with its quantity, plus a per-item color picker (defaults to the order\'s AP color). Ship-to is shown for confirmation. Notes field for anything Elizabeth needs. Each PO is created with one entry per AP item, each carrying its own color — supports orders with mixed packages or different colors per package.'},
+        {t:'add', d:'PO document (/po/:poNumber) now displays the chosen color per line item as an inline chip in the items table, replacing the single-color "Acoustic Package Specifications" block. Existing legacy POs (pre-1.7.27) still render with the old global color for backward compatibility.'},
+        {t:'fix', d:'Removed the AP Purchase Order section from the Orders dashboard drawer entirely — it was crowding the production-focused view and the new deal-hub badge is a much cleaner home. The badge handles create / view / status all in one place.'},
+        {t:'log', d:'Deal hub /api/deals/:id/hub endpoint now returns apItems[], apColor, and po (latest supplier PO row) per order in a single query (LATERAL join), so the badge has everything it needs without an extra round trip.'},
+      ]
+    },
+    {
       v:'1.7.26', date:'May 7, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'AP Purchase Order section now appears in the orders drawer when an order has an AP color set, even if the line item naming doesn\'t match the strict "AP 4848" pattern. Previously it required line items beginning with "AP " (space) — orders with names like "AP-4848", "AP4848", or "Acoustic Package …", or older orders with no json_snapshot, never showed the section even though they were AP orders.'},

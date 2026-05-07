@@ -5644,10 +5644,28 @@ ${q.accepted ? `
           [dealId]
         ).catch(() => ({ rows: [] })) : Promise.resolve({ rows: [] }),
 
-        // 4. Orders from DB
+        // 4. Orders from DB — also pull AP info from quote snapshot and latest supplier PO
         db ? db.query(
-          `SELECT o.quote_number, o.order_data, o.created_at
+          `SELECT
+             o.quote_number, o.order_data, o.created_at,
+             q.json_snapshot->'lineItems' as line_items,
+             sp.po_number     as po_number,
+             sp.status        as po_status,
+             sp.share_token   as po_share_token,
+             sp.expected_ship_date as po_expected_ship_date,
+             sp.tracking_number    as po_tracking_number,
+             sp.sent_at            as po_sent_at,
+             sp.po_data            as po_data
            FROM orders o
+           LEFT JOIN quotes q ON q.quote_number = o.quote_number
+           LEFT JOIN LATERAL (
+             SELECT po_number, status, share_token, expected_ship_date,
+                    tracking_number, sent_at, po_data
+             FROM supplier_pos
+             WHERE quote_number = o.quote_number
+             ORDER BY created_at DESC
+             LIMIT 1
+           ) sp ON true
            WHERE o.deal_id = $1
               OR o.quote_number IN (SELECT quote_number FROM quotes WHERE deal_id = $1)
            ORDER BY o.created_at DESC`,
@@ -5729,14 +5747,39 @@ ${q.accepted ? `
         };
       });
 
-      const orders = (ordersRes.rows || []).map(r => ({
-        quoteNumber:     r.quote_number,
-        foamColor:       r.order_data?.foamColor || '',
-        hingePreference: r.order_data?.hingePreference || '',
-        shipped:         r.order_data?.shipped || null,
-        freightCost:     r.order_data?.freightCost || null,
-        createdAt:       r.created_at,
-      }));
+      const isApItem = (i) => {
+        const fields = [i?.name, i?.productName, i?.sku, i?.description].filter(Boolean);
+        return fields.some(f => /^AP[\s\-_]?\d/i.test(f) || /^Acoustic\s+Package/i.test(f));
+      };
+      const orders = (ordersRes.rows || []).map(r => {
+        const items   = Array.isArray(r.line_items) ? r.line_items : [];
+        const apItems = items.filter(isApItem).map(i => ({
+          name: i.name || i.productName || '',
+          qty:  parseInt(i.qty || 1, 10),
+          price: parseFloat(i.price || 0),
+        }));
+        const apColor = (r.order_data?.apColor || '').trim();
+        const po = r.po_number ? {
+          poNumber:          r.po_number,
+          status:            r.po_status,
+          shareToken:        r.po_share_token,
+          expectedShipDate:  r.po_expected_ship_date,
+          trackingNumber:    r.po_tracking_number,
+          sentAt:            r.po_sent_at,
+          apItems:           Array.isArray(r.po_data?.apItems) ? r.po_data.apItems : [],
+        } : null;
+        return {
+          quoteNumber:     r.quote_number,
+          foamColor:       r.order_data?.foamColor || '',
+          hingePreference: r.order_data?.hingePreference || '',
+          shipped:         r.order_data?.shipped || null,
+          freightCost:     r.order_data?.freightCost || null,
+          createdAt:       r.created_at,
+          apItems,
+          apColor,
+          po,
+        };
+      });
 
       // Resolve contact (needs contactId from assoc result)
       let contact = null;
@@ -7049,7 +7092,7 @@ ${q.accepted ? `
   if (pathname === '/api/supplier-pos' && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const body = await readBody(req);
-    const { quoteNumber } = body;
+    const { quoteNumber, apItems: bodyApItems, notes: bodyNotes } = body;
     if (!quoteNumber) { json({ error: 'quoteNumber required' }, 400); return; }
     try {
       if (!db) { json({ error: 'No database' }, 500); return; }
@@ -7065,18 +7108,36 @@ ${q.accepted ? `
       if (!row.rows.length) { json({ error: `Order ${quoteNumber} not found` }, 404); return; }
       const { order_data: od, deal_id: dealId, json_snapshot: snap, deal_name: dealName } = row.rows[0];
 
-      // Extract AP line items only — match "AP 4848", "AP-4848", "AP4848",
-      // "Acoustic Package …" across name/productName/sku/description.
+      // Detect AP items from snapshot — used for validation and as a base
+      // when the request body doesn't supply per-item color overrides.
       const allItems = snap?.lineItems || [];
       const isAp = (i) => {
         const fields = [i?.name, i?.productName, i?.sku, i?.description].filter(Boolean);
         return fields.some(f => /^AP[\s\-_]?\d/i.test(f) || /^Acoustic\s+Package/i.test(f));
       };
-      const apItems = allItems.filter(isAp);
-      if (!apItems.length) { json({ error: 'No AP items found on this order. Snapshot may be empty or items use a non-AP naming convention.' }, 400); return; }
+      const detectedApItems = allItems.filter(isAp);
+      if (!detectedApItems.length) { json({ error: 'No AP items found on this order. Snapshot may be empty or items use a non-AP naming convention.' }, 400); return; }
+
+      const defaultColor = (od?.apColor || '').trim();
+
+      // If the dialog supplied per-item rows (with colors), use them — otherwise
+      // synthesize from detected items with the order's default color.
+      const apItems = (Array.isArray(bodyApItems) && bodyApItems.length)
+        ? bodyApItems.map(i => ({
+            name:  String(i.name || '').trim(),
+            qty:   parseInt(i.qty || 1, 10),
+            price: parseFloat(i.price || 0),
+            color: String(i.color || defaultColor || '').trim(),
+          })).filter(i => i.name)
+        : detectedApItems.map(i => ({
+            name:  i.name || i.productName || '',
+            qty:   parseInt(i.qty || 1, 10),
+            price: parseFloat(i.price || 0),
+            color: defaultColor,
+          }));
+      if (!apItems.length) { json({ error: 'No AP items provided' }, 400); return; }
 
       const customer  = snap?.customer || {};
-      const apColor   = od?.apColor || '';
       const poNumber  = await nextPoNumber();
       const shareToken = generateToken();
 
@@ -7086,8 +7147,8 @@ ${q.accepted ? `
         dealName: dealName || od?.dealName || quoteNumber,
         customer,
         apItems,
-        apColor,
-        notes: od?.productionNotes || '',
+        apColor: defaultColor, // legacy field — kept for backward compat with existing renderers
+        notes: (bodyNotes != null ? String(bodyNotes) : (od?.productionNotes || '')),
         issueDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' }),
       };
 
@@ -7945,13 +8006,19 @@ ${q.accepted ? `
       const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
       const escHtmlPo = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
-      const itemRows = (d.apItems||[]).map(item => `
+      const itemRows = (d.apItems||[]).map(item => {
+        const color = (item.color || d.apColor || '').trim();
+        const colorChip = color
+          ? `<span style="display:inline-block;font-size:10px;font-weight:700;color:#ee6216;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.25);padding:2px 8px;border-radius:4px;margin-top:4px">Color: ${escHtmlPo(color)}</span>`
+          : '';
+        return `
         <tr>
-          <td class="td-desc">${escHtmlPo(item.name)}${item.description ? `<div class="item-note">${escHtmlPo(item.description)}</div>` : ''}</td>
+          <td class="td-desc">${escHtmlPo(item.name)}${item.description ? `<div class="item-note">${escHtmlPo(item.description)}</div>` : ''}${colorChip ? `<div>${colorChip}</div>` : ''}</td>
           <td class="td-num">${item.qty||1}</td>
           <td class="td-num">${fmt(item.price)}</td>
           <td class="td-num">${fmt((item.price||0)*(item.qty||1))}</td>
-        </tr>`).join('');
+        </tr>`;
+      }).join('');
 
       const subtotal = (d.apItems||[]).reduce((s,i) => s + (parseFloat(i.price||0)*parseInt(i.qty||1)), 0);
       const shipTo   = [c.address, c.city, c.state && c.zip ? `${c.state} ${c.zip}` : (c.state||c.zip)].filter(Boolean).join(', ');
@@ -8058,16 +8125,11 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
     <div class="totals-row grand"><span>Order Total</span><span>${fmt(subtotal)}</span></div>
   </div>
 
-  ${d.apColor ? `
-  <div class="notes-block" style="margin-top:24px">
-    <h4>Acoustic Package Specifications</h4>
-    <p><strong>Color:</strong> ${escHtmlPo(d.apColor)}</p>
-    ${d.notes ? `<p style="margin-top:8px"><strong>Production Notes:</strong> ${escHtmlPo(d.notes)}</p>` : ''}
-  </div>` : (d.notes ? `
+  ${d.notes ? `
   <div class="notes-block" style="margin-top:24px">
     <h4>Notes</h4>
     <p>${escHtmlPo(d.notes)}</p>
-  </div>` : '')}
+  </div>` : ''}
 
   <div class="notes-block" style="margin-top:16px;background:#fff;border-left-color:#1a1a1a">
     <h4>Reference</h4>

@@ -526,17 +526,6 @@
           💵 Mark as Paid
         </button>
       </div>
-      <!-- AP Purchase Order section — shown only when order has AP items -->
-      <div id="apPoSection" style="display:none;margin-bottom:8px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Audimute Purchase Order</div>
-        <div id="apPoStatus" style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.6"></div>
-        <button id="createApPoBtn" onclick="createApPo()" style="width:100%;padding:8px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.3);border-radius:6px;color:#3b82f6;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase;margin-bottom:6px">
-          📦 Create Audimute PO
-        </button>
-        <a id="viewApPoBtn" href="#" target="_blank" style="display:none;width:100%;padding:8px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.3);border-radius:6px;color:#3b82f6;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase;text-decoration:none;text-align:center;box-sizing:border-box">
-          ↗ View PO
-        </a>
-      </div>
       <button onclick="deleteOrder()" style="width:100%;padding:8px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.3);border-radius:6px;color:#ef4444;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
         🗑 Delete Order
       </button>
@@ -1539,61 +1528,7 @@ function openDrawer(quoteNumber) {
     }
   }
 
-  // AP Purchase Order section
-  // Detect AP either by apColor being set on the order, or by an AP line item
-  // in the snapshot (covers AP 4848, AP-4848, AP4848, "Acoustic Package", etc.)
-  const lineItems = order.json_snapshot?.lineItems || order.order_data?.lineItems || [];
-  const apItems = lineItems.filter(i => {
-    const fields = [i?.name, i?.productName, i?.sku, i?.description].filter(Boolean);
-    return fields.some(f => /^AP[\s\-_]?\d/i.test(f) || /^Acoustic\s+Package/i.test(f));
-  });
-  const apColorSet = !!(order.order_data?.apColor || '').trim();
-  const showApSection = apItems.length > 0 || apColorSet;
-  console.debug('[AP detect]', quoteNumber, {
-    hasSnapshot: !!order.json_snapshot,
-    lineItemCount: lineItems.length,
-    apItemCount: apItems.length,
-    apColor: order.order_data?.apColor || null,
-    sampleNames: lineItems.slice(0, 5).map(i => i?.name),
-  });
-  const apPoSection = document.getElementById('apPoSection');
-  const apPoStatus  = document.getElementById('apPoStatus');
-  const viewApPoBtn = document.getElementById('viewApPoBtn');
-  const createApPoBtn = document.getElementById('createApPoBtn');
-  if (apPoSection) {
-    if (showApSection) {
-      apPoSection.style.display = 'block';
-      loadApPoStatus(quoteNumber);
-    } else {
-      apPoSection.style.display = 'none';
-    }
-  }
-}
-
-async function loadApPoStatus(quoteNumber) {
-  const apPoStatus  = document.getElementById('apPoStatus');
-  const viewApPoBtn = document.getElementById('viewApPoBtn');
-  const createApPoBtn = document.getElementById('createApPoBtn');
-  if (!apPoStatus) return;
-  apPoStatus.textContent = 'Checking PO status…';
-  try {
-    const res = await fetch('/api/supplier-pos');
-    const data = await res.json();
-    const existing = (data.pos || []).filter(p => p.quote_number === quoteNumber);
-    if (existing.length > 0) {
-      const po = existing[existing.length - 1]; // latest PO for this order
-      const poUrl = `/po/${encodeURIComponent(po.po_number)}?t=${po.share_token}`;
-      apPoStatus.innerHTML = `PO: <a href="${poUrl}" target="_blank" style="color:#3b82f6;font-weight:700">${po.po_number}</a><br>Status: <strong>${po.status}</strong>${po.expected_ship_date ? ` · Ship: ${new Date(po.expected_ship_date+'T12:00:00Z').toLocaleDateString('en-US',{month:'short',day:'numeric'})}` : ''}`;
-      if (viewApPoBtn) { viewApPoBtn.href = poUrl; viewApPoBtn.style.display = 'block'; }
-      if (createApPoBtn) createApPoBtn.textContent = '📦 Create New PO';
-    } else {
-      apPoStatus.textContent = 'No PO created yet for this order.';
-      if (viewApPoBtn) viewApPoBtn.style.display = 'none';
-      if (createApPoBtn) createApPoBtn.textContent = '📦 Create Audimute PO';
-    }
-  } catch(e) {
-    apPoStatus.textContent = 'Could not load PO status.';
-  }
+  // AP/Audimute PO management lives on the Deal Hub (badge on the order card).
 }
 
 function copyDrawerFolderPath() {
@@ -1748,36 +1683,6 @@ async function submitMarkPaid() {
   }
   btn.disabled = false;
   btn.textContent = orig;
-}
-
-async function createApPo() {
-  if (!currentQuoteNumber) return;
-  const btn = document.getElementById('createApPoBtn');
-  const origText = btn?.textContent || '📦 Create Audimute PO';
-  if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
-  try {
-    const res = await fetch('/api/supplier-pos', {
-      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ quoteNumber: currentQuoteNumber }),
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-
-    // Update AP PO section
-    const apPoStatus  = document.getElementById('apPoStatus');
-    const viewApPoBtn = document.getElementById('viewApPoBtn');
-    if (apPoStatus) {
-      apPoStatus.innerHTML = `PO: <a href="${data.poUrl}" target="_blank" style="color:#3b82f6;font-weight:700">${data.poNumber}</a><br>Status: pending`;
-    }
-    if (viewApPoBtn) { viewApPoBtn.href = data.poUrl; viewApPoBtn.style.display = 'block'; }
-    if (btn) btn.textContent = '📦 Create New PO';
-
-    showToast(`PO created: ${data.poNumber}`, 'success');
-  } catch(e) {
-    showToast('PO creation failed: ' + e.message, 'error');
-    if (btn) btn.textContent = origText;
-  }
-  if (btn) btn.disabled = false;
 }
 
 function setRadio(name, value) {

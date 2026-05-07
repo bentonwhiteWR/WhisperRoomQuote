@@ -51,6 +51,19 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.21', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Freight Cost field on the orders dashboard now accepts "$500", "$1,200.00", "500", etc. Previously the field was type="number" so any "$" or comma silently invalidated the input and nothing transferred to HubSpot. Switched to type="text" with a parseFreightCost() helper that strips $/commas/whitespace before parsing.'},
+      ]
+    },
+    {
+      v:'1.7.20', date:'May 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'"Create QB Invoice" button in the Orders admin dropdown. Reads line items, freight, discount, tax, customer, and billing from the stored quote snapshot and creates a QB invoice using the same logic as process-order. Shows existing QB invoice link (with overwrite warning) if one is already linked. Works for orders where process-order QB step failed or where details changed.'},
+        {t:'add', d:'DEVLOG.md — full audit of backend, frontend, and security written to the repo. Covers what works well, improvement areas, and critical issues.'},
+      ]
+    },
+    {
       v:'1.7.19', date:'May 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'When an order is marked shipped, the QB invoice "Memo on statement (hidden)" field (PrivateNote) is now populated with "Freight Cost: $XXX.XX" alongside the existing carrier, tracking, ship date, and serial number updates. Internal-only — does not appear on the customer-facing invoice.'},

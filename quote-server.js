@@ -6925,6 +6925,111 @@ ${q.accepted ? `
     return;
   }
 
+  // ── API: Mark order paid (creates QB Payment linked to invoice) ──
+  // Mirrors the QB "Receive Payment" screen. Defaults match what reps do
+  // manually: payment method = "Hubspot", deposit to checking. Override
+  // via env vars QB_PAYMENT_METHOD_NAME / QB_DEPOSIT_ACCOUNT_NAME, or
+  // pass explicit names in the request body.
+  if (pathname.startsWith('/api/orders/') && pathname.endsWith('/mark-paid') && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').replace('/mark-paid', '').trim());
+    const body = await readBody(req);
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+
+      const row = await db.query(
+        `SELECT order_data FROM orders WHERE quote_number = $1`,
+        [quoteNumber]
+      );
+      if (!row.rows.length) { json({ error: `Order ${quoteNumber} not found` }, 404); return; }
+      const od = row.rows[0].order_data || {};
+      const qbInvoiceId = od.qbInvoiceId;
+      if (!qbInvoiceId) { json({ error: 'No QB invoice linked to this order' }, 400); return; }
+
+      // Pull current invoice to get balance + customer ref
+      const invoice = await qb.getInvoice(qbInvoiceId);
+      if (!invoice) { json({ error: 'QB invoice not found' }, 404); return; }
+      const balance = parseFloat(invoice.Balance || 0);
+      if (balance <= 0) { json({ error: 'Invoice already fully paid (balance is $0)' }, 400); return; }
+
+      const amount = body.amount !== undefined ? parseFloat(body.amount) : balance;
+      if (!Number.isFinite(amount) || amount <= 0) { json({ error: 'Invalid payment amount' }, 400); return; }
+      if (amount > balance + 0.01) { json({ error: `Payment $${amount.toFixed(2)} exceeds invoice balance $${balance.toFixed(2)}` }, 400); return; }
+
+      const pmName = body.paymentMethod || process.env.QB_PAYMENT_METHOD_NAME || 'Hubspot';
+      const acctName = body.depositAccount || process.env.QB_DEPOSIT_ACCOUNT_NAME || 'Southeast Bank Regular Checking 2545';
+      const pm = await qb.findPaymentMethodByName(pmName);
+      const acct = await qb.findAccountByName(acctName);
+      if (!pm) { json({ error: `QB PaymentMethod "${pmName}" not found. Create it in QB or set QB_PAYMENT_METHOD_NAME env var.` }, 400); return; }
+      if (!acct) { json({ error: `QB Account "${acctName}" not found. Set QB_DEPOSIT_ACCOUNT_NAME env var to the correct account name.` }, 400); return; }
+
+      const txnDate = body.paymentDate || new Date().toISOString().split('T')[0];
+      const repName = getRepFromReq(req, body);
+
+      const payment = await qb.createPayment({
+        customerRef:         invoice.CustomerRef,
+        invoiceId:           qbInvoiceId,
+        amount,
+        paymentMethodRef:    { value: pm.Id, name: pm.Name },
+        depositToAccountRef: { value: acct.Id, name: acct.Name },
+        txnDate,
+        privateNote:         `Marked paid by ${repName || 'rep'} from orders dashboard. Order ${quoteNumber}.`,
+      });
+
+      // Update order_data with payment record
+      const newOd = {
+        ...od,
+        qbPayments: [...(od.qbPayments || []), {
+          paymentId: payment.Id,
+          amount,
+          date: txnDate,
+          method: pm.Name,
+          account: acct.Name,
+          markedBy: repName,
+          markedAt: new Date().toISOString(),
+        }],
+        qbPaidAt: new Date().toISOString(),
+      };
+      await db.query(`UPDATE orders SET order_data = $1 WHERE quote_number = $2`, [JSON.stringify(newOd), quoteNumber]);
+
+      const newBalance = Math.max(0, balance - amount);
+      writelog('info', 'order.qb-payment', `Marked paid: ${quoteNumber} — $${amount.toFixed(2)} on inv ${invoice.DocNumber}`, { rep: repName, quoteNum: quoteNumber });
+      json({ success: true, paymentId: payment.Id, amount, newBalance, fullyPaid: newBalance < 0.01, invoiceDocNumber: invoice.DocNumber });
+    } catch(e) {
+      console.error('[mark-paid] Error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Get current QB invoice balance for an order ─────────────
+  // Lightweight — fetches just balance + total + paid status. Used by
+  // the orders drawer to show "Paid in Full" vs "Balance Due" without
+  // a full invoice fetch on the client.
+  if (pathname.startsWith('/api/orders/') && pathname.endsWith('/qb-balance') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').replace('/qb-balance', '').trim());
+    try {
+      const row = await db.query(`SELECT order_data FROM orders WHERE quote_number = $1`, [quoteNumber]);
+      if (!row.rows.length) { json({ error: 'Order not found' }, 404); return; }
+      const od = row.rows[0].order_data || {};
+      if (!od.qbInvoiceId) { json({ hasInvoice: false }); return; }
+      const inv = await qb.getInvoice(od.qbInvoiceId);
+      if (!inv) { json({ hasInvoice: false, error: 'QB invoice not found' }); return; }
+      json({
+        hasInvoice: true,
+        invoiceId:  inv.Id,
+        docNumber:  inv.DocNumber,
+        total:      parseFloat(inv.TotalAmt || 0),
+        balance:    parseFloat(inv.Balance || 0),
+        fullyPaid:  parseFloat(inv.Balance || 0) < 0.01,
+      });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── API: Supplier POs — list ─────────────────────────────────────
   if (pathname === '/api/supplier-pos' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

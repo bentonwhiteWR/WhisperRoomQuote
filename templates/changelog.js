@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.23', date:'May 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'"Mark as Paid" button in the Orders admin dropdown — creates a QB Payment record applied to the linked invoice. Mirrors the QB "Receive Payment" screen exactly: payment method "Hubspot", deposit to "Southeast Bank Regular Checking 2545", payment date today. All three values can be overridden in the dialog. Amount pre-filled with current invoice balance and accepts $/comma formatting. Supports partial payments — click again to record the balance later. Dialog defaults configurable via QB_PAYMENT_METHOD_NAME / QB_DEPOSIT_ACCOUNT_NAME env vars.'},
+        {t:'add', d:'QB balance check on the orders drawer — when a QB invoice is linked, the admin section shows current balance ("Paid in Full" green badge, partial paid breakdown, or balance due in amber). Live read from QB so it reflects payments entered manually in QB too.'},
+      ]
+    },
+    {
       v:'1.7.22', date:'May 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Audimute Purchase Order system — the foundation for supplier management. Orders with AP items now show a "Create Audimute PO" button in the admin dropdown. Creates a clean, branded PO document at /po/:poNumber with a shareable link, including ship-to (customer address), AP line items, AP color, and reference number.'},

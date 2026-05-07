@@ -518,6 +518,14 @@
       <button id="createQbInvBtn" onclick="createQbInvoice()" style="width:100%;padding:8px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.3);border-radius:6px;color:var(--green);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase;margin-bottom:8px">
         📄 Create QB Invoice
       </button>
+      <!-- Mark Paid button — shown only when QB invoice exists -->
+      <div id="markPaidWrap" style="display:none;margin-bottom:8px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">QB Payment</div>
+        <div id="qbBalanceStatus" style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.6">Loading…</div>
+        <button id="markPaidBtn" onclick="openMarkPaidDialog()" style="width:100%;padding:8px;background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.3);border-radius:6px;color:#a855f7;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
+          💵 Mark as Paid
+        </button>
+      </div>
       <!-- AP Purchase Order section — shown only when order has AP items -->
       <div id="apPoSection" style="display:none;margin-bottom:8px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">Audimute Purchase Order</div>
@@ -537,6 +545,41 @@
 
 <!-- Admin log button — fixed bottom right, Benton only -->
 <a id="adminLogBtn" href="/admin-log" target="_blank" style="display:none;position:fixed;bottom:20px;right:20px;padding:7px 14px;background:rgba(238,98,22,.12);border:1px solid rgba(238,98,22,.3);border-radius:8px;color:var(--orange);font-size:11px;font-weight:700;text-decoration:none;letter-spacing:.04em;text-transform:uppercase;z-index:50;backdrop-filter:blur(4px)">📋 Admin Log</a>
+</div>
+
+<!-- Mark Paid Modal -->
+<div id="markPaidModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:500;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border-radius:14px;padding:28px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+    <h2 style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px">💵 Mark as Paid</h2>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">Records a payment in QuickBooks against this invoice</div>
+    <div id="mpInvoiceInfo" style="font-size:12px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:14px;line-height:1.7"></div>
+
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px">
+      <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Payment Amount</label>
+      <input id="mpAmount" type="text" inputmode="decimal" placeholder="$0.00" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:14px;font-weight:700;font-family:inherit;outline:none">
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div style="display:flex;flex-direction:column;gap:5px">
+        <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Payment Date</label>
+        <input id="mpDate" type="date" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px">
+        <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Method</label>
+        <input id="mpMethod" type="text" placeholder="Hubspot" value="Hubspot" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:18px">
+      <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Deposit To</label>
+      <input id="mpDeposit" type="text" placeholder="Southeast Bank Regular Checking 2545" value="Southeast Bank Regular Checking 2545" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button onclick="closeMarkPaidDialog()" style="padding:9px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Cancel</button>
+      <button id="mpSubmitBtn" onclick="submitMarkPaid()" style="padding:9px 18px;background:#a855f7;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Record Payment in QB</button>
+    </div>
+  </div>
 </div>
 
 <!-- Freight Quote Modal -->
@@ -1480,6 +1523,7 @@ function openDrawer(quoteNumber) {
   // QB invoice status in admin dropdown
   const qbStatusEl  = document.getElementById('qbInvoiceStatus');
   const createQbBtn = document.getElementById('createQbInvBtn');
+  const markPaidWrap = document.getElementById('markPaidWrap');
   if (qbStatusEl) {
     const existingId  = od.qbInvoiceId;
     const existingDoc = od.qbDocNumber || existingId;
@@ -1487,9 +1531,11 @@ function openDrawer(quoteNumber) {
       const qbUrl = `https://app.qbo.intuit.com/app/invoice?txnId=${encodeURIComponent(existingId)}`;
       qbStatusEl.innerHTML = `QB Invoice: <a href="${qbUrl}" target="_blank" style="color:var(--orange);font-weight:700">${existingDoc}</a><br><span style="color:var(--amber)">⚠ Re-creating will overwrite this link</span>`;
       if (createQbBtn) createQbBtn.textContent = '📄 Re-create QB Invoice';
+      if (markPaidWrap) { markPaidWrap.style.display = 'block'; loadQbBalance(quoteNumber); }
     } else {
       qbStatusEl.textContent = 'No QB invoice linked to this order.';
       if (createQbBtn) createQbBtn.textContent = '📄 Create QB Invoice';
+      if (markPaidWrap) markPaidWrap.style.display = 'none';
     }
   }
 
@@ -1599,6 +1645,95 @@ async function createQbInvoice() {
     btn.textContent = origText;
   }
   btn.disabled = false;
+}
+
+// ── QB balance + Mark Paid ───────────────────────────────────────
+let _currentQbBalance = null;
+
+async function loadQbBalance(quoteNumber) {
+  const el = document.getElementById('qbBalanceStatus');
+  const btn = document.getElementById('markPaidBtn');
+  if (!el) return;
+  el.textContent = 'Checking QB balance…';
+  _currentQbBalance = null;
+  try {
+    const res = await fetch(`/api/orders/${encodeURIComponent(quoteNumber)}/qb-balance`);
+    const data = await res.json();
+    if (!data.hasInvoice) {
+      el.textContent = 'No QB invoice linked.';
+      if (btn) btn.disabled = true;
+      return;
+    }
+    _currentQbBalance = data;
+    const fmtUsd = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    if (data.fullyPaid) {
+      el.innerHTML = `<span style="color:var(--green);font-weight:700">✓ Paid in Full</span> &nbsp;·&nbsp; ${fmtUsd(data.total)}`;
+      if (btn) { btn.disabled = true; btn.style.opacity = '.5'; btn.textContent = '✓ Paid in Full'; }
+    } else {
+      const paidSoFar = data.total - data.balance;
+      el.innerHTML = paidSoFar > 0.01
+        ? `Balance: <strong style="color:var(--amber)">${fmtUsd(data.balance)}</strong> &nbsp;·&nbsp; Paid: ${fmtUsd(paidSoFar)} of ${fmtUsd(data.total)}`
+        : `Balance Due: <strong style="color:var(--amber)">${fmtUsd(data.balance)}</strong>`;
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.textContent = paidSoFar > 0.01 ? '💵 Record Another Payment' : '💵 Mark as Paid'; }
+    }
+  } catch(e) {
+    el.textContent = 'Could not load QB balance.';
+    if (btn) btn.disabled = true;
+  }
+}
+
+function openMarkPaidDialog() {
+  if (!_currentQbBalance || _currentQbBalance.fullyPaid) return;
+  const fmtUsd = n => parseFloat(n||0).toFixed(2);
+  document.getElementById('mpInvoiceInfo').innerHTML =
+    `Invoice <strong>${_currentQbBalance.docNumber}</strong> · Total: $${fmtUsd(_currentQbBalance.total)} · <span style="color:var(--amber)">Balance: $${fmtUsd(_currentQbBalance.balance)}</span>`;
+  document.getElementById('mpAmount').value = '$' + fmtUsd(_currentQbBalance.balance);
+  document.getElementById('mpDate').value   = new Date().toISOString().split('T')[0];
+  // Method + Deposit are pre-filled with defaults from the HTML; don't reset them so a rep can keep their override
+  document.getElementById('markPaidModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('mpAmount').focus(), 50);
+}
+
+function closeMarkPaidDialog() {
+  document.getElementById('markPaidModal').style.display = 'none';
+}
+
+async function submitMarkPaid() {
+  if (!currentQuoteNumber) return;
+  const amountRaw = document.getElementById('mpAmount').value;
+  const amount = parseFreightCost(amountRaw); // reuse $/comma stripper
+  if (!amount || amount <= 0) { showToast('Enter a valid payment amount', 'error'); return; }
+  const date = document.getElementById('mpDate').value;
+  const method = document.getElementById('mpMethod').value.trim();
+  const deposit = document.getElementById('mpDeposit').value.trim();
+
+  const btn = document.getElementById('mpSubmitBtn');
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Recording…';
+  try {
+    const res = await fetch(`/api/orders/${encodeURIComponent(currentQuoteNumber)}/mark-paid`, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount, paymentDate: date, paymentMethod: method, depositAccount: deposit }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    showToast(data.fullyPaid ? `✓ Marked paid in full ($${amount.toFixed(2)})` : `Recorded $${amount.toFixed(2)} — balance $${data.newBalance.toFixed(2)}`, 'success');
+    closeMarkPaidDialog();
+    // Refresh balance + local order_data cache
+    await loadQbBalance(currentQuoteNumber);
+    const o = allOrders.find(x => x.quote_number === currentQuoteNumber);
+    if (o) {
+      if (!o.order_data) o.order_data = {};
+      o.order_data.qbPayments = [...(o.order_data.qbPayments || []), { paymentId: data.paymentId, amount, date, method, account: deposit, markedAt: new Date().toISOString() }];
+      o.order_data.qbPaidAt = new Date().toISOString();
+    }
+  } catch(e) {
+    showToast('Mark Paid failed: ' + e.message, 'error');
+    btn.textContent = orig;
+  }
+  btn.disabled = false;
+  btn.textContent = orig;
 }
 
 async function createApPo() {

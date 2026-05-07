@@ -8045,13 +8045,16 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
 
           const unmatched = [];
           const buildLine = async (description, amount, qty, lookupName) => {
-            const ref = (lookupName ? await qb.findItemByName(lookupName) : null) || fallback;
-            if (lookupName && ref === fallback) unmatched.push(lookupName);
+            const matched = lookupName ? await qb.findItemByName(lookupName) : null;
+            const ref = matched || fallback;
+            if (lookupName && !matched) unmatched.push(lookupName);
             const amt = parseFloat(amount.toFixed(2));
             return {
               Amount:      amt,
               DetailType:  'SalesItemLineDetail',
-              Description: description,
+              // Only set Description when we fell back to a generic item — for matched
+              // items we let QB auto-fill from the item's saved description.
+              ...(matched ? {} : { Description: description }),
               SalesItemLineDetail: { ItemRef: { value: ref.value }, UnitPrice: amt, Qty: qty || 1, TaxCodeRef: taxableRef },
             };
           };
@@ -8069,14 +8072,18 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             ));
           }
           if (freightTotal > 0) {
-            const freightRef = (await qb.findItemByName('Shipping')) ||
-                               (await qb.findItemByName('Freight'))  ||
-                               fallback;
+            const freightItemName = process.env.QB_FREIGHT_ITEM_NAME || 'Shipping';
+            const freightMatched  = (await qb.findItemByName(freightItemName)) ||
+                                    (await qb.findItemByName('Freight'));
+            const freightRef = freightMatched || fallback;
+            if (!freightMatched) {
+              console.warn(`[process-order] QB shipping item not found ("${freightItemName}" or "Freight") — freight added as regular line; set QB_FREIGHT_ITEM_NAME or create a "Shipping" item in QB to populate the special Shipping totals line`);
+            }
             const amt = parseFloat(freightTotal.toFixed(2));
             qbLines.push({
               Amount:      amt,
               DetailType:  'SalesItemLineDetail',
-              Description: 'Freight',
+              ...(freightMatched ? {} : { Description: 'Freight' }),
               SalesItemLineDetail: { ItemRef: { value: freightRef.value }, UnitPrice: amt, Qty: 1, TaxCodeRef: taxableRef },
             });
           }

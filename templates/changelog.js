@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.6', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'WA Type selector now appears in the Deal Hub Process Order modal when the order contains a WA UPG or ADA item — matching the quote builder behavior. The selector pre-populates from the snapshot\'s saved WA type (if any) and lets the rep override it before sending. Both the deal hub and quote builder now behave consistently.'},
+      ]
+    },
+    {
       v:'1.7.5', date:'May 7, 2026', tag:'security',
       changes:[
         {t:'security', d:'QB invoice deletion is now restricted to Benton + Kim only (by HubSpot ownerId). Server returns 403 for other users; the Delete button is hidden in the UI for everyone else. Successful deletions are logged with user, invoice #, customer, and total. Override the allowlist with QB_INVOICE_DELETE_OWNERS env var (comma-separated ownerIds). Note: requires HubSpot OAuth login — password-only sessions cannot delete.'},

@@ -1637,6 +1637,40 @@ async function confirmMergeLegacy() {
 const PO_AP_COLORS = ['Lemon','Vanilla','Birch','White','Green Apple','Fern','Waterfall','Asteroid','Orchid','Pumpkin','Geranium','Lapis','Onyx','Graphite','Coffee Bean','Quarry Blue'];
 const PO_AP_HEX    = {Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteroid:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'};
 
+// WA Type dimension tables (mirrors quote-builder logic)
+const _PROC_WA_40 = { 60:'4016', 84:'4040', 102:'4016', 126:'4040', 144:'4016', 168:'4040', 186:'4016' };
+const _PROC_WA_46 = { 72:'4622', 96:'4646', 120:'4622', 144:'4646', 168:'4622', 192:'4646' };
+const _PROC_DIMS_40 = new Set([42, 60, 84, 102, 126, 186]);
+const _PROC_DIMS_46 = new Set([48, 72, 96, 120, 192]);
+const _PROC_ALL_DIMS = [30, 42, 48, 60, 72, 84, 96, 102, 120, 126, 144, 168, 186, 192];
+
+function _parseProcBoothDims(numStr) {
+  for (let i = 1; i < numStr.length; i++) {
+    const a = parseInt(numStr.slice(0, i), 10);
+    const b = parseInt(numStr.slice(i), 10);
+    if (_PROC_ALL_DIMS.includes(a) && _PROC_ALL_DIMS.includes(b)) return [a, b];
+  }
+  return [null, null];
+}
+
+function getProcWATypeOptions(items) {
+  const hasWA = (items||[]).some(i => /^(ADA|WA UPG)\s/i.test(i.name || ''));
+  if (!hasWA) return [];
+  const opts = new Set();
+  for (const item of (items||[])) {
+    const m = (item.name || '').match(/^(?:MDL|ADA)\s+(\d+)/i);
+    if (!m) continue;
+    const [a, b] = _parseProcBoothDims(m[1]);
+    if (!a || !b) continue;
+    const series = _PROC_DIMS_40.has(a) || _PROC_DIMS_40.has(b) ? '40'
+                 : _PROC_DIMS_46.has(a) || _PROC_DIMS_46.has(b) ? '46' : null;
+    if (!series) continue;
+    const table = series === '40' ? _PROC_WA_40 : _PROC_WA_46;
+    [a, b].filter(d => d >= 60).forEach(d => { if (table[d]) opts.add(table[d]); });
+  }
+  return [...opts].sort();
+}
+
 async function openProcessOrderModal(quoteNumber) {
   if (!currentDealId) { showToast('No deal selected','error'); return; }
   const hub = window._lastHubData || {};
@@ -1665,6 +1699,21 @@ async function openProcessOrderModal(quoteNumber) {
   document.getElementById('procApColorRow').style.display = hasAP ? 'block' : 'none';
   const apSel = document.getElementById('procApColor');
   if (apSel) { apSel.value = apCol || ''; updateProcApSwatch(); }
+
+  // WA Type row — show/hide and populate based on line items
+  const waOpts = getProcWATypeOptions(snap.lineItems || []);
+  const waRow  = document.getElementById('procWaTypeRow');
+  const waSel  = document.getElementById('procWaType');
+  if (waRow && waSel) {
+    waRow.style.display = waOpts.length > 0 ? 'block' : 'none';
+    waSel.innerHTML = '<option value="">— Select type —</option>';
+    waOpts.forEach(t => {
+      const o = document.createElement('option');
+      o.value = t; o.textContent = t;
+      if (t === (snap.repWaType || '')) o.selected = true;
+      waSel.appendChild(o);
+    });
+  }
 
   // Order Summary — items, totals, ship address
   renderProcOrderSummary(snap);
@@ -1827,7 +1876,7 @@ async function confirmProcessOrderFromHub() {
         foamColor: foam,
         hingePreference: hinge,
         apColor,
-        waType: snap.repWaType || '',
+        waType: (() => { const r = document.getElementById('procWaTypeRow'); return (r && r.style.display !== 'none') ? (document.getElementById('procWaType')?.value || '') : (snap.repWaType || ''); })(),
         productionNotes, deliveryNotes,
         ownerId:  snap.ownerId || null,
         dealName: snap.dealName || (window._lastHubData?.quotes?.[0]?.dealName || ''),
@@ -1852,7 +1901,7 @@ async function confirmProcessOrderFromHub() {
         foamColor: foam,
         hingePreference: hinge,
         apColor,
-        waType: snap.repWaType || '',
+        waType: (() => { const r = document.getElementById('procWaTypeRow'); return (r && r.style.display !== 'none') ? (document.getElementById('procWaType')?.value || '') : (snap.repWaType || ''); })(),
         productionNotes,
         deliveryNotes,
         paymentType, poNumber,
@@ -2101,6 +2150,14 @@ function openShippingNotifyEmail(ctx) {
         <option value="Quarry Blue">Quarry Blue</option>
       </select>
       <div id="procApSwatch" style="margin-top:8px;display:flex;align-items:center;gap:8px;min-height:20px"></div>
+    </div>
+
+    <!-- WA Type (hidden unless order has WA UPG or ADA item) -->
+    <div id="procWaTypeRow" style="display:none;margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">WA Type <span style="font-weight:400;text-transform:none;letter-spacing:0;color:rgba(255,255,255,.3);font-size:11px">(Wide Access)</span></div>
+      <select id="procWaType" style="width:100%;padding:9px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:13px;font-family:inherit;outline:none;cursor:pointer">
+        <option value="">— Select type —</option>
+      </select>
     </div>
 
     <!-- Production Notes (pre-filled from Notes & Order Specs) -->

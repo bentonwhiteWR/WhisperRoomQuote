@@ -8101,36 +8101,33 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             });
           }
 
-          // Freight goes into ShippingLine (top-level QB field, not inside the Line array).
-          // That's what populates QB's dedicated Shipping totals row instead of the line items grid.
-          // Discount inside the Line array only applies to product lines; freight is never discounted.
-          let shippingLine = null;
+          // Freight: per Intuit support, the dedicated Shipping totals row in QB is
+          // populated by a SalesItemLineDetail line whose ItemRef.value is the LITERAL
+          // string 'SHIPPING_ITEM_ID' (a magic value that QB resolves to the shipping
+          // item configured in Account & Settings → Sales → Shipping). Requires
+          // SalesFormsPrefs.AllowShipping = true. Freight is added AFTER the discount
+          // line so DiscountLineDetail doesn't reduce it.
           if (freightTotal > 0) {
-            const freightItemName = process.env.QB_FREIGHT_ITEM_NAME || 'Shipping';
-            const freightMatched  = (await qb.findItemByName(freightItemName)) ||
-                                    (await qb.findItemByName('Freight'));
-            const freightRef = freightMatched || fallback;
-            if (!freightMatched) {
-              console.warn(`[process-order] QB shipping item "${freightItemName}" not found — using fallback. Set QB_FREIGHT_ITEM_NAME to the exact name of the Shipping service item in QB.`);
-            }
             const EXEMPT_CODE    = process.env.QB_EXEMPT_CODE || 'NON';
             const freightTaxCode = tax?.freightTaxed ? TAX_CODE : EXEMPT_CODE;
+            const SHIPPING_ITEM  = process.env.QB_SHIPPING_ITEM_ID || 'SHIPPING_ITEM_ID';
             const amt = parseFloat(freightTotal.toFixed(2));
-            shippingLine = {
+            qbLines.push({
               Amount:      amt,
-              DetailType:  'ShippingLineDetail',
+              DetailType:  'SalesItemLineDetail',
               Description: 'Freight',
-              ShippingLineDetail: {
-                ItemRef:    { value: freightRef.value },
+              SalesItemLineDetail: {
+                ItemRef:    { value: SHIPPING_ITEM },
                 TaxCodeRef: { value: freightTaxCode },
               },
-            };
+            });
           }
           if (unmatched.length) console.warn(`[process-order] QB items not matched (used fallback "${fallback.name}"):`, unmatched);
           console.log('[process-order] QB lines:', JSON.stringify(qbLines.map(l => ({
             type: l.DetailType, amount: l.Amount,
             itemRef: l.SalesItemLineDetail?.ItemRef?.value,
-          }))), 'shippingLine:', shippingLine ? `${shippingLine.Amount} taxCode=${shippingLine.ShippingLineDetail?.TaxCodeRef?.value}` : 'none');
+            taxCode: l.SalesItemLineDetail?.TaxCodeRef?.value,
+          }))));
 
           const invoice = await qb.createInvoice({
             customerRef:  { value: cust.Id },
@@ -8140,11 +8137,10 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             memo:         dealName || quoteNumber,
             billAddr:     shipAddr,
             shipAddr,
-            shippingLine,
           });
 
           if (invoice?.Id) {
-            console.log(`[process-order] QB invoice created: id=${invoice.Id} DocNumber=${invoice.DocNumber} ShippingLine:`, JSON.stringify(invoice.ShippingLine || null));
+            console.log(`[process-order] QB invoice created: id=${invoice.Id} DocNumber=${invoice.DocNumber}`);
             if (db) {
               await db.query(
                 `UPDATE orders SET order_data = order_data || $1::jsonb WHERE quote_number = $2`,

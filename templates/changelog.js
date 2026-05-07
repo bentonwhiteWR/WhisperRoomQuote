@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.10', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'QB invoice creation was returning a 2010 "failed to parse json object" error after v1.7.9 enabled the tax override. Cause: the TaxLineDetail.Override field and top-level TxnTaxDetail.TotalTax field appear in some QB SDK samples but are not valid JSON request properties — QB rejected the entire payload. Removed both. The remaining structure (TxnTaxCodeRef + TaxLine with explicit Amount, TaxPercent, NetAmountTaxable, TaxRateRef) is the documented non-AST override path. Requires QB Online with Automated Sales Tax disabled.'},
+      ]
+    },
+    {
       v:'1.7.9', date:'May 7, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'QB invoice tax now matches the quote exactly. QB Online\'s Automated Sales Tax was taxing the gross subtotal (pre-discount), while TaxJar taxes the net (post-discount) — the legally correct base. Result: QB invoices were over-collecting tax by (rate × discount). Fix uses QB\'s per-invoice override flag (TxnTaxDetail.TaxLineDetail.Override:true) to force the TaxJar amount through, leaving AST enabled for everything else. AST keeps tracking liability normally; only the displayed tax dollar amount is overridden.'},

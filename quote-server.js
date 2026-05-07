@@ -8290,9 +8290,13 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
               if (taxCode && taxRate) {
                 const netTaxable  = parseFloat((sub - discAmt + (tax?.freightTaxed ? freightTotal : 0)).toFixed(2));
                 const derivedPct  = netTaxable > 0 ? parseFloat(((taxTotal / netTaxable) * 100).toFixed(4)) : 0;
+                // TotalTax and TaxLineDetail.Override are NOT valid request fields
+                // in QB Online's JSON schema (despite appearing in some SDK samples) —
+                // including them triggers a 2010 "failed to parse" error. We supply
+                // the explicit Amount + TaxPercent + NetAmountTaxable; QB uses those
+                // for the displayed tax. Math is consistent: Amount = NetAmountTaxable × TaxPercent.
                 txnTaxDetail = {
                   TxnTaxCodeRef: { value: String(taxCode.Id) },
-                  TotalTax:      parseFloat(taxTotal.toFixed(2)),
                   TaxLine: [{
                     Amount:     parseFloat(taxTotal.toFixed(2)),
                     DetailType: 'TaxLineDetail',
@@ -8301,7 +8305,6 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
                       PercentBased:     true,
                       TaxPercent:       derivedPct,
                       NetAmountTaxable: netTaxable,
-                      Override:         true,
                     },
                   }],
                 };

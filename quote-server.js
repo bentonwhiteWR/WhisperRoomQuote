@@ -184,10 +184,11 @@ const HS_REDIRECT_URI  = process.env.HS_REDIRECT_URI  || 'https://sales.whisperr
 // Override on staging via env var so reps can click through the full flow.
 const PUBLIC_BASE_URL  = (process.env.PUBLIC_BASE_URL || 'https://sales.whisperroom.com').replace(/\/+$/, '');
 
-// HubSpot owner IDs allowed to delete QB invoices. Defaults to Benton + Kim.
-// Override with comma-separated IDs via env: QB_INVOICE_DELETE_OWNERS=...
-const INVOICE_DELETE_OWNER_IDS = (process.env.QB_INVOICE_DELETE_OWNERS || '36303670,38732178')
-  .split(',').map(s => s.trim()).filter(Boolean);
+// Emails allowed to delete QB invoices. Defaults to Benton + Accounting.
+// Override with comma-separated emails via env: QB_INVOICE_DELETE_EMAILS=...
+// Comparison is case-insensitive.
+const INVOICE_DELETE_EMAILS = (process.env.QB_INVOICE_DELETE_EMAILS || 'bentonwhite@whisperroom.com,accounting@whisperroom.com')
+  .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 
 // HubSpot owner ID → display name. Used for sales rep attribution on QB invoices,
 // shipping board rep column, etc.
@@ -487,11 +488,12 @@ const server = http.createServer(async (req, res) => {
     if (!await isAuthAsync(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const sess = await getSessionAsync(req);
     const ownerId = sess?.ownerId || null;
+    const email   = sess?.email || '';
     json({
       name:    sess?.name || 'User',
-      email:   sess?.email || '',
+      email,
       ownerId,
-      canDeleteInvoices: !!(ownerId && INVOICE_DELETE_OWNER_IDS.includes(String(ownerId))),
+      canDeleteInvoices: !!(email && INVOICE_DELETE_EMAILS.includes(email.toLowerCase())),
     });
     return;
   }
@@ -971,12 +973,13 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Delete a QB invoice. Restricted to ownerIds in INVOICE_DELETE_OWNER_IDS
-  // (Benton + Kim by default). Also clears qbInvoiceId from any local order it was attached to.
+  // Delete a QB invoice. Restricted to emails in INVOICE_DELETE_EMAILS
+  // (Benton + Accounting by default). Also clears qbInvoiceId from any local order it was attached to.
   if (pathname.startsWith('/api/qb/invoice/') && req.method === 'DELETE') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const sess = await getSessionAsync(req);
-    if (!sess?.ownerId || !INVOICE_DELETE_OWNER_IDS.includes(String(sess.ownerId))) {
+    const sessEmail = (sess?.email || '').toLowerCase();
+    if (!sessEmail || !INVOICE_DELETE_EMAILS.includes(sessEmail)) {
       console.warn(`[qb-invoice-delete] forbidden: user ${sess?.email || 'unknown'} (ownerId=${sess?.ownerId || 'none'}) attempted to delete invoice`);
       json({ error: 'Forbidden — only authorized accounting users can delete QB invoices.' }, 403);
       return;

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.8', date:'May 7, 2026', tag:'security',
+      changes:[
+        {t:'security', d:'QB invoice deletion gating switched from HubSpot ownerId to login email. Allowed by default: bentonwhite@whisperroom.com and accounting@whisperroom.com. The previous ownerId allowlist (36303670 / 38732178) wasn\'t matching the accounting@ login. Override env var renamed: QB_INVOICE_DELETE_OWNERS → QB_INVOICE_DELETE_EMAILS (comma-separated, case-insensitive).'},
+      ]
+    },
+    {
       v:'1.7.7', date:'May 7, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Deal Hub Process Order modal now pre-fills foam color, door hinge, AP color, and WA type from the rep\'s saved selections (with fallback to customer-accepted values) — matching the quote builder. Previously the snapshot endpoint stripped out the rep fields, so the modal opened blank even when those values had been chosen at quote time.'},

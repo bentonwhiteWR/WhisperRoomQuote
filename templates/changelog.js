@@ -51,6 +51,55 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.15', date:'May 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'QB invoice "Note to customer" (CustomerMemo) is now hardcoded to: "Finance charges of 1.5% per month will be added to invoices not paid by the due date." Previously the field carried the deal name, which was redundant with the invoice number and customer company already on the invoice.'},
+      ]
+    },
+    {
+      v:'1.7.14', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'QB invoice Bill To section now includes the rep-entered Bill To Name (in BillAddr.Line1, with the street address shifted to Line2) and the Bill To Email (on BillEmail.Address, falling back to the customer\'s primary email when no separate billing email was entered).'},
+      ]
+    },
+    {
+      v:'1.7.13', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'QB invoices now default to "apply discount before sales tax" automatically. Sets ApplyTaxAfterDiscount: true on every invoice we create via the API, so the More Options toggle in QB starts in the correct state without needing to flip it manually each time. Result: taxable subtotal = post-discount, matching TaxJar exactly.'},
+      ]
+    },
+    {
+      v:'1.7.12', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Billing address now actually transfers to the QB invoice. The server-side fix from v1.7.9 was reading body.billing, but neither the quote builder\'s confirmProcessOrder nor the deal hub\'s confirmProcessOrderFromHub was sending it — only the customer (ship-to) object. Both clients now include the billing object in the process-order POST: quote builder pulls from the live #bill* form fields (null when "Same as ship-to" is checked), and the deal hub passes through snap.billing from the loaded snapshot.'},
+      ]
+    },
+    {
+      v:'1.7.11', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Reverted the TxnTaxDetail QB tax override introduced in v1.7.9–v1.7.10. The root cause of the tax/discount mismatch was a QB Online setting ("apply tax before/after discount") rather than a code issue. With that setting flipped to post-discount and AST re-enabled, QB AST naturally taxes the correct base — no API override required. The billing address fix from v1.7.9 (using the rep\'s separate billing object instead of always copying the ship address) is retained.'},
+      ]
+    },
+    {
+      v:'1.7.10', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'QB invoice creation was returning a 2010 "failed to parse json object" error after v1.7.9 enabled the tax override. Cause: the TaxLineDetail.Override field and top-level TxnTaxDetail.TotalTax field appear in some QB SDK samples but are not valid JSON request properties — QB rejected the entire payload. Removed both. The remaining structure (TxnTaxCodeRef + TaxLine with explicit Amount, TaxPercent, NetAmountTaxable, TaxRateRef) is the documented non-AST override path. Requires QB Online with Automated Sales Tax disabled.'},
+      ]
+    },
+    {
+      v:'1.7.9', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'QB invoice tax now matches the quote exactly. QB Online\'s Automated Sales Tax was taxing the gross subtotal (pre-discount), while TaxJar taxes the net (post-discount) — the legally correct base. Result: QB invoices were over-collecting tax by (rate × discount). Fix uses QB\'s per-invoice override flag (TxnTaxDetail.TaxLineDetail.Override:true) to force the TaxJar amount through, leaving AST enabled for everything else. AST keeps tracking liability normally; only the displayed tax dollar amount is overridden.'},
+        {t:'fix', d:'QB invoice billing address now uses the rep\'s separate billing address when present, instead of always copying the shipping address. Previously the process-order route never read the billing object from the request body, so QB always saw ship-to in the Bill To field.'},
+      ]
+    },
+    {
+      v:'1.7.8', date:'May 7, 2026', tag:'security',
+      changes:[
+        {t:'security', d:'QB invoice deletion gating switched from HubSpot ownerId to login email. Allowed by default: bentonwhite@whisperroom.com and accounting@whisperroom.com. The previous ownerId allowlist (36303670 / 38732178) wasn\'t matching the accounting@ login. Override env var renamed: QB_INVOICE_DELETE_OWNERS → QB_INVOICE_DELETE_EMAILS (comma-separated, case-insensitive).'},
+      ]
+    },
+    {
       v:'1.7.7', date:'May 7, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Deal Hub Process Order modal now pre-fills foam color, door hinge, AP color, and WA type from the rep\'s saved selections (with fallback to customer-accepted values) — matching the quote builder. Previously the snapshot endpoint stripped out the rep fields, so the modal opened blank even when those values had been chosen at quote time.'},

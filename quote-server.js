@@ -184,10 +184,11 @@ const HS_REDIRECT_URI  = process.env.HS_REDIRECT_URI  || 'https://sales.whisperr
 // Override on staging via env var so reps can click through the full flow.
 const PUBLIC_BASE_URL  = (process.env.PUBLIC_BASE_URL || 'https://sales.whisperroom.com').replace(/\/+$/, '');
 
-// HubSpot owner IDs allowed to delete QB invoices. Defaults to Benton + Kim.
-// Override with comma-separated IDs via env: QB_INVOICE_DELETE_OWNERS=...
-const INVOICE_DELETE_OWNER_IDS = (process.env.QB_INVOICE_DELETE_OWNERS || '36303670,38732178')
-  .split(',').map(s => s.trim()).filter(Boolean);
+// Emails allowed to delete QB invoices. Defaults to Benton + Accounting.
+// Override with comma-separated emails via env: QB_INVOICE_DELETE_EMAILS=...
+// Comparison is case-insensitive.
+const INVOICE_DELETE_EMAILS = (process.env.QB_INVOICE_DELETE_EMAILS || 'bentonwhite@whisperroom.com,accounting@whisperroom.com')
+  .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 
 // HubSpot owner ID → display name. Used for sales rep attribution on QB invoices,
 // shipping board rep column, etc.
@@ -487,11 +488,12 @@ const server = http.createServer(async (req, res) => {
     if (!await isAuthAsync(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const sess = await getSessionAsync(req);
     const ownerId = sess?.ownerId || null;
+    const email   = sess?.email || '';
     json({
       name:    sess?.name || 'User',
-      email:   sess?.email || '',
+      email,
       ownerId,
-      canDeleteInvoices: !!(ownerId && INVOICE_DELETE_OWNER_IDS.includes(String(ownerId))),
+      canDeleteInvoices: !!(email && INVOICE_DELETE_EMAILS.includes(email.toLowerCase())),
     });
     return;
   }
@@ -971,12 +973,13 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Delete a QB invoice. Restricted to ownerIds in INVOICE_DELETE_OWNER_IDS
-  // (Benton + Kim by default). Also clears qbInvoiceId from any local order it was attached to.
+  // Delete a QB invoice. Restricted to emails in INVOICE_DELETE_EMAILS
+  // (Benton + Accounting by default). Also clears qbInvoiceId from any local order it was attached to.
   if (pathname.startsWith('/api/qb/invoice/') && req.method === 'DELETE') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const sess = await getSessionAsync(req);
-    if (!sess?.ownerId || !INVOICE_DELETE_OWNER_IDS.includes(String(sess.ownerId))) {
+    const sessEmail = (sess?.email || '').toLowerCase();
+    if (!sessEmail || !INVOICE_DELETE_EMAILS.includes(sessEmail)) {
       console.warn(`[qb-invoice-delete] forbidden: user ${sess?.email || 'unknown'} (ownerId=${sess?.ownerId || 'none'}) attempted to delete invoice`);
       json({ error: 'Forbidden — only authorized accounting users can delete QB invoices.' }, 403);
       return;
@@ -7809,7 +7812,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
     try {
       const body = JSON.parse(await readBody(req));
       const { dealId, quoteNumber, lineItems, freight, tax, discount, install,
-              customer, foamColor, hingePreference, apColor, waType, productionNotes,
+              customer, billing, foamColor, hingePreference, apColor, waType, productionNotes,
               deliveryNotes, ownerId, dealName, paymentType, poNumber,
               canadian, customsBroker } = body;
 
@@ -8165,6 +8168,19 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             Country: 'US',
           } : null;
 
+          // QB bill address — uses the separate billing object when the rep filled
+          // one in on the quote; otherwise mirrors the ship address. Bill To Name
+          // (e.g., "Acme Corp - AP") goes on Line1 so it shows above the street
+          // address in the QB invoice's Bill To block.
+          const billAddr = (billing && (billing.name || billing.address || billing.city || billing.state || billing.zip)) ? {
+            ...(billing.name    ? { Line1: billing.name } : {}),
+            ...(billing.address ? (billing.name ? { Line2: billing.address } : { Line1: billing.address }) : {}),
+            ...(billing.city    ? { City:                    billing.city    } : {}),
+            ...(billing.state   ? { CountrySubDivisionCode:  billing.state   } : {}),
+            ...(billing.zip     ? { PostalCode:              billing.zip     } : {}),
+            Country: 'US',
+          } : shipAddr;
+
           const cust = await qb.findOrCreateCustomer({
             // Company is primary when present (B2B). Falls back to person name, then email.
             displayName: c.company || [c.firstName, c.lastName].filter(Boolean).join(' ') || c.email || 'Unknown',
@@ -8172,7 +8188,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             familyName:  c.lastName   || '',
             email:       c.email      || '',
             companyName: c.company    || '',
-            billAddr:    shipAddr,
+            billAddr,
             shipAddr,
           });
 
@@ -8269,12 +8285,15 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             docNumber:    quoteNumber,
             txnDate:      new Date().toISOString().split('T')[0],
             lines:        qbLines,
-            memo:         dealName || quoteNumber,
-            billAddr:     shipAddr,
+            memo:         'Finance charges of 1.5% per month will be added to invoices not paid by the due date.',
+            billAddr,
             shipAddr,
-            billEmail:    c.email || null,
+            billEmail:    (billing && billing.email) || c.email || null,
             customFields: customFields.length ? customFields : null,
             salesTermRef,
+            // Apply discount BEFORE tax (toggle off in the QB UI's More Options).
+            // Matches TaxJar's calc: tax base = post-discount subtotal.
+            applyTaxAfterDiscount: true,
           });
 
           if (invoice?.Id) {

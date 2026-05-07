@@ -8020,7 +8020,18 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       // Create QuickBooks invoice (non-blocking — failure is logged, never fatal)
       (async () => {
         try {
-          const fallback = await qb.getDefaultItem();
+          const fallback   = await qb.getDefaultItem();
+          const TAX_CODE   = process.env.QB_TAXABLE_CODE || 'TAX';
+          const taxableRef = { value: TAX_CODE };
+
+          // QB ship address (only includes lines that are present so AST has a jurisdiction)
+          const shipAddr = (c.address || c.city || c.state || c.zip) ? {
+            ...(c.address ? { Line1:                   c.address } : {}),
+            ...(c.city    ? { City:                    c.city    } : {}),
+            ...(c.state   ? { CountrySubDivisionCode:  c.state   } : {}),
+            ...(c.zip     ? { PostalCode:              c.zip     } : {}),
+            Country: 'US',
+          } : null;
 
           const cust = await qb.findOrCreateCustomer({
             displayName: [c.firstName, c.lastName].filter(Boolean).join(' ') || c.company || c.email || 'Unknown',
@@ -8028,24 +8039,24 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             familyName:  c.lastName   || '',
             email:       c.email      || '',
             companyName: c.company    || '',
+            billAddr:    shipAddr,
+            shipAddr,
           });
 
           const unmatched = [];
           const buildLine = async (description, amount, qty, lookupName) => {
             const ref = (lookupName ? await qb.findItemByName(lookupName) : null) || fallback;
-            if (!lookupName || ref === fallback) {
-              if (lookupName) unmatched.push(lookupName);
-            }
+            if (lookupName && ref === fallback) unmatched.push(lookupName);
             const amt = parseFloat(amount.toFixed(2));
             return {
               Amount:      amt,
               DetailType:  'SalesItemLineDetail',
               Description: description,
-              SalesItemLineDetail: { ItemRef: ref, UnitPrice: amt, Qty: qty || 1 },
+              SalesItemLineDetail: { ItemRef: ref, UnitPrice: amt, Qty: qty || 1, TaxCodeRef: taxableRef },
             };
           };
 
-          // Build QB invoice lines: one line per WR line item, looked up by name
+          // Build line items: one per WR line, looked up by name. Tax handled by QB AST.
           const qbLines = [];
           for (const item of (lineItems || [])) {
             const lineAmt = parseFloat(item.price) * parseInt(item.qty || 1);
@@ -8057,8 +8068,19 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
               item.name
             ));
           }
-          if (freightTotal > 0) qbLines.push(await buildLine('Freight',   freightTotal, 1, 'Freight'));
-          if (taxTotal     > 0) qbLines.push(await buildLine('Sales Tax', taxTotal,     1, 'Sales Tax'));
+          if (freightTotal > 0) {
+            // Try the QB shipping/freight item; falls back if neither exists
+            const freightRef = (await qb.findItemByName('Shipping')) ||
+                               (await qb.findItemByName('Freight'))  ||
+                               fallback;
+            const amt = parseFloat(freightTotal.toFixed(2));
+            qbLines.push({
+              Amount:      amt,
+              DetailType:  'SalesItemLineDetail',
+              Description: 'Freight',
+              SalesItemLineDetail: { ItemRef: freightRef, UnitPrice: amt, Qty: 1, TaxCodeRef: taxableRef },
+            });
+          }
           if (discAmt > 0) {
             qbLines.push({
               Amount:     parseFloat(discAmt.toFixed(2)),
@@ -8069,11 +8091,14 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
           if (unmatched.length) console.warn(`[process-order] QB items not matched (used fallback "${fallback.name}"):`, unmatched);
 
           const invoice = await qb.createInvoice({
-            customerRef: { value: cust.Id, name: cust.DisplayName },
-            docNumber:   quoteNumber,
-            txnDate:     new Date().toISOString().split('T')[0],
-            lines:       qbLines,
-            memo:        dealName || quoteNumber,
+            customerRef:   { value: cust.Id, name: cust.DisplayName },
+            docNumber:     quoteNumber,
+            txnDate:       new Date().toISOString().split('T')[0],
+            lines:         qbLines,
+            memo:          dealName || quoteNumber,
+            billAddr:      shipAddr,
+            shipAddr,
+            globalTaxCalc: 'TaxExcluded',
           });
 
           if (invoice?.Id) {

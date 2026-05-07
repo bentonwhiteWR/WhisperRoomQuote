@@ -513,6 +513,10 @@
       <button class="admin-btn" onclick="toggleOrderAdmin()">⚙ Admin Override <span id="orderAdminCaret">▼</span></button>
     </div>
     <div class="admin-inner" id="orderAdminInner">
+      <div id="qbInvoiceStatus" style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.6"></div>
+      <button id="createQbInvBtn" onclick="createQbInvoice()" style="width:100%;padding:8px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.3);border-radius:6px;color:var(--green);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase;margin-bottom:8px">
+        📄 Create QB Invoice
+      </button>
       <button onclick="deleteOrder()" style="width:100%;padding:8px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.3);border-radius:6px;color:#ef4444;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
         🗑 Delete Order
       </button>
@@ -1450,6 +1454,22 @@ function openDrawer(quoteNumber) {
     if (inner) inner.style.display = 'none';
     if (caret) caret.textContent = '▼';
   }
+
+  // QB invoice status in admin dropdown
+  const qbStatusEl  = document.getElementById('qbInvoiceStatus');
+  const createQbBtn = document.getElementById('createQbInvBtn');
+  if (qbStatusEl) {
+    const existingId  = od.qbInvoiceId;
+    const existingDoc = od.qbDocNumber || existingId;
+    if (existingId) {
+      const qbUrl = `https://app.qbo.intuit.com/app/invoice?txnId=${encodeURIComponent(existingId)}`;
+      qbStatusEl.innerHTML = `QB Invoice: <a href="${qbUrl}" target="_blank" style="color:var(--orange);font-weight:700">${existingDoc}</a><br><span style="color:var(--amber)">⚠ Re-creating will overwrite this link</span>`;
+      if (createQbBtn) createQbBtn.textContent = '📄 Re-create QB Invoice';
+    } else {
+      qbStatusEl.textContent = 'No QB invoice linked to this order.';
+      if (createQbBtn) createQbBtn.textContent = '📄 Create QB Invoice';
+    }
+  }
 }
 
 function copyDrawerFolderPath() {
@@ -1465,6 +1485,56 @@ function closeDrawer() {
   document.getElementById('drawerOverlay').classList.remove('open');
   document.body.style.overflow = '';
   currentQuoteNumber = null;
+}
+
+async function createQbInvoice() {
+  if (!currentQuoteNumber) return;
+  const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
+  const od    = order?.order_data || {};
+
+  if (od.qbInvoiceId) {
+    const ok = confirm(
+      `A QB invoice already exists for this order (${od.qbDocNumber || od.qbInvoiceId}).\n\n` +
+      `Creating a new one will overwrite the linked invoice ID on this order record.\n\n` +
+      `Continue?`
+    );
+    if (!ok) return;
+  }
+
+  const btn      = document.getElementById('createQbInvBtn');
+  const origText = btn.textContent;
+  btn.disabled   = true;
+  btn.textContent = 'Creating…';
+
+  try {
+    const res  = await fetch(`/api/orders/${encodeURIComponent(currentQuoteNumber)}/create-qb-invoice`, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    // Update local cache so the status reflects immediately
+    const o = allOrders.find(x => x.quote_number === currentQuoteNumber);
+    if (o) {
+      if (!o.order_data) o.order_data = {};
+      o.order_data.qbInvoiceId  = data.qbInvoiceId;
+      o.order_data.qbDocNumber  = data.qbDocNumber;
+    }
+
+    // Refresh the status line in the drawer
+    const qbStatusEl = document.getElementById('qbInvoiceStatus');
+    if (qbStatusEl) {
+      const qbUrl = `https://app.qbo.intuit.com/app/invoice?txnId=${encodeURIComponent(data.qbInvoiceId)}`;
+      qbStatusEl.innerHTML = `QB Invoice: <a href="${qbUrl}" target="_blank" style="color:var(--orange);font-weight:700">${data.qbDocNumber}</a>`;
+    }
+    if (btn) btn.textContent = '📄 Re-create QB Invoice';
+
+    showToast(`QB invoice created: ${data.qbDocNumber}`, 'success');
+  } catch(e) {
+    showToast('QB invoice creation failed: ' + e.message, 'error');
+    btn.textContent = origText;
+  }
+  btn.disabled = false;
 }
 
 function setRadio(name, value) {

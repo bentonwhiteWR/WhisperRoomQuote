@@ -6738,6 +6738,172 @@ ${q.accepted ? `
     return;
   }
 
+  // ── API: Create QB Invoice from existing order ───────────────────
+  // Re-runs the same QB invoice creation logic as /api/process-order using
+  // data from the stored quote snapshot + order record. Useful when the
+  // original process-order QB step failed, or when the invoice needs to be
+  // recreated after changes.
+  if (pathname.startsWith('/api/orders/') && pathname.endsWith('/create-qb-invoice') && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').replace('/create-qb-invoice', '').trim());
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+
+      const row = await db.query(
+        `SELECT o.order_data, o.deal_id, q.json_snapshot
+         FROM orders o
+         LEFT JOIN quotes q ON q.quote_number = o.quote_number
+         WHERE o.quote_number = $1`,
+        [quoteNumber]
+      );
+      if (!row.rows.length) { json({ error: `Order ${quoteNumber} not found` }, 404); return; }
+
+      const orderData = row.rows[0].order_data || {};
+      const snap      = row.rows[0].json_snapshot || {};
+      const dealId    = row.rows[0].deal_id;
+
+      const lineItems   = snap.lineItems || [];
+      const customer    = snap.customer  || {};
+      const billing     = snap.billing   || null;
+      const tax         = snap.tax       || {};
+      const discount    = snap.discount  || null;
+      const paymentType = orderData.paymentType || snap.paymentType || null;
+      const poNumber    = orderData.poNumber    || snap.poNumber    || null;
+      const ownerId     = snap.ownerId || null;
+
+      if (!lineItems.length) { json({ error: 'No line items in snapshot — cannot create invoice' }, 400); return; }
+
+      // Freight: snapshot may store as object or number
+      const freightSnap  = snap.freight;
+      const freightTotal = typeof freightSnap === 'object' && freightSnap !== null
+        ? parseFloat(freightSnap.total ?? freightSnap.amount ?? 0)
+        : parseFloat(freightSnap || 0);
+
+      const TAX_CODE   = process.env.QB_TAXABLE_CODE || 'TAX';
+      const taxableRef = { value: TAX_CODE };
+      const fallback   = await qb.getDefaultItem();
+
+      const shipAddr = {
+        Line1: customer.address || '',
+        City:  customer.city    || '',
+        CountrySubDivisionCode: customer.state || '',
+        PostalCode: customer.zip || '',
+        Country: 'US',
+      };
+
+      const billAddr = (billing && (billing.name || billing.address || billing.city || billing.state || billing.zip)) ? {
+        ...(billing.name    ? { Line1: billing.name } : {}),
+        ...(billing.address ? (billing.name ? { Line2: billing.address } : { Line1: billing.address }) : {}),
+        ...(billing.city    ? { City: billing.city } : {}),
+        ...(billing.state   ? { CountrySubDivisionCode: billing.state } : {}),
+        ...(billing.zip     ? { PostalCode: billing.zip } : {}),
+        Country: 'US',
+      } : shipAddr;
+
+      const cust = await qb.findOrCreateCustomer({
+        displayName: customer.company || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || customer.email || 'Unknown',
+        givenName:   customer.firstName || '',
+        familyName:  customer.lastName  || '',
+        email:       customer.email     || '',
+        companyName: customer.company   || '',
+        billAddr,
+        shipAddr,
+      });
+
+      const unmatched = [];
+      const buildLine = async (description, amount, qty, lookupName) => {
+        const matched = lookupName ? await qb.findItemByName(lookupName) : null;
+        const ref = matched || fallback;
+        if (lookupName && !matched) unmatched.push(lookupName);
+        const amt = parseFloat(amount.toFixed(2));
+        return {
+          Amount:      amt,
+          DetailType:  'SalesItemLineDetail',
+          Description: description,
+          SalesItemLineDetail: { ItemRef: { value: ref.value }, UnitPrice: amt, Qty: qty || 1, TaxCodeRef: taxableRef },
+        };
+      };
+
+      const qbLines = [];
+      for (const item of lineItems) {
+        const lineAmt = parseFloat(item.price) * parseInt(item.qty || 1);
+        if (!lineAmt) continue;
+        qbLines.push(await buildLine(
+          item.description || `${item.name}${parseInt(item.qty) > 1 ? ` ×${item.qty}` : ''}`,
+          lineAmt, 1, item.name
+        ));
+      }
+
+      // Discount before freight
+      const sub     = lineItems.reduce((s, i) => s + (parseFloat(i.price) * parseInt(i.qty || 1)), 0);
+      const discAmt = discount && discount.value > 0
+        ? (discount.type === 'pct' ? sub * discount.value / 100 : discount.value) : 0;
+      if (discAmt > 0) {
+        qbLines.push({ Amount: parseFloat(discAmt.toFixed(2)), DetailType: 'DiscountLineDetail', DiscountLineDetail: { PercentBased: false } });
+      }
+
+      // Freight after discount
+      if (freightTotal > 0) {
+        const EXEMPT_CODE    = process.env.QB_EXEMPT_CODE || 'NON';
+        const freightTaxCode = tax?.freightTaxed ? TAX_CODE : EXEMPT_CODE;
+        const SHIPPING_ITEM  = process.env.QB_SHIPPING_ITEM_ID || 'SHIPPING_ITEM_ID';
+        qbLines.push({
+          Amount: parseFloat(freightTotal.toFixed(2)), DetailType: 'SalesItemLineDetail', Description: 'Freight',
+          SalesItemLineDetail: { ItemRef: { value: SHIPPING_ITEM }, TaxCodeRef: { value: freightTaxCode } },
+        });
+      }
+
+      if (unmatched.length) console.warn(`[create-qb-invoice] items not matched (used fallback):`, unmatched);
+
+      // Custom fields: sales rep + P.O. number
+      const repName    = OWNER_MAP[ownerId] || '';
+      const customFields = [];
+      if (repName) customFields.push({ DefinitionId: '2', Name: 'Sales Rep',   Type: 'StringType', StringValue: repName });
+      if (paymentType === 'po' && poNumber) customFields.push({ DefinitionId: '1', Name: 'P.O. Number', Type: 'StringType', StringValue: String(poNumber) });
+
+      // Payment terms
+      const termName = paymentType === 'po'
+        ? (process.env.QB_TERM_NET30 || 'Net 30')
+        : (process.env.QB_TERM_UPON_RECEIPT || 'Due on receipt');
+      let salesTermRef = null;
+      try {
+        const term = await qb.findTermByName(termName);
+        if (term) salesTermRef = { value: String(term.Id) };
+      } catch(e) { console.warn('[create-qb-invoice] QB term lookup failed:', e.message); }
+
+      const invoice = await qb.createInvoice({
+        customerRef:  { value: cust.Id },
+        docNumber:    quoteNumber,
+        txnDate:      new Date().toISOString().split('T')[0],
+        lines:        qbLines,
+        memo:         'Finance charges of 1.5% per month will be added to invoices not paid by the due date.',
+        billAddr,
+        shipAddr,
+        billEmail:    (billing && billing.email) || customer.email || null,
+        customFields: customFields.length ? customFields : null,
+        salesTermRef,
+        applyTaxAfterDiscount: true,
+      });
+
+      if (!invoice?.Id) throw new Error('QB createInvoice returned no Id');
+
+      await db.query(
+        `UPDATE orders SET order_data = order_data || $1::jsonb WHERE quote_number = $2`,
+        [JSON.stringify({ qbInvoiceId: invoice.Id, qbDocNumber: invoice.DocNumber }), quoteNumber]
+      );
+
+      writelog('info', 'order.qb-invoice-manual', `QB invoice manually created: ${quoteNumber} → ${invoice.DocNumber}`, {
+        quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { qbInvoiceId: invoice.Id, qbDocNumber: invoice.DocNumber }
+      });
+      console.log(`[create-qb-invoice] ${quoteNumber}: QB invoice ${invoice.Id} (${invoice.DocNumber})`);
+      json({ success: true, qbInvoiceId: invoice.Id, qbDocNumber: invoice.DocNumber });
+    } catch(e) {
+      console.error('[create-qb-invoice] Error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── API: Delete Quote (single quote record) ─────────────────────
   if (pathname.startsWith('/api/quotes/') && pathname.endsWith('/delete') && req.method === 'DELETE') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

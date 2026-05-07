@@ -51,6 +51,15 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.22', date:'May 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Audimute Purchase Order system — the foundation for supplier management. Orders with AP items now show a "Create Audimute PO" button in the admin dropdown. Creates a clean, branded PO document at /po/:poNumber with a shareable link, including ship-to (customer address), AP line items, AP color, and reference number.'},
+        {t:'add', d:'Suppliers dashboard at /suppliers — tracks all Audimute POs in a table with status (pending → sent → confirmed → shipped → complete), expected ship date, tracking number, and late-order highlighting (red row when expected ship date has passed). Inline editable ship date and tracking fields with Save button.'},
+        {t:'add', d:'Send PO email — one-click opens a pre-filled mailto: draft to ewade@audimute.com with PO link, ship-to address, item list, and AP color. Automatically marks PO as sent.'},
+        {t:'add', d:'"Suppliers" nav link added to all dashboard pages (Quotes, Orders, Shipping, Reports, Accounting, Deal Hub).'},
+      ]
+    },
+    {
       v:'1.7.21', date:'May 7, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Freight Cost field on the orders dashboard now accepts "$500", "$1,200.00", "500", etc. Previously the field was type="number" so any "$" or comma silently invalidated the input and nothing transferred to HubSpot. Switched to type="text" with a parseFreightCost() helper that strips $/commas/whitespace before parsing.'},

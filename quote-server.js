@@ -8169,9 +8169,12 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
           } : null;
 
           // QB bill address — uses the separate billing object when the rep filled
-          // one in on the quote; otherwise mirrors the ship address.
-          const billAddr = (billing && (billing.address || billing.city || billing.state || billing.zip)) ? {
-            ...(billing.address ? { Line1:                   billing.address } : {}),
+          // one in on the quote; otherwise mirrors the ship address. Bill To Name
+          // (e.g., "Acme Corp - AP") goes on Line1 so it shows above the street
+          // address in the QB invoice's Bill To block.
+          const billAddr = (billing && (billing.name || billing.address || billing.city || billing.state || billing.zip)) ? {
+            ...(billing.name    ? { Line1: billing.name } : {}),
+            ...(billing.address ? (billing.name ? { Line2: billing.address } : { Line1: billing.address }) : {}),
             ...(billing.city    ? { City:                    billing.city    } : {}),
             ...(billing.state   ? { CountrySubDivisionCode:  billing.state   } : {}),
             ...(billing.zip     ? { PostalCode:              billing.zip     } : {}),
@@ -8285,7 +8288,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             memo:         dealName || quoteNumber,
             billAddr,
             shipAddr,
-            billEmail:    c.email || null,
+            billEmail:    (billing && billing.email) || c.email || null,
             customFields: customFields.length ? customFields : null,
             salesTermRef,
             // Apply discount BEFORE tax (toggle off in the QB UI's More Options).

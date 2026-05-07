@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.14', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'QB invoice Bill To section now includes the rep-entered Bill To Name (in BillAddr.Line1, with the street address shifted to Line2) and the Bill To Email (on BillEmail.Address, falling back to the customer\'s primary email when no separate billing email was entered).'},
+      ]
+    },
+    {
       v:'1.7.13', date:'May 7, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'QB invoices now default to "apply discount before sales tax" automatically. Sets ApplyTaxAfterDiscount: true on every invoice we create via the API, so the More Options toggle in QB starts in the correct state without needing to flip it manually each time. Result: taxable subtotal = post-discount, matching TaxJar exactly.'},

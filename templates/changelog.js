@@ -51,6 +51,16 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.25', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Folder search race condition — when typing quickly in the "Rebind Drive Folder" or "Merge Legacy Folder" search boxes, a slow earlier request could return after a newer one and overwrite results with stale data, making results appear wrong or disappear. Fixed with AbortController: each new search cancels any in-flight request before firing. Also cancels pending searches when the modal is opened/reopened.'},
+        {t:'fix', d:'"Merge Legacy Folder" modal now auto-runs the search immediately when it opens, since the search box is pre-populated with the deal name. Previously the user had to delete a character or click Search to trigger anything.'},
+        {t:'fix', d:'Deals board search ("searchAllDeals") had the same stale-result race condition — rapidly typed queries could render out-of-order results. Fixed with AbortController.'},
+        {t:'fix', d:'Quote builder deal search had a duplicate event listener — one from the HTML oninput attribute and one from addEventListener — causing two immediate API calls plus a debounced one on every keystroke. Removed the duplicate, leaving only the debounced listener.'},
+        {t:'fix', d:'Added autocomplete="off" and spellcheck="false" to both Drive folder search inputs to prevent browser autocomplete from filling values silently (without triggering oninput).'},
+      ]
+    },
+    {
       v:'1.7.24', date:'May 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Auto-create QB Payment when an order is processed, for all payment types EXCEPT PO. Runs immediately after the QB invoice is created using the same defaults as the manual Mark Paid flow (PaymentMethod "Hubspot", deposit "Southeast Bank Regular Checking 2545"). PO orders stay open until payment actually arrives — those can still be marked paid manually from the orders drawer. Auto-payment failures are logged but don\'t block invoice creation.'},

@@ -3616,7 +3616,6 @@ window.addEventListener('pageshow', e => {
 // ── Deal search ──────────────────────────────────────────────────
 let selectedDeal = null;
 const dealSearchInput = document.getElementById('dealSearch');
-if (dealSearchInput) dealSearchInput.addEventListener('input', e => onDealSearchInput(e.target.value));
 const dealDropdown = document.getElementById('dealDropdown');
 let dealSearchTimeout = null;
 

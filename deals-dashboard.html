@@ -1057,17 +1057,23 @@ function onSearch() {
   }
 }
 
+let _searchAllDealsAbort = null;
 async function searchAllDeals(q) {
+  if (_searchAllDealsAbort) _searchAllDealsAbort.abort();
+  _searchAllDealsAbort = new AbortController();
+  const signal = _searchAllDealsAbort.signal;
   document.getElementById('boardCount').textContent = 'Searching…';
   try {
     const qs = new URLSearchParams({ q, limit: 50 });
     if (currentRepFilter) qs.set('rep', currentRepFilter);
-    const res  = await fetch('/api/deals/list?' + qs, { credentials: 'include' });
+    const res  = await fetch('/api/deals/list?' + qs, { credentials: 'include', signal });
     const data = await res.json();
+    if (signal.aborted) return;
     if (data.error) throw new Error(data.error);
     filteredDeals = data.deals || [];
     renderBoard();
   } catch(e) {
+    if (e.name === 'AbortError') return;
     document.getElementById('boardCount').textContent = 'Search error';
   }
 }
@@ -1163,6 +1169,7 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
 
     <div style="margin-bottom:12px">
       <input id="rebindFolderSearch" type="text" placeholder="Search folder name (e.g. University of Utah)..."
+        autocomplete="off" spellcheck="false"
         style="width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:inherit;outline:none;box-sizing:border-box"
         oninput="onRebindSearchInput(this.value)">
     </div>
@@ -1257,11 +1264,14 @@ let _rebindDealId      = null;
 let _rebindQuoteNumber = null;
 let _rebindFolderId    = null;
 let _rebindSearchTimer = null;
+let _rebindSearchAbort = null;
 
 function openRebindFolder(dealId) {
   _rebindDealId      = dealId;
   _rebindFolderId    = null;
   _rebindQuoteNumber = null;
+  clearTimeout(_rebindSearchTimer);
+  if (_rebindSearchAbort) { _rebindSearchAbort.abort(); _rebindSearchAbort = null; }
 
   // Get latest quote number for this deal from cached hub data
   const hubData = window._lastHubData;
@@ -1306,9 +1316,13 @@ function onRebindSearchInput(val) {
 }
 
 async function searchRebindFolders(q) {
+  if (_rebindSearchAbort) _rebindSearchAbort.abort();
+  _rebindSearchAbort = new AbortController();
+  const signal = _rebindSearchAbort.signal;
   try {
-    const res = await fetch(`/api/drive/search-folders?q=${encodeURIComponent(q)}`, { credentials: 'include' });
+    const res = await fetch(`/api/drive/search-folders?q=${encodeURIComponent(q)}`, { credentials: 'include', signal });
     const data = await res.json();
+    if (signal.aborted) return;
     const el = document.getElementById('rebindFolderResults');
     if (!data.folders?.length) {
       el.innerHTML = '<div style="font-size:12px;color:var(--muted);font-style:italic;padding:8px 0">No folders found — try a different search term</div>';
@@ -1324,6 +1338,7 @@ async function searchRebindFolders(q) {
       </div>
     `).join('');
   } catch(e) {
+    if (e.name === 'AbortError') return;
     document.getElementById('rebindFolderResults').innerHTML =
       `<div style="font-size:12px;color:var(--red);padding:8px 0">Search failed: ${e.message}</div>`;
   }
@@ -1498,6 +1513,7 @@ async function confirmMergeDeal() {
       <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px">Search AllContacts folder by name</label>
       <div style="display:flex;gap:8px">
         <input id="mergeLegacySearch" type="text" placeholder="e.g. Josie OGara or University of Texas"
+          autocomplete="off" spellcheck="false"
           style="flex:1;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none"
           oninput="mergeLegacySearchDebounce()" />
         <button onclick="runMergeLegacySearch()" style="padding:9px 14px;background:var(--orange);color:white;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Search</button>
@@ -1531,20 +1547,23 @@ async function confirmMergeDeal() {
 let _mergeLegacyDealId = null;
 let _mergeLegacySelectedFolder = null;
 let _mergeLegacySearchTimer = null;
+let _mergeLegacySearchAbort = null;
 
 function openMergeLegacy(dealId) {
   _mergeLegacyDealId = dealId;
   _mergeLegacySelectedFolder = null;
   const deal = allDeals.find(d => d.id === dealId) || {};
   document.getElementById('mergeLegacyDealName').textContent = deal.name || dealId;
-  document.getElementById('mergeLegacySearch').value = deal.name
+  const preVal = deal.name
     ? deal.name.replace(/\s*[·\-–—]\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\s*$/i, '').trim()
     : '';
+  document.getElementById('mergeLegacySearch').value = preVal;
   document.getElementById('mergeLegacyResults').innerHTML = '';
   document.getElementById('mergeLegacyStep1').style.display = 'block';
   document.getElementById('mergeLegacyStep1Cancel').style.display = 'block';
   document.getElementById('mergeLegacyStep2').style.display = 'none';
   document.getElementById('mergeLegacyModal').style.display = 'flex';
+  if (preVal.length >= 2) setTimeout(runMergeLegacySearch, 200);
 }
 
 function closeMergeLegacy() {
@@ -1568,11 +1587,15 @@ function mergeLegacySearchDebounce() {
 async function runMergeLegacySearch() {
   const q = document.getElementById('mergeLegacySearch').value.trim();
   if (!q) return;
+  if (_mergeLegacySearchAbort) _mergeLegacySearchAbort.abort();
+  _mergeLegacySearchAbort = new AbortController();
+  const signal = _mergeLegacySearchAbort.signal;
   const el = document.getElementById('mergeLegacyResults');
   el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0">Searching…</div>';
   try {
-    const res = await fetch(`/api/drive/search-legacy-folder?q=${encodeURIComponent(q)}`, { credentials: 'include' });
+    const res = await fetch(`/api/drive/search-legacy-folder?q=${encodeURIComponent(q)}`, { credentials: 'include', signal });
     const data = await res.json();
+    if (signal.aborted) return;
     if (!data.success) throw new Error(data.error);
     if (!data.folders.length) {
       el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0">No folders found matching that name.</div>';
@@ -1584,6 +1607,7 @@ async function runMergeLegacySearch() {
         📁 ${f.name}
       </div>`).join('');
   } catch(e) {
+    if (e.name === 'AbortError') return;
     el.innerHTML = `<div style="font-size:12px;color:#ef4444;padding:8px 0">Error: ${e.message}</div>`;
   }
 }

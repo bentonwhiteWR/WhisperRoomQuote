@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.9', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'QB invoice tax now matches the quote exactly. QB Online\'s Automated Sales Tax was taxing the gross subtotal (pre-discount), while TaxJar taxes the net (post-discount) — the legally correct base. Result: QB invoices were over-collecting tax by (rate × discount). Fix uses QB\'s per-invoice override flag (TxnTaxDetail.TaxLineDetail.Override:true) to force the TaxJar amount through, leaving AST enabled for everything else. AST keeps tracking liability normally; only the displayed tax dollar amount is overridden.'},
+        {t:'fix', d:'QB invoice billing address now uses the rep\'s separate billing address when present, instead of always copying the shipping address. Previously the process-order route never read the billing object from the request body, so QB always saw ship-to in the Bill To field.'},
+      ]
+    },
+    {
       v:'1.7.8', date:'May 7, 2026', tag:'security',
       changes:[
         {t:'security', d:'QB invoice deletion gating switched from HubSpot ownerId to login email. Allowed by default: bentonwhite@whisperroom.com and accounting@whisperroom.com. The previous ownerId allowlist (36303670 / 38732178) wasn\'t matching the accounting@ login. Override env var renamed: QB_INVOICE_DELETE_OWNERS → QB_INVOICE_DELETE_EMAILS (comma-separated, case-insensitive).'},

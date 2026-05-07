@@ -7812,7 +7812,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
     try {
       const body = JSON.parse(await readBody(req));
       const { dealId, quoteNumber, lineItems, freight, tax, discount, install,
-              customer, foamColor, hingePreference, apColor, waType, productionNotes,
+              customer, billing, foamColor, hingePreference, apColor, waType, productionNotes,
               deliveryNotes, ownerId, dealName, paymentType, poNumber,
               canadian, customsBroker } = body;
 
@@ -8168,6 +8168,16 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             Country: 'US',
           } : null;
 
+          // QB bill address — uses the separate billing object when the rep filled
+          // one in on the quote; otherwise mirrors the ship address.
+          const billAddr = (billing && (billing.address || billing.city || billing.state || billing.zip)) ? {
+            ...(billing.address ? { Line1:                   billing.address } : {}),
+            ...(billing.city    ? { City:                    billing.city    } : {}),
+            ...(billing.state   ? { CountrySubDivisionCode:  billing.state   } : {}),
+            ...(billing.zip     ? { PostalCode:              billing.zip     } : {}),
+            Country: 'US',
+          } : shipAddr;
+
           const cust = await qb.findOrCreateCustomer({
             // Company is primary when present (B2B). Falls back to person name, then email.
             displayName: c.company || [c.firstName, c.lastName].filter(Boolean).join(' ') || c.email || 'Unknown',
@@ -8175,7 +8185,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             familyName:  c.lastName   || '',
             email:       c.email      || '',
             companyName: c.company    || '',
-            billAddr:    shipAddr,
+            billAddr,
             shipAddr,
           });
 
@@ -8267,17 +8277,54 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             console.warn('[process-order] QB term lookup failed, skipping SalesTermRef:', e.message);
           }
 
+          // Tax override — force QB to use the TaxJar-calculated amount instead of
+          // letting AST recalculate (which taxes the gross subtotal pre-discount and
+          // ignores TaxJar nuances like TN's single-article cap).
+          let txnTaxDetail = null;
+          if (taxTotal > 0) {
+            try {
+              const [taxCode, taxRate] = await Promise.all([
+                qb.findAnyActiveTaxCode(),
+                qb.findAnyActiveTaxRate(),
+              ]);
+              if (taxCode && taxRate) {
+                const netTaxable  = parseFloat((sub - discAmt + (tax?.freightTaxed ? freightTotal : 0)).toFixed(2));
+                const derivedPct  = netTaxable > 0 ? parseFloat(((taxTotal / netTaxable) * 100).toFixed(4)) : 0;
+                txnTaxDetail = {
+                  TxnTaxCodeRef: { value: String(taxCode.Id) },
+                  TotalTax:      parseFloat(taxTotal.toFixed(2)),
+                  TaxLine: [{
+                    Amount:     parseFloat(taxTotal.toFixed(2)),
+                    DetailType: 'TaxLineDetail',
+                    TaxLineDetail: {
+                      TaxRateRef:       { value: String(taxRate.Id) },
+                      PercentBased:     true,
+                      TaxPercent:       derivedPct,
+                      NetAmountTaxable: netTaxable,
+                      Override:         true,
+                    },
+                  }],
+                };
+              } else {
+                console.warn('[process-order] QB tax override skipped — no active TaxCode/TaxRate found');
+              }
+            } catch (e) {
+              console.warn('[process-order] QB tax override lookup failed:', e.message);
+            }
+          }
+
           const invoice = await qb.createInvoice({
             customerRef:  { value: cust.Id },
             docNumber:    quoteNumber,
             txnDate:      new Date().toISOString().split('T')[0],
             lines:        qbLines,
             memo:         dealName || quoteNumber,
-            billAddr:     shipAddr,
+            billAddr,
             shipAddr,
             billEmail:    c.email || null,
             customFields: customFields.length ? customFields : null,
             salesTermRef,
+            txnTaxDetail,
           });
 
           if (invoice?.Id) {

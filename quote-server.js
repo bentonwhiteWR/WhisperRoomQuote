@@ -942,16 +942,16 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Fetch invoices for a date range: /api/qb/invoices?from=YYYY-MM-DD&to=YYYY-MM-DD
+  // Fetch invoices: /api/qb/invoices?from=YYYY-MM-DD&to=YYYY-MM-DD
+  // Omit from/to to fetch all invoices (no date filter).
   if (pathname === '/api/qb/invoices' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
       const { from, to } = parsed.query;
-      if (!from || !to) { json({ error: 'from and to params required' }, 400); return; }
       const [invoices, credits, refunds] = await Promise.all([
-        qb.fetchInvoices(from, to),
-        qb.fetchCreditMemos(from, to).catch(e => { console.warn('[reconcile] fetchCreditMemos failed:', e.message); return []; }),
-        qb.fetchRefundReceipts(from, to).catch(e => { console.warn('[reconcile] fetchRefundReceipts failed:', e.message); return []; }),
+        qb.fetchInvoices(from || null, to || null),
+        (from && to) ? qb.fetchCreditMemos(from, to).catch(e => { console.warn('[reconcile] fetchCreditMemos failed:', e.message); return []; }) : Promise.resolve([]),
+        (from && to) ? qb.fetchRefundReceipts(from, to).catch(e => { console.warn('[reconcile] fetchRefundReceipts failed:', e.message); return []; }) : Promise.resolve([]),
       ]);
       // Tag non-invoices so the frontend can distinguish them.
       for (const c of credits) c._type = 'credit_memo';

@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.18', date:'May 7, 2026', tag:'ui',
+      changes:[
+        {t:'ui',  d:'QB Invoices is now the first tab on the Accounting page and auto-loads the last 90 days when you open the page.'},
+        {t:'add', d:'Search box on the QB Invoices tab. Filters the loaded invoices by customer name, doc number, or bill email as you type. Press Enter (or click "Search All") to fetch all invoices across all time — no date filter — then type to narrow results.'},
+        {t:'fix', d:'Server endpoint /api/qb/invoices now accepts no date params to return all invoices; credit/refund fetches are skipped in the all-time path.'},
+      ]
+    },
+    {
       v:'1.7.17', date:'May 7, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Quote Builder top nav now includes "Accounting" link, matching the Deal Hub and other dashboards.'},

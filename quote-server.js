@@ -97,6 +97,7 @@ const {
   SERVER_REP_NUMBERS,
   initDb,
   generateFreeQuoteNumber,
+  previewNextQuoteNumber,
   saveQuoteToDb,
   getQuoteFromDb,
   searchQuotesInDb,
@@ -106,7 +107,18 @@ const {
 
 const PORT         = process.env.PORT || 3457;
 const PASSWORD     = process.env.WR_PASSWORD || '';
-const APP_VERSION  = (() => { try { return require('./package.json').version; } catch(e) { return '1.0.0'; } })();
+const APP_VERSION  = (() => {
+  let base = '1.0.0';
+  try { base = require('./package.json').version; } catch(e) {}
+  // Append the current git short SHA so each deploy has a unique build id.
+  try {
+    const sha = require('child_process')
+      .execSync('git rev-parse --short HEAD', { stdio: ['ignore','pipe','ignore'], cwd: __dirname })
+      .toString().trim();
+    if (sha) return `${base}+${sha}`;
+  } catch(e) {}
+  return base;
+})();
 
 const logger = require('./lib/logger');
 const { writelog } = logger;
@@ -151,6 +163,9 @@ const taxjar = require('./lib/taxjar');
 const { TAXJAR_KEY, calculateTaxProper } = taxjar;
 // taxjar.init(...) called after httpsRequest, NEXUS_STATES, toStateAbbr are defined
 
+const qb = require('./lib/quickbooks');
+qb.init({ getDb: () => db });
+
 
 const auth = require('./lib/auth');
 auth.init({ getDb: () => db, parseCookies });
@@ -187,9 +202,9 @@ function httpsRequest(options, body, rawBody) {
         catch(e) { resolve({ status: res.statusCode, body: data }); }
       });
     });
-    req.setTimeout(15000, () => {
+    req.setTimeout(options.timeoutMs || 15000, () => {
       req.destroy();
-      reject(new Error(`HubSpot API timeout: ${options.path?.slice(0,60)}`));
+      reject(new Error(`API timeout: ${options.hostname}${options.path?.slice(0,60)}`));
     });
     req.on('error', reject);
     if (rawBody) req.write(rawBody);
@@ -257,6 +272,16 @@ const server = http.createServer(async (req, res) => {
   };
 
   // ── API: Admin — backfill missing share tokens ───────────────────
+  if (pathname === '/api/admin/drive-config' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    json({
+      GDRIVE_ROOT_FOLDER,
+      rootFolderUrl: `https://drive.google.com/drive/folders/${GDRIVE_ROOT_FOLDER}`,
+      envOverride: !!process.env.GDRIVE_ROOT_FOLDER,
+    });
+    return;
+  }
+
   if (pathname === '/api/admin/backfill-tokens' && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
@@ -798,6 +823,263 @@ const server = http.createServer(async (req, res) => {
     json({ version: APP_VERSION }); return;
   }
 
+  // GET /api/quote-number/preview?ownerId=X[&dealId=Y]
+  // Returns the quote number that would be assigned next for this rep today,
+  // without reserving it. Used by the quote builder to show the rep what
+  // number they're about to create — flags duplicate-submission scenarios
+  // (e.g. seq jumps from 01 to 02 unexpectedly) before they happen.
+  if (pathname === '/api/quote-number/preview' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const ownerId = parsed.query.ownerId || '';
+      const dealId  = parsed.query.dealId  || null;
+      const next = await previewNextQuoteNumber(ownerId, dealId);
+      json({ next });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // ── QuickBooks OAuth + API ────────────────────────────────────────
+
+  // Step 1: kick off OAuth — redirect browser to Intuit's consent screen
+  if (pathname === '/api/qb/connect' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    const redirectUri = `${PUBLIC_BASE_URL}/api/qb/callback`;
+    const authUrl = qb.getAuthUrl(redirectUri);
+    res.writeHead(302, { Location: authUrl });
+    res.end();
+    return;
+  }
+
+  // Step 2: Intuit redirects here with code + state + realmId
+  if (pathname === '/api/qb/callback' && req.method === 'GET') {
+    try {
+      const { code, state, realmId, error: oauthError } = parsed.query;
+      if (oauthError) {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`<p style="font-family:sans-serif;color:red">QuickBooks auth error: ${oauthError}. <a href="/reconcile">Back</a></p>`);
+        return;
+      }
+      const { tokens } = await qb.exchangeCode(code, state);
+      const now = Date.now();
+      await qb.saveTokens({
+        realmId,
+        accessToken:      tokens.access_token,
+        refreshToken:     tokens.refresh_token,
+        accessExpiresAt:  now + (tokens.expires_in                 || 3600)    * 1000,
+        refreshExpiresAt: now + (tokens.x_refresh_token_expires_in || 8726400) * 1000,
+      });
+      res.writeHead(302, { Location: '/reconcile?qb=connected' });
+      res.end();
+    } catch(e) {
+      console.error('[qb/callback]', e.message);
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(`<p style="font-family:sans-serif;color:red">Error: ${e.message}. <a href="/reconcile">Back</a></p>`);
+    }
+    return;
+  }
+
+  // Connection status
+  if (pathname === '/api/qb/status' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try { json(await qb.getStatus()); } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // Disconnect
+  if (pathname === '/api/qb/disconnect' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try { await qb.clearTokens(); json({ ok: true }); } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // Diagnostic: fetch CompanyInfo and return raw response for debugging
+  if (pathname === '/api/qb/test' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const r = await qb.getCompanyInfo();
+      json(r);
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // Fetch a single QB invoice by DocNumber: /api/qb/invoice?docNumber=WR-12345
+  if (pathname === '/api/qb/invoice' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { docNumber } = parsed.query;
+      if (!docNumber) { json({ error: 'docNumber param required' }, 400); return; }
+      const data = await qb.qbQueryRaw(`SELECT * FROM Invoice WHERE DocNumber = '${String(docNumber).replace(/'/g,"''")}'`);
+      json(data);
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // Fetch QB company preferences (helps diagnose shipping item config)
+  if (pathname === '/api/qb/preferences' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const data = await qb.getPreferences();
+      json(data);
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // Fetch invoices for a date range: /api/qb/invoices?from=YYYY-MM-DD&to=YYYY-MM-DD
+  if (pathname === '/api/qb/invoices' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { from, to } = parsed.query;
+      if (!from || !to) { json({ error: 'from and to params required' }, 400); return; }
+      const [invoices, credits, refunds] = await Promise.all([
+        qb.fetchInvoices(from, to),
+        qb.fetchCreditMemos(from, to).catch(e => { console.warn('[reconcile] fetchCreditMemos failed:', e.message); return []; }),
+        qb.fetchRefundReceipts(from, to).catch(e => { console.warn('[reconcile] fetchRefundReceipts failed:', e.message); return []; }),
+      ]);
+      // Tag non-invoices so the frontend can distinguish them.
+      for (const c of credits) c._type = 'credit_memo';
+      for (const r of refunds) r._type = 'refund_receipt';
+      const results = [...invoices, ...credits, ...refunds];
+      json({ results, total: results.length });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+
+  // Fetch closed-won + shipped HS deals for a date range (for reconciliation)
+  if (pathname === '/api/reconcile/hs-deals' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { from, to } = parsed.query;
+      if (!from || !to) { json({ error: 'from and to params required' }, 400); return; }
+      const fromTs = new Date(from).getTime().toString();
+      const toTs   = new Date(to + 'T23:59:59Z').getTime().toString();
+
+      // Paginate through all matching deals
+      let allDeals = [], after = null;
+      do {
+        const searchBody = {
+          limit: 200,
+          ...(after ? { after } : {}),
+          filterGroups: [{
+            filters: [
+              { propertyName: 'dealstage', operator: 'IN',  values: ['closedwon', '845719'] },
+              { propertyName: 'closedate', operator: 'GTE', value: fromTs },
+              { propertyName: 'closedate', operator: 'LTE', value: toTs },
+            ]
+          }],
+          properties: ['dealname', 'amount', 'closedate', 'hubspot_owner_id', 'dealstage', 'tax_rate', 'total_tax_amount', 'freight_cost', 'shipping_state'],
+          sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
+        };
+        const r = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/deals/search',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+        }, searchBody);
+        const results = r.body?.results || [];
+        allDeals.push(...results);
+        after = r.body?.paging?.next?.after || null;
+      } while (after);
+
+      // Enrich with freight/tax/subtotal breakdown from our DB quote snapshots
+      let snapshotMap = {};
+      if (db && allDeals.length > 0) {
+        try {
+          const dealIds = allDeals.map(d => d.id);
+          const snapRes = await db.query(
+            `SELECT DISTINCT ON (deal_id) deal_id, json_snapshot
+             FROM quotes WHERE deal_id = ANY($1::text[])
+             ORDER BY deal_id, created_at DESC`,
+            [dealIds]
+          );
+          for (const row of snapRes.rows) {
+            snapshotMap[row.deal_id] = row.json_snapshot;
+          }
+        } catch(e) { console.warn('[reconcile] snapshot enrich failed:', e.message); }
+      }
+
+      const deals = allDeals.map(d => {
+        const snap     = snapshotMap[d.id] || {};
+        // Freight: prefer the HubSpot deal property (always populated for deals
+        // created via this app), fall back to snapshot for legacy deals.
+        const freight  = parseFloat(d.properties?.freight_cost || snap.freight?.amount || snap.freight || 0) || 0;
+        const taxRate  = parseFloat(d.properties?.tax_rate || snap.tax?.rate || 0) || 0;
+        const total    = parseFloat(d.properties?.amount || 0);
+
+        // State taxes freight? Look up nexus map.
+        const rawState = d.properties?.shipping_state || snap.ship?.state || snap.shipState || '';
+        const stateAbbr = toStateAbbr(rawState);
+        const freightTaxable = !!(NEXUS_STATES[stateAbbr]?.taxFreight);
+
+        // Compute pre-discount subtotal from line items if present
+        const lineSubtotal = (snap.lineItems && snap.lineItems.length)
+          ? snap.lineItems.filter(i => parseFloat(i.price) > 0)
+              .reduce((s, i) => s + (parseFloat(i.price) || 0) * (parseFloat(i.qty || i.quantity || 1)), 0)
+          : 0;
+
+        // Compute discount amount from snapshot.discount = { value, type: 'pct'|'flat' }
+        let discountAmt = 0;
+        if (snap.discount && parseFloat(snap.discount.value) > 0) {
+          const dv = parseFloat(snap.discount.value);
+          discountAmt = snap.discount.type === 'pct' ? lineSubtotal * dv / 100 : dv;
+        }
+
+        // Subtotal: use snapshot line items when available, otherwise approximate.
+        let subtotal;
+        if (snap.lineItems && snap.lineItems.length) {
+          subtotal = lineSubtotal;
+        } else {
+          subtotal = Math.max(0, total - freight);
+        }
+
+        // Tax: back-calculate from the tax-inclusive deal total using the stored
+        // HubSpot tax_rate. Branches on whether the state taxes freight:
+        //   Freight taxable:  total = (productBase + freight) × (1 + r)
+        //     → tax = Round((total/(1+r) - freight) × r, 2) + Round(freight × r, 2)
+        //   Freight not taxable: total = productBase × (1 + r) + freight
+        //     → tax = Round((total - freight) × r / (1 + r), 2)
+        // If tax_rate is blank/0 the deal has no tax (no nexus, exempt, etc.).
+        let taxAmt = 0;
+        if (taxRate > 0) {
+          const r = taxRate / 100;
+          if (freightTaxable) {
+            const preTaxBase = total / (1 + r);
+            const productTax = Math.round((preTaxBase - freight) * r * 100) / 100;
+            const freightTax = Math.round(freight * r * 100) / 100;
+            taxAmt = Math.max(0, productTax + freightTax);
+          } else {
+            taxAmt = Math.round(Math.max(0, (total - freight) * r / (1 + r)) * 100) / 100;
+          }
+        }
+
+        return {
+          dealId:    d.id,
+          stage:     d.properties?.dealstage,
+          name:      d.properties?.dealname || '',
+          customer:  (d.properties?.dealname || '').replace(/\s*[-—]\s*(new deal|quote)?\s*$/i, '').trim(),
+          closedate: (() => {
+            const cd = d.properties?.closedate;
+            if (!cd) return null;
+            const ms = Number(cd);
+            const dt = (!isNaN(ms) && ms > 0) ? new Date(ms) : new Date(cd);
+            return isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 10);
+          })(),
+          subtotal:  Math.round(subtotal * 100) / 100,
+          discount:  Math.round(discountAmt * 100) / 100,
+          freight:   Math.round(freight * 100) / 100,
+          taxRate,
+          taxAmt:    Math.round(taxAmt * 100) / 100,
+          state:     stateAbbr || null,
+          freightTaxable,
+          total,
+        };
+      });
+
+      json({ results: deals, total: deals.length });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
 
   // GET /api/reconcile/links — return all saved manual links
   if (pathname === '/api/reconcile/links' && req.method === 'GET') {
@@ -810,7 +1092,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // POST /api/reconcile/link — save a manual HS↔QB link
+  // POST /api/reconcile/link — save a manual HS↔QB link.
+  // Multiple QB invoices may be linked to the same HS deal (combined matching).
   if (pathname === '/api/reconcile/link' && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
@@ -819,7 +1102,7 @@ const server = http.createServer(async (req, res) => {
       if (!db) { json({ error: 'No DB' }, 500); return; }
       await db.query(
         `INSERT INTO reconcile_links (hs_deal_id, qb_invoice_id) VALUES ($1, $2)
-         ON CONFLICT (hs_deal_id) DO UPDATE SET qb_invoice_id = EXCLUDED.qb_invoice_id, created_at = NOW()`,
+         ON CONFLICT (hs_deal_id, qb_invoice_id) DO NOTHING`,
         [hsDealId, qbInvoiceId]
       );
       json({ ok: true });
@@ -827,15 +1110,77 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // DELETE /api/reconcile/link — remove a manual link
+  // DELETE /api/reconcile/link — remove a manual link.
+  // If qbInvoiceId provided, removes only that pairing; otherwise removes all
+  // pairings for the HS deal.
   if (pathname === '/api/reconcile/link' && req.method === 'DELETE') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
-      const { hsDealId } = JSON.parse(await readBody(req));
+      const { hsDealId, qbInvoiceId } = JSON.parse(await readBody(req));
       if (!hsDealId) { json({ error: 'hsDealId required' }, 400); return; }
       if (!db) { json({ error: 'No DB' }, 500); return; }
-      await db.query('DELETE FROM reconcile_links WHERE hs_deal_id = $1', [hsDealId]);
+      if (qbInvoiceId) {
+        await db.query('DELETE FROM reconcile_links WHERE hs_deal_id = $1 AND qb_invoice_id = $2', [hsDealId, qbInvoiceId]);
+      } else {
+        await db.query('DELETE FROM reconcile_links WHERE hs_deal_id = $1', [hsDealId]);
+      }
       json({ ok: true });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // GET /api/reconcile/blocks — return all blocked auto-match pairs
+  if (pathname === '/api/reconcile/blocks' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      if (!db) { json({ results: [] }); return; }
+      const r = await db.query('SELECT hs_deal_id, qb_invoice_id FROM reconcile_blocks ORDER BY created_at DESC');
+      json({ results: r.rows });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // POST /api/reconcile/block — block a wrong auto-match (HS↔QB pair)
+  if (pathname === '/api/reconcile/block' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { hsDealId, qbInvoiceId } = JSON.parse(await readBody(req));
+      if (!hsDealId || !qbInvoiceId) { json({ error: 'hsDealId and qbInvoiceId required' }, 400); return; }
+      if (!db) { json({ error: 'No DB' }, 500); return; }
+      await db.query(
+        `INSERT INTO reconcile_blocks (hs_deal_id, qb_invoice_id) VALUES ($1, $2)
+         ON CONFLICT (hs_deal_id, qb_invoice_id) DO NOTHING`,
+        [hsDealId, qbInvoiceId]
+      );
+      json({ ok: true });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // DELETE /api/reconcile/block — remove a block (allow auto-match again)
+  if (pathname === '/api/reconcile/block' && req.method === 'DELETE') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const { hsDealId, qbInvoiceId } = JSON.parse(await readBody(req));
+      if (!hsDealId || !qbInvoiceId) { json({ error: 'hsDealId and qbInvoiceId required' }, 400); return; }
+      if (!db) { json({ error: 'No DB' }, 500); return; }
+      await db.query('DELETE FROM reconcile_blocks WHERE hs_deal_id = $1 AND qb_invoice_id = $2', [hsDealId, qbInvoiceId]);
+      json({ ok: true });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // GET /api/hs/portal-id — returns HubSpot portal/hub ID for building deal URLs
+  if (pathname === '/api/hs/portal-id' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const r = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/account-info/v3/details',
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Accept': 'application/json' },
+      });
+      json({ portalId: r.body?.portalId });
     } catch(e) { json({ error: e.message }, 500); }
     return;
   }
@@ -1304,56 +1649,39 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, isRevision, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, notes, repFoamColor, repHingePreference, repApColor, install } = body;
+      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, loadedQuoteNumber, loadedQuoteTotal, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, forceNewFolder, newFolderName, notes, repFoamColor, repHingePreference, repApColor, repWaType, install } = body;
       let { quoteNumber } = body;
 
-      // ── In-place update detection ────────────────────────────────────
-      // If this is a revision and total + line item count haven't changed,
-      // update the snapshot in place — keep the same quote number, skip line item reset
+      // ── Revision vs new-quote decision ───────────────────────────────
+      // Simple rule per product spec: if the rep is editing a specific loaded
+      // quote AND the new total matches that quote's total → revision (reuse
+      // its number, in-place update). Anything else → new quote (next number).
       let _inPlaceUpdate = false;
       let _existingQuoteNumber = null;
-      if (existingDealId && db) {
-        try {
-          const snapRow = await db.query(
-            'SELECT quote_number, total, json_snapshot FROM quotes WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 1',
-            [String(existingDealId)]
-          );
-          if (snapRow.rows.length > 0) {
-            const stored = snapRow.rows[0];
-            const storedTotal = parseFloat(stored.total) || 0;
-            // Filter credits (negative price) from both sides for consistent comparison
-            const storedItems = (stored.json_snapshot?.lineItems || []).filter(i => parseFloat(i.price) >= 0).length;
-            const newTotal    = parseFloat(total) || 0;
-            const newItems    = (lineItems || []).filter(i => parseFloat(i.price) >= 0).length;
-            const totalMatch  = Math.abs(storedTotal - newTotal) < 0.01;
-            const countMatch  = storedItems === newItems;
-            console.log(`[save] in-place check: deal=${existingDealId} storedTotal=${storedTotal} newTotal=${newTotal} storedItems=${storedItems} newItems=${newItems} totalMatch=${totalMatch} countMatch=${countMatch}`);
-            if (totalMatch && countMatch) {
-              _inPlaceUpdate = true;
-              _existingQuoteNumber = stored.quote_number;
-              console.log(`[save] in-place update detected — keeping quote number ${_existingQuoteNumber}`);
-            } else {
-              console.log(`[save] new quote required — ${!totalMatch ? `total changed ($${storedTotal} → $${newTotal})` : `item count changed (${storedItems} → ${newItems})`}`);
-            }
-          } else {
-            console.log(`[save] no stored snapshot for deal ${existingDealId} — treating as new quote`);
-          }
-        } catch(e) { console.warn('[save] in-place check failed:', e.message); }
-      }
-
-      // If in-place, use existing quote number — skip generating a new one
-      if (_inPlaceUpdate && _existingQuoteNumber) {
-        quoteNumber = _existingQuoteNumber;
+      if (loadedQuoteNumber && loadedQuoteTotal != null) {
+        const baselineTotal = parseFloat(loadedQuoteTotal);
+        const newTotal      = parseFloat(total || 0);
+        const totalMatch    = Math.abs(baselineTotal - newTotal) < 0.01;
+        console.log(`[save] revision check: loaded=${loadedQuoteNumber} baseline=${baselineTotal} new=${newTotal} match=${totalMatch}`);
+        if (totalMatch) {
+          _inPlaceUpdate = true;
+          _existingQuoteNumber = String(loadedQuoteNumber);
+          quoteNumber = _existingQuoteNumber;
+        }
+      } else {
+        console.log(`[save] no loaded quote — treating as new quote`);
       }
 
       // Resolve any quote number collision server-side before touching HubSpot
-      // This replaces the client error-and-retry flow with silent auto-increment
+      // This replaces the client error-and-retry flow with silent auto-increment.
+      // Pass null for dealId so the same-deal shortcut in generateFreeQuoteNumber
+      // is bypassed — for non-in-place pushes we always need a genuinely new number,
+      // even if the loaded quote already belongs to this deal.
       if (quoteNumber && db && !_inPlaceUpdate) {
         const resolvedContactId = existingContactId ? String(existingContactId) : null;
-        const resolvedDealId    = existingDealId    ? String(existingDealId)    : null;
-        const free = await generateFreeQuoteNumber(quoteNumber, ownerId, resolvedDealId, resolvedContactId);
+        const free = await generateFreeQuoteNumber(quoteNumber, ownerId, null, resolvedContactId);
         if (free !== quoteNumber) {
-          console.log(`[save] quote number collision: ${quoteNumber} → reassigned to ${free}`);
+          console.log(`[save] quote number: ${quoteNumber} → assigned ${free}`);
           quoteNumber = free;
         }
       }
@@ -1499,6 +1827,9 @@ const server = http.createServer(async (req, res) => {
           // Update existing deal — amount + address fields updated from latest quote
           const dealPatchProps = {
             amount: total.toFixed(2),
+            tax_rate: tax && tax.rate ? String(parseFloat((tax.rate * 100).toFixed(4))) : '',
+            total_tax_amount: tax && tax.tax != null ? String(parseFloat(tax.tax).toFixed(2)) : '0',
+            discount: discount && discount.value ? String(discount.value) : '',
             shipping_address:      customer.address    || '',
             shipping_city:         customer.city       || '',
             shipping_zipcode:      customer.zip        || '',
@@ -1511,6 +1842,7 @@ const server = http.createServer(async (req, res) => {
             billing_first_name:    billing ? (billing.firstName || customer.firstName || '') : (customer.firstName || ''),
             billing_last_name:     billing ? (billing.lastName  || customer.lastName  || '') : (customer.lastName  || ''),
             billing_phone_number:  billing ? (billing.phone     || customer.phone     || '') : (customer.phone     || ''),
+            ...(billing && billing.name ? { bill_to_name: billing.name } : {}),
             dealname: dealName || undefined,
             ...(() => {
               const earlyStages = ['appointmentscheduled', 'qualifiedtobuy'];
@@ -1566,7 +1898,8 @@ const server = http.createServer(async (req, res) => {
           dealname: dealName || (() => {
             return customer.company || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || 'Customer';
           })(),
-          tax_rate: tax && tax.rate ? String((tax.rate * 100).toFixed(3)) : '',
+          tax_rate: tax && tax.rate ? String(parseFloat((tax.rate * 100).toFixed(4))) : '',
+          total_tax_amount: tax && tax.tax != null ? String(parseFloat(tax.tax).toFixed(2)) : '0',
           quote_number: quoteNumber || '',
           freight_cost: (() => {
             // When mode is "delivery_install", the combined charge IS the freight for this deal.
@@ -1592,8 +1925,9 @@ const server = http.createServer(async (req, res) => {
           billing_first_name:    billing ? (billing.firstName || customer.firstName || '') : (customer.firstName || ''),
           billing_last_name:     billing ? (billing.lastName  || customer.lastName  || '') : (customer.lastName  || ''),
           billing_phone_number:  billing ? (billing.phone     || customer.phone     || '') : (customer.phone     || ''),
+          ...(billing && billing.name ? { bill_to_name: billing.name } : {}),
           pipeline: 'default',
-          dealstage: isRevision ? 'qualifiedtobuy' : 'appointmentscheduled',
+          dealstage: 'appointmentscheduled',
           amount: total.toFixed(2),
           hubspot_owner_id: String(ownerId),
           closedate: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
@@ -1812,6 +2146,7 @@ const server = http.createServer(async (req, res) => {
           repFoamColor:       repFoamColor       || '',
           repHingePreference: repHingePreference || '',
           repApColor:         repApColor         || '',
+          repWaType:          repWaType          || '',
         });
         // Fetch the token we just saved
         const tokenRow = await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]);
@@ -1824,8 +2159,13 @@ const server = http.createServer(async (req, res) => {
             if (bindFolderId) {
               await db?.query('UPDATE quotes SET gdrive_folder_id = $1 WHERE quote_number = $2', [bindFolderId, quoteNumber]);
               console.log(`[drive] using bound folder ${bindFolderId} for ${quoteNumber}`);
+            } else if (forceNewFolder) {
+              // 2a. Rep explicitly chose "Create New Folder" — skip inheritance, always create fresh.
+              // If they typed a name in the prompt, use it as the folder name; otherwise fall back to company.
+              const folderNameOverride = (newFolderName && String(newFolderName).trim()) || (customer?.company || '');
+              await gdriveCreateDealFolders(finalDealName, quoteNumber, folderNameOverride, true);
             } else {
-              // 2. Check if contact has a prior folder we can inherit
+              // 2b. Check if contact has a prior folder we can inherit
               let inheritedFolderId = null;
               if (contactId && db) {
                 const priorRow = await db.query(
@@ -1948,15 +2288,17 @@ const server = http.createServer(async (req, res) => {
       const disc = q.discount && q.discount.value > 0
         ? (q.discount.type==='pct' ? sub*q.discount.value/100 : q.discount.value) : 0;
       const freightTbd = q.freight?.tbd === true;
+      const pickupFeeAmt = q.pickupFee ? parseFloat(q.pickupFee) : 0;
       // Install/delivery state. Three modes: 'none' | 'install_only' | 'delivery_install'.
       // In 'delivery_install' mode the install amount REPLACES freight in the totals.
+      // Pickup fee also replaces freight (non-taxable).
       const installMode   = (q.install && q.install.mode) ? q.install.mode : 'none';
       const installAmt    = (q.install && q.install.amount) ? parseFloat(q.install.amount) : 0;
-      const freightAmt    = (installMode === 'delivery_install' && installAmt > 0)
+      const freightAmt    = (pickupFeeAmt > 0 || (installMode === 'delivery_install' && installAmt > 0))
         ? 0
         : ((!freightTbd && q.freight) ? q.freight.total : 0);
       const taxAmt = q.tax ? q.tax.tax : 0;
-      const total = sub - disc + freightAmt + (installAmt > 0 ? installAmt : 0) + taxAmt;
+      const total = sub - disc + freightAmt + pickupFeeAmt + (installAmt > 0 ? installAmt : 0) + taxAmt;
       const c = q.customer || {};
 
       const lineRows = (q.lineItems||[]).map(item =>
@@ -2078,7 +2420,7 @@ tbody tr:hover td{background:#fdfcfb}
       ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
       ${c.phone?`<div class="info-item"><label>Phone</label><span>${c.phone}</span></div>`:''}
       ${(c.address||c.city||c.state||c.zip)?`<div class="info-item"><label>Ship To</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}</span></div>`:''}
-      ${q.billing && (q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
+      ${q.billing && (q.billing.name || q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.name||'',q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
     </div>
   </div>` : ''}
 
@@ -2097,7 +2439,7 @@ tbody tr:hover td{background:#fdfcfb}
         <div class="totals" style="margin-top:0">
           <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
           ${disc>0?`<div class="tot"><span>Discount${q.discount&&q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
-          ${freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
+          ${pickupFeeAmt>0?`<div class="tot"><span>Pickup Fee</span><span>${fmt(pickupFeeAmt)}</span></div>`:freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
           ${installAmt>0?`<div class="tot"><span>${installMode==='delivery_install'?'Delivery and Installation':'Installation'}</span><span>${fmt(installAmt)}</span></div>`:''}
           ${taxAmt>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+(q.tax.rate*100).toFixed(2).replace(/\\.?0+$/,'')+'%)':''}</span><span>${fmt(taxAmt)}</span></div>`:''}
           ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
@@ -2119,17 +2461,19 @@ tbody tr:hover td{background:#fdfcfb}
     const foam  = q.acceptedFoam  || q.repFoamColor       || '';
     const hinge = q.acceptedHinge || q.repHingePreference || '';
     const ap    = q.acceptedApColor || q.repApColor        || '';
+    const wa    = q.repWaType || '';
     const FOAM_HEX = {Gray:'#4a4a4a',Orange:'#d4611a',Blue:'#1a5fa8',Purple:'#5c2a82',Burgundy:'#6e1a2a'};
     const AP_HEX   = {Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteroid:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'};
     const foamSwatch = foam && FOAM_HEX[foam] ? `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${FOAM_HEX[foam]};border:1px solid rgba(0,0,0,.2);vertical-align:middle;margin-right:5px;flex-shrink:0"></span>` : '';
     const apSwatch   = ap   && AP_HEX[ap]     ? `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${AP_HEX[ap]};border:1px solid rgba(0,0,0,.2);vertical-align:middle;margin-right:5px;flex-shrink:0"></span>` : '';
-    if (!foam && !hinge && !ap) return '<div id="specs-card-i" style="display:none"></div>';
+    if (!foam && !hinge && !ap && !wa) return '<div id="specs-card-i" style="display:none"></div>';
     return `<div id="specs-card-i" class="card" style="border-left:3px solid #22c55e;background:#f0fdf4">
     <div class="card-label" style="color:#166534">Order Specs</div>
     <div class="info-grid">
       ${foam  ? `<div class="info-item"><label>Foam Color</label><span style="color:#166534;display:flex;align-items:center">${foamSwatch}${foam}</span></div>`  : ''}
       ${hinge ? `<div class="info-item"><label>Door Hinge</label><span style="color:#166534">${hinge}</span></div>` : ''}
       ${ap    ? `<div class="info-item"><label>Acoustic Package Color</label><span style="color:#166534;display:flex;align-items:center">${apSwatch}${ap}</span></div>` : ''}
+      ${wa    ? `<div class="info-item"><label>WA Type</label><span style="color:#166534">${wa}</span></div>` : ''}
     </div>
   </div>`;
   })()}
@@ -2287,24 +2631,25 @@ tbody tr:hover td{background:#fdfcfb}
         document.getElementById('update-confirm-i').style.display = 'block';
 
         // Live-update the Order Specs card on the page so customer sees change immediately
-        (function updateSpecsCard(cardId, foam, hinge, ap) {
+        (function updateSpecsCard(cardId, foam, hinge, ap, wa) {
           const FHEX = {Gray:'#4a4a4a',Orange:'#d4611a',Blue:'#1a5fa8',Purple:'#5c2a82',Burgundy:'#6e1a2a'};
           const AHEX = {Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteroid:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'};
           const card = document.getElementById(cardId);
           if (!card) return;
-          if (!foam && !hinge && !ap) { card.style.display = 'none'; return; }
+          if (!foam && !hinge && !ap && !wa) { card.style.display = 'none'; return; }
           const sw = function(hex) { return hex ? '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:' + hex + ';border:1px solid rgba(0,0,0,.2);vertical-align:middle;margin-right:5px;flex-shrink:0"></span>' : ''; };
           const fswHex = FHEX[foam] || ''; const aswHex = AHEX[ap] || '';
           let html = '<div class="card-label" style="color:#166534">Order Specs</div><div class="info-grid">';
           if (foam)  html += '<div class="info-item"><label>Foam Color</label><span style="color:#166534;display:flex;align-items:center">' + sw(fswHex) + foam + '</span></div>';
           if (hinge) html += '<div class="info-item"><label>Door Hinge</label><span style="color:#166534">' + hinge + '</span></div>';
           if (ap)    html += '<div class="info-item"><label>Acoustic Package Color</label><span style="color:#166534;display:flex;align-items:center">' + sw(aswHex) + ap + '</span></div>';
+          if (wa)    html += '<div class="info-item"><label>WA Type</label><span style="color:#166534">' + wa + '</span></div>';
           html += '</div>';
           card.innerHTML = html;
           card.style.display = '';
           card.style.borderLeft = '3px solid #22c55e';
           card.style.background = '#f0fdf4';
-        })('specs-card-i', foam, hinge, apColor);
+        })('specs-card-i', foam, hinge, apColor, '${(q.repWaType || '').replace(/'/g, "\\'")}');
         setTimeout(() => { document.getElementById('update-modal-i').style.display = 'none'; document.getElementById('update-confirm-i').style.display = 'none'; document.getElementById('update-btns-i').style.opacity='1'; document.getElementById('update-btns-i').style.pointerEvents='auto'; }, 2000);
       } else {
         document.getElementById('update-btns-i').style.opacity = '1'; document.getElementById('update-btns-i').style.pointerEvents = 'auto';
@@ -2351,14 +2696,16 @@ tbody tr:hover td{background:#fdfcfb}
       const disc = q.discount && q.discount.value > 0
         ? (q.discount.type==='pct' ? sub*q.discount.value/100 : q.discount.value) : 0;
       const freightTbd = q.freight?.tbd === true;
+      const pickupFeeAmt = q.pickupFee ? parseFloat(q.pickupFee) : 0;
       // Install/delivery state. In 'delivery_install' mode install REPLACES freight.
+      // Pickup fee also replaces freight (non-taxable).
       const installMode = (q.install && q.install.mode) ? q.install.mode : 'none';
       const installAmt  = (q.install && q.install.amount) ? parseFloat(q.install.amount) : 0;
-      const freight     = (installMode === 'delivery_install' && installAmt > 0)
+      const freight     = (pickupFeeAmt > 0 || (installMode === 'delivery_install' && installAmt > 0))
         ? 0
         : ((!freightTbd && q.freight) ? q.freight.total : 0);
       const tax = q.tax ? q.tax.tax : 0;
-      const total = sub - disc + freight + (installAmt > 0 ? installAmt : 0) + tax;
+      const total = sub - disc + freight + pickupFeeAmt + (installAmt > 0 ? installAmt : 0) + tax;
       const c = q.customer || {};
 
       const lineRows = (q.lineItems||[]).map(item =>
@@ -2502,7 +2849,7 @@ tbody tr:hover td{background:#fdfcfb}
       ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
       ${c.phone?`<div class="info-item"><label>Phone</label><span>${c.phone}</span></div>`:''}
       ${(c.address||c.city||c.state||c.zip)?`<div class="info-item"><label>Ship To</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}</span></div>`:''}
-      ${q.billing && (q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
+      ${q.billing && (q.billing.name || q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.name||'',q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
     </div>
   </div>` : ''}
 
@@ -2521,7 +2868,7 @@ tbody tr:hover td{background:#fdfcfb}
         <div class="totals" style="margin-top:0">
           <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
           ${disc>0?`<div class="tot"><span>Discount${q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
-          ${freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freight>0?`<div class="tot"><span>Freight</span><span>${fmt(freight)}</span></div>`:''}
+          ${pickupFeeAmt>0?`<div class="tot"><span>Pickup Fee</span><span>${fmt(pickupFeeAmt)}</span></div>`:freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freight>0?`<div class="tot"><span>Freight</span><span>${fmt(freight)}</span></div>`:''}
           ${installAmt>0?`<div class="tot"><span>${installMode==='delivery_install'?'Delivery and Installation':'Installation'}</span><span>${fmt(installAmt)}</span></div>`:''}
           ${tax>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+( q.tax.rate*100).toFixed(2).replace(/\.?0+$/,'')+')%':''}</span><span>${fmt(tax)}</span></div>`:''}
           ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
@@ -2543,20 +2890,28 @@ tbody tr:hover td{background:#fdfcfb}
     const foam  = q.acceptedFoam  || q.repFoamColor       || '';
     const hinge = q.acceptedHinge || q.repHingePreference || '';
     const ap    = q.acceptedApColor || q.repApColor        || '';
+    const wa    = q.repWaType || '';
     const FOAM_HEX = {Gray:'#4a4a4a',Orange:'#d4611a',Blue:'#1a5fa8',Purple:'#5c2a82',Burgundy:'#6e1a2a'};
     const AP_HEX   = {Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteroid:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'};
     const foamSwatch = foam && FOAM_HEX[foam] ? `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${FOAM_HEX[foam]};border:1px solid rgba(0,0,0,.2);vertical-align:middle;margin-right:5px;flex-shrink:0"></span>` : '';
     const apSwatch   = ap   && AP_HEX[ap]     ? `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${AP_HEX[ap]};border:1px solid rgba(0,0,0,.2);vertical-align:middle;margin-right:5px;flex-shrink:0"></span>` : '';
-    if (!foam && !hinge && !ap) return '<div id="specs-card-q" style="display:none"></div>';
+    if (!foam && !hinge && !ap && !wa) return '<div id="specs-card-q" style="display:none"></div>';
     return `<div id="specs-card-q" class="card" style="border-left:3px solid #22c55e;background:#f0fdf4">
     <div class="card-label" style="color:#166534">Order Specs</div>
     <div class="info-grid">
       ${foam  ? `<div class="info-item"><label>Foam Color</label><span style="color:#166334;display:flex;align-items:center">${foamSwatch}${foam}</span></div>`  : ''}
       ${hinge ? `<div class="info-item"><label>Door Hinge</label><span style="color:#166334">${hinge}</span></div>` : ''}
       ${ap    ? `<div class="info-item"><label>Acoustic Package Color</label><span style="color:#166334;display:flex;align-items:center">${apSwatch}${ap}</span></div>` : ''}
+      ${wa    ? `<div class="info-item"><label>WA Type</label><span style="color:#166334">${wa}</span></div>` : ''}
     </div>
   </div>`;
   })()}
+
+  ${q.canadian ? `<div class="card" style="border-left:3px solid #ee6216;background:#fff8f0">
+    <div class="card-label" style="color:#ee6216">International / Canadian Order</div>
+    <p class="terms" style="color:#555">Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.</p>
+    ${q.customsBroker ? `<p class="terms" style="margin-top:8px;color:#333"><strong style="color:#ee6216">Customs Broker:</strong> ${String(q.customsBroker).replace(/</g,'&lt;')}</p>` : ''}
+  </div>` : ''}
 
   <div class="card">
     <div class="card-label">Terms &amp; Conditions</div>
@@ -2913,24 +3268,25 @@ ${q.accepted ? `
         document.getElementById('update-confirm-q').style.display = 'block';
 
         // Live-update the Order Specs card on the page so customer sees change immediately
-        (function updateSpecsCard(cardId, foam, hinge, ap) {
+        (function updateSpecsCard(cardId, foam, hinge, ap, wa) {
           const FHEX = {Gray:'#4a4a4a',Orange:'#d4611a',Blue:'#1a5fa8',Purple:'#5c2a82',Burgundy:'#6e1a2a'};
           const AHEX = {Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteroid:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'};
           const card = document.getElementById(cardId);
           if (!card) return;
-          if (!foam && !hinge && !ap) { card.style.display = 'none'; return; }
+          if (!foam && !hinge && !ap && !wa) { card.style.display = 'none'; return; }
           const sw = function(hex) { return hex ? '<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:' + hex + ';border:1px solid rgba(0,0,0,.2);vertical-align:middle;margin-right:5px;flex-shrink:0"></span>' : ''; };
           const fswHex = FHEX[foam] || ''; const aswHex = AHEX[ap] || '';
           let html = '<div class="card-label" style="color:#166534">Order Specs</div><div class="info-grid">';
           if (foam)  html += '<div class="info-item"><label>Foam Color</label><span style="color:#166534;display:flex;align-items:center">' + sw(fswHex) + foam + '</span></div>';
           if (hinge) html += '<div class="info-item"><label>Door Hinge</label><span style="color:#166534">' + hinge + '</span></div>';
           if (ap)    html += '<div class="info-item"><label>Acoustic Package Color</label><span style="color:#166534;display:flex;align-items:center">' + sw(aswHex) + ap + '</span></div>';
+          if (wa)    html += '<div class="info-item"><label>WA Type</label><span style="color:#166534">' + wa + '</span></div>';
           html += '</div>';
           card.innerHTML = html;
           card.style.display = '';
           card.style.borderLeft = '3px solid #22c55e';
           card.style.background = '#f0fdf4';
-        })('specs-card-q', foam, hinge, apColor);
+        })('specs-card-q', foam, hinge, apColor, '${(q.repWaType || '').replace(/'/g, "\\'")}');
         setTimeout(() => { document.getElementById('update-modal-q').style.display = 'none'; document.getElementById('update-confirm-q').style.display = 'none'; document.getElementById('update-btns-q').style.opacity='1'; document.getElementById('update-btns-q').style.pointerEvents='auto'; }, 2000);
       } else {
         document.getElementById('update-btns-q').style.opacity = '1'; document.getElementById('update-btns-q').style.pointerEvents = 'auto';
@@ -3402,7 +3758,8 @@ ${q.accepted ? `
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const folders = (res2.body?.files || []).map(f => ({ id: f.id, name: f.name }));
-      json({ folders });
+      console.log(`[drive-search] q="${q}" rootFolder=${GDRIVE_ROOT_FOLDER} found=${folders.length}`);
+      json({ folders, _debug: { rootFolderId: GDRIVE_ROOT_FOLDER } });
     } catch(e) { json({ error: e.message }, 500); }
     return;
   }
@@ -4003,6 +4360,252 @@ ${q.accepted ? `
   if (pathname === '/api/admin/backfill-status' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     json(global._backfillStatus || { done: false, message: 'Not started or still running' });
+    return;
+  }
+
+  // ── Admin: Backfill total_tax_amount into HubSpot deals ──────────
+  // GET ?dry=true  → preview: shows counts + sample, no writes
+  // POST           → runs backfill in background (150 ms between PATCHes)
+  // GET (no dry)   → check status via /api/admin/backfill-tax-status
+  if (pathname === '/api/admin/backfill-tax-amount' && (req.method === 'GET' || req.method === 'POST')) {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const dry = req.method === 'GET' && parsed.query.dry === 'true';
+    if (!dry && req.method === 'GET') {
+      json(global._taxBackfillStatus || { done: false, message: 'Not started. POST to begin.' });
+      return;
+    }
+
+    async function runTaxBackfill() {
+      // 1. All deals in our DB that have a stored tax.tax > 0
+      const dbRes = await db.query(`
+        SELECT DISTINCT ON (deal_id)
+          deal_id,
+          (json_snapshot->'tax'->>'tax')::numeric AS tax_amount
+        FROM quotes
+        WHERE deal_id IS NOT NULL
+          AND json_snapshot->'tax'->>'tax' IS NOT NULL
+          AND (json_snapshot->'tax'->>'tax')::numeric > 0
+        ORDER BY deal_id, created_at DESC
+      `);
+      const candidates = dbRes.rows;
+
+      // 2. Batch-read current total_tax_amount from HubSpot (100 at a time)
+      const hsMap = {};
+      const dealIds = candidates.map(r => r.deal_id);
+      for (let i = 0; i < dealIds.length; i += 100) {
+        const batch = dealIds.slice(i, i + 100);
+        const res = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/deals/batch/read',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, { inputs: batch.map(id => ({ id })), properties: ['total_tax_amount'] });
+        for (const deal of (res.body?.results || [])) {
+          hsMap[deal.id] = deal.properties?.total_tax_amount || null;
+        }
+      }
+
+      // 3. Only update deals where HS field is absent or zero
+      const toUpdate = candidates.filter(r => {
+        const v = hsMap[r.deal_id];
+        return !v || v === '0' || v === '0.00';
+      });
+      const alreadySet = candidates.length - toUpdate.length;
+
+      if (dry) {
+        return {
+          dry: true,
+          totalInDb: candidates.length,
+          toUpdate: toUpdate.length,
+          alreadySet,
+          sample: toUpdate.slice(0, 20).map(r => ({
+            dealId: r.deal_id,
+            taxAmount: parseFloat(r.tax_amount).toFixed(2)
+          }))
+        };
+      }
+
+      // 4. PATCH each deal — one at a time with 150 ms gap (safe rate limit)
+      let updated = 0, failed = 0;
+      const errors = [];
+      for (const row of toUpdate) {
+        try {
+          await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path: `/crm/v3/objects/deals/${row.deal_id}`,
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, { properties: { total_tax_amount: String(parseFloat(row.tax_amount).toFixed(2)) } });
+          updated++;
+        } catch(e) {
+          failed++;
+          errors.push({ dealId: row.deal_id, error: e.message });
+        }
+        global._taxBackfillStatus = { done: false, updated, total: toUpdate.length, failed };
+        await new Promise(r => setTimeout(r, 150));
+      }
+      return { done: true, totalInDb: candidates.length, toUpdate: toUpdate.length, alreadySet, updated, failed, errors };
+    }
+
+    if (dry) {
+      try { json(await runTaxBackfill()); }
+      catch(e) { json({ error: e.message }, 500); }
+    } else {
+      json({ success: true, message: 'Backfill started. Poll /api/admin/backfill-tax-amount for progress.' });
+      runTaxBackfill()
+        .then(result => { global._taxBackfillStatus = result; console.log('[backfill-tax] done:', result); })
+        .catch(e  => { global._taxBackfillStatus = { done: true, error: e.message }; console.error('[backfill-tax] error:', e.message); });
+    }
+    return;
+  }
+
+  // ── Admin: Drive folder cleanup / migration ──────────────────────
+  // New "All Contacts" folder inside the Server shared drive
+  const NEW_ALL_CONTACTS = '1UwChoNIa02BoUhT4IzUxEhLsp5OmDzbE';
+
+  // List every subfolder of a given Drive parent (handles pagination)
+  async function driveListAllFolders(parentId) {
+    const folders = [];
+    let pageToken = null;
+    do {
+      const q = encodeURIComponent(`'${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+      let path = `/drive/v3/files?q=${q}&fields=files(id,name),nextPageToken&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives&pageSize=1000`;
+      if (pageToken) path += `&pageToken=${encodeURIComponent(pageToken)}`;
+      const res = await gdriveRequest('GET', path);
+      folders.push(...(res?.files || []));
+      pageToken = res?.nextPageToken || null;
+    } while (pageToken);
+    return folders;
+  }
+
+  // GET  → scan (synchronous report, no writes)
+  // POST → action=delete-orphans | action=move-remaining (fire-and-forget)
+  // GET  /api/admin/drive-cleanup/status → poll progress
+  if (pathname === '/api/admin/drive-cleanup/status' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    json(global._driveCleanupStatus || { done: false, message: 'Not started' });
+    return;
+  }
+
+  if (pathname === '/api/admin/drive-cleanup' && (req.method === 'GET' || req.method === 'POST')) {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+
+    const action = parsed.query.action || (req.method === 'GET' ? 'scan' : '');
+
+    if (action === 'scan') {
+      try {
+        // 1. All real folder IDs from DB
+        const dbRes = await db.query(
+          `SELECT DISTINCT gdrive_folder_id FROM quotes WHERE gdrive_folder_id IS NOT NULL AND gdrive_folder_id != ''`
+        );
+        const realIds = new Set(dbRes.rows.map(r => r.gdrive_folder_id));
+
+        // 2. List folders in both locations
+        const [newFolders, oldFolders] = await Promise.all([
+          driveListAllFolders(NEW_ALL_CONTACTS),
+          GDRIVE_ROOT_FOLDER ? driveListAllFolders(GDRIVE_ROOT_FOLDER) : Promise.resolve([]),
+        ]);
+
+        const newLinked   = newFolders.filter(f =>  realIds.has(f.id));
+        const orphans     = newFolders.filter(f => !realIds.has(f.id));
+        const needsMove   = oldFolders.filter(f =>  realIds.has(f.id));
+        const oldUnlinked = oldFolders.filter(f => !realIds.has(f.id));
+
+        json({
+          summary: {
+            realFolderIdsInDb:       realIds.size,
+            inNewLocation:           newFolders.length,
+            alreadyMigrated:         newLinked.length,
+            orphansInNewLocation:    orphans.length,
+            stillInOldLocation:      needsMove.length,
+            unlinkedInOldLocation:   oldUnlinked.length,
+          },
+          orphans:   orphans.map(f => ({ id: f.id, name: f.name })),
+          needsMove: needsMove.map(f => ({ id: f.id, name: f.name })),
+        });
+      } catch(e) { json({ error: e.message }, 500); }
+      return;
+    }
+
+    if (action === 'delete-orphans') {
+      json({ success: true, message: 'Deleting orphans in background. Poll /api/admin/drive-cleanup/status.' });
+      (async () => {
+        try {
+          const dbRes = await db.query(
+            `SELECT DISTINCT gdrive_folder_id FROM quotes WHERE gdrive_folder_id IS NOT NULL AND gdrive_folder_id != ''`
+          );
+          const realIds  = new Set(dbRes.rows.map(r => r.gdrive_folder_id));
+          const folders  = await driveListAllFolders(NEW_ALL_CONTACTS);
+          const orphans  = folders.filter(f => !realIds.has(f.id));
+          let deleted = 0, failed = 0, errors = [];
+          global._driveCleanupStatus = { done: false, action: 'delete-orphans', total: orphans.length, deleted, failed, errors };
+          for (const f of orphans) {
+            try {
+              await gdriveRequest('PATCH', `/drive/v3/files/${f.id}?supportsAllDrives=true`, { trashed: true });
+              deleted++;
+            } catch(e) {
+              if (e.message.includes('404')) {
+                deleted++; // already gone — count as done
+              } else {
+                failed++;
+                const errEntry = { id: f.id, name: f.name, error: e.message };
+                errors.push(errEntry);
+                if (failed <= 3) console.error(`[drive-cleanup] delete failed for "${f.name}" (${f.id}): ${e.message}`);
+              }
+            }
+            global._driveCleanupStatus = { done: false, action: 'delete-orphans', total: orphans.length, deleted, failed, recentErrors: errors.slice(-3) };
+            await new Promise(r => setTimeout(r, 100));
+          }
+          global._driveCleanupStatus = { done: true, action: 'delete-orphans', total: orphans.length, deleted, failed, errors: errors.slice(0, 20) };
+          console.log(`[drive-cleanup] delete-orphans done: ${deleted} deleted, ${failed} failed`);
+        } catch(e) {
+          global._driveCleanupStatus = { done: true, action: 'delete-orphans', error: e.message };
+          console.error('[drive-cleanup] delete-orphans error:', e.message);
+        }
+      })();
+      return;
+    }
+
+    if (action === 'move-remaining') {
+      // oldFolder can be passed explicitly via ?from=FOLDER_ID to override GDRIVE_ROOT_FOLDER
+      const oldFolder = parsed.query.from || GDRIVE_ROOT_FOLDER;
+      json({ success: true, message: 'Moving folders in background. Poll /api/admin/drive-cleanup/status.' });
+      (async () => {
+        try {
+          if (!oldFolder) throw new Error('No source folder — pass ?from=FOLDER_ID');
+          const dbRes = await db.query(
+            `SELECT DISTINCT gdrive_folder_id FROM quotes WHERE gdrive_folder_id IS NOT NULL AND gdrive_folder_id != ''`
+          );
+          const realIds   = new Set(dbRes.rows.map(r => r.gdrive_folder_id));
+          const oldFolders = await driveListAllFolders(oldFolder);
+          const needsMove  = oldFolders.filter(f => realIds.has(f.id));
+          let moved = 0, failed = 0, errors = [];
+          global._driveCleanupStatus = { done: false, action: 'move-remaining', total: needsMove.length, moved, failed };
+          for (const f of needsMove) {
+            try {
+              await gdriveRequest('PATCH',
+                `/drive/v3/files/${f.id}?addParents=${NEW_ALL_CONTACTS}&removeParents=${oldFolder}&supportsAllDrives=true&fields=id`,
+                {}
+              );
+              moved++;
+            } catch(e) {
+              failed++;
+              errors.push({ id: f.id, name: f.name, error: e.message });
+            }
+            global._driveCleanupStatus = { done: false, action: 'move-remaining', total: needsMove.length, moved, failed };
+            await new Promise(r => setTimeout(r, 100));
+          }
+          global._driveCleanupStatus = { done: true, action: 'move-remaining', total: needsMove.length, moved, failed, errors };
+          console.log(`[drive-cleanup] move-remaining done: ${moved} moved, ${failed} failed`);
+        } catch(e) {
+          global._driveCleanupStatus = { done: true, action: 'move-remaining', error: e.message };
+          console.error('[drive-cleanup] move-remaining error:', e.message);
+        }
+      })();
+      return;
+    }
+
+    json({ error: 'Unknown action. Use ?action=scan|delete-orphans|move-remaining' }, 400);
     return;
   }
 
@@ -5551,6 +6154,13 @@ ${q.accepted ? `
     return;
   }
 
+  if (pathname === '/reconcile' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(fs.readFileSync(path.join(__dirname, 'reconcile.html'), 'utf8'));
+    return;
+  }
+
   if (pathname === '/admin-log' && req.method === 'GET') {
     if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
     res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -6344,7 +6954,7 @@ ${q.accepted ? `
     const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').trim());
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, foamColor, hingePreference, apColor, productionNotes, deliveryNotes, shipped, changes, repName, freightCost, shipEmailTo, shipEmailCc, markShipped, serialNumber, shipmentFields } = body;
+      const { customer, foamColor, hingePreference, apColor, waType, productionNotes, deliveryNotes, shipped, changes, repName, freightCost, shipEmailTo, shipEmailCc, markShipped, serialNumber, shipmentFields } = body;
 
       if (!db) { json({ error: 'No database' }, 500); return; }
 
@@ -6531,6 +7141,7 @@ ${q.accepted ? `
         foamColor:        foamColor        !== undefined ? foamColor        : currentOrderData.foamColor,
         hingePreference:  hingePreference  !== undefined ? hingePreference  : currentOrderData.hingePreference,
         apColor:          apColor          !== undefined ? apColor          : currentOrderData.apColor,
+        waType:           waType           !== undefined ? waType           : currentOrderData.waType,
         serialNumber:     serialNumber     !== undefined ? serialNumber     : currentOrderData.serialNumber,
         productionNotes:  productionNotes  !== undefined ? productionNotes  : currentOrderData.productionNotes,
         deliveryNotes:    deliveryNotes    !== undefined ? deliveryNotes    : currentOrderData.deliveryNotes,
@@ -6829,6 +7440,18 @@ ${q.accepted ? `
         } catch(e) {}
       }
 
+      // Back-fill paymentType from HubSpot for orders processed before it was stored locally
+      const dealIdForPayment = quoteData?.dealId || (db ? (await db.query('SELECT deal_id FROM orders WHERE quote_number = $1', [quoteId]).catch(()=>({rows:[]})))?.rows[0]?.deal_id : null);
+      if (orderData && !orderData.paymentType && dealIdForPayment && HS_TOKEN) {
+        try {
+          const dr = await httpsRequest({ hostname: 'api.hubapi.com', path: `/crm/v3/objects/deals/${dealIdForPayment}?properties=payment_type,po_`, method: 'GET', headers: { 'Authorization': `Bearer ${HS_TOKEN}` } });
+          if (dr.body?.properties?.payment_type) {
+            orderData.paymentType = (dr.body.properties.payment_type || '').toLowerCase();
+            orderData.poNumber    = dr.body.properties.po_ || null;
+          }
+        } catch(e) {}
+      }
+
       const q = quoteData;
       const o = orderData || {};
       const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
@@ -6837,14 +7460,16 @@ ${q.accepted ? `
       const disc = q.discount && q.discount.value > 0
         ? (q.discount.type==='pct' ? sub*q.discount.value/100 : q.discount.value) : 0;
       const freightTbd = q.freight?.tbd === true;
+      const pickupFeeAmt = q.pickupFee ? parseFloat(q.pickupFee) : 0;
       // Install/delivery state. In 'delivery_install' mode install REPLACES freight.
+      // Pickup fee also replaces freight (non-taxable).
       const installMode = (q.install && q.install.mode) ? q.install.mode : 'none';
       const installAmt  = (q.install && q.install.amount) ? parseFloat(q.install.amount) : 0;
-      const freightAmt  = (installMode === 'delivery_install' && installAmt > 0)
+      const freightAmt  = (pickupFeeAmt > 0 || (installMode === 'delivery_install' && installAmt > 0))
         ? 0
         : ((!freightTbd && q.freight) ? q.freight.total : 0);
       const taxAmt = q.tax ? q.tax.tax : 0;
-      const total = sub - disc + freightAmt + (installAmt > 0 ? installAmt : 0) + taxAmt;
+      const total = sub - disc + freightAmt + pickupFeeAmt + (installAmt > 0 ? installAmt : 0) + taxAmt;
       const totalWeight = (q.lineItems||[]).reduce((s,i) => s + ((parseFloat(i.weight)||0) * (parseInt(i.qty)||1)), 0);
       const c = q.customer || {};
       const issueDate = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'});
@@ -6962,7 +7587,7 @@ tbody tr:last-child td{border-bottom:none}
       ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
       ${c.phone?`<div class="info-item"><label>Phone</label><span>${c.phone}</span></div>`:''}
       ${(c.address||c.city||c.state||c.zip)?`<div class="info-item"><label>Delivery Address</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}</span></div>`:''}
-      ${q.billing && (q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
+      ${q.billing && (q.billing.name || q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.name||'',q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
     </div>
   </div>` : ''}
 
@@ -6972,10 +7597,17 @@ tbody tr:last-child td{border-bottom:none}
       <div class="info-item"><label>Foam Color</label><span>${o.foamColor||'Not specified'}</span></div>
       <div class="info-item"><label>Door Hinge</label><span>${o.hingePreference||'Not specified'}</span></div>
       ${o.apColor ? `<div class="info-item"><label>Acoustic Package Color</label><span style="display:inline-flex;align-items:center;gap:8px">${o.apColor}<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${({Lemon:'#f5c518',Vanilla:'#c8b97a',Birch:'#c4a882',White:'#f0eeea','Green Apple':'#8a9a3a',Fern:'#3d5a2a',Waterfall:'#2e8fa0',Asteroid:'#7a8a95',Orchid:'#7a1a3a',Pumpkin:'#c45c22',Geranium:'#c0282a',Lapis:'#1e3a6e',Onyx:'#1a1a1a',Graphite:'#3a3d40','Coffee Bean':'#3d2010','Quarry Blue':'#5a6e78'}[o.apColor]||'#aaa')};border:1px solid rgba(0,0,0,.2)"></span></span></div>` : `<div class="info-item"><label>Acoustic Package Color</label><span style="color:#aaa">None</span></div>`}
+      ${(o.waType || q.repWaType) ? `<div class="info-item"><label>WA Type</label><span>${o.waType || q.repWaType}</span></div>` : ''}
     </div>
     ${o.productionNotes?`<div style="margin-top:16px"><div style="font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Production Notes</div><div class="notes-box">${o.productionNotes}</div></div>`:''}
     ${o.deliveryNotes?`<div style="margin-top:12px"><div style="font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Special Delivery Notes</div><div class="notes-box">${o.deliveryNotes}</div></div>`:''}
   </div>
+
+  ${(q.canadian || o.canadian) ? `<div class="card" style="border-left:3px solid #ee6216;background:#fff8f0">
+    <div class="card-label" style="color:#ee6216">International / Canadian Order</div>
+    <p style="margin:0;font-size:12px;color:#555;line-height:1.6">Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.</p>
+    ${(q.customsBroker || o.customsBroker) ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0e0cc"><div style="font-size:10px;color:#ee6216;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;font-weight:700">Customs Broker</div><div style="font-size:13px;color:#333">${String(q.customsBroker || o.customsBroker).replace(/</g,'&lt;')}</div></div>` : ''}
+  </div>` : ''}
 
   <div class="card">
     <div class="card-label">Line Items</div>
@@ -6992,12 +7624,19 @@ tbody tr:last-child td{border-bottom:none}
     <div class="totals">
       <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
       ${disc>0?`<div class="tot"><span>Discount${q.discount&&q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
-      ${freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
+      ${pickupFeeAmt>0?`<div class="tot"><span>Pickup Fee</span><span>${fmt(pickupFeeAmt)}</span></div>`:freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
       ${installAmt>0?`<div class="tot"><span>${installMode==='delivery_install'?'Delivery and Installation':'Installation'}</span><span>${fmt(installAmt)}</span></div>`:''}
       ${taxAmt>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+(q.tax.rate*100).toFixed(2).replace(/\.?0+$/,'')+'%)':''}</span><span>${fmt(taxAmt)}</span></div>`:''}
       ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
       <div class="tot grand"><span>Order Total</span><span>${fmt(total)}</span></div>
       ${totalWeight>0?`<div class="tot weight-total"><span>&#x2696; Total Weight</span><span>${totalWeight.toLocaleString()} lbs</span></div>`:''}
+      ${(() => {
+        if (!o.paymentType) return '';
+        const labels = { hs: 'HubSpot Invoice', cc: 'Credit Card', ach: 'ACH / Bank Deposit', po: 'PO', other: 'Other' };
+        const label = labels[o.paymentType] || o.paymentType;
+        const display = (o.paymentType === 'po' && o.poNumber) ? `${label} — PO #${o.poNumber}` : label;
+        return `<div class="tot" style="margin-top:8px;padding-top:8px;border-top:1px solid #eee"><span>Payment Type</span><span>${display}</span></div>`;
+      })()}
     </div>
   </div>
   ${freightTbd?`<div class="card" style="border-left:3px solid #ee6216;background:#fff8f5">
@@ -7060,8 +7699,9 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
     try {
       const body = JSON.parse(await readBody(req));
       const { dealId, quoteNumber, lineItems, freight, tax, discount, install,
-              customer, foamColor, hingePreference, apColor, productionNotes,
-              deliveryNotes, ownerId, dealName, paymentType, poNumber } = body;
+              customer, foamColor, hingePreference, apColor, waType, productionNotes,
+              deliveryNotes, ownerId, dealName, paymentType, poNumber,
+              canadian, customsBroker } = body;
 
       if (!dealId || !quoteNumber) { json({ error: 'Missing dealId or quoteNumber' }, 400); return; }
 
@@ -7070,6 +7710,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       // Client radios use lowercase ids. Map here at the boundary.
       const PAY_TYPE_HS_VALUES = { hs: 'HS', cc: 'CC', ach: 'ACH', po: 'PO', other: 'Other' };
       const closedWonProps = { dealstage: 'closedwon' };
+      if (tax && tax.tax != null) closedWonProps.total_tax_amount = String(parseFloat(tax.tax).toFixed(2));
       if (apColor) closedWonProps.ap_color = apColor;
       if (paymentType) {
         const hsPayType = PAY_TYPE_HS_VALUES[paymentType] || paymentType;
@@ -7159,7 +7800,13 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       } catch(e) { console.warn('[process-order] line item reset failed:', e.message); }
 
       // 2. Save order data to DB
-      const orderToken = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
+      // Pull share_token AND the latest quote snapshot — we use the snapshot as a
+      // fallback source of truth for Canadian flag + broker. The client DOM has
+      // been observed to drop #canada between modal open and confirm, so if the
+      // POST body doesn't carry it but the saved quote does, honour the quote.
+      const quoteRow  = (await db?.query('SELECT share_token, json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0];
+      const orderToken = quoteRow?.share_token || '';
+      const quoteSnap  = quoteRow?.json_snapshot || {};
       const orderUrl = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}?t=${orderToken}`;
       // Auto-compute pallet count from line items (kept in sync with BOOTH_DATA in quote-builder.html).
       // Source of truth is pallet COUNT per product name; dimensions stay client-side where freight is priced.
@@ -7203,14 +7850,23 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       if (hasCustomHole) prefixes.push('CUSTOM HOLES');
       if (prefixes.length) effectiveProductionNotes = prefixes.join(' + ') + ' — ' + effectiveProductionNotes;
 
+      // Effective Canadian state: POST body wins if truthy; otherwise fall back
+      // to the saved quote snapshot. Broker: body first, snapshot second.
+      const effectiveCanadian      = !!(canadian || quoteSnap.canadian);
+      const effectiveCustomsBroker = (customsBroker && customsBroker.trim()) || (quoteSnap.customsBroker || '') || '';
+
       const orderData = {
-        foamColor, hingePreference, apColor,
+        foamColor, hingePreference, apColor, waType,
         productionNotes: effectiveProductionNotes,
         deliveryNotes,
         processedAt: new Date().toISOString(),
         shipped: { pallets: computedPallets }, // scheduled ship info; Jeromy fills in date/carrier/tracking later
         hasRM,
         hasCustomHole,
+        paymentType: paymentType || null,
+        poNumber: (paymentType === 'po' && poNumber) ? poNumber : null,
+        canadian: effectiveCanadian,
+        customsBroker: effectiveCustomsBroker,
       };
 
       if (db) {
@@ -7281,6 +7937,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         taxTotal > 0 ? `Sales Tax: ${fmt(taxTotal)}` : null,
         `Order Total: ${fmt(total)}`,
         totalWeight > 0 ? `Total Weight: ${totalWeight.toLocaleString()} lbs` : null,
+        `Payment Type: ${{ hs:'HubSpot Invoice', cc:'Credit Card', ach:'ACH / Bank Deposit', po:'PO', other:'Other' }[paymentType] || paymentType || '—'}${paymentType === 'po' && poNumber ? ` — PO #${poNumber}` : ''}`,
         ``,
         `VIEW ORDER PAGE`,
         orderUrl,
@@ -7334,7 +7991,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
 
       console.log(`Order processed: ${quoteNumber}, deal ${dealId} → closedwon`);
       writelog('info', 'order.processed', `Order processed: ${quoteNumber} — ${dealName || '—'}`, { rep: String(ownerId || ''), quoteNum: quoteNumber, dealId: String(dealId || ''), dealName: dealName || null });
-      json({ success: true, orderUrl, hasRM, hasCustomHole });
+      json({ success: true, orderUrl, hasRM, hasCustomHole, paymentType, poNumber, canadian: effectiveCanadian, customsBroker: effectiveCustomsBroker });
 
       // Create AP color task for Benton (non-blocking) if order has an AP item
       const hasApItem = (lineItems || []).some(i => i.name && /^AP\s/i.test(i.name));
@@ -7380,6 +8037,126 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             writelog('error', 'error.gdrive', `Order PDF upload failed for ${filename}: ${JSON.stringify(result?.error || result)}`, { quoteNum: quoteNumber });
           }
         } catch(e) { console.warn('[process-order] GDrive PDF error:', e.message); }
+      })();
+
+      // Create QuickBooks invoice (non-blocking — failure is logged, never fatal)
+      (async () => {
+        try {
+          const fallback   = await qb.getDefaultItem();
+          const TAX_CODE   = process.env.QB_TAXABLE_CODE || 'TAX';
+          const taxableRef = { value: TAX_CODE };
+
+          // QB ship address (only includes lines that are present so AST has a jurisdiction)
+          const shipAddr = (c.address || c.city || c.state || c.zip) ? {
+            ...(c.address ? { Line1:                   c.address } : {}),
+            ...(c.city    ? { City:                    c.city    } : {}),
+            ...(c.state   ? { CountrySubDivisionCode:  c.state   } : {}),
+            ...(c.zip     ? { PostalCode:              c.zip     } : {}),
+            Country: 'US',
+          } : null;
+
+          const cust = await qb.findOrCreateCustomer({
+            displayName: [c.firstName, c.lastName].filter(Boolean).join(' ') || c.company || c.email || 'Unknown',
+            givenName:   c.firstName  || '',
+            familyName:  c.lastName   || '',
+            email:       c.email      || '',
+            companyName: c.company    || '',
+            billAddr:    shipAddr,
+            shipAddr,
+          });
+
+          const unmatched = [];
+          const buildLine = async (description, amount, qty, lookupName) => {
+            const matched = lookupName ? await qb.findItemByName(lookupName) : null;
+            const ref = matched || fallback;
+            if (lookupName && !matched) unmatched.push(lookupName);
+            const amt = parseFloat(amount.toFixed(2));
+            return {
+              Amount:      amt,
+              DetailType:  'SalesItemLineDetail',
+              Description: description,
+              SalesItemLineDetail: { ItemRef: { value: ref.value }, UnitPrice: amt, Qty: qty || 1, TaxCodeRef: taxableRef },
+            };
+          };
+
+          // Build line items: one per WR line, looked up by name. Tax handled by QB AST.
+          const qbLines = [];
+          for (const item of (lineItems || [])) {
+            const lineAmt = parseFloat(item.price) * parseInt(item.qty || 1);
+            if (!lineAmt) continue;
+            qbLines.push(await buildLine(
+              item.description || `${item.name}${parseInt(item.qty) > 1 ? ` ×${item.qty}` : ''}`,
+              lineAmt,
+              1,
+              item.name
+            ));
+          }
+
+          // Discount BEFORE freight — QB applies DiscountLineDetail to the running subtotal
+          // of all preceding lines, so freight (added after) is excluded from the discount.
+          if (discAmt > 0) {
+            qbLines.push({
+              Amount:     parseFloat(discAmt.toFixed(2)),
+              DetailType: 'DiscountLineDetail',
+              DiscountLineDetail: { PercentBased: false },
+            });
+          }
+
+          // Freight comes after discount so it is never discounted.
+          // Taxability follows the WR/TaxJar calculation: freightTaxed=true → AST decides rate,
+          // freightTaxed=false (or unknown) → explicitly exempt so QB doesn't add unexpected tax.
+          if (freightTotal > 0) {
+            const freightItemName = process.env.QB_FREIGHT_ITEM_NAME || 'Shipping';
+            const freightMatched  = (await qb.findItemByName(freightItemName)) ||
+                                    (await qb.findItemByName('Freight'));
+            const freightRef = freightMatched || fallback;
+            if (!freightMatched) {
+              console.warn(`[process-order] QB shipping item not found ("${freightItemName}" or "Freight") — freight added as fallback item. To show freight in QB's dedicated Shipping totals row, enable Shipping in QB Account & Settings → Sales → Shipping and ensure the item name matches QB_FREIGHT_ITEM_NAME.`);
+            }
+            const EXEMPT_CODE    = process.env.QB_EXEMPT_CODE || 'NON';
+            const freightTaxCode = tax?.freightTaxed ? TAX_CODE : EXEMPT_CODE;
+            const amt = parseFloat(freightTotal.toFixed(2));
+            qbLines.push({
+              Amount:      amt,
+              DetailType:  'SalesItemLineDetail',
+              Description: 'Freight',
+              SalesItemLineDetail: {
+                ItemRef:    { value: freightRef.value },
+                UnitPrice:  amt,
+                Qty:        1,
+                TaxCodeRef: { value: freightTaxCode },
+              },
+            });
+          }
+          if (unmatched.length) console.warn(`[process-order] QB items not matched (used fallback "${fallback.name}"):`, unmatched);
+          console.log('[process-order] QB lines:', JSON.stringify(qbLines.map(l => ({
+            type: l.DetailType, amount: l.Amount, desc: l.Description,
+            itemRef: l.SalesItemLineDetail?.ItemRef?.value,
+            taxCode: l.SalesItemLineDetail?.TaxCodeRef?.value,
+          }))));
+
+          const invoice = await qb.createInvoice({
+            customerRef: { value: cust.Id },
+            docNumber:   quoteNumber,
+            txnDate:     new Date().toISOString().split('T')[0],
+            lines:       qbLines,
+            memo:        dealName || quoteNumber,
+            billAddr:    shipAddr,
+            shipAddr,
+          });
+
+          if (invoice?.Id) {
+            console.log(`[process-order] QB invoice created: id=${invoice.Id} DocNumber=${invoice.DocNumber} Lines:`, JSON.stringify((invoice.Line||[]).map(l => ({ type: l.DetailType, amount: l.Amount, itemId: l.SalesItemLineDetail?.ItemRef?.value }))));
+            if (db) {
+              await db.query(
+                `UPDATE orders SET order_data = order_data || $1::jsonb WHERE quote_number = $2`,
+                [JSON.stringify({ qbInvoiceId: invoice.Id, qbDocNumber: invoice.DocNumber }), quoteNumber]
+              );
+            }
+          }
+        } catch(e) {
+          console.warn('[process-order] QB invoice creation skipped:', e.message);
+        }
       })();
 
     } catch(e) {

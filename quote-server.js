@@ -8020,7 +8020,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       // Create QuickBooks invoice (non-blocking — failure is logged, never fatal)
       (async () => {
         try {
-          const itemRef = await qb.getDefaultItem();
+          const fallback = await qb.getDefaultItem();
 
           const cust = await qb.findOrCreateCustomer({
             displayName: [c.firstName, c.lastName].filter(Boolean).join(' ') || c.company || c.email || 'Unknown',
@@ -8030,18 +8030,35 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             companyName: c.company    || '',
           });
 
-          // Build QB invoice lines from WR line items
+          const unmatched = [];
+          const buildLine = async (description, amount, qty, lookupName) => {
+            const ref = (lookupName ? await qb.findItemByName(lookupName) : null) || fallback;
+            if (!lookupName || ref === fallback) {
+              if (lookupName) unmatched.push(lookupName);
+            }
+            const amt = parseFloat(amount.toFixed(2));
+            return {
+              Amount:      amt,
+              DetailType:  'SalesItemLineDetail',
+              Description: description,
+              SalesItemLineDetail: { ItemRef: ref, UnitPrice: amt, Qty: qty || 1 },
+            };
+          };
+
+          // Build QB invoice lines: one line per WR line item, looked up by name
           const qbLines = [];
           for (const item of (lineItems || [])) {
-            const amt = parseFloat(item.price) * parseInt(item.qty || 1);
-            if (!amt) continue;
-            qbLines.push({
-              Amount:     parseFloat(amt.toFixed(2)),
-              DetailType: 'SalesItemLineDetail',
-              Description: `${item.name}${parseInt(item.qty) > 1 ? ` ×${item.qty}` : ''}`,
-              SalesItemLineDetail: { ItemRef: itemRef, UnitPrice: parseFloat(amt.toFixed(2)), Qty: 1 },
-            });
+            const lineAmt = parseFloat(item.price) * parseInt(item.qty || 1);
+            if (!lineAmt) continue;
+            qbLines.push(await buildLine(
+              `${item.name}${parseInt(item.qty) > 1 ? ` ×${item.qty}` : ''}`,
+              lineAmt,
+              1,
+              item.name
+            ));
           }
+          if (freightTotal > 0) qbLines.push(await buildLine('Freight',   freightTotal, 1, 'Freight'));
+          if (taxTotal     > 0) qbLines.push(await buildLine('Sales Tax', taxTotal,     1, 'Sales Tax'));
           if (discAmt > 0) {
             qbLines.push({
               Amount:     parseFloat(discAmt.toFixed(2)),
@@ -8049,22 +8066,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
               DiscountLineDetail: { PercentBased: false, DiscountAmount: parseFloat(discAmt.toFixed(2)) },
             });
           }
-          if (freightTotal > 0) {
-            qbLines.push({
-              Amount:     parseFloat(freightTotal.toFixed(2)),
-              DetailType: 'SalesItemLineDetail',
-              Description: 'Freight',
-              SalesItemLineDetail: { ItemRef: itemRef, UnitPrice: parseFloat(freightTotal.toFixed(2)), Qty: 1 },
-            });
-          }
-          if (taxTotal > 0) {
-            qbLines.push({
-              Amount:     parseFloat(taxTotal.toFixed(2)),
-              DetailType: 'SalesItemLineDetail',
-              Description: 'Sales Tax',
-              SalesItemLineDetail: { ItemRef: itemRef, UnitPrice: parseFloat(taxTotal.toFixed(2)), Qty: 1 },
-            });
-          }
+          if (unmatched.length) console.warn(`[process-order] QB items not matched (used fallback "${fallback.name}"):`, unmatched);
 
           const invoice = await qb.createInvoice({
             customerRef: { value: cust.Id, name: cust.DisplayName },

@@ -8101,51 +8101,50 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             });
           }
 
-          // Freight comes after discount so it is never discounted.
-          // Taxability follows WR/TaxJar: freightTaxed=true → 'TAX' (AST decides rate),
-          // false/unknown → 'NON' (exempt) so QB doesn't add freight tax WR didn't charge.
+          // Freight goes into ShippingLine (top-level QB field, not inside the Line array).
+          // That's what populates QB's dedicated Shipping totals row instead of the line items grid.
+          // Discount inside the Line array only applies to product lines; freight is never discounted.
+          let shippingLine = null;
           if (freightTotal > 0) {
             const freightItemName = process.env.QB_FREIGHT_ITEM_NAME || 'Shipping';
             const freightMatched  = (await qb.findItemByName(freightItemName)) ||
                                     (await qb.findItemByName('Freight'));
             const freightRef = freightMatched || fallback;
             if (!freightMatched) {
-              console.warn(`[process-order] QB shipping item not found ("${freightItemName}" or "Freight") — freight added as fallback item. To show freight in QB's dedicated Shipping totals row, enable Shipping in QB Account & Settings → Sales → Shipping and ensure the item name matches QB_FREIGHT_ITEM_NAME.`);
+              console.warn(`[process-order] QB shipping item "${freightItemName}" not found — using fallback. Set QB_FREIGHT_ITEM_NAME to the exact name of the Shipping service item in QB.`);
             }
             const EXEMPT_CODE    = process.env.QB_EXEMPT_CODE || 'NON';
             const freightTaxCode = tax?.freightTaxed ? TAX_CODE : EXEMPT_CODE;
             const amt = parseFloat(freightTotal.toFixed(2));
-            qbLines.push({
+            shippingLine = {
               Amount:      amt,
-              DetailType:  'SalesItemLineDetail',
+              DetailType:  'ShippingLineDetail',
               Description: 'Freight',
-              SalesItemLineDetail: {
+              ShippingLineDetail: {
                 ItemRef:    { value: freightRef.value },
-                UnitPrice:  amt,
-                Qty:        1,
                 TaxCodeRef: { value: freightTaxCode },
               },
-            });
+            };
           }
           if (unmatched.length) console.warn(`[process-order] QB items not matched (used fallback "${fallback.name}"):`, unmatched);
           console.log('[process-order] QB lines:', JSON.stringify(qbLines.map(l => ({
-            type: l.DetailType, amount: l.Amount, desc: l.Description,
+            type: l.DetailType, amount: l.Amount,
             itemRef: l.SalesItemLineDetail?.ItemRef?.value,
-            taxCode: l.SalesItemLineDetail?.TaxCodeRef?.value,
-          }))));
+          }))), 'shippingLine:', shippingLine ? `${shippingLine.Amount} taxCode=${shippingLine.ShippingLineDetail?.TaxCodeRef?.value}` : 'none');
 
           const invoice = await qb.createInvoice({
-            customerRef: { value: cust.Id },
-            docNumber:   quoteNumber,
-            txnDate:     new Date().toISOString().split('T')[0],
-            lines:       qbLines,
-            memo:        dealName || quoteNumber,
-            billAddr:    shipAddr,
+            customerRef:  { value: cust.Id },
+            docNumber:    quoteNumber,
+            txnDate:      new Date().toISOString().split('T')[0],
+            lines:        qbLines,
+            memo:         dealName || quoteNumber,
+            billAddr:     shipAddr,
             shipAddr,
+            shippingLine,
           });
 
           if (invoice?.Id) {
-            console.log(`[process-order] QB invoice created: id=${invoice.Id} DocNumber=${invoice.DocNumber}`);
+            console.log(`[process-order] QB invoice created: id=${invoice.Id} DocNumber=${invoice.DocNumber} ShippingLine:`, JSON.stringify(invoice.ShippingLine || null));
             if (db) {
               await db.query(
                 `UPDATE orders SET order_data = order_data || $1::jsonb WHERE quote_number = $2`,

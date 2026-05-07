@@ -5435,6 +5435,10 @@ ${q.accepted ? `
         acceptedFoam:    snap.acceptedFoam    || '',
         acceptedHinge:   snap.acceptedHinge   || '',
         acceptedApColor: snap.acceptedApColor || '',
+        repFoamColor:       snap.repFoamColor       || '',
+        repHingePreference: snap.repHingePreference || '',
+        repApColor:         snap.repApColor         || '',
+        repWaType:          snap.repWaType          || '',
       });
     } catch(e) { json({ error: e.message }, 500); }
     return;

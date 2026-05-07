@@ -1682,12 +1682,13 @@ async function openProcessOrderModal(quoteNumber) {
     if (snap.error) throw new Error(snap.error);
   } catch(e) { showToast('Failed to load quote: '+e.message,'error'); return; }
 
-  // Prefill foam / hinge / ap (rep/accepted values take priority over empty)
+  // Prefill foam / hinge / ap — rep selection takes priority over customer-accepted
+  // (matches quote-builder behavior: rep choice wins, fall back to accepted, else blank)
   window._procOrderSnapshot = snap;
   window._procOrderQuoteNumber = quoteNumber;
-  const foam  = snap.acceptedFoam    || '';
-  const hinge = snap.acceptedHinge   || '';
-  const apCol = snap.acceptedApColor || '';
+  const foam  = snap.repFoamColor       || snap.acceptedFoam    || '';
+  const hinge = snap.repHingePreference || snap.acceptedHinge   || '';
+  const apCol = snap.repApColor         || snap.acceptedApColor || '';
 
   document.querySelectorAll('input[name="procFoam"]').forEach(i => { i.checked = (i.value === foam); });
   document.querySelectorAll('input[name="procHinge"]').forEach(i => { i.checked = (i.value === hinge); });

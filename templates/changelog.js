@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.7', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Deal Hub Process Order modal now pre-fills foam color, door hinge, AP color, and WA type from the rep\'s saved selections (with fallback to customer-accepted values) — matching the quote builder. Previously the snapshot endpoint stripped out the rep fields, so the modal opened blank even when those values had been chosen at quote time.'},
+      ]
+    },
+    {
       v:'1.7.6', date:'May 7, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'WA Type selector now appears in the Deal Hub Process Order modal when the order contains a WA UPG or ADA item — matching the quote builder behavior. The selector pre-populates from the snapshot\'s saved WA type (if any) and lets the rep override it before sending. Both the deal hub and quote builder now behave consistently.'},

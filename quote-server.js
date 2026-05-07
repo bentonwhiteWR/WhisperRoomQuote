@@ -8277,45 +8277,6 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             console.warn('[process-order] QB term lookup failed, skipping SalesTermRef:', e.message);
           }
 
-          // Tax override — force QB to use the TaxJar-calculated amount instead of
-          // letting AST recalculate (which taxes the gross subtotal pre-discount and
-          // ignores TaxJar nuances like TN's single-article cap).
-          let txnTaxDetail = null;
-          if (taxTotal > 0) {
-            try {
-              const [taxCode, taxRate] = await Promise.all([
-                qb.findAnyActiveTaxCode(),
-                qb.findAnyActiveTaxRate(),
-              ]);
-              if (taxCode && taxRate) {
-                const netTaxable  = parseFloat((sub - discAmt + (tax?.freightTaxed ? freightTotal : 0)).toFixed(2));
-                const derivedPct  = netTaxable > 0 ? parseFloat(((taxTotal / netTaxable) * 100).toFixed(4)) : 0;
-                // TotalTax and TaxLineDetail.Override are NOT valid request fields
-                // in QB Online's JSON schema (despite appearing in some SDK samples) —
-                // including them triggers a 2010 "failed to parse" error. We supply
-                // the explicit Amount + TaxPercent + NetAmountTaxable; QB uses those
-                // for the displayed tax. Math is consistent: Amount = NetAmountTaxable × TaxPercent.
-                txnTaxDetail = {
-                  TxnTaxCodeRef: { value: String(taxCode.Id) },
-                  TaxLine: [{
-                    Amount:     parseFloat(taxTotal.toFixed(2)),
-                    DetailType: 'TaxLineDetail',
-                    TaxLineDetail: {
-                      TaxRateRef:       { value: String(taxRate.Id) },
-                      PercentBased:     true,
-                      TaxPercent:       derivedPct,
-                      NetAmountTaxable: netTaxable,
-                    },
-                  }],
-                };
-              } else {
-                console.warn('[process-order] QB tax override skipped — no active TaxCode/TaxRate found');
-              }
-            } catch (e) {
-              console.warn('[process-order] QB tax override lookup failed:', e.message);
-            }
-          }
-
           const invoice = await qb.createInvoice({
             customerRef:  { value: cust.Id },
             docNumber:    quoteNumber,
@@ -8327,7 +8288,6 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             billEmail:    c.email || null,
             customFields: customFields.length ? customFields : null,
             salesTermRef,
-            txnTaxDetail,
           });
 
           if (invoice?.Id) {

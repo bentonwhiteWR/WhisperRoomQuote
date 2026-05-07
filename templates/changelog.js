@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.1', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'QB Custom Field DefinitionIds were swapped — P.O. Number was writing to the Serial Number field and vice versa. Corrected: DefinitionId 1 = P.O. Number, 3 = Serial Number.'},
+        {t:'add', d:'QB invoice now sets payment terms automatically: PO orders use Net 30, all other payment types use Due on receipt. Term names are configurable via QB_TERM_NET30 / QB_TERM_UPON_RECEIPT env vars.'},
+      ]
+    },
+    {
       v:'1.7.0', date:'May 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'QuickBooks invoice is now auto-created when an order is processed. Line items are matched to QB items by exact name (falls back to a generic "Product" item). Freight uses QB\'s dedicated Shipping totals row via the SHIPPING_ITEM_ID magic value — not a line item. Discount is excluded from freight. Sales tax handled by QB\'s Automated Sales Tax / TaxJar using the ship-to address.'},

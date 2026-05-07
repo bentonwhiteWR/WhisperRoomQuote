@@ -7386,7 +7386,7 @@ ${q.accepted ? `
             if (sf3.date)     updateFields.ShipDate      = String(sf3.date);
             if (serial3) {
               updateFields.CustomField = [
-                { DefinitionId: '1', Name: 'Serial Number', Type: 'StringType', StringValue: String(serial3) },
+                { DefinitionId: '3', Name: 'Serial Number', Type: 'StringType', StringValue: String(serial3) },
               ];
             }
             if (Object.keys(updateFields).length === 0) {
@@ -8171,14 +8171,27 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
           }))));
 
           // QB Custom Fields (defined in QB Account & Settings → Sales → Custom Fields).
-          // DefinitionIds: 1=Serial Number, 2=Sales Rep, 3=P.O. Number.
+          // DefinitionIds: 1=P.O. Number, 2=Sales Rep, 3=Serial Number.
           const repName = OWNER_MAP[ownerId] || '';
           const customFields = [];
           if (repName) {
             customFields.push({ DefinitionId: '2', Name: 'Sales Rep', Type: 'StringType', StringValue: repName });
           }
           if (paymentType === 'po' && poNumber) {
-            customFields.push({ DefinitionId: '3', Name: 'P.O. Number', Type: 'StringType', StringValue: String(poNumber) });
+            customFields.push({ DefinitionId: '1', Name: 'P.O. Number', Type: 'StringType', StringValue: String(poNumber) });
+          }
+
+          // Payment terms: Net 30 for PO orders, Due on receipt for everything else.
+          const termName = paymentType === 'po'
+            ? (process.env.QB_TERM_NET30         || 'Net 30')
+            : (process.env.QB_TERM_UPON_RECEIPT  || 'Due on receipt');
+          let salesTermRef = null;
+          try {
+            const term = await qb.findTermByName(termName);
+            if (term) salesTermRef = { value: String(term.Id) };
+            else console.warn(`[process-order] QB term "${termName}" not found — invoice will use QB default terms`);
+          } catch (e) {
+            console.warn('[process-order] QB term lookup failed, skipping SalesTermRef:', e.message);
           }
 
           const invoice = await qb.createInvoice({
@@ -8191,6 +8204,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             shipAddr,
             billEmail:    c.email || null,
             customFields: customFields.length ? customFields : null,
+            salesTermRef,
           });
 
           if (invoice?.Id) {

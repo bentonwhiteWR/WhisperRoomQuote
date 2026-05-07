@@ -7065,10 +7065,15 @@ ${q.accepted ? `
       if (!row.rows.length) { json({ error: `Order ${quoteNumber} not found` }, 404); return; }
       const { order_data: od, deal_id: dealId, json_snapshot: snap, deal_name: dealName } = row.rows[0];
 
-      // Extract AP line items only
+      // Extract AP line items only — match "AP 4848", "AP-4848", "AP4848",
+      // "Acoustic Package …" across name/productName/sku/description.
       const allItems = snap?.lineItems || [];
-      const apItems  = allItems.filter(i => i.name && /^AP\s/i.test(i.name));
-      if (!apItems.length) { json({ error: 'No AP items found on this order' }, 400); return; }
+      const isAp = (i) => {
+        const fields = [i?.name, i?.productName, i?.sku, i?.description].filter(Boolean);
+        return fields.some(f => /^AP[\s\-_]?\d/i.test(f) || /^Acoustic\s+Package/i.test(f));
+      };
+      const apItems = allItems.filter(isAp);
+      if (!apItems.length) { json({ error: 'No AP items found on this order. Snapshot may be empty or items use a non-AP naming convention.' }, 400); return; }
 
       const customer  = snap?.customer || {};
       const apColor   = od?.apColor || '';

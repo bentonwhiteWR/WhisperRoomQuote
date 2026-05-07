@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.26', date:'May 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'AP Purchase Order section now appears in the orders drawer when an order has an AP color set, even if the line item naming doesn\'t match the strict "AP 4848" pattern. Previously it required line items beginning with "AP " (space) — orders with names like "AP-4848", "AP4848", or "Acoustic Package …", or older orders with no json_snapshot, never showed the section even though they were AP orders.'},
+        {t:'fix', d:'Server-side AP detection (POST /api/supplier-pos) broadened to match "AP[space|-|_]<digit>" and "Acoustic Package …" across name/productName/sku/description, so the PO creation step accepts the same orders the UI surfaces.'},
+        {t:'log', d:'Added a console.debug "[AP detect]" line on drawer open showing snapshot/line-item state — makes it easy to diagnose why the AP section did/didn\'t appear for a given order.'},
+      ]
+    },
+    {
       v:'1.7.25', date:'May 7, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Folder search race condition — when typing quickly in the "Rebind Drive Folder" or "Merge Legacy Folder" search boxes, a slow earlier request could return after a newer one and overwrite results with stale data, making results appear wrong or disappear. Fixed with AbortController: each new search cancels any in-flight request before firing. Also cancels pending searches when the modal is opened/reopened.'},

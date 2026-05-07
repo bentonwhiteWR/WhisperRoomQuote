@@ -1540,15 +1540,29 @@ function openDrawer(quoteNumber) {
   }
 
   // AP Purchase Order section
-  const apItems = (order.json_snapshot?.lineItems || []).filter(i => i.name && /^AP\s/i.test(i.name));
+  // Detect AP either by apColor being set on the order, or by an AP line item
+  // in the snapshot (covers AP 4848, AP-4848, AP4848, "Acoustic Package", etc.)
+  const lineItems = order.json_snapshot?.lineItems || order.order_data?.lineItems || [];
+  const apItems = lineItems.filter(i => {
+    const fields = [i?.name, i?.productName, i?.sku, i?.description].filter(Boolean);
+    return fields.some(f => /^AP[\s\-_]?\d/i.test(f) || /^Acoustic\s+Package/i.test(f));
+  });
+  const apColorSet = !!(order.order_data?.apColor || '').trim();
+  const showApSection = apItems.length > 0 || apColorSet;
+  console.debug('[AP detect]', quoteNumber, {
+    hasSnapshot: !!order.json_snapshot,
+    lineItemCount: lineItems.length,
+    apItemCount: apItems.length,
+    apColor: order.order_data?.apColor || null,
+    sampleNames: lineItems.slice(0, 5).map(i => i?.name),
+  });
   const apPoSection = document.getElementById('apPoSection');
   const apPoStatus  = document.getElementById('apPoStatus');
   const viewApPoBtn = document.getElementById('viewApPoBtn');
   const createApPoBtn = document.getElementById('createApPoBtn');
   if (apPoSection) {
-    if (apItems.length > 0) {
+    if (showApSection) {
       apPoSection.style.display = 'block';
-      // Load existing PO for this order
       loadApPoStatus(quoteNumber);
     } else {
       apPoSection.style.display = 'none';

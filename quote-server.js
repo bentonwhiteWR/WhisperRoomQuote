@@ -8091,14 +8091,13 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
           if (unmatched.length) console.warn(`[process-order] QB items not matched (used fallback "${fallback.name}"):`, unmatched);
 
           const invoice = await qb.createInvoice({
-            customerRef:   { value: cust.Id, name: cust.DisplayName },
-            docNumber:     quoteNumber,
-            txnDate:       new Date().toISOString().split('T')[0],
-            lines:         qbLines,
-            memo:          dealName || quoteNumber,
-            billAddr:      shipAddr,
+            customerRef: { value: cust.Id, name: cust.DisplayName },
+            docNumber:   quoteNumber,
+            txnDate:     new Date().toISOString().split('T')[0],
+            lines:       qbLines,
+            memo:        dealName || quoteNumber,
+            billAddr:    shipAddr,
             shipAddr,
-            globalTaxCalc: 'TaxExcluded',
           });
 
           if (invoice?.Id) {

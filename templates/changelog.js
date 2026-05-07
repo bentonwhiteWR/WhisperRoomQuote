@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.17', date:'May 7, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Quote Builder top nav now includes "Accounting" link, matching the Deal Hub and other dashboards.'},
+      ]
+    },
+    {
       v:'1.7.16', date:'May 7, 2026', tag:'ui',
       changes:[
         {t:'add', d:'Search box on the Accounts Receivable tab. Filters the visible rows by company name or doc number as you type (case-insensitive substring match). Works in combination with the existing aging-bucket filter — search applies on top of whichever bucket is selected. Aging summary boxes still reflect the full open-invoice picture.'},

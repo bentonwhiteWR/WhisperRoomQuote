@@ -8285,7 +8285,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             docNumber:    quoteNumber,
             txnDate:      new Date().toISOString().split('T')[0],
             lines:        qbLines,
-            memo:         dealName || quoteNumber,
+            memo:         'Finance charges of 1.5% per month will be added to invoices not paid by the due date.',
             billAddr,
             shipAddr,
             billEmail:    (billing && billing.email) || c.email || null,

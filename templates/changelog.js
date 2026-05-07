@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.15', date:'May 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'QB invoice "Note to customer" (CustomerMemo) is now hardcoded to: "Finance charges of 1.5% per month will be added to invoices not paid by the due date." Previously the field carried the deal name, which was redundant with the invoice number and customer company already on the invoice.'},
+      ]
+    },
+    {
       v:'1.7.14', date:'May 7, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'QB invoice Bill To section now includes the rep-entered Bill To Name (in BillAddr.Line1, with the street address shifted to Line2) and the Bill To Email (on BillEmail.Address, falling back to the customer\'s primary email when no separate billing email was entered).'},

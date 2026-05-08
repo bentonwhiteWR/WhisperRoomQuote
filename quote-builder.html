@@ -848,7 +848,7 @@ body:not(.dark) .submit-overlay-msg { color: var(--muted) !important; }
     </div>
     <div class="form-grid cols-3" style="margin-top:14px">
       <div class="field"><label>City</label><input type="text" id="shipCity" placeholder="Nashville"></div>
-      <div class="field"><label>State / Province</label><input type="text" id="shipState" placeholder="TN, Tennessee, or ON" style="text-transform:uppercase" onblur="onStateBlur(this)"></div>
+      <div class="field"><label>State / Province / Region</label><input type="text" id="shipState" placeholder="TN, Tennessee, or ON" style="text-transform:uppercase" onblur="onStateBlur(this)"></div>
       <div class="field"><label>Zip</label><input type="text" id="shipZip" placeholder="37201"></div>
     </div>
 
@@ -874,7 +874,7 @@ body:not(.dark) .submit-overlay-msg { color: var(--muted) !important; }
       </div>
     </div>
     <div style="margin-top:12px">
-      <label class="acc-check" id="check-canada" onclick="toggleAcc(this,'canada');document.getElementById('customsBrokerRow').style.display=document.getElementById('canada').checked?'block':'none'">
+      <label class="acc-check" id="check-canada" onclick="toggleAcc(this,'canada');document.getElementById('customsBrokerRow').style.display=document.getElementById('canada').checked?'block':'none';document.getElementById('shipState').style.textTransform=document.getElementById('canada').checked?'none':'uppercase'">
         <input type="checkbox" id="canada">
         <div class="acc-box"></div>
         Canadian / International Destination
@@ -4701,6 +4701,8 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
     if (canLabel) canLabel.classList.toggle('active', isCa);
     if (brokerEl) brokerEl.value = q.customsBroker || '';
     if (brokerRow) brokerRow.style.display = isCa ? 'block' : 'none';
+    const stateEl = document.getElementById('shipState');
+    if (stateEl) stateEl.style.textTransform = isCa ? 'none' : 'uppercase';
   }
 
   // Capture the loaded quote's number AND total — these are the baseline for
@@ -5504,6 +5506,8 @@ function normalizeState(val) {
 
 // Normalize the state field to abbreviation on blur
 function onStateBlur(el) {
+  // Skip US/Canada normalization for international orders — preserve the value as typed
+  if (document.getElementById('canada')?.checked) return;
   el.value = normalizeState(el.value);
 }
 
@@ -5769,6 +5773,8 @@ function newQuote(skipConfirm = false) {
   document.getElementById('customsBrokerRow').style.display = 'none';
   const shipCountryEl = document.getElementById('shipCountry');
   if (shipCountryEl) shipCountryEl.value = '';
+  const shipStateEl = document.getElementById('shipState');
+  if (shipStateEl) shipStateEl.style.textTransform = 'uppercase';
   const taxEl = document.getElementById('taxexempt');
   if (taxEl) { taxEl.checked = false; document.getElementById('taxExemptRow').style.display = 'none'; }
 

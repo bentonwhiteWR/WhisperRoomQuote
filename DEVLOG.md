@@ -8,14 +8,14 @@ Internal development notes. Last updated 2026-05-08.
 
 ## Current focus (2026-05-08)
 
-**Most recent shipped:** v1.7.33 — delete button for Audimute POs on the Suppliers dashboard.
+**Most recent shipped:** v1.8.0 — Audimute POs are now editable. Ship-to is verified-and-editable on create; existing POs can be edited from the Deal Hub badge or the Suppliers dashboard Edit button. Status-aware guards (complete = locked).
 
-**Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.7.33 over May 7–8. The system is functionally complete (create PO from deal hub, full BOM document, Suppliers dashboard with status/tracking, color-per-line-item, delete). Next-up candidates are user-driven — wait for feedback from real PO submissions before iterating further.
+**Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.8.0 over May 7–8. The lifecycle is now complete: create with editable ship-to, edit ship-to/color/notes after creation, delete. Next-up candidates are user-driven — wait for feedback from real PO submissions before iterating further.
 
 **Outstanding work (not yet started):**
 
 - The May 7 audit findings below — none addressed yet. The five "Critical" items are real bugs and should be the next coding focus once the AP system stabilizes. Especially **#1 (public endpoints lack share-token auth)** and **#2 (XSS in server-rendered HTML)** — both are exploitable by anonymous visitors.
-- v1.7.33 is the live staging version. Prod (`main`) is at a slightly older version — confirm with user before next merge.
+- v1.8.0 is the live staging version. Prod (`main`) is at a slightly older version — confirm with user before next merge.
 
 **Tooling note:** As of 2026-05-08 the user is moving day-to-day editing from Claude Desktop to Cursor. Local clone lives at `C:\Users\bento\Documents\Claude\WhisperRoomQuote-staging`. Workflow stays the same (staging-only, explicit ask to promote to main).
 
@@ -181,6 +181,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.8.0   | 2026-05-08 | Audimute POs editable: ship-to verify-on-create, ship-to / per-item color / notes editable on existing POs, status-aware guards (complete = locked) |
 | 1.7.33  | 2026-05-08 | Delete button for Audimute POs on Suppliers dashboard |
 | 1.7.32  | 2026-05-08 | Country field for international quotes + wire transfer notice |
 | 1.7.31  | 2026-05-08 | Compact PO number format `WR{YY}{MM}{DD}{NN}`, daily counter, Eastern time |

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.9.3', date:'May 8, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'The customer-facing invoice page now shows the International / Canadian Order block (wire-transfer notice + customs broker line) the same way the quote page does. Previously the quote had this block but the invoice didn\'t, so customers who accepted a Canadian quote got an invoice with no mention of the wire-transfer requirement or the broker info on file. Block only renders when the order has the canadian flag set.'},
+      ]
+    },
+    {
       v:'1.9.2', date:'May 8, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Reconcile now uses the deal\'s HubSpot total_tax_amount field as the source of truth when present, instead of reverse-calculating from tax_rate × deal total. Removes the round-trip math (and its rounding mismatches with QB\'s tax) for any deal pushed from this app since total_tax_amount started getting populated. If total_tax_amount is empty (legacy deal, manual deal), reconcile falls back to the existing tax_rate reverse-calc unchanged. A literal "0" counts as set (tax-exempt deals stay at 0, don\'t fall through). The /api/reconcile/hs-deals response now also returns taxSource ("hubspot" | "rate-calc" | null) for diagnostics.'},

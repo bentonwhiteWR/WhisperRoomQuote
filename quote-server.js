@@ -2645,6 +2645,13 @@ tbody tr:hover td{background:#fdfcfb}
   </div>`;
   })()}
 
+  ${q.canadian ? `<div class="card" style="border-left:3px solid #ee6216;background:#fff8f0">
+    <div class="card-label" style="color:#ee6216">International / Canadian Order</div>
+    <p class="terms" style="color:#ee6216;font-weight:700">All international orders must be prepaid in full with bank wire transfer.</p>
+    ${!c.country || /^canada$/i.test((c.country||'').trim()) ? `<p class="terms" style="color:#555;margin-top:6px">Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.</p>` : ''}
+    ${q.customsBroker ? `<p class="terms" style="margin-top:8px;color:#333"><strong style="color:#ee6216">Customs Broker:</strong> ${String(q.customsBroker).replace(/</g,'&lt;')}</p>` : ''}
+  </div>` : ''}
+
   <div class="card">
     <div class="card-label">Payment Terms</div>
     <p class="terms">Payment is due upon receipt. We accept ACH bank transfer and major credit/debit cards. For questions regarding this invoice, contact us at <a href="mailto:info@whisperroom.com" style="color:#ee6216">info@whisperroom.com</a> or (865) 558-5364.</p>

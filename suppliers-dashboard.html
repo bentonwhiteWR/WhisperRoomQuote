@@ -325,6 +325,7 @@ function renderTable() {
           <a href="${poUrl}" target="_blank" class="btn btn-ghost" style="font-size:10px;padding:5px 10px;text-decoration:none">View PO ↗</a>
           ${!po.sent_at ? `<button class="btn btn-blue" style="font-size:10px;padding:5px 10px" onclick="sendPoEmail('${po.po_number}')">✉ Send</button>` : `<button class="btn btn-ghost" style="font-size:10px;padding:5px 10px" onclick="sendPoEmail('${po.po_number}')">✉ Resend</button>`}
           <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px" onclick="saveRow('${po.po_number}')">Save</button>
+          <button class="btn" style="font-size:10px;padding:5px 10px;background:rgba(239,68,68,.1);color:#ef4444;border:1px solid rgba(239,68,68,.3)" onclick="deletePo('${po.po_number}')">Delete</button>
         </div>
       </td>
     </tr>`;
@@ -454,6 +455,20 @@ WhisperRoom`;
     } catch(e) {}
   }
   showToast('Email draft opened', 'info');
+}
+
+// ── Delete PO ─────────────────────────────────────────────────────
+async function deletePo(poNumber) {
+  if (!confirm(`Delete PO ${poNumber}? This cannot be undone.`)) return;
+  try {
+    const res = await fetch(`/api/supplier-pos/${encodeURIComponent(poNumber)}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Delete failed');
+    allPos = allPos.filter(p => p.po_number !== poNumber);
+    renderStats();
+    renderTable();
+    showToast(`PO ${poNumber} deleted`, 'success');
+  } catch(e) { showToast(e.message, 'error'); }
 }
 
 // ── Init ──────────────────────────────────────────────────────────

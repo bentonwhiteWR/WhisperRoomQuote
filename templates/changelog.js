@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.33', date:'May 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Delete button added to each row on the Suppliers dashboard. Clicking Delete prompts for confirmation then permanently removes the PO from the database. Deletion is logged in the activity log.'},
+      ]
+    },
+    {
       v:'1.7.32', date:'May 8, 2026', tag:'feature',
       changes:[
         {t:'add', d:'International quotes now include a Country field in the quote builder (appears when Canadian / International Destination is checked). Country is stored in the customer snapshot and shown in the Ship To address on quote, invoice, and order pages.'},

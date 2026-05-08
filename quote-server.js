@@ -7283,6 +7283,24 @@ ${q.accepted ? `
     return;
   }
 
+  // ── API: Supplier POs — delete ───────────────────────────────────
+  if (pathname.startsWith('/api/supplier-pos/') && req.method === 'DELETE') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const poNumber = decodeURIComponent(pathname.replace('/api/supplier-pos/', '').trim());
+    if (!poNumber) { json({ error: 'PO number required' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const res = await db.query('DELETE FROM supplier_pos WHERE po_number = $1 RETURNING po_number', [poNumber]);
+      if (!res.rows.length) { json({ error: 'PO not found' }, 404); return; }
+      const rep = getRepFromReq(req, {});
+      writelog('info', 'supplier-po.deleted', `Deleted PO ${poNumber}`, { rep, meta: { poNumber } });
+      json({ success: true, deleted: poNumber });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── API: Supplier POs — get single ───────────────────────────────
   if (pathname.startsWith('/api/supplier-pos/') && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.9.1', date:'May 8, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Shipping an order from the Orders dashboard no longer overwrites the deal\'s "Freight + Install Cost" (HubSpot freight_cost) with the entered actual freight. Ship-time freight now writes only to actual_freight_cost, leaving the originally-quoted amount intact for reporting and reconciliation. (The HS-only-legacy branch already did this correctly; the regular DB-backed branch had a vestigial double-write.)'},
+      ]
+    },
+    {
       v:'1.9.0', date:'May 8, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Audimute PO documents now include a Change Log section near the bottom showing every edit since the PO was created — who, when, and what changed (color, ship-to address, status, expected ship date, tracking number, notes). Visible on both the screen view and the printed/PDF copy so the supplier can see updates at a glance. Powered by the existing logs table; no schema changes.'},

@@ -8,14 +8,14 @@ Internal development notes. Last updated 2026-05-08.
 
 ## Current focus (2026-05-08)
 
-**Most recent shipped:** v1.9.0 — PO Change Log on the document + date-save bug fix. Every edit (color, ship-to, status, ship date, tracking, notes) is now logged with who/when/what and rendered as a chronological list at the bottom of /po/:poNumber. Visible to the supplier on both screen and print.
+**Most recent shipped:** v1.9.1 — Ship-time freight no longer clobbers the quoted Freight + Install Cost. (Previous: v1.9.0 PO Change Log on the document + date-save bug fix.)
 
 **Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.9.0 over May 7–8. Full lifecycle now: create with editable ship-to, edit ship-to/color/notes, delete, change-log audit trail visible on the doc itself. Next-up candidates are user-driven.
 
 **Outstanding work (not yet started):**
 
 - The May 7 audit findings below — none addressed yet. The five "Critical" items are real bugs and should be the next coding focus once the AP system stabilizes. Especially **#1 (public endpoints lack share-token auth)** and **#2 (XSS in server-rendered HTML)** — both are exploitable by anonymous visitors.
-- v1.9.0 is the live staging version. Prod (`main`) is at v1.8.0 (last promote). Confirm with user before next merge.
+- v1.9.1 promoted to main 2026-05-08. Prod and staging in sync.
 
 **Tooling note:** As of 2026-05-08 the user is moving day-to-day editing from Claude Desktop to Cursor. Local clone lives at `C:\Users\bento\Documents\Claude\WhisperRoomQuote-staging`. Workflow stays the same (staging-only, explicit ask to promote to main).
 
@@ -181,6 +181,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.9.1   | 2026-05-08 | Ship-time freight writes only to `actual_freight_cost`; stop clobbering the quoted `freight_cost` (Freight + Install) field |
 | 1.9.0   | 2026-05-08 | PO Change Log on document (every edit logged with who/when/what); fix: DATE column save bug (pg type parser); fix: Ship-To override on PO create now persists |
 | 1.8.0   | 2026-05-08 | Audimute POs editable: ship-to verify-on-create, ship-to / per-item color / notes editable on existing POs, status-aware guards (complete = locked) |
 | 1.7.33  | 2026-05-08 | Delete button for Audimute POs on Suppliers dashboard |

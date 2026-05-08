@@ -8017,7 +8017,6 @@ ${q.accepted ? `
           if (sf.boxes !== undefined)       hsProps.box_count       = parseInt(sf.boxes) || 0;
           if (sf.pallets !== undefined)     hsProps.pallet_count    = parseInt(sf.pallets) || 0;
           if (sf.hardwareBox !== undefined) hsProps.hardware_box    = parseInt(sf.hardwareBox) || 0;
-          if (fc !== null)                  hsProps.freight_cost        = String(fc);
           if (fc !== null)                  hsProps.actual_freight_cost = String(fc);
           if (markShipped && sf.tracking)   hsProps.dealstage           = '845719';
           console.log(`[orders] writing to HubSpot: ${JSON.stringify(hsProps)}`);

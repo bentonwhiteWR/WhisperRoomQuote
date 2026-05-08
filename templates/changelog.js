@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.9.2', date:'May 8, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Reconcile now uses the deal\'s HubSpot total_tax_amount field as the source of truth when present, instead of reverse-calculating from tax_rate × deal total. Removes the round-trip math (and its rounding mismatches with QB\'s tax) for any deal pushed from this app since total_tax_amount started getting populated. If total_tax_amount is empty (legacy deal, manual deal), reconcile falls back to the existing tax_rate reverse-calc unchanged. A literal "0" counts as set (tax-exempt deals stay at 0, don\'t fall through). The /api/reconcile/hs-deals response now also returns taxSource ("hubspot" | "rate-calc" | null) for diagnostics.'},
+      ]
+    },
+    {
       v:'1.9.1', date:'May 8, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Shipping an order from the Orders dashboard no longer overwrites the deal\'s "Freight + Install Cost" (HubSpot freight_cost) with the entered actual freight. Ship-time freight now writes only to actual_freight_cost, leaving the originally-quoted amount intact for reporting and reconciliation. (The HS-only-legacy branch already did this correctly; the regular DB-backed branch had a vestigial double-write.)'},

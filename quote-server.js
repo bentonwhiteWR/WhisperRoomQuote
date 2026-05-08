@@ -1125,15 +1125,29 @@ const server = http.createServer(async (req, res) => {
           subtotal = Math.max(0, total - freight);
         }
 
-        // Tax: back-calculate from the tax-inclusive deal total using the stored
-        // HubSpot tax_rate. Branches on whether the state taxes freight:
+        // Tax: prefer the HubSpot `total_tax_amount` deal property — it's set
+        // directly by every push from this app (and by the backfill admin
+        // tool), so when present it's the source of truth and skips all the
+        // reverse-calc drama. An empty string or null counts as missing
+        // (fall through to back-calc); a literal "0" counts as set
+        // (tax-exempt deal — use 0, don't reverse-calc into something else).
+        // Fallback: back-calculate from the tax-inclusive deal total using
+        // the stored HubSpot tax_rate. Branches on whether the state taxes
+        // freight:
         //   Freight taxable:  total = (productBase + freight) × (1 + r)
         //     → tax = Round((total/(1+r) - freight) × r, 2) + Round(freight × r, 2)
         //   Freight not taxable: total = productBase × (1 + r) + freight
         //     → tax = Round((total - freight) × r / (1 + r), 2)
-        // If tax_rate is blank/0 the deal has no tax (no nexus, exempt, etc.).
+        // If tax_rate is also blank/0 the deal has no tax (no nexus, exempt, etc.).
+        const hsTaxRaw = d.properties?.total_tax_amount;
+        const hsTaxSet = (hsTaxRaw != null && hsTaxRaw !== '');
+        const hsTaxAmt = hsTaxSet ? parseFloat(hsTaxRaw) : NaN;
         let taxAmt = 0;
-        if (taxRate > 0) {
+        let taxSource = null;
+        if (hsTaxSet && !isNaN(hsTaxAmt)) {
+          taxAmt = Math.max(0, hsTaxAmt);
+          taxSource = 'hubspot';
+        } else if (taxRate > 0) {
           const r = taxRate / 100;
           if (freightTaxable) {
             const preTaxBase = total / (1 + r);
@@ -1143,6 +1157,7 @@ const server = http.createServer(async (req, res) => {
           } else {
             taxAmt = Math.round(Math.max(0, (total - freight) * r / (1 + r)) * 100) / 100;
           }
+          taxSource = 'rate-calc';
         }
 
         return {
@@ -1162,6 +1177,7 @@ const server = http.createServer(async (req, res) => {
           freight:   Math.round(freight * 100) / 100,
           taxRate,
           taxAmt:    Math.round(taxAmt * 100) / 100,
+          taxSource, // 'hubspot' (from total_tax_amount) | 'rate-calc' | null (no tax)
           state:     stateAbbr || null,
           freightTaxable,
           total,

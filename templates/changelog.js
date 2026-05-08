@@ -51,6 +51,16 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.8.0', date:'May 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Audimute POs are now editable. Open an existing PO from the AP badge in the Deal Hub or the Edit button on the Suppliers dashboard. Editable: ship-to address, per-item color, and notes. Line items themselves stay tied to the underlying order — to change those, delete the PO and recreate from the order.'},
+        {t:'add', d:'Ship-to address is now verified-and-editable when you first create a PO. The dialog pre-fills from the order\'s customer snapshot but every field (name, company, address, city, state, zip, country) is an input — override anything that needs to ship somewhere else before submitting.'},
+        {t:'add', d:'Status-aware edit guards: \'pending\' edits freely; \'sent\', \'confirmed\', \'shipped\' show a banner reminding you Audimute won\'t be auto-notified; \'complete\' is locked (Edit button disabled, server returns 403).'},
+        {t:'add', d:'Existing-PO badges in the Deal Hub now open in edit mode (with View ↗ link in the header and Delete button in the footer) instead of jumping straight to the public PO page. The badge becomes the single point of access for view/edit/delete.'},
+        {t:'log', d:'New PATCH branch on /api/supplier-pos/:poNumber accepts customer / apItems / poNotes for po_data updates. apItems updates only mutate the per-item color field; name/qty/price are preserved server-side so the request body can\'t tamper with pricing. Edit events go to the admin log as supplier-po.edited.'},
+      ]
+    },
+    {
       v:'1.7.33', date:'May 8, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Delete button added to each row on the Suppliers dashboard. Clicking Delete prompts for confirmation then permanently removes the PO from the database. Deletion is logged in the activity log.'},

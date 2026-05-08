@@ -7256,13 +7256,97 @@ ${q.accepted ? `
     return;
   }
 
-  // ── API: Supplier POs — update (status, tracking, ship date, notes) ──
+  // ── API: Supplier POs — update ────────────────────────────────────
+  // Two flavors of PATCH:
+  //   1. Column-level (status, tracking_number, expected_ship_date, sent_at,
+  //      shipped_at, notes) — used by inline-editable cells on the suppliers
+  //      board. Allowlist below.
+  //   2. po_data edits (customer ship-to, per-item color, notes via
+  //      `poNotes`) — used by the AP PO edit modal. Status-guarded:
+  //      `complete` is locked; `confirmed`/`shipped` require explicit
+  //      `confirm: true` in the body.
+  // The two flavors don't mix in a single request — if any po_data edit
+  // field is present, that branch handles it and returns.
   if (pathname.startsWith('/api/supplier-pos/') && req.method === 'PATCH') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const poNumber = decodeURIComponent(pathname.replace('/api/supplier-pos/', '').trim());
     let body;
     try { body = JSON.parse(await readBody(req) || '{}'); }
     catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
+
+    const hasPoDataEdit = body.customer !== undefined || body.apItems !== undefined || body.poNotes !== undefined;
+    if (hasPoDataEdit) {
+      try {
+        if (!db) { json({ error: 'No database' }, 500); return; }
+        const cur = await db.query('SELECT status, po_data, quote_number FROM supplier_pos WHERE po_number = $1', [poNumber]);
+        if (!cur.rows.length) { json({ error: 'PO not found' }, 404); return; }
+        const status = cur.rows[0].status;
+        if (status === 'complete') {
+          json({ error: 'Cannot edit a completed PO. Delete and recreate if needed.' }, 403);
+          return;
+        }
+        if ((status === 'confirmed' || status === 'shipped') && !body.confirm) {
+          json({ error: `PO is in '${status}' status. Pass {confirm: true} to override.`, requiresConfirm: true }, 409);
+          return;
+        }
+        const poData = cur.rows[0].po_data || {};
+
+        // Customer / ship-to: only safe fields, full replacement of provided keys
+        if (body.customer && typeof body.customer === 'object') {
+          const safe = {};
+          for (const k of ['firstName','lastName','company','email','phone','address','city','state','zip','country']) {
+            if (body.customer[k] !== undefined) safe[k] = String(body.customer[k] || '').trim();
+          }
+          poData.customer = { ...(poData.customer || {}), ...safe };
+        }
+
+        // apItems: only the per-item `color` is editable. Match by index;
+        // preserve name/qty/price from the existing po_data so the request
+        // body can't tamper with pricing or quantities.
+        if (Array.isArray(body.apItems) && Array.isArray(poData.apItems)) {
+          for (let i = 0; i < poData.apItems.length; i++) {
+            const incoming = body.apItems[i];
+            if (incoming && typeof incoming.color === 'string') {
+              poData.apItems[i].color = incoming.color.trim();
+            }
+          }
+          // Refresh legacy `apColor` field: if all items share one color,
+          // use it; otherwise clear (mixed). Pre-v1.7.27 renderers fall
+          // back to this when per-item color is absent.
+          const colors = poData.apItems.map(i => i.color).filter(Boolean);
+          poData.apColor = (colors.length > 0 && colors.every(c => c === colors[0])) ? colors[0] : '';
+        }
+
+        if (body.poNotes !== undefined) {
+          poData.notes = String(body.poNotes || '');
+        }
+
+        // Single UPDATE: po_data always; notes column too if poNotes was set
+        // (kept in sync with the legacy column for any downstream readers).
+        const sets = ['po_data = $1'];
+        const vals = [JSON.stringify(poData)];
+        if (body.poNotes !== undefined) {
+          sets.push(`notes = $${vals.length + 1}`);
+          vals.push(body.poNotes || null);
+        }
+        vals.push(poNumber);
+        await db.query(`UPDATE supplier_pos SET ${sets.join(', ')} WHERE po_number = $${vals.length}`, vals);
+        const updated = await db.query('SELECT * FROM supplier_pos WHERE po_number = $1', [poNumber]);
+        const rep = getRepFromReq(req, body);
+        const editedFields = Object.keys(body).filter(k => ['customer','apItems','poNotes'].includes(k));
+        writelog('info', 'supplier-po.edited', `Edited PO ${poNumber} (${editedFields.join(', ')})`, {
+          rep, quoteNum: cur.rows[0].quote_number, meta: { poNumber, fields: editedFields, status }
+        });
+        json({ success: true, po: updated.rows[0] });
+        return;
+      } catch(e) {
+        console.error('[supplier-pos edit] error:', e.message);
+        json({ error: e.message }, 500);
+        return;
+      }
+    }
+
+    // Column-level path (status / tracking / dates / notes)
     const allowed = ['status', 'expected_ship_date', 'tracking_number', 'notes', 'sent_at', 'shipped_at'];
     const sets = [], vals = [];
     for (const key of allowed) {

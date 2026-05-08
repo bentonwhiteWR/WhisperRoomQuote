@@ -166,7 +166,173 @@
   </div>
 </div>
 
+<!-- ── Edit PO modal ───────────────────────────────────────────────── -->
+<div id="editPoModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2100;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px;max-width:560px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);max-height:90vh;overflow-y:auto">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:4px">
+      <div style="font-size:16px;font-weight:800;color:var(--text)">Edit Audimute Purchase Order</div>
+      <a id="editPoViewLink" href="#" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--orange);text-decoration:none;padding:4px 8px;border:1px solid rgba(238,98,22,.3);border-radius:6px;background:rgba(238,98,22,.08);white-space:nowrap">View PO ↗</a>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:18px">PO <span id="editPoNumber" style="color:var(--text);font-weight:700"></span> · Order <span id="editPoQuoteNumber" style="color:var(--text);font-weight:600"></span> · <span id="editPoStatus" style="color:var(--text);font-weight:600"></span></div>
+
+    <div id="editPoStatusWarning" style="display:none;padding:10px 14px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;margin-bottom:14px;font-size:12px;color:#f59e0b;line-height:1.5"></div>
+
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Ship-To Address</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div><label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px">First name</label><input id="editPoShipFirstName" style="width:100%;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;box-sizing:border-box"></div>
+        <div><label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px">Last name</label><input id="editPoShipLastName" style="width:100%;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;box-sizing:border-box"></div>
+      </div>
+      <div style="margin-bottom:10px"><label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px">Company</label><input id="editPoShipCompany" style="width:100%;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;box-sizing:border-box"></div>
+      <div style="margin-bottom:10px"><label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px">Address</label><input id="editPoShipAddress" style="width:100%;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;box-sizing:border-box"></div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;margin-bottom:10px">
+        <div><label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px">City</label><input id="editPoShipCity" style="width:100%;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;box-sizing:border-box"></div>
+        <div><label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px">State</label><input id="editPoShipState" style="width:100%;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;box-sizing:border-box"></div>
+        <div><label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px">Zip</label><input id="editPoShipZip" style="width:100%;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;box-sizing:border-box"></div>
+      </div>
+      <div><label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px">Country <span style="font-weight:400;color:var(--muted)">(international only)</span></label><input id="editPoShipCountry" placeholder="USA" style="width:100%;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;box-sizing:border-box"></div>
+    </div>
+
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Acoustic Package items — pick a color for each</div>
+      <div id="editPoItemsList"></div>
+    </div>
+
+    <div style="margin-bottom:20px">
+      <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Notes</div>
+      <textarea id="editPoNotes" rows="2" placeholder="Anything Elizabeth needs to know..." style="width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:12px;font-family:inherit;resize:vertical;outline:none;box-sizing:border-box"></textarea>
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button id="editPoSubmitBtn" onclick="submitEditPo()" class="btn btn-orange" style="flex:1;padding:13px;font-size:13px">✓ Save Changes</button>
+      <button onclick="closeEditPoModal()" class="btn btn-ghost" style="padding:13px 18px;font-size:13px">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
+
+<script>
+// ── AP color list (same as deal-hub for consistency) ──────────────
+const AP_COLORS = ['Unknown','Lemon','Vanilla','Birch','White','Green Apple','Fern','Waterfall','Asteroid','Orchid','Pumpkin','Geranium','Lapis','Onyx','Graphite','Coffee Bean','Quarry Blue'];
+
+// Edit modal state
+let _editPoCurrent = null;
+
+function openEditPoModal(poNumber) {
+  const po = allPos.find(p => p.po_number === poNumber);
+  if (!po) { showToast('PO not found in current list', 'error'); return; }
+  if (po.status === 'complete') {
+    showToast('Cannot edit completed POs. Delete and recreate if needed.', 'error');
+    return;
+  }
+  _editPoCurrent = po;
+  const d = po.po_data || {};
+  const c = d.customer || {};
+  const items = Array.isArray(d.apItems) ? d.apItems : [];
+  const status = (po.status || 'pending').toLowerCase();
+
+  document.getElementById('editPoNumber').textContent = po.po_number;
+  document.getElementById('editPoQuoteNumber').textContent = po.quote_number;
+  document.getElementById('editPoStatus').textContent = status;
+  document.getElementById('editPoViewLink').href = `${location.origin}/po/${encodeURIComponent(po.po_number)}?t=${po.share_token||''}`;
+
+  const warnEl = document.getElementById('editPoStatusWarning');
+  if (status === 'shipped' || status === 'confirmed') {
+    warnEl.style.display = 'block';
+    warnEl.textContent = `PO is in '${status}' status — Audimute already has it. Edits won't auto-notify them; you'll need to follow up manually.`;
+  } else if (status === 'sent') {
+    warnEl.style.display = 'block';
+    warnEl.textContent = 'PO has been sent — edits won\'t auto-notify Audimute. Follow up manually if specs change.';
+  } else {
+    warnEl.style.display = 'none';
+  }
+
+  document.getElementById('editPoShipFirstName').value = c.firstName || '';
+  document.getElementById('editPoShipLastName').value  = c.lastName  || '';
+  document.getElementById('editPoShipCompany').value   = c.company   || '';
+  document.getElementById('editPoShipAddress').value   = c.address   || '';
+  document.getElementById('editPoShipCity').value      = c.city      || '';
+  document.getElementById('editPoShipState').value     = c.state     || '';
+  document.getElementById('editPoShipZip').value       = c.zip       || '';
+  document.getElementById('editPoShipCountry').value   = c.country   || '';
+  document.getElementById('editPoNotes').value         = d.notes     || '';
+
+  const defaultColor = d.apColor || '';
+  const rowsHtml = items.map((item, idx) => {
+    const sel = item.color || defaultColor;
+    const opts = AP_COLORS.map(c => `<option value="${c}" ${c === sel ? 'selected' : ''}>${c}</option>`).join('');
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:8px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:var(--text)">${item.name||'(unnamed)'} <span style="color:var(--muted);font-weight:500">×${item.qty||1}</span></div>
+      </div>
+      <select data-idx="${idx}" class="edit-po-color-select" style="padding:7px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;cursor:pointer;min-width:140px">
+        <option value="">— Select color —</option>
+        ${opts}
+      </select>
+    </div>`;
+  }).join('');
+  document.getElementById('editPoItemsList').innerHTML = rowsHtml;
+
+  document.getElementById('editPoModal').style.display = 'flex';
+}
+
+function closeEditPoModal() {
+  document.getElementById('editPoModal').style.display = 'none';
+  _editPoCurrent = null;
+}
+
+async function submitEditPo() {
+  const po = _editPoCurrent;
+  if (!po) return;
+  const d = po.po_data || {};
+  const items = Array.isArray(d.apItems) ? d.apItems : [];
+
+  const selects = document.querySelectorAll('#editPoItemsList .edit-po-color-select');
+  const apItems = Array.from(selects).map(sel => {
+    const idx = parseInt(sel.dataset.idx, 10);
+    const item = items[idx] || {};
+    return { name: item.name, qty: item.qty, price: item.price, color: sel.value };
+  });
+  const missing = apItems.filter(i => !i.color);
+  if (missing.length) {
+    if (!confirm(`${missing.length} item(s) have no color selected. Save anyway?`)) return;
+  }
+  const customer = {
+    firstName: document.getElementById('editPoShipFirstName').value.trim(),
+    lastName:  document.getElementById('editPoShipLastName').value.trim(),
+    company:   document.getElementById('editPoShipCompany').value.trim(),
+    address:   document.getElementById('editPoShipAddress').value.trim(),
+    city:      document.getElementById('editPoShipCity').value.trim(),
+    state:     document.getElementById('editPoShipState').value.trim(),
+    zip:       document.getElementById('editPoShipZip').value.trim(),
+    country:   document.getElementById('editPoShipCountry').value.trim(),
+  };
+  const notes = document.getElementById('editPoNotes').value.trim();
+
+  const btn = document.getElementById('editPoSubmitBtn');
+  const origLabel = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = 'Saving…';
+  try {
+    const res = await fetch(`/api/supplier-pos/${encodeURIComponent(po.po_number)}`, {
+      method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ customer, apItems, poNotes: notes, confirm: true }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    // Reflect new state in the local cache and re-render
+    const idx = allPos.findIndex(p => p.po_number === po.po_number);
+    if (idx >= 0) Object.assign(allPos[idx], data.po);
+    closeEditPoModal();
+    renderStats();
+    renderTable();
+    showToast(`PO ${po.po_number} updated`, 'success');
+  } catch(e) {
+    btn.disabled = false; btn.innerHTML = origLabel;
+    showToast('Save failed: ' + e.message, 'error');
+  }
+}
+</script>
 
 <script>
 // ── Theme ────────────────────────────────────────────────────────
@@ -324,6 +490,7 @@ function renderTable() {
         <div class="action-row">
           <a href="${poUrl}" target="_blank" class="btn btn-ghost" style="font-size:10px;padding:5px 10px;text-decoration:none">View PO ↗</a>
           ${!po.sent_at ? `<button class="btn btn-blue" style="font-size:10px;padding:5px 10px" onclick="sendPoEmail('${po.po_number}')">✉ Send</button>` : `<button class="btn btn-ghost" style="font-size:10px;padding:5px 10px" onclick="sendPoEmail('${po.po_number}')">✉ Resend</button>`}
+          <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px" onclick="openEditPoModal('${po.po_number}')" ${po.status === 'complete' ? 'disabled style="font-size:10px;padding:5px 10px;opacity:.4;cursor:not-allowed" title="Cannot edit completed POs"' : ''}>Edit</button>
           <button class="btn btn-ghost" style="font-size:10px;padding:5px 10px" onclick="saveRow('${po.po_number}')">Save</button>
           <button class="btn" style="font-size:10px;padding:5px 10px;background:rgba(239,68,68,.1);color:#ef4444;border:1px solid rgba(239,68,68,.3)" onclick="deletePo('${po.po_number}')">Delete</button>
         </div>

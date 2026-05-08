@@ -1,12 +1,57 @@
 # WhisperRoom Quote Builder — Dev Log
 
-Internal development notes. Last updated 2026-05-07.
+Internal development notes. Last updated 2026-05-08.
+
+> **Read this first when starting a session.** The "Current focus" section below is the fastest way to know where we left off. Below that: session writeups, the audit (outstanding work), and the changelog table.
 
 ---
 
-## Audit — May 7, 2026
+## Current focus (2026-05-08)
 
-Full audit across backend, frontend, and security. Three parallel agents reviewed the codebase.
+**Most recent shipped:** v1.8.0 — Audimute POs are now editable. Ship-to is verified-and-editable on create; existing POs can be edited from the Deal Hub badge or the Suppliers dashboard Edit button. Status-aware guards (complete = locked).
+
+**Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.8.0 over May 7–8. The lifecycle is now complete: create with editable ship-to, edit ship-to/color/notes after creation, delete. Next-up candidates are user-driven — wait for feedback from real PO submissions before iterating further.
+
+**Outstanding work (not yet started):**
+
+- The May 7 audit findings below — none addressed yet. The five "Critical" items are real bugs and should be the next coding focus once the AP system stabilizes. Especially **#1 (public endpoints lack share-token auth)** and **#2 (XSS in server-rendered HTML)** — both are exploitable by anonymous visitors.
+- v1.8.0 is the live staging version. Prod (`main`) is at a slightly older version — confirm with user before next merge.
+
+**Tooling note:** As of 2026-05-08 the user is moving day-to-day editing from Claude Desktop to Cursor. Local clone lives at `C:\Users\bento\Documents\Claude\WhisperRoomQuote-staging`. Workflow stays the same (staging-only, explicit ask to promote to main).
+
+---
+
+## Session writeup — May 7–8, 2026 (v1.7.21 → v1.7.33)
+
+13 versions shipped over two days. Three concurrent threads:
+
+### 1. Audimute / AP Purchase Order system (v1.7.22, .25, .26, .27, .28, .29, .30, .31, .33)
+
+The big build of the session. Started as a "Create Audimute PO" button in the orders dashboard drawer (v1.7.22), got rebuilt and moved to the Deal Hub once the UX shape became clear (v1.7.27). Final shape:
+
+- **Where it lives:** AP badge on each order in the Deal Hub right panel, plus an aggregate AP chip on pipeline deal cards (v1.7.28). Status states: gray "AP !" (not submitted), yellow "AP ⏳" (in flight), green "AP ✓" (delivered) — naming finalized in v1.7.29.
+- **PO creation dialog:** triggered from the AP badge. Per-item color picker (defaults to order's AP color), ship-to confirmation, notes field. Each PO is one row per AP item, each with its own color — supports mixed packages and per-package colors (v1.7.27).
+- **PO document:** `/po/:poNumber` shows full BOM. Each AP SKU resolves to its panel breakdown (2'x4', 1'x4', 1'x2') and Audimute wholesale cost from `lib/ap-packages.js`. Items table includes per-line color chips, plus a Panel Totals summary block aggregating panels × qty across all items. Pricing uses Audimute wholesale (e.g. AP 9696 = $588), not customer-facing retail (v1.7.30).
+- **PO numbering:** `WR{YY}{MM}{DD}{NN}` format (e.g. WR26050801), 2-digit daily counter, Eastern time (v1.7.31).
+- **Suppliers dashboard:** `/suppliers` lists all POs with status/expected-ship/tracking, late-order red highlighting, inline editable fields (v1.7.22). Delete button per row added v1.7.33.
+- **Detection:** AP detection broadened to match `AP[space|-|_]<digit>` and "Acoustic Package …" across name/productName/sku/description (v1.7.26), so legacy orders with non-strict naming surface correctly.
+- **Bug squash:** v1.7.25 fixed AbortController-style search races on folder search, deals search, and quote builder deal search. v1.7.29 fixed a body-parsing bug (request body read as string, never JSON.parse'd) that silently broke three endpoints.
+
+### 2. QuickBooks payment automation (v1.7.23, .24)
+
+- v1.7.23 — manual "Mark as Paid" button in orders admin dropdown. Mirrors the QB Receive Payment screen exactly: PaymentMethod "Hubspot", deposit "Southeast Bank Regular Checking 2545". Pre-fills with current invoice balance. Supports partial payments (click again later for the balance). QB balance check on the drawer shows current state ("Paid in Full" / partial / balance due) — live read from QB.
+- v1.7.24 — auto-create QB Payment when an order is processed, for all payment types EXCEPT PO. Same defaults as the manual flow. PO orders stay open until payment actually arrives. Auto-payment failures are logged but don't block invoice creation.
+
+### 3. International orders + misc (v1.7.21, .32)
+
+- v1.7.21 — Freight Cost field on orders dashboard now accepts `$500`, `$1,200.00`, etc. Was `type="number"` so `$`/commas silently invalidated input and nothing transferred to HubSpot.
+- v1.7.32 — International quotes get a Country field in the quote builder (appears with the Canadian / International Destination checkbox). Country is stored in the customer snapshot and shown on quote/invoice/order pages. Wire transfer notice ("All international orders must be prepaid in full with bank wire transfer.") appears on those same pages when the international flag is set.
+
+---
+
+## Audit — May 7, 2026 (outstanding work)
+
+Full audit across backend, frontend, and security. Three parallel agents reviewed the codebase. **None of these items have been addressed yet** — they're the next coding focus once the AP system stabilizes.
 
 ---
 
@@ -132,8 +177,24 @@ Full audit across backend, frontend, and security. Three parallel agents reviewe
 
 ## Changelog Reference
 
+Source of truth for in-app changelog is `templates/changelog.js`. This table is the dev-side mirror — one row per version, terse.
+
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.8.0   | 2026-05-08 | Audimute POs editable: ship-to verify-on-create, ship-to / per-item color / notes editable on existing POs, status-aware guards (complete = locked) |
+| 1.7.33  | 2026-05-08 | Delete button for Audimute POs on Suppliers dashboard |
+| 1.7.32  | 2026-05-08 | Country field for international quotes + wire transfer notice |
+| 1.7.31  | 2026-05-08 | Compact PO number format `WR{YY}{MM}{DD}{NN}`, daily counter, Eastern time |
+| 1.7.30  | 2026-05-07 | AP PO uses BOM mapping (panel breakdown + Audimute wholesale cost), Panel Totals summary |
+| 1.7.29  | 2026-05-07 | Fix PO body-parsing bug, ship-to lookup uses snapshot customer, AP chip naming |
+| 1.7.28  | 2026-05-07 | AP chip on pipeline deal cards (aggregate) and per-quote rows in deal hub |
+| 1.7.27  | 2026-05-07 | AP/Audimute PO management moved to Deal Hub badge with per-line-item colors |
+| 1.7.26  | 2026-05-07 | Broaden AP detection (AP-9696, AP_9696, "Acoustic Package …") across UI + server |
+| 1.7.25  | 2026-05-07 | AbortController on folder/deal/quote-builder searches; remove duplicate input listener |
+| 1.7.24  | 2026-05-07 | Auto-create QB Payment on order processing (all types except PO) |
+| 1.7.23  | 2026-05-07 | "Mark as Paid" button in orders admin → creates QB Payment, supports partials, balance badge |
+| 1.7.22  | 2026-05-07 | Audimute AP PO system foundation: Create PO, /po/:poNumber doc, /suppliers dashboard, mailto draft |
+| 1.7.21  | 2026-05-07 | Freight Cost field accepts `$`/commas (was type="number" silently rejecting) |
 | 1.7.20  | 2026-05-07 | Dev log created; "Create QB Invoice" button in orders admin dropdown |
 | 1.7.19  | 2026-05-07 | Write freight cost to QB invoice `PrivateNote` on ship |
 | 1.7.18  | 2026-05-07 | QB Invoices first tab on Accounting page; search box with "Search All" |

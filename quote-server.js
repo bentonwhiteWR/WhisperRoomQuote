@@ -74,7 +74,16 @@ process.on('unhandledRejection', (reason) => {
 
 let Pool, db;
 try {
-  Pool = require('pg').Pool;
+  const pg = require('pg');
+  Pool = pg.Pool;
+  // node-postgres parses DATE columns to JS Date objects by default. When
+  // those round-trip through JSON they become ISO timestamps like
+  // "2026-05-15T00:00:00.000Z", which `<input type="date">` rejects (input
+  // appears to silently reset). Override the DATE parser (OID 1082) to
+  // return the raw "YYYY-MM-DD" string Postgres sends, which all our DATE
+  // consumers (string compares for late-detection, date inputs, change-log
+  // formatting) already expect.
+  pg.types.setTypeParser(1082, v => v);
   if (process.env.DATABASE_URL) {
     db = new Pool({
       connectionString: process.env.DATABASE_URL,
@@ -7175,7 +7184,7 @@ ${q.accepted ? `
     let body;
     try { body = JSON.parse(await readBody(req) || '{}'); }
     catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
-    const { quoteNumber, apItems: bodyApItems, notes: bodyNotes } = body;
+    const { quoteNumber, apItems: bodyApItems, notes: bodyNotes, customer: bodyCustomer } = body;
     if (!quoteNumber) { json({ error: 'quoteNumber required' }, 400); return; }
     try {
       if (!db) { json({ error: 'No database' }, 500); return; }
@@ -7222,7 +7231,17 @@ ${q.accepted ? `
         : detectedApItems.map(i => buildItem(i, defaultColor));
       if (!apItems.length) { json({ error: 'No AP items provided' }, 400); return; }
 
-      const customer  = snap?.customer || {};
+      // Customer/ship-to: start with snapshot, let body override (rep may
+      // edit ship-to in the create dialog before submitting).
+      const snapCustomer = snap?.customer || {};
+      const customer = { ...snapCustomer };
+      if (bodyCustomer && typeof bodyCustomer === 'object') {
+        for (const k of ['firstName','lastName','company','email','phone','address','city','state','zip','country']) {
+          if (bodyCustomer[k] !== undefined) {
+            customer[k] = String(bodyCustomer[k] || '').trim();
+          }
+        }
+      }
       const poNumber  = await nextPoNumber();
       const shareToken = generateToken();
 
@@ -7237,7 +7256,9 @@ ${q.accepted ? `
         issueDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' }),
       };
 
-      const repName = getRepFromReq(req, body);
+      const repId = getRepFromReq(req, body);
+      const sess = getSession(req);
+      const repName = sess?.name || repId || 'unknown';
       await db.query(
         `INSERT INTO supplier_pos
            (po_number, quote_number, deal_id, deal_name, supplier, supplier_email, share_token, status, po_data, created_by)
@@ -7247,7 +7268,13 @@ ${q.accepted ? `
       );
 
       const poUrl = `${PUBLIC_BASE_URL}/po/${encodeURIComponent(poNumber)}?t=${shareToken}`;
-      writelog('info', 'supplier-po.created', `Created PO ${poNumber} for ${quoteNumber}`, { rep: repName, quoteNum: quoteNumber });
+      // Seed change log with creation event so /po/:poNumber has a starting
+      // point. meta.poNumber + meta.repName are used by the change-log
+      // renderer to filter and humanize.
+      writelog('info', 'supplier-po.created', `Created PO ${poNumber} for ${quoteNumber}`, {
+        rep: repId, quoteNum: quoteNumber,
+        meta: { poNumber, repName, itemCount: apItems.length }
+      });
       json({ success: true, poNumber, poUrl, shareToken });
     } catch(e) {
       console.error('[supplier-pos create] error:', e.message);
@@ -7274,6 +7301,10 @@ ${q.accepted ? `
     try { body = JSON.parse(await readBody(req) || '{}'); }
     catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
 
+    const repId = getRepFromReq(req, body);
+    const sess = getSession(req);
+    const repName = sess?.name || repId || 'unknown';
+
     const hasPoDataEdit = body.customer !== undefined || body.apItems !== undefined || body.poNotes !== undefined;
     if (hasPoDataEdit) {
       try {
@@ -7290,12 +7321,22 @@ ${q.accepted ? `
           return;
         }
         const poData = cur.rows[0].po_data || {};
+        const changes = [];
 
         // Customer / ship-to: only safe fields, full replacement of provided keys
         if (body.customer && typeof body.customer === 'object') {
+          const oldC = poData.customer || {};
           const safe = {};
-          for (const k of ['firstName','lastName','company','email','phone','address','city','state','zip','country']) {
-            if (body.customer[k] !== undefined) safe[k] = String(body.customer[k] || '').trim();
+          const labelMap = { firstName:'Contact First Name', lastName:'Contact Last Name', company:'Company', email:'Email', phone:'Phone', address:'Street Address', city:'City', state:'State', zip:'Zip', country:'Country' };
+          for (const k of Object.keys(labelMap)) {
+            if (body.customer[k] !== undefined) {
+              const newVal = String(body.customer[k] || '').trim();
+              const oldVal = String(oldC[k] || '').trim();
+              safe[k] = newVal;
+              if (newVal !== oldVal) {
+                changes.push({ kind: 'customer', field: k, label: labelMap[k], from: oldVal, to: newVal });
+              }
+            }
           }
           poData.customer = { ...(poData.customer || {}), ...safe };
         }
@@ -7307,7 +7348,12 @@ ${q.accepted ? `
           for (let i = 0; i < poData.apItems.length; i++) {
             const incoming = body.apItems[i];
             if (incoming && typeof incoming.color === 'string') {
-              poData.apItems[i].color = incoming.color.trim();
+              const oldColor = String(poData.apItems[i].color || '').trim();
+              const newColor = incoming.color.trim();
+              if (oldColor !== newColor) {
+                changes.push({ kind: 'color', itemName: poData.apItems[i].name, from: oldColor, to: newColor });
+              }
+              poData.apItems[i].color = newColor;
             }
           }
           // Refresh legacy `apColor` field: if all items share one color,
@@ -7318,7 +7364,12 @@ ${q.accepted ? `
         }
 
         if (body.poNotes !== undefined) {
-          poData.notes = String(body.poNotes || '');
+          const oldNotes = String(poData.notes || '').trim();
+          const newNotes = String(body.poNotes || '').trim();
+          if (oldNotes !== newNotes) {
+            changes.push({ kind: 'notes', from: oldNotes, to: newNotes });
+          }
+          poData.notes = newNotes;
         }
 
         // Single UPDATE: po_data always; notes column too if poNotes was set
@@ -7332,11 +7383,15 @@ ${q.accepted ? `
         vals.push(poNumber);
         await db.query(`UPDATE supplier_pos SET ${sets.join(', ')} WHERE po_number = $${vals.length}`, vals);
         const updated = await db.query('SELECT * FROM supplier_pos WHERE po_number = $1', [poNumber]);
-        const rep = getRepFromReq(req, body);
-        const editedFields = Object.keys(body).filter(k => ['customer','apItems','poNotes'].includes(k));
-        writelog('info', 'supplier-po.edited', `Edited PO ${poNumber} (${editedFields.join(', ')})`, {
-          rep, quoteNum: cur.rows[0].quote_number, meta: { poNumber, fields: editedFields, status }
-        });
+
+        // Only log if anything actually changed — prevents change-log
+        // pollution from no-op saves.
+        if (changes.length > 0) {
+          writelog('info', 'supplier-po.edited', `Edited PO ${poNumber} (${changes.length} change${changes.length===1?'':'s'})`, {
+            rep: repId, quoteNum: cur.rows[0].quote_number,
+            meta: { poNumber, repName, status, changes }
+          });
+        }
         json({ success: true, po: updated.rows[0] });
         return;
       } catch(e) {
@@ -7346,20 +7401,50 @@ ${q.accepted ? `
       }
     }
 
-    // Column-level path (status / tracking / dates / notes)
+    // Column-level path (status / tracking / dates / notes from the
+    // suppliers-board inline cells). Compute changes against current
+    // values so this also feeds the PO change log.
     const allowed = ['status', 'expected_ship_date', 'tracking_number', 'notes', 'sent_at', 'shipped_at'];
-    const sets = [], vals = [];
-    for (const key of allowed) {
-      if (body[key] !== undefined) {
-        sets.push(`${key} = $${vals.length + 1}`);
-        vals.push(body[key] || null);
-      }
-    }
-    if (!sets.length) { json({ error: 'Nothing to update' }, 400); return; }
-    vals.push(poNumber);
+    const requestedFields = allowed.filter(k => body[k] !== undefined);
+    if (!requestedFields.length) { json({ error: 'Nothing to update' }, 400); return; }
     try {
+      const cur = await db.query(
+        `SELECT status, expected_ship_date, tracking_number, notes, sent_at, shipped_at, quote_number
+         FROM supplier_pos WHERE po_number = $1`, [poNumber]);
+      if (!cur.rows.length) { json({ error: 'PO not found' }, 404); return; }
+      const old = cur.rows[0];
+      const sets = [], vals = [];
+      const changes = [];
+      const colLabels = {
+        status: 'Status',
+        expected_ship_date: 'Expected Ship Date',
+        tracking_number: 'Tracking Number',
+        notes: 'Notes',
+        sent_at: 'Sent Timestamp',
+        shipped_at: 'Shipped Timestamp',
+      };
+      for (const key of allowed) {
+        if (body[key] !== undefined) {
+          const newVal = body[key] || null;
+          sets.push(`${key} = $${vals.length + 1}`);
+          vals.push(newVal);
+          const oldStr = old[key] == null ? '' : String(old[key]);
+          const newStr = newVal == null ? '' : String(newVal);
+          if (oldStr !== newStr) {
+            changes.push({ kind: 'column', field: key, label: colLabels[key]||key, from: oldStr, to: newStr });
+          }
+        }
+      }
+      vals.push(poNumber);
       await db.query(`UPDATE supplier_pos SET ${sets.join(', ')} WHERE po_number = $${vals.length}`, vals);
       const updated = await db.query('SELECT * FROM supplier_pos WHERE po_number = $1', [poNumber]);
+
+      if (changes.length > 0) {
+        writelog('info', 'supplier-po.edited', `Edited PO ${poNumber} (${changes.length} change${changes.length===1?'':'s'})`, {
+          rep: repId, quoteNum: old.quote_number,
+          meta: { poNumber, repName, status: body.status || old.status, changes }
+        });
+      }
       json({ success: true, po: updated.rows[0] });
     } catch(e) {
       json({ error: e.message }, 500);
@@ -8224,7 +8309,92 @@ ${q.accepted ? `
 
       const subtotal = (d.apItems||[]).reduce((s,i) => s + (parseFloat(i.price||0)*parseInt(i.qty||1)), 0);
       const grandTabs = grand2x4 + grand1x4 + grand1x2;
-      const shipTo   = [c.address, c.city, c.state && c.zip ? `${c.state} ${c.zip}` : (c.state||c.zip)].filter(Boolean).join(', ');
+      const shipTo   = [c.address, c.city, c.state && c.zip ? `${c.state} ${c.zip}` : (c.state||c.zip), c.country].filter(Boolean).join(', ');
+
+      // ── Change log ────────────────────────────────────────────
+      // Pull all logged events for this PO (creation + every edit) and
+      // render a chronological list at the bottom of the document so the
+      // supplier can see what's been touched since the PO was first sent.
+      let changeLogRows = [];
+      try {
+        const lr = await db.query(
+          `SELECT at, message, meta FROM logs
+           WHERE event LIKE 'supplier-po.%' AND meta->>'poNumber' = $1
+           ORDER BY at ASC LIMIT 200`,
+          [poNumber]
+        );
+        changeLogRows = lr.rows || [];
+      } catch(e) { /* change log is non-critical; render nothing on failure */ }
+
+      const _fmtChangeTs = (ts) => {
+        if (!ts) return '';
+        try {
+          return new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' });
+        } catch(e) { return String(ts); }
+      };
+      const _fmtChangeDate = (s) => {
+        if (!s) return '(empty)';
+        // '2026-05-15' → 'May 15, 2026'
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+          try { return new Date(s + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch(e) {}
+        }
+        return s;
+      };
+      const _renderChange = (ch) => {
+        if (!ch) return '';
+        if (ch.kind === 'color') {
+          const from = ch.from ? escHtmlPo(ch.from) : '<em>(none)</em>';
+          const to   = ch.to   ? escHtmlPo(ch.to)   : '<em>(unset)</em>';
+          return `Color for <strong>${escHtmlPo(ch.itemName||'item')}</strong> changed from ${from} to <strong>${to}</strong>`;
+        }
+        if (ch.kind === 'customer') {
+          const from = ch.from ? escHtmlPo(ch.from) : '<em>(empty)</em>';
+          const to   = ch.to   ? escHtmlPo(ch.to)   : '<em>(empty)</em>';
+          return `${escHtmlPo(ch.label || ch.field)} changed from ${from} to <strong>${to}</strong>`;
+        }
+        if (ch.kind === 'notes') {
+          // Don't dump full notes diff — keep change log tidy
+          return ch.to ? `Notes updated` : `Notes cleared`;
+        }
+        if (ch.kind === 'column') {
+          const isDate = ch.field === 'expected_ship_date';
+          const isTs = ch.field === 'sent_at' || ch.field === 'shipped_at';
+          const fmt = (v) => !v ? '<em>(empty)</em>' : (isDate ? escHtmlPo(_fmtChangeDate(v)) : (isTs ? escHtmlPo(_fmtChangeTs(v)) : escHtmlPo(v)));
+          return `${escHtmlPo(ch.label || ch.field)} changed from ${fmt(ch.from)} to <strong>${fmt(ch.to)}</strong>`;
+        }
+        return escHtmlPo(JSON.stringify(ch));
+      };
+
+      const changeLogHtml = changeLogRows.length === 0 ? '' : (() => {
+        const items = changeLogRows.map(row => {
+          const meta = row.meta || {};
+          const who = meta.repName || '—';
+          const ts = _fmtChangeTs(row.at);
+          let body = '';
+          // Determine event type from message prefix (writelog stores the text)
+          if ((row.message||'').startsWith('Created PO')) {
+            body = 'PO created';
+          } else if (Array.isArray(meta.changes) && meta.changes.length) {
+            body = meta.changes.map(c => `<li>${_renderChange(c)}</li>`).join('');
+            body = `<ul style="margin:4px 0 0 18px;padding:0;list-style:disc;color:#555;line-height:1.6">${body}</ul>`;
+          } else {
+            body = escHtmlPo(row.message || '');
+          }
+          return `
+          <div class="changelog-entry">
+            <div class="changelog-meta">
+              <span class="changelog-when">${escHtmlPo(ts)}</span>
+              <span class="changelog-who">${escHtmlPo(who)}</span>
+            </div>
+            <div class="changelog-body">${body}</div>
+          </div>`;
+        }).join('');
+        return `
+        <div class="changelog-block">
+          <h4>Change Log</h4>
+          <div class="changelog-list">${items}</div>
+        </div>`;
+      })();
 
       const poHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -8273,11 +8443,22 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
 .notes-block h4{font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}
 .notes-block p{font-size:13px;color:#333;line-height:1.6}
 .footer{margin-top:40px;padding-top:20px;border-top:1px solid #eee;text-align:center;font-size:11px;color:#aaa}
-.status-bar{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#fff8f5;border:1px solid rgba(238,98,22,.2);border-radius:8px;margin-bottom:24px;font-size:12px;color:#888}
+.status-bar{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#fff8f5;border:1px solid rgba(238,98,22,.2);border-radius:8px;margin-bottom:24px;font-size:12px;color:#555}
+.status-bar strong{color:#1a1a1a}
 .status-dot{width:8px;height:8px;border-radius:50%;background:#ee6216;flex-shrink:0}
 .btn-print{padding:9px 18px;background:#1a1a1a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em}
 .btn-print:hover{background:#333}
-@media print{.status-bar{display:none}.btn-print{display:none}body{background:#fff;padding:0}.page{box-shadow:none;border-radius:0}}
+.changelog-block{margin-top:32px;padding:20px 22px;background:#fafafa;border:1px solid #eee;border-radius:8px}
+.changelog-block h4{font-size:11px;font-weight:800;color:#1a1a1a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px}
+.changelog-list{display:flex;flex-direction:column;gap:12px}
+.changelog-entry{padding-bottom:12px;border-bottom:1px solid #eee}
+.changelog-entry:last-child{border-bottom:none;padding-bottom:0}
+.changelog-meta{display:flex;align-items:center;gap:10px;margin-bottom:4px;font-size:11px}
+.changelog-when{color:#888;font-weight:600}
+.changelog-who{color:#1a1a1a;font-weight:700}
+.changelog-body{font-size:12px;color:#333;line-height:1.55}
+.changelog-body em{color:#999;font-style:italic;font-size:11px}
+@media print{.btn-print{display:none}body{background:#fff;padding:0}.page{box-shadow:none;border-radius:0}.status-bar{background:#fff;border:1px solid #ccc}.changelog-block{background:#fff;border:1px solid #ccc;page-break-inside:avoid}}
 </style>
 </head>
 <body>
@@ -8352,6 +8533,8 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
     <h4>Reference</h4>
     <p>WhisperRoom Order: <strong>${escHtmlPo(d.quoteNumber||poNumber)}</strong>${d.dealName ? ` &nbsp;·&nbsp; ${escHtmlPo(d.dealName)}` : ''}</p>
   </div>
+
+  ${changeLogHtml}
 
   <div class="footer">
     WhisperRoom, Inc. &middot; whisperroom.com &middot; 1-800-200-8168 &middot; This is an official purchase order. Please confirm receipt.

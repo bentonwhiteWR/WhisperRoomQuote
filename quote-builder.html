@@ -3914,8 +3914,10 @@ function generatePDF() {
   const canadaEl = document.getElementById('canada');
   const isCanadian = !!(canadaEl && canadaEl.checked);
   const brokerVal = (document.getElementById('customsBroker') || {value:''}).value || '';
+  const countryVal = (document.getElementById('shipCountry') || {value:''}).value.trim();
+  const isCanadaCountry = !countryVal || /^canada$/i.test(countryVal);
   const canadianBlock = isCanadian
-    ? '<div style="margin:0 0 14px;padding:10px 14px;background:#fff8f0;border-left:3px solid #ee6216;font-size:9px;color:#46484d;line-height:1.7;"><strong style="color:#ee6216;display:block;margin-bottom:3px;">INTERNATIONAL / CANADIAN ORDER</strong><strong style="color:#ee6216;">All international orders must be prepaid in full with bank wire transfer.</strong><br>Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.' + (brokerVal ? '<br><strong>Customs Broker:</strong> ' + brokerVal : '') + '</div>'
+    ? '<div style="margin:0 0 14px;padding:10px 14px;background:#fff8f0;border-left:3px solid #ee6216;font-size:9px;color:#46484d;line-height:1.7;"><strong style="color:#ee6216;display:block;margin-bottom:3px;">INTERNATIONAL / CANADIAN ORDER</strong><strong style="color:#ee6216;">All international orders must be prepaid in full with bank wire transfer.</strong>' + (isCanadaCountry ? '<br>Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.' : '') + (brokerVal ? '<br><strong>Customs Broker:</strong> ' + brokerVal : '') + '</div>'
     : '';
   const taxExemptEl = document.getElementById('taxexempt');
   const isTaxExempt = !!(taxExemptEl && taxExemptEl.checked);

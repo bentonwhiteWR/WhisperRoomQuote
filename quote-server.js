@@ -3050,7 +3050,7 @@ tbody tr:hover td{background:#fdfcfb}
   ${q.canadian ? `<div class="card" style="border-left:3px solid #ee6216;background:#fff8f0">
     <div class="card-label" style="color:#ee6216">International / Canadian Order</div>
     <p class="terms" style="color:#ee6216;font-weight:700">All international orders must be prepaid in full with bank wire transfer.</p>
-    <p class="terms" style="color:#555;margin-top:6px">Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.</p>
+    ${!c.country || /^canada$/i.test((c.country||'').trim()) ? `<p class="terms" style="color:#555;margin-top:6px">Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.</p>` : ''}
     ${q.customsBroker ? `<p class="terms" style="margin-top:8px;color:#333"><strong style="color:#ee6216">Customs Broker:</strong> ${String(q.customsBroker).replace(/</g,'&lt;')}</p>` : ''}
   </div>` : ''}
 
@@ -8481,7 +8481,7 @@ tbody tr:last-child td{border-bottom:none}
   ${(q.canadian || o.canadian) ? `<div class="card" style="border-left:3px solid #ee6216;background:#fff8f0">
     <div class="card-label" style="color:#ee6216">International / Canadian Order</div>
     <p style="margin:0;font-size:12px;color:#ee6216;font-weight:700;line-height:1.6">All international orders must be prepaid in full with bank wire transfer.</p>
-    <p style="margin:6px 0 0;font-size:12px;color:#555;line-height:1.6">Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.</p>
+    ${!c.country || /^canada$/i.test((c.country||'').trim()) ? `<p style="margin:6px 0 0;font-size:12px;color:#555;line-height:1.6">Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.</p>` : ''}
     ${(q.customsBroker || o.customsBroker) ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0e0cc"><div style="font-size:10px;color:#ee6216;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;font-weight:700">Customs Broker</div><div style="font-size:13px;color:#333">${String(q.customsBroker || o.customsBroker).replace(/</g,'&lt;')}</div></div>` : ''}
   </div>` : ''}
 

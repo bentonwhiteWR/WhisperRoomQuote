@@ -51,6 +51,16 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.9.0', date:'May 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Audimute PO documents now include a Change Log section near the bottom showing every edit since the PO was created — who, when, and what changed (color, ship-to address, status, expected ship date, tracking number, notes). Visible on both the screen view and the printed/PDF copy so the supplier can see updates at a glance. Powered by the existing logs table; no schema changes.'},
+        {t:'fix', d:'Expected Ship Date no longer "resets to invalid date" when saved on the Suppliers dashboard. Root cause: node-postgres was parsing DATE columns to JS Date objects, which round-tripped through JSON as ISO timestamps that <input type="date"> rejects. Added a pg type parser that returns DATE columns as raw YYYY-MM-DD strings (the format every consumer in this app already expected). Also fixes the silent off-by-one in the late-PO highlight logic on the Suppliers board.'},
+        {t:'fix', d:'Verifying-and-overriding the Ship-To address on PO creation now actually persists. The v1.8.0 dialog was sending the edited customer object to the create endpoint, but the endpoint was only reading apItems and notes — body.customer was silently dropped. Create now merges body.customer over the order snapshot.'},
+        {t:'ui',  d:'PO status bar (Status / Expected Ship / Tracking) is no longer hidden on the printed/PDF copy. Print button stays hidden in PDFs.'},
+        {t:'log', d:'Both PATCH branches (po_data edits + column-level inline edits) now compute structured per-field diffs (kind, label, from, to, item) and emit them as supplier-po.edited log events. PO creation also emits a supplier-po.created seed event. The new PO Change Log queries these by event prefix + meta.poNumber.'},
+      ]
+    },
+    {
       v:'1.8.0', date:'May 8, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Audimute POs are now editable. Open an existing PO from the AP badge in the Deal Hub or the Edit button on the Suppliers dashboard. Editable: ship-to address, per-item color, and notes. Line items themselves stay tied to the underlying order — to change those, delete the PO and recreate from the order.'},

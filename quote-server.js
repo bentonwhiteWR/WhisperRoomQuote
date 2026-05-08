@@ -8180,7 +8180,7 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
   <div class="header">
     <div class="logo-wrap">
       <div class="logo">Whisper<span>Room</span></div>
-      <div class="logo-sub">5765 Commerce Blvd, Morristown, TN 37814<br>(865) 558-5364 · info@whisperroom.com</div>
+      <div class="logo-sub">322 Nancy Lynn Lane, Suite 14, Knoxville, TN 37919<br>(865) 558-5364 · info@whisperroom.com</div>
     </div>
     <div class="po-title">
       <div class="po-label">PURCHASE ORDER</div>

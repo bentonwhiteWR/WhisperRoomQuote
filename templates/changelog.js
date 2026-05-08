@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.31', date:'May 8, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'PO number format changed from WR-PO-YYYYMM-NNNN to WR{YY}{MM}{DD}{NN} (e.g. WR26050801). The sequential counter now resets each day and is 2 digits. Uses Eastern time to match the issue date printed on the document.'},
+      ]
+    },
+    {
       v:'1.7.30', date:'May 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Audimute PO document overhauled with full BOM. Each AP SKU now resolves to its panel breakdown (2\'x4\', 1\'x4\', 1\'x2\') and Audimute wholesale cost from a single source-of-truth mapping (lib/ap-packages.js). Items table is now QTY | ITEM | DESCRIPTION | COLOR | UNIT COST | TOTAL — description shows "Includes: N - 2\'x4\' panels. N - 1\'x2\' panels." plus "N total WhisperRoom Velcro Hang Tab Packs" per item.'},

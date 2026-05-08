@@ -250,16 +250,19 @@ function httpsGet(urlStr, timeoutMs = 15000) {
 
 // ── PO number generator ──────────────────────────────────────────
 async function nextPoNumber() {
-  if (!db) return `WR-PO-${new Date().toISOString().slice(0,7).replace('-','')}-0001`;
-  const ym = new Date().toISOString().slice(0,7).replace('-',''); // e.g. "202605"
-  const prefix = `WR-PO-${ym}-`;
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const yy = String(now.getFullYear()).slice(2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const prefix = `WR${yy}${mm}${dd}`;
+  if (!db) return prefix + '01';
   const row = await db.query(
     `SELECT po_number FROM supplier_pos WHERE po_number LIKE $1 ORDER BY po_number DESC LIMIT 1`,
     [prefix + '%']
   );
-  if (row.rows.length === 0) return prefix + '0001';
-  const last = parseInt(row.rows[0].po_number.split('-').pop(), 10);
-  return prefix + String(last + 1).padStart(4, '0');
+  if (row.rows.length === 0) return prefix + '01';
+  const last = parseInt(row.rows[0].po_number.slice(-2), 10);
+  return prefix + String(last + 1).padStart(2, '0');
 }
 
 // Wire up HubSpot module now that httpsRequest is defined

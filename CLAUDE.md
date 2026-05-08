@@ -6,6 +6,12 @@ WhisperRoom Quote Builder — internal Node.js sales tool. Single-server (`quote
 
 1. **HANDOFF.md** — full architecture, env vars, gotchas, testing recipe. Source of truth for "how this app works."
 2. **DEVLOG.md** — top section is "Current focus" (where we left off + outstanding work). Below that is the changelog table and any session writeups.
+3. **SCHEMA.md** — Postgres tables, columns, JSONB shapes, which lib reads/writes each. Read before any DB-touching change.
+
+## Slash commands (project-scoped, in `.claude/commands/`)
+
+- `/bump <patch|minor> "<summary>"` — bumps `package.json`, adds `templates/changelog.js` entry, adds DEVLOG row. Stages but doesn't commit, so it bundles cleanly with the actual code change.
+- `/promote [optional summary]` — staging→main merge dance with confirmation. Use only when the user explicitly asks to ship to prod.
 
 ## Workflow (non-negotiable)
 

@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.7.32', date:'May 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'International quotes now include a Country field in the quote builder (appears when Canadian / International Destination is checked). Country is stored in the customer snapshot and shown in the Ship To address on quote, invoice, and order pages.'},
+        {t:'add', d:'"All international orders must be prepaid in full with bank wire transfer." now appears on quotes, invoices, and order pages whenever the Canadian / International flag is set.'},
+      ]
+    },
+    {
       v:'1.7.31', date:'May 8, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'PO number format changed from WR-PO-YYYYMM-NNNN to WR{YY}{MM}{DD}{NN} (e.g. WR26050801). The sequential counter now resets each day and is 2 digits. Uses Eastern time to match the issue date printed on the document.'},

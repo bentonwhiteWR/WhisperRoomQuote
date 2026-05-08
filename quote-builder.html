@@ -882,6 +882,10 @@ body:not(.dark) .submit-overlay-msg { color: var(--muted) !important; }
     </div>
     <div id="customsBrokerRow" style="display:none;margin-top:10px">
       <div class="field">
+        <label>Country</label>
+        <input type="text" id="shipCountry" placeholder="e.g. Canada, United Kingdom">
+      </div>
+      <div class="field" style="margin-top:8px">
         <label>Customs Broker Info</label>
         <input type="text" id="customsBroker" placeholder="Broker name, contact, reference number">
       </div>
@@ -3492,7 +3496,7 @@ async function createDeal() {
         date: new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}),
         rep: repName, ownerId: document.getElementById('repSelect').value,
         revision: existingRevision + 1, total,
-        customer: { firstName: document.getElementById('firstName').value.trim(), lastName: document.getElementById('lastName').value.trim(), email: customerEmail, phone: document.getElementById('phone').value.trim(), company: document.getElementById('company').value.trim(), address: document.getElementById('shipAddress').value.trim(), city: document.getElementById('shipCity').value.trim(), state: document.getElementById('shipState').value.trim().toUpperCase(), zip: document.getElementById('shipZip').value.trim().replace(/\s+/g,'') },
+        customer: { firstName: document.getElementById('firstName').value.trim(), lastName: document.getElementById('lastName').value.trim(), email: customerEmail, phone: document.getElementById('phone').value.trim(), company: document.getElementById('company').value.trim(), address: document.getElementById('shipAddress').value.trim(), city: document.getElementById('shipCity').value.trim(), state: document.getElementById('shipState').value.trim().toUpperCase(), zip: document.getElementById('shipZip').value.trim().replace(/\s+/g,''), country: (document.getElementById('shipCountry') || {value:''}).value.trim() || '' },
         lineItems: JSON.parse(JSON.stringify(lineItems)),
         discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
         freight: freightData ? {...freightData} : null,
@@ -3907,7 +3911,7 @@ function generatePDF() {
   const isCanadian = !!(canadaEl && canadaEl.checked);
   const brokerVal = (document.getElementById('customsBroker') || {value:''}).value || '';
   const canadianBlock = isCanadian
-    ? '<div style="margin:0 0 14px;padding:10px 14px;background:#fff8f0;border-left:3px solid #ee6216;font-size:9px;color:#46484d;line-height:1.7;"><strong style="color:#ee6216;display:block;margin-bottom:3px;">INTERNATIONAL / CANADIAN ORDER</strong>Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.' + (brokerVal ? '<br><strong>Customs Broker:</strong> ' + brokerVal : '') + '</div>'
+    ? '<div style="margin:0 0 14px;padding:10px 14px;background:#fff8f0;border-left:3px solid #ee6216;font-size:9px;color:#46484d;line-height:1.7;"><strong style="color:#ee6216;display:block;margin-bottom:3px;">INTERNATIONAL / CANADIAN ORDER</strong><strong style="color:#ee6216;">All international orders must be prepaid in full with bank wire transfer.</strong><br>Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.' + (brokerVal ? '<br><strong>Customs Broker:</strong> ' + brokerVal : '') + '</div>'
     : '';
   const taxExemptEl = document.getElementById('taxexempt');
   const isTaxExempt = !!(taxExemptEl && taxExemptEl.checked);
@@ -4465,6 +4469,7 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
     document.getElementById('shipCity').value = q.customer.city || '';
     document.getElementById('shipState').value = normalizeState(q.customer.state || '');
     document.getElementById('shipZip').value = q.customer.zip || '';
+    if (document.getElementById('shipCountry')) document.getElementById('shipCountry').value = q.customer.country || '';
 
   // Restore billing fields
   if (q.billing && (q.billing.name || q.billing.address || q.billing.email)) {
@@ -5762,6 +5767,8 @@ function newQuote(skipConfirm = false) {
     if (checkLabel) checkLabel.classList.remove('active');
   }
   document.getElementById('customsBrokerRow').style.display = 'none';
+  const shipCountryEl = document.getElementById('shipCountry');
+  if (shipCountryEl) shipCountryEl.value = '';
   const taxEl = document.getElementById('taxexempt');
   if (taxEl) { taxEl.checked = false; document.getElementById('taxExemptRow').style.display = 'none'; }
 

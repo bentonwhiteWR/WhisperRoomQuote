@@ -2559,7 +2559,7 @@ tbody tr:hover td{background:#fdfcfb}
       ${c.company?`<div class="info-item"><label>Company</label><span>${c.company}</span></div>`:''}
       ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
       ${c.phone?`<div class="info-item"><label>Phone</label><span>${c.phone}</span></div>`:''}
-      ${(c.address||c.city||c.state||c.zip)?`<div class="info-item"><label>Ship To</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}</span></div>`:''}
+      ${(c.address||c.city||c.state||c.zip||c.country)?`<div class="info-item"><label>Ship To</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip),c.country].filter(Boolean).join(', ')}</span></div>`:''}
       ${q.billing && (q.billing.name || q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.name||'',q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
     </div>
   </div>` : ''}
@@ -2988,7 +2988,7 @@ tbody tr:hover td{background:#fdfcfb}
       ${c.company?`<div class="info-item"><label>Company</label><span>${c.company}</span></div>`:''}
       ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
       ${c.phone?`<div class="info-item"><label>Phone</label><span>${c.phone}</span></div>`:''}
-      ${(c.address||c.city||c.state||c.zip)?`<div class="info-item"><label>Ship To</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}</span></div>`:''}
+      ${(c.address||c.city||c.state||c.zip||c.country)?`<div class="info-item"><label>Ship To</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip),c.country].filter(Boolean).join(', ')}</span></div>`:''}
       ${q.billing && (q.billing.name || q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.name||'',q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
     </div>
   </div>` : ''}
@@ -3049,7 +3049,8 @@ tbody tr:hover td{background:#fdfcfb}
 
   ${q.canadian ? `<div class="card" style="border-left:3px solid #ee6216;background:#fff8f0">
     <div class="card-label" style="color:#ee6216">International / Canadian Order</div>
-    <p class="terms" style="color:#555">Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.</p>
+    <p class="terms" style="color:#ee6216;font-weight:700">All international orders must be prepaid in full with bank wire transfer.</p>
+    <p class="terms" style="color:#555;margin-top:6px">Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.</p>
     ${q.customsBroker ? `<p class="terms" style="margin-top:8px;color:#333"><strong style="color:#ee6216">Customs Broker:</strong> ${String(q.customsBroker).replace(/</g,'&lt;')}</p>` : ''}
   </div>` : ''}
 
@@ -8460,7 +8461,7 @@ tbody tr:last-child td{border-bottom:none}
       ${c.company?`<div class="info-item"><label>Company</label><span>${c.company}</span></div>`:''}
       ${c.email?`<div class="info-item"><label>Email</label><span>${c.email}</span></div>`:''}
       ${c.phone?`<div class="info-item"><label>Phone</label><span>${c.phone}</span></div>`:''}
-      ${(c.address||c.city||c.state||c.zip)?`<div class="info-item"><label>Delivery Address</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}</span></div>`:''}
+      ${(c.address||c.city||c.state||c.zip||c.country)?`<div class="info-item"><label>Delivery Address</label><span>${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip),c.country].filter(Boolean).join(', ')}</span></div>`:''}
       ${q.billing && (q.billing.name || q.billing.address || q.billing.email) ? `<div class="info-item" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0"><label>Bill To</label><span>${[q.billing.name||'',q.billing.email||'',q.billing.address||'',[q.billing.city,(q.billing.state&&q.billing.zip?q.billing.state+' '+q.billing.zip:q.billing.state||q.billing.zip)].filter(Boolean).join(', ')].filter(Boolean).join('<br>')}</span></div>` : ''}
     </div>
   </div>` : ''}
@@ -8479,7 +8480,8 @@ tbody tr:last-child td{border-bottom:none}
 
   ${(q.canadian || o.canadian) ? `<div class="card" style="border-left:3px solid #ee6216;background:#fff8f0">
     <div class="card-label" style="color:#ee6216">International / Canadian Order</div>
-    <p style="margin:0;font-size:12px;color:#555;line-height:1.6">Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.</p>
+    <p style="margin:0;font-size:12px;color:#ee6216;font-weight:700;line-height:1.6">All international orders must be prepaid in full with bank wire transfer.</p>
+    <p style="margin:6px 0 0;font-size:12px;color:#555;line-height:1.6">Customer is responsible for all duties, taxes and fees related to import and for providing Customs Broker Info.</p>
     ${(q.customsBroker || o.customsBroker) ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0e0cc"><div style="font-size:10px;color:#ee6216;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;font-weight:700">Customs Broker</div><div style="font-size:13px;color:#333">${String(q.customsBroker || o.customsBroker).replace(/</g,'&lt;')}</div></div>` : ''}
   </div>` : ''}
 
@@ -8792,7 +8794,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         c.company ? `Company: ${c.company}` : null,
         c.email   ? `Email: ${c.email}`     : null,
         c.phone   ? `Phone: ${c.phone}`     : null,
-        c.address||c.city||c.state ? `Ship To: ${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip)].filter(Boolean).join(', ')}` : null,
+        c.address||c.city||c.state||c.country ? `Ship To: ${[c.address,c.city,(c.state&&c.zip?c.state+' '+c.zip:c.state||c.zip),c.country].filter(Boolean).join(', ')}` : null,
         ``,
         `ORDER SPECIFICATIONS`,
         `Foam Color: ${foamColor||'Not specified'}`,

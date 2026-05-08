@@ -3343,7 +3343,10 @@ async function createDeal() {
           city: document.getElementById('shipCity').value.trim(),
           state: document.getElementById('shipState').value.trim(),
           zip: document.getElementById('shipZip').value.trim(),
+          country: (document.getElementById('shipCountry') || {value:''}).value.trim() || '',
         },
+        canadian: !!(document.getElementById('canada') && document.getElementById('canada').checked),
+        customsBroker: (document.getElementById('customsBroker') || {value:''}).value.trim() || '',
         billing: (() => {
           const same = document.getElementById('billsame') && document.getElementById('billsame').checked;
           if (same) return null;

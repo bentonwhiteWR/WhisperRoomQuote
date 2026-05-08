@@ -1789,7 +1789,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, loadedQuoteNumber, loadedQuoteTotal, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, forceNewFolder, newFolderName, notes, repFoamColor, repHingePreference, repApColor, repWaType, install } = body;
+      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, loadedQuoteNumber, loadedQuoteTotal, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, forceNewFolder, newFolderName, notes, repFoamColor, repHingePreference, repApColor, repWaType, install, canadian, customsBroker } = body;
       let { quoteNumber } = body;
 
       // ── Revision vs new-quote decision ───────────────────────────────
@@ -2281,6 +2281,8 @@ const server = http.createServer(async (req, res) => {
           date: new Date().toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}),
           customer, lineItems, discount, freight, tax,
           install: install || null,
+          canadian:           !!canadian,
+          customsBroker:      customsBroker || '',
           quoteLabel: quoteLabel || '',
           notes: notes || '',
           repFoamColor:       repFoamColor       || '',

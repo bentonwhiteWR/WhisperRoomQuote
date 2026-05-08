@@ -2831,7 +2831,7 @@ tbody tr:hover td{background:#fdfcfb}
       }
 
       const q = quoteData;
-      console.log(`[quote-page] ${quoteId} customer.phone="${q.customer?.phone||'MISSING'}" keys=${Object.keys(q.customer||{}).join(',')}`);
+      console.log(`[quote-page] ${quoteId} customer.phone="${q.customer?.phone||'MISSING'}" keys=${Object.keys(q.customer||{}).join(',')} canadian=${q.canadian} country="${q.customer?.country||''}" customsBroker="${q.customsBroker||''}"`);
       const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
       const hasApOnQuote = (q.lineItems||[]).some(i => i.name && /^AP\s/i.test(i.name));
       const sub = (q.lineItems||[]).reduce((s,i)=>s+(i.price*i.qty),0);

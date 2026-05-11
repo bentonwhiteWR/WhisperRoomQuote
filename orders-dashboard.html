@@ -927,7 +927,7 @@ async function runFreightQuote() {
                   ${escNote(c.service)}
                   ${hasUrl ? '<span style="font-size:10px;color:var(--orange);font-weight:600">↗</span>' : ''}
                 </div>
-                <div style="font-size:11px;color:var(--muted);margin-top:1px">Transit: ${escNote(c.transit)}</div>
+                <div style="font-size:11px;color:var(--muted);margin-top:1px">Transit: ${escNote(c.transit)}${c.referenceNumber ? ` &nbsp;·&nbsp; <span style="color:var(--text);font-weight:600">Ref: ${escNote(c.referenceNumber)}</span>` : ''}</div>
               </div>
               <div style="text-align:right">
                 <div style="font-size:17px;font-weight:800;color:var(--orange)">$${c.cost.toFixed(2)}</div>

@@ -6745,7 +6745,7 @@ ${q.accepted ? `
         <originCountry>USA</originCountry>
         <originPostalCode>${SHIP_ZIP}</originPostalCode>
         <originState>${SHIP_STATE}</originState>
-        <requestReferenceNumber>false</requestReferenceNumber>
+        <requestReferenceNumber>true</requestReferenceNumber>
         <shipType>${shipType}</shipType>
         <tariff>559</tariff>
         <weightUnits>LBS</weightUnits>
@@ -6774,6 +6774,18 @@ ${q.accepted ? `
           const transitDays = transitMatch ? parseInt(transitMatch[1]) : null;
           const transit = transitDays ? `${transitDays} day${transitDays !== 1 ? 's' : ''}` : '—';
 
+          // referenceNumber: returned when requestReferenceNumber=true in the
+          // request (per WSDL line 112 — xs:string). Useful as a paste-ready
+          // ID the rep can quote to OD support; OD doesn't expose a public
+          // saved-quote viewer so we can't deep-link to it.
+          const refMatch = xml.match(/<referenceNumber[^>]*>([^<]*)<\/referenceNumber>/i);
+          const referenceNumber = refMatch ? refMatch[1].trim() : '';
+          // Treat "0" as "no real reference issued" — the docs sample
+          // shows "0" even with the flag on, suggesting OD sometimes
+          // returns a placeholder. Only surface non-zero non-empty refs.
+          const realRef = (referenceNumber && referenceNumber !== '0') ? referenceNumber : null;
+          if (realRef) console.log(`[orders-freight] OD ${shipType} referenceNumber: ${realRef}`);
+
           const serviceLabels = { LTL: 'Standard LTL', GTD: 'Guaranteed', GTE: 'Guaranteed by Noon' };
           // OD's public site doesn't expose saved rate quotes — myOD has
           // no viewable rate-quote history page we can deep-link to, and
@@ -6784,13 +6796,14 @@ ${q.accepted ? `
           // the booking sub-section, which IS useful (fresh quote tool
           // with destination pre-filled, ready for booking).
           return {
-            carrier:     'Old Dominion',
-            service:     serviceLabels[shipType] || shipType,
-            serviceCode: shipType,
-            cost:        total,
+            carrier:        'Old Dominion',
+            service:        serviceLabels[shipType] || shipType,
+            serviceCode:    shipType,
+            cost:           total,
             transit,
-            bookable:    false,
-            odBookUrl:   buildOdBookUrl({ city, state, zip, pallets, totalWeight: totalWt, acc }),
+            bookable:       false,
+            referenceNumber: realRef,
+            odBookUrl:      buildOdBookUrl({ city, state, zip, pallets, totalWeight: totalWt, acc }),
           };
         };
 

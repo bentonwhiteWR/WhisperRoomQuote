@@ -8,14 +8,14 @@ Internal development notes. Last updated 2026-05-11.
 
 ## Current focus (2026-05-11)
 
-**Most recent shipped:** v1.9.10 — OD carrier cards no longer have a misleading click-through (OD has no public saved-quote viewer). Only ABF gets the external open. (Previous: v1.9.9 carrier card click-through; v1.9.8 ABF notes parser; v1.9.7 Quote Weight widget.)
+**Most recent shipped:** v1.9.11 — OD rate cards display a quote reference number ("Ref: XXXX") returned by OD's API. WSDL-confirmed safe (read-only API, the flag just controls returning a quote-side reference, no booking). (Previous: v1.9.10 drop OD click-through; v1.9.9 ABF deep-link; v1.9.8 ABF notes parser.)
 
 **Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.9.0 over May 7–8. Full lifecycle now: create with editable ship-to, edit ship-to/color/notes, delete, change-log audit trail visible on the doc itself. Next-up candidates are user-driven.
 
 **Outstanding work (not yet started):**
 
 - The May 7 audit findings below — none addressed yet. The five "Critical" items are real bugs and should be the next coding focus once the AP system stabilizes. Especially **#1 (public endpoints lack share-token auth)** and **#2 (XSS in server-rendered HTML)** — both are exploitable by anonymous visitors.
-- v1.9.10 promoted to main 2026-05-11 (bundled with v1.9.6 / .7 / .8 / .9). Prod and staging in sync.
+- v1.9.10 promoted to main 2026-05-11 (bundled with v1.9.6 / .7 / .8 / .9). v1.9.11 on staging awaiting test.
 - ABF deep-link confirmed working in staging test. The candidate-ID logger in `parseAbfXml` is still in place — could be narrowed to a single element name once confirmed which one ABF actually uses (low priority; defensive parsing is fine).
 - OD has no public saved-quote viewer (user checked their myOD portal — no quote history page). v1.9.10 dropped OD click-through accordingly. If OD ever exposes one, re-add `quoteUrl` in the OD result.
 - **Parked (proposed v1.9.11):** flip OD's `requestReferenceNumber` flag from `false` to `true` and log the raw SOAP response so we can see what identifier-like fields OD returns. Cheap investigation — would tell us empirically whether anything OD ships back is searchable in their UI.
@@ -185,6 +185,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.9.11  | 2026-05-11 | OD rate cards display "Ref: XXXX" from `<referenceNumber>`; `requestReferenceNumber` flipped to true (WSDL-confirmed safe) |
 | 1.9.10  | 2026-05-11 | OD carrier cards no longer click-through (no public saved-quote viewer exists); only ABF gets the ↗ external open |
 | 1.9.9   | 2026-05-11 | Carrier cards in Get Freight modal click-through to carrier quote page (ABF rate-quote deep-link, OD ship tool) |
 | 1.9.8   | 2026-05-11 | Get Freight modal surfaces ABF service-level notes (e.g. restricted delivery days) inline under each carrier card |

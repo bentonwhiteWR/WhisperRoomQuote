@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.9.11', date:'May 11, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'OD rate cards in the Get Freight modal now show a "Ref: XXXX" reference number when one is returned. The rate API\'s requestReferenceNumber flag is now enabled on every OD call (the WSDL confirms this is purely read-only — no booking happens, just adds a quote-side reference to the response). Useful as a paste-ready ID the rep can quote to OD support if they need to follow up on a specific quote. Reference appears inline next to "Transit:" — only when OD returns a real (non-zero, non-empty) value.'},
+        {t:'log', d:'parseOdSoap parses <referenceNumber> from the SOAP response, treats "0" as no-reference (the docs sample shows 0 even with the flag on), and logs real refs as "[orders-freight] OD <shipType> referenceNumber: ...".'},
+      ]
+    },
+    {
       v:'1.9.10', date:'May 11, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'OD carrier cards in the Get Freight modal no longer click-through to OD\'s ship-LTL tool — that URL was a generic quote page (not a saved-rate viewer), so it was misleading. Reason: OD doesn\'t expose saved rate quotes anywhere on their public site or myOD portal in a way we can deep-link. ABF cards still click-through to arcb.com (where saved quotes ARE viewable). The "Book on OD.com" button in the booking sub-section is unaffected — it still opens OD\'s tool with destination pre-filled, which is the right tool for actually booking.'},

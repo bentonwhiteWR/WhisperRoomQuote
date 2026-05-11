@@ -8,16 +8,17 @@ Internal development notes. Last updated 2026-05-11.
 
 ## Current focus (2026-05-11)
 
-**Most recent shipped:** v1.9.10 — OD carrier cards no longer have a misleading click-through (OD has no public saved-quote viewer). Only ABF gets the external open. (Previous: v1.9.9 carrier card click-through; v1.9.8 ABF notes parser; v1.9.7 Quote Weight widget.)
+**Most recent shipped:** v1.9.12 — Two-part: (1) **rate-display bug fix** — OD rates were ~$50–$200 too high since the integration was added because we double-counted fuel + accessorials on top of `netFreightCharge` (which is already the all-in total). Now matches OD's own page. (2) Clicking OD card copies the reference number to clipboard + opens OD's reference-search page so the rep can paste in. (Previous: v1.9.11 OD reference number display; v1.9.10 drop OD click-through; v1.9.9 ABF deep-link.)
 
 **Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.9.0 over May 7–8. Full lifecycle now: create with editable ship-to, edit ship-to/color/notes, delete, change-log audit trail visible on the doc itself. Next-up candidates are user-driven.
 
 **Outstanding work (not yet started):**
 
 - The May 7 audit findings below — none addressed yet. The five "Critical" items are real bugs and should be the next coding focus once the AP system stabilizes. Especially **#1 (public endpoints lack share-token auth)** and **#2 (XSS in server-rendered HTML)** — both are exploitable by anonymous visitors.
-- v1.9.6 + v1.9.7 + v1.9.8 + v1.9.9 + v1.9.10 on staging awaiting test (will promote together). Prod (main) at v1.9.5.
-- ABF deep-link confirmed working in v1.9.9 testing. The candidate-ID logger is still in place — could be narrowed to a single element name once confirmed which one ABF actually uses (low priority; defensive parsing is fine).
+- v1.9.10 promoted to main 2026-05-11 (bundled with v1.9.6 / .7 / .8 / .9). v1.9.11 + v1.9.12 on staging awaiting test (will promote together).
+- ABF deep-link confirmed working in staging test. The candidate-ID logger in `parseAbfXml` is still in place — could be narrowed to a single element name once confirmed which one ABF actually uses (low priority; defensive parsing is fine).
 - OD has no public saved-quote viewer (user checked their myOD portal — no quote history page). v1.9.10 dropped OD click-through accordingly. If OD ever exposes one, re-add `quoteUrl` in the OD result.
+- **Parked (proposed v1.9.11):** flip OD's `requestReferenceNumber` flag from `false` to `true` and log the raw SOAP response so we can see what identifier-like fields OD returns. Cheap investigation — would tell us empirically whether anything OD ships back is searchable in their UI.
 - **Parked follow-up:** BOOTH_DATA pallet dimensions (orders-dashboard.html:689) — user reports some entries may be inaccurate. Needs them to specify which SKUs/booths are wrong; we update the map then. The shared computeShipmentEstimate helper (v1.9.6) makes this a one-place fix when ready.
 
 **Tooling note:** As of 2026-05-08 the user is moving day-to-day editing from Claude Desktop to Cursor. Local clone lives at `C:\Users\bento\Documents\Claude\WhisperRoomQuote-staging`. Workflow stays the same (staging-only, explicit ask to promote to main).
@@ -184,6 +185,8 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.9.12  | 2026-05-11 | Fix: OD rates were double-counting fuel + accessorials on top of `netFreightCharge` (~$50–$200 too high every quote); OD card click copies reference to clipboard + opens OD's search page |
+| 1.9.11  | 2026-05-11 | OD rate cards display "Ref: XXXX" from `<referenceNumber>`; `requestReferenceNumber` flipped to true (WSDL-confirmed safe) |
 | 1.9.10  | 2026-05-11 | OD carrier cards no longer click-through (no public saved-quote viewer exists); only ABF gets the ↗ external open |
 | 1.9.9   | 2026-05-11 | Carrier cards in Get Freight modal click-through to carrier quote page (ABF rate-quote deep-link, OD ship tool) |
 | 1.9.8   | 2026-05-11 | Get Freight modal surfaces ABF service-level notes (e.g. restricted delivery days) inline under each carrier card |

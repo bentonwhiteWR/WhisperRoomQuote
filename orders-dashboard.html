@@ -927,7 +927,7 @@ async function runFreightQuote() {
                   ${escNote(c.service)}
                   ${hasUrl ? '<span style="font-size:10px;color:var(--orange);font-weight:600">↗</span>' : ''}
                 </div>
-                <div style="font-size:11px;color:var(--muted);margin-top:1px">Transit: ${escNote(c.transit)}</div>
+                <div style="font-size:11px;color:var(--muted);margin-top:1px">Transit: ${escNote(c.transit)}${c.referenceNumber ? ` &nbsp;·&nbsp; <span style="color:var(--text);font-weight:600">Ref: ${escNote(c.referenceNumber)}</span>` : ''}</div>
               </div>
               <div style="text-align:right">
                 <div style="font-size:17px;font-weight:800;color:var(--orange)">$${c.cost.toFixed(2)}</div>
@@ -960,17 +960,35 @@ let _selectedService = null;
 let _selectedBookable = false;
 let _selectedOdBookUrl = '';
 
-// Click handler for carrier rate cards. Two effects:
+// Click handler for carrier rate cards. Three effects:
 //   1. Opens the carrier's own quote page in a new tab (so the rep sees
 //      service notes the API drops — e.g. ABF's restricted-delivery-
 //      days banner, OD's full breakdown).
-//   2. Selects the rate locally (highlights the card + populates the
+//   2. For OD: also copies the reference number to clipboard, since
+//      OD's reference-search page doesn't accept the value via URL.
+//      Toast confirms the copy so the rep knows to paste.
+//   3. Selects the rate locally (highlights the card + populates the
 //      booking sub-section + sets _selected* state for "Use This Rate").
 // If the carrier didn't return a quote URL, the click still selects.
 function onFreightCardClick(cardEl) {
   const key = cardEl.getAttribute('data-fq-key');
   const c = key ? (window._fqCarriers || {})[key] : null;
   if (!c) return;
+  // OD-specific: stage the reference on the clipboard before opening the
+  // search page (form is JS-submitted, no URL param works). navigator.
+  // clipboard requires a user-gesture context (this click counts) and a
+  // secure context (https). Toast either way so the rep knows what to do.
+  if (c.carrier === 'Old Dominion' && c.referenceNumber && c.quoteUrl) {
+    const ref = String(c.referenceNumber);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(ref).then(
+        () => showToast(`Reference ${ref} copied — paste into OD's search field`, 'success'),
+        () => showToast(`Reference: ${ref} (copy failed — paste manually)`, 'info')
+      );
+    } else {
+      showToast(`Reference: ${ref} (paste into OD's search field)`, 'info');
+    }
+  }
   if (c.quoteUrl) {
     try { window.open(c.quoteUrl, '_blank', 'noopener'); } catch(e) {}
   }

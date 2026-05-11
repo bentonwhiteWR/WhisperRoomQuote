@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.9.5', date:'May 11, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Deal Hub now shows every Closed Won deal regardless of recency. Previously the board fetched the 200 most-recently-modified deals and filtered them into columns, so Closed Won deals that had been silent for weeks (customer build pending, awaiting approval, etc.) fell off the back and the Closed Won column would appear empty even when there were active orders sitting in it.'},
+        {t:'log', d:'Two-part fix on /api/deals/list: (1) when no specific stage is requested, the main fetch is now filtered to the 5 board stages (appointmentscheduled, qualifiedtobuy, contractsent, closedwon, 845719) so the per-page budget isn\'t eaten by Closed Lost; (2) a dedicated Closed Won pass paginates every Closed Won deal regardless of recency (10-page safety cap = 2000 deals) and merges into the result, deduped by deal id. Rep filter is respected in both passes.'},
+        {t:'ui',  d:'Frontend deal-board request bumped from limit=200 to limit=500 for headroom across the other four columns.'},
+      ]
+    },
+    {
       v:'1.9.4', date:'May 11, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Deleting a QB invoice from the Accounting page now also deletes the QB Payment(s) we created on order processing or via Mark as Paid. Previously the invoice would go but the payment was left applied to a now-missing invoice — a reconcile and accounting hazard. Payments are deleted first (so a failed invoice delete leaves nothing orphaned), then the invoice, then qbPayments / qbPaidAt are cleared from the local order_data alongside the existing qbInvoiceId / qbDocNumber cleanup. Per-payment success/failure is logged on the qb.invoice.deleted activity entry; a missing payment (already gone) is treated as success and doesn\'t block the invoice delete.'},

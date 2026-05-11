@@ -367,7 +367,7 @@ const fmtDate = d => d?new Date(d).toLocaleDateString('en-US',{month:'short',day
 
 async function loadDeals() {
   try {
-    const qs=new URLSearchParams({limit:200});
+    const qs=new URLSearchParams({limit:500});
     if(currentRepFilter) qs.set('rep',currentRepFilter);
     const res=await fetch('/api/deals/list?'+qs,{credentials:'include'});
     const data=await res.json();

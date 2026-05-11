@@ -1020,6 +1020,12 @@ function selectFreightOption(el, carrier, cost, transit, service, bookable, odBo
   bookSection.style.display = 'block';
 
   const isAbf = carrier === 'ABF Freight';
+  // Only show the in-app Book ABF Shipment button when the rate is
+  // actually bookable through our ABF API integration. ABF guaranteed /
+  // Time-Critical options require extra BOL fields our flow doesn't
+  // support — rep books those on arcb.com directly (the card click
+  // already opens that page).
+  const showBookBtn = isAbf && bookable;
 
   bookSection.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
@@ -1040,7 +1046,7 @@ function selectFreightOption(el, carrier, cost, transit, service, bookable, odBo
       </div>` : ''}
     </div>
     <div style="display:flex;gap:8px">
-      ${isAbf ? `
+      ${showBookBtn ? `
         <button id="fqBookBtn" onclick="bookShipment()" style="flex:1;padding:12px;background:var(--green,#1a7a4a);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
           &#x2713; Book ABF Shipment
         </button>

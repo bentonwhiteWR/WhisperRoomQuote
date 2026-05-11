@@ -1486,9 +1486,20 @@ const server = http.createServer(async (req, res) => {
         } catch(e) { console.warn('[deals list] DB search error:', e.message); }
       }
 
+      // Stages displayed by the Deal Hub board. Filtering the main fetch
+      // to these (when no specific stage is requested) means the per-page
+      // budget isn't eaten by Closed Lost or other off-board stages —
+      // before this filter, Closed Lost crowding out kept Closed Won deals
+      // older than the most-recent ~200 from ever appearing.
+      const BOARD_STAGES = ['appointmentscheduled', 'qualifiedtobuy', 'contractsent', 'closedwon', '845719'];
+
       const filters = [];
-      if (stage) filters.push({ propertyName: 'dealstage', operator: 'EQ', value: stage });
-      if (rep)   filters.push({ propertyName: 'hubspot_owner_id', operator: 'EQ', value: rep });
+      if (stage) {
+        filters.push({ propertyName: 'dealstage', operator: 'EQ', value: stage });
+      } else {
+        filters.push({ propertyName: 'dealstage', operator: 'IN', values: BOARD_STAGES });
+      }
+      if (rep) filters.push({ propertyName: 'hubspot_owner_id', operator: 'EQ', value: rep });
 
       // If DB matched deal IDs and no HubSpot text query needed, fetch by ID
       let hsDeals = [];
@@ -1590,6 +1601,44 @@ const server = http.createServer(async (req, res) => {
           const nextAfter = res2.body?.paging?.next?.after;
           if (!nextAfter || page.length < pageSize) break;
           afterCursor = String(nextAfter);
+        }
+
+        // Dedicated Closed Won pass — fetches every Closed Won deal
+        // regardless of recency. Closed Won = "active orders we're working
+        // on" (customer build pending, awaiting final approval, partial
+        // shipment, etc.). These can sit silent for months and still need
+        // to be visible on the board. The main paginated fetch above is
+        // sorted by hs_lastmodifieddate, so silent Closed Won deals fall
+        // off the back; this pass guarantees we catch them.
+        // Only runs on the default load (no specific `stage` requested
+        // and no `q` text search). 10-page safety cap (= 2000 won deals)
+        // to bound runtime in pathological cases.
+        if (!stage && !q) {
+          const wonFilters = [{ propertyName: 'dealstage', operator: 'EQ', value: 'closedwon' }];
+          if (rep) wonFilters.push({ propertyName: 'hubspot_owner_id', operator: 'EQ', value: rep });
+          const seenIds = new Set(hsDeals.map(d => d.id));
+          let wonAfter;
+          for (let pagesFetched = 0; pagesFetched < 10; pagesFetched++) {
+            const wonBody = {
+              filterGroups: [{ filters: wonFilters }],
+              properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
+                           'closedate','payment_status','payment_type','po_','tracking_number','carrier__c'],
+              sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+              limit: 200,
+              ...(wonAfter ? { after: wonAfter } : {}),
+            };
+            const wonRes = await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: '/crm/v3/objects/deals/search',
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, wonBody);
+            const wonPage = wonRes.body?.results || [];
+            wonPage.forEach(d => { if (!seenIds.has(d.id)) { seenIds.add(d.id); hsDeals.push(d); } });
+            const nextAfter = wonRes.body?.paging?.next?.after;
+            if (!nextAfter || wonPage.length < 200) break;
+            wonAfter = String(nextAfter);
+          }
         }
       }
 

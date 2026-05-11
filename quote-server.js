@@ -6763,10 +6763,14 @@ ${q.accepted ? `
             console.warn(`[orders-freight] OD ${shipType} error: ${err}`);
             return null;
           }
-          const netCharge  = parseFloat(get('netFreightCharge') || '0');
-          const fuelSurch  = parseFloat(get('fuelSurcharge') || '0');
-          const accessChrg = parseFloat(get('totalAccessorialCharge') || '0');
-          const total = Math.round((netCharge + fuelSurch + accessChrg) * 100) / 100;
+          // OD's `netFreightCharge` is already the all-in total — verified
+          // against the API docs sample (page 30): gross + fuel +
+          // totalAccessorial = net. The previous code summed net + fuel +
+          // accessorial again, which double-counted both fuel surcharge
+          // and accessorials. That made every OD rate display ~$50–$200
+          // higher than what OD's web page actually shows.
+          const netCharge = parseFloat(get('netFreightCharge') || '0');
+          const total = Math.round(netCharge * 100) / 100;
           if (!total) return null;
 
           // Transit days from first destinationCities entry
@@ -6787,14 +6791,13 @@ ${q.accepted ? `
           if (realRef) console.log(`[orders-freight] OD ${shipType} referenceNumber: ${realRef}`);
 
           const serviceLabels = { LTL: 'Standard LTL', GTD: 'Guaranteed', GTE: 'Guaranteed by Noon' };
-          // OD's public site doesn't expose saved rate quotes — myOD has
-          // no viewable rate-quote history page we can deep-link to, and
-          // the public ship-LTL tool is rate-on-demand only. So OD cards
-          // intentionally don't get a `quoteUrl` (frontend skips the
-          // external open when missing — click just selects the rate).
-          // odBookUrl stays for the existing "Book on OD.com" button in
-          // the booking sub-section, which IS useful (fresh quote tool
-          // with destination pre-filled, ready for booking).
+          // OD's rate-reference-search page (where the rep can pull up
+          // a saved rate by reference number) doesn't accept a
+          // referenceNumber via URL query — the form submits via JS and
+          // the URL never changes. So we can't deep-link the value. But
+          // we CAN open the page and have the frontend stage the
+          // reference on the user's clipboard, ready to paste into the
+          // search box. Only set quoteUrl when we have a real ref.
           return {
             carrier:        'Old Dominion',
             service:        serviceLabels[shipType] || shipType,
@@ -6803,6 +6806,7 @@ ${q.accepted ? `
             transit,
             bookable:       false,
             referenceNumber: realRef,
+            quoteUrl:       realRef ? 'https://www.odfl.com/us/en/tools/rate-reference-search.html' : null,
             odBookUrl:      buildOdBookUrl({ city, state, zip, pallets, totalWeight: totalWt, acc }),
           };
         };

@@ -6724,7 +6724,7 @@ ${q.accepted ? `
         // pallet itself). ABF rates correctly off product weight alone.
         // Add OD_PALLET_WEIGHT_LBS to each freightItem's weight on the
         // OD path only.
-        const OD_PALLET_WEIGHT_LBS = 140;
+        const OD_PALLET_WEIGHT_LBS = 120;
         const freightItemsXml = pallets.map(p => {
           const productLbs = parseFloat(p.weight) || (totalWt / pallets.length);
           const grossLbs   = Math.round(productLbs + OD_PALLET_WEIGHT_LBS);

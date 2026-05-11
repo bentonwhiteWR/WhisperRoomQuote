@@ -1015,24 +1015,67 @@ const server = http.createServer(async (req, res) => {
     try {
       const invoiceId = pathname.replace('/api/qb/invoice/', '').trim();
       if (!invoiceId) { json({ error: 'invoice id required' }, 400); return; }
+
+      // Find any linked QB Payments via the local order record (the
+      // auto-payment and manual-mark-paid flows both stash paymentIds in
+      // order_data.qbPayments[]). Deleting an invoice without first
+      // removing its payments leaves orphan Payment objects applied to a
+      // now-missing invoice, which fouls up reconcile and accounting.
+      let qbPaymentsForOrder = [];
+      let orderQuoteNumber = null;
+      if (db) {
+        try {
+          const r = await db.query(
+            `SELECT quote_number, order_data FROM orders WHERE order_data->>'qbInvoiceId' = $1 LIMIT 1`,
+            [String(invoiceId)]
+          );
+          if (r.rows[0]) {
+            orderQuoteNumber = r.rows[0].quote_number;
+            qbPaymentsForOrder = Array.isArray(r.rows[0].order_data?.qbPayments) ? r.rows[0].order_data.qbPayments : [];
+          }
+        } catch(e) { console.warn('[qb-invoice-delete] order lookup failed:', e.message); }
+      }
+
+      // Delete payments BEFORE the invoice — if the invoice delete then
+      // fails, the user can retry (deletePayment is null-safe for already-
+      // gone payments). Reverse order would orphan payments on partial
+      // failure, which is worse than the alternative.
+      const paymentResults = [];
+      for (const p of qbPaymentsForOrder) {
+        if (!p?.paymentId) continue;
+        try {
+          await qb.deletePayment(p.paymentId);
+          paymentResults.push({ paymentId: p.paymentId, ok: true });
+        } catch(e) {
+          paymentResults.push({ paymentId: p.paymentId, ok: false, error: e.message });
+          console.warn(`[qb-invoice-delete] failed to delete payment ${p.paymentId}: ${e.message}`);
+        }
+      }
+
       const deleted = await qb.deleteInvoice(invoiceId);
+
+      // Clear invoice + payment markers from the local order row in one shot
       if (db) {
         try {
           await db.query(
             `UPDATE orders
-             SET order_data = order_data - 'qbInvoiceId' - 'qbDocNumber'
+             SET order_data = order_data - 'qbInvoiceId' - 'qbDocNumber' - 'qbPayments' - 'qbPaidAt'
              WHERE order_data->>'qbInvoiceId' = $1`,
             [String(invoiceId)]
           );
         } catch(e) { console.warn('[qb-invoice-delete] local order cleanup failed:', e.message); }
       }
+
       try {
+        const okCount = paymentResults.filter(p => p.ok).length;
+        const failCount = paymentResults.length - okCount;
         writelog('info', 'qb.invoice.deleted',
-          `${sess.name || sess.email} deleted QB invoice ${deleted?.DocNumber || invoiceId}`,
-          { rep: String(sess.ownerId), meta: { invoiceId, docNumber: deleted?.DocNumber || null, customer: deleted?.CustomerRef?.name || null, total: deleted?.TotalAmt || null } }
+          `${sess.name || sess.email} deleted QB invoice ${deleted?.DocNumber || invoiceId}${paymentResults.length ? ` (+${okCount} payment${okCount===1?'':'s'} deleted${failCount ? `, ${failCount} failed` : ''})` : ''}`,
+          { rep: String(sess.ownerId), quoteNum: orderQuoteNumber,
+            meta: { invoiceId, docNumber: deleted?.DocNumber || null, customer: deleted?.CustomerRef?.name || null, total: deleted?.TotalAmt || null, payments: paymentResults } }
         );
       } catch(e) {}
-      json({ success: true, deleted });
+      json({ success: true, deleted, paymentsDeleted: paymentResults });
     } catch(e) { json({ error: e.message }, 500); }
     return;
   }

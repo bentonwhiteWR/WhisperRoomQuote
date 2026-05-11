@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.9.14', date:'May 11, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'OD rate requests now add 140 lbs per pallet (the pallet itself) to the per-item weight. OD prices off gross weight including the pallet; ABF prices off product weight (unchanged on the ABF path). Last remaining knob in the OD price-discrepancy investigation — combined with v1.9.12 (no double-count) and v1.9.13 (NMFC), OD rates from the modal should now match what OD\'s own page returns.'},
+      ]
+    },
+    {
       v:'1.9.13', date:'May 11, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'OD rate requests now include NMFC 027880 sub 02 on every freight item (matching what we already send to ABF). Per OD\'s API docs and WSDL, when both ratedClass and nmfc are provided, nmfc wins — so OD will now price based on the actual commodity classification instead of a generic freight class. Fixes a rate discrepancy where OD was returning class-only rates that didn\'t match the NMFC-based pricing the account is contracted for.'},

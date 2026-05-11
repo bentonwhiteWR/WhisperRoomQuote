@@ -6775,10 +6775,14 @@ ${q.accepted ? `
           const transit = transitDays ? `${transitDays} day${transitDays !== 1 ? 's' : ''}` : '—';
 
           const serviceLabels = { LTL: 'Standard LTL', GTD: 'Guaranteed', GTE: 'Guaranteed by Noon' };
-          // Single quoteUrl field across carriers so the frontend
-          // doesn't need carrier-specific keys. odBookUrl kept as alias
-          // for backward compat with any older client cache.
-          const odUrl = buildOdBookUrl({ city, state, zip, pallets, totalWeight: totalWt, acc });
+          // OD's public site doesn't expose saved rate quotes — myOD has
+          // no viewable rate-quote history page we can deep-link to, and
+          // the public ship-LTL tool is rate-on-demand only. So OD cards
+          // intentionally don't get a `quoteUrl` (frontend skips the
+          // external open when missing — click just selects the rate).
+          // odBookUrl stays for the existing "Book on OD.com" button in
+          // the booking sub-section, which IS useful (fresh quote tool
+          // with destination pre-filled, ready for booking).
           return {
             carrier:     'Old Dominion',
             service:     serviceLabels[shipType] || shipType,
@@ -6786,8 +6790,7 @@ ${q.accepted ? `
             cost:        total,
             transit,
             bookable:    false,
-            quoteUrl:    odUrl,
-            odBookUrl:   odUrl,
+            odBookUrl:   buildOdBookUrl({ city, state, zip, pallets, totalWeight: totalWt, acc }),
           };
         };
 

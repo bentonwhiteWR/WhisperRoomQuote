@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.9.10', date:'May 11, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'OD carrier cards in the Get Freight modal no longer click-through to OD\'s ship-LTL tool — that URL was a generic quote page (not a saved-rate viewer), so it was misleading. Reason: OD doesn\'t expose saved rate quotes anywhere on their public site or myOD portal in a way we can deep-link. ABF cards still click-through to arcb.com (where saved quotes ARE viewable). The "Book on OD.com" button in the booking sub-section is unaffected — it still opens OD\'s tool with destination pre-filled, which is the right tool for actually booking.'},
+        {t:'ui',  d:'The ↗ external-open glyph now only appears on cards that have a real deep-link (i.e. ABF), so the rep knows at a glance which clicks open externally vs which just select the rate.'},
+      ]
+    },
+    {
       v:'1.9.9', date:'May 11, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Clicking a carrier card in the Get Freight modal now opens that carrier\'s own quote page in a new tab — ABF\'s rate-quote viewer (https://arcb.com/tools/rate-quote.html#/<quoteId>) for ABF rows, OD\'s ship-LTL tool with the destination pre-filled for OD rows. Lets the rep see everything the carrier shows on its own site, including service notes the rate API doesn\'t expose (e.g. "Delivery is only available on Tuesday, Wednesday, and Thursday" for restricted destinations). Also still selects the rate locally so the existing Use This Rate / Book flow works the same.'},

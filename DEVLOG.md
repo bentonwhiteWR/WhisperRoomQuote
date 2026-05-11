@@ -8,15 +8,16 @@ Internal development notes. Last updated 2026-05-11.
 
 ## Current focus (2026-05-11)
 
-**Most recent shipped:** v1.9.9 — Carrier cards in Get Freight modal now click-through to the carrier's own quote page (ABF rate-quote deep-link via parsed quote ID; OD via existing buildOdBookUrl). Pivot from v1.9.8 (which couldn't extract delivery-day notes from ABF's XML — the notes only render on ABF's website). (Previous: v1.9.8 ABF notes parser; v1.9.7 Quote Weight widget; v1.9.6 first cut.)
+**Most recent shipped:** v1.9.10 — OD carrier cards no longer have a misleading click-through (OD has no public saved-quote viewer). Only ABF gets the external open. (Previous: v1.9.9 carrier card click-through; v1.9.8 ABF notes parser; v1.9.7 Quote Weight widget.)
 
 **Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.9.0 over May 7–8. Full lifecycle now: create with editable ship-to, edit ship-to/color/notes, delete, change-log audit trail visible on the doc itself. Next-up candidates are user-driven.
 
 **Outstanding work (not yet started):**
 
 - The May 7 audit findings below — none addressed yet. The five "Critical" items are real bugs and should be the next coding focus once the AP system stabilizes. Especially **#1 (public endpoints lack share-token auth)** and **#2 (XSS in server-rendered HTML)** — both are exploitable by anonymous visitors.
-- v1.9.6 + v1.9.7 + v1.9.8 + v1.9.9 on staging awaiting test (will promote together). Prod (main) at v1.9.5.
-- **Awaiting confirmation:** the ABF XML element name carrying the quote ID (e.g. `LTLX8W1316` from `https://arcb.com/tools/rate-quote.html#/LTLX8W1316`). v1.9.9 logs all candidate IDs found per request — once the user runs a quote and Railway logs show `[ABF] quote-id candidates: { ... }`, narrow `idTags` in `parseAbfXml` to the actual element used.
+- v1.9.6 + v1.9.7 + v1.9.8 + v1.9.9 + v1.9.10 on staging awaiting test (will promote together). Prod (main) at v1.9.5.
+- ABF deep-link confirmed working in v1.9.9 testing. The candidate-ID logger is still in place — could be narrowed to a single element name once confirmed which one ABF actually uses (low priority; defensive parsing is fine).
+- OD has no public saved-quote viewer (user checked their myOD portal — no quote history page). v1.9.10 dropped OD click-through accordingly. If OD ever exposes one, re-add `quoteUrl` in the OD result.
 - **Parked follow-up:** BOOTH_DATA pallet dimensions (orders-dashboard.html:689) — user reports some entries may be inaccurate. Needs them to specify which SKUs/booths are wrong; we update the map then. The shared computeShipmentEstimate helper (v1.9.6) makes this a one-place fix when ready.
 
 **Tooling note:** As of 2026-05-08 the user is moving day-to-day editing from Claude Desktop to Cursor. Local clone lives at `C:\Users\bento\Documents\Claude\WhisperRoomQuote-staging`. Workflow stays the same (staging-only, explicit ask to promote to main).
@@ -183,6 +184,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.9.10  | 2026-05-11 | OD carrier cards no longer click-through (no public saved-quote viewer exists); only ABF gets the ↗ external open |
 | 1.9.9   | 2026-05-11 | Carrier cards in Get Freight modal click-through to carrier quote page (ABF rate-quote deep-link, OD ship tool) |
 | 1.9.8   | 2026-05-11 | Get Freight modal surfaces ABF service-level notes (e.g. restricted delivery days) inline under each carrier card |
 | 1.9.7   | 2026-05-11 | Orders drawer Quote Weight block reformatted to match Quote Builder widget (Total / Pallets / per-pallet dims) |

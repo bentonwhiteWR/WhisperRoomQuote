@@ -906,6 +906,7 @@ async function runFreightQuote() {
       grouped[c.carrier].push(c);
     });
 
+    const escNote = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     list.innerHTML = Object.entries(grouped).map(([carrierName, options]) => `
       <div style="margin-bottom:12px">
         <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px">${carrierName}</div>
@@ -922,6 +923,11 @@ async function runFreightQuote() {
                 <div style="font-size:10px;color:var(--muted)">actual cost</div>
               </div>
             </div>
+            ${c.notes && c.notes.length ? `
+              <div style="margin-top:8px;padding:7px 10px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:5px;font-size:11px;color:#f59e0b;line-height:1.5">
+                ${c.notes.map(n => `⚠ ${escNote(n)}`).join('<br>')}
+              </div>
+            ` : ''}
           </div>
         `).join('')}
       </div>

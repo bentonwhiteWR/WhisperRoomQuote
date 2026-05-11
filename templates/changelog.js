@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.9.8', date:'May 11, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Get Freight modal now surfaces ABF service-level notes inline under the carrier card (e.g. "Delivery is only available on Tuesday, Wednesday, and Thursday." for destinations with restricted delivery days). Yellow ⚠ banner appears below the rate so the rep sees the constraint before booking. Note text is parsed defensively from several possible XML element names (NOTE / MESSAGE / SERVICEMSG / DELIVERYNOTE / etc.) and ITEM elements with descriptive FOR attributes — if a real-world ABF note slips past the parser, the raw XML is logged so the missed element can be added.'},
+      ]
+    },
+    {
       v:'1.9.7', date:'May 11, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Orders dashboard drawer Quote Weight block reformatted to match the Quote Builder\'s widget exactly: Total weight on its own line, Pallets count, then "Pallet 1: 102"×52"×44"" / "Pallet 2: ..." per-pallet dimensions listed below. Replaces the v1.9.6 single-line summary so the orders side reads identically to the quote side.'},

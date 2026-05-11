@@ -6682,6 +6682,7 @@ ${q.accepted ? `
           serviceCode: 'STND',
           cost:        result.cost,
           transit:     result.transit,
+          notes:       result.notes || [],
           bookable:    true,
         });
       } catch(e) {

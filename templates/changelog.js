@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.9.13', date:'May 11, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'OD rate requests now include NMFC 027880 sub 02 on every freight item (matching what we already send to ABF). Per OD\'s API docs and WSDL, when both ratedClass and nmfc are provided, nmfc wins — so OD will now price based on the actual commodity classification instead of a generic freight class. Fixes a rate discrepancy where OD was returning class-only rates that didn\'t match the NMFC-based pricing the account is contracted for.'},
+      ]
+    },
+    {
       v:'1.9.12', date:'May 11, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'OD rates in the Get Freight modal were displaying ~$50–$200 too high — every quote since the OD integration was added. Root cause: parseOdSoap was summing netFreightCharge + fuelSurcharge + totalAccessorialCharge, but OD\'s netFreightCharge is already the all-in total (gross + fuel + accessorial all included). Verified against the API docs sample (page 30): grossFreightCharge 140 + fuelSurcharge 58.10 + totalAccessorialCharge 1092.50 = 1290.60 = netFreightCharge exactly. So we were double-counting fuel and accessorials. Fix is one line: total = netCharge. Going forward OD rates will match what OD\'s own page shows.'},

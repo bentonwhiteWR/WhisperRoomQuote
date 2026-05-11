@@ -6712,7 +6712,13 @@ ${q.accepted ? `
         if (acc.residential)    odAccessorials.push('RDC');  // Residential Delivery
         if (acc.limitedaccess)  odAccessorials.push('LDC');  // Limited Access Delivery
 
-        // Build freightItems XML from pallets
+        // Build freightItems XML from pallets. Per OD's API docs (page 11)
+        // and the WSDL, when both ratedClass and nmfc are provided, nmfc
+        // wins. Sending NMFC item + sub matches what we send to ABF and
+        // gives OD the actual commodity classification instead of just a
+        // generic class — fixes a rate discrepancy where OD was returning
+        // class-only rates that didn't match the NMFC-based pricing the
+        // account is contracted for.
         const freightItemsXml = pallets.map(p => `
         <freightItems>
           <dimensionUnits>IN</dimensionUnits>
@@ -6721,6 +6727,8 @@ ${q.accepted ? `
           <height>${Math.round(p.h || 48)}</height>
           <numberOfUnits>1</numberOfUnits>
           <ratedClass>${FREIGHT_CLASS}</ratedClass>
+          <nmfc>${NMFC_ITEM}</nmfc>
+          <nmfcSub>${NMFC_SUB}</nmfcSub>
           <weight>${Math.round(parseFloat(p.weight) || Math.round(totalWt / pallets.length))}</weight>
         </freightItems>`).join('');
 

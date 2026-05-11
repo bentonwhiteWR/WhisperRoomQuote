@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.9.4', date:'May 11, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Deleting a QB invoice from the Accounting page now also deletes the QB Payment(s) we created on order processing or via Mark as Paid. Previously the invoice would go but the payment was left applied to a now-missing invoice — a reconcile and accounting hazard. Payments are deleted first (so a failed invoice delete leaves nothing orphaned), then the invoice, then qbPayments / qbPaidAt are cleared from the local order_data alongside the existing qbInvoiceId / qbDocNumber cleanup. Per-payment success/failure is logged on the qb.invoice.deleted activity entry; a missing payment (already gone) is treated as success and doesn\'t block the invoice delete.'},
+        {t:'log', d:'New lib helpers: qb.getPayment(id), qb.deletePayment(id). Mirror the existing getInvoice/deleteInvoice pattern (fetch for SyncToken, POST operation=delete). getPayment returns null on 404 so callers can treat already-deleted payments as no-ops.'},
+      ]
+    },
+    {
       v:'1.9.3', date:'May 8, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'The customer-facing invoice page now shows the International / Canadian Order block (wire-transfer notice + customs broker line) the same way the quote page does. Previously the quote had this block but the invoice didn\'t, so customers who accepted a Canadian quote got an invoice with no mention of the wire-transfer requirement or the broker info on file. Block only renders when the order has the canadian flag set.'},

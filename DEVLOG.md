@@ -8,14 +8,14 @@ Internal development notes. Last updated 2026-05-11.
 
 ## Current focus (2026-05-11)
 
-**Most recent shipped:** v1.9.12 — Two-part: (1) **rate-display bug fix** — OD rates were ~$50–$200 too high since the integration was added because we double-counted fuel + accessorials on top of `netFreightCharge` (which is already the all-in total). Now matches OD's own page. (2) Clicking OD card copies the reference number to clipboard + opens OD's reference-search page so the rep can paste in. (Previous: v1.9.11 OD reference number display; v1.9.10 drop OD click-through; v1.9.9 ABF deep-link.)
+**Most recent shipped:** v1.9.13 — OD rate requests now include NMFC 027880 sub 02 on freight items (matching ABF). Fixes a remaining rate discrepancy where OD was pricing against generic freight class instead of the contracted NMFC commodity. (Previous: v1.9.12 OD double-count fix + clipboard; v1.9.11 OD reference number display; v1.9.10 drop OD click-through.)
 
 **Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.9.0 over May 7–8. Full lifecycle now: create with editable ship-to, edit ship-to/color/notes, delete, change-log audit trail visible on the doc itself. Next-up candidates are user-driven.
 
 **Outstanding work (not yet started):**
 
 - The May 7 audit findings below — none addressed yet. The five "Critical" items are real bugs and should be the next coding focus once the AP system stabilizes. Especially **#1 (public endpoints lack share-token auth)** and **#2 (XSS in server-rendered HTML)** — both are exploitable by anonymous visitors.
-- v1.9.12 promoted to main 2026-05-11 (bundled with v1.9.11). Prod and staging in sync.
+- v1.9.13 on staging awaiting test. Prod (main) at v1.9.12.
 - ABF deep-link confirmed working in staging test. The candidate-ID logger in `parseAbfXml` is still in place — could be narrowed to a single element name once confirmed which one ABF actually uses (low priority; defensive parsing is fine).
 - OD has no public saved-quote viewer (user checked their myOD portal — no quote history page). v1.9.10 dropped OD click-through accordingly. If OD ever exposes one, re-add `quoteUrl` in the OD result.
 - **Parked (proposed v1.9.11):** flip OD's `requestReferenceNumber` flag from `false` to `true` and log the raw SOAP response so we can see what identifier-like fields OD returns. Cheap investigation — would tell us empirically whether anything OD ships back is searchable in their UI.
@@ -185,6 +185,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.9.13  | 2026-05-11 | Fix: OD rate requests now include NMFC 027880 sub 02 on freight items (matching ABF); OD prices against contracted commodity instead of generic class |
 | 1.9.12  | 2026-05-11 | Fix: OD rates were double-counting fuel + accessorials on top of `netFreightCharge` (~$50–$200 too high every quote); OD card click copies reference to clipboard + opens OD's search page |
 | 1.9.11  | 2026-05-11 | OD rate cards display "Ref: XXXX" from `<referenceNumber>`; `requestReferenceNumber` flipped to true (WSDL-confirmed safe) |
 | 1.9.10  | 2026-05-11 | OD carrier cards no longer click-through (no public saved-quote viewer exists); only ABF gets the ↗ external open |

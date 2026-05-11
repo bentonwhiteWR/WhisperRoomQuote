@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.10.2', date:'May 11, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Get Freight modal action flow restructured. Clicking a rate card now just highlights it (no auto-open of carrier site, no auto-clipboard) — those moved to explicit buttons in the booking sub-section. New button "Book Online ↗" opens the carrier\'s quote page in a new tab and (for OD) copies the reference number to clipboard. New button "Select Rate" applies the carrier + freight cost to the order\'s shipment fields and closes the modal. The existing "Book ABF Shipment" button still appears for bookable ABF Standard LTL rates.'},
+        {t:'ui', d:'Removed the misleading ↗ glyph from rate cards (it implied click-to-open which is no longer the behavior). Card hover title updated to "Click to select this rate".'},
+      ]
+    },
+    {
       v:'1.10.1', date:'May 11, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Get Freight modal: removed the Special Instructions field (was ABF-only) and the Rate Only button from the booking sub-section after a rate is selected. Section now shows just Pickup Date / Contact Phone, plus the Book ABF Shipment button when a bookable ABF rate is selected.'},

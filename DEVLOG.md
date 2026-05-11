@@ -1,6 +1,6 @@
 # WhisperRoom Quote Builder — Dev Log
 
-Internal development notes. Last updated 2026-05-11.
+Internal development notes. Last updated 2026-05-11 (paused mid-feature on v1.12.0).
 
 > **Read this first when starting a session.** The "Current focus" section below is the fastest way to know where we left off. Below that: session writeups, the audit (outstanding work), and the changelog table.
 
@@ -8,14 +8,16 @@ Internal development notes. Last updated 2026-05-11.
 
 ## Current focus (2026-05-11)
 
-**Most recent shipped:** v1.12.0 — Shipping Email Recipients module (To + CC+) added to BOTH Process Order modals (Deal Hub + Quote Builder). To pre-fills with contact email; rep adds CCs that travel through to order_data and pre-populate the orders drawer. (Previous: v1.11.0 📞 Log Call button on Deal Hub; v1.10.4 Select Rate toast fix; v1.10.3 ABF Guaranteed friendly transit.)
+**Most recent shipped to PROD:** v1.11.0 — 📞 Log Call button on Deal Hub.
+
+**On STAGING, awaiting test (paused — will resume later):** v1.12.0 — Shipping Email Recipients module (To + CC+) added to BOTH Process Order modals (Deal Hub + Quote Builder). To pre-fills with contact email; rep adds CCs that travel through to order_data and pre-populate the orders drawer. Backend `/api/process-order` extended to accept and persist `shipEmailTo` + `shipEmailCc` into `order_data`. The orders dashboard drawer reads these via the existing `setShipEmailAddresses` (no orders-side changes needed). To resume: spot-test on staging from BOTH the Deal Hub Process Order flow AND the Quote Builder Process Order flow, verify the recipients show up pre-populated when the order is later opened on the Orders dashboard, then `/promote` to main.
 
 **Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.9.0 over May 7–8. Full lifecycle now: create with editable ship-to, edit ship-to/color/notes, delete, change-log audit trail visible on the doc itself. Next-up candidates are user-driven.
 
 **Outstanding work (not yet started):**
 
 - The May 7 audit findings below — none addressed yet. The five "Critical" items are real bugs and should be the next coding focus once the AP system stabilizes. Especially **#1 (public endpoints lack share-token auth)** and **#2 (XSS in server-rendered HTML)** — both are exploitable by anonymous visitors.
-- v1.11.0 promoted to main 2026-05-11. v1.12.0 on staging awaiting test.
+- v1.11.0 promoted to main 2026-05-11. **v1.12.0 on staging — paused mid-feature, will resume later.** Spot-test the To/CC+ module on Process Order from both Deal Hub and Quote Builder, verify the recipients land in `order_data.shipEmailTo` / `order_data.shipEmailCc` and pre-populate the Orders drawer when the order is opened.
 - The "open question" from v1.10.1 was answered by v1.10.2: not auto-apply, but explicit "Select Rate" button. Card click is now pure selection; "Book Online" and "Select Rate" are the two explicit actions, plus "Book ABF Shipment" for bookable ABF Standard LTL.
 - ABF deep-link confirmed working in staging test. The candidate-ID logger in `parseAbfXml` is still in place — could be narrowed to a single element name once confirmed which one ABF actually uses (low priority; defensive parsing is fine).
 - OD has no public saved-quote viewer (user checked their myOD portal — no quote history page). v1.9.10 dropped OD click-through accordingly. If OD ever exposes one, re-add `quoteUrl` in the OD result.

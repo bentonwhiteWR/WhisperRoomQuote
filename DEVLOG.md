@@ -15,7 +15,7 @@ Internal development notes. Last updated 2026-05-11.
 **Outstanding work (not yet started):**
 
 - The May 7 audit findings below — none addressed yet. The five "Critical" items are real bugs and should be the next coding focus once the AP system stabilizes. Especially **#1 (public endpoints lack share-token auth)** and **#2 (XSS in server-rendered HTML)** — both are exploitable by anonymous visitors.
-- v1.10.4 promoted to main 2026-05-11 (bundled with v1.10.1 / .2 / .3). v1.11.0 on staging awaiting test.
+- v1.11.0 promoted to main 2026-05-11. Prod and staging in sync.
 - The "open question" from v1.10.1 was answered by v1.10.2: not auto-apply, but explicit "Select Rate" button. Card click is now pure selection; "Book Online" and "Select Rate" are the two explicit actions, plus "Book ABF Shipment" for bookable ABF Standard LTL.
 - ABF deep-link confirmed working in staging test. The candidate-ID logger in `parseAbfXml` is still in place — could be narrowed to a single element name once confirmed which one ABF actually uses (low priority; defensive parsing is fine).
 - OD has no public saved-quote viewer (user checked their myOD portal — no quote history page). v1.9.10 dropped OD click-through accordingly. If OD ever exposes one, re-add `quoteUrl` in the OD result.

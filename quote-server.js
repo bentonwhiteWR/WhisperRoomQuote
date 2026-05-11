@@ -9140,7 +9140,8 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       const { dealId, quoteNumber, lineItems, freight, tax, discount, install,
               customer, billing, foamColor, hingePreference, apColor, waType, productionNotes,
               deliveryNotes, ownerId, dealName, paymentType, poNumber,
-              canadian, customsBroker } = body;
+              canadian, customsBroker,
+              shipEmailTo, shipEmailCc } = body;
 
       if (!dealId || !quoteNumber) { json({ error: 'Missing dealId or quoteNumber' }, 400); return; }
 
@@ -9294,6 +9295,16 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       const effectiveCanadian      = !!(canadian || quoteSnap.canadian);
       const effectiveCustomsBroker = (customsBroker && customsBroker.trim()) || (quoteSnap.customsBroker || '') || '';
 
+      // Shipping email recipients captured at process-order time so
+      // they're already populated when Jeromy opens the order to ship.
+      // To: defaults to the customer email at submit time (frontend
+      // pre-fill) but can be overridden. CC: optional rep-added list.
+      const cleanEmail = (s) => String(s || '').trim().toLowerCase();
+      const effectiveShipEmailTo = cleanEmail(shipEmailTo) || cleanEmail(customer?.email) || '';
+      const effectiveShipEmailCc = Array.isArray(shipEmailCc)
+        ? shipEmailCc.map(cleanEmail).filter(Boolean)
+        : [];
+
       const orderData = {
         foamColor, hingePreference, apColor, waType,
         productionNotes: effectiveProductionNotes,
@@ -9306,6 +9317,8 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         poNumber: (paymentType === 'po' && poNumber) ? poNumber : null,
         canadian: effectiveCanadian,
         customsBroker: effectiveCustomsBroker,
+        shipEmailTo: effectiveShipEmailTo,
+        shipEmailCc: effectiveShipEmailCc,
       };
 
       if (db) {

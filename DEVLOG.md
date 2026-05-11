@@ -8,14 +8,14 @@ Internal development notes. Last updated 2026-05-11.
 
 ## Current focus (2026-05-11)
 
-**Most recent shipped:** v1.11.0 — New "📞 Log Call" button in the Deal Hub action row. Opens a textarea modal; submit creates a real HubSpot Call engagement on the deal (auto-titled, attributed to the rep). Shows in HubSpot's deal timeline + counts toward call-volume reports. (Previous: v1.10.4 Select Rate toast fix; v1.10.3 ABF Guaranteed friendly transit; v1.10.2 freight modal action restructure.)
+**Most recent shipped:** v1.12.0 — Shipping Email Recipients module (To + CC+) added to BOTH Process Order modals (Deal Hub + Quote Builder). To pre-fills with contact email; rep adds CCs that travel through to order_data and pre-populate the orders drawer. (Previous: v1.11.0 📞 Log Call button on Deal Hub; v1.10.4 Select Rate toast fix; v1.10.3 ABF Guaranteed friendly transit.)
 
 **Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.9.0 over May 7–8. Full lifecycle now: create with editable ship-to, edit ship-to/color/notes, delete, change-log audit trail visible on the doc itself. Next-up candidates are user-driven.
 
 **Outstanding work (not yet started):**
 
 - The May 7 audit findings below — none addressed yet. The five "Critical" items are real bugs and should be the next coding focus once the AP system stabilizes. Especially **#1 (public endpoints lack share-token auth)** and **#2 (XSS in server-rendered HTML)** — both are exploitable by anonymous visitors.
-- v1.11.0 promoted to main 2026-05-11. Prod and staging in sync.
+- v1.11.0 promoted to main 2026-05-11. v1.12.0 on staging awaiting test.
 - The "open question" from v1.10.1 was answered by v1.10.2: not auto-apply, but explicit "Select Rate" button. Card click is now pure selection; "Book Online" and "Select Rate" are the two explicit actions, plus "Book ABF Shipment" for bookable ABF Standard LTL.
 - ABF deep-link confirmed working in staging test. The candidate-ID logger in `parseAbfXml` is still in place — could be narrowed to a single element name once confirmed which one ABF actually uses (low priority; defensive parsing is fine).
 - OD has no public saved-quote viewer (user checked their myOD portal — no quote history page). v1.9.10 dropped OD click-through accordingly. If OD ever exposes one, re-add `quoteUrl` in the OD result.
@@ -186,6 +186,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.12.0  | 2026-05-11 | Shipping Email Recipients module (To + CC+) on Process Order modal in BOTH Deal Hub and Quote Builder; recipients persist to order_data and pre-populate orders drawer |
 | 1.11.0  | 2026-05-11 | New 📞 Log Call button in Deal Hub action row → creates a real HubSpot Call engagement on the deal (auto-titled, OUTBOUND, attributed to logged-in rep) |
 | 1.10.4  | 2026-05-11 | Fix: "Select Rate" toast was rendering "null — null applied · $undefined" (state vars cleared before toast read them) |
 | 1.10.3  | 2026-05-11 | Fix: ABF Guaranteed cards transit slot now reads "2 business days · by Wed, May 13" instead of raw YYYY-MM-DD |

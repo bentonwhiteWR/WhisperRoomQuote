@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.12.0', date:'May 11, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Process Order modal (both Deal Hub AND Quote Builder) now includes a Shipping Email Recipients module — same shape as the orders dashboard drawer. To field auto-fills with the contact email; rep can add CCs with the + CC button. Captured at process-order time and stored on the order so when Jeromy later opens it on the Orders dashboard to ship, the recipients are already populated and shown one per line — no re-typing.'},
+        {t:'log', d:'Backend /api/process-order extended: extracts shipEmailTo + shipEmailCc from the request body, normalizes (lowercase + trim, falls back To to customer.email when blank, filters empty CCs), and persists into order_data.shipEmailTo / order_data.shipEmailCc. The orders dashboard PATCH endpoint already accepted these fields so the orders drawer just reads what process-order saved.'},
+      ]
+    },
+    {
       v:'1.11.0', date:'May 11, 2026', tag:'feature',
       changes:[
         {t:'add', d:'New "📞 Log Call" button in the Deal Hub action row. Opens a modal with a textarea for the conversation notes — submit creates a real HubSpot Call activity (engagement) on the deal, attributed to the logged-in rep, marked OUTBOUND/COMPLETED, with an auto-generated title ("Call with <contact> — <date>"). Shows up in HubSpot\'s deal timeline and counts toward the rep\'s call-volume reports — same as if they\'d logged it in HubSpot directly.'},

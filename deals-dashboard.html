@@ -1769,6 +1769,11 @@ async function openProcessOrderModal(quoteNumber) {
   // Prefill PO number from existing deal
   document.getElementById('procPoNumber').value = hub.po || '';
 
+  // Pre-fill Shipping Email Recipients with the contact email (To
+  // only — rep adds CCs as needed). Resets any previous CCs on open.
+  const contactEmail = (hub.contact?.email || snap.customer?.email || '').trim();
+  procSetShipEmailAddresses(contactEmail, []);
+
   document.getElementById('processOrderModal').style.display = 'flex';
 }
 
@@ -1776,6 +1781,44 @@ function closeProcessOrderModal() {
   document.getElementById('processOrderModal').style.display = 'none';
   window._procOrderSnapshot = null;
   window._procOrderQuoteNumber = null;
+}
+
+// ── Process Order: Shipping Email Recipients (To + CC list) ─────────
+// Mirrors the orders dashboard's CC+ module so the rep can capture
+// the shipping recipients at process-order time. Stored on order_data
+// (shipEmailTo / shipEmailCc) and surfaced in the orders drawer when
+// Jeromy opens the order to ship.
+let _procShipCcCount = 0;
+function procAddCcRow(value = '') {
+  const list = document.getElementById('procShipEmailCcList');
+  if (!list) return;
+  _procShipCcCount++;
+  const id = `procShipEmailCc_${_procShipCcCount}`;
+  const div = document.createElement('div');
+  div.id = `procShipCcRow_${_procShipCcCount}`;
+  div.style.cssText = 'display:flex;align-items:center;gap:6px';
+  div.innerHTML = `
+    <span style="font-size:10px;font-weight:700;color:rgba(255,255,255,.5);width:22px;flex-shrink:0">CC</span>
+    <input type="email" id="${id}" value="${(value||'').replace(/"/g,'&quot;')}" placeholder="CC email address"
+      style="flex:1;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:12px;font-family:inherit;outline:none">
+    <button type="button" onclick="document.getElementById('procShipCcRow_${_procShipCcCount}')?.remove()"
+      style="padding:4px 7px;background:none;border:1px solid rgba(255,255,255,.15);border-radius:5px;color:rgba(255,255,255,.5);cursor:pointer;font-size:11px;font-family:inherit;flex-shrink:0">✕</button>
+  `;
+  list.appendChild(div);
+}
+function procGetShipEmailAddresses() {
+  const to = (document.getElementById('procShipEmailTo')?.value || '').trim();
+  const ccInputs = document.querySelectorAll('#procShipEmailCcList input[type="email"]');
+  const cc = Array.from(ccInputs).map(el => el.value.trim()).filter(Boolean);
+  return { to, cc };
+}
+function procSetShipEmailAddresses(to, ccList) {
+  const toEl = document.getElementById('procShipEmailTo');
+  if (toEl) toEl.value = to || '';
+  const list = document.getElementById('procShipEmailCcList');
+  if (list) list.innerHTML = '';
+  _procShipCcCount = 0;
+  (ccList || []).forEach(email => procAddCcRow(email));
 }
 
 function selectPaymentType(type) {
@@ -1892,6 +1935,8 @@ async function confirmProcessOrderFromHub() {
   const poNumber = paymentType === 'po' ? document.getElementById('procPoNumber').value.trim() : '';
   if (paymentType === 'po' && !poNumber) { showToast('Please enter the PO number','error'); return; }
 
+  const { to: shipEmailTo, cc: shipEmailCc } = procGetShipEmailAddresses();
+
   const btn = document.getElementById('procOrderConfirmBtn');
   btn.disabled = true;
   btn.textContent = 'Processing…';
@@ -1918,6 +1963,7 @@ async function confirmProcessOrderFromHub() {
         ownerId:  snap.ownerId || null,
         dealName: snap.dealName || (window._lastHubData?.quotes?.[0]?.dealName || ''),
         paymentType, poNumber,
+        shipEmailTo, shipEmailCc,
       })
     });
     const data = await res.json();
@@ -2500,9 +2546,28 @@ const submitCreateApPo = submitApPoModal;
     </div>
 
     <!-- Delivery Notes -->
-    <div style="margin-bottom:24px">
+    <div style="margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Special Delivery Notes</div>
       <textarea id="procDeliveryNotes" rows="3" placeholder="Liftgate required, residential delivery, call before delivery, etc..." style="width:100%;padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;color:#f0ede8;box-sizing:border-box"></textarea>
+    </div>
+
+    <!-- Shipping Email Recipients (mirrors the orders dashboard module —
+         pre-fills with the contact email; rep can add CCs that will travel
+         through to the order so they're already populated when Jeromy
+         eventually ships it). -->
+    <div style="margin-bottom:24px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216">Shipping Email Recipients</div>
+        <button type="button" onclick="procAddCcRow()" style="padding:3px 10px;font-size:10px;font-weight:700;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:rgba(255,255,255,.7);cursor:pointer;font-family:inherit">+ CC</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:10px;font-weight:700;color:#ee6216;width:22px;flex-shrink:0">To</span>
+          <input type="email" id="procShipEmailTo" placeholder="Primary recipient email"
+            style="flex:1;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:12px;font-family:inherit;outline:none">
+        </div>
+        <div id="procShipEmailCcList" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
     </div>
 
     <div style="display:flex;gap:10px">

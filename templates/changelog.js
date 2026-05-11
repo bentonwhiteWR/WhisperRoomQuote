@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.10.4', date:'May 11, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'"Select Rate" toast was reading "null — null applied · $undefined" because closeFreightModal() reset the _selected* state vars before the toast template ran. Snapshot the values into locals before closing. (Same bug existed in the v1.10.1-and-earlier "Rate Only" button — just got more visible now that Select Rate is the primary action.)'},
+      ]
+    },
+    {
       v:'1.10.3', date:'May 11, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'ABF Guaranteed rate cards: transit slot now reads "2 business days · by Wed, May 13" (using the advertised transit string + a friendly formatted delivery date) instead of the raw GUARANTEEDDELDATE in YYYY-MM-DD format. Matches the readability of Standard LTL\'s transit display.'},

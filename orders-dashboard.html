@@ -1068,11 +1068,17 @@ function bookOnlineSelected() {
 // freight cost), close the modal, and toast confirmation. Used for
 // every rate type — bookable or not — since a "selected rate" is the
 // minimum data the rep wants captured even when they book externally.
+// Note: closeFreightModal() resets the _selected* state vars, so we
+// snapshot the values into locals BEFORE closing — otherwise the
+// toast template literal renders "null — null applied · $undefined".
 function selectRate() {
-  if (_selectedCarrier) document.getElementById('editCarrier').value = _selectedCarrier;
-  if (_selectedFreightCost) document.getElementById('editFreightCost').value = _selectedFreightCost.toFixed(2);
+  const carrier = _selectedCarrier;
+  const service = _selectedService;
+  const cost    = _selectedFreightCost;
+  if (carrier) document.getElementById('editCarrier').value = carrier;
+  if (cost != null) document.getElementById('editFreightCost').value = cost.toFixed(2);
   closeFreightModal();
-  showToast(`${_selectedCarrier} — ${_selectedService} applied · $${_selectedFreightCost?.toFixed(2)}`, 'success');
+  if (carrier) showToast(`${carrier} — ${service} applied · $${cost?.toFixed(2)}`, 'success');
 }
 
 async function bookShipment() {

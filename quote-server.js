@@ -6676,6 +6676,10 @@ ${q.accepted ? `
         const url = buildAbfUrl(pallets, totalWeight, city, state, zip, canadian || false, acc);
         const res2 = await httpsGet(url);
         const result = parseAbfXml(res2.body);
+        // Build the public ArcBest rate-quote deep-link if we got a
+        // quote ID back. Lets the rep click straight through to ABF's
+        // own page (which renders service notes the XML API drops).
+        const abfQuoteUrl = result.quoteId ? `https://arcb.com/tools/rate-quote.html#/${encodeURIComponent(result.quoteId)}` : null;
         abfResults.push({
           carrier:     'ABF Freight',
           service:     'Standard LTL',
@@ -6683,6 +6687,7 @@ ${q.accepted ? `
           cost:        result.cost,
           transit:     result.transit,
           notes:       result.notes || [],
+          quoteUrl:    abfQuoteUrl,
           bookable:    true,
         });
       } catch(e) {
@@ -6770,6 +6775,10 @@ ${q.accepted ? `
           const transit = transitDays ? `${transitDays} day${transitDays !== 1 ? 's' : ''}` : '—';
 
           const serviceLabels = { LTL: 'Standard LTL', GTD: 'Guaranteed', GTE: 'Guaranteed by Noon' };
+          // Single quoteUrl field across carriers so the frontend
+          // doesn't need carrier-specific keys. odBookUrl kept as alias
+          // for backward compat with any older client cache.
+          const odUrl = buildOdBookUrl({ city, state, zip, pallets, totalWeight: totalWt, acc });
           return {
             carrier:     'Old Dominion',
             service:     serviceLabels[shipType] || shipType,
@@ -6777,7 +6786,8 @@ ${q.accepted ? `
             cost:        total,
             transit,
             bookable:    false,
-            odBookUrl:   buildOdBookUrl({ city, state, zip, pallets, totalWeight: totalWt, acc }),
+            quoteUrl:    odUrl,
+            odBookUrl:   odUrl,
           };
         };
 

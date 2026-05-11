@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.9.9', date:'May 11, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Clicking a carrier card in the Get Freight modal now opens that carrier\'s own quote page in a new tab — ABF\'s rate-quote viewer (https://arcb.com/tools/rate-quote.html#/<quoteId>) for ABF rows, OD\'s ship-LTL tool with the destination pre-filled for OD rows. Lets the rep see everything the carrier shows on its own site, including service notes the rate API doesn\'t expose (e.g. "Delivery is only available on Tuesday, Wednesday, and Thursday" for restricted destinations). Also still selects the rate locally so the existing Use This Rate / Book flow works the same.'},
+        {t:'add', d:'A small ↗ glyph appears next to the service label when the carrier card has a deep-link, so the rep knows clicking opens an external page.'},
+        {t:'log', d:'parseAbfXml now extracts an ABF quote ID from the rate response (tries RATEQUOTENUMBER, QUOTENUMBER, QUOTEID, QUOTEREF, RATEQUOTEID, RESPID and a couple of attribute styles), used to build the deep-link. All matching candidates are logged so a missed XML element shape can be added on the next test.'},
+      ]
+    },
+    {
       v:'1.9.8', date:'May 11, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Get Freight modal now surfaces ABF service-level notes inline under the carrier card (e.g. "Delivery is only available on Tuesday, Wednesday, and Thursday." for destinations with restricted delivery days). Yellow ⚠ banner appears below the rate so the rep sees the constraint before booking. Note text is parsed defensively from several possible XML element names (NOTE / MESSAGE / SERVICEMSG / DELIVERYNOTE / etc.) and ITEM elements with descriptive FOR attributes — if a real-world ABF note slips past the parser, the raw XML is logged so the missed element can be added.'},

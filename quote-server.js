@@ -6696,14 +6696,31 @@ ${q.accepted ? `
         // pricing in one view. Marked bookable: false because ArcBest's
         // guaranteed/Time-Critical bookings require BOL fields beyond
         // what our existing book flow supports — rep books on the
-        // arcb.com page instead (already what the card click opens).
+        // arcb.com page instead.
+        // Transit display: use the same advertised transit string as
+        // Standard LTL ("2 business days" etc.), and append a friendly
+        // delivery date when present ("· by Wed, May 13"). Previously
+        // the transit slot got the raw GUARANTEEDDELDATE (looked like
+        // YYYY-MM-DD or M/D/YYYY), which was less readable than the
+        // standard's transit-days format.
+        const formatDelDate = (s) => {
+          if (!s) return '';
+          const isIso = /^\d{4}-\d{2}-\d{2}$/.test(s);
+          const d = new Date(isIso ? `${s}T12:00:00Z` : s);
+          if (isNaN(d.getTime())) return s;
+          return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        };
         (result.guaranteedOptions || []).forEach(opt => {
+          const friendlyDate = formatDelDate(opt.delDate);
+          const transit = friendlyDate
+            ? `${result.transit || '—'} · by ${friendlyDate}`
+            : (result.transit || '—');
           abfResults.push({
             carrier:     'ABF Freight',
             service:     opt.byTime ? `Guaranteed by ${opt.byTime}` : 'Guaranteed',
             serviceCode: 'GTD',
             cost:        opt.charge,
-            transit:     opt.delDate || result.transit,
+            transit,
             notes:       result.notes || [],
             quoteUrl:    abfQuoteUrl,
             bookable:    false,

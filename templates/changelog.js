@@ -51,6 +51,31 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.10.4', date:'May 11, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'"Select Rate" toast was reading "null — null applied · $undefined" because closeFreightModal() reset the _selected* state vars before the toast template ran. Snapshot the values into locals before closing. (Same bug existed in the v1.10.1-and-earlier "Rate Only" button — just got more visible now that Select Rate is the primary action.)'},
+      ]
+    },
+    {
+      v:'1.10.3', date:'May 11, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'ABF Guaranteed rate cards: transit slot now reads "2 business days · by Wed, May 13" (using the advertised transit string + a friendly formatted delivery date) instead of the raw GUARANTEEDDELDATE in YYYY-MM-DD format. Matches the readability of Standard LTL\'s transit display.'},
+      ]
+    },
+    {
+      v:'1.10.2', date:'May 11, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Get Freight modal action flow restructured. Clicking a rate card now just highlights it (no auto-open of carrier site, no auto-clipboard) — those moved to explicit buttons in the booking sub-section. New button "Book Online ↗" opens the carrier\'s quote page in a new tab and (for OD) copies the reference number to clipboard. New button "Select Rate" applies the carrier + freight cost to the order\'s shipment fields and closes the modal. The existing "Book ABF Shipment" button still appears for bookable ABF Standard LTL rates.'},
+        {t:'ui', d:'Removed the misleading ↗ glyph from rate cards (it implied click-to-open which is no longer the behavior). Card hover title updated to "Click to select this rate".'},
+      ]
+    },
+    {
+      v:'1.10.1', date:'May 11, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Get Freight modal: removed the Special Instructions field (was ABF-only) and the Rate Only button from the booking sub-section after a rate is selected. Section now shows just Pickup Date / Contact Phone, plus the Book ABF Shipment button when a bookable ABF rate is selected.'},
+      ]
+    },
+    {
       v:'1.10.0', date:'May 11, 2026', tag:'feature',
       changes:[
         {t:'add', d:'ABF Guaranteed Transit Options now appear as additional rate cards in the Get Freight modal when ABF can guarantee the lane. Each guaranteed-by-time option (e.g. "Guaranteed by 12:00 PM" / "Guaranteed by 5:00 PM") gets its own card with the option\'s price and delivery date — same shape as ABF\'s Time Critical tab on arcb.com. Cards click-through to the same arcb.com rate-quote page (sharing the parent quote ID) so the rep can see the full breakdown and book on ABF\'s site.'},

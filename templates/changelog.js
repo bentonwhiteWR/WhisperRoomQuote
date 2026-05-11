@@ -51,6 +51,15 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.10.0', date:'May 11, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'ABF Guaranteed Transit Options now appear as additional rate cards in the Get Freight modal when ABF can guarantee the lane. Each guaranteed-by-time option (e.g. "Guaranteed by 12:00 PM" / "Guaranteed by 5:00 PM") gets its own card with the option\'s price and delivery date — same shape as ABF\'s Time Critical tab on arcb.com. Cards click-through to the same arcb.com rate-quote page (sharing the parent quote ID) so the rep can see the full breakdown and book on ABF\'s site.'},
+        {t:'log', d:'parseAbfXml now extracts <GUARANTEEDOPTIONS> from the rate response (each <OPTION>: GUARANTEEDCHARGE / GUARANTEEDDELDATE / GUARANTEEDBYTIME), per the official ArcBest XML API docs. Returned as `guaranteedOptions[]` on the parsed result; the orders-freight endpoint generates one carrier-card row per option.'},
+        {t:'log', d:'parseAbfXml quote-id parsing narrowed to the documented `<QUOTEID>` element (no more fallback candidates — confirmed by ArcBest API docs).'},
+        {t:'ui',  d:'In-app "Book ABF Shipment" button now gates on `bookable: true` (was: gated on carrier name only). ABF Guaranteed cards are intentionally bookable: false because Time-Critical requires extra BOL fields beyond what our internal book flow supports — rep books those on arcb.com directly via the existing card-click deep-link.'},
+      ]
+    },
+    {
       v:'1.9.15', date:'May 11, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'OD pallet weight constant corrected from 140 lbs → 120 lbs per pallet (v1.9.14 used 140; actual is 120).'},

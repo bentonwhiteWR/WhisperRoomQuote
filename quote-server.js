@@ -6690,6 +6690,25 @@ ${q.accepted ? `
           quoteUrl:    abfQuoteUrl,
           bookable:    true,
         });
+        // Guaranteed Transit Options ride along in the same response
+        // when ABF can guarantee the lane. Each option is its own rate
+        // card so the rep can compare standard vs guaranteed-by-time
+        // pricing in one view. Marked bookable: false because ArcBest's
+        // guaranteed/Time-Critical bookings require BOL fields beyond
+        // what our existing book flow supports — rep books on the
+        // arcb.com page instead (already what the card click opens).
+        (result.guaranteedOptions || []).forEach(opt => {
+          abfResults.push({
+            carrier:     'ABF Freight',
+            service:     opt.byTime ? `Guaranteed by ${opt.byTime}` : 'Guaranteed',
+            serviceCode: 'GTD',
+            cost:        opt.charge,
+            transit:     opt.delDate || result.transit,
+            notes:       result.notes || [],
+            quoteUrl:    abfQuoteUrl,
+            bookable:    false,
+          });
+        });
       } catch(e) {
         console.warn(`[orders-freight] ABF Standard failed: ${e.message}`);
         writelog('error', 'error.freight', `ABF rate failed: ${e.message}`, { rep: getRepFromReq(req, body), meta: { zip, state, city } });

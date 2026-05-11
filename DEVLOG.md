@@ -8,14 +8,14 @@ Internal development notes. Last updated 2026-05-11.
 
 ## Current focus (2026-05-11)
 
-**Most recent shipped:** v1.10.2 — Freight modal action flow restructured: card click is select-only; new explicit "Book Online ↗" (opens carrier site + copies OD ref) and "Select Rate" (applies carrier/cost to order) buttons in the booking sub-section. Rate cards no longer carry the misleading ↗ glyph. (Previous: v1.10.1 removed Special Instructions + Rate Only; v1.10.0 ABF Guaranteed Transit Options.)
+**Most recent shipped:** v1.10.3 — ABF Guaranteed cards transit slot now reads "2 business days · by Wed, May 13" instead of raw YYYY-MM-DD. (Previous: v1.10.2 freight modal action restructure with Book Online + Select Rate; v1.10.1 removed Special Instructions + Rate Only; v1.10.0 ABF Guaranteed Transit Options.)
 
 **Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.9.0 over May 7–8. Full lifecycle now: create with editable ship-to, edit ship-to/color/notes, delete, change-log audit trail visible on the doc itself. Next-up candidates are user-driven.
 
 **Outstanding work (not yet started):**
 
 - The May 7 audit findings below — none addressed yet. The five "Critical" items are real bugs and should be the next coding focus once the AP system stabilizes. Especially **#1 (public endpoints lack share-token auth)** and **#2 (XSS in server-rendered HTML)** — both are exploitable by anonymous visitors.
-- v1.10.2 on staging awaiting test. Prod (main) at v1.10.0.
+- v1.10.2 + v1.10.3 on staging awaiting test (will promote together). Prod (main) at v1.10.0.
 - The "open question" from v1.10.1 was answered by v1.10.2: not auto-apply, but explicit "Select Rate" button. Card click is now pure selection; "Book Online" and "Select Rate" are the two explicit actions, plus "Book ABF Shipment" for bookable ABF Standard LTL.
 - ABF deep-link confirmed working in staging test. The candidate-ID logger in `parseAbfXml` is still in place — could be narrowed to a single element name once confirmed which one ABF actually uses (low priority; defensive parsing is fine).
 - OD has no public saved-quote viewer (user checked their myOD portal — no quote history page). v1.9.10 dropped OD click-through accordingly. If OD ever exposes one, re-add `quoteUrl` in the OD result.
@@ -186,6 +186,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.10.3  | 2026-05-11 | Fix: ABF Guaranteed cards transit slot now reads "2 business days · by Wed, May 13" instead of raw YYYY-MM-DD |
 | 1.10.2  | 2026-05-11 | Freight modal action restructure: card click highlights only; explicit "Book Online ↗" + "Select Rate" buttons in booking sub-section |
 | 1.10.1  | 2026-05-11 | Removed Special Instructions field + Rate Only button from freight modal's booking sub-section |
 | 1.10.0  | 2026-05-11 | ABF Guaranteed Transit Options as extra rate cards (Guaranteed by 12 PM, by 5 PM, etc.) parsed from `<GUARANTEEDOPTIONS>` |

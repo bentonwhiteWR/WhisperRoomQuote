@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.10.3', date:'May 11, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'ABF Guaranteed rate cards: transit slot now reads "2 business days · by Wed, May 13" (using the advertised transit string + a friendly formatted delivery date) instead of the raw GUARANTEEDDELDATE in YYYY-MM-DD format. Matches the readability of Standard LTL\'s transit display.'},
+      ]
+    },
+    {
       v:'1.10.2', date:'May 11, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Get Freight modal action flow restructured. Clicking a rate card now just highlights it (no auto-open of carrier site, no auto-clipboard) — those moved to explicit buttons in the booking sub-section. New button "Book Online ↗" opens the carrier\'s quote page in a new tab and (for OD) copies the reference number to clipboard. New button "Select Rate" applies the carrier + freight cost to the order\'s shipment fields and closes the modal. The existing "Book ABF Shipment" button still appears for bookable ABF Standard LTL rates.'},

@@ -51,6 +51,19 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.9.15', date:'May 11, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'OD pallet weight constant corrected from 140 lbs → 120 lbs per pallet (v1.9.14 used 140; actual is 120).'},
+        {t:'ui',  d:'Removed the blue "Book on OD.com ↗" button from the Get Freight modal\'s booking sub-section. With the OD card now opening OD\'s reference-search page directly on click (and the reference number copied to clipboard), the separate book button was redundant. Selecting an OD rate now just shows "Rate Only" alongside the ABF book button when an ABF rate is selected.'},
+      ]
+    },
+    {
+      v:'1.9.14', date:'May 11, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'OD rate requests now add 140 lbs per pallet (the pallet itself) to the per-item weight. OD prices off gross weight including the pallet; ABF prices off product weight (unchanged on the ABF path). Last remaining knob in the OD price-discrepancy investigation — combined with v1.9.12 (no double-count) and v1.9.13 (NMFC), OD rates from the modal should now match what OD\'s own page returns.'},
+      ]
+    },
+    {
       v:'1.9.13', date:'May 11, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'OD rate requests now include NMFC 027880 sub 02 on every freight item (matching what we already send to ABF). Per OD\'s API docs and WSDL, when both ratedClass and nmfc are provided, nmfc wins — so OD will now price based on the actual commodity classification instead of a generic freight class. Fixes a rate discrepancy where OD was returning class-only rates that didn\'t match the NMFC-based pricing the account is contracted for.'},

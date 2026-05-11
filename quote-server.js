@@ -6719,7 +6719,16 @@ ${q.accepted ? `
         // generic class — fixes a rate discrepancy where OD was returning
         // class-only rates that didn't match the NMFC-based pricing the
         // account is contracted for.
-        const freightItemsXml = pallets.map(p => `
+        //
+        // Weight: OD wants the gross weight per pallet (product + the
+        // pallet itself). ABF rates correctly off product weight alone.
+        // Add OD_PALLET_WEIGHT_LBS to each freightItem's weight on the
+        // OD path only.
+        const OD_PALLET_WEIGHT_LBS = 120;
+        const freightItemsXml = pallets.map(p => {
+          const productLbs = parseFloat(p.weight) || (totalWt / pallets.length);
+          const grossLbs   = Math.round(productLbs + OD_PALLET_WEIGHT_LBS);
+          return `
         <freightItems>
           <dimensionUnits>IN</dimensionUnits>
           <length>${Math.round(p.l || 90)}</length>
@@ -6729,8 +6738,9 @@ ${q.accepted ? `
           <ratedClass>${FREIGHT_CLASS}</ratedClass>
           <nmfc>${NMFC_ITEM}</nmfc>
           <nmfcSub>${NMFC_SUB}</nmfcSub>
-          <weight>${Math.round(parseFloat(p.weight) || Math.round(totalWt / pallets.length))}</weight>
-        </freightItems>`).join('');
+          <weight>${grossLbs}</weight>
+        </freightItems>`;
+        }).join('');
 
         const accessorialsXml = odAccessorials.map(a => `<accessorials>${a}</accessorials>`).join('\n        ');
 

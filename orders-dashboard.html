@@ -1044,12 +1044,8 @@ function selectFreightOption(el, carrier, cost, transit, service, bookable, odBo
         <button id="fqBookBtn" onclick="bookShipment()" style="flex:1;padding:12px;background:var(--green,#1a7a4a);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
           &#x2713; Book ABF Shipment
         </button>
-      ` : `
-        <a href="${odBookUrl}" target="_blank" style="flex:1;padding:12px;background:rgba(59,130,246,.15);color:#3b82f6;border:1px solid rgba(59,130,246,.3);border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px">
-          Book on OD.com ↗
-        </a>
-      `}
-      <button onclick="applyRateOnly()" style="padding:12px 16px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">
+      ` : ''}
+      <button onclick="applyRateOnly()" style="flex:1;padding:12px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">
         Rate Only
       </button>
     </div>

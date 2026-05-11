@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.10.1', date:'May 11, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Get Freight modal: removed the Special Instructions field (was ABF-only) and the Rate Only button from the booking sub-section after a rate is selected. Section now shows just Pickup Date / Contact Phone, plus the Book ABF Shipment button when a bookable ABF rate is selected.'},
+      ]
+    },
+    {
       v:'1.10.0', date:'May 11, 2026', tag:'feature',
       changes:[
         {t:'add', d:'ABF Guaranteed Transit Options now appear as additional rate cards in the Get Freight modal when ABF can guarantee the lane. Each guaranteed-by-time option (e.g. "Guaranteed by 12:00 PM" / "Guaranteed by 5:00 PM") gets its own card with the option\'s price and delivery date — same shape as ABF\'s Time Critical tab on arcb.com. Cards click-through to the same arcb.com rate-quote page (sharing the parent quote ID) so the rep can see the full breakdown and book on ABF\'s site.'},

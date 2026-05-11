@@ -8,14 +8,15 @@ Internal development notes. Last updated 2026-05-11.
 
 ## Current focus (2026-05-11)
 
-**Most recent shipped:** v1.10.0 — ABF Guaranteed Transit Options now appear as additional rate cards (e.g. "Guaranteed by 12:00 PM") in the Get Freight modal when ABF guarantees the lane. Per the official ArcBest XML API docs, GUARANTEEDOPTIONS rides along in the same rate response. (Previous: v1.9.15 OD pallet 120 + drop OD book button; v1.9.14 OD pallet weight; v1.9.13 OD NMFC; v1.9.12 OD double-count fix.)
+**Most recent shipped:** v1.10.1 — Removed Special Instructions field + Rate Only button from the freight modal's booking sub-section. (Previous: v1.10.0 ABF Guaranteed Transit Options as extra rate cards; v1.9.15 OD pallet 120 + drop OD book button.)
 
 **Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.9.0 over May 7–8. Full lifecycle now: create with editable ship-to, edit ship-to/color/notes, delete, change-log audit trail visible on the doc itself. Next-up candidates are user-driven.
 
 **Outstanding work (not yet started):**
 
 - The May 7 audit findings below — none addressed yet. The five "Critical" items are real bugs and should be the next coding focus once the AP system stabilizes. Especially **#1 (public endpoints lack share-token auth)** and **#2 (XSS in server-rendered HTML)** — both are exploitable by anonymous visitors.
-- v1.10.0 promoted to main 2026-05-11. Prod and staging in sync.
+- v1.10.1 on staging awaiting test. Prod (main) at v1.10.0.
+- **Open question:** with `Rate Only` removed, OD and ABF-Guaranteed cards have no in-app way to apply the rate (carrier/cost) to the order's shipment fields without booking. May want to wire auto-apply on card click as a follow-up — pending user decision.
 - ABF deep-link confirmed working in staging test. The candidate-ID logger in `parseAbfXml` is still in place — could be narrowed to a single element name once confirmed which one ABF actually uses (low priority; defensive parsing is fine).
 - OD has no public saved-quote viewer (user checked their myOD portal — no quote history page). v1.9.10 dropped OD click-through accordingly. If OD ever exposes one, re-add `quoteUrl` in the OD result.
 - **Parked (proposed v1.9.11):** flip OD's `requestReferenceNumber` flag from `false` to `true` and log the raw SOAP response so we can see what identifier-like fields OD returns. Cheap investigation — would tell us empirically whether anything OD ships back is searchable in their UI.
@@ -185,6 +186,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.10.1  | 2026-05-11 | Removed Special Instructions field + Rate Only button from freight modal's booking sub-section |
 | 1.10.0  | 2026-05-11 | ABF Guaranteed Transit Options as extra rate cards (Guaranteed by 12 PM, by 5 PM, etc.) parsed from `<GUARANTEEDOPTIONS>` |
 | 1.9.15  | 2026-05-11 | Fix: OD pallet weight 140 → 120 lbs; removed redundant "Book on OD.com" button from freight modal |
 | 1.9.14  | 2026-05-11 | Fix: OD rate requests add 140 lbs per pallet (OD prices off gross weight inc. pallet); ABF unchanged |

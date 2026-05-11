@@ -6676,12 +6676,18 @@ ${q.accepted ? `
         const url = buildAbfUrl(pallets, totalWeight, city, state, zip, canadian || false, acc);
         const res2 = await httpsGet(url);
         const result = parseAbfXml(res2.body);
+        // Build the public ArcBest rate-quote deep-link if we got a
+        // quote ID back. Lets the rep click straight through to ABF's
+        // own page (which renders service notes the XML API drops).
+        const abfQuoteUrl = result.quoteId ? `https://arcb.com/tools/rate-quote.html#/${encodeURIComponent(result.quoteId)}` : null;
         abfResults.push({
           carrier:     'ABF Freight',
           service:     'Standard LTL',
           serviceCode: 'STND',
           cost:        result.cost,
           transit:     result.transit,
+          notes:       result.notes || [],
+          quoteUrl:    abfQuoteUrl,
           bookable:    true,
         });
       } catch(e) {
@@ -6769,6 +6775,14 @@ ${q.accepted ? `
           const transit = transitDays ? `${transitDays} day${transitDays !== 1 ? 's' : ''}` : '—';
 
           const serviceLabels = { LTL: 'Standard LTL', GTD: 'Guaranteed', GTE: 'Guaranteed by Noon' };
+          // OD's public site doesn't expose saved rate quotes — myOD has
+          // no viewable rate-quote history page we can deep-link to, and
+          // the public ship-LTL tool is rate-on-demand only. So OD cards
+          // intentionally don't get a `quoteUrl` (frontend skips the
+          // external open when missing — click just selects the rate).
+          // odBookUrl stays for the existing "Book on OD.com" button in
+          // the booking sub-section, which IS useful (fresh quote tool
+          // with destination pre-filled, ready for booking).
           return {
             carrier:     'Old Dominion',
             service:     serviceLabels[shipType] || shipType,

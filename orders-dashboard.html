@@ -433,6 +433,22 @@
     </div>
   </div>
 
+  <!-- Shipment estimate block (mirrors the Quote Builder's "Quote Weight"
+       widget so reps see the same shape on both sides). Total weight,
+       pallet count, and per-pallet dimensions, computed from the order's
+       line items + the BOOTH_DATA pallet map. -->
+  <div id="shipmentEstimate" style="display:none;margin:0 0 10px;padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+    <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Quote Weight</div>
+    <div style="font-size:12px;color:var(--muted)">
+      Total: <span id="estWeight" style="color:var(--text);font-weight:600">—</span>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:4px">
+      Pallets: <span id="estPallets" style="color:var(--text);font-weight:600">—</span>
+    </div>
+    <div id="estPalletList" style="display:none;margin-top:6px"></div>
+    <div id="estUnknownWrap" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:#f59e0b">⚠ <span id="estUnknownLabel"></span></div>
+  </div>
+
   <div class="drawer-section" id="shipmentSection">
     <div class="drawer-section-title" style="display:flex;align-items:center;justify-content:space-between">
       <span>Shipment</span>
@@ -606,6 +622,15 @@
     <!-- Pallet dimensions table -->
     <div style="margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Pallet Dimensions (inches)</div>
+      <!-- Column headers so it's obvious which column is L/W/H/Weight even
+           after the inputs are filled (placeholders disappear on input). -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 28px;gap:6px;margin-bottom:4px;font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">
+        <div>Length</div>
+        <div>Width</div>
+        <div>Height</div>
+        <div>Weight (lbs)</div>
+        <div></div>
+      </div>
       <div id="fqPalletRows" style="display:flex;flex-direction:column;gap:6px"></div>
       <button onclick="fqAddPalletRow()" style="margin-top:8px;padding:5px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;cursor:pointer;font-family:inherit">+ Add Pallet</button>
     </div>
@@ -733,6 +758,38 @@ function parseFreightCost(val) {
   return Number.isFinite(n) ? n : null;
 }
 
+// Estimate shipment shape from an order's line items + BOOTH_DATA.
+// Returns { pallets: [{l,w,h,weight}], totalWeight, unknownItems: [name] }.
+// Used by both the freight-quote modal (for pre-fill) and the inline
+// "Estimated shipment" block above the Shipment section in the drawer,
+// so the two stay consistent.
+function computeShipmentEstimate(order) {
+  const snapshot  = order?.json_snapshot || {};
+  const lineItems = snapshot.lineItems || [];
+  const pallets = [];
+  let totalWeight = 0;
+  const unknownItems = [];
+  lineItems.forEach(item => {
+    const bd = BOOTH_DATA[item.name];
+    const qty = parseInt(item.qty) || 1;
+    const perUnitWeight = parseFloat(item.weight) || 0;
+    totalWeight += perUnitWeight * qty;
+    if (bd) {
+      for (let q = 0; q < qty; q++) {
+        const perPallet = Math.floor(perUnitWeight / bd.pallets.length);
+        const rem = perUnitWeight % bd.pallets.length;
+        bd.pallets.forEach((pl, i) => {
+          pallets.push({ l: pl.l, w: pl.w, h: pl.h, weight: Math.round(perPallet + (i === 0 ? rem : 0)) });
+        });
+      }
+    } else if (perUnitWeight > 0) {
+      // Item has weight but no pallet mapping — record so the UI can flag it.
+      unknownItems.push(item.name || '(unnamed item)');
+    }
+  });
+  return { pallets, totalWeight, unknownItems };
+}
+
 let _freightPallets = [];
 
 function openFreightModal() {
@@ -742,32 +799,17 @@ function openFreightModal() {
   const od = order.order_data || {};
   const snapshot = order.json_snapshot || {};
   const customer = snapshot.customer || {};
-  const lineItems = snapshot.lineItems || [];
 
   // Pre-fill destination from order
   document.getElementById('fqCity').value  = customer.city  || od.deliveryCity  || '';
   document.getElementById('fqState').value = customer.state || od.deliveryState || '';
   document.getElementById('fqZip').value   = customer.zip   || od.deliveryZip   || '';
 
-  // Build pallets from BOOTH_DATA and line items
-  _freightPallets = [];
-  let totalWeight = 0;
-
-  lineItems.forEach(item => {
-    const bd = BOOTH_DATA[item.name];
-    const itemWeight = (parseFloat(item.weight) || 0) * (parseInt(item.qty) || 1);
-    totalWeight += itemWeight;
-    if (bd) {
-      for (let q = 0; q < (parseInt(item.qty) || 1); q++) {
-        const w = parseFloat(item.weight) || 0;
-        const perPallet = Math.floor(w / bd.pallets.length);
-        const rem = w % bd.pallets.length;
-        bd.pallets.forEach((pl, i) => {
-          _freightPallets.push({ l: pl.l, w: pl.w, h: pl.h, weight: Math.round(perPallet + (i === 0 ? rem : 0)) });
-        });
-      }
-    }
-  });
+  // Build pallets from the shared estimator so the modal matches the
+  // inline summary above the Shipment section.
+  const est = computeShipmentEstimate(order);
+  _freightPallets = est.pallets.slice();
+  const totalWeight = est.totalWeight;
 
   // If no pallet data found, add one default pallet
   if (_freightPallets.length === 0) _freightPallets.push({ l: 90, w: 52, h: 48, weight: Math.round(totalWeight) });
@@ -788,16 +830,16 @@ function openFreightModal() {
 function renderPalletRows() {
   const container = document.getElementById('fqPalletRows');
   container.innerHTML = _freightPallets.map((pl, i) => `
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:6px;align-items:center">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 28px;gap:6px;align-items:center">
       <input type="number" value="${pl.l}" min="1" placeholder="L" onchange="updatePallet(${i},'l',this.value)"
-        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
+        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;min-width:0">
       <input type="number" value="${pl.w}" min="1" placeholder="W" onchange="updatePallet(${i},'w',this.value)"
-        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
+        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;min-width:0">
       <input type="number" value="${pl.h}" min="1" placeholder="H" onchange="updatePallet(${i},'h',this.value)"
-        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
+        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;min-width:0">
       <input type="number" value="${pl.weight}" min="0" placeholder="lbs" onchange="updatePallet(${i},'weight',this.value)"
-        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
-      <button onclick="removePallet(${i})" style="padding:4px 8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);border-radius:5px;color:#ef4444;font-size:12px;cursor:pointer;font-family:inherit">×</button>
+        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;min-width:0">
+      <button onclick="removePallet(${i})" title="Remove pallet" style="padding:4px 0;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);border-radius:5px;color:#ef4444;font-size:14px;line-height:1;cursor:pointer;font-family:inherit">×</button>
     </div>
   `).join('');
 }
@@ -864,24 +906,41 @@ async function runFreightQuote() {
       grouped[c.carrier].push(c);
     });
 
+    const escNote = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // Stash full carrier objects in a global lookup so the click handler
+    // can read quoteUrl etc. without serializing into onclick attributes
+    // (escaping URLs inside attribute strings is a footgun).
+    window._fqCarriers = {};
     list.innerHTML = Object.entries(grouped).map(([carrierName, options]) => `
       <div style="margin-bottom:12px">
         <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px">${carrierName}</div>
-        ${options.map(c => `
-          <div class="fq-rate-card" style="padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .15s;margin-bottom:6px"
-               onclick="selectFreightOption(this, '${c.carrier}', ${c.cost}, '${c.transit}', '${c.service}', ${c.bookable}, '${c.odBookUrl || ''}')">
+        ${options.map((c, idx) => {
+          const key = `${c.carrier}|${c.serviceCode}|${idx}`;
+          window._fqCarriers[key] = c;
+          const hasUrl = !!c.quoteUrl;
+          return `
+          <div class="fq-rate-card" data-fq-key="${escNote(key)}" style="padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .15s;margin-bottom:6px"
+               onclick="onFreightCardClick(this)" title="${hasUrl ? 'Opens carrier quote page in a new tab' : ''}">
             <div style="display:flex;justify-content:space-between;align-items:center">
               <div>
-                <div style="font-weight:700;color:var(--text);font-size:13px">${c.service}</div>
-                <div style="font-size:11px;color:var(--muted);margin-top:1px">Transit: ${c.transit}</div>
+                <div style="font-weight:700;color:var(--text);font-size:13px;display:flex;align-items:center;gap:6px">
+                  ${escNote(c.service)}
+                  ${hasUrl ? '<span style="font-size:10px;color:var(--orange);font-weight:600">↗</span>' : ''}
+                </div>
+                <div style="font-size:11px;color:var(--muted);margin-top:1px">Transit: ${escNote(c.transit)}</div>
               </div>
               <div style="text-align:right">
                 <div style="font-size:17px;font-weight:800;color:var(--orange)">$${c.cost.toFixed(2)}</div>
                 <div style="font-size:10px;color:var(--muted)">actual cost</div>
               </div>
             </div>
-          </div>
-        `).join('')}
+            ${c.notes && c.notes.length ? `
+              <div style="margin-top:8px;padding:7px 10px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:5px;font-size:11px;color:#f59e0b;line-height:1.5">
+                ${c.notes.map(n => `⚠ ${escNote(n)}`).join('<br>')}
+              </div>
+            ` : ''}
+          </div>`;
+        }).join('')}
       </div>
     `).join('');
 
@@ -900,6 +959,23 @@ let _selectedFreightCost = null;
 let _selectedService = null;
 let _selectedBookable = false;
 let _selectedOdBookUrl = '';
+
+// Click handler for carrier rate cards. Two effects:
+//   1. Opens the carrier's own quote page in a new tab (so the rep sees
+//      service notes the API drops — e.g. ABF's restricted-delivery-
+//      days banner, OD's full breakdown).
+//   2. Selects the rate locally (highlights the card + populates the
+//      booking sub-section + sets _selected* state for "Use This Rate").
+// If the carrier didn't return a quote URL, the click still selects.
+function onFreightCardClick(cardEl) {
+  const key = cardEl.getAttribute('data-fq-key');
+  const c = key ? (window._fqCarriers || {})[key] : null;
+  if (!c) return;
+  if (c.quoteUrl) {
+    try { window.open(c.quoteUrl, '_blank', 'noopener'); } catch(e) {}
+  }
+  selectFreightOption(cardEl, c.carrier, c.cost, c.transit, c.service, !!c.bookable, c.quoteUrl || c.odBookUrl || '');
+}
 
 function selectFreightOption(el, carrier, cost, transit, service, bookable, odBookUrl) {
   _selectedCarrier    = carrier;
@@ -1460,6 +1536,46 @@ function openDrawer(quoteNumber) {
     ? new Date(shipped.date).toISOString().split('T')[0]
     : (od._hsDate ? new Date(od._hsDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
   document.getElementById('editFreightCost').value = od.freightCost || '';
+
+  // Populate the inline shipment-estimate block above the Shipment section.
+  // Mirrors the Quote Builder's Quote Weight widget (Total / Pallets / per-
+  // pallet dimensions). Uses the same calculation as the Get Freight modal
+  // so the two agree.
+  try {
+    const est = computeShipmentEstimate(order);
+    const wrap = document.getElementById('shipmentEstimate');
+    if (wrap) {
+      const weightEl = document.getElementById('estWeight');
+      const palletEl = document.getElementById('estPallets');
+      const listEl   = document.getElementById('estPalletList');
+      const unkWrap  = document.getElementById('estUnknownWrap');
+      const unkLabel = document.getElementById('estUnknownLabel');
+      const palletCt = est.pallets.length;
+      if (weightEl) weightEl.textContent = est.totalWeight > 0 ? `${Math.round(est.totalWeight).toLocaleString('en-US')} lbs` : '—';
+      if (palletEl) palletEl.textContent = palletCt > 0 ? palletCt : '—';
+      if (listEl) {
+        if (palletCt > 0) {
+          listEl.style.display = 'block';
+          listEl.innerHTML = est.pallets.map((p, i) =>
+            `<div style="font-size:11px;color:var(--muted);margin-top:2px">Pallet ${i+1}: <span style="color:var(--text)">${p.l}"&times;${p.w}"&times;${p.h}"</span></div>`
+          ).join('');
+        } else {
+          listEl.style.display = 'none';
+          listEl.innerHTML = '';
+        }
+      }
+      if (unkWrap && unkLabel) {
+        if (est.unknownItems.length) {
+          unkWrap.style.display = 'block';
+          unkWrap.title = 'No pallet data for: ' + est.unknownItems.join(', ');
+          unkLabel.textContent = `${est.unknownItems.length} item${est.unknownItems.length===1?'':'s'} missing pallet data`;
+        } else {
+          unkWrap.style.display = 'none';
+        }
+      }
+      wrap.style.display = (palletCt > 0 || est.totalWeight > 0) ? 'block' : 'none';
+    }
+  } catch(e) { /* non-fatal */ }
 
   // Restore email addresses
   const savedTo  = od.shipEmailTo  || c?.email || '';

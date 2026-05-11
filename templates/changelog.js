@@ -51,6 +51,41 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.9.10', date:'May 11, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'OD carrier cards in the Get Freight modal no longer click-through to OD\'s ship-LTL tool — that URL was a generic quote page (not a saved-rate viewer), so it was misleading. Reason: OD doesn\'t expose saved rate quotes anywhere on their public site or myOD portal in a way we can deep-link. ABF cards still click-through to arcb.com (where saved quotes ARE viewable). The "Book on OD.com" button in the booking sub-section is unaffected — it still opens OD\'s tool with destination pre-filled, which is the right tool for actually booking.'},
+        {t:'ui',  d:'The ↗ external-open glyph now only appears on cards that have a real deep-link (i.e. ABF), so the rep knows at a glance which clicks open externally vs which just select the rate.'},
+      ]
+    },
+    {
+      v:'1.9.9', date:'May 11, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Clicking a carrier card in the Get Freight modal now opens that carrier\'s own quote page in a new tab — ABF\'s rate-quote viewer (https://arcb.com/tools/rate-quote.html#/<quoteId>) for ABF rows, OD\'s ship-LTL tool with the destination pre-filled for OD rows. Lets the rep see everything the carrier shows on its own site, including service notes the rate API doesn\'t expose (e.g. "Delivery is only available on Tuesday, Wednesday, and Thursday" for restricted destinations). Also still selects the rate locally so the existing Use This Rate / Book flow works the same.'},
+        {t:'add', d:'A small ↗ glyph appears next to the service label when the carrier card has a deep-link, so the rep knows clicking opens an external page.'},
+        {t:'log', d:'parseAbfXml now extracts an ABF quote ID from the rate response (tries RATEQUOTENUMBER, QUOTENUMBER, QUOTEID, QUOTEREF, RATEQUOTEID, RESPID and a couple of attribute styles), used to build the deep-link. All matching candidates are logged so a missed XML element shape can be added on the next test.'},
+      ]
+    },
+    {
+      v:'1.9.8', date:'May 11, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Get Freight modal now surfaces ABF service-level notes inline under the carrier card (e.g. "Delivery is only available on Tuesday, Wednesday, and Thursday." for destinations with restricted delivery days). Yellow ⚠ banner appears below the rate so the rep sees the constraint before booking. Note text is parsed defensively from several possible XML element names (NOTE / MESSAGE / SERVICEMSG / DELIVERYNOTE / etc.) and ITEM elements with descriptive FOR attributes — if a real-world ABF note slips past the parser, the raw XML is logged so the missed element can be added.'},
+      ]
+    },
+    {
+      v:'1.9.7', date:'May 11, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Orders dashboard drawer Quote Weight block reformatted to match the Quote Builder\'s widget exactly: Total weight on its own line, Pallets count, then "Pallet 1: 102"×52"×44"" / "Pallet 2: ..." per-pallet dimensions listed below. Replaces the v1.9.6 single-line summary so the orders side reads identically to the quote side.'},
+      ]
+    },
+    {
+      v:'1.9.6', date:'May 11, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Orders dashboard drawer now shows an Estimated shipment line above the Shipment section: pallet count and total weight, computed from the order\'s line items + the booth pallet map. At-a-glance answer to "how big is this order to ship?" before opening the Get Freight modal. If any line item has no pallet mapping, a yellow ⚠ marker calls out how many — hover for the SKU list.'},
+        {t:'ui',  d:'Get Freight modal now shows column headers (Length / Width / Height / Weight) above the pallet-dimension inputs. Previously the four inputs had only placeholder hints that disappeared once filled — hard to tell which column was which after entering numbers.'},
+        {t:'log', d:'Refactor: pallet/weight calculation extracted from openFreightModal into a shared computeShipmentEstimate(order) helper, so the drawer\'s estimate line and the freight modal\'s pre-fill use the exact same logic and stay in sync.'},
+      ]
+    },
+    {
       v:'1.9.5', date:'May 11, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Deal Hub now shows every Closed Won deal regardless of recency. Previously the board fetched the 200 most-recently-modified deals and filtered them into columns, so Closed Won deals that had been silent for weeks (customer build pending, awaiting approval, etc.) fell off the back and the Closed Won column would appear empty even when there were active orders sitting in it.'},

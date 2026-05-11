@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.9.7', date:'May 11, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Orders dashboard drawer Quote Weight block reformatted to match the Quote Builder\'s widget exactly: Total weight on its own line, Pallets count, then "Pallet 1: 102"×52"×44"" / "Pallet 2: ..." per-pallet dimensions listed below. Replaces the v1.9.6 single-line summary so the orders side reads identically to the quote side.'},
+      ]
+    },
+    {
       v:'1.9.6', date:'May 11, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Orders dashboard drawer now shows an Estimated shipment line above the Shipment section: pallet count and total weight, computed from the order\'s line items + the booth pallet map. At-a-glance answer to "how big is this order to ship?" before opening the Get Freight modal. If any line item has no pallet mapping, a yellow ⚠ marker calls out how many — hover for the SKU list.'},

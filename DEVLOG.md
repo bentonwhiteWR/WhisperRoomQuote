@@ -8,14 +8,14 @@ Internal development notes. Last updated 2026-05-11.
 
 ## Current focus (2026-05-11)
 
-**Most recent shipped:** v1.9.6 — Orders drawer shows "Estimated: N pallets · X lbs" above the Shipment section. Get Freight modal pallet inputs gained Length/Width/Height/Weight column headers. (Previous: v1.9.5 Deal Hub shows every Closed Won; v1.9.4 QB invoice delete cascades to Payments; v1.9.3 invoice International block.)
+**Most recent shipped:** v1.9.7 — Orders drawer Quote Weight block reformatted to match the Quote Builder widget (Total / Pallets / per-pallet dims). (Previous: v1.9.6 first cut + Get Freight L/W/H/Weight headers; v1.9.5 Deal Hub Closed Won; v1.9.4 QB invoice delete cascades to Payments.)
 
 **Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.9.0 over May 7–8. Full lifecycle now: create with editable ship-to, edit ship-to/color/notes, delete, change-log audit trail visible on the doc itself. Next-up candidates are user-driven.
 
 **Outstanding work (not yet started):**
 
 - The May 7 audit findings below — none addressed yet. The five "Critical" items are real bugs and should be the next coding focus once the AP system stabilizes. Especially **#1 (public endpoints lack share-token auth)** and **#2 (XSS in server-rendered HTML)** — both are exploitable by anonymous visitors.
-- v1.9.6 on staging awaiting test. Prod (main) at v1.9.5.
+- v1.9.6 + v1.9.7 on staging awaiting test (will promote together). Prod (main) at v1.9.5.
 - **Parked follow-up:** BOOTH_DATA pallet dimensions (orders-dashboard.html:689) — user reports some entries may be inaccurate. Needs them to specify which SKUs/booths are wrong; we update the map then. The shared computeShipmentEstimate helper (v1.9.6) makes this a one-place fix when ready.
 
 **Tooling note:** As of 2026-05-08 the user is moving day-to-day editing from Claude Desktop to Cursor. Local clone lives at `C:\Users\bento\Documents\Claude\WhisperRoomQuote-staging`. Workflow stays the same (staging-only, explicit ask to promote to main).
@@ -182,6 +182,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.9.7   | 2026-05-11 | Orders drawer Quote Weight block reformatted to match Quote Builder widget (Total / Pallets / per-pallet dims) |
 | 1.9.6   | 2026-05-11 | Orders drawer: "Estimated: N pallets · X lbs" above Shipment section; Get Freight modal gains L/W/H/Weight column headers; shared `computeShipmentEstimate` helper |
 | 1.9.5   | 2026-05-11 | Deal Hub always shows every Closed Won (dedicated no-recency-cap pass) + main fetch filtered to board stages + client limit 200→500 |
 | 1.9.4   | 2026-05-11 | QB invoice delete now also deletes linked QB Payment(s); new lib helpers `qb.getPayment` + `qb.deletePayment` |

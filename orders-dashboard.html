@@ -433,15 +433,20 @@
     </div>
   </div>
 
-  <!-- Estimated shipment shape (computed from line items + booth pallet map).
-       Sits above the Shipment section so reps see at a glance how big this
-       order is before they open the freight modal or fill in carrier fields. -->
-  <div id="shipmentEstimate" style="display:none;margin:0 0 8px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)">
-    <span style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.08em">Estimated</span>
-    <span><strong id="estPallets" style="color:var(--text);font-weight:700">—</strong> <span style="color:var(--muted)">pallet<span id="estPalletsPlural">s</span></span></span>
-    <span style="color:var(--border)">·</span>
-    <span><strong id="estWeight" style="color:var(--text);font-weight:700">—</strong> <span style="color:var(--muted)">lbs</span></span>
-    <span id="estUnknownWrap" style="display:none;margin-left:auto;font-size:11px;color:#f59e0b" title=""><span>⚠ </span><span id="estUnknownLabel"></span></span>
+  <!-- Shipment estimate block (mirrors the Quote Builder's "Quote Weight"
+       widget so reps see the same shape on both sides). Total weight,
+       pallet count, and per-pallet dimensions, computed from the order's
+       line items + the BOOTH_DATA pallet map. -->
+  <div id="shipmentEstimate" style="display:none;margin:0 0 10px;padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+    <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Quote Weight</div>
+    <div style="font-size:12px;color:var(--muted)">
+      Total: <span id="estWeight" style="color:var(--text);font-weight:600">—</span>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:4px">
+      Pallets: <span id="estPallets" style="color:var(--text);font-weight:600">—</span>
+    </div>
+    <div id="estPalletList" style="display:none;margin-top:6px"></div>
+    <div id="estUnknownWrap" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:#f59e0b">⚠ <span id="estUnknownLabel"></span></div>
   </div>
 
   <div class="drawer-section" id="shipmentSection">
@@ -1499,32 +1504,42 @@ function openDrawer(quoteNumber) {
   document.getElementById('editFreightCost').value = od.freightCost || '';
 
   // Populate the inline shipment-estimate block above the Shipment section.
-  // Uses the same calculation as the Get Freight modal so the two agree.
+  // Mirrors the Quote Builder's Quote Weight widget (Total / Pallets / per-
+  // pallet dimensions). Uses the same calculation as the Get Freight modal
+  // so the two agree.
   try {
     const est = computeShipmentEstimate(order);
     const wrap = document.getElementById('shipmentEstimate');
     if (wrap) {
-      const palletEl  = document.getElementById('estPallets');
-      const pluralEl  = document.getElementById('estPalletsPlural');
-      const weightEl  = document.getElementById('estWeight');
-      const unkWrap   = document.getElementById('estUnknownWrap');
-      const unkLabel  = document.getElementById('estUnknownLabel');
-      const palletCt  = est.pallets.length;
-      const weightStr = est.totalWeight ? Math.round(est.totalWeight).toLocaleString('en-US') : '—';
-      if (palletEl) palletEl.textContent = palletCt || '—';
-      if (pluralEl) pluralEl.textContent = palletCt === 1 ? '' : 's';
-      if (weightEl) weightEl.textContent = weightStr;
+      const weightEl = document.getElementById('estWeight');
+      const palletEl = document.getElementById('estPallets');
+      const listEl   = document.getElementById('estPalletList');
+      const unkWrap  = document.getElementById('estUnknownWrap');
+      const unkLabel = document.getElementById('estUnknownLabel');
+      const palletCt = est.pallets.length;
+      if (weightEl) weightEl.textContent = est.totalWeight > 0 ? `${Math.round(est.totalWeight).toLocaleString('en-US')} lbs` : '—';
+      if (palletEl) palletEl.textContent = palletCt > 0 ? palletCt : '—';
+      if (listEl) {
+        if (palletCt > 0) {
+          listEl.style.display = 'block';
+          listEl.innerHTML = est.pallets.map((p, i) =>
+            `<div style="font-size:11px;color:var(--muted);margin-top:2px">Pallet ${i+1}: <span style="color:var(--text)">${p.l}"&times;${p.w}"&times;${p.h}"</span></div>`
+          ).join('');
+        } else {
+          listEl.style.display = 'none';
+          listEl.innerHTML = '';
+        }
+      }
       if (unkWrap && unkLabel) {
         if (est.unknownItems.length) {
-          unkWrap.style.display = 'inline-flex';
+          unkWrap.style.display = 'block';
           unkWrap.title = 'No pallet data for: ' + est.unknownItems.join(', ');
           unkLabel.textContent = `${est.unknownItems.length} item${est.unknownItems.length===1?'':'s'} missing pallet data`;
         } else {
           unkWrap.style.display = 'none';
         }
       }
-      // Show only when we have something useful (any pallets OR any weight)
-      wrap.style.display = (palletCt > 0 || est.totalWeight > 0) ? 'flex' : 'none';
+      wrap.style.display = (palletCt > 0 || est.totalWeight > 0) ? 'block' : 'none';
     }
   } catch(e) { /* non-fatal */ }
 

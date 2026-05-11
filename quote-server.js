@@ -7684,6 +7684,83 @@ ${q.accepted ? `
     return;
   }
 
+  // ── API: Log a Call on a deal ─────────────────────────────────
+  // POST /api/deals/:dealId/log-call  body: { body, contactName?, dealName? }
+  // Creates a HubSpot Call object (engagement) with the rep's
+  // conversation text and associates it to the deal so it shows up in
+  // HubSpot's deal timeline as a real Call activity (not a Note) —
+  // counts toward the rep's call-volume reports and is filterable in
+  // HS reporting alongside other calls. Title is auto-generated from
+  // contact name + date.
+  if (pathname.startsWith('/api/deals/') && pathname.endsWith('/log-call') && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const dealId = pathname.replace('/api/deals/', '').replace('/log-call', '').trim();
+    if (!dealId) { json({ error: 'Deal ID required' }, 400); return; }
+    let body;
+    try { body = JSON.parse(await readBody(req) || '{}'); }
+    catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
+    const callBody = String(body.body || '').trim();
+    if (!callBody) { json({ error: 'Call body is required' }, 400); return; }
+    const contactName = String(body.contactName || '').trim();
+    const dealName    = String(body.dealName    || '').trim();
+    const repId = getRepFromReq(req, body);
+    const sess = getSession(req);
+    const repName = sess?.name || repId || 'Rep';
+
+    const dateLabel = new Date().toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York'
+    });
+    const title = contactName
+      ? `Call with ${contactName} — ${dateLabel}`
+      : (dealName ? `Call (${dealName}) — ${dateLabel}` : `Call — ${dateLabel}`);
+
+    try {
+      // POST the Call object with an inline association to the deal.
+      // associationTypeId 206 = Call → Deal (HubSpot-defined).
+      // hs_call_status COMPLETED keeps it from showing as scheduled/in-progress.
+      const props = {
+        hs_timestamp:      new Date().toISOString(),
+        hs_call_body:      callBody,
+        hs_call_title:     title,
+        hs_call_direction: 'OUTBOUND',
+        hs_call_status:    'COMPLETED',
+      };
+      if (repId) props.hubspot_owner_id = String(repId);
+
+      const hsRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/objects/calls',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, {
+        properties: props,
+        associations: [{
+          to: { id: dealId },
+          types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 206 }]
+        }]
+      });
+
+      if (hsRes.status >= 400) {
+        const msg = hsRes.body?.message || JSON.stringify(hsRes.body || {}).slice(0, 300);
+        console.error('[log-call] HubSpot error:', hsRes.status, msg);
+        writelog('error', 'error.log-call', `HubSpot call create failed (${hsRes.status}): ${msg}`,
+          { rep: repId, dealId: String(dealId), meta: { dealName, status: hsRes.status } });
+        json({ error: `HubSpot rejected the call (${hsRes.status}): ${msg}` }, 502);
+        return;
+      }
+
+      const callId = hsRes.body?.id || null;
+      writelog('info', 'deal.call-logged', `${repName} logged a call on ${dealName || `deal ${dealId}`} (${callBody.length} chars)`,
+        { rep: repId, dealId: String(dealId), dealName, meta: { callId, title, length: callBody.length } });
+      json({ success: true, callId, title });
+    } catch(e) {
+      console.error('[log-call] error:', e.message);
+      writelog('error', 'error.log-call', `log-call failed: ${e.message}`, { rep: repId, dealId: String(dealId) });
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── API: Delete Quote (single quote record) ─────────────────────
   if (pathname.startsWith('/api/quotes/') && pathname.endsWith('/delete') && req.method === 'DELETE') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.11.0', date:'May 11, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'New "📞 Log Call" button in the Deal Hub action row. Opens a modal with a textarea for the conversation notes — submit creates a real HubSpot Call activity (engagement) on the deal, attributed to the logged-in rep, marked OUTBOUND/COMPLETED, with an auto-generated title ("Call with <contact> — <date>"). Shows up in HubSpot\'s deal timeline and counts toward the rep\'s call-volume reports — same as if they\'d logged it in HubSpot directly.'},
+        {t:'log', d:'Backend: POST /api/deals/:dealId/log-call creates a Call object via /crm/v3/objects/calls with an inline association to the deal (associationTypeId 206 = Call→Deal, HUBSPOT_DEFINED). Properties set: hs_timestamp, hs_call_body, hs_call_title, hs_call_direction=OUTBOUND, hs_call_status=COMPLETED, hubspot_owner_id. Logs deal.call-logged on success and error.log-call on HubSpot rejection.'},
+      ]
+    },
+    {
       v:'1.10.4', date:'May 11, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'"Select Rate" toast was reading "null — null applied · $undefined" because closeFreightModal() reset the _selected* state vars before the toast template ran. Snapshot the values into locals before closing. (Same bug existed in the v1.10.1-and-earlier "Rate Only" button — just got more visible now that Select Rate is the primary action.)'},

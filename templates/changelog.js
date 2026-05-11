@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.9.6', date:'May 11, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Orders dashboard drawer now shows an Estimated shipment line above the Shipment section: pallet count and total weight, computed from the order\'s line items + the booth pallet map. At-a-glance answer to "how big is this order to ship?" before opening the Get Freight modal. If any line item has no pallet mapping, a yellow ⚠ marker calls out how many — hover for the SKU list.'},
+        {t:'ui',  d:'Get Freight modal now shows column headers (Length / Width / Height / Weight) above the pallet-dimension inputs. Previously the four inputs had only placeholder hints that disappeared once filled — hard to tell which column was which after entering numbers.'},
+        {t:'log', d:'Refactor: pallet/weight calculation extracted from openFreightModal into a shared computeShipmentEstimate(order) helper, so the drawer\'s estimate line and the freight modal\'s pre-fill use the exact same logic and stay in sync.'},
+      ]
+    },
+    {
       v:'1.9.5', date:'May 11, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Deal Hub now shows every Closed Won deal regardless of recency. Previously the board fetched the 200 most-recently-modified deals and filtered them into columns, so Closed Won deals that had been silent for weeks (customer build pending, awaiting approval, etc.) fell off the back and the Closed Won column would appear empty even when there were active orders sitting in it.'},

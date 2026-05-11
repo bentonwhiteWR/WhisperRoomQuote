@@ -433,6 +433,17 @@
     </div>
   </div>
 
+  <!-- Estimated shipment shape (computed from line items + booth pallet map).
+       Sits above the Shipment section so reps see at a glance how big this
+       order is before they open the freight modal or fill in carrier fields. -->
+  <div id="shipmentEstimate" style="display:none;margin:0 0 8px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)">
+    <span style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.08em">Estimated</span>
+    <span><strong id="estPallets" style="color:var(--text);font-weight:700">—</strong> <span style="color:var(--muted)">pallet<span id="estPalletsPlural">s</span></span></span>
+    <span style="color:var(--border)">·</span>
+    <span><strong id="estWeight" style="color:var(--text);font-weight:700">—</strong> <span style="color:var(--muted)">lbs</span></span>
+    <span id="estUnknownWrap" style="display:none;margin-left:auto;font-size:11px;color:#f59e0b" title=""><span>⚠ </span><span id="estUnknownLabel"></span></span>
+  </div>
+
   <div class="drawer-section" id="shipmentSection">
     <div class="drawer-section-title" style="display:flex;align-items:center;justify-content:space-between">
       <span>Shipment</span>
@@ -606,6 +617,15 @@
     <!-- Pallet dimensions table -->
     <div style="margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Pallet Dimensions (inches)</div>
+      <!-- Column headers so it's obvious which column is L/W/H/Weight even
+           after the inputs are filled (placeholders disappear on input). -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 28px;gap:6px;margin-bottom:4px;font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">
+        <div>Length</div>
+        <div>Width</div>
+        <div>Height</div>
+        <div>Weight (lbs)</div>
+        <div></div>
+      </div>
       <div id="fqPalletRows" style="display:flex;flex-direction:column;gap:6px"></div>
       <button onclick="fqAddPalletRow()" style="margin-top:8px;padding:5px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;cursor:pointer;font-family:inherit">+ Add Pallet</button>
     </div>
@@ -733,6 +753,38 @@ function parseFreightCost(val) {
   return Number.isFinite(n) ? n : null;
 }
 
+// Estimate shipment shape from an order's line items + BOOTH_DATA.
+// Returns { pallets: [{l,w,h,weight}], totalWeight, unknownItems: [name] }.
+// Used by both the freight-quote modal (for pre-fill) and the inline
+// "Estimated shipment" block above the Shipment section in the drawer,
+// so the two stay consistent.
+function computeShipmentEstimate(order) {
+  const snapshot  = order?.json_snapshot || {};
+  const lineItems = snapshot.lineItems || [];
+  const pallets = [];
+  let totalWeight = 0;
+  const unknownItems = [];
+  lineItems.forEach(item => {
+    const bd = BOOTH_DATA[item.name];
+    const qty = parseInt(item.qty) || 1;
+    const perUnitWeight = parseFloat(item.weight) || 0;
+    totalWeight += perUnitWeight * qty;
+    if (bd) {
+      for (let q = 0; q < qty; q++) {
+        const perPallet = Math.floor(perUnitWeight / bd.pallets.length);
+        const rem = perUnitWeight % bd.pallets.length;
+        bd.pallets.forEach((pl, i) => {
+          pallets.push({ l: pl.l, w: pl.w, h: pl.h, weight: Math.round(perPallet + (i === 0 ? rem : 0)) });
+        });
+      }
+    } else if (perUnitWeight > 0) {
+      // Item has weight but no pallet mapping — record so the UI can flag it.
+      unknownItems.push(item.name || '(unnamed item)');
+    }
+  });
+  return { pallets, totalWeight, unknownItems };
+}
+
 let _freightPallets = [];
 
 function openFreightModal() {
@@ -742,32 +794,17 @@ function openFreightModal() {
   const od = order.order_data || {};
   const snapshot = order.json_snapshot || {};
   const customer = snapshot.customer || {};
-  const lineItems = snapshot.lineItems || [];
 
   // Pre-fill destination from order
   document.getElementById('fqCity').value  = customer.city  || od.deliveryCity  || '';
   document.getElementById('fqState').value = customer.state || od.deliveryState || '';
   document.getElementById('fqZip').value   = customer.zip   || od.deliveryZip   || '';
 
-  // Build pallets from BOOTH_DATA and line items
-  _freightPallets = [];
-  let totalWeight = 0;
-
-  lineItems.forEach(item => {
-    const bd = BOOTH_DATA[item.name];
-    const itemWeight = (parseFloat(item.weight) || 0) * (parseInt(item.qty) || 1);
-    totalWeight += itemWeight;
-    if (bd) {
-      for (let q = 0; q < (parseInt(item.qty) || 1); q++) {
-        const w = parseFloat(item.weight) || 0;
-        const perPallet = Math.floor(w / bd.pallets.length);
-        const rem = w % bd.pallets.length;
-        bd.pallets.forEach((pl, i) => {
-          _freightPallets.push({ l: pl.l, w: pl.w, h: pl.h, weight: Math.round(perPallet + (i === 0 ? rem : 0)) });
-        });
-      }
-    }
-  });
+  // Build pallets from the shared estimator so the modal matches the
+  // inline summary above the Shipment section.
+  const est = computeShipmentEstimate(order);
+  _freightPallets = est.pallets.slice();
+  const totalWeight = est.totalWeight;
 
   // If no pallet data found, add one default pallet
   if (_freightPallets.length === 0) _freightPallets.push({ l: 90, w: 52, h: 48, weight: Math.round(totalWeight) });
@@ -788,16 +825,16 @@ function openFreightModal() {
 function renderPalletRows() {
   const container = document.getElementById('fqPalletRows');
   container.innerHTML = _freightPallets.map((pl, i) => `
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:6px;align-items:center">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 28px;gap:6px;align-items:center">
       <input type="number" value="${pl.l}" min="1" placeholder="L" onchange="updatePallet(${i},'l',this.value)"
-        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
+        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;min-width:0">
       <input type="number" value="${pl.w}" min="1" placeholder="W" onchange="updatePallet(${i},'w',this.value)"
-        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
+        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;min-width:0">
       <input type="number" value="${pl.h}" min="1" placeholder="H" onchange="updatePallet(${i},'h',this.value)"
-        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
+        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;min-width:0">
       <input type="number" value="${pl.weight}" min="0" placeholder="lbs" onchange="updatePallet(${i},'weight',this.value)"
-        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
-      <button onclick="removePallet(${i})" style="padding:4px 8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);border-radius:5px;color:#ef4444;font-size:12px;cursor:pointer;font-family:inherit">×</button>
+        style="padding:6px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;min-width:0">
+      <button onclick="removePallet(${i})" title="Remove pallet" style="padding:4px 0;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);border-radius:5px;color:#ef4444;font-size:14px;line-height:1;cursor:pointer;font-family:inherit">×</button>
     </div>
   `).join('');
 }
@@ -1460,6 +1497,36 @@ function openDrawer(quoteNumber) {
     ? new Date(shipped.date).toISOString().split('T')[0]
     : (od._hsDate ? new Date(od._hsDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
   document.getElementById('editFreightCost').value = od.freightCost || '';
+
+  // Populate the inline shipment-estimate block above the Shipment section.
+  // Uses the same calculation as the Get Freight modal so the two agree.
+  try {
+    const est = computeShipmentEstimate(order);
+    const wrap = document.getElementById('shipmentEstimate');
+    if (wrap) {
+      const palletEl  = document.getElementById('estPallets');
+      const pluralEl  = document.getElementById('estPalletsPlural');
+      const weightEl  = document.getElementById('estWeight');
+      const unkWrap   = document.getElementById('estUnknownWrap');
+      const unkLabel  = document.getElementById('estUnknownLabel');
+      const palletCt  = est.pallets.length;
+      const weightStr = est.totalWeight ? Math.round(est.totalWeight).toLocaleString('en-US') : '—';
+      if (palletEl) palletEl.textContent = palletCt || '—';
+      if (pluralEl) pluralEl.textContent = palletCt === 1 ? '' : 's';
+      if (weightEl) weightEl.textContent = weightStr;
+      if (unkWrap && unkLabel) {
+        if (est.unknownItems.length) {
+          unkWrap.style.display = 'inline-flex';
+          unkWrap.title = 'No pallet data for: ' + est.unknownItems.join(', ');
+          unkLabel.textContent = `${est.unknownItems.length} item${est.unknownItems.length===1?'':'s'} missing pallet data`;
+        } else {
+          unkWrap.style.display = 'none';
+        }
+      }
+      // Show only when we have something useful (any pallets OR any weight)
+      wrap.style.display = (palletCt > 0 || est.totalWeight > 0) ? 'flex' : 'none';
+    }
+  } catch(e) { /* non-fatal */ }
 
   // Restore email addresses
   const savedTo  = od.shipEmailTo  || c?.email || '';

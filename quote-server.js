@@ -9145,6 +9145,24 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
 
       if (!dealId || !quoteNumber) { json({ error: 'Missing dealId or quoteNumber' }, 400); return; }
 
+      // Shipping-address guardrail. Processing the order commits the deal to
+      // Closed Won and kicks off invoicing + fulfillment downstream — none of
+      // which work without a real ship-to. ZIP-only is fine for *rate quoting*
+      // (v1.12.1) but for actually shipping a booth we need street + city +
+      // state + zip. Client validates first for UX; this is the authoritative
+      // gate. Both clients show data.error as a toast.
+      const _ship = customer || {};
+      const _missing = [];
+      if (!String(_ship.address || '').trim()) _missing.push('street address');
+      if (!String(_ship.city    || '').trim()) _missing.push('city');
+      if (!String(_ship.state   || '').trim()) _missing.push('state');
+      if (!String(_ship.zip     || '').trim()) _missing.push('ZIP');
+      if (_missing.length) {
+        writelog('warn', 'process-order.blocked-no-ship-address', `Process Order blocked — missing ${_missing.join(', ')}`, { dealId, quoteNumber, missing: _missing, rep: getRepFromReq(req, body) });
+        json({ error: `Cannot process order — missing shipping ${_missing.join(', ')}. Add the ship-to address on the quote, then try again.` }, 400);
+        return;
+      }
+
       // 1. Advance deal to Closed Won + set ap_color, payment_type, po_ if present
       // HubSpot's payment_type dropdown uses uppercase internal values: HS, CC, ACH, PO, Other.
       // Client radios use lowercase ids. Map here at the boundary.

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.13.0', date:'May 12, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Process Order is now blocked when the shipping address is incomplete. Required fields: street address, city, state, ZIP. Enforced on the server (/api/process-order returns 400 with the missing-field list) and pre-checked on both clients (Quote Builder reads the live DOM and toasts; Deal Hub reads the saved snapshot and toasts the rep back to the quote since the Hub modal can\'t edit ship-to). ZIP-only is still fine for rate quoting (v1.12.1/v1.12.2) — this only gates actual fulfillment. Server logs blocked attempts as `process-order.blocked-no-ship-address` with the missing fields + rep so we can see if any rep is hitting it repeatedly.'},
+      ]
+    },
+    {
       v:'1.12.4', date:'May 12, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Orders dashboard now resolves multi-pallet booths for the full HubSpot product catalog. The orders dashboard was carrying its own copy of BOOTH_DATA (separate from quote-builder.html) that had diverged: missing every MDL shell larger than 9696 (so MDL 96120, 96144, 96168, 96192, 102102, 102126, 102144, 102168, 102186 and all NV variants returned "—"), plus several shared entries had stale pallet dims (Drum Booth, MDL 4848 S, MDL 7272 E, MDL 9696 S/E, etc.). Synced the orders-dashboard copy from QB (the source of truth — that\'s the widget reps verify against real shipments). Quote-builder.html:1806 stays the master copy; orders-dashboard.html:714 must be kept in lockstep.'},

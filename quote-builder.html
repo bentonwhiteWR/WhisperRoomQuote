@@ -6988,6 +6988,20 @@ async function confirmProcessOrder() {
     showToast('No deal linked', 'error'); return;
   }
 
+  // Shipping-address guardrail. ZIP-only is fine for rate quoting, but
+  // processing the order commits to actually shipping a booth — we need
+  // a real ship-to. Server enforces too (process-order handler), but
+  // blocking client-side avoids the auto-save trip below.
+  const _shipMissing = [];
+  if (!document.getElementById('shipAddress').value.trim()) _shipMissing.push('street address');
+  if (!document.getElementById('shipCity').value.trim())    _shipMissing.push('city');
+  if (!document.getElementById('shipState').value.trim())   _shipMissing.push('state');
+  if (!document.getElementById('shipZip').value.trim())     _shipMissing.push('ZIP');
+  if (_shipMissing.length) {
+    showToast(`Add shipping ${_shipMissing.join(', ')} before processing`, 'error');
+    return;
+  }
+
   const foam    = document.querySelector('input[name="orderFoam"]:checked')?.value  || '';
   const hinge   = document.querySelector('input[name="orderHinge"]:checked')?.value || '';
   const apColor = document.getElementById('orderApColor')?.value || '';

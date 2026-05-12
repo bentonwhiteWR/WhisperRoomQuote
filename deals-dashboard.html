@@ -1922,6 +1922,21 @@ async function confirmProcessOrderFromHub() {
   const dealId = currentDealId;
   if (!snap || !quoteNumber || !dealId) { showToast('Missing quote data','error'); return; }
 
+  // Shipping-address guardrail. Server enforces too, but blocking here
+  // surfaces the error without burning a request. The Deal Hub modal
+  // doesn't expose editable ship-to fields, so the rep has to fix the
+  // address on the quote itself — toast points them there.
+  const _ship = snap.customer || {};
+  const _shipMissing = [];
+  if (!String(_ship.address || '').trim()) _shipMissing.push('street address');
+  if (!String(_ship.city    || '').trim()) _shipMissing.push('city');
+  if (!String(_ship.state   || '').trim()) _shipMissing.push('state');
+  if (!String(_ship.zip     || '').trim()) _shipMissing.push('ZIP');
+  if (_shipMissing.length) {
+    showToast(`Missing shipping ${_shipMissing.join(', ')} — open the quote to fix`, 'error');
+    return;
+  }
+
   const foam    = document.querySelector('input[name="procFoam"]:checked')?.value  || '';
   const hinge   = document.querySelector('input[name="procHinge"]:checked')?.value || '';
   const apColor = document.getElementById('procApColor')?.value || '';

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.13.6', date:'May 12, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Select Rate on an ABF card with a dynamic discount now applies the net (discounted) cost to the order\'s freight field, not the standard rate. Per-rep direction: we book in advance to capture the discount, so the net IS our actual cost. Toast already showed the net headline; the underlying value the order saves now matches.'},
+      ]
+    },
+    {
       v:'1.13.5', date:'May 12, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'ABF rate cards with a dynamic discount now lead with the net (discounted) estimate in orange, followed by the −$X.XX dyn. discount note (green) and the actual standard cost (muted) below it. Previously the actual cost was the headline and the discount lived underneath — flipped because the rep wants the discounted price visually dominant. Cards without a dynamic discount are unchanged.'},

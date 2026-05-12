@@ -1114,7 +1114,11 @@ function onFreightCardClick(cardEl) {
   const c = key ? (window._fqCarriers || {})[key] : null;
   if (!c) return;
   _selectedFqCarrier = c;
-  selectFreightOption(cardEl, c.carrier, c.cost, c.transit, c.service, !!c.bookable, c.quoteUrl || c.odBookUrl || '');
+  // When ABF returned a dynamic discount, the rep books in advance to
+  // capture it, so the net (cost − dynDisc) is our actual cost — pass
+  // that into the order's freight field instead of the standard rate.
+  const effectiveCost = (c.dynDisc > 0) ? (c.cost - c.dynDisc) : c.cost;
+  selectFreightOption(cardEl, c.carrier, effectiveCost, c.transit, c.service, !!c.bookable, c.quoteUrl || c.odBookUrl || '');
 }
 
 function selectFreightOption(el, carrier, cost, transit, service, bookable, odBookUrl) {

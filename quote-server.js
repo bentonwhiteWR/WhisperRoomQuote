@@ -6662,7 +6662,7 @@ ${q.accepted ? `
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
       const body = JSON.parse(await readBody(req));
-      const { pallets, totalWeight, city, state: rawState, zip, canadian, accessories } = body;
+      const { pallets, totalWeight, city, state: rawState, zip, canadian, accessories, pickupDate } = body;
       const state = toStateAbbr(rawState);
       if (!pallets || !pallets.length) { json({ error: 'No pallet data' }, 400); return; }
       if (!city || !state || !zip)     { json({ error: 'Missing destination' }, 400); return; }
@@ -6671,9 +6671,12 @@ ${q.accepted ? `
       // ── ABF: standard LTL via XML API ────────────────────────────
       // Note: ABF's legacy XML rate API (aquotexml.asp) only returns standard LTL.
       // Guaranteed/expedited pricing requires the ArcBest REST API (separate integration).
+      // pickupDate (YYYY-MM-DD) controls ShipMonth/Day/Year sent to ABF and
+      // therefore the returned transit/ETA. OD's SOAP rate API has no
+      // pickup-date field, so OD rates are unaffected by this parameter.
       const abfResults = [];
       try {
-        const url = buildAbfUrl(pallets, totalWeight, city, state, zip, canadian || false, acc);
+        const url = buildAbfUrl(pallets, totalWeight, city, state, zip, canadian || false, acc, null, pickupDate);
         const res2 = await httpsGet(url);
         const result = parseAbfXml(res2.body);
         // Build the public ArcBest rate-quote deep-link if we got a
@@ -6685,6 +6688,7 @@ ${q.accepted ? `
           service:     'Standard LTL',
           serviceCode: 'STND',
           cost:        result.cost,
+          dynDisc:     result.dynDisc || 0,
           transit:     result.transit,
           notes:       result.notes || [],
           quoteUrl:    abfQuoteUrl,
@@ -6756,14 +6760,13 @@ ${q.accepted ? `
         // class-only rates that didn't match the NMFC-based pricing the
         // account is contracted for.
         //
-        // Weight: OD wants the gross weight per pallet (product + the
-        // pallet itself). ABF rates correctly off product weight alone.
-        // Add OD_PALLET_WEIGHT_LBS to each freightItem's weight on the
-        // OD path only.
-        const OD_PALLET_WEIGHT_LBS = 120;
+        // Weight: our stored per-pallet weight is already the gross floor
+        // weight (booth + accessories + the wooden pallet itself), which is
+        // what OD wants. ABF is the inverse — buildAbfUrl subtracts
+        // ABF_PALLET_DEDUCT_LBS because ABF rates off product weight only.
+        // OD: pass the stored gross weight straight through, no adjustment.
         const freightItemsXml = pallets.map(p => {
-          const productLbs = parseFloat(p.weight) || (totalWt / pallets.length);
-          const grossLbs   = Math.round(productLbs + OD_PALLET_WEIGHT_LBS);
+          const weightLbs = Math.round(parseFloat(p.weight) || (totalWt / pallets.length));
           return `
         <freightItems>
           <dimensionUnits>IN</dimensionUnits>
@@ -6774,7 +6777,7 @@ ${q.accepted ? `
           <ratedClass>${FREIGHT_CLASS}</ratedClass>
           <nmfc>${NMFC_ITEM}</nmfc>
           <nmfcSub>${NMFC_SUB}</nmfcSub>
-          <weight>${grossLbs}</weight>
+          <weight>${weightLbs}</weight>
         </freightItems>`;
         }).join('');
 
@@ -9144,6 +9147,24 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
               shipEmailTo, shipEmailCc } = body;
 
       if (!dealId || !quoteNumber) { json({ error: 'Missing dealId or quoteNumber' }, 400); return; }
+
+      // Shipping-address guardrail. Processing the order commits the deal to
+      // Closed Won and kicks off invoicing + fulfillment downstream — none of
+      // which work without a real ship-to. ZIP-only is fine for *rate quoting*
+      // (v1.12.1) but for actually shipping a booth we need street + city +
+      // state + zip. Client validates first for UX; this is the authoritative
+      // gate. Both clients show data.error as a toast.
+      const _ship = customer || {};
+      const _missing = [];
+      if (!String(_ship.address || '').trim()) _missing.push('street address');
+      if (!String(_ship.city    || '').trim()) _missing.push('city');
+      if (!String(_ship.state   || '').trim()) _missing.push('state');
+      if (!String(_ship.zip     || '').trim()) _missing.push('ZIP');
+      if (_missing.length) {
+        writelog('warn', 'process-order.blocked-no-ship-address', `Process Order blocked — missing ${_missing.join(', ')}`, { dealId, quoteNumber, missing: _missing, rep: getRepFromReq(req, body) });
+        json({ error: `Cannot process order — missing shipping ${_missing.join(', ')}. Add the ship-to address on the quote, then try again.` }, 400);
+        return;
+      }
 
       // 1. Advance deal to Closed Won + set ap_color, payment_type, po_ if present
       // HubSpot's payment_type dropdown uses uppercase internal values: HS, CC, ACH, PO, Other.

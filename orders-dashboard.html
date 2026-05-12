@@ -493,6 +493,17 @@
         <label>Freight Cost (actual)</label>
         <input type="text" inputmode="decimal" id="editFreightCost" placeholder="$0.00">
       </div>
+      <div class="field full" id="editFreightRefField" style="display:none">
+        <label>Freight Quote Ref</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="editFreightRef" readonly
+                 style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:13px;font-family:'JetBrains Mono',ui-monospace,monospace;outline:none">
+          <button type="button" onclick="openSavedFreightQuote()"
+                  style="padding:8px 14px;background:rgba(59,130,246,.15);color:#3b82f6;border:1px solid rgba(59,130,246,.3);border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">
+            Open &#x2197;
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Shipping Email Addresses -->
@@ -1119,6 +1130,70 @@ function onFreightCardClick(cardEl) {
   // that into the order's freight field instead of the standard rate.
   const effectiveCost = (c.dynDisc > 0) ? (c.cost - c.dynDisc) : c.cost;
   selectFreightOption(cardEl, c.carrier, effectiveCost, c.transit, c.service, !!c.bookable, c.quoteUrl || c.odBookUrl || '');
+  // Stage the saved-quote reference into the drawer's Freight Quote Ref
+  // field. Persists on Save Changes; powers the "Open ↗" button so the
+  // rep can pull the carrier's saved quote later (ABF deep-links, OD
+  // copies ref to clipboard + opens the search page).
+  applyFreightRefFromCarrier(c);
+}
+
+// Build a freightRef object from a rate-card carrier and stage it in the
+// drawer. The carrier-specific identifier:
+//   ABF — quoteId (e.g. LTLX8W1316). Deep-link works directly.
+//   OD  — referenceNumber. OD has no URL-param deep-link; the Open
+//         button copies the ref to the clipboard and opens the search page.
+function applyFreightRefFromCarrier(c) {
+  if (!c || !c.quoteUrl) { setFreightRef(null); return; }
+  const isOd = c.carrier === 'Old Dominion';
+  const refNumber = isOd ? (c.referenceNumber || '') : (c.quoteId || '');
+  if (!refNumber) { setFreightRef(null); return; }
+  setFreightRef({ carrier: c.carrier, refNumber, quoteUrl: c.quoteUrl });
+}
+
+// Single source of truth for the Freight Quote Ref UI. Passing null
+// clears + hides the row. The freightRef object is stashed on the
+// element's dataset so saveOrder() can serialize it back into the
+// PATCH payload without re-deriving it.
+function setFreightRef(refObj) {
+  const wrap = document.getElementById('editFreightRefField');
+  const input = document.getElementById('editFreightRef');
+  if (!wrap || !input) return;
+  if (!refObj || !refObj.refNumber) {
+    wrap.style.display = 'none';
+    input.value = '';
+    delete input.dataset.freightRef;
+    return;
+  }
+  const carrierShort = refObj.carrier === 'ABF Freight' ? 'ABF' : (refObj.carrier === 'Old Dominion' ? 'OD' : refObj.carrier);
+  input.value = `${carrierShort}: ${refObj.refNumber}`;
+  input.dataset.freightRef = JSON.stringify(refObj);
+  wrap.style.display = '';
+}
+
+function getStagedFreightRef() {
+  const input = document.getElementById('editFreightRef');
+  if (!input || !input.dataset.freightRef) return null;
+  try { return JSON.parse(input.dataset.freightRef); } catch(e) { return null; }
+}
+
+// Open the carrier page for the saved freight ref. Mirrors
+// bookOnlineSelected() but reads from the drawer's stashed ref rather
+// than the in-modal _selectedFqCarrier (which is gone once the modal
+// closed). ABF: open. OD: clipboard-copy the ref, then open.
+function openSavedFreightQuote() {
+  const r = getStagedFreightRef();
+  if (!r?.quoteUrl) { showToast('No saved freight quote on this order', 'info'); return; }
+  if (r.carrier === 'Old Dominion' && r.refNumber) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(r.refNumber).then(
+        () => showToast(`Reference ${r.refNumber} copied — paste into OD's search field`, 'success'),
+        () => showToast(`Reference: ${r.refNumber} (copy failed — paste manually)`, 'info')
+      );
+    } else {
+      showToast(`Reference: ${r.refNumber} (paste into OD's search field)`, 'info');
+    }
+  }
+  try { window.open(r.quoteUrl, '_blank', 'noopener'); } catch(e) {}
 }
 
 function selectFreightOption(el, carrier, cost, transit, service, bookable, odBookUrl) {
@@ -1135,6 +1210,21 @@ function selectFreightOption(el, carrier, cost, transit, service, bookable, odBo
   });
   el.style.borderColor = 'var(--orange)';
   el.style.background  = 'rgba(238,98,22,.06)';
+
+  // Apply to the drawer's shipment fields immediately on card click.
+  // Per-rep direction: selecting a card *is* the commitment, so we push
+  // carrier + freight cost + pickup-as-ship-date right away rather than
+  // waiting for the explicit Select Rate button. Select Rate is still
+  // there for closing the modal with a toast — and it re-applies the
+  // same values (idempotent). Switching cards rewrites the fields with
+  // the latest selection, matching what the rep sees highlighted.
+  const carrierEl = document.getElementById('editCarrier');
+  const costEl    = document.getElementById('editFreightCost');
+  const shipEl    = document.getElementById('editShipDate');
+  const pickupEl  = document.getElementById('fqPickupDate');
+  if (carrier && carrierEl) carrierEl.value = carrier;
+  if (cost != null && costEl) costEl.value = cost.toFixed(2);
+  if (shipEl && pickupEl && pickupEl.value) shipEl.value = pickupEl.value;
 
   // Show action section
   let bookSection = document.getElementById('fqBookSection');
@@ -1204,14 +1294,27 @@ function bookOnlineSelected() {
 // Note: closeFreightModal() resets the _selected* state vars, so we
 // snapshot the values into locals BEFORE closing — otherwise the
 // toast template literal renders "null — null applied · $undefined".
-function selectRate() {
+async function selectRate() {
   const carrier = _selectedCarrier;
   const service = _selectedService;
   const cost    = _selectedFreightCost;
+  const pickup  = document.getElementById('fqPickupDate')?.value;
+  // Fields are already populated on card click (see selectFreightOption);
+  // re-applying here is idempotent and covers the edge case where the
+  // rep clears a field between click and Select Rate.
   if (carrier) document.getElementById('editCarrier').value = carrier;
   if (cost != null) document.getElementById('editFreightCost').value = cost.toFixed(2);
+  if (pickup) document.getElementById('editShipDate').value = pickup;
   closeFreightModal();
   if (carrier) showToast(`${carrier} — ${service} applied · $${cost?.toFixed(2)}`, 'success');
+  // Per-rep direction: Select Rate is the commitment, so persist the
+  // drawer immediately rather than waiting for a separate Save Changes
+  // click. saveOrder() reads from DOM (already populated above + by the
+  // card click), sends PATCH, closes the drawer, and reloads. It will
+  // also show its own "Order updated" toast — two toasts in a row is
+  // intentional so the rep sees both the rate-applied + save-confirmed
+  // signals.
+  await saveOrder();
 }
 
 async function bookShipment() {
@@ -1700,6 +1803,7 @@ function openDrawer(quoteNumber) {
     ? new Date(shipped.date).toISOString().split('T')[0]
     : (od._hsDate ? new Date(od._hsDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
   document.getElementById('editFreightCost').value = od.freightCost || '';
+  setFreightRef(od.freightRef || null);
 
   // Populate the inline shipment-estimate block above the Shipment section.
   // Mirrors the Quote Builder's Quote Weight widget (Total / Pallets / per-
@@ -2088,6 +2192,7 @@ async function saveOrder() {
     // Include shipment fields for HubSpot sync — markShipped NOT set so deal stage won't advance
     shipmentFields: { carrier, tracking, date: shipDate, pallets, boxes, hardwareBox },
     freightCost,
+    freightRef: getStagedFreightRef(),
     shipEmailTo,
     shipEmailCc,
     changes,

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.16.1', date:'May 12, 2026', tag:'logging',
+      changes:[
+        {t:'log', d:'Stripe diagnostic endpoints (staging-only, hard-locked to sk_test_ keys). GET /api/debug/stripe-diagnostic creates one test Customer + four test invoice line items + one finalized Invoice, returns hosted_invoice_url + invoice_pdf so we can verify the integration end-to-end before wiring Stripe into /api/process-order. Companion GET /api/debug/stripe-cleanup?invoice=in_xxx&customer=cus_xxx voids the invoice and deletes the customer so the dashboard stays tidy. First step toward replacing HubSpot Invoices with Stripe Invoices for customer-facing payment (Option 2 from the May 12 discussion).'},
+      ]
+    },
+    {
       v:'1.16.0', date:'May 12, 2026', tag:'feature',
       changes:[
         {t:'add', d:'HubSpot Fees tab on the Accounting page. Pick a month and see Transactions, Gross, Total HubSpot Fees (the headline figure to enter as a monthly QB expense), Processor Fee, Platform Fee, Net Deposited, and Refunds. Per-payment table beneath with date, invoice number, customer, method, and the three fee components. CSV download for the accountant. Powered by GET /api/accounting/hubspot-fees?month=YYYY-MM which paginates through HubSpot Payments search filtered to succeeded + hs_payments processor and aggregates hs_fees_amount + hs_platform_fee.'},

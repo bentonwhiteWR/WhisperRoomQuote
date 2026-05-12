@@ -10,7 +10,9 @@ Internal development notes. Last updated 2026-05-12.
 
 **Most recent shipped to PROD:** v1.12.2 — ZIP-only freight & tax (promoted 2026-05-12 alongside v1.12.0 ship email recipients and v1.12.1 ZIP-only freight).
 
-**On STAGING, awaiting test:** v1.12.3 — Orders dashboard shipping module. (a) Removed the green "Book ABF Shipment" button; ABF + OD both use the blue "Book Online" deep-link only. (b) Fixed the always-1-pallet bug — `computeShipmentEstimate` was doing strict `BOOTH_DATA[item.name]` lookups and missing real HubSpot names that carry a color/finish suffix (e.g. `"Drum Booth - Slate"`). New `findBoothData()` helper does exact → case-insensitive → longest-prefix-with-boundary, so multi-pallet booths now resolve. Same exact-match logic also exists at quote-builder.html:2362/2416/2899/3057 — not touched here since QB pallet count hasn't been reported wrong; revisit if it shows the same symptom.
+**On STAGING, awaiting test:**
+- **v1.12.3** — Removed the green "Book ABF Shipment" button (ABF + OD both use blue Book Online deep-link only). Added `findBoothData()` fuzzy match for color/finish suffix.
+- **v1.12.4** — Discovered the real always-1-pallet bug: orders-dashboard.html had its own outdated copy of BOOTH_DATA, missing all MDL shells larger than 9696 (96120, 96144, 96168, 96192, 102102, 102126, 102144, 102168, 102186 + every NV variant) and with stale dims on several shared entries (Drum Booth, MDL 4848/7272/9696). Synced to QB's BOOTH_DATA verbatim. Also: pallet weights now carry the FULL shipment weight (booth + accessories) — previous logic only distributed the booth item's weight, under-reporting to ABF. And suppressed the misleading "N items missing pallet data" warning when a booth WAS matched (accessories ride along on booth pallets; flagging them as "missing" was noise). **Follow-up architectural note:** BOOTH_DATA is duplicated across `quote-builder.html` and `orders-dashboard.html` — should be extracted to a shared `lib/booth-data.js` served as a static JS bundle so it can't drift again. Filed as parked work below.
 
 **Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.9.0 over May 7–8. Full lifecycle now: create with editable ship-to, edit ship-to/color/notes, delete, change-log audit trail visible on the doc itself. Next-up candidates are user-driven.
 
@@ -22,7 +24,8 @@ Internal development notes. Last updated 2026-05-12.
 - ABF deep-link confirmed working in staging test. The candidate-ID logger in `parseAbfXml` is still in place — could be narrowed to a single element name once confirmed which one ABF actually uses (low priority; defensive parsing is fine).
 - OD has no public saved-quote viewer (user checked their myOD portal — no quote history page). v1.9.10 dropped OD click-through accordingly. If OD ever exposes one, re-add `quoteUrl` in the OD result.
 - **Parked (proposed v1.9.11):** flip OD's `requestReferenceNumber` flag from `false` to `true` and log the raw SOAP response so we can see what identifier-like fields OD returns. Cheap investigation — would tell us empirically whether anything OD ships back is searchable in their UI.
-- **Parked follow-up:** BOOTH_DATA pallet dimensions (orders-dashboard.html:689) — user reports some entries may be inaccurate. Needs them to specify which SKUs/booths are wrong; we update the map then. The shared computeShipmentEstimate helper (v1.9.6) makes this a one-place fix when ready.
+- **Parked follow-up:** BOOTH_DATA pallet dimensions (orders-dashboard.html:689) — user reports some entries may be inaccurate. Needs them to specify which SKUs/booths are wrong; we update the map then. The shared computeShipmentEstimate helper (v1.9.6) makes this a one-place fix when ready. *(Update 2026-05-12: orders-dashboard's copy was synced to QB's in v1.12.4 — QB is the source of truth. Any future corrections still need to land in BOTH files until BOOTH_DATA is extracted.)*
+- **Parked architectural cleanup:** Extract `BOOTH_DATA` (and probably `BOOTH_PRESETS`) out of `quote-builder.html` into a shared `lib/booth-data.js` served as a static JS bundle, included by both `quote-builder.html` and `orders-dashboard.html` via `<script src>`. The v1.12.4 incident — two divergent copies silently drifting — is the kind of bug this prevents. Low priority but high ROI when next touching this area.
 
 **Tooling note:** As of 2026-05-08 the user is moving day-to-day editing from Claude Desktop to Cursor. Local clone lives at `C:\Users\bento\Documents\Claude\WhisperRoomQuote-staging`. Workflow stays the same (staging-only, explicit ask to promote to main).
 
@@ -188,6 +191,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.12.4  | 2026-05-12 | Orders dashboard: synced BOOTH_DATA from QB (was stale, missing all MDL 96120/96144/96168/96192/102xxx shells + several with wrong dims); pallets now carry FULL shipment weight (booth + accessories), not just booth weight; suppressed misleading "N items missing pallet data" when a booth was found |
 | 1.12.3  | 2026-05-12 | Orders freight modal: fixed always-1-pallet bug (BOOTH_DATA lookup was strict, missed HubSpot names with color/finish suffix); removed green "Book ABF Shipment" button (ABF + OD both use blue Book Online now) |
 | 1.12.2  | 2026-05-12 | Follow-up: tax calc also only requires destination ZIP now (was still throwing "fill in state and zip" alert after freight succeeded from ZIP alone) |
 | 1.12.1  | 2026-05-12 | Freight quote only requires destination ZIP now (city/state optional). Client validator relaxed; server omits empty ConsCity/ConsState from ABF URL so ABF can geocode from ZIP |

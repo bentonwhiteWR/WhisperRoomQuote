@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.12.4', date:'May 12, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Orders dashboard now resolves multi-pallet booths for the full HubSpot product catalog. The orders dashboard was carrying its own copy of BOOTH_DATA (separate from quote-builder.html) that had diverged: missing every MDL shell larger than 9696 (so MDL 96120, 96144, 96168, 96192, 102102, 102126, 102144, 102168, 102186 and all NV variants returned "—"), plus several shared entries had stale pallet dims (Drum Booth, MDL 4848 S, MDL 7272 E, MDL 9696 S/E, etc.). Synced the orders-dashboard copy from QB (the source of truth — that\'s the widget reps verify against real shipments). Quote-builder.html:1806 stays the master copy; orders-dashboard.html:714 must be kept in lockstep.'},
+        {t:'fix', d:'Orders dashboard pallets now carry the FULL shipment weight (booth + accessories), not just the booth item\'s weight. Previous logic distributed only the booth\'s own per-unit weight across its pallets, so a 2,985-lb shipment with a 2,236-lb booth + 749 lbs of accessories was rated by ABF as just 2,236 lbs — under-reporting the freight. Now mirrors what quote-builder does at the freight-call site (sum total then distribute across pallets).'},
+        {t:'ui', d:'Suppressed misleading "N items missing pallet data" warning when at least one booth was identified. Accessories like ADA, HX, SL, WDO, AP, VSS, EFS, BASS TRAPS etc. ride along on the booth\'s pallets — they\'re not separate freight, so flagging them as "missing" caused unnecessary alarm. Still surfaces the warning when NO booth matched (genuinely unknown shipment shape).'},
+      ]
+    },
+    {
       v:'1.12.3', date:'May 12, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Orders dashboard freight modal now pulls in multi-pallet booths correctly. Root cause: BOOTH_DATA lookup was a strict exact-string match on item.name, but HubSpot product names often carry a suffix (color, finish, e.g. "Drum Booth - Slate" or "MDL 9696 E - White"), so the lookup missed and the modal fell back to a single default pallet for every order. New findBoothData() helper tries exact → case-insensitive exact → longest-key prefix match with a word boundary, so "Drum Booth - Slate" → 3 pallets and "MDL 9696 E - White" → "MDL 9696 E" (2 pallets, not "MDL 9696 S").'},

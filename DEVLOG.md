@@ -10,13 +10,15 @@ Internal development notes. Last updated 2026-05-12.
 
 **Most recent shipped to PROD:** v1.12.2 — ZIP-only freight & tax (promoted 2026-05-12 alongside v1.12.0 ship email recipients and v1.12.1 ZIP-only freight).
 
+**On STAGING, awaiting test:** v1.12.3 — Orders dashboard shipping module. (a) Removed the green "Book ABF Shipment" button; ABF + OD both use the blue "Book Online" deep-link only. (b) Fixed the always-1-pallet bug — `computeShipmentEstimate` was doing strict `BOOTH_DATA[item.name]` lookups and missing real HubSpot names that carry a color/finish suffix (e.g. `"Drum Booth - Slate"`). New `findBoothData()` helper does exact → case-insensitive → longest-prefix-with-boundary, so multi-pallet booths now resolve. Same exact-match logic also exists at quote-builder.html:2362/2416/2899/3057 — not touched here since QB pallet count hasn't been reported wrong; revisit if it shows the same symptom.
+
 **Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.9.0 over May 7–8. Full lifecycle now: create with editable ship-to, edit ship-to/color/notes, delete, change-log audit trail visible on the doc itself. Next-up candidates are user-driven.
 
 **Outstanding work (not yet started):**
 
 - The May 7 audit findings below — none addressed yet. The five "Critical" items are real bugs and should be the next coding focus once the AP system stabilizes. Especially **#1 (public endpoints lack share-token auth)** and **#2 (XSS in server-rendered HTML)** — both are exploitable by anonymous visitors.
 - v1.11.0 promoted to main 2026-05-11. **v1.12.0 on staging — paused mid-feature, will resume later.** Spot-test the To/CC+ module on Process Order from both Deal Hub and Quote Builder, verify the recipients land in `order_data.shipEmailTo` / `order_data.shipEmailCc` and pre-populate the Orders drawer when the order is opened.
-- The "open question" from v1.10.1 was answered by v1.10.2: not auto-apply, but explicit "Select Rate" button. Card click is now pure selection; "Book Online" and "Select Rate" are the two explicit actions, plus "Book ABF Shipment" for bookable ABF Standard LTL.
+- The "open question" from v1.10.1 was answered by v1.10.2: not auto-apply, but explicit "Select Rate" button. Card click is now pure selection; the two explicit actions are now just "Book Online" and "Select Rate" (the green "Book ABF Shipment" button was retired in v1.12.3).
 - ABF deep-link confirmed working in staging test. The candidate-ID logger in `parseAbfXml` is still in place — could be narrowed to a single element name once confirmed which one ABF actually uses (low priority; defensive parsing is fine).
 - OD has no public saved-quote viewer (user checked their myOD portal — no quote history page). v1.9.10 dropped OD click-through accordingly. If OD ever exposes one, re-add `quoteUrl` in the OD result.
 - **Parked (proposed v1.9.11):** flip OD's `requestReferenceNumber` flag from `false` to `true` and log the raw SOAP response so we can see what identifier-like fields OD returns. Cheap investigation — would tell us empirically whether anything OD ships back is searchable in their UI.
@@ -186,6 +188,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.12.3  | 2026-05-12 | Orders freight modal: fixed always-1-pallet bug (BOOTH_DATA lookup was strict, missed HubSpot names with color/finish suffix); removed green "Book ABF Shipment" button (ABF + OD both use blue Book Online now) |
 | 1.12.2  | 2026-05-12 | Follow-up: tax calc also only requires destination ZIP now (was still throwing "fill in state and zip" alert after freight succeeded from ZIP alone) |
 | 1.12.1  | 2026-05-12 | Freight quote only requires destination ZIP now (city/state optional). Client validator relaxed; server omits empty ConsCity/ConsState from ABF URL so ABF can geocode from ZIP |
 | 1.12.0  | 2026-05-11 | Shipping Email Recipients module (To + CC+) on Process Order modal in BOTH Deal Hub and Quote Builder; recipients persist to order_data and pre-populate orders drawer |

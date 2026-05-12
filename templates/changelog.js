@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.12.3', date:'May 12, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Orders dashboard freight modal now pulls in multi-pallet booths correctly. Root cause: BOOTH_DATA lookup was a strict exact-string match on item.name, but HubSpot product names often carry a suffix (color, finish, e.g. "Drum Booth - Slate" or "MDL 9696 E - White"), so the lookup missed and the modal fell back to a single default pallet for every order. New findBoothData() helper tries exact → case-insensitive exact → longest-key prefix match with a word boundary, so "Drum Booth - Slate" → 3 pallets and "MDL 9696 E - White" → "MDL 9696 E" (2 pallets, not "MDL 9696 S").'},
+        {t:'ui', d:'Removed the green "Book ABF Shipment" button from the freight modal. ABF and Old Dominion both use the blue "Book Online" button now (deep-links to the carrier\'s booking page). bookShipment() + /api/book-abf-shipment endpoint kept dormant in case in-app booking is revived later.'},
+      ]
+    },
+    {
       v:'1.12.2', date:'May 12, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Tax calculation no longer blocks on missing ship-to state — only the destination ZIP is required, matching the v1.12.1 freight relaxation. Follow-up to Travis\'s test: freight worked from ZIP alone but tax still threw the "Please fill in the ship-to state and zip code" alert immediately after. If TaxJar rejects without a state, the error now surfaces inline in the tax status row instead of as a blocking popup.'},

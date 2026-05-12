@@ -758,6 +758,31 @@ function parseFreightCost(val) {
   return Number.isFinite(n) ? n : null;
 }
 
+// Look up a BOOTH_DATA entry from a free-form line-item name. HubSpot
+// product names often carry a suffix (color, finish, revision) that an
+// exact-key lookup misses — e.g. "Drum Booth - Slate" or "MDL 9696 E -
+// White". Try strict match first, then case-insensitive exact, then a
+// longest-key prefix match with a word boundary so "MDL 9696 E - White"
+// resolves to "MDL 9696 E" (3 pallets) instead of being treated as an
+// unknown 1-pallet fallback. Returns null when no key prefixes the name.
+const _BOOTH_DATA_KEYS_BY_LEN = Object.keys(BOOTH_DATA).sort((a, b) => b.length - a.length);
+function findBoothData(rawName) {
+  if (!rawName) return null;
+  if (BOOTH_DATA[rawName]) return BOOTH_DATA[rawName];
+  const norm = String(rawName).trim().toLowerCase();
+  if (!norm) return null;
+  for (const key of _BOOTH_DATA_KEYS_BY_LEN) {
+    const k = key.toLowerCase();
+    if (norm === k) return BOOTH_DATA[key];
+    if (norm.startsWith(k)) {
+      const next = norm.charAt(k.length);
+      // Boundary: end of string, whitespace, or common suffix separator.
+      if (next === '' || /[\s\-\—,(/]/.test(next)) return BOOTH_DATA[key];
+    }
+  }
+  return null;
+}
+
 // Estimate shipment shape from an order's line items + BOOTH_DATA.
 // Returns { pallets: [{l,w,h,weight}], totalWeight, unknownItems: [name] }.
 // Used by both the freight-quote modal (for pre-fill) and the inline
@@ -770,7 +795,7 @@ function computeShipmentEstimate(order) {
   let totalWeight = 0;
   const unknownItems = [];
   lineItems.forEach(item => {
-    const bd = BOOTH_DATA[item.name];
+    const bd = findBoothData(item.name);
     const qty = parseInt(item.qty) || 1;
     const perUnitWeight = parseFloat(item.weight) || 0;
     totalWeight += perUnitWeight * qty;
@@ -994,13 +1019,12 @@ function selectFreightOption(el, carrier, cost, transit, service, bookable, odBo
   }
   bookSection.style.display = 'block';
 
-  const isAbf = carrier === 'ABF Freight';
-  // Only show the in-app Book ABF Shipment button when the rate is
-  // actually bookable through our ABF API integration. ABF guaranteed /
-  // Time-Critical options require extra BOL fields our flow doesn't
-  // support — rep books those on arcb.com directly (the card click
-  // already opens that page).
-  const showBookBtn = isAbf && bookable;
+  // Per-rep direction (May 2026): the green in-app "Book ABF Shipment"
+  // button is retired. ABF and OD both use the blue "Book Online" button
+  // now, which deep-links to the carrier's own booking page. The
+  // bookShipment() handler + /api/book-abf-shipment endpoint stay in the
+  // code dormant in case we want to revive in-app booking later.
+  const showBookBtn = false;
 
   // Quote URL drives whether the "Book Online" button shows. Standard
   // LTL ABF + Guaranteed ABF + (rate-with-reference) OD all have one;

@@ -1760,9 +1760,25 @@ body:not(.dark) .submit-overlay-msg { color: var(--muted) !important; }
       <textarea id="orderProductionNotes" rows="3" placeholder="Internal notes for production team..." style="width:100%;padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;color:#f0ede8;box-sizing:border-box"></textarea>
     </div>
 
-    <div style="margin-bottom:24px">
+    <div style="margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216;margin-bottom:8px">Special Delivery Notes</div>
       <textarea id="orderDeliveryNotes" rows="3" placeholder="Liftgate required, residential delivery, call before delivery, etc..." style="width:100%;padding:10px 12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;color:#f0ede8;box-sizing:border-box"></textarea>
+    </div>
+
+    <!-- Shipping Email Recipients (mirrors deal hub + orders dashboard) -->
+    <div style="margin-bottom:24px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#ee6216">Shipping Email Recipients</div>
+        <button type="button" onclick="orderAddCcRow()" style="padding:3px 10px;font-size:10px;font-weight:700;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:4px;color:rgba(255,255,255,.7);cursor:pointer;font-family:inherit">+ CC</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:10px;font-weight:700;color:#ee6216;width:22px;flex-shrink:0">To</span>
+          <input type="email" id="orderShipEmailTo" placeholder="Primary recipient email"
+            style="flex:1;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:12px;font-family:inherit;outline:none">
+        </div>
+        <div id="orderShipEmailCcList" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
     </div>
 
     <div style="display:flex;gap:10px">
@@ -3021,8 +3037,8 @@ async function getFreight() {
   const state = document.getElementById('shipState').value.trim().toUpperCase();
   const zip = document.getElementById('shipZip').value.trim().replace(/\s+/g, '');
 
-  if (!city || !state || !zip) {
-    alert('Please fill in the ship-to address first.');
+  if (!zip) {
+    alert('Please enter a ship-to ZIP code first.');
     return;
   }
 
@@ -3144,7 +3160,7 @@ async function getTax() {
   const city    = document.getElementById('shipCity').value.trim();
   const street  = document.getElementById('shipAddress').value.trim();
 
-  if (!state || !zip) { alert('Please fill in the ship-to state and zip code first.'); return; }
+  if (!zip) { alert('Please enter a ship-to ZIP code first.'); return; }
 
   const subtotal = getSubtotal() - getDiscountAmount();
   const shipping = getFreightTotal();
@@ -6701,6 +6717,12 @@ async function openOrderModal() {
   const poBox = document.getElementById('orderPoNumber');
   if (poBox) poBox.value = '';
 
+  // Pre-fill Shipping Email Recipients with the contact email. Reads
+  // from the quote builder's customer email field (whatever's on the
+  // current quote). Resets any previous CCs on open.
+  const contactEmail = (document.getElementById('email')?.value || '').trim();
+  orderSetShipEmailAddresses(contactEmail, []);
+
   // Fetch hub data for payment auto-selection (modal already shown above)
   await prefillOrderPaymentFromHub();
 }
@@ -6802,6 +6824,44 @@ async function prefillOrderPaymentFromHub() {
 
 function closeOrderModal() {
   document.getElementById('orderModal').style.display = 'none';
+}
+
+// ── Process Order: Shipping Email Recipients (To + CC list) ─────────
+// Mirrors the orders dashboard CC+ module. Captured at process-order
+// time and stored on order_data so the recipients are pre-populated
+// when the order eventually shows up on the orders dashboard for
+// shipping.
+let _orderShipCcCount = 0;
+function orderAddCcRow(value = '') {
+  const list = document.getElementById('orderShipEmailCcList');
+  if (!list) return;
+  _orderShipCcCount++;
+  const id = `orderShipEmailCc_${_orderShipCcCount}`;
+  const div = document.createElement('div');
+  div.id = `orderShipCcRow_${_orderShipCcCount}`;
+  div.style.cssText = 'display:flex;align-items:center;gap:6px';
+  div.innerHTML = `
+    <span style="font-size:10px;font-weight:700;color:rgba(255,255,255,.5);width:22px;flex-shrink:0">CC</span>
+    <input type="email" id="${id}" value="${(value||'').replace(/"/g,'&quot;')}" placeholder="CC email address"
+      style="flex:1;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);border-radius:6px;color:#f0ede8;font-size:12px;font-family:inherit;outline:none">
+    <button type="button" onclick="document.getElementById('orderShipCcRow_${_orderShipCcCount}')?.remove()"
+      style="padding:4px 7px;background:none;border:1px solid rgba(255,255,255,.15);border-radius:5px;color:rgba(255,255,255,.5);cursor:pointer;font-size:11px;font-family:inherit;flex-shrink:0">✕</button>
+  `;
+  list.appendChild(div);
+}
+function orderGetShipEmailAddresses() {
+  const to = (document.getElementById('orderShipEmailTo')?.value || '').trim();
+  const ccInputs = document.querySelectorAll('#orderShipEmailCcList input[type="email"]');
+  const cc = Array.from(ccInputs).map(el => el.value.trim()).filter(Boolean);
+  return { to, cc };
+}
+function orderSetShipEmailAddresses(to, ccList) {
+  const toEl = document.getElementById('orderShipEmailTo');
+  if (toEl) toEl.value = to || '';
+  const list = document.getElementById('orderShipEmailCcList');
+  if (list) list.innerHTML = '';
+  _orderShipCcCount = 0;
+  (ccList || []).forEach(email => orderAddCcRow(email));
 }
 
 // ── AP Color helpers ──────────────────────────────────────────────
@@ -6974,6 +7034,7 @@ async function confirmProcessOrder() {
 
   const productionNotes = document.getElementById('orderProductionNotes').value.trim();
   const deliveryNotes   = document.getElementById('orderDeliveryNotes').value.trim();
+  const { to: shipEmailTo, cc: shipEmailCc } = orderGetShipEmailAddresses();
 
   const btn = document.getElementById('orderConfirmBtn');
   btn.disabled = true;
@@ -7026,6 +7087,7 @@ async function confirmProcessOrder() {
         poNumber,
         canadian:      canadianFlag,
         customsBroker: customsBrokerVal,
+        shipEmailTo, shipEmailCc,
       })
     });
 

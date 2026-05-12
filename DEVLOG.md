@@ -1,21 +1,28 @@
 # WhisperRoom Quote Builder — Dev Log
 
-Internal development notes. Last updated 2026-05-11.
+Internal development notes. Last updated 2026-05-12.
 
 > **Read this first when starting a session.** The "Current focus" section below is the fastest way to know where we left off. Below that: session writeups, the audit (outstanding work), and the changelog table.
 
 ---
 
-## Current focus (2026-05-11)
+## Current focus (2026-05-12)
 
-**Most recent shipped:** v1.11.0 — New "📞 Log Call" button in the Deal Hub action row. Opens a textarea modal; submit creates a real HubSpot Call engagement on the deal (auto-titled, attributed to the rep). Shows in HubSpot's deal timeline + counts toward call-volume reports. (Previous: v1.10.4 Select Rate toast fix; v1.10.3 ABF Guaranteed friendly transit; v1.10.2 freight modal action restructure.)
+**Most recent shipped to PROD:** v1.11.0 — 📞 Log Call button on Deal Hub.
+
+**On STAGING, awaiting test:**
+- **v1.12.0** — Shipping Email Recipients module (To + CC+) on BOTH Process Order modals (Deal Hub + Quote Builder). To pre-fills with contact email; rep adds CCs that travel through to order_data and pre-populate the orders drawer. Backend `/api/process-order` extended to persist `shipEmailTo` + `shipEmailCc` into `order_data`. Spot-test from BOTH entry points; verify recipients pre-populate when the order is later opened on the Orders dashboard.
+- **v1.12.1** — Freight quote no longer requires city/state, only the destination ZIP. Client validator relaxed; `lib/freight.js` `buildAbfUrl` omits `ConsCity`/`ConsState` when blank so ABF geocodes from ZIP. **Confirmed working** 2026-05-12 with ZIP 90201. (Unassigned ZIPs like 90205 fail — that's USPS, not us.)
+- **v1.12.2** — Tax validator also relaxed to ZIP-only (was still alerting "fill in state and zip" right after freight succeeded). If TaxJar rejects without a state, error surfaces in the tax status row instead of a blocking alert. Spot-test: enter only a ZIP, click Get Freight + Tax — no popup; tax row either shows a rate or a soft error.
+
+When both pass, `/promote` to main.
 
 **Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.9.0 over May 7–8. Full lifecycle now: create with editable ship-to, edit ship-to/color/notes, delete, change-log audit trail visible on the doc itself. Next-up candidates are user-driven.
 
 **Outstanding work (not yet started):**
 
 - The May 7 audit findings below — none addressed yet. The five "Critical" items are real bugs and should be the next coding focus once the AP system stabilizes. Especially **#1 (public endpoints lack share-token auth)** and **#2 (XSS in server-rendered HTML)** — both are exploitable by anonymous visitors.
-- v1.10.4 promoted to main 2026-05-11 (bundled with v1.10.1 / .2 / .3). v1.11.0 on staging awaiting test.
+- v1.11.0 promoted to main 2026-05-11. **v1.12.0 on staging — paused mid-feature, will resume later.** Spot-test the To/CC+ module on Process Order from both Deal Hub and Quote Builder, verify the recipients land in `order_data.shipEmailTo` / `order_data.shipEmailCc` and pre-populate the Orders drawer when the order is opened.
 - The "open question" from v1.10.1 was answered by v1.10.2: not auto-apply, but explicit "Select Rate" button. Card click is now pure selection; "Book Online" and "Select Rate" are the two explicit actions, plus "Book ABF Shipment" for bookable ABF Standard LTL.
 - ABF deep-link confirmed working in staging test. The candidate-ID logger in `parseAbfXml` is still in place — could be narrowed to a single element name once confirmed which one ABF actually uses (low priority; defensive parsing is fine).
 - OD has no public saved-quote viewer (user checked their myOD portal — no quote history page). v1.9.10 dropped OD click-through accordingly. If OD ever exposes one, re-add `quoteUrl` in the OD result.
@@ -186,6 +193,9 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.12.2  | 2026-05-12 | Follow-up: tax calc also only requires destination ZIP now (was still throwing "fill in state and zip" alert after freight succeeded from ZIP alone) |
+| 1.12.1  | 2026-05-12 | Freight quote only requires destination ZIP now (city/state optional). Client validator relaxed; server omits empty ConsCity/ConsState from ABF URL so ABF can geocode from ZIP |
+| 1.12.0  | 2026-05-11 | Shipping Email Recipients module (To + CC+) on Process Order modal in BOTH Deal Hub and Quote Builder; recipients persist to order_data and pre-populate orders drawer |
 | 1.11.0  | 2026-05-11 | New 📞 Log Call button in Deal Hub action row → creates a real HubSpot Call engagement on the deal (auto-titled, OUTBOUND, attributed to logged-in rep) |
 | 1.10.4  | 2026-05-11 | Fix: "Select Rate" toast was rendering "null — null applied · $undefined" (state vars cleared before toast read them) |
 | 1.10.3  | 2026-05-11 | Fix: ABF Guaranteed cards transit slot now reads "2 business days · by Wed, May 13" instead of raw YYYY-MM-DD |

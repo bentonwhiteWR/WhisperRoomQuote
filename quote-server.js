@@ -6662,7 +6662,7 @@ ${q.accepted ? `
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
       const body = JSON.parse(await readBody(req));
-      const { pallets, totalWeight, city, state: rawState, zip, canadian, accessories } = body;
+      const { pallets, totalWeight, city, state: rawState, zip, canadian, accessories, pickupDate } = body;
       const state = toStateAbbr(rawState);
       if (!pallets || !pallets.length) { json({ error: 'No pallet data' }, 400); return; }
       if (!city || !state || !zip)     { json({ error: 'Missing destination' }, 400); return; }
@@ -6671,9 +6671,12 @@ ${q.accepted ? `
       // ── ABF: standard LTL via XML API ────────────────────────────
       // Note: ABF's legacy XML rate API (aquotexml.asp) only returns standard LTL.
       // Guaranteed/expedited pricing requires the ArcBest REST API (separate integration).
+      // pickupDate (YYYY-MM-DD) controls ShipMonth/Day/Year sent to ABF and
+      // therefore the returned transit/ETA. OD's SOAP rate API has no
+      // pickup-date field, so OD rates are unaffected by this parameter.
       const abfResults = [];
       try {
-        const url = buildAbfUrl(pallets, totalWeight, city, state, zip, canadian || false, acc);
+        const url = buildAbfUrl(pallets, totalWeight, city, state, zip, canadian || false, acc, null, pickupDate);
         const res2 = await httpsGet(url);
         const result = parseAbfXml(res2.body);
         // Build the public ArcBest rate-quote deep-link if we got a

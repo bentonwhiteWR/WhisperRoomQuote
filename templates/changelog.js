@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.13.4', date:'May 12, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Get Freight Quote modal: Pickup Date input moved to the main form (above Accessorials) so the rep sets it before pressing Get Rates. The date is sent with the rate request and drives ABF\'s ShipMonth/Day/Year (so TRDAYS / DUEDATE / transit display now reflect the actual pickup day, not server "today"). OD\'s SOAP rate API has no pickup-date field, so OD rates remain pickup-date-agnostic (called out in code comment). Default = today on modal open.'},
+        {t:'ui', d:'Get Freight Quote modal: the post-rates Contact Phone field is removed entirely — was never required for rate quoting, and the dormant in-app ABF booking flow (kept for possible future revival) now pulls phone from the order\'s customer snapshot automatically.'},
+        {t:'fix', d:'Re-opening the freight modal after selecting a rate no longer leaves the prior Book Online / Select Rate booking sub-section visible — it\'s now hidden on every modal open.'},
+      ]
+    },
+    {
       v:'1.13.3', date:'May 12, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'OD rate requests no longer add +120 lbs per pallet. Our stored per-pallet weight is already gross (booth + accessories + wooden pallet), which is what OD wants — the extra 120 was double-counting pallet weight and pushing OD rates higher than they should be. Comment block updated to reflect that ABF is the side that needs adjustment (its buildAbfUrl helper subtracts ABF_PALLET_DEDUCT_LBS because ABF rates off product weight only). Affects /api/orders-freight only; QB /api/freight is ABF-only and was already correct.'},

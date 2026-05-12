@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.13.7', date:'May 12, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Freight modal: clicking a rate card now writes carrier, freight cost, AND the pickup date (to "Date Shipped") into the drawer immediately — no longer waits for the explicit Select Rate button. Switching cards rewrites with the latest selection. Select Rate still works (closes modal + toast) and re-applies idempotently.'},
+        {t:'fix', d:'Freight modal: pickup date now propagates to the drawer\'s Date Shipped field. Previously the field stayed empty / on its prior value when a rate was selected, since only carrier + cost were pushed.'},
+      ]
+    },
+    {
       v:'1.13.6', date:'May 12, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Select Rate on an ABF card with a dynamic discount now applies the net (discounted) cost to the order\'s freight field, not the standard rate. Per-rep direction: we book in advance to capture the discount, so the net IS our actual cost. Toast already showed the net headline; the underlying value the order saves now matches.'},

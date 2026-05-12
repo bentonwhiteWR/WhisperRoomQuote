@@ -1136,6 +1136,21 @@ function selectFreightOption(el, carrier, cost, transit, service, bookable, odBo
   el.style.borderColor = 'var(--orange)';
   el.style.background  = 'rgba(238,98,22,.06)';
 
+  // Apply to the drawer's shipment fields immediately on card click.
+  // Per-rep direction: selecting a card *is* the commitment, so we push
+  // carrier + freight cost + pickup-as-ship-date right away rather than
+  // waiting for the explicit Select Rate button. Select Rate is still
+  // there for closing the modal with a toast — and it re-applies the
+  // same values (idempotent). Switching cards rewrites the fields with
+  // the latest selection, matching what the rep sees highlighted.
+  const carrierEl = document.getElementById('editCarrier');
+  const costEl    = document.getElementById('editFreightCost');
+  const shipEl    = document.getElementById('editShipDate');
+  const pickupEl  = document.getElementById('fqPickupDate');
+  if (carrier && carrierEl) carrierEl.value = carrier;
+  if (cost != null && costEl) costEl.value = cost.toFixed(2);
+  if (shipEl && pickupEl && pickupEl.value) shipEl.value = pickupEl.value;
+
   // Show action section
   let bookSection = document.getElementById('fqBookSection');
   if (!bookSection) {
@@ -1208,8 +1223,13 @@ function selectRate() {
   const carrier = _selectedCarrier;
   const service = _selectedService;
   const cost    = _selectedFreightCost;
+  const pickup  = document.getElementById('fqPickupDate')?.value;
+  // Fields are already populated on card click (see selectFreightOption);
+  // re-applying here is idempotent and covers the edge case where the
+  // rep clears a field between click and Select Rate.
   if (carrier) document.getElementById('editCarrier').value = carrier;
   if (cost != null) document.getElementById('editFreightCost').value = cost.toFixed(2);
+  if (pickup) document.getElementById('editShipDate').value = pickup;
   closeFreightModal();
   if (carrier) showToast(`${carrier} — ${service} applied · $${cost?.toFixed(2)}`, 'success');
 }

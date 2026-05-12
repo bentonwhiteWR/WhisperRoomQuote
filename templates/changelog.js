@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.14.0', date:'May 12, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Freight Quote Ref field on the order drawer. When a rep selects a rate card in the Get Freight modal, the carrier\'s saved-quote identifier (ABF quoteId or OD referenceNumber) plus the carrier page URL are stashed on the order. The field shows e.g. "ABF: LTLX8W1316" with an "Open ↗" button — ABF deep-links to the saved quote on arcb.com; OD copies the reference to the clipboard and opens its rate-reference-search page. Persists in order_data.freightRef so the rep can come back tomorrow and still pull the quote. Field is hidden when no ref is saved. ABF rate cards now also carry a quoteId field server-side (previously only the assembled quoteUrl was sent).'},
+      ]
+    },
+    {
       v:'1.13.7', date:'May 12, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Freight modal: clicking a rate card now writes carrier, freight cost, AND the pickup date (to "Date Shipped") into the drawer immediately — no longer waits for the explicit Select Rate button. Switching cards rewrites with the latest selection. Select Rate still works (closes modal + toast) and re-applies idempotently.'},

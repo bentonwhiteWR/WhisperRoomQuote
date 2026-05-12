@@ -493,6 +493,17 @@
         <label>Freight Cost (actual)</label>
         <input type="text" inputmode="decimal" id="editFreightCost" placeholder="$0.00">
       </div>
+      <div class="field full" id="editFreightRefField" style="display:none">
+        <label>Freight Quote Ref</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="editFreightRef" readonly
+                 style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:13px;font-family:'JetBrains Mono',ui-monospace,monospace;outline:none">
+          <button type="button" onclick="openSavedFreightQuote()"
+                  style="padding:8px 14px;background:rgba(59,130,246,.15);color:#3b82f6;border:1px solid rgba(59,130,246,.3);border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">
+            Open &#x2197;
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Shipping Email Addresses -->
@@ -1119,6 +1130,70 @@ function onFreightCardClick(cardEl) {
   // that into the order's freight field instead of the standard rate.
   const effectiveCost = (c.dynDisc > 0) ? (c.cost - c.dynDisc) : c.cost;
   selectFreightOption(cardEl, c.carrier, effectiveCost, c.transit, c.service, !!c.bookable, c.quoteUrl || c.odBookUrl || '');
+  // Stage the saved-quote reference into the drawer's Freight Quote Ref
+  // field. Persists on Save Changes; powers the "Open ↗" button so the
+  // rep can pull the carrier's saved quote later (ABF deep-links, OD
+  // copies ref to clipboard + opens the search page).
+  applyFreightRefFromCarrier(c);
+}
+
+// Build a freightRef object from a rate-card carrier and stage it in the
+// drawer. The carrier-specific identifier:
+//   ABF — quoteId (e.g. LTLX8W1316). Deep-link works directly.
+//   OD  — referenceNumber. OD has no URL-param deep-link; the Open
+//         button copies the ref to the clipboard and opens the search page.
+function applyFreightRefFromCarrier(c) {
+  if (!c || !c.quoteUrl) { setFreightRef(null); return; }
+  const isOd = c.carrier === 'Old Dominion';
+  const refNumber = isOd ? (c.referenceNumber || '') : (c.quoteId || '');
+  if (!refNumber) { setFreightRef(null); return; }
+  setFreightRef({ carrier: c.carrier, refNumber, quoteUrl: c.quoteUrl });
+}
+
+// Single source of truth for the Freight Quote Ref UI. Passing null
+// clears + hides the row. The freightRef object is stashed on the
+// element's dataset so saveOrder() can serialize it back into the
+// PATCH payload without re-deriving it.
+function setFreightRef(refObj) {
+  const wrap = document.getElementById('editFreightRefField');
+  const input = document.getElementById('editFreightRef');
+  if (!wrap || !input) return;
+  if (!refObj || !refObj.refNumber) {
+    wrap.style.display = 'none';
+    input.value = '';
+    delete input.dataset.freightRef;
+    return;
+  }
+  const carrierShort = refObj.carrier === 'ABF Freight' ? 'ABF' : (refObj.carrier === 'Old Dominion' ? 'OD' : refObj.carrier);
+  input.value = `${carrierShort}: ${refObj.refNumber}`;
+  input.dataset.freightRef = JSON.stringify(refObj);
+  wrap.style.display = '';
+}
+
+function getStagedFreightRef() {
+  const input = document.getElementById('editFreightRef');
+  if (!input || !input.dataset.freightRef) return null;
+  try { return JSON.parse(input.dataset.freightRef); } catch(e) { return null; }
+}
+
+// Open the carrier page for the saved freight ref. Mirrors
+// bookOnlineSelected() but reads from the drawer's stashed ref rather
+// than the in-modal _selectedFqCarrier (which is gone once the modal
+// closed). ABF: open. OD: clipboard-copy the ref, then open.
+function openSavedFreightQuote() {
+  const r = getStagedFreightRef();
+  if (!r?.quoteUrl) { showToast('No saved freight quote on this order', 'info'); return; }
+  if (r.carrier === 'Old Dominion' && r.refNumber) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(r.refNumber).then(
+        () => showToast(`Reference ${r.refNumber} copied — paste into OD's search field`, 'success'),
+        () => showToast(`Reference: ${r.refNumber} (copy failed — paste manually)`, 'info')
+      );
+    } else {
+      showToast(`Reference: ${r.refNumber} (paste into OD's search field)`, 'info');
+    }
+  }
+  try { window.open(r.quoteUrl, '_blank', 'noopener'); } catch(e) {}
 }
 
 function selectFreightOption(el, carrier, cost, transit, service, bookable, odBookUrl) {
@@ -1720,6 +1795,7 @@ function openDrawer(quoteNumber) {
     ? new Date(shipped.date).toISOString().split('T')[0]
     : (od._hsDate ? new Date(od._hsDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
   document.getElementById('editFreightCost').value = od.freightCost || '';
+  setFreightRef(od.freightRef || null);
 
   // Populate the inline shipment-estimate block above the Shipment section.
   // Mirrors the Quote Builder's Quote Weight widget (Total / Pallets / per-
@@ -2108,6 +2184,7 @@ async function saveOrder() {
     // Include shipment fields for HubSpot sync — markShipped NOT set so deal stage won't advance
     shipmentFields: { carrier, tracking, date: shipDate, pallets, boxes, hardwareBox },
     freightCost,
+    freightRef: getStagedFreightRef(),
     shipEmailTo,
     shipEmailCc,
     changes,

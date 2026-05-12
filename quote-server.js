@@ -6691,6 +6691,7 @@ ${q.accepted ? `
           dynDisc:     result.dynDisc || 0,
           transit:     result.transit,
           notes:       result.notes || [],
+          quoteId:     result.quoteId || null,
           quoteUrl:    abfQuoteUrl,
           bookable:    true,
         });
@@ -6726,6 +6727,7 @@ ${q.accepted ? `
             cost:        opt.charge,
             transit,
             notes:       result.notes || [],
+            quoteId:     result.quoteId || null,
             quoteUrl:    abfQuoteUrl,
             bookable:    false,
           });
@@ -8057,7 +8059,7 @@ ${q.accepted ? `
     const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').trim());
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, foamColor, hingePreference, apColor, waType, productionNotes, deliveryNotes, shipped, changes, repName, freightCost, shipEmailTo, shipEmailCc, markShipped, serialNumber, shipmentFields } = body;
+      const { customer, foamColor, hingePreference, apColor, waType, productionNotes, deliveryNotes, shipped, changes, repName, freightCost, freightRef, shipEmailTo, shipEmailCc, markShipped, serialNumber, shipmentFields } = body;
 
       if (!db) { json({ error: 'No database' }, 500); return; }
 
@@ -8250,6 +8252,7 @@ ${q.accepted ? `
         deliveryNotes:    deliveryNotes    !== undefined ? deliveryNotes    : currentOrderData.deliveryNotes,
         shipped:          mergedShipped,
         freightCost:      freightCost      !== undefined ? freightCost      : currentOrderData.freightCost,
+        freightRef:       freightRef       !== undefined ? freightRef       : currentOrderData.freightRef,
         shipEmailTo:      shipEmailTo      !== undefined ? shipEmailTo      : currentOrderData.shipEmailTo,
         shipEmailCc:      shipEmailCc      !== undefined ? shipEmailCc      : currentOrderData.shipEmailCc,
         changeLog,

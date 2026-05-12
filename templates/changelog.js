@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.12.2', date:'May 12, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Tax calculation no longer blocks on missing ship-to state — only the destination ZIP is required, matching the v1.12.1 freight relaxation. Follow-up to Travis\'s test: freight worked from ZIP alone but tax still threw the "Please fill in the ship-to state and zip code" alert immediately after. If TaxJar rejects without a state, the error now surfaces inline in the tax status row instead of as a blocking popup.'},
+      ]
+    },
+    {
       v:'1.12.1', date:'May 12, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Freight quote no longer blocks on missing ship-to city/state — only the destination ZIP is required now. The client-side "Please fill in the ship-to address first" alert was a UX speed bump for reps doing quick rate checks (e.g. when a lead only has a ZIP). ABF geocodes city/state from ZIP server-side, so this is purely a validator relaxation.'},

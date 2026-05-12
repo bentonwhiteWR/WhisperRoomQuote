@@ -3160,7 +3160,7 @@ async function getTax() {
   const city    = document.getElementById('shipCity').value.trim();
   const street  = document.getElementById('shipAddress').value.trim();
 
-  if (!state || !zip) { alert('Please fill in the ship-to state and zip code first.'); return; }
+  if (!zip) { alert('Please enter a ship-to ZIP code first.'); return; }
 
   const subtotal = getSubtotal() - getDiscountAmount();
   const shipping = getFreightTotal();

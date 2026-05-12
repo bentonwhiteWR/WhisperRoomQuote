@@ -12,7 +12,8 @@ Internal development notes. Last updated 2026-05-12.
 
 **On STAGING, awaiting test:**
 - **v1.12.0** — Shipping Email Recipients module (To + CC+) on BOTH Process Order modals (Deal Hub + Quote Builder). To pre-fills with contact email; rep adds CCs that travel through to order_data and pre-populate the orders drawer. Backend `/api/process-order` extended to persist `shipEmailTo` + `shipEmailCc` into `order_data`. Spot-test from BOTH entry points; verify recipients pre-populate when the order is later opened on the Orders dashboard.
-- **v1.12.1** — Freight quote no longer requires city/state, only the destination ZIP. Travis reported the old "Please fill in the ship-to address first" alert was a blocker for quick rate checks. Client validator relaxed; `lib/freight.js` `buildAbfUrl` omits `ConsCity`/`ConsState` when blank so ABF geocodes from ZIP. **Open question:** does ABF actually accept a ZIP-only request? If it rejects, fall back to a zip→state lookup (server-side) before calling ABF. Test on staging with just a ZIP filled in.
+- **v1.12.1** — Freight quote no longer requires city/state, only the destination ZIP. Client validator relaxed; `lib/freight.js` `buildAbfUrl` omits `ConsCity`/`ConsState` when blank so ABF geocodes from ZIP. **Confirmed working** 2026-05-12 with ZIP 90201. (Unassigned ZIPs like 90205 fail — that's USPS, not us.)
+- **v1.12.2** — Tax validator also relaxed to ZIP-only (was still alerting "fill in state and zip" right after freight succeeded). If TaxJar rejects without a state, error surfaces in the tax status row instead of a blocking alert. Spot-test: enter only a ZIP, click Get Freight + Tax — no popup; tax row either shows a rate or a soft error.
 
 When both pass, `/promote` to main.
 
@@ -192,6 +193,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.12.2  | 2026-05-12 | Follow-up: tax calc also only requires destination ZIP now (was still throwing "fill in state and zip" alert after freight succeeded from ZIP alone) |
 | 1.12.1  | 2026-05-12 | Freight quote only requires destination ZIP now (city/state optional). Client validator relaxed; server omits empty ConsCity/ConsState from ABF URL so ABF can geocode from ZIP |
 | 1.12.0  | 2026-05-11 | Shipping Email Recipients module (To + CC+) on Process Order modal in BOTH Deal Hub and Quote Builder; recipients persist to order_data and pre-populate orders drawer |
 | 1.11.0  | 2026-05-11 | New 📞 Log Call button in Deal Hub action row → creates a real HubSpot Call engagement on the deal (auto-titled, OUTBOUND, attributed to logged-in rep) |

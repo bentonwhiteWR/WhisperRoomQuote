@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.15.0', date:'May 12, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'QB invoice tax suppression. The Tax Exempt checkbox on the quote builder previously had ZERO effect on the QB invoice — every line was sent with TaxCodeRef=TAX regardless, and QB Automatic Sales Tax then computed tax from the ship-to address. Same bug hit non-nexus states: TaxJar correctly returned $0 (NY isn\'t in NEXUS_STATES) but QB AST still added NY tax because NY was an active agency in the QB tax center. Both QB invoice paths now detect (snapshot.taxExempt === true) OR (TaxJar tax === $0) and send GlobalTaxCalculation:"NotApplicable" plus EXEMPT_CODE on every line + freight — silences AST entirely for that invoice. Does NOT override the amount for non-zero nexus-state orders (QB AST rejects per-invoice amount overrides for AST companies — see v1.7.10).'},
+        {t:'fix', d:'Process Order guardrail. Re-processing a quote that already had an order row used to wipe every rep-edited field (shipped carrier, tracking, date, boxes, hardwareBox, freightCost, freightRef, serialNumber, qbInvoiceId) because the INSERT ... ON CONFLICT replaced order_data entirely. Now: server returns 409 with code:"ORDER_EXISTS" and the client (Quote Builder + Deal Hub) prompts the rep to confirm. On confirm, retries with force:true — and the server then MERGES the new orderData into the existing row so saved fields survive. Also: when a qbInvoiceId is already linked, the QB invoice creation step is skipped so force re-process doesn\'t duplicate the QB invoice. Logs blocked and forced re-processes for visibility.'},
+      ]
+    },
+    {
       v:'1.14.1', date:'May 12, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Select Rate in the Get Freight modal now also persists the order (same as clicking Save Changes). Previously it staged the carrier / cost / ship date / freight ref in the drawer but waited for the rep to hit Save Changes separately — easy to miss. Now Select Rate applies + saves + closes the drawer in one click. Both toasts (rate-applied + order-updated) show in sequence.'},

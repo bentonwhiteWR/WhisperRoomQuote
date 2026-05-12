@@ -7054,58 +7054,82 @@ async function confirmProcessOrder() {
   btn.disabled = true;
   btn.textContent = 'Processing…';
 
-  try {
-    const res = await fetch('/api/process-order', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        dealId,
-        quoteNumber,
-        lineItems,
-        freight: freightData,
-        tax: taxData,
-        install: installData,
-        discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
-        customer: {
-          firstName: document.getElementById('firstName').value.trim(),
-          lastName:  document.getElementById('lastName').value.trim(),
-          company:   document.getElementById('company').value.trim(),
-          email:     document.getElementById('email').value.trim(),
-          address:   document.getElementById('shipAddress').value.trim(),
-          city:      document.getElementById('shipCity').value.trim(),
-          state:     document.getElementById('shipState').value.trim(),
-          zip:       document.getElementById('shipZip').value.trim(),
-        },
-        billing: (() => {
-          const same = document.getElementById('billsame') && document.getElementById('billsame').checked;
-          if (same) return null;
-          return {
-            name:    (document.getElementById('billToName')  || {value:''}).value.trim(),
-            email:   (document.getElementById('billEmail')   || {value:''}).value.trim(),
-            address: (document.getElementById('billAddress') || {value:''}).value.trim(),
-            city:    (document.getElementById('billCity')    || {value:''}).value.trim(),
-            state:   (document.getElementById('billState')   || {value:''}).value.trim(),
-            zip:     (document.getElementById('billZip')     || {value:''}).value.trim(),
-          };
-        })(),
-        foamColor:        foam,
-        hingePreference:  hinge,
-        apColor:          apColor,
-        waType:           (() => { const r=document.getElementById('orderWaTypeRow'); return (r&&r.style.display!=='none') ? (document.getElementById('orderWaType')?.value||'') : (document.getElementById('repWaType')?.value||''); })(),
-        productionNotes,
-        deliveryNotes,
-        ownerId: document.getElementById('repSelect').value,
-        dealName: document.getElementById('dealName').value.trim(),
-        paymentType,
-        poNumber,
-        canadian:      canadianFlag,
-        customsBroker: customsBrokerVal,
-        shipEmailTo, shipEmailCc,
-      })
-    });
+  // Inner helper so we can retry with force=true on ORDER_EXISTS without
+  // re-collecting all the form fields below.
+  const _doProcessOrder = (force) => fetch('/api/process-order', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({
+      dealId,
+      quoteNumber,
+      lineItems,
+      freight: freightData,
+      tax: taxData,
+      install: installData,
+      discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
+      customer: {
+        firstName: document.getElementById('firstName').value.trim(),
+        lastName:  document.getElementById('lastName').value.trim(),
+        company:   document.getElementById('company').value.trim(),
+        email:     document.getElementById('email').value.trim(),
+        address:   document.getElementById('shipAddress').value.trim(),
+        city:      document.getElementById('shipCity').value.trim(),
+        state:     document.getElementById('shipState').value.trim(),
+        zip:       document.getElementById('shipZip').value.trim(),
+      },
+      billing: (() => {
+        const same = document.getElementById('billsame') && document.getElementById('billsame').checked;
+        if (same) return null;
+        return {
+          name:    (document.getElementById('billToName')  || {value:''}).value.trim(),
+          email:   (document.getElementById('billEmail')   || {value:''}).value.trim(),
+          address: (document.getElementById('billAddress') || {value:''}).value.trim(),
+          city:    (document.getElementById('billCity')    || {value:''}).value.trim(),
+          state:   (document.getElementById('billState')   || {value:''}).value.trim(),
+          zip:     (document.getElementById('billZip')     || {value:''}).value.trim(),
+        };
+      })(),
+      foamColor:        foam,
+      hingePreference:  hinge,
+      apColor:          apColor,
+      waType:           (() => { const r=document.getElementById('orderWaTypeRow'); return (r&&r.style.display!=='none') ? (document.getElementById('orderWaType')?.value||'') : (document.getElementById('repWaType')?.value||''); })(),
+      productionNotes,
+      deliveryNotes,
+      ownerId: document.getElementById('repSelect').value,
+      dealName: document.getElementById('dealName').value.trim(),
+      paymentType,
+      poNumber,
+      canadian:      canadianFlag,
+      customsBroker: customsBrokerVal,
+      shipEmailTo, shipEmailCc,
+      ...(force ? { force: true } : {}),
+    })
+  });
 
-    const data = await res.json();
+  try {
+    let res = await _doProcessOrder(false);
+    let data = await res.json();
+    // ORDER_EXISTS: this quote already has an order. Confirm with the rep
+    // before re-processing so shipped/freight/QB fields aren't blindly
+    // overwritten. On confirm, retry with force=true — the server then
+    // merges with the existing row rather than replacing it.
+    if (res.status === 409 && data?.code === 'ORDER_EXISTS') {
+      const ok = window.confirm(
+        `This quote has already been processed.\n\n` +
+        `Re-processing will refresh the quote-level fields (foam color, notes, line items, totals).\n\n` +
+        `Saved shipping, tracking, freight cost, freight quote ref, and the QB invoice will be PRESERVED.\n\n` +
+        `Continue?`
+      );
+      if (!ok) {
+        btn.disabled = false;
+        btn.textContent = 'Send Order →';
+        return;
+      }
+      btn.textContent = 'Re-processing…';
+      res = await _doProcessOrder(true);
+      data = await res.json();
+    }
     if (data.success) {
       closeOrderModal();
 

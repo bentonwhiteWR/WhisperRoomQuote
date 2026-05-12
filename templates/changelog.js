@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.16.2', date:'May 12, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Stripe diagnostic was 400ing on every invoice item with "You may only specify one of these parameters: amount, quantity." Stripe\'s /v1/invoiceitems treats `amount` (total cents) and `quantity` as mutually exclusive — quantity only works with `price_data[unit_amount]`. Diagnostic items are all qty=1 so dropped `quantity` and kept `amount`. When we wire the real implementation we\'ll use the price_data path so multi-quantity WR orders display "2 × $3,500" cleanly on the customer\'s Stripe invoice.'},
+      ]
+    },
+    {
       v:'1.16.1', date:'May 12, 2026', tag:'logging',
       changes:[
         {t:'log', d:'Stripe diagnostic endpoints (staging-only, hard-locked to sk_test_ keys). GET /api/debug/stripe-diagnostic creates one test Customer + four test invoice line items + one finalized Invoice, returns hosted_invoice_url + invoice_pdf so we can verify the integration end-to-end before wiring Stripe into /api/process-order. Companion GET /api/debug/stripe-cleanup?invoice=in_xxx&customer=cus_xxx voids the invoice and deletes the customer so the dashboard stays tidy. First step toward replacing HubSpot Invoices with Stripe Invoices for customer-facing payment (Option 2 from the May 12 discussion).'},

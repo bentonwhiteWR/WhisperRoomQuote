@@ -165,7 +165,7 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
     <a href="/orders" class="nav-link">Orders</a>
     <a href="/shipping" class="nav-link">Shipping</a>
     <a href="/reports" class="nav-link">Reports</a>
-    <a href="/reconcile" class="nav-link active">Accounting</a>
+    <a href="/accounting" class="nav-link active">Accounting</a>
     <a href="/suppliers" class="nav-link">Suppliers</a>
   </nav>
   <div class="topbar-right">
@@ -182,6 +182,7 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
     <button class="tab-btn active" data-tab="qb-invoices" onclick="switchTab('qb-invoices')">QB Invoices</button>
     <button class="tab-btn" data-tab="ar" onclick="switchTab('ar')">Accounts Receivable</button>
     <button class="tab-btn" data-tab="reconcile" onclick="switchTab('reconcile')">Reconcile</button>
+    <button class="tab-btn" data-tab="hs-fees" onclick="switchTab('hs-fees')">HubSpot Fees</button>
   </div>
 
   <!-- ── Reconcile tab ── -->
@@ -375,6 +376,57 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
       </div>
     </div>
   </div><!-- /tabAr -->
+
+  <!-- ── HubSpot Fees tab ── -->
+  <div id="tabHsFees" style="display:none">
+    <div class="card">
+      <div class="card-title">HubSpot Fees — Monthly Summary</div>
+      <div class="row" style="margin-bottom:10px">
+        <div>
+          <label>Month</label>
+          <input type="month" id="hsFeesMonth" style="min-width:160px">
+        </div>
+        <button class="btn btn-orange" id="hsFeesBtn" onclick="loadHsFees()">Load</button>
+        <button class="btn btn-ghost btn-sm" onclick="loadHsFees(true)" title="Re-fetch from HubSpot">↻ Refresh</button>
+        <button class="btn btn-ghost btn-sm" id="hsFeesCsvBtn" onclick="downloadHsFeesCsv()" disabled style="margin-left:auto">⤓ CSV</button>
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-top:-6px;margin-bottom:8px">Filters: successful HubSpot Payments only. Grouped by transaction date (hs_createdate).</div>
+      <div class="msg" id="hsFeesMsg"></div>
+
+      <!-- Summary KPIs -->
+      <div id="hsFeesSummaryWrap" style="display:none;margin-top:14px">
+        <div class="summary-grid">
+          <div class="summary-box"><div class="lbl">Transactions</div><div class="val" id="hsFeesCount">—</div></div>
+          <div class="summary-box"><div class="lbl">Gross Collected</div><div class="val" id="hsFeesGross">—</div></div>
+          <div class="summary-box" style="border-color:rgba(238,98,22,.4);background:rgba(238,98,22,.06)"><div class="lbl">Total HubSpot Fees</div><div class="val" id="hsFeesTotal">—</div><div class="sublbl">→ enter as monthly QB expense</div></div>
+          <div class="summary-box"><div class="lbl">Processor Fee</div><div class="val" id="hsFeesProcessor">—</div><div class="sublbl">card / ACH cut</div></div>
+          <div class="summary-box"><div class="lbl">Platform Fee</div><div class="val" id="hsFeesPlatform">—</div><div class="sublbl">HubSpot cut</div></div>
+          <div class="summary-box"><div class="lbl">Net Deposited</div><div class="val" id="hsFeesNet">—</div></div>
+          <div class="summary-box"><div class="lbl">Refunds</div><div class="val" id="hsFeesRefunds">—</div><div class="sublbl">in same month</div></div>
+        </div>
+      </div>
+
+      <!-- Per-payment table -->
+      <div class="tbl-wrap" id="hsFeesTableWrap" style="display:none;margin-top:14px">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Invoice</th>
+              <th>Customer</th>
+              <th>Method</th>
+              <th style="text-align:right">Gross</th>
+              <th style="text-align:right">Processor Fee</th>
+              <th style="text-align:right">Platform Fee</th>
+              <th style="text-align:right">Total Fee</th>
+              <th style="text-align:right">Net</th>
+            </tr>
+          </thead>
+          <tbody id="hsFeesBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /tabHsFees -->
 
 </div>
 
@@ -1252,9 +1304,134 @@ function switchTab(name) {
   document.getElementById('tabReconcile').style.display   = name === 'reconcile'    ? '' : 'none';
   document.getElementById('tabQbInvoices').style.display  = name === 'qb-invoices'  ? '' : 'none';
   document.getElementById('tabAr').style.display          = name === 'ar'           ? '' : 'none';
+  document.getElementById('tabHsFees').style.display      = name === 'hs-fees'      ? '' : 'none';
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   if (name === 'qb-invoices' && _qbInvoices == null) loadQbInvoices();
   if (name === 'ar'          && _arInvoices == null) loadAr();
+  if (name === 'hs-fees'     && _hsFeesData == null) {
+    // Default the month input to last full calendar month on first open.
+    const inp = document.getElementById('hsFeesMonth');
+    if (inp && !inp.value) {
+      const d = new Date();
+      d.setDate(1);                  // first of current month
+      d.setMonth(d.getMonth() - 1);  // back one month
+      inp.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}`;
+    }
+    loadHsFees();
+  }
+}
+
+// ── HubSpot Fees tab ──────────────────────────────────────────────
+// Single source of truth for the last fetched HubSpot Fees response.
+// Cache so flipping between tabs doesn't re-fetch every time — only
+// re-fetches when the month changes or the rep hits Refresh.
+let _hsFeesData = null;
+let _hsFeesLastMonth = null;
+
+async function loadHsFees(force) {
+  const monthEl = document.getElementById('hsFeesMonth');
+  const month   = monthEl?.value || '';
+  if (_hsFeesData && !force && month === _hsFeesLastMonth) {
+    renderHsFees();
+    return;
+  }
+  const msg     = document.getElementById('hsFeesMsg');
+  const btn     = document.getElementById('hsFeesBtn');
+  const csvBtn  = document.getElementById('hsFeesCsvBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  if (msg) msg.textContent = '';
+  if (csvBtn) csvBtn.disabled = true;
+  try {
+    const url = '/api/accounting/hubspot-fees' + (month ? `?month=${encodeURIComponent(month)}` : '');
+    const res = await fetch(url, { credentials: 'include' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    _hsFeesData = data;
+    _hsFeesLastMonth = month;
+    renderHsFees();
+  } catch(e) {
+    if (msg) {
+      msg.className = 'msg err';
+      msg.textContent = 'Error: ' + e.message;
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Load'; }
+  }
+}
+
+function renderHsFees() {
+  const data = _hsFeesData;
+  if (!data) return;
+  const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const s   = data.summary || {};
+  document.getElementById('hsFeesCount').textContent     = s.count || 0;
+  document.getElementById('hsFeesGross').textContent     = fmt(s.gross);
+  document.getElementById('hsFeesTotal').textContent     = fmt(s.totalFees);
+  document.getElementById('hsFeesProcessor').textContent = fmt(s.processorFees);
+  document.getElementById('hsFeesPlatform').textContent  = fmt(s.platformFees);
+  document.getElementById('hsFeesNet').textContent       = fmt(s.net);
+  document.getElementById('hsFeesRefunds').textContent   = fmt(s.refunds);
+  document.getElementById('hsFeesSummaryWrap').style.display = '';
+
+  const body = document.getElementById('hsFeesBody');
+  const wrap = document.getElementById('hsFeesTableWrap');
+  if (!body || !wrap) return;
+  const rows = data.payments || [];
+  if (!rows.length) {
+    wrap.style.display = '';
+    body.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:18px">No HubSpot payments in ${data.monthLabel || 'this period'}.</td></tr>`;
+  } else {
+    const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', timeZone:'America/New_York' }) : '—';
+    body.innerHTML = rows.map(r => {
+      const method = [r.method, r.methodBank].filter(Boolean).join(' · ') || '—';
+      return `
+      <tr>
+        <td>${fmtDate(r.createdAt)}</td>
+        <td>${r.sourceName ? `<span style="font-family:monospace;font-size:11px">${r.sourceName}</span>` : '—'}</td>
+        <td>${r.customer || r.email || '—'}</td>
+        <td>${method}</td>
+        <td style="text-align:right">${fmt(r.gross)}</td>
+        <td style="text-align:right">${fmt(r.processorFee)}</td>
+        <td style="text-align:right">${fmt(r.platformFee)}</td>
+        <td style="text-align:right;font-weight:700">${fmt(r.totalFee)}</td>
+        <td style="text-align:right">${fmt(r.net)}</td>
+      </tr>`;
+    }).join('');
+    wrap.style.display = '';
+  }
+  const csvBtn = document.getElementById('hsFeesCsvBtn');
+  if (csvBtn) csvBtn.disabled = !rows.length;
+}
+
+function downloadHsFeesCsv() {
+  const data = _hsFeesData;
+  if (!data || !data.payments?.length) return;
+  // CSV with headers + per-payment rows + a totals row at the bottom so
+  // the accountant has a single-sheet artifact.
+  const esc = v => {
+    const s = String(v == null ? '' : v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const headers = ['Date','Invoice','Customer','Email','Method','Bank/Issuer','Gross','ProcessorFee','PlatformFee','TotalFee','Net','Refund','PayoutDate'];
+  const lines = [headers.join(',')];
+  data.payments.forEach(r => {
+    lines.push([
+      r.createdAt || '', r.sourceName || '', r.customer || '', r.email || '',
+      r.method || '', r.methodBank || '',
+      r.gross, r.processorFee, r.platformFee, r.totalFee, r.net, r.refundAmount,
+      r.payoutDate || '',
+    ].map(esc).join(','));
+  });
+  const s = data.summary || {};
+  lines.push(''); // blank separator
+  lines.push(['TOTAL','','','','','', s.gross, s.processorFees, s.platformFees, s.totalFees, s.net, s.refunds, ''].map(esc).join(','));
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `hubspot-fees-${data.month || 'unknown'}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); document.body.removeChild(a); }, 100);
 }
 
 // ── Shared invoice helpers ────────────────────────────────────────

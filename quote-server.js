@@ -681,6 +681,75 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Debug: enumerate every HubSpot Payment property + fetch a few recent
+  // payments with the full property set populated. Used to identify which
+  // property name carries the processor fee before building the monthly-
+  // fee summary in reports-dashboard. HubSpot has shifted Payment property
+  // names over time (hs_processor_fee, hs_fee_amount, hs_fees, nested under
+  // hs_payment_processor_*); guessing risks a silent $0 column. Hit this
+  // once while logged in, paste the response, and we'll wire the real field.
+  //
+  // Usage: GET /api/debug/hubspot-payments?limit=3
+  if (pathname === '/api/debug/hubspot-payments' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const limit = Math.min(parseInt(parsed.query.limit) || 3, 10);
+      // 1. Enumerate every property defined on the Payment object so we
+      //    don't miss the fee field, whatever it's called.
+      const propsRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/properties/payments',
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+      });
+      const allProps = (propsRes.body?.results || []).map(p => p.name);
+      // Highlight likely fee/amount/net candidates so the user can scan
+      // quickly without reading the whole property list.
+      const feeRx = /fee|net|amount|gross|processor|charge|cost|refund/i;
+      const candidateFeeProperties = allProps.filter(n => feeRx.test(n));
+      // 2. Find recent payment IDs via search (sorted by create date desc).
+      const searchRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/objects/payments/search',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, {
+        limit,
+        sorts: [{ propertyName: 'hs_createdate', direction: 'DESCENDING' }],
+      });
+      const recentIds = (searchRes.body?.results || []).map(r => r.id);
+      // 3. Batch-read with the FULL property list (body-based — avoids the
+      //    URL-length problem of stuffing all properties into a query string).
+      let payments = [];
+      if (recentIds.length && allProps.length) {
+        const batchRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/payments/batch/read',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, {
+          inputs: recentIds.map(id => ({ id })),
+          properties: allProps,
+        });
+        payments = (batchRes.body?.results || []).map(p => ({
+          id: p.id,
+          createdAt: p.createdAt,
+          properties: p.properties,
+        }));
+      }
+      json({
+        propertyCount: allProps.length,
+        candidateFeeProperties,
+        sampleSize: payments.length,
+        payments,
+      });
+    } catch(e) {
+      console.error('[debug/hubspot-payments]', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // Debug: dump tracking cache
   if (pathname === '/api/debug/tracking-cache' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
@@ -902,7 +971,7 @@ const server = http.createServer(async (req, res) => {
       const { code, state, realmId, error: oauthError } = parsed.query;
       if (oauthError) {
         res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(`<p style="font-family:sans-serif;color:red">QuickBooks auth error: ${oauthError}. <a href="/reconcile">Back</a></p>`);
+        res.end(`<p style="font-family:sans-serif;color:red">QuickBooks auth error: ${oauthError}. <a href="/accounting">Back</a></p>`);
         return;
       }
       const { tokens } = await qb.exchangeCode(code, state);
@@ -914,12 +983,12 @@ const server = http.createServer(async (req, res) => {
         accessExpiresAt:  now + (tokens.expires_in                 || 3600)    * 1000,
         refreshExpiresAt: now + (tokens.x_refresh_token_expires_in || 8726400) * 1000,
       });
-      res.writeHead(302, { Location: '/reconcile?qb=connected' });
+      res.writeHead(302, { Location: '/accounting?qb=connected' });
       res.end();
     } catch(e) {
       console.error('[qb/callback]', e.message);
       res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(`<p style="font-family:sans-serif;color:red">Error: ${e.message}. <a href="/reconcile">Back</a></p>`);
+      res.end(`<p style="font-family:sans-serif;color:red">Error: ${e.message}. <a href="/accounting">Back</a></p>`);
     }
     return;
   }
@@ -1342,6 +1411,141 @@ const server = http.createServer(async (req, res) => {
       const products = await getProductsCached();
       json({ results: products, total: products.length });
     } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // ── API: HubSpot Fees — monthly summary ─────────────────────────
+  // Aggregates HubSpot Payments processor fees for a given month so
+  // accounting can book a single monthly expense in QB instead of
+  // reconciling per-order. Total fee per payment = hs_fees_amount
+  // (card/ACH processor cut) + hs_platform_fee (HubSpot's cut). The two
+  // tie out to (hs_initial_amount − hs_net_amount) penny-for-penny —
+  // verified empirically against three sample payments in v1.15.3.
+  //
+  // Grouping is by hs_createdate (transaction date). We considered
+  // hs_payout_date for bank-deposit alignment but it's null until
+  // settlement (~1-3 days lag) — using createdate keeps every
+  // payment in its transaction month even mid-month.
+  //
+  // Usage: GET /api/accounting/hubspot-fees?month=YYYY-MM
+  // Defaults to the last full calendar month.
+  if (pathname === '/api/accounting/hubspot-fees' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      // Resolve target month → [startMs, endMs) in Eastern time (matches
+      // how the rest of the app books dates — TZ is set to America/New_York).
+      const monthParam = parsed.query.month;
+      const now = new Date();
+      let year, month;
+      if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
+        const [y, m] = monthParam.split('-').map(Number);
+        year = y; month = m - 1; // JS months are 0-indexed
+      } else {
+        // Last full calendar month
+        year  = now.getFullYear();
+        month = now.getMonth() - 1;
+        if (month < 0) { month += 12; year -= 1; }
+      }
+      const start = new Date(year, month,     1, 0, 0, 0, 0).getTime();
+      const end   = new Date(year, month + 1, 1, 0, 0, 0, 0).getTime();
+      const monthLabel = new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+      // Paginate through HubSpot Payments search until all results in the
+      // month are fetched. Filter to succeeded + hs_payments processor so
+      // the totals match what HubSpot deposits to our bank.
+      const properties = [
+        'hs_createdate', 'hs_initial_amount', 'hs_fees_amount', 'hs_platform_fee',
+        'hs_net_amount', 'hs_refunds_amount', 'hs_latest_status',
+        'hs_processor_type', 'hs_payment_method', 'hs_payment_method_bank_or_issuer',
+        'hs_payment_source_name', 'hs_payout_date', 'hs_estimated_payout_date',
+        'hs_currency_code', 'hs_billing_bill_to_name', 'hs_customer_email',
+      ];
+      const allPayments = [];
+      let after = undefined;
+      let safety = 0; // guard against runaway loops if HS misbehaves
+      while (safety++ < 50) {
+        const searchRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/payments/search',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, {
+          filterGroups: [{ filters: [
+            { propertyName: 'hs_createdate',  operator: 'GTE', value: String(start) },
+            { propertyName: 'hs_createdate',  operator: 'LT',  value: String(end) },
+            { propertyName: 'hs_latest_status', operator: 'EQ', value: 'succeeded' },
+            { propertyName: 'hs_processor_type', operator: 'EQ', value: 'hs_payments' },
+          ]}],
+          properties,
+          sorts: [{ propertyName: 'hs_createdate', direction: 'ASCENDING' }],
+          limit: 100,
+          ...(after ? { after } : {}),
+        });
+        const results = searchRes.body?.results || [];
+        results.forEach(r => allPayments.push(r));
+        const nextAfter = searchRes.body?.paging?.next?.after;
+        if (!nextAfter || results.length === 0) break;
+        after = nextAfter;
+      }
+
+      // Aggregate. Refunds are surfaced separately — they don't reduce the
+      // fee (HubSpot keeps the processor fee on a refund). Net is what
+      // actually hit our bank gross of refunds; netAfterRefunds reflects
+      // refunds backed out.
+      const num = v => parseFloat(v || 0) || 0;
+      let count = 0;
+      let gross = 0, processorFees = 0, platformFees = 0, net = 0, refunds = 0;
+      const rows = allPayments.map(p => {
+        const props      = p.properties || {};
+        const initial    = num(props.hs_initial_amount);
+        const processor  = num(props.hs_fees_amount);
+        const platform   = num(props.hs_platform_fee);
+        const netAmt     = num(props.hs_net_amount);
+        const refundAmt  = num(props.hs_refunds_amount);
+        count           += 1;
+        gross           += initial;
+        processorFees   += processor;
+        platformFees    += platform;
+        net             += netAmt;
+        refunds         += refundAmt;
+        return {
+          id:            p.id,
+          createdAt:     props.hs_createdate || null,
+          payoutDate:    props.hs_payout_date || props.hs_estimated_payout_date || null,
+          sourceName:    props.hs_payment_source_name || null, // e.g. WR-1195
+          customer:      props.hs_billing_bill_to_name || null,
+          email:         props.hs_customer_email || null,
+          method:        props.hs_payment_method || null,
+          methodBank:    props.hs_payment_method_bank_or_issuer || null,
+          gross:         initial,
+          processorFee:  processor,
+          platformFee:   platform,
+          totalFee:      Math.round((processor + platform) * 100) / 100,
+          net:           netAmt,
+          refundAmount:  refundAmt,
+        };
+      });
+      const totalFees = Math.round((processorFees + platformFees) * 100) / 100;
+      json({
+        month:         monthParam || `${year}-${String(month + 1).padStart(2,'0')}`,
+        monthLabel,
+        rangeStart:    new Date(start).toISOString(),
+        rangeEnd:      new Date(end).toISOString(),
+        summary: {
+          count,
+          gross:         Math.round(gross * 100) / 100,
+          processorFees: Math.round(processorFees * 100) / 100,
+          platformFees:  Math.round(platformFees * 100) / 100,
+          totalFees,
+          net:           Math.round(net * 100) / 100,
+          refunds:       Math.round(refunds * 100) / 100,
+        },
+        payments: rows,
+      });
+    } catch(e) {
+      console.error('[accounting/hubspot-fees]', e.message);
+      json({ error: e.message }, 500);
+    }
     return;
   }
 
@@ -6491,10 +6695,21 @@ ${q.accepted ? `
     return;
   }
 
-  if (pathname === '/reconcile' && req.method === 'GET') {
+  if (pathname === '/accounting' && req.method === 'GET') {
     if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(fs.readFileSync(path.join(__dirname, 'reconcile.html'), 'utf8'));
+    return;
+  }
+
+  // Backward-compat: the page used to live at /reconcile. Bookmarks, the
+  // QB OAuth redirect URI registered in Intuit, and any external docs
+  // pointing at /reconcile still need to land somewhere. 302 to /accounting
+  // and forward any query string (e.g. ?qb=connected from the OAuth callback).
+  if (pathname === '/reconcile' && req.method === 'GET') {
+    const qs = parsed.search || '';
+    res.writeHead(302, { Location: '/accounting' + qs });
+    res.end();
     return;
   }
 

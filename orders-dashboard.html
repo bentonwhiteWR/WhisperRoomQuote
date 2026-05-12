@@ -1294,7 +1294,7 @@ function bookOnlineSelected() {
 // Note: closeFreightModal() resets the _selected* state vars, so we
 // snapshot the values into locals BEFORE closing — otherwise the
 // toast template literal renders "null — null applied · $undefined".
-function selectRate() {
+async function selectRate() {
   const carrier = _selectedCarrier;
   const service = _selectedService;
   const cost    = _selectedFreightCost;
@@ -1307,6 +1307,14 @@ function selectRate() {
   if (pickup) document.getElementById('editShipDate').value = pickup;
   closeFreightModal();
   if (carrier) showToast(`${carrier} — ${service} applied · $${cost?.toFixed(2)}`, 'success');
+  // Per-rep direction: Select Rate is the commitment, so persist the
+  // drawer immediately rather than waiting for a separate Save Changes
+  // click. saveOrder() reads from DOM (already populated above + by the
+  // card click), sends PATCH, closes the drawer, and reloads. It will
+  // also show its own "Order updated" toast — two toasts in a row is
+  // intentional so the rep sees both the rate-applied + save-confirmed
+  // signals.
+  await saveOrder();
 }
 
 async function bookShipment() {

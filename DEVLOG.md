@@ -8,14 +8,7 @@ Internal development notes. Last updated 2026-05-12.
 
 ## Current focus (2026-05-12)
 
-**Most recent shipped to PROD:** v1.11.0 — 📞 Log Call button on Deal Hub.
-
-**On STAGING, awaiting test:**
-- **v1.12.0** — Shipping Email Recipients module (To + CC+) on BOTH Process Order modals (Deal Hub + Quote Builder). To pre-fills with contact email; rep adds CCs that travel through to order_data and pre-populate the orders drawer. Backend `/api/process-order` extended to persist `shipEmailTo` + `shipEmailCc` into `order_data`. Spot-test from BOTH entry points; verify recipients pre-populate when the order is later opened on the Orders dashboard.
-- **v1.12.1** — Freight quote no longer requires city/state, only the destination ZIP. Client validator relaxed; `lib/freight.js` `buildAbfUrl` omits `ConsCity`/`ConsState` when blank so ABF geocodes from ZIP. **Confirmed working** 2026-05-12 with ZIP 90201. (Unassigned ZIPs like 90205 fail — that's USPS, not us.)
-- **v1.12.2** — Tax validator also relaxed to ZIP-only (was still alerting "fill in state and zip" right after freight succeeded). If TaxJar rejects without a state, error surfaces in the tax status row instead of a blocking alert. Spot-test: enter only a ZIP, click Get Freight + Tax — no popup; tax row either shows a rate or a soft error.
-
-When both pass, `/promote` to main.
+**Most recent shipped to PROD:** v1.12.2 — ZIP-only freight & tax (promoted 2026-05-12 alongside v1.12.0 ship email recipients and v1.12.1 ZIP-only freight).
 
 **Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.9.0 over May 7–8. Full lifecycle now: create with editable ship-to, edit ship-to/color/notes, delete, change-log audit trail visible on the doc itself. Next-up candidates are user-driven.
 

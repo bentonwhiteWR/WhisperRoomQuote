@@ -7137,7 +7137,23 @@ ${q.accepted ? `
         : parseFloat(freightSnap || 0);
 
       const TAX_CODE   = process.env.QB_TAXABLE_CODE || 'TAX';
-      const taxableRef = { value: TAX_CODE };
+      const EXEMPT_CODE = process.env.QB_EXEMPT_CODE || 'NON';
+      // Tax suppression: if the saved snapshot is tax-exempt OR TaxJar returned
+      // $0 (ship-to outside nexus), tell QB not to compute tax. Without this,
+      // QB Automatic Sales Tax will tax any ship-to in a state listed as an
+      // active agency in QB's tax center — which has burned us on non-nexus
+      // states like NY. And the rep-controlled Tax Exempt checkbox never
+      // reached QB before, so AST always taxed exempt orders too.
+      //
+      // We can only suppress, not override the amount: QB AST silently
+      // rejects per-invoice amount overrides (TaxLineDetail.Override,
+      // TotalTax) — see v1.7.10 incident in changelog. So for non-exempt
+      // nexus-state orders we let AST compute, accepting the minor
+      // pre/post-discount base discrepancy.
+      const _isTaxExempt   = !!(snap.taxExempt || snap.accessories?.taxexempt);
+      const _taxAmount     = parseFloat(tax?.tax || 0);
+      const _suppressQbTax = _isTaxExempt || _taxAmount === 0;
+      const taxableRef = { value: _suppressQbTax ? EXEMPT_CODE : TAX_CODE };
       const fallback   = await qb.getDefaultItem();
 
       const shipAddr = {
@@ -7201,8 +7217,7 @@ ${q.accepted ? `
 
       // Freight after discount
       if (freightTotal > 0) {
-        const EXEMPT_CODE    = process.env.QB_EXEMPT_CODE || 'NON';
-        const freightTaxCode = tax?.freightTaxed ? TAX_CODE : EXEMPT_CODE;
+        const freightTaxCode = _suppressQbTax ? EXEMPT_CODE : (tax?.freightTaxed ? TAX_CODE : EXEMPT_CODE);
         const SHIPPING_ITEM  = process.env.QB_SHIPPING_ITEM_ID || 'SHIPPING_ITEM_ID';
         qbLines.push({
           Amount: parseFloat(freightTotal.toFixed(2)), DetailType: 'SalesItemLineDetail', Description: 'Freight',
@@ -7239,6 +7254,7 @@ ${q.accepted ? `
         billEmail:    (billing && billing.email) || customer.email || null,
         customFields: customFields.length ? customFields : null,
         salesTermRef,
+        globalTaxCalc: _suppressQbTax ? 'NotApplicable' : undefined,
         applyTaxAfterDiscount: true,
       });
 
@@ -7253,7 +7269,70 @@ ${q.accepted ? `
         quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { qbInvoiceId: invoice.Id, qbDocNumber: invoice.DocNumber }
       });
       console.log(`[create-qb-invoice] ${quoteNumber}: QB invoice ${invoice.Id} (${invoice.DocNumber})`);
-      json({ success: true, qbInvoiceId: invoice.Id, qbDocNumber: invoice.DocNumber });
+
+      // Auto-create QB Payment for non-PO orders. Mirrors the process-order
+      // auto-payment block — this endpoint is the recovery path when the
+      // original process-order didn't reach QB, so it needs to produce the
+      // same end state (invoice + payment). PO orders stay open since
+      // payment hasn't actually arrived; everything else marks paid.
+      // Failures here don't roll back the invoice — log + surface in the
+      // response so the rep can mark paid manually.
+      let autoPayment = null;
+      let autoPaymentError = null;
+      if (paymentType && paymentType !== 'po') {
+        try {
+          const pmName   = process.env.QB_PAYMENT_METHOD_NAME || 'Hubspot';
+          const acctName = process.env.QB_DEPOSIT_ACCOUNT_NAME || 'Southeast Bank Regular Checking 2545';
+          const [pm, acct] = await Promise.all([
+            qb.findPaymentMethodByName(pmName),
+            qb.findAccountByName(acctName),
+          ]);
+          if (!pm)   throw new Error(`PaymentMethod "${pmName}" not found in QB`);
+          if (!acct) throw new Error(`Account "${acctName}" not found in QB`);
+
+          const invTotal = parseFloat(invoice.TotalAmt || 0);
+          const payment = await qb.createPayment({
+            customerRef:         invoice.CustomerRef,
+            invoiceId:           invoice.Id,
+            amount:              invTotal,
+            paymentMethodRef:    { value: pm.Id, name: pm.Name },
+            depositToAccountRef: { value: acct.Id, name: acct.Name },
+            txnDate:             new Date().toISOString().split('T')[0],
+            privateNote:         `Auto-payment on manual invoice creation (${paymentType.toUpperCase()}). Order ${quoteNumber}.`,
+          });
+          console.log(`[create-qb-invoice] QB payment created: id=${payment.Id} amount=$${invTotal.toFixed(2)}`);
+          await db.query(
+            `UPDATE orders SET order_data = order_data || $1::jsonb WHERE quote_number = $2`,
+            [JSON.stringify({
+              qbPayments: [{
+                paymentId: payment.Id,
+                amount: invTotal,
+                date: new Date().toISOString().split('T')[0],
+                method: pm.Name,
+                account: acct.Name,
+                markedAt: new Date().toISOString(),
+                auto: true,
+                paymentType,
+              }],
+              qbPaidAt: new Date().toISOString(),
+            }), quoteNumber]
+          );
+          writelog('info', 'order.qb-payment-auto', `Auto-paid: ${quoteNumber} → $${invTotal.toFixed(2)} (${paymentType}) via /create-qb-invoice`, {
+            quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { paymentId: payment.Id, paymentType, via: 'create-qb-invoice' }
+          });
+          autoPayment = { paymentId: payment.Id, amount: invTotal };
+        } catch(e) {
+          console.warn('[create-qb-invoice] Auto-payment failed (invoice still created):', e.message);
+          writelog('warn', 'order.qb-payment-auto-failed', `Auto-payment failed for ${quoteNumber} via /create-qb-invoice: ${e.message}`, {
+            quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { paymentType, via: 'create-qb-invoice' }
+          });
+          autoPaymentError = e.message;
+        }
+      } else if (paymentType === 'po') {
+        console.log(`[create-qb-invoice] Skipping auto-payment — PO order ${quoteNumber}`);
+      }
+
+      json({ success: true, qbInvoiceId: invoice.Id, qbDocNumber: invoice.DocNumber, autoPayment, autoPaymentError });
     } catch(e) {
       console.error('[create-qb-invoice] Error:', e.message);
       json({ error: e.message }, 500);
@@ -9147,9 +9226,33 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
               customer, billing, foamColor, hingePreference, apColor, waType, productionNotes,
               deliveryNotes, ownerId, dealName, paymentType, poNumber,
               canadian, customsBroker,
-              shipEmailTo, shipEmailCc } = body;
+              shipEmailTo, shipEmailCc, force } = body;
 
       if (!dealId || !quoteNumber) { json({ error: 'Missing dealId or quoteNumber' }, 400); return; }
+
+      // Re-process guardrail. If this quote already has an order row, the
+      // rep is re-processing — almost certainly by accident, since hitting
+      // Process Order a second time used to wipe rep-edited fields
+      // (shipped carrier/tracking, freightCost, freightRef, serialNumber,
+      // QB invoice id, etc.). Block by default. Client should catch
+      // ORDER_EXISTS, show a confirm dialog, and retry with force=true.
+      // Even with force=true the orderData write below MERGES with the
+      // existing row rather than replacing it, so saved fields survive.
+      // _priorOrderData is also used to skip QB invoice re-creation when a
+      // qbInvoiceId is already attached — otherwise force re-process would
+      // create a duplicate invoice in QB.
+      let _priorOrderData = null;
+      if (db) {
+        const existing = await db.query('SELECT order_data FROM orders WHERE quote_number = $1', [quoteNumber]);
+        if (existing.rows.length) {
+          if (!force) {
+            writelog('warn', 'process-order.blocked-already-exists', `Process Order blocked — order already exists for ${quoteNumber}`, { dealId, quoteNumber, rep: getRepFromReq(req, body) });
+            json({ error: 'This quote has already been processed. Re-processing will refresh the quote-level fields (foam color, notes, line items, totals) but the saved shipping / tracking / QB / freight-ref fields will be preserved. Confirm to continue.', code: 'ORDER_EXISTS' }, 409);
+            return;
+          }
+          _priorOrderData = existing.rows[0]?.order_data || {};
+        }
+      }
 
       // Shipping-address guardrail. Processing the order commits the deal to
       // Closed Won and kicks off invoicing + fulfillment downstream — none of
@@ -9356,13 +9459,29 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
               created_at   TIMESTAMPTZ DEFAULT NOW()
             )
           `);
+          // Merge with any existing order_data so a force re-process refreshes
+          // the quote-level fields (foam, notes, line items, etc.) without
+          // wiping rep-edited fields like shipped.carrier, shipped.tracking,
+          // freightCost, freightRef, serialNumber, qbInvoiceId. shipped is
+          // deep-merged because process-order only sets shipped.pallets;
+          // every other shipped.* sub-field was added later by the rep and
+          // must survive.
+          let mergedOrderData = orderData;
+          if (force && _priorOrderData) {
+            mergedOrderData = {
+              ..._priorOrderData,
+              ...orderData,
+              shipped: { ...(_priorOrderData.shipped || {}), ...(orderData.shipped || {}) },
+            };
+            writelog('info', 'process-order.force-reprocess', `Force re-processed order ${quoteNumber} (merged with prior order_data)`, { dealId, quoteNumber, rep: getRepFromReq(req, body) });
+          }
           await db.query(`
             INSERT INTO orders (quote_number, deal_id, order_data)
             VALUES ($1, $2, $3)
             ON CONFLICT (quote_number) DO UPDATE SET
               order_data = EXCLUDED.order_data,
               deal_id    = EXCLUDED.deal_id
-          `, [quoteNumber, dealId, JSON.stringify(orderData)]);
+          `, [quoteNumber, dealId, JSON.stringify(mergedOrderData)]);
 
           // Also save order link to quotes table
           await db.query('UPDATE quotes SET order_link = $1 WHERE quote_number = $2', [orderUrl, quoteNumber]);
@@ -9518,9 +9637,31 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       // Create QuickBooks invoice (non-blocking — failure is logged, never fatal)
       (async () => {
         try {
-          const fallback   = await qb.getDefaultItem();
-          const TAX_CODE   = process.env.QB_TAXABLE_CODE || 'TAX';
-          const taxableRef = { value: TAX_CODE };
+          // Skip on force re-process if a QB invoice is already linked.
+          // Without this, hitting Process Order again creates a duplicate
+          // invoice in QB. The merged order_data already preserves the
+          // existing qbInvoiceId, so we just don't re-create. Rep can use
+          // /api/orders/:quoteNumber/create-qb-invoice if they explicitly
+          // want a fresh invoice.
+          if (force && _priorOrderData?.qbInvoiceId) {
+            console.log(`[process-order] QB invoice creation skipped — qbInvoiceId ${_priorOrderData.qbInvoiceId} already linked to ${quoteNumber} (force re-process)`);
+            return;
+          }
+          const fallback    = await qb.getDefaultItem();
+          const TAX_CODE    = process.env.QB_TAXABLE_CODE || 'TAX';
+          const EXEMPT_CODE = process.env.QB_EXEMPT_CODE  || 'NON';
+          // Tax suppression — same logic as /api/orders/:quoteNumber/create-qb-invoice.
+          // If the saved snapshot is tax-exempt OR TaxJar returned $0 (ship-to
+          // outside our nexus), tell QB not to compute tax via
+          // GlobalTaxCalculation: 'NotApplicable'. Without this, QB AST will
+          // tax any ship-to in a state listed as an agency in QB's tax
+          // center (the NY incident), and the rep-controlled Tax Exempt
+          // checkbox is silently ignored. We can only suppress, not
+          // override the amount — see v1.7.10 in the changelog.
+          const _isTaxExempt   = !!(quoteSnap.taxExempt || quoteSnap.accessories?.taxexempt);
+          const _taxAmount     = parseFloat(tax?.tax || 0);
+          const _suppressQbTax = _isTaxExempt || _taxAmount === 0;
+          const taxableRef = { value: _suppressQbTax ? EXEMPT_CODE : TAX_CODE };
 
           // QB ship address (only includes lines that are present so AST has a jurisdiction)
           const shipAddr = (c.address || c.city || c.state || c.zip) ? {
@@ -9598,8 +9739,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
           // SalesFormsPrefs.AllowShipping = true. Freight is added AFTER the discount
           // line so DiscountLineDetail doesn't reduce it.
           if (freightTotal > 0) {
-            const EXEMPT_CODE    = process.env.QB_EXEMPT_CODE || 'NON';
-            const freightTaxCode = tax?.freightTaxed ? TAX_CODE : EXEMPT_CODE;
+            const freightTaxCode = _suppressQbTax ? EXEMPT_CODE : (tax?.freightTaxed ? TAX_CODE : EXEMPT_CODE);
             const SHIPPING_ITEM  = process.env.QB_SHIPPING_ITEM_ID || 'SHIPPING_ITEM_ID';
             const amt = parseFloat(freightTotal.toFixed(2));
             qbLines.push({
@@ -9654,6 +9794,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             billEmail:    (billing && billing.email) || c.email || null,
             customFields: customFields.length ? customFields : null,
             salesTermRef,
+            globalTaxCalc: _suppressQbTax ? 'NotApplicable' : undefined,
             // Apply discount BEFORE tax (toggle off in the QB UI's More Options).
             // Matches TaxJar's calc: tax base = post-discount subtotal.
             applyTaxAfterDiscount: true,

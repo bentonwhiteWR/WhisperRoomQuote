@@ -681,6 +681,75 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Debug: enumerate every HubSpot Payment property + fetch a few recent
+  // payments with the full property set populated. Used to identify which
+  // property name carries the processor fee before building the monthly-
+  // fee summary in reports-dashboard. HubSpot has shifted Payment property
+  // names over time (hs_processor_fee, hs_fee_amount, hs_fees, nested under
+  // hs_payment_processor_*); guessing risks a silent $0 column. Hit this
+  // once while logged in, paste the response, and we'll wire the real field.
+  //
+  // Usage: GET /api/debug/hubspot-payments?limit=3
+  if (pathname === '/api/debug/hubspot-payments' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const limit = Math.min(parseInt(parsed.query.limit) || 3, 10);
+      // 1. Enumerate every property defined on the Payment object so we
+      //    don't miss the fee field, whatever it's called.
+      const propsRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/properties/payments',
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+      });
+      const allProps = (propsRes.body?.results || []).map(p => p.name);
+      // Highlight likely fee/amount/net candidates so the user can scan
+      // quickly without reading the whole property list.
+      const feeRx = /fee|net|amount|gross|processor|charge|cost|refund/i;
+      const candidateFeeProperties = allProps.filter(n => feeRx.test(n));
+      // 2. Find recent payment IDs via search (sorted by create date desc).
+      const searchRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: '/crm/v3/objects/payments/search',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, {
+        limit,
+        sorts: [{ propertyName: 'hs_createdate', direction: 'DESCENDING' }],
+      });
+      const recentIds = (searchRes.body?.results || []).map(r => r.id);
+      // 3. Batch-read with the FULL property list (body-based — avoids the
+      //    URL-length problem of stuffing all properties into a query string).
+      let payments = [];
+      if (recentIds.length && allProps.length) {
+        const batchRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/payments/batch/read',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, {
+          inputs: recentIds.map(id => ({ id })),
+          properties: allProps,
+        });
+        payments = (batchRes.body?.results || []).map(p => ({
+          id: p.id,
+          createdAt: p.createdAt,
+          properties: p.properties,
+        }));
+      }
+      json({
+        propertyCount: allProps.length,
+        candidateFeeProperties,
+        sampleSize: payments.length,
+        payments,
+      });
+    } catch(e) {
+      console.error('[debug/hubspot-payments]', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // Debug: dump tracking cache
   if (pathname === '/api/debug/tracking-cache' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

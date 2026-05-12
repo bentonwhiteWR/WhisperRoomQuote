@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.15.3', date:'May 12, 2026', tag:'logging',
+      changes:[
+        {t:'log', d:'Diagnostic endpoint GET /api/debug/hubspot-payments?limit=3 dumps the full HubSpot Payment property schema plus a few recent payments with all property values populated. Used to identify which property name carries the processor fee before building the monthly HubSpot Fees summary card on the reports dashboard — guessing the field name risks a silent $0 column.'},
+      ]
+    },
+    {
       v:'1.15.2', date:'May 12, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Tax Exempt now restores when reopening a saved quote. The flag was already being saved to local history (accessories.taxexempt) and to the server snapshot (taxExempt), but loadFromHistoryEntry\'s accessories-restore loop hardcoded only residential/liftgate/limitedaccess/loadingdock — the Tax Exempt checkbox stayed unchecked on revising quotes. Also restores the Tax Exempt Certificate # text (now saved to local history alongside the flag), shows the cert-input row when exempt, and mirrors the click-handler side effects (clears taxData, hides the tax-result panel) so the loaded quote matches the original state.'},

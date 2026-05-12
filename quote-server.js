@@ -6756,10 +6756,15 @@ ${q.accepted ? `
         // class-only rates that didn't match the NMFC-based pricing the
         // account is contracted for.
         //
-        // Weight: OD wants the gross weight per pallet (product + the
-        // pallet itself). ABF rates correctly off product weight alone.
-        // Add OD_PALLET_WEIGHT_LBS to each freightItem's weight on the
-        // OD path only.
+        // Weight: our stored per-pallet weight is the gross floor weight
+        // (booth + accessories + the wooden pallet itself). Both carriers
+        // adjust on their own side: ABF rates off product weight only
+        // (the buildAbfUrl helper subtracts ABF_PALLET_DEDUCT_LBS), and
+        // OD wants gross weight — pass our stored weight through, plus
+        // the small OD_PALLET_WEIGHT_LBS correction below to account for
+        // residual pallet-weight differences observed in OD vs ABF quotes
+        // (kept as a tunable constant — drop if OD rates start over-
+        // pricing).
         const OD_PALLET_WEIGHT_LBS = 120;
         const freightItemsXml = pallets.map(p => {
           const productLbs = parseFloat(p.weight) || (totalWt / pallets.length);

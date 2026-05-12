@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.13.1', date:'May 12, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'ABF rate requests now subtract 144 lbs of pallet wood from each pallet weight before calling ABF. Our stored per-pallet weight is the gross floor weight (booth + accessories + wooden pallet), and ABF rates off product-only weight — they add pallet weight on their side. Without this we over-reported by ~144 lbs/pallet and ABF returned higher rates than its own public quote page. Floored at 0 so an unusually light pallet doesn\'t send a negative weight. Applied in lib/freight.js buildAbfUrl, so both the QB /api/freight path and the orders dashboard /api/orders-freight path benefit. OD path unchanged (its existing +120 adjustment stays).'},
+      ]
+    },
+    {
       v:'1.13.0', date:'May 12, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Process Order is now blocked when the shipping address is incomplete. Required fields: street address, city, state, ZIP. Enforced on the server (/api/process-order returns 400 with the missing-field list) and pre-checked on both clients (Quote Builder reads the live DOM and toasts; Deal Hub reads the saved snapshot and toasts the rep back to the quote since the Hub modal can\'t edit ship-to). ZIP-only is still fine for rate quoting (v1.12.1/v1.12.2) — this only gates actual fulfillment. Server logs blocked attempts as `process-order.blocked-no-ship-address` with the missing fields + rep so we can see if any rep is hitting it repeatedly.'},

@@ -6,17 +6,14 @@ Internal development notes. Last updated 2026-05-12.
 
 ---
 
-## Current focus (2026-05-12)
+## Current focus (2026-05-12, late session)
 
-**Most recent shipped to PROD:** v1.12.2 — ZIP-only freight & tax (promoted 2026-05-12 alongside v1.12.0 ship email recipients and v1.12.1 ZIP-only freight).
+**Most recent shipped to PROD:** v1.16.0 — HubSpot Fees monthly summary tab + `/reconcile` → `/accounting` URL rename. (Promoted 2026-05-12 alongside v1.13.2 → v1.15.3 — see session writeup below.)
 
 **On STAGING, awaiting test:**
-- **v1.12.3** — Removed the green "Book ABF Shipment" button (ABF + OD both use blue Book Online deep-link only). Added `findBoothData()` fuzzy match for color/finish suffix.
-- **v1.12.4** — Discovered the real always-1-pallet bug: orders-dashboard.html had its own outdated copy of BOOTH_DATA, missing all MDL shells larger than 9696 (96120, 96144, 96168, 96192, 102102, 102126, 102144, 102168, 102186 + every NV variant) and with stale dims on several shared entries (Drum Booth, MDL 4848/7272/9696). Synced to QB's BOOTH_DATA verbatim. Also: pallet weights now carry the FULL shipment weight (booth + accessories) — previous logic only distributed the booth item's weight, under-reporting to ABF. And suppressed the misleading "N items missing pallet data" warning when a booth WAS matched (accessories ride along on booth pallets; flagging them as "missing" was noise). **Follow-up architectural note:** BOOTH_DATA is duplicated across `quote-builder.html` and `orders-dashboard.html` — should be extracted to a shared `lib/booth-data.js` served as a static JS bundle so it can't drift again. Filed as parked work below.
-- **v1.13.0** — Process Order shipping-address guardrail. Server `/api/process-order` returns 400 with a missing-fields message when ship-to is incomplete (street, city, state, ZIP). Both clients (QB live DOM + Deal Hub snapshot.customer) pre-check and toast. Server logs blocked attempts as `process-order.blocked-no-ship-address` (rep + missing fields) so we can see if any rep is repeatedly hitting it (signal that the UX should change). ZIP-only rate quoting from v1.12.1/v1.12.2 is unaffected — this only gates actual fulfillment. Test: open an order on a quote that has no `shipAddress` filled in and try Process Order from both Deal Hub and QB; both should toast and not POST.
-- **v1.13.1** — ABF pallet-weight correction. Our stored per-pallet weight is gross (booth + accessories + wooden pallet); ABF rates off product weight only — they add pallet weight on their side. `buildAbfUrl` now subtracts `ABF_PALLET_DEDUCT_LBS = 144` from each pallet's weight (floored at 0). Affects both QB `/api/freight` and orders `/api/orders-freight` ABF calls. Test: re-run the Smyth ABF rate; should now line up much closer to what arcb.com returns when the rep enters the same values manually. OD unchanged.
+- **v1.16.1 + v1.16.2** — Stripe sandbox diagnostic endpoints. `GET /api/debug/stripe-diagnostic` creates one test Customer + finalized Invoice ($4,716.40, four line items), returns `hosted_invoice_url` + `invoice_pdf` for end-to-end verification before wiring Stripe into `/api/process-order`. Companion `/api/debug/stripe-cleanup?invoice=...&customer=...` voids + deletes. Hard-locked to `sk_test_` keys. v1.16.2 fixed an initial 400 — Stripe rejects `amount` + `quantity` together; real implementation will use `price_data[unit_amount]` so multi-qty WR orders display "2 × $3,500" cleanly. User confirmed the diagnostic succeeded end-to-end and is satisfied with the approach.
 
-**Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.9.0 over May 7–8. Full lifecycle now: create with editable ship-to, edit ship-to/color/notes, delete, change-log audit trail visible on the doc itself. Next-up candidates are user-driven.
+**Active theme:** Replace HubSpot customer-facing invoices with Stripe Invoices (Option 2 from the May 12 discussion). HubSpot Payments is already Stripe under the hood — `hs_fees_amount` IS Stripe's rate; `hs_platform_fee` (~0.5%) is HubSpot's markup we'd save by going direct. ~$80 saved on a $16k card transaction, ballpark $7-10k/year. Decisions locked: keep TaxJar (pass tax to Stripe as separate invoice_item line), payment link goes in OUR existing email/PDF (not Stripe's auto-email), HubSpot Invoice creation off (button-triggered today, easy swap), Refund button to be added in Order Hub, AR aging untouched (reads HS deal amounts, not invoice amounts). Sandbox key set in Railway test service. Next step: build `lib/stripe.js` + webhook handler + Process Order hook. ~3-4 days work, then 2-3 weeks of parallel observation before full cutover.
 
 **Outstanding work (not yet started):**
 
@@ -30,6 +27,95 @@ Internal development notes. Last updated 2026-05-12.
 - **Parked architectural cleanup:** Extract `BOOTH_DATA` (and probably `BOOTH_PRESETS`) out of `quote-builder.html` into a shared `lib/booth-data.js` served as a static JS bundle, included by both `quote-builder.html` and `orders-dashboard.html` via `<script src>`. The v1.12.4 incident — two divergent copies silently drifting — is the kind of bug this prevents. Low priority but high ROI when next touching this area.
 
 **Tooling note:** As of 2026-05-08 the user is moving day-to-day editing from Claude Desktop to Cursor. Local clone lives at `C:\Users\bento\Documents\Claude\WhisperRoomQuote-staging`. Workflow stays the same (staging-only, explicit ask to promote to main).
+
+---
+
+## Session writeup — May 12, 2026 (v1.13.2 → v1.16.2)
+
+A 15-version push across five concurrent themes. Two promotions to main during the session (v1.13.6 mid-session, v1.16.0 late-session). All triggered by real incidents — none were "let's add a feature" theoretical.
+
+### 1. Freight modal overhaul (v1.13.2 → v1.14.1)
+
+The "Get Freight" popup on the orders dashboard got a deep cleanup over seven versions:
+
+- **v1.13.2** — ABF rate cards now show the dynamic discount when ABF returns one. `parseAbfXml` was already extracting `DYNDISC` but the value was being dropped before reaching the carrier list. Now: green `−$X.XX dyn. discount` note + `net est.` line beneath the actual cost.
+- **v1.13.3** — OD rates dropped the bogus `+120 lbs/pallet` adjustment inside `/api/orders-freight`. Our stored per-pallet weight is already gross (booth + accessories + wooden pallet), which is what OD wants — the +120 was double-counting. OD rates should now line up with odfl.com manual quotes.
+- **v1.13.4** — Pickup Date moved from the post-rates booking sub-section to the main form (above Accessorials). Now sent with the rate request and drives ABF's `ShipMonth/Day/Year`, so transit-day rendering reflects the actual pickup day. OD's SOAP rate API has no pickup-date field, so OD rates remain pickup-date-agnostic. Contact Phone field removed entirely (was redundant; dormant bookShipment() now pulls phone from customer snapshot).
+- **v1.13.5** — Per rep direction, ABF cards with a dynamic discount now lead with the **net (discounted) estimate** in orange as the headline. The standard cost moves below the discount line.
+- **v1.13.6** — Select Rate applies the **net** cost to the order's freight field (not the standard rate). Per rep: they book in advance to capture the discount, so the net IS the actual cost.
+- **v1.13.7** — Card click now writes carrier / freight cost / **pickup date → Date Shipped** to the drawer immediately. No longer waits for the Select Rate button. Switching cards rewrites with the latest selection.
+- **v1.14.0** — New **Freight Quote Ref** field on the order drawer. When the rep selects a rate, the carrier's saved-quote ID (ABF `quoteId` like `LTLX8W1316` or OD `referenceNumber`) is stashed on the order with an `Open ↗` button. ABF deep-links to the saved quote on arcb.com; OD copies the ref to clipboard and opens its rate-reference-search page. Persisted in `order_data.freightRef` so the rep can come back days later.
+- **v1.14.1** — Select Rate now also calls `saveOrder()` so the drawer persists immediately instead of waiting for a separate Save Changes click.
+
+**Promoted to main** mid-session (commit fb4c3f0). The OD rate fix is the most user-visible — confirmed live on prod, no regressions reported.
+
+### 2. QB tax suppression + Process Order guardrail (v1.15.0)
+
+Two related fixes triggered by a NY incident: an order shipped to NY (we don't have NY nexus) processed and QB invoice came back with NY tax added. Investigation showed:
+
+- TaxJar correctly returned $0 (NY isn't in `NEXUS_STATES`)
+- Our code sent every line with `TaxCodeRef=TAX`
+- QB Automatic Sales Tax then taxed the ship-to address using its agency list, where NY was listed as an active agency
+- The rep-controlled Tax Exempt checkbox had the same blind spot — was only used on our PDFs/quote pages, never reached QB
+
+Fix: both QB invoice paths (`/api/process-order` and `/api/orders/:quoteNumber/create-qb-invoice`) now detect `(snapshot.taxExempt === true) || (TaxJar.tax === 0)` and send `GlobalTaxCalculation:"NotApplicable"` + `NON` tax code on every line + freight. QB AST goes silent for the invoice. Suppression-only, **not amount override** — QB AST rejects per-invoice amount overrides for AST companies (see v1.7.10 incident).
+
+The Process Order guardrail came from a separate user report: re-processing a quote that already had an order wiped every rep-edited field (carrier, tracking, freightCost, freightRef, serialNumber, qbInvoiceId). Now: server returns 409 `ORDER_EXISTS` if a row exists; client (both QB and Deal Hub) prompts to confirm; on confirm, retries with `force:true`, server merges with prior order_data (deep-merging `shipped`) so saved fields survive, AND skips QB invoice re-creation when `qbInvoiceId` is already linked (no duplicate invoices). Logs `process-order.blocked-already-exists` and `process-order.force-reprocess`.
+
+### 3. Create Invoice auto-pays + Tax Exempt rehydration (v1.15.1, v1.15.2)
+
+- **v1.15.1** — The orders-dashboard Create Invoice button (`/api/orders/:quoteNumber/create-qb-invoice`) was stopping at invoice creation, leaving the rep to mark-paid manually. Since this endpoint is the recovery path when `/api/process-order` didn't reach QB, it needed to produce the same end state. Now mirrors the process-order auto-payment block: non-PO orders auto-create a QB Payment against the new invoice; PO orders skip.
+- **v1.15.2** — Tax Exempt checkbox now restores when reopening a saved quote. The flag was saved to local history (`accessories.taxexempt`) and server snapshot (`taxExempt`), but `loadFromHistoryEntry`'s accessory-restore loop only iterated four hardcoded IDs (residential, liftgate, limitedaccess, loadingdock). Added a dedicated restore block that handles checkbox + label active class + cert input value + the conditional cert-input row visibility + the click-handler side effects (clears `taxData`, hides tax-result panel). Also added `taxExemptCert` to the local-history save payload.
+
+### 4. HubSpot Fees monthly summary + URL rename (v1.15.3 + v1.16.0)
+
+The user's accountant wants to book ONE monthly expense in QB for HubSpot payment-processing fees rather than reconciling per-order. Two-step shipping:
+
+- **v1.15.3** — Diagnostic endpoint `GET /api/debug/hubspot-payments?limit=3` returns the full HubSpot Payment property schema + recent payment values, so we could identify the fee fields with certainty (HubSpot has shifted Payment property names over time). User pasted the response back; confirmed `hs_fees_amount` (card/ACH processor fee) + `hs_platform_fee` (HubSpot's cut) sum to `hs_initial_amount − hs_net_amount` penny-for-penny.
+- **v1.16.0** — Built the **HubSpot Fees** tab on the Accounting page. Month picker (defaults to last full month), KPIs (Transactions, Gross, **Total Fees** as orange headline, Processor Fee, Platform Fee, Net, Refunds), per-payment table, CSV download. New endpoint `GET /api/accounting/hubspot-fees?month=YYYY-MM` paginates through HubSpot Payments search filtered to succeeded + `hs_payments` processor.
+- Same commit: renamed `/reconcile` → `/accounting` (page title already said "Accounting"; only the URL lagged). All seven dashboard nav links updated. `/reconcile` keeps working — 302-redirects with query string preserved so the QB OAuth callback (`?qb=connected`) and existing bookmarks still land.
+
+**Promoted to main** late-session (commit 9587db1). User confirmed the HubSpot Fees tab loads correctly and the totals tie to bank deposits.
+
+### 5. Stripe integration prep (v1.16.1 + v1.16.2)
+
+User has a Stripe account and asked about replacing HubSpot Payments. Discovery: **HubSpot Payments uses Stripe under the hood.** `hs_fees_amount` IS Stripe's rate (~2.9% + 30¢). The `hs_platform_fee` (~0.5%) is HubSpot's markup we'd save going direct — ballpark $80 on a $16k card transaction, ~$7-10k/year at WR's volume.
+
+Discussed three flavors:
+1. **Lightest** — Stripe payment link, everything else stays
+2. **Medium** — Stripe Invoices replace HubSpot's invoice UI ← **user chose this**
+3. **Heaviest** — Stripe as system of record, QB gets journal summaries (advised against)
+
+Decisions locked for Option 2:
+- TaxJar stays (pass tax as a separate `invoice_item` line, not Stripe Tax)
+- Payment link goes in OUR existing rep-controlled email/PDF, not Stripe's auto-email (set `auto_advance: false` on the invoice)
+- HubSpot Invoice creation: off (button-triggered today, not auto — easy swap)
+- AR aging unchanged (reads HS deal amounts, not invoice amounts)
+- Refund button to be added in Order Hub
+- ACH worth enabling (0.8% capped at $5 vs 2.9% on cards) — pending user check on Stripe account provisioning
+
+Shipped diagnostics:
+- **v1.16.1** — `GET /api/debug/stripe-diagnostic` creates one test Customer + four test invoice_items + finalized Invoice, returns `hosted_invoice_url` + `invoice_pdf`. Hard-locked to `sk_test_` keys. Companion `/api/debug/stripe-cleanup?invoice=...&customer=...` voids + deletes.
+- **v1.16.2** — Fixed an initial 400: Stripe's `/v1/invoiceitems` rejects `amount` + `quantity` together (mutually exclusive; `quantity` only works with `price_data[unit_amount]`). Dropped quantity from the diagnostic. Real implementation will use `price_data` so multi-qty WR orders display "2 × $3,500" cleanly.
+
+User confirmed the diagnostic ran successfully end-to-end:
+```
+{"success":true, ..., "invoice":{"total_dollars":"4716.40","status":"open",
+ "hosted_invoice_url":"https://invoice.stripe.com/...","invoice_pdf":"..."}}
+```
+
+Stripe sandbox key (`sk_test_...`) is in Railway test service env. Awaiting user feedback on how the `hosted_invoice_url` page actually renders (branding, line item display, test-card payment flow) before next step.
+
+**Next session — Stripe integration build:**
+1. `lib/stripe.js` module mirroring `lib/quickbooks.js` patterns (init({deps}), findOrCreateCustomer, createInvoice with `price_data` lines, finalize, getInvoice, voidInvoice, refundCharge, verifyWebhookSignature)
+2. `POST /api/stripe/webhook` endpoint — signature verification, handles `invoice.paid` (mark QB invoice paid, push HS deal `payment_status=paid`, write `stripeInvoiceId`/`stripePaymentIntentId`/`stripeReceiptUrl` to `order_data`) and `invoice.payment_failed`, `charge.refunded`
+3. Hook into `/api/process-order` — alongside the existing QB invoice creation, also create a Stripe invoice with `auto_advance: false`. Stash hosted URL in order_data.
+4. UI surfacing in Order Hub / Deal Hub: Stripe-hosted invoice URL + paid status. Refund button.
+5. Two env vars per environment: `STRIPE_SECRET_KEY` (sk_test_ staging, sk_live_ prod) + `STRIPE_WEBHOOK_SECRET` (whsec_...).
+6. Flag-gate with `INVOICE_PROVIDER=hubspot|stripe` env var for parallel rollout. Default to hubspot until a handful of Stripe orders run end-to-end clean, then flip default to stripe.
+7. Then a cleanup PR: disable HubSpot invoice creation on the rep side, retire dead code paths.
+
+Estimate: ~3-4 days of build, then 2-3 weeks parallel observation, then cutover.
 
 ---
 

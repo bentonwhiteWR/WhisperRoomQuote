@@ -3037,8 +3037,8 @@ async function getFreight() {
   const state = document.getElementById('shipState').value.trim().toUpperCase();
   const zip = document.getElementById('shipZip').value.trim().replace(/\s+/g, '');
 
-  if (!city || !state || !zip) {
-    alert('Please fill in the ship-to address first.');
+  if (!zip) {
+    alert('Please enter a ship-to ZIP code first.');
     return;
   }
 

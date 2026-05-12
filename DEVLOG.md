@@ -1,16 +1,20 @@
 # WhisperRoom Quote Builder — Dev Log
 
-Internal development notes. Last updated 2026-05-11 (paused mid-feature on v1.12.0).
+Internal development notes. Last updated 2026-05-12.
 
 > **Read this first when starting a session.** The "Current focus" section below is the fastest way to know where we left off. Below that: session writeups, the audit (outstanding work), and the changelog table.
 
 ---
 
-## Current focus (2026-05-11)
+## Current focus (2026-05-12)
 
 **Most recent shipped to PROD:** v1.11.0 — 📞 Log Call button on Deal Hub.
 
-**On STAGING, awaiting test (paused — will resume later):** v1.12.0 — Shipping Email Recipients module (To + CC+) added to BOTH Process Order modals (Deal Hub + Quote Builder). To pre-fills with contact email; rep adds CCs that travel through to order_data and pre-populate the orders drawer. Backend `/api/process-order` extended to accept and persist `shipEmailTo` + `shipEmailCc` into `order_data`. The orders dashboard drawer reads these via the existing `setShipEmailAddresses` (no orders-side changes needed). To resume: spot-test on staging from BOTH the Deal Hub Process Order flow AND the Quote Builder Process Order flow, verify the recipients show up pre-populated when the order is later opened on the Orders dashboard, then `/promote` to main.
+**On STAGING, awaiting test:**
+- **v1.12.0** — Shipping Email Recipients module (To + CC+) on BOTH Process Order modals (Deal Hub + Quote Builder). To pre-fills with contact email; rep adds CCs that travel through to order_data and pre-populate the orders drawer. Backend `/api/process-order` extended to persist `shipEmailTo` + `shipEmailCc` into `order_data`. Spot-test from BOTH entry points; verify recipients pre-populate when the order is later opened on the Orders dashboard.
+- **v1.12.1** — Freight quote no longer requires city/state, only the destination ZIP. Travis reported the old "Please fill in the ship-to address first" alert was a blocker for quick rate checks. Client validator relaxed; `lib/freight.js` `buildAbfUrl` omits `ConsCity`/`ConsState` when blank so ABF geocodes from ZIP. **Open question:** does ABF actually accept a ZIP-only request? If it rejects, fall back to a zip→state lookup (server-side) before calling ABF. Test on staging with just a ZIP filled in.
+
+When both pass, `/promote` to main.
 
 **Active theme:** Audimute / AP Purchase Order system. Built v1.7.22 → v1.9.0 over May 7–8. Full lifecycle now: create with editable ship-to, edit ship-to/color/notes, delete, change-log audit trail visible on the doc itself. Next-up candidates are user-driven.
 
@@ -188,6 +192,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.12.1  | 2026-05-12 | Freight quote only requires destination ZIP now (city/state optional). Client validator relaxed; server omits empty ConsCity/ConsState from ABF URL so ABF can geocode from ZIP |
 | 1.12.0  | 2026-05-11 | Shipping Email Recipients module (To + CC+) on Process Order modal in BOTH Deal Hub and Quote Builder; recipients persist to order_data and pre-populate orders drawer |
 | 1.11.0  | 2026-05-11 | New 📞 Log Call button in Deal Hub action row → creates a real HubSpot Call engagement on the deal (auto-titled, OUTBOUND, attributed to logged-in rep) |
 | 1.10.4  | 2026-05-11 | Fix: "Select Rate" toast was rendering "null — null applied · $undefined" (state vars cleared before toast read them) |

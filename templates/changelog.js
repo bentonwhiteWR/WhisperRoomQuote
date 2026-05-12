@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.12.1', date:'May 12, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Freight quote no longer blocks on missing ship-to city/state — only the destination ZIP is required now. The client-side "Please fill in the ship-to address first" alert was a UX speed bump for reps doing quick rate checks (e.g. when a lead only has a ZIP). ABF geocodes city/state from ZIP server-side, so this is purely a validator relaxation.'},
+        {t:'log', d:'lib/freight.js buildAbfUrl now omits ConsCity / ConsState from the ABF URL entirely when blank, instead of sending empty params (ABF rejects `ConsCity=&ConsState=`). If the rep fills city/state, those still pass through as before.'},
+      ]
+    },
+    {
       v:'1.12.0', date:'May 11, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Process Order modal (both Deal Hub AND Quote Builder) now includes a Shipping Email Recipients module — same shape as the orders dashboard drawer. To field auto-fills with the contact email; rep can add CCs with the + CC button. Captured at process-order time and stored on the order so when Jeromy later opens it on the Orders dashboard to ship, the recipients are already populated and shown one per line — no re-typing.'},

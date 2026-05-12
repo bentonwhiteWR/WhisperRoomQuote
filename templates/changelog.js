@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.15.1', date:'May 12, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'The orders-dashboard Create Invoice button (/api/orders/:quoteNumber/create-qb-invoice) now auto-creates a QB Payment for non-PO orders, mirroring what /api/process-order does. This endpoint is the recovery path when the original process-order didn\'t reach QB, so it needed to produce the same end state — invoice AND payment. Previously it stopped at invoice creation, leaving the rep to mark-paid manually. Defaults: paymentMethod "Hubspot", deposit "Southeast Bank Regular Checking 2545". PO orders skip auto-payment (payment hasn\'t arrived yet). Auto-payment failures log + surface in the response without rolling back the invoice. Logged as order.qb-payment-auto with via:"create-qb-invoice" so we can distinguish from process-order auto-payments.'},
+      ]
+    },
+    {
       v:'1.15.0', date:'May 12, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'QB invoice tax suppression. The Tax Exempt checkbox on the quote builder previously had ZERO effect on the QB invoice — every line was sent with TaxCodeRef=TAX regardless, and QB Automatic Sales Tax then computed tax from the ship-to address. Same bug hit non-nexus states: TaxJar correctly returned $0 (NY isn\'t in NEXUS_STATES) but QB AST still added NY tax because NY was an active agency in the QB tax center. Both QB invoice paths now detect (snapshot.taxExempt === true) OR (TaxJar tax === $0) and send GlobalTaxCalculation:"NotApplicable" plus EXEMPT_CODE on every line + freight — silences AST entirely for that invoice. Does NOT override the amount for non-zero nexus-state orders (QB AST rejects per-invoice amount overrides for AST companies — see v1.7.10).'},

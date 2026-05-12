@@ -7269,7 +7269,70 @@ ${q.accepted ? `
         quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { qbInvoiceId: invoice.Id, qbDocNumber: invoice.DocNumber }
       });
       console.log(`[create-qb-invoice] ${quoteNumber}: QB invoice ${invoice.Id} (${invoice.DocNumber})`);
-      json({ success: true, qbInvoiceId: invoice.Id, qbDocNumber: invoice.DocNumber });
+
+      // Auto-create QB Payment for non-PO orders. Mirrors the process-order
+      // auto-payment block — this endpoint is the recovery path when the
+      // original process-order didn't reach QB, so it needs to produce the
+      // same end state (invoice + payment). PO orders stay open since
+      // payment hasn't actually arrived; everything else marks paid.
+      // Failures here don't roll back the invoice — log + surface in the
+      // response so the rep can mark paid manually.
+      let autoPayment = null;
+      let autoPaymentError = null;
+      if (paymentType && paymentType !== 'po') {
+        try {
+          const pmName   = process.env.QB_PAYMENT_METHOD_NAME || 'Hubspot';
+          const acctName = process.env.QB_DEPOSIT_ACCOUNT_NAME || 'Southeast Bank Regular Checking 2545';
+          const [pm, acct] = await Promise.all([
+            qb.findPaymentMethodByName(pmName),
+            qb.findAccountByName(acctName),
+          ]);
+          if (!pm)   throw new Error(`PaymentMethod "${pmName}" not found in QB`);
+          if (!acct) throw new Error(`Account "${acctName}" not found in QB`);
+
+          const invTotal = parseFloat(invoice.TotalAmt || 0);
+          const payment = await qb.createPayment({
+            customerRef:         invoice.CustomerRef,
+            invoiceId:           invoice.Id,
+            amount:              invTotal,
+            paymentMethodRef:    { value: pm.Id, name: pm.Name },
+            depositToAccountRef: { value: acct.Id, name: acct.Name },
+            txnDate:             new Date().toISOString().split('T')[0],
+            privateNote:         `Auto-payment on manual invoice creation (${paymentType.toUpperCase()}). Order ${quoteNumber}.`,
+          });
+          console.log(`[create-qb-invoice] QB payment created: id=${payment.Id} amount=$${invTotal.toFixed(2)}`);
+          await db.query(
+            `UPDATE orders SET order_data = order_data || $1::jsonb WHERE quote_number = $2`,
+            [JSON.stringify({
+              qbPayments: [{
+                paymentId: payment.Id,
+                amount: invTotal,
+                date: new Date().toISOString().split('T')[0],
+                method: pm.Name,
+                account: acct.Name,
+                markedAt: new Date().toISOString(),
+                auto: true,
+                paymentType,
+              }],
+              qbPaidAt: new Date().toISOString(),
+            }), quoteNumber]
+          );
+          writelog('info', 'order.qb-payment-auto', `Auto-paid: ${quoteNumber} → $${invTotal.toFixed(2)} (${paymentType}) via /create-qb-invoice`, {
+            quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { paymentId: payment.Id, paymentType, via: 'create-qb-invoice' }
+          });
+          autoPayment = { paymentId: payment.Id, amount: invTotal };
+        } catch(e) {
+          console.warn('[create-qb-invoice] Auto-payment failed (invoice still created):', e.message);
+          writelog('warn', 'order.qb-payment-auto-failed', `Auto-payment failed for ${quoteNumber} via /create-qb-invoice: ${e.message}`, {
+            quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { paymentType, via: 'create-qb-invoice' }
+          });
+          autoPaymentError = e.message;
+        }
+      } else if (paymentType === 'po') {
+        console.log(`[create-qb-invoice] Skipping auto-payment — PO order ${quoteNumber}`);
+      }
+
+      json({ success: true, qbInvoiceId: invoice.Id, qbDocNumber: invoice.DocNumber, autoPayment, autoPaymentError });
     } catch(e) {
       console.error('[create-qb-invoice] Error:', e.message);
       json({ error: e.message }, 500);

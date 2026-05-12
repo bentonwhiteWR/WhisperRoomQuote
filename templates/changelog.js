@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.13.5', date:'May 12, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'ABF rate cards with a dynamic discount now lead with the net (discounted) estimate in orange, followed by the −$X.XX dyn. discount note (green) and the actual standard cost (muted) below it. Previously the actual cost was the headline and the discount lived underneath — flipped because the rep wants the discounted price visually dominant. Cards without a dynamic discount are unchanged.'},
+      ]
+    },
+    {
       v:'1.13.4', date:'May 12, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Get Freight Quote modal: Pickup Date input moved to the main form (above Accessorials) so the rep sets it before pressing Get Rates. The date is sent with the rate request and drives ABF\'s ShipMonth/Day/Year (so TRDAYS / DUEDATE / transit display now reflect the actual pickup day, not server "today"). OD\'s SOAP rate API has no pickup-date field, so OD rates remain pickup-date-agnostic (called out in code comment). Default = today on modal open.'},

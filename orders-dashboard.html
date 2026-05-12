@@ -1067,12 +1067,15 @@ async function runFreightQuote() {
                 <div style="font-size:11px;color:var(--muted);margin-top:1px">Transit: ${escNote(c.transit)}${c.referenceNumber ? ` &nbsp;·&nbsp; <span style="color:var(--text);font-weight:600">Ref: ${escNote(c.referenceNumber)}</span>` : ''}</div>
               </div>
               <div style="text-align:right">
-                <div style="font-size:17px;font-weight:800;color:var(--orange)">$${c.cost.toFixed(2)}</div>
-                <div style="font-size:10px;color:var(--muted)">actual cost</div>
                 ${c.dynDisc > 0 ? `
+                  <div style="font-size:17px;font-weight:800;color:var(--orange)">$${(c.cost - c.dynDisc).toFixed(2)}</div>
+                  <div style="font-size:10px;color:var(--muted)">net est.</div>
                   <div style="font-size:10px;color:var(--green);margin-top:3px;font-weight:600" title="ABF dynamic discount — not guaranteed at booking">−$${c.dynDisc.toFixed(2)} dyn. discount</div>
-                  <div style="font-size:10px;color:var(--muted)">$${(c.cost - c.dynDisc).toFixed(2)} net est.</div>
-                ` : ''}
+                  <div style="font-size:10px;color:var(--muted)">$${c.cost.toFixed(2)} actual</div>
+                ` : `
+                  <div style="font-size:17px;font-weight:800;color:var(--orange)">$${c.cost.toFixed(2)}</div>
+                  <div style="font-size:10px;color:var(--muted)">actual cost</div>
+                `}
               </div>
             </div>
             ${c.notes && c.notes.length ? `

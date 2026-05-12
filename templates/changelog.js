@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.15.2', date:'May 12, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Tax Exempt now restores when reopening a saved quote. The flag was already being saved to local history (accessories.taxexempt) and to the server snapshot (taxExempt), but loadFromHistoryEntry\'s accessories-restore loop hardcoded only residential/liftgate/limitedaccess/loadingdock — the Tax Exempt checkbox stayed unchecked on revising quotes. Also restores the Tax Exempt Certificate # text (now saved to local history alongside the flag), shows the cert-input row when exempt, and mirrors the click-handler side effects (clears taxData, hides the tax-result panel) so the loaded quote matches the original state.'},
+      ]
+    },
+    {
       v:'1.15.1', date:'May 12, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'The orders-dashboard Create Invoice button (/api/orders/:quoteNumber/create-qb-invoice) now auto-creates a QB Payment for non-PO orders, mirroring what /api/process-order does. This endpoint is the recovery path when the original process-order didn\'t reach QB, so it needed to produce the same end state — invoice AND payment. Previously it stopped at invoice creation, leaving the rep to mark-paid manually. Defaults: paymentMethod "Hubspot", deposit "Southeast Bank Regular Checking 2545". PO orders skip auto-payment (payment hasn\'t arrived yet). Auto-payment failures log + surface in the response without rolling back the invoice. Logged as order.qb-payment-auto with via:"create-qb-invoice" so we can distinguish from process-order auto-payments.'},

@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.16.0', date:'May 12, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'HubSpot Fees tab on the Accounting page. Pick a month and see Transactions, Gross, Total HubSpot Fees (the headline figure to enter as a monthly QB expense), Processor Fee, Platform Fee, Net Deposited, and Refunds. Per-payment table beneath with date, invoice number, customer, method, and the three fee components. CSV download for the accountant. Powered by GET /api/accounting/hubspot-fees?month=YYYY-MM which paginates through HubSpot Payments search filtered to succeeded + hs_payments processor and aggregates hs_fees_amount + hs_platform_fee.'},
+        {t:'ui', d:'Renamed the Accounting page URL from /reconcile to /accounting (the page title was already "Accounting"; only the URL lagged). All cross-page nav links updated to /accounting. /reconcile keeps working — 302-redirects to /accounting with the query string preserved so the QB OAuth callback (?qb=connected) and any bookmarks still land. The QB OAuth callback now redirects to /accounting directly.'},
+      ]
+    },
+    {
       v:'1.15.3', date:'May 12, 2026', tag:'logging',
       changes:[
         {t:'log', d:'Diagnostic endpoint GET /api/debug/hubspot-payments?limit=3 dumps the full HubSpot Payment property schema plus a few recent payments with all property values populated. Used to identify which property name carries the processor fee before building the monthly HubSpot Fees summary card on the reports dashboard — guessing the field name risks a silent $0 column.'},

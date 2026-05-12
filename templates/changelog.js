@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.13.2', date:'May 12, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'ABF rate cards in the orders dashboard "Get Freight" popup now surface the dynamic discount when ABF returns one. Shown beneath the standard cost as `−$XX.XX dyn. discount` (green) plus a `$YY.YY net est.` line. Parsed value was already available from lib/freight.js parseAbfXml (DYNDISC element) but had never been wired through /api/orders-freight to the card render — only the quote builder warned about it. The discount is not guaranteed at booking, so it stays visually subordinate to the actual cost; reps see what ABF *might* knock off when they book on arcb.com.'},
+      ]
+    },
+    {
       v:'1.13.1', date:'May 12, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'ABF rate requests now subtract 144 lbs of pallet wood from each pallet weight before calling ABF. Our stored per-pallet weight is the gross floor weight (booth + accessories + wooden pallet), and ABF rates off product-only weight — they add pallet weight on their side. Without this we over-reported by ~144 lbs/pallet and ABF returned higher rates than its own public quote page. Floored at 0 so an unusually light pallet doesn\'t send a negative weight. Applied in lib/freight.js buildAbfUrl, so both the QB /api/freight path and the orders dashboard /api/orders-freight path benefit. OD path unchanged (its existing +120 adjustment stays).'},

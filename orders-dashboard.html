@@ -1057,6 +1057,10 @@ async function runFreightQuote() {
               <div style="text-align:right">
                 <div style="font-size:17px;font-weight:800;color:var(--orange)">$${c.cost.toFixed(2)}</div>
                 <div style="font-size:10px;color:var(--muted)">actual cost</div>
+                ${c.dynDisc > 0 ? `
+                  <div style="font-size:10px;color:var(--green);margin-top:3px;font-weight:600" title="ABF dynamic discount — not guaranteed at booking">−$${c.dynDisc.toFixed(2)} dyn. discount</div>
+                  <div style="font-size:10px;color:var(--muted)">$${(c.cost - c.dynDisc).toFixed(2)} net est.</div>
+                ` : ''}
               </div>
             </div>
             ${c.notes && c.notes.length ? `

@@ -6685,6 +6685,7 @@ ${q.accepted ? `
           service:     'Standard LTL',
           serviceCode: 'STND',
           cost:        result.cost,
+          dynDisc:     result.dynDisc || 0,
           transit:     result.transit,
           notes:       result.notes || [],
           quoteUrl:    abfQuoteUrl,

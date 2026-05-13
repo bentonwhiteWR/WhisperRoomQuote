@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.19.14', date:'May 13, 2026', tag:'logging',
+      changes:[
+        {t:'log', d:'More addendum tax diagnostics. v1.19.13 ShipAddr fix didn\'t help — even with a matched item (ItemRef:1092 FOAM 4) AST still returned TotalTax:0 / NetAmountTaxable:0. Added two more Railway log lines per addendum: (1) QB customer record\'s Taxable flag + DefaultTaxCodeRef + saved ShipAddr/BillAddr, and (2) the exact ShipAddr/BillAddr we sent. If Taxable=false on the QB customer, that\'s the cause — AST zero-taxes every invoice for tax-exempt customers regardless of line tax codes. Cheap one-shot query.'},
+      ]
+    },
+    {
       v:'1.19.13', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Addendum invoice ShipAddr/BillAddr construction now matches process-order exactly — uses conditional spread to omit missing fields, instead of sending empty strings. The addendum diagnostic from v1.19.11 showed AST returning TaxLine with TaxPercent:0 + NetAmountTaxable:0 even though we tagged lines TAX and didn\'t suppress. Empty-string Line1/City in ShipAddr can break AST\'s jurisdiction lookup silently — it falls back to a 0% rate. Process-order omits missing fields entirely, which is what AST needs. This is the only payload difference between the two paths.'},

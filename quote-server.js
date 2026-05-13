@@ -8111,6 +8111,16 @@ ${q.accepted ? `
         itemRef: l.SalesItemLineDetail?.ItemRef?.value,
         taxCode: l.SalesItemLineDetail?.TaxCodeRef?.value,
       }))));
+      // Diagnostic: pull the full QB customer record so we can see the
+      // Taxable flag — if it's false, AST will silently zero-tax every
+      // line on every invoice for this customer regardless of line tax
+      // codes. Cheap one-shot query for debugging.
+      try {
+        const custRes = await qb.qbQueryRaw(`SELECT * FROM Customer WHERE Id = '${cust.Id}'`);
+        const c = custRes?.QueryResponse?.Customer?.[0];
+        console.log(`[add-charge] QB customer ${cust.Id} (${c?.DisplayName}): Taxable=${c?.Taxable} DefaultTaxCodeRef=${JSON.stringify(c?.DefaultTaxCodeRef)} ShipAddr=${JSON.stringify(c?.ShipAddr)} BillAddr=${JSON.stringify(c?.BillAddr)}`);
+      } catch(e) { console.warn('[add-charge] customer diagnostic query failed:', e.message); }
+      console.log(`[add-charge] payload shipAddr=${JSON.stringify(shipAddr)} billAddr=${JSON.stringify(billAddr)}`);
 
       const customFields = [];
       if (!isCreditMemo && pt === 'po' && poNumber) {

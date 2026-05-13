@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.19.6', date:'May 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Remove addendum (paid included). The Modify modal\'s Remove button now works on PAID addendums too — it deletes the QB auto-payment first (which un-pays the invoice) and then the QB invoice/credit memo. Previously paid addendums were blocked with a "use refund flow instead" message; per 2026-05-13 spec, Remove should be the universal undo. Order page + Deal Hub auto-update to reflect the removal. Partial-failure cases (QB rejects one of the two deletes) are surfaced via toast so the rep knows to clean up manually.'},
+        {t:'fix', d:'Order PDF in the shared orders folder + per-deal Drive folder now ACTUALLY overwrites instead of accumulating duplicate "Order (1).pdf" / "Order (2).pdf" files on each addendum. New helpers in lib/gdrive.js: gdriveFindFileByName, gdriveUpdateFilePdfContent, gdriveUpsertFilePdf. Upsert searches by name in the parent folder; if found, PATCH the file content; if not, create new. add-charge + void-addendum both use upsert now, as does gdriveSavePdfToDeal internally.'},
+        {t:'fix', d:'Order-modified email mailto now always fires on success (was gated on order-not-shipped) and shows a visible toast "📧 Email draft opened — click Send in your mail client to notify shipping" 600ms after the popup. Reps were missing the auto-opened mail-client window and never clicking Send. Console.log added for diagnosis.'},
+      ]
+    },
+    {
       v:'1.19.5', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Select Rate in the orders dashboard now keeps the side drawer open. The v1.14.1 behavior closed the drawer (delegating to saveOrder) so reps had to reopen it to keep editing tracking, ship date, hardware box, etc. — annoying when they just want to apply the rate and continue. saveOrder() now accepts { keepDrawerOpen: true } and Select Rate passes it. Regular Save Changes flow still closes (unchanged).'},

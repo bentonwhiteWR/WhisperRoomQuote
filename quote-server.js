@@ -39,6 +39,7 @@ const {
   gdriveCreateDealFolders,
   gdriveSavePdfToDeal,
   gdriveUploadFilePdf,
+  gdriveUpsertFilePdf,
 } = gdrive;
 
 
@@ -8202,10 +8203,12 @@ ${q.accepted ? `
           const orderUrl = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}?t=${tok}`;
           const pdfBuf   = await generatePdfBuffer(orderUrl);
           const fname    = buildPdfFilename(snap, quoteNumber, 'Order', dealName);
-          // Shared orders folder (flat list for accounting).
+          // Shared orders folder (flat list for accounting). Upsert by
+          // filename so re-running on subsequent addendums REPLACES the
+          // file content instead of accumulating duplicates.
           try {
-            const r = await gdriveUploadFilePdf(fname, pdfBuf, SHARED_ORDERS_FOLDER);
-            if (r?.id) console.log(`[add-charge] PDF regenerated in shared orders folder: ${fname}`);
+            const r = await gdriveUpsertFilePdf(fname, pdfBuf, SHARED_ORDERS_FOLDER);
+            if (r?.id) console.log(`[add-charge] PDF ${r._replaced ? 'replaced' : 'created'} in shared orders folder: ${fname}`);
           } catch(e) { console.warn('[add-charge] shared orders PDF upload failed:', e.message); }
           // Per-deal Drive folder under "Final Order".
           try {
@@ -8277,18 +8280,25 @@ ${q.accepted ? `
         if (idx === -1)                                  { json({ error: 'Addendum not found' }, 404); return; }
         const add = addendums[idx];
         if (add.voided)                                  { json({ error: 'Addendum already voided' }, 400); return; }
-        if (add.paidAt || add.qbPaymentId) {
-          json({ error: 'Cannot void a paid addendum. Use refund flow instead.' }, 400);
-          return;
-        }
         const repName = getRepFromReq(req, {}) || 'unknown';
 
-        // Delete the QB object (Invoice or CreditMemo). If QB rejects
-        // (e.g. referenced elsewhere), still mark voided locally; rep can
-        // clean up the orphan in QB manually. Prefer the new qbId +
-        // type fields; fall back to legacy qbInvoiceId for pre-v1.18.1
-        // addendums.
+        // Tear down the QB side: delete the auto-payment FIRST (so the
+        // invoice loses its paid status and can be deleted), then the
+        // invoice/credit memo. Failures are logged but don't stop the
+        // local void — rep can clean up orphans in QB manually if QB
+        // rejects either delete. Per 2026-05-13 spec: void should fully
+        // reverse the addendum, not require a separate refund flow.
         let qbVoidError = null;
+        let qbPaymentVoidError = null;
+        if (add.qbPaymentId) {
+          try {
+            await qb.deletePayment(add.qbPaymentId);
+            console.log(`[void-addendum] QB payment ${add.qbPaymentId} deleted`);
+          } catch(e) {
+            qbPaymentVoidError = e.message;
+            console.warn(`[void-addendum] QB payment delete failed:`, e.message);
+          }
+        }
         const targetType = add.type || (add.qbCreditMemoId ? 'credit' : 'invoice');
         const targetId   = add.qbId || add.qbInvoiceId || add.qbCreditMemoId;
         if (targetId) {
@@ -8305,6 +8315,7 @@ ${q.accepted ? `
           voidedAt:  new Date().toISOString(),
           voidedBy:  repName,
           ...(qbVoidError ? { qbVoidError } : {}),
+          ...(qbPaymentVoidError ? { qbPaymentVoidError } : {}),
         };
 
         const updateFields = { addendums };
@@ -8347,9 +8358,9 @@ ${q.accepted ? `
 
         writelog('info', 'order.addendum-voided', `Addendum voided on ${quoteNumber}: ${add.qbDocNumber} ($${add.amount})`, {
           rep: repName, quoteNum: quoteNumber, dealId: String(dealId || ''),
-          meta: { addendumId, qbInvoiceId: add.qbInvoiceId, amount: add.amount, qbVoidError },
+          meta: { addendumId, qbInvoiceId: add.qbInvoiceId, qbPaymentId: add.qbPaymentId, amount: add.amount, qbVoidError, qbPaymentVoidError },
         });
-        json({ success: true, addendums, qbVoidError });
+        json({ success: true, addendums, qbVoidError, qbPaymentVoidError });
 
         // Post-success: regen PDF (totals changed) + notify Jeromy if
         // the order hasn't shipped yet. Same pattern as add-charge.
@@ -8363,7 +8374,7 @@ ${q.accepted ? `
               const orderUrl = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}?t=${tok}`;
               const pdfBuf = await generatePdfBuffer(orderUrl);
               const fname  = buildPdfFilename(snap, quoteNumber, 'Order', dnm);
-              try { await gdriveUploadFilePdf(fname, pdfBuf, SHARED_ORDERS_FOLDER); } catch(e) {}
+              try { await gdriveUpsertFilePdf(fname, pdfBuf, SHARED_ORDERS_FOLDER); } catch(e) {}
               try { await gdriveSavePdfToDeal(quoteNumber, 'Final Order', fname, pdfBuf); } catch(e) {}
               console.log(`[void-addendum] PDF regenerated for ${quoteNumber}`);
             }

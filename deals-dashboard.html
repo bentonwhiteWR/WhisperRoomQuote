@@ -2961,8 +2961,8 @@ function renderModifyAddendums(addendums) {
         : (isPaid
           ? 'background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)'
           : 'background:rgba(245,158,11,.12);color:#f59e0b;border:1px solid rgba(245,158,11,.3)'));
-    const voidBtn = (!isVoided && !isPaid)
-      ? `<button onclick="voidAddendumFromHub('${a.id}')" title="Void this addendum (deletes QB doc)" style="margin-left:auto;padding:3px 8px;font-size:10px;font-weight:600;background:rgba(239,68,68,.08);color:#ef4444;border:1px solid rgba(239,68,68,.25);border-radius:4px;cursor:pointer;font-family:inherit">Void</button>`
+    const voidBtn = !isVoided
+      ? `<button onclick="voidAddendumFromHub('${a.id}', ${isPaid ? 'true' : 'false'})" title="Remove this addendum (deletes QB invoice/credit memo${isPaid ? ' and refunds the auto-payment' : ''})" style="margin-left:auto;padding:3px 8px;font-size:10px;font-weight:600;background:rgba(239,68,68,.08);color:#ef4444;border:1px solid rgba(239,68,68,.25);border-radius:4px;cursor:pointer;font-family:inherit">Remove</button>`
       : '';
     const linesHtml = Array.isArray(a.lines) && a.lines.length
       ? a.lines.map(ln => `<div style="font-size:11px;color:var(--muted);padding-left:6px">• ${esc(ln.description)} <span style="float:right;font-family:var(--mono)">${parseFloat(ln.amount) < 0 ? '−' : ''}${fmt(ln.amount)}</span></div>`).join('')
@@ -3026,12 +3026,22 @@ async function submitModifyOrder() {
       const docType = data.addendum?.type === 'credit' ? 'Credit memo' : 'Invoice';
       showToast(`${docType} created · ${data.addendum?.qbDocNumber || ''}`, 'success');
     }
-    // Email Jeromy (mailto: opens rep's mail client). Same pattern as
-    // process-order's notification email — rep clicks Send to deliver.
-    // Skip if the order is already shipped (Jeromy already let it go).
-    const wasShipped = !!_modifyOrderData?.shipped?.tracking;
-    if (!wasShipped && data.addendum) {
-      try { openOrderModifiedEmail(data.addendum, _modifyOrderData); } catch(e) { console.warn('mailto open failed:', e); }
+    // Email Shipping (mailto: opens rep's mail client). Always fire on
+    // success — rep can ignore for shipped orders if they want. Fire
+    // BEFORE closeModifyOrderModal + openDeal so the browser's user-
+    // activation gesture from the rep's Process click is still fresh
+    // (some browsers throttle mailto after multiple awaits + DOM
+    // teardown). Visible toast nudges the rep to click Send in their
+    // mail client — easy to miss the popup otherwise.
+    if (data.addendum) {
+      try {
+        console.log('[modify-order] opening shipping mailto for', data.addendum.qbDocNumber);
+        openOrderModifiedEmail(data.addendum, _modifyOrderData);
+        setTimeout(() => showToast('📧 Email draft opened — click Send in your mail client to notify shipping', 'info'), 600);
+      } catch(e) {
+        console.warn('[modify-order] mailto open failed:', e);
+        showToast('Could not open email draft — notify shipping manually', 'info');
+      }
     }
     closeModifyOrderModal();
     openDeal(currentDealId);   // re-fetch the hub to surface the new addendum
@@ -3085,10 +3095,13 @@ function openOrderModifiedEmail(addendum, ord) {
   setTimeout(() => document.body.removeChild(a), 100);
 }
 
-async function voidAddendumFromHub(addendumId) {
+async function voidAddendumFromHub(addendumId, isPaid) {
   const quoteNumber = _modifyOrderQuoteNumber;
   if (!quoteNumber || !addendumId) return;
-  if (!confirm('Void this addendum? This deletes the QB document and reverses any freight-cost bump. Cannot be undone.')) return;
+  const paidWarning = isPaid
+    ? 'This will refund the QB auto-payment AND delete the QB invoice/credit memo.\n\n'
+    : 'This will delete the QB invoice/credit memo.\n\n';
+  if (!confirm(`Remove this addendum?\n\n${paidWarning}The order page totals will update to reflect the removal. Cannot be undone.`)) return;
   try {
     const res = await fetch(`/api/orders/${encodeURIComponent(quoteNumber)}/addendums/${encodeURIComponent(addendumId)}/void`, {
       method: 'POST',
@@ -3096,10 +3109,15 @@ async function voidAddendumFromHub(addendumId) {
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Void failed');
-    if (data.qbVoidError) {
-      showToast(`Voided locally, but QB delete failed: ${data.qbVoidError}`, 'info');
+    // Surface partial-failure cases (QB rejected one of the two deletes
+    // but we marked voided locally so the rep knows to clean up).
+    const partial = [];
+    if (data.qbVoidError)        partial.push(`QB doc delete failed: ${data.qbVoidError}`);
+    if (data.qbPaymentVoidError) partial.push(`QB payment delete failed: ${data.qbPaymentVoidError}`);
+    if (partial.length) {
+      showToast(`Removed locally — clean up in QB: ${partial.join('; ')}`, 'info');
     } else {
-      showToast('Addendum voided', 'success');
+      showToast('Addendum removed', 'success');
     }
     // Refresh hub data so the modal can re-render with updated state.
     const oldQuoteNumber = quoteNumber;

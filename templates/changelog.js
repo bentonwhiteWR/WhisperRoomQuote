@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.18.1', date:'May 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Order Addendums moved from the orders dashboard drawer to the Deal Hub. Every order row in the Deal Hub now has a "Modify" button that opens a modal with two sections: (1) Existing addendums for this order with status badges (Paid / Open / Credit / Voided) + void buttons on unpaid ones; (2) Add new — a multi-line builder where each row is description + amount (negative for credits), plus an "+ Add line" button. Net total + resulting QB doc type (Invoice or Credit Memo) preview live as the rep types. The order row also shows a small color-coded chip summarizing active addendums (e.g. "+$450 · 2" or "−$200"). The orders dashboard drawer no longer has any addendum UI.'},
+        {t:'add', d:'Addendums now support multi-line + credits. Net positive across all lines → QB Invoice (with auto-payment for non-PO types, mirroring create-qb-invoice). Net negative → QB Credit Memo (no auto-payment; rep applies/refunds in QB). Net zero is rejected (split into separate addendums). Each line stored individually on order_data.addendums[i].lines for audit. lib/quickbooks.js gains createCreditMemo + getCreditMemo + deleteCreditMemo. Void endpoint now handles both QB doc types via the addendum\'s type field.'},
+        {t:'ui', d:'DocNumber convention: invoices stay as W-{QUOTE}-A{n} but credit memos use W-{QUOTE}-C{n} so accounting can tell the two apart at a glance in QB. Real example: Russell Turner shipping upgrade = -A1; foam-downgrade refund = -C1.'},
+      ]
+    },
+    {
       v:'1.18.0', date:'May 13, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Order Addendums — handle post-process charges like shipping upgrades without overwriting the original order. New "+ Add Charge" button in the order drawer\'s Shipment section opens a modal (description, amount, payment type, optional PO #, "Apply to Freight" checkbox). Submitting creates a new QB invoice with DocNumber {QUOTE}-A{n} (e.g. W-1605132601-A1) plus auto-payment for non-PO types. Each addendum tracked in order_data.addendums forever with audit trail (id, description, amount, payment, paidAt, addedBy, addedAt). Drawer shows the list with status badges (Paid/Open/Voided) and a total billed summary ($X original + $Y addendums). Real incident May 12: Russell Turner upgraded his shipping after order processed; Sarah manually created a 2nd invoice. Now systemized.'},

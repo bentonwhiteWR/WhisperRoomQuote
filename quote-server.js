@@ -6389,6 +6389,8 @@ ${q.accepted ? `
           hingePreference: r.order_data?.hingePreference || '',
           shipped:         r.order_data?.shipped || null,
           freightCost:     r.order_data?.freightCost || null,
+          paymentType:     r.order_data?.paymentType || null,
+          addendums:       Array.isArray(r.order_data?.addendums) ? r.order_data.addendums : [],
           createdAt:       r.created_at,
           apItems,
           apColor,
@@ -7764,16 +7766,20 @@ ${q.accepted ? `
     return;
   }
 
-  // ── API: Add Charge (Order Addendum) ─────────────────────────────
-  // Adds a tracked post-process charge to an existing order — e.g. a
-  // shipping upgrade after the original invoice was already paid.
-  // Each addendum becomes its own QB invoice (DocNumber like
-  // W-XXXXXXXXXX-A1) with auto-payment for non-PO types, mirroring the
-  // process-order pattern. order_data.addendums tracks the audit trail
-  // forever. Per discussion 2026-05-13: separate QB invoices, same tax
-  // suppression rules, HS deal amount updates to original + addendums.
-  //
-  // Body: { description, amount, paymentType, poNumber?, applyToFreight? }
+  // ── API: Order Addendum (multi-line, invoice or credit memo) ────
+  // Adds a tracked post-process change to an existing order. The body
+  // is a multi-line builder:
+  //   { lines: [{description, amount}, ...], paymentType, poNumber?,
+  //     applyToFreight? }
+  // Lines can mix positive and negative amounts. The net signs the kind
+  // of QB document:
+  //   net > 0 → Invoice (with auto-payment for non-PO)
+  //   net < 0 → Credit Memo (no auto-payment; rep applies/refunds later)
+  //   net = 0 → rejected (a net-zero adjustment is informational; if a
+  //              rep truly needs it, they can split into two addendums)
+  // Use cases: freight upgrade (1 positive line), wall upgrade + foam
+  // downgrade (2 lines, +500 / -100 = +400 invoice), pure credit for
+  // goodwill (1 negative line → credit memo).
   if (pathname.startsWith('/api/orders/') && pathname.endsWith('/add-charge') && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').replace('/add-charge', '').trim());
@@ -7782,16 +7788,35 @@ ${q.accepted ? `
     catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
     try {
       if (!db) { json({ error: 'No database' }, 500); return; }
-      const description = String(body.description || '').trim();
-      const amt         = parseFloat(body.amount);
-      const pt          = String(body.paymentType || '').toLowerCase().trim();
-      const poNumber    = body.poNumber ? String(body.poNumber).trim() : null;
+      const rawLines       = Array.isArray(body.lines) ? body.lines : [];
+      const pt             = String(body.paymentType || '').toLowerCase().trim();
+      const poNumber       = body.poNumber ? String(body.poNumber).trim() : null;
       const applyToFreight = !!body.applyToFreight;
 
-      if (!description)              { json({ error: 'Description is required' }, 400); return; }
-      if (!amt || amt <= 0 || isNaN(amt)) { json({ error: 'Amount must be a positive number' }, 400); return; }
-      if (!['hs','cc','ach','po','other'].includes(pt)) { json({ error: 'Invalid payment type' }, 400); return; }
-      if (pt === 'po' && !poNumber)  { json({ error: 'PO number required for PO payment type' }, 400); return; }
+      if (!rawLines.length) { json({ error: 'At least one line is required' }, 400); return; }
+      // Normalize + validate every line. Empty descriptions and zero
+      // amounts get rejected — the rep is asked to remove the line or
+      // fill it in.
+      const cleanLines = rawLines.map(l => ({
+        description: String(l?.description || '').trim(),
+        amount:      parseFloat(l?.amount),
+      }));
+      for (let i = 0; i < cleanLines.length; i++) {
+        const ln = cleanLines[i];
+        if (!ln.description)                       { json({ error: `Line ${i+1}: description required` }, 400); return; }
+        if (isNaN(ln.amount) || ln.amount === 0)   { json({ error: `Line ${i+1}: amount must be nonzero` }, 400); return; }
+      }
+      const netTotal = parseFloat(cleanLines.reduce((s, l) => s + l.amount, 0).toFixed(2));
+      if (netTotal === 0) { json({ error: 'Net total is zero. Adjust the amounts or split into separate addendums.' }, 400); return; }
+      const isCreditMemo = netTotal < 0;
+      const absTotal     = Math.abs(netTotal);
+
+      // Payment type only matters when creating an Invoice (positive net).
+      // Credit memos don't get auto-paid; ignore payment type for them.
+      if (!isCreditMemo) {
+        if (!['hs','cc','ach','po','other'].includes(pt)) { json({ error: 'Invalid payment type' }, 400); return; }
+        if (pt === 'po' && !poNumber)                     { json({ error: 'PO number required for PO payment type' }, 400); return; }
+      }
 
       const row = await db.query(`
         SELECT o.order_data, o.deal_id, q.json_snapshot
@@ -7808,8 +7833,6 @@ ${q.accepted ? `
       const billing   = snap.billing  || null;
       const tax       = snap.tax      || {};
       const prevAddendums = Array.isArray(orderData.addendums) ? orderData.addendums : [];
-      // Numbering only counts non-voided so users see A1, A2, A3 sequentially
-      // even if A1 was later voided and A2 was added after.
       const addendumNum = prevAddendums.filter(a => !a.voided).length + 1;
       const repName     = getRepFromReq(req, body) || 'unknown';
 
@@ -7844,62 +7867,102 @@ ${q.accepted ? `
         billAddr, shipAddr,
       });
 
-      // Single line item for the addendum charge. Description is rep-supplied
-      // (e.g. "Shipping upgrade: ABF Guaranteed").
-      const lineAmt = parseFloat(amt.toFixed(2));
-      const qbLines = [{
-        Amount: lineAmt,
-        DetailType: 'SalesItemLineDetail',
-        Description: description,
-        SalesItemLineDetail: {
-          ItemRef:    { value: fallback.value },
-          UnitPrice:  lineAmt,
-          Qty:        1,
-          TaxCodeRef: lineTaxRef,
-        },
-      }];
+      // Build QB lines. For Invoice: pass amounts as-is (negative line
+      // amounts show as credit-style lines and reduce the invoice total
+      // naturally). For Credit Memo: flip every line to positive — the
+      // CreditMemo object type already implies "we owe the customer"; QB
+      // doesn't accept negative amounts on credit memo lines.
+      const qbLines = cleanLines.map(ln => {
+        const amt = parseFloat((isCreditMemo ? Math.abs(ln.amount) : ln.amount).toFixed(2));
+        return {
+          Amount: amt,
+          DetailType: 'SalesItemLineDetail',
+          Description: ln.description,
+          SalesItemLineDetail: {
+            ItemRef:    { value: fallback.value },
+            UnitPrice:  amt,
+            Qty:        1,
+            TaxCodeRef: lineTaxRef,
+          },
+        };
+      });
 
       const customFields = [];
-      if (pt === 'po' && poNumber) {
+      if (!isCreditMemo && pt === 'po' && poNumber) {
         customFields.push({ DefinitionId: '1', Name: 'P.O. Number', Type: 'StringType', StringValue: poNumber });
       }
-
-      const termName = pt === 'po'
-        ? (process.env.QB_TERM_NET30        || 'Net 30')
-        : (process.env.QB_TERM_UPON_RECEIPT || 'Due on receipt');
+      // Terms only meaningful on invoices; credit memos don't have due dates.
       let salesTermRef = null;
-      try {
-        const term = await qb.findTermByName(termName);
-        if (term) salesTermRef = { value: String(term.Id) };
-      } catch(e) {}
+      if (!isCreditMemo) {
+        const termName = pt === 'po'
+          ? (process.env.QB_TERM_NET30        || 'Net 30')
+          : (process.env.QB_TERM_UPON_RECEIPT || 'Due on receipt');
+        try {
+          const term = await qb.findTermByName(termName);
+          if (term) salesTermRef = { value: String(term.Id) };
+        } catch(e) {}
+      }
 
-      // DocNumber: original quote + "-A<n>". QB caps DocNumber at 21 chars;
-      // truncate the base if needed (rare — our quote numbers are 12 chars).
-      const docSuffix = `-A${addendumNum}`;
-      const docBase   = String(quoteNumber).slice(0, 21 - docSuffix.length);
-      const docNumber = docBase + docSuffix;
+      // DocNumber: original quote + "-A<n>" for invoices, "-C<n>" for
+      // credit memos. Easier to scan in QB ("oh that's a credit, not a
+      // charge"). 21-char cap, leave room for suffix.
+      const suffixChar = isCreditMemo ? 'C' : 'A';
+      const docSuffix  = `-${suffixChar}${addendumNum}`;
+      const docBase    = String(quoteNumber).slice(0, 21 - docSuffix.length);
+      const docNumber  = docBase + docSuffix;
 
-      const invoice = await qb.createInvoice({
-        customerRef: { value: cust.Id },
-        docNumber,
-        txnDate:     new Date().toISOString().split('T')[0],
-        lines:       qbLines,
-        memo:        `Order addendum #${addendumNum} for ${quoteNumber}: ${description}. Finance charges of 1.5% per month will be added to invoices not paid by the due date.`,
-        billAddr,
-        shipAddr,
-        billEmail:   (billing && billing.email) || customer.email || null,
-        customFields: customFields.length ? customFields : null,
-        salesTermRef,
-        globalTaxCalc: _suppressQbTax ? 'NotApplicable' : undefined,
-        applyTaxAfterDiscount: true,
-      });
-      if (!invoice?.Id) throw new Error('QB createInvoice returned no Id');
+      // Combined memo (shows in QB's email body if invoice is emailed
+      // and in the invoice PDF itself).
+      const linesSummary = cleanLines.map(l => `${l.description}: $${l.amount.toFixed(2)}`).join('; ');
+      const baseMemo = `Order addendum #${addendumNum} for ${quoteNumber}. ${linesSummary}.`;
+      const memo = isCreditMemo
+        ? baseMemo
+        : `${baseMemo} Finance charges of 1.5% per month will be added to invoices not paid by the due date.`;
 
-      // Auto-payment for non-PO types — mirrors the create-qb-invoice path.
+      let qbId = null, qbDocNumber = null, qbObjForPayment = null;
+      if (isCreditMemo) {
+        const cm = await qb.createCreditMemo({
+          customerRef: { value: cust.Id },
+          docNumber,
+          txnDate:     new Date().toISOString().split('T')[0],
+          lines:       qbLines,
+          memo,
+          billAddr,
+          shipAddr,
+          billEmail:   (billing && billing.email) || customer.email || null,
+          customFields: customFields.length ? customFields : null,
+          globalTaxCalc: _suppressQbTax ? 'NotApplicable' : undefined,
+        });
+        if (!cm?.Id) throw new Error('QB createCreditMemo returned no Id');
+        qbId        = cm.Id;
+        qbDocNumber = cm.DocNumber;
+      } else {
+        const inv = await qb.createInvoice({
+          customerRef: { value: cust.Id },
+          docNumber,
+          txnDate:     new Date().toISOString().split('T')[0],
+          lines:       qbLines,
+          memo,
+          billAddr,
+          shipAddr,
+          billEmail:   (billing && billing.email) || customer.email || null,
+          customFields: customFields.length ? customFields : null,
+          salesTermRef,
+          globalTaxCalc: _suppressQbTax ? 'NotApplicable' : undefined,
+          applyTaxAfterDiscount: true,
+        });
+        if (!inv?.Id) throw new Error('QB createInvoice returned no Id');
+        qbId            = inv.Id;
+        qbDocNumber     = inv.DocNumber;
+        qbObjForPayment = inv;
+      }
+
+      // Auto-payment is only for Invoices (positive net) and only for
+      // non-PO types. Credit memos and PO invoices are left open.
       let qbPaymentId      = null;
       let paidAt           = null;
       let autoPaymentError = null;
-      if (pt !== 'po') {
+      if (!isCreditMemo && pt !== 'po' && qbObjForPayment) {
         try {
           const pmName   = process.env.QB_PAYMENT_METHOD_NAME || 'Hubspot';
           const acctName = process.env.QB_DEPOSIT_ACCOUNT_NAME || 'Southeast Bank Regular Checking 2545';
@@ -7910,13 +7973,13 @@ ${q.accepted ? `
           if (!pm)   throw new Error(`PaymentMethod "${pmName}" not found in QB`);
           if (!acct) throw new Error(`Account "${acctName}" not found in QB`);
           const payment = await qb.createPayment({
-            customerRef:         invoice.CustomerRef,
-            invoiceId:           invoice.Id,
-            amount:              lineAmt,
+            customerRef:         qbObjForPayment.CustomerRef,
+            invoiceId:           qbObjForPayment.Id,
+            amount:              absTotal,
             paymentMethodRef:    { value: pm.Id, name: pm.Name },
             depositToAccountRef: { value: acct.Id, name: acct.Name },
             txnDate:             new Date().toISOString().split('T')[0],
-            privateNote:         `Auto-payment on order addendum (${pt.toUpperCase()}). Order ${quoteNumber}, addendum ${docNumber}.`,
+            privateNote:         `Auto-payment on order addendum (${pt.toUpperCase()}). Order ${quoteNumber}, addendum ${qbDocNumber}.`,
           });
           qbPaymentId = payment.Id;
           paidAt      = new Date().toISOString();
@@ -7926,16 +7989,22 @@ ${q.accepted ? `
         }
       }
 
-      // Build the addendum record we'll persist on order_data.
+      // Persist addendum. `amount` mirrors netTotal (signed) so downstream
+      // summing is trivial; `lines` keeps the per-line detail for audit.
       const addendum = {
         id:             'add_' + crypto.randomBytes(6).toString('hex'),
-        description,
-        amount:         lineAmt,
-        paymentType:    pt,
-        poNumber:       (pt === 'po') ? poNumber : null,
+        type:           isCreditMemo ? 'credit' : 'invoice',
+        lines:          cleanLines,
+        amount:         netTotal,                  // signed: negative for credits
+        paymentType:    isCreditMemo ? null : pt,
+        poNumber:       (!isCreditMemo && pt === 'po') ? poNumber : null,
         applyToFreight,
-        qbInvoiceId:    invoice.Id,
-        qbDocNumber:    invoice.DocNumber,
+        qbId,
+        qbDocNumber,
+        // Legacy alias for invoice-type addendums so older display code
+        // (and the v1.18.0 prior format) keeps working.
+        qbInvoiceId:    isCreditMemo ? null : qbId,
+        qbCreditMemoId: isCreditMemo ? qbId  : null,
         qbPaymentId,
         paidAt,
         addedBy:        repName,
@@ -7947,7 +8016,8 @@ ${q.accepted ? `
       const updateFields = { addendums: newAddendums };
       if (applyToFreight) {
         const prevFreight = parseFloat(orderData.freightCost || 0) || 0;
-        updateFields.freightCost = parseFloat((prevFreight + lineAmt).toFixed(2));
+        const next        = parseFloat((prevFreight + netTotal).toFixed(2));
+        updateFields.freightCost = next < 0 ? 0 : next;
       }
       await db.query(
         `UPDATE orders SET order_data = order_data || $1::jsonb WHERE quote_number = $2`,
@@ -7955,6 +8025,7 @@ ${q.accepted ? `
       );
 
       // Update HubSpot deal amount: original + sum(active addendums).
+      // Credit-memo addendums have negative `amount`, so they reduce.
       if (dealId) {
         try {
           const originalAmount = parseFloat(snap.total || 0) || 0;
@@ -7971,9 +8042,9 @@ ${q.accepted ? `
         }
       }
 
-      writelog('info', 'order.addendum-added', `Addendum added to ${quoteNumber}: ${description} ($${lineAmt.toFixed(2)})`, {
+      writelog('info', 'order.addendum-added', `Addendum ${addendum.type} added to ${quoteNumber} (${qbDocNumber}, net $${netTotal.toFixed(2)})`, {
         rep: repName, quoteNum: quoteNumber, dealId: String(dealId || ''),
-        meta: { addendumId: addendum.id, qbInvoiceId: invoice.Id, qbDocNumber: invoice.DocNumber, amount: lineAmt, paymentType: pt, applyToFreight, autoPaymentError },
+        meta: { addendumId: addendum.id, type: addendum.type, qbId, qbDocNumber, netTotal, lineCount: cleanLines.length, paymentType: addendum.paymentType, applyToFreight, autoPaymentError },
       });
       json({ success: true, addendum, addendums: newAddendums, autoPaymentError });
     } catch(e) {
@@ -8018,13 +8089,20 @@ ${q.accepted ? `
         }
         const repName = getRepFromReq(req, {}) || 'unknown';
 
-        // Delete the QB invoice. If QB rejects (e.g. invoice referenced
-        // elsewhere), we still mark the addendum voided locally — the rep
-        // can clean up the orphan in QB manually.
+        // Delete the QB object (Invoice or CreditMemo). If QB rejects
+        // (e.g. referenced elsewhere), still mark voided locally; rep can
+        // clean up the orphan in QB manually. Prefer the new qbId +
+        // type fields; fall back to legacy qbInvoiceId for pre-v1.18.1
+        // addendums.
         let qbVoidError = null;
-        if (add.qbInvoiceId) {
-          try { await qb.deleteInvoice(add.qbInvoiceId); }
-          catch(e) { qbVoidError = e.message; console.warn('[void-addendum] QB delete failed:', e.message); }
+        const targetType = add.type || (add.qbCreditMemoId ? 'credit' : 'invoice');
+        const targetId   = add.qbId || add.qbInvoiceId || add.qbCreditMemoId;
+        if (targetId) {
+          try {
+            if (targetType === 'credit') await qb.deleteCreditMemo(targetId);
+            else                          await qb.deleteInvoice(targetId);
+          }
+          catch(e) { qbVoidError = e.message; console.warn(`[void-addendum] QB delete (${targetType}) failed:`, e.message); }
         }
 
         addendums[idx] = {
@@ -8037,6 +8115,9 @@ ${q.accepted ? `
 
         const updateFields = { addendums };
         if (add.applyToFreight) {
+          // Reverse the freight bump. addendum.amount is signed (negative
+          // for credit-memo addendums), so subtracting it from current
+          // freight undoes the original `+= netTotal` regardless of sign.
           const prevFreight = parseFloat(orderData.freightCost || 0) || 0;
           const reverted = parseFloat((prevFreight - parseFloat(add.amount)).toFixed(2));
           updateFields.freightCost = reverted < 0 ? 0 : reverted;

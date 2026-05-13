@@ -3130,9 +3130,13 @@ function openOrderModifiedEmail(addendum, ord) {
     `Modified by: ${addendum.addedBy || 'rep'}`,
   ].filter(Boolean).join('\n');
   // CCs: accounting + Benton on every order-modified notification.
-  // Multiple CCs use comma separator per RFC 6068.
+  // Use ";" separator — Outlook (the main client at WhisperRoom) treats
+  // comma-separated addresses as a single malformed recipient and only
+  // CCs the first one. Semicolon is non-standard per RFC 6068 but
+  // Outlook reads it correctly. Process-order's notification email uses
+  // the same separator for the same reason.
   const ccList = ['accounting@whisperroom.com', 'bentonwhite@whisperroom.com'];
-  const mailto = `mailto:shipping@whisperroom.com?cc=${ccList.join(',')}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const mailto = `mailto:shipping@whisperroom.com?cc=${ccList.join(';')}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   const a = document.createElement('a');
   a.href = mailto;
   a.style.display = 'none';

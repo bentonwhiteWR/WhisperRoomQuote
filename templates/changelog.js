@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.19.12', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Order-modified mailto: CC list now joined with ";" instead of "," so Outlook reads accounting + Benton as two separate recipients. RFC 6068 says comma but Outlook (the main client at WhisperRoom) treats comma-joined addresses as one malformed entry and only CCs the first. Process-order\'s notification mailto uses the same separator for the same reason.'},
+      ]
+    },
+    {
       v:'1.19.11', date:'May 13, 2026', tag:'logging',
       changes:[
         {t:'log', d:'Revert v1.19.10 — wrong diagnosis. Tax not passing wasn\'t about source-quote suppression; user\'s example had tax computed. Suppression logic restored to v1.19.9 (suppress when exempt or source-quote tax=$0). Added Railway diagnostic logging: tax decision (state/amount/suppress flag), QB lines payload (per-line TaxCodeRef + ItemRef), and QB invoice response (TxnTaxDetail, TotalAmt, GlobalTaxCalculation). Next addendum will leave breadcrumbs in Railway logs so we can see whether AST received what we sent and why it didn\'t compute.'},

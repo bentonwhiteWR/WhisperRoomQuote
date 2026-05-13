@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.19.2', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Deal Hub "+ New Quote" now properly binds the contact in the quote builder. The deal\'s contact info auto-filled the customer form fields but skipped the metadata that tells the system "this contact is already in HubSpot" — window._loadedContactId, _loadedContactAddress, the contact-search box value, and the view-contact button visibility. Result: pushing the quote fired "Possible Duplicate Contact" because create-deal couldn\'t tell the form was pre-filled from a real contact vs. a rep typing a new contact whose email collided. Now linkDealById sets the same metadata block that _doFillContact sets when picking from the dropdown — no more duplicate prompt on freshly-linked deals.'},
+      ]
+    },
+    {
       v:'1.19.1', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Quote builder no longer blocks pushing a quote that has no line items as long as it has freight, installation, or a pickup fee. Came up while building a freight-only "change quote" for the v1.19.0 addendum-merge workflow — a $500 shipping-upgrade quote has no products and was getting blocked at the push step with "Please add at least one product." New guard only fires when the quote is truly empty (no items AND no freight AND no install AND no pickup).'},

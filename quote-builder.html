@@ -5436,6 +5436,36 @@ function linkDealById(dealId, dealName) {
           document.getElementById('shipState').value = normalizeState(cp.state);
           document.getElementById('shipZip').value = cp.zip || '';
           if (cp.email) loadAccessorialPrefs(cp.email);
+          // Tag the contact as already-loaded-from-HubSpot. Without this,
+          // pushing the quote fires "Possible Duplicate Contact" because
+          // create-deal can't tell the form was pre-filled from a real
+          // HubSpot contact (vs. a rep typing in a new contact's info
+          // that happens to match an existing one). Mirrors the metadata
+          // set by _doFillContact when a rep picks via contact search.
+          if (data.contact.id) {
+            window._loadedContactId = data.contact.id;
+            window._loadedContactAddress = {
+              address: cp.address || '',
+              city:    cp.city    || '',
+              state:   cp.state   || '',
+              zip:     cp.zip     || '',
+              phone:   cp.phone   || '',
+            };
+            window._userUnlinked = false;
+            // Reflect the loaded contact in the top contact-search box +
+            // surface the "view contact" affordance, exactly like
+            // selecting from the dropdown does.
+            const csEl = document.getElementById('contactSearch');
+            if (csEl) csEl.value = [cp.firstname, cp.lastname].filter(Boolean).join(' ') || cp.email || '';
+            const badge = document.getElementById('contactBadge');
+            if (badge) badge.style.display = 'none';
+            const vcBtn = document.getElementById('viewContactBtn');
+            if (vcBtn) vcBtn.style.display = 'block';
+            // Drive folder check + dropdown close (same as _doFillContact).
+            try { if (typeof checkContactFolder === 'function') checkContactFolder(data.contact.id); } catch(e) {}
+            const dd = document.getElementById('contactDropdown');
+            if (dd) dd.classList.remove('open');
+          }
         }
       }
     }

@@ -2467,19 +2467,32 @@ const server = http.createServer(async (req, res) => {
               return freight && freight.total ? String(freight.total) : '';
             })(),
           };
+          // Status-check the patch (httpsRequest doesn't throw on 4xx) so
+          // a HubSpot rejection isn't silently swallowed. Same pattern
+          // as the non-locked path below — first try with everything,
+          // retry on failure (rare in this branch since financialPatch
+          // has no state/address fields to fail enum validation, but
+          // safety net for any HS quirk).
           try {
-            await httpsRequest({
+            const r = await httpsRequest({
               hostname: 'api.hubapi.com',
               path: `/crm/v3/objects/deals/${dealId}`,
               method: 'PATCH',
               headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
             }, { properties: financialPatch });
-            console.log(`[deal sync] deal ${dealId} locked (${existingDealStage}) — financial fields only (amount=${financialPatch.amount})`);
+            console.log(`[deal sync] locked-stage patch deal ${dealId} (${existingDealStage}) → status=${r.status} amount=${financialPatch.amount}`);
+            if (r.status >= 400) {
+              console.warn(`[deal sync] locked-stage REJECTED by HubSpot:`, JSON.stringify(r.body).slice(0, 500));
+              writelog('error', 'error.deal_sync_failed', `Locked deal ${dealId} financial patch rejected (${r.status})`, {
+                dealId, quoteNum: quoteNumber || null, meta: { props: financialPatch, body: r.body }
+              });
+            } else {
+              writelog('info', 'deal_sync_locked_financial',
+                `Locked-stage deal ${dealId} financials updated (stage: ${existingDealStage}, amount: $${financialPatch.amount}, quote: ${quoteNumber || '?'})`);
+            }
           } catch(e) {
-            console.warn(`[deal sync] locked-stage financial patch failed for ${dealId}:`, e.message);
+            console.warn(`[deal sync] locked-stage network error for ${dealId}:`, e.message);
           }
-          writelog('info', 'deal_sync_locked_financial',
-            `Locked-stage deal ${dealId} financials updated (stage: ${existingDealStage}, amount: $${financialPatch.amount}, quote: ${quoteNumber || '?'})`);
         } else {
           // Update existing deal — amount + address fields updated from latest quote
           const dealPatchProps = {

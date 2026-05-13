@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.19.15', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Quote updates on closed-won/shipped/closed-lost deals now update the FINANCIAL fields on the HubSpot deal (amount, tax_rate, total_tax_amount, discount, freight_cost) even though the deal is in a "locked" stage. Before: any deal in DEAL_LOCKED_STAGES skipped the entire deal patch — addresses, owner, AND amount all stayed frozen. Now: the lock still protects shipping/billing addresses, contact, dealname, and dealstage from being rewritten, but financial fields always track the most recent quote. Per 2026-05-13 ask: "It should always update the deal amount (with the freight/tax fields too) to the most recently created, updated, or revised quote." Logs deal_sync_locked_financial when this fires.'},
+      ]
+    },
+    {
       v:'1.19.14', date:'May 13, 2026', tag:'logging',
       changes:[
         {t:'log', d:'More addendum tax diagnostics. v1.19.13 ShipAddr fix didn\'t help — even with a matched item (ItemRef:1092 FOAM 4) AST still returned TotalTax:0 / NetAmountTaxable:0. Added two more Railway log lines per addendum: (1) QB customer record\'s Taxable flag + DefaultTaxCodeRef + saved ShipAddr/BillAddr, and (2) the exact ShipAddr/BillAddr we sent. If Taxable=false on the QB customer, that\'s the cause — AST zero-taxes every invoice for tax-exempt customers regardless of line tax codes. Cheap one-shot query.'},

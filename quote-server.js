@@ -2449,9 +2449,37 @@ const server = http.createServer(async (req, res) => {
         // A new quote for a misc fee (e.g. reconsignment) must not clobber the original deal value.
         const DEAL_LOCKED_STAGES = new Set(['closedwon', '845719', 'closedlost']);
         if (DEAL_LOCKED_STAGES.has(existingDealStage)) {
-          writelog('info', 'deal_sync_locked',
-            `Skipped deal patch — deal ${dealId} is locked (stage: ${existingDealStage}, quote: ${quoteNumber || '?'})`);
-          console.log(`[deal sync] Skipping patch — deal ${dealId} locked in stage "${existingDealStage}"`);
+          // Per 2026-05-13 spec: even for closed-won/shipped/closed-lost
+          // deals, the FINANCIAL fields (amount, tax, discount, freight)
+          // should track the latest quote so the deal view in HubSpot
+          // reflects the most recent pricing. Other fields stay locked
+          // — don't rewrite ship-to addresses, contact, dealname, or
+          // dealstage on a closed deal.
+          const financialPatch = {
+            amount: total.toFixed(2),
+            tax_rate: tax && tax.rate ? String(parseFloat((tax.rate * 100).toFixed(4))) : '',
+            total_tax_amount: tax && tax.tax != null ? String(parseFloat(tax.tax).toFixed(2)) : '0',
+            discount: discount && discount.value ? String(discount.value) : '',
+            freight_cost: (() => {
+              if (install && install.mode === 'delivery_install' && parseFloat(install.amount) > 0) {
+                return String(parseFloat(install.amount).toFixed(2));
+              }
+              return freight && freight.total ? String(freight.total) : '';
+            })(),
+          };
+          try {
+            await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/deals/${dealId}`,
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, { properties: financialPatch });
+            console.log(`[deal sync] deal ${dealId} locked (${existingDealStage}) — financial fields only (amount=${financialPatch.amount})`);
+          } catch(e) {
+            console.warn(`[deal sync] locked-stage financial patch failed for ${dealId}:`, e.message);
+          }
+          writelog('info', 'deal_sync_locked_financial',
+            `Locked-stage deal ${dealId} financials updated (stage: ${existingDealStage}, amount: $${financialPatch.amount}, quote: ${quoteNumber || '?'})`);
         } else {
           // Update existing deal — amount + address fields updated from latest quote
           const dealPatchProps = {

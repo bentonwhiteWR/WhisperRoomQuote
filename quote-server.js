@@ -2516,21 +2516,42 @@ const server = http.createServer(async (req, res) => {
           if (!isCanadianProvince(billingStateVal)) {
             stateProps.billing_state = billing ? (toStateFull(billing.state) || billing.state || '') : (stateProps.shipping_state || '');
           }
-          try {
-            await httpsRequest({
-              hostname: 'api.hubapi.com',
-              path: `/crm/v3/objects/deals/${dealId}`,
-              method: 'PATCH',
-              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-            }, { properties: { ...dealPatchProps, ...stateProps } });
-          } catch(e) {
-            // Retry without state fields if HubSpot rejects (e.g. Canadian province)
-            await httpsRequest({
-              hostname: 'api.hubapi.com',
-              path: `/crm/v3/objects/deals/${dealId}`,
-              method: 'PATCH',
-              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-            }, { properties: dealPatchProps });
+          // httpsRequest resolves on ANY status (incl. 400) without
+          // throwing. Check response.status explicitly so HubSpot
+          // rejections don't silently swallow the patch. The catch is
+          // only for network errors. Per 2026-05-13: deal amount sync
+          // wasn't working on quote updates — silent 400 was the most
+          // likely cause.
+          const tryDealPatch = async (props, label) => {
+            try {
+              const r = await httpsRequest({
+                hostname: 'api.hubapi.com',
+                path: `/crm/v3/objects/deals/${dealId}`,
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+              }, { properties: props });
+              console.log(`[deal sync] ${label} → status=${r.status} amount=${props.amount}`);
+              if (r.status >= 400) {
+                console.warn(`[deal sync] ${label} REJECTED by HubSpot:`, JSON.stringify(r.body).slice(0, 500));
+                return { ok: false, body: r.body, status: r.status };
+              }
+              return { ok: true };
+            } catch(e) {
+              console.warn(`[deal sync] ${label} network error:`, e.message);
+              return { ok: false, error: e.message };
+            }
+          };
+          let patchResult = await tryDealPatch({ ...dealPatchProps, ...stateProps }, `full patch deal ${dealId}`);
+          if (!patchResult.ok) {
+            // Retry without state fields if HubSpot rejected (most common
+            // cause: a state value not in HubSpot's enum — Canadian
+            // province, "Tennessee" instead of "TN", etc.)
+            patchResult = await tryDealPatch(dealPatchProps, `retry-no-state deal ${dealId}`);
+            if (!patchResult.ok) {
+              writelog('error', 'error.deal_sync_failed', `Deal ${dealId} patch failed after retry — amount NOT synced (status: ${patchResult.status || 'network'})`, {
+                dealId, quoteNum: quoteNumber || null, meta: { props: dealPatchProps, body: patchResult.body }
+              });
+            }
           }
         }
 

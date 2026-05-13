@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.19.16', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Deal-sync patch on quote update now logs HubSpot\'s response status + body. httpsRequest resolves on ANY status (incl. 400) without throwing, so before this any HubSpot rejection was silently swallowed — the patch fell through, quote_number got saved, and the deal\'s amount/freight/tax fields just stayed at whatever they were. New behavior: status >= 400 is treated as a failure, triggers the no-state retry, and if THAT also fails it writelogs error.deal_sync_failed with the rep + HubSpot\'s error body so we can see exactly what HS objected to. The next quote-update attempt that doesn\'t sync the deal will leave breadcrumbs in Railway logs ([deal sync] full patch deal X → status=200 amount=$Y or [deal sync] full patch deal X REJECTED by HubSpot: ...).'},
+      ]
+    },
+    {
       v:'1.19.15', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Quote updates on closed-won/shipped/closed-lost deals now update the FINANCIAL fields on the HubSpot deal (amount, tax_rate, total_tax_amount, discount, freight_cost) even though the deal is in a "locked" stage. Before: any deal in DEAL_LOCKED_STAGES skipped the entire deal patch — addresses, owner, AND amount all stayed frozen. Now: the lock still protects shipping/billing addresses, contact, dealname, and dealstage from being rewritten, but financial fields always track the most recent quote. Per 2026-05-13 ask: "It should always update the deal amount (with the freight/tax fields too) to the most recently created, updated, or revised quote." Logs deal_sync_locked_financial when this fires.'},

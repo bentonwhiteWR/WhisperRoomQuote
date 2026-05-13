@@ -7770,7 +7770,7 @@ ${q.accepted ? `
   // Adds a tracked post-process change to an existing order. The body
   // is a multi-line builder:
   //   { lines: [{description, amount}, ...], paymentType, poNumber?,
-  //     applyToFreight? }
+  // }
   // Lines can mix positive and negative amounts. The net signs the kind
   // of QB document:
   //   net > 0 → Invoice (with auto-payment for non-PO)
@@ -8168,7 +8168,7 @@ ${q.accepted ? `
 
       writelog('info', 'order.addendum-added', `Addendum ${addendum.type} added to ${quoteNumber} (${qbDocNumber}, net $${netTotal.toFixed(2)})`, {
         rep: repName, quoteNum: quoteNumber, dealId: String(dealId || ''),
-        meta: { addendumId: addendum.id, type: addendum.type, qbId, qbDocNumber, netTotal, lineCount: cleanLines.length, paymentType: addendum.paymentType, applyToFreight, autoPaymentError, sourceQuoteNumber },
+        meta: { addendumId: addendum.id, type: addendum.type, qbId, qbDocNumber, netTotal, lineCount: cleanLines.length, paymentType: addendum.paymentType, freight: addFreight, autoPaymentError, sourceQuoteNumber },
       });
       json({ success: true, addendum, addendums: newAddendums, autoPaymentError });
 

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.19.4', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Addendum submit was 500ing with "applyToFreight is not defined" — leftover reference in the writelog meta object after v1.19.3 removed the local variable. Now logs the source quote\'s freight portion (addFreight) instead. node --check doesn\'t catch this kind of unused-identifier-in-object-shorthand bug; only surfaces at runtime when the endpoint actually fires.'},
+      ]
+    },
+    {
       v:'1.19.3', date:'May 13, 2026', tag:'feature',
       changes:[
         {t:'fix', d:'Shipping/Jeromy email corrected to shipping@whisperroom.com (was jeromy@). Affects lib/notify.js REP_EMAILS and the mailto: in the order-modified email.'},

@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.19.10', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Addendum invoices now actually tax in nexus states. v1.19.9 decided whether to suppress AST based on the SOURCE quote\'s computed tax — which was $0 for freight-only change quotes where the rep skipped Calculate Tax (the tax-confirm guard from v1.19.3 only fires when there are product line items). A TN freight-only addendum should still get TN tax via AST. New rule: suppress AST only when the order is tax-exempt OR the customer\'s ship-to state is NOT in NEXUS_STATES — purely a function of the order, not the source quote. Logs [add-charge] tax decision: state=TN nexus=true exempt=false → AST so we can see in Railway what fired.'},
+        {t:'fix', d:'Freight TaxCodeRef on addendum invoices now falls back to NEXUS_STATES[state].taxFreight when the source quote didn\'t carry freightTaxed (i.e., rep didn\'t compute tax). TN.taxFreight=true means freight gets TAX_CODE and AST taxes it. Without this fallback, a freight-only change quote in TN would mark freight EXEMPT and AST would miss it — exactly what just happened.'},
+      ]
+    },
+    {
       v:'1.19.9', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Addendum QB invoice now puts freight and tax in their proper places — mirrors process-order\'s structure. Was dumping everything as generic SalesItemLineDetail lines. Now: products → SalesItemLineDetail with matched ItemRef + per-line TaxCodeRef; discount → DiscountLineDetail (applied BEFORE freight); freight → SalesItemLineDetail with SHIPPING_ITEM_ID (routes to QB\'s Shipping totals row) + freightTaxed-aware TaxCodeRef; install/pickup → fallback item with EXEMPT tax. Tax itself is no longer a line — QB Automated Sales Tax computes it from the per-line TaxCodeRef. Suppression rules match process-order: AST silenced when the addendum tax is $0 (non-nexus ship-to) or the order is tax-exempt. Ad-hoc lines path (legacy `body.lines`) keeps the flat structure since it has no per-line type info.'},

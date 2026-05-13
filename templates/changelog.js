@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.19.19', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Tax-not-calculated confirm popup no longer fires for quotes where Calculate Tax was run and TaxJar correctly returned $0 because the destination state has no nexus. Bug was at the push-quote guard in quote-builder.html: the condition was (!taxData || !_taxAmountFn) which fired the warning whenever the computed tax amount was zero — including the legitimate no-nexus case where taxData is set to { inNexus: false, tax: 0 }. Reps had to dismiss the warning on every CA/NY/TX/etc. quote. New condition is just !taxData — warning only fires when Calculate Tax was never run (rep skipped it). Tax exempt and freight-only quotes still bypass the guard as before. (Note: v1.19.18 light-mode popup polish is currently only on staging — will roll forward into main with the next staging→main merge.)'},
+      ]
+    },
+    {
       v:'1.19.17', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Locked-stage deal financial patch (v1.19.15) now checks HubSpot\'s response status too — was missing the same status-check fix v1.19.16 added to the non-locked branch. Without it, a HubSpot rejection on a closed-won deal would silently swallow the patch and the deal\'s financial fields would stay frozen. Logs [deal sync] locked-stage patch deal X (closedwon) → status=200 amount=$Y on success; writelogs error.deal_sync_failed with body on rejection. financialPatch has no enum fields so rejection is rare, but worth covering. Per Puerto Rico test today where the rep saw no [deal sync] line at all — almost certainly running the locked-stage path with no logging.'},

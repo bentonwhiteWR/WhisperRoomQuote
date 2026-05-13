@@ -3284,14 +3284,13 @@ async function createDeal() {
 
   // Tax not calculated guard. Reps occasionally forget to hit Calculate
   // Tax, the quote pushes with $0 tax, and the customer's invoice ships
-  // tax-free for a taxable order. Block (with confirm) when: the quote
-  // has product line items AND tax wasn't computed AND the order isn't
-  // explicitly tax-exempt. Freight-only / install-only quotes skip this
-  // since freight isn't always taxable.
+  // tax-free for a taxable order. Block (with confirm) ONLY when taxData
+  // is null — meaning Calculate Tax was never run. A taxData with
+  // inNexus:false means the rep DID run it and the destination has no
+  // nexus, so $0 is the correct outcome — no warning needed.
   const _taxExemptChecked = !!(document.getElementById('taxexempt') && document.getElementById('taxexempt').checked);
   const _hasTaxableItems  = lineItems.length > 0;
-  const _taxAmountFn      = typeof getTaxAmount === 'function' ? getTaxAmount() : (taxData && parseFloat(taxData.tax || 0)) || 0;
-  if (_hasTaxableItems && !_taxExemptChecked && (!taxData || !_taxAmountFn)) {
+  if (_hasTaxableItems && !_taxExemptChecked && !taxData) {
     const ok = window.confirm(
       'No sales tax has been calculated for this quote.\n\n' +
       'If this customer is in a state where you collect tax, the invoice will ship tax-free.\n\n' +

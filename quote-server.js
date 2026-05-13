@@ -5473,6 +5473,60 @@ ${q.accepted ? `
   }
 
 
+  // ── API: Reports — Quotes Timeline ───────────────────────────────
+  // Returns the last 7 days of quotes for a given rep, each labeled as
+  // either "new" (first quote for its deal_id) or "revision" (subsequent
+  // quote for the same deal_id). Powers the Quotes sub-tab on the Reports
+  // page. Quotes with a NULL deal_id are always treated as "new" — there's
+  // no deal to revise. "Updates" (in-place edits where the rep re-saved
+  // without changing the total) aren't tracked in the schema; would need
+  // an audit table or updated_at column to surface — punted per May 13
+  // discussion.
+  if (pathname === '/api/reports/quotes-timeline' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const repId = String(parsed.query.rep || '').trim();
+    if (!repId) { json({ error: 'rep query param required' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const result = await db.query(`
+        SELECT
+          q.quote_number,
+          q.deal_id,
+          q.deal_name,
+          q.customer_name,
+          q.company,
+          q.total,
+          q.created_at,
+          q.quote_link,
+          (SELECT COUNT(*)
+             FROM quotes q2
+             WHERE q.deal_id IS NOT NULL
+               AND q2.deal_id = q.deal_id
+               AND q2.created_at < q.created_at) AS prior_count
+        FROM quotes q
+        WHERE q.rep_id = $1
+          AND q.created_at >= NOW() - INTERVAL '7 days'
+        ORDER BY q.created_at ASC
+      `, [repId]);
+      const quotes = result.rows.map(r => ({
+        quoteNumber:  r.quote_number,
+        dealId:       r.deal_id,
+        dealName:     r.deal_name,
+        customerName: r.customer_name,
+        company:      r.company,
+        total:        r.total ? parseFloat(r.total) : null,
+        createdAt:    r.created_at,
+        quoteLink:    r.quote_link,
+        type:         parseInt(r.prior_count, 10) > 0 ? 'revision' : 'new',
+      }));
+      json({ rep: repId, count: quotes.length, quotes });
+    } catch(e) {
+      console.error('[reports/quotes-timeline]', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── API: Reports data ────────────────────────────────────────────
   if (pathname === '/api/reports' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

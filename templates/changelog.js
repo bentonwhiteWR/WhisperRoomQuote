@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.17.0', date:'May 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Reports → Quotes sub-tab. Pick a rep in the sidebar, see their last 7 days of quotes as a 7-column grid (today highlighted in orange on the right). Each tile shows quote number, customer/company, total, time of day, and a "New" (green) or "Rev" (orange) badge. New = first quote for that deal_id; Rev = subsequent quote (price changed → new quote number). Tiles link to the quote page. Empty days show "No quotes." Header shows totals at a glance (e.g. "12 quotes · 8 new · 4 revisions"). Powered by new endpoint GET /api/reports/quotes-timeline?rep=<ownerId> which runs one SQL query with a correlated subquery counting prior quotes per deal_id. In-place edits where the rep re-saved without changing the price aren\'t tracked (the schema has no audit log) — punted per discussion, can be added later by introducing updated_at + update_count columns.'},
+      ]
+    },
+    {
       v:'1.16.5', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Quote number sequence now correctly starts at 01 when the first new quote of the day is a revision of a prior-day quote. generateFreeQuoteNumber was seeding its search sequence from the loaded quote\'s seq regardless of whether the dateKey matched today\'s, so revising yesterday\'s W-1605122602 (seq 02) for the first time today would land at W-1605132602 instead of W-1605132601. Now: only honor the client\'s seq when its dateKey matches today\'s; otherwise restart at 01. previewNextQuoteNumber was already correct (always starts at 1) — bug was creation-side only, so the preview UI showed the right number but the saved quote got a different one when revising across days.'},

@@ -47,6 +47,37 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .refresh-btn{width:100%;padding:7px 10px;background:var(--orange-dim);border:1px solid var(--orange-border);border-radius:6px;color:var(--orange);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:8px}
 
 .content{flex:1;overflow-y:auto;padding:20px}
+
+/* Sub-tab strip inside the main content area (Overview / Quotes). */
+.report-tabs{display:flex;gap:0;margin-bottom:18px;border-bottom:2px solid var(--border)}
+.report-tab{padding:10px 18px;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border:none;background:none;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;font-family:inherit;transition:.15s}
+.report-tab:hover{color:var(--text)}
+.report-tab.active{color:var(--orange);border-bottom-color:var(--orange)}
+
+/* Quotes timeline — 7-day column grid. */
+.qt-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
+.qt-col{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;min-height:200px}
+.qt-col.today{border-color:var(--orange-border)}
+.qt-col-head{padding:10px 12px;border-bottom:1px solid var(--border);background:var(--surface2)}
+.qt-col-head .dow{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.qt-col.today .qt-col-head .dow{color:var(--orange)}
+.qt-col-head .date{font-size:13px;font-weight:700;color:var(--text);margin-top:2px}
+.qt-col-body{padding:8px;display:flex;flex-direction:column;gap:6px;flex:1}
+.qt-tile{display:block;text-decoration:none;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);transition:.12s;cursor:pointer}
+.qt-tile:hover{border-color:var(--orange-border);background:var(--surface3)}
+.qt-tile-top{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px}
+.qt-num{font-family:var(--mono);font-size:10px;color:var(--text2);font-weight:600}
+.qt-badge{font-size:8px;font-weight:800;padding:1px 5px;border-radius:3px;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0}
+.qt-badge.new{background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.3)}
+.qt-badge.rev{background:var(--orange-dim);color:var(--orange);border:1px solid var(--orange-border)}
+.qt-cust{font-size:11px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3}
+.qt-meta{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:3px}
+.qt-empty{color:var(--muted);font-size:10px;font-style:italic;padding:8px 4px;text-align:center}
+
+@media(max-width:900px){
+  .qt-grid{grid-template-columns:1fr;gap:8px}
+  .qt-col{min-height:0}
+}
 .section-title-bar{font-size:13px;font-weight:800;color:var(--text);margin-bottom:16px;display:flex;align-items:center;gap:8px}
 .section-title-bar span{font-size:11px;color:var(--muted);font-weight:400}
 
@@ -251,8 +282,23 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 
   <!-- Main content -->
   <div class="content" id="mainContent">
-    <div id="loadingState" style="padding:60px;text-align:center;color:var(--muted);font-size:14px">Loading reports…</div>
-    <div id="reportContent" style="display:none"></div>
+    <!-- Sub-tab strip: switches between the long-form Overview report
+         and the per-rep Quotes timeline. Sidebar's Rep dropdown applies
+         to both tabs; Period applies only to Overview. -->
+    <div class="report-tabs" id="reportTabs">
+      <button class="report-tab active" data-tab="overview" onclick="switchReportTab('overview')">Overview</button>
+      <button class="report-tab" data-tab="quotes" onclick="switchReportTab('quotes')">Quotes</button>
+    </div>
+
+    <div id="tabOverview">
+      <div id="loadingState" style="padding:60px;text-align:center;color:var(--muted);font-size:14px">Loading reports…</div>
+      <div id="reportContent" style="display:none"></div>
+    </div>
+
+    <div id="tabQuotes" style="display:none">
+      <div id="quotesTimelineState" style="padding:60px;text-align:center;color:var(--muted);font-size:14px">Pick a rep from the sidebar to see their last 7 days of quotes.</div>
+      <div id="quotesTimelineContent" style="display:none"></div>
+    </div>
   </div>
 </div>
 
@@ -278,6 +324,9 @@ function navScrollTo(id) {
 }
 
 async function loadReport() {
+  // Sidebar dropdowns drive both tabs. Dispatch to whichever is active so
+  // changing the rep filter refreshes the visible view, not the hidden one.
+  if (_activeReportTab === 'quotes') { loadQuotesTimeline(); return; }
   const period = document.getElementById('periodSelect').value;
   const rep    = document.getElementById('repSelect')?.value || '';
   document.getElementById('loadingState').style.display = 'block';
@@ -296,6 +345,151 @@ async function loadReport() {
     document.getElementById('loadingState').textContent = 'Error: '+e.message;
     showToast(e.message);
   }
+}
+
+// ── Sub-tab switching (Overview / Quotes) ─────────────────────────
+let _activeReportTab = 'overview';
+let _quotesTimelineCache = null;     // last-fetched payload, keyed by rep
+let _quotesTimelineLastRep = null;
+
+function switchReportTab(name) {
+  _activeReportTab = name;
+  document.getElementById('tabOverview').style.display = name === 'overview' ? '' : 'none';
+  document.getElementById('tabQuotes').style.display   = name === 'quotes'   ? '' : 'none';
+  document.querySelectorAll('.report-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  if (name === 'quotes') loadQuotesTimeline();
+}
+
+async function loadQuotesTimeline(force) {
+  const rep = document.getElementById('repSelect')?.value || '';
+  const state   = document.getElementById('quotesTimelineState');
+  const content = document.getElementById('quotesTimelineContent');
+  if (!rep) {
+    content.style.display = 'none';
+    state.style.display   = 'block';
+    state.textContent     = 'Pick a rep from the sidebar to see their last 7 days of quotes.';
+    return;
+  }
+  // Cache by rep so quickly toggling tabs doesn't refetch every time.
+  if (!force && _quotesTimelineCache && _quotesTimelineLastRep === rep) {
+    renderQuotesTimeline(_quotesTimelineCache);
+    return;
+  }
+  state.style.display = 'block';
+  state.textContent   = 'Loading quotes…';
+  content.style.display = 'none';
+  try {
+    const res = await fetch(`/api/reports/quotes-timeline?rep=${encodeURIComponent(rep)}`, { credentials:'include' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    _quotesTimelineCache    = data;
+    _quotesTimelineLastRep  = rep;
+    renderQuotesTimeline(data);
+    document.getElementById('lastUpdatedLabel').textContent =
+      'Updated '+new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
+  } catch(e) {
+    state.style.display = 'block';
+    state.textContent   = 'Error: ' + e.message;
+    content.style.display = 'none';
+  }
+}
+
+function renderQuotesTimeline(data) {
+  const state   = document.getElementById('quotesTimelineState');
+  const content = document.getElementById('quotesTimelineContent');
+  const quotes  = data.quotes || [];
+  // Build 7-day window ending today, in Eastern Time so the column
+  // headers match the date keys baked into quote_numbers (REP+MMDDYY).
+  const days = [];
+  const todayET = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  todayET.setHours(0, 0, 0, 0);
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(todayET);
+    d.setDate(d.getDate() - i);
+    days.push(d);
+  }
+  // Group quotes into day buckets by their createdAt date in Eastern Time.
+  const buckets = Object.fromEntries(days.map(d => [dayKey(d), []]));
+  const repName = REPS_CLIENT[data.rep] || 'this rep';
+  quotes.forEach(q => {
+    if (!q.createdAt) return;
+    const created = new Date(new Date(q.createdAt).toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    created.setHours(0, 0, 0, 0);
+    const key = dayKey(created);
+    if (buckets[key]) buckets[key].push(q);
+  });
+  // Header summary: tile counts + revision count for quick scan.
+  const totalNew  = quotes.filter(q => q.type === 'new').length;
+  const totalRev  = quotes.filter(q => q.type === 'revision').length;
+  const headerHtml = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-size:13px;font-weight:800;color:var(--text)">${escapeHtml(repName)} — Last 7 Days</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${quotes.length} quote${quotes.length === 1 ? '' : 's'} · ${totalNew} new · ${totalRev} revision${totalRev === 1 ? '' : 's'}</div>
+      </div>
+      <button class="refresh-btn" style="width:auto;padding:6px 14px" onclick="loadQuotesTimeline(true)">↺ Refresh</button>
+    </div>
+  `;
+  const todayKey = dayKey(todayET);
+  const colsHtml = days.map(d => {
+    const key   = dayKey(d);
+    const items = buckets[key] || [];
+    const isToday = key === todayKey;
+    const dowFmt = d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'America/New_York' });
+    const dateFmt = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' });
+    const tiles = items.length === 0
+      ? `<div class="qt-empty">No quotes</div>`
+      : items.map(q => renderQuoteTile(q)).join('');
+    return `
+      <div class="qt-col${isToday ? ' today' : ''}">
+        <div class="qt-col-head">
+          <div class="dow">${dowFmt}${isToday ? ' · TODAY' : ''}</div>
+          <div class="date">${dateFmt}</div>
+        </div>
+        <div class="qt-col-body">${tiles}</div>
+      </div>
+    `;
+  }).join('');
+  content.innerHTML = headerHtml + `<div class="qt-grid">${colsHtml}</div>`;
+  state.style.display   = 'none';
+  content.style.display = 'block';
+}
+
+function renderQuoteTile(q) {
+  const badgeClass = q.type === 'revision' ? 'rev' : 'new';
+  const badgeText  = q.type === 'revision' ? 'Rev' : 'New';
+  const customer   = q.company || q.customerName || q.dealName || '—';
+  const time = q.createdAt
+    ? new Date(q.createdAt).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit', timeZone:'America/New_York' })
+    : '';
+  const total = (q.total != null && !isNaN(q.total)) ? '$' + Math.round(q.total).toLocaleString('en-US') : '—';
+  // Click → open the quote page. quoteLink already includes share token
+  // for public access, but reps view it as authenticated users.
+  const href = q.quoteLink || `/q/${encodeURIComponent(q.quoteNumber)}`;
+  return `
+    <a class="qt-tile" href="${escapeHtml(href)}" target="_blank" rel="noopener" title="${escapeHtml(q.quoteNumber)} · ${escapeHtml(customer)}">
+      <div class="qt-tile-top">
+        <span class="qt-num">${escapeHtml(q.quoteNumber)}</span>
+        <span class="qt-badge ${badgeClass}">${badgeText}</span>
+      </div>
+      <div class="qt-cust">${escapeHtml(customer)}</div>
+      <div class="qt-meta"><span>${time}</span><span>${total}</span></div>
+    </a>
+  `;
+}
+
+function dayKey(d) {
+  // Stable YYYY-MM-DD key in local time. Used to bucket quotes by day.
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function renderAll(data) {

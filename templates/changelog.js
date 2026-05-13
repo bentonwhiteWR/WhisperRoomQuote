@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.20.2', date:'May 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Stripe integration on/off toggle, backed by kv_store.stripe_enabled (default ON). New pill button "Stripe: ON|OFF" in the /admin-log topbar — click flips it without redeploy. When OFF: /api/create-invoice skips Stripe creation entirely (HubSpot path runs unchanged), and /i/:quoteNumber Pay Now ignores any prior stripe.hostedUrl on the snapshot and falls back to HubSpot payment_link. Webhook handler stays active either way so in-flight Stripe invoices can still be marked paid. Two new routes: GET /api/stripe-toggle (read state, auth required) + POST /api/stripe-toggle (flip, auth required, writelogs stripe.toggle with rep + new state). 10-second in-memory cache on the read path so we don\'t hit the DB on every page load.'},
+        {t:'fix', d:'Stripe invoices for $0-total quotes no longer get created. Stripe finalizes a $0 invoice as immediately PAID, which surfaces as a confusing "already paid" hosted invoice when the rep clicks Pay Now. New guard sums `invoiceLineItems` positive-price entries in cents BEFORE calling Stripe; if total ≤ 0, logs `stripe.invoice.skipped` with reason + line counts + previewTotalCents, no Stripe API call. The "already paid" report from today\'s staging test was almost certainly this case — quote either had zero products, all-credit lines, or some other path that left invoiceLineItems with no positive entries. Diagnostic improvement: stripe.invoice.created log meta now includes lineItemCount, positiveItemCount, previewTotalCents so we can see exactly what went over.'},
+      ]
+    },
+    {
       v:'1.20.1', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Two staging-test issues from v1.20.0: (1) Stripe `/v1/invoiceitems` rejected `price_data.product_data` with "unknown parameter" — that\'s a Checkout-Sessions-only field. Invoice items require either a Product ID via `price_data.product` or the simpler `amount`+`description` shape. Switched to amount + description (qty pre-multiplied into amount, qty prefix baked into the description so "2 × MDL Whisper" still reads). Trade-off: line shows as one combined amount rather than Stripe\'s native "2 × $X.XX" breakdown. Revisit when we need explicit qty display. (2) Customer email was missing on the body sent to /api/create-invoice, causing stripe.invoice.skipped — now falls back through body.customer.email → json_snapshot.customer.email → HubSpot contact lookup via resolvedContactId. The `emailSource` is logged in stripe.invoice.created meta so we can see where it came from.'},

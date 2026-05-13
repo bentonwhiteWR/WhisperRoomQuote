@@ -284,7 +284,7 @@ gdrive.init({ httpsRequest, getDb: () => db, writelog });
 taxjar.init({ httpsRequest, NEXUS_STATES, toStateAbbr });
 notify.init({ getDb: () => db });
 freight.init({ httpsRequest, getDb: () => db, writelog, puppeteer });
-stripeLib.init({ httpsRequest, writelog });
+stripeLib.init({ httpsRequest, writelog, getDb: () => db });
 db_mod.init({
   getDb: () => db,
   publicBaseUrl: PUBLIC_BASE_URL,
@@ -1016,6 +1016,34 @@ const server = http.createServer(async (req, res) => {
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ received: true }));
+    return;
+  }
+
+  // ── Stripe On/Off Toggle ──────────────────────────────────────
+  // Lets a rep flip the integration without a redeploy. Backed by
+  // kv_store.stripe_enabled. Default ON. When OFF: new invoices skip
+  // Stripe creation; the /i/:quoteNumber Pay Now button falls back
+  // to HubSpot's payment_link even if a prior Stripe URL exists on
+  // the snapshot. Webhook handler stays active so in-flight Stripe
+  // invoices can still be marked paid.
+  if (pathname === '/api/stripe-toggle' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const enabled = await stripeLib.isEnabled();
+      json({ enabled });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+  if (pathname === '/api/stripe-toggle' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const body = JSON.parse(await readBody(req));
+      const next = !!body.enabled;
+      await stripeLib.setEnabled(next);
+      const rep = getRepFromReq(req, body);
+      writelog('info', 'stripe.toggle', `Stripe integration ${next ? 'ENABLED' : 'DISABLED'} by ${rep || 'unknown'}`, { rep, meta: { enabled: next } });
+      json({ enabled: next });
+    } catch(e) { json({ error: e.message }, 500); }
     return;
   }
 
@@ -3080,12 +3108,14 @@ const server = http.createServer(async (req, res) => {
 
       // Get payment link. Prefer Stripe (json_snapshot.stripe.hostedUrl) over
       // HubSpot's payment_link — that's the Option A swap. HubSpot URL stays as
-      // fallback for older quotes, Canadian orders (we skip Stripe), and any
-      // case where Stripe creation failed at /api/create-invoice time.
+      // fallback for older quotes, Canadian orders (we skip Stripe), any case
+      // where Stripe creation failed at /api/create-invoice time, AND any time
+      // the rep has flipped the global Stripe toggle OFF (kv_store.stripe_enabled).
       let paymentUrl = null;
       let paymentSource = null;
       const stripeInfo = quoteData.stripe || null;
-      if (stripeInfo?.hostedUrl && stripeInfo?.status !== 'void' && stripeInfo?.status !== 'uncollectible') {
+      const stripeOn = await stripeLib.isEnabled();
+      if (stripeOn && stripeInfo?.hostedUrl && stripeInfo?.status !== 'void' && stripeInfo?.status !== 'uncollectible') {
         paymentUrl = stripeInfo.hostedUrl;
         paymentSource = 'stripe';
       } else if (db) {
@@ -7111,12 +7141,27 @@ ${q.accepted ? `
           } catch(e) { console.warn('HubSpot contact email lookup failed:', e.message); }
         }
 
-        if (isCanadian) {
+        // Sum up positive line items in cents — Stripe auto-marks $0 invoices
+        // as paid the instant they're finalized, which surfaces as a confusing
+        // "already paid" hosted-invoice page for the customer. Skip creation
+        // entirely below the dollar threshold.
+        const positiveItems = (invoiceLineItems || []).filter(i => parseFloat(i.price || 0) > 0 && !i.isCredit);
+        const previewTotalCents = positiveItems.reduce((s, i) => {
+          const qty = parseInt(i.qty || 1, 10) || 1;
+          return s + Math.round(parseFloat(i.price) * 100) * qty;
+        }, 0);
+
+        const stripeOn = await stripeLib.isEnabled();
+        if (!stripeOn) {
+          writelog('info', 'stripe.invoice.skipped', `Stripe invoice skipped — integration disabled by toggle`, { rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||'') });
+        } else if (isCanadian) {
           writelog('info', 'stripe.invoice.skipped', `Stripe invoice skipped — Canadian/international order (wire transfer only)`, { rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||'') });
         } else if (!process.env.STRIPE_SECRET_KEY) {
           // No-op when Stripe isn't configured (e.g., prod before cutover)
         } else if (!effCustomer.email) {
           writelog('warn', 'stripe.invoice.skipped', `Stripe invoice skipped — no customer email on quote, snapshot, or HubSpot contact`, { rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||''), meta: { contactId: resolvedContactId } });
+        } else if (previewTotalCents <= 0) {
+          writelog('warn', 'stripe.invoice.skipped', `Stripe invoice skipped — quote totals to $0 (Stripe auto-marks $0 invoices as paid)`, { rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||''), meta: { lineItemCount: (invoiceLineItems||[]).length, positiveItemCount: positiveItems.length, previewTotalCents } });
         } else {
           stripeInvoice = await stripeLib.createInvoiceForQuote({
             quoteNumber,
@@ -7131,7 +7176,15 @@ ${q.accepted ? `
           }
           writelog('info', 'stripe.invoice.created', `Stripe invoice ${stripeInvoice.invoiceId} created for ${quoteNumber}`, {
             rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||''),
-            meta: { stripeInvoiceId: stripeInvoice.invoiceId, amountDue: stripeInvoice.amountDue, hostedUrl: stripeInvoice.hostedUrl, emailSource: customer?.email ? 'body' : (snapCust.email ? 'snapshot' : 'hubspot-contact') },
+            meta: {
+              stripeInvoiceId: stripeInvoice.invoiceId,
+              amountDue: stripeInvoice.amountDue,
+              hostedUrl: stripeInvoice.hostedUrl,
+              emailSource: customer?.email ? 'body' : (snapCust.email ? 'snapshot' : 'hubspot-contact'),
+              lineItemCount: (invoiceLineItems||[]).length,
+              positiveItemCount: positiveItems.length,
+              previewTotalCents,
+            },
           });
         }
       } catch(stripeErr) {

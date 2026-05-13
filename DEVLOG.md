@@ -6,23 +6,40 @@ Internal development notes. Last updated 2026-05-12.
 
 ---
 
-## Current focus (2026-05-13, Stripe Option A first cut)
+## Current focus (2026-05-13, end-of-day handoff — Stripe Option A on staging)
 
-**Most recent shipped to PROD:** v1.16.0 — HubSpot Fees monthly summary tab + `/reconcile` → `/accounting` URL rename. (Promoted 2026-05-12 alongside v1.13.2 → v1.15.3 — see session writeup below.)
+**Most recent shipped to PROD:** v1.19.19 — tax-not-calculated popup fix (only warns when Calculate Tax was genuinely never run; no longer fires for legitimate no-nexus $0 results). Pushed direct to main today without bringing Stripe along.
 
-**On STAGING, awaiting test:**
-- **v1.20.0** — Stripe Invoice integration, Option A (layer Stripe in alongside existing HubSpot invoice; flip the Pay Now URL). New `lib/stripe.js`, hook into `/api/create-invoice` creates a Stripe Invoice from the same `invoiceLineItems` array (freight + tax + install + credits resolved), state stashed on `json_snapshot.stripe`. `/i/:quoteNumber` Pay Now button prefers Stripe `hosted_invoice_url` over HubSpot `payment_link`. Webhook handler `POST /api/stripe/webhook` verifies signature with `STRIPE_WEBHOOK_SECRET` (no-op-but-200 if not set), handles `invoice.paid` / `invoice.payment_failed` / `invoice.voided`, fires rep notification on paid. Hard-locked to `sk_test_` keys. Canadian orders skip Stripe (wire-only). HubSpot invoice creation unchanged — runs in parallel, serves as fallback.
-- **v1.16.1 + v1.16.2** — Stripe sandbox diagnostic endpoints (kept; useful for one-off invoice creation outside the rep flow).
+**On STAGING (NOT YET promoted to main):** v1.20.0 → v1.20.2 — Stripe Invoice integration, Option A. Today's progression:
 
-**To test on staging:**
-1. Set `STRIPE_WEBHOOK_SECRET` in Railway test service (create webhook endpoint in Stripe test mode → URL `https://test-sales-portal-production.up.railway.app/api/stripe/webhook` → events `invoice.paid`, `invoice.payment_failed`, `invoice.voided` → copy signing secret).
-2. Build a quote with a real US customer email, click Create Invoice from Deal Hub.
-3. Watch `/admin-log` for `stripe.invoice.created` (success) or `error.stripe.invoice` (failure — HubSpot URL still works as fallback).
-4. Open the customer invoice link (`/i/:quoteNumber?t=...`) and confirm Pay Now opens the Stripe hosted invoice page (not HubSpot's).
-5. Pay using a Stripe test card (`4242 4242 4242 4242`, any future expiry, any CVC). Watch `/admin-log` for `stripe.invoice-paid` and check that the rep gets a notification (badge in dashboard topbar).
-6. Try a Canadian quote — `/admin-log` should show `stripe.invoice.skipped`, Pay Now still points at HubSpot.
+- **v1.20.0** — first cut. `lib/stripe.js` new module. `/api/create-invoice` creates Stripe Invoice alongside HubSpot's. `/i/:quoteNumber` Pay Now prefers Stripe `hosted_invoice_url`. Webhook handler with signature verification. Canadian orders skipped. Stripe state on `json_snapshot.stripe` (no schema migration). Hard-locked to `sk_test_` keys.
+- **v1.20.1** — fixed two bugs found on first test: (1) Stripe `/v1/invoiceitems` rejected `price_data.product_data` (that's a Checkout Sessions field, not Invoice Items). Switched to simpler `amount` + `description` (qty pre-multiplied into cents; qty prefix baked into description so customer still sees "2 × Foo"). (2) `customer.email` was missing on `/api/create-invoice` body — added cascading fallback: body → `json_snapshot.customer.email` → HubSpot contact lookup via `resolvedContactId`. `emailSource` logged in success meta.
+- **v1.20.2** — toggle + $0 safety. (1) New ON/OFF toggle pill in `/admin-log` topbar, backed by `kv_store.stripe_enabled`. When OFF, BOTH new invoice creation AND existing invoice page Pay Now fall back to HubSpot. Webhook still processes events. Endpoints: `GET/POST /api/stripe-toggle`. 10s memory cache. (2) `$0-total guard` — Stripe finalizes $0 invoices as immediately PAID, which is what produced today's "already paid" report. Now if `invoiceLineItems` positives sum to ≤$0, skip Stripe creation with a `stripe.invoice.skipped` log including line counts. (3) Diagnostics: `stripe.invoice.created` meta now carries `lineItemCount`, `positiveItemCount`, `previewTotalCents`, `emailSource`.
 
-**Active theme:** Replace HubSpot customer-facing invoices with Stripe Invoices (Option 2 from the May 12 discussion). v1.20.0 is the first concrete delivery — Option A is the "lightest" flavor of Option 2 (swap the Pay Now URL; full Stripe Invoice exists in the background). Once the 2-3 week parallel observation passes cleanly, next moves: (a) optional embedded Payment Element on `/i/` page instead of redirect, (b) Refund button in Order Hub, (c) eventually disable HubSpot invoice creation. HubSpot Payments is Stripe under the hood — `hs_fees_amount` IS Stripe's rate; `hs_platform_fee` (~0.5%) is HubSpot's markup we save going direct. ~$80 per $16k card transaction, $7-10k/year. Decisions locked from May 12: TaxJar stays, payment link goes in OUR email/PDF (set `auto_advance: false`), no Stripe-side reminder emails, AR aging untouched.
+**Stripe diagnostic endpoints** (kept from May 12): `/api/debug/stripe-diagnostic` + `/api/debug/stripe-cleanup` — useful for one-off testing outside the rep flow.
+
+**Pre-flight checklist before next test session:**
+1. `STRIPE_WEBHOOK_SECRET` set in Railway test service. Stripe dashboard → test mode → Developers → Webhooks → endpoint at `https://test-sales-portal-production.up.railway.app/api/stripe/webhook` → events `invoice.paid`, `invoice.payment_failed`, `invoice.voided` → copy `whsec_...` into Railway. (Status as of EOD May 13: **unknown — verify**. If unset, webhook acknowledges 200 but doesn't process; you'll see `stripe.webhook.unconfigured` in `/admin-log`.)
+2. `STRIPE_SECRET_KEY` set to `sk_test_...` in Railway test service. DEVLOG note from May 12 says it was set; if Stripe block silently no-ops, this is the first thing to check.
+
+**Smoke test recipe for next session:**
+1. Open `/admin-log` on staging — confirm "Stripe: ON" pill in topbar (right side). Click to flip OFF and back to ON to confirm the toggle round-trips. Watch for `stripe.toggle` log entries.
+2. Build a real quote with: positive line items totaling >$0, a US customer with email, and click Create Invoice from Deal Hub.
+3. Watch `/admin-log` for `stripe.invoice.created` (success path) or `stripe.invoice.skipped` (with reason in message) or `error.stripe.invoice` (Stripe API error). Click the meta to see `lineItemCount` / `positiveItemCount` / `previewTotalCents` / `emailSource`.
+4. Open `/i/:quoteNumber?t=...` — Pay Now should open Stripe's hosted invoice (NOT HubSpot's). If it opens HubSpot, check whether snapshot has `stripe` field (DB query against `quotes.json_snapshot`).
+5. Pay with `4242 4242 4242 4242`, any future expiry, any CVC. Watch `/admin-log` for `stripe.invoice-paid`. Check rep notification badge appears (top of dashboards).
+6. Flip toggle OFF. Open the SAME paid invoice URL — Pay Now should fall back to HubSpot. (It says "Pay" but HubSpot will say already-paid since you just paid Stripe; that's a known cross-system inconsistency to live with during parallel.)
+7. Flip toggle back ON. Run a Canadian quote → `stripe.invoice.skipped` with Canadian/wire reason.
+
+**Open questions / things to investigate next session:**
+- The "already paid $0 invoice" symptom from today should be fixed by v1.20.2's guard — but worth tracing WHY a quote ended up with $0 total. Likely freight-only or pickup-only quote (no product lines). The `stripe.invoice.skipped` meta will now show `lineItemCount` so we can confirm.
+- Verify `STRIPE_WEBHOOK_SECRET` is set. If you trigger a real test payment and `/admin-log` shows no `stripe.invoice-paid` event, the secret is the first suspect.
+- Cross-system "paid" state: when a Stripe invoice gets paid, HubSpot's invoice for the same quote stays "unpaid" because we don't sync the state back. Need a follow-up: on `invoice.paid` webhook, also patch HubSpot's invoice to `paid` (or mark deal stage). Not urgent during observation, but list as follow-up.
+- Quote loaded from history may not refresh `body.customer.email` cleanly — investigate the client path (probably quote-builder.html `loadFromHistoryEntry`) if email-fallback log meta keeps showing `emailSource: snapshot` or `hubspot-contact` instead of `body`. Not blocking but worth tightening.
+
+**Roll-forward path when comfortable:** staging→main merge via `/promote` will bring v1.19.18 (light-mode polish) + v1.20.0/1/2 (Stripe) to prod in one commit. Don't promote yet — let Stripe simmer on staging until 2-3 weeks of observation pass.
+
+**Active theme:** Replace HubSpot customer-facing invoices with Stripe Invoices (Option 2 from the May 12 discussion). Option A is the lightest delivery of that vision — full Stripe Invoice exists in the background; customer just sees Stripe's hosted page instead of HubSpot's when they click Pay Now. Next phases once observation passes: (a) optional embedded Payment Element on `/i/` (so customers never leave our page), (b) Refund button in Order Hub, (c) eventually disable HubSpot invoice creation. HubSpot Payments is Stripe under the hood; `hs_fees_amount` IS Stripe's rate; `hs_platform_fee` (~0.5%) is HubSpot's markup we save going direct. ~$80 per $16k card transaction, $7-10k/year. Decisions locked from May 12: TaxJar stays, payment link goes in OUR email/PDF (`auto_advance: false`), no Stripe-side reminder emails, AR aging untouched.
 
 **Outstanding work (not yet started):**
 
@@ -288,6 +305,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.20.2  | 2026-05-13 | Stripe on/off toggle (kv_store.stripe_enabled, default ON) — pill button on /admin-log topbar flips integration without redeploy. When OFF: /api/create-invoice skips Stripe AND /i/ falls back to HubSpot payment_link even when a Stripe URL exists on the snapshot. Webhook stays active. Endpoints: `GET/POST /api/stripe-toggle`. Also: $0-total safety guard — if `invoiceLineItems` positives sum to ≤0, skip Stripe (would auto-finalize as paid otherwise). Added `lineItemCount` / `positiveItemCount` / `previewTotalCents` to `stripe.invoice.created` log meta. |
 | 1.20.1  | 2026-05-13 | Fixes two issues from v1.20.0 staging test: (1) Stripe `/v1/invoiceitems` rejected `price_data.product_data` (Checkout-only field) — switched to simpler `amount` + `description` shape with qty pre-multiplied; (2) `customer.email` missing from request body — added cascading fallback (body → snapshot → HubSpot contact lookup via `resolvedContactId`). `emailSource` logged in `stripe.invoice.created` meta. |
 | 1.20.0  | 2026-05-13 | Stripe Invoice integration (Option A — May 12 plan, first cut). `/api/create-invoice` now also creates a Stripe Invoice from the same line items; `/i/:quoteNumber` Pay Now prefers Stripe `hosted_invoice_url` over HubSpot `payment_link`. HubSpot invoice still created in parallel (fallback). New `lib/stripe.js` module, `POST /api/stripe/webhook` with signature verification, rep notification on `invoice.paid`. State stashed on `json_snapshot.stripe` — no schema migration. Hard-locked to `sk_test_` keys. Canadian orders skip Stripe (wire transfer only). |
 | 1.19.19 | 2026-05-13 | Hotfix on main: tax-not-calculated confirm popup no longer fires when Calculate Tax was run and returned $0 due to no-nexus state. Condition tightened from `(!taxData \|\| !_taxAmountFn)` to just `!taxData` — only warns when Calculate was actually skipped. Pushed direct to main without bringing along staging's v1.19.18 light-mode polish or v1.20.0 Stripe work; merged back into staging immediately so staging has the fix too. |

@@ -6,14 +6,23 @@ Internal development notes. Last updated 2026-05-12.
 
 ---
 
-## Current focus (2026-05-12, late session)
+## Current focus (2026-05-13, Stripe Option A first cut)
 
 **Most recent shipped to PROD:** v1.16.0 — HubSpot Fees monthly summary tab + `/reconcile` → `/accounting` URL rename. (Promoted 2026-05-12 alongside v1.13.2 → v1.15.3 — see session writeup below.)
 
 **On STAGING, awaiting test:**
-- **v1.16.1 + v1.16.2** — Stripe sandbox diagnostic endpoints. `GET /api/debug/stripe-diagnostic` creates one test Customer + finalized Invoice ($4,716.40, four line items), returns `hosted_invoice_url` + `invoice_pdf` for end-to-end verification before wiring Stripe into `/api/process-order`. Companion `/api/debug/stripe-cleanup?invoice=...&customer=...` voids + deletes. Hard-locked to `sk_test_` keys. v1.16.2 fixed an initial 400 — Stripe rejects `amount` + `quantity` together; real implementation will use `price_data[unit_amount]` so multi-qty WR orders display "2 × $3,500" cleanly. User confirmed the diagnostic succeeded end-to-end and is satisfied with the approach.
+- **v1.20.0** — Stripe Invoice integration, Option A (layer Stripe in alongside existing HubSpot invoice; flip the Pay Now URL). New `lib/stripe.js`, hook into `/api/create-invoice` creates a Stripe Invoice from the same `invoiceLineItems` array (freight + tax + install + credits resolved), state stashed on `json_snapshot.stripe`. `/i/:quoteNumber` Pay Now button prefers Stripe `hosted_invoice_url` over HubSpot `payment_link`. Webhook handler `POST /api/stripe/webhook` verifies signature with `STRIPE_WEBHOOK_SECRET` (no-op-but-200 if not set), handles `invoice.paid` / `invoice.payment_failed` / `invoice.voided`, fires rep notification on paid. Hard-locked to `sk_test_` keys. Canadian orders skip Stripe (wire-only). HubSpot invoice creation unchanged — runs in parallel, serves as fallback.
+- **v1.16.1 + v1.16.2** — Stripe sandbox diagnostic endpoints (kept; useful for one-off invoice creation outside the rep flow).
 
-**Active theme:** Replace HubSpot customer-facing invoices with Stripe Invoices (Option 2 from the May 12 discussion). HubSpot Payments is already Stripe under the hood — `hs_fees_amount` IS Stripe's rate; `hs_platform_fee` (~0.5%) is HubSpot's markup we'd save by going direct. ~$80 saved on a $16k card transaction, ballpark $7-10k/year. Decisions locked: keep TaxJar (pass tax to Stripe as separate invoice_item line), payment link goes in OUR existing email/PDF (not Stripe's auto-email), HubSpot Invoice creation off (button-triggered today, easy swap), Refund button to be added in Order Hub, AR aging untouched (reads HS deal amounts, not invoice amounts). Sandbox key set in Railway test service. Next step: build `lib/stripe.js` + webhook handler + Process Order hook. ~3-4 days work, then 2-3 weeks of parallel observation before full cutover.
+**To test on staging:**
+1. Set `STRIPE_WEBHOOK_SECRET` in Railway test service (create webhook endpoint in Stripe test mode → URL `https://test-sales-portal-production.up.railway.app/api/stripe/webhook` → events `invoice.paid`, `invoice.payment_failed`, `invoice.voided` → copy signing secret).
+2. Build a quote with a real US customer email, click Create Invoice from Deal Hub.
+3. Watch `/admin-log` for `stripe.invoice.created` (success) or `error.stripe.invoice` (failure — HubSpot URL still works as fallback).
+4. Open the customer invoice link (`/i/:quoteNumber?t=...`) and confirm Pay Now opens the Stripe hosted invoice page (not HubSpot's).
+5. Pay using a Stripe test card (`4242 4242 4242 4242`, any future expiry, any CVC). Watch `/admin-log` for `stripe.invoice-paid` and check that the rep gets a notification (badge in dashboard topbar).
+6. Try a Canadian quote — `/admin-log` should show `stripe.invoice.skipped`, Pay Now still points at HubSpot.
+
+**Active theme:** Replace HubSpot customer-facing invoices with Stripe Invoices (Option 2 from the May 12 discussion). v1.20.0 is the first concrete delivery — Option A is the "lightest" flavor of Option 2 (swap the Pay Now URL; full Stripe Invoice exists in the background). Once the 2-3 week parallel observation passes cleanly, next moves: (a) optional embedded Payment Element on `/i/` page instead of redirect, (b) Refund button in Order Hub, (c) eventually disable HubSpot invoice creation. HubSpot Payments is Stripe under the hood — `hs_fees_amount` IS Stripe's rate; `hs_platform_fee` (~0.5%) is HubSpot's markup we save going direct. ~$80 per $16k card transaction, $7-10k/year. Decisions locked from May 12: TaxJar stays, payment link goes in OUR email/PDF (set `auto_advance: false`), no Stripe-side reminder emails, AR aging untouched.
 
 **Outstanding work (not yet started):**
 
@@ -279,6 +288,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.20.0  | 2026-05-13 | Stripe Invoice integration (Option A — May 12 plan, first cut). `/api/create-invoice` now also creates a Stripe Invoice from the same line items; `/i/:quoteNumber` Pay Now prefers Stripe `hosted_invoice_url` over HubSpot `payment_link`. HubSpot invoice still created in parallel (fallback). New `lib/stripe.js` module, `POST /api/stripe/webhook` with signature verification, rep notification on `invoice.paid`. State stashed on `json_snapshot.stripe` — no schema migration. Hard-locked to `sk_test_` keys. Canadian orders skip Stripe (wire transfer only). |
 | 1.13.1  | 2026-05-12 | ABF rate requests now subtract 144 lbs of pallet wood per pallet (our stored weight is gross; ABF wants product-only). Applied in buildAbfUrl so both QB and orders dashboard get correct ABF pricing. OD unchanged |
 | 1.13.0  | 2026-05-12 | Process Order blocked when ship-to address is incomplete (street + city + state + ZIP). Server-enforced; both clients (QB + Deal Hub) pre-check and toast. ZIP-only rate quoting unaffected |
 | 1.12.4  | 2026-05-12 | Orders dashboard: synced BOOTH_DATA from QB (was stale, missing all MDL 96120/96144/96168/96192/102xxx shells + several with wrong dims); pallets now carry FULL shipment weight (booth + accessories), not just booth weight; suppressed misleading "N items missing pallet data" when a booth was found |

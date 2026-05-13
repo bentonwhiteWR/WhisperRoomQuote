@@ -176,6 +176,9 @@ const { TAXJAR_KEY, calculateTaxProper } = taxjar;
 const qb = require('./lib/quickbooks');
 qb.init({ getDb: () => db });
 
+const stripeLib = require('./lib/stripe');
+// stripeLib.init(...) called below alongside the other httpsRequest-dependent libs
+
 const apPackages = require('./lib/ap-packages');
 
 
@@ -281,6 +284,7 @@ gdrive.init({ httpsRequest, getDb: () => db, writelog });
 taxjar.init({ httpsRequest, NEXUS_STATES, toStateAbbr });
 notify.init({ getDb: () => db });
 freight.init({ httpsRequest, getDb: () => db, writelog, puppeteer });
+stripeLib.init({ httpsRequest, writelog });
 db_mod.init({
   getDb: () => db,
   publicBaseUrl: PUBLIC_BASE_URL,
@@ -903,6 +907,115 @@ const server = http.createServer(async (req, res) => {
       } catch(e) { results.customerError = e.message; }
     }
     json(results);
+    return;
+  }
+
+  // ── Stripe Webhook ─────────────────────────────────────────────
+  // Public endpoint (no auth) — Stripe authenticates via the signed body.
+  // Returns 400 if signature verification fails; 200 for all valid events
+  // (even unhandled types) so Stripe doesn't retry. The endpoint secret
+  // is created in the Stripe dashboard when you add a webhook endpoint
+  // and pasted into Railway as STRIPE_WEBHOOK_SECRET.
+  //
+  // Wired events: invoice.paid, invoice.payment_failed, invoice.voided.
+  // Anything else is acknowledged with 200 + no-op.
+  if (pathname === '/api/stripe/webhook' && req.method === 'POST') {
+    const rawBody = await readBody(req);
+    const sigHeader = req.headers['stripe-signature'] || req.headers['Stripe-Signature'];
+    const secret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!secret) {
+      // Don't 500 — Stripe would just retry. Log loudly and 200 so the rep
+      // can finish wiring the env var without a flood of retries.
+      console.warn('[stripe.webhook] STRIPE_WEBHOOK_SECRET not set — webhook acknowledged but NOT processed');
+      writelog('warn', 'stripe.webhook.unconfigured', 'Stripe webhook hit but STRIPE_WEBHOOK_SECRET not set', { meta: { sigHeaderPresent: !!sigHeader } });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ received: true, processed: false, reason: 'STRIPE_WEBHOOK_SECRET not configured' }));
+      return;
+    }
+    if (!stripeLib.verifyWebhookSignature(rawBody, sigHeader, secret)) {
+      writelog('warn', 'stripe.webhook.bad-signature', 'Rejected Stripe webhook — signature mismatch or stale timestamp', { meta: { sigHeaderPresent: !!sigHeader } });
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid signature' }));
+      return;
+    }
+
+    let event;
+    try { event = JSON.parse(rawBody); }
+    catch(e) {
+      writelog('error', 'error.stripe.webhook', `Stripe webhook JSON parse failed: ${e.message}`);
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Bad JSON' }));
+      return;
+    }
+
+    // Handle the 3 invoice lifecycle events we care about.
+    try {
+      const type = event.type || '';
+      const inv  = event.data?.object || {};
+      const quoteNumber = inv.metadata?.wr_quote_number || null;
+      const dealId      = inv.metadata?.wr_deal_id || null;
+      const handled = ['invoice.paid', 'invoice.payment_failed', 'invoice.voided'].includes(type);
+
+      if (handled && quoteNumber && db) {
+        const qrow = await db.query('SELECT json_snapshot, rep_id, deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
+        const snap = qrow?.rows?.[0]?.json_snapshot || {};
+        const stripeState = snap.stripe || {};
+        stripeState.status = inv.status || stripeState.status;
+        if (type === 'invoice.paid') {
+          stripeState.paidAt = new Date().toISOString();
+          stripeState.amountPaid = inv.amount_paid;
+        } else if (type === 'invoice.payment_failed') {
+          stripeState.lastPaymentFailedAt = new Date().toISOString();
+        } else if (type === 'invoice.voided') {
+          stripeState.voidedAt = new Date().toISOString();
+        }
+        snap.stripe = stripeState;
+        await db.query('UPDATE quotes SET json_snapshot = $1 WHERE quote_number = $2', [JSON.stringify(snap), quoteNumber]);
+
+        const ownerId = qrow?.rows?.[0]?.rep_id || null;
+        const dealName = qrow?.rows?.[0]?.deal_name || '';
+        const amountDollars = inv.amount_paid != null
+          ? (inv.amount_paid / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+          : '';
+
+        if (type === 'invoice.paid' && ownerId) {
+          await createNotification(
+            ownerId,
+            'stripe-invoice-paid',
+            `Payment received — ${quoteNumber}`,
+            `Stripe payment of ${amountDollars} received for ${dealName || quoteNumber}.`,
+            { dealId, dealName, quoteNum: quoteNumber }
+          );
+        } else if (type === 'invoice.payment_failed' && ownerId) {
+          await createNotification(
+            ownerId,
+            'stripe-invoice-failed',
+            `Payment failed — ${quoteNumber}`,
+            `A Stripe payment attempt failed on invoice for ${dealName || quoteNumber}. Customer may retry.`,
+            { dealId, dealName, quoteNum: quoteNumber }
+          );
+        }
+
+        writelog(
+          type === 'invoice.payment_failed' ? 'warn' : 'info',
+          `stripe.${type.replace('invoice.', 'invoice-')}`,
+          `Stripe ${type} for ${quoteNumber}`,
+          { rep: String(ownerId || ''), quoteNum: quoteNumber, dealId: String(dealId || ''), dealName, meta: { stripeInvoiceId: inv.id, amount: inv.amount_paid, status: inv.status } }
+        );
+      } else if (!handled) {
+        // Acknowledge events we don't act on — Stripe still expects 200.
+        writelog('info', 'stripe.webhook.ignored', `Stripe webhook acknowledged but no handler: ${type}`, { meta: { type, stripeInvoiceId: inv.id } });
+      } else if (!quoteNumber) {
+        writelog('warn', 'stripe.webhook.no-quote', `Stripe webhook ${type} missing wr_quote_number metadata`, { meta: { stripeInvoiceId: inv.id } });
+      }
+    } catch(e) {
+      console.warn('[stripe.webhook] handler error:', e.message);
+      writelog('error', 'error.stripe.webhook', `Stripe webhook handler error: ${e.message}`, { meta: { eventType: event?.type, stripeInvoiceId: event?.data?.object?.id } });
+      // Still 200 — don't let DB hiccups cause Stripe to retry-storm.
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ received: true }));
     return;
   }
 
@@ -2965,12 +3078,21 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      // Get payment link from DB
+      // Get payment link. Prefer Stripe (json_snapshot.stripe.hostedUrl) over
+      // HubSpot's payment_link — that's the Option A swap. HubSpot URL stays as
+      // fallback for older quotes, Canadian orders (we skip Stripe), and any
+      // case where Stripe creation failed at /api/create-invoice time.
       let paymentUrl = null;
-      if (db) {
+      let paymentSource = null;
+      const stripeInfo = quoteData.stripe || null;
+      if (stripeInfo?.hostedUrl && stripeInfo?.status !== 'void' && stripeInfo?.status !== 'uncollectible') {
+        paymentUrl = stripeInfo.hostedUrl;
+        paymentSource = 'stripe';
+      } else if (db) {
         try {
           const pr = await db.query('SELECT payment_link FROM quotes WHERE quote_number = $1', [quoteId]);
           paymentUrl = pr.rows[0]?.payment_link || null;
+          if (paymentUrl) paymentSource = 'hubspot';
         } catch(e) {}
       }
 
@@ -6941,11 +7063,61 @@ ${q.accepted ? `
         } catch(e) { console.warn('DB payment_link save failed:', e.message); }
       }
 
+      // 9c. Create Stripe Invoice alongside HubSpot's (Option A — May 12, 2026 plan).
+      // HubSpot invoice remains the source of record. Stripe becomes the customer's
+      // pay-now surface via json_snapshot.stripe.hostedUrl, picked up by /i/:quoteNumber.
+      // Any failure here is non-fatal — HubSpot's payment_link is the fallback.
+      let stripeInvoice = null;
+      try {
+        let isCanadian = false;
+        let snap = {};
+        if (quoteNumber && db) {
+          const snapRow = await db.query('SELECT json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
+          snap = snapRow?.rows?.[0]?.json_snapshot || {};
+          isCanadian = snap.canadian === true
+            || /^canada$/i.test(String(snap.country || ''))
+            || /^canada$/i.test(String(snap.customer?.country || customer?.country || ''));
+        }
+        if (isCanadian) {
+          writelog('info', 'stripe.invoice.skipped', `Stripe invoice skipped — Canadian/international order (wire transfer only)`, { rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||'') });
+        } else if (!process.env.STRIPE_SECRET_KEY) {
+          // No-op when Stripe isn't configured (e.g., prod before cutover)
+        } else if (!customer?.email) {
+          writelog('warn', 'stripe.invoice.skipped', `Stripe invoice skipped — no customer email on quote`, { rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||'') });
+        } else {
+          stripeInvoice = await stripeLib.createInvoiceForQuote({
+            quoteNumber,
+            dealId,
+            customer,
+            lineItems: invoiceLineItems,
+            daysUntilDue: 7,
+          });
+          if (quoteNumber && db) {
+            snap.stripe = stripeInvoice;
+            await db.query('UPDATE quotes SET json_snapshot = $1 WHERE quote_number = $2', [JSON.stringify(snap), quoteNumber]);
+          }
+          writelog('info', 'stripe.invoice.created', `Stripe invoice ${stripeInvoice.invoiceId} created for ${quoteNumber}`, {
+            rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||''),
+            meta: { stripeInvoiceId: stripeInvoice.invoiceId, amountDue: stripeInvoice.amountDue, hostedUrl: stripeInvoice.hostedUrl },
+          });
+        }
+      } catch(stripeErr) {
+        console.warn('Stripe invoice create failed:', stripeErr.message);
+        writelog('error', 'error.stripe.invoice', `Stripe invoice create failed: ${stripeErr.message}`, { rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||'') });
+      }
+
       // 10. Return invoice page URL
       const invToken = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
       const invoicePageUrl = `${PUBLIC_BASE_URL}/i/${quoteNumber}?t=${invToken}`;
       writelog('info', 'invoice.created', `Invoice created: ${quoteNumber || '—'}`, { rep: String(ownerId || ''), quoteNum: quoteNumber || null, dealId: String(dealId || ''), meta: { invoiceId } });
-      json({ success: true, invoiceUrl: invoicePageUrl, paymentUrl, invoiceId });
+      json({
+        success: true,
+        invoiceUrl: invoicePageUrl,
+        paymentUrl,
+        invoiceId,
+        stripeInvoiceId: stripeInvoice?.invoiceId || null,
+        stripeHostedUrl: stripeInvoice?.hostedUrl || null,
+      });
 
       // Upload invoice PDF to Google Drive (non-blocking)
       (async () => {

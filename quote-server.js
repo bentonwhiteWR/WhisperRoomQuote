@@ -7975,19 +7975,21 @@ ${q.accepted ? `
         Country: 'US',
       } : shipAddr;
 
-      // Tax: addendums always suppress QB AST and pass our TaxJar-computed
-      // tax (from the source quote) as an explicit line item. Reasoning:
-      // we already include tax in `cleanLines` when the source quote had
-      // tax — if AST were also live, QB would double-tax (line tax + AST
-      // tax). Universal suppression keeps the math correct and the
-      // customer-facing invoice total matches what we show on the order
-      // page. Suppression-only is the reliable AST lever (see v1.7.10
-      // incident in changelog for why amount-override doesn't work).
+      // Tax suppression — mirror process-order's rules so the addendum
+      // invoice's tax behavior matches what reps already trust. Suppress
+      // when the order is tax-exempt OR the addendum's TaxJar tax is $0
+      // (non-nexus ship-to). Otherwise let QB AST compute tax based on
+      // the per-line TaxCodeRef. See v1.15.0 changelog for original
+      // process-order suppression rationale.
       const TAX_CODE    = process.env.QB_TAXABLE_CODE || 'TAX';
       const EXEMPT_CODE = process.env.QB_EXEMPT_CODE  || 'NON';
       const _isTaxExempt   = !!(snap.taxExempt || snap.accessories?.taxexempt);
-      const _suppressQbTax = true;
-      const lineTaxRef     = { value: EXEMPT_CODE };
+      // For merged-from-quote addendums, use the SOURCE quote's tax (since
+      // tax was computed against the addendum items, not the original
+      // order). For ad-hoc lines, fall back to the order's tax flag.
+      const _addTaxNumber  = mergeQuoteNumber ? addTaxAmount : parseFloat(tax?.tax || 0);
+      const _suppressQbTax = _isTaxExempt || _addTaxNumber === 0;
+      const lineTaxRef     = { value: _suppressQbTax ? EXEMPT_CODE : TAX_CODE };
 
       const fallback = await qb.getDefaultItem();
       const cust = await qb.findOrCreateCustomer({
@@ -7999,25 +8001,100 @@ ${q.accepted ? `
         billAddr, shipAddr,
       });
 
-      // Build QB lines. For Invoice: pass amounts as-is (negative line
-      // amounts show as credit-style lines and reduce the invoice total
-      // naturally). For Credit Memo: flip every line to positive — the
-      // CreditMemo object type already implies "we owe the customer"; QB
-      // doesn't accept negative amounts on credit memo lines.
-      const qbLines = cleanLines.map(ln => {
-        const amt = parseFloat((isCreditMemo ? Math.abs(ln.amount) : ln.amount).toFixed(2));
-        return {
-          Amount: amt,
-          DetailType: 'SalesItemLineDetail',
-          Description: ln.description,
-          SalesItemLineDetail: {
-            ItemRef:    { value: fallback.value },
-            UnitPrice:  amt,
-            Qty:        1,
-            TaxCodeRef: lineTaxRef,
-          },
-        };
-      });
+      // Build QB lines using process-order's structure: products get
+      // matched ItemRef + their own TaxCodeRef, discount uses
+      // DiscountLineDetail, freight goes into QB's Shipping slot via
+      // the magic SHIPPING_ITEM_ID, install/pickup use the fallback
+      // item with EXEMPT tax. Tax itself is NOT a line — AST handles it
+      // when not suppressed. This puts freight/tax in the proper QB
+      // fields rather than dumping everything as generic line items.
+      // (For credit memos, all amounts flip positive — the CreditMemo
+      // object type implies "we owe the customer".)
+      const qbLines = [];
+      const SHIPPING_ITEM_ID = process.env.QB_SHIPPING_ITEM_ID || 'SHIPPING_ITEM_ID';
+      const unmatched = [];
+      if (mergeQuoteNumber) {
+        // Structured path: build proper line types from the source quote.
+        for (const it of addProducts) {
+          const qty   = parseInt(it.qty || 1) || 1;
+          const price = parseFloat(it.price) || 0;
+          const ext   = price * qty;
+          if (!ext) continue;
+          const matched = it.name ? await qb.findItemByName(it.name) : null;
+          const ref     = matched || fallback;
+          if (it.name && !matched) unmatched.push(it.name);
+          const amt = parseFloat((isCreditMemo ? Math.abs(ext) : ext).toFixed(2));
+          qbLines.push({
+            Amount: amt,
+            DetailType: 'SalesItemLineDetail',
+            Description: it.description ? `${it.name || ''}${it.name ? ' — ' : ''}${it.description}`.trim() : (it.name || 'Item'),
+            SalesItemLineDetail: {
+              ItemRef:    { value: ref.value },
+              UnitPrice:  parseFloat((isCreditMemo ? Math.abs(price) : price).toFixed(2)),
+              Qty:        qty,
+              TaxCodeRef: lineTaxRef,
+            },
+          });
+        }
+        // Discount BEFORE freight — same pattern as process-order so the
+        // discount applies to the running product subtotal only.
+        if (addDiscount && addDiscount.amount > 0) {
+          qbLines.push({
+            Amount: parseFloat(addDiscount.amount.toFixed(2)),
+            DetailType: 'DiscountLineDetail',
+            DiscountLineDetail: { PercentBased: false },
+          });
+        }
+        // Freight: SHIPPING_ITEM_ID magic value routes to QB's Shipping
+        // totals row. freightTaxed per-state from source quote.
+        if (addFreight > 0) {
+          const freightTaxCode = _suppressQbTax ? EXEMPT_CODE : (addFreightTaxed ? TAX_CODE : EXEMPT_CODE);
+          qbLines.push({
+            Amount: parseFloat((isCreditMemo ? Math.abs(addFreight) : addFreight).toFixed(2)),
+            DetailType: 'SalesItemLineDetail',
+            Description: 'Freight',
+            SalesItemLineDetail: {
+              ItemRef:    { value: SHIPPING_ITEM_ID },
+              TaxCodeRef: { value: freightTaxCode },
+            },
+          });
+        }
+        // Install / pickup fee — fallback item, never taxed.
+        if (addInstall > 0) {
+          qbLines.push({
+            Amount: parseFloat((isCreditMemo ? Math.abs(addInstall) : addInstall).toFixed(2)),
+            DetailType: 'SalesItemLineDetail',
+            Description: addInstallMode === 'delivery_install' ? 'Delivery and Installation' : 'Installation',
+            SalesItemLineDetail: { ItemRef: { value: fallback.value }, TaxCodeRef: { value: EXEMPT_CODE } },
+          });
+        }
+        if (addPickupFee > 0) {
+          qbLines.push({
+            Amount: parseFloat((isCreditMemo ? Math.abs(addPickupFee) : addPickupFee).toFixed(2)),
+            DetailType: 'SalesItemLineDetail',
+            Description: 'Pickup Fee',
+            SalesItemLineDetail: { ItemRef: { value: fallback.value }, TaxCodeRef: { value: EXEMPT_CODE } },
+          });
+        }
+      } else {
+        // Ad-hoc lines path (legacy `body.lines` submissions). No structure
+        // — just SalesItemLineDetail with the fallback item.
+        cleanLines.forEach(ln => {
+          const amt = parseFloat((isCreditMemo ? Math.abs(ln.amount) : ln.amount).toFixed(2));
+          qbLines.push({
+            Amount: amt,
+            DetailType: 'SalesItemLineDetail',
+            Description: ln.description,
+            SalesItemLineDetail: {
+              ItemRef:    { value: fallback.value },
+              UnitPrice:  amt,
+              Qty:        1,
+              TaxCodeRef: lineTaxRef,
+            },
+          });
+        });
+      }
+      if (unmatched.length) console.warn(`[add-charge] QB items not matched (used fallback "${fallback.name}"):`, unmatched);
 
       const customFields = [];
       if (!isCreditMemo && pt === 'po' && poNumber) {

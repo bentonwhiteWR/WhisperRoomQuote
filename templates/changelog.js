@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.19.9', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Addendum QB invoice now puts freight and tax in their proper places — mirrors process-order\'s structure. Was dumping everything as generic SalesItemLineDetail lines. Now: products → SalesItemLineDetail with matched ItemRef + per-line TaxCodeRef; discount → DiscountLineDetail (applied BEFORE freight); freight → SalesItemLineDetail with SHIPPING_ITEM_ID (routes to QB\'s Shipping totals row) + freightTaxed-aware TaxCodeRef; install/pickup → fallback item with EXEMPT tax. Tax itself is no longer a line — QB Automated Sales Tax computes it from the per-line TaxCodeRef. Suppression rules match process-order: AST silenced when the addendum tax is $0 (non-nexus ship-to) or the order is tax-exempt. Ad-hoc lines path (legacy `body.lines`) keeps the flat structure since it has no per-line type info.'},
+      ]
+    },
+    {
       v:'1.19.8', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Order-modified email now CCs bentonwhite@whisperroom.com alongside accounting@. Was only CC\'ing accounting before. Multiple CCs joined with comma per RFC 6068.'},

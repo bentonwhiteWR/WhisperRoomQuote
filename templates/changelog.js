@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.19.8', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Order-modified email now CCs bentonwhite@whisperroom.com alongside accounting@. Was only CC\'ing accounting before. Multiple CCs joined with comma per RFC 6068.'},
+      ]
+    },
+    {
       v:'1.19.7', date:'May 13, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Modify Order quote picker now shows the full line-item breakdown for each candidate quote — every product line (name + qty + ext amount), freight, install, pickup fee, and Sales Tax with rate. Was showing only quote number + date + total + first 2 item names. Rep can now identify the right quote at a glance without leaving the modal. Hub data projection expanded to include freight/install/tax/pickupFee per quote.'},

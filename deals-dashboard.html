@@ -3129,7 +3129,10 @@ function openOrderModifiedEmail(addendum, ord) {
     '',
     `Modified by: ${addendum.addedBy || 'rep'}`,
   ].filter(Boolean).join('\n');
-  const mailto = `mailto:shipping@whisperroom.com?cc=accounting@whisperroom.com&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  // CCs: accounting + Benton on every order-modified notification.
+  // Multiple CCs use comma separator per RFC 6068.
+  const ccList = ['accounting@whisperroom.com', 'bentonwhite@whisperroom.com'];
+  const mailto = `mailto:shipping@whisperroom.com?cc=${ccList.join(',')}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   const a = document.createElement('a');
   a.href = mailto;
   a.style.display = 'none';

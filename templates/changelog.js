@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.20.1', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Two staging-test issues from v1.20.0: (1) Stripe `/v1/invoiceitems` rejected `price_data.product_data` with "unknown parameter" — that\'s a Checkout-Sessions-only field. Invoice items require either a Product ID via `price_data.product` or the simpler `amount`+`description` shape. Switched to amount + description (qty pre-multiplied into amount, qty prefix baked into the description so "2 × MDL Whisper" still reads). Trade-off: line shows as one combined amount rather than Stripe\'s native "2 × $X.XX" breakdown. Revisit when we need explicit qty display. (2) Customer email was missing on the body sent to /api/create-invoice, causing stripe.invoice.skipped — now falls back through body.customer.email → json_snapshot.customer.email → HubSpot contact lookup via resolvedContactId. The `emailSource` is logged in stripe.invoice.created meta so we can see where it came from.'},
+      ]
+    },
+    {
       v:'1.20.0', date:'May 13, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Stripe Invoice integration (Option A — May 12, 2026 plan, first cut). Clicking Create Invoice now creates BOTH a HubSpot invoice (unchanged) AND a Stripe Invoice from the same line items (post-credits, post-install, with freight + tax as separate items). The Pay Now button on our invoice page (/i/:quoteNumber) prefers the Stripe hosted_invoice_url when available; HubSpot\'s payment link stays as fallback for legacy quotes, Canadian/international orders (Stripe skipped — wire transfer only), and any case where Stripe creation failed. Stripe state stashed on json_snapshot.stripe ({ customerId, invoiceId, hostedUrl, invoicePdf, amountDue, status, finalizedAt }) — no schema migration. Webhook handler at POST /api/stripe/webhook with signature verification (STRIPE_WEBHOOK_SECRET) handles invoice.paid / invoice.payment_failed / invoice.voided — writes paidAt/voidedAt to snapshot, fires rep notification on paid, writelogs the event. Hard-locked to sk_test_ keys for now. New module lib/stripe.js (init({ deps }) pattern, form-urlencoded helper, find-or-create customer by email).'},

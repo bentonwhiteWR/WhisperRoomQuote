@@ -7078,17 +7078,50 @@ ${q.accepted ? `
             || /^canada$/i.test(String(snap.country || ''))
             || /^canada$/i.test(String(snap.customer?.country || customer?.country || ''));
         }
+
+        // Build effective customer: body wins, snapshot fills gaps, then
+        // HubSpot contact as last resort for email/phone/name.
+        const snapCust = snap.customer || {};
+        const effCustomer = {
+          firstName: customer?.firstName || snapCust.firstName || '',
+          lastName:  customer?.lastName  || snapCust.lastName  || '',
+          company:   customer?.company   || snapCust.company   || '',
+          email:     customer?.email     || snapCust.email     || '',
+          phone:     customer?.phone     || snapCust.phone     || '',
+          address:   customer?.address   || snapCust.address   || '',
+          city:      customer?.city      || snapCust.city      || '',
+          state:     customer?.state     || snapCust.state     || '',
+          zip:       customer?.zip       || snapCust.zip       || '',
+          country:   customer?.country   || snapCust.country   || '',
+        };
+        if (!effCustomer.email && resolvedContactId) {
+          try {
+            const contactRes = await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path:     `/crm/v3/objects/contacts/${resolvedContactId}?properties=email,firstname,lastname,phone,company`,
+              method:   'GET',
+              headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+            });
+            const cp = contactRes.body?.properties || {};
+            if (cp.email)     effCustomer.email     = cp.email;
+            if (cp.firstname) effCustomer.firstName = effCustomer.firstName || cp.firstname;
+            if (cp.lastname)  effCustomer.lastName  = effCustomer.lastName  || cp.lastname;
+            if (cp.phone)     effCustomer.phone     = effCustomer.phone     || cp.phone;
+            if (cp.company)   effCustomer.company   = effCustomer.company   || cp.company;
+          } catch(e) { console.warn('HubSpot contact email lookup failed:', e.message); }
+        }
+
         if (isCanadian) {
           writelog('info', 'stripe.invoice.skipped', `Stripe invoice skipped — Canadian/international order (wire transfer only)`, { rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||'') });
         } else if (!process.env.STRIPE_SECRET_KEY) {
           // No-op when Stripe isn't configured (e.g., prod before cutover)
-        } else if (!customer?.email) {
-          writelog('warn', 'stripe.invoice.skipped', `Stripe invoice skipped — no customer email on quote`, { rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||'') });
+        } else if (!effCustomer.email) {
+          writelog('warn', 'stripe.invoice.skipped', `Stripe invoice skipped — no customer email on quote, snapshot, or HubSpot contact`, { rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||''), meta: { contactId: resolvedContactId } });
         } else {
           stripeInvoice = await stripeLib.createInvoiceForQuote({
             quoteNumber,
             dealId,
-            customer,
+            customer: effCustomer,
             lineItems: invoiceLineItems,
             daysUntilDue: 7,
           });
@@ -7098,7 +7131,7 @@ ${q.accepted ? `
           }
           writelog('info', 'stripe.invoice.created', `Stripe invoice ${stripeInvoice.invoiceId} created for ${quoteNumber}`, {
             rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||''),
-            meta: { stripeInvoiceId: stripeInvoice.invoiceId, amountDue: stripeInvoice.amountDue, hostedUrl: stripeInvoice.hostedUrl },
+            meta: { stripeInvoiceId: stripeInvoice.invoiceId, amountDue: stripeInvoice.amountDue, hostedUrl: stripeInvoice.hostedUrl, emailSource: customer?.email ? 'body' : (snapCust.email ? 'snapshot' : 'hubspot-contact') },
           });
         }
       } catch(stripeErr) {

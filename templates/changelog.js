@@ -51,6 +51,28 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.18.2', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Customer-facing order page /o/<quoteNumber> now reflects active addendums in the totals. v1.18.1 shipped the create / track / void flow but forgot to update the customer view of the order — adding a $500 upcharge would update the deal amount, the QB invoice, and the addendums chip in Deal Hub, but the customer-facing order page still showed the original total. New behavior: an "Order Adjustments" subsection appears in the totals card (above the grand total) listing each per-line adjustment with its description. Negatives styled green like discounts. Grand total now equals subtotal − discount + freight/pickup/install + tax + addendumNet (where addendumNet is signed: credit-memo addendums subtract). Voided addendums are excluded. Legacy v1.18.0 single-line addendums render correctly via fallback.'},
+      ]
+    },
+    {
+      v:'1.18.1', date:'May 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Order Addendums moved from the orders dashboard drawer to the Deal Hub. Every order row in the Deal Hub now has a "Modify" button that opens a modal with two sections: (1) Existing addendums for this order with status badges (Paid / Open / Credit / Voided) + void buttons on unpaid ones; (2) Add new — a multi-line builder where each row is description + amount (negative for credits), plus an "+ Add line" button. Net total + resulting QB doc type (Invoice or Credit Memo) preview live as the rep types. The order row also shows a small color-coded chip summarizing active addendums (e.g. "+$450 · 2" or "−$200"). The orders dashboard drawer no longer has any addendum UI.'},
+        {t:'add', d:'Addendums now support multi-line + credits. Net positive across all lines → QB Invoice (with auto-payment for non-PO types, mirroring create-qb-invoice). Net negative → QB Credit Memo (no auto-payment; rep applies/refunds in QB). Net zero is rejected (split into separate addendums). Each line stored individually on order_data.addendums[i].lines for audit. lib/quickbooks.js gains createCreditMemo + getCreditMemo + deleteCreditMemo. Void endpoint now handles both QB doc types via the addendum\'s type field.'},
+        {t:'ui', d:'DocNumber convention: invoices stay as W-{QUOTE}-A{n} but credit memos use W-{QUOTE}-C{n} so accounting can tell the two apart at a glance in QB. Real example: Russell Turner shipping upgrade = -A1; foam-downgrade refund = -C1.'},
+      ]
+    },
+    {
+      v:'1.18.0', date:'May 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Order Addendums — handle post-process charges like shipping upgrades without overwriting the original order. New "+ Add Charge" button in the order drawer\'s Shipment section opens a modal (description, amount, payment type, optional PO #, "Apply to Freight" checkbox). Submitting creates a new QB invoice with DocNumber {QUOTE}-A{n} (e.g. W-1605132601-A1) plus auto-payment for non-PO types. Each addendum tracked in order_data.addendums forever with audit trail (id, description, amount, payment, paidAt, addedBy, addedAt). Drawer shows the list with status badges (Paid/Open/Voided) and a total billed summary ($X original + $Y addendums). Real incident May 12: Russell Turner upgraded his shipping after order processed; Sarah manually created a 2nd invoice. Now systemized.'},
+        {t:'add', d:'POST /api/orders/:quoteNumber/add-charge — new endpoint, mirrors the create-qb-invoice + auto-payment pattern. Honors the same tax suppression rules (tax-exempt or zero-tax orders skip AST). Updates HubSpot deal amount to original + sum(active addendums) so deal revenue stays accurate. Defaults Add Charge\'s payment type to the original order\'s payment type. Logs order.addendum-added with rep + amount + invoice info.'},
+        {t:'add', d:'POST /api/orders/:quoteNumber/addendums/:id/void — void an UNPAID addendum. Paid addendums block (use refund flow when Stripe lands). Marks the addendum voided rather than deleting (audit preserved). Deletes the QB invoice; reverses freight-cost bump if applicable; re-syncs HS deal amount. Logs order.addendum-voided.'},
+      ]
+    },
+    {
       v:'1.17.0', date:'May 13, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Reports → Quotes sub-tab. Pick a rep in the sidebar, see their last 7 days of quotes as a 7-column grid (today highlighted in orange on the right). Each tile shows quote number, customer/company, total, time of day, and a "New" (green) or "Rev" (orange) badge. New = first quote for that deal_id; Rev = subsequent quote (price changed → new quote number). Tiles link to the quote page. Empty days show "No quotes." Header shows totals at a glance (e.g. "12 quotes · 8 new · 4 revisions"). Powered by new endpoint GET /api/reports/quotes-timeline?rep=<ownerId> which runs one SQL query with a correlated subquery counting prior quotes per deal_id. In-place edits where the rep re-saved without changing the price aren\'t tracked (the schema has no audit log) — punted per discussion, can be added later by introducing updated_at + update_count columns.'},

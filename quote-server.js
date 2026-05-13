@@ -6389,6 +6389,8 @@ ${q.accepted ? `
           hingePreference: r.order_data?.hingePreference || '',
           shipped:         r.order_data?.shipped || null,
           freightCost:     r.order_data?.freightCost || null,
+          paymentType:     r.order_data?.paymentType || null,
+          addendums:       Array.isArray(r.order_data?.addendums) ? r.order_data.addendums : [],
           createdAt:       r.created_at,
           apItems,
           apColor,
@@ -7762,6 +7764,399 @@ ${q.accepted ? `
       json({ error: e.message }, 500);
     }
     return;
+  }
+
+  // ── API: Order Addendum (multi-line, invoice or credit memo) ────
+  // Adds a tracked post-process change to an existing order. The body
+  // is a multi-line builder:
+  //   { lines: [{description, amount}, ...], paymentType, poNumber?,
+  //     applyToFreight? }
+  // Lines can mix positive and negative amounts. The net signs the kind
+  // of QB document:
+  //   net > 0 → Invoice (with auto-payment for non-PO)
+  //   net < 0 → Credit Memo (no auto-payment; rep applies/refunds later)
+  //   net = 0 → rejected (a net-zero adjustment is informational; if a
+  //              rep truly needs it, they can split into two addendums)
+  // Use cases: freight upgrade (1 positive line), wall upgrade + foam
+  // downgrade (2 lines, +500 / -100 = +400 invoice), pure credit for
+  // goodwill (1 negative line → credit memo).
+  if (pathname.startsWith('/api/orders/') && pathname.endsWith('/add-charge') && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').replace('/add-charge', '').trim());
+    let body;
+    try { body = JSON.parse(await readBody(req) || '{}'); }
+    catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const rawLines       = Array.isArray(body.lines) ? body.lines : [];
+      const pt             = String(body.paymentType || '').toLowerCase().trim();
+      const poNumber       = body.poNumber ? String(body.poNumber).trim() : null;
+      const applyToFreight = !!body.applyToFreight;
+
+      if (!rawLines.length) { json({ error: 'At least one line is required' }, 400); return; }
+      // Normalize + validate every line. Empty descriptions and zero
+      // amounts get rejected — the rep is asked to remove the line or
+      // fill it in.
+      const cleanLines = rawLines.map(l => ({
+        description: String(l?.description || '').trim(),
+        amount:      parseFloat(l?.amount),
+      }));
+      for (let i = 0; i < cleanLines.length; i++) {
+        const ln = cleanLines[i];
+        if (!ln.description)                       { json({ error: `Line ${i+1}: description required` }, 400); return; }
+        if (isNaN(ln.amount) || ln.amount === 0)   { json({ error: `Line ${i+1}: amount must be nonzero` }, 400); return; }
+      }
+      const netTotal = parseFloat(cleanLines.reduce((s, l) => s + l.amount, 0).toFixed(2));
+      if (netTotal === 0) { json({ error: 'Net total is zero. Adjust the amounts or split into separate addendums.' }, 400); return; }
+      const isCreditMemo = netTotal < 0;
+      const absTotal     = Math.abs(netTotal);
+
+      // Payment type only matters when creating an Invoice (positive net).
+      // Credit memos don't get auto-paid; ignore payment type for them.
+      if (!isCreditMemo) {
+        if (!['hs','cc','ach','po','other'].includes(pt)) { json({ error: 'Invalid payment type' }, 400); return; }
+        if (pt === 'po' && !poNumber)                     { json({ error: 'PO number required for PO payment type' }, 400); return; }
+      }
+
+      const row = await db.query(`
+        SELECT o.order_data, o.deal_id, q.json_snapshot
+        FROM orders o
+        LEFT JOIN quotes q ON q.quote_number = o.quote_number
+        WHERE o.quote_number = $1
+      `, [quoteNumber]);
+      if (!row.rows.length) { json({ error: `Order ${quoteNumber} not found` }, 404); return; }
+
+      const orderData = row.rows[0].order_data || {};
+      const snap      = row.rows[0].json_snapshot || {};
+      const dealId    = row.rows[0].deal_id;
+      const customer  = snap.customer || {};
+      const billing   = snap.billing  || null;
+      const tax       = snap.tax      || {};
+      const prevAddendums = Array.isArray(orderData.addendums) ? orderData.addendums : [];
+      const addendumNum = prevAddendums.filter(a => !a.voided).length + 1;
+      const repName     = getRepFromReq(req, body) || 'unknown';
+
+      const shipAddr = {
+        Line1: customer.address || '', City: customer.city || '',
+        CountrySubDivisionCode: customer.state || '',
+        PostalCode: customer.zip || '', Country: 'US',
+      };
+      const billAddr = (billing && (billing.name || billing.address || billing.city || billing.state || billing.zip)) ? {
+        ...(billing.name    ? { Line1: billing.name } : {}),
+        ...(billing.address ? (billing.name ? { Line2: billing.address } : { Line1: billing.address }) : {}),
+        ...(billing.city    ? { City: billing.city } : {}),
+        ...(billing.state   ? { CountrySubDivisionCode: billing.state } : {}),
+        ...(billing.zip     ? { PostalCode: billing.zip } : {}),
+        Country: 'US',
+      } : shipAddr;
+
+      // Tax suppression — same rules as create-qb-invoice / process-order.
+      const TAX_CODE    = process.env.QB_TAXABLE_CODE || 'TAX';
+      const EXEMPT_CODE = process.env.QB_EXEMPT_CODE  || 'NON';
+      const _isTaxExempt   = !!(snap.taxExempt || snap.accessories?.taxexempt);
+      const _suppressQbTax = _isTaxExempt || parseFloat(tax?.tax || 0) === 0;
+      const lineTaxRef     = { value: _suppressQbTax ? EXEMPT_CODE : TAX_CODE };
+
+      const fallback = await qb.getDefaultItem();
+      const cust = await qb.findOrCreateCustomer({
+        displayName: customer.company || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || customer.email || 'Unknown',
+        givenName:   customer.firstName || '',
+        familyName:  customer.lastName  || '',
+        email:       customer.email     || '',
+        companyName: customer.company   || '',
+        billAddr, shipAddr,
+      });
+
+      // Build QB lines. For Invoice: pass amounts as-is (negative line
+      // amounts show as credit-style lines and reduce the invoice total
+      // naturally). For Credit Memo: flip every line to positive — the
+      // CreditMemo object type already implies "we owe the customer"; QB
+      // doesn't accept negative amounts on credit memo lines.
+      const qbLines = cleanLines.map(ln => {
+        const amt = parseFloat((isCreditMemo ? Math.abs(ln.amount) : ln.amount).toFixed(2));
+        return {
+          Amount: amt,
+          DetailType: 'SalesItemLineDetail',
+          Description: ln.description,
+          SalesItemLineDetail: {
+            ItemRef:    { value: fallback.value },
+            UnitPrice:  amt,
+            Qty:        1,
+            TaxCodeRef: lineTaxRef,
+          },
+        };
+      });
+
+      const customFields = [];
+      if (!isCreditMemo && pt === 'po' && poNumber) {
+        customFields.push({ DefinitionId: '1', Name: 'P.O. Number', Type: 'StringType', StringValue: poNumber });
+      }
+      // Terms only meaningful on invoices; credit memos don't have due dates.
+      let salesTermRef = null;
+      if (!isCreditMemo) {
+        const termName = pt === 'po'
+          ? (process.env.QB_TERM_NET30        || 'Net 30')
+          : (process.env.QB_TERM_UPON_RECEIPT || 'Due on receipt');
+        try {
+          const term = await qb.findTermByName(termName);
+          if (term) salesTermRef = { value: String(term.Id) };
+        } catch(e) {}
+      }
+
+      // DocNumber: original quote + "-A<n>" for invoices, "-C<n>" for
+      // credit memos. Easier to scan in QB ("oh that's a credit, not a
+      // charge"). 21-char cap, leave room for suffix.
+      const suffixChar = isCreditMemo ? 'C' : 'A';
+      const docSuffix  = `-${suffixChar}${addendumNum}`;
+      const docBase    = String(quoteNumber).slice(0, 21 - docSuffix.length);
+      const docNumber  = docBase + docSuffix;
+
+      // Combined memo (shows in QB's email body if invoice is emailed
+      // and in the invoice PDF itself).
+      const linesSummary = cleanLines.map(l => `${l.description}: $${l.amount.toFixed(2)}`).join('; ');
+      const baseMemo = `Order addendum #${addendumNum} for ${quoteNumber}. ${linesSummary}.`;
+      const memo = isCreditMemo
+        ? baseMemo
+        : `${baseMemo} Finance charges of 1.5% per month will be added to invoices not paid by the due date.`;
+
+      let qbId = null, qbDocNumber = null, qbObjForPayment = null;
+      if (isCreditMemo) {
+        const cm = await qb.createCreditMemo({
+          customerRef: { value: cust.Id },
+          docNumber,
+          txnDate:     new Date().toISOString().split('T')[0],
+          lines:       qbLines,
+          memo,
+          billAddr,
+          shipAddr,
+          billEmail:   (billing && billing.email) || customer.email || null,
+          customFields: customFields.length ? customFields : null,
+          globalTaxCalc: _suppressQbTax ? 'NotApplicable' : undefined,
+        });
+        if (!cm?.Id) throw new Error('QB createCreditMemo returned no Id');
+        qbId        = cm.Id;
+        qbDocNumber = cm.DocNumber;
+      } else {
+        const inv = await qb.createInvoice({
+          customerRef: { value: cust.Id },
+          docNumber,
+          txnDate:     new Date().toISOString().split('T')[0],
+          lines:       qbLines,
+          memo,
+          billAddr,
+          shipAddr,
+          billEmail:   (billing && billing.email) || customer.email || null,
+          customFields: customFields.length ? customFields : null,
+          salesTermRef,
+          globalTaxCalc: _suppressQbTax ? 'NotApplicable' : undefined,
+          applyTaxAfterDiscount: true,
+        });
+        if (!inv?.Id) throw new Error('QB createInvoice returned no Id');
+        qbId            = inv.Id;
+        qbDocNumber     = inv.DocNumber;
+        qbObjForPayment = inv;
+      }
+
+      // Auto-payment is only for Invoices (positive net) and only for
+      // non-PO types. Credit memos and PO invoices are left open.
+      let qbPaymentId      = null;
+      let paidAt           = null;
+      let autoPaymentError = null;
+      if (!isCreditMemo && pt !== 'po' && qbObjForPayment) {
+        try {
+          const pmName   = process.env.QB_PAYMENT_METHOD_NAME || 'Hubspot';
+          const acctName = process.env.QB_DEPOSIT_ACCOUNT_NAME || 'Southeast Bank Regular Checking 2545';
+          const [pm, acct] = await Promise.all([
+            qb.findPaymentMethodByName(pmName),
+            qb.findAccountByName(acctName),
+          ]);
+          if (!pm)   throw new Error(`PaymentMethod "${pmName}" not found in QB`);
+          if (!acct) throw new Error(`Account "${acctName}" not found in QB`);
+          const payment = await qb.createPayment({
+            customerRef:         qbObjForPayment.CustomerRef,
+            invoiceId:           qbObjForPayment.Id,
+            amount:              absTotal,
+            paymentMethodRef:    { value: pm.Id, name: pm.Name },
+            depositToAccountRef: { value: acct.Id, name: acct.Name },
+            txnDate:             new Date().toISOString().split('T')[0],
+            privateNote:         `Auto-payment on order addendum (${pt.toUpperCase()}). Order ${quoteNumber}, addendum ${qbDocNumber}.`,
+          });
+          qbPaymentId = payment.Id;
+          paidAt      = new Date().toISOString();
+        } catch(e) {
+          console.warn('[add-charge] Auto-payment failed (invoice still created):', e.message);
+          autoPaymentError = e.message;
+        }
+      }
+
+      // Persist addendum. `amount` mirrors netTotal (signed) so downstream
+      // summing is trivial; `lines` keeps the per-line detail for audit.
+      const addendum = {
+        id:             'add_' + crypto.randomBytes(6).toString('hex'),
+        type:           isCreditMemo ? 'credit' : 'invoice',
+        lines:          cleanLines,
+        amount:         netTotal,                  // signed: negative for credits
+        paymentType:    isCreditMemo ? null : pt,
+        poNumber:       (!isCreditMemo && pt === 'po') ? poNumber : null,
+        applyToFreight,
+        qbId,
+        qbDocNumber,
+        // Legacy alias for invoice-type addendums so older display code
+        // (and the v1.18.0 prior format) keeps working.
+        qbInvoiceId:    isCreditMemo ? null : qbId,
+        qbCreditMemoId: isCreditMemo ? qbId  : null,
+        qbPaymentId,
+        paidAt,
+        addedBy:        repName,
+        addedAt:        new Date().toISOString(),
+        autoPaymentError,
+      };
+
+      const newAddendums = [...prevAddendums, addendum];
+      const updateFields = { addendums: newAddendums };
+      if (applyToFreight) {
+        const prevFreight = parseFloat(orderData.freightCost || 0) || 0;
+        const next        = parseFloat((prevFreight + netTotal).toFixed(2));
+        updateFields.freightCost = next < 0 ? 0 : next;
+      }
+      await db.query(
+        `UPDATE orders SET order_data = order_data || $1::jsonb WHERE quote_number = $2`,
+        [JSON.stringify(updateFields), quoteNumber]
+      );
+
+      // Update HubSpot deal amount: original + sum(active addendums).
+      // Credit-memo addendums have negative `amount`, so they reduce.
+      if (dealId) {
+        try {
+          const originalAmount = parseFloat(snap.total || 0) || 0;
+          const activeSum = newAddendums.filter(a => !a.voided).reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
+          const newDealAmount = originalAmount + activeSum;
+          await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path:     `/crm/v3/objects/deals/${dealId}`,
+            method:   'PATCH',
+            headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, { properties: { amount: String(newDealAmount.toFixed(2)) } });
+        } catch(e) {
+          console.warn('[add-charge] HS deal amount update failed:', e.message);
+        }
+      }
+
+      writelog('info', 'order.addendum-added', `Addendum ${addendum.type} added to ${quoteNumber} (${qbDocNumber}, net $${netTotal.toFixed(2)})`, {
+        rep: repName, quoteNum: quoteNumber, dealId: String(dealId || ''),
+        meta: { addendumId: addendum.id, type: addendum.type, qbId, qbDocNumber, netTotal, lineCount: cleanLines.length, paymentType: addendum.paymentType, applyToFreight, autoPaymentError },
+      });
+      json({ success: true, addendum, addendums: newAddendums, autoPaymentError });
+    } catch(e) {
+      console.error('[add-charge]', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Void Addendum ───────────────────────────────────────────
+  // Voids an UNPAID addendum. Blocks paid addendums (use refund flow
+  // instead — to be built when Stripe lands). Marks the addendum
+  // { voided: true, voidedAt, voidedBy } rather than deleting it so the
+  // audit trail is preserved. Also reverses any freightCost bump and
+  // re-syncs the HubSpot deal amount. QB invoice is deleted (delete on
+  // unpaid is fine; for paid this path never runs).
+  //
+  // POST /api/orders/:quoteNumber/addendums/:addendumId/void
+  {
+    const voidMatch = pathname.match(/^\/api\/orders\/([^\/]+)\/addendums\/([^\/]+)\/void$/);
+    if (voidMatch && req.method === 'POST') {
+      if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+      const quoteNumber = decodeURIComponent(voidMatch[1]);
+      const addendumId  = decodeURIComponent(voidMatch[2]);
+      try {
+        if (!db) { json({ error: 'No database' }, 500); return; }
+        const row = await db.query(
+          'SELECT order_data, deal_id FROM orders WHERE quote_number = $1',
+          [quoteNumber]
+        );
+        if (!row.rows.length) { json({ error: `Order ${quoteNumber} not found` }, 404); return; }
+        const orderData = row.rows[0].order_data || {};
+        const dealId    = row.rows[0].deal_id;
+        const addendums = Array.isArray(orderData.addendums) ? orderData.addendums.slice() : [];
+        const idx = addendums.findIndex(a => a.id === addendumId);
+        if (idx === -1)                                  { json({ error: 'Addendum not found' }, 404); return; }
+        const add = addendums[idx];
+        if (add.voided)                                  { json({ error: 'Addendum already voided' }, 400); return; }
+        if (add.paidAt || add.qbPaymentId) {
+          json({ error: 'Cannot void a paid addendum. Use refund flow instead.' }, 400);
+          return;
+        }
+        const repName = getRepFromReq(req, {}) || 'unknown';
+
+        // Delete the QB object (Invoice or CreditMemo). If QB rejects
+        // (e.g. referenced elsewhere), still mark voided locally; rep can
+        // clean up the orphan in QB manually. Prefer the new qbId +
+        // type fields; fall back to legacy qbInvoiceId for pre-v1.18.1
+        // addendums.
+        let qbVoidError = null;
+        const targetType = add.type || (add.qbCreditMemoId ? 'credit' : 'invoice');
+        const targetId   = add.qbId || add.qbInvoiceId || add.qbCreditMemoId;
+        if (targetId) {
+          try {
+            if (targetType === 'credit') await qb.deleteCreditMemo(targetId);
+            else                          await qb.deleteInvoice(targetId);
+          }
+          catch(e) { qbVoidError = e.message; console.warn(`[void-addendum] QB delete (${targetType}) failed:`, e.message); }
+        }
+
+        addendums[idx] = {
+          ...add,
+          voided:    true,
+          voidedAt:  new Date().toISOString(),
+          voidedBy:  repName,
+          ...(qbVoidError ? { qbVoidError } : {}),
+        };
+
+        const updateFields = { addendums };
+        if (add.applyToFreight) {
+          // Reverse the freight bump. addendum.amount is signed (negative
+          // for credit-memo addendums), so subtracting it from current
+          // freight undoes the original `+= netTotal` regardless of sign.
+          const prevFreight = parseFloat(orderData.freightCost || 0) || 0;
+          const reverted = parseFloat((prevFreight - parseFloat(add.amount)).toFixed(2));
+          updateFields.freightCost = reverted < 0 ? 0 : reverted;
+        }
+        await db.query(
+          `UPDATE orders SET order_data = order_data || $1::jsonb WHERE quote_number = $2`,
+          [JSON.stringify(updateFields), quoteNumber]
+        );
+
+        // Re-sync HS deal amount = original + remaining active addendums.
+        if (dealId) {
+          try {
+            const snapRow = await db.query('SELECT json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
+            const snap = snapRow.rows[0]?.json_snapshot || {};
+            const originalAmount = parseFloat(snap.total || 0) || 0;
+            const activeSum = addendums.filter(a => !a.voided).reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
+            const newDealAmount = originalAmount + activeSum;
+            await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path:     `/crm/v3/objects/deals/${dealId}`,
+              method:   'PATCH',
+              headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, { properties: { amount: String(newDealAmount.toFixed(2)) } });
+          } catch(e) {
+            console.warn('[void-addendum] HS deal amount update failed:', e.message);
+          }
+        }
+
+        writelog('info', 'order.addendum-voided', `Addendum voided on ${quoteNumber}: ${add.qbDocNumber} ($${add.amount})`, {
+          rep: repName, quoteNum: quoteNumber, dealId: String(dealId || ''),
+          meta: { addendumId, qbInvoiceId: add.qbInvoiceId, amount: add.amount, qbVoidError },
+        });
+        json({ success: true, addendums, qbVoidError });
+      } catch(e) {
+        console.error('[void-addendum]', e.message);
+        json({ error: e.message }, 500);
+      }
+      return;
+    }
   }
 
   // ── API: Mark order paid (creates QB Payment linked to invoice) ──
@@ -9416,7 +9811,28 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
         ? 0
         : ((!freightTbd && q.freight) ? q.freight.total : 0);
       const taxAmt = q.tax ? q.tax.tax : 0;
-      const total = sub - disc + freightAmt + pickupFeeAmt + (installAmt > 0 ? installAmt : 0) + taxAmt;
+      // Active addendums (non-voided) modify the order's grand total. Each
+      // addendum may have one or more lines; we flatten so the customer
+      // sees every per-line adjustment with its own description. Legacy
+      // pre-v1.18.1 addendums had {description, amount} at the top level
+      // instead of a lines array — synthesize a single-line shape so the
+      // render path doesn't need to branch.
+      const activeAddendums = (Array.isArray(o.addendums) ? o.addendums : []).filter(a => !a.voided);
+      const addendumLines = activeAddendums.flatMap(a => {
+        if (Array.isArray(a.lines) && a.lines.length) {
+          // For credit-memo addendums, lines are stored as positive but
+          // the addendum's `amount` is negative — flip each line's sign
+          // for display so customer sees the credit clearly.
+          const sign = (a.type === 'credit' || parseFloat(a.amount) < 0) ? -1 : 1;
+          return a.lines.map(ln => ({
+            description: ln.description || '—',
+            amount:      sign * parseFloat(ln.amount || 0),
+          }));
+        }
+        return [{ description: a.description || 'Adjustment', amount: parseFloat(a.amount || 0) }];
+      });
+      const addendumNet = addendumLines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
+      const total = sub - disc + freightAmt + pickupFeeAmt + (installAmt > 0 ? installAmt : 0) + taxAmt + addendumNet;
       const totalWeight = (q.lineItems||[]).reduce((s,i) => s + ((parseFloat(i.weight)||0) * (parseInt(i.qty)||1)), 0);
       const c = q.customer || {};
       const issueDate = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'});
@@ -9576,6 +9992,16 @@ tbody tr:last-child td{border-bottom:none}
       ${installAmt>0?`<div class="tot"><span>${installMode==='delivery_install'?'Delivery and Installation':'Installation'}</span><span>${fmt(installAmt)}</span></div>`:''}
       ${taxAmt>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+(q.tax.rate*100).toFixed(2).replace(/\.?0+$/,'')+'%)':''}</span><span>${fmt(taxAmt)}</span></div>`:''}
       ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
+      ${addendumLines.length ? `
+        <div class="tot" style="margin-top:8px;padding-top:8px;border-top:1px solid #eee;font-weight:700;color:#555;font-size:11px;text-transform:uppercase;letter-spacing:.06em"><span>Order Adjustments</span><span></span></div>
+        ${addendumLines.map(l => {
+          const negative = parseFloat(l.amount) < 0;
+          const cls = negative ? ' class="discount-val"' : '';
+          const sign = negative ? '-' : '';
+          const safeDesc = String(l.description || '').replace(/[<>"&]/g, c => ({'<':'&lt;','>':'&gt;','"':'&quot;','&':'&amp;'}[c]));
+          return `<div class="tot"><span>${safeDesc}</span><span${cls}>${sign}${fmt(Math.abs(l.amount))}</span></div>`;
+        }).join('')}
+      ` : ''}
       <div class="tot grand"><span>Order Total</span><span>${fmt(total)}</span></div>
       ${totalWeight>0?`<div class="tot weight-total"><span>&#x2696; Total Weight</span><span>${totalWeight.toLocaleString()} lbs</span></div>`:''}
       ${(() => {

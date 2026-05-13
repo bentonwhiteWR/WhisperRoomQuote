@@ -51,6 +51,114 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.19.15', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Quote updates on closed-won/shipped/closed-lost deals now update the FINANCIAL fields on the HubSpot deal (amount, tax_rate, total_tax_amount, discount, freight_cost) even though the deal is in a "locked" stage. Before: any deal in DEAL_LOCKED_STAGES skipped the entire deal patch — addresses, owner, AND amount all stayed frozen. Now: the lock still protects shipping/billing addresses, contact, dealname, and dealstage from being rewritten, but financial fields always track the most recent quote. Per 2026-05-13 ask: "It should always update the deal amount (with the freight/tax fields too) to the most recently created, updated, or revised quote." Logs deal_sync_locked_financial when this fires.'},
+      ]
+    },
+    {
+      v:'1.19.14', date:'May 13, 2026', tag:'logging',
+      changes:[
+        {t:'log', d:'More addendum tax diagnostics. v1.19.13 ShipAddr fix didn\'t help — even with a matched item (ItemRef:1092 FOAM 4) AST still returned TotalTax:0 / NetAmountTaxable:0. Added two more Railway log lines per addendum: (1) QB customer record\'s Taxable flag + DefaultTaxCodeRef + saved ShipAddr/BillAddr, and (2) the exact ShipAddr/BillAddr we sent. If Taxable=false on the QB customer, that\'s the cause — AST zero-taxes every invoice for tax-exempt customers regardless of line tax codes. Cheap one-shot query.'},
+      ]
+    },
+    {
+      v:'1.19.13', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Addendum invoice ShipAddr/BillAddr construction now matches process-order exactly — uses conditional spread to omit missing fields, instead of sending empty strings. The addendum diagnostic from v1.19.11 showed AST returning TaxLine with TaxPercent:0 + NetAmountTaxable:0 even though we tagged lines TAX and didn\'t suppress. Empty-string Line1/City in ShipAddr can break AST\'s jurisdiction lookup silently — it falls back to a 0% rate. Process-order omits missing fields entirely, which is what AST needs. This is the only payload difference between the two paths.'},
+      ]
+    },
+    {
+      v:'1.19.12', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Order-modified mailto: CC list now joined with ";" instead of "," so Outlook reads accounting + Benton as two separate recipients. RFC 6068 says comma but Outlook (the main client at WhisperRoom) treats comma-joined addresses as one malformed entry and only CCs the first. Process-order\'s notification mailto uses the same separator for the same reason.'},
+      ]
+    },
+    {
+      v:'1.19.11', date:'May 13, 2026', tag:'logging',
+      changes:[
+        {t:'log', d:'Revert v1.19.10 — wrong diagnosis. Tax not passing wasn\'t about source-quote suppression; user\'s example had tax computed. Suppression logic restored to v1.19.9 (suppress when exempt or source-quote tax=$0). Added Railway diagnostic logging: tax decision (state/amount/suppress flag), QB lines payload (per-line TaxCodeRef + ItemRef), and QB invoice response (TxnTaxDetail, TotalAmt, GlobalTaxCalculation). Next addendum will leave breadcrumbs in Railway logs so we can see whether AST received what we sent and why it didn\'t compute.'},
+      ]
+    },
+    {
+      v:'1.19.10', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Addendum invoices now actually tax in nexus states. v1.19.9 decided whether to suppress AST based on the SOURCE quote\'s computed tax — which was $0 for freight-only change quotes where the rep skipped Calculate Tax (the tax-confirm guard from v1.19.3 only fires when there are product line items). A TN freight-only addendum should still get TN tax via AST. New rule: suppress AST only when the order is tax-exempt OR the customer\'s ship-to state is NOT in NEXUS_STATES — purely a function of the order, not the source quote. Logs [add-charge] tax decision: state=TN nexus=true exempt=false → AST so we can see in Railway what fired.'},
+        {t:'fix', d:'Freight TaxCodeRef on addendum invoices now falls back to NEXUS_STATES[state].taxFreight when the source quote didn\'t carry freightTaxed (i.e., rep didn\'t compute tax). TN.taxFreight=true means freight gets TAX_CODE and AST taxes it. Without this fallback, a freight-only change quote in TN would mark freight EXEMPT and AST would miss it — exactly what just happened.'},
+      ]
+    },
+    {
+      v:'1.19.9', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Addendum QB invoice now puts freight and tax in their proper places — mirrors process-order\'s structure. Was dumping everything as generic SalesItemLineDetail lines. Now: products → SalesItemLineDetail with matched ItemRef + per-line TaxCodeRef; discount → DiscountLineDetail (applied BEFORE freight); freight → SalesItemLineDetail with SHIPPING_ITEM_ID (routes to QB\'s Shipping totals row) + freightTaxed-aware TaxCodeRef; install/pickup → fallback item with EXEMPT tax. Tax itself is no longer a line — QB Automated Sales Tax computes it from the per-line TaxCodeRef. Suppression rules match process-order: AST silenced when the addendum tax is $0 (non-nexus ship-to) or the order is tax-exempt. Ad-hoc lines path (legacy `body.lines`) keeps the flat structure since it has no per-line type info.'},
+      ]
+    },
+    {
+      v:'1.19.8', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Order-modified email now CCs bentonwhite@whisperroom.com alongside accounting@. Was only CC\'ing accounting before. Multiple CCs joined with comma per RFC 6068.'},
+      ]
+    },
+    {
+      v:'1.19.7', date:'May 13, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Modify Order quote picker now shows the full line-item breakdown for each candidate quote — every product line (name + qty + ext amount), freight, install, pickup fee, and Sales Tax with rate. Was showing only quote number + date + total + first 2 item names. Rep can now identify the right quote at a glance without leaving the modal. Hub data projection expanded to include freight/install/tax/pickupFee per quote.'},
+      ]
+    },
+    {
+      v:'1.19.6', date:'May 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Remove addendum (paid included). The Modify modal\'s Remove button now works on PAID addendums too — it deletes the QB auto-payment first (which un-pays the invoice) and then the QB invoice/credit memo. Previously paid addendums were blocked with a "use refund flow instead" message; per 2026-05-13 spec, Remove should be the universal undo. Order page + Deal Hub auto-update to reflect the removal. Partial-failure cases (QB rejects one of the two deletes) are surfaced via toast so the rep knows to clean up manually.'},
+        {t:'fix', d:'Order PDF in the shared orders folder + per-deal Drive folder now ACTUALLY overwrites instead of accumulating duplicate "Order (1).pdf" / "Order (2).pdf" files on each addendum. New helpers in lib/gdrive.js: gdriveFindFileByName, gdriveUpdateFilePdfContent, gdriveUpsertFilePdf. Upsert searches by name in the parent folder; if found, PATCH the file content; if not, create new. add-charge + void-addendum both use upsert now, as does gdriveSavePdfToDeal internally.'},
+        {t:'fix', d:'Order-modified email mailto now always fires on success (was gated on order-not-shipped) and shows a visible toast "📧 Email draft opened — click Send in your mail client to notify shipping" 600ms after the popup. Reps were missing the auto-opened mail-client window and never clicking Send. Console.log added for diagnosis.'},
+      ]
+    },
+    {
+      v:'1.19.5', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Select Rate in the orders dashboard now keeps the side drawer open. The v1.14.1 behavior closed the drawer (delegating to saveOrder) so reps had to reopen it to keep editing tracking, ship date, hardware box, etc. — annoying when they just want to apply the rate and continue. saveOrder() now accepts { keepDrawerOpen: true } and Select Rate passes it. Regular Save Changes flow still closes (unchanged).'},
+        {t:'fix', d:'AP badge on deal cards no longer shows when only OLD (superseded) quotes had AP. New rule: the badge only fires when (a) the most recent quote has AP, or (b) a processed order on this deal has AP. The aggregation used to OR AP across every quote in deal history, so a deal where a customer first asked about AP and then chose a different config still showed AP forever. Production-lead-time flags (RM, CUSTOM HOLES) still aggregate across all quotes since Gary needs visibility on any prior request.'},
+      ]
+    },
+    {
+      v:'1.19.4', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Addendum submit was 500ing with "applyToFreight is not defined" — leftover reference in the writelog meta object after v1.19.3 removed the local variable. Now logs the source quote\'s freight portion (addFreight) instead. node --check doesn\'t catch this kind of unused-identifier-in-object-shorthand bug; only surfaces at runtime when the endpoint actually fires.'},
+      ]
+    },
+    {
+      v:'1.19.3', date:'May 13, 2026', tag:'feature',
+      changes:[
+        {t:'fix', d:'Shipping/Jeromy email corrected to shipping@whisperroom.com (was jeromy@). Affects lib/notify.js REP_EMAILS and the mailto: in the order-modified email.'},
+        {t:'add', d:'Quote-push tax guard. When the rep tries to push a quote that has product line items, isn\'t tax-exempt, and has $0 tax computed, a confirm dialog asks "No sales tax has been calculated. Continue without tax?" Catches the case where a rep forgets to hit Calculate Tax on a taxable order. Freight-only / install-only quotes skip the guard.'},
+        {t:'ui', d:'Removed "Apply net to Freight Cost" checkbox from the Modify Order modal. The source quote\'s freight slot is now the source of truth — if the source quote has freight, that amount auto-bumps the order\'s Freight Cost field. If the source quote has no freight, the field stays untouched. Voiding an addendum reverses just the freight portion.'},
+        {t:'add', d:'Addendums now carry rich structure when merged from a quote: lineItems (with weight), freight, freightTaxed, installAmount/Mode, pickupFee, discount, taxAmount, taxRate, weight. Customer-facing order page renders tax (from TaxJar carried through the source quote) as a "Sales Tax (9.25%)" row under Order Adjustments, and shows added weight + new total weight when addendums contribute physical items. QB invoice always suppresses AST on addendums and includes our tax as an explicit line — keeps math precise and customer-facing invoice total matches the order page.'},
+      ]
+    },
+    {
+      v:'1.19.2', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Deal Hub "+ New Quote" now properly binds the contact in the quote builder. The deal\'s contact info auto-filled the customer form fields but skipped the metadata that tells the system "this contact is already in HubSpot" — window._loadedContactId, _loadedContactAddress, the contact-search box value, and the view-contact button visibility. Result: pushing the quote fired "Possible Duplicate Contact" because create-deal couldn\'t tell the form was pre-filled from a real contact vs. a rep typing a new contact whose email collided. Now linkDealById sets the same metadata block that _doFillContact sets when picking from the dropdown — no more duplicate prompt on freshly-linked deals.'},
+      ]
+    },
+    {
+      v:'1.19.1', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Quote builder no longer blocks pushing a quote that has no line items as long as it has freight, installation, or a pickup fee. Came up while building a freight-only "change quote" for the v1.19.0 addendum-merge workflow — a $500 shipping-upgrade quote has no products and was getting blocked at the push step with "Please add at least one product." New guard only fires when the quote is truly empty (no items AND no freight AND no install AND no pickup).'},
+      ]
+    },
+    {
+      v:'1.19.0', date:'May 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Order Addendums: quote-merge workflow. Replaces the multi-line builder with a quote picker. Rep builds a normal "change quote" on the deal first (freight upgrade, wall change, credit line — whatever the customer wants), then opens Modify on the original order and picks that quote. Server pulls the source quote\'s lineItems + freight + install + discount, derives net, creates QB Invoice (net positive) or Credit Memo (net negative). The source quote keeps its W- number and continues to exist as a regular quote — if the customer ultimately doesn\'t accept the change, it just sits there as a quote. Per-line server validation still allows ad-hoc `lines` array submissions (kept for future "Quick Charge" UI, but no UI fires this path today).'},
+        {t:'add', d:'Order PDF auto-regenerates on every addendum add and void. Same shared-orders folder + per-deal Final Order folder as process-order writes to. Non-blocking IIFE — response returns before the PDF upload completes. So the Drive copy now reflects the live totals; reps can pass the PDF link without it being stale.'},
+        {t:'add', d:'In-app notification bell on the orders dashboard topbar. Polls /api/notifications on load and every 60s, shows an orange unread badge, dropdown lists the last 50 notifications with relative timestamps. Click a notification to mark it read; if it has a quote_num, opens the order drawer. Mark-all-read button. The notification system was already wired server-side (lib/notify.js, /api/notifications GET) but no client surfaced it — first time it\'s actually visible.'},
+        {t:'add', d:'Jeromy gets two notifications on every order modification: in-app (createNotification fires server-side, surfaces in his orders dashboard bell) + email (mailto: opens the rep\'s mail client with the order-modified details pre-filled, rep clicks Send to deliver — same pattern as process-order\'s notification email). Skipped when the order already shipped (Jeromy already let it go; modification is informational for accounting only at that point).'},
+        {t:'add', d:'Deal Hub data projection now includes per-order paymentType and addendums[] so the Modify modal has everything inline without a second fetch.'},
+        {t:'add', d:'lib/quickbooks.js: createCreditMemo, getCreditMemo, deleteCreditMemo (introduced in v1.18.1, kept). Addendum data model: type ("invoice"|"credit"), lines[], qbId, sourceQuoteNumber (new — set when merged from a quote).'},
+      ]
+    },
+    {
       v:'1.18.2', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Customer-facing order page /o/<quoteNumber> now reflects active addendums in the totals. v1.18.1 shipped the create / track / void flow but forgot to update the customer view of the order — adding a $500 upcharge would update the deal amount, the QB invoice, and the addendums chip in Deal Hub, but the customer-facing order page still showed the original total. New behavior: an "Order Adjustments" subsection appears in the totals card (above the grand total) listing each per-line adjustment with its description. Negatives styled green like discounts. Grand total now equals subtotal − discount + freight/pickup/install + tax + addendumNet (where addendumNet is signed: credit-memo addendums subtract). Voided addendums are excluded. Legacy v1.18.0 single-line addendums render correctly via fallback.'},

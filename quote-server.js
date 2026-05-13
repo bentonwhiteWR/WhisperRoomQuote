@@ -39,6 +39,7 @@ const {
   gdriveCreateDealFolders,
   gdriveSavePdfToDeal,
   gdriveUploadFilePdf,
+  gdriveUpsertFilePdf,
 } = gdrive;
 
 
@@ -2063,6 +2064,7 @@ const server = http.createServer(async (req, res) => {
         dbRes.rows.forEach(r => {
           const items = r.line_items || [];
           const quoteHasAP = (() => { try { return items.some(isApItemForList); } catch(e) { return false; } })();
+          const isOrder = !!r.order_at;   // this quote was processed into an order
           const quotePoStatus = poByQuote[r.quote_number] || null;
           if (!byDeal[r.deal_id]) {
             let firstMdl = '';
@@ -2075,6 +2077,12 @@ const server = http.createServer(async (req, res) => {
               hasRM         = items.some(i => /^RM\s/i.test(i?.name||''));
               hasCustomHole = items.some(i => /^CUST HOLE\b/i.test(i?.name||''));
             } catch(e) {}
+            // hasAP rule (per 2026-05-13 spec): badge only when the most
+            // recent quote has AP OR the order has AP. Don't carry AP
+            // through from older non-order quotes that were later
+            // superseded — the customer chose a different config since.
+            // Rows arrive ORDER BY created_at DESC, so the first row IS
+            // the latest quote.
             byDeal[r.deal_id] = {
               latestQuote: r.quote_number,
               total: r.total,
@@ -2082,7 +2090,7 @@ const server = http.createServer(async (req, res) => {
               firstMdl,
               hasRM,
               hasCustomHole,
-              hasAP:       quoteHasAP,
+              hasAP:       quoteHasAP || (isOrder && quoteHasAP),
               // _apQuotes: { 'W-...': { hasAP, poStatus } } — used to compute final apStatus
               _apQuotes: { [r.quote_number]: { hasAP: quoteHasAP, poStatus: quotePoStatus } },
               quoteLabel: r.quote_label || '',
@@ -2095,12 +2103,17 @@ const server = http.createServer(async (req, res) => {
             const ts = r.created_at ? new Date(r.created_at).getTime() : 0;
             const currentBest = existing.lastActivityAt ? new Date(existing.lastActivityAt).getTime() : 0;
             if (ts > currentBest) existing.lastActivityAt = r.created_at;
-            // Flag RM / Custom Hole / AP if any quote on this deal has them
+            // RM / Custom Hole stay aggregated across all quotes — those
+            // are production-lead-time flags ("anyone ever asked for this
+            // on this deal") and Gary needs to know regardless of which
+            // quote it was on. AP is different: it's about what's
+            // actually being shipped, so only count it when this row IS
+            // an order (i.e., what the customer accepted + processed).
             if (!existing.hasRM || !existing.hasCustomHole || !existing.hasAP) {
               try {
                 if (!existing.hasRM         && items.some(i => /^RM\s/i.test(i?.name||'')))        existing.hasRM = true;
                 if (!existing.hasCustomHole && items.some(i => /^CUST HOLE\b/i.test(i?.name||''))) existing.hasCustomHole = true;
-                if (!existing.hasAP         && quoteHasAP)                                          existing.hasAP = true;
+                if (!existing.hasAP         && isOrder && quoteHasAP)                              existing.hasAP = true;
               } catch(e) {}
             }
             existing._apQuotes[r.quote_number] = { hasAP: quoteHasAP, poStatus: quotePoStatus };
@@ -2436,9 +2449,37 @@ const server = http.createServer(async (req, res) => {
         // A new quote for a misc fee (e.g. reconsignment) must not clobber the original deal value.
         const DEAL_LOCKED_STAGES = new Set(['closedwon', '845719', 'closedlost']);
         if (DEAL_LOCKED_STAGES.has(existingDealStage)) {
-          writelog('info', 'deal_sync_locked',
-            `Skipped deal patch — deal ${dealId} is locked (stage: ${existingDealStage}, quote: ${quoteNumber || '?'})`);
-          console.log(`[deal sync] Skipping patch — deal ${dealId} locked in stage "${existingDealStage}"`);
+          // Per 2026-05-13 spec: even for closed-won/shipped/closed-lost
+          // deals, the FINANCIAL fields (amount, tax, discount, freight)
+          // should track the latest quote so the deal view in HubSpot
+          // reflects the most recent pricing. Other fields stay locked
+          // — don't rewrite ship-to addresses, contact, dealname, or
+          // dealstage on a closed deal.
+          const financialPatch = {
+            amount: total.toFixed(2),
+            tax_rate: tax && tax.rate ? String(parseFloat((tax.rate * 100).toFixed(4))) : '',
+            total_tax_amount: tax && tax.tax != null ? String(parseFloat(tax.tax).toFixed(2)) : '0',
+            discount: discount && discount.value ? String(discount.value) : '',
+            freight_cost: (() => {
+              if (install && install.mode === 'delivery_install' && parseFloat(install.amount) > 0) {
+                return String(parseFloat(install.amount).toFixed(2));
+              }
+              return freight && freight.total ? String(freight.total) : '';
+            })(),
+          };
+          try {
+            await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/deals/${dealId}`,
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, { properties: financialPatch });
+            console.log(`[deal sync] deal ${dealId} locked (${existingDealStage}) — financial fields only (amount=${financialPatch.amount})`);
+          } catch(e) {
+            console.warn(`[deal sync] locked-stage financial patch failed for ${dealId}:`, e.message);
+          }
+          writelog('info', 'deal_sync_locked_financial',
+            `Locked-stage deal ${dealId} financials updated (stage: ${existingDealStage}, amount: $${financialPatch.amount}, quote: ${quoteNumber || '?'})`);
         } else {
           // Update existing deal — amount + address fields updated from latest quote
           const dealPatchProps = {
@@ -6232,7 +6273,11 @@ ${q.accepted ? `
                   json_snapshot->>'acceptedHinge'               as accepted_hinge,
                   json_snapshot->>'acceptedNote'                as accepted_note,
                   json_snapshot->>'quoteLabel'                  as quote_label,
-                  json_snapshot->'lineItems'                    as line_items
+                  json_snapshot->'lineItems'                    as line_items,
+                  json_snapshot->'freight'                      as freight_obj,
+                  json_snapshot->'install'                      as install_obj,
+                  json_snapshot->'tax'                          as tax_obj,
+                  (json_snapshot->>'pickupFee')::text           as pickup_fee
            FROM quotes WHERE deal_id = $1 ORDER BY created_at DESC`,
           [dealId]
         ).catch(() => ({ rows: [] })) : Promise.resolve({ rows: [] }),
@@ -6296,7 +6341,11 @@ ${q.accepted ? `
                     json_snapshot->>'acceptedHinge'               as accepted_hinge,
                     json_snapshot->>'acceptedNote'                as accepted_note,
                     json_snapshot->>'quoteLabel'                  as quote_label,
-                    json_snapshot->'lineItems'                    as line_items
+                    json_snapshot->'lineItems'                    as line_items,
+                    json_snapshot->'freight'                      as freight_obj,
+                    json_snapshot->'install'                      as install_obj,
+                    json_snapshot->'tax'                          as tax_obj,
+                    (json_snapshot->>'pickupFee')::text           as pickup_fee
              FROM quotes WHERE deal_id IS NULL AND deal_name = $1 ORDER BY created_at DESC`,
             [dealName]
           );
@@ -6344,6 +6393,14 @@ ${q.accepted ? `
           acceptedNote:  r.accepted_note  || '',
           quoteLabel:    r.quote_label    || '',
           gdriveFolder:  r.gdrive_folder_id || null,
+          // Surface line-level structure so the Modify Order quote picker
+          // can render full line items (name + qty + ext price) + freight
+          // + install + tax per quote without a follow-up fetch.
+          lineItems:     Array.isArray(r.line_items) ? r.line_items : [],
+          freight:       r.freight_obj || null,
+          install:       r.install_obj || null,
+          tax:           r.tax_obj || null,
+          pickupFee:     r.pickup_fee || null,
         };
       });
 
@@ -7770,7 +7827,7 @@ ${q.accepted ? `
   // Adds a tracked post-process change to an existing order. The body
   // is a multi-line builder:
   //   { lines: [{description, amount}, ...], paymentType, poNumber?,
-  //     applyToFreight? }
+  // }
   // Lines can mix positive and negative amounts. The net signs the kind
   // of QB document:
   //   net > 0 → Invoice (with auto-payment for non-PO)
@@ -7788,23 +7845,119 @@ ${q.accepted ? `
     catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
     try {
       if (!db) { json({ error: 'No database' }, 500); return; }
-      const rawLines       = Array.isArray(body.lines) ? body.lines : [];
       const pt             = String(body.paymentType || '').toLowerCase().trim();
       const poNumber       = body.poNumber ? String(body.poNumber).trim() : null;
-      const applyToFreight = !!body.applyToFreight;
+      const mergeQuoteNumber = body.mergeQuoteNumber ? String(body.mergeQuoteNumber).trim() : null;
 
-      if (!rawLines.length) { json({ error: 'At least one line is required' }, 400); return; }
-      // Normalize + validate every line. Empty descriptions and zero
-      // amounts get rejected — the rep is asked to remove the line or
-      // fill it in.
-      const cleanLines = rawLines.map(l => ({
-        description: String(l?.description || '').trim(),
-        amount:      parseFloat(l?.amount),
-      }));
-      for (let i = 0; i < cleanLines.length; i++) {
-        const ln = cleanLines[i];
-        if (!ln.description)                       { json({ error: `Line ${i+1}: description required` }, 400); return; }
-        if (isNaN(ln.amount) || ln.amount === 0)   { json({ error: `Line ${i+1}: amount must be nonzero` }, 400); return; }
+      // Two input modes:
+      //   `mergeQuoteNumber` — pulls structured snapshot from an existing
+      //     quote on the same deal (the rep's typical workflow). Preserves
+      //     line items, freight, install, pickup, discount, tax, weight
+      //     so the addendum has full per-section breakdown for display +
+      //     correct QB tax codes per line.
+      //   `lines` — ad-hoc one-off entries (back-compat / future Quick
+      //     Charge UI). Flat list, no structure beyond description+amount.
+      // Exactly one must be provided.
+      let cleanLines = [];           // products/items + non-freight charges (legacy ad-hoc path)
+      let sourceQuoteNumber = null;
+      // Rich structure when merging from a quote (else stay zero/empty):
+      let addProducts   = [];        // [{ name, description, qty, price, weight }, ...]
+      let addFreight    = 0;
+      let addFreightTaxed = false;
+      let addInstall    = 0;
+      let addInstallMode = 'none';
+      let addPickupFee  = 0;
+      let addDiscount   = null;      // { type, value, amount }
+      let addTaxAmount  = 0;
+      let addTaxRate    = 0;
+      let addWeight     = 0;
+      if (mergeQuoteNumber) {
+        const sourceRow = await db.query(
+          'SELECT json_snapshot, deal_id FROM quotes WHERE quote_number = $1 LIMIT 1',
+          [mergeQuoteNumber]
+        );
+        if (!sourceRow.rows.length) { json({ error: `Source quote ${mergeQuoteNumber} not found` }, 404); return; }
+        const sourceSnap = sourceRow.rows[0].json_snapshot || {};
+        if (mergeQuoteNumber === quoteNumber) {
+          json({ error: 'Cannot merge a quote into itself' }, 400); return;
+        }
+        // Extract structured components from the source quote. Keep the
+        // raw items so QB invoice build (below) can match each line to
+        // its proper item ref + tax code, and the customer-facing order
+        // page can render per-section totals (subtotal / freight / tax).
+        addProducts = (Array.isArray(sourceSnap.lineItems) ? sourceSnap.lineItems : []).filter(it => {
+          const price = parseFloat(it.price);
+          const qty   = parseInt(it.qty || 1) || 1;
+          return price * qty !== 0;
+        });
+        addWeight = addProducts.reduce((s, it) => s + ((parseFloat(it.weight)||0) * (parseInt(it.qty)||1)), 0);
+        if (sourceSnap.freight && !sourceSnap.freight.tbd) {
+          addFreight = parseFloat(sourceSnap.freight.total || 0) || 0;
+        }
+        if (sourceSnap.install && parseFloat(sourceSnap.install.amount) > 0) {
+          addInstall = parseFloat(sourceSnap.install.amount) || 0;
+          addInstallMode = sourceSnap.install.mode || 'none';
+        }
+        if (sourceSnap.pickupFee && parseFloat(sourceSnap.pickupFee) > 0) {
+          addPickupFee = parseFloat(sourceSnap.pickupFee) || 0;
+        }
+        if (sourceSnap.discount && sourceSnap.discount.value > 0) {
+          const sub = addProducts.reduce((s, i) => s + (parseFloat(i.price) * parseInt(i.qty || 1)), 0);
+          const dv = parseFloat(sourceSnap.discount.value);
+          const dAmt = sourceSnap.discount.type === 'pct' ? sub * dv / 100 : dv;
+          if (dAmt > 0) addDiscount = { type: sourceSnap.discount.type, value: dv, amount: parseFloat(dAmt.toFixed(2)) };
+        }
+        // Carry TaxJar tax from source quote when present. Same customer,
+        // same ship-to, so the rate/amount applies cleanly to the addendum.
+        if (sourceSnap.tax && parseFloat(sourceSnap.tax.tax || 0) > 0) {
+          addTaxAmount    = parseFloat(sourceSnap.tax.tax) || 0;
+          addTaxRate      = parseFloat(sourceSnap.tax.rate || 0) || 0;
+          addFreightTaxed = !!sourceSnap.tax.freightTaxed;
+        }
+        // Build flat `cleanLines` for back-compat (display + legacy void
+        // path). Mirrors the prior format: one entry per piece, signed
+        // discount line. Used for the addendum.lines field below.
+        addProducts.forEach(it => {
+          const price = parseFloat(it.price);
+          const qty   = parseInt(it.qty || 1) || 1;
+          const amount = price * qty;
+          cleanLines.push({
+            description: it.description ? `${it.name || ''}${it.name ? ' — ' : ''}${it.description}`.trim() || it.name || 'Item' : (it.name || 'Item'),
+            amount,
+          });
+        });
+        if (addDiscount && addDiscount.amount > 0) {
+          cleanLines.push({
+            description: 'Discount' + (addDiscount.type === 'pct' ? ` (${addDiscount.value}%)` : ''),
+            amount: -addDiscount.amount,
+          });
+        }
+        if (addFreight > 0) cleanLines.push({ description: 'Freight', amount: addFreight });
+        if (addInstall > 0) {
+          cleanLines.push({
+            description: addInstallMode === 'delivery_install' ? 'Delivery and Installation' : 'Installation',
+            amount: addInstall,
+          });
+        }
+        if (addPickupFee > 0) cleanLines.push({ description: 'Pickup Fee', amount: addPickupFee });
+        if (addTaxAmount > 0) cleanLines.push({ description: 'Sales Tax' + (addTaxRate ? ` (${(addTaxRate*100).toFixed(2).replace(/\.?0+$/, '')}%)` : ''), amount: addTaxAmount });
+        if (!cleanLines.length) {
+          json({ error: `Source quote ${mergeQuoteNumber} has no line items, freight, or installation to merge.` }, 400);
+          return;
+        }
+        sourceQuoteNumber = mergeQuoteNumber;
+      } else {
+        const rawLines = Array.isArray(body.lines) ? body.lines : [];
+        if (!rawLines.length) { json({ error: 'Provide either mergeQuoteNumber or a lines array' }, 400); return; }
+        cleanLines = rawLines.map(l => ({
+          description: String(l?.description || '').trim(),
+          amount:      parseFloat(l?.amount),
+        }));
+        for (let i = 0; i < cleanLines.length; i++) {
+          const ln = cleanLines[i];
+          if (!ln.description)                       { json({ error: `Line ${i+1}: description required` }, 400); return; }
+          if (isNaN(ln.amount) || ln.amount === 0)   { json({ error: `Line ${i+1}: amount must be nonzero` }, 400); return; }
+        }
       }
       const netTotal = parseFloat(cleanLines.reduce((s, l) => s + l.amount, 0).toFixed(2));
       if (netTotal === 0) { json({ error: 'Net total is zero. Adjust the amounts or split into separate addendums.' }, 400); return; }
@@ -7836,11 +7989,20 @@ ${q.accepted ? `
       const addendumNum = prevAddendums.filter(a => !a.voided).length + 1;
       const repName     = getRepFromReq(req, body) || 'unknown';
 
-      const shipAddr = {
-        Line1: customer.address || '', City: customer.city || '',
-        CountrySubDivisionCode: customer.state || '',
-        PostalCode: customer.zip || '', Country: 'US',
-      };
+      // Address construction MUST mirror process-order's pattern: omit
+      // missing fields entirely rather than sending empty strings. QB
+      // AST uses ShipAddr to resolve tax jurisdiction; empty Line1/City
+      // can cause AST to fail jurisdiction lookup silently and return
+      // a 0% rate (the TaxLineDetail TaxPercent:0 + NetAmountTaxable:0
+      // pattern seen in the diagnostic). Matching process-order's
+      // construction exactly fixes a real divergence.
+      const shipAddr = (customer.address || customer.city || customer.state || customer.zip) ? {
+        ...(customer.address ? { Line1:                   customer.address } : {}),
+        ...(customer.city    ? { City:                    customer.city    } : {}),
+        ...(customer.state   ? { CountrySubDivisionCode:  customer.state   } : {}),
+        ...(customer.zip     ? { PostalCode:              customer.zip     } : {}),
+        Country: 'US',
+      } : null;
       const billAddr = (billing && (billing.name || billing.address || billing.city || billing.state || billing.zip)) ? {
         ...(billing.name    ? { Line1: billing.name } : {}),
         ...(billing.address ? (billing.name ? { Line2: billing.address } : { Line1: billing.address }) : {}),
@@ -7850,12 +8012,21 @@ ${q.accepted ? `
         Country: 'US',
       } : shipAddr;
 
-      // Tax suppression — same rules as create-qb-invoice / process-order.
+      // Tax suppression — mirror process-order's rules. Suppress when
+      // the order is tax-exempt OR the addendum's TaxJar tax is $0
+      // (non-nexus ship-to). Otherwise let QB AST compute tax based on
+      // the per-line TaxCodeRef. See v1.15.0 changelog for the original
+      // process-order suppression rationale.
       const TAX_CODE    = process.env.QB_TAXABLE_CODE || 'TAX';
       const EXEMPT_CODE = process.env.QB_EXEMPT_CODE  || 'NON';
       const _isTaxExempt   = !!(snap.taxExempt || snap.accessories?.taxexempt);
-      const _suppressQbTax = _isTaxExempt || parseFloat(tax?.tax || 0) === 0;
+      // For merged-from-quote addendums, use the SOURCE quote's tax (since
+      // tax was computed against the addendum items, not the original
+      // order). For ad-hoc lines, fall back to the order's tax flag.
+      const _addTaxNumber  = mergeQuoteNumber ? addTaxAmount : parseFloat(tax?.tax || 0);
+      const _suppressQbTax = _isTaxExempt || _addTaxNumber === 0;
       const lineTaxRef     = { value: _suppressQbTax ? EXEMPT_CODE : TAX_CODE };
+      console.log(`[add-charge] tax decision for ${quoteNumber}: addTaxAmount=${_addTaxNumber} exempt=${_isTaxExempt} → ${_suppressQbTax ? 'SUPPRESS' : 'AST'}`);
 
       const fallback = await qb.getDefaultItem();
       const cust = await qb.findOrCreateCustomer({
@@ -7867,25 +8038,117 @@ ${q.accepted ? `
         billAddr, shipAddr,
       });
 
-      // Build QB lines. For Invoice: pass amounts as-is (negative line
-      // amounts show as credit-style lines and reduce the invoice total
-      // naturally). For Credit Memo: flip every line to positive — the
-      // CreditMemo object type already implies "we owe the customer"; QB
-      // doesn't accept negative amounts on credit memo lines.
-      const qbLines = cleanLines.map(ln => {
-        const amt = parseFloat((isCreditMemo ? Math.abs(ln.amount) : ln.amount).toFixed(2));
-        return {
-          Amount: amt,
-          DetailType: 'SalesItemLineDetail',
-          Description: ln.description,
-          SalesItemLineDetail: {
-            ItemRef:    { value: fallback.value },
-            UnitPrice:  amt,
-            Qty:        1,
-            TaxCodeRef: lineTaxRef,
-          },
-        };
-      });
+      // Build QB lines using process-order's structure: products get
+      // matched ItemRef + their own TaxCodeRef, discount uses
+      // DiscountLineDetail, freight goes into QB's Shipping slot via
+      // the magic SHIPPING_ITEM_ID, install/pickup use the fallback
+      // item with EXEMPT tax. Tax itself is NOT a line — AST handles it
+      // when not suppressed. This puts freight/tax in the proper QB
+      // fields rather than dumping everything as generic line items.
+      // (For credit memos, all amounts flip positive — the CreditMemo
+      // object type implies "we owe the customer".)
+      const qbLines = [];
+      const SHIPPING_ITEM_ID = process.env.QB_SHIPPING_ITEM_ID || 'SHIPPING_ITEM_ID';
+      const unmatched = [];
+      if (mergeQuoteNumber) {
+        // Structured path: build proper line types from the source quote.
+        for (const it of addProducts) {
+          const qty   = parseInt(it.qty || 1) || 1;
+          const price = parseFloat(it.price) || 0;
+          const ext   = price * qty;
+          if (!ext) continue;
+          const matched = it.name ? await qb.findItemByName(it.name) : null;
+          const ref     = matched || fallback;
+          if (it.name && !matched) unmatched.push(it.name);
+          const amt = parseFloat((isCreditMemo ? Math.abs(ext) : ext).toFixed(2));
+          qbLines.push({
+            Amount: amt,
+            DetailType: 'SalesItemLineDetail',
+            Description: it.description ? `${it.name || ''}${it.name ? ' — ' : ''}${it.description}`.trim() : (it.name || 'Item'),
+            SalesItemLineDetail: {
+              ItemRef:    { value: ref.value },
+              UnitPrice:  parseFloat((isCreditMemo ? Math.abs(price) : price).toFixed(2)),
+              Qty:        qty,
+              TaxCodeRef: lineTaxRef,
+            },
+          });
+        }
+        // Discount BEFORE freight — same pattern as process-order so the
+        // discount applies to the running product subtotal only.
+        if (addDiscount && addDiscount.amount > 0) {
+          qbLines.push({
+            Amount: parseFloat(addDiscount.amount.toFixed(2)),
+            DetailType: 'DiscountLineDetail',
+            DiscountLineDetail: { PercentBased: false },
+          });
+        }
+        // Freight: SHIPPING_ITEM_ID magic value routes to QB's Shipping
+        // totals row. freightTaxed per-state from source quote.
+        if (addFreight > 0) {
+          const freightTaxCode = _suppressQbTax ? EXEMPT_CODE : (addFreightTaxed ? TAX_CODE : EXEMPT_CODE);
+          qbLines.push({
+            Amount: parseFloat((isCreditMemo ? Math.abs(addFreight) : addFreight).toFixed(2)),
+            DetailType: 'SalesItemLineDetail',
+            Description: 'Freight',
+            SalesItemLineDetail: {
+              ItemRef:    { value: SHIPPING_ITEM_ID },
+              TaxCodeRef: { value: freightTaxCode },
+            },
+          });
+        }
+        // Install / pickup fee — fallback item, never taxed.
+        if (addInstall > 0) {
+          qbLines.push({
+            Amount: parseFloat((isCreditMemo ? Math.abs(addInstall) : addInstall).toFixed(2)),
+            DetailType: 'SalesItemLineDetail',
+            Description: addInstallMode === 'delivery_install' ? 'Delivery and Installation' : 'Installation',
+            SalesItemLineDetail: { ItemRef: { value: fallback.value }, TaxCodeRef: { value: EXEMPT_CODE } },
+          });
+        }
+        if (addPickupFee > 0) {
+          qbLines.push({
+            Amount: parseFloat((isCreditMemo ? Math.abs(addPickupFee) : addPickupFee).toFixed(2)),
+            DetailType: 'SalesItemLineDetail',
+            Description: 'Pickup Fee',
+            SalesItemLineDetail: { ItemRef: { value: fallback.value }, TaxCodeRef: { value: EXEMPT_CODE } },
+          });
+        }
+      } else {
+        // Ad-hoc lines path (legacy `body.lines` submissions). No structure
+        // — just SalesItemLineDetail with the fallback item.
+        cleanLines.forEach(ln => {
+          const amt = parseFloat((isCreditMemo ? Math.abs(ln.amount) : ln.amount).toFixed(2));
+          qbLines.push({
+            Amount: amt,
+            DetailType: 'SalesItemLineDetail',
+            Description: ln.description,
+            SalesItemLineDetail: {
+              ItemRef:    { value: fallback.value },
+              UnitPrice:  amt,
+              Qty:        1,
+              TaxCodeRef: lineTaxRef,
+            },
+          });
+        });
+      }
+      if (unmatched.length) console.warn(`[add-charge] QB items not matched (used fallback "${fallback.name}"):`, unmatched);
+      // Diagnostic: log the QB line structure so we can see what tax
+      // codes hit each line in Railway logs when tax isn't computing.
+      console.log(`[add-charge] QB lines for ${quoteNumber}:`, JSON.stringify(qbLines.map(l => ({
+        type: l.DetailType, amount: l.Amount, desc: l.Description,
+        itemRef: l.SalesItemLineDetail?.ItemRef?.value,
+        taxCode: l.SalesItemLineDetail?.TaxCodeRef?.value,
+      }))));
+      // Diagnostic: pull the full QB customer record so we can see the
+      // Taxable flag — if it's false, AST will silently zero-tax every
+      // line on every invoice for this customer regardless of line tax
+      // codes. Cheap one-shot query for debugging.
+      try {
+        const custRes = await qb.qbQueryRaw(`SELECT * FROM Customer WHERE Id = '${cust.Id}'`);
+        const c = custRes?.QueryResponse?.Customer?.[0];
+        console.log(`[add-charge] QB customer ${cust.Id} (${c?.DisplayName}): Taxable=${c?.Taxable} DefaultTaxCodeRef=${JSON.stringify(c?.DefaultTaxCodeRef)} ShipAddr=${JSON.stringify(c?.ShipAddr)} BillAddr=${JSON.stringify(c?.BillAddr)}`);
+      } catch(e) { console.warn('[add-charge] customer diagnostic query failed:', e.message); }
+      console.log(`[add-charge] payload shipAddr=${JSON.stringify(shipAddr)} billAddr=${JSON.stringify(billAddr)}`);
 
       const customFields = [];
       if (!isCreditMemo && pt === 'po' && poNumber) {
@@ -7952,6 +8215,16 @@ ${q.accepted ? `
           applyTaxAfterDiscount: true,
         });
         if (!inv?.Id) throw new Error('QB createInvoice returned no Id');
+        // Diagnostic: log what AST decided. If TotalTax is 0 despite us
+        // tagging lines with TAX_CODE and not suppressing, the issue is
+        // AST-side (agency config, tax setup, etc.) — not our payload.
+        console.log(`[add-charge] QB invoice ${inv.Id} response:`, JSON.stringify({
+          DocNumber: inv.DocNumber,
+          TotalAmt:  inv.TotalAmt,
+          TxnTaxDetail: inv.TxnTaxDetail,
+          GlobalTaxCalculation: inv.GlobalTaxCalculation,
+          ApplyTaxAfterDiscount: inv.ApplyTaxAfterDiscount,
+        }));
         qbId            = inv.Id;
         qbDocNumber     = inv.DocNumber;
         qbObjForPayment = inv;
@@ -7990,19 +8263,33 @@ ${q.accepted ? `
       }
 
       // Persist addendum. `amount` mirrors netTotal (signed) so downstream
-      // summing is trivial; `lines` keeps the per-line detail for audit.
+      // summing is trivial. Rich fields (lineItems, freight, install,
+      // pickupFee, discount, taxAmount, weight) are present when merged
+      // from a quote — empty/zero for ad-hoc legacy lines submissions.
+      // Display surfaces (order page, Modify modal) prefer the rich
+      // fields when available and fall back to flat `lines`.
       const addendum = {
         id:             'add_' + crypto.randomBytes(6).toString('hex'),
         type:           isCreditMemo ? 'credit' : 'invoice',
-        lines:          cleanLines,
+        lines:          cleanLines,                // flat — back-compat display
         amount:         netTotal,                  // signed: negative for credits
+        // Rich structured fields (from source quote):
+        lineItems:      addProducts,               // raw items with weight
+        freight:        addFreight || 0,
+        freightTaxed:   addFreightTaxed,
+        installAmount:  addInstall || 0,
+        installMode:    addInstallMode,
+        pickupFee:      addPickupFee || 0,
+        discount:       addDiscount,
+        taxAmount:      addTaxAmount || 0,
+        taxRate:        addTaxRate || 0,
+        weight:         addWeight || 0,
+        // Order context:
         paymentType:    isCreditMemo ? null : pt,
         poNumber:       (!isCreditMemo && pt === 'po') ? poNumber : null,
-        applyToFreight,
+        sourceQuoteNumber,
         qbId,
         qbDocNumber,
-        // Legacy alias for invoice-type addendums so older display code
-        // (and the v1.18.0 prior format) keeps working.
         qbInvoiceId:    isCreditMemo ? null : qbId,
         qbCreditMemoId: isCreditMemo ? qbId  : null,
         qbPaymentId,
@@ -8014,9 +8301,16 @@ ${q.accepted ? `
 
       const newAddendums = [...prevAddendums, addendum];
       const updateFields = { addendums: newAddendums };
-      if (applyToFreight) {
+      // Auto-apply the source quote's freight to the order's freightCost
+      // field. Replaces the v1.18.x "Apply net to freight" checkbox — if
+      // the source quote had freight, we want the order's freight field
+      // to reflect it. If the source quote had no freight, we leave the
+      // field alone. Signed by netTotal direction (credit-memo addendums
+      // with freight reduce freightCost; rare but consistent).
+      const _freightDelta = isCreditMemo ? -addFreight : addFreight;
+      if (_freightDelta) {
         const prevFreight = parseFloat(orderData.freightCost || 0) || 0;
-        const next        = parseFloat((prevFreight + netTotal).toFixed(2));
+        const next        = parseFloat((prevFreight + _freightDelta).toFixed(2));
         updateFields.freightCost = next < 0 ? 0 : next;
       }
       await db.query(
@@ -8044,9 +8338,69 @@ ${q.accepted ? `
 
       writelog('info', 'order.addendum-added', `Addendum ${addendum.type} added to ${quoteNumber} (${qbDocNumber}, net $${netTotal.toFixed(2)})`, {
         rep: repName, quoteNum: quoteNumber, dealId: String(dealId || ''),
-        meta: { addendumId: addendum.id, type: addendum.type, qbId, qbDocNumber, netTotal, lineCount: cleanLines.length, paymentType: addendum.paymentType, applyToFreight, autoPaymentError },
+        meta: { addendumId: addendum.id, type: addendum.type, qbId, qbDocNumber, netTotal, lineCount: cleanLines.length, paymentType: addendum.paymentType, freight: addFreight, autoPaymentError, sourceQuoteNumber },
       });
       json({ success: true, addendum, addendums: newAddendums, autoPaymentError });
+
+      // ── Post-success side effects (non-blocking) ───────────────────
+      // Run after the JSON response so the rep sees fast feedback. PDF
+      // regeneration + notification + email-log are all best-effort and
+      // log on failure rather than 500-ing the user.
+
+      // 1) Regenerate the order PDF in Drive so it reflects the new totals.
+      //    Same pattern as process-order: shared orders folder + per-deal
+      //    Final Order folder. Skips silently if no share token (legacy
+      //    HS-only orders without a public link).
+      (async () => {
+        try {
+          const tokenRow = await db.query('SELECT share_token, deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
+          const tok      = tokenRow.rows[0]?.share_token || '';
+          const dealName = tokenRow.rows[0]?.deal_name   || quoteNumber;
+          if (!tok) { console.warn(`[add-charge] PDF regen skipped — no share token for ${quoteNumber}`); return; }
+          const orderUrl = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}?t=${tok}`;
+          const pdfBuf   = await generatePdfBuffer(orderUrl);
+          const fname    = buildPdfFilename(snap, quoteNumber, 'Order', dealName);
+          // Shared orders folder (flat list for accounting). Upsert by
+          // filename so re-running on subsequent addendums REPLACES the
+          // file content instead of accumulating duplicates.
+          try {
+            const r = await gdriveUpsertFilePdf(fname, pdfBuf, SHARED_ORDERS_FOLDER);
+            if (r?.id) console.log(`[add-charge] PDF ${r._replaced ? 'replaced' : 'created'} in shared orders folder: ${fname}`);
+          } catch(e) { console.warn('[add-charge] shared orders PDF upload failed:', e.message); }
+          // Per-deal Drive folder under "Final Order".
+          try {
+            await gdriveSavePdfToDeal(quoteNumber, 'Final Order', fname, pdfBuf);
+            console.log(`[add-charge] PDF regenerated in deal folder: ${fname}`);
+          } catch(e) { console.warn('[add-charge] deal-folder PDF upload failed:', e.message); }
+        } catch(e) {
+          console.warn('[add-charge] PDF regen failed:', e.message);
+          writelog('warn', 'error.gdrive', `Order PDF regen failed after addendum on ${quoteNumber}: ${e.message}`, { quoteNum: quoteNumber });
+        }
+      })();
+
+      // 2) Notify Jeromy (shipping) in-app so he knows the order changed
+      //    before he ships. Owner ID 38732186 = Jeromy White per
+      //    lib/notify.js REP_EMAILS. Only fires if the order hasn't
+      //    shipped yet — shipped orders are out the door, the modification
+      //    is informational for accounting only.
+      const isAlreadyShipped = !!(orderData.shipped?.tracking);
+      if (!isAlreadyShipped) {
+        const JEROMY_OWNER_ID = '38732186';
+        const customerLabel = [snap.customer?.firstName, snap.customer?.lastName].filter(Boolean).join(' ')
+                              || snap.customer?.company
+                              || snap.customer?.email
+                              || 'customer';
+        const dealNameForNotif = snap.dealName || (await db.query('SELECT deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]).catch(()=>({rows:[]})))?.rows?.[0]?.deal_name || quoteNumber;
+        const sign = netTotal >= 0 ? '+' : '−';
+        const title = `Order modified — ${quoteNumber} · ${sign}$${Math.abs(netTotal).toFixed(2)}`;
+        const lineSummary = cleanLines.map(l => `${l.description}: ${l.amount < 0 ? '-' : ''}$${Math.abs(l.amount).toFixed(2)}`).join(' · ');
+        const summary = `${customerLabel} (${dealNameForNotif}). ${lineSummary}. Modified by ${repName}.`;
+        await createNotification(JEROMY_OWNER_ID, 'order-modified', title, summary, {
+          dealId:   dealId ? String(dealId) : null,
+          dealName: dealNameForNotif,
+          quoteNum: quoteNumber,
+        });
+      }
     } catch(e) {
       console.error('[add-charge]', e.message);
       json({ error: e.message }, 500);
@@ -8083,18 +8437,25 @@ ${q.accepted ? `
         if (idx === -1)                                  { json({ error: 'Addendum not found' }, 404); return; }
         const add = addendums[idx];
         if (add.voided)                                  { json({ error: 'Addendum already voided' }, 400); return; }
-        if (add.paidAt || add.qbPaymentId) {
-          json({ error: 'Cannot void a paid addendum. Use refund flow instead.' }, 400);
-          return;
-        }
         const repName = getRepFromReq(req, {}) || 'unknown';
 
-        // Delete the QB object (Invoice or CreditMemo). If QB rejects
-        // (e.g. referenced elsewhere), still mark voided locally; rep can
-        // clean up the orphan in QB manually. Prefer the new qbId +
-        // type fields; fall back to legacy qbInvoiceId for pre-v1.18.1
-        // addendums.
+        // Tear down the QB side: delete the auto-payment FIRST (so the
+        // invoice loses its paid status and can be deleted), then the
+        // invoice/credit memo. Failures are logged but don't stop the
+        // local void — rep can clean up orphans in QB manually if QB
+        // rejects either delete. Per 2026-05-13 spec: void should fully
+        // reverse the addendum, not require a separate refund flow.
         let qbVoidError = null;
+        let qbPaymentVoidError = null;
+        if (add.qbPaymentId) {
+          try {
+            await qb.deletePayment(add.qbPaymentId);
+            console.log(`[void-addendum] QB payment ${add.qbPaymentId} deleted`);
+          } catch(e) {
+            qbPaymentVoidError = e.message;
+            console.warn(`[void-addendum] QB payment delete failed:`, e.message);
+          }
+        }
         const targetType = add.type || (add.qbCreditMemoId ? 'credit' : 'invoice');
         const targetId   = add.qbId || add.qbInvoiceId || add.qbCreditMemoId;
         if (targetId) {
@@ -8111,15 +8472,21 @@ ${q.accepted ? `
           voidedAt:  new Date().toISOString(),
           voidedBy:  repName,
           ...(qbVoidError ? { qbVoidError } : {}),
+          ...(qbPaymentVoidError ? { qbPaymentVoidError } : {}),
         };
 
         const updateFields = { addendums };
-        if (add.applyToFreight) {
-          // Reverse the freight bump. addendum.amount is signed (negative
-          // for credit-memo addendums), so subtracting it from current
-          // freight undoes the original `+= netTotal` regardless of sign.
+        // Reverse the freight bump applied on add. New addendums carry
+        // the freight portion explicitly in `add.freight`; legacy v1.18.x
+        // addendums had an applyToFreight flag with the whole netTotal —
+        // honor both.
+        const isAddCredit = add.type === 'credit' || (parseFloat(add.amount) < 0);
+        const freightToReverse = parseFloat(add.freight)
+          || (add.applyToFreight ? Math.abs(parseFloat(add.amount)||0) : 0);
+        if (freightToReverse > 0) {
+          const signedReverse = isAddCredit ? freightToReverse : -freightToReverse;
           const prevFreight = parseFloat(orderData.freightCost || 0) || 0;
-          const reverted = parseFloat((prevFreight - parseFloat(add.amount)).toFixed(2));
+          const reverted = parseFloat((prevFreight + signedReverse).toFixed(2));
           updateFields.freightCost = reverted < 0 ? 0 : reverted;
         }
         await db.query(
@@ -8148,9 +8515,38 @@ ${q.accepted ? `
 
         writelog('info', 'order.addendum-voided', `Addendum voided on ${quoteNumber}: ${add.qbDocNumber} ($${add.amount})`, {
           rep: repName, quoteNum: quoteNumber, dealId: String(dealId || ''),
-          meta: { addendumId, qbInvoiceId: add.qbInvoiceId, amount: add.amount, qbVoidError },
+          meta: { addendumId, qbInvoiceId: add.qbInvoiceId, qbPaymentId: add.qbPaymentId, amount: add.amount, qbVoidError, qbPaymentVoidError },
         });
-        json({ success: true, addendums, qbVoidError });
+        json({ success: true, addendums, qbVoidError, qbPaymentVoidError });
+
+        // Post-success: regen PDF (totals changed) + notify Jeromy if
+        // the order hasn't shipped yet. Same pattern as add-charge.
+        (async () => {
+          try {
+            const snapRow = await db.query('SELECT json_snapshot, share_token, deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
+            const snap = snapRow.rows[0]?.json_snapshot || {};
+            const tok  = snapRow.rows[0]?.share_token || '';
+            const dnm  = snapRow.rows[0]?.deal_name || quoteNumber;
+            if (tok) {
+              const orderUrl = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}?t=${tok}`;
+              const pdfBuf = await generatePdfBuffer(orderUrl);
+              const fname  = buildPdfFilename(snap, quoteNumber, 'Order', dnm);
+              try { await gdriveUpsertFilePdf(fname, pdfBuf, SHARED_ORDERS_FOLDER); } catch(e) {}
+              try { await gdriveSavePdfToDeal(quoteNumber, 'Final Order', fname, pdfBuf); } catch(e) {}
+              console.log(`[void-addendum] PDF regenerated for ${quoteNumber}`);
+            }
+            const orderShipped = !!(orderData.shipped?.tracking);
+            if (!orderShipped) {
+              await createNotification('38732186', 'order-modified',
+                `Order modified — ${quoteNumber} · addendum voided`,
+                `${add.qbDocNumber || ''} ($${Math.abs(parseFloat(add.amount)||0).toFixed(2)}) voided by ${repName}.`,
+                { dealId: dealId ? String(dealId) : null, dealName: dnm, quoteNum: quoteNumber }
+              );
+            }
+          } catch(e) {
+            console.warn('[void-addendum] post-success side effects failed:', e.message);
+          }
+        })();
       } catch(e) {
         console.error('[void-addendum]', e.message);
         json({ error: e.message }, 500);
@@ -9833,7 +10229,20 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
       });
       const addendumNet = addendumLines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
       const total = sub - disc + freightAmt + pickupFeeAmt + (installAmt > 0 ? installAmt : 0) + taxAmt + addendumNet;
-      const totalWeight = (q.lineItems||[]).reduce((s,i) => s + ((parseFloat(i.weight)||0) * (parseInt(i.qty)||1)), 0);
+      const originalWeight = (q.lineItems||[]).reduce((s,i) => s + ((parseFloat(i.weight)||0) * (parseInt(i.qty)||1)), 0);
+      // Addendums with line items contribute physical weight too — surface
+      // separately so the customer sees what the upgrade adds to the
+      // shipment (and Jeromy can plan pallets).
+      const addendumWeight = activeAddendums.reduce((s, a) => {
+        // Rich addendums (v1.19.x+) carry weight directly.
+        if (typeof a.weight === 'number') return s + a.weight;
+        // Legacy fallback: compute from lineItems if present.
+        if (Array.isArray(a.lineItems)) {
+          return s + a.lineItems.reduce((ss, it) => ss + ((parseFloat(it.weight)||0) * (parseInt(it.qty)||1)), 0);
+        }
+        return s;
+      }, 0);
+      const totalWeight = originalWeight + addendumWeight;
       const c = q.customer || {};
       const issueDate = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'});
 
@@ -10003,7 +10412,13 @@ tbody tr:last-child td{border-bottom:none}
         }).join('')}
       ` : ''}
       <div class="tot grand"><span>Order Total</span><span>${fmt(total)}</span></div>
-      ${totalWeight>0?`<div class="tot weight-total"><span>&#x2696; Total Weight</span><span>${totalWeight.toLocaleString()} lbs</span></div>`:''}
+      ${totalWeight>0?`
+        ${addendumWeight>0?`
+          <div class="tot" style="font-size:11px;color:#999;margin-top:6px"><span>Original weight</span><span>${originalWeight.toLocaleString()} lbs</span></div>
+          <div class="tot" style="font-size:11px;color:#999"><span>Added from adjustments</span><span style="color:#ee6216">+${addendumWeight.toLocaleString()} lbs</span></div>
+        `:''}
+        <div class="tot weight-total"><span>&#x2696; Total Weight</span><span>${totalWeight.toLocaleString()} lbs</span></div>
+      `:''}
       ${(() => {
         if (!o.paymentType) return '';
         const labels = { hs: 'HubSpot Invoice', cc: 'Credit Card', ach: 'ACH / Bank Deposit', po: 'PO', other: 'Other' };

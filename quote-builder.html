@@ -3271,8 +3271,33 @@ async function createDeal() {
   if (!firstName || !lastName || !email) {
     alert('Please fill in customer first name, last name, and email.'); return;
   }
-  if (lineItems.length === 0) {
-    alert('Please add at least one product.'); return;
+  // Block only when the quote is completely empty — no line items, no
+  // freight, no install/delivery, no pickup fee. Freight-only quotes are
+  // valid (used for the addendum merge-quote workflow — e.g. a shipping
+  // upgrade quote that gets merged into an existing order).
+  const _hasFreight = !!(freightData && (freightData.tbd === true || parseFloat(freightData.total || 0) > 0));
+  const _hasInstall = !!(installData && parseFloat(installData.amount || 0) > 0);
+  const _hasPickup  = !!(typeof pickupFee !== 'undefined' && pickupFee && parseFloat(pickupFee) > 0);
+  if (lineItems.length === 0 && !_hasFreight && !_hasInstall && !_hasPickup) {
+    alert('Add at least one product, freight, installation, or pickup fee before pushing.'); return;
+  }
+
+  // Tax not calculated guard. Reps occasionally forget to hit Calculate
+  // Tax, the quote pushes with $0 tax, and the customer's invoice ships
+  // tax-free for a taxable order. Block (with confirm) when: the quote
+  // has product line items AND tax wasn't computed AND the order isn't
+  // explicitly tax-exempt. Freight-only / install-only quotes skip this
+  // since freight isn't always taxable.
+  const _taxExemptChecked = !!(document.getElementById('taxexempt') && document.getElementById('taxexempt').checked);
+  const _hasTaxableItems  = lineItems.length > 0;
+  const _taxAmountFn      = typeof getTaxAmount === 'function' ? getTaxAmount() : (taxData && parseFloat(taxData.tax || 0)) || 0;
+  if (_hasTaxableItems && !_taxExemptChecked && (!taxData || !_taxAmountFn)) {
+    const ok = window.confirm(
+      'No sales tax has been calculated for this quote.\n\n' +
+      'If this customer is in a state where you collect tax, the invoice will ship tax-free.\n\n' +
+      'Continue pushing without tax?'
+    );
+    if (!ok) return;
   }
 
   const btn = document.getElementById('createBtn');
@@ -5429,6 +5454,36 @@ function linkDealById(dealId, dealName) {
           document.getElementById('shipState').value = normalizeState(cp.state);
           document.getElementById('shipZip').value = cp.zip || '';
           if (cp.email) loadAccessorialPrefs(cp.email);
+          // Tag the contact as already-loaded-from-HubSpot. Without this,
+          // pushing the quote fires "Possible Duplicate Contact" because
+          // create-deal can't tell the form was pre-filled from a real
+          // HubSpot contact (vs. a rep typing in a new contact's info
+          // that happens to match an existing one). Mirrors the metadata
+          // set by _doFillContact when a rep picks via contact search.
+          if (data.contact.id) {
+            window._loadedContactId = data.contact.id;
+            window._loadedContactAddress = {
+              address: cp.address || '',
+              city:    cp.city    || '',
+              state:   cp.state   || '',
+              zip:     cp.zip     || '',
+              phone:   cp.phone   || '',
+            };
+            window._userUnlinked = false;
+            // Reflect the loaded contact in the top contact-search box +
+            // surface the "view contact" affordance, exactly like
+            // selecting from the dropdown does.
+            const csEl = document.getElementById('contactSearch');
+            if (csEl) csEl.value = [cp.firstname, cp.lastname].filter(Boolean).join(' ') || cp.email || '';
+            const badge = document.getElementById('contactBadge');
+            if (badge) badge.style.display = 'none';
+            const vcBtn = document.getElementById('viewContactBtn');
+            if (vcBtn) vcBtn.style.display = 'block';
+            // Drive folder check + dropdown close (same as _doFillContact).
+            try { if (typeof checkContactFolder === 'function') checkContactFolder(data.contact.id); } catch(e) {}
+            const dd = document.getElementById('contactDropdown');
+            if (dd) dd.classList.remove('open');
+          }
         }
       }
     }

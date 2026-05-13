@@ -51,6 +51,24 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.16.3', date:'May 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Contact-owner notification when building a quote for someone else\'s contact. The contact-search API now returns hubspot_owner_id (was being silently dropped — lib/hubspot.js properties array). When a rep selects a contact whose owner is a different rep, a modal shows "X is already the contact owner of Y" with Continue and Cancel buttons. Notification only — the rep dropdown is NOT auto-flipped (so a rep intentionally taking over a contact doesn\'t accidentally route the deal to the original owner). Silent when the contact has no owner, the owner IS the current rep, or the owner is the ecommerce bucket. Triggered by a real incident May 13: Sarah built a quote for Jogesh without knowing Jill owned the contact.'},
+      ]
+    },
+    {
+      v:'1.16.2', date:'May 12, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Stripe diagnostic was 400ing on every invoice item with "You may only specify one of these parameters: amount, quantity." Stripe\'s /v1/invoiceitems treats `amount` (total cents) and `quantity` as mutually exclusive — quantity only works with `price_data[unit_amount]`. Diagnostic items are all qty=1 so dropped `quantity` and kept `amount`. When we wire the real implementation we\'ll use the price_data path so multi-quantity WR orders display "2 × $3,500" cleanly on the customer\'s Stripe invoice.'},
+      ]
+    },
+    {
+      v:'1.16.1', date:'May 12, 2026', tag:'logging',
+      changes:[
+        {t:'log', d:'Stripe diagnostic endpoints (staging-only, hard-locked to sk_test_ keys). GET /api/debug/stripe-diagnostic creates one test Customer + four test invoice line items + one finalized Invoice, returns hosted_invoice_url + invoice_pdf so we can verify the integration end-to-end before wiring Stripe into /api/process-order. Companion GET /api/debug/stripe-cleanup?invoice=in_xxx&customer=cus_xxx voids the invoice and deletes the customer so the dashboard stays tidy. First step toward replacing HubSpot Invoices with Stripe Invoices for customer-facing payment (Option 2 from the May 12 discussion).'},
+      ]
+    },
+    {
       v:'1.16.0', date:'May 12, 2026', tag:'feature',
       changes:[
         {t:'add', d:'HubSpot Fees tab on the Accounting page. Pick a month and see Transactions, Gross, Total HubSpot Fees (the headline figure to enter as a monthly QB expense), Processor Fee, Platform Fee, Net Deposited, and Refunds. Per-payment table beneath with date, invoice number, customer, method, and the three fee components. CSV download for the accountant. Powered by GET /api/accounting/hubspot-fees?month=YYYY-MM which paginates through HubSpot Payments search filtered to succeeded + hs_payments processor and aggregates hs_fees_amount + hs_platform_fee.'},

@@ -750,6 +750,161 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Debug: Stripe end-to-end diagnostic — creates one test Customer + one
+  // test Invoice (finalized so it has a hosted_invoice_url) so we can
+  // verify the Stripe integration works before wiring it into
+  // /api/process-order. Hard-locked to sk_test_ keys; refuses to run
+  // against a live key. Cleanup companion below voids the invoice +
+  // deletes the customer so the dashboard stays tidy.
+  //
+  // Usage:    GET /api/debug/stripe-diagnostic
+  // Cleanup:  GET /api/debug/stripe-cleanup?invoice=in_xxx&customer=cus_xxx
+  if (pathname === '/api/debug/stripe-diagnostic' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || '';
+    if (!STRIPE_KEY) {
+      json({ error: 'STRIPE_SECRET_KEY env var not set on this server.' }, 500);
+      return;
+    }
+    if (!STRIPE_KEY.startsWith('sk_test_')) {
+      json({ error: 'Refusing to run against a non-test key. STRIPE_SECRET_KEY must start with sk_test_ — this endpoint is staging/sandbox-only.' }, 400);
+      return;
+    }
+    // Stripe expects application/x-www-form-urlencoded bodies (NOT JSON).
+    // Nested fields use bracket notation; percent-encoded brackets work too.
+    const formEncode = (obj) =>
+      Object.entries(obj)
+        .filter(([, v]) => v != null)
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join('&');
+    const stripeReq = async (apiPath, params, method = 'POST') => {
+      const body = params ? formEncode(params) : '';
+      const r = await httpsRequest({
+        hostname: 'api.stripe.com',
+        path:     `/v1${apiPath}`,
+        method,
+        headers: {
+          'Authorization':  `Bearer ${STRIPE_KEY}`,
+          'Content-Type':   'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(body),
+        },
+      }, body || null);
+      if (r.status >= 400) {
+        const msg = r.body?.error?.message || JSON.stringify(r.body).slice(0, 300);
+        throw new Error(`Stripe ${method} ${apiPath} → ${r.status}: ${msg}`);
+      }
+      return r.body;
+    };
+    try {
+      // 1. Create test customer
+      const customer = await stripeReq('/customers', {
+        email:        'diagnostic@whisperroom-test.example',
+        name:         'WR Stripe Diagnostic Customer',
+        description:  `Created by /api/debug/stripe-diagnostic at ${new Date().toISOString()} — safe to delete`,
+        'address[line1]':        '322 Nancy Lynn Lane Suite 14',
+        'address[city]':         'Morristown',
+        'address[state]':        'TN',
+        'address[postal_code]':  '37813',
+        'address[country]':      'US',
+      });
+      // 2. Add line items — Stripe is cents-native. Pattern mirrors a real
+      //    WR invoice: product lines + freight + a separately-stated tax
+      //    line we'd feed from TaxJar in production. Stripe rejects
+      //    `amount` + `quantity` together (mutually exclusive); for
+      //    multi-quantity invoices we'll use price_data[unit_amount] +
+      //    quantity in the real implementation. Diagnostic is qty=1
+      //    everywhere so the simpler `amount` path is fine here.
+      const lines = [
+        { description: 'MDL 9696 — booth shell (8\'×8\')',     amount: 350000 },
+        { description: 'AP 9696 — acoustic panel package',     amount:  58800 },
+        { description: 'Freight — ABF Standard LTL',           amount:  25000 },
+        { description: 'Sales Tax (TaxJar, TN 9.25%)',         amount:  37840 },
+      ];
+      for (const it of lines) {
+        await stripeReq('/invoiceitems', {
+          customer:    customer.id,
+          amount:      it.amount,
+          currency:    'usd',
+          description: it.description,
+        });
+      }
+      // 3. Create the invoice — picks up the pending invoice_items above.
+      const draft = await stripeReq('/invoices', {
+        customer:                       customer.id,
+        collection_method:              'send_invoice',
+        days_until_due:                 30,
+        pending_invoice_items_behavior: 'include',
+        description:                    'WhisperRoom Stripe diagnostic — safe to void',
+        auto_advance:                   'false',
+      });
+      // 4. Finalize — draft → open, generates hosted_invoice_url + invoice_pdf
+      const invoice = await stripeReq(`/invoices/${draft.id}/finalize`, {
+        auto_advance: 'false',
+      });
+      json({
+        success: true,
+        note: 'Open hosted_invoice_url in a browser to see what customers will see. Then hit the cleanup_url to void + delete the test data.',
+        customer: { id: customer.id, email: customer.email },
+        invoice: {
+          id:                 invoice.id,
+          number:             invoice.number,
+          status:             invoice.status,
+          currency:           invoice.currency,
+          subtotal_cents:     invoice.subtotal,
+          tax_cents:          invoice.tax,
+          total_cents:        invoice.total,
+          total_dollars:     (invoice.total / 100).toFixed(2),
+          due_date_epoch:     invoice.due_date,
+          hosted_invoice_url: invoice.hosted_invoice_url,
+          invoice_pdf:        invoice.invoice_pdf,
+        },
+        cleanup_url: `/api/debug/stripe-cleanup?invoice=${invoice.id}&customer=${customer.id}`,
+      });
+    } catch(e) {
+      console.error('[debug/stripe-diagnostic]', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // Cleanup companion for the Stripe diagnostic. Voids the test invoice
+  // (finalized invoices can't be deleted, only voided) and deletes the
+  // test customer.
+  if (pathname === '/api/debug/stripe-cleanup' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const STRIPE_KEY = process.env.STRIPE_SECRET_KEY || '';
+    if (!STRIPE_KEY.startsWith('sk_test_')) {
+      json({ error: 'test-mode only — STRIPE_SECRET_KEY must start with sk_test_' }, 400);
+      return;
+    }
+    const invoiceId  = parsed.query.invoice  || null;
+    const customerId = parsed.query.customer || null;
+    const stripeCall = (apiPath, method) => httpsRequest({
+      hostname: 'api.stripe.com',
+      path:     `/v1${apiPath}`,
+      method,
+      headers: {
+        'Authorization': `Bearer ${STRIPE_KEY}`,
+        ...(method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': 0 } : {}),
+      },
+    });
+    const results = {};
+    if (invoiceId) {
+      try {
+        const r = await stripeCall(`/invoices/${invoiceId}/void`, 'POST');
+        results.invoice = { status: r.status, voided: r.body?.status === 'void', body: r.status >= 400 ? r.body : undefined };
+      } catch(e) { results.invoiceError = e.message; }
+    }
+    if (customerId) {
+      try {
+        const r = await stripeCall(`/customers/${customerId}`, 'DELETE');
+        results.customer = { status: r.status, deleted: r.body?.deleted === true, body: r.status >= 400 ? r.body : undefined };
+      } catch(e) { results.customerError = e.message; }
+    }
+    json(results);
+    return;
+  }
+
   // Debug: dump tracking cache
   if (pathname === '/api/debug/tracking-cache' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

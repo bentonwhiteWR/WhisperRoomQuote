@@ -3271,8 +3271,15 @@ async function createDeal() {
   if (!firstName || !lastName || !email) {
     alert('Please fill in customer first name, last name, and email.'); return;
   }
-  if (lineItems.length === 0) {
-    alert('Please add at least one product.'); return;
+  // Block only when the quote is completely empty — no line items, no
+  // freight, no install/delivery, no pickup fee. Freight-only quotes are
+  // valid (used for the addendum merge-quote workflow — e.g. a shipping
+  // upgrade quote that gets merged into an existing order).
+  const _hasFreight = !!(freightData && (freightData.tbd === true || parseFloat(freightData.total || 0) > 0));
+  const _hasInstall = !!(installData && parseFloat(installData.amount || 0) > 0);
+  const _hasPickup  = !!(typeof pickupFee !== 'undefined' && pickupFee && parseFloat(pickupFee) > 0);
+  if (lineItems.length === 0 && !_hasFreight && !_hasInstall && !_hasPickup) {
+    alert('Add at least one product, freight, installation, or pickup fee before pushing.'); return;
   }
 
   const btn = document.getElementById('createBtn');

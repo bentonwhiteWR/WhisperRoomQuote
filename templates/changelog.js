@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.19.1', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Quote builder no longer blocks pushing a quote that has no line items as long as it has freight, installation, or a pickup fee. Came up while building a freight-only "change quote" for the v1.19.0 addendum-merge workflow — a $500 shipping-upgrade quote has no products and was getting blocked at the push step with "Please add at least one product." New guard only fires when the quote is truly empty (no items AND no freight AND no install AND no pickup).'},
+      ]
+    },
+    {
       v:'1.19.0', date:'May 13, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Order Addendums: quote-merge workflow. Replaces the multi-line builder with a quote picker. Rep builds a normal "change quote" on the deal first (freight upgrade, wall change, credit line — whatever the customer wants), then opens Modify on the original order and picks that quote. Server pulls the source quote\'s lineItems + freight + install + discount, derives net, creates QB Invoice (net positive) or Credit Memo (net negative). The source quote keeps its W- number and continues to exist as a regular quote — if the customer ultimately doesn\'t accept the change, it just sits there as a quote. Per-line server validation still allows ad-hoc `lines` array submissions (kept for future "Quick Charge" UI, but no UI fires this path today).'},

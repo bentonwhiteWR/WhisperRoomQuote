@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.16.4', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Rep dropdown no longer auto-flips to the deal owner when a deal is linked. Companion fix to v1.16.3 contact-owner notification — without this, the popup would warn "Sarah is the contact owner" but the dropdown silently changed to Sarah anyway (via the auto-link path: contact-search → single-deal-suggested → auto-link → linkDealById → fetch deal → set repSelect.value = hubspot_owner_id). The dropdown now reflects "who is building this quote" (logged-in rep), not "who originally owned the deal." Shopify deals still auto-route to Ecommerce — those are imported automation that should never be credited to a human rep.'},
+      ]
+    },
+    {
       v:'1.16.3', date:'May 13, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Contact-owner notification when building a quote for someone else\'s contact. The contact-search API now returns hubspot_owner_id (was being silently dropped — lib/hubspot.js properties array). When a rep selects a contact whose owner is a different rep, a modal shows "X is already the contact owner of Y" with Continue and Cancel buttons. Notification only — the rep dropdown is NOT auto-flipped (so a rep intentionally taking over a contact doesn\'t accidentally route the deal to the original owner). Silent when the contact has no owner, the owner IS the current rep, or the owner is the ecommerce bucket. Triggered by a real incident May 13: Sarah built a quote for Jogesh without knowing Jill owned the contact.'},

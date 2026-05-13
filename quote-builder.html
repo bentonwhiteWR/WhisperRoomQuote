@@ -5396,24 +5396,22 @@ function linkDealById(dealId, dealName) {
       linkedDeal.amount = p.amount;
       linkedDeal.stage = p.dealstage;
 
-      // Set rep to deal owner — Shopify deals always go to Ecommerce
+      // Shopify is the one case where we DO override the rep dropdown:
+      // those deals are imported automation, always belong to Ecommerce,
+      // and reps shouldn't accidentally take credit. For every other deal
+      // we deliberately do NOT auto-flip the rep to the deal owner — the
+      // dropdown reflects "who is building this quote" (the logged-in rep),
+      // not "who originally owned the deal." Otherwise Jill taking over
+      // Sarah's contact would silently route the new quote back to Sarah.
+      // Combined with the contact-owner notification popup (v1.16.3), the
+      // rep is told who owns the contact but their dropdown selection
+      // sticks. Real incident: see v1.16.4 changelog.
       const isShopify = /shopify/i.test(dealName);
       if (isShopify) {
         const sel = document.getElementById('repSelect');
         sel.value = 'ecommerce';
         localStorage.setItem('wr_default_rep', 'ecommerce');
         if (!document.getElementById('quoteNumHidden').value) updateQuoteNumber();
-      } else if (p.hubspot_owner_id) {
-        const sel = document.getElementById('repSelect');
-        if ([...sel.options].some(o => o.value === p.hubspot_owner_id)) {
-          sel.value = p.hubspot_owner_id;
-          localStorage.setItem('wr_default_rep', p.hubspot_owner_id);
-          // Only generate a new quote number if we don't already have one in context
-          // (prevents async callback from overwriting a just-corrected in-place quote number)
-          if (!document.getElementById('quoteNumHidden').value) {
-            updateQuoteNumber();
-          }
-        }
       }
 
       // Auto-fill contact from deal if not already filled

@@ -1498,6 +1498,30 @@ body:not(.dark) .submit-overlay-msg { color: var(--muted) !important; }
   </div>
 </div>
 
+<!-- Contact Owner notification: fires when a rep selects a contact whose
+     HubSpot owner is a different rep. Notification only — the quote
+     keeps going with whoever is currently in the rep dropdown; we just
+     surface the conflict so the team knows someone else "owns" this
+     person. Owner == current rep, owner == ecommerce, or no owner =
+     silent (no popup). -->
+<div id="contactOwnerNotifyOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9000;align-items:center;justify-content:center">
+  <div style="background:var(--surface,#1e1e1e);border-radius:14px;padding:32px;max-width:440px;width:90%;box-shadow:0 24px 60px rgba(0,0,0,.5);color:var(--text,#e8e8e8)">
+    <div style="font-size:18px;font-weight:700;margin-bottom:8px">👤 Existing Contact Owner</div>
+    <div style="font-size:13px;color:var(--muted,#aaa);line-height:1.6;margin-bottom:20px">
+      <strong id="ownerNotifyOwnerName" style="color:var(--accent,#ee6216)">—</strong> is already the contact owner of <strong id="ownerNotifyContactName" style="color:var(--text,#e8e8e8)">—</strong>.<br><br>
+      You can still make this quote — this is just a heads-up so the team knows.
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button onclick="notifyContactOwnerContinue()" style="padding:12px;background:var(--accent,#ee6216);border:none;border-radius:8px;color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.03em">
+        Continue with this contact
+      </button>
+      <button onclick="notifyContactOwnerCancel()" style="padding:10px;background:none;border:none;color:var(--muted,#aaa);font-size:12px;cursor:pointer;font-family:inherit">
+        Cancel — pick a different contact
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- DEAL HUB MODAL -->
 <div id="dealHubOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;align-items:flex-start;justify-content:center;padding:24px 16px;overflow-y:auto" onclick="if(event.target===this)closeDealHub()">
   <div style="background:#1a1b1e;border-radius:16px;width:100%;max-width:800px;box-shadow:0 32px 80px rgba(0,0,0,.4);overflow:hidden;color:#e8e6e3">
@@ -3827,6 +3851,61 @@ function _doFillContact(contact) {
   if (vcBtn) vcBtn.style.display = 'block';
   // Suggest deals associated with this contact
   suggestDealsForContact(contact.id);
+  // Notify the rep if this contact is owned by someone else in HubSpot.
+  // (Real-incident May 13: Sarah built a quote for one of Jill's contacts
+  // without knowing Jill owned it. Notification only — doesn't change the
+  // rep dropdown.)
+  checkContactOwnership(contact);
+}
+
+// Show the Contact Owner notification modal when:
+//   - contact has a hubspot_owner_id, AND
+//   - that owner is not the currently-selected rep, AND
+//   - that owner isn't the ecommerce/unassigned bucket.
+// Silent otherwise (no popup spam on every contact selection).
+function checkContactOwnership(contact) {
+  const ownerId = contact?.properties?.hubspot_owner_id;
+  if (!ownerId)               return;
+  if (ownerId === 'ecommerce') return; // shopify/unassigned bucket
+  const currentRep = document.getElementById('repSelect')?.value || '';
+  if (ownerId === currentRep) return;
+  const ownerName = REP_NAMES[ownerId] || `another rep`;
+  const contactName = [contact.properties.firstname, contact.properties.lastname]
+    .filter(Boolean).join(' ').trim()
+    || contact.properties.email
+    || 'this contact';
+  const ownerEl   = document.getElementById('ownerNotifyOwnerName');
+  const contactEl = document.getElementById('ownerNotifyContactName');
+  if (ownerEl)   ownerEl.textContent   = ownerName;
+  if (contactEl) contactEl.textContent = contactName;
+  const overlay = document.getElementById('contactOwnerNotifyOverlay');
+  if (overlay) overlay.style.display = 'flex';
+}
+
+function notifyContactOwnerContinue() {
+  const overlay = document.getElementById('contactOwnerNotifyOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function notifyContactOwnerCancel() {
+  const overlay = document.getElementById('contactOwnerNotifyOverlay');
+  if (overlay) overlay.style.display = 'none';
+  // Clear the just-loaded contact (but NOT the whole quote — rep may want
+  // to pick a different contact and keep their line items).
+  ['firstName','lastName','email','phone','company','shipAddress','shipCity','shipState','shipZip'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const cs = document.getElementById('contactSearch');
+  if (cs) { cs.value = ''; cs.focus(); }
+  window._loadedContactId        = null;
+  window._loadedContactAddress   = null;
+  window._bindFolderId           = null;
+  window._contactFolderInfo      = null;
+  const vcBtn = document.getElementById('viewContactBtn');
+  if (vcBtn) vcBtn.style.display = 'none';
+  const badge = document.getElementById('contactBadge');
+  if (badge) badge.style.display = 'none';
 }
 
 function contactGuardStartFresh() {

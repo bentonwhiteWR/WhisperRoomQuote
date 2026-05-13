@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.16.3', date:'May 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Contact-owner notification when building a quote for someone else\'s contact. The contact-search API now returns hubspot_owner_id (was being silently dropped — lib/hubspot.js properties array). When a rep selects a contact whose owner is a different rep, a modal shows "X is already the contact owner of Y" with Continue and Cancel buttons. Notification only — the rep dropdown is NOT auto-flipped (so a rep intentionally taking over a contact doesn\'t accidentally route the deal to the original owner). Silent when the contact has no owner, the owner IS the current rep, or the owner is the ecommerce bucket. Triggered by a real incident May 13: Sarah built a quote for Jogesh without knowing Jill owned the contact.'},
+      ]
+    },
+    {
       v:'1.16.2', date:'May 12, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Stripe diagnostic was 400ing on every invoice item with "You may only specify one of these parameters: amount, quantity." Stripe\'s /v1/invoiceitems treats `amount` (total cents) and `quantity` as mutually exclusive — quantity only works with `price_data[unit_amount]`. Diagnostic items are all qty=1 so dropped `quantity` and kept `amount`. When we wire the real implementation we\'ll use the price_data path so multi-quantity WR orders display "2 × $3,500" cleanly on the customer\'s Stripe invoice.'},

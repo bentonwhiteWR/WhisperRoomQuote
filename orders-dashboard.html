@@ -1323,14 +1323,12 @@ async function selectRate() {
   if (pickup) document.getElementById('editShipDate').value = pickup;
   closeFreightModal();
   if (carrier) showToast(`${carrier} — ${service} applied · $${cost?.toFixed(2)}`, 'success');
-  // Per-rep direction: Select Rate is the commitment, so persist the
-  // drawer immediately rather than waiting for a separate Save Changes
-  // click. saveOrder() reads from DOM (already populated above + by the
-  // card click), sends PATCH, closes the drawer, and reloads. It will
-  // also show its own "Order updated" toast — two toasts in a row is
-  // intentional so the rep sees both the rate-applied + save-confirmed
-  // signals.
-  await saveOrder();
+  // Per-rep direction: Select Rate persists the drawer immediately
+  // (rep doesn't need to also hit Save Changes), but the side drawer
+  // stays open so the rep can continue editing other order fields
+  // without re-opening it. Pass keepDrawerOpen=true to skip the close
+  // + list-reload that saveOrder does by default.
+  await saveOrder({ keepDrawerOpen: true });
 }
 
 async function bookShipment() {
@@ -2260,7 +2258,8 @@ async function deleteOrder() {
 }
 
 // ── Save Order ────────────────────────────────────────────────────
-async function saveOrder() {
+async function saveOrder(opts) {
+  const keepDrawerOpen = !!(opts && opts.keepDrawerOpen);
   if (!currentQuoteNumber) return;
   const btn = document.getElementById('saveBtn');
   btn.disabled = true;
@@ -2348,8 +2347,15 @@ async function saveOrder() {
     const data = await res.json();
     if (data.success) {
       showToast('✓ Order updated', 'success');
-      closeDrawer();
-      loadOrders();
+      if (keepDrawerOpen) {
+        // Refresh the in-memory orders list so re-renders pick up the
+        // saved fields, but DON'T close the drawer (Select Rate flow —
+        // the rep wants to keep editing other order fields after).
+        loadOrders();
+      } else {
+        closeDrawer();
+        loadOrders();
+      }
     } else {
       throw new Error(data.error || 'Save failed');
     }

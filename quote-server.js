@@ -2063,6 +2063,7 @@ const server = http.createServer(async (req, res) => {
         dbRes.rows.forEach(r => {
           const items = r.line_items || [];
           const quoteHasAP = (() => { try { return items.some(isApItemForList); } catch(e) { return false; } })();
+          const isOrder = !!r.order_at;   // this quote was processed into an order
           const quotePoStatus = poByQuote[r.quote_number] || null;
           if (!byDeal[r.deal_id]) {
             let firstMdl = '';
@@ -2075,6 +2076,12 @@ const server = http.createServer(async (req, res) => {
               hasRM         = items.some(i => /^RM\s/i.test(i?.name||''));
               hasCustomHole = items.some(i => /^CUST HOLE\b/i.test(i?.name||''));
             } catch(e) {}
+            // hasAP rule (per 2026-05-13 spec): badge only when the most
+            // recent quote has AP OR the order has AP. Don't carry AP
+            // through from older non-order quotes that were later
+            // superseded — the customer chose a different config since.
+            // Rows arrive ORDER BY created_at DESC, so the first row IS
+            // the latest quote.
             byDeal[r.deal_id] = {
               latestQuote: r.quote_number,
               total: r.total,
@@ -2082,7 +2089,7 @@ const server = http.createServer(async (req, res) => {
               firstMdl,
               hasRM,
               hasCustomHole,
-              hasAP:       quoteHasAP,
+              hasAP:       quoteHasAP || (isOrder && quoteHasAP),
               // _apQuotes: { 'W-...': { hasAP, poStatus } } — used to compute final apStatus
               _apQuotes: { [r.quote_number]: { hasAP: quoteHasAP, poStatus: quotePoStatus } },
               quoteLabel: r.quote_label || '',
@@ -2095,12 +2102,17 @@ const server = http.createServer(async (req, res) => {
             const ts = r.created_at ? new Date(r.created_at).getTime() : 0;
             const currentBest = existing.lastActivityAt ? new Date(existing.lastActivityAt).getTime() : 0;
             if (ts > currentBest) existing.lastActivityAt = r.created_at;
-            // Flag RM / Custom Hole / AP if any quote on this deal has them
+            // RM / Custom Hole stay aggregated across all quotes — those
+            // are production-lead-time flags ("anyone ever asked for this
+            // on this deal") and Gary needs to know regardless of which
+            // quote it was on. AP is different: it's about what's
+            // actually being shipped, so only count it when this row IS
+            // an order (i.e., what the customer accepted + processed).
             if (!existing.hasRM || !existing.hasCustomHole || !existing.hasAP) {
               try {
                 if (!existing.hasRM         && items.some(i => /^RM\s/i.test(i?.name||'')))        existing.hasRM = true;
                 if (!existing.hasCustomHole && items.some(i => /^CUST HOLE\b/i.test(i?.name||''))) existing.hasCustomHole = true;
-                if (!existing.hasAP         && quoteHasAP)                                          existing.hasAP = true;
+                if (!existing.hasAP         && isOrder && quoteHasAP)                              existing.hasAP = true;
               } catch(e) {}
             }
             existing._apQuotes[r.quote_number] = { hasAP: quoteHasAP, poStatus: quotePoStatus };

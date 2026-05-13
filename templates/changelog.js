@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.19.5', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Select Rate in the orders dashboard now keeps the side drawer open. The v1.14.1 behavior closed the drawer (delegating to saveOrder) so reps had to reopen it to keep editing tracking, ship date, hardware box, etc. — annoying when they just want to apply the rate and continue. saveOrder() now accepts { keepDrawerOpen: true } and Select Rate passes it. Regular Save Changes flow still closes (unchanged).'},
+        {t:'fix', d:'AP badge on deal cards no longer shows when only OLD (superseded) quotes had AP. New rule: the badge only fires when (a) the most recent quote has AP, or (b) a processed order on this deal has AP. The aggregation used to OR AP across every quote in deal history, so a deal where a customer first asked about AP and then chose a different config still showed AP forever. Production-lead-time flags (RM, CUSTOM HOLES) still aggregate across all quotes since Gary needs visibility on any prior request.'},
+      ]
+    },
+    {
       v:'1.19.4', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Addendum submit was 500ing with "applyToFreight is not defined" — leftover reference in the writelog meta object after v1.19.3 removed the local variable. Now logs the source quote\'s freight portion (addFreight) instead. node --check doesn\'t catch this kind of unused-identifier-in-object-shorthand bug; only surfaces at runtime when the endpoint actually fires.'},

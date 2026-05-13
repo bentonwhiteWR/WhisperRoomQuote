@@ -7764,6 +7764,320 @@ ${q.accepted ? `
     return;
   }
 
+  // ── API: Add Charge (Order Addendum) ─────────────────────────────
+  // Adds a tracked post-process charge to an existing order — e.g. a
+  // shipping upgrade after the original invoice was already paid.
+  // Each addendum becomes its own QB invoice (DocNumber like
+  // W-XXXXXXXXXX-A1) with auto-payment for non-PO types, mirroring the
+  // process-order pattern. order_data.addendums tracks the audit trail
+  // forever. Per discussion 2026-05-13: separate QB invoices, same tax
+  // suppression rules, HS deal amount updates to original + addendums.
+  //
+  // Body: { description, amount, paymentType, poNumber?, applyToFreight? }
+  if (pathname.startsWith('/api/orders/') && pathname.endsWith('/add-charge') && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').replace('/add-charge', '').trim());
+    let body;
+    try { body = JSON.parse(await readBody(req) || '{}'); }
+    catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const description = String(body.description || '').trim();
+      const amt         = parseFloat(body.amount);
+      const pt          = String(body.paymentType || '').toLowerCase().trim();
+      const poNumber    = body.poNumber ? String(body.poNumber).trim() : null;
+      const applyToFreight = !!body.applyToFreight;
+
+      if (!description)              { json({ error: 'Description is required' }, 400); return; }
+      if (!amt || amt <= 0 || isNaN(amt)) { json({ error: 'Amount must be a positive number' }, 400); return; }
+      if (!['hs','cc','ach','po','other'].includes(pt)) { json({ error: 'Invalid payment type' }, 400); return; }
+      if (pt === 'po' && !poNumber)  { json({ error: 'PO number required for PO payment type' }, 400); return; }
+
+      const row = await db.query(`
+        SELECT o.order_data, o.deal_id, q.json_snapshot
+        FROM orders o
+        LEFT JOIN quotes q ON q.quote_number = o.quote_number
+        WHERE o.quote_number = $1
+      `, [quoteNumber]);
+      if (!row.rows.length) { json({ error: `Order ${quoteNumber} not found` }, 404); return; }
+
+      const orderData = row.rows[0].order_data || {};
+      const snap      = row.rows[0].json_snapshot || {};
+      const dealId    = row.rows[0].deal_id;
+      const customer  = snap.customer || {};
+      const billing   = snap.billing  || null;
+      const tax       = snap.tax      || {};
+      const prevAddendums = Array.isArray(orderData.addendums) ? orderData.addendums : [];
+      // Numbering only counts non-voided so users see A1, A2, A3 sequentially
+      // even if A1 was later voided and A2 was added after.
+      const addendumNum = prevAddendums.filter(a => !a.voided).length + 1;
+      const repName     = getRepFromReq(req, body) || 'unknown';
+
+      const shipAddr = {
+        Line1: customer.address || '', City: customer.city || '',
+        CountrySubDivisionCode: customer.state || '',
+        PostalCode: customer.zip || '', Country: 'US',
+      };
+      const billAddr = (billing && (billing.name || billing.address || billing.city || billing.state || billing.zip)) ? {
+        ...(billing.name    ? { Line1: billing.name } : {}),
+        ...(billing.address ? (billing.name ? { Line2: billing.address } : { Line1: billing.address }) : {}),
+        ...(billing.city    ? { City: billing.city } : {}),
+        ...(billing.state   ? { CountrySubDivisionCode: billing.state } : {}),
+        ...(billing.zip     ? { PostalCode: billing.zip } : {}),
+        Country: 'US',
+      } : shipAddr;
+
+      // Tax suppression — same rules as create-qb-invoice / process-order.
+      const TAX_CODE    = process.env.QB_TAXABLE_CODE || 'TAX';
+      const EXEMPT_CODE = process.env.QB_EXEMPT_CODE  || 'NON';
+      const _isTaxExempt   = !!(snap.taxExempt || snap.accessories?.taxexempt);
+      const _suppressQbTax = _isTaxExempt || parseFloat(tax?.tax || 0) === 0;
+      const lineTaxRef     = { value: _suppressQbTax ? EXEMPT_CODE : TAX_CODE };
+
+      const fallback = await qb.getDefaultItem();
+      const cust = await qb.findOrCreateCustomer({
+        displayName: customer.company || [customer.firstName, customer.lastName].filter(Boolean).join(' ') || customer.email || 'Unknown',
+        givenName:   customer.firstName || '',
+        familyName:  customer.lastName  || '',
+        email:       customer.email     || '',
+        companyName: customer.company   || '',
+        billAddr, shipAddr,
+      });
+
+      // Single line item for the addendum charge. Description is rep-supplied
+      // (e.g. "Shipping upgrade: ABF Guaranteed").
+      const lineAmt = parseFloat(amt.toFixed(2));
+      const qbLines = [{
+        Amount: lineAmt,
+        DetailType: 'SalesItemLineDetail',
+        Description: description,
+        SalesItemLineDetail: {
+          ItemRef:    { value: fallback.value },
+          UnitPrice:  lineAmt,
+          Qty:        1,
+          TaxCodeRef: lineTaxRef,
+        },
+      }];
+
+      const customFields = [];
+      if (pt === 'po' && poNumber) {
+        customFields.push({ DefinitionId: '1', Name: 'P.O. Number', Type: 'StringType', StringValue: poNumber });
+      }
+
+      const termName = pt === 'po'
+        ? (process.env.QB_TERM_NET30        || 'Net 30')
+        : (process.env.QB_TERM_UPON_RECEIPT || 'Due on receipt');
+      let salesTermRef = null;
+      try {
+        const term = await qb.findTermByName(termName);
+        if (term) salesTermRef = { value: String(term.Id) };
+      } catch(e) {}
+
+      // DocNumber: original quote + "-A<n>". QB caps DocNumber at 21 chars;
+      // truncate the base if needed (rare — our quote numbers are 12 chars).
+      const docSuffix = `-A${addendumNum}`;
+      const docBase   = String(quoteNumber).slice(0, 21 - docSuffix.length);
+      const docNumber = docBase + docSuffix;
+
+      const invoice = await qb.createInvoice({
+        customerRef: { value: cust.Id },
+        docNumber,
+        txnDate:     new Date().toISOString().split('T')[0],
+        lines:       qbLines,
+        memo:        `Order addendum #${addendumNum} for ${quoteNumber}: ${description}. Finance charges of 1.5% per month will be added to invoices not paid by the due date.`,
+        billAddr,
+        shipAddr,
+        billEmail:   (billing && billing.email) || customer.email || null,
+        customFields: customFields.length ? customFields : null,
+        salesTermRef,
+        globalTaxCalc: _suppressQbTax ? 'NotApplicable' : undefined,
+        applyTaxAfterDiscount: true,
+      });
+      if (!invoice?.Id) throw new Error('QB createInvoice returned no Id');
+
+      // Auto-payment for non-PO types — mirrors the create-qb-invoice path.
+      let qbPaymentId      = null;
+      let paidAt           = null;
+      let autoPaymentError = null;
+      if (pt !== 'po') {
+        try {
+          const pmName   = process.env.QB_PAYMENT_METHOD_NAME || 'Hubspot';
+          const acctName = process.env.QB_DEPOSIT_ACCOUNT_NAME || 'Southeast Bank Regular Checking 2545';
+          const [pm, acct] = await Promise.all([
+            qb.findPaymentMethodByName(pmName),
+            qb.findAccountByName(acctName),
+          ]);
+          if (!pm)   throw new Error(`PaymentMethod "${pmName}" not found in QB`);
+          if (!acct) throw new Error(`Account "${acctName}" not found in QB`);
+          const payment = await qb.createPayment({
+            customerRef:         invoice.CustomerRef,
+            invoiceId:           invoice.Id,
+            amount:              lineAmt,
+            paymentMethodRef:    { value: pm.Id, name: pm.Name },
+            depositToAccountRef: { value: acct.Id, name: acct.Name },
+            txnDate:             new Date().toISOString().split('T')[0],
+            privateNote:         `Auto-payment on order addendum (${pt.toUpperCase()}). Order ${quoteNumber}, addendum ${docNumber}.`,
+          });
+          qbPaymentId = payment.Id;
+          paidAt      = new Date().toISOString();
+        } catch(e) {
+          console.warn('[add-charge] Auto-payment failed (invoice still created):', e.message);
+          autoPaymentError = e.message;
+        }
+      }
+
+      // Build the addendum record we'll persist on order_data.
+      const addendum = {
+        id:             'add_' + crypto.randomBytes(6).toString('hex'),
+        description,
+        amount:         lineAmt,
+        paymentType:    pt,
+        poNumber:       (pt === 'po') ? poNumber : null,
+        applyToFreight,
+        qbInvoiceId:    invoice.Id,
+        qbDocNumber:    invoice.DocNumber,
+        qbPaymentId,
+        paidAt,
+        addedBy:        repName,
+        addedAt:        new Date().toISOString(),
+        autoPaymentError,
+      };
+
+      const newAddendums = [...prevAddendums, addendum];
+      const updateFields = { addendums: newAddendums };
+      if (applyToFreight) {
+        const prevFreight = parseFloat(orderData.freightCost || 0) || 0;
+        updateFields.freightCost = parseFloat((prevFreight + lineAmt).toFixed(2));
+      }
+      await db.query(
+        `UPDATE orders SET order_data = order_data || $1::jsonb WHERE quote_number = $2`,
+        [JSON.stringify(updateFields), quoteNumber]
+      );
+
+      // Update HubSpot deal amount: original + sum(active addendums).
+      if (dealId) {
+        try {
+          const originalAmount = parseFloat(snap.total || 0) || 0;
+          const activeSum = newAddendums.filter(a => !a.voided).reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
+          const newDealAmount = originalAmount + activeSum;
+          await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path:     `/crm/v3/objects/deals/${dealId}`,
+            method:   'PATCH',
+            headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+          }, { properties: { amount: String(newDealAmount.toFixed(2)) } });
+        } catch(e) {
+          console.warn('[add-charge] HS deal amount update failed:', e.message);
+        }
+      }
+
+      writelog('info', 'order.addendum-added', `Addendum added to ${quoteNumber}: ${description} ($${lineAmt.toFixed(2)})`, {
+        rep: repName, quoteNum: quoteNumber, dealId: String(dealId || ''),
+        meta: { addendumId: addendum.id, qbInvoiceId: invoice.Id, qbDocNumber: invoice.DocNumber, amount: lineAmt, paymentType: pt, applyToFreight, autoPaymentError },
+      });
+      json({ success: true, addendum, addendums: newAddendums, autoPaymentError });
+    } catch(e) {
+      console.error('[add-charge]', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Void Addendum ───────────────────────────────────────────
+  // Voids an UNPAID addendum. Blocks paid addendums (use refund flow
+  // instead — to be built when Stripe lands). Marks the addendum
+  // { voided: true, voidedAt, voidedBy } rather than deleting it so the
+  // audit trail is preserved. Also reverses any freightCost bump and
+  // re-syncs the HubSpot deal amount. QB invoice is deleted (delete on
+  // unpaid is fine; for paid this path never runs).
+  //
+  // POST /api/orders/:quoteNumber/addendums/:addendumId/void
+  {
+    const voidMatch = pathname.match(/^\/api\/orders\/([^\/]+)\/addendums\/([^\/]+)\/void$/);
+    if (voidMatch && req.method === 'POST') {
+      if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+      const quoteNumber = decodeURIComponent(voidMatch[1]);
+      const addendumId  = decodeURIComponent(voidMatch[2]);
+      try {
+        if (!db) { json({ error: 'No database' }, 500); return; }
+        const row = await db.query(
+          'SELECT order_data, deal_id FROM orders WHERE quote_number = $1',
+          [quoteNumber]
+        );
+        if (!row.rows.length) { json({ error: `Order ${quoteNumber} not found` }, 404); return; }
+        const orderData = row.rows[0].order_data || {};
+        const dealId    = row.rows[0].deal_id;
+        const addendums = Array.isArray(orderData.addendums) ? orderData.addendums.slice() : [];
+        const idx = addendums.findIndex(a => a.id === addendumId);
+        if (idx === -1)                                  { json({ error: 'Addendum not found' }, 404); return; }
+        const add = addendums[idx];
+        if (add.voided)                                  { json({ error: 'Addendum already voided' }, 400); return; }
+        if (add.paidAt || add.qbPaymentId) {
+          json({ error: 'Cannot void a paid addendum. Use refund flow instead.' }, 400);
+          return;
+        }
+        const repName = getRepFromReq(req, {}) || 'unknown';
+
+        // Delete the QB invoice. If QB rejects (e.g. invoice referenced
+        // elsewhere), we still mark the addendum voided locally — the rep
+        // can clean up the orphan in QB manually.
+        let qbVoidError = null;
+        if (add.qbInvoiceId) {
+          try { await qb.deleteInvoice(add.qbInvoiceId); }
+          catch(e) { qbVoidError = e.message; console.warn('[void-addendum] QB delete failed:', e.message); }
+        }
+
+        addendums[idx] = {
+          ...add,
+          voided:    true,
+          voidedAt:  new Date().toISOString(),
+          voidedBy:  repName,
+          ...(qbVoidError ? { qbVoidError } : {}),
+        };
+
+        const updateFields = { addendums };
+        if (add.applyToFreight) {
+          const prevFreight = parseFloat(orderData.freightCost || 0) || 0;
+          const reverted = parseFloat((prevFreight - parseFloat(add.amount)).toFixed(2));
+          updateFields.freightCost = reverted < 0 ? 0 : reverted;
+        }
+        await db.query(
+          `UPDATE orders SET order_data = order_data || $1::jsonb WHERE quote_number = $2`,
+          [JSON.stringify(updateFields), quoteNumber]
+        );
+
+        // Re-sync HS deal amount = original + remaining active addendums.
+        if (dealId) {
+          try {
+            const snapRow = await db.query('SELECT json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
+            const snap = snapRow.rows[0]?.json_snapshot || {};
+            const originalAmount = parseFloat(snap.total || 0) || 0;
+            const activeSum = addendums.filter(a => !a.voided).reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
+            const newDealAmount = originalAmount + activeSum;
+            await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path:     `/crm/v3/objects/deals/${dealId}`,
+              method:   'PATCH',
+              headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+            }, { properties: { amount: String(newDealAmount.toFixed(2)) } });
+          } catch(e) {
+            console.warn('[void-addendum] HS deal amount update failed:', e.message);
+          }
+        }
+
+        writelog('info', 'order.addendum-voided', `Addendum voided on ${quoteNumber}: ${add.qbDocNumber} ($${add.amount})`, {
+          rep: repName, quoteNum: quoteNumber, dealId: String(dealId || ''),
+          meta: { addendumId, qbInvoiceId: add.qbInvoiceId, amount: add.amount, qbVoidError },
+        });
+        json({ success: true, addendums, qbVoidError });
+      } catch(e) {
+        console.error('[void-addendum]', e.message);
+        json({ error: e.message }, 500);
+      }
+      return;
+    }
+  }
+
   // ── API: Mark order paid (creates QB Payment linked to invoice) ──
   // Mirrors the QB "Receive Payment" screen. Defaults match what reps do
   // manually: payment method = "Hubspot", deposit to checking. Override

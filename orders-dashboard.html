@@ -506,6 +506,23 @@
       </div>
     </div>
 
+    <!-- Order Addendums: post-process charges (e.g. shipping upgrades).
+         Each addendum has its own QB invoice + auto-payment. Section
+         header always visible with "+ Add Charge"; the list itself is
+         hidden when there are no addendums. -->
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Order Addendums</label>
+        <button type="button" onclick="openAddChargeModal()" style="padding:5px 11px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:var(--orange-dim,rgba(238,98,22,.12));border:1px solid rgba(238,98,22,.3);border-radius:5px;color:var(--orange,#ee6216);cursor:pointer;font-family:inherit">+ Add Charge</button>
+      </div>
+      <div id="addendumsList" style="display:none;flex-direction:column;gap:6px"></div>
+      <div id="addendumsEmpty" style="font-size:11px;color:var(--muted);font-style:italic;padding:6px 2px">No addendums on this order.</div>
+      <div id="addendumsTotal" style="display:none;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:11px;color:var(--muted);display:flex;justify-content:space-between">
+        <span>Total billed</span>
+        <span><span id="addendumsTotalSummary" style="color:var(--text);font-weight:700"></span></span>
+      </div>
+    </div>
+
     <!-- Shipping Email Addresses -->
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -674,6 +691,57 @@
     <div style="display:flex;gap:10px">
       <button id="fqRunBtn" onclick="runFreightQuote()" style="flex:1;padding:12px;background:var(--orange);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Get Rates</button>
       <button onclick="closeFreightModal()" style="padding:12px 18px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Charge (Order Addendum) Modal -->
+<div id="addChargeModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:400;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border-radius:14px;padding:28px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5);max-height:90vh;overflow-y:auto">
+    <h2 style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px">+ Add Charge to Order</h2>
+    <div id="addChargeOrderRef" style="font-size:12px;color:var(--muted);margin-bottom:16px;font-family:'JetBrains Mono',ui-monospace,monospace"></div>
+
+    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px">
+      <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Description</label>
+      <input type="text" id="addChargeDescription" placeholder="e.g. Shipping upgrade: ABF Guaranteed"
+             style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div style="display:flex;flex-direction:column;gap:5px">
+        <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Amount ($)</label>
+        <input type="text" inputmode="decimal" id="addChargeAmount" placeholder="0.00"
+               style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px">
+        <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Payment Type</label>
+        <select id="addChargePaymentType" onchange="onAddChargePaymentTypeChange()"
+                style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+          <option value="hs">HubSpot Payments</option>
+          <option value="cc">Credit Card</option>
+          <option value="ach">ACH</option>
+          <option value="po">Purchase Order</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="addChargePoRow" style="display:none;flex-direction:column;gap:5px;margin-bottom:14px">
+      <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">PO Number</label>
+      <input type="text" id="addChargePoNumber" placeholder="PO #"
+             style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+    </div>
+
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);cursor:pointer;margin-bottom:18px">
+      <input type="checkbox" id="addChargeApplyToFreight">
+      <span>Apply to <strong>Freight Cost</strong> field (for shipping upgrades)</span>
+    </label>
+
+    <div id="addChargeError" style="display:none;padding:10px 14px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;color:#ef4444;font-size:12px;margin-bottom:14px"></div>
+
+    <div style="display:flex;gap:10px">
+      <button id="addChargeSubmitBtn" onclick="submitAddCharge()" style="flex:1;padding:12px;background:var(--orange);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Add Charge &amp; Invoice</button>
+      <button onclick="closeAddChargeModal()" style="padding:12px 18px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
     </div>
   </div>
 </div>
@@ -1804,6 +1872,7 @@ function openDrawer(quoteNumber) {
     : (od._hsDate ? new Date(od._hsDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
   document.getElementById('editFreightCost').value = od.freightCost || '';
   setFreightRef(od.freightRef || null);
+  renderAddendums(order);
 
   // Populate the inline shipment-estimate block above the Shipment section.
   // Mirrors the Quote Builder's Quote Weight widget (Total / Pallets / per-
@@ -2115,6 +2184,184 @@ async function deleteOrder() {
     showToast(`Order deleted`, 'success');
     closeDrawer();
     loadOrders();
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
+// ── Order Addendums ───────────────────────────────────────────────
+// Post-process charges (e.g. shipping upgrades after the original
+// invoice was paid). Each addendum gets its own QB invoice + auto-
+// payment for non-PO. Voiding is allowed only on unpaid addendums.
+function renderAddendums(order) {
+  const list  = document.getElementById('addendumsList');
+  const empty = document.getElementById('addendumsEmpty');
+  const totalRow     = document.getElementById('addendumsTotal');
+  const totalSummary = document.getElementById('addendumsTotalSummary');
+  if (!list || !empty || !totalRow) return;
+  const od = order?.order_data || {};
+  const addendums = Array.isArray(od.addendums) ? od.addendums : [];
+  const active = addendums.filter(a => !a.voided);
+  if (active.length === 0 && addendums.length === 0) {
+    list.style.display    = 'none';
+    empty.style.display   = 'block';
+    totalRow.style.display = 'none';
+    return;
+  }
+  const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit', timeZone:'America/New_York' }) : '—';
+  const escNote = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  list.innerHTML = addendums.map(a => {
+    const isVoided = !!a.voided;
+    const isPaid   = !!a.paidAt || !!a.qbPaymentId;
+    const statusBadge = isVoided
+      ? '<span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;background:rgba(255,255,255,.04);color:var(--muted);border:1px solid var(--border);text-transform:uppercase;letter-spacing:.05em">Voided</span>'
+      : (isPaid
+        ? '<span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;background:rgba(34,197,94,.12);color:var(--green,#22c55e);border:1px solid rgba(34,197,94,.25);text-transform:uppercase;letter-spacing:.05em">Paid</span>'
+        : '<span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;background:rgba(245,158,11,.12);color:#f59e0b;border:1px solid rgba(245,158,11,.25);text-transform:uppercase;letter-spacing:.05em">Open</span>');
+    const voidBtn = (!isVoided && !isPaid)
+      ? `<button onclick="voidAddendum('${a.id}')" title="Void this unpaid addendum (deletes QB invoice)" style="margin-left:auto;padding:3px 9px;font-size:10px;font-weight:600;background:rgba(239,68,68,.08);color:#ef4444;border:1px solid rgba(239,68,68,.25);border-radius:4px;cursor:pointer;font-family:inherit">Void</button>`
+      : '';
+    const meta = [
+      escNote(a.qbDocNumber || a.qbInvoiceId || '—'),
+      (a.paymentType || '').toString().toUpperCase(),
+      fmtDate(a.addedAt),
+      a.addedBy ? `by ${escNote(a.addedBy)}` : null,
+    ].filter(Boolean).join(' · ');
+    return `
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px${isVoided ? ';opacity:.55' : ''}">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span style="font-weight:700;color:var(--text);font-size:13px;flex:1;text-decoration:${isVoided ? 'line-through' : 'none'}">${escNote(a.description)}</span>
+          <span style="font-weight:800;color:var(--orange,#ee6216);font-size:13px;text-decoration:${isVoided ? 'line-through' : 'none'}">${fmt(a.amount)}</span>
+          ${statusBadge}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:var(--muted);font-family:'JetBrains Mono',ui-monospace,monospace">
+          <span>${meta}</span>
+          ${voidBtn}
+        </div>
+        ${a.applyToFreight ? '<div style="margin-top:4px;font-size:9px;color:var(--muted);font-style:italic">Applied to freight cost</div>' : ''}
+      </div>
+    `;
+  }).join('');
+  list.style.display    = 'flex';
+  empty.style.display   = 'none';
+  // Original order total + active addendum sum.
+  const snap = order?.json_snapshot || {};
+  const originalTotal = parseFloat(snap.total || 0) || 0;
+  const activeSum     = active.reduce((s, a) => s + (parseFloat(a.amount)||0), 0);
+  const grand         = originalTotal + activeSum;
+  if (originalTotal > 0) {
+    totalSummary.textContent = `${fmt(grand)} (${fmt(originalTotal)} original + ${fmt(activeSum)} addendums)`;
+    totalRow.style.display   = 'flex';
+  } else {
+    totalRow.style.display   = 'none';
+  }
+}
+
+function openAddChargeModal() {
+  if (!currentQuoteNumber) { showToast('Open an order first', 'error'); return; }
+  const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
+  if (!order) return;
+  document.getElementById('addChargeOrderRef').textContent = order.quote_number || '';
+  document.getElementById('addChargeDescription').value = '';
+  document.getElementById('addChargeAmount').value      = '';
+  document.getElementById('addChargePoNumber').value    = '';
+  document.getElementById('addChargeApplyToFreight').checked = false;
+  document.getElementById('addChargeError').style.display = 'none';
+  // Default payment type to the original order's payment type when known
+  // (saves a click; rep can change). Falls back to "hs" if unset.
+  const od = order.order_data || {};
+  const defaultPt = od.paymentType || 'hs';
+  const ptSelect = document.getElementById('addChargePaymentType');
+  ptSelect.value = ['hs','cc','ach','po','other'].includes(defaultPt) ? defaultPt : 'hs';
+  onAddChargePaymentTypeChange();
+  document.getElementById('addChargeModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('addChargeDescription').focus(), 100);
+}
+
+function closeAddChargeModal() {
+  document.getElementById('addChargeModal').style.display = 'none';
+}
+
+function onAddChargePaymentTypeChange() {
+  const pt = document.getElementById('addChargePaymentType').value;
+  document.getElementById('addChargePoRow').style.display = pt === 'po' ? 'flex' : 'none';
+}
+
+async function submitAddCharge() {
+  const description = document.getElementById('addChargeDescription').value.trim();
+  const amountRaw   = document.getElementById('addChargeAmount').value.trim();
+  const amount      = parseFloat(amountRaw.replace(/[$,]/g, ''));
+  const paymentType = document.getElementById('addChargePaymentType').value;
+  const poNumber    = document.getElementById('addChargePoNumber').value.trim();
+  const applyToFreight = document.getElementById('addChargeApplyToFreight').checked;
+  const errBox = document.getElementById('addChargeError');
+  errBox.style.display = 'none';
+
+  if (!description)              { errBox.textContent = 'Description is required'; errBox.style.display = 'block'; return; }
+  if (!amount || amount <= 0 || isNaN(amount)) { errBox.textContent = 'Enter a positive dollar amount'; errBox.style.display = 'block'; return; }
+  if (paymentType === 'po' && !poNumber) { errBox.textContent = 'PO number required when payment type is PO'; errBox.style.display = 'block'; return; }
+
+  const btn = document.getElementById('addChargeSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Creating invoice…';
+  try {
+    const res = await fetch(`/api/orders/${encodeURIComponent(currentQuoteNumber)}/add-charge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ description, amount, paymentType, poNumber, applyToFreight }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Add charge failed');
+    closeAddChargeModal();
+    if (data.autoPaymentError) {
+      showToast(`Invoice created, but auto-payment failed: ${data.autoPaymentError}`, 'info');
+    } else {
+      showToast(`Addendum added · ${data.addendum?.qbDocNumber || ''}`, 'success');
+    }
+    // Refresh the order list + reopen the drawer so the new addendum shows.
+    await loadOrders();
+    const refreshed = allOrders.find(o => o.quote_number === currentQuoteNumber);
+    if (refreshed) {
+      renderAddendums(refreshed);
+      // Bump the freight cost input if applyToFreight was set
+      if (applyToFreight) {
+        const od = refreshed.order_data || {};
+        if (od.freightCost != null) document.getElementById('editFreightCost').value = parseFloat(od.freightCost).toFixed(2);
+      }
+    }
+  } catch(e) {
+    errBox.textContent = 'Error: ' + e.message;
+    errBox.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Add Charge & Invoice';
+  }
+}
+
+async function voidAddendum(addendumId) {
+  if (!currentQuoteNumber || !addendumId) return;
+  if (!confirm('Void this addendum? This deletes the QB invoice and reverses any freight-cost bump. Cannot be undone (a new addendum can be created if needed).')) return;
+  try {
+    const res = await fetch(`/api/orders/${encodeURIComponent(currentQuoteNumber)}/addendums/${encodeURIComponent(addendumId)}/void`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Void failed');
+    if (data.qbVoidError) {
+      showToast(`Addendum voided locally, but QB delete failed: ${data.qbVoidError}. Clean up manually.`, 'info');
+    } else {
+      showToast('Addendum voided', 'success');
+    }
+    await loadOrders();
+    const refreshed = allOrders.find(o => o.quote_number === currentQuoteNumber);
+    if (refreshed) {
+      renderAddendums(refreshed);
+      const od = refreshed.order_data || {};
+      if (od.freightCost != null) document.getElementById('editFreightCost').value = parseFloat(od.freightCost).toFixed(2);
+    }
   } catch(e) {
     showToast('Error: ' + e.message, 'error');
   }

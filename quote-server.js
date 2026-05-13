@@ -7788,23 +7788,90 @@ ${q.accepted ? `
     catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
     try {
       if (!db) { json({ error: 'No database' }, 500); return; }
-      const rawLines       = Array.isArray(body.lines) ? body.lines : [];
       const pt             = String(body.paymentType || '').toLowerCase().trim();
       const poNumber       = body.poNumber ? String(body.poNumber).trim() : null;
       const applyToFreight = !!body.applyToFreight;
+      const mergeQuoteNumber = body.mergeQuoteNumber ? String(body.mergeQuoteNumber).trim() : null;
 
-      if (!rawLines.length) { json({ error: 'At least one line is required' }, 400); return; }
-      // Normalize + validate every line. Empty descriptions and zero
-      // amounts get rejected — the rep is asked to remove the line or
-      // fill it in.
-      const cleanLines = rawLines.map(l => ({
-        description: String(l?.description || '').trim(),
-        amount:      parseFloat(l?.amount),
-      }));
-      for (let i = 0; i < cleanLines.length; i++) {
-        const ln = cleanLines[i];
-        if (!ln.description)                       { json({ error: `Line ${i+1}: description required` }, 400); return; }
-        if (isNaN(ln.amount) || ln.amount === 0)   { json({ error: `Line ${i+1}: amount must be nonzero` }, 400); return; }
+      // Two input modes: `mergeQuoteNumber` pulls lines from an existing
+      // quote on the same deal (the rep's typical workflow — they build
+      // a "change" quote with the right line items and then merge it in),
+      // OR `lines` directly for ad-hoc one-off entries (kept for back-
+      // compat / future "Quick Charge" UI). Exactly one must be provided.
+      let cleanLines = [];
+      let sourceQuoteNumber = null;
+      if (mergeQuoteNumber) {
+        const sourceRow = await db.query(
+          'SELECT json_snapshot, deal_id FROM quotes WHERE quote_number = $1 LIMIT 1',
+          [mergeQuoteNumber]
+        );
+        if (!sourceRow.rows.length) { json({ error: `Source quote ${mergeQuoteNumber} not found` }, 404); return; }
+        const sourceSnap = sourceRow.rows[0].json_snapshot || {};
+        const sourceDealId = sourceRow.rows[0].deal_id;
+        // Reject merging the same quote into itself.
+        if (mergeQuoteNumber === quoteNumber) {
+          json({ error: 'Cannot merge a quote into itself' }, 400); return;
+        }
+        // Pull line items, freight, install, and apply any discount from
+        // the source quote. Tax intentionally NOT included — QB AST (or
+        // our suppression logic) handles tax on the addendum invoice
+        // based on the original order's ship-to. Including the source
+        // quote's TaxJar computation would double-tax.
+        const items = Array.isArray(sourceSnap.lineItems) ? sourceSnap.lineItems : [];
+        items.forEach(it => {
+          const price = parseFloat(it.price);
+          const qty   = parseInt(it.qty || 1) || 1;
+          const amount = price * qty;
+          if (!amount) return;
+          cleanLines.push({
+            description: it.description ? `${it.name || ''}${it.name ? ' — ' : ''}${it.description}`.trim() || it.name || 'Item' : (it.name || 'Item'),
+            amount,
+          });
+        });
+        // Apply discount as a single negative line (matches how process-
+        // order treats discounts via DiscountLineDetail).
+        if (sourceSnap.discount && sourceSnap.discount.value > 0) {
+          const sub = items.reduce((s, i) => s + (parseFloat(i.price) * parseInt(i.qty || 1)), 0);
+          const disc = sourceSnap.discount.type === 'pct' ? sub * sourceSnap.discount.value / 100 : sourceSnap.discount.value;
+          if (disc > 0) {
+            cleanLines.push({
+              description: 'Discount' + (sourceSnap.discount.type === 'pct' ? ` (${sourceSnap.discount.value}%)` : ''),
+              amount: -parseFloat(disc.toFixed(2)),
+            });
+          }
+        }
+        // Include freight + install if the source quote had them — these
+        // ride alongside the line items on a typical quote, and a freight-
+        // only addendum quote (e.g. shipping upgrade) would put the
+        // $300 here instead of as a line item.
+        if (sourceSnap.freight && !sourceSnap.freight.tbd) {
+          const fTot = parseFloat(sourceSnap.freight.total || 0);
+          if (fTot > 0) cleanLines.push({ description: 'Freight', amount: fTot });
+        }
+        if (sourceSnap.install && parseFloat(sourceSnap.install.amount) > 0) {
+          const lbl = sourceSnap.install.mode === 'delivery_install' ? 'Delivery and Installation' : 'Installation';
+          cleanLines.push({ description: lbl, amount: parseFloat(sourceSnap.install.amount) });
+        }
+        if (sourceSnap.pickupFee && parseFloat(sourceSnap.pickupFee) > 0) {
+          cleanLines.push({ description: 'Pickup Fee', amount: parseFloat(sourceSnap.pickupFee) });
+        }
+        if (!cleanLines.length) {
+          json({ error: `Source quote ${mergeQuoteNumber} has no line items, freight, or installation to merge.` }, 400);
+          return;
+        }
+        sourceQuoteNumber = mergeQuoteNumber;
+      } else {
+        const rawLines = Array.isArray(body.lines) ? body.lines : [];
+        if (!rawLines.length) { json({ error: 'Provide either mergeQuoteNumber or a lines array' }, 400); return; }
+        cleanLines = rawLines.map(l => ({
+          description: String(l?.description || '').trim(),
+          amount:      parseFloat(l?.amount),
+        }));
+        for (let i = 0; i < cleanLines.length; i++) {
+          const ln = cleanLines[i];
+          if (!ln.description)                       { json({ error: `Line ${i+1}: description required` }, 400); return; }
+          if (isNaN(ln.amount) || ln.amount === 0)   { json({ error: `Line ${i+1}: amount must be nonzero` }, 400); return; }
+        }
       }
       const netTotal = parseFloat(cleanLines.reduce((s, l) => s + l.amount, 0).toFixed(2));
       if (netTotal === 0) { json({ error: 'Net total is zero. Adjust the amounts or split into separate addendums.' }, 400); return; }
@@ -7999,6 +8066,7 @@ ${q.accepted ? `
         paymentType:    isCreditMemo ? null : pt,
         poNumber:       (!isCreditMemo && pt === 'po') ? poNumber : null,
         applyToFreight,
+        sourceQuoteNumber,  // set when merged from a quote (vs. ad-hoc lines)
         qbId,
         qbDocNumber,
         // Legacy alias for invoice-type addendums so older display code
@@ -8044,9 +8112,67 @@ ${q.accepted ? `
 
       writelog('info', 'order.addendum-added', `Addendum ${addendum.type} added to ${quoteNumber} (${qbDocNumber}, net $${netTotal.toFixed(2)})`, {
         rep: repName, quoteNum: quoteNumber, dealId: String(dealId || ''),
-        meta: { addendumId: addendum.id, type: addendum.type, qbId, qbDocNumber, netTotal, lineCount: cleanLines.length, paymentType: addendum.paymentType, applyToFreight, autoPaymentError },
+        meta: { addendumId: addendum.id, type: addendum.type, qbId, qbDocNumber, netTotal, lineCount: cleanLines.length, paymentType: addendum.paymentType, applyToFreight, autoPaymentError, sourceQuoteNumber },
       });
       json({ success: true, addendum, addendums: newAddendums, autoPaymentError });
+
+      // ── Post-success side effects (non-blocking) ───────────────────
+      // Run after the JSON response so the rep sees fast feedback. PDF
+      // regeneration + notification + email-log are all best-effort and
+      // log on failure rather than 500-ing the user.
+
+      // 1) Regenerate the order PDF in Drive so it reflects the new totals.
+      //    Same pattern as process-order: shared orders folder + per-deal
+      //    Final Order folder. Skips silently if no share token (legacy
+      //    HS-only orders without a public link).
+      (async () => {
+        try {
+          const tokenRow = await db.query('SELECT share_token, deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
+          const tok      = tokenRow.rows[0]?.share_token || '';
+          const dealName = tokenRow.rows[0]?.deal_name   || quoteNumber;
+          if (!tok) { console.warn(`[add-charge] PDF regen skipped — no share token for ${quoteNumber}`); return; }
+          const orderUrl = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}?t=${tok}`;
+          const pdfBuf   = await generatePdfBuffer(orderUrl);
+          const fname    = buildPdfFilename(snap, quoteNumber, 'Order', dealName);
+          // Shared orders folder (flat list for accounting).
+          try {
+            const r = await gdriveUploadFilePdf(fname, pdfBuf, SHARED_ORDERS_FOLDER);
+            if (r?.id) console.log(`[add-charge] PDF regenerated in shared orders folder: ${fname}`);
+          } catch(e) { console.warn('[add-charge] shared orders PDF upload failed:', e.message); }
+          // Per-deal Drive folder under "Final Order".
+          try {
+            await gdriveSavePdfToDeal(quoteNumber, 'Final Order', fname, pdfBuf);
+            console.log(`[add-charge] PDF regenerated in deal folder: ${fname}`);
+          } catch(e) { console.warn('[add-charge] deal-folder PDF upload failed:', e.message); }
+        } catch(e) {
+          console.warn('[add-charge] PDF regen failed:', e.message);
+          writelog('warn', 'error.gdrive', `Order PDF regen failed after addendum on ${quoteNumber}: ${e.message}`, { quoteNum: quoteNumber });
+        }
+      })();
+
+      // 2) Notify Jeromy (shipping) in-app so he knows the order changed
+      //    before he ships. Owner ID 38732186 = Jeromy White per
+      //    lib/notify.js REP_EMAILS. Only fires if the order hasn't
+      //    shipped yet — shipped orders are out the door, the modification
+      //    is informational for accounting only.
+      const isAlreadyShipped = !!(orderData.shipped?.tracking);
+      if (!isAlreadyShipped) {
+        const JEROMY_OWNER_ID = '38732186';
+        const customerLabel = [snap.customer?.firstName, snap.customer?.lastName].filter(Boolean).join(' ')
+                              || snap.customer?.company
+                              || snap.customer?.email
+                              || 'customer';
+        const dealNameForNotif = snap.dealName || (await db.query('SELECT deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]).catch(()=>({rows:[]})))?.rows?.[0]?.deal_name || quoteNumber;
+        const sign = netTotal >= 0 ? '+' : '−';
+        const title = `Order modified — ${quoteNumber} · ${sign}$${Math.abs(netTotal).toFixed(2)}`;
+        const lineSummary = cleanLines.map(l => `${l.description}: ${l.amount < 0 ? '-' : ''}$${Math.abs(l.amount).toFixed(2)}`).join(' · ');
+        const summary = `${customerLabel} (${dealNameForNotif}). ${lineSummary}. Modified by ${repName}.`;
+        await createNotification(JEROMY_OWNER_ID, 'order-modified', title, summary, {
+          dealId:   dealId ? String(dealId) : null,
+          dealName: dealNameForNotif,
+          quoteNum: quoteNumber,
+        });
+      }
     } catch(e) {
       console.error('[add-charge]', e.message);
       json({ error: e.message }, 500);
@@ -8151,6 +8277,35 @@ ${q.accepted ? `
           meta: { addendumId, qbInvoiceId: add.qbInvoiceId, amount: add.amount, qbVoidError },
         });
         json({ success: true, addendums, qbVoidError });
+
+        // Post-success: regen PDF (totals changed) + notify Jeromy if
+        // the order hasn't shipped yet. Same pattern as add-charge.
+        (async () => {
+          try {
+            const snapRow = await db.query('SELECT json_snapshot, share_token, deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
+            const snap = snapRow.rows[0]?.json_snapshot || {};
+            const tok  = snapRow.rows[0]?.share_token || '';
+            const dnm  = snapRow.rows[0]?.deal_name || quoteNumber;
+            if (tok) {
+              const orderUrl = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}?t=${tok}`;
+              const pdfBuf = await generatePdfBuffer(orderUrl);
+              const fname  = buildPdfFilename(snap, quoteNumber, 'Order', dnm);
+              try { await gdriveUploadFilePdf(fname, pdfBuf, SHARED_ORDERS_FOLDER); } catch(e) {}
+              try { await gdriveSavePdfToDeal(quoteNumber, 'Final Order', fname, pdfBuf); } catch(e) {}
+              console.log(`[void-addendum] PDF regenerated for ${quoteNumber}`);
+            }
+            const orderShipped = !!(orderData.shipped?.tracking);
+            if (!orderShipped) {
+              await createNotification('38732186', 'order-modified',
+                `Order modified — ${quoteNumber} · addendum voided`,
+                `${add.qbDocNumber || ''} ($${Math.abs(parseFloat(add.amount)||0).toFixed(2)}) voided by ${repName}.`,
+                { dealId: dealId ? String(dealId) : null, dealName: dnm, quoteNum: quoteNumber }
+              );
+            }
+          } catch(e) {
+            console.warn('[void-addendum] post-success side effects failed:', e.message);
+          }
+        })();
       } catch(e) {
         console.error('[void-addendum]', e.message);
         json({ error: e.message }, 500);

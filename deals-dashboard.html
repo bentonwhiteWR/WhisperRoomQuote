@@ -2732,17 +2732,15 @@ const submitCreateApPo = submitApPoModal;
       <div id="modifyAddendumsTotal" style="margin-top:8px;font-size:11px;color:var(--muted);display:flex;justify-content:space-between"></div>
     </div>
 
-    <!-- Add new -->
+    <!-- Pick a quote to merge -->
     <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
-      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:10px">Add New (Charge or Credit)</div>
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px">Merge a Quote Into This Order</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.5">
+        Build the change as a normal quote on this deal first (freight upgrade, wall change, credit line, etc.). Then pick it below — its line items become an addendum on the order.
+      </div>
+      <div id="modifyQuotePicker" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;max-height:240px;overflow-y:auto"></div>
 
-      <!-- Line builder. Each row: description + amount + remove button.
-           Negative amounts are allowed; rep types e.g. "-50" for a credit
-           line. Net total + resulting QB doc type previewed below. -->
-      <div id="modifyLines" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
-      <button type="button" onclick="addModifyLine()" style="padding:6px 12px;font-size:11px;font-weight:700;background:rgba(238,98,22,.08);color:var(--orange);border:1px solid var(--orange-border);border-radius:6px;cursor:pointer;font-family:inherit">+ Add line</button>
-
-      <div id="modifyNetPreview" style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+      <div id="modifyNetPreview" style="display:none;justify-content:space-between;align-items:center;margin-top:14px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
         <div>
           <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Net Total</div>
           <div id="modifyNetAmount" style="font-size:16px;font-weight:800;color:var(--text);margin-top:2px">$0.00</div>
@@ -2754,7 +2752,7 @@ const submitCreateApPo = submitApPoModal;
       </div>
 
       <!-- Payment options (only shown for net-positive invoices) -->
-      <div id="modifyPaymentRow" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
+      <div id="modifyPaymentRow" style="display:none;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
         <div style="display:flex;flex-direction:column;gap:5px">
           <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Payment Type</label>
           <select id="modifyPaymentType" onchange="onModifyPaymentTypeChange()" style="padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
@@ -2771,7 +2769,7 @@ const submitCreateApPo = submitApPoModal;
         </div>
       </div>
 
-      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);cursor:pointer;margin-top:14px">
+      <label id="modifyApplyToFreightLabel" style="display:none;align-items:center;gap:8px;font-size:12px;color:var(--text);cursor:pointer;margin-top:14px">
         <input type="checkbox" id="modifyApplyToFreight">
         <span>Apply net to <strong>Freight Cost</strong> (positive bumps it, negative reduces it)</span>
       </label>
@@ -2779,7 +2777,7 @@ const submitCreateApPo = submitApPoModal;
       <div id="modifyError" style="display:none;padding:10px 14px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;color:#ef4444;font-size:12px;margin-top:14px"></div>
 
       <div style="display:flex;gap:10px;margin-top:16px">
-        <button id="modifySubmitBtn" onclick="submitModifyOrder()" style="flex:1;padding:12px;background:var(--orange);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Process →</button>
+        <button id="modifySubmitBtn" onclick="submitModifyOrder()" disabled style="flex:1;padding:12px;background:var(--orange);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;opacity:.5">Process →</button>
         <button onclick="closeModifyOrderModal()" style="padding:12px 18px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>
       </div>
     </div>
@@ -2807,11 +2805,15 @@ const submitCreateApPo = submitApPoModal;
 
 <script>
 // ── Modify Order (Addendums) ──────────────────────────────────────
-// Multi-line builder. Lines mix positive (charges) + negative (credits).
-// Net positive → QB Invoice + auto-pay (unless PO). Net negative → QB
-// Credit Memo. Net zero → blocked.
+// Quote-merge workflow. The rep builds a new quote on the deal for the
+// change (freight upgrade, wall change, credit, etc.) — same as a normal
+// revision. Then they pick that quote here and "merge" it as an addendum
+// on the original order. Net positive → QB Invoice + auto-pay (unless
+// PO). Net negative → QB Credit Memo.
 let _modifyOrderQuoteNumber = null;
 let _modifyOrderData         = null;  // the full ord object from hub data
+let _modifySelectedQuoteNum  = null;  // which quote the rep clicked to merge
+let _modifySelectedQuoteNet  = 0;     // its computed line-item total
 
 function openModifyOrderModal(quoteNumber) {
   const hub = window._lastHubData || {};
@@ -2819,6 +2821,8 @@ function openModifyOrderModal(quoteNumber) {
   if (!ord) { showToast('Order not found', 'error'); return; }
   _modifyOrderQuoteNumber = quoteNumber;
   _modifyOrderData = ord;
+  _modifySelectedQuoteNum = null;
+  _modifySelectedQuoteNet = 0;
   document.getElementById('modifyOrderRef').textContent = quoteNumber +
     (ord.customer?.firstName || ord.customer?.lastName
       ? ' · ' + [ord.customer.firstName, ord.customer.lastName].filter(Boolean).join(' ')
@@ -2830,76 +2834,112 @@ function openModifyOrderModal(quoteNumber) {
   document.getElementById('modifyPoNumber').value = '';
   document.getElementById('modifyApplyToFreight').checked = false;
   document.getElementById('modifyError').style.display = 'none';
-  // Start with one blank line and render existing addendums.
-  document.getElementById('modifyLines').innerHTML = '';
-  addModifyLine();
+  // Reset preview UI; the picker renders below.
+  document.getElementById('modifyNetPreview').style.display = 'none';
+  document.getElementById('modifyPaymentRow').style.display = 'none';
+  document.getElementById('modifyApplyToFreightLabel').style.display = 'none';
+  const submitBtn = document.getElementById('modifySubmitBtn');
+  submitBtn.disabled = true;
+  submitBtn.style.opacity = '.5';
   renderModifyAddendums(ord.addendums || []);
-  recomputeModifyNet();
+  renderModifyQuotePicker();
   onModifyPaymentTypeChange();
   document.getElementById('modifyOrderModal').style.display = 'flex';
-  setTimeout(() => {
-    const firstInput = document.querySelector('#modifyLines input[type="text"]');
-    if (firstInput) firstInput.focus();
-  }, 80);
 }
 
 function closeModifyOrderModal() {
   document.getElementById('modifyOrderModal').style.display = 'none';
   _modifyOrderQuoteNumber = null;
   _modifyOrderData = null;
+  _modifySelectedQuoteNum = null;
+  _modifySelectedQuoteNet = 0;
 }
 
-function addModifyLine() {
-  const wrap = document.getElementById('modifyLines');
-  const row = document.createElement('div');
-  row.className = 'modify-line';
-  row.style.cssText = 'display:grid;grid-template-columns:1fr 130px 32px;gap:6px;align-items:center';
-  row.innerHTML = `
-    <input type="text" placeholder="Description (e.g. Shipping upgrade)" oninput="recomputeModifyNet()"
-           style="padding:9px 11px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none;min-width:0">
-    <input type="text" inputmode="decimal" placeholder="$0.00 (or -50)" oninput="recomputeModifyNet()"
-           style="padding:9px 11px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none;text-align:right">
-    <button type="button" onclick="this.closest('.modify-line').remove();recomputeModifyNet()" title="Remove line"
-            style="padding:6px 0;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:6px;color:#ef4444;font-size:14px;cursor:pointer;font-family:inherit">×</button>
-  `;
-  wrap.appendChild(row);
+// Render the candidate-quote picker. Pulls quotes from the cached hub
+// data (window._lastHubData.quotes), excludes the original order's
+// source quote (which IS this order). Each card shows a click-to-select
+// affordance + total + brief line summary.
+function renderModifyQuotePicker() {
+  const picker = document.getElementById('modifyQuotePicker');
+  if (!picker) return;
+  const hub = window._lastHubData || {};
+  const allQuotes = Array.isArray(hub.quotes) ? hub.quotes : [];
+  const candidates = allQuotes.filter(q => q.quoteNumber !== _modifyOrderQuoteNumber);
+  if (!candidates.length) {
+    picker.innerHTML = `<div style="padding:14px;background:var(--surface2);border:1px dashed var(--border);border-radius:8px;font-size:12px;color:var(--muted);text-align:center;line-height:1.6">
+      No other quotes on this deal yet.<br>
+      Build a quote for the change first (use <a href="/quotes" style="color:var(--orange);text-decoration:none">+ New Quote</a>), then come back here to merge it.
+    </div>`;
+    return;
+  }
+  const fmt = n => '$' + parseFloat(n||0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', timeZone:'America/New_York' }) : '—';
+  const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  picker.innerHTML = candidates.map(q => {
+    const isSelected = q.quoteNumber === _modifySelectedQuoteNum;
+    // Compose a brief line-item summary (first 2 items).
+    const items = Array.isArray(q.lineItems) ? q.lineItems : [];
+    const itemPreview = items.slice(0, 2).map(i => esc(i.name || '')).filter(Boolean).join(', ');
+    const moreCount = items.length > 2 ? ` +${items.length - 2} more` : '';
+    const total = parseFloat(q.total || 0);
+    return `
+      <div onclick="selectModifyQuote('${esc(q.quoteNumber)}')" style="padding:10px 12px;background:${isSelected ? 'rgba(238,98,22,.08)' : 'var(--surface2)'};border:1px solid ${isSelected ? 'var(--orange)' : 'var(--border)'};border-radius:8px;cursor:pointer;transition:.12s">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--text)">${esc(q.quoteNumber)}</span>
+          <span style="font-size:10px;color:var(--muted)">${fmtDate(q.date || q.createdAt)}</span>
+          <span style="margin-left:auto;font-weight:800;color:${total >= 0 ? 'var(--orange)' : '#3b82f6'};font-size:13px">${total < 0 ? '−' : ''}${fmt(Math.abs(total))}</span>
+        </div>
+        ${itemPreview ? `<div style="font-size:11px;color:var(--text2);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${itemPreview}${moreCount}</div>` : ''}
+      </div>
+    `;
+  }).join('');
 }
 
-function readModifyLines() {
-  const rows = document.querySelectorAll('#modifyLines .modify-line');
-  const lines = [];
-  rows.forEach(r => {
-    const desc = r.children[0]?.value?.trim() || '';
-    const amtRaw = r.children[1]?.value?.trim() || '';
-    const amt  = parseFloat(amtRaw.replace(/[$,]/g, ''));
-    if (desc || amtRaw) lines.push({ description: desc, amount: isNaN(amt) ? 0 : amt });
-  });
-  return lines;
+// Rep picked a candidate quote. Recompute the preview based on its total
+// (the server will re-derive net from lineItems + freight + install on
+// submit; this is a fast client-side estimate using q.total).
+function selectModifyQuote(quoteNumber) {
+  _modifySelectedQuoteNum = quoteNumber;
+  const hub = window._lastHubData || {};
+  const q = (hub.quotes || []).find(qq => qq.quoteNumber === quoteNumber);
+  if (!q) return;
+  _modifySelectedQuoteNet = parseFloat(q.total || 0) || 0;
+  renderModifyQuotePicker();   // re-render to show the highlight
+  updateModifyPreview();
 }
 
-function recomputeModifyNet() {
-  const lines = readModifyLines();
-  const net   = lines.reduce((s, l) => s + (l.amount || 0), 0);
+function updateModifyPreview() {
+  const net = _modifySelectedQuoteNet;
   const fmt = n => '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const sign = net > 0 ? '+' : (net < 0 ? '−' : '');
+  const previewWrap = document.getElementById('modifyNetPreview');
   const netEl = document.getElementById('modifyNetAmount');
   const docEl = document.getElementById('modifyDocPreview');
+  const submitBtn = document.getElementById('modifySubmitBtn');
+  if (!_modifySelectedQuoteNum || net === 0) {
+    previewWrap.style.display = 'none';
+    document.getElementById('modifyPaymentRow').style.display = 'none';
+    document.getElementById('modifyApplyToFreightLabel').style.display = 'none';
+    submitBtn.disabled = true;
+    submitBtn.style.opacity = '.5';
+    return;
+  }
+  previewWrap.style.display = 'flex';
   netEl.textContent = sign + fmt(net);
   if (net > 0) {
     netEl.style.color = 'var(--orange)';
     docEl.textContent = 'QB Invoice';
     docEl.style.color = 'var(--orange)';
-  } else if (net < 0) {
+    document.getElementById('modifyPaymentRow').style.display = 'grid';
+  } else {
     netEl.style.color = '#3b82f6';
     docEl.textContent = 'QB Credit Memo';
     docEl.style.color = '#3b82f6';
-  } else {
-    netEl.style.color = 'var(--muted)';
-    docEl.textContent = '—';
-    docEl.style.color = 'var(--muted)';
+    document.getElementById('modifyPaymentRow').style.display = 'none';
   }
-  // Payment-type/PO row only relevant for invoices (net > 0).
-  document.getElementById('modifyPaymentRow').style.display = net > 0 ? 'grid' : 'none';
+  document.getElementById('modifyApplyToFreightLabel').style.display = 'flex';
+  submitBtn.disabled = false;
+  submitBtn.style.opacity = '1';
 }
 
 function onModifyPaymentTypeChange() {
@@ -2960,17 +3000,15 @@ function renderModifyAddendums(addendums) {
 
 async function submitModifyOrder() {
   const quoteNumber = _modifyOrderQuoteNumber;
-  if (!quoteNumber) return;
-  const lines = readModifyLines().filter(l => l.description || l.amount);
+  const mergeQuoteNumber = _modifySelectedQuoteNum;
   const errBox = document.getElementById('modifyError');
   errBox.style.display = 'none';
-  if (!lines.length) { errBox.textContent = 'Add at least one line.'; errBox.style.display = 'block'; return; }
-  for (let i = 0; i < lines.length; i++) {
-    if (!lines[i].description) { errBox.textContent = `Line ${i+1}: description required`; errBox.style.display = 'block'; return; }
-    if (!lines[i].amount || isNaN(lines[i].amount)) { errBox.textContent = `Line ${i+1}: amount required (use negative for credits)`; errBox.style.display = 'block'; return; }
+  if (!quoteNumber || !mergeQuoteNumber) {
+    errBox.textContent = 'Pick a quote to merge first.';
+    errBox.style.display = 'block';
+    return;
   }
-  const net = lines.reduce((s, l) => s + l.amount, 0);
-  if (Math.abs(net) < 0.005) { errBox.textContent = 'Net total is zero. Adjust amounts or split into separate addendums.'; errBox.style.display = 'block'; return; }
+  const net = _modifySelectedQuoteNet;
   const paymentType = document.getElementById('modifyPaymentType').value;
   const poNumber    = document.getElementById('modifyPoNumber').value.trim();
   const applyToFreight = document.getElementById('modifyApplyToFreight').checked;
@@ -2988,7 +3026,7 @@ async function submitModifyOrder() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ lines, paymentType, poNumber, applyToFreight }),
+      body: JSON.stringify({ mergeQuoteNumber, paymentType, poNumber, applyToFreight }),
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Add charge failed');
@@ -2997,6 +3035,13 @@ async function submitModifyOrder() {
     } else {
       const docType = data.addendum?.type === 'credit' ? 'Credit memo' : 'Invoice';
       showToast(`${docType} created · ${data.addendum?.qbDocNumber || ''}`, 'success');
+    }
+    // Email Jeromy (mailto: opens rep's mail client). Same pattern as
+    // process-order's notification email — rep clicks Send to deliver.
+    // Skip if the order is already shipped (Jeromy already let it go).
+    const wasShipped = !!_modifyOrderData?.shipped?.tracking;
+    if (!wasShipped && data.addendum) {
+      try { openOrderModifiedEmail(data.addendum, _modifyOrderData); } catch(e) { console.warn('mailto open failed:', e); }
     }
     closeModifyOrderModal();
     openDeal(currentDealId);   // re-fetch the hub to surface the new addendum
@@ -3007,6 +3052,47 @@ async function submitModifyOrder() {
     btn.disabled = false;
     btn.textContent = 'Process →';
   }
+}
+
+// Build + open a mailto: link to Jeromy with the order-modified details
+// pre-filled. Mirrors process-order's email-to-Jeromy pattern — rep
+// clicks Send to actually deliver. Programmatic anchor click is more
+// reliable than window.location.href for mailto handlers.
+function openOrderModifiedEmail(addendum, ord) {
+  const quoteNumber = _modifyOrderQuoteNumber || ord?.quoteNumber || '';
+  const customer = ord?.customer || {};
+  const customerName = [customer.firstName, customer.lastName].filter(Boolean).join(' ') || customer.company || customer.email || 'customer';
+  const isCredit = addendum.type === 'credit';
+  const net = parseFloat(addendum.amount) || 0;
+  const sign = net >= 0 ? '+' : '-';
+  const fmtMoney = n => '$' + Math.abs(parseFloat(n||0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const subject = `Order Modified — ${quoteNumber} — ${customerName} (${sign}${fmtMoney(net)})`;
+  const linesText = Array.isArray(addendum.lines) && addendum.lines.length
+    ? addendum.lines.map(l => `  - ${l.description}: ${parseFloat(l.amount) < 0 ? '-' : ''}${fmtMoney(l.amount)}`).join('\n')
+    : `  - ${addendum.description || 'Adjustment'}: ${sign}${fmtMoney(net)}`;
+  const orderUrl = `${location.origin}/o/${encodeURIComponent(quoteNumber)}`;
+  const body = [
+    `Heads up — order ${quoteNumber} for ${customerName} was just modified.`,
+    '',
+    `Change type: ${isCredit ? 'CREDIT MEMO' : 'INVOICE'}  (${addendum.qbDocNumber || ''})`,
+    `Net: ${sign}${fmtMoney(net)}`,
+    addendum.applyToFreight ? `Applied to: Freight Cost field` : '',
+    addendum.paymentType ? `Payment type: ${addendum.paymentType.toUpperCase()}` : '',
+    '',
+    'Line items:',
+    linesText,
+    '',
+    `Order page: ${orderUrl}`,
+    '',
+    `Modified by: ${addendum.addedBy || 'rep'}`,
+  ].filter(Boolean).join('\n');
+  const mailto = `mailto:jeromy@whisperroom.com?cc=accounting@whisperroom.com&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const a = document.createElement('a');
+  a.href = mailto;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => document.body.removeChild(a), 100);
 }
 
 async function voidAddendumFromHub(addendumId) {

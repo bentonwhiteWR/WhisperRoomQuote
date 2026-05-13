@@ -51,6 +51,17 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.19.0', date:'May 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Order Addendums: quote-merge workflow. Replaces the multi-line builder with a quote picker. Rep builds a normal "change quote" on the deal first (freight upgrade, wall change, credit line — whatever the customer wants), then opens Modify on the original order and picks that quote. Server pulls the source quote\'s lineItems + freight + install + discount, derives net, creates QB Invoice (net positive) or Credit Memo (net negative). The source quote keeps its W- number and continues to exist as a regular quote — if the customer ultimately doesn\'t accept the change, it just sits there as a quote. Per-line server validation still allows ad-hoc `lines` array submissions (kept for future "Quick Charge" UI, but no UI fires this path today).'},
+        {t:'add', d:'Order PDF auto-regenerates on every addendum add and void. Same shared-orders folder + per-deal Final Order folder as process-order writes to. Non-blocking IIFE — response returns before the PDF upload completes. So the Drive copy now reflects the live totals; reps can pass the PDF link without it being stale.'},
+        {t:'add', d:'In-app notification bell on the orders dashboard topbar. Polls /api/notifications on load and every 60s, shows an orange unread badge, dropdown lists the last 50 notifications with relative timestamps. Click a notification to mark it read; if it has a quote_num, opens the order drawer. Mark-all-read button. The notification system was already wired server-side (lib/notify.js, /api/notifications GET) but no client surfaced it — first time it\'s actually visible.'},
+        {t:'add', d:'Jeromy gets two notifications on every order modification: in-app (createNotification fires server-side, surfaces in his orders dashboard bell) + email (mailto: opens the rep\'s mail client with the order-modified details pre-filled, rep clicks Send to deliver — same pattern as process-order\'s notification email). Skipped when the order already shipped (Jeromy already let it go; modification is informational for accounting only at that point).'},
+        {t:'add', d:'Deal Hub data projection now includes per-order paymentType and addendums[] so the Modify modal has everything inline without a second fetch.'},
+        {t:'add', d:'lib/quickbooks.js: createCreditMemo, getCreditMemo, deleteCreditMemo (introduced in v1.18.1, kept). Addendum data model: type ("invoice"|"credit"), lines[], qbId, sourceQuoteNumber (new — set when merged from a quote).'},
+      ]
+    },
+    {
       v:'1.18.2', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Customer-facing order page /o/<quoteNumber> now reflects active addendums in the totals. v1.18.1 shipped the create / track / void flow but forgot to update the customer view of the order — adding a $500 upcharge would update the deal amount, the QB invoice, and the addendums chip in Deal Hub, but the customer-facing order page still showed the original total. New behavior: an "Order Adjustments" subsection appears in the totals card (above the grand total) listing each per-line adjustment with its description. Negatives styled green like discounts. Grand total now equals subtotal − discount + freight/pickup/install + tax + addendumNet (where addendumNet is signed: credit-memo addendums subtract). Voided addendums are excluded. Legacy v1.18.0 single-line addendums render correctly via fallback.'},

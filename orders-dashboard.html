@@ -230,6 +230,22 @@
     <a href="/suppliers" class="nav-link">Suppliers</a>
   </nav>
   <span id="appVersion" style="font-size:9px;font-weight:700;color:var(--muted,rgba(255,255,255,.25));letter-spacing:.06em;padding:2px 6px;border:1px solid rgba(255,255,255,.08);border-radius:4px;font-family:monospace;flex-shrink:0"></span>
+  <!-- Notification bell — fires on order-modified events (addendums)
+       so Jeromy sees a badge when an order he might ship gets changed.
+       Dropdown shows the last 50 notifications, click to mark read. -->
+  <div id="notifBellWrap" style="position:relative;flex-shrink:0">
+    <button id="notifBell" onclick="toggleNotifDropdown()" title="Notifications" style="position:relative;padding:5px 9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:#f0ede8;cursor:pointer;font-size:14px;line-height:1">
+      🔔
+      <span id="notifBadge" style="display:none;position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 4px;background:#ee6216;border-radius:8px;color:#fff;font-size:9px;font-weight:800;line-height:16px;text-align:center"></span>
+    </button>
+    <div id="notifDropdown" style="display:none;position:absolute;top:100%;right:0;margin-top:8px;width:340px;max-height:420px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.4);z-index:999">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border)">
+        <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Notifications</span>
+        <button onclick="markAllNotifsRead()" style="font-size:10px;color:var(--orange);background:none;border:none;cursor:pointer;font-family:inherit">Mark all read</button>
+      </div>
+      <div id="notifList" style="padding:4px 0"></div>
+    </div>
+  </div>
   <div id="userBadge" style="display:none;align-items:center;gap:8px;flex-shrink:0">
     <span id="userName" style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600"></span>
     <a href="/auth/logout" style="padding:5px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.4);text-decoration:none;white-space:nowrap">Sign Out</a>
@@ -1426,6 +1442,129 @@ if (localStorage.getItem('wr-theme') === 'light') {
     if (btn) btn.textContent = '🌙';
   });
 }
+
+// ── Notification bell ─────────────────────────────────────────────
+// Polls /api/notifications on load, populates the bell dropdown, and
+// shows an unread-count badge. Click a notification → mark read; click
+// the title → navigate to the relevant order if quoteNum is set.
+let _notifs = [];
+let _notifPollTimer = null;
+
+async function loadNotifications() {
+  try {
+    const res = await fetch('/api/notifications', { credentials: 'include' });
+    const data = await res.json();
+    _notifs = Array.isArray(data.notifications) ? data.notifications : [];
+    renderNotifBadge();
+    renderNotifList();
+  } catch(e) {
+    console.warn('[notif] load failed:', e.message);
+  }
+}
+
+function renderNotifBadge() {
+  const badge = document.getElementById('notifBadge');
+  if (!badge) return;
+  const unread = _notifs.filter(n => !n.read).length;
+  if (unread > 0) {
+    badge.textContent = unread > 99 ? '99+' : String(unread);
+    badge.style.display = 'block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function renderNotifList() {
+  const list = document.getElementById('notifList');
+  if (!list) return;
+  if (!_notifs.length) {
+    list.innerHTML = '<div style="padding:24px 14px;text-align:center;font-size:11px;color:var(--muted);font-style:italic">No notifications</div>';
+    return;
+  }
+  const fmtTime = iso => {
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMin = Math.round((now - d) / 60000);
+    if (diffMin < 1)  return 'just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffMin < 1440) return `${Math.round(diffMin / 60)}h ago`;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' });
+  };
+  const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  list.innerHTML = _notifs.map(n => {
+    const isUnread = !n.read;
+    const onClickAttr = n.quote_num
+      ? `onclick="onNotifClick(${n.id}, '${esc(n.quote_num)}')"`
+      : `onclick="markNotifRead(${n.id})"`;
+    return `
+      <div ${onClickAttr} style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);background:${isUnread ? 'rgba(238,98,22,.04)' : 'transparent'};transition:.1s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='${isUnread ? 'rgba(238,98,22,.04)' : 'transparent'}'">
+        <div style="display:flex;align-items:start;gap:8px">
+          ${isUnread ? '<span style="width:6px;height:6px;border-radius:50%;background:var(--orange);flex-shrink:0;margin-top:5px"></span>' : '<span style="width:6px;height:6px;flex-shrink:0"></span>'}
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:700;color:var(--text);line-height:1.4">${esc(n.title || '')}</div>
+            ${n.body ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.4">${esc(n.body)}</div>` : ''}
+            <div style="font-size:9px;color:var(--muted);margin-top:4px">${fmtTime(n.created_at)}${n.deal_name ? ' · ' + esc(n.deal_name) : ''}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleNotifDropdown() {
+  const dd = document.getElementById('notifDropdown');
+  if (!dd) return;
+  const open = dd.style.display === 'block';
+  dd.style.display = open ? 'none' : 'block';
+  if (!open) loadNotifications();  // refresh on open
+}
+
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('notifBellWrap');
+  if (wrap && !wrap.contains(e.target)) {
+    const dd = document.getElementById('notifDropdown');
+    if (dd) dd.style.display = 'none';
+  }
+});
+
+async function markNotifRead(id) {
+  if (!id) return;
+  try {
+    await fetch(`/api/notifications/${id}`, { method: 'POST', credentials: 'include' });
+    const n = _notifs.find(x => x.id === id);
+    if (n) n.read = true;
+    renderNotifBadge();
+    renderNotifList();
+  } catch(e) { console.warn('[notif] mark read failed:', e.message); }
+}
+
+async function markAllNotifsRead() {
+  try {
+    await fetch('/api/notifications/read-all', { method: 'POST', credentials: 'include' });
+    _notifs.forEach(n => n.read = true);
+    renderNotifBadge();
+    renderNotifList();
+  } catch(e) { console.warn('[notif] mark all read failed:', e.message); }
+}
+
+function onNotifClick(id, quoteNum) {
+  markNotifRead(id);
+  // Open the order in the drawer if we're on the orders page.
+  if (quoteNum) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('openOrder', quoteNum);
+    window.history.replaceState({}, '', url);
+    if (typeof openDrawer === 'function') openDrawer(quoteNum);
+  }
+  document.getElementById('notifDropdown').style.display = 'none';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadNotifications();
+  // Poll every 60s so a long-open dashboard surfaces new notifications.
+  if (_notifPollTimer) clearInterval(_notifPollTimer);
+  _notifPollTimer = setInterval(loadNotifications, 60000);
+});
 
 // ── State ─────────────────────────────────────────────────────────
 const REP_EMAILS = {

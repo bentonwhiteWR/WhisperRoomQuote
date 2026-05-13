@@ -7975,31 +7975,21 @@ ${q.accepted ? `
         Country: 'US',
       } : shipAddr;
 
-      // Tax suppression — decide based on the ORIGINAL order's customer
-      // ship-to (which is the same as the addendum's ship-to since it's
-      // the same customer). Two cases force suppression:
-      //   1. Order is flagged tax-exempt → never tax addendums
-      //   2. Ship-to state is not in our NEXUS_STATES → no obligation
-      //      to collect, suppress AST to keep it from over-collecting
-      //      (the NY incident from v1.15.0 — QB had NY in its agency
-      //      list even though we don't have NY nexus)
-      // For nexus states (TN, GA, NC, etc.), let AST compute tax based
-      // on per-line TaxCodeRef + freightTaxed rules from NEXUS_STATES.
-      // This works even when the source change quote was freight-only
-      // and the rep didn't hit Calculate Tax — AST handles it.
+      // Tax suppression — mirror process-order's rules. Suppress when
+      // the order is tax-exempt OR the addendum's TaxJar tax is $0
+      // (non-nexus ship-to). Otherwise let QB AST compute tax based on
+      // the per-line TaxCodeRef. See v1.15.0 changelog for the original
+      // process-order suppression rationale.
       const TAX_CODE    = process.env.QB_TAXABLE_CODE || 'TAX';
       const EXEMPT_CODE = process.env.QB_EXEMPT_CODE  || 'NON';
-      const _isTaxExempt = !!(snap.taxExempt || snap.accessories?.taxexempt);
-      const _custStateAbbr = (() => {
-        const raw = String(customer.state || '').trim();
-        if (!raw) return '';
-        if (raw.length === 2) return raw.toUpperCase();
-        return (typeof toStateAbbr === 'function' ? toStateAbbr(raw) : raw).toUpperCase();
-      })();
-      const _isNexusState  = !!(_custStateAbbr && NEXUS_STATES[_custStateAbbr]);
-      const _suppressQbTax = _isTaxExempt || !_isNexusState;
+      const _isTaxExempt   = !!(snap.taxExempt || snap.accessories?.taxexempt);
+      // For merged-from-quote addendums, use the SOURCE quote's tax (since
+      // tax was computed against the addendum items, not the original
+      // order). For ad-hoc lines, fall back to the order's tax flag.
+      const _addTaxNumber  = mergeQuoteNumber ? addTaxAmount : parseFloat(tax?.tax || 0);
+      const _suppressQbTax = _isTaxExempt || _addTaxNumber === 0;
       const lineTaxRef     = { value: _suppressQbTax ? EXEMPT_CODE : TAX_CODE };
-      console.log(`[add-charge] tax decision for ${quoteNumber}: state=${_custStateAbbr || '(none)'} nexus=${_isNexusState} exempt=${_isTaxExempt} → ${_suppressQbTax ? 'SUPPRESS' : 'AST'}`);
+      console.log(`[add-charge] tax decision for ${quoteNumber}: addTaxAmount=${_addTaxNumber} exempt=${_isTaxExempt} → ${_suppressQbTax ? 'SUPPRESS' : 'AST'}`);
 
       const fallback = await qb.getDefaultItem();
       const cust = await qb.findOrCreateCustomer({
@@ -8056,16 +8046,9 @@ ${q.accepted ? `
           });
         }
         // Freight: SHIPPING_ITEM_ID magic value routes to QB's Shipping
-        // totals row. freightTaxed prefers the source quote's TaxJar
-        // determination (which knows the exact ZIP rule), but falls back
-        // to NEXUS_STATES[state].taxFreight when the source quote was
-        // freight-only and the rep didn't hit Calculate Tax. Without
-        // this fallback, a TN freight-only change-quote would mark
-        // freight EXEMPT and AST would miss the tax — which is exactly
-        // what the rep just saw.
+        // totals row. freightTaxed per-state from source quote.
         if (addFreight > 0) {
-          const _freightTaxedForState = addFreightTaxed || !!(NEXUS_STATES[_custStateAbbr]?.taxFreight);
-          const freightTaxCode = _suppressQbTax ? EXEMPT_CODE : (_freightTaxedForState ? TAX_CODE : EXEMPT_CODE);
+          const freightTaxCode = _suppressQbTax ? EXEMPT_CODE : (addFreightTaxed ? TAX_CODE : EXEMPT_CODE);
           qbLines.push({
             Amount: parseFloat((isCreditMemo ? Math.abs(addFreight) : addFreight).toFixed(2)),
             DetailType: 'SalesItemLineDetail',
@@ -8112,6 +8095,13 @@ ${q.accepted ? `
         });
       }
       if (unmatched.length) console.warn(`[add-charge] QB items not matched (used fallback "${fallback.name}"):`, unmatched);
+      // Diagnostic: log the QB line structure so we can see what tax
+      // codes hit each line in Railway logs when tax isn't computing.
+      console.log(`[add-charge] QB lines for ${quoteNumber}:`, JSON.stringify(qbLines.map(l => ({
+        type: l.DetailType, amount: l.Amount, desc: l.Description,
+        itemRef: l.SalesItemLineDetail?.ItemRef?.value,
+        taxCode: l.SalesItemLineDetail?.TaxCodeRef?.value,
+      }))));
 
       const customFields = [];
       if (!isCreditMemo && pt === 'po' && poNumber) {
@@ -8178,6 +8168,16 @@ ${q.accepted ? `
           applyTaxAfterDiscount: true,
         });
         if (!inv?.Id) throw new Error('QB createInvoice returned no Id');
+        // Diagnostic: log what AST decided. If TotalTax is 0 despite us
+        // tagging lines with TAX_CODE and not suppressing, the issue is
+        // AST-side (agency config, tax setup, etc.) — not our payload.
+        console.log(`[add-charge] QB invoice ${inv.Id} response:`, JSON.stringify({
+          DocNumber: inv.DocNumber,
+          TotalAmt:  inv.TotalAmt,
+          TxnTaxDetail: inv.TxnTaxDetail,
+          GlobalTaxCalculation: inv.GlobalTaxCalculation,
+          ApplyTaxAfterDiscount: inv.ApplyTaxAfterDiscount,
+        }));
         qbId            = inv.Id;
         qbDocNumber     = inv.DocNumber;
         qbObjForPayment = inv;

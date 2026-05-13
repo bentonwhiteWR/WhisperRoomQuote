@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.19.11', date:'May 13, 2026', tag:'logging',
+      changes:[
+        {t:'log', d:'Revert v1.19.10 — wrong diagnosis. Tax not passing wasn\'t about source-quote suppression; user\'s example had tax computed. Suppression logic restored to v1.19.9 (suppress when exempt or source-quote tax=$0). Added Railway diagnostic logging: tax decision (state/amount/suppress flag), QB lines payload (per-line TaxCodeRef + ItemRef), and QB invoice response (TxnTaxDetail, TotalAmt, GlobalTaxCalculation). Next addendum will leave breadcrumbs in Railway logs so we can see whether AST received what we sent and why it didn\'t compute.'},
+      ]
+    },
+    {
       v:'1.19.10', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Addendum invoices now actually tax in nexus states. v1.19.9 decided whether to suppress AST based on the SOURCE quote\'s computed tax — which was $0 for freight-only change quotes where the rep skipped Calculate Tax (the tax-confirm guard from v1.19.3 only fires when there are product line items). A TN freight-only addendum should still get TN tax via AST. New rule: suppress AST only when the order is tax-exempt OR the customer\'s ship-to state is NOT in NEXUS_STATES — purely a function of the order, not the source quote. Logs [add-charge] tax decision: state=TN nexus=true exempt=false → AST so we can see in Railway what fired.'},

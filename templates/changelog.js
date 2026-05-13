@@ -58,6 +58,12 @@ module.exports = function renderChangelog() {
       ]
     },
     {
+      v:'1.19.19', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Tax-not-calculated confirm popup no longer fires for quotes where Calculate Tax was run and TaxJar correctly returned $0 because the destination state has no nexus. Bug was at the push-quote guard in quote-builder.html: the condition was (!taxData || !_taxAmountFn) which fired the warning whenever the computed tax amount was zero — including the legitimate no-nexus case where taxData is set to { inNexus: false, tax: 0 }. Reps had to dismiss the warning on every CA/NY/TX/etc. quote. New condition is just !taxData — warning only fires when Calculate Tax was never run (rep skipped it). Tax exempt and freight-only quotes still bypass the guard as before. Direct fix on main; landed in staging via merge.'},
+      ]
+    },
+    {
       v:'1.19.18', date:'May 13, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Quote builder pop-up legibility in light mode. Four targeted fixes: (1) defined --text2 (#555 light / #aaa dark) and --orange (alias for --accent) in CSS root so modal inline styles that used var(--text2,#aaa) and var(--orange,#ee6216) as fallbacks now resolve to a readable color in light mode instead of the white-ish fallback. Affects folderPromptModal, partsFreightModal, dealHubOverlay drive-folder rows. (2) Added body:not(.dark) overrides for .success-modal-title / .success-modal-msg / .success-modal-actions .btn-secondary — these still had hardcoded color:#fff and rgba(255,255,255,*) from the original dark-theme design, so the "Quote Pushed!" confirmation popup was unreadable in light mode. The earlier submit-overlay had been overridden but the post-success modal was missed. (3) intlShippingOverlay\'s pallet-summary block had hardcoded background:rgba(255,255,255,.05) — invisible on cream. Switched to var(--surface2) + var(--border). (4) contactGuardOverlay\'s "Keep Quote" button had rgba(255,255,255,.08) background — switched to var(--surface2) so it actually appears as a button in light mode.'},

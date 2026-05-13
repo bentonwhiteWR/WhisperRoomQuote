@@ -6245,7 +6245,11 @@ ${q.accepted ? `
                   json_snapshot->>'acceptedHinge'               as accepted_hinge,
                   json_snapshot->>'acceptedNote'                as accepted_note,
                   json_snapshot->>'quoteLabel'                  as quote_label,
-                  json_snapshot->'lineItems'                    as line_items
+                  json_snapshot->'lineItems'                    as line_items,
+                  json_snapshot->'freight'                      as freight_obj,
+                  json_snapshot->'install'                      as install_obj,
+                  json_snapshot->'tax'                          as tax_obj,
+                  (json_snapshot->>'pickupFee')::text           as pickup_fee
            FROM quotes WHERE deal_id = $1 ORDER BY created_at DESC`,
           [dealId]
         ).catch(() => ({ rows: [] })) : Promise.resolve({ rows: [] }),
@@ -6309,7 +6313,11 @@ ${q.accepted ? `
                     json_snapshot->>'acceptedHinge'               as accepted_hinge,
                     json_snapshot->>'acceptedNote'                as accepted_note,
                     json_snapshot->>'quoteLabel'                  as quote_label,
-                    json_snapshot->'lineItems'                    as line_items
+                    json_snapshot->'lineItems'                    as line_items,
+                    json_snapshot->'freight'                      as freight_obj,
+                    json_snapshot->'install'                      as install_obj,
+                    json_snapshot->'tax'                          as tax_obj,
+                    (json_snapshot->>'pickupFee')::text           as pickup_fee
              FROM quotes WHERE deal_id IS NULL AND deal_name = $1 ORDER BY created_at DESC`,
             [dealName]
           );
@@ -6357,6 +6365,14 @@ ${q.accepted ? `
           acceptedNote:  r.accepted_note  || '',
           quoteLabel:    r.quote_label    || '',
           gdriveFolder:  r.gdrive_folder_id || null,
+          // Surface line-level structure so the Modify Order quote picker
+          // can render full line items (name + qty + ext price) + freight
+          // + install + tax per quote without a follow-up fetch.
+          lineItems:     Array.isArray(r.line_items) ? r.line_items : [],
+          freight:       r.freight_obj || null,
+          install:       r.install_obj || null,
+          tax:           r.tax_obj || null,
+          pickupFee:     r.pickup_fee || null,
         };
       });
 

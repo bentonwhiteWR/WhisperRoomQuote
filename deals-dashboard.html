@@ -2870,11 +2870,54 @@ function renderModifyQuotePicker() {
   const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   picker.innerHTML = candidates.map(q => {
     const isSelected = q.quoteNumber === _modifySelectedQuoteNum;
-    // Compose a brief line-item summary (first 2 items).
     const items = Array.isArray(q.lineItems) ? q.lineItems : [];
-    const itemPreview = items.slice(0, 2).map(i => esc(i.name || '')).filter(Boolean).join(', ');
-    const moreCount = items.length > 2 ? ` +${items.length - 2} more` : '';
     const total = parseFloat(q.total || 0);
+    // Full itemized breakdown: every line item (name + qty + extended
+    // amount), plus freight / install / pickup / tax rows when the
+    // source quote has them. Gives the rep enough detail to confirm
+    // they're picking the right quote without leaving the modal.
+    const lineRows = items.map(i => {
+      const qty   = parseInt(i.qty || 1) || 1;
+      const price = parseFloat(i.price || 0) || 0;
+      const ext   = price * qty;
+      const sign  = ext < 0 ? '−' : '';
+      const nameLabel = qty > 1 ? `${qty} × ${esc(i.name || 'Item')}` : esc(i.name || 'Item');
+      return `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text2);line-height:1.6">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">• ${nameLabel}</span>
+        <span style="color:${ext < 0 ? '#3b82f6' : 'var(--muted)'};font-family:var(--mono);flex-shrink:0">${sign}${fmt(Math.abs(ext))}</span>
+      </div>`;
+    });
+    // Extras from the source quote (only show if present).
+    const freightTot = q.freight && !q.freight.tbd ? parseFloat(q.freight.total || 0) : 0;
+    if (freightTot > 0) {
+      lineRows.push(`<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text2);line-height:1.6">
+        <span>• Freight</span>
+        <span style="color:var(--muted);font-family:var(--mono);flex-shrink:0">${fmt(freightTot)}</span>
+      </div>`);
+    }
+    if (q.install && parseFloat(q.install.amount || 0) > 0) {
+      lineRows.push(`<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text2);line-height:1.6">
+        <span>• ${q.install.mode === 'delivery_install' ? 'Delivery and Installation' : 'Installation'}</span>
+        <span style="color:var(--muted);font-family:var(--mono);flex-shrink:0">${fmt(parseFloat(q.install.amount))}</span>
+      </div>`);
+    }
+    if (q.pickupFee && parseFloat(q.pickupFee) > 0) {
+      lineRows.push(`<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text2);line-height:1.6">
+        <span>• Pickup Fee</span>
+        <span style="color:var(--muted);font-family:var(--mono);flex-shrink:0">${fmt(parseFloat(q.pickupFee))}</span>
+      </div>`);
+    }
+    if (q.tax && parseFloat(q.tax.tax || 0) > 0) {
+      const rate = parseFloat(q.tax.rate || 0);
+      const ratePct = rate > 0 ? ` (${(rate*100).toFixed(2).replace(/\.?0+$/, '')}%)` : '';
+      lineRows.push(`<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text2);line-height:1.6">
+        <span>• Sales Tax${ratePct}</span>
+        <span style="color:var(--muted);font-family:var(--mono);flex-shrink:0">${fmt(parseFloat(q.tax.tax))}</span>
+      </div>`);
+    }
+    const bodyHtml = lineRows.length
+      ? `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">${lineRows.join('')}</div>`
+      : '<div style="margin-top:4px;font-size:10px;color:var(--muted);font-style:italic">No line items, freight, or tax</div>';
     return `
       <div onclick="selectModifyQuote('${esc(q.quoteNumber)}')" style="padding:10px 12px;background:${isSelected ? 'rgba(238,98,22,.08)' : 'var(--surface2)'};border:1px solid ${isSelected ? 'var(--orange)' : 'var(--border)'};border-radius:8px;cursor:pointer;transition:.12s">
         <div style="display:flex;align-items:center;gap:8px">
@@ -2882,7 +2925,7 @@ function renderModifyQuotePicker() {
           <span style="font-size:10px;color:var(--muted)">${fmtDate(q.date || q.createdAt)}</span>
           <span style="margin-left:auto;font-weight:800;color:${total >= 0 ? 'var(--orange)' : '#3b82f6'};font-size:13px">${total < 0 ? '−' : ''}${fmt(Math.abs(total))}</span>
         </div>
-        ${itemPreview ? `<div style="font-size:11px;color:var(--text2);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${itemPreview}${moreCount}</div>` : ''}
+        ${bodyHtml}
       </div>
     `;
   }).join('');

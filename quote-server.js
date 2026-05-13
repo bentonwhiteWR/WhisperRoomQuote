@@ -7790,16 +7790,30 @@ ${q.accepted ? `
       if (!db) { json({ error: 'No database' }, 500); return; }
       const pt             = String(body.paymentType || '').toLowerCase().trim();
       const poNumber       = body.poNumber ? String(body.poNumber).trim() : null;
-      const applyToFreight = !!body.applyToFreight;
       const mergeQuoteNumber = body.mergeQuoteNumber ? String(body.mergeQuoteNumber).trim() : null;
 
-      // Two input modes: `mergeQuoteNumber` pulls lines from an existing
-      // quote on the same deal (the rep's typical workflow — they build
-      // a "change" quote with the right line items and then merge it in),
-      // OR `lines` directly for ad-hoc one-off entries (kept for back-
-      // compat / future "Quick Charge" UI). Exactly one must be provided.
-      let cleanLines = [];
+      // Two input modes:
+      //   `mergeQuoteNumber` — pulls structured snapshot from an existing
+      //     quote on the same deal (the rep's typical workflow). Preserves
+      //     line items, freight, install, pickup, discount, tax, weight
+      //     so the addendum has full per-section breakdown for display +
+      //     correct QB tax codes per line.
+      //   `lines` — ad-hoc one-off entries (back-compat / future Quick
+      //     Charge UI). Flat list, no structure beyond description+amount.
+      // Exactly one must be provided.
+      let cleanLines = [];           // products/items + non-freight charges (legacy ad-hoc path)
       let sourceQuoteNumber = null;
+      // Rich structure when merging from a quote (else stay zero/empty):
+      let addProducts   = [];        // [{ name, description, qty, price, weight }, ...]
+      let addFreight    = 0;
+      let addFreightTaxed = false;
+      let addInstall    = 0;
+      let addInstallMode = 'none';
+      let addPickupFee  = 0;
+      let addDiscount   = null;      // { type, value, amount }
+      let addTaxAmount  = 0;
+      let addTaxRate    = 0;
+      let addWeight     = 0;
       if (mergeQuoteNumber) {
         const sourceRow = await db.query(
           'SELECT json_snapshot, deal_id FROM quotes WHERE quote_number = $1 LIMIT 1',
@@ -7807,54 +7821,69 @@ ${q.accepted ? `
         );
         if (!sourceRow.rows.length) { json({ error: `Source quote ${mergeQuoteNumber} not found` }, 404); return; }
         const sourceSnap = sourceRow.rows[0].json_snapshot || {};
-        const sourceDealId = sourceRow.rows[0].deal_id;
-        // Reject merging the same quote into itself.
         if (mergeQuoteNumber === quoteNumber) {
           json({ error: 'Cannot merge a quote into itself' }, 400); return;
         }
-        // Pull line items, freight, install, and apply any discount from
-        // the source quote. Tax intentionally NOT included — QB AST (or
-        // our suppression logic) handles tax on the addendum invoice
-        // based on the original order's ship-to. Including the source
-        // quote's TaxJar computation would double-tax.
-        const items = Array.isArray(sourceSnap.lineItems) ? sourceSnap.lineItems : [];
-        items.forEach(it => {
+        // Extract structured components from the source quote. Keep the
+        // raw items so QB invoice build (below) can match each line to
+        // its proper item ref + tax code, and the customer-facing order
+        // page can render per-section totals (subtotal / freight / tax).
+        addProducts = (Array.isArray(sourceSnap.lineItems) ? sourceSnap.lineItems : []).filter(it => {
+          const price = parseFloat(it.price);
+          const qty   = parseInt(it.qty || 1) || 1;
+          return price * qty !== 0;
+        });
+        addWeight = addProducts.reduce((s, it) => s + ((parseFloat(it.weight)||0) * (parseInt(it.qty)||1)), 0);
+        if (sourceSnap.freight && !sourceSnap.freight.tbd) {
+          addFreight = parseFloat(sourceSnap.freight.total || 0) || 0;
+        }
+        if (sourceSnap.install && parseFloat(sourceSnap.install.amount) > 0) {
+          addInstall = parseFloat(sourceSnap.install.amount) || 0;
+          addInstallMode = sourceSnap.install.mode || 'none';
+        }
+        if (sourceSnap.pickupFee && parseFloat(sourceSnap.pickupFee) > 0) {
+          addPickupFee = parseFloat(sourceSnap.pickupFee) || 0;
+        }
+        if (sourceSnap.discount && sourceSnap.discount.value > 0) {
+          const sub = addProducts.reduce((s, i) => s + (parseFloat(i.price) * parseInt(i.qty || 1)), 0);
+          const dv = parseFloat(sourceSnap.discount.value);
+          const dAmt = sourceSnap.discount.type === 'pct' ? sub * dv / 100 : dv;
+          if (dAmt > 0) addDiscount = { type: sourceSnap.discount.type, value: dv, amount: parseFloat(dAmt.toFixed(2)) };
+        }
+        // Carry TaxJar tax from source quote when present. Same customer,
+        // same ship-to, so the rate/amount applies cleanly to the addendum.
+        if (sourceSnap.tax && parseFloat(sourceSnap.tax.tax || 0) > 0) {
+          addTaxAmount    = parseFloat(sourceSnap.tax.tax) || 0;
+          addTaxRate      = parseFloat(sourceSnap.tax.rate || 0) || 0;
+          addFreightTaxed = !!sourceSnap.tax.freightTaxed;
+        }
+        // Build flat `cleanLines` for back-compat (display + legacy void
+        // path). Mirrors the prior format: one entry per piece, signed
+        // discount line. Used for the addendum.lines field below.
+        addProducts.forEach(it => {
           const price = parseFloat(it.price);
           const qty   = parseInt(it.qty || 1) || 1;
           const amount = price * qty;
-          if (!amount) return;
           cleanLines.push({
             description: it.description ? `${it.name || ''}${it.name ? ' — ' : ''}${it.description}`.trim() || it.name || 'Item' : (it.name || 'Item'),
             amount,
           });
         });
-        // Apply discount as a single negative line (matches how process-
-        // order treats discounts via DiscountLineDetail).
-        if (sourceSnap.discount && sourceSnap.discount.value > 0) {
-          const sub = items.reduce((s, i) => s + (parseFloat(i.price) * parseInt(i.qty || 1)), 0);
-          const disc = sourceSnap.discount.type === 'pct' ? sub * sourceSnap.discount.value / 100 : sourceSnap.discount.value;
-          if (disc > 0) {
-            cleanLines.push({
-              description: 'Discount' + (sourceSnap.discount.type === 'pct' ? ` (${sourceSnap.discount.value}%)` : ''),
-              amount: -parseFloat(disc.toFixed(2)),
-            });
-          }
+        if (addDiscount && addDiscount.amount > 0) {
+          cleanLines.push({
+            description: 'Discount' + (addDiscount.type === 'pct' ? ` (${addDiscount.value}%)` : ''),
+            amount: -addDiscount.amount,
+          });
         }
-        // Include freight + install if the source quote had them — these
-        // ride alongside the line items on a typical quote, and a freight-
-        // only addendum quote (e.g. shipping upgrade) would put the
-        // $300 here instead of as a line item.
-        if (sourceSnap.freight && !sourceSnap.freight.tbd) {
-          const fTot = parseFloat(sourceSnap.freight.total || 0);
-          if (fTot > 0) cleanLines.push({ description: 'Freight', amount: fTot });
+        if (addFreight > 0) cleanLines.push({ description: 'Freight', amount: addFreight });
+        if (addInstall > 0) {
+          cleanLines.push({
+            description: addInstallMode === 'delivery_install' ? 'Delivery and Installation' : 'Installation',
+            amount: addInstall,
+          });
         }
-        if (sourceSnap.install && parseFloat(sourceSnap.install.amount) > 0) {
-          const lbl = sourceSnap.install.mode === 'delivery_install' ? 'Delivery and Installation' : 'Installation';
-          cleanLines.push({ description: lbl, amount: parseFloat(sourceSnap.install.amount) });
-        }
-        if (sourceSnap.pickupFee && parseFloat(sourceSnap.pickupFee) > 0) {
-          cleanLines.push({ description: 'Pickup Fee', amount: parseFloat(sourceSnap.pickupFee) });
-        }
+        if (addPickupFee > 0) cleanLines.push({ description: 'Pickup Fee', amount: addPickupFee });
+        if (addTaxAmount > 0) cleanLines.push({ description: 'Sales Tax' + (addTaxRate ? ` (${(addTaxRate*100).toFixed(2).replace(/\.?0+$/, '')}%)` : ''), amount: addTaxAmount });
         if (!cleanLines.length) {
           json({ error: `Source quote ${mergeQuoteNumber} has no line items, freight, or installation to merge.` }, 400);
           return;
@@ -7917,12 +7946,19 @@ ${q.accepted ? `
         Country: 'US',
       } : shipAddr;
 
-      // Tax suppression — same rules as create-qb-invoice / process-order.
+      // Tax: addendums always suppress QB AST and pass our TaxJar-computed
+      // tax (from the source quote) as an explicit line item. Reasoning:
+      // we already include tax in `cleanLines` when the source quote had
+      // tax — if AST were also live, QB would double-tax (line tax + AST
+      // tax). Universal suppression keeps the math correct and the
+      // customer-facing invoice total matches what we show on the order
+      // page. Suppression-only is the reliable AST lever (see v1.7.10
+      // incident in changelog for why amount-override doesn't work).
       const TAX_CODE    = process.env.QB_TAXABLE_CODE || 'TAX';
       const EXEMPT_CODE = process.env.QB_EXEMPT_CODE  || 'NON';
       const _isTaxExempt   = !!(snap.taxExempt || snap.accessories?.taxexempt);
-      const _suppressQbTax = _isTaxExempt || parseFloat(tax?.tax || 0) === 0;
-      const lineTaxRef     = { value: _suppressQbTax ? EXEMPT_CODE : TAX_CODE };
+      const _suppressQbTax = true;
+      const lineTaxRef     = { value: EXEMPT_CODE };
 
       const fallback = await qb.getDefaultItem();
       const cust = await qb.findOrCreateCustomer({
@@ -8057,20 +8093,33 @@ ${q.accepted ? `
       }
 
       // Persist addendum. `amount` mirrors netTotal (signed) so downstream
-      // summing is trivial; `lines` keeps the per-line detail for audit.
+      // summing is trivial. Rich fields (lineItems, freight, install,
+      // pickupFee, discount, taxAmount, weight) are present when merged
+      // from a quote — empty/zero for ad-hoc legacy lines submissions.
+      // Display surfaces (order page, Modify modal) prefer the rich
+      // fields when available and fall back to flat `lines`.
       const addendum = {
         id:             'add_' + crypto.randomBytes(6).toString('hex'),
         type:           isCreditMemo ? 'credit' : 'invoice',
-        lines:          cleanLines,
+        lines:          cleanLines,                // flat — back-compat display
         amount:         netTotal,                  // signed: negative for credits
+        // Rich structured fields (from source quote):
+        lineItems:      addProducts,               // raw items with weight
+        freight:        addFreight || 0,
+        freightTaxed:   addFreightTaxed,
+        installAmount:  addInstall || 0,
+        installMode:    addInstallMode,
+        pickupFee:      addPickupFee || 0,
+        discount:       addDiscount,
+        taxAmount:      addTaxAmount || 0,
+        taxRate:        addTaxRate || 0,
+        weight:         addWeight || 0,
+        // Order context:
         paymentType:    isCreditMemo ? null : pt,
         poNumber:       (!isCreditMemo && pt === 'po') ? poNumber : null,
-        applyToFreight,
-        sourceQuoteNumber,  // set when merged from a quote (vs. ad-hoc lines)
+        sourceQuoteNumber,
         qbId,
         qbDocNumber,
-        // Legacy alias for invoice-type addendums so older display code
-        // (and the v1.18.0 prior format) keeps working.
         qbInvoiceId:    isCreditMemo ? null : qbId,
         qbCreditMemoId: isCreditMemo ? qbId  : null,
         qbPaymentId,
@@ -8082,9 +8131,16 @@ ${q.accepted ? `
 
       const newAddendums = [...prevAddendums, addendum];
       const updateFields = { addendums: newAddendums };
-      if (applyToFreight) {
+      // Auto-apply the source quote's freight to the order's freightCost
+      // field. Replaces the v1.18.x "Apply net to freight" checkbox — if
+      // the source quote had freight, we want the order's freight field
+      // to reflect it. If the source quote had no freight, we leave the
+      // field alone. Signed by netTotal direction (credit-memo addendums
+      // with freight reduce freightCost; rare but consistent).
+      const _freightDelta = isCreditMemo ? -addFreight : addFreight;
+      if (_freightDelta) {
         const prevFreight = parseFloat(orderData.freightCost || 0) || 0;
-        const next        = parseFloat((prevFreight + netTotal).toFixed(2));
+        const next        = parseFloat((prevFreight + _freightDelta).toFixed(2));
         updateFields.freightCost = next < 0 ? 0 : next;
       }
       await db.query(
@@ -8240,12 +8296,17 @@ ${q.accepted ? `
         };
 
         const updateFields = { addendums };
-        if (add.applyToFreight) {
-          // Reverse the freight bump. addendum.amount is signed (negative
-          // for credit-memo addendums), so subtracting it from current
-          // freight undoes the original `+= netTotal` regardless of sign.
+        // Reverse the freight bump applied on add. New addendums carry
+        // the freight portion explicitly in `add.freight`; legacy v1.18.x
+        // addendums had an applyToFreight flag with the whole netTotal —
+        // honor both.
+        const isAddCredit = add.type === 'credit' || (parseFloat(add.amount) < 0);
+        const freightToReverse = parseFloat(add.freight)
+          || (add.applyToFreight ? Math.abs(parseFloat(add.amount)||0) : 0);
+        if (freightToReverse > 0) {
+          const signedReverse = isAddCredit ? freightToReverse : -freightToReverse;
           const prevFreight = parseFloat(orderData.freightCost || 0) || 0;
-          const reverted = parseFloat((prevFreight - parseFloat(add.amount)).toFixed(2));
+          const reverted = parseFloat((prevFreight + signedReverse).toFixed(2));
           updateFields.freightCost = reverted < 0 ? 0 : reverted;
         }
         await db.query(
@@ -9988,7 +10049,20 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
       });
       const addendumNet = addendumLines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
       const total = sub - disc + freightAmt + pickupFeeAmt + (installAmt > 0 ? installAmt : 0) + taxAmt + addendumNet;
-      const totalWeight = (q.lineItems||[]).reduce((s,i) => s + ((parseFloat(i.weight)||0) * (parseInt(i.qty)||1)), 0);
+      const originalWeight = (q.lineItems||[]).reduce((s,i) => s + ((parseFloat(i.weight)||0) * (parseInt(i.qty)||1)), 0);
+      // Addendums with line items contribute physical weight too — surface
+      // separately so the customer sees what the upgrade adds to the
+      // shipment (and Jeromy can plan pallets).
+      const addendumWeight = activeAddendums.reduce((s, a) => {
+        // Rich addendums (v1.19.x+) carry weight directly.
+        if (typeof a.weight === 'number') return s + a.weight;
+        // Legacy fallback: compute from lineItems if present.
+        if (Array.isArray(a.lineItems)) {
+          return s + a.lineItems.reduce((ss, it) => ss + ((parseFloat(it.weight)||0) * (parseInt(it.qty)||1)), 0);
+        }
+        return s;
+      }, 0);
+      const totalWeight = originalWeight + addendumWeight;
       const c = q.customer || {};
       const issueDate = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'});
 
@@ -10158,7 +10232,13 @@ tbody tr:last-child td{border-bottom:none}
         }).join('')}
       ` : ''}
       <div class="tot grand"><span>Order Total</span><span>${fmt(total)}</span></div>
-      ${totalWeight>0?`<div class="tot weight-total"><span>&#x2696; Total Weight</span><span>${totalWeight.toLocaleString()} lbs</span></div>`:''}
+      ${totalWeight>0?`
+        ${addendumWeight>0?`
+          <div class="tot" style="font-size:11px;color:#999;margin-top:6px"><span>Original weight</span><span>${originalWeight.toLocaleString()} lbs</span></div>
+          <div class="tot" style="font-size:11px;color:#999"><span>Added from adjustments</span><span style="color:#ee6216">+${addendumWeight.toLocaleString()} lbs</span></div>
+        `:''}
+        <div class="tot weight-total"><span>&#x2696; Total Weight</span><span>${totalWeight.toLocaleString()} lbs</span></div>
+      `:''}
       ${(() => {
         if (!o.paymentType) return '';
         const labels = { hs: 'HubSpot Invoice', cc: 'Credit Card', ach: 'ACH / Bank Deposit', po: 'PO', other: 'Other' };

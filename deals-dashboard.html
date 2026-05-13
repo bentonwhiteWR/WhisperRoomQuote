@@ -2769,11 +2769,6 @@ const submitCreateApPo = submitApPoModal;
         </div>
       </div>
 
-      <label id="modifyApplyToFreightLabel" style="display:none;align-items:center;gap:8px;font-size:12px;color:var(--text);cursor:pointer;margin-top:14px">
-        <input type="checkbox" id="modifyApplyToFreight">
-        <span>Apply net to <strong>Freight Cost</strong> (positive bumps it, negative reduces it)</span>
-      </label>
-
       <div id="modifyError" style="display:none;padding:10px 14px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;color:#ef4444;font-size:12px;margin-top:14px"></div>
 
       <div style="display:flex;gap:10px;margin-top:16px">
@@ -2832,12 +2827,10 @@ function openModifyOrderModal(quoteNumber) {
   const ptSelect = document.getElementById('modifyPaymentType');
   ptSelect.value = ['hs','cc','ach','po','other'].includes(defaultPt) ? defaultPt : 'hs';
   document.getElementById('modifyPoNumber').value = '';
-  document.getElementById('modifyApplyToFreight').checked = false;
   document.getElementById('modifyError').style.display = 'none';
   // Reset preview UI; the picker renders below.
   document.getElementById('modifyNetPreview').style.display = 'none';
   document.getElementById('modifyPaymentRow').style.display = 'none';
-  document.getElementById('modifyApplyToFreightLabel').style.display = 'none';
   const submitBtn = document.getElementById('modifySubmitBtn');
   submitBtn.disabled = true;
   submitBtn.style.opacity = '.5';
@@ -2919,7 +2912,6 @@ function updateModifyPreview() {
   if (!_modifySelectedQuoteNum || net === 0) {
     previewWrap.style.display = 'none';
     document.getElementById('modifyPaymentRow').style.display = 'none';
-    document.getElementById('modifyApplyToFreightLabel').style.display = 'none';
     submitBtn.disabled = true;
     submitBtn.style.opacity = '.5';
     return;
@@ -2937,7 +2929,6 @@ function updateModifyPreview() {
     docEl.style.color = '#3b82f6';
     document.getElementById('modifyPaymentRow').style.display = 'none';
   }
-  document.getElementById('modifyApplyToFreightLabel').style.display = 'flex';
   submitBtn.disabled = false;
   submitBtn.style.opacity = '1';
 }
@@ -3011,7 +3002,6 @@ async function submitModifyOrder() {
   const net = _modifySelectedQuoteNet;
   const paymentType = document.getElementById('modifyPaymentType').value;
   const poNumber    = document.getElementById('modifyPoNumber').value.trim();
-  const applyToFreight = document.getElementById('modifyApplyToFreight').checked;
   if (net > 0 && paymentType === 'po' && !poNumber) {
     errBox.textContent = 'PO number required when payment type is PO';
     errBox.style.display = 'block';
@@ -3026,7 +3016,7 @@ async function submitModifyOrder() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ mergeQuoteNumber, paymentType, poNumber, applyToFreight }),
+      body: JSON.stringify({ mergeQuoteNumber, paymentType, poNumber }),
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'Add charge failed');
@@ -3086,7 +3076,7 @@ function openOrderModifiedEmail(addendum, ord) {
     '',
     `Modified by: ${addendum.addedBy || 'rep'}`,
   ].filter(Boolean).join('\n');
-  const mailto = `mailto:jeromy@whisperroom.com?cc=accounting@whisperroom.com&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const mailto = `mailto:shipping@whisperroom.com?cc=accounting@whisperroom.com&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   const a = document.createElement('a');
   a.href = mailto;
   a.style.display = 'none';

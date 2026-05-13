@@ -3282,6 +3282,24 @@ async function createDeal() {
     alert('Add at least one product, freight, installation, or pickup fee before pushing.'); return;
   }
 
+  // Tax not calculated guard. Reps occasionally forget to hit Calculate
+  // Tax, the quote pushes with $0 tax, and the customer's invoice ships
+  // tax-free for a taxable order. Block (with confirm) when: the quote
+  // has product line items AND tax wasn't computed AND the order isn't
+  // explicitly tax-exempt. Freight-only / install-only quotes skip this
+  // since freight isn't always taxable.
+  const _taxExemptChecked = !!(document.getElementById('taxexempt') && document.getElementById('taxexempt').checked);
+  const _hasTaxableItems  = lineItems.length > 0;
+  const _taxAmountFn      = typeof getTaxAmount === 'function' ? getTaxAmount() : (taxData && parseFloat(taxData.tax || 0)) || 0;
+  if (_hasTaxableItems && !_taxExemptChecked && (!taxData || !_taxAmountFn)) {
+    const ok = window.confirm(
+      'No sales tax has been calculated for this quote.\n\n' +
+      'If this customer is in a state where you collect tax, the invoice will ship tax-free.\n\n' +
+      'Continue pushing without tax?'
+    );
+    if (!ok) return;
+  }
+
   const btn = document.getElementById('createBtn');
   btn.disabled = true;
   // Decide spinner text from the only thing that matters: does the current total

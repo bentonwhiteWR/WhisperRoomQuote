@@ -51,6 +51,15 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.19.3', date:'May 13, 2026', tag:'feature',
+      changes:[
+        {t:'fix', d:'Shipping/Jeromy email corrected to shipping@whisperroom.com (was jeromy@). Affects lib/notify.js REP_EMAILS and the mailto: in the order-modified email.'},
+        {t:'add', d:'Quote-push tax guard. When the rep tries to push a quote that has product line items, isn\'t tax-exempt, and has $0 tax computed, a confirm dialog asks "No sales tax has been calculated. Continue without tax?" Catches the case where a rep forgets to hit Calculate Tax on a taxable order. Freight-only / install-only quotes skip the guard.'},
+        {t:'ui', d:'Removed "Apply net to Freight Cost" checkbox from the Modify Order modal. The source quote\'s freight slot is now the source of truth — if the source quote has freight, that amount auto-bumps the order\'s Freight Cost field. If the source quote has no freight, the field stays untouched. Voiding an addendum reverses just the freight portion.'},
+        {t:'add', d:'Addendums now carry rich structure when merged from a quote: lineItems (with weight), freight, freightTaxed, installAmount/Mode, pickupFee, discount, taxAmount, taxRate, weight. Customer-facing order page renders tax (from TaxJar carried through the source quote) as a "Sales Tax (9.25%)" row under Order Adjustments, and shows added weight + new total weight when addendums contribute physical items. QB invoice always suppresses AST on addendums and includes our tax as an explicit line — keeps math precise and customer-facing invoice total matches the order page.'},
+      ]
+    },
+    {
       v:'1.19.2', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Deal Hub "+ New Quote" now properly binds the contact in the quote builder. The deal\'s contact info auto-filled the customer form fields but skipped the metadata that tells the system "this contact is already in HubSpot" — window._loadedContactId, _loadedContactAddress, the contact-search box value, and the view-contact button visibility. Result: pushing the quote fired "Possible Duplicate Contact" because create-deal couldn\'t tell the form was pre-filled from a real contact vs. a rep typing a new contact whose email collided. Now linkDealById sets the same metadata block that _doFillContact sets when picking from the dropdown — no more duplicate prompt on freshly-linked deals.'},

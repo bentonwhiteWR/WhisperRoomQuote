@@ -9811,7 +9811,28 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
         ? 0
         : ((!freightTbd && q.freight) ? q.freight.total : 0);
       const taxAmt = q.tax ? q.tax.tax : 0;
-      const total = sub - disc + freightAmt + pickupFeeAmt + (installAmt > 0 ? installAmt : 0) + taxAmt;
+      // Active addendums (non-voided) modify the order's grand total. Each
+      // addendum may have one or more lines; we flatten so the customer
+      // sees every per-line adjustment with its own description. Legacy
+      // pre-v1.18.1 addendums had {description, amount} at the top level
+      // instead of a lines array — synthesize a single-line shape so the
+      // render path doesn't need to branch.
+      const activeAddendums = (Array.isArray(o.addendums) ? o.addendums : []).filter(a => !a.voided);
+      const addendumLines = activeAddendums.flatMap(a => {
+        if (Array.isArray(a.lines) && a.lines.length) {
+          // For credit-memo addendums, lines are stored as positive but
+          // the addendum's `amount` is negative — flip each line's sign
+          // for display so customer sees the credit clearly.
+          const sign = (a.type === 'credit' || parseFloat(a.amount) < 0) ? -1 : 1;
+          return a.lines.map(ln => ({
+            description: ln.description || '—',
+            amount:      sign * parseFloat(ln.amount || 0),
+          }));
+        }
+        return [{ description: a.description || 'Adjustment', amount: parseFloat(a.amount || 0) }];
+      });
+      const addendumNet = addendumLines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0);
+      const total = sub - disc + freightAmt + pickupFeeAmt + (installAmt > 0 ? installAmt : 0) + taxAmt + addendumNet;
       const totalWeight = (q.lineItems||[]).reduce((s,i) => s + ((parseFloat(i.weight)||0) * (parseInt(i.qty)||1)), 0);
       const c = q.customer || {};
       const issueDate = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'});
@@ -9971,6 +9992,16 @@ tbody tr:last-child td{border-bottom:none}
       ${installAmt>0?`<div class="tot"><span>${installMode==='delivery_install'?'Delivery and Installation':'Installation'}</span><span>${fmt(installAmt)}</span></div>`:''}
       ${taxAmt>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+(q.tax.rate*100).toFixed(2).replace(/\.?0+$/,'')+'%)':''}</span><span>${fmt(taxAmt)}</span></div>`:''}
       ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
+      ${addendumLines.length ? `
+        <div class="tot" style="margin-top:8px;padding-top:8px;border-top:1px solid #eee;font-weight:700;color:#555;font-size:11px;text-transform:uppercase;letter-spacing:.06em"><span>Order Adjustments</span><span></span></div>
+        ${addendumLines.map(l => {
+          const negative = parseFloat(l.amount) < 0;
+          const cls = negative ? ' class="discount-val"' : '';
+          const sign = negative ? '-' : '';
+          const safeDesc = String(l.description || '').replace(/[<>"&]/g, c => ({'<':'&lt;','>':'&gt;','"':'&quot;','&':'&amp;'}[c]));
+          return `<div class="tot"><span>${safeDesc}</span><span${cls}>${sign}${fmt(Math.abs(l.amount))}</span></div>`;
+        }).join('')}
+      ` : ''}
       <div class="tot grand"><span>Order Total</span><span>${fmt(total)}</span></div>
       ${totalWeight>0?`<div class="tot weight-total"><span>&#x2696; Total Weight</span><span>${totalWeight.toLocaleString()} lbs</span></div>`:''}
       ${(() => {

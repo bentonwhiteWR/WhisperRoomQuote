@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.18.2', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Customer-facing order page /o/<quoteNumber> now reflects active addendums in the totals. v1.18.1 shipped the create / track / void flow but forgot to update the customer view of the order — adding a $500 upcharge would update the deal amount, the QB invoice, and the addendums chip in Deal Hub, but the customer-facing order page still showed the original total. New behavior: an "Order Adjustments" subsection appears in the totals card (above the grand total) listing each per-line adjustment with its description. Negatives styled green like discounts. Grand total now equals subtotal − discount + freight/pickup/install + tax + addendumNet (where addendumNet is signed: credit-memo addendums subtract). Voided addendums are excluded. Legacy v1.18.0 single-line addendums render correctly via fallback.'},
+      ]
+    },
+    {
       v:'1.18.1', date:'May 13, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Order Addendums moved from the orders dashboard drawer to the Deal Hub. Every order row in the Deal Hub now has a "Modify" button that opens a modal with two sections: (1) Existing addendums for this order with status badges (Paid / Open / Credit / Voided) + void buttons on unpaid ones; (2) Add new — a multi-line builder where each row is description + amount (negative for credits), plus an "+ Add line" button. Net total + resulting QB doc type (Invoice or Credit Memo) preview live as the rep types. The order row also shows a small color-coded chip summarizing active addendums (e.g. "+$450 · 2" or "−$200"). The orders dashboard drawer no longer has any addendum UI.'},

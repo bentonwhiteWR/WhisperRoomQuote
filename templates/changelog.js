@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.19.13', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Addendum invoice ShipAddr/BillAddr construction now matches process-order exactly — uses conditional spread to omit missing fields, instead of sending empty strings. The addendum diagnostic from v1.19.11 showed AST returning TaxLine with TaxPercent:0 + NetAmountTaxable:0 even though we tagged lines TAX and didn\'t suppress. Empty-string Line1/City in ShipAddr can break AST\'s jurisdiction lookup silently — it falls back to a 0% rate. Process-order omits missing fields entirely, which is what AST needs. This is the only payload difference between the two paths.'},
+      ]
+    },
+    {
       v:'1.19.12', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Order-modified mailto: CC list now joined with ";" instead of "," so Outlook reads accounting + Benton as two separate recipients. RFC 6068 says comma but Outlook (the main client at WhisperRoom) treats comma-joined addresses as one malformed entry and only CCs the first. Process-order\'s notification mailto uses the same separator for the same reason.'},

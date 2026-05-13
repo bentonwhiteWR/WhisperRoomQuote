@@ -7961,11 +7961,20 @@ ${q.accepted ? `
       const addendumNum = prevAddendums.filter(a => !a.voided).length + 1;
       const repName     = getRepFromReq(req, body) || 'unknown';
 
-      const shipAddr = {
-        Line1: customer.address || '', City: customer.city || '',
-        CountrySubDivisionCode: customer.state || '',
-        PostalCode: customer.zip || '', Country: 'US',
-      };
+      // Address construction MUST mirror process-order's pattern: omit
+      // missing fields entirely rather than sending empty strings. QB
+      // AST uses ShipAddr to resolve tax jurisdiction; empty Line1/City
+      // can cause AST to fail jurisdiction lookup silently and return
+      // a 0% rate (the TaxLineDetail TaxPercent:0 + NetAmountTaxable:0
+      // pattern seen in the diagnostic). Matching process-order's
+      // construction exactly fixes a real divergence.
+      const shipAddr = (customer.address || customer.city || customer.state || customer.zip) ? {
+        ...(customer.address ? { Line1:                   customer.address } : {}),
+        ...(customer.city    ? { City:                    customer.city    } : {}),
+        ...(customer.state   ? { CountrySubDivisionCode:  customer.state   } : {}),
+        ...(customer.zip     ? { PostalCode:              customer.zip     } : {}),
+        Country: 'US',
+      } : null;
       const billAddr = (billing && (billing.name || billing.address || billing.city || billing.state || billing.zip)) ? {
         ...(billing.name    ? { Line1: billing.name } : {}),
         ...(billing.address ? (billing.name ? { Line2: billing.address } : { Line1: billing.address }) : {}),

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.16.5', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Quote number sequence now correctly starts at 01 when the first new quote of the day is a revision of a prior-day quote. generateFreeQuoteNumber was seeding its search sequence from the loaded quote\'s seq regardless of whether the dateKey matched today\'s, so revising yesterday\'s W-1605122602 (seq 02) for the first time today would land at W-1605132602 instead of W-1605132601. Now: only honor the client\'s seq when its dateKey matches today\'s; otherwise restart at 01. previewNextQuoteNumber was already correct (always starts at 1) — bug was creation-side only, so the preview UI showed the right number but the saved quote got a different one when revising across days.'},
+      ]
+    },
+    {
       v:'1.16.4', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Rep dropdown no longer auto-flips to the deal owner when a deal is linked. Companion fix to v1.16.3 contact-owner notification — without this, the popup would warn "Sarah is the contact owner" but the dropdown silently changed to Sarah anyway (via the auto-link path: contact-search → single-deal-suggested → auto-link → linkDealById → fetch deal → set repSelect.value = hubspot_owner_id). The dropdown now reflects "who is building this quote" (logged-in rep), not "who originally owned the deal." Shopify deals still auto-route to Ecommerce — those are imported automation that should never be credited to a human rep.'},

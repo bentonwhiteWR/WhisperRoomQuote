@@ -595,18 +595,24 @@ function renderHub(dealId,data) {
       const paid=inv.status==='paid';
       const sc={paid:'#22c55e',open:'#f59e0b',draft:'var(--muted)',voided:'var(--muted)',overdue:'#ef4444'}[inv.status]||'var(--muted)';
       const pmLabel = inv.paymentMethod === 'ach' ? 'ACH' : inv.paymentMethod === 'card' ? 'CC' : '';
+      const viaStripe = inv.paidVia === 'stripe';
+      const stripeChannelBadge = inv.stripeInvoiceId
+        ? `<span class="row-badge" title="Stripe invoice — ${viaStripe?'paid via Stripe':(inv.stripeStatus||'open')}" style="background:rgba(99,91,255,.12);color:#7c5cff;border:1px solid rgba(99,91,255,.3)">Stripe</span>`
+        : '';
       return `<div class="row-card ${paid?'row-paid':''}" style="cursor:default">
         <div style="flex:1;min-width:0;display:flex;align-items:center;gap:7px;flex-wrap:wrap">
           <span style="font-size:12px;font-weight:700;color:${paid?'var(--green)':'var(--text)'}">${inv.number||inv.title||'Invoice'}</span>
           ${paid?'<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Paid</span>'
                 :`<span class="row-badge" style="color:${sc};border:1px solid ${sc}">${inv.status||'—'}</span>`}
-          ${paid && pmLabel ? `<span class="row-badge" style="background:rgba(99,102,241,.1);color:#818cf8;border:1px solid rgba(99,102,241,.25)">${pmLabel}</span>` : ''}
+          ${stripeChannelBadge}
+          ${paid && pmLabel && !viaStripe ? `<span class="row-badge" style="background:rgba(99,102,241,.1);color:#818cf8;border:1px solid rgba(99,102,241,.25)">${pmLabel}</span>` : ''}
           ${inv.quoteNumber?`<span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${inv.quoteNumber}</span>`:''}
         </div>
         <span style="font-size:12px;font-weight:700;color:${paid?'var(--green)':'var(--text)'}">${fmt(inv.amount)}</span>
         <span class="row-date">${fmtDate(inv.date)}</span>
         ${inv.paymentPageUrl?`<a href="${inv.paymentPageUrl}" target="_blank" class="row-link" style="color:var(--orange);border-color:var(--orange-border)">Invoice ↗</a>`:''}\n        ${inv.paymentPageUrl?`<button onclick="copyInvoiceLink('${inv.paymentPageUrl}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit" title="Copy invoice link">🔗</button>`:''}
 
+        ${inv.stripeDashboardUrl?`<a href="${inv.stripeDashboardUrl}" target="_blank" class="row-link" style="color:#7c5cff;border-color:rgba(99,91,255,.3)" title="Open in Stripe dashboard">Stripe ↗</a>`:''}
         ${inv.hubspotUrl?`<a href="${inv.hubspotUrl}" target="_blank" class="row-link">HS ↗</a>`:''}
       </div>`;
     }).join('')}

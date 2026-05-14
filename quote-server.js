@@ -6669,6 +6669,15 @@ ${q.accepted ? `
       try {
         const invoiceIds = (invoiceAssocRes?.body?.results || []).map(r => r.toObjectId);
         if (invoiceIds.length) {
+          // Stripe-overlay gating: if toggle is OFF, we skip the Stripe overlay
+          // entirely and render pure HubSpot data — the rep gets the pre-Stripe
+          // view exactly. Stripe data on json_snapshot.stripe is preserved
+          // (flipping back ON restores everything).
+          const stripeOn = await stripeLib.isEnabled();
+          const stripeDashRoot = (process.env.STRIPE_SECRET_KEY || '').startsWith('sk_test_')
+            ? 'https://dashboard.stripe.com/test/invoices/'
+            : 'https://dashboard.stripe.com/invoices/';
+
           const [batchRes, dbInv] = await Promise.all([
             httpsRequest({
               hostname: 'api.hubapi.com',
@@ -6679,7 +6688,7 @@ ${q.accepted ? `
               inputs: invoiceIds.map(id => ({ id: String(id) })),
               properties: ['hs_invoice_status','hs_invoice_date','hs_number','hs_title','hs_amount_billed','hs_balance_due','hs_hubspot_invoice_link','quote_number']
             }),
-            db ? db.query('SELECT quote_number, payment_link, share_token FROM quotes WHERE deal_id = $1 AND payment_link IS NOT NULL', [dealId]).catch(() => ({ rows: [] }))
+            db ? db.query('SELECT quote_number, payment_link, share_token, json_snapshot FROM quotes WHERE deal_id = $1 AND payment_link IS NOT NULL', [dealId]).catch(() => ({ rows: [] }))
                : Promise.resolve({ rows: [] }),
           ]);
 
@@ -6690,7 +6699,7 @@ ${q.accepted ? `
             const invPageUrl = dbMatch?.quote_number && dbMatch?.share_token
               ? `${PUBLIC_BASE_URL}/i/${dbMatch.quote_number}?t=${dbMatch.share_token}`
               : dbMatch?.payment_link || null;
-            return {
+            const row = {
               id:             inv.id,
               status:         inv.properties?.hs_invoice_status || 'draft',
               number:         inv.properties?.hs_number || '',
@@ -6703,6 +6712,25 @@ ${q.accepted ? `
               paymentPageUrl: invPageUrl,
               paymentMethod:  inv.properties?.hs_payment_method || '',
             };
+            // Stripe overlay — only when toggle is ON. When OFF, the row above
+            // is exactly the pre-Stripe shape and the UI renders accordingly.
+            if (stripeOn) {
+              const stripe = dbMatch?.json_snapshot?.stripe;
+              if (stripe?.invoiceId) {
+                row.stripeInvoiceId    = stripe.invoiceId;
+                row.stripeStatus       = stripe.status || null;
+                row.stripePaidAt       = stripe.paidAt || null;
+                row.stripeDashboardUrl = stripeDashRoot + stripe.invoiceId;
+                // If Stripe says paid, that's the truth — the customer
+                // actually paid via Stripe. HubSpot status will be stale
+                // until we sync back (deferred).
+                if (stripe.status === 'paid') {
+                  row.status  = 'paid';
+                  row.paidVia = 'stripe';
+                }
+              }
+            }
+            return row;
           });
 
           // Fetch payment method from Payment records (only for paid invoices)

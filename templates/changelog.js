@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.20.8', date:'May 14, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Deal Hub invoice rows now reflect Stripe payment status. When a customer pays via Stripe, the webhook updates `json_snapshot.stripe.status` to "paid" — the Deal Hub now reads that overlay and shows the row as green/Paid, with a purple "Stripe" badge so the rep can tell the payment channel. New "Stripe ↗" link in the row jumps directly to the Stripe Dashboard page for that invoice. Test-mode keys auto-route to dashboard.stripe.com/test/invoices/...; live keys would route to /invoices/...'},
+        {t:'add', d:'The existing Stripe ON/OFF toggle in /admin-log now also gates the Deal Hub display. When OFF, the server skips the Stripe overlay entirely — invoice rows render as pure HubSpot data (no Stripe badge, no Stripe link, status from `hs_invoice_status`). Data on the snapshot is preserved; flipping back ON instantly restores the full Stripe view. Tradeoff worth knowing: a Stripe-paid invoice will appear "open" in the Deal Hub while toggle is OFF — that\'s the intended fast-bail-out behavior, not a bug.'},
+        {t:'log', d:'NOT changed in this push: HubSpot invoice status. HubSpot computes `hs_invoice_status` from Payment records, so manually patching it via API may not stick. The proper sync would create a HubSpot Payment record via API linked to the invoice — deferred to a follow-up. For now: our Deal Hub is the rep\'s source of truth; HubSpot UI will continue showing Stripe-paid invoices as "open" until that sync ships or HubSpot invoice creation is disabled entirely.'},
+      ]
+    },
+    {
       v:'1.20.7', date:'May 14, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Stripe invoices now accept ACH and wire transfer alongside credit card. Per-quote toggles in the Create Invoice modal let reps disable any combination of methods — the typical use case is unchecking Credit Card on $50k+ orders to skip the ~3.4% processing fee in favor of wire ($8 flat) or ACH (0.8%, capped at $5). The existing $50k CC fee warning still surfaces dynamically. New checkbox: "Wire Transfer — $8 flat fee, recommended for $25k+ orders" in both the quote builder modal (`invoiceAllowWire`) and the deal hub mini-invoice modal (`dhInvoiceAllowWire`). All three default ON for new quotes.'},

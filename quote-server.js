@@ -7146,9 +7146,14 @@ ${q.accepted ? `
         // "already paid" hosted-invoice page for the customer. Skip creation
         // entirely below the dollar threshold.
         const positiveItems = (invoiceLineItems || []).filter(i => parseFloat(i.price || 0) > 0 && !i.isCredit);
+        // Mirror lib/stripe.js: bake the per-line discount percentage into the
+        // expected total so this matches Stripe's finalized amount_due and the
+        // fail-loud assertion does not trigger on legitimate discounted totals.
         const previewTotalCents = positiveItems.reduce((s, i) => {
           const qty = parseInt(i.qty || 1, 10) || 1;
-          return s + Math.round(parseFloat(i.price) * 100) * qty;
+          const baseCents = Math.round(parseFloat(i.price) * 100) * qty;
+          const discPct = Math.max(0, Math.min(100, parseFloat(i.lineDiscount || 0))) / 100;
+          return s + Math.round(baseCents * (1 - discPct));
         }, 0);
 
         const stripeOn = await stripeLib.isEnabled();

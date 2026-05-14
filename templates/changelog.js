@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.20.5', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Stripe invoices now apply the quote-level discount. HubSpot path was already passing `hs_discount_percentage` on each line item, but Stripe has no per-line percentage field, so the discount silently dropped — invoice total matched the gross instead of the net. Fix: `lib/stripe.js` now bakes `item.lineDiscount` into the cents amount before posting the invoiceitem, and appends "(N% off, was $X)" to the line description so the customer sees the discount on the hosted invoice. Only product lines carry `lineDiscount` (freight/tax/install carry 0), so the discount stays product-only just like the HubSpot path. Also updated `/api/create-invoice` to apply the same discount math when computing `previewTotalCents`, so the success-log preview matches Stripe\'s finalized amount_due instead of showing a confusing pre-discount expectation.'},
+      ]
+    },
+    {
       v:'1.20.4', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Stripe invoices were doubling on the first v1.20.3 test — real total roughly 2x expected. Root cause: v1.20.3 fixed the $0 bug by passing `pending_invoice_items_behavior: include` on the new invoice, which works on a clean customer but ALSO sweeps in any orphan pending invoiceitems left behind by prior failed runs (every pre-v1.20.3 attempt created invoiceitems that never attached to anything — they accumulated as pending on the customer). New invoice = today\'s items + yesterday\'s ghost items = doubled total. Fix: draft the (empty) invoice FIRST, then create each invoiceitem with `invoice: draft.id` so it attaches directly. No pending-bucket interaction at all, so orphan items from any past or future failed run cannot contaminate. `pending_invoice_items_behavior: exclude` set explicitly as belt-and-suspenders. Note: stale pending invoiceitems on test customers from earlier runs are still sitting in Stripe sandbox — harmless under the new flow, but worth cleaning up via Stripe dashboard (test mode → Customers → find each → delete pending invoiceitems) or by deleting the test customers entirely.'},

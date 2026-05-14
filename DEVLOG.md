@@ -6,15 +6,84 @@ Internal development notes. Last updated 2026-05-14.
 
 ---
 
-## Current focus (2026-05-14, afternoon — Deal Hub Stripe overlay shipped)
+## Current focus (2026-05-14, EOD handoff — Stripe complete, Shopify Review column queued)
 
-**Most recent shipped to PROD:** v1.19.19 — tax-not-calculated popup fix (only warns when Calculate Tax was genuinely never run; no longer fires for legitimate no-nexus $0 results). Pushed direct to main today without bringing Stripe along.
+**Most recent shipped to PROD:** v1.19.19 — tax-not-calculated popup fix (only warns when Calculate Tax was genuinely never run; no longer fires for legitimate no-nexus $0 results). Pushed direct to main yesterday without bringing Stripe along.
 
-**On STAGING (NOT YET promoted to main):** v1.20.0 → v1.20.8 — Stripe Invoice integration, Option A + multi-method + Deal Hub overlay.
+**On STAGING (NOT YET promoted to main):** v1.20.0 → v1.20.12 — Stripe Invoice integration is feature-complete and tested end-to-end (creation → payment → webhook → deal hub overlay). Webhook is now actually working.
 
-- **v1.20.8** (this session, May 14) — Deal Hub invoice rows reflect Stripe paid state. When `json_snapshot.stripe.status === 'paid'`, the deal-hub response overlays `status='paid'` + `paidVia='stripe'` + `stripeInvoiceId` + `stripeDashboardUrl` onto the HubSpot-sourced row. UI renders a purple "Stripe" badge + "Stripe ↗" link jumping to the Stripe Dashboard. Existing /admin-log toggle gates the overlay — flipping OFF makes the server skip Stripe entirely (pure HubSpot render); data on snapshot preserved, flipping back ON restores instantly. **Tradeoff worth noting:** a Stripe-paid invoice will appear "open" in Deal Hub while toggle is OFF; that's the intended fast-bail behavior. HubSpot invoice status itself is not patched back to "paid" — deferred (proper sync would create HubSpot Payment records via API; manual `hs_invoice_status` patches may not stick since HubSpot computes it from Payment records).
+Today's progression (May 14, in order):
 
-- **v1.20.7** (earlier this session, May 14) — accept ACH + wire alongside card. Per-quote `allowCC` / `allowACH` / `allowWire` checkboxes in both Create Invoice modals (quote builder + deal hub), all default ON. `lib/stripe.js` builds `payment_settings.payment_method_types` dynamically; when wire is on, adds the required `customer_balance.bank_transfer.type: us_bank_transfer`. Days-until-due stretches 7 → 14 when ACH on so legit payers don't see "past due" before ACH clears. Defensive: wire silently drops (`stripe.invoice.wire-dropped` log) if customer has no name. Use case: uncheck CC on $50k+ orders to skip 3.4% fee. Stripe Dashboard ACH + Bank Transfers must be enabled in test mode for this to actually work — user confirmed both enabled May 14.
+- **v1.20.7** — accept ACH + wire alongside card. Per-quote `allowCC` / `allowACH` / `allowWire` checkboxes in both Create Invoice modals (quote builder + deal hub), all default ON. `lib/stripe.js` builds `payment_settings.payment_method_types` dynamically; when wire is on, adds the required `customer_balance.bank_transfer.type: us_bank_transfer`. Days-until-due stretches 7 → 14 when ACH on so legit payers don't see "past due" before ACH clears. Defensive: wire silently drops (`stripe.invoice.wire-dropped` log) if customer has no name. Use case: uncheck CC on $50k+ orders to skip 3.4% fee. Stripe Dashboard ACH + Bank Transfers confirmed enabled in test mode.
+
+- **v1.20.8** — Deal Hub invoice rows reflect Stripe paid state. When `json_snapshot.stripe.status === 'paid'`, the deal-hub response overlays `status='paid'` + `paidVia='stripe'` + `stripeInvoiceId` + `stripeDashboardUrl` onto the HubSpot-sourced row. UI renders a purple "Stripe" badge + "Stripe ↗" link jumping to the Stripe Dashboard. Existing /admin-log toggle gates the overlay — flipping OFF makes the server skip Stripe entirely.
+
+- **v1.20.9** — **critical fix.** Stripe webhook had been returning 401 to EVERY delivery since v1.20.0 shipped (8+ days). The global auth middleware at `quote-server.js:564` rejects `/api/*` requests without a session cookie, and `/api/stripe/webhook` wasn't in the `isPublicRoute` allowlist. Stripe authenticates via signed body, not cookies. So every webhook attempt bounced off auth before our handler ran — zero `invoice.paid` events processed for the entire integration period. Caught by inspecting Stripe Workbench → Webhooks → Event deliveries (saw 9+ `401 ERR` attempts). One-line fix: added webhook path to the allowlist. Signature verification in the handler is preserved (only requests with valid `Stripe-Signature` get processed). Stripe auto-retried queued events over the next hour and they all landed.
+
+- **v1.20.10** — two workflow upgrades hanging off `invoice.paid` (now working): (1) **Deal cards turn green** when an invoice is paid (Stripe-paid via toggle-gated snapshot flag OR HubSpot `payment_status='paid'`), in addition to existing quote-accepted/payment-type triggers. (2) **Auto-advance HubSpot deal stage** to "Verbal Confirmation" (`contractsent`) on `invoice.paid` webhook, but ONLY if currently at an earlier stage. Skips `contractsent`/`closedwon`/`845719`/`closedlost` to never walk a deal backwards. New log events: `stripe.deal-stage-advanced`, `stripe.deal-stage-noop`, `error.stripe.deal-stage`.
+
+- **v1.20.11 → v1.20.12 (reverted)** — added a dedicated Shipped-stage catch-all pass mirroring Closed Won. Brought in more old Shipped deals as expected, but did NOT solve the immediate problem (a brand-new Shopify deal was missing from the board). Reverted to keep the board clean while we investigate.
+
+**Diagnostic endpoints added today (no version bump, debug-only):**
+- `GET /api/debug/deal/:id` — fetches raw HubSpot deal properties + the pipeline definition (with all stage IDs ↔ labels). Used to verify a deal's actual internal `dealstage`/`pipeline` vs. what we filter on.
+- `GET /api/debug/find-deal?q=...` — searches HubSpot deals by name and returns up to 20 matches with IDs and key properties.
+
+### Open investigation: Shopify deals invisible from Deal Hub
+
+Late EOD May 14 we hit a real bug we couldn't fully diagnose. Two newly-arrived Shopify-generated deals — IDs `60254716188` (#2144, $5,046.50) and `60256150594` (#2145, $11,180.80) — landed in HubSpot's Sales Pipeline at stage `845719` (Shipped) with owner `49384873` (ecommerce@whisperroom.com). Both are missing from the Deal Hub board.
+
+**What we ruled out:**
+- Pipeline mismatch — confirmed in Sales Pipeline (`default`), confirmed stage is genuinely `845719` (not a duplicate-named stage), pipeline definition verified via `/api/debug/deal/:id`
+- Rep filter — user verified "All Reps" was selected
+- "Hide HubSpot Only" toggle — verified off
+- Pagination depth — added dedicated Shipped catch-all in v1.20.11 (brought in MORE old Shipped deals), didn't surface these
+- These deals ARE returned by `/api/deals/list?stage=845719&limit=500` (explicitly filtering to Shipped) — verified by Ctrl+F on deal ID
+- These deals ARE returned by `/api/debug/find-deal?q=Shopify+%232144` — HubSpot's text-search index has them
+
+**The leading suspect:** something about how HubSpot's deal-search API handles deals owned by `49384873` (ecommerce service user) in combination with the `dealstage IN [5 stages]` filter we use on the default load. Single-stage filter (`?stage=845719`) returns them; multi-stage filter does not. Probably a HubSpot search-index quirk specific to that owner ID or to the way Shopify deals are tagged.
+
+User comment from EOD: "I have to specifically search '2145'. If I type shopify, lots comes up, but definitely not the most recent ones we sold." So even the text-search has weirdness — older Shopify deals match the search, the most recent ones don't unless you search by their specific number.
+
+**Decision (user-driven):** rather than chase down the HubSpot search quirk, build a new **"Shopify Review" column** in the Deal Hub that pulls ALL ecommerce-owned deals (`ownerId === '49384873'`) regardless of HubSpot stage. This sidesteps the search bug AND fixes a real workflow gap (the HubSpot Shopify integration auto-advances new Shopify deals to "Shipped" stage on creation, which is correct for small parts orders but WRONG for booth orders that need human verification before processing).
+
+### Queued (next session): build "Shopify Review" column
+
+**The workflow problem:** Shopify orders auto-create HubSpot deals via a workflow that drops them in "Shipped" (presumably because Shopify already collected payment + the small parts orders ship automatically from the Shopify side). But booth orders ($5k+) come through the same Shopify checkout and end up in the same "Shipped" stage — which is wrong because they haven't been verified, quoted, or processed by sales. Jill needs to contact the customer, confirm what they're getting + shipping, then create a real quote and process it like a normal order.
+
+**Two paths to fix (not mutually exclusive):**
+
+- **Path A — Fix the HubSpot workflow at the source:** change the auto-advance logic to put deals over $X into a different stage (or new "Shopify Review" stage). No-code change inside HubSpot Workflows. Cleanest long-term answer. We aren't doing this in next session unless user wants to.
+- **Path B — Build a "Shopify Review" column in our Deal Hub:** **THIS IS THE PLAN.** Column criteria: `ownerId === '49384873'`, regardless of HubSpot stage. Effectively removes ecommerce deals from the Shipped column and gives them their own home. Doesn't touch the HubSpot workflow (no risk of breaking the small-parts auto-flow).
+
+**Sketch for the column (locked decisions from EOD May 14 discussion):**
+- Column shows ALL ecommerce-owned deals (not just $5k+), so small parts orders are visible too — Jill can spot-check anything weird
+- Card displays an orange `Booth — Verify` chip if `amount >= $5000`, no chip otherwise — visual priority signal
+- Click → existing deal hub overlay → existing "+ New Quote" button. Jill builds a real quote bound to the Shopify-created deal, sends to customer, processes like normal.
+- Deal LEAVES the Shopify Review column once `latestQuote` is set on it (sales has created a real quote — deal now flows through normal columns based on actual stage)
+
+**Three scoping questions still unanswered (ask user first thing next session):**
+1. Threshold for "Booth — Verify" chip — $5k as proposed, or different?
+2. Show all Shopify deals in column, or only ones above some amount? (Recommended: all, only big ones get the chip.)
+3. When Jill creates a quote against a Shopify deal, should it move out of the column entirely (recommended) or stay with a "Quote Sent" indicator?
+
+**Estimated effort:** ~half-day. New COLUMNS entry in `deals-dashboard.html`, server-side `shopifyReview` flag in `/api/deals/list` based on ownerId, exclude these deals from the Shipped column (so they only appear in Shopify Review). Bonus: ALSO fixes the visibility bug we couldn't track down — these deals will appear in their own column whether or not HubSpot's search index includes them in default queries.
+
+### Also tabled (not in next session unless user asks)
+
+- **BOL + carrier API pickup booking via ABF** — full spec captured from API docs (May 14 session). Decisions locked: freight class 100, NMFC `027880-02`, requester Jeromy Packwood (shipping@whisperroom.com, 423-586-6299), `RequesterType=1`, `PayTerms=P`, `FileFormat=A`, `PkupCopyShip=Y`, `BolCopyShip=Y`, `ProAutoAssign=Y`. Safety: `ABF_BOOKING_MODE` env (`off`/`test`/`live`), `Test=Y` flag built into ABF live endpoint so no separate UAT needed. BOL PDF goes into `GDRIVE_ORDERS_FOLDER` (not deal folder), named `{order_name minus W-XXXXXXXXXX} BOL.pdf`. Dock hours 8-5, AT 10:00, pickup default next business day, button always available to Jeromy (no gating). Button lives on Orders dashboard. Estimated 2-3 days build + 1 week test-mode burn-in. Dormant `bookShipment()` in `lib/freight.js` is the starting scaffold.
+
+- **Embedded Stripe Payment Element on /i/** — explicitly deferred from May 14 morning discussion. Re-evaluate after 1-2 weeks of real customer use if anyone balks at the Stripe-hosted redirect.
+
+- **HubSpot Payment record sync on `invoice.paid`** — so HubSpot UI shows Stripe-paid invoices as paid too. Defer until needed; reps live in our Deal Hub day-to-day, HubSpot UI being out-of-sync is a documented known issue.
+
+- **Auto-suppress CC above $X threshold** — currently the rep manually unchecks the CC box on $50k+ orders, prompted by an orange warning. Could auto-uncheck. Low priority since the warning banner already nudges.
+
+### Open questions / things to investigate
+
+- The HubSpot search-index quirk with ecommerce-owned deals + multi-stage filters. If the Shopify Review column resolves the user-facing problem, this becomes academic. But worth understanding if it bites again with other auto-created deals (e.g., future integrations).
+- Cross-system "paid" sync to HubSpot — deferred but worth scoping if HubSpot's accounting/AR views start mattering.
+- `STRIPE_WEBHOOK_SECRET` is set in Railway test service (confirmed working as of v1.20.9 fix).
+- `STRIPE_SECRET_KEY` is set to `sk_test_...` (confirmed working).
 
 Yesterday's progression (May 13):
 

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.20.11', date:'May 14, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Shipped deals were falling off the Deal Hub when the team had recent activity on other deals. Root cause: the Closed Won stage had a dedicated catch-all pass at /api/deals/list (fetches every Closed Won regardless of how stale) but Shipped (845719) didn\'t — it relied entirely on the main 1000-deal paginated fetch sorted by hs_lastmodifieddate DESC. Once 1000 other deals had been touched after a shipped deal, it would silently disappear from the board. Discovered when a Shopify-generated deal in Shipped wasn\'t appearing for any rep even with All Reps + Hide HubSpot Only off. Fix: refactored the dedicated-pass logic into a shared helper and now runs it for BOTH closedwon AND 845719. Same 10-page (=2000-deal) safety cap per stage. Identical reasoning: Shipped deals are active orders the team is still working on (production, shipping, tracking) — they need to be visible regardless of recency. Note: HubSpot search index has a known ~5-60s lag on newly-modified objects, so a brand-new shipped deal may still take a moment to appear — but it won\'t silently vanish anymore.'},
+      ]
+    },
+    {
       v:'1.20.10', date:'May 14, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Deal cards in the Deal Hub now turn green when an invoice is paid (in addition to existing triggers: quote accepted, payment type set). Server-side: /api/deals/list aggregates `paid: true` if any quote on the deal has `json_snapshot.stripe.status === "paid"` — toggle-gated, so flipping Stripe OFF returns the deal-card UI to pure HubSpot signals. Client-side: `dealGreen` now also checks `d.paid` and HubSpot\'s `d.paymentStatus === "paid"`, so HubSpot Payments-paid invoices also trigger green (matching whatever automation you already have in HubSpot).'},

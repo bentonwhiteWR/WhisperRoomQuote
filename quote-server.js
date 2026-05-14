@@ -2153,32 +2153,42 @@ const server = http.createServer(async (req, res) => {
         // Only runs on the default load (no specific `stage` requested
         // and no `q` text search). 10-page safety cap (= 2000 won deals)
         // to bound runtime in pathological cases.
+        //
+        // Identical pass for Shipped (845719) below — same logic applies:
+        // Shopify-generated and other shipped deals can fall off the main
+        // paginated list when the team has had recent activity on other
+        // deals (notes, edits, workflow updates), since the main fetch
+        // sorts by hs_lastmodifieddate DESC and caps at `limit` deals.
         if (!stage && !q) {
-          const wonFilters = [{ propertyName: 'dealstage', operator: 'EQ', value: 'closedwon' }];
-          if (rep) wonFilters.push({ propertyName: 'hubspot_owner_id', operator: 'EQ', value: rep });
           const seenIds = new Set(hsDeals.map(d => d.id));
-          let wonAfter;
-          for (let pagesFetched = 0; pagesFetched < 10; pagesFetched++) {
-            const wonBody = {
-              filterGroups: [{ filters: wonFilters }],
-              properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
-                           'closedate','payment_status','payment_type','po_','tracking_number','carrier__c'],
-              sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
-              limit: 200,
-              ...(wonAfter ? { after: wonAfter } : {}),
-            };
-            const wonRes = await httpsRequest({
-              hostname: 'api.hubapi.com',
-              path: '/crm/v3/objects/deals/search',
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-            }, wonBody);
-            const wonPage = wonRes.body?.results || [];
-            wonPage.forEach(d => { if (!seenIds.has(d.id)) { seenIds.add(d.id); hsDeals.push(d); } });
-            const nextAfter = wonRes.body?.paging?.next?.after;
-            if (!nextAfter || wonPage.length < 200) break;
-            wonAfter = String(nextAfter);
-          }
+          const dedicatedPass = async (stageValue) => {
+            const stageFilters = [{ propertyName: 'dealstage', operator: 'EQ', value: stageValue }];
+            if (rep) stageFilters.push({ propertyName: 'hubspot_owner_id', operator: 'EQ', value: rep });
+            let afterCur;
+            for (let pagesFetched = 0; pagesFetched < 10; pagesFetched++) {
+              const body = {
+                filterGroups: [{ filters: stageFilters }],
+                properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
+                             'closedate','payment_status','payment_type','po_','tracking_number','carrier__c'],
+                sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+                limit: 200,
+                ...(afterCur ? { after: afterCur } : {}),
+              };
+              const res = await httpsRequest({
+                hostname: 'api.hubapi.com',
+                path: '/crm/v3/objects/deals/search',
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+              }, body);
+              const page = res.body?.results || [];
+              page.forEach(d => { if (!seenIds.has(d.id)) { seenIds.add(d.id); hsDeals.push(d); } });
+              const nextAfter = res.body?.paging?.next?.after;
+              if (!nextAfter || page.length < 200) break;
+              afterCur = String(nextAfter);
+            }
+          };
+          await dedicatedPass('closedwon');
+          await dedicatedPass('845719');
         }
       }
 

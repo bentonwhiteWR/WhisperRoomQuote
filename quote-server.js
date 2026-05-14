@@ -552,7 +552,7 @@ const server = http.createServer(async (req, res) => {
 
   // ── Auth gate ──
   // Public routes — no auth required but rate limited + token validated
-  const isPublicRoute = pathname.startsWith('/q/') || pathname.startsWith('/i/') || pathname.startsWith('/o/') || pathname.startsWith('/po/') || pathname === '/api/accept-quote' || pathname === '/api/update-specs';
+  const isPublicRoute = pathname.startsWith('/q/') || pathname.startsWith('/i/') || pathname.startsWith('/o/') || pathname.startsWith('/po/') || pathname === '/api/accept-quote' || pathname === '/api/update-specs' || pathname === '/api/stripe/webhook';
   if (isPublicRoute) {
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
     if (!checkRateLimit(ip, 30, 60000)) {

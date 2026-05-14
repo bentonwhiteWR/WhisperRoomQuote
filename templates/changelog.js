@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.20.4', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Stripe invoices were doubling on the first v1.20.3 test — real total roughly 2x expected. Root cause: v1.20.3 fixed the $0 bug by passing `pending_invoice_items_behavior: include` on the new invoice, which works on a clean customer but ALSO sweeps in any orphan pending invoiceitems left behind by prior failed runs (every pre-v1.20.3 attempt created invoiceitems that never attached to anything — they accumulated as pending on the customer). New invoice = today\'s items + yesterday\'s ghost items = doubled total. Fix: draft the (empty) invoice FIRST, then create each invoiceitem with `invoice: draft.id` so it attaches directly. No pending-bucket interaction at all, so orphan items from any past or future failed run cannot contaminate. `pending_invoice_items_behavior: exclude` set explicitly as belt-and-suspenders. Note: stale pending invoiceitems on test customers from earlier runs are still sitting in Stripe sandbox — harmless under the new flow, but worth cleaning up via Stripe dashboard (test mode → Customers → find each → delete pending invoiceitems) or by deleting the test customers entirely.'},
+      ]
+    },
+    {
       v:'1.20.3', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Stripe invoices were finalizing at $0 even when the quote had real line items. Root cause: Stripe API versions ≥ 2022-11-15 default `pending_invoice_items_behavior` to `exclude`, which means the freshly-created `/v1/invoiceitems` did not attach to the draft invoice. Now `lib/stripe.js` passes `pending_invoice_items_behavior: include` on the `/v1/invoices` POST so the items attach as expected. (Diagnostic `/api/debug/stripe-diagnostic` already had this flag, which is why diagnostic invoices worked but rep-flow invoices did not.)'},

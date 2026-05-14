@@ -1086,6 +1086,50 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Debug: dump HubSpot deal by ID — returns raw properties so we can see
+  // the actual internal dealstage/pipeline values vs. what we filter on.
+  // Use when a deal exists in HubSpot's UI but isn't appearing in our Deal Hub.
+  if (pathname.startsWith('/api/debug/deal/') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const dealId = pathname.replace('/api/debug/deal/', '').trim();
+      if (!dealId) { json({ error: 'No deal ID' }, 400); return; }
+      const r = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path:     `/crm/v3/objects/deals/${dealId}?properties=dealname,dealstage,pipeline,amount,hubspot_owner_id,hs_lastmodifieddate,createdate,closedate,payment_status,payment_type,po_,tracking_number,carrier__c`,
+        method:   'GET',
+        headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+      });
+      // Also fetch the pipeline definition so we can map stage IDs to display names
+      let pipelineDef = null;
+      const pipelineId = r.body?.properties?.pipeline;
+      if (pipelineId) {
+        try {
+          const pr = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path:     `/crm/v3/pipelines/deals/${pipelineId}`,
+            method:   'GET',
+            headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+          });
+          pipelineDef = {
+            label:  pr.body?.label,
+            id:     pr.body?.id,
+            stages: (pr.body?.stages || []).map(s => ({ id: s.id, label: s.label, displayOrder: s.displayOrder })),
+          };
+        } catch(e) { /* non-fatal */ }
+      }
+      json({
+        rawHubspotDeal: r.body,
+        pipelineDefinition: pipelineDef,
+        ourFilter: {
+          BOARD_STAGES: ['appointmentscheduled', 'qualifiedtobuy', 'contractsent', 'closedwon', '845719'],
+          matchesOurFilter: ['appointmentscheduled','qualifiedtobuy','contractsent','closedwon','845719'].includes(r.body?.properties?.dealstage),
+        },
+      });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   // Debug: dump tracking cache
   if (pathname === '/api/debug/tracking-cache' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

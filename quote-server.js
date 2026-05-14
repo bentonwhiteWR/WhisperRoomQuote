@@ -1086,6 +1086,40 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Debug: search HubSpot deals by name (returns IDs + key properties).
+  // Use to find a deal's actual internal ID + dealstage when you only
+  // know the display name.
+  if (pathname === '/api/debug/find-deal' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const q = (parsed.query.q || '').trim();
+      if (!q) { json({ error: 'Missing q= query param' }, 400); return; }
+      const r = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path:     '/crm/v3/objects/deals/search',
+        method:   'POST',
+        headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+      }, {
+        query: q,
+        limit: 20,
+        properties: ['dealname','dealstage','pipeline','amount','hubspot_owner_id','hs_lastmodifieddate','createdate'],
+        sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+      });
+      const results = (r.body?.results || []).map(d => ({
+        id:             d.id,
+        dealname:       d.properties?.dealname,
+        dealstage:      d.properties?.dealstage,
+        pipeline:       d.properties?.pipeline,
+        amount:         d.properties?.amount,
+        hubspot_owner_id: d.properties?.hubspot_owner_id,
+        hs_lastmodifieddate: d.properties?.hs_lastmodifieddate,
+        createdate:     d.properties?.createdate,
+      }));
+      json({ query: q, total: r.body?.total, count: results.length, results });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   // Debug: dump HubSpot deal by ID — returns raw properties so we can see
   // the actual internal dealstage/pipeline values vs. what we filter on.
   // Use when a deal exists in HubSpot's UI but isn't appearing in our Deal Hub.

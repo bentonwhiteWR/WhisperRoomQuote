@@ -996,6 +996,45 @@ const server = http.createServer(async (req, res) => {
           );
         }
 
+        // Auto-advance HubSpot deal stage on payment. Move to "Verbal
+        // Confirmation" (contractsent) when the deal is still in an early
+        // stage. Leave alone if already at contractsent, closedwon, shipped
+        // (845719), or closedlost — never walk a deal backwards or stomp a
+        // closed state. Mirrors the manual quote-accept advance pattern
+        // (quote-server.js ~line 4287) but gated on current stage.
+        if (type === 'invoice.paid' && dealId) {
+          try {
+            const dsRes = await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path:     `/crm/v3/objects/deals/${dealId}?properties=dealstage`,
+              method:   'GET',
+              headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+            });
+            const currentStage = dsRes.body?.properties?.dealstage || '';
+            const ALREADY_AT_OR_PAST = new Set(['contractsent', 'closedwon', '845719', 'closedlost']);
+            if (!currentStage) {
+              writelog('warn', 'stripe.deal-stage-skipped', `Could not read current dealstage for ${dealId}; not advancing`, { quoteNum: quoteNumber, dealId: String(dealId), dealName });
+            } else if (ALREADY_AT_OR_PAST.has(currentStage)) {
+              writelog('info', 'stripe.deal-stage-noop', `Deal ${dealId} already at ${currentStage} — no advance needed`, { quoteNum: quoteNumber, dealId: String(dealId), dealName, meta: { currentStage } });
+            } else {
+              const patchRes = await httpsRequest({
+                hostname: 'api.hubapi.com',
+                path:     `/crm/v3/objects/deals/${dealId}`,
+                method:   'PATCH',
+                headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+              }, { properties: { dealstage: 'contractsent' } });
+              if (patchRes.status >= 400 || patchRes.body?.status === 'error') {
+                writelog('error', 'error.stripe.deal-stage', `Failed to advance deal ${dealId} from ${currentStage} → contractsent: ${patchRes.body?.message || patchRes.status}`, { quoteNum: quoteNumber, dealId: String(dealId), dealName, meta: { currentStage, response: patchRes.body } });
+              } else {
+                writelog('info', 'stripe.deal-stage-advanced', `Deal ${dealId} advanced ${currentStage} → contractsent on invoice.paid`, { quoteNum: quoteNumber, dealId: String(dealId), dealName, meta: { from: currentStage, to: 'contractsent' } });
+              }
+            }
+          } catch(e) {
+            console.warn('[stripe.webhook] dealstage advance failed:', e.message);
+            writelog('error', 'error.stripe.deal-stage', `Dealstage advance threw: ${e.message}`, { quoteNum: quoteNumber, dealId: String(dealId), dealName });
+          }
+        }
+
         writelog(
           type === 'invoice.payment_failed' ? 'warn' : 'info',
           `stripe.${type.replace('invoice.', 'invoice-')}`,
@@ -2160,6 +2199,10 @@ const server = http.createServer(async (req, res) => {
       // Enrich with DB quote data (latest quote number, accepted status)
       if (db && deals.length) {
         const ids = deals.map(d => d.id);
+        // Stripe paid status only counts toward the deal-card "green" state
+        // when the Stripe toggle is ON — matches the /api/deal-hub overlay
+        // gating from v1.20.8. HubSpot payment_status is always honored.
+        const stripeOn = await stripeLib.isEnabled();
         const isApItemForList = (i) => {
           const fields = [i?.name, i?.productName, i?.sku, i?.description].filter(Boolean);
           return fields.some(f => /^AP[\s\-_]?\d/i.test(f) || /^Acoustic\s+Package/i.test(f));
@@ -2175,6 +2218,7 @@ const server = http.createServer(async (req, res) => {
                (q.json_snapshot->>'acceptedAt')::text      as accepted_at,
                q.json_snapshot->>'quoteLabel'              as quote_label,
                q.json_snapshot->'lineItems'                as line_items,
+               q.json_snapshot->'stripe'->>'status'        as stripe_status,
                o.created_at                               as order_at
              FROM quotes q
              LEFT JOIN orders o ON o.quote_number = q.quote_number
@@ -2228,6 +2272,10 @@ const server = http.createServer(async (req, res) => {
               latestQuote: r.quote_number,
               total: r.total,
               accepted: r.accepted === 'true',
+              // Stripe-paid flag (any quote on this deal). Gated by the toggle
+              // so flipping Stripe OFF returns the deal-card UI to its
+              // pre-Stripe behavior — pure HubSpot signal only.
+              paid: stripeOn && r.stripe_status === 'paid',
               firstMdl,
               hasRM,
               hasCustomHole,
@@ -2276,6 +2324,11 @@ const server = http.createServer(async (req, res) => {
           if (r.accepted === 'true') {
             // Any quote for this deal being accepted marks the deal as accepted
             byDeal[r.deal_id].accepted = true;
+          }
+          // Any quote on this deal with a paid Stripe invoice marks the deal as paid
+          // (toggle-gated — see initialization above).
+          if (stripeOn && r.stripe_status === 'paid') {
+            byDeal[r.deal_id].paid = true;
           }
         });
         deals.forEach(d => {

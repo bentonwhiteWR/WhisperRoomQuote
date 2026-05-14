@@ -451,10 +451,13 @@ function renderBoard() {
       deals.forEach(d => {
         // A deal is "unintegrated" if it has no quotes / orders / accepted / payment
         // in our system — it's HubSpot-only. Applies regardless of stage.
-        const isUnintegrated = !d.latestQuote && !d.accepted && !d.paymentType;
+        const isUnintegrated = !d.latestQuote && !d.accepted && !d.paymentType && !d.paid;
         if (hideUnintegrated && isUnintegrated) return;
         const card=document.createElement('div');
-        const dealGreen = (d.accepted || !!d.paymentType) && d.id!==currentDealId;
+        // Green when ANY positive signal exists: quote accepted, payment type
+        // set (rep flagged it during order), Stripe-paid (server-aggregated,
+        // toggle-gated), or HubSpot deal property says paid.
+        const dealGreen = (d.accepted || !!d.paymentType || d.paid || d.paymentStatus === 'paid') && d.id!==currentDealId;
         card.className='deal-card'+(d.id===currentDealId?' active':'')+(dealGreen?' accepted':'')+(isUnintegrated?' unintegrated':'');
         card.onclick=()=>openDeal(d.id);
         const pt=d.paymentType||'';

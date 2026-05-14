@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.20.10', date:'May 14, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Deal cards in the Deal Hub now turn green when an invoice is paid (in addition to existing triggers: quote accepted, payment type set). Server-side: /api/deals/list aggregates `paid: true` if any quote on the deal has `json_snapshot.stripe.status === "paid"` — toggle-gated, so flipping Stripe OFF returns the deal-card UI to pure HubSpot signals. Client-side: `dealGreen` now also checks `d.paid` and HubSpot\'s `d.paymentStatus === "paid"`, so HubSpot Payments-paid invoices also trigger green (matching whatever automation you already have in HubSpot).'},
+        {t:'add', d:'On `invoice.paid` Stripe webhook, the HubSpot deal stage auto-advances to "Verbal Confirmation" (`contractsent`) if it\'s currently in an earlier stage. Skips deals already at `contractsent`, `closedwon`, `845719` (Shipped), or `closedlost` — never walks a deal backwards or stomps a closed state. Mirrors the manual quote-accept advance pattern (~line 4287) but gated on current stage. Three new log events: `stripe.deal-stage-advanced` (success), `stripe.deal-stage-noop` (already at or past target), `error.stripe.deal-stage` (HubSpot rejected the patch).'},
+      ]
+    },
+    {
       v:'1.20.9', date:'May 14, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Stripe webhook was getting 401 Unauthorized on every delivery attempt — `invoice.paid` events have been bouncing off our server since v1.20.0 shipped, never reaching the handler. Root cause: the global auth middleware at quote-server.js:564 rejects any `/api/*` request without a session cookie, and `/api/stripe/webhook` wasn\'t in the `isPublicRoute` allowlist. Stripe doesn\'t have session cookies (it authenticates via signed body), so every attempt failed before the signature-verification handler ran. Caught it by inspecting Stripe Workbench → Webhooks → Event deliveries; saw 9+ `401 ERR` attempts going back to yesterday. Fix: added `/api/stripe/webhook` to the public-routes list — the handler still verifies the Stripe signature, so security is preserved (only requests with a valid `Stripe-Signature` header matching `STRIPE_WEBHOOK_SECRET` get processed). Already-queued events will retry automatically over the next hour; can also click "Resend" in Stripe dashboard for immediate replay.'},

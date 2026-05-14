@@ -7169,6 +7169,7 @@ ${q.accepted ? `
             customer: effCustomer,
             lineItems: invoiceLineItems,
             daysUntilDue: 7,
+            expectedTotalCents: previewTotalCents,
           });
           if (quoteNumber && db) {
             snap.stripe = stripeInvoice;

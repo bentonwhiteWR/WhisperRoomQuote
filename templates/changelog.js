@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.20.3', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Stripe invoices were finalizing at $0 even when the quote had real line items. Root cause: Stripe API versions ≥ 2022-11-15 default `pending_invoice_items_behavior` to `exclude`, which means the freshly-created `/v1/invoiceitems` did not attach to the draft invoice. Now `lib/stripe.js` passes `pending_invoice_items_behavior: include` on the `/v1/invoices` POST so the items attach as expected. (Diagnostic `/api/debug/stripe-diagnostic` already had this flag, which is why diagnostic invoices worked but rep-flow invoices did not.)'},
+        {t:'log', d:'Added a fail-loud guard in `lib/stripe.js`: if the caller passes `expectedTotalCents > 0` but Stripe returns `amount_due = 0`, we now throw a clear error instead of returning a silently empty invoice. Surfaces as `error.stripe.invoice` in `/admin-log`. `/api/create-invoice` now passes `previewTotalCents` through so this assertion has real data to compare against.'},
+      ]
+    },
+    {
       v:'1.20.2', date:'May 13, 2026', tag:'feature',
       changes:[
         {t:'add', d:'Stripe integration on/off toggle, backed by kv_store.stripe_enabled (default ON). New pill button "Stripe: ON|OFF" in the /admin-log topbar — click flips it without redeploy. When OFF: /api/create-invoice skips Stripe creation entirely (HubSpot path runs unchanged), and /i/:quoteNumber Pay Now ignores any prior stripe.hostedUrl on the snapshot and falls back to HubSpot payment_link. Webhook handler stays active either way so in-flight Stripe invoices can still be marked paid. Two new routes: GET /api/stripe-toggle (read state, auth required) + POST /api/stripe-toggle (flip, auth required, writelogs stripe.toggle with rep + new state). 10-second in-memory cache on the read path so we don\'t hit the DB on every page load.'},

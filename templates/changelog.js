@@ -51,9 +51,15 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.20.12', date:'May 14, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Reverted v1.20.11. The dedicated Shipped catch-all pass surfaced more old shipped deals, but did NOT find the specific Shopify-generated deal the rep was hunting — meaning the deal isn\'t coming back from HubSpot\'s search even when explicitly filtered to dealstage=845719. Root cause is elsewhere (likely the Shopify deal has a stage ID other than 845719 even though it displays as "Shipped" in HubSpot UI, OR a pipeline-mismatch, OR a permission/scope issue). Reverting the catch-all pass while we investigate so the board doesn\'t fill with old shipped deals that weren\'t even the actual problem.'},
+      ]
+    },
+    {
       v:'1.20.11', date:'May 14, 2026', tag:'fix',
       changes:[
-        {t:'fix', d:'Shipped deals were falling off the Deal Hub when the team had recent activity on other deals. Root cause: the Closed Won stage had a dedicated catch-all pass at /api/deals/list (fetches every Closed Won regardless of how stale) but Shipped (845719) didn\'t — it relied entirely on the main 1000-deal paginated fetch sorted by hs_lastmodifieddate DESC. Once 1000 other deals had been touched after a shipped deal, it would silently disappear from the board. Discovered when a Shopify-generated deal in Shipped wasn\'t appearing for any rep even with All Reps + Hide HubSpot Only off. Fix: refactored the dedicated-pass logic into a shared helper and now runs it for BOTH closedwon AND 845719. Same 10-page (=2000-deal) safety cap per stage. Identical reasoning: Shipped deals are active orders the team is still working on (production, shipping, tracking) — they need to be visible regardless of recency. Note: HubSpot search index has a known ~5-60s lag on newly-modified objects, so a brand-new shipped deal may still take a moment to appear — but it won\'t silently vanish anymore.'},
+        {t:'fix', d:'Shipped deals were falling off the Deal Hub when the team had recent activity on other deals. Root cause: the Closed Won stage had a dedicated catch-all pass at /api/deals/list (fetches every Closed Won regardless of how stale) but Shipped (845719) didn\'t — it relied entirely on the main 1000-deal paginated fetch sorted by hs_lastmodifieddate DESC. Once 1000 other deals had been touched after a shipped deal, it would silently disappear from the board. Discovered when a Shopify-generated deal in Shipped wasn\'t appearing for any rep even with All Reps + Hide HubSpot Only off. Fix: refactored the dedicated-pass logic into a shared helper and now runs it for BOTH closedwon AND 845719. Same 10-page (=2000-deal) safety cap per stage. Identical reasoning: Shipped deals are active orders the team is still working on (production, shipping, tracking) — they need to be visible regardless of recency. Note: HubSpot search index has a known ~5-60s lag on newly-modified objects, so a brand-new shipped deal may still take a moment to appear — but it won\'t silently vanish anymore. (Reverted in v1.20.12 — did not solve the actual problem.)'},
       ]
     },
     {

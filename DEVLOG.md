@@ -1,6 +1,6 @@
 # WhisperRoom Quote Builder — Dev Log
 
-Internal development notes. Last updated 2026-05-12.
+Internal development notes. Last updated 2026-05-13.
 
 > **Read this first when starting a session.** The "Current focus" section below is the fastest way to know where we left off. Below that: session writeups, the audit (outstanding work), and the changelog table.
 
@@ -35,6 +35,42 @@ Internal development notes. Last updated 2026-05-12.
 5. Pay with `4242 4242 4242 4242`, any future expiry, any CVC. Watch `/admin-log` for `stripe.invoice-paid`. Check rep notification badge appears (top of dashboards).
 6. Flip toggle OFF. Open the SAME paid invoice URL — Pay Now should fall back to HubSpot. (It says "Pay" but HubSpot will say already-paid since you just paid Stripe; that's a known cross-system inconsistency to live with during parallel.)
 7. Flip toggle back ON. Run a Canadian quote → `stripe.invoice.skipped` with Canadian/wire reason.
+
+**Queued for next session — accept ACH + wire transfer on Stripe invoices:**
+
+User asked at EOD May 13 whether the current Stripe invoice accepts ACH and wire transfer. Short answer: not yet. `lib/stripe.js` doesn't pass `payment_settings.payment_method_types`, so Stripe defaults to whatever the account allows (cards only on most US accounts). Both are worth wiring — ACH especially.
+
+**Fee math (on a $16k order):**
+
+| Method | Stripe code | Fee | Settlement | $16k cost |
+|---|---|---|---|---|
+| Card | `card` | 2.9% + $0.30 | 2 business days | ~$464 |
+| ACH Direct Debit | `us_bank_account` | 0.8%, **cap $5** | 4–5 business days | $5 |
+| Wire transfer | `customer_balance` (`bank_transfer` / `us_bank_transfer`) | $8 flat | 1–2 business days | $8 |
+
+ACH is the no-brainer (already mentioned in the May 12 DEVLOG as worth enabling). Wire is the right call for $25k+ orders where the customer's outgoing wire fee (~$25 their side) is rounding error.
+
+**What it takes to enable (next session):**
+
+1. **Stripe Dashboard one-time activations (user does, no code):**
+   - Settings → Payment methods → enable **ACH Direct Debit** (instant for most accounts, no approval needed)
+   - Settings → Payment methods → enable **Bank transfers**, toggle US bank transfer specifically (may require Stripe approval — usually quick, sometimes asks for business documentation)
+
+2. **Code change (`lib/stripe.js`):**
+   - Pass `payment_settings.payment_method_types: ['card', 'us_bank_account', 'customer_balance']` on the invoice create
+   - Pass `payment_settings.payment_method_options.customer_balance.funding_type: 'bank_transfer'` + `.bank_transfer.type: 'us_bank_transfer'` (required for wire transfers; without it Stripe rejects the invoice)
+   - Read existing `allowCC` / `allowACH` flags from the `/api/create-invoice` body (HubSpot path already respects them around `quote-server.js:6916`). Add a third `allowWire` flag for rep-side per-quote control. Default all three ON for new quotes.
+   - Stretch `days_until_due` from 7 to 14 if ACH is on (bank verification + clearing can eat a week — currently a 7-day due date will routinely show "past due" before ACH clears)
+
+3. **Edge cases worth handling:**
+   - `customer_balance` requires both customer name AND email — email gating from v1.20.2 covers half; add a defensive name check before flipping wire on (we usually have a name but it's worth being explicit so the entire invoice doesn't 400)
+   - Wire flow on the hosted page: customer sees "Funding Instructions" with a unique bank account # + reference ID, wires from their bank as usual, Stripe matches incoming wire by reference. Invoice stays `open` until the wire posts to Stripe's account (1–2 days). Webhook event is `invoice.paid` same as cards/ACH — no special handling needed
+   - ACH on the hosted page: customer enters bank info via Plaid Instant Verification (fast, common) or micro-deposits (2 days). Invoice goes `open` → `processing` → `paid` over 4–5 days. May want to handle the new `processing` status in webhook + admin-log so it doesn't look like the payment failed during the gap
+   - UX: when ACH/wire is available alongside cards, the hosted page shows a tab/dropdown. For really large invoices (>$25k) consider suppressing `card` per-invoice so the customer doesn't accidentally hit the 2.9% fee — could be a future "auto-suppress cards above $X" rule
+
+**Recommendation locked from EOD May 13 discussion:** wire all three (card / ACH / wire), gate them via existing `allowCC` + `allowACH` body flags + new `allowWire`. ~30 min of code + the Dashboard activation. Mirror HubSpot's per-quote control.
+
+---
 
 **Open questions / things to investigate next session:**
 - The "already paid $0 invoice" symptom from today should be fixed by v1.20.2's guard — but worth tracing WHY a quote ended up with $0 total. Likely freight-only or pickup-only quote (no product lines). The `stripe.invoice.skipped` meta will now show `lineItemCount` so we can confirm.

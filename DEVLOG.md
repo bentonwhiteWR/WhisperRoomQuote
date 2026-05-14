@@ -1,16 +1,20 @@
 # WhisperRoom Quote Builder — Dev Log
 
-Internal development notes. Last updated 2026-05-13.
+Internal development notes. Last updated 2026-05-14.
 
 > **Read this first when starting a session.** The "Current focus" section below is the fastest way to know where we left off. Below that: session writeups, the audit (outstanding work), and the changelog table.
 
 ---
 
-## Current focus (2026-05-13, end-of-day handoff — Stripe Option A on staging)
+## Current focus (2026-05-14, mid-day — Stripe ACH+wire shipped)
 
 **Most recent shipped to PROD:** v1.19.19 — tax-not-calculated popup fix (only warns when Calculate Tax was genuinely never run; no longer fires for legitimate no-nexus $0 results). Pushed direct to main today without bringing Stripe along.
 
-**On STAGING (NOT YET promoted to main):** v1.20.0 → v1.20.6 — Stripe Invoice integration, Option A. Today's progression:
+**On STAGING (NOT YET promoted to main):** v1.20.0 → v1.20.7 — Stripe Invoice integration, Option A + multi-method.
+
+- **v1.20.7** (this session, May 14) — accept ACH + wire alongside card. Per-quote `allowCC` / `allowACH` / `allowWire` checkboxes in both Create Invoice modals (quote builder + deal hub), all default ON. `lib/stripe.js` builds `payment_settings.payment_method_types` dynamically; when wire is on, adds the required `customer_balance.bank_transfer.type: us_bank_transfer`. Days-until-due stretches 7 → 14 when ACH on so legit payers don't see "past due" before ACH clears. Defensive: wire silently drops (`stripe.invoice.wire-dropped` log) if customer has no name. Use case: uncheck CC on $50k+ orders to skip 3.4% fee. Stripe Dashboard ACH + Bank Transfers must be enabled in test mode for this to actually work — user confirmed both enabled May 14.
+
+Yesterday's progression (May 13):
 
 - **v1.20.6** — switched the discount display from per-line baking (v1.20.5) to a native Stripe Coupon attached to the invoice via `discounts[]`. Hosted invoice now shows a single "Discount" row under the subtotal — the standard B2B-invoice convention. Freight/tax/install invoiceitems flagged `discountable:false` so the coupon only hits product lines (matches HubSpot's `hs_discount_percentage` scope). Coupon is created one-shot per invoice (`duration:once`, `max_redemptions:1`) and named "N% Off — Quote W-XXX" so it's traceable in the Stripe dashboard. `previewTotalCents` reworked to mirror Stripe's aggregate-then-round math so it matches `amount_due` to the cent. Also polish: friendly `footer` ("Thank you for choosing WhisperRoom…"), and `custom_fields` for Quote Number + Deal ID so support can cross-reference from Stripe. Logo/brand color/business name are configured separately in Stripe Dashboard → Settings → Branding (one-time, no code) and propagate to all hosted invoices automatically.
 - **v1.20.5** — wired the quote-level discount into Stripe. HubSpot's path was passing `hs_discount_percentage` per line; Stripe has no equivalent field, so the discount silently dropped (Stripe total = gross instead of net). `lib/stripe.js` now bakes `item.lineDiscount` into each line's cents amount and appends "(N% off, was $X)" to the description so the customer sees the discount on the hosted page. Freight/tax/install lines carry `lineDiscount=0` already, so the discount stays product-only just like HubSpot. `previewTotalCents` in `/api/create-invoice` updated to apply the same math so the fail-loud guard does not misfire and the success-log preview matches Stripe's finalized `amount_due`.
@@ -36,39 +40,23 @@ Internal development notes. Last updated 2026-05-13.
 6. Flip toggle OFF. Open the SAME paid invoice URL — Pay Now should fall back to HubSpot. (It says "Pay" but HubSpot will say already-paid since you just paid Stripe; that's a known cross-system inconsistency to live with during parallel.)
 7. Flip toggle back ON. Run a Canadian quote → `stripe.invoice.skipped` with Canadian/wire reason.
 
-**Queued for next session — accept ACH + wire transfer on Stripe invoices:**
+**Queued (per May 14 ship-to-process discussion):**
 
-User asked at EOD May 13 whether the current Stripe invoice accepts ACH and wire transfer. Short answer: not yet. `lib/stripe.js` doesn't pass `payment_settings.payment_method_types`, so Stripe defaults to whatever the account allows (cards only on most US accounts). Both are worth wiring — ACH especially.
+- **Embedded Payment Element on /i/ — explicitly DEFERRED** (Option B from May 13 discussion). User decided May 14 to stick with the redirect-to-Stripe-hosted flow for now. Reasoning: customers don't perceive the redirect as friction the way developers do, and embedded would mean rebuilding Stripe's hosted-page UX (already-paid state, decline retries, 3DS challenge, ACH processing state UI, wire funding-instructions display). Total cost: card-only embedded ~1 day, +ACH ~2 days, +wire ~3-4 days. Re-evaluate after 1-2 weeks of real customer use if anyone balks at the redirect.
 
-**Fee math (on a $16k order):**
+- **Order-processing settlement policy (May 14 decision):** payment method dictates how long to hold before shipping.
+  - **Wire** (`customer_balance`): clears in 1–2 business days; **effectively irreversible** once received. Process on `invoice.paid`. Safe.
+  - **Card**: clears instantly; chargeback window is 120 days (Visa/MC) but practical risk is 30–60 days. Process on `invoice.paid` for normal orders. Keep signed BOL + order acceptance as chargeback evidence.
+  - **ACH**: clears in 4–5 business days; **reversal window is 60 days** for "unauthorized" reasons. Process on `invoice.paid` for established customers. For **first-time customer + large order ($5k+)**, hold 7 days after `paid` as a fraud margin.
+  - Stripe webhook fires `invoice.paid` ONLY after bank-network clearing for ACH/wire (not on initial submit) — so the webhook is a real "money has settled to Stripe" signal, not a "customer hit submit" signal.
 
-| Method | Stripe code | Fee | Settlement | $16k cost |
-|---|---|---|---|---|
-| Card | `card` | 2.9% + $0.30 | 2 business days | ~$464 |
-| ACH Direct Debit | `us_bank_account` | 0.8%, **cap $5** | 4–5 business days | $5 |
-| Wire transfer | `customer_balance` (`bank_transfer` / `us_bank_transfer`) | $8 flat | 1–2 business days | $8 |
+- **ACH `processing` status follow-up** (deferred — would be nice not urgent): Between customer-submits-ACH (day 0) and `paid` (day 4–5), Stripe's `payment_intent.status` is `processing`. We don't currently surface this in `/admin-log` or anywhere rep-facing. Means an ACH-in-flight order is invisible to reps during the gap. Worth adding a `stripe.invoice.processing` log event (subscribed via webhook) + maybe a "ACH pending" badge on the deal hub once enough orders flow through to justify the UI.
 
-ACH is the no-brainer (already mentioned in the May 12 DEVLOG as worth enabling). Wire is the right call for $25k+ orders where the customer's outgoing wire fee (~$25 their side) is rounding error.
+- **Cross-system "paid" sync** (deferred — same as yesterday): on `invoice.paid` from Stripe, also patch the HubSpot invoice to paid so reconciliation isn't manual. Not urgent during the observation period since HubSpot AR aging reads deal amounts, not invoice paid-state.
 
-**What it takes to enable (next session):**
+- **New-customer-ACH hold automation** (deferred): rep-side notification when a $5k+ ACH payment comes from a first-time customer, so the rep can verify before shipping. Nice-to-have once we see real volume.
 
-1. **Stripe Dashboard one-time activations (user does, no code):**
-   - Settings → Payment methods → enable **ACH Direct Debit** (instant for most accounts, no approval needed)
-   - Settings → Payment methods → enable **Bank transfers**, toggle US bank transfer specifically (may require Stripe approval — usually quick, sometimes asks for business documentation)
-
-2. **Code change (`lib/stripe.js`):**
-   - Pass `payment_settings.payment_method_types: ['card', 'us_bank_account', 'customer_balance']` on the invoice create
-   - Pass `payment_settings.payment_method_options.customer_balance.funding_type: 'bank_transfer'` + `.bank_transfer.type: 'us_bank_transfer'` (required for wire transfers; without it Stripe rejects the invoice)
-   - Read existing `allowCC` / `allowACH` flags from the `/api/create-invoice` body (HubSpot path already respects them around `quote-server.js:6916`). Add a third `allowWire` flag for rep-side per-quote control. Default all three ON for new quotes.
-   - Stretch `days_until_due` from 7 to 14 if ACH is on (bank verification + clearing can eat a week — currently a 7-day due date will routinely show "past due" before ACH clears)
-
-3. **Edge cases worth handling:**
-   - `customer_balance` requires both customer name AND email — email gating from v1.20.2 covers half; add a defensive name check before flipping wire on (we usually have a name but it's worth being explicit so the entire invoice doesn't 400)
-   - Wire flow on the hosted page: customer sees "Funding Instructions" with a unique bank account # + reference ID, wires from their bank as usual, Stripe matches incoming wire by reference. Invoice stays `open` until the wire posts to Stripe's account (1–2 days). Webhook event is `invoice.paid` same as cards/ACH — no special handling needed
-   - ACH on the hosted page: customer enters bank info via Plaid Instant Verification (fast, common) or micro-deposits (2 days). Invoice goes `open` → `processing` → `paid` over 4–5 days. May want to handle the new `processing` status in webhook + admin-log so it doesn't look like the payment failed during the gap
-   - UX: when ACH/wire is available alongside cards, the hosted page shows a tab/dropdown. For really large invoices (>$25k) consider suppressing `card` per-invoice so the customer doesn't accidentally hit the 2.9% fee — could be a future "auto-suppress cards above $X" rule
-
-**Recommendation locked from EOD May 13 discussion:** wire all three (card / ACH / wire), gate them via existing `allowCC` + `allowACH` body flags + new `allowWire`. ~30 min of code + the Dashboard activation. Mirror HubSpot's per-quote control.
+- **Auto-suppress CC above $X threshold** (deferred): currently the rep manually unchecks the CC box on $50k+ orders. Could auto-uncheck-and-warn at $50k. Low priority since the $50k warning banner already nudges the rep.
 
 ---
 
@@ -346,6 +334,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.20.7  | 2026-05-14 | ACH + wire transfer enabled on Stripe invoices. New `Wire Transfer` checkbox alongside existing CC and ACH in both the quote-builder Create Invoice modal (`invoiceAllowWire`) and the deal-hub mini modal (`dhInvoiceAllowWire`); all three default ON. `lib/stripe.js` builds `payment_settings.payment_method_types` dynamically from `allowCC` / `allowACH` / `allowWire`, and when wire is on adds the required `customer_balance.bank_transfer.type: us_bank_transfer` config (Stripe rejects without it). Defensive guard: wire silently drops with a `stripe.invoice.wire-dropped` log if the customer has no name (Stripe `customer_balance` requires one). Days-until-due stretches from 7 → 14 when ACH is on so legit payers don't see "past due" reminders before ACH clears (4–5 business days). `paymentMethods` + `daysUntilDue` added to `stripe.invoice.created` log meta. Use case: uncheck CC on $50k+ orders to skip the 3.4% fee — the existing $50k CC fee warning surfaces this dynamically. |
 | 1.20.6  | 2026-05-13 | Stripe hosted invoice discount now renders as a single "Discount" row under the subtotal instead of per-line `(N% off, was $X)`. `lib/stripe.js` creates a one-shot Stripe Coupon (`percent_off`, `duration:once`, `max_redemptions:1`, named after the quote) and attaches it via `discounts[]` on the invoice. Freight/tax/install invoiceitems are marked `discountable:false` so the coupon only applies to product lines — same scope as HubSpot's `hs_discount_percentage`. `/api/create-invoice` passes `discountPct` through; `previewTotalCents` reworked to mirror Stripe's aggregate-then-round math (matches `amount_due` to the cent). Polish: added a friendly `footer` and surfaced Quote Number + Deal ID as `custom_fields` for customer-support traceability. Logo/brand color/business name are configured separately in Stripe Dashboard → Settings → Branding (one-time, no code). |
 | 1.20.5  | 2026-05-13 | Stripe invoices now honor the quote-level discount. HubSpot's path was passing `hs_discount_percentage` on each line; Stripe has no per-line percentage field, so the discount was silently dropped (Stripe total = gross instead of net). `lib/stripe.js` now bakes `item.lineDiscount` into the cents amount on each `/v1/invoiceitems` POST and appends "(N% off, was $X)" to the description for customer transparency. Only product lines carry `lineDiscount` (freight/tax/install carry 0), so the discount stays product-only — same scope as HubSpot. `/api/create-invoice`'s `previewTotalCents` calc updated to match so the fail-loud guard does not misfire on discounted invoices and the success log shows the actual expected net. |
 | 1.20.4  | 2026-05-13 | Fixes the Stripe doubling bug found on the first v1.20.3 test (invoice ~2× expected). v1.20.3's `pending_invoice_items_behavior: include` worked but ALSO swept in orphan pending invoiceitems left over from pre-v1.20.3 failed runs (every attempt created invoiceitems that never attached to anything → accumulated on the customer). Fix: draft the (empty) invoice FIRST in `lib/stripe.js`, then create each invoiceitem with `invoice: draft.id` so it attaches directly. No pending-bucket interaction. `pending_invoice_items_behavior: exclude` set explicitly. Stale pending invoiceitems on test customers from earlier runs are now harmless but worth cleaning up via Stripe dashboard (test mode). |

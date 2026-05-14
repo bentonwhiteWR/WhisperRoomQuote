@@ -6516,8 +6516,9 @@ async function qbHubCreateInvoice(quoteNumber) {
     document.getElementById('invoicePreviewTotal').textContent = fmt(previewTotal);
 
     // Reset payment methods to defaults
-    document.getElementById('invoiceAllowCC').checked  = true;
-    document.getElementById('invoiceAllowACH').checked = true;
+    document.getElementById('invoiceAllowCC').checked   = true;
+    document.getElementById('invoiceAllowACH').checked  = true;
+    document.getElementById('invoiceAllowWire').checked = true;
 
     // Show $50k CC warning if applicable
     const warning = document.getElementById('invoiceCCWarning');
@@ -7482,8 +7483,9 @@ async function createInvoice() {
     document.getElementById('invoicePreviewTotal').textContent = '$' + total.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
     // Reset payment methods to defaults
-    document.getElementById('invoiceAllowCC').checked = true;
-    document.getElementById('invoiceAllowACH').checked = true;
+    document.getElementById('invoiceAllowCC').checked   = true;
+    document.getElementById('invoiceAllowACH').checked  = true;
+    document.getElementById('invoiceAllowWire').checked = true;
 
     // Show $50k CC warning if applicable
     const warning = document.getElementById('invoiceCCWarning');
@@ -7527,8 +7529,9 @@ async function confirmCreateInvoice() {
     install:   pending.snap.install   || null,
     discount:  pending.snap.discount  || { type:'pct', value:0 },
     advanceStage: false,
-    allowCC:  document.getElementById('invoiceAllowCC')?.checked  !== false,
-    allowACH: document.getElementById('invoiceAllowACH')?.checked !== false,
+    allowCC:   document.getElementById('invoiceAllowCC')?.checked   !== false,
+    allowACH:  document.getElementById('invoiceAllowACH')?.checked  !== false,
+    allowWire: document.getElementById('invoiceAllowWire')?.checked !== false,
     ownerId:   pending.snap.ownerId   || linkedDeal?.ownerId || null,
     contactId: pending.snap.contactId || null,
     customer:  pending.snap.customer  || {},
@@ -7541,8 +7544,9 @@ async function confirmCreateInvoice() {
     install: installData,
     discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
     advanceStage: false,
-    allowCC:  document.getElementById('invoiceAllowCC')?.checked !== false,
-    allowACH: document.getElementById('invoiceAllowACH')?.checked !== false,
+    allowCC:   document.getElementById('invoiceAllowCC')?.checked   !== false,
+    allowACH:  document.getElementById('invoiceAllowACH')?.checked  !== false,
+    allowWire: document.getElementById('invoiceAllowWire')?.checked !== false,
     ownerId: linkedDeal?.ownerId || window._lastPushedOwnerId || document.getElementById('repSelect').value || null,
     contactId: window._lastPushedContactId || null,
     customer: {
@@ -7645,7 +7649,14 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
           <input type="checkbox" id="invoiceAllowACH" checked style="accent-color:var(--accent);width:15px;height:15px;cursor:pointer">
           <div style="flex:1">
             <div style="font-size:13px;color:var(--text);font-weight:600">ACH / Bank Transfer</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:1px">Direct bank debit — lower processing fee</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px">Direct bank debit — 0.8% fee (capped at $5)</div>
+          </div>
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px">
+          <input type="checkbox" id="invoiceAllowWire" checked style="accent-color:var(--accent);width:15px;height:15px;cursor:pointer">
+          <div style="flex:1">
+            <div style="font-size:13px;color:var(--text);font-weight:600">Wire Transfer</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px">$8 flat fee — recommended for $25k+ orders</div>
           </div>
         </label>
       </div>

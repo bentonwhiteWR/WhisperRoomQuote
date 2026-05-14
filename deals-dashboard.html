@@ -893,8 +893,9 @@ async function createInvoiceForDeal(event, quoteNumber) {
   document.getElementById('dhInvoicePreviewName').textContent = q.dealName || q.quoteNumber || '—';
   document.getElementById('dhInvoicePreviewQuote').textContent = q.quoteNumber || '—';
   document.getElementById('dhInvoicePreviewTotal').textContent = fmtTotal;
-  document.getElementById('dhInvoiceAllowCC').checked = true;
-  document.getElementById('dhInvoiceAllowACH').checked = true;
+  document.getElementById('dhInvoiceAllowCC').checked   = true;
+  document.getElementById('dhInvoiceAllowACH').checked  = true;
+  document.getElementById('dhInvoiceAllowWire').checked = true;
 
   const warning = document.getElementById('dhInvoiceCCWarning');
   const feeEl   = document.getElementById('dhInvoiceCCFeeAmt');
@@ -932,6 +933,7 @@ async function confirmDealInvoice() {
         customer:    pending.snap.customer   || {},
         allowCC:     document.getElementById('dhInvoiceAllowCC').checked,
         allowACH:    document.getElementById('dhInvoiceAllowACH').checked,
+        allowWire:   document.getElementById('dhInvoiceAllowWire').checked,
       })
     });
     const data = await res.json();
@@ -2481,7 +2483,14 @@ const submitCreateApPo = submitApPoModal;
           <input type="checkbox" id="dhInvoiceAllowACH" checked style="accent-color:#ee6216;width:15px;height:15px;cursor:pointer">
           <div style="flex:1">
             <div style="font-size:13px;color:var(--text,#e8e8e8);font-weight:600">ACH / Bank Transfer</div>
-            <div style="font-size:11px;color:var(--muted,#666);margin-top:1px">Direct bank debit — lower processing fee</div>
+            <div style="font-size:11px;color:var(--muted,#666);margin-top:1px">Direct bank debit — 0.8% fee (capped at $5)</div>
+          </div>
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;background:var(--surface2,#222);border:1px solid var(--border,#2e2e2e);border-radius:7px">
+          <input type="checkbox" id="dhInvoiceAllowWire" checked style="accent-color:#ee6216;width:15px;height:15px;cursor:pointer">
+          <div style="flex:1">
+            <div style="font-size:13px;color:var(--text,#e8e8e8);font-weight:600">Wire Transfer</div>
+            <div style="font-size:11px;color:var(--muted,#666);margin-top:1px">$8 flat fee &mdash; recommended for $25k+ orders</div>
           </div>
         </label>
       </div>

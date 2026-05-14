@@ -6788,7 +6788,7 @@ ${q.accepted ? `
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
       const body = JSON.parse(await readBody(req));
-      const { dealId, quoteNumber, lineItems, freight, tax, discount, ownerId, contactId, customer, allowCC, allowACH, install } = body;
+      const { dealId, quoteNumber, lineItems, freight, tax, discount, ownerId, contactId, customer, allowCC, allowACH, allowWire, install } = body;
 
       if (!dealId) { json({ error: 'No deal ID' }, 400); return; }
 
@@ -7180,9 +7180,15 @@ ${q.accepted ? `
             dealId,
             customer: effCustomer,
             lineItems: invoiceLineItems,
-            daysUntilDue: 7,
+            // daysUntilDue omitted → lib chooses 14 when ACH on, 7 otherwise.
             expectedTotalCents: previewTotalCents,
             discountPct: discPct > 0 ? parseFloat((discPct * 100).toFixed(4)) : 0,
+            // Per-quote payment-method gating from the rep UI. Undefined →
+            // default true at the lib boundary, so old clients that don't
+            // send these still get the full set.
+            allowCC:   allowCC   !== false,
+            allowACH:  allowACH  !== false,
+            allowWire: allowWire !== false,
           });
           if (quoteNumber && db) {
             snap.stripe = stripeInvoice;
@@ -7198,6 +7204,8 @@ ${q.accepted ? `
               lineItemCount: (invoiceLineItems||[]).length,
               positiveItemCount: positiveItems.length,
               previewTotalCents,
+              paymentMethods: stripeInvoice.paymentMethods,
+              daysUntilDue: stripeInvoice.daysUntilDue,
             },
           });
         }

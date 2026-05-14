@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.20.7', date:'May 14, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Stripe invoices now accept ACH and wire transfer alongside credit card. Per-quote toggles in the Create Invoice modal let reps disable any combination of methods — the typical use case is unchecking Credit Card on $50k+ orders to skip the ~3.4% processing fee in favor of wire ($8 flat) or ACH (0.8%, capped at $5). The existing $50k CC fee warning still surfaces dynamically. New checkbox: "Wire Transfer — $8 flat fee, recommended for $25k+ orders" in both the quote builder modal (`invoiceAllowWire`) and the deal hub mini-invoice modal (`dhInvoiceAllowWire`). All three default ON for new quotes.'},
+        {t:'add', d:'lib/stripe.js: createInvoiceForQuote now builds `payment_settings.payment_method_types` dynamically from allowCC/allowACH/allowWire flags. When wire is on, also passes the required `payment_method_options.customer_balance.bank_transfer.type: us_bank_transfer` (Stripe rejects the invoice without it). Defensive guard: if wire is requested but the customer has no name on file, drops wire from the list and logs `stripe.invoice.wire-dropped` rather than 400-ing the whole invoice (Stripe customer_balance requires a name).'},
+        {t:'add', d:'ACH due-date stretch: when allowACH is true, days_until_due defaults to 14 instead of 7. ACH takes 4–5 business days to clear at the bank-network level; a 7-day window would show legitimate ACH payers "past due" reminders before their bank confirms. Caller can still override explicitly via the daysUntilDue param. The active method list and effective due-date now surface in `stripe.invoice.created` log meta (`paymentMethods`, `daysUntilDue`) so we can verify from /admin-log which methods a customer actually saw on each invoice.'},
+      ]
+    },
+    {
       v:'1.20.6', date:'May 13, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Stripe hosted invoice now shows the quote discount as a single "Discount" row under the subtotal (the standard B2B-invoice convention) instead of v1.20.5\'s per-line "(N% off, was $X)" notation. Implementation: `lib/stripe.js` creates a one-shot Stripe Coupon (percent_off, duration=once, max_redemptions=1, named "N% Off — Quote W-XXX") and attaches it to the invoice via `discounts[]`. Freight/tax/install invoiceitems are marked `discountable: false` so the coupon only applies to product lines — matches HubSpot\'s `hs_discount_percentage` scope exactly. /api/create-invoice now passes `discountPct` through. `previewTotalCents` updated to mirror Stripe\'s aggregate-then-round math so it matches `amount_due` to the cent.'},

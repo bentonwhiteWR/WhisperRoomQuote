@@ -7146,15 +7146,22 @@ ${q.accepted ? `
         // "already paid" hosted-invoice page for the customer. Skip creation
         // entirely below the dollar threshold.
         const positiveItems = (invoiceLineItems || []).filter(i => parseFloat(i.price || 0) > 0 && !i.isCredit);
-        // Mirror lib/stripe.js: bake the per-line discount percentage into the
-        // expected total so this matches Stripe's finalized amount_due and the
-        // fail-loud assertion does not trigger on legitimate discounted totals.
-        const previewTotalCents = positiveItems.reduce((s, i) => {
+        // Mirror Stripe's coupon-on-invoice math: aggregate the discountable
+        // subtotal (items with lineDiscount > 0 = product lines), aggregate
+        // the non-discountable subtotal (freight/tax/install), apply the
+        // discount percentage to the discountable subtotal, then sum. Doing
+        // it per-line and rounding each can drift by a cent or two from
+        // Stripe's aggregate-then-round, which would spuriously trip the
+        // fail-loud guard or look like a mismatch in the success log.
+        let discountableSubCents = 0;
+        let nonDiscountableSubCents = 0;
+        for (const i of positiveItems) {
           const qty = parseInt(i.qty || 1, 10) || 1;
-          const baseCents = Math.round(parseFloat(i.price) * 100) * qty;
-          const discPct = Math.max(0, Math.min(100, parseFloat(i.lineDiscount || 0))) / 100;
-          return s + Math.round(baseCents * (1 - discPct));
-        }, 0);
+          const cents = Math.round(parseFloat(i.price) * 100) * qty;
+          if (parseFloat(i.lineDiscount || 0) > 0) discountableSubCents += cents;
+          else nonDiscountableSubCents += cents;
+        }
+        const previewTotalCents = discountableSubCents + nonDiscountableSubCents - Math.round(discountableSubCents * discPct);
 
         const stripeOn = await stripeLib.isEnabled();
         if (!stripeOn) {
@@ -7175,6 +7182,7 @@ ${q.accepted ? `
             lineItems: invoiceLineItems,
             daysUntilDue: 7,
             expectedTotalCents: previewTotalCents,
+            discountPct: discPct > 0 ? parseFloat((discPct * 100).toFixed(4)) : 0,
           });
           if (quoteNumber && db) {
             snap.stripe = stripeInvoice;

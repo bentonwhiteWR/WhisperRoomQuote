@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.20.6', date:'May 13, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Stripe hosted invoice now shows the quote discount as a single "Discount" row under the subtotal (the standard B2B-invoice convention) instead of v1.20.5\'s per-line "(N% off, was $X)" notation. Implementation: `lib/stripe.js` creates a one-shot Stripe Coupon (percent_off, duration=once, max_redemptions=1, named "N% Off — Quote W-XXX") and attaches it to the invoice via `discounts[]`. Freight/tax/install invoiceitems are marked `discountable: false` so the coupon only applies to product lines — matches HubSpot\'s `hs_discount_percentage` scope exactly. /api/create-invoice now passes `discountPct` through. `previewTotalCents` updated to mirror Stripe\'s aggregate-then-round math so it matches `amount_due` to the cent.'},
+        {t:'ui', d:'Polish on the Stripe hosted invoice: added a friendly footer ("Thank you for choosing WhisperRoom. Questions? Reply to the email this came with, or contact your sales rep."), and surfaced Quote Number + Deal ID as `custom_fields` on the invoice so customer support can trace back to the source order from the Stripe dashboard or the hosted page. Logo, brand color, business name, and accent color are configured separately in the Stripe Dashboard → Settings → Branding (one-time, no code) and apply automatically to all hosted invoices.'},
+      ]
+    },
+    {
       v:'1.20.5', date:'May 13, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Stripe invoices now apply the quote-level discount. HubSpot path was already passing `hs_discount_percentage` on each line item, but Stripe has no per-line percentage field, so the discount silently dropped — invoice total matched the gross instead of the net. Fix: `lib/stripe.js` now bakes `item.lineDiscount` into the cents amount before posting the invoiceitem, and appends "(N% off, was $X)" to the line description so the customer sees the discount on the hosted invoice. Only product lines carry `lineDiscount` (freight/tax/install carry 0), so the discount stays product-only just like the HubSpot path. Also updated `/api/create-invoice` to apply the same discount math when computing `previewTotalCents`, so the success-log preview matches Stripe\'s finalized amount_due instead of showing a confusing pre-discount expectation.'},

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.21.5', date:'May 15, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Shopify Orders button was invisible in light mode — used hardcoded dark-mode colors (rgba(255,255,255,.08) background, #f0ede8 text) instead of theme-aware CSS vars. Switched to var(--surface2)/var(--text)/var(--border) so it renders correctly in both light and dark mode. Glow state now uses var(--orange-dim) + var(--orange) for the colored text, which scales appropriately to whatever `--orange` resolves to per theme (#c94f0e in light, #ee6216 in dark). Badge also re-themed.'},
+      ]
+    },
+    {
       v:'1.21.4', date:'May 15, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Ecommerce-owned (Shopify) deals are no longer hidden from the main Deal Hub board. They now appear in their HubSpot stage column (typically Shipped, since that\'s where the Shopify auto-creation workflow drops them) AND in the dedicated Shopify Orders drawer. The drawer is the curated lens for verification workflow (glow + Awaiting Verification section); the board is the full pipeline view. Ownership stays at ecommerce@whisperroom.com even after merging — these are Shopify-originated business and shouldn\'t count toward any individual rep\'s pipeline graph. Removes the v1.21.0 exclusion and the v1.21.1 `_shopify` flag workaround that was hiding them. mergeShopifyIntoAllDeals() retained as a safety net for the brief window where a Shopify deal has been polled by the drawer but not yet by the 60s board refresh.'},

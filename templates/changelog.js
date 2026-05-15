@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.21.8', date:'May 15, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Critical:** "Creating Quote" spinner stuck forever when rep selected "Ecommerce" as the owner. The dropdown option at `quote-builder.html:842` had `value="ecommerce"` (string) while every other rep option has a numeric HubSpot owner ID. Selecting Ecommerce sent `ownerId: "ecommerce"` to /api/create-deal, which then tried to set HubSpot\'s `hubspot_owner_id: "ecommerce"` — invalid value, HubSpot rejected it, and the error path apparently swallowed the failure (spinner never resolved). Fix: changed dropdown value to the real ID `49384873` (ecommerce@whisperroom.com). Also updated REP_NAMES and REP_NUMBERS maps to use the numeric ID. Added server-side normalization in /api/create-deal: any legacy `ownerId === "ecommerce"` is now mapped to ECOMMERCE_OWNER_ID before being sent to HubSpot — belt-and-suspenders so this can never recur even if some old code path or saved snapshot still uses the string.'},
+      ]
+    },
+    {
       v:'1.21.7', date:'May 15, 2026', tag:'fix',
       changes:[
         {t:'ui', d:'Line-item Weight column header renamed "Unit Weight" (more accurate — it IS per-unit, and the totalWeight calc multiplies by qty automatically). Reverts v1.21.6\'s line-total display change; the per-unit display + total-at-bottom is what reps wanted all along.'},

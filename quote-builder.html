@@ -839,7 +839,7 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
           <option value="36303670">Benton White</option>
           <option value="38732178">Kim Dalton</option>
           <option value="36320208">Gabe White</option>
-          <option value="ecommerce">Ecommerce</option>
+          <option value="49384873">Ecommerce</option>
         </select>
       </div>
     </div>
@@ -3927,7 +3927,7 @@ function _doFillContact(contact) {
 function checkContactOwnership(contact) {
   const ownerId = contact?.properties?.hubspot_owner_id;
   if (!ownerId)               return;
-  if (ownerId === 'ecommerce') return; // shopify/unassigned bucket
+  if (ownerId === '49384873' || ownerId === 'ecommerce') return; // shopify/unassigned bucket (legacy 'ecommerce' string kept for back-compat)
   const currentRep = document.getElementById('repSelect')?.value || '';
   if (ownerId === currentRep) return;
   const ownerName = REP_NAMES[ownerId] || `another rep`;
@@ -4441,7 +4441,8 @@ const REP_NAMES = {
   '38143901': 'Sarah Smith',
   '117442978': 'Travis Singleton',
   '36320208': 'Gabe White',
-  'ecommerce': 'Ecommerce',
+  '49384873': 'Ecommerce',
+  'ecommerce': 'Ecommerce',  // legacy key — back-compat for any old data that stored the string
 };
 
 const REP_NUMBERS = {
@@ -4451,7 +4452,8 @@ const REP_NUMBERS = {
   '38143901': '18', // Sarah Smith
   '117442978': '13', // Travis Singleton
   '36320208': '19', // Gabe White
-  'ecommerce': '21', // Ecommerce
+  '49384873': '21', // Ecommerce
+  'ecommerce': '21', // legacy key — back-compat
 };
 
 // Track sequence per rep per day in session
@@ -5470,8 +5472,8 @@ function linkDealById(dealId, dealName) {
       const isShopify = /shopify/i.test(dealName);
       if (isShopify) {
         const sel = document.getElementById('repSelect');
-        sel.value = 'ecommerce';
-        localStorage.setItem('wr_default_rep', 'ecommerce');
+        sel.value = '49384873';
+        localStorage.setItem('wr_default_rep', '49384873');
         if (!document.getElementById('quoteNumHidden').value) updateQuoteNumber();
       }
 

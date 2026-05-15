@@ -51,6 +51,26 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.21.8', date:'May 15, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Critical:** "Creating Quote" spinner stuck forever when rep selected "Ecommerce" as the owner. The dropdown option at `quote-builder.html:842` had `value="ecommerce"` (string) while every other rep option has a numeric HubSpot owner ID. Selecting Ecommerce sent `ownerId: "ecommerce"` to /api/create-deal, which then tried to set HubSpot\'s `hubspot_owner_id: "ecommerce"` — invalid value, HubSpot rejected it, and the error path apparently swallowed the failure (spinner never resolved). Fix: changed dropdown value to the real ID `49384873` (ecommerce@whisperroom.com). Also updated REP_NAMES and REP_NUMBERS maps to use the numeric ID. Added server-side normalization in /api/create-deal: any legacy `ownerId === "ecommerce"` is now mapped to ECOMMERCE_OWNER_ID before being sent to HubSpot — belt-and-suspenders so this can never recur even if some old code path or saved snapshot still uses the string.'},
+      ]
+    },
+    {
+      v:'1.21.7', date:'May 15, 2026', tag:'fix',
+      changes:[
+        {t:'ui', d:'Line-item Weight column header renamed "Unit Weight" (more accurate — it IS per-unit, and the totalWeight calc multiplies by qty automatically). Reverts v1.21.6\'s line-total display change; the per-unit display + total-at-bottom is what reps wanted all along.'},
+        {t:'ui', d:'Tax-exempt now shows "Tax Exempt" in the quote summary on the right rather than "Not calculated". Removes ambiguity — reps were double-checking whether tax was missing vs intentionally skipped.'},
+        {t:'fix', d:'Create-deal fetch now has a 90s hard timeout. Previously a hung HubSpot/QB call left the "Creating Quote…" spinner spinning forever with no way for the rep to recover, see what failed, or know whether the deal partially created. Now an AbortError surfaces a clear message: "Request timed out after 90 seconds. The HubSpot/QB call may still complete in the background — check /admin-log or refresh and verify the deal exists before retrying." Addresses the recent report of a rep stuck on "Creating Quote" indefinitely.'},
+      ]
+    },
+    {
+      v:'1.21.6', date:'May 15, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Line-item Weight column now shows LINE TOTAL (per-unit × qty) instead of just per-unit, matching how the adjacent Total column shows price × qty. **Reverted in v1.21.7** — turns out reps prefer per-unit display in that cell with the qty-multiplied total at the bottom.'},
+      ]
+    },
+    {
       v:'1.21.5', date:'May 15, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Shopify Orders button was invisible in light mode — used hardcoded dark-mode colors (rgba(255,255,255,.08) background, #f0ede8 text) instead of theme-aware CSS vars. Switched to var(--surface2)/var(--text)/var(--border) so it renders correctly in both light and dark mode. Glow state now uses var(--orange-dim) + var(--orange) for the colored text, which scales appropriately to whatever `--orange` resolves to per theme (#c94f0e in light, #ee6216 in dark). Badge also re-themed.'},

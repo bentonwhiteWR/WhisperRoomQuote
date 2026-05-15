@@ -2676,8 +2676,15 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, lineItems, freight, tax, discount, total, ownerId, dealName, existingDealId, existingContactId, billing, loadedQuoteNumber, loadedQuoteTotal, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, forceNewFolder, newFolderName, notes, repFoamColor, repHingePreference, repApColor, repWaType, install, canadian, customsBroker } = body;
+      const { customer, lineItems, freight, tax, discount, total, dealName, existingDealId, existingContactId, billing, loadedQuoteNumber, loadedQuoteTotal, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, forceNewFolder, newFolderName, notes, repFoamColor, repHingePreference, repApColor, repWaType, install, canadian, customsBroker } = body;
       let { quoteNumber } = body;
+      // Normalize ownerId — historical client code used the string 'ecommerce'
+      // as a sentinel, which then gets passed straight to HubSpot as
+      // `hubspot_owner_id: "ecommerce"` (invalid; HubSpot expects a numeric
+      // user ID). That caused at least one stuck "Creating Quote" report
+      // before this fix. Map any legacy string to the real ecommerce owner.
+      let ownerId = body.ownerId;
+      if (ownerId === 'ecommerce') ownerId = ECOMMERCE_OWNER_ID;
 
       // ── Revision vs new-quote decision ───────────────────────────────
       // Simple rule per product spec: if the rep is editing a specific loaded

@@ -218,6 +218,16 @@ const OWNER_MAP = {
   '117442978': 'Travis Singleton',
 };
 
+// Shopify integration uses ecommerce@whisperroom.com as the deal owner for
+// every auto-created order. We surface these in their own Deal Hub drawer
+// (NOT in the regular board columns) so Jill can review/verify booth-sized
+// orders before processing them. Override via env if the HubSpot user ever
+// changes.
+const ECOMMERCE_OWNER_ID = process.env.ECOMMERCE_OWNER_ID || '49384873';
+// Threshold above which a Shopify deal needs human verification before
+// processing (booth-sized orders, not small parts orders that auto-ship).
+const SHOPIFY_VERIFY_THRESHOLD = parseFloat(process.env.SHOPIFY_VERIFY_THRESHOLD || '5000');
+
 // ── Nexus states (freight taxability per state) ───────────────────
 const states = require('./lib/states');
 const {
@@ -2493,9 +2503,113 @@ const server = http.createServer(async (req, res) => {
         } catch(e) { console.warn('[deals list] auto-sync error:', e.message); }
       })();
 
-      json({ deals, total: deals.length });
+      // Exclude ecommerce-owned (Shopify-integration) deals from the main
+      // board — they live in their own drawer surface (see /api/shopify-pending).
+      // The Shopify integration auto-advances these to Shipped stage, which
+      // is correct for small parts orders but wrong for booth-sized orders
+      // that need verification. Drawer handles both flows.
+      const filteredDeals = deals.filter(d => d.ownerId !== ECOMMERCE_OWNER_ID);
+      json({ deals: filteredDeals, total: filteredDeals.length });
     } catch(e) {
       console.error('Deals list error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Shopify pending review ──────────────────────────────
+  // Returns all deals owned by the Shopify integration's HubSpot user
+  // (ecommerce@whisperroom.com). Used by the "🛒 Shopify" button in the
+  // /deals topbar — glows orange when there are unverified booth-sized
+  // orders awaiting Jill's attention.
+  //
+  // Response shape:
+  //   { pendingCount: number, all: [
+  //       { id, name, amount, stage, modified, hasQuote, isPending, latestQuote, ... }
+  //     ] }
+  //
+  // isPending = no quote in our DB yet AND amount >= SHOPIFY_VERIFY_THRESHOLD ($5k default)
+  // hasQuote  = some quote in our DB is bound to this deal_id (sales has touched it)
+  //
+  // Filters out closedlost — abandoned Shopify orders shouldn't clutter the drawer.
+  if (pathname === '/api/shopify-pending' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      // 1. Fetch all ecommerce-owned deals from HubSpot. Bounded volume
+      //    (Shopify deal count is small), so a single paginated pass with
+      //    a generous cap is fine. Filter out closedlost server-side.
+      const allShopify = [];
+      let afterCur;
+      for (let page = 0; page < 10; page++) {
+        const body = {
+          filterGroups: [{
+            filters: [
+              { propertyName: 'hubspot_owner_id', operator: 'EQ', value: ECOMMERCE_OWNER_ID },
+              { propertyName: 'dealstage',        operator: 'NEQ', value: 'closedlost' },
+            ],
+          }],
+          properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate','createdate','closedate','payment_status','payment_type'],
+          sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+          limit: 100,
+          ...(afterCur ? { after: afterCur } : {}),
+        };
+        const r = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path:     '/crm/v3/objects/deals/search',
+          method:   'POST',
+          headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+        }, body);
+        const pageResults = r.body?.results || [];
+        allShopify.push(...pageResults);
+        const nextAfter = r.body?.paging?.next?.after;
+        if (!nextAfter || pageResults.length < 100) break;
+        afterCur = String(nextAfter);
+      }
+
+      // 2. Join with our quotes DB to flag which Shopify deals have been
+      //    touched by sales (quote created → no longer "pending verification").
+      const dealIds = allShopify.map(d => d.id);
+      let quoteByDealId = {};
+      if (db && dealIds.length) {
+        try {
+          const qr = await db.query(
+            `SELECT deal_id, quote_number, total, created_at
+             FROM quotes
+             WHERE deal_id = ANY($1)
+             ORDER BY created_at DESC`,
+            [dealIds]
+          );
+          // First row per deal_id (DESC order) is the latest quote.
+          for (const row of qr.rows) {
+            if (!quoteByDealId[row.deal_id]) quoteByDealId[row.deal_id] = row;
+          }
+        } catch(e) { console.warn('[shopify-pending] DB join error:', e.message); }
+      }
+
+      const all = allShopify.map(d => {
+        const amount = parseFloat(d.properties?.amount || 0);
+        const dbQuote = quoteByDealId[d.id] || null;
+        const hasQuote = !!dbQuote;
+        const isPending = !hasQuote && amount >= SHOPIFY_VERIFY_THRESHOLD;
+        return {
+          id:           d.id,
+          name:         d.properties?.dealname || '—',
+          stage:        d.properties?.dealstage || '',
+          amount:       d.properties?.amount || '0',
+          modified:     d.properties?.hs_lastmodifieddate || '',
+          created:      d.properties?.createdate || '',
+          paymentStatus:d.properties?.payment_status || 'not_paid',
+          hasQuote,
+          isPending,
+          latestQuote:  dbQuote?.quote_number || null,
+          quoteCreatedAt: dbQuote?.created_at || null,
+        };
+      });
+
+      const pendingCount = all.filter(d => d.isPending).length;
+      json({ pendingCount, all, total: all.length });
+    } catch(e) {
+      console.error('Shopify pending error:', e.message);
       json({ error: e.message }, 500);
     }
     return;

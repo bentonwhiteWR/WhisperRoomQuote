@@ -6,11 +6,13 @@ Internal development notes. Last updated 2026-05-14.
 
 ---
 
-## Current focus (2026-05-14, EOD handoff — Stripe complete, Shopify Review column queued)
+## Current focus (2026-05-15, morning — Shopify drawer shipped)
 
 **Most recent shipped to PROD:** v1.19.19 — tax-not-calculated popup fix (only warns when Calculate Tax was genuinely never run; no longer fires for legitimate no-nexus $0 results). Pushed direct to main yesterday without bringing Stripe along.
 
-**On STAGING (NOT YET promoted to main):** v1.20.0 → v1.20.12 — Stripe Invoice integration is feature-complete and tested end-to-end (creation → payment → webhook → deal hub overlay). Webhook is now actually working.
+**On STAGING (NOT YET promoted to main):** v1.20.0 → v1.21.0 — Stripe Invoice integration complete, Shopify Orders drawer shipped today, Deal Hub now auto-refreshes.
+
+- **v1.21.0** (this session, May 15) — Shopify Orders drawer + 60s auto-refresh. New 🛒 button in Deal Hub topbar opens a right-side slide-out drawer listing every ecommerce-owned deal in three sections: Awaiting Verification (≥$5k, no quote yet — orange chip, the booth orders Jill needs to verify), Small Orders (under $5k, no quote yet — parts orders for spot-checking), In Progress (already has a quote in our system). Button glows orange with a pulse when there are pending verifications; neutral count badge otherwise. Polls every 60s. Click any row → existing deal hub overlay → "+ New Quote" → normal quote flow. Ecommerce-owned deals now EXCLUDED from main `/api/deals/list` results — drawer is their home, also sidesteps the HubSpot search quirk from yesterday. Deal Hub board itself also auto-refreshes every 60s now (matches admin-log polling pattern). Two new env-overridable constants: `ECOMMERCE_OWNER_ID` (default 49384873) and `SHOPIFY_VERIFY_THRESHOLD` (default $5000). New endpoint `GET /api/shopify-pending`.
 
 Today's progression (May 14, in order):
 
@@ -405,6 +407,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.21.0  | 2026-05-15 | New 🛒 Shopify Orders drawer in Deal Hub topbar — slide-out panel listing all ecommerce-owned deals in three sections (Awaiting Verification ≥$5k+no quote, Small Orders no quote, In Progress/Quoted). Button glows orange with pulse animation when pending booth orders exist; neutral count badge otherwise. Polls every 60s. Click row → standard deal hub overlay → "+ New Quote" → normal quote flow. Also: Deal Hub board auto-refreshes every 60s (matches admin-log pattern). Also: ecommerce-owned deals excluded from main `/api/deals/list` board — drawer is their home, sidesteps the HubSpot search quirk from yesterday. New endpoint `GET /api/shopify-pending`. Configurable via `ECOMMERCE_OWNER_ID` + `SHOPIFY_VERIFY_THRESHOLD` env vars. |
 | 1.20.12 | 2026-05-14 | Revert of v1.20.11 — the Shipped catch-all pass surfaced more old shipped deals but did NOT find the actual Shopify deal the rep was hunting, so the underlying problem is elsewhere (likely the Shopify deal has a different internal stage ID than 845719 even though display name is "Shipped"). Reverting while we investigate to keep the board clean. |
 | 1.20.11 | 2026-05-14 | Fix: Shipped deals silently dropping off the Deal Hub. `/api/deals/list` had a dedicated catch-all pass for `closedwon` (fetches all regardless of recency) but not for `845719` (Shipped) — so once the main 1000-deal paginated list rolled past a shipped deal, it disappeared. Refactored the catch-all into a shared helper, now runs for both closedwon AND 845719. Same 10-page cap per stage. Surfaced when a Shopify-generated deal in Shipped didn't appear on the board for any rep. |
 | 1.20.10 | 2026-05-14 | Two workflow upgrades on `invoice.paid`: (1) Deal cards in Deal Hub turn green when an invoice is paid (Stripe `snap.stripe.status=paid`, toggle-gated, OR HubSpot `payment_status=paid`) — adds to the existing accepted/payment-type triggers. (2) Stripe webhook auto-advances the HubSpot deal stage to "Verbal Confirmation" (`contractsent`) when payment lands, IF the deal is in an earlier stage. Skips `contractsent`/`closedwon`/`845719`/`closedlost` to never walk a deal backwards. New log events: `stripe.deal-stage-advanced`, `stripe.deal-stage-noop`, `error.stripe.deal-stage`. |

@@ -51,6 +51,15 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.21.0', date:'May 15, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'New 🛒 Shopify Orders drawer in the Deal Hub topbar. Pulls every deal owned by ecommerce@whisperroom.com (HubSpot user 49384873 — the owner the Shopify integration auto-assigns) and surfaces them in their own slide-out panel instead of mixing them into the regular board columns. Three sections by urgency: (1) "Awaiting Verification" — booth-sized orders (amount ≥ $5k) with no quote in our DB yet, orange "Booth — Verify" chip; (2) "Small Orders — No Quote Yet" — under-$5k Shopify deals still untouched, no chip; (3) "In Progress / Quoted" — Shopify deals where sales has created a real quote. Click any row → opens the standard deal hub overlay → "+ New Quote" → normal quote-builder flow. Button glows orange with a pulse animation when there are pending booth-sized orders awaiting Jill\'s verification; neutral gray with a count badge when the queue is empty. Polls every 60s so a new Shopify order triggers the glow within a minute without a page refresh.'},
+        {t:'add', d:'Deal Hub board now auto-refreshes every 60 seconds. Matches the admin-log polling cadence. Currently-open deal hub overlay is unaffected by the background refresh (overlay state lives separately from card render). Means a new Shopify order, a stage advance from Stripe paid webhook, or any other deal change shows up on the board within ~60s without the rep manually reloading.'},
+        {t:'add', d:'Ecommerce-owned deals are now excluded from the main /api/deals/list response (the Shopify drawer is their home — they shouldn\'t double-show in the Shipped column). Also sidesteps the HubSpot search-index quirk from May 14 where some Shopify deals weren\'t coming back via multi-stage filter queries. Two new constants in quote-server.js: ECOMMERCE_OWNER_ID (default 49384873, override via env) and SHOPIFY_VERIFY_THRESHOLD (default $5000, override via env) — both configurable without code changes if the integration setup ever moves.'},
+        {t:'log', d:'New endpoint GET /api/shopify-pending — returns { pendingCount, all: [...] } with every ecommerce-owned deal flagged isPending (≥$5k AND no quote in our DB) and hasQuote (some quote bound to this deal_id). Closedlost deals filtered out server-side. Bounded result count (Shopify volume is small) so paginated cap at 10 × 100 = 1000 deals is plenty.'},
+      ]
+    },
+    {
       v:'1.20.12', date:'May 14, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'Reverted v1.20.11. The dedicated Shipped catch-all pass surfaced more old shipped deals, but did NOT find the specific Shopify-generated deal the rep was hunting — meaning the deal isn\'t coming back from HubSpot\'s search even when explicitly filtered to dealstage=845719. Root cause is elsewhere (likely the Shopify deal has a stage ID other than 845719 even though it displays as "Shipped" in HubSpot UI, OR a pipeline-mismatch, OR a permission/scope issue). Reverting the catch-all pass while we investigate so the board doesn\'t fill with old shipped deals that weren\'t even the actual problem.'},

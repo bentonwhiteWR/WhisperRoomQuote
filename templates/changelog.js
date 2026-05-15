@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.21.3', date:'May 15, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Shopify drawer button now shows "🛒 Shopify Orders" instead of just the emoji. Matches the uppercase letter-spacing weight of the other board-toolbar buttons (HubSpot Only, etc.) — easier to recognize at a glance, especially for reps who haven\'t seen the drawer yet.'},
+      ]
+    },
+    {
       v:'1.21.2', date:'May 15, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Merge Deal modal now has a "⇅ Swap Direction" button on the confirm step. Previously the merge was strictly one-way: the deal you clicked Merge Into on was always the "wrong" deal (deleted), the deal you searched for was always the "correct" deal (survivor). Now you can flip which is which after both are selected — useful when starting from a Shopify auto-created deal that should be the survivor, pulling another deal\'s quotes IN to it (instead of moving the Shopify deal\'s data INTO the other). Step 2 confirm card redesigned to show both deals clearly: a red "Delete" card on top, the swap button between, and a green "Keep" card below. The header "Wrong deal:" label stays in sync with the current Delete side after each swap.'},

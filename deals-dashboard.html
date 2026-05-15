@@ -152,7 +152,8 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .notif-item-body { font-size:11px; color:var(--text2); line-height:1.4; }
 .notif-item-time { font-size:10px; color:var(--muted); margin-top:4px; }
 /* ── Shopify drawer button + slide-in panel ────────────────────── */
-.shopify-btn { position:relative; padding:5px 9px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:6px; color:#f0ede8; cursor:pointer; font-size:14px; line-height:1; transition:background .15s, border-color .15s, box-shadow .15s; flex-shrink:0; font-family:inherit; }
+.shopify-btn { position:relative; padding:6px 11px 6px 10px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:6px; color:#f0ede8; cursor:pointer; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; line-height:1.1; transition:background .15s, border-color .15s, box-shadow .15s; flex-shrink:0; font-family:inherit; white-space:nowrap; display:inline-flex; align-items:center; gap:6px; }
+.shopify-btn .shopify-emoji { font-size:13px; }
 .shopify-btn:hover { background:rgba(255,255,255,.14); }
 .shopify-btn.glow { background:rgba(238,98,22,.22); border-color:rgba(238,98,22,.5); box-shadow:0 0 0 0 rgba(238,98,22,.5); animation:shopify-pulse 2s infinite; }
 @keyframes shopify-pulse { 0%{box-shadow:0 0 0 0 rgba(238,98,22,.55)} 70%{box-shadow:0 0 0 10px rgba(238,98,22,0)} 100%{box-shadow:0 0 0 0 rgba(238,98,22,0)} }
@@ -328,7 +329,7 @@ select option { background: var(--surface); color: var(--text); }
         <option value="38732186">Jeromy</option>
       </select>
       <button class="shopify-btn" id="shopifyBtn" onclick="toggleShopifyPanel()" title="Shopify orders — click to review">
-        🛒<span class="shopify-badge zero" id="shopifyBadge">0</span>
+        <span class="shopify-emoji">🛒</span>Shopify Orders<span class="shopify-badge zero" id="shopifyBadge">0</span>
       </button>
       <span class="board-count" id="boardCount"></span>
       <button class="filter-toggle" id="hideUnintegratedBtn" onclick="toggleHideUnintegrated()" title="Toggle display of HubSpot-only deals with no quotes or orders">

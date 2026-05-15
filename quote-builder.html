@@ -3212,6 +3212,32 @@ async function getTax() {
   const shipping = getFreightTotal();
   const installShipping = getInstallAmount();
 
+  // Build per-line items so TaxJar can apply state-specific per-item rules
+  // (FL $5k discretionary surtax cap, TN single-article cap, etc.). Only
+  // positive-priced lines go — credits/manual negative adjustments are
+  // excluded; if a credit materially affects the taxable total the rep
+  // should use the tax override field. Order-level discount is allocated
+  // per line by share of the positive subtotal — for a % discount this
+  // works out exactly to `lineTotal × pct`; for a $ discount it prorates.
+  const _positiveItems = lineItems.filter(li => parseFloat(li.price || 0) > 0);
+  const _positiveSubtotal = _positiveItems.reduce((s, li) =>
+    s + (parseFloat(li.qty || 1) * parseFloat(li.price || 0)), 0);
+  const _discountTotal = getDiscountAmount();
+  const taxJarLineItems = _positiveItems.map((li, i) => {
+    const qty = parseFloat(li.qty || 1) || 1;
+    const unit_price = parseFloat(li.price || 0);
+    const lineTotal = qty * unit_price;
+    const discount = _positiveSubtotal > 0
+      ? (lineTotal / _positiveSubtotal) * _discountTotal
+      : 0;
+    return {
+      id: String(i + 1),
+      quantity: qty,
+      unit_price,
+      discount: Math.round(discount * 100) / 100,
+    };
+  });
+
   const btn = document.getElementById('taxBtn');
   btn.disabled = true;
   btn.textContent = 'Calculating...';
@@ -3220,7 +3246,7 @@ async function getTax() {
     const data = await fetchWithRetry('/api/tax', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state, zip, city, street, subtotal, shipping, installShipping, rep: document.getElementById('repSelect')?.value || null })
+      body: JSON.stringify({ state, zip, city, street, subtotal, shipping, installShipping, lineItems: taxJarLineItems, rep: document.getElementById('repSelect')?.value || null })
     }, {
       onRetry: (n, total) => { btn.textContent = `Retrying (${n}/${total - 1})…`; }
     });

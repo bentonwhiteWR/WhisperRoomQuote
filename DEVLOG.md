@@ -6,11 +6,41 @@ Internal development notes. Last updated 2026-05-14.
 
 ---
 
-## Current focus (2026-05-15, late afternoon — TaxJar line-item mode)
+## Current focus (2026-05-15 EOD — TaxJar/tax compliance investigation, paused for the night)
 
 **Most recent shipped to PROD:** v1.21.10 — HubSpot freight_cost / amount / tax sync gaps in /api/process-order + /api/create-deal (open-stage path + locked-stage removal). Promoted earlier today.
 
-**On STAGING (NOT YET promoted to main):** v1.22.0 + v1.22.1 — TaxJar line-item mode + manual FL surtax cap. v1.22.0 sent line items but TaxJar didn't auto-cap (caught against the same Pinellas order — TaxJar still returned $558.93). v1.22.1 applies the FL §212.054 cap ourselves using TaxJar's state/local rate split. Now matches QB invoice $552.00 to the cent for the Pinellas test order. User to verify on the FL order + a few other states before promoting.
+**On STAGING (NOT YET promoted to main):** v1.22.0 + v1.22.1 — TaxJar line-item mode + manual FL surtax cap. v1.22.0 sent line items but TaxJar didn't auto-cap (verified against W-1105142605 Pinellas — TaxJar still returned $558.93 in line-item mode, response shape `{tax:558.93, mode:"line_items", headlineRate:0.07, stateRate:0.06}`). v1.22.1 applies FL §212.054 manually using TaxJar's state/local rate split. Expected to land at $552.00. **User has NOT yet confirmed the v1.22.1 fix on staging** — got pulled into the bigger compliance conversation. First thing next session: hard-refresh staging, recalc tax on the Pinellas order, verify $552.00, then promote v1.22.1 to main.
+
+### The bigger thing that surfaced today: TaxJar is filing wrong numbers (real money leak)
+
+The Pinellas $6.93 quote/invoice mismatch was the entry point. What actually surfaced:
+
+- TaxJar's `/v2/taxes` endpoint **does not auto-apply state-specific per-item caps** — confirmed for FL even in line-item mode. Likely also misses TN single-article cap, MA $175 clothing, etc.
+- User confirmed TaxJar's AutoFile **files on its own calculated number, NOT on what was actually collected via Shopify/QB**. Dashboard shows "what we collected" vs. "what we should have collected" vs. "discrepancy" — and files the higher (TaxJar-calculated) number.
+- Mechanism of leak: QB AST + Shopify both correctly apply state caps at invoice time → customer pays the correct (lower) amount → TaxJar's records say "should have collected $X" using uncapped flat rate → TaxJar files $X → WhisperRoom remits the gap out of pocket.
+- User mentioned a TN incident a few months back where Shopify charged "less than what the total tax rate was" and TaxJar then "filed that we owed more money to the government." That's a concrete confirmation this isn't theoretical.
+- Per-order amounts are small (FL = ~1% × amount-over-$5k-cap, so ~$7 on the Pinellas booth) but it's compounding silently across years and multiple states.
+
+### Open items / next session priorities
+
+1. **Promote v1.22.1** assuming verification lands at $552.00.
+2. **User to email TaxJar support** with the specific question whether their AutoFile can be configured to file actuals from connected sources rather than their calculated model. Three possible answers (yes-switch / no-structural / misconfig). Drives whether stay-and-config-fix or migrate.
+3. **User to pull historical FL orders** to verify the leak is recurring (not a one-off). Probably easy in QB — pull invoices with line items >$5k shipped to FL over last 12 months.
+4. **Reconciliation script offered, awaiting go-ahead** — pull every Closed Won from DB over date range, get QB invoice's actual `TxnTaxDetail.TotalTax`, compute what TaxJar would have over-filed using their flat-rate model, dump CSV + summary by state. ~2 hours of work. Would give a hard $ number on the leak. User said "yeah we don't know this hasn't been an issue" so this is probably worth doing.
+5. **Nexus list verification** — `lib/states.js:8-25` has 16 states (AZ, CA, CO, FL, GA, IL, MA, NC, OH, PA, TN, TX, UT, VA, WI, WA). User thought 14. Needs to verify against TaxJar dashboard. Also notable absences: NY, NJ, MD, MI, IN, MO, MN — common economic-nexus surprises if any significant sales volume went there. Nexus study from a sales-tax CPA recommended.
+6. **Strategic decision pending:** stay TaxJar + config fix, migrate to Stripe Tax (cheapest path since already on Stripe), or migrate to Avalara (most complete, most expensive). Recommendation deferred until reconciliation # is in hand.
+7. **Process recommendation regardless of software choice:** add CPA-level human review of monthly filings. The "software files unattended" model is structurally fragile; companies WhisperRoom's size that get this right always have a human reviewing.
+
+### Other state caps potentially leaking (not yet patched in code)
+
+The v1.22.1 manual cap is FL-only. If/when these states surface a discrepancy in real orders, each needs its own block in `lib/taxjar.js`:
+
+- **TN** — single-article local tax cap. State 7% on full; local (typically 2.25-2.75%) only applies to first $1,600 of single item; state single-article tax of 2.75% applies $1,600-$3,200. Hairier than FL.
+- **AL, MS** — some local jurisdictions have per-item caps on certain item categories
+- **MA** — $175 clothing exemption (only matters if we sold clothing, which we don't, but listed for completeness)
+
+The cleaner long-term fix is migrating to software that handles all of these natively, not adding per-state blocks one by one.
 
 - **v1.22.0** (this session, May 15 PM) — User surfaced a FL Pinellas order where quote showed $558.93 tax but QB invoice was $552.00. Traced: Florida's $5k per-item discretionary surtax cap. QB's AST handled it because it sees line items; we were POSTing TaxJar an aggregate `subtotal` so it could only return a flat blended 7% rate. User asked the right question: "how are we supposed to know this for every county?" Answer: we don't. TaxJar already knows all these rules — we just weren't asking it correctly. Fix: switch to TaxJar's line-item API mode. Client builds `lineItems[]` from positive-priced quote lines + per-line discount allocation; server forwards as `line_items[]` body; TaxJar applies every state-specific per-item rule natively. Effective rate back-computed from amount ÷ taxable basis so client-side live recompute (`getTaxAmount` does rate × base on product/freight/discount changes) lands on the same penny. Aggregate-amount mode kept as fallback for any non-quote-builder caller.
 

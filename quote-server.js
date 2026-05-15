@@ -2854,50 +2854,19 @@ const server = http.createServer(async (req, res) => {
         // A new quote for a misc fee (e.g. reconsignment) must not clobber the original deal value.
         const DEAL_LOCKED_STAGES = new Set(['closedwon', '845719', 'closedlost']);
         if (DEAL_LOCKED_STAGES.has(existingDealStage)) {
-          // Per 2026-05-13 spec: even for closed-won/shipped/closed-lost
-          // deals, the FINANCIAL fields (amount, tax, discount, freight)
-          // should track the latest quote so the deal view in HubSpot
-          // reflects the most recent pricing. Other fields stay locked
-          // — don't rewrite ship-to addresses, contact, dealname, or
-          // dealstage on a closed deal.
-          const financialPatch = {
-            amount: total.toFixed(2),
-            tax_rate: tax && tax.rate ? String(parseFloat((tax.rate * 100).toFixed(4))) : '',
-            total_tax_amount: tax && tax.tax != null ? String(parseFloat(tax.tax).toFixed(2)) : '0',
-            discount: discount && discount.value ? String(discount.value) : '',
-            freight_cost: (() => {
-              if (install && install.mode === 'delivery_install' && parseFloat(install.amount) > 0) {
-                return String(parseFloat(install.amount).toFixed(2));
-              }
-              return freight && freight.total ? String(freight.total) : '';
-            })(),
-          };
-          // Status-check the patch (httpsRequest doesn't throw on 4xx) so
-          // a HubSpot rejection isn't silently swallowed. Same pattern
-          // as the non-locked path below — first try with everything,
-          // retry on failure (rare in this branch since financialPatch
-          // has no state/address fields to fail enum validation, but
-          // safety net for any HS quirk).
-          try {
-            const r = await httpsRequest({
-              hostname: 'api.hubapi.com',
-              path: `/crm/v3/objects/deals/${dealId}`,
-              method: 'PATCH',
-              headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-            }, { properties: financialPatch });
-            console.log(`[deal sync] locked-stage patch deal ${dealId} (${existingDealStage}) → status=${r.status} amount=${financialPatch.amount}`);
-            if (r.status >= 400) {
-              console.warn(`[deal sync] locked-stage REJECTED by HubSpot:`, JSON.stringify(r.body).slice(0, 500));
-              writelog('error', 'error.deal_sync_failed', `Locked deal ${dealId} financial patch rejected (${r.status})`, {
-                dealId, quoteNum: quoteNumber || null, meta: { props: financialPatch, body: r.body }
-              });
-            } else {
-              writelog('info', 'deal_sync_locked_financial',
-                `Locked-stage deal ${dealId} financials updated (stage: ${existingDealStage}, amount: $${financialPatch.amount}, quote: ${quoteNumber || '?'})`);
-            }
-          } catch(e) {
-            console.warn(`[deal sync] locked-stage network error for ${dealId}:`, e.message);
-          }
+          // Closed-stage deals are read-only from /api/create-deal. Building a
+          // new quote against a closed deal must NOT rewrite the deal's
+          // amount / tax / discount / freight_cost — those reflect the
+          // original processed order. Per v1.21.10: the 2026-05-13 carve-out
+          // that pushed a financial-only patch on every locked-stage create
+          // was overreaching — Merge Deal and Modify Order each have their
+          // own endpoints (/api/deals/:id/merge, /api/orders/:q/add-charge)
+          // and never touch /api/create-deal. So this branch is now a no-op
+          // beyond the log line.
+          console.log(`[deal sync] skip — deal ${dealId} is in locked stage (${existingDealStage}); /api/create-deal does not rewrite closed deals (use Modify Order to update)`);
+          writelog('info', 'deal_sync_locked_skipped',
+            `Locked deal ${dealId} (${existingDealStage}) — financial PATCH skipped; closed deals are read-only from /api/create-deal`,
+            { dealId, quoteNum: quoteNumber || null, meta: { stage: existingDealStage } });
         } else {
           // Update existing deal — amount + address fields updated from latest quote
           const dealPatchProps = {
@@ -2905,6 +2874,16 @@ const server = http.createServer(async (req, res) => {
             tax_rate: tax && tax.rate ? String(parseFloat((tax.rate * 100).toFixed(4))) : '',
             total_tax_amount: tax && tax.tax != null ? String(parseFloat(tax.tax).toFixed(2)) : '0',
             discount: discount && discount.value ? String(discount.value) : '',
+            freight_cost: (() => {
+              // Same delivery_install carve-out as the new-deal-create branch:
+              // when mode is delivery_install, the combined charge IS the freight
+              // on the deal. For install_only/none, freight_cost stays as the pure
+              // freight amount.
+              if (install && install.mode === 'delivery_install' && parseFloat(install.amount) > 0) {
+                return String(parseFloat(install.amount).toFixed(2));
+              }
+              return freight && freight.total ? String(freight.total) : '';
+            })(),
             shipping_address:      customer.address    || '',
             shipping_city:         customer.city       || '',
             shipping_zipcode:      customer.zip        || '',
@@ -11143,11 +11122,36 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         return;
       }
 
-      // 1. Advance deal to Closed Won + set ap_color, payment_type, po_ if present
+      // 1. Advance deal to Closed Won + set financials, ap_color, payment_type, po_.
+      // This PATCH is also the FINAL financial sync before the deal locks: after
+      // closedwon, /api/create-deal stops rewriting amount/freight/tax/discount
+      // (locked-stage branch is a no-op as of v1.21.10), so we send the current
+      // quote's full financials here so HubSpot reflects what the rep actually
+      // processed.
       // HubSpot's payment_type dropdown uses uppercase internal values: HS, CC, ACH, PO, Other.
       // Client radios use lowercase ids. Map here at the boundary.
       const PAY_TYPE_HS_VALUES = { hs: 'HS', cc: 'CC', ach: 'ACH', po: 'PO', other: 'Other' };
-      const closedWonProps = { dealstage: 'closedwon' };
+      // Totals for both the closedwon PATCH and the email body below.
+      const sub = (lineItems||[]).reduce((s,i) => s + (parseFloat(i.price)*parseInt(i.qty)), 0);
+      const discAmt = discount && discount.value > 0
+        ? (discount.type==='pct' ? sub*discount.value/100 : discount.value) : 0;
+      const freightTotal = freight ? parseFloat(freight.total||0) : 0;
+      const taxTotal = tax ? parseFloat(tax.tax||0) : 0;
+      const total = sub - discAmt + freightTotal + taxTotal;
+      const closedWonProps = {
+        dealstage: 'closedwon',
+        amount: total.toFixed(2),
+        tax_rate: tax && tax.rate ? String(parseFloat((tax.rate * 100).toFixed(4))) : '',
+        discount: discount && discount.value ? String(discount.value) : '',
+        freight_cost: (() => {
+          // Same delivery_install carve-out as /api/create-deal: when mode is
+          // delivery_install, the combined charge IS the freight on the deal.
+          if (install && install.mode === 'delivery_install' && parseFloat(install.amount) > 0) {
+            return String(parseFloat(install.amount).toFixed(2));
+          }
+          return freight && freight.total ? String(freight.total) : '';
+        })(),
+      };
       if (tax && tax.tax != null) closedWonProps.total_tax_amount = String(parseFloat(tax.tax).toFixed(2));
       if (apColor) closedWonProps.ap_color = apColor;
       if (paymentType) {
@@ -11359,13 +11363,8 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         } catch(e) { console.warn('Order DB save failed:', e.message); }
       }
 
-      // 3. Calculate totals for email
-      const sub = (lineItems||[]).reduce((s,i) => s + (parseFloat(i.price)*parseInt(i.qty)), 0);
-      const discAmt = discount && discount.value > 0
-        ? (discount.type==='pct' ? sub*discount.value/100 : discount.value) : 0;
-      const freightTotal = freight ? parseFloat(freight.total||0) : 0;
-      const taxTotal = tax ? parseFloat(tax.tax||0) : 0;
-      const total = sub - discAmt + freightTotal + taxTotal;
+      // 3. Totals (sub/discAmt/freightTotal/taxTotal/total) already computed above
+      // for the closedwon PATCH — reused here for the email body.
       const totalWeight = (lineItems||[]).reduce((s,i) => s + ((parseFloat(i.weight)||0)*(parseInt(i.qty)||1)), 0);
       const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
       const c = customer || {};

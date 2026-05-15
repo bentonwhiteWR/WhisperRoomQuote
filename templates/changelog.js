@@ -51,9 +51,131 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.21.3', date:'May 15, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Shopify drawer button now shows "🛒 Shopify Orders" instead of just the emoji. Matches the uppercase letter-spacing weight of the other board-toolbar buttons (HubSpot Only, etc.) — easier to recognize at a glance, especially for reps who haven\'t seen the drawer yet.'},
+      ]
+    },
+    {
+      v:'1.21.2', date:'May 15, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Merge Deal modal now has a "⇅ Swap Direction" button on the confirm step. Previously the merge was strictly one-way: the deal you clicked Merge Into on was always the "wrong" deal (deleted), the deal you searched for was always the "correct" deal (survivor). Now you can flip which is which after both are selected — useful when starting from a Shopify auto-created deal that should be the survivor, pulling another deal\'s quotes IN to it (instead of moving the Shopify deal\'s data INTO the other). Step 2 confirm card redesigned to show both deals clearly: a red "Delete" card on top, the swap button between, and a green "Keep" card below. The header "Wrong deal:" label stays in sync with the current Delete side after each swap.'},
+      ]
+    },
+    {
+      v:'1.21.1', date:'May 15, 2026', tag:'fix',
+      changes:[
+        {t:'ui', d:'Moved 🛒 Shopify Orders button from the main topbar (next to the notification bell) into the board-toolbar next to the All Reps rep filter. Better visual association with the board itself — it\'s a board-context action, not a global app action.'},
+        {t:'fix', d:'Shopify drawer now only shows deals CREATED on or after 2026-05-12 (configurable via SHOPIFY_CUTOFF_DATE env var). Pre-cutoff Shopify deals are historical clutter — small parts orders that long ago auto-shipped via the integration before the booth-verification workflow started. The drawer was previously showing all of them mixed in. Server filters via a HubSpot `createdate GTE <cutoff>` filter; sort changed from hs_lastmodifieddate DESC to createdate DESC so newest orders appear first.'},
+        {t:'fix', d:'Clicking a Shopify deal in the drawer now properly loads the deal hub overlay with full data (was just showing "Deal" title before). Root cause: v1.21.0 excluded ecommerce-owned deals from /api/deals/list to keep them off the main board, but `renderHub` does `allDeals.find(d => d.id === dealId)` for the overlay header — so Shopify deals returned undefined and the overlay rendered with empty data. Fix: keep Shopify deals findable in allDeals (merged from the /api/shopify-pending cache after every loadDeals refresh), but flag them with `_shopify: true` so renderBoard skips them from column rendering. Best of both: drawer-only display + working overlay lookups.'},
+      ]
+    },
+    {
+      v:'1.21.0', date:'May 15, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'New 🛒 Shopify Orders drawer in the Deal Hub topbar. Pulls every deal owned by ecommerce@whisperroom.com (HubSpot user 49384873 — the owner the Shopify integration auto-assigns) and surfaces them in their own slide-out panel instead of mixing them into the regular board columns. Three sections by urgency: (1) "Awaiting Verification" — booth-sized orders (amount ≥ $5k) with no quote in our DB yet, orange "Booth — Verify" chip; (2) "Small Orders — No Quote Yet" — under-$5k Shopify deals still untouched, no chip; (3) "In Progress / Quoted" — Shopify deals where sales has created a real quote. Click any row → opens the standard deal hub overlay → "+ New Quote" → normal quote-builder flow. Button glows orange with a pulse animation when there are pending booth-sized orders awaiting Jill\'s verification; neutral gray with a count badge when the queue is empty. Polls every 60s so a new Shopify order triggers the glow within a minute without a page refresh.'},
+        {t:'add', d:'Deal Hub board now auto-refreshes every 60 seconds. Matches the admin-log polling cadence. Currently-open deal hub overlay is unaffected by the background refresh (overlay state lives separately from card render). Means a new Shopify order, a stage advance from Stripe paid webhook, or any other deal change shows up on the board within ~60s without the rep manually reloading.'},
+        {t:'add', d:'Ecommerce-owned deals are now excluded from the main /api/deals/list response (the Shopify drawer is their home — they shouldn\'t double-show in the Shipped column). Also sidesteps the HubSpot search-index quirk from May 14 where some Shopify deals weren\'t coming back via multi-stage filter queries. Two new constants in quote-server.js: ECOMMERCE_OWNER_ID (default 49384873, override via env) and SHOPIFY_VERIFY_THRESHOLD (default $5000, override via env) — both configurable without code changes if the integration setup ever moves.'},
+        {t:'log', d:'New endpoint GET /api/shopify-pending — returns { pendingCount, all: [...] } with every ecommerce-owned deal flagged isPending (≥$5k AND no quote in our DB) and hasQuote (some quote bound to this deal_id). Closedlost deals filtered out server-side. Bounded result count (Shopify volume is small) so paginated cap at 10 × 100 = 1000 deals is plenty.'},
+      ]
+    },
+    {
+      v:'1.20.12', date:'May 14, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Reverted v1.20.11. The dedicated Shipped catch-all pass surfaced more old shipped deals, but did NOT find the specific Shopify-generated deal the rep was hunting — meaning the deal isn\'t coming back from HubSpot\'s search even when explicitly filtered to dealstage=845719. Root cause is elsewhere (likely the Shopify deal has a stage ID other than 845719 even though it displays as "Shipped" in HubSpot UI, OR a pipeline-mismatch, OR a permission/scope issue). Reverting the catch-all pass while we investigate so the board doesn\'t fill with old shipped deals that weren\'t even the actual problem.'},
+      ]
+    },
+    {
+      v:'1.20.11', date:'May 14, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Shipped deals were falling off the Deal Hub when the team had recent activity on other deals. Root cause: the Closed Won stage had a dedicated catch-all pass at /api/deals/list (fetches every Closed Won regardless of how stale) but Shipped (845719) didn\'t — it relied entirely on the main 1000-deal paginated fetch sorted by hs_lastmodifieddate DESC. Once 1000 other deals had been touched after a shipped deal, it would silently disappear from the board. Discovered when a Shopify-generated deal in Shipped wasn\'t appearing for any rep even with All Reps + Hide HubSpot Only off. Fix: refactored the dedicated-pass logic into a shared helper and now runs it for BOTH closedwon AND 845719. Same 10-page (=2000-deal) safety cap per stage. Identical reasoning: Shipped deals are active orders the team is still working on (production, shipping, tracking) — they need to be visible regardless of recency. Note: HubSpot search index has a known ~5-60s lag on newly-modified objects, so a brand-new shipped deal may still take a moment to appear — but it won\'t silently vanish anymore. (Reverted in v1.20.12 — did not solve the actual problem.)'},
+      ]
+    },
+    {
+      v:'1.20.10', date:'May 14, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Deal cards in the Deal Hub now turn green when an invoice is paid (in addition to existing triggers: quote accepted, payment type set). Server-side: /api/deals/list aggregates `paid: true` if any quote on the deal has `json_snapshot.stripe.status === "paid"` — toggle-gated, so flipping Stripe OFF returns the deal-card UI to pure HubSpot signals. Client-side: `dealGreen` now also checks `d.paid` and HubSpot\'s `d.paymentStatus === "paid"`, so HubSpot Payments-paid invoices also trigger green (matching whatever automation you already have in HubSpot).'},
+        {t:'add', d:'On `invoice.paid` Stripe webhook, the HubSpot deal stage auto-advances to "Verbal Confirmation" (`contractsent`) if it\'s currently in an earlier stage. Skips deals already at `contractsent`, `closedwon`, `845719` (Shipped), or `closedlost` — never walks a deal backwards or stomps a closed state. Mirrors the manual quote-accept advance pattern (~line 4287) but gated on current stage. Three new log events: `stripe.deal-stage-advanced` (success), `stripe.deal-stage-noop` (already at or past target), `error.stripe.deal-stage` (HubSpot rejected the patch).'},
+      ]
+    },
+    {
+      v:'1.20.9', date:'May 14, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Stripe webhook was getting 401 Unauthorized on every delivery attempt — `invoice.paid` events have been bouncing off our server since v1.20.0 shipped, never reaching the handler. Root cause: the global auth middleware at quote-server.js:564 rejects any `/api/*` request without a session cookie, and `/api/stripe/webhook` wasn\'t in the `isPublicRoute` allowlist. Stripe doesn\'t have session cookies (it authenticates via signed body), so every attempt failed before the signature-verification handler ran. Caught it by inspecting Stripe Workbench → Webhooks → Event deliveries; saw 9+ `401 ERR` attempts going back to yesterday. Fix: added `/api/stripe/webhook` to the public-routes list — the handler still verifies the Stripe signature, so security is preserved (only requests with a valid `Stripe-Signature` header matching `STRIPE_WEBHOOK_SECRET` get processed). Already-queued events will retry automatically over the next hour; can also click "Resend" in Stripe dashboard for immediate replay.'},
+      ]
+    },
+    {
+      v:'1.20.8', date:'May 14, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Deal Hub invoice rows now reflect Stripe payment status. When a customer pays via Stripe, the webhook updates `json_snapshot.stripe.status` to "paid" — the Deal Hub now reads that overlay and shows the row as green/Paid, with a purple "Stripe" badge so the rep can tell the payment channel. New "Stripe ↗" link in the row jumps directly to the Stripe Dashboard page for that invoice. Test-mode keys auto-route to dashboard.stripe.com/test/invoices/...; live keys would route to /invoices/...'},
+        {t:'add', d:'The existing Stripe ON/OFF toggle in /admin-log now also gates the Deal Hub display. When OFF, the server skips the Stripe overlay entirely — invoice rows render as pure HubSpot data (no Stripe badge, no Stripe link, status from `hs_invoice_status`). Data on the snapshot is preserved; flipping back ON instantly restores the full Stripe view. Tradeoff worth knowing: a Stripe-paid invoice will appear "open" in the Deal Hub while toggle is OFF — that\'s the intended fast-bail-out behavior, not a bug.'},
+        {t:'log', d:'NOT changed in this push: HubSpot invoice status. HubSpot computes `hs_invoice_status` from Payment records, so manually patching it via API may not stick. The proper sync would create a HubSpot Payment record via API linked to the invoice — deferred to a follow-up. For now: our Deal Hub is the rep\'s source of truth; HubSpot UI will continue showing Stripe-paid invoices as "open" until that sync ships or HubSpot invoice creation is disabled entirely.'},
+      ]
+    },
+    {
+      v:'1.20.7', date:'May 14, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Stripe invoices now accept ACH and wire transfer alongside credit card. Per-quote toggles in the Create Invoice modal let reps disable any combination of methods — the typical use case is unchecking Credit Card on $50k+ orders to skip the ~3.4% processing fee in favor of wire ($8 flat) or ACH (0.8%, capped at $5). The existing $50k CC fee warning still surfaces dynamically. New checkbox: "Wire Transfer — $8 flat fee, recommended for $25k+ orders" in both the quote builder modal (`invoiceAllowWire`) and the deal hub mini-invoice modal (`dhInvoiceAllowWire`). All three default ON for new quotes.'},
+        {t:'add', d:'lib/stripe.js: createInvoiceForQuote now builds `payment_settings.payment_method_types` dynamically from allowCC/allowACH/allowWire flags. When wire is on, also passes the required `payment_method_options.customer_balance.bank_transfer.type: us_bank_transfer` (Stripe rejects the invoice without it). Defensive guard: if wire is requested but the customer has no name on file, drops wire from the list and logs `stripe.invoice.wire-dropped` rather than 400-ing the whole invoice (Stripe customer_balance requires a name).'},
+        {t:'add', d:'ACH due-date stretch: when allowACH is true, days_until_due defaults to 14 instead of 7. ACH takes 4–5 business days to clear at the bank-network level; a 7-day window would show legitimate ACH payers "past due" reminders before their bank confirms. Caller can still override explicitly via the daysUntilDue param. The active method list and effective due-date now surface in `stripe.invoice.created` log meta (`paymentMethods`, `daysUntilDue`) so we can verify from /admin-log which methods a customer actually saw on each invoice.'},
+      ]
+    },
+    {
+      v:'1.20.6', date:'May 13, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Stripe hosted invoice now shows the quote discount as a single "Discount" row under the subtotal (the standard B2B-invoice convention) instead of v1.20.5\'s per-line "(N% off, was $X)" notation. Implementation: `lib/stripe.js` creates a one-shot Stripe Coupon (percent_off, duration=once, max_redemptions=1, named "N% Off — Quote W-XXX") and attaches it to the invoice via `discounts[]`. Freight/tax/install invoiceitems are marked `discountable: false` so the coupon only applies to product lines — matches HubSpot\'s `hs_discount_percentage` scope exactly. /api/create-invoice now passes `discountPct` through. `previewTotalCents` updated to mirror Stripe\'s aggregate-then-round math so it matches `amount_due` to the cent.'},
+        {t:'ui', d:'Polish on the Stripe hosted invoice: added a friendly footer ("Thank you for choosing WhisperRoom. Questions? Reply to the email this came with, or contact your sales rep."), and surfaced Quote Number + Deal ID as `custom_fields` on the invoice so customer support can trace back to the source order from the Stripe dashboard or the hosted page. Logo, brand color, business name, and accent color are configured separately in the Stripe Dashboard → Settings → Branding (one-time, no code) and apply automatically to all hosted invoices.'},
+      ]
+    },
+    {
+      v:'1.20.5', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Stripe invoices now apply the quote-level discount. HubSpot path was already passing `hs_discount_percentage` on each line item, but Stripe has no per-line percentage field, so the discount silently dropped — invoice total matched the gross instead of the net. Fix: `lib/stripe.js` now bakes `item.lineDiscount` into the cents amount before posting the invoiceitem, and appends "(N% off, was $X)" to the line description so the customer sees the discount on the hosted invoice. Only product lines carry `lineDiscount` (freight/tax/install carry 0), so the discount stays product-only just like the HubSpot path. Also updated `/api/create-invoice` to apply the same discount math when computing `previewTotalCents`, so the success-log preview matches Stripe\'s finalized amount_due instead of showing a confusing pre-discount expectation.'},
+      ]
+    },
+    {
+      v:'1.20.4', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Stripe invoices were doubling on the first v1.20.3 test — real total roughly 2x expected. Root cause: v1.20.3 fixed the $0 bug by passing `pending_invoice_items_behavior: include` on the new invoice, which works on a clean customer but ALSO sweeps in any orphan pending invoiceitems left behind by prior failed runs (every pre-v1.20.3 attempt created invoiceitems that never attached to anything — they accumulated as pending on the customer). New invoice = today\'s items + yesterday\'s ghost items = doubled total. Fix: draft the (empty) invoice FIRST, then create each invoiceitem with `invoice: draft.id` so it attaches directly. No pending-bucket interaction at all, so orphan items from any past or future failed run cannot contaminate. `pending_invoice_items_behavior: exclude` set explicitly as belt-and-suspenders. Note: stale pending invoiceitems on test customers from earlier runs are still sitting in Stripe sandbox — harmless under the new flow, but worth cleaning up via Stripe dashboard (test mode → Customers → find each → delete pending invoiceitems) or by deleting the test customers entirely.'},
+      ]
+    },
+    {
+      v:'1.20.3', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Stripe invoices were finalizing at $0 even when the quote had real line items. Root cause: Stripe API versions ≥ 2022-11-15 default `pending_invoice_items_behavior` to `exclude`, which means the freshly-created `/v1/invoiceitems` did not attach to the draft invoice. Now `lib/stripe.js` passes `pending_invoice_items_behavior: include` on the `/v1/invoices` POST so the items attach as expected. (Diagnostic `/api/debug/stripe-diagnostic` already had this flag, which is why diagnostic invoices worked but rep-flow invoices did not.)'},
+        {t:'log', d:'Added a fail-loud guard in `lib/stripe.js`: if the caller passes `expectedTotalCents > 0` but Stripe returns `amount_due = 0`, we now throw a clear error instead of returning a silently empty invoice. Surfaces as `error.stripe.invoice` in `/admin-log`. `/api/create-invoice` now passes `previewTotalCents` through so this assertion has real data to compare against.'},
+      ]
+    },
+    {
+      v:'1.20.2', date:'May 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Stripe integration on/off toggle, backed by kv_store.stripe_enabled (default ON). New pill button "Stripe: ON|OFF" in the /admin-log topbar — click flips it without redeploy. When OFF: /api/create-invoice skips Stripe creation entirely (HubSpot path runs unchanged), and /i/:quoteNumber Pay Now ignores any prior stripe.hostedUrl on the snapshot and falls back to HubSpot payment_link. Webhook handler stays active either way so in-flight Stripe invoices can still be marked paid. Two new routes: GET /api/stripe-toggle (read state, auth required) + POST /api/stripe-toggle (flip, auth required, writelogs stripe.toggle with rep + new state). 10-second in-memory cache on the read path so we don\'t hit the DB on every page load.'},
+        {t:'fix', d:'Stripe invoices for $0-total quotes no longer get created. Stripe finalizes a $0 invoice as immediately PAID, which surfaces as a confusing "already paid" hosted invoice when the rep clicks Pay Now. New guard sums `invoiceLineItems` positive-price entries in cents BEFORE calling Stripe; if total ≤ 0, logs `stripe.invoice.skipped` with reason + line counts + previewTotalCents, no Stripe API call. The "already paid" report from today\'s staging test was almost certainly this case — quote either had zero products, all-credit lines, or some other path that left invoiceLineItems with no positive entries. Diagnostic improvement: stripe.invoice.created log meta now includes lineItemCount, positiveItemCount, previewTotalCents so we can see exactly what went over.'},
+      ]
+    },
+    {
+      v:'1.20.1', date:'May 13, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Two staging-test issues from v1.20.0: (1) Stripe `/v1/invoiceitems` rejected `price_data.product_data` with "unknown parameter" — that\'s a Checkout-Sessions-only field. Invoice items require either a Product ID via `price_data.product` or the simpler `amount`+`description` shape. Switched to amount + description (qty pre-multiplied into amount, qty prefix baked into the description so "2 × MDL Whisper" still reads). Trade-off: line shows as one combined amount rather than Stripe\'s native "2 × $X.XX" breakdown. Revisit when we need explicit qty display. (2) Customer email was missing on the body sent to /api/create-invoice, causing stripe.invoice.skipped — now falls back through body.customer.email → json_snapshot.customer.email → HubSpot contact lookup via resolvedContactId. The `emailSource` is logged in stripe.invoice.created meta so we can see where it came from.'},
+      ]
+    },
+    {
+      v:'1.20.0', date:'May 13, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'Stripe Invoice integration (Option A — May 12, 2026 plan, first cut). Clicking Create Invoice now creates BOTH a HubSpot invoice (unchanged) AND a Stripe Invoice from the same line items (post-credits, post-install, with freight + tax as separate items). The Pay Now button on our invoice page (/i/:quoteNumber) prefers the Stripe hosted_invoice_url when available; HubSpot\'s payment link stays as fallback for legacy quotes, Canadian/international orders (Stripe skipped — wire transfer only), and any case where Stripe creation failed. Stripe state stashed on json_snapshot.stripe ({ customerId, invoiceId, hostedUrl, invoicePdf, amountDue, status, finalizedAt }) — no schema migration. Webhook handler at POST /api/stripe/webhook with signature verification (STRIPE_WEBHOOK_SECRET) handles invoice.paid / invoice.payment_failed / invoice.voided — writes paidAt/voidedAt to snapshot, fires rep notification on paid, writelogs the event. Hard-locked to sk_test_ keys for now. New module lib/stripe.js (init({ deps }) pattern, form-urlencoded helper, find-or-create customer by email).'},
+        {t:'log', d:'Three new writelog events surface this in /admin-log: stripe.invoice.created (success, includes hostedUrl), stripe.invoice.skipped (Canadian or no email), error.stripe.invoice (creation failed — HubSpot URL still works as fallback). Webhook adds stripe.invoice-paid / stripe.invoice-payment-failed / stripe.invoice-voided plus stripe.webhook.bad-signature for tamper attempts.'},
+      ]
+    },
+    {
       v:'1.19.19', date:'May 13, 2026', tag:'fix',
       changes:[
-        {t:'fix', d:'Tax-not-calculated confirm popup no longer fires for quotes where Calculate Tax was run and TaxJar correctly returned $0 because the destination state has no nexus. Bug was at the push-quote guard in quote-builder.html: the condition was (!taxData || !_taxAmountFn) which fired the warning whenever the computed tax amount was zero — including the legitimate no-nexus case where taxData is set to { inNexus: false, tax: 0 }. Reps had to dismiss the warning on every CA/NY/TX/etc. quote. New condition is just !taxData — warning only fires when Calculate Tax was never run (rep skipped it). Tax exempt and freight-only quotes still bypass the guard as before. (Note: v1.19.18 light-mode popup polish is currently only on staging — will roll forward into main with the next staging→main merge.)'},
+        {t:'fix', d:'Tax-not-calculated confirm popup no longer fires for quotes where Calculate Tax was run and TaxJar correctly returned $0 because the destination state has no nexus. Bug was at the push-quote guard in quote-builder.html: the condition was (!taxData || !_taxAmountFn) which fired the warning whenever the computed tax amount was zero — including the legitimate no-nexus case where taxData is set to { inNexus: false, tax: 0 }. Reps had to dismiss the warning on every CA/NY/TX/etc. quote. New condition is just !taxData — warning only fires when Calculate Tax was never run (rep skipped it). Tax exempt and freight-only quotes still bypass the guard as before. Direct fix on main; landed in staging via merge.'},
+      ]
+    },
+    {
+      v:'1.19.18', date:'May 13, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Quote builder pop-up legibility in light mode. Four targeted fixes: (1) defined --text2 (#555 light / #aaa dark) and --orange (alias for --accent) in CSS root so modal inline styles that used var(--text2,#aaa) and var(--orange,#ee6216) as fallbacks now resolve to a readable color in light mode instead of the white-ish fallback. Affects folderPromptModal, partsFreightModal, dealHubOverlay drive-folder rows. (2) Added body:not(.dark) overrides for .success-modal-title / .success-modal-msg / .success-modal-actions .btn-secondary — these still had hardcoded color:#fff and rgba(255,255,255,*) from the original dark-theme design, so the "Quote Pushed!" confirmation popup was unreadable in light mode. The earlier submit-overlay had been overridden but the post-success modal was missed. (3) intlShippingOverlay\'s pallet-summary block had hardcoded background:rgba(255,255,255,.05) — invisible on cream. Switched to var(--surface2) + var(--border). (4) contactGuardOverlay\'s "Keep Quote" button had rgba(255,255,255,.08) background — switched to var(--surface2) so it actually appears as a button in light mode.'},
       ]
     },
     {

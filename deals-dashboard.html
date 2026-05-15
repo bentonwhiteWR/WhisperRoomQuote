@@ -151,6 +151,30 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .notif-item-title { font-size:12px; font-weight:700; color:var(--text); margin-bottom:3px; }
 .notif-item-body { font-size:11px; color:var(--text2); line-height:1.4; }
 .notif-item-time { font-size:10px; color:var(--muted); margin-top:4px; }
+/* ── Shopify drawer button + slide-in panel ────────────────────── */
+.shopify-btn { position:relative; padding:6px 11px 6px 10px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:6px; color:#f0ede8; cursor:pointer; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; line-height:1.1; transition:background .15s, border-color .15s, box-shadow .15s; flex-shrink:0; font-family:inherit; white-space:nowrap; display:inline-flex; align-items:center; gap:6px; }
+.shopify-btn .shopify-emoji { font-size:13px; }
+.shopify-btn:hover { background:rgba(255,255,255,.14); }
+.shopify-btn.glow { background:rgba(238,98,22,.22); border-color:rgba(238,98,22,.5); box-shadow:0 0 0 0 rgba(238,98,22,.5); animation:shopify-pulse 2s infinite; }
+@keyframes shopify-pulse { 0%{box-shadow:0 0 0 0 rgba(238,98,22,.55)} 70%{box-shadow:0 0 0 10px rgba(238,98,22,0)} 100%{box-shadow:0 0 0 0 rgba(238,98,22,0)} }
+.shopify-badge { position:absolute; top:-4px; right:-4px; background:#ee6216; color:#fff; font-size:9px; font-weight:800; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 3px; }
+.shopify-badge.zero { background:rgba(255,255,255,.18); color:rgba(255,255,255,.7); }
+.shopify-panel { position:fixed; top:52px; right:0; width:420px; height:calc(100vh - 52px); background:var(--surface); border-left:1px solid var(--border); box-shadow:-4px 0 20px rgba(0,0,0,.2); z-index:300; display:flex; flex-direction:column; transform:translateX(100%); transition:transform .25s ease; }
+.shopify-panel.open { transform:translateX(0); }
+.shopify-header { padding:14px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+.shopify-title { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.07em; color:var(--text); }
+.shopify-list { flex:1; overflow-y:auto; padding:8px 0; }
+.shopify-section-label { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); padding:10px 18px 6px; }
+.shopify-section-label.pending { color:var(--orange); }
+.shopify-item { padding:10px 18px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .1s; }
+.shopify-item:hover { background:var(--surface2); }
+.shopify-item-row { display:flex; align-items:center; gap:8px; }
+.shopify-item-name { font-size:12px; font-weight:700; color:var(--text); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.shopify-item-amount { font-size:12px; font-weight:800; color:var(--text); white-space:nowrap; }
+.shopify-item-meta { font-size:10px; color:var(--muted); margin-top:3px; display:flex; gap:8px; align-items:center; }
+.shopify-chip-verify { display:inline-block; font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; padding:2px 6px; border-radius:3px; background:rgba(238,98,22,.15); color:var(--orange); border:1px solid rgba(238,98,22,.35); }
+.shopify-chip-quoted { display:inline-block; font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; padding:2px 6px; border-radius:3px; background:rgba(34,197,94,.12); color:var(--green); border:1px solid rgba(34,197,94,.3); }
+.shopify-empty { padding:30px 18px; text-align:center; color:var(--muted); font-size:12px; font-style:italic; }
 .notif-empty { padding:40px 20px; text-align:center; color:var(--muted); font-size:12px; }
 
 /* Dropdown option legibility */
@@ -304,6 +328,9 @@ select option { background: var(--surface); color: var(--text); }
         <option value="38900892">Chet</option>
         <option value="38732186">Jeromy</option>
       </select>
+      <button class="shopify-btn" id="shopifyBtn" onclick="toggleShopifyPanel()" title="Shopify orders — click to review">
+        <span class="shopify-emoji">🛒</span>Shopify Orders<span class="shopify-badge zero" id="shopifyBadge">0</span>
+      </button>
       <span class="board-count" id="boardCount"></span>
       <button class="filter-toggle" id="hideUnintegratedBtn" onclick="toggleHideUnintegrated()" title="Toggle display of HubSpot-only deals with no quotes or orders">
         ○ HubSpot Only
@@ -373,9 +400,26 @@ async function loadDeals() {
     const data=await res.json();
     if(data.error) throw new Error(data.error);
     allDeals=data.deals||[];
+    // Re-merge cached Shopify deals so they remain findable by ID. The
+    // _shopify flag keeps renderBoard from rendering them as cards
+    // (they live in the drawer only). Without this, openDeal/renderHub
+    // called from the drawer would fail to find the deal in allDeals
+    // and the overlay would render with empty data (just "Deal" title).
+    mergeShopifyIntoAllDeals();
     applyFilter();
   } catch(e) {
     document.getElementById('board').innerHTML=`<div style="padding:40px;color:#ef4444;grid-column:1/-1">Error: ${e.message}</div>`;
+  }
+}
+
+function mergeShopifyIntoAllDeals() {
+  if (!_shopifyData || !_shopifyData.all) return;
+  const existing = new Set(allDeals.map(d => d.id));
+  for (const sd of _shopifyData.all) {
+    if (!existing.has(sd.id)) {
+      // Flag with _shopify so renderBoard skips it in column rendering.
+      allDeals.push({ ...sd, _shopify: true });
+    }
   }
 }
 
@@ -412,7 +456,10 @@ function renderBoard() {
   board.innerHTML='';
   let total=0;
   COLUMNS.forEach(col => {
-    const deals=filteredDeals.filter(d=>col.stages.includes(d.stage))
+    // Skip _shopify-flagged deals — they live in the Shopify drawer only,
+    // not in the regular board columns. They're kept in allDeals so that
+    // openDeal/renderHub can find them by ID when launched from the drawer.
+    const deals=filteredDeals.filter(d=>col.stages.includes(d.stage) && !d._shopify)
       .sort((a,b) => {
         // Primary: lastActivityAt from our system — quote pushed, order processed,
         // quote accepted. HubSpot-modified dates (notes, field edits, views) are
@@ -451,10 +498,13 @@ function renderBoard() {
       deals.forEach(d => {
         // A deal is "unintegrated" if it has no quotes / orders / accepted / payment
         // in our system — it's HubSpot-only. Applies regardless of stage.
-        const isUnintegrated = !d.latestQuote && !d.accepted && !d.paymentType;
+        const isUnintegrated = !d.latestQuote && !d.accepted && !d.paymentType && !d.paid;
         if (hideUnintegrated && isUnintegrated) return;
         const card=document.createElement('div');
-        const dealGreen = (d.accepted || !!d.paymentType) && d.id!==currentDealId;
+        // Green when ANY positive signal exists: quote accepted, payment type
+        // set (rep flagged it during order), Stripe-paid (server-aggregated,
+        // toggle-gated), or HubSpot deal property says paid.
+        const dealGreen = (d.accepted || !!d.paymentType || d.paid || d.paymentStatus === 'paid') && d.id!==currentDealId;
         card.className='deal-card'+(d.id===currentDealId?' active':'')+(dealGreen?' accepted':'')+(isUnintegrated?' unintegrated':'');
         card.onclick=()=>openDeal(d.id);
         const pt=d.paymentType||'';
@@ -595,18 +645,24 @@ function renderHub(dealId,data) {
       const paid=inv.status==='paid';
       const sc={paid:'#22c55e',open:'#f59e0b',draft:'var(--muted)',voided:'var(--muted)',overdue:'#ef4444'}[inv.status]||'var(--muted)';
       const pmLabel = inv.paymentMethod === 'ach' ? 'ACH' : inv.paymentMethod === 'card' ? 'CC' : '';
+      const viaStripe = inv.paidVia === 'stripe';
+      const stripeChannelBadge = inv.stripeInvoiceId
+        ? `<span class="row-badge" title="Stripe invoice — ${viaStripe?'paid via Stripe':(inv.stripeStatus||'open')}" style="background:rgba(99,91,255,.12);color:#7c5cff;border:1px solid rgba(99,91,255,.3)">Stripe</span>`
+        : '';
       return `<div class="row-card ${paid?'row-paid':''}" style="cursor:default">
         <div style="flex:1;min-width:0;display:flex;align-items:center;gap:7px;flex-wrap:wrap">
           <span style="font-size:12px;font-weight:700;color:${paid?'var(--green)':'var(--text)'}">${inv.number||inv.title||'Invoice'}</span>
           ${paid?'<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Paid</span>'
                 :`<span class="row-badge" style="color:${sc};border:1px solid ${sc}">${inv.status||'—'}</span>`}
-          ${paid && pmLabel ? `<span class="row-badge" style="background:rgba(99,102,241,.1);color:#818cf8;border:1px solid rgba(99,102,241,.25)">${pmLabel}</span>` : ''}
+          ${stripeChannelBadge}
+          ${paid && pmLabel && !viaStripe ? `<span class="row-badge" style="background:rgba(99,102,241,.1);color:#818cf8;border:1px solid rgba(99,102,241,.25)">${pmLabel}</span>` : ''}
           ${inv.quoteNumber?`<span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${inv.quoteNumber}</span>`:''}
         </div>
         <span style="font-size:12px;font-weight:700;color:${paid?'var(--green)':'var(--text)'}">${fmt(inv.amount)}</span>
         <span class="row-date">${fmtDate(inv.date)}</span>
         ${inv.paymentPageUrl?`<a href="${inv.paymentPageUrl}" target="_blank" class="row-link" style="color:var(--orange);border-color:var(--orange-border)">Invoice ↗</a>`:''}\n        ${inv.paymentPageUrl?`<button onclick="copyInvoiceLink('${inv.paymentPageUrl}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit" title="Copy invoice link">🔗</button>`:''}
 
+        ${inv.stripeDashboardUrl?`<a href="${inv.stripeDashboardUrl}" target="_blank" class="row-link" style="color:#7c5cff;border-color:rgba(99,91,255,.3)" title="Open in Stripe dashboard">Stripe ↗</a>`:''}
         ${inv.hubspotUrl?`<a href="${inv.hubspotUrl}" target="_blank" class="row-link">HS ↗</a>`:''}
       </div>`;
     }).join('')}
@@ -893,8 +949,9 @@ async function createInvoiceForDeal(event, quoteNumber) {
   document.getElementById('dhInvoicePreviewName').textContent = q.dealName || q.quoteNumber || '—';
   document.getElementById('dhInvoicePreviewQuote').textContent = q.quoteNumber || '—';
   document.getElementById('dhInvoicePreviewTotal').textContent = fmtTotal;
-  document.getElementById('dhInvoiceAllowCC').checked = true;
-  document.getElementById('dhInvoiceAllowACH').checked = true;
+  document.getElementById('dhInvoiceAllowCC').checked   = true;
+  document.getElementById('dhInvoiceAllowACH').checked  = true;
+  document.getElementById('dhInvoiceAllowWire').checked = true;
 
   const warning = document.getElementById('dhInvoiceCCWarning');
   const feeEl   = document.getElementById('dhInvoiceCCFeeAmt');
@@ -932,6 +989,7 @@ async function confirmDealInvoice() {
         customer:    pending.snap.customer   || {},
         allowCC:     document.getElementById('dhInvoiceAllowCC').checked,
         allowACH:    document.getElementById('dhInvoiceAllowACH').checked,
+        allowWire:   document.getElementById('dhInvoiceAllowWire').checked,
       })
     });
     const data = await res.json();
@@ -1120,6 +1178,119 @@ const _p=new URLSearchParams(window.location.search);
 const _od=_p.get('dealId');
 if(_od) setTimeout(()=>openDeal(_od),900);
 
+// ── Auto-refresh board every 60s ──────────────────────────────
+// Matches the admin-log polling cadence. Re-renders deal cards
+// from a fresh fetch. Currently-open deal hub overlay is unaffected
+// (overlay state lives separately from card render).
+setInterval(loadDeals, 60000);
+
+// ── Shopify drawer: load + render + toggle + 60s poll ────────────
+let _shopifyData = { pendingCount: 0, all: [] };
+
+async function loadShopifyPending() {
+  try {
+    const r = await fetch('/api/shopify-pending', { credentials: 'include' });
+    const data = await r.json();
+    if (data.error) return;
+    _shopifyData = data;
+    paintShopifyBadge();
+    // Merge into allDeals so openDeal/renderHub can find Shopify deals by ID
+    // when launched from the drawer (allDeals is the lookup source for many
+    // renderHub call sites). Flagged with _shopify so renderBoard skips them.
+    mergeShopifyIntoAllDeals();
+    // Only re-render the list if the drawer is currently open — avoids
+    // pointless DOM work when nobody's looking.
+    if (document.getElementById('shopifyPanel').classList.contains('open')) {
+      renderShopifyList();
+    }
+  } catch(e) { /* non-fatal */ }
+}
+
+function paintShopifyBadge() {
+  const btn   = document.getElementById('shopifyBtn');
+  const badge = document.getElementById('shopifyBadge');
+  const pending = _shopifyData.pendingCount || 0;
+  const total   = (_shopifyData.all || []).length;
+  badge.textContent = pending > 0 ? String(pending) : String(total);
+  if (pending > 0) {
+    btn.classList.add('glow');
+    badge.classList.remove('zero');
+    btn.title = `${pending} Shopify order${pending === 1 ? '' : 's'} awaiting verification — click to review`;
+  } else {
+    btn.classList.remove('glow');
+    badge.classList.add('zero');
+    btn.title = `Shopify orders (${total} total) — click to view`;
+  }
+}
+
+function toggleShopifyPanel() {
+  const panel = document.getElementById('shopifyPanel');
+  const isOpen = panel.classList.toggle('open');
+  if (isOpen) {
+    // Close other side-panels (notifications) so they don't stack.
+    document.getElementById('notifPanel')?.classList.remove('open');
+    renderShopifyList();
+    // Refresh data on open in case it's been more than 60s since last poll.
+    loadShopifyPending();
+  }
+}
+
+function renderShopifyList() {
+  const listEl = document.getElementById('shopifyList');
+  const all    = _shopifyData.all || [];
+  if (!all.length) {
+    listEl.innerHTML = '<div class="shopify-empty">No Shopify orders</div>';
+    return;
+  }
+  // Three sections by urgency:
+  //   1. Awaiting Verification — booth-sized, no quote yet (orange chip)
+  //   2. Small orders — under threshold, no quote yet
+  //   3. In Progress — quote exists in our system
+  const pending = all.filter(d => d.isPending);
+  const small   = all.filter(d => !d.hasQuote && !d.isPending);
+  const inProg  = all.filter(d =>  d.hasQuote);
+
+  const sortByModified = (a, b) =>
+    new Date(b.modified || 0).getTime() - new Date(a.modified || 0).getTime();
+  pending.sort(sortByModified);
+  small.sort(sortByModified);
+  inProg.sort(sortByModified);
+
+  const fmtAmt = n => '$' + parseFloat(n||0).toLocaleString('en-US', { minimumFractionDigits:0, maximumFractionDigits:0 });
+  const fmtD   = d => d ? new Date(d).toLocaleDateString('en-US', { month:'short', day:'numeric', timeZone:'America/New_York' }) : '—';
+
+  const renderItem = d => `
+    <div class="shopify-item" onclick="openDeal('${d.id}');toggleShopifyPanel();">
+      <div class="shopify-item-row">
+        <span class="shopify-item-name">${(d.name || '—').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</span>
+        <span class="shopify-item-amount">${fmtAmt(d.amount)}</span>
+      </div>
+      <div class="shopify-item-meta">
+        ${d.isPending ? '<span class="shopify-chip-verify">Booth — Verify</span>' : ''}
+        ${d.hasQuote  ? `<span class="shopify-chip-quoted">Quote ${d.latestQuote}</span>` : ''}
+        <span>${fmtD(d.modified)}</span>
+      </div>
+    </div>`;
+
+  let html = '';
+  if (pending.length) {
+    html += `<div class="shopify-section-label pending">Awaiting Verification (${pending.length})</div>`;
+    html += pending.map(renderItem).join('');
+  }
+  if (small.length) {
+    html += `<div class="shopify-section-label">Small Orders — No Quote Yet (${small.length})</div>`;
+    html += small.map(renderItem).join('');
+  }
+  if (inProg.length) {
+    html += `<div class="shopify-section-label">In Progress / Quoted (${inProg.length})</div>`;
+    html += inProg.map(renderItem).join('');
+  }
+  listEl.innerHTML = html;
+}
+
+loadShopifyPending();
+setInterval(loadShopifyPending, 60000);
+
 // ── Session user ──────────────────────────────────────────────────
 async function loadCurrentUser() {
   try {
@@ -1178,6 +1349,17 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
   </div>
   <div class="notif-list" id="notifList">
     <div class="notif-empty">No notifications</div>
+  </div>
+</div>
+
+<!-- ── Shopify Orders drawer ─────────────────────────────────────── -->
+<div class="shopify-panel" id="shopifyPanel">
+  <div class="shopify-header">
+    <span class="shopify-title">🛒 Shopify Orders</span>
+    <button onclick="toggleShopifyPanel()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0 4px">✕</button>
+  </div>
+  <div class="shopify-list" id="shopifyList">
+    <div class="shopify-empty">Loading…</div>
   </div>
 </div>
 <!-- ── Rebind Drive Folder Modal ──────────────────────────────────── -->
@@ -1239,19 +1421,33 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
       </div>
     </div>
 
-    <!-- Step 2: Confirm -->
+    <!-- Step 2: Confirm — shows both deals with a swap button so the rep
+         can pick which one survives. By default, the deal you started
+         from (clicked Merge Into on) is the "delete" side; the deal you
+         searched for is the "keep" side. The swap button flips that
+         direction — useful when starting from e.g. a Shopify auto-deal
+         that should survive and pulling another deal's quotes into it. -->
     <div id="mergeDealStep2" style="display:none">
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Merge into this deal</div>
-        <div id="mergeDealTargetName" style="font-size:15px;font-weight:800;color:var(--green);margin-bottom:6px"></div>
+      <!-- Delete card (source) -->
+      <div style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.25);border-left:3px solid #ef4444;border-radius:8px;padding:12px 14px;margin-bottom:6px">
+        <div style="font-size:10px;font-weight:700;color:#ef4444;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">✗ Delete</div>
+        <div id="mergeDealStep2SourceName" style="font-size:14px;font-weight:800;color:#ef4444"></div>
+      </div>
+      <!-- Swap button -->
+      <div style="text-align:center;margin:4px 0">
+        <button onclick="swapMergeDirection()" title="Swap which deal survives" style="font-size:11px;color:var(--muted);background:none;border:1px solid var(--border);border-radius:6px;padding:5px 14px;cursor:pointer;font-family:inherit">⇅ Swap Direction</button>
+      </div>
+      <!-- Keep card (target) -->
+      <div style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.25);border-left:3px solid #22c55e;border-radius:8px;padding:14px;margin-top:6px;margin-bottom:16px">
+        <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">✓ Keep</div>
+        <div id="mergeDealTargetName" style="font-size:15px;font-weight:800;color:var(--green);margin-bottom:8px"></div>
         <div style="font-size:11px;color:var(--muted);line-height:1.5">
-          ✓ All quotes &amp; orders → moved to this deal<br>
-          ✓ Drive folder contents → merged<br>
-          ✗ Wrong deal → permanently deleted from HubSpot
+          ✓ All quotes &amp; orders from the Delete deal → moved here<br>
+          ✓ Drive folder contents → merged into this deal
         </div>
       </div>
       <div style="display:flex;gap:8px">
-        <button id="mergeDealConfirmBtn" onclick="confirmMergeDeal()" style="flex:1;padding:13px;background:#ef4444;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">⤴ Confirm Merge &amp; Delete Wrong Deal</button>
+        <button id="mergeDealConfirmBtn" onclick="confirmMergeDeal()" style="flex:1;padding:13px;background:#ef4444;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">⤴ Confirm Merge &amp; Delete</button>
         <button onclick="mergeDealBack()" style="padding:13px 14px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit">← Back</button>
       </div>
     </div>
@@ -1402,7 +1598,13 @@ async function confirmRebindFolder() {
 }
 
 // ── Merge Deal ────────────────────────────────────────────────────
+// Source = "Delete" side (this deal gets removed, its quotes/orders/folder
+//          move to the target). Target = "Keep" side (the survivor).
+// The Step 2 confirm UI exposes a swap button so the rep can flip which
+// is which — useful when starting the merge from a Shopify auto-created
+// deal that should be the survivor (pulling quotes IN from another deal).
 let _mergeDealSourceId   = null;
+let _mergeDealSourceName = null;
 let _mergeDealTargetId   = null;
 let _mergeDealTargetName = null;
 let _mergeDealSearchTimer = null;
@@ -1432,7 +1634,8 @@ function openMergeDeal(dealId) {
   _mergeDealTargetId   = null;
   _mergeDealTargetName = null;
   const deal = allDeals.find(d => d.id === dealId) || {};
-  document.getElementById('mergeDealSourceName').textContent = deal.name || dealId;
+  _mergeDealSourceName = deal.name || dealId;
+  document.getElementById('mergeDealSourceName').textContent = _mergeDealSourceName;
   document.getElementById('mergeDealSearch').value = '';
   document.getElementById('mergeDealResults').innerHTML = '';
   document.getElementById('mergeDealStep1').style.display = 'block';
@@ -1442,13 +1645,35 @@ function openMergeDeal(dealId) {
 
 function closeMergeDeal() {
   document.getElementById('mergeDealModal').style.display = 'none';
-  _mergeDealSourceId = _mergeDealTargetId = _mergeDealTargetName = null;
+  _mergeDealSourceId = _mergeDealTargetId = _mergeDealSourceName = _mergeDealTargetName = null;
 }
 
 function mergeDealBack() {
   document.getElementById('mergeDealStep2').style.display = 'none';
   document.getElementById('mergeDealStep1').style.display = 'block';
   _mergeDealTargetId = _mergeDealTargetName = null;
+}
+
+// Flip which deal survives. After swap, the original "Delete" becomes
+// "Keep" and vice versa. Step 2 UI re-paints with swapped names.
+function swapMergeDirection() {
+  const tmpId   = _mergeDealSourceId;
+  const tmpName = _mergeDealSourceName;
+  _mergeDealSourceId   = _mergeDealTargetId;
+  _mergeDealSourceName = _mergeDealTargetName;
+  _mergeDealTargetId   = tmpId;
+  _mergeDealTargetName = tmpName;
+  paintMergeStep2();
+}
+
+// Repaint Step 2 names from current source/target state. Called on swap
+// and on initial entry into Step 2.
+function paintMergeStep2() {
+  document.getElementById('mergeDealStep2SourceName').textContent = _mergeDealSourceName || _mergeDealSourceId || '—';
+  document.getElementById('mergeDealTargetName').textContent      = _mergeDealTargetName || _mergeDealTargetId || '—';
+  // Also keep the modal-header "Wrong deal:" label in sync (originally set
+  // by openMergeDeal; updates if user swaps direction).
+  document.getElementById('mergeDealSourceName').textContent = _mergeDealSourceName || _mergeDealSourceId || '—';
 }
 
 function mergeDealSearchDebounce() {
@@ -1486,7 +1711,7 @@ async function runMergeDealSearch() {
 function selectMergeDealTarget(id, name) {
   _mergeDealTargetId   = id;
   _mergeDealTargetName = name;
-  document.getElementById('mergeDealTargetName').textContent = name;
+  paintMergeStep2();
   document.getElementById('mergeDealStep1').style.display = 'none';
   document.getElementById('mergeDealStep2').style.display = 'block';
 }
@@ -2481,7 +2706,14 @@ const submitCreateApPo = submitApPoModal;
           <input type="checkbox" id="dhInvoiceAllowACH" checked style="accent-color:#ee6216;width:15px;height:15px;cursor:pointer">
           <div style="flex:1">
             <div style="font-size:13px;color:var(--text,#e8e8e8);font-weight:600">ACH / Bank Transfer</div>
-            <div style="font-size:11px;color:var(--muted,#666);margin-top:1px">Direct bank debit — lower processing fee</div>
+            <div style="font-size:11px;color:var(--muted,#666);margin-top:1px">Direct bank debit — 0.8% fee (capped at $5)</div>
+          </div>
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;background:var(--surface2,#222);border:1px solid var(--border,#2e2e2e);border-radius:7px">
+          <input type="checkbox" id="dhInvoiceAllowWire" checked style="accent-color:#ee6216;width:15px;height:15px;cursor:pointer">
+          <div style="flex:1">
+            <div style="font-size:13px;color:var(--text,#e8e8e8);font-weight:600">Wire Transfer</div>
+            <div style="font-size:11px;color:var(--muted,#666);margin-top:1px">$8 flat fee &mdash; recommended for $25k+ orders</div>
           </div>
         </label>
       </div>

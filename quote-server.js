@@ -176,6 +176,9 @@ const { TAXJAR_KEY, calculateTaxProper } = taxjar;
 const qb = require('./lib/quickbooks');
 qb.init({ getDb: () => db });
 
+const stripeLib = require('./lib/stripe');
+// stripeLib.init(...) called below alongside the other httpsRequest-dependent libs
+
 const apPackages = require('./lib/ap-packages');
 
 
@@ -214,6 +217,21 @@ const OWNER_MAP = {
   '38900892':  'Chet Burgess',
   '117442978': 'Travis Singleton',
 };
+
+// Shopify integration uses ecommerce@whisperroom.com as the deal owner for
+// every auto-created order. We surface these in their own Deal Hub drawer
+// (NOT in the regular board columns) so Jill can review/verify booth-sized
+// orders before processing them. Override via env if the HubSpot user ever
+// changes.
+const ECOMMERCE_OWNER_ID = process.env.ECOMMERCE_OWNER_ID || '49384873';
+// Threshold above which a Shopify deal needs human verification before
+// processing (booth-sized orders, not small parts orders that auto-ship).
+const SHOPIFY_VERIFY_THRESHOLD = parseFloat(process.env.SHOPIFY_VERIFY_THRESHOLD || '5000');
+// Cutoff date for Shopify drawer — only show deals CREATED on or after this
+// date. Pre-cutoff Shopify deals are historical clutter (small parts orders
+// that long ago auto-shipped via the integration) — we only care about
+// going forward from when the verification workflow started.
+const SHOPIFY_CUTOFF_DATE = process.env.SHOPIFY_CUTOFF_DATE || '2026-05-12';
 
 // ── Nexus states (freight taxability per state) ───────────────────
 const states = require('./lib/states');
@@ -281,6 +299,7 @@ gdrive.init({ httpsRequest, getDb: () => db, writelog });
 taxjar.init({ httpsRequest, NEXUS_STATES, toStateAbbr });
 notify.init({ getDb: () => db });
 freight.init({ httpsRequest, getDb: () => db, writelog, puppeteer });
+stripeLib.init({ httpsRequest, writelog, getDb: () => db });
 db_mod.init({
   getDb: () => db,
   publicBaseUrl: PUBLIC_BASE_URL,
@@ -548,7 +567,7 @@ const server = http.createServer(async (req, res) => {
 
   // ── Auth gate ──
   // Public routes — no auth required but rate limited + token validated
-  const isPublicRoute = pathname.startsWith('/q/') || pathname.startsWith('/i/') || pathname.startsWith('/o/') || pathname.startsWith('/po/') || pathname === '/api/accept-quote' || pathname === '/api/update-specs';
+  const isPublicRoute = pathname.startsWith('/q/') || pathname.startsWith('/i/') || pathname.startsWith('/o/') || pathname.startsWith('/po/') || pathname === '/api/accept-quote' || pathname === '/api/update-specs' || pathname === '/api/stripe/webhook';
   if (isPublicRoute) {
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
     if (!checkRateLimit(ip, 30, 60000)) {
@@ -903,6 +922,260 @@ const server = http.createServer(async (req, res) => {
       } catch(e) { results.customerError = e.message; }
     }
     json(results);
+    return;
+  }
+
+  // ── Stripe Webhook ─────────────────────────────────────────────
+  // Public endpoint (no auth) — Stripe authenticates via the signed body.
+  // Returns 400 if signature verification fails; 200 for all valid events
+  // (even unhandled types) so Stripe doesn't retry. The endpoint secret
+  // is created in the Stripe dashboard when you add a webhook endpoint
+  // and pasted into Railway as STRIPE_WEBHOOK_SECRET.
+  //
+  // Wired events: invoice.paid, invoice.payment_failed, invoice.voided.
+  // Anything else is acknowledged with 200 + no-op.
+  if (pathname === '/api/stripe/webhook' && req.method === 'POST') {
+    const rawBody = await readBody(req);
+    const sigHeader = req.headers['stripe-signature'] || req.headers['Stripe-Signature'];
+    const secret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!secret) {
+      // Don't 500 — Stripe would just retry. Log loudly and 200 so the rep
+      // can finish wiring the env var without a flood of retries.
+      console.warn('[stripe.webhook] STRIPE_WEBHOOK_SECRET not set — webhook acknowledged but NOT processed');
+      writelog('warn', 'stripe.webhook.unconfigured', 'Stripe webhook hit but STRIPE_WEBHOOK_SECRET not set', { meta: { sigHeaderPresent: !!sigHeader } });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ received: true, processed: false, reason: 'STRIPE_WEBHOOK_SECRET not configured' }));
+      return;
+    }
+    if (!stripeLib.verifyWebhookSignature(rawBody, sigHeader, secret)) {
+      writelog('warn', 'stripe.webhook.bad-signature', 'Rejected Stripe webhook — signature mismatch or stale timestamp', { meta: { sigHeaderPresent: !!sigHeader } });
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid signature' }));
+      return;
+    }
+
+    let event;
+    try { event = JSON.parse(rawBody); }
+    catch(e) {
+      writelog('error', 'error.stripe.webhook', `Stripe webhook JSON parse failed: ${e.message}`);
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Bad JSON' }));
+      return;
+    }
+
+    // Handle the 3 invoice lifecycle events we care about.
+    try {
+      const type = event.type || '';
+      const inv  = event.data?.object || {};
+      const quoteNumber = inv.metadata?.wr_quote_number || null;
+      const dealId      = inv.metadata?.wr_deal_id || null;
+      const handled = ['invoice.paid', 'invoice.payment_failed', 'invoice.voided'].includes(type);
+
+      if (handled && quoteNumber && db) {
+        const qrow = await db.query('SELECT json_snapshot, rep_id, deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
+        const snap = qrow?.rows?.[0]?.json_snapshot || {};
+        const stripeState = snap.stripe || {};
+        stripeState.status = inv.status || stripeState.status;
+        if (type === 'invoice.paid') {
+          stripeState.paidAt = new Date().toISOString();
+          stripeState.amountPaid = inv.amount_paid;
+        } else if (type === 'invoice.payment_failed') {
+          stripeState.lastPaymentFailedAt = new Date().toISOString();
+        } else if (type === 'invoice.voided') {
+          stripeState.voidedAt = new Date().toISOString();
+        }
+        snap.stripe = stripeState;
+        await db.query('UPDATE quotes SET json_snapshot = $1 WHERE quote_number = $2', [JSON.stringify(snap), quoteNumber]);
+
+        const ownerId = qrow?.rows?.[0]?.rep_id || null;
+        const dealName = qrow?.rows?.[0]?.deal_name || '';
+        const amountDollars = inv.amount_paid != null
+          ? (inv.amount_paid / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+          : '';
+
+        if (type === 'invoice.paid' && ownerId) {
+          await createNotification(
+            ownerId,
+            'stripe-invoice-paid',
+            `Payment received — ${quoteNumber}`,
+            `Stripe payment of ${amountDollars} received for ${dealName || quoteNumber}.`,
+            { dealId, dealName, quoteNum: quoteNumber }
+          );
+        } else if (type === 'invoice.payment_failed' && ownerId) {
+          await createNotification(
+            ownerId,
+            'stripe-invoice-failed',
+            `Payment failed — ${quoteNumber}`,
+            `A Stripe payment attempt failed on invoice for ${dealName || quoteNumber}. Customer may retry.`,
+            { dealId, dealName, quoteNum: quoteNumber }
+          );
+        }
+
+        // Auto-advance HubSpot deal stage on payment. Move to "Verbal
+        // Confirmation" (contractsent) when the deal is still in an early
+        // stage. Leave alone if already at contractsent, closedwon, shipped
+        // (845719), or closedlost — never walk a deal backwards or stomp a
+        // closed state. Mirrors the manual quote-accept advance pattern
+        // (quote-server.js ~line 4287) but gated on current stage.
+        if (type === 'invoice.paid' && dealId) {
+          try {
+            const dsRes = await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path:     `/crm/v3/objects/deals/${dealId}?properties=dealstage`,
+              method:   'GET',
+              headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+            });
+            const currentStage = dsRes.body?.properties?.dealstage || '';
+            const ALREADY_AT_OR_PAST = new Set(['contractsent', 'closedwon', '845719', 'closedlost']);
+            if (!currentStage) {
+              writelog('warn', 'stripe.deal-stage-skipped', `Could not read current dealstage for ${dealId}; not advancing`, { quoteNum: quoteNumber, dealId: String(dealId), dealName });
+            } else if (ALREADY_AT_OR_PAST.has(currentStage)) {
+              writelog('info', 'stripe.deal-stage-noop', `Deal ${dealId} already at ${currentStage} — no advance needed`, { quoteNum: quoteNumber, dealId: String(dealId), dealName, meta: { currentStage } });
+            } else {
+              const patchRes = await httpsRequest({
+                hostname: 'api.hubapi.com',
+                path:     `/crm/v3/objects/deals/${dealId}`,
+                method:   'PATCH',
+                headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+              }, { properties: { dealstage: 'contractsent' } });
+              if (patchRes.status >= 400 || patchRes.body?.status === 'error') {
+                writelog('error', 'error.stripe.deal-stage', `Failed to advance deal ${dealId} from ${currentStage} → contractsent: ${patchRes.body?.message || patchRes.status}`, { quoteNum: quoteNumber, dealId: String(dealId), dealName, meta: { currentStage, response: patchRes.body } });
+              } else {
+                writelog('info', 'stripe.deal-stage-advanced', `Deal ${dealId} advanced ${currentStage} → contractsent on invoice.paid`, { quoteNum: quoteNumber, dealId: String(dealId), dealName, meta: { from: currentStage, to: 'contractsent' } });
+              }
+            }
+          } catch(e) {
+            console.warn('[stripe.webhook] dealstage advance failed:', e.message);
+            writelog('error', 'error.stripe.deal-stage', `Dealstage advance threw: ${e.message}`, { quoteNum: quoteNumber, dealId: String(dealId), dealName });
+          }
+        }
+
+        writelog(
+          type === 'invoice.payment_failed' ? 'warn' : 'info',
+          `stripe.${type.replace('invoice.', 'invoice-')}`,
+          `Stripe ${type} for ${quoteNumber}`,
+          { rep: String(ownerId || ''), quoteNum: quoteNumber, dealId: String(dealId || ''), dealName, meta: { stripeInvoiceId: inv.id, amount: inv.amount_paid, status: inv.status } }
+        );
+      } else if (!handled) {
+        // Acknowledge events we don't act on — Stripe still expects 200.
+        writelog('info', 'stripe.webhook.ignored', `Stripe webhook acknowledged but no handler: ${type}`, { meta: { type, stripeInvoiceId: inv.id } });
+      } else if (!quoteNumber) {
+        writelog('warn', 'stripe.webhook.no-quote', `Stripe webhook ${type} missing wr_quote_number metadata`, { meta: { stripeInvoiceId: inv.id } });
+      }
+    } catch(e) {
+      console.warn('[stripe.webhook] handler error:', e.message);
+      writelog('error', 'error.stripe.webhook', `Stripe webhook handler error: ${e.message}`, { meta: { eventType: event?.type, stripeInvoiceId: event?.data?.object?.id } });
+      // Still 200 — don't let DB hiccups cause Stripe to retry-storm.
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ received: true }));
+    return;
+  }
+
+  // ── Stripe On/Off Toggle ──────────────────────────────────────
+  // Lets a rep flip the integration without a redeploy. Backed by
+  // kv_store.stripe_enabled. Default ON. When OFF: new invoices skip
+  // Stripe creation; the /i/:quoteNumber Pay Now button falls back
+  // to HubSpot's payment_link even if a prior Stripe URL exists on
+  // the snapshot. Webhook handler stays active so in-flight Stripe
+  // invoices can still be marked paid.
+  if (pathname === '/api/stripe-toggle' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const enabled = await stripeLib.isEnabled();
+      json({ enabled });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+  if (pathname === '/api/stripe-toggle' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const body = JSON.parse(await readBody(req));
+      const next = !!body.enabled;
+      await stripeLib.setEnabled(next);
+      const rep = getRepFromReq(req, body);
+      writelog('info', 'stripe.toggle', `Stripe integration ${next ? 'ENABLED' : 'DISABLED'} by ${rep || 'unknown'}`, { rep, meta: { enabled: next } });
+      json({ enabled: next });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // Debug: search HubSpot deals by name (returns IDs + key properties).
+  // Use to find a deal's actual internal ID + dealstage when you only
+  // know the display name.
+  if (pathname === '/api/debug/find-deal' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const q = (parsed.query.q || '').trim();
+      if (!q) { json({ error: 'Missing q= query param' }, 400); return; }
+      const r = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path:     '/crm/v3/objects/deals/search',
+        method:   'POST',
+        headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+      }, {
+        query: q,
+        limit: 20,
+        properties: ['dealname','dealstage','pipeline','amount','hubspot_owner_id','hs_lastmodifieddate','createdate'],
+        sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+      });
+      const results = (r.body?.results || []).map(d => ({
+        id:             d.id,
+        dealname:       d.properties?.dealname,
+        dealstage:      d.properties?.dealstage,
+        pipeline:       d.properties?.pipeline,
+        amount:         d.properties?.amount,
+        hubspot_owner_id: d.properties?.hubspot_owner_id,
+        hs_lastmodifieddate: d.properties?.hs_lastmodifieddate,
+        createdate:     d.properties?.createdate,
+      }));
+      json({ query: q, total: r.body?.total, count: results.length, results });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // Debug: dump HubSpot deal by ID — returns raw properties so we can see
+  // the actual internal dealstage/pipeline values vs. what we filter on.
+  // Use when a deal exists in HubSpot's UI but isn't appearing in our Deal Hub.
+  if (pathname.startsWith('/api/debug/deal/') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const dealId = pathname.replace('/api/debug/deal/', '').trim();
+      if (!dealId) { json({ error: 'No deal ID' }, 400); return; }
+      const r = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path:     `/crm/v3/objects/deals/${dealId}?properties=dealname,dealstage,pipeline,amount,hubspot_owner_id,hs_lastmodifieddate,createdate,closedate,payment_status,payment_type,po_,tracking_number,carrier__c`,
+        method:   'GET',
+        headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+      });
+      // Also fetch the pipeline definition so we can map stage IDs to display names
+      let pipelineDef = null;
+      const pipelineId = r.body?.properties?.pipeline;
+      if (pipelineId) {
+        try {
+          const pr = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path:     `/crm/v3/pipelines/deals/${pipelineId}`,
+            method:   'GET',
+            headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+          });
+          pipelineDef = {
+            label:  pr.body?.label,
+            id:     pr.body?.id,
+            stages: (pr.body?.stages || []).map(s => ({ id: s.id, label: s.label, displayOrder: s.displayOrder })),
+          };
+        } catch(e) { /* non-fatal */ }
+      }
+      json({
+        rawHubspotDeal: r.body,
+        pipelineDefinition: pipelineDef,
+        ourFilter: {
+          BOARD_STAGES: ['appointmentscheduled', 'qualifiedtobuy', 'contractsent', 'closedwon', '845719'],
+          matchesOurFilter: ['appointmentscheduled','qualifiedtobuy','contractsent','closedwon','845719'].includes(r.body?.properties?.dealstage),
+        },
+      });
+    } catch(e) { json({ error: e.message }, 500); }
     return;
   }
 
@@ -2019,6 +2292,10 @@ const server = http.createServer(async (req, res) => {
       // Enrich with DB quote data (latest quote number, accepted status)
       if (db && deals.length) {
         const ids = deals.map(d => d.id);
+        // Stripe paid status only counts toward the deal-card "green" state
+        // when the Stripe toggle is ON — matches the /api/deal-hub overlay
+        // gating from v1.20.8. HubSpot payment_status is always honored.
+        const stripeOn = await stripeLib.isEnabled();
         const isApItemForList = (i) => {
           const fields = [i?.name, i?.productName, i?.sku, i?.description].filter(Boolean);
           return fields.some(f => /^AP[\s\-_]?\d/i.test(f) || /^Acoustic\s+Package/i.test(f));
@@ -2034,6 +2311,7 @@ const server = http.createServer(async (req, res) => {
                (q.json_snapshot->>'acceptedAt')::text      as accepted_at,
                q.json_snapshot->>'quoteLabel'              as quote_label,
                q.json_snapshot->'lineItems'                as line_items,
+               q.json_snapshot->'stripe'->>'status'        as stripe_status,
                o.created_at                               as order_at
              FROM quotes q
              LEFT JOIN orders o ON o.quote_number = q.quote_number
@@ -2087,6 +2365,10 @@ const server = http.createServer(async (req, res) => {
               latestQuote: r.quote_number,
               total: r.total,
               accepted: r.accepted === 'true',
+              // Stripe-paid flag (any quote on this deal). Gated by the toggle
+              // so flipping Stripe OFF returns the deal-card UI to its
+              // pre-Stripe behavior — pure HubSpot signal only.
+              paid: stripeOn && r.stripe_status === 'paid',
               firstMdl,
               hasRM,
               hasCustomHole,
@@ -2135,6 +2417,11 @@ const server = http.createServer(async (req, res) => {
           if (r.accepted === 'true') {
             // Any quote for this deal being accepted marks the deal as accepted
             byDeal[r.deal_id].accepted = true;
+          }
+          // Any quote on this deal with a paid Stripe invoice marks the deal as paid
+          // (toggle-gated — see initialization above).
+          if (stripeOn && r.stripe_status === 'paid') {
+            byDeal[r.deal_id].paid = true;
           }
         });
         deals.forEach(d => {
@@ -2221,9 +2508,120 @@ const server = http.createServer(async (req, res) => {
         } catch(e) { console.warn('[deals list] auto-sync error:', e.message); }
       })();
 
-      json({ deals, total: deals.length });
+      // Exclude ecommerce-owned (Shopify-integration) deals from the main
+      // board — they live in their own drawer surface (see /api/shopify-pending).
+      // The Shopify integration auto-advances these to Shipped stage, which
+      // is correct for small parts orders but wrong for booth-sized orders
+      // that need verification. Drawer handles both flows.
+      const filteredDeals = deals.filter(d => d.ownerId !== ECOMMERCE_OWNER_ID);
+      json({ deals: filteredDeals, total: filteredDeals.length });
     } catch(e) {
       console.error('Deals list error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Shopify pending review ──────────────────────────────
+  // Returns all deals owned by the Shopify integration's HubSpot user
+  // (ecommerce@whisperroom.com). Used by the "🛒 Shopify" button in the
+  // /deals topbar — glows orange when there are unverified booth-sized
+  // orders awaiting Jill's attention.
+  //
+  // Response shape:
+  //   { pendingCount: number, all: [
+  //       { id, name, amount, stage, modified, hasQuote, isPending, latestQuote, ... }
+  //     ] }
+  //
+  // isPending = no quote in our DB yet AND amount >= SHOPIFY_VERIFY_THRESHOLD ($5k default)
+  // hasQuote  = some quote in our DB is bound to this deal_id (sales has touched it)
+  //
+  // Filters out closedlost — abandoned Shopify orders shouldn't clutter the drawer.
+  if (pathname === '/api/shopify-pending' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      // 1. Fetch ecommerce-owned deals CREATED on or after the cutoff date.
+      //    Pre-cutoff Shopify deals are historical (small parts orders that
+      //    long ago auto-shipped) — only deals from when the verification
+      //    workflow started are relevant. Sort by createdate DESC so newest
+      //    appear first. Closedlost excluded server-side.
+      //
+      //    HubSpot date filters expect millisecond timestamps. Convert
+      //    SHOPIFY_CUTOFF_DATE (YYYY-MM-DD) to ms-since-epoch at midnight UTC.
+      const cutoffMs = Date.parse(SHOPIFY_CUTOFF_DATE + 'T00:00:00Z');
+      const allShopify = [];
+      let afterCur;
+      for (let page = 0; page < 10; page++) {
+        const body = {
+          filterGroups: [{
+            filters: [
+              { propertyName: 'hubspot_owner_id', operator: 'EQ',  value: ECOMMERCE_OWNER_ID },
+              { propertyName: 'dealstage',        operator: 'NEQ', value: 'closedlost' },
+              { propertyName: 'createdate',       operator: 'GTE', value: String(cutoffMs) },
+            ],
+          }],
+          properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate','createdate','closedate','payment_status','payment_type'],
+          sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }],
+          limit: 100,
+          ...(afterCur ? { after: afterCur } : {}),
+        };
+        const r = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path:     '/crm/v3/objects/deals/search',
+          method:   'POST',
+          headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+        }, body);
+        const pageResults = r.body?.results || [];
+        allShopify.push(...pageResults);
+        const nextAfter = r.body?.paging?.next?.after;
+        if (!nextAfter || pageResults.length < 100) break;
+        afterCur = String(nextAfter);
+      }
+
+      // 2. Join with our quotes DB to flag which Shopify deals have been
+      //    touched by sales (quote created → no longer "pending verification").
+      const dealIds = allShopify.map(d => d.id);
+      let quoteByDealId = {};
+      if (db && dealIds.length) {
+        try {
+          const qr = await db.query(
+            `SELECT deal_id, quote_number, total, created_at
+             FROM quotes
+             WHERE deal_id = ANY($1)
+             ORDER BY created_at DESC`,
+            [dealIds]
+          );
+          // First row per deal_id (DESC order) is the latest quote.
+          for (const row of qr.rows) {
+            if (!quoteByDealId[row.deal_id]) quoteByDealId[row.deal_id] = row;
+          }
+        } catch(e) { console.warn('[shopify-pending] DB join error:', e.message); }
+      }
+
+      const all = allShopify.map(d => {
+        const amount = parseFloat(d.properties?.amount || 0);
+        const dbQuote = quoteByDealId[d.id] || null;
+        const hasQuote = !!dbQuote;
+        const isPending = !hasQuote && amount >= SHOPIFY_VERIFY_THRESHOLD;
+        return {
+          id:           d.id,
+          name:         d.properties?.dealname || '—',
+          stage:        d.properties?.dealstage || '',
+          amount:       d.properties?.amount || '0',
+          modified:     d.properties?.hs_lastmodifieddate || '',
+          created:      d.properties?.createdate || '',
+          paymentStatus:d.properties?.payment_status || 'not_paid',
+          hasQuote,
+          isPending,
+          latestQuote:  dbQuote?.quote_number || null,
+          quoteCreatedAt: dbQuote?.created_at || null,
+        };
+      });
+
+      const pendingCount = all.filter(d => d.isPending).length;
+      json({ pendingCount, all, total: all.length });
+    } catch(e) {
+      console.error('Shopify pending error:', e.message);
       json({ error: e.message }, 500);
     }
     return;
@@ -2965,12 +3363,23 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      // Get payment link from DB
+      // Get payment link. Prefer Stripe (json_snapshot.stripe.hostedUrl) over
+      // HubSpot's payment_link — that's the Option A swap. HubSpot URL stays as
+      // fallback for older quotes, Canadian orders (we skip Stripe), any case
+      // where Stripe creation failed at /api/create-invoice time, AND any time
+      // the rep has flipped the global Stripe toggle OFF (kv_store.stripe_enabled).
       let paymentUrl = null;
-      if (db) {
+      let paymentSource = null;
+      const stripeInfo = quoteData.stripe || null;
+      const stripeOn = await stripeLib.isEnabled();
+      if (stripeOn && stripeInfo?.hostedUrl && stripeInfo?.status !== 'void' && stripeInfo?.status !== 'uncollectible') {
+        paymentUrl = stripeInfo.hostedUrl;
+        paymentSource = 'stripe';
+      } else if (db) {
         try {
           const pr = await db.query('SELECT payment_link FROM quotes WHERE quote_number = $1', [quoteId]);
           paymentUrl = pr.rows[0]?.payment_link || null;
+          if (paymentUrl) paymentSource = 'hubspot';
         } catch(e) {}
       }
 
@@ -6517,6 +6926,15 @@ ${q.accepted ? `
       try {
         const invoiceIds = (invoiceAssocRes?.body?.results || []).map(r => r.toObjectId);
         if (invoiceIds.length) {
+          // Stripe-overlay gating: if toggle is OFF, we skip the Stripe overlay
+          // entirely and render pure HubSpot data — the rep gets the pre-Stripe
+          // view exactly. Stripe data on json_snapshot.stripe is preserved
+          // (flipping back ON restores everything).
+          const stripeOn = await stripeLib.isEnabled();
+          const stripeDashRoot = (process.env.STRIPE_SECRET_KEY || '').startsWith('sk_test_')
+            ? 'https://dashboard.stripe.com/test/invoices/'
+            : 'https://dashboard.stripe.com/invoices/';
+
           const [batchRes, dbInv] = await Promise.all([
             httpsRequest({
               hostname: 'api.hubapi.com',
@@ -6527,7 +6945,7 @@ ${q.accepted ? `
               inputs: invoiceIds.map(id => ({ id: String(id) })),
               properties: ['hs_invoice_status','hs_invoice_date','hs_number','hs_title','hs_amount_billed','hs_balance_due','hs_hubspot_invoice_link','quote_number']
             }),
-            db ? db.query('SELECT quote_number, payment_link, share_token FROM quotes WHERE deal_id = $1 AND payment_link IS NOT NULL', [dealId]).catch(() => ({ rows: [] }))
+            db ? db.query('SELECT quote_number, payment_link, share_token, json_snapshot FROM quotes WHERE deal_id = $1 AND payment_link IS NOT NULL', [dealId]).catch(() => ({ rows: [] }))
                : Promise.resolve({ rows: [] }),
           ]);
 
@@ -6538,7 +6956,7 @@ ${q.accepted ? `
             const invPageUrl = dbMatch?.quote_number && dbMatch?.share_token
               ? `${PUBLIC_BASE_URL}/i/${dbMatch.quote_number}?t=${dbMatch.share_token}`
               : dbMatch?.payment_link || null;
-            return {
+            const row = {
               id:             inv.id,
               status:         inv.properties?.hs_invoice_status || 'draft',
               number:         inv.properties?.hs_number || '',
@@ -6551,6 +6969,25 @@ ${q.accepted ? `
               paymentPageUrl: invPageUrl,
               paymentMethod:  inv.properties?.hs_payment_method || '',
             };
+            // Stripe overlay — only when toggle is ON. When OFF, the row above
+            // is exactly the pre-Stripe shape and the UI renders accordingly.
+            if (stripeOn) {
+              const stripe = dbMatch?.json_snapshot?.stripe;
+              if (stripe?.invoiceId) {
+                row.stripeInvoiceId    = stripe.invoiceId;
+                row.stripeStatus       = stripe.status || null;
+                row.stripePaidAt       = stripe.paidAt || null;
+                row.stripeDashboardUrl = stripeDashRoot + stripe.invoiceId;
+                // If Stripe says paid, that's the truth — the customer
+                // actually paid via Stripe. HubSpot status will be stale
+                // until we sync back (deferred).
+                if (stripe.status === 'paid') {
+                  row.status  = 'paid';
+                  row.paidVia = 'stripe';
+                }
+              }
+            }
+            return row;
           });
 
           // Fetch payment method from Payment records (only for paid invoices)
@@ -6636,7 +7073,7 @@ ${q.accepted ? `
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
       const body = JSON.parse(await readBody(req));
-      const { dealId, quoteNumber, lineItems, freight, tax, discount, ownerId, contactId, customer, allowCC, allowACH, install } = body;
+      const { dealId, quoteNumber, lineItems, freight, tax, discount, ownerId, contactId, customer, allowCC, allowACH, allowWire, install } = body;
 
       if (!dealId) { json({ error: 'No deal ID' }, 400); return; }
 
@@ -6941,11 +7378,139 @@ ${q.accepted ? `
         } catch(e) { console.warn('DB payment_link save failed:', e.message); }
       }
 
+      // 9c. Create Stripe Invoice alongside HubSpot's (Option A — May 12, 2026 plan).
+      // HubSpot invoice remains the source of record. Stripe becomes the customer's
+      // pay-now surface via json_snapshot.stripe.hostedUrl, picked up by /i/:quoteNumber.
+      // Any failure here is non-fatal — HubSpot's payment_link is the fallback.
+      let stripeInvoice = null;
+      try {
+        let isCanadian = false;
+        let snap = {};
+        if (quoteNumber && db) {
+          const snapRow = await db.query('SELECT json_snapshot FROM quotes WHERE quote_number = $1', [quoteNumber]);
+          snap = snapRow?.rows?.[0]?.json_snapshot || {};
+          isCanadian = snap.canadian === true
+            || /^canada$/i.test(String(snap.country || ''))
+            || /^canada$/i.test(String(snap.customer?.country || customer?.country || ''));
+        }
+
+        // Build effective customer: body wins, snapshot fills gaps, then
+        // HubSpot contact as last resort for email/phone/name.
+        const snapCust = snap.customer || {};
+        const effCustomer = {
+          firstName: customer?.firstName || snapCust.firstName || '',
+          lastName:  customer?.lastName  || snapCust.lastName  || '',
+          company:   customer?.company   || snapCust.company   || '',
+          email:     customer?.email     || snapCust.email     || '',
+          phone:     customer?.phone     || snapCust.phone     || '',
+          address:   customer?.address   || snapCust.address   || '',
+          city:      customer?.city      || snapCust.city      || '',
+          state:     customer?.state     || snapCust.state     || '',
+          zip:       customer?.zip       || snapCust.zip       || '',
+          country:   customer?.country   || snapCust.country   || '',
+        };
+        if (!effCustomer.email && resolvedContactId) {
+          try {
+            const contactRes = await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path:     `/crm/v3/objects/contacts/${resolvedContactId}?properties=email,firstname,lastname,phone,company`,
+              method:   'GET',
+              headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+            });
+            const cp = contactRes.body?.properties || {};
+            if (cp.email)     effCustomer.email     = cp.email;
+            if (cp.firstname) effCustomer.firstName = effCustomer.firstName || cp.firstname;
+            if (cp.lastname)  effCustomer.lastName  = effCustomer.lastName  || cp.lastname;
+            if (cp.phone)     effCustomer.phone     = effCustomer.phone     || cp.phone;
+            if (cp.company)   effCustomer.company   = effCustomer.company   || cp.company;
+          } catch(e) { console.warn('HubSpot contact email lookup failed:', e.message); }
+        }
+
+        // Sum up positive line items in cents — Stripe auto-marks $0 invoices
+        // as paid the instant they're finalized, which surfaces as a confusing
+        // "already paid" hosted-invoice page for the customer. Skip creation
+        // entirely below the dollar threshold.
+        const positiveItems = (invoiceLineItems || []).filter(i => parseFloat(i.price || 0) > 0 && !i.isCredit);
+        // Mirror Stripe's coupon-on-invoice math: aggregate the discountable
+        // subtotal (items with lineDiscount > 0 = product lines), aggregate
+        // the non-discountable subtotal (freight/tax/install), apply the
+        // discount percentage to the discountable subtotal, then sum. Doing
+        // it per-line and rounding each can drift by a cent or two from
+        // Stripe's aggregate-then-round, which would spuriously trip the
+        // fail-loud guard or look like a mismatch in the success log.
+        let discountableSubCents = 0;
+        let nonDiscountableSubCents = 0;
+        for (const i of positiveItems) {
+          const qty = parseInt(i.qty || 1, 10) || 1;
+          const cents = Math.round(parseFloat(i.price) * 100) * qty;
+          if (parseFloat(i.lineDiscount || 0) > 0) discountableSubCents += cents;
+          else nonDiscountableSubCents += cents;
+        }
+        const previewTotalCents = discountableSubCents + nonDiscountableSubCents - Math.round(discountableSubCents * discPct);
+
+        const stripeOn = await stripeLib.isEnabled();
+        if (!stripeOn) {
+          writelog('info', 'stripe.invoice.skipped', `Stripe invoice skipped — integration disabled by toggle`, { rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||'') });
+        } else if (isCanadian) {
+          writelog('info', 'stripe.invoice.skipped', `Stripe invoice skipped — Canadian/international order (wire transfer only)`, { rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||'') });
+        } else if (!process.env.STRIPE_SECRET_KEY) {
+          // No-op when Stripe isn't configured (e.g., prod before cutover)
+        } else if (!effCustomer.email) {
+          writelog('warn', 'stripe.invoice.skipped', `Stripe invoice skipped — no customer email on quote, snapshot, or HubSpot contact`, { rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||''), meta: { contactId: resolvedContactId } });
+        } else if (previewTotalCents <= 0) {
+          writelog('warn', 'stripe.invoice.skipped', `Stripe invoice skipped — quote totals to $0 (Stripe auto-marks $0 invoices as paid)`, { rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||''), meta: { lineItemCount: (invoiceLineItems||[]).length, positiveItemCount: positiveItems.length, previewTotalCents } });
+        } else {
+          stripeInvoice = await stripeLib.createInvoiceForQuote({
+            quoteNumber,
+            dealId,
+            customer: effCustomer,
+            lineItems: invoiceLineItems,
+            // daysUntilDue omitted → lib chooses 14 when ACH on, 7 otherwise.
+            expectedTotalCents: previewTotalCents,
+            discountPct: discPct > 0 ? parseFloat((discPct * 100).toFixed(4)) : 0,
+            // Per-quote payment-method gating from the rep UI. Undefined →
+            // default true at the lib boundary, so old clients that don't
+            // send these still get the full set.
+            allowCC:   allowCC   !== false,
+            allowACH:  allowACH  !== false,
+            allowWire: allowWire !== false,
+          });
+          if (quoteNumber && db) {
+            snap.stripe = stripeInvoice;
+            await db.query('UPDATE quotes SET json_snapshot = $1 WHERE quote_number = $2', [JSON.stringify(snap), quoteNumber]);
+          }
+          writelog('info', 'stripe.invoice.created', `Stripe invoice ${stripeInvoice.invoiceId} created for ${quoteNumber}`, {
+            rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||''),
+            meta: {
+              stripeInvoiceId: stripeInvoice.invoiceId,
+              amountDue: stripeInvoice.amountDue,
+              hostedUrl: stripeInvoice.hostedUrl,
+              emailSource: customer?.email ? 'body' : (snapCust.email ? 'snapshot' : 'hubspot-contact'),
+              lineItemCount: (invoiceLineItems||[]).length,
+              positiveItemCount: positiveItems.length,
+              previewTotalCents,
+              paymentMethods: stripeInvoice.paymentMethods,
+              daysUntilDue: stripeInvoice.daysUntilDue,
+            },
+          });
+        }
+      } catch(stripeErr) {
+        console.warn('Stripe invoice create failed:', stripeErr.message);
+        writelog('error', 'error.stripe.invoice', `Stripe invoice create failed: ${stripeErr.message}`, { rep: String(ownerId||''), quoteNum: quoteNumber, dealId: String(dealId||'') });
+      }
+
       // 10. Return invoice page URL
       const invToken = (await db?.query('SELECT share_token FROM quotes WHERE quote_number = $1', [quoteNumber]))?.rows[0]?.share_token || '';
       const invoicePageUrl = `${PUBLIC_BASE_URL}/i/${quoteNumber}?t=${invToken}`;
       writelog('info', 'invoice.created', `Invoice created: ${quoteNumber || '—'}`, { rep: String(ownerId || ''), quoteNum: quoteNumber || null, dealId: String(dealId || ''), meta: { invoiceId } });
-      json({ success: true, invoiceUrl: invoicePageUrl, paymentUrl, invoiceId });
+      json({
+        success: true,
+        invoiceUrl: invoicePageUrl,
+        paymentUrl,
+        invoiceId,
+        stripeInvoiceId: stripeInvoice?.invoiceId || null,
+        stripeHostedUrl: stripeInvoice?.hostedUrl || null,
+      });
 
       // Upload invoice PDF to Google Drive (non-blocking)
       (async () => {

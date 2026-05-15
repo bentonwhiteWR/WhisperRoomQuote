@@ -14,6 +14,10 @@
   .logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8;white-space:nowrap;}.logo span{color:#e8531a;}
   .topbar-right{display:flex;align-items:center;gap:10px;flex-shrink:0;}
   .back{font-size:11px;font-weight:700;color:var(--muted);text-decoration:none;padding:5px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;letter-spacing:.05em;text-transform:uppercase;}
+  .stripe-toggle{font-size:11px;font-weight:700;padding:5px 10px;border-radius:6px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;font-family:inherit;border:1px solid transparent;transition:opacity .12s;}
+  .stripe-toggle.on{background:rgba(34,197,94,.18);color:var(--green);border-color:rgba(34,197,94,.4);}
+  .stripe-toggle.off{background:rgba(255,255,255,.06);color:var(--muted);border-color:rgba(255,255,255,.1);}
+  .stripe-toggle.loading{opacity:.5;pointer-events:none;}
   .live-dot{width:7px;height:7px;background:var(--green);border-radius:50%;animation:pulse 2s infinite;}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
   .last-updated{font-size:10px;color:var(--muted);}
@@ -73,6 +77,7 @@
   <div class="topbar-right">
     <div class="live-dot"></div>
     <span class="last-updated" id="lastUpdated">Loading…</span>
+    <button class="stripe-toggle loading" id="stripeToggleBtn" onclick="toggleStripe()" title="Toggle Stripe Invoice integration. When OFF, new invoices skip Stripe and existing ones fall back to HubSpot Pay Now URL.">Stripe: …</button>
     <a href="/changelog" class="back">📝 Changelog</a>
     <a href="/deals" class="back">← Deal Hub</a>
   </div>
@@ -262,7 +267,56 @@ function renderStats() {
   ].map(s=>'<div class="stat"><div class="stat-val" style="color:'+s.c+'">'+s.v+'</div><div class="stat-label">'+s.l+'</div></div>').join('');
 }
 
+// ── Stripe integration toggle ───────────────────────────────
+// Reads kv_store.stripe_enabled on load; click flips it via
+// POST /api/stripe-toggle. Default ON. When OFF, the server skips
+// Stripe creation on new invoices AND falls back to the HubSpot
+// payment_link on /i/:quoteNumber even if a prior Stripe URL is on
+// the snapshot. Webhook handler stays active either way.
+async function loadStripeToggle() {
+  const btn = document.getElementById('stripeToggleBtn');
+  try {
+    const r = await fetch('/api/stripe-toggle', { credentials: 'include' });
+    const data = await r.json();
+    paintStripeToggle(!!data.enabled);
+  } catch(e) {
+    btn.classList.remove('on','off','loading');
+    btn.classList.add('off');
+    btn.textContent = 'Stripe: ?';
+  }
+}
+function paintStripeToggle(on) {
+  const btn = document.getElementById('stripeToggleBtn');
+  btn.classList.remove('on','off','loading');
+  btn.classList.add(on ? 'on' : 'off');
+  btn.textContent = 'Stripe: ' + (on ? 'ON' : 'OFF');
+  btn.dataset.enabled = on ? '1' : '0';
+}
+async function toggleStripe() {
+  const btn = document.getElementById('stripeToggleBtn');
+  const wasOn = btn.dataset.enabled === '1';
+  const next = !wasOn;
+  // Optimistic update
+  paintStripeToggle(next);
+  btn.classList.add('loading');
+  try {
+    const r = await fetch('/api/stripe-toggle', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: next }),
+    });
+    const data = await r.json();
+    paintStripeToggle(!!data.enabled);
+  } catch(e) {
+    // Revert on failure
+    paintStripeToggle(wasOn);
+    alert('Failed to toggle Stripe: ' + e.message);
+  }
+}
+
 loadLogs();
+loadStripeToggle();
 setInterval(loadLogs,30000);
 </script>
 </body>

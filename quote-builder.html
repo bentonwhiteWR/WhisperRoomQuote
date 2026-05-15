@@ -15,11 +15,13 @@
   --surface2: #e6e3dc;
   --border: #d8d4cc;
   --accent: #ee6216;
+  --orange: #ee6216;       /* alias — modals reference both names */
   --accent-dim: rgba(238,98,22,.08);
   --accent-glow: rgba(238,98,22,.25);
   --charcoal: #46484d;
   --charcoal-dim: rgba(70,72,77,.06);
   --text: #1a1a1a;
+  --text2: #555;           /* secondary text — defined so var(--text2,#aaa) fallback doesn't kick in on light bg */
   --muted: #777;
   --dim: #c0bdb6;
   --green: #1a7a4a;
@@ -37,9 +39,11 @@ body.dark {
   --surface2: #222428;
   --border: #2e3035;
   --accent: #ee6216;
+  --orange: #ee6216;
   --accent-dim: rgba(238,98,22,.12);
   --charcoal-dim: rgba(255,255,255,.04);
   --text: #e8e6e3;
+  --text2: #aaa;
   --muted: #7a7c80;
   --dim: #3a3c40;
   --green: #3ecf8e;
@@ -654,6 +658,16 @@ body:not(.dark) .submit-overlay-msg { color: var(--muted) !important; }
 .success-modal-actions button, .success-modal-actions a { padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; font-family: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
 .success-modal-actions .btn-primary { background: var(--accent); color: #fff; }
 .success-modal-actions .btn-secondary { background: var(--surface2); color: rgba(255,255,255,.85); border: 1px solid var(--border); }
+
+/* Light-mode overrides for the success modal — its body text was
+   hardcoded white-on-dark for the original dark theme, which makes it
+   invisible on the cream light-mode surface. The submit overlay (the
+   "Revising Quote…" spinner) already had similar overrides at line 640;
+   the success modal that pops AFTER push was missed.
+   Applies to body:not(.dark) so dark theme is unaffected. */
+body:not(.dark) .success-modal-title { color: var(--text) !important; }
+body:not(.dark) .success-modal-msg { color: var(--muted) !important; }
+body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !important; }
 
 /* ── Quote-number preview pill ── */
 
@@ -1465,7 +1479,7 @@ body:not(.dark) .submit-overlay-msg { color: var(--muted) !important; }
         <textarea id="intlAddress" rows="2" placeholder="Full delivery address..." style="width:100%;padding:8px 10px;background:var(--surface2,rgba(255,255,255,.08));border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>
       </div>
 
-      <div id="intlPalletSummary" style="background:rgba(255,255,255,.05);border-radius:6px;padding:10px 12px;font-size:12px;color:var(--muted)">
+      <div id="intlPalletSummary" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-size:12px;color:var(--muted)">
         <!-- filled by openIntlShipping() -->
       </div>
 
@@ -1488,7 +1502,7 @@ body:not(.dark) .submit-overlay-msg { color: var(--muted) !important; }
       <button onclick="contactGuardStartFresh()" style="padding:12px;background:var(--accent,#ee6216);border:none;border-radius:8px;color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.03em">
         🆕 Start Fresh — Clear quote &amp; load new contact
       </button>
-      <button onclick="contactGuardKeepQuote()" style="padding:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:var(--text,#e8e8e8);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+      <button onclick="contactGuardKeepQuote()" style="padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
         🔄 Keep Quote — Just update the contact info
       </button>
       <button onclick="contactGuardCancel()" style="padding:10px;background:none;border:none;color:var(--muted,#aaa);font-size:12px;cursor:pointer;font-family:inherit">
@@ -6502,8 +6516,9 @@ async function qbHubCreateInvoice(quoteNumber) {
     document.getElementById('invoicePreviewTotal').textContent = fmt(previewTotal);
 
     // Reset payment methods to defaults
-    document.getElementById('invoiceAllowCC').checked  = true;
-    document.getElementById('invoiceAllowACH').checked = true;
+    document.getElementById('invoiceAllowCC').checked   = true;
+    document.getElementById('invoiceAllowACH').checked  = true;
+    document.getElementById('invoiceAllowWire').checked = true;
 
     // Show $50k CC warning if applicable
     const warning = document.getElementById('invoiceCCWarning');
@@ -7468,8 +7483,9 @@ async function createInvoice() {
     document.getElementById('invoicePreviewTotal').textContent = '$' + total.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
     // Reset payment methods to defaults
-    document.getElementById('invoiceAllowCC').checked = true;
-    document.getElementById('invoiceAllowACH').checked = true;
+    document.getElementById('invoiceAllowCC').checked   = true;
+    document.getElementById('invoiceAllowACH').checked  = true;
+    document.getElementById('invoiceAllowWire').checked = true;
 
     // Show $50k CC warning if applicable
     const warning = document.getElementById('invoiceCCWarning');
@@ -7513,8 +7529,9 @@ async function confirmCreateInvoice() {
     install:   pending.snap.install   || null,
     discount:  pending.snap.discount  || { type:'pct', value:0 },
     advanceStage: false,
-    allowCC:  document.getElementById('invoiceAllowCC')?.checked  !== false,
-    allowACH: document.getElementById('invoiceAllowACH')?.checked !== false,
+    allowCC:   document.getElementById('invoiceAllowCC')?.checked   !== false,
+    allowACH:  document.getElementById('invoiceAllowACH')?.checked  !== false,
+    allowWire: document.getElementById('invoiceAllowWire')?.checked !== false,
     ownerId:   pending.snap.ownerId   || linkedDeal?.ownerId || null,
     contactId: pending.snap.contactId || null,
     customer:  pending.snap.customer  || {},
@@ -7527,8 +7544,9 @@ async function confirmCreateInvoice() {
     install: installData,
     discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
     advanceStage: false,
-    allowCC:  document.getElementById('invoiceAllowCC')?.checked !== false,
-    allowACH: document.getElementById('invoiceAllowACH')?.checked !== false,
+    allowCC:   document.getElementById('invoiceAllowCC')?.checked   !== false,
+    allowACH:  document.getElementById('invoiceAllowACH')?.checked  !== false,
+    allowWire: document.getElementById('invoiceAllowWire')?.checked !== false,
     ownerId: linkedDeal?.ownerId || window._lastPushedOwnerId || document.getElementById('repSelect').value || null,
     contactId: window._lastPushedContactId || null,
     customer: {
@@ -7631,7 +7649,14 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
           <input type="checkbox" id="invoiceAllowACH" checked style="accent-color:var(--accent);width:15px;height:15px;cursor:pointer">
           <div style="flex:1">
             <div style="font-size:13px;color:var(--text);font-weight:600">ACH / Bank Transfer</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:1px">Direct bank debit — lower processing fee</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px">Direct bank debit — 0.8% fee (capped at $5)</div>
+          </div>
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px">
+          <input type="checkbox" id="invoiceAllowWire" checked style="accent-color:var(--accent);width:15px;height:15px;cursor:pointer">
+          <div style="flex:1">
+            <div style="font-size:13px;color:var(--text);font-weight:600">Wire Transfer</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px">$8 flat fee — recommended for $25k+ orders</div>
           </div>
         </label>
       </div>

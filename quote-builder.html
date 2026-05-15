@@ -6065,8 +6065,20 @@ function toggleBillSame() {
   }
 })();
 
-// Save rep preference when changed
+// Save rep preference when changed.
+// Also: if the rep manually picks Ecommerce (49384873), redirect to the
+// logged-in user. Reps shouldn't own deals as the ecommerce bucket — that's
+// reserved for Shopify auto-created deals. Programmatic value sets (e.g.
+// loadDeal restoring a Shopify deal's owner) don't fire this handler, so
+// existing Shopify deal ownership stays intact when re-opened.
 document.getElementById('repSelect').addEventListener('change', function() {
+  if (this.value === '49384873' && window._currentUserOwnerId && window._currentUserOwnerId !== '49384873') {
+    this.value = window._currentUserOwnerId;
+    const myName = window._currentUserName || 'you';
+    if (typeof showToast === 'function') {
+      showToast(`Ecommerce routes to the rep — owner set to ${myName}`, 'info');
+    }
+  }
   localStorage.setItem('wr_default_rep', this.value);
   updateQuoteNumber();
   checkLinkBtnState();
@@ -6090,8 +6102,15 @@ fetchHistory().then(() => {
       const name  = document.getElementById('userName');
       if (badge) badge.style.display = 'flex';
       if (name)  name.textContent = data.name;
+      window._currentUserName = data.name;
     }
     if (data.ownerId) {
+      // Stash current user's HubSpot owner ID for the Ecommerce-swap
+      // handler (when a rep picks Ecommerce in the rep dropdown, we
+      // auto-redirect to themselves — reps shouldn't manually own deals
+      // under the ecommerce bucket; that's reserved for Shopify-auto-created
+      // deals).
+      window._currentUserOwnerId = data.ownerId;
       // Auto-select their rep in the dropdown (only if not already loaded from history)
       const repSel = document.getElementById('repSelect');
       if (repSel && !repSel.value) {

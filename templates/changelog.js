@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.21.9', date:'May 15, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'When a rep manually picks "Ecommerce" in the rep dropdown, the system now auto-redirects to the logged-in user as the deal owner. Reps shouldn\'t manually own deals under the ecommerce/Shopify bucket (49384873) — that\'s reserved for Shopify-auto-created deals. On change, dropdown swaps back to the rep\'s own name and a toast confirms: "Ecommerce routes to the rep — owner set to {name}". Programmatic dropdown sets (e.g. loadDeal restoring a Shopify deal\'s original ownership) don\'t fire the change handler, so existing Shopify deal ownership stays intact when re-opened. Current user\'s ownerId is now stashed on `window._currentUserOwnerId` from `/api/me` for the redirect handler to use.'},
+      ]
+    },
+    {
       v:'1.21.8', date:'May 15, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Critical:** "Creating Quote" spinner stuck forever when rep selected "Ecommerce" as the owner. The dropdown option at `quote-builder.html:842` had `value="ecommerce"` (string) while every other rep option has a numeric HubSpot owner ID. Selecting Ecommerce sent `ownerId: "ecommerce"` to /api/create-deal, which then tried to set HubSpot\'s `hubspot_owner_id: "ecommerce"` — invalid value, HubSpot rejected it, and the error path apparently swallowed the failure (spinner never resolved). Fix: changed dropdown value to the real ID `49384873` (ecommerce@whisperroom.com). Also updated REP_NAMES and REP_NUMBERS maps to use the numeric ID. Added server-side normalization in /api/create-deal: any legacy `ownerId === "ecommerce"` is now mapped to ECOMMERCE_OWNER_ID before being sent to HubSpot — belt-and-suspenders so this can never recur even if some old code path or saved snapshot still uses the string.'},

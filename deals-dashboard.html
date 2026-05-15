@@ -400,11 +400,8 @@ async function loadDeals() {
     const data=await res.json();
     if(data.error) throw new Error(data.error);
     allDeals=data.deals||[];
-    // Re-merge cached Shopify deals so they remain findable by ID. The
-    // _shopify flag keeps renderBoard from rendering them as cards
-    // (they live in the drawer only). Without this, openDeal/renderHub
-    // called from the drawer would fail to find the deal in allDeals
-    // and the overlay would render with empty data (just "Deal" title).
+    // Safety net merge — covers the brief window where a Shopify deal
+    // has been polled by the drawer but not yet by the board.
     mergeShopifyIntoAllDeals();
     applyFilter();
   } catch(e) {
@@ -413,13 +410,16 @@ async function loadDeals() {
 }
 
 function mergeShopifyIntoAllDeals() {
+  // Safety net: if a Shopify deal arrived via /api/shopify-pending faster
+  // than the board's 60s loadDeals cycle, ensure it's findable in allDeals
+  // so openDeal/renderHub can populate the overlay correctly. Most of the
+  // time deals are already in allDeals from loadDeals (Shopify deals are
+  // no longer excluded from /api/deals/list as of v1.21.4) and this is
+  // a no-op.
   if (!_shopifyData || !_shopifyData.all) return;
   const existing = new Set(allDeals.map(d => d.id));
   for (const sd of _shopifyData.all) {
-    if (!existing.has(sd.id)) {
-      // Flag with _shopify so renderBoard skips it in column rendering.
-      allDeals.push({ ...sd, _shopify: true });
-    }
+    if (!existing.has(sd.id)) allDeals.push(sd);
   }
 }
 
@@ -456,10 +456,7 @@ function renderBoard() {
   board.innerHTML='';
   let total=0;
   COLUMNS.forEach(col => {
-    // Skip _shopify-flagged deals — they live in the Shopify drawer only,
-    // not in the regular board columns. They're kept in allDeals so that
-    // openDeal/renderHub can find them by ID when launched from the drawer.
-    const deals=filteredDeals.filter(d=>col.stages.includes(d.stage) && !d._shopify)
+    const deals=filteredDeals.filter(d=>col.stages.includes(d.stage))
       .sort((a,b) => {
         // Primary: lastActivityAt from our system — quote pushed, order processed,
         // quote accepted. HubSpot-modified dates (notes, field edits, views) are

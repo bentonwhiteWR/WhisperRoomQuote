@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.21.4', date:'May 15, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Ecommerce-owned (Shopify) deals are no longer hidden from the main Deal Hub board. They now appear in their HubSpot stage column (typically Shipped, since that\'s where the Shopify auto-creation workflow drops them) AND in the dedicated Shopify Orders drawer. The drawer is the curated lens for verification workflow (glow + Awaiting Verification section); the board is the full pipeline view. Ownership stays at ecommerce@whisperroom.com even after merging — these are Shopify-originated business and shouldn\'t count toward any individual rep\'s pipeline graph. Removes the v1.21.0 exclusion and the v1.21.1 `_shopify` flag workaround that was hiding them. mergeShopifyIntoAllDeals() retained as a safety net for the brief window where a Shopify deal has been polled by the drawer but not yet by the 60s board refresh.'},
+      ]
+    },
+    {
       v:'1.21.3', date:'May 15, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Shopify drawer button now shows "🛒 Shopify Orders" instead of just the emoji. Matches the uppercase letter-spacing weight of the other board-toolbar buttons (HubSpot Only, etc.) — easier to recognize at a glance, especially for reps who haven\'t seen the drawer yet.'},

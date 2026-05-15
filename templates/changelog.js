@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.21.6', date:'May 15, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'Line-item Weight column now shows LINE TOTAL (per-unit × qty) instead of just per-unit, matching how the adjacent Total column shows price × qty. Previously when a rep increased the qty, the displayed weight wouldn\'t change — even though the totalWeight calculation at the bottom + freight quoting already used the correctly-multiplied number. So the freight numbers were always right, but the per-line display was confusing and made reps think the weight wasn\'t tracking the qty change. Internally, `item.weight` is still stored per-unit (so all downstream code paths that multiply by qty stay consistent). When the rep edits the weight input, the new line-total is divided by qty before storing so the per-unit value updates correctly. Hover tooltip on the input clarifies: "Total weight for this line (per-unit × qty). Edit as line total."'},
+      ]
+    },
+    {
       v:'1.21.5', date:'May 15, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Shopify Orders button was invisible in light mode — used hardcoded dark-mode colors (rgba(255,255,255,.08) background, #f0ede8 text) instead of theme-aware CSS vars. Switched to var(--surface2)/var(--text)/var(--border) so it renders correctly in both light and dark mode. Glow state now uses var(--orange-dim) + var(--orange) for the colored text, which scales appropriately to whatever `--orange` resolves to per theme (#c94f0e in light, #ee6216 in dark). Badge also re-themed.'},

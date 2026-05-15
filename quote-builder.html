@@ -2348,8 +2348,9 @@ function renderLineItems() {
           style="width:90px${isCredit ? ';color:#ef4444' : ''}" oninput="updateLineItem('${item.id}','price',this.value)">
       </td>
       <td style="min-width:70px">
-        <input class="li-input" type="number" value="${item.weight || ''}" min="0" step="1"
+        <input class="li-input" type="number" value="${((parseFloat(item.weight)||0) * (parseInt(item.qty)||1)) || ''}" min="0" step="1"
           style="width:70px" placeholder="lbs"
+          title="Total weight for this line (per-unit × qty). Edit as line total."
           oninput="updateLineItem('${item.id}','weight',this.value)">
       </td>
       <td style="${amtStyle};font-size:13px;min-width:80px">${fmt(item.qty * item.price)}</td>
@@ -2366,7 +2367,14 @@ function updateLineItem(id, field, value) {
   if (field === 'qty')         item.qty         = Math.max(1, parseInt(value) || 1);
   if (field === 'price')       item.price       = parseFloat(value) || 0;
   if (field === 'description') item.description = value;
-  if (field === 'weight')      item.weight      = parseFloat(value) || 0;
+  // The weight input shows line-total (per-unit × qty). When the user
+  // edits it, back-calculate per-unit so internal calcs (totalWeight,
+  // freight quoting, BOL) stay consistent — they all multiply by qty.
+  if (field === 'weight') {
+    const lineTotal = parseFloat(value) || 0;
+    const q = Math.max(1, parseInt(item.qty) || 1);
+    item.weight = lineTotal / q;
+  }
   // Re-render on qty changes (qty is a small number, fast to type)
   // For price: DON'T re-render (destroys focus mid-typing) — just update the total cell and summary
   if (field === 'qty') { renderLineItems(); updateSummary(); }

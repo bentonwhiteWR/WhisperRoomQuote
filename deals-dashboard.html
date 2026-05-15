@@ -1420,19 +1420,33 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
       </div>
     </div>
 
-    <!-- Step 2: Confirm -->
+    <!-- Step 2: Confirm — shows both deals with a swap button so the rep
+         can pick which one survives. By default, the deal you started
+         from (clicked Merge Into on) is the "delete" side; the deal you
+         searched for is the "keep" side. The swap button flips that
+         direction — useful when starting from e.g. a Shopify auto-deal
+         that should survive and pulling another deal's quotes into it. -->
     <div id="mergeDealStep2" style="display:none">
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px">
-        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Merge into this deal</div>
-        <div id="mergeDealTargetName" style="font-size:15px;font-weight:800;color:var(--green);margin-bottom:6px"></div>
+      <!-- Delete card (source) -->
+      <div style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.25);border-left:3px solid #ef4444;border-radius:8px;padding:12px 14px;margin-bottom:6px">
+        <div style="font-size:10px;font-weight:700;color:#ef4444;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">✗ Delete</div>
+        <div id="mergeDealStep2SourceName" style="font-size:14px;font-weight:800;color:#ef4444"></div>
+      </div>
+      <!-- Swap button -->
+      <div style="text-align:center;margin:4px 0">
+        <button onclick="swapMergeDirection()" title="Swap which deal survives" style="font-size:11px;color:var(--muted);background:none;border:1px solid var(--border);border-radius:6px;padding:5px 14px;cursor:pointer;font-family:inherit">⇅ Swap Direction</button>
+      </div>
+      <!-- Keep card (target) -->
+      <div style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.25);border-left:3px solid #22c55e;border-radius:8px;padding:14px;margin-top:6px;margin-bottom:16px">
+        <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">✓ Keep</div>
+        <div id="mergeDealTargetName" style="font-size:15px;font-weight:800;color:var(--green);margin-bottom:8px"></div>
         <div style="font-size:11px;color:var(--muted);line-height:1.5">
-          ✓ All quotes &amp; orders → moved to this deal<br>
-          ✓ Drive folder contents → merged<br>
-          ✗ Wrong deal → permanently deleted from HubSpot
+          ✓ All quotes &amp; orders from the Delete deal → moved here<br>
+          ✓ Drive folder contents → merged into this deal
         </div>
       </div>
       <div style="display:flex;gap:8px">
-        <button id="mergeDealConfirmBtn" onclick="confirmMergeDeal()" style="flex:1;padding:13px;background:#ef4444;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">⤴ Confirm Merge &amp; Delete Wrong Deal</button>
+        <button id="mergeDealConfirmBtn" onclick="confirmMergeDeal()" style="flex:1;padding:13px;background:#ef4444;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">⤴ Confirm Merge &amp; Delete</button>
         <button onclick="mergeDealBack()" style="padding:13px 14px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit">← Back</button>
       </div>
     </div>
@@ -1583,7 +1597,13 @@ async function confirmRebindFolder() {
 }
 
 // ── Merge Deal ────────────────────────────────────────────────────
+// Source = "Delete" side (this deal gets removed, its quotes/orders/folder
+//          move to the target). Target = "Keep" side (the survivor).
+// The Step 2 confirm UI exposes a swap button so the rep can flip which
+// is which — useful when starting the merge from a Shopify auto-created
+// deal that should be the survivor (pulling quotes IN from another deal).
 let _mergeDealSourceId   = null;
+let _mergeDealSourceName = null;
 let _mergeDealTargetId   = null;
 let _mergeDealTargetName = null;
 let _mergeDealSearchTimer = null;
@@ -1613,7 +1633,8 @@ function openMergeDeal(dealId) {
   _mergeDealTargetId   = null;
   _mergeDealTargetName = null;
   const deal = allDeals.find(d => d.id === dealId) || {};
-  document.getElementById('mergeDealSourceName').textContent = deal.name || dealId;
+  _mergeDealSourceName = deal.name || dealId;
+  document.getElementById('mergeDealSourceName').textContent = _mergeDealSourceName;
   document.getElementById('mergeDealSearch').value = '';
   document.getElementById('mergeDealResults').innerHTML = '';
   document.getElementById('mergeDealStep1').style.display = 'block';
@@ -1623,13 +1644,35 @@ function openMergeDeal(dealId) {
 
 function closeMergeDeal() {
   document.getElementById('mergeDealModal').style.display = 'none';
-  _mergeDealSourceId = _mergeDealTargetId = _mergeDealTargetName = null;
+  _mergeDealSourceId = _mergeDealTargetId = _mergeDealSourceName = _mergeDealTargetName = null;
 }
 
 function mergeDealBack() {
   document.getElementById('mergeDealStep2').style.display = 'none';
   document.getElementById('mergeDealStep1').style.display = 'block';
   _mergeDealTargetId = _mergeDealTargetName = null;
+}
+
+// Flip which deal survives. After swap, the original "Delete" becomes
+// "Keep" and vice versa. Step 2 UI re-paints with swapped names.
+function swapMergeDirection() {
+  const tmpId   = _mergeDealSourceId;
+  const tmpName = _mergeDealSourceName;
+  _mergeDealSourceId   = _mergeDealTargetId;
+  _mergeDealSourceName = _mergeDealTargetName;
+  _mergeDealTargetId   = tmpId;
+  _mergeDealTargetName = tmpName;
+  paintMergeStep2();
+}
+
+// Repaint Step 2 names from current source/target state. Called on swap
+// and on initial entry into Step 2.
+function paintMergeStep2() {
+  document.getElementById('mergeDealStep2SourceName').textContent = _mergeDealSourceName || _mergeDealSourceId || '—';
+  document.getElementById('mergeDealTargetName').textContent      = _mergeDealTargetName || _mergeDealTargetId || '—';
+  // Also keep the modal-header "Wrong deal:" label in sync (originally set
+  // by openMergeDeal; updates if user swaps direction).
+  document.getElementById('mergeDealSourceName').textContent = _mergeDealSourceName || _mergeDealSourceId || '—';
 }
 
 function mergeDealSearchDebounce() {
@@ -1667,7 +1710,7 @@ async function runMergeDealSearch() {
 function selectMergeDealTarget(id, name) {
   _mergeDealTargetId   = id;
   _mergeDealTargetName = name;
-  document.getElementById('mergeDealTargetName').textContent = name;
+  paintMergeStep2();
   document.getElementById('mergeDealStep1').style.display = 'none';
   document.getElementById('mergeDealStep2').style.display = 'block';
 }

@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.21.1', date:'May 15, 2026', tag:'fix',
+      changes:[
+        {t:'ui', d:'Moved 🛒 Shopify Orders button from the main topbar (next to the notification bell) into the board-toolbar next to the All Reps rep filter. Better visual association with the board itself — it\'s a board-context action, not a global app action.'},
+        {t:'fix', d:'Shopify drawer now only shows deals CREATED on or after 2026-05-12 (configurable via SHOPIFY_CUTOFF_DATE env var). Pre-cutoff Shopify deals are historical clutter — small parts orders that long ago auto-shipped via the integration before the booth-verification workflow started. The drawer was previously showing all of them mixed in. Server filters via a HubSpot `createdate GTE <cutoff>` filter; sort changed from hs_lastmodifieddate DESC to createdate DESC so newest orders appear first.'},
+        {t:'fix', d:'Clicking a Shopify deal in the drawer now properly loads the deal hub overlay with full data (was just showing "Deal" title before). Root cause: v1.21.0 excluded ecommerce-owned deals from /api/deals/list to keep them off the main board, but `renderHub` does `allDeals.find(d => d.id === dealId)` for the overlay header — so Shopify deals returned undefined and the overlay rendered with empty data. Fix: keep Shopify deals findable in allDeals (merged from the /api/shopify-pending cache after every loadDeals refresh), but flag them with `_shopify: true` so renderBoard skips them from column rendering. Best of both: drawer-only display + working overlay lookups.'},
+      ]
+    },
+    {
       v:'1.21.0', date:'May 15, 2026', tag:'feature',
       changes:[
         {t:'add', d:'New 🛒 Shopify Orders drawer in the Deal Hub topbar. Pulls every deal owned by ecommerce@whisperroom.com (HubSpot user 49384873 — the owner the Shopify integration auto-assigns) and surfaces them in their own slide-out panel instead of mixing them into the regular board columns. Three sections by urgency: (1) "Awaiting Verification" — booth-sized orders (amount ≥ $5k) with no quote in our DB yet, orange "Booth — Verify" chip; (2) "Small Orders — No Quote Yet" — under-$5k Shopify deals still untouched, no chip; (3) "In Progress / Quoted" — Shopify deals where sales has created a real quote. Click any row → opens the standard deal hub overlay → "+ New Quote" → normal quote-builder flow. Button glows orange with a pulse animation when there are pending booth-sized orders awaiting Jill\'s verification; neutral gray with a count badge when the queue is empty. Polls every 60s so a new Shopify order triggers the glow within a minute without a page refresh.'},

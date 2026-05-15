@@ -227,6 +227,11 @@ const ECOMMERCE_OWNER_ID = process.env.ECOMMERCE_OWNER_ID || '49384873';
 // Threshold above which a Shopify deal needs human verification before
 // processing (booth-sized orders, not small parts orders that auto-ship).
 const SHOPIFY_VERIFY_THRESHOLD = parseFloat(process.env.SHOPIFY_VERIFY_THRESHOLD || '5000');
+// Cutoff date for Shopify drawer — only show deals CREATED on or after this
+// date. Pre-cutoff Shopify deals are historical clutter (small parts orders
+// that long ago auto-shipped via the integration) — we only care about
+// going forward from when the verification workflow started.
+const SHOPIFY_CUTOFF_DATE = process.env.SHOPIFY_CUTOFF_DATE || '2026-05-12';
 
 // ── Nexus states (freight taxability per state) ───────────────────
 const states = require('./lib/states');
@@ -2535,21 +2540,28 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/shopify-pending' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
-      // 1. Fetch all ecommerce-owned deals from HubSpot. Bounded volume
-      //    (Shopify deal count is small), so a single paginated pass with
-      //    a generous cap is fine. Filter out closedlost server-side.
+      // 1. Fetch ecommerce-owned deals CREATED on or after the cutoff date.
+      //    Pre-cutoff Shopify deals are historical (small parts orders that
+      //    long ago auto-shipped) — only deals from when the verification
+      //    workflow started are relevant. Sort by createdate DESC so newest
+      //    appear first. Closedlost excluded server-side.
+      //
+      //    HubSpot date filters expect millisecond timestamps. Convert
+      //    SHOPIFY_CUTOFF_DATE (YYYY-MM-DD) to ms-since-epoch at midnight UTC.
+      const cutoffMs = Date.parse(SHOPIFY_CUTOFF_DATE + 'T00:00:00Z');
       const allShopify = [];
       let afterCur;
       for (let page = 0; page < 10; page++) {
         const body = {
           filterGroups: [{
             filters: [
-              { propertyName: 'hubspot_owner_id', operator: 'EQ', value: ECOMMERCE_OWNER_ID },
+              { propertyName: 'hubspot_owner_id', operator: 'EQ',  value: ECOMMERCE_OWNER_ID },
               { propertyName: 'dealstage',        operator: 'NEQ', value: 'closedlost' },
+              { propertyName: 'createdate',       operator: 'GTE', value: String(cutoffMs) },
             ],
           }],
           properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate','createdate','closedate','payment_status','payment_type'],
-          sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+          sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }],
           limit: 100,
           ...(afterCur ? { after: afterCur } : {}),
         };

@@ -303,9 +303,6 @@ select option { background: var(--surface); color: var(--text); }
     <a href="/auth/logout" style="padding:5px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.4);text-decoration:none;white-space:nowrap">Sign Out</a>
   </div>
   <button onclick="newQuote()" style="padding:5px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(238,98,22,.2);border:1px solid rgba(238,98,22,.4);border-radius:6px;color:#ee6216;cursor:pointer;font-family:inherit;white-space:nowrap">+ New Quote</button>
-  <button class="shopify-btn" id="shopifyBtn" onclick="toggleShopifyPanel()" title="Shopify orders — click to review">
-    🛒<span class="shopify-badge zero" id="shopifyBadge">0</span>
-  </button>
   <button class="notif-bell" id="notifBell" onclick="toggleNotifPanel()" title="Notifications">
     🔔<span class="notif-badge" id="notifBadge" style="display:none">0</span>
   </button>
@@ -330,6 +327,9 @@ select option { background: var(--surface); color: var(--text); }
         <option value="38900892">Chet</option>
         <option value="38732186">Jeromy</option>
       </select>
+      <button class="shopify-btn" id="shopifyBtn" onclick="toggleShopifyPanel()" title="Shopify orders — click to review">
+        🛒<span class="shopify-badge zero" id="shopifyBadge">0</span>
+      </button>
       <span class="board-count" id="boardCount"></span>
       <button class="filter-toggle" id="hideUnintegratedBtn" onclick="toggleHideUnintegrated()" title="Toggle display of HubSpot-only deals with no quotes or orders">
         ○ HubSpot Only
@@ -399,9 +399,26 @@ async function loadDeals() {
     const data=await res.json();
     if(data.error) throw new Error(data.error);
     allDeals=data.deals||[];
+    // Re-merge cached Shopify deals so they remain findable by ID. The
+    // _shopify flag keeps renderBoard from rendering them as cards
+    // (they live in the drawer only). Without this, openDeal/renderHub
+    // called from the drawer would fail to find the deal in allDeals
+    // and the overlay would render with empty data (just "Deal" title).
+    mergeShopifyIntoAllDeals();
     applyFilter();
   } catch(e) {
     document.getElementById('board').innerHTML=`<div style="padding:40px;color:#ef4444;grid-column:1/-1">Error: ${e.message}</div>`;
+  }
+}
+
+function mergeShopifyIntoAllDeals() {
+  if (!_shopifyData || !_shopifyData.all) return;
+  const existing = new Set(allDeals.map(d => d.id));
+  for (const sd of _shopifyData.all) {
+    if (!existing.has(sd.id)) {
+      // Flag with _shopify so renderBoard skips it in column rendering.
+      allDeals.push({ ...sd, _shopify: true });
+    }
   }
 }
 
@@ -438,7 +455,10 @@ function renderBoard() {
   board.innerHTML='';
   let total=0;
   COLUMNS.forEach(col => {
-    const deals=filteredDeals.filter(d=>col.stages.includes(d.stage))
+    // Skip _shopify-flagged deals — they live in the Shopify drawer only,
+    // not in the regular board columns. They're kept in allDeals so that
+    // openDeal/renderHub can find them by ID when launched from the drawer.
+    const deals=filteredDeals.filter(d=>col.stages.includes(d.stage) && !d._shopify)
       .sort((a,b) => {
         // Primary: lastActivityAt from our system — quote pushed, order processed,
         // quote accepted. HubSpot-modified dates (notes, field edits, views) are
@@ -1173,6 +1193,10 @@ async function loadShopifyPending() {
     if (data.error) return;
     _shopifyData = data;
     paintShopifyBadge();
+    // Merge into allDeals so openDeal/renderHub can find Shopify deals by ID
+    // when launched from the drawer (allDeals is the lookup source for many
+    // renderHub call sites). Flagged with _shopify so renderBoard skips them.
+    mergeShopifyIntoAllDeals();
     // Only re-render the list if the drawer is currently open — avoids
     // pointless DOM work when nobody's looking.
     if (document.getElementById('shopifyPanel').classList.contains('open')) {

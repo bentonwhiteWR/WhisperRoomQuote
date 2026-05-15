@@ -2508,13 +2508,13 @@ const server = http.createServer(async (req, res) => {
         } catch(e) { console.warn('[deals list] auto-sync error:', e.message); }
       })();
 
-      // Exclude ecommerce-owned (Shopify-integration) deals from the main
-      // board — they live in their own drawer surface (see /api/shopify-pending).
-      // The Shopify integration auto-advances these to Shipped stage, which
-      // is correct for small parts orders but wrong for booth-sized orders
-      // that need verification. Drawer handles both flows.
-      const filteredDeals = deals.filter(d => d.ownerId !== ECOMMERCE_OWNER_ID);
-      json({ deals: filteredDeals, total: filteredDeals.length });
+      // Ecommerce-owned (Shopify-integration) deals appear on the main
+      // board AND in the Shopify drawer. The drawer (/api/shopify-pending)
+      // is the curated lens for verification workflow; the board is the
+      // full pipeline view. Deals stay owned by ecommerce@whisperroom.com
+      // even after merging — these are Shopify-originated business and
+      // shouldn't count toward any rep's individual pipeline graph.
+      json({ deals, total: deals.length });
     } catch(e) {
       console.error('Deals list error:', e.message);
       json({ error: e.message }, 500);

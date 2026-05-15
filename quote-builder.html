@@ -992,7 +992,7 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
             <th style="width:34%">Product / Description</th>
             <th style="width:8%">Qty</th>
             <th style="width:14%">Unit Price</th>
-            <th style="width:10%">Weight</th>
+            <th style="width:10%">Unit Weight</th>
             <th style="width:14%">Total</th>
             <th style="width:10%"></th>
           </tr>
@@ -2348,9 +2348,9 @@ function renderLineItems() {
           style="width:90px${isCredit ? ';color:#ef4444' : ''}" oninput="updateLineItem('${item.id}','price',this.value)">
       </td>
       <td style="min-width:70px">
-        <input class="li-input" type="number" value="${((parseFloat(item.weight)||0) * (parseInt(item.qty)||1)) || ''}" min="0" step="1"
+        <input class="li-input" type="number" value="${item.weight || ''}" min="0" step="1"
           style="width:70px" placeholder="lbs"
-          title="Total weight for this line (per-unit × qty). Edit as line total."
+          title="Per-unit weight. Total weight calculation multiplies by qty automatically."
           oninput="updateLineItem('${item.id}','weight',this.value)">
       </td>
       <td style="${amtStyle};font-size:13px;min-width:80px">${fmt(item.qty * item.price)}</td>
@@ -2367,14 +2367,7 @@ function updateLineItem(id, field, value) {
   if (field === 'qty')         item.qty         = Math.max(1, parseInt(value) || 1);
   if (field === 'price')       item.price       = parseFloat(value) || 0;
   if (field === 'description') item.description = value;
-  // The weight input shows line-total (per-unit × qty). When the user
-  // edits it, back-calculate per-unit so internal calcs (totalWeight,
-  // freight quoting, BOL) stay consistent — they all multiply by qty.
-  if (field === 'weight') {
-    const lineTotal = parseFloat(value) || 0;
-    const q = Math.max(1, parseInt(item.qty) || 1);
-    item.weight = lineTotal / q;
-  }
+  if (field === 'weight')      item.weight      = parseFloat(value) || 0;
   // Re-render on qty changes (qty is a small number, fast to type)
   // For price: DON'T re-render (destroys focus mid-typing) — just update the total cell and summary
   if (field === 'qty') { renderLineItems(); updateSummary(); }
@@ -2926,7 +2919,14 @@ function updateSummary() {
     sumInstallLine.style.display = 'none';
   }
 
-  document.getElementById('sumTax').textContent = tax > 0 ? fmt(tax) : (taxData && !taxData.inNexus ? 'No nexus' : 'Not calculated');
+  // Tax-exempt takes precedence — when the rep has checked the Tax Exempt
+  // box, the summary should say so explicitly rather than "Not calculated"
+  // (which made reps double-check whether tax was missing vs intentionally
+  // skipped).
+  const _sumTaxExempt = !!document.getElementById('taxexempt')?.checked;
+  document.getElementById('sumTax').textContent = _sumTaxExempt
+    ? 'Tax Exempt'
+    : (tax > 0 ? fmt(tax) : (taxData && !taxData.inNexus ? 'No nexus' : 'Not calculated'));
   document.getElementById('sumTotal').textContent = fmt(total);
 
   // Keep the Step 5 tax box in sync — getTaxAmount() recomputes live, so the
@@ -3415,9 +3415,20 @@ async function createDeal() {
     && Math.abs(parseFloat(window._loadedQuoteTotal) - total) < 0.01;
   showSubmitOverlay(_willBeRevisionFinal ? 'Revising Quote…' : 'Creating New Quote…');
 
+  // Hard 90s timeout on the create-deal call. Without this, a hung HubSpot
+  // call (rate limit, slow PDF gen, network blip) leaves the spinner
+  // spinning indefinitely with no way for the rep to recover or know what
+  // failed. Reports of "creating quote spinner stuck" were untraceable
+  // before because the fetch never resolves and the finally block never
+  // runs. Now an AbortError surfaces with a clear message and the rep can
+  // retry / check /admin-log.
+  const _createDealAbort = new AbortController();
+  const _createDealTimeout = setTimeout(() => _createDealAbort.abort(), 90000);
+
   try {
     const res = await fetch('/api/create-deal', {
       method: 'POST',
+      signal: _createDealAbort.signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         customer: {
@@ -3633,9 +3644,13 @@ async function createDeal() {
       }
     }
   } catch(e) {
+    const msg = (e.name === 'AbortError')
+      ? '✕ Request timed out after 90 seconds. The HubSpot/QB call may still complete in the background — check /admin-log or refresh and verify the deal exists before retrying.'
+      : `✕ ${e.message}`;
     document.getElementById('resultBox').className = 'result-box error';
-    document.getElementById('resultBox').innerHTML = `✕ ${e.message}`;
+    document.getElementById('resultBox').innerHTML = msg;
   } finally {
+    clearTimeout(_createDealTimeout);
     hideSubmitOverlay();
     btn.disabled = false;
     updatePushButtonText();

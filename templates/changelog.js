@@ -51,9 +51,17 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.21.7', date:'May 15, 2026', tag:'fix',
+      changes:[
+        {t:'ui', d:'Line-item Weight column header renamed "Unit Weight" (more accurate — it IS per-unit, and the totalWeight calc multiplies by qty automatically). Reverts v1.21.6\'s line-total display change; the per-unit display + total-at-bottom is what reps wanted all along.'},
+        {t:'ui', d:'Tax-exempt now shows "Tax Exempt" in the quote summary on the right rather than "Not calculated". Removes ambiguity — reps were double-checking whether tax was missing vs intentionally skipped.'},
+        {t:'fix', d:'Create-deal fetch now has a 90s hard timeout. Previously a hung HubSpot/QB call left the "Creating Quote…" spinner spinning forever with no way for the rep to recover, see what failed, or know whether the deal partially created. Now an AbortError surfaces a clear message: "Request timed out after 90 seconds. The HubSpot/QB call may still complete in the background — check /admin-log or refresh and verify the deal exists before retrying." Addresses the recent report of a rep stuck on "Creating Quote" indefinitely.'},
+      ]
+    },
+    {
       v:'1.21.6', date:'May 15, 2026', tag:'fix',
       changes:[
-        {t:'fix', d:'Line-item Weight column now shows LINE TOTAL (per-unit × qty) instead of just per-unit, matching how the adjacent Total column shows price × qty. Previously when a rep increased the qty, the displayed weight wouldn\'t change — even though the totalWeight calculation at the bottom + freight quoting already used the correctly-multiplied number. So the freight numbers were always right, but the per-line display was confusing and made reps think the weight wasn\'t tracking the qty change. Internally, `item.weight` is still stored per-unit (so all downstream code paths that multiply by qty stay consistent). When the rep edits the weight input, the new line-total is divided by qty before storing so the per-unit value updates correctly. Hover tooltip on the input clarifies: "Total weight for this line (per-unit × qty). Edit as line total."'},
+        {t:'fix', d:'Line-item Weight column now shows LINE TOTAL (per-unit × qty) instead of just per-unit, matching how the adjacent Total column shows price × qty. **Reverted in v1.21.7** — turns out reps prefer per-unit display in that cell with the qty-multiplied total at the bottom.'},
       ]
     },
     {

@@ -178,6 +178,12 @@
     .error-dismiss:hover { opacity: 1; }
 
     footer { text-align: center; padding: 24px 0 20px; font-size: 0.7rem; color: #AAA; letter-spacing: 0.5px; }
+
+    /* Embed mode (?embed=1) — when iframed inside the Deal Hub modal,
+       suppress the topbar + footer so we don't get nested nav chrome. */
+    body.embedded .topbar { display: none; }
+    body.embedded footer  { display: none; }
+    body.embedded main    { padding-top: 18px; }
   </style>
 </head>
 <body>
@@ -238,6 +244,11 @@
 
 <script>
 "use strict";
+
+// ====== Embed mode (iframed inside Deal Hub) — hide topbar + footer ======
+if (new URLSearchParams(location.search).get("embed") === "1") {
+  document.body.classList.add("embedded");
+}
 
 // ====== Constants ======
 const PRODUCT_LINKS = JSON.parse(document.getElementById("product-links").textContent);

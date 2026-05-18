@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.24.1', date:'May 18, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Email Reply Assistant — icon-only popup instead of new tab.** Moved the entry point from a labeled "✉️ Email Reply" link on the left side of the Deal Hub topbar (which opened a new tab) to a compact ✉️ icon-only button on the RIGHT side next to the theme toggle. Click now opens a modal that iframes `/email-reply?embed=1` (rep stays on the Deal Hub instead of leaving). Modal: 88vh × max-1180px wide, centered, dimmed backdrop. Close via ✕, ESC key, or backdrop click. Iframe is lazy-loaded on first open so the dashboard\'s initial paint isn\'t blocked by fetching the email-reply page. New `?embed=1` query param on the email-reply page suppresses its own topbar + footer when iframed, so reps don\'t see nested nav chrome. The standalone `/email-reply` URL still works (without `?embed=1`) for anyone who bookmarks it.'},
+      ]
+    },
+    {
       v:'1.24.0', date:'May 18, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Email Reply Assistant — new ✉️ Email Reply button in Deal Hub topbar.** Opens a paste-and-generate tool in a new tab. Rep picks a voice (Jill / Sarah / Travis), pastes a customer email or HubSpot lead notification, hits Generate, gets a personalized reply with the right spec PDF + YouTube overview URLs auto-injected, copies to clipboard, sends from Gmail. Single-shot per email. Vendored from Gabe\'s repo (gabewhite438/whisperroom-reply-assistant): system prompt (~1900 lines of locked phrases, voice templates, product facts, no-em-dash rule), product-links.json (71 products → spec PDF + overview video URL), product-specs.json (scraped specs). Anthropic call goes through new POST /api/email-reply server proxy with the API key server-side (not baked into HTML like Gabe\'s standalone tool) and prompt caching via cache_control:ephemeral. Frontend post-processing intact: em-dash scrub, URL force-injection into the three-link block, intro-line replacement with each rep\'s exact preferred opening (Jill: "Hello [Name]", Sarah: time-of-day greeting, Travis: no greeting). Existing-customer detection bypasses formal intro replacement. New env var ANTHROPIC_API_KEY required in Railway — without it the endpoint returns a clear "not configured" message.'},

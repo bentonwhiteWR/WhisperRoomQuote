@@ -2660,12 +2660,11 @@ const server = http.createServer(async (req, res) => {
     let body = {};
     try {
       body = JSON.parse(await readBody(req));
-      const { state: rawState, zip, city, subtotal, shipping, installShipping, street, rep, lineItems } = body;
+      const { state: rawState, zip, city, subtotal, shipping, installShipping, street, rep } = body;
       const state = toStateAbbr(rawState);
-      const liCount = Array.isArray(lineItems) ? lineItems.length : 0;
-      console.log(`[tax route] received: state=${state} zip=${zip} city=${city||'(none)'} street=${street||'(none)'} subtotal=${subtotal} shipping=${shipping} installShipping=${installShipping||0} lineItems=${liCount}`);
-      const result = await calculateTaxProper(state, zip, city, subtotal, shipping, street || '', installShipping || 0, liCount > 0 ? lineItems : null);
-      console.log(`[tax route] result: tax=${result.tax} rate=${result.rate} headlineRate=${result.headlineRate||0} mode=${result.mode||'?'} inNexus=${result.inNexus} error=${result.error||'none'}`);
+      console.log(`[tax route] received: state=${state} zip=${zip} city=${city||'(none)'} street=${street||'(none)'} subtotal=${subtotal} shipping=${shipping} installShipping=${installShipping||0}`);
+      const result = await calculateTaxProper(state, zip, city, subtotal, shipping, street || '', installShipping || 0);
+      console.log(`[tax route] result: tax=${result.tax} rate=${result.rate} inNexus=${result.inNexus} error=${result.error||'none'}`);
       if (result.error) {
         console.error(`[tax] error for ${state} ${zip}: ${result.error}`);
         writelog('error', 'error.tax', `Tax failed: ${state} ${zip||'no zip'} — ${result.error}`, { rep: rep || null, meta: { state, zip: zip||null, city: city||null, error: result.error } });

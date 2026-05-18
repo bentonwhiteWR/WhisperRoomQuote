@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.24.4', date:'May 18, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Email Reply popup — shrink the modal, keep the panel sizing.** v1.24.3 fixed the dead space by stretching the panels to fill the iframe, which made everything feel too big. Switching strategies: panels are back to their natural `min-height: 520px`, and the modal itself shrinks to 600px tall (from 88vh / 900px) so the popup\'s bottom edge lands right at the Generate Reply button instead of having ~250px of empty space below. `max-height: 92vh` keeps it from overflowing tiny windows.'},
+      ]
+    },
+    {
       v:'1.24.3', date:'May 18, 2026', tag:'ui',
       changes:[
         {t:'ui',  d:'**Email Reply popup — panels fill the iframe height.** Bottom 30-40% of the modal was dead space because the panels had a fixed `min-height: 520px` and the iframe was 88vh (~800-900px). In embed mode now: body is locked to 100vh, `main` fills the viewport, panel `min-height` is killed and panels use `height:100%` so they fill the grid cells. Textareas and the reply output now grow to use the available space instead of capping at ~320px.'},

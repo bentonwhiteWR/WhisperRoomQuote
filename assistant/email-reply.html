@@ -180,18 +180,13 @@
     footer { text-align: center; padding: 24px 0 20px; font-size: 0.7rem; color: #AAA; letter-spacing: 0.5px; }
 
     /* Embed mode (?embed=1) — when iframed inside the Deal Hub modal,
-       suppress the topbar + footer AND lock the layout to the iframe's
-       viewport so panels fill the height instead of leaving dead space
-       below them. Without `height:100vh` on main + killing the panel's
-       fixed `min-height`, panels render at ~520px and the bottom 30-40%
-       of the modal is empty.  */
-    body.embedded                    { height: 100vh; overflow: hidden; }
-    body.embedded .topbar            { display: none; }
-    body.embedded footer             { display: none; }
-    body.embedded main               { height: 100vh; padding: 18px 20px; }
-    body.embedded .panel             { min-height: 0; height: 100%; }
-    body.embedded textarea           { min-height: 0; }
-    body.embedded #replyOutput       { min-height: 0; }
+       suppress the topbar + footer. Panels stay at their natural
+       min-height (520px); the parent dashboard sizes the modal/iframe
+       to match the natural content height so the popup's bottom edge
+       lands right at the Generate Reply button, no dead space. */
+    body.embedded .topbar { display: none; }
+    body.embedded footer  { display: none; }
+    body.embedded main    { padding: 18px 20px; }
 
     /* Dark mode (?theme=dark) — opted in by the parent dashboard when the
        rep is on dark mode. Without this, opening the popup over a dark

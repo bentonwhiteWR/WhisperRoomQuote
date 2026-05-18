@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.24.0', date:'May 18, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Email Reply Assistant — new ✉️ Email Reply button in Deal Hub topbar.** Opens a paste-and-generate tool in a new tab. Rep picks a voice (Jill / Sarah / Travis), pastes a customer email or HubSpot lead notification, hits Generate, gets a personalized reply with the right spec PDF + YouTube overview URLs auto-injected, copies to clipboard, sends from Gmail. Single-shot per email. Vendored from Gabe\'s repo (gabewhite438/whisperroom-reply-assistant): system prompt (~1900 lines of locked phrases, voice templates, product facts, no-em-dash rule), product-links.json (71 products → spec PDF + overview video URL), product-specs.json (scraped specs). Anthropic call goes through new POST /api/email-reply server proxy with the API key server-side (not baked into HTML like Gabe\'s standalone tool) and prompt caching via cache_control:ephemeral. Frontend post-processing intact: em-dash scrub, URL force-injection into the three-link block, intro-line replacement with each rep\'s exact preferred opening (Jill: "Hello [Name]", Sarah: time-of-day greeting, Travis: no greeting). Existing-customer detection bypasses formal intro replacement. New env var ANTHROPIC_API_KEY required in Railway — without it the endpoint returns a clear "not configured" message.'},
+      ]
+    },
+    {
       v:'1.23.2', date:'May 18, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Sales Goal — three polish tweaks.** (1) Tier badges now say "+5% BONUS / +10% BONUS / +15% BONUS" instead of "+5% SALARY / …" — clearer that it\'s an additional payout, not a base-pay change. (2) Each month bar now shows deal count underneath the month abbreviation (e.g. "MAY · 14 deals") so reps can see whether a low-revenue month was low-volume or low-AOV at a glance. (3) The "120% — $617K" tick label was getting clipped at the right edge because the tick sits at left:100% and the centered label extended half-off the container. Now right-anchored (left:auto; right:0) so it sits flush inside the bar zone.'},

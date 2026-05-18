@@ -323,6 +323,49 @@ const MAIN_HTML_PATH = path.join(__dirname, 'quote-builder.html');
 let _salesGoalCache = null;
 const SALES_GOAL_CACHE_MS = 5 * 60 * 1000;
 
+// ── Email Reply Assistant (vendored from gabewhite438/whisperroom-reply-assistant) ──
+// System prompt is the model's brain (~1900 lines of rules, voice templates,
+// locked phrases, product facts). Loaded once at startup; sent on every call
+// with cache_control: ephemeral so Anthropic's prompt cache makes repeat
+// requests cheap. See assistant/README.md for the update procedure.
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const ANTHROPIC_MODEL   = process.env.ANTHROPIC_MODEL || 'claude-opus-4-7';
+const ANTHROPIC_VERSION = '2023-06-01';
+const EMAIL_REPLY_MAX_TOKENS = 2048;
+let EMAIL_REPLY_SYSTEM_PROMPT = '';
+let EMAIL_REPLY_PRODUCT_LINKS_RAW = '';
+try {
+  EMAIL_REPLY_SYSTEM_PROMPT = fs.readFileSync(path.join(__dirname, 'assistant', 'system-prompt.txt'), 'utf8');
+  EMAIL_REPLY_PRODUCT_LINKS_RAW = fs.readFileSync(path.join(__dirname, 'assistant', 'product-links.json'), 'utf8');
+  // product-specs.json is optional — if present, splice it into the system
+  // prompt at the __PRODUCT_SPECS__ marker (Gabe's build.js pattern). If the
+  // marker isn't there, the prompt was already pre-baked upstream.
+  try {
+    const specsPath = path.join(__dirname, 'assistant', 'product-specs.json');
+    if (fs.existsSync(specsPath) && EMAIL_REPLY_SYSTEM_PROMPT.includes('__PRODUCT_SPECS__')) {
+      const specs = JSON.parse(fs.readFileSync(specsPath, 'utf8'));
+      const slimProducts = {};
+      for (const [k, prod] of Object.entries(specs.products || {})) {
+        const { raw_text, ...rest } = prod;
+        slimProducts[k] = rest;
+      }
+      const slim = JSON.stringify({
+        generated_at: specs.generated_at,
+        source: specs.source,
+        scope_note: specs.scope_note,
+        products: slimProducts,
+        shared_specs: specs.shared_specs,
+      }, null, 2);
+      EMAIL_REPLY_SYSTEM_PROMPT = EMAIL_REPLY_SYSTEM_PROMPT.replace('__PRODUCT_SPECS__', () => slim);
+    }
+  } catch (e) {
+    console.warn('[email-reply] product-specs.json load failed:', e.message);
+  }
+  console.log(`[email-reply] system prompt loaded (${EMAIL_REPLY_SYSTEM_PROMPT.length.toLocaleString()} chars), product-links loaded`);
+} catch (e) {
+  console.warn('[email-reply] assistant files not loaded:', e.message);
+}
+
 // ── Server ────────────────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
   const parsed = url.parse(req.url, true);
@@ -5958,6 +6001,82 @@ ${q.accepted ? `
   // without changing the total) aren't tracked in the schema; would need
   // an audit table or updated_at column to surface — punted per May 13
   // discussion.
+  // ── API: Email Reply Assistant (Anthropic proxy) ───────────────
+  // Frontend (assistant/email-reply.html) builds the userMessage exactly the
+  // way Gabe's standalone tool does (PRODUCT LINKS block when one product is
+  // matched, REP: <name> header when a voice is picked) and posts it here.
+  // Server is a thin proxy: prepends the system prompt with ephemeral cache
+  // control, calls Anthropic, returns reply text. Keeps the Anthropic API
+  // key on the server side instead of baking it into the HTML.
+  if (pathname === '/api/email-reply' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    if (!ANTHROPIC_API_KEY) {
+      json({ error: 'ANTHROPIC_API_KEY not configured on server. Ask Benton to set it in Railway.' }, 503);
+      return;
+    }
+    if (!EMAIL_REPLY_SYSTEM_PROMPT) {
+      json({ error: 'Email Reply assistant files missing on server (assistant/system-prompt.txt).' }, 503);
+      return;
+    }
+    try {
+      const raw = await readBody(req);
+      const { userMessage } = JSON.parse(raw || '{}');
+      if (typeof userMessage !== 'string' || !userMessage.trim()) {
+        json({ error: 'userMessage required.' }, 400); return;
+      }
+      if (userMessage.length > 50000) {
+        json({ error: 'userMessage too long (max 50,000 chars).' }, 413); return;
+      }
+
+      const r = await httpsRequest({
+        hostname: 'api.anthropic.com',
+        path: '/v1/messages',
+        method: 'POST',
+        headers: {
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': ANTHROPIC_VERSION,
+          'content-type': 'application/json',
+        },
+        timeoutMs: 60000,
+      }, {
+        model: ANTHROPIC_MODEL,
+        max_tokens: EMAIL_REPLY_MAX_TOKENS,
+        system: [
+          { type: 'text', text: EMAIL_REPLY_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+        ],
+        messages: [{ role: 'user', content: userMessage }],
+      });
+
+      if (r.status >= 400) {
+        const errMsg = (r.body && (r.body.error?.message || r.body.error)) || `Anthropic ${r.status}`;
+        writelog('error', 'email-reply.anthropic', errMsg, { status: r.status, body: r.body });
+        json({ error: errMsg }, r.status);
+        return;
+      }
+      const reply = r.body?.content?.[0]?.text || '';
+      if (!reply) {
+        writelog('error', 'email-reply.empty', 'Anthropic returned empty reply', { body: r.body });
+        json({ error: 'Empty reply from Anthropic.' }, 502);
+        return;
+      }
+
+      const sess = getRepFromReq(req);
+      try {
+        writelog('info', 'email-reply.generated',
+          `${sess?.name || sess?.email || 'rep'} generated a reply (${reply.length} chars)`,
+          { rep: String(sess?.ownerId || ''), meta: { usage: r.body?.usage || null } }
+        );
+      } catch (e) {}
+
+      json({ reply, usage: r.body?.usage || null });
+    } catch (e) {
+      console.error('[email-reply]', e.message);
+      writelog('error', 'email-reply.exception', e.message, { stack: e.stack });
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── API: Sales-goal report ─────────────────────────────────────
   // Trailing-12-month moving average of net revenue (Closed Won + Shipped
   // deals, amount minus tax, freight included). Goal for current month =
@@ -7746,6 +7865,29 @@ ${q.accepted ? `
   if (pathname === '/deals' && req.method === 'GET') {
     if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
     const html = fs.readFileSync(path.join(__dirname, 'deals-dashboard.html'), 'utf8');
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+    return;
+  }
+
+  // ── Email Reply Assistant page ────────────────────────────────────
+  // Serves the standalone HTML with PRODUCT_LINKS injected via a script tag
+  // (matches Gabe's build.js inlining pattern). The system prompt + API key
+  // stay server-side — the browser only sees product link data needed for
+  // post-processing (URL force-injection into the reply's link block).
+  if (pathname === '/email-reply' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    let html;
+    try {
+      html = fs.readFileSync(path.join(__dirname, 'assistant', 'email-reply.html'), 'utf8');
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Email Reply Assistant not installed (assistant/email-reply.html missing).');
+      return;
+    }
+    const linksJson = EMAIL_REPLY_PRODUCT_LINKS_RAW || '{}';
+    const escapeForScriptTag = (s) => s.replace(/<\/script/gi, '<\\/script');
+    html = html.replace('__PRODUCT_LINKS__', () => escapeForScriptTag(linksJson));
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);
     return;

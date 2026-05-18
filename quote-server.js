@@ -317,6 +317,12 @@ const LOGIN_HTML = fs.readFileSync(path.join(__dirname, 'login.html'), 'utf8');
 const HSO_BTN = `<a href="/auth/hubspot" class="hs-btn"><svg width="18" height="18" viewBox="0 0 512 512" fill="white"><path d="M267.4 211.6c-25.1 23.7-40.8 57-40.8 93.8 0 29.3 9.7 56.3 26 78L203.1 434c-4.4-1.6-9.1-2.5-14-2.5-21.9 0-39.7 17.8-39.7 39.7S167.2 511 189.1 511s39.7-17.8 39.7-39.7c0-4.9-.9-9.6-2.5-14l49.2-50.4c22 16.4 49.2 26.1 78.7 26.1 73.5 0 133.1-59.6 133.1-133.1 0-67.7-50.6-123.5-116.1-131.8v-65.2c13.4-6.8 22.6-20.7 22.6-36.7 0-22.8-18.5-41.3-41.3-41.3-22.8 0-41.3 18.5-41.3 41.3 0 16 9.2 29.9 22.6 36.7v65.7c-22.5 2.9-43.1 11.5-60.4 24.6zM354.2 439.8c-46.6 0-84.4-37.8-84.4-84.4s37.8-84.4 84.4-84.4 84.4 37.8 84.4 84.4-37.8 84.4-84.4 84.4z"/></svg> Sign in with HubSpot</a>`;
 const MAIN_HTML_PATH = path.join(__dirname, 'quote-builder.html');
 
+// ── Sales-goal report cache (in-memory, 5 min, keyed by current month) ──
+// The 12-month moving average + tier goals are identical for every viewer
+// in a given month, so a single shared cache cuts repeat loads to ~0ms.
+let _salesGoalCache = null;
+const SALES_GOAL_CACHE_MS = 5 * 60 * 1000;
+
 // ── Server ────────────────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
   const parsed = url.parse(req.url, true);
@@ -5953,6 +5959,212 @@ ${q.accepted ? `
   // without changing the total) aren't tracked in the schema; would need
   // an audit table or updated_at column to surface — punted per May 13
   // discussion.
+  // ── API: Sales-goal report ─────────────────────────────────────
+  // Trailing-12-month moving average of net revenue (Closed Won + Shipped
+  // deals, amount minus tax, freight included). Goal for current month =
+  // movingAvg × 1.05. Tier thresholds at 90% / 100% / 120% drive the
+  // sales-team monthly bonus (5% / 10% / 15% of salary, capped at 15%).
+  //
+  // Window: the 12 fully-completed prior calendar months (locked the moment
+  // the new month starts so the goal can't shift under the team's feet) PLUS
+  // the current month-to-date for the progress bar.
+  //
+  // Revenue calc per deal mirrors /api/reconcile/hs-deals:
+  //   - prefer `total_tax_amount` (set by every push from this app + backfill)
+  //   - fall back to back-calc from `tax_rate` + `freight_cost` + nexus
+  //     freightTaxable flag for legacy deals
+  //   - tax-exempt deals (explicit 0 or missing both fields) → tax = 0
+  // No owner filter — Shopify ecommerce deals (owner 49384873) count toward
+  // company revenue too, even though they're not sales-team-attributed.
+  if (pathname === '/api/reports/sales-goal' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const force = parsed.query.force === '1';
+
+      // Current EST month — quote numbers + closedate bucketing both use EST.
+      const estParts = new Date().toLocaleString('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+      }).split('/');
+      // toLocaleString en-US returns "MM/DD/YYYY"
+      const curM = parseInt(estParts[0], 10) - 1; // 0-indexed
+      const curY = parseInt(estParts[2], 10);
+      const monthKey = `${curY}-${String(curM + 1).padStart(2, '0')}`;
+
+      if (!force && _salesGoalCache && _salesGoalCache.key === monthKey
+          && (Date.now() - _salesGoalCache.computedAt) < SALES_GOAL_CACHE_MS) {
+        json({ ..._salesGoalCache.payload, cached: true });
+        return;
+      }
+
+      // Search window: first day of (curMonth − 12) through end of curMonth.
+      // Dates constructed in local server time, then converted to ms epoch
+      // for HubSpot's timestamp filter. Approximation: server TZ vs EST may
+      // shift bucket edges by a few hours either side — acceptable since
+      // closedate is typically set at end-of-day anyway and a deal landing
+      // on the seam isn't going to be a big-ticket booth order.
+      const winStart = new Date(curY, curM - 12, 1, 0, 0, 0, 0);
+      const winEndExclusive = new Date(curY, curM + 1, 1, 0, 0, 0, 0);
+      const fromTs = winStart.getTime().toString();
+      const toTs   = (winEndExclusive.getTime() - 1).toString();
+
+      // Paginate all matching deals
+      let allDeals = [], after = null;
+      do {
+        const r = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/deals/search',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+        }, {
+          limit: 200,
+          ...(after ? { after } : {}),
+          filterGroups: [{
+            filters: [
+              { propertyName: 'dealstage', operator: 'IN',  values: ['closedwon', '845719'] },
+              { propertyName: 'closedate', operator: 'GTE', value: fromTs },
+              { propertyName: 'closedate', operator: 'LTE', value: toTs },
+            ]
+          }],
+          properties: ['amount','closedate','dealstage','tax_rate','total_tax_amount','freight_cost','shipping_state'],
+          sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
+        });
+        const results = r.body?.results || [];
+        allDeals.push(...results);
+        after = r.body?.paging?.next?.after || null;
+      } while (after);
+
+      // Build 12 prior-month buckets (oldest → newest) keyed by YYYY-MM
+      const buckets = {};
+      const orderedKeys = [];
+      for (let i = 12; i >= 1; i--) {
+        const d = new Date(curY, curM - i, 1);
+        const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        buckets[k] = {
+          label: d.toLocaleString('en-US', { month: 'short', year: 'numeric' }),
+          revenue: 0,
+          dealCount: 0,
+        };
+        orderedKeys.push(k);
+      }
+
+      let mtdRevenue = 0;
+      let mtdDealCount = 0;
+      let dealsCounted = 0;
+      let dealsWithHsTax = 0;
+      let dealsBackCalcTax = 0;
+
+      for (const d of allDeals) {
+        const cdRaw = d.properties?.closedate;
+        if (!cdRaw) continue;
+        const msNum = Number(cdRaw);
+        const dt = (!isNaN(msNum) && msNum > 0) ? new Date(msNum) : new Date(cdRaw);
+        if (isNaN(dt.getTime())) continue;
+
+        // Bucket by EST month so deals close to midnight land where the rep
+        // would expect (deal "closed Monday" goes in Monday's month even if
+        // the UTC stamp says Tuesday 02:00).
+        const estStr = dt.toLocaleString('en-US', {
+          timeZone: 'America/New_York',
+          year: 'numeric', month: '2-digit', day: '2-digit',
+        });
+        const parts = estStr.split('/');
+        const key = `${parts[2]}-${parts[0]}`;
+
+        const total   = parseFloat(d.properties?.amount || 0) || 0;
+        if (total <= 0) continue;
+        const freight = parseFloat(d.properties?.freight_cost || 0) || 0;
+        const taxRate = parseFloat(d.properties?.tax_rate || 0) || 0;
+        const hsTaxRaw = d.properties?.total_tax_amount;
+        const hsTaxSet = (hsTaxRaw != null && hsTaxRaw !== '');
+        const hsTaxAmt = hsTaxSet ? parseFloat(hsTaxRaw) : NaN;
+
+        let taxAmt = 0;
+        if (hsTaxSet && !isNaN(hsTaxAmt)) {
+          taxAmt = Math.max(0, hsTaxAmt);
+          dealsWithHsTax++;
+        } else if (taxRate > 0) {
+          const stateAbbr = toStateAbbr(d.properties?.shipping_state || '');
+          const freightTaxable = !!(NEXUS_STATES[stateAbbr]?.taxFreight);
+          const r = taxRate / 100;
+          if (freightTaxable) {
+            const preTaxBase = total / (1 + r);
+            const productTax = Math.round((preTaxBase - freight) * r * 100) / 100;
+            const freightTax = Math.round(freight * r * 100) / 100;
+            taxAmt = Math.max(0, productTax + freightTax);
+          } else {
+            taxAmt = Math.round(Math.max(0, (total - freight) * r / (1 + r)) * 100) / 100;
+          }
+          dealsBackCalcTax++;
+        }
+        // else: no tax info → treat as tax-exempt (taxAmt = 0).
+
+        const revenue = Math.max(0, total - taxAmt);
+
+        if (key === monthKey) {
+          mtdRevenue += revenue;
+          mtdDealCount++;
+        } else if (buckets[key]) {
+          buckets[key].revenue += revenue;
+          buckets[key].dealCount++;
+        }
+        dealsCounted++;
+      }
+
+      const monthsArr = orderedKeys.map(k => ({
+        key: k,
+        label: buckets[k].label,
+        revenue: Math.round(buckets[k].revenue * 100) / 100,
+        dealCount: buckets[k].dealCount,
+      }));
+
+      const totalPriorRevenue = monthsArr.reduce((s, m) => s + m.revenue, 0);
+      const movingAvg = totalPriorRevenue / 12;
+      const goal100 = movingAvg * 1.05;
+      const goal90  = goal100 * 0.90;
+      const goal120 = goal100 * 1.20;
+
+      // Step tier — bonus % of salary. Capped at 15%.
+      let currentTier = 0;
+      let nextTier = 5;
+      let nextTierTarget = goal90;
+      if (mtdRevenue >= goal120)      { currentTier = 15; nextTier = null; nextTierTarget = null; }
+      else if (mtdRevenue >= goal100) { currentTier = 10; nextTier = 15; nextTierTarget = goal120; }
+      else if (mtdRevenue >= goal90)  { currentTier = 5;  nextTier = 10; nextTierTarget = goal100; }
+
+      const monthLabel = new Date(curY, curM, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
+      const payload = {
+        monthLabel,
+        monthKey,
+        months: monthsArr,
+        movingAvg: Math.round(movingAvg * 100) / 100,
+        goal100: Math.round(goal100 * 100) / 100,
+        goal90:  Math.round(goal90  * 100) / 100,
+        goal120: Math.round(goal120 * 100) / 100,
+        mtdRevenue: Math.round(mtdRevenue * 100) / 100,
+        mtdDealCount,
+        mtdPctOfGoal: goal100 > 0 ? Math.round((mtdRevenue / goal100) * 1000) / 10 : null,
+        currentTier,
+        nextTier,
+        nextTierTarget: nextTierTarget != null ? Math.round(nextTierTarget * 100) / 100 : null,
+        dealsCounted,
+        dealsWithHsTax,
+        dealsBackCalcTax,
+        computedAt: Date.now(),
+        cached: false,
+      };
+
+      _salesGoalCache = { key: monthKey, computedAt: Date.now(), payload };
+      json(payload);
+    } catch (e) {
+      console.error('[reports/sales-goal]', e.message);
+      writelog('error', 'reports.sales-goal', e.message, { stack: e.stack });
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   if (pathname === '/api/reports/quotes-timeline' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const repId = String(parsed.query.rep || '').trim();

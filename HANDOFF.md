@@ -188,6 +188,8 @@ Don't store secrets in the repo. Everything is in Railway → service → Variab
 | `ABF_ID` / `ABF_ACCT`        | ABF freight creds                                                |
 | `OD_*`                       | Old Dominion freight creds                                       |
 | `PUPPETEER_EXECUTABLE_PATH`  | Chrome path on Railway (set by buildpack)                        |
+| `ANTHROPIC_API_KEY`          | Email Reply Assistant — server-side proxy to Anthropic. Without it the /email-reply page loads but the Generate button returns "not configured." Get key from `console.anthropic.com` or copy from Gabe's reply-assistant `.env`. |
+| `ANTHROPIC_MODEL`            | Optional override for the Email Reply Assistant model. Defaults to `claude-opus-4-7` (matches Gabe's tool). |
 
 If you need to change one of these, do it in Railway and redeploy. Don't bake secrets into code.
 

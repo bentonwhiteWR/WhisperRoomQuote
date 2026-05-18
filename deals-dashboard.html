@@ -282,6 +282,29 @@ select option { background: var(--surface); color: var(--text); }
   .admin-toggle, .admin-inner { padding-left:14px; padding-right:14px; }
   .admin-grid { grid-template-columns:1fr; }
 }
+
+/* ── Email Reply modal — iframes /email-reply?embed=1 so the reps don't
+   leave the deal hub when drafting a reply. ESC + backdrop click close. */
+.email-modal-overlay {
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,.6);
+  z-index:9999; align-items:center; justify-content:center; padding:20px;
+}
+.email-modal-overlay.visible { display:flex; }
+.email-modal {
+  position:relative; width:100%; max-width:1180px; height:88vh; max-height:900px;
+  background:var(--surface); border-radius:12px; overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,.5); display:flex; flex-direction:column;
+}
+.email-modal-close {
+  position:absolute; top:8px; right:12px; z-index:10;
+  width:30px; height:30px; border-radius:50%;
+  background:rgba(0,0,0,.55); color:#fff; border:none; cursor:pointer;
+  font-size:18px; font-weight:700; line-height:1;
+  display:flex; align-items:center; justify-content:center;
+  transition:background .15s;
+}
+.email-modal-close:hover { background:rgba(0,0,0,.85); }
+.email-modal iframe { border:none; width:100%; flex:1; background:#F7F7F5; }
 </style>
 </head>
 <body>
@@ -307,8 +330,17 @@ select option { background: var(--surface); color: var(--text); }
   <button class="notif-bell" id="notifBell" onclick="toggleNotifPanel()" title="Notifications">
     🔔<span class="notif-badge" id="notifBadge" style="display:none">0</span>
   </button>
+  <button class="theme-btn" id="emailReplyBtn" onclick="openEmailReply()" title="Email Reply Assistant" style="font-size:15px">✉️</button>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">☀️</button>
   <a id="adminLogBtn" href="/admin-log" target="_blank" style="display:none;padding:5px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:rgba(238,98,22,.12);border:1px solid rgba(238,98,22,.3);border-radius:6px;color:#ee6216;text-decoration:none;white-space:nowrap;flex-shrink:0">📋 Log</a>
+</div>
+
+<!-- Email Reply Assistant modal — iframe loads /email-reply?embed=1 -->
+<div class="email-modal-overlay" id="emailModalOverlay" onclick="if(event.target===this)closeEmailReply()">
+  <div class="email-modal">
+    <button class="email-modal-close" onclick="closeEmailReply()" title="Close (ESC)">×</button>
+    <iframe id="emailModalIframe" src="about:blank" title="Email Reply Assistant"></iframe>
+  </div>
 </div>
 
 <div class="main">
@@ -1166,6 +1198,33 @@ function toggleTheme() {
   document.getElementById('themeBtn').textContent=isLight?'🌙':'☀️';
   localStorage.setItem('wr-theme',isLight?'light':'dark');
 }
+
+// ── Email Reply modal ──────────────────────────────────────────
+// Lazy-loads the iframe on first open so the dashboard's initial paint
+// isn't blocked by fetching the ~50KB email-reply page. ?embed=1 tells
+// the page to suppress its own topbar so we don't get a nested nav.
+function openEmailReply() {
+  const overlay = document.getElementById('emailModalOverlay');
+  const iframe = document.getElementById('emailModalIframe');
+  // Pass current theme so the iframe inherits dark mode when the parent
+  // dashboard is dark. (Default dashboard theme is dark — without this
+  // override the popup loads Gabe's light theme and blinds the rep.)
+  const isLight = document.documentElement.classList.contains('light');
+  const desiredSrc = `/email-reply?embed=1&theme=${isLight ? 'light' : 'dark'}`;
+  if (iframe.src !== window.location.origin + desiredSrc && !iframe.src.endsWith(desiredSrc)) {
+    iframe.src = desiredSrc;
+  }
+  overlay.classList.add('visible');
+}
+function closeEmailReply() {
+  document.getElementById('emailModalOverlay').classList.remove('visible');
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    const overlay = document.getElementById('emailModalOverlay');
+    if (overlay && overlay.classList.contains('visible')) closeEmailReply();
+  }
+});
 if(localStorage.getItem('wr-theme')==='light'){
   document.documentElement.classList.add('light');
   document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('themeBtn');if(b)b.textContent='🌙';});
@@ -1239,18 +1298,17 @@ function renderShopifyList() {
     listEl.innerHTML = '<div class="shopify-empty">No Shopify orders</div>';
     return;
   }
-  // Three sections by urgency:
+  // Two sections by urgency. Small orders (<$5k) are filtered out
+  // server-side per v1.24.2 — those parts orders auto-ship from Shopify
+  // and don't need a sales-team quote, so they don't belong in this drawer.
   //   1. Awaiting Verification — booth-sized, no quote yet (orange chip)
-  //   2. Small orders — under threshold, no quote yet
-  //   3. In Progress — quote exists in our system
+  //   2. In Progress — quote exists in our system
   const pending = all.filter(d => d.isPending);
-  const small   = all.filter(d => !d.hasQuote && !d.isPending);
   const inProg  = all.filter(d =>  d.hasQuote);
 
   const sortByModified = (a, b) =>
     new Date(b.modified || 0).getTime() - new Date(a.modified || 0).getTime();
   pending.sort(sortByModified);
-  small.sort(sortByModified);
   inProg.sort(sortByModified);
 
   const fmtAmt = n => '$' + parseFloat(n||0).toLocaleString('en-US', { minimumFractionDigits:0, maximumFractionDigits:0 });
@@ -1273,10 +1331,6 @@ function renderShopifyList() {
   if (pending.length) {
     html += `<div class="shopify-section-label pending">Awaiting Verification (${pending.length})</div>`;
     html += pending.map(renderItem).join('');
-  }
-  if (small.length) {
-    html += `<div class="shopify-section-label">Small Orders — No Quote Yet (${small.length})</div>`;
-    html += small.map(renderItem).join('');
   }
   if (inProg.length) {
     html += `<div class="shopify-section-label">In Progress / Quoted (${inProg.length})</div>`;

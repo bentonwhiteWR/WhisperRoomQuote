@@ -51,6 +51,26 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.24.2', date:'May 18, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Shopify Orders drawer — ≥$5k only.** User confirmed the small-parts auto-ship orders don\'t need sales-team quotes, so the "Small Orders" section was dropping noise into a drawer meant for booth-sized verification only. Server-side: /api/shopify-pending now filters out amount < SHOPIFY_VERIFY_THRESHOLD ($5k) before building the response, so the badge count also reflects only ≥$5k orders. Client-side: dropped the "Small Orders — No Quote Yet" section entirely. Drawer now has two sections: Awaiting Verification (≥$5k, no quote yet) and In Progress / Quoted (≥$5k, has quote).'},
+        {t:'fix', d:'**Shopify deals now actually appear on the Deal Hub board.** Re-surfaced the v1.20.11 investigation finding: HubSpot\'s multi-stage `dealstage IN [...]` search filter is unreliable for ecommerce-owned (Shopify-created) deals. Even with v1.21.4 no longer excluding ecommerce deals from the board, the underlying HubSpot search quirk meant recent Shopify deals didn\'t actually show up in the main fetch — reps had to text-search by name or order # to find them. Fix: dedicated ecommerce-owner catch-all pass in /api/deals/list, mirroring the existing closedwon catch-all (which exists for the same reason). Filters by `hubspot_owner_id = ECOMMERCE_OWNER_ID` + `dealstage IN BOARD_STAGES`, paginated up to 500 deals. Runs only on the default load (no `stage`, `q`, or `rep` param) — when a human rep is filtered in, ecommerce deals aren\'t theirs. Recent Shopify orders (typically in Shipped stage from the auto-workflow) should now show up at the top of the Shipped column sorted by recency.'},
+        {t:'ui',  d:'**Email Reply popup — dark mode parity.** Opening the ✉️ Email Reply popup while the dashboard is in dark mode was a wall of bright white (the popup loaded Gabe\'s light-only theme regardless). New `?theme=dark` query param on /email-reply applies a dark CSS variable override matching the WhisperRoomQuote dark palette. openEmailReply() now reads the dashboard\'s current theme (`html.light` class) and passes `theme=dark` or `theme=light` to the iframe URL. Light mode unchanged.'},
+      ]
+    },
+    {
+      v:'1.24.1', date:'May 18, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Email Reply Assistant — icon-only popup instead of new tab.** Moved the entry point from a labeled "✉️ Email Reply" link on the left side of the Deal Hub topbar (which opened a new tab) to a compact ✉️ icon-only button on the RIGHT side next to the theme toggle. Click now opens a modal that iframes `/email-reply?embed=1` (rep stays on the Deal Hub instead of leaving). Modal: 88vh × max-1180px wide, centered, dimmed backdrop. Close via ✕, ESC key, or backdrop click. Iframe is lazy-loaded on first open so the dashboard\'s initial paint isn\'t blocked by fetching the email-reply page. New `?embed=1` query param on the email-reply page suppresses its own topbar + footer when iframed, so reps don\'t see nested nav chrome. The standalone `/email-reply` URL still works (without `?embed=1`) for anyone who bookmarks it.'},
+      ]
+    },
+    {
+      v:'1.24.0', date:'May 18, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Email Reply Assistant — new ✉️ Email Reply button in Deal Hub topbar.** Opens a paste-and-generate tool in a new tab. Rep picks a voice (Jill / Sarah / Travis), pastes a customer email or HubSpot lead notification, hits Generate, gets a personalized reply with the right spec PDF + YouTube overview URLs auto-injected, copies to clipboard, sends from Gmail. Single-shot per email. Vendored from Gabe\'s repo (gabewhite438/whisperroom-reply-assistant): system prompt (~1900 lines of locked phrases, voice templates, product facts, no-em-dash rule), product-links.json (71 products → spec PDF + overview video URL), product-specs.json (scraped specs). Anthropic call goes through new POST /api/email-reply server proxy with the API key server-side (not baked into HTML like Gabe\'s standalone tool) and prompt caching via cache_control:ephemeral. Frontend post-processing intact: em-dash scrub, URL force-injection into the three-link block, intro-line replacement with each rep\'s exact preferred opening (Jill: "Hello [Name]", Sarah: time-of-day greeting, Travis: no greeting). Existing-customer detection bypasses formal intro replacement. New env var ANTHROPIC_API_KEY required in Railway — without it the endpoint returns a clear "not configured" message.'},
+      ]
+    },
+    {
       v:'1.23.2', date:'May 18, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Sales Goal — three polish tweaks.** (1) Tier badges now say "+5% BONUS / +10% BONUS / +15% BONUS" instead of "+5% SALARY / …" — clearer that it\'s an additional payout, not a base-pay change. (2) Each month bar now shows deal count underneath the month abbreviation (e.g. "MAY · 14 deals") so reps can see whether a low-revenue month was low-volume or low-AOV at a glance. (3) The "120% — $617K" tick label was getting clipped at the right edge because the tick sits at left:100% and the centered label extended half-off the container. Now right-anchored (left:auto; right:0) so it sits flush inside the bar zone.'},

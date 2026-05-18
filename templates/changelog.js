@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.23.2', date:'May 18, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Sales Goal — three polish tweaks.** (1) Tier badges now say "+5% BONUS / +10% BONUS / +15% BONUS" instead of "+5% SALARY / …" — clearer that it\'s an additional payout, not a base-pay change. (2) Each month bar now shows deal count underneath the month abbreviation (e.g. "MAY · 14 deals") so reps can see whether a low-revenue month was low-volume or low-AOV at a glance. (3) The "120% — $617K" tick label was getting clipped at the right edge because the tick sits at left:100% and the centered label extended half-off the container. Now right-anchored (left:auto; right:0) so it sits flush inside the bar zone.'},
+      ]
+    },
+    {
       v:'1.23.1', date:'May 18, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Sales Goal report — progress bar layout fix.** The MTD-stats line on the right and the tier labels (90% / 100% / 120%) were stacking on the same horizontal band above the bar and crashing into each other when the right-side text got long ("39.4% of 100% goal · No tier yet · $259,904 to 5% tier"). Two changes: (1) tier labels moved BELOW the bar via `bottom:-22px` instead of `top:-16px` — now they have their own dedicated row and never overlap header text. (2) right-side header text now stacked vertically (pct + tier on top line, "to next tier" hint as muted second line) with right-alignment and gap; also `flex-wrap: wrap` on the container so it reflows cleanly on narrow widths. Removed redundant `$0` / `$617K` endpoint labels since the tier labels under the bar already convey position.'},

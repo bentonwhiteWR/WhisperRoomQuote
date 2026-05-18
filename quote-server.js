@@ -2321,6 +2321,43 @@ const server = http.createServer(async (req, res) => {
             if (!nextAfter || wonPage.length < 200) break;
             wonAfter = String(nextAfter);
           }
+
+          // Dedicated ecommerce-owner catch-all pass — HubSpot's multi-stage
+          // search filter is unreliable for ecommerce-owned (Shopify-created)
+          // deals. The v1.20.11 investigation confirmed single-owner filters
+          // return them correctly when multi-stage filters drop them. Mirror
+          // the closedwon pass above, but scope by owner. Runs only on the
+          // default load with no rep filter — when a human rep is filtered
+          // in, ecommerce deals aren't theirs and don't belong on screen.
+          // 5-page cap (500 deals) since Shopify deal volume is bounded.
+          if (!rep) {
+            const ecomFilters = [
+              { propertyName: 'hubspot_owner_id', operator: 'EQ', value: ECOMMERCE_OWNER_ID },
+              { propertyName: 'dealstage',        operator: 'IN', values: BOARD_STAGES },
+            ];
+            let ecomAfter;
+            for (let p = 0; p < 5; p++) {
+              const ecomBody = {
+                filterGroups: [{ filters: ecomFilters }],
+                properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
+                             'closedate','payment_status','payment_type','po_','tracking_number','carrier__c'],
+                sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+                limit: 100,
+                ...(ecomAfter ? { after: ecomAfter } : {}),
+              };
+              const ecomRes = await httpsRequest({
+                hostname: 'api.hubapi.com',
+                path: '/crm/v3/objects/deals/search',
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+              }, ecomBody);
+              const ecomPage = ecomRes.body?.results || [];
+              ecomPage.forEach(d => { if (!seenIds.has(d.id)) { seenIds.add(d.id); hsDeals.push(d); } });
+              const nextAfter = ecomRes.body?.paging?.next?.after;
+              if (!nextAfter || ecomPage.length < 100) break;
+              ecomAfter = String(nextAfter);
+            }
+          }
         }
       }
 
@@ -2647,7 +2684,12 @@ const server = http.createServer(async (req, res) => {
         } catch(e) { console.warn('[shopify-pending] DB join error:', e.message); }
       }
 
-      const all = allShopify.map(d => {
+      const all = allShopify
+        // ≥ threshold only — small parts orders (<$5k) auto-ship from
+        // Shopify without needing a sales-team quote, so they don't belong
+        // in the drawer. They still appear on the main Deal Hub board.
+        .filter(d => parseFloat(d.properties?.amount || 0) >= SHOPIFY_VERIFY_THRESHOLD)
+        .map(d => {
         const amount = parseFloat(d.properties?.amount || 0);
         const dbQuote = quoteByDealId[d.id] || null;
         const hasQuote = !!dbQuote;

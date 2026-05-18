@@ -184,6 +184,29 @@
     body.embedded .topbar { display: none; }
     body.embedded footer  { display: none; }
     body.embedded main    { padding-top: 18px; }
+
+    /* Dark mode (?theme=dark) — opted in by the parent dashboard when the
+       rep is on dark mode. Without this, opening the popup over a dark
+       dashboard is a wall of bright white. Overrides the CSS vars + the
+       handful of hardcoded backgrounds (textarea, reply output, error msg). */
+    body.dark {
+      --bg: #0f0f0f;
+      --surface: #1a1a1a;
+      --border: #2e2e2e;
+      --text: #e8e8e8;
+      --muted: #888;
+      --accent-soft: rgba(232,116,60,.15);
+      --warn-bg: rgba(245,158,11,.18);
+      --warn-text: #f59e0b;
+    }
+    body.dark textarea       { background: #111; color: var(--text); border-color: var(--border); }
+    body.dark .rep-row select{ background: #111; color: var(--text); border-color: var(--border); }
+    body.dark #replyOutput   { background: #111; color: var(--text); border-color: var(--border); }
+    body.dark .panel         { background: var(--surface); border-color: var(--border); }
+    body.dark .error-msg     { background: #2a1010; border-color: #5a2020; color: #ffb4b4; }
+    body.dark .btn-secondary { background: #1a1a1a; color: var(--accent); border-color: var(--accent); }
+    body.dark .btn-secondary:hover { background: var(--accent-soft); }
+    body.dark #replyOutput.empty { color: var(--muted); }
   </style>
 </head>
 <body>
@@ -245,10 +268,10 @@
 <script>
 "use strict";
 
-// ====== Embed mode (iframed inside Deal Hub) — hide topbar + footer ======
-if (new URLSearchParams(location.search).get("embed") === "1") {
-  document.body.classList.add("embedded");
-}
+// ====== Embed mode + theme (driven by ?embed=1&theme=dark from parent) ======
+const _qs = new URLSearchParams(location.search);
+if (_qs.get("embed") === "1") document.body.classList.add("embedded");
+if (_qs.get("theme") === "dark") document.body.classList.add("dark");
 
 // ====== Constants ======
 const PRODUCT_LINKS = JSON.parse(document.getElementById("product-links").textContent);

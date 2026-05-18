@@ -209,6 +209,70 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 
 ::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 @media(max-width:900px){.sidebar{display:none}.card-grid.two,.card-grid.three{grid-template-columns:1fr}}
+
+/* ── Sales Goal report ───────────────────────────────────────────── */
+.sg-hero{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
+.sg-hero-l{display:flex;flex-direction:column;gap:4px}
+.sg-hero-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.sg-hero-month{font-size:22px;font-weight:800;color:var(--text);font-family:'Syne',sans-serif}
+.sg-hero-note{font-size:10px;color:var(--muted);margin-top:2px}
+.sg-hero-r{display:flex;gap:12px;align-items:center}
+.sg-tier-badge{padding:8px 14px;border-radius:8px;font-weight:800;font-size:14px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);display:flex;flex-direction:column;align-items:center;gap:2px;min-width:100px}
+.sg-tier-badge .label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.sg-tier-badge .val{font-size:18px;font-weight:800;line-height:1}
+.sg-tier-badge.t5 {background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.35);color:var(--amber)}
+.sg-tier-badge.t10{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.35);color:var(--green)}
+.sg-tier-badge.t15{background:rgba(238,98,22,.15);border-color:var(--orange-border);color:var(--orange)}
+
+/* MTD progress bar w/ tier marks */
+.sg-progress-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:18px}
+.sg-progress-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;font-size:11px;color:var(--text2);margin-bottom:14px;font-weight:600;flex-wrap:wrap}
+.sg-progress-top b{color:var(--text);font-size:13px}
+.sg-progress-top-r{display:flex;flex-direction:column;align-items:flex-end;gap:2px;text-align:right}
+.sg-progress-track{position:relative;height:18px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;overflow:visible;margin-bottom:30px}
+.sg-progress-fill{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--amber),var(--green) 60%,var(--orange));border-radius:5px 0 0 5px;transition:width .4s ease}
+.sg-tick{position:absolute;top:-6px;bottom:-6px;width:1px;background:var(--text2);opacity:.55}
+.sg-tick::after{content:attr(data-label);position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:800;color:var(--text2);white-space:nowrap;letter-spacing:.04em}
+.sg-tick.t90::after{color:var(--amber)}
+.sg-tick.t100{background:var(--green);opacity:.9}
+.sg-tick.t120{background:var(--orange);opacity:.9}
+/* Right-anchor the 120% label so it doesn't get clipped — its tick sits at
+   left:100% so a centered label would extend half-off the container. */
+.sg-tick.t120::after{left:auto;right:0;transform:none}
+.sg-progress-foot{display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
+
+/* 12-month bar chart */
+.sg-chart-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px}
+.sg-chart-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px}
+.sg-chart-title{font-size:13px;font-weight:800;color:var(--text)}
+.sg-chart-sub{font-size:10px;color:var(--muted)}
+.sg-chart-area{position:relative;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:8px;height:180px;align-items:end;border-bottom:1px solid var(--border)}
+.sg-bar-col{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;position:relative}
+.sg-bar{width:100%;max-width:38px;background:linear-gradient(180deg,var(--orange) 0%,#a83e0c 100%);border-radius:4px 4px 0 0;min-height:2px;position:relative;transition:.2s}
+.sg-bar:hover{filter:brightness(1.15);box-shadow:0 0 0 1px var(--orange-border)}
+.sg-bar-val{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;color:var(--text2);white-space:nowrap;font-family:var(--mono)}
+.sg-chart-labels{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:8px;margin-top:6px}
+.sg-chart-labels .lbl-col{display:flex;flex-direction:column;align-items:center;gap:2px;text-align:center}
+.sg-chart-labels .mo{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+.sg-chart-labels .dc{font-size:9px;font-weight:600;color:var(--text2);font-family:var(--mono);white-space:nowrap}
+.sg-avg-line{position:absolute;left:0;right:0;height:0;border-top:1.5px dashed var(--green);pointer-events:none;z-index:5}
+.sg-avg-line::after{content:'Avg ' attr(data-val);position:absolute;right:0;top:-14px;background:var(--surface);padding:1px 6px;border-radius:3px;font-size:9px;font-weight:800;color:var(--green);border:1px solid rgba(34,197,94,.3)}
+.sg-chart-foot{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:14px}
+.sg-tier-t5{color:var(--amber)} .sg-tier-t10{color:var(--green)} .sg-tier-t15{color:var(--orange)}
+
+/* Meta strip (data-quality info) */
+.sg-meta{display:flex;gap:12px;font-size:10px;color:var(--muted);margin-top:10px;flex-wrap:wrap}
+.sg-meta span b{color:var(--text2);font-weight:700}
+
+@media(max-width:700px){
+  .sg-chart-area{height:140px;gap:4px}
+  .sg-chart-labels{gap:4px}
+  .sg-bar{max-width:24px}
+  .sg-bar-val{font-size:8px;top:-14px}
+  .sg-chart-labels .mo,.sg-chart-labels .dc{font-size:8px}
+  .sg-hero{flex-direction:column;align-items:stretch}
+  .sg-hero-r{justify-content:space-between;flex-wrap:wrap}
+}
 </style>
 </head>
 <body>
@@ -286,11 +350,17 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
          and the per-rep Quotes timeline. Sidebar's Rep dropdown applies
          to both tabs; Period applies only to Overview. -->
     <div class="report-tabs" id="reportTabs">
-      <button class="report-tab active" data-tab="overview" onclick="switchReportTab('overview')">Overview</button>
+      <button class="report-tab active" data-tab="salesGoal" onclick="switchReportTab('salesGoal')">Sales Goal</button>
+      <button class="report-tab" data-tab="overview" onclick="switchReportTab('overview')">Overview</button>
       <button class="report-tab" data-tab="quotes" onclick="switchReportTab('quotes')">Quotes</button>
     </div>
 
-    <div id="tabOverview">
+    <div id="tabSalesGoal">
+      <div id="salesGoalState" style="padding:60px;text-align:center;color:var(--muted);font-size:14px">Loading sales goal…</div>
+      <div id="salesGoalContent" style="display:none"></div>
+    </div>
+
+    <div id="tabOverview" style="display:none">
       <div id="loadingState" style="padding:60px;text-align:center;color:var(--muted);font-size:14px">Loading reports…</div>
       <div id="reportContent" style="display:none"></div>
     </div>
@@ -326,6 +396,7 @@ function navScrollTo(id) {
 async function loadReport() {
   // Sidebar dropdowns drive both tabs. Dispatch to whichever is active so
   // changing the rep filter refreshes the visible view, not the hidden one.
+  if (_activeReportTab === 'salesGoal') { loadSalesGoal(); return; }
   if (_activeReportTab === 'quotes') { loadQuotesTimeline(); return; }
   const period = document.getElementById('periodSelect').value;
   const rep    = document.getElementById('repSelect')?.value || '';
@@ -347,17 +418,137 @@ async function loadReport() {
   }
 }
 
-// ── Sub-tab switching (Overview / Quotes) ─────────────────────────
-let _activeReportTab = 'overview';
+// ── Sub-tab switching (Sales Goal / Overview / Quotes) ────────────
+let _activeReportTab = 'salesGoal';
 let _quotesTimelineCache = null;     // last-fetched payload, keyed by rep
 let _quotesTimelineLastRep = null;
+let _salesGoalLoaded = false;        // first-load gate so toggling tabs doesn't re-hit the API
 
 function switchReportTab(name) {
   _activeReportTab = name;
-  document.getElementById('tabOverview').style.display = name === 'overview' ? '' : 'none';
-  document.getElementById('tabQuotes').style.display   = name === 'quotes'   ? '' : 'none';
+  document.getElementById('tabSalesGoal').style.display = name === 'salesGoal' ? '' : 'none';
+  document.getElementById('tabOverview').style.display  = name === 'overview'  ? '' : 'none';
+  document.getElementById('tabQuotes').style.display    = name === 'quotes'    ? '' : 'none';
   document.querySelectorAll('.report-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   if (name === 'quotes') loadQuotesTimeline();
+  if (name === 'overview' && !document.getElementById('reportContent').innerHTML) loadReport();
+  if (name === 'salesGoal' && !_salesGoalLoaded) loadSalesGoal();
+}
+
+// ── Sales Goal report ─────────────────────────────────────────────
+async function loadSalesGoal(force) {
+  const state   = document.getElementById('salesGoalState');
+  const content = document.getElementById('salesGoalContent');
+  state.style.display = 'block';
+  state.textContent   = 'Loading sales goal…';
+  content.style.display = 'none';
+  try {
+    const url = '/api/reports/sales-goal' + (force ? '?force=1' : '');
+    const res  = await fetch(url, { credentials:'include' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    renderSalesGoal(data);
+    state.style.display   = 'none';
+    content.style.display = 'block';
+    _salesGoalLoaded = true;
+    document.getElementById('lastUpdatedLabel').textContent =
+      'Updated '+new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})
+      + (data.cached ? ' (cached)' : '');
+  } catch(e) {
+    state.style.display = 'block';
+    state.textContent   = 'Error: ' + e.message;
+    content.style.display = 'none';
+  }
+}
+
+function renderSalesGoal(d) {
+  const tierClass = d.currentTier === 15 ? 't15' : d.currentTier === 10 ? 't10' : d.currentTier === 5 ? 't5' : '';
+  const tierLabel = d.currentTier > 0 ? `${d.currentTier}% Bonus` : 'No tier yet';
+  const nextLine = (d.nextTier && d.nextTierTarget != null)
+    ? `${fmt(Math.max(0, d.nextTierTarget - d.mtdRevenue))} to ${d.nextTier}% tier`
+    : (d.currentTier === 15 ? 'Max tier earned 🎉' : '—');
+
+  // Chart math — bars + avg line both use % of `peak`, which is the highest
+  // value among (movingAvg, goal100, monthly bars). That way the avg line
+  // always sits inside the chart and visually relates to bar heights.
+  const peak = Math.max(d.movingAvg, d.goal100, ...d.months.map(m => m.revenue), 1);
+  const avgBottomPct = d.movingAvg > 0 ? (d.movingAvg / peak) * 100 : 0;
+
+  const barsHtml = d.months.map(m => {
+    const heightPct = peak > 0 ? Math.max(0.5, (m.revenue / peak) * 100) : 0;
+    const valLabel = m.revenue > 0 ? fmtK(m.revenue) : '—';
+    return `<div class="sg-bar-col" title="${m.label}: ${fmt(m.revenue)} (${m.dealCount} deal${m.dealCount===1?'':'s'})">
+      <div class="sg-bar" style="height:${heightPct}%">
+        <div class="sg-bar-val">${valLabel}</div>
+      </div>
+    </div>`;
+  }).join('');
+  const labelsHtml = d.months.map(m => `<div class="lbl-col"><span class="mo">${m.label.split(' ')[0]}</span><span class="dc">${m.dealCount} deal${m.dealCount===1?'':'s'}</span></div>`).join('');
+
+  // Progress bar fill = mtd / goal120 (so 100% of the bar visually = top tier).
+  // If mtd > goal120 we still cap at 100% width but the badge already shows 15%.
+  const barCap = d.goal120 || 1;
+  const fillPct = Math.min(100, (d.mtdRevenue / barCap) * 100);
+  // Tick positions are also relative to barCap so they line up consistently.
+  const pos = v => Math.min(100, (v / barCap) * 100);
+
+  document.getElementById('salesGoalContent').innerHTML = `
+    <div class="sg-hero">
+      <div class="sg-hero-l">
+        <span class="sg-hero-title">Sales Goal — ${d.monthLabel}</span>
+        <span class="sg-hero-month">${fmt(d.goal100)} <span style="font-size:13px;color:var(--text2);font-weight:600">target</span></span>
+        <span class="sg-hero-note">12-mo moving avg ${fmt(d.movingAvg)} × 1.05 — locked at month start</span>
+      </div>
+      <div class="sg-hero-r">
+        <div class="sg-tier-badge ${d.currentTier === 5 ? 't5' : ''}">
+          <span class="label">90% Tier</span><span class="val">${fmt(d.goal90)}</span><span class="label" style="color:var(--amber)">+5% bonus</span>
+        </div>
+        <div class="sg-tier-badge ${d.currentTier === 10 ? 't10' : ''}">
+          <span class="label">100% Goal</span><span class="val">${fmt(d.goal100)}</span><span class="label" style="color:var(--green)">+10% bonus</span>
+        </div>
+        <div class="sg-tier-badge ${d.currentTier === 15 ? 't15' : ''}">
+          <span class="label">120% Tier</span><span class="val">${fmt(d.goal120)}</span><span class="label" style="color:var(--orange)">+15% bonus</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="sg-progress-wrap">
+      <div class="sg-progress-top">
+        <span><b>${fmt(d.mtdRevenue)}</b> MTD &middot; ${d.mtdDealCount} deal${d.mtdDealCount===1?'':'s'}</span>
+        <div class="sg-progress-top-r">
+          <span><b>${d.mtdPctOfGoal != null ? d.mtdPctOfGoal.toFixed(1) : '—'}%</b> of 100% goal &middot; <b class="sg-tier-${tierClass}">${tierLabel}</b></span>
+          <span style="font-size:10px;color:var(--muted)">${nextLine}</span>
+        </div>
+      </div>
+      <div class="sg-progress-track">
+        <div class="sg-progress-fill" style="width:${fillPct}%"></div>
+        <div class="sg-tick t90"  style="left:${pos(d.goal90)}%"  data-label="90% — ${fmtK(d.goal90)}"></div>
+        <div class="sg-tick t100" style="left:${pos(d.goal100)}%" data-label="100% — ${fmtK(d.goal100)}"></div>
+        <div class="sg-tick t120" style="left:${pos(d.goal120)}%" data-label="120% — ${fmtK(d.goal120)}"></div>
+      </div>
+    </div>
+
+    <div class="sg-chart-wrap">
+      <div class="sg-chart-head">
+        <span class="sg-chart-title">Last 12 Months — Net Revenue (Closed Won + Shipped)</span>
+        <span class="sg-chart-sub">Amount minus tax, freight included. ${d.dealsCounted} deal${d.dealsCounted===1?'':'s'} in window.</span>
+      </div>
+      <div class="sg-chart-area">
+        ${barsHtml}
+        ${d.movingAvg > 0 ? `<div class="sg-avg-line" style="bottom:${avgBottomPct}%" data-val="${fmtK(d.movingAvg)}"></div>` : ''}
+      </div>
+      <div class="sg-chart-labels">${labelsHtml}</div>
+      <div class="sg-chart-foot">
+        <span>${d.months[0]?.label || ''} → ${d.months[d.months.length-1]?.label || ''}</span>
+        <span>Moving avg: <b style="color:var(--green)">${fmt(d.movingAvg)}</b></span>
+      </div>
+      <div class="sg-meta">
+        <span><b>${d.dealsWithHsTax}</b> deals used HubSpot total_tax_amount</span>
+        <span><b>${d.dealsBackCalcTax}</b> back-calculated from tax_rate (legacy)</span>
+        <span><b>${d.dealsCounted - d.dealsWithHsTax - d.dealsBackCalcTax}</b> tax-exempt / no tax</span>
+      </div>
+    </div>
+  `;
 }
 
 async function loadQuotesTimeline(force) {

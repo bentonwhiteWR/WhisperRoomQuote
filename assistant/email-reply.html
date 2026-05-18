@@ -180,10 +180,13 @@
     footer { text-align: center; padding: 24px 0 20px; font-size: 0.7rem; color: #AAA; letter-spacing: 0.5px; }
 
     /* Embed mode (?embed=1) — when iframed inside the Deal Hub modal,
-       suppress the topbar + footer so we don't get nested nav chrome. */
+       suppress the topbar + footer. Panels stay at their natural
+       min-height (520px); the parent dashboard sizes the modal/iframe
+       to match the natural content height so the popup's bottom edge
+       lands right at the Generate Reply button, no dead space. */
     body.embedded .topbar { display: none; }
     body.embedded footer  { display: none; }
-    body.embedded main    { padding-top: 18px; }
+    body.embedded main    { padding: 18px 20px; }
 
     /* Dark mode (?theme=dark) — opted in by the parent dashboard when the
        rep is on dark mode. Without this, opening the popup over a dark
@@ -329,11 +332,37 @@ const PLACEHOLDER_NOTE_STYLE =
   "color: #C92E2E; font-style: italic; font-size: 0.9em; margin-left: 4px;";
 const PLACEHOLDER_NOTE_TEXT = " (paste your quote link here)";
 
-// ====== Rep persistence ======
+// ====== Rep persistence + auto-select based on logged-in user ======
 const repSelect = document.getElementById("repSelect");
 const savedRep = localStorage.getItem("wr_rep");
 if (savedRep) repSelect.value = savedRep;
 repSelect.addEventListener("change", () => localStorage.setItem("wr_rep", repSelect.value));
+
+// Auto-pick the voice that matches the logged-in rep, but only if the rep
+// hasn't already made an explicit pick (don't overwrite their localStorage
+// choice). Reps outside the supported voice set (Jill / Sarah / Travis)
+// stay blank — they need to manually choose. Same-origin /api/me sends the
+// session cookie inherited from the parent dashboard.
+const OWNER_TO_VOICE = {
+  "36330944": "jill",      // Jill
+  "38143901": "sarah",     // Sarah
+  "117442978": "travis",   // Travis
+};
+if (!savedRep) {
+  fetch("/api/me", { credentials: "include" })
+    .then(r => r.ok ? r.json() : null)
+    .then(me => {
+      if (!me || !me.ownerId) return;
+      const voice = OWNER_TO_VOICE[String(me.ownerId)];
+      if (voice) {
+        repSelect.value = voice;
+        // Don't write to localStorage — this is a soft default. If the rep
+        // changes it once they get a persistent choice; otherwise the next
+        // session re-fetches /api/me and re-applies.
+      }
+    })
+    .catch(() => {});
+}
 
 // ====== Product matching (ported from Gabe's tool) ======
 function scanProductsInText(text) {

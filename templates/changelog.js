@@ -51,6 +51,19 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.24.4', date:'May 18, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Email Reply popup — shrink the modal, keep the panel sizing.** v1.24.3 fixed the dead space by stretching the panels to fill the iframe, which made everything feel too big. Switching strategies: panels are back to their natural `min-height: 520px`, and the modal itself shrinks to 600px tall (from 88vh / 900px) so the popup\'s bottom edge lands right at the Generate Reply button instead of having ~250px of empty space below. `max-height: 92vh` keeps it from overflowing tiny windows.'},
+      ]
+    },
+    {
+      v:'1.24.3', date:'May 18, 2026', tag:'ui',
+      changes:[
+        {t:'ui',  d:'**Email Reply popup — panels fill the iframe height.** Bottom 30-40% of the modal was dead space because the panels had a fixed `min-height: 520px` and the iframe was 88vh (~800-900px). In embed mode now: body is locked to 100vh, `main` fills the viewport, panel `min-height` is killed and panels use `height:100%` so they fill the grid cells. Textareas and the reply output now grow to use the available space instead of capping at ~320px.'},
+        {t:'add', d:'**Email Reply voice auto-selected from logged-in rep.** First-load now fetches /api/me, maps the rep\'s HubSpot owner ID to the matching voice (Jill / Sarah / Travis) and sets the dropdown. Only fires when the rep hasn\'t already made an explicit pick (don\'t stomp their localStorage choice). Reps outside the supported voice set (Benton / Gabe / Kim / Chet / Jeromy) stay blank — they manually choose since there\'s no voice tuned for them. Soft default: doesn\'t write to localStorage on auto-select, so it re-resolves cleanly if the rep mapping ever changes.'},
+      ]
+    },
+    {
       v:'1.24.2', date:'May 18, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Shopify Orders drawer — ≥$5k only.** User confirmed the small-parts auto-ship orders don\'t need sales-team quotes, so the "Small Orders" section was dropping noise into a drawer meant for booth-sized verification only. Server-side: /api/shopify-pending now filters out amount < SHOPIFY_VERIFY_THRESHOLD ($5k) before building the response, so the badge count also reflects only ≥$5k orders. Client-side: dropped the "Small Orders — No Quote Yet" section entirely. Drawer now has two sections: Awaiting Verification (≥$5k, no quote yet) and In Progress / Quoted (≥$5k, has quote).'},

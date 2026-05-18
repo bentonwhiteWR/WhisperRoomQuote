@@ -226,16 +226,17 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 
 /* MTD progress bar w/ tier marks */
 .sg-progress-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:18px}
-.sg-progress-top{display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:10px;font-weight:600}
+.sg-progress-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;font-size:11px;color:var(--text2);margin-bottom:14px;font-weight:600;flex-wrap:wrap}
 .sg-progress-top b{color:var(--text);font-size:13px}
-.sg-progress-track{position:relative;height:18px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;overflow:visible}
+.sg-progress-top-r{display:flex;flex-direction:column;align-items:flex-end;gap:2px;text-align:right}
+.sg-progress-track{position:relative;height:18px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;overflow:visible;margin-bottom:30px}
 .sg-progress-fill{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--amber),var(--green) 60%,var(--orange));border-radius:5px 0 0 5px;transition:width .4s ease}
 .sg-tick{position:absolute;top:-6px;bottom:-6px;width:1px;background:var(--text2);opacity:.55}
-.sg-tick::after{content:attr(data-label);position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:800;color:var(--text2);white-space:nowrap;letter-spacing:.04em}
+.sg-tick::after{content:attr(data-label);position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:800;color:var(--text2);white-space:nowrap;letter-spacing:.04em}
 .sg-tick.t90::after{color:var(--amber)}
 .sg-tick.t100{background:var(--green);opacity:.9}
 .sg-tick.t120{background:var(--orange);opacity:.9}
-.sg-progress-foot{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:18px}
+.sg-progress-foot{display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
 
 /* 12-month bar chart */
 .sg-chart-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px}
@@ -509,17 +510,16 @@ function renderSalesGoal(d) {
     <div class="sg-progress-wrap">
       <div class="sg-progress-top">
         <span><b>${fmt(d.mtdRevenue)}</b> MTD &middot; ${d.mtdDealCount} deal${d.mtdDealCount===1?'':'s'}</span>
-        <span>${d.mtdPctOfGoal != null ? d.mtdPctOfGoal.toFixed(1) : '—'}% of 100% goal &middot; <b class="sg-tier-${tierClass}">${tierLabel}</b> &middot; ${nextLine}</span>
+        <div class="sg-progress-top-r">
+          <span><b>${d.mtdPctOfGoal != null ? d.mtdPctOfGoal.toFixed(1) : '—'}%</b> of 100% goal &middot; <b class="sg-tier-${tierClass}">${tierLabel}</b></span>
+          <span style="font-size:10px;color:var(--muted)">${nextLine}</span>
+        </div>
       </div>
       <div class="sg-progress-track">
         <div class="sg-progress-fill" style="width:${fillPct}%"></div>
         <div class="sg-tick t90"  style="left:${pos(d.goal90)}%"  data-label="90% — ${fmtK(d.goal90)}"></div>
         <div class="sg-tick t100" style="left:${pos(d.goal100)}%" data-label="100% — ${fmtK(d.goal100)}"></div>
         <div class="sg-tick t120" style="left:${pos(d.goal120)}%" data-label="120% — ${fmtK(d.goal120)}"></div>
-      </div>
-      <div class="sg-progress-foot">
-        <span>$0</span>
-        <span>${fmtK(d.goal120)}</span>
       </div>
     </div>
 

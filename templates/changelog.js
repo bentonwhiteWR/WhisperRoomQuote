@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.23.1', date:'May 18, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Sales Goal report — progress bar layout fix.** The MTD-stats line on the right and the tier labels (90% / 100% / 120%) were stacking on the same horizontal band above the bar and crashing into each other when the right-side text got long ("39.4% of 100% goal · No tier yet · $259,904 to 5% tier"). Two changes: (1) tier labels moved BELOW the bar via `bottom:-22px` instead of `top:-16px` — now they have their own dedicated row and never overlap header text. (2) right-side header text now stacked vertically (pct + tier on top line, "to next tier" hint as muted second line) with right-alignment and gap; also `flex-wrap: wrap` on the container so it reflows cleanly on narrow widths. Removed redundant `$0` / `$617K` endpoint labels since the tier labels under the bar already convey position.'},
+      ]
+    },
+    {
       v:'1.23.0', date:'May 18, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Sales Goal report — monthly bonus tier dashboard, top of /reports.** New default sub-tab "Sales Goal" shows the 12-month moving average of net revenue (Closed Won + Shipped deals, amount minus tax, freight included) and publishes the current month\'s 100% goal (= moving avg × 1.05) plus the 90% / 120% tier numbers that drive the sales-team monthly salary bonus (5% / 10% / 15%, step function, capped at 15%). Goal is LOCKED at the moment the month starts so the bonus target can\'t shift under the team\'s feet — recompute window is the 12 fully-completed prior calendar months. UI: hero strip with target + three tier badges (active tier glows), MTD progress bar with tier marks at 90/100/120 so reps can see exactly how far to the next tier, 12-month bar chart with the moving-average dotted line, data-quality footer showing how many deals used the canonical HubSpot total_tax_amount vs. back-calc from tax_rate (the legacy fallback). Endpoint GET /api/reports/sales-goal — paginates HubSpot deals (dealstage IN [closedwon, 845719]) over the 13-month window, buckets by closedate in EST, prefers total_tax_amount with rate-calc + nexus-aware freightTaxable fallback for legacy deals. Includes Shopify ecommerce deals (owner 49384873) since those are real company revenue. 5-minute in-memory cache shared across all viewers — first load ~1-3s, repeat loads instant.'},

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.25.3', date:'May 19, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Quote Builder pre-flight: look up payment by quote_number, not stale deal_id.** v1.25.2 fell back to /api/quote-snapshot which returns `quotes.deal_id` — but that value is STALE after a Merge Deal (post-merge the HubSpot invoice + payment live on the surviving deal, our quote still points at the pre-merge deal that was deleted). Reproed with W-1105142607: quotes.deal_id=60256026416, but the invoice WR-1210 + failed payment are on the surviving deal 60256150594 (Shopify #2145). New endpoint GET /api/deal-payment-status-by-quote/:quoteNumber searches HubSpot for the invoice by `quote_number` field, walks invoice → current deal association, then looks up our payment_status row by the actual current dealId. ~300ms latency per click but bulletproof against merges. Deal Hub side unchanged (its currentDealId is always the post-merge surviving deal, so the existing by-dealId lookup works fine).'},
+      ]
+    },
+    {
       v:'1.25.2', date:'May 19, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Quote Builder pre-flight: resolve dealId reliably even on loaded quotes.** v1.25.1 added the check to openOrderModal but relied solely on `window._lastPushedDealId` / `linkedDeal` / `selectedDeal`. Those globals are populated when a quote is freshly pushed, but in certain quote-load paths they don\'t get set — so the check silently no-op\'d. Now falls back to a /api/quote-snapshot/:quoteNumber lookup as last resort: gives us the dealId for any historical quote regardless of how it was loaded. Also added a `[pay-preflight]` console log at each branch so we can see in the browser console whether the check is firing, what dealId was resolved, and what the payment state is. Reused Deal Hub pattern — extracted into a named `_payClearanceCheck(quoteNumber)` helper so future entry points can call it.'},

@@ -6384,12 +6384,79 @@ ${q.accepted ? `
     return;
   }
 
-  // ── API: One deal's mirrored payment state ─────────────────────
-  // Lightweight read for the Process Order pre-flight check. Both Deal Hub
-  // and Quote Builder call this immediately when the rep clicks Process
-  // Order so the ACH-clearing / failed-payment warning fires BEFORE the
-  // modal opens (rather than buried inside the confirm step). Returns null
-  // when no payment data exists for the deal — pre-flight just no-ops.
+  // ── API: payment state lookup by QUOTE NUMBER ──────────────────
+  // Quote Builder uses this instead of the by-dealId variant because
+  // `quotes.deal_id` can be stale after a Merge Deal (post-merge the
+  // invoice + payment live on the SURVIVING deal, not the pre-merge deal
+  // our quote still points at). Resolution path:
+  //   1. HubSpot search invoices where quote_number = X
+  //   2. Walk first invoice → deal association → current dealId
+  //   3. SELECT from deal_payment_status by that dealId
+  // ~300ms latency per click but bulletproof against the merge case.
+  if (pathname.startsWith('/api/deal-payment-status-by-quote/') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const quoteNumber = decodeURIComponent(pathname.replace('/api/deal-payment-status-by-quote/', '').trim());
+      if (!quoteNumber) { json({ error: 'Invalid quote number' }, 400); return; }
+
+      // 1. Find the HubSpot invoice by quote_number
+      const invRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path:     '/crm/v3/objects/invoices/search',
+        method:   'POST',
+        headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+      }, {
+        filterGroups: [{ filters: [{ propertyName: 'quote_number', operator: 'EQ', value: quoteNumber }] }],
+        properties: ['quote_number', 'hs_number'],
+        sorts: [{ propertyName: 'hs_createdate', direction: 'DESCENDING' }],
+        limit: 1,
+      });
+      const inv = invRes.body?.results?.[0];
+      if (!inv) { json({ paymentInfo: null, note: 'No HubSpot invoice with this quote_number.' }); return; }
+
+      // 2. invoice → deal
+      const assocRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path:     '/crm/v4/associations/invoices/deals/batch/read',
+        method:   'POST',
+        headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+      }, { inputs: [{ id: String(inv.id) }] });
+      const dealId = assocRes.body?.results?.[0]?.to?.[0]?.toObjectId || null;
+      if (!dealId) { json({ paymentInfo: null, note: 'Invoice has no associated deal.' }); return; }
+
+      // 3. Look up payment row by dealId
+      if (!db) { json({ paymentInfo: null }); return; }
+      const r = await db.query(
+        `SELECT payment_method, bank_or_issuer, last_4, amount,
+                initiated_at, estimated_payout_date,
+                latest_status, latest_status_at
+         FROM deal_payment_status WHERE deal_id = $1`,
+        [String(dealId)]
+      );
+      const row = r.rows[0];
+      if (!row) { json({ paymentInfo: null, resolvedDealId: String(dealId), note: 'No payment row mirrored yet for this deal.' }); return; }
+      json({
+        resolvedDealId: String(dealId),
+        paymentInfo: {
+          method:              row.payment_method,
+          bankOrIssuer:        row.bank_or_issuer,
+          last4:               row.last_4,
+          amount:              row.amount != null ? Number(row.amount) : null,
+          initiatedAt:         row.initiated_at,
+          estimatedPayoutDate: row.estimated_payout_date,
+          status:              row.latest_status,
+          statusAt:            row.latest_status_at,
+        }
+      });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // ── API: One deal's mirrored payment state (by dealId) ─────────
+  // Lightweight read for the Process Order pre-flight check. Deal Hub uses
+  // this because the dealId is what it has cached. Quote Builder uses the
+  // by-quote variant above because its stored dealId can be stale after a
+  // Merge Deal. Returns null when no payment data — pre-flight no-ops.
   if (pathname.startsWith('/api/deal-payment-status/') && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {

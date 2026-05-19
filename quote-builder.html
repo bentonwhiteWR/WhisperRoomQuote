@@ -6856,44 +6856,30 @@ function enableInvoiceBtn() {
 
 // ── Process Order ─────────────────────────────────────────────────
 
-// Payment pre-flight check. Resolves the deal ID through three fallbacks
-// (window globals → linkedDeal → selectedDeal → quote-snapshot lookup) so
-// it works whether the rep is on a freshly-pushed quote or a loaded
-// historical one. Returns true to proceed, false to abort.
+// Payment pre-flight check. Looks up by QUOTE NUMBER so we don't get
+// tripped up by stale quotes.deal_id values (which happen after Merge
+// Deal: the invoice + payment live on the surviving deal, our quote
+// still points at the pre-merge one). Server-side endpoint walks HubSpot
+// invoice → current deal → payment row. Returns true to proceed.
 async function _payClearanceCheck(quoteNumber) {
-  let dealId =
-    window._lastPushedDealId ||
-    (typeof linkedDeal !== 'undefined' && linkedDeal?.id) ||
-    (typeof selectedDeal !== 'undefined' && selectedDeal?.id) ||
-    null;
-
-  // Last-resort fallback: if no global dealId, the quote was loaded via a
-  // path that doesn't populate _lastPushedDealId. Pull dealId from the
-  // quote snapshot. Cheap and reliable.
-  if (!dealId && quoteNumber) {
-    try {
-      const r = await fetch(`/api/quote-snapshot/${encodeURIComponent(quoteNumber)}`, { credentials:'include' });
-      const snap = await r.json();
-      dealId = snap?.dealId || snap?.deal_id || null;
-    } catch(e) {}
-  }
-
-  if (!dealId) {
-    console.log('[pay-preflight] no dealId resolved for quote', quoteNumber, '— skipping check');
+  if (!quoteNumber) {
+    console.log('[pay-preflight] no quoteNumber — skipping check');
     return true;
   }
-
   let pi = null;
+  let resolvedDealId = null;
   try {
-    const r = await fetch(`/api/deal-payment-status/${encodeURIComponent(dealId)}`, { credentials:'include' });
+    const r = await fetch(`/api/deal-payment-status-by-quote/${encodeURIComponent(quoteNumber)}`, { credentials:'include' });
     const data = await r.json();
     pi = data?.paymentInfo || null;
+    resolvedDealId = data?.resolvedDealId || null;
+    if (data?.note) console.log('[pay-preflight]', data.note, '(quote', quoteNumber, ')');
   } catch(e) {
-    console.log('[pay-preflight] fetch failed for deal', dealId, e.message);
+    console.log('[pay-preflight] fetch failed for quote', quoteNumber, e.message);
     return true; // network blip → don't block rep
   }
   if (!pi || !pi.method) {
-    console.log('[pay-preflight] no payment data for deal', dealId, '— skipping check');
+    console.log('[pay-preflight] no payment data for quote', quoteNumber, '(resolved deal', resolvedDealId, ') — skipping check');
     return true;
   }
 
@@ -6907,7 +6893,7 @@ async function _payClearanceCheck(quoteNumber) {
     const dt = new Date(d + 'T12:00:00');
     return dt.toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
   };
-  console.log('[pay-preflight] deal', dealId, '→', { method, status, payoutDate });
+  console.log('[pay-preflight] quote', quoteNumber, '(deal', resolvedDealId, ') →', { method, status, payoutDate });
 
   if (status === 'failed') {
     return window.confirm(

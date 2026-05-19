@@ -6384,6 +6384,43 @@ ${q.accepted ? `
     return;
   }
 
+  // ── API: One deal's mirrored payment state ─────────────────────
+  // Lightweight read for the Process Order pre-flight check. Both Deal Hub
+  // and Quote Builder call this immediately when the rep clicks Process
+  // Order so the ACH-clearing / failed-payment warning fires BEFORE the
+  // modal opens (rather than buried inside the confirm step). Returns null
+  // when no payment data exists for the deal — pre-flight just no-ops.
+  if (pathname.startsWith('/api/deal-payment-status/') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const dealId = pathname.replace('/api/deal-payment-status/', '').trim();
+      if (!dealId || !/^\d+$/.test(dealId)) { json({ error: 'Invalid deal ID' }, 400); return; }
+      if (!db) { json({ paymentInfo: null }); return; }
+      const r = await db.query(
+        `SELECT payment_method, bank_or_issuer, last_4, amount,
+                initiated_at, estimated_payout_date,
+                latest_status, latest_status_at
+         FROM deal_payment_status WHERE deal_id = $1`,
+        [dealId]
+      );
+      const row = r.rows[0];
+      if (!row) { json({ paymentInfo: null }); return; }
+      json({
+        paymentInfo: {
+          method:              row.payment_method,
+          bankOrIssuer:        row.bank_or_issuer,
+          last4:               row.last_4,
+          amount:              row.amount != null ? Number(row.amount) : null,
+          initiatedAt:         row.initiated_at,
+          estimatedPayoutDate: row.estimated_payout_date,
+          status:              row.latest_status,
+          statusAt:            row.latest_status_at,
+        }
+      });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   // ── API: Sales-goal report ─────────────────────────────────────
   // Trailing-12-month moving average of net revenue (Closed Won + Shipped
   // deals, amount minus tax, freight included). Goal for current month =

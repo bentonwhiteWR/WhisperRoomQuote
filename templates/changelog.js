@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.25.1', date:'May 19, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Payment pre-flight warning fires IMMEDIATELY at button click, on both Process Order buttons.** v1.25.0 buried the ACH-clearing / failed-payment confirm inside `confirmProcessOrderFromHub` — fired only after the rep had already opened the modal AND filled in foam / hinge / AP color / payment-method. Now the check runs at the click of the button: the blue "Process →" button in Deal Hub (`processOrderFromHub`) AND the orange "📦 Process Order" button in the Quote Builder (`openOrderModal`). New lightweight endpoint GET /api/deal-payment-status/:dealId returns the mirrored payment row so Quote Builder can hit it without pulling the full deal list. Deal Hub still prefers its in-memory `allDeals` cache (no fetch) and falls back to the endpoint only when the deal isn\'t cached.'},
+      ]
+    },
+    {
       v:'1.25.0', date:'May 19, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Payment-state chips on Deal Hub cards + ACH clearing soft-warning on Process Order.** Mirrors each deal\'s latest HubSpot Commerce Payment into a new `deal_payment_status` table so the Deal Hub card shows: amber "💳 ACH clearing · funds 5/20 · BoA ...0228" while ACH is in flight, green "✓ Funds available" once HubSpot marks it succeeded past the estimated payout date, green "✓ CC Paid" for card payments that succeeded, and a pulsing red "🚨 Payment failed" chip when a payment fails or is reversed (the fraud case Benton flagged). Process Order modal now soft-blocks: confirm modal appears if the latest payment is ACH not yet cleared ("If you process now and the ACH bounces, we ship for free") or marked failed, with default = cancel.'},

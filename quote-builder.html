@@ -6867,6 +6867,52 @@ function enableOrderBtn() {
 async function openOrderModal() {
   const modalEl = document.getElementById('orderModal');
   if (!modalEl) return;
+
+  // Payment pre-flight — fire BEFORE opening the modal so the rep doesn't
+  // fill out foam / hinge / AP color / payment-method just to be warned at
+  // submit time. Soft-blocks (confirm with default = Cancel) for two cases:
+  //   - ACH payment that hasn't cleared yet (estimated_payout_date in future)
+  //   - Payment marked failed/reversed in HubSpot (the fraud case)
+  // Mirrors paymentClearanceCheck() in deals-dashboard.html.
+  const _dealIdForPayCheck = window._lastPushedDealId || (typeof linkedDeal !== 'undefined' && linkedDeal?.id) || (typeof selectedDeal !== 'undefined' && selectedDeal?.id) || null;
+  if (_dealIdForPayCheck) {
+    try {
+      const r = await fetch(`/api/deal-payment-status/${encodeURIComponent(_dealIdForPayCheck)}`, { credentials:'include' });
+      const data = await r.json();
+      const pi = data?.paymentInfo;
+      if (pi && pi.method) {
+        const method = (pi.method || '').toLowerCase();
+        const status = (pi.status || '').toLowerCase();
+        const todayIso = new Date().toISOString().slice(0,10);
+        const payoutDate = pi.estimatedPayoutDate || null;
+        const idLabel = (pi.bankOrIssuer ? pi.bankOrIssuer : '') + (pi.last4 ? ' ...' + pi.last4 : '');
+        const fmtDate = d => {
+          if (!d) return '';
+          const dt = new Date(d + 'T12:00:00');
+          return dt.toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
+        };
+        if (status === 'failed') {
+          const ok = window.confirm(
+            `⚠️ This deal's payment is marked FAILED in HubSpot.\n\n` +
+            `${(method || 'Payment').toUpperCase()}${idLabel ? ' · ' + idLabel : ''}\n\n` +
+            `Processing this order means we ship with no money received. This is the fraud case Benton flagged.\n\n` +
+            `Continue anyway?`
+          );
+          if (!ok) return;
+        } else if (method === 'ach' && status !== 'succeeded' && payoutDate && payoutDate > todayIso) {
+          const ok = window.confirm(
+            `💳 ACH payment still clearing.\n\n` +
+            `Funds expected: ${fmtDate(payoutDate)}\n` +
+            `${idLabel}\n\n` +
+            `If you process now and the ACH bounces, we ship for free.\n\n` +
+            `Continue anyway?`
+          );
+          if (!ok) return;
+        }
+      }
+    } catch(e) { /* network blip → don't block the rep */ }
+  }
+
   // Show modal first — nothing below can block this
   modalEl.style.display = 'flex';
 

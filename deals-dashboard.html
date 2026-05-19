@@ -1056,7 +1056,63 @@ function closeDhInvoiceModal() {
 async function processOrderFromHub(event, quoteNumber) {
   event.stopPropagation();
   if (!currentDealId) return;
+  // Pre-flight: bail (or get explicit override) BEFORE we open the modal +
+  // load the quote snapshot. Cheaper than the late check that lived inside
+  // confirmProcessOrderFromHub (which only fired after the rep had already
+  // filled in foam, hinge, AP color, payment type, etc.).
+  const ok = await paymentClearanceCheck(currentDealId);
+  if (!ok) return;
   await openProcessOrderModal(quoteNumber);
+}
+
+// Shared payment pre-flight. Returns true to proceed, false to abort.
+// First tries the in-memory deal cache (instant, no fetch); falls back to
+// /api/deal-payment-status/:dealId so the check still works for deals that
+// happen to be missing from the cache (e.g. opened directly via dealId URL
+// param before the deal list has loaded).
+async function paymentClearanceCheck(dealId) {
+  let pi = null;
+  const cached = (allDeals || []).find(x => x.id === dealId);
+  if (cached && cached.paymentInfo) {
+    pi = cached.paymentInfo;
+  } else {
+    try {
+      const r = await fetch(`/api/deal-payment-status/${encodeURIComponent(dealId)}`, { credentials: 'include' });
+      const data = await r.json();
+      pi = data?.paymentInfo || null;
+    } catch(e) { /* network blip → don't block the rep */ }
+  }
+  if (!pi || !pi.method) return true;
+
+  const method = (pi.method || '').toLowerCase();
+  const status = (pi.status || '').toLowerCase();
+  const todayIso = new Date().toISOString().slice(0,10);
+  const payoutDate = pi.estimatedPayoutDate || null;
+  const fmtDate = d => {
+    if (!d) return '';
+    const dt = new Date(d + 'T12:00:00');
+    return dt.toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
+  };
+  const idLabel = (pi.bankOrIssuer ? pi.bankOrIssuer : '') + (pi.last4 ? ' ...' + pi.last4 : '');
+
+  if (status === 'failed') {
+    return window.confirm(
+      `⚠️ This deal's payment is marked FAILED in HubSpot.\n\n` +
+      `${(method || 'Payment').toUpperCase()}${idLabel ? ' · ' + idLabel : ''}\n\n` +
+      `Processing this order means we ship with no money received. This is the fraud case Benton flagged.\n\n` +
+      `Continue anyway?`
+    );
+  }
+  if (method === 'ach' && status !== 'succeeded' && payoutDate && payoutDate > todayIso) {
+    return window.confirm(
+      `💳 ACH payment still clearing.\n\n` +
+      `Funds expected: ${fmtDate(payoutDate)}\n` +
+      `${idLabel}\n\n` +
+      `If you process now and the ACH bounces, we ship for free.\n\n` +
+      `Continue anyway?`
+    );
+  }
+  return true;
 }
 
 function toggleAdmin() {
@@ -2218,43 +2274,8 @@ async function confirmProcessOrderFromHub() {
   const dealId = currentDealId;
   if (!snap || !quoteNumber || !dealId) { showToast('Missing quote data','error'); return; }
 
-  // ── ACH pre-flight check ──
-  // Look up the deal's mirrored payment state. If the latest payment is an
-  // ACH that hasn't cleared yet (status != succeeded AND today < estimated
-  // payout date), soft-block with a confirm. If the payment has failed
-  // outright, soft-block more loudly. Either can be overridden — this is
-  // an advisory, not a hard gate (rep may have a legitimate reason).
-  const _dealForPay = (allDeals || []).find(x => x.id === dealId);
-  const _pi = _dealForPay && _dealForPay.paymentInfo;
-  if (_pi) {
-    const _piMethod = (_pi.method || '').toLowerCase();
-    const _piStatus = (_pi.status || '').toLowerCase();
-    const _todayIso = new Date().toISOString().slice(0,10);
-    const _payoutDate = _pi.estimatedPayoutDate || null;
-    const _fmtDate = d => {
-      if (!d) return '';
-      const dt = new Date(d + 'T12:00:00');
-      return dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-    };
-    if (_piStatus === 'failed') {
-      const ok = window.confirm(
-        `⚠️ This deal's payment is marked FAILED in HubSpot.\n\n` +
-        `${(_piMethod || 'Payment').toUpperCase()}${_pi.bankOrIssuer ? ' · ' + _pi.bankOrIssuer : ''}${_pi.last4 ? ' ...' + _pi.last4 : ''}\n\n` +
-        `Processing this order means we're shipping with no money received. This is the fraud case Benton flagged.\n\n` +
-        `Continue anyway?`
-      );
-      if (!ok) return;
-    } else if (_piMethod === 'ach' && _piStatus !== 'succeeded' && _payoutDate && _payoutDate > _todayIso) {
-      const ok = window.confirm(
-        `💳 ACH payment still clearing.\n\n` +
-        `Funds expected: ${_fmtDate(_payoutDate)}\n` +
-        `${_pi.bankOrIssuer ? _pi.bankOrIssuer + ' ' : ''}${_pi.last4 ? '...' + _pi.last4 : ''}\n\n` +
-        `If you process now and the ACH bounces, we ship for free.\n\n` +
-        `Continue anyway?`
-      );
-      if (!ok) return;
-    }
-  }
+  // (Payment pre-flight runs at button click in processOrderFromHub —
+  // before the modal opens. No re-check here.)
 
   // Shipping-address guardrail. Server enforces too, but blocking here
   // surfaces the error without burning a request. The Deal Hub modal

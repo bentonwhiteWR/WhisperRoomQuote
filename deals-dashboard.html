@@ -77,6 +77,15 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .card-unintegrated-dot { width:6px; height:6px; border-radius:50%; background:var(--muted); opacity:.4; flex-shrink:0; margin-left:auto; margin-top:2px; }
 .deal-card.unintegrated { opacity:.65; }
 .deal-card.unintegrated .card-name { color:var(--text2); }
+/* Payment chip — driven by deal_payment_status mirrored from HubSpot
+   Commerce Payments. Amber = ACH still clearing (rep should NOT process
+   yet); green = funds available or CC paid; red (pulsing) = payment
+   failed or reversed (the fraud case). */
+.card-pay-chip { display:inline-block; margin-top:6px; padding:3px 8px; font-size:10px; font-weight:700; border-radius:4px; border:1px solid; line-height:1.3; }
+.card-pay-chip.clearing { background:rgba(245,158,11,.12); color:var(--amber); border-color:rgba(245,158,11,.4); }
+.card-pay-chip.cleared  { background:rgba(34,197,94,.12);  color:var(--green); border-color:rgba(34,197,94,.4); }
+.card-pay-chip.failed   { background:rgba(239,68,68,.12);  color:#ef4444;       border-color:rgba(239,68,68,.5); animation:wr-pay-pulse 1.6s ease-in-out infinite; }
+@keyframes wr-pay-pulse { 0%,100% { opacity:1 } 50% { opacity:.55 } }
 .filter-toggle { padding:5px 10px; font-size:11px; font-weight:600; border-radius:5px; cursor:pointer; font-family:inherit; background:var(--surface2); border:1px solid var(--border); color:var(--muted); transition:.15s; white-space:nowrap; }
 .filter-toggle.active { background:rgba(238,98,22,.12); border-color:var(--orange-border); color:var(--orange); }
 .hub-panel { width:480px; flex-shrink:0; border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
@@ -548,6 +557,7 @@ function renderBoard() {
           ? `<span class="card-cust" title="Custom holes — 1-month lead time">CUST</span>`
           : '';
         const apChip = d.hasAP ? renderApChipFromStatus(d.apStatus) : '';
+        const payChip = renderPaymentChip(d.paymentInfo);
         card.innerHTML=`
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px">
             <div class="card-name" style="flex:1">${d.name}${rmChip}${custChip}${apChip}</div>
@@ -561,6 +571,7 @@ function renderBoard() {
             <span class="card-age">${fmtAge(d.modified)}</span>
           </div>
           ${d.latestQuote?`<div class="card-quote">${d.latestQuote}</div>`:''}
+          ${payChip}
         `;
         cardsEl.appendChild(card);
       });
@@ -2207,6 +2218,44 @@ async function confirmProcessOrderFromHub() {
   const dealId = currentDealId;
   if (!snap || !quoteNumber || !dealId) { showToast('Missing quote data','error'); return; }
 
+  // ── ACH pre-flight check ──
+  // Look up the deal's mirrored payment state. If the latest payment is an
+  // ACH that hasn't cleared yet (status != succeeded AND today < estimated
+  // payout date), soft-block with a confirm. If the payment has failed
+  // outright, soft-block more loudly. Either can be overridden — this is
+  // an advisory, not a hard gate (rep may have a legitimate reason).
+  const _dealForPay = (allDeals || []).find(x => x.id === dealId);
+  const _pi = _dealForPay && _dealForPay.paymentInfo;
+  if (_pi) {
+    const _piMethod = (_pi.method || '').toLowerCase();
+    const _piStatus = (_pi.status || '').toLowerCase();
+    const _todayIso = new Date().toISOString().slice(0,10);
+    const _payoutDate = _pi.estimatedPayoutDate || null;
+    const _fmtDate = d => {
+      if (!d) return '';
+      const dt = new Date(d + 'T12:00:00');
+      return dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    };
+    if (_piStatus === 'failed') {
+      const ok = window.confirm(
+        `⚠️ This deal's payment is marked FAILED in HubSpot.\n\n` +
+        `${(_piMethod || 'Payment').toUpperCase()}${_pi.bankOrIssuer ? ' · ' + _pi.bankOrIssuer : ''}${_pi.last4 ? ' ...' + _pi.last4 : ''}\n\n` +
+        `Processing this order means we're shipping with no money received. This is the fraud case Benton flagged.\n\n` +
+        `Continue anyway?`
+      );
+      if (!ok) return;
+    } else if (_piMethod === 'ach' && _piStatus !== 'succeeded' && _payoutDate && _payoutDate > _todayIso) {
+      const ok = window.confirm(
+        `💳 ACH payment still clearing.\n\n` +
+        `Funds expected: ${_fmtDate(_payoutDate)}\n` +
+        `${_pi.bankOrIssuer ? _pi.bankOrIssuer + ' ' : ''}${_pi.last4 ? '...' + _pi.last4 : ''}\n\n` +
+        `If you process now and the ACH bounces, we ship for free.\n\n` +
+        `Continue anyway?`
+      );
+      if (!ok) return;
+    }
+  }
+
   // Shipping-address guardrail. Server enforces too, but blocking here
   // surfaces the error without burning a request. The Deal Hub modal
   // doesn't expose editable ship-to fields, so the rep has to fix the
@@ -2442,6 +2491,48 @@ function renderApChipFromStatus(apStatus) {
   if (apStatus === 'delivered') return `<span class="card-ap card-ap-green" title="Audimute package delivered">AP ✓</span>`;
   if (apStatus === 'submitted') return `<span class="card-ap card-ap-yellow" title="Audimute PO in flight">AP ⏳</span>`;
   return `<span class="card-ap card-ap-red" title="Acoustic Package — PO not yet submitted">AP !</span>`;
+}
+
+// Build the per-card payment chip from the deal's mirrored Commerce Payment
+// state. Returns '' when there's nothing useful to show (no payment yet, or
+// a CC payment that succeeded — the existing green dealGreen state already
+// covers that case so a second chip would be noise).
+//   ACH + not-succeeded + future payout date  → amber "ACH clearing — funds 5/20"
+//   ACH + succeeded                            → green "Funds available"
+//   Card + succeeded + small note useful?      → green "CC Paid" (only when bank/last4 known)
+//   Any  + failed                              → red "Payment failed" (pulses)
+function renderPaymentChip(pi) {
+  if (!pi || !pi.method) return '';
+  const status = (pi.status || '').toLowerCase();
+  const method = (pi.method || '').toLowerCase();
+  const payoutDate = pi.estimatedPayoutDate;
+  const today = new Date().toISOString().slice(0, 10);
+  const isPastPayout = !!(payoutDate && payoutDate <= today);
+  const fmtPayoutDate = (d) => {
+    if (!d) return '';
+    const dt = new Date(d + 'T12:00:00');
+    return dt.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
+  };
+  const bankLabel = pi.bankOrIssuer && pi.last4
+    ? ` · ${pi.bankOrIssuer} ...${pi.last4}`
+    : (pi.last4 ? ` · ...${pi.last4}` : '');
+
+  if (status === 'failed') {
+    return `<div class="card-pay-chip failed" title="Payment failed or reversed — do NOT process this order; investigate in HubSpot">🚨 Payment failed${bankLabel}</div>`;
+  }
+  if (method === 'ach') {
+    if (status === 'succeeded' && isPastPayout) {
+      return `<div class="card-pay-chip cleared" title="ACH funds available — ready to process">✓ Funds available${bankLabel}</div>`;
+    }
+    if (payoutDate) {
+      return `<div class="card-pay-chip clearing" title="ACH still clearing — wait until ${fmtPayoutDate(payoutDate)} to process">💳 ACH clearing · funds ${fmtPayoutDate(payoutDate)}${bankLabel}</div>`;
+    }
+    return `<div class="card-pay-chip clearing" title="ACH initiated">💳 ACH initiated${bankLabel}</div>`;
+  }
+  if (method === 'card' && status === 'succeeded' && pi.last4) {
+    return `<div class="card-pay-chip cleared" title="Card payment cleared — ready to process">✓ CC Paid${bankLabel}</div>`;
+  }
+  return '';
 }
 
 function renderApBadge(ord) {

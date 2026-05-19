@@ -51,6 +51,16 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.25.0', date:'May 19, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Payment-state chips on Deal Hub cards + ACH clearing soft-warning on Process Order.** Mirrors each deal\'s latest HubSpot Commerce Payment into a new `deal_payment_status` table so the Deal Hub card shows: amber "💳 ACH clearing · funds 5/20 · BoA ...0228" while ACH is in flight, green "✓ Funds available" once HubSpot marks it succeeded past the estimated payout date, green "✓ CC Paid" for card payments that succeeded, and a pulsing red "🚨 Payment failed" chip when a payment fails or is reversed (the fraud case Benton flagged). Process Order modal now soft-blocks: confirm modal appears if the latest payment is ACH not yet cleared ("If you process now and the ACH bounces, we ship for free") or marked failed, with default = cancel.'},
+        {t:'add', d:'**Two write paths keep the table fresh.** Existing `/api/webhooks/invoice-paid` handler extended to also walk invoice → commerce_payments associations and upsert the payment record — instant update on the happy path. New 30-min polling sync scans `/crm/v3/objects/commerce_payments/search` for anything modified since the last poll (60-min lookback for safety) and upserts. The poll catches everything the webhook misses: ACH pending → succeeded transitions, payment failures, and any webhook delivery hiccups. Started from `lib/db.js` `onAfterInit` matching the existing tracking-poller pattern.'},
+        {t:'add', d:'**Status-transition notifications.** When a row\'s `latest_status` transitions to `succeeded` and the payment_method is ACH, fires `notifyRep()` with "💰 ACH Funds Available — Ready to process order" (skipped for CC since the existing invoice-paid notification already covers that case). When transitions to `failed`, fires "🚨 Payment Failed — Do NOT process this order; investigate in HubSpot" with bank/last-4 details. Both debounced via `cleared_notified_at` / `failed_notified_at` columns so the polling sync can\'t double-fire.'},
+        {t:'add', d:'**No date math needed on our side.** HubSpot already computes `hs_estimated_payout_date` on the commerce_payments object using their own 3-vs-4-weekday + cutoff rules — we just store it. Property mapping: `hs_payment_method_type` (card/ach/etc), `hs_payment_method_bank_or_issuer`, `hs_payment_method_last_4`, `hs_initiated_date`, `hs_estimated_payout_date`, `hs_latest_status`, `hs_latest_status_updated_date`, `hs_initial_amount`, `hs_payment_source_id`.'},
+        {t:'log', d:'**Removed throwaway debug endpoints.** `/api/debug/hs-invoice/:id` and `/api/debug/hs-invoices-for-deal/:dealId` (added earlier in v1.24.x to enumerate HubSpot invoice + payment properties for this feature) are gone now that we know the property names. Recoverable from git history (commits 3947d7c, 70882b5) if needed again.'},
+      ]
+    },
+    {
       v:'1.24.6', date:'May 19, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Intl shipping email — drop the parenthetical on SHIPMENT VALUE.** Removed the "(for insurance, products only — excludes freight & tax)" tail from v1.24.5. Line now reads just `SHIPMENT VALUE: $X,XXX.XX`. Forwarders know what the value is for.'},

@@ -306,6 +306,10 @@ db_mod.init({
   onAfterInit: async () => {
     await initTrackingCache();
     startTrackingPoller();
+    // First payments sync runs after a short delay so we don't hammer
+    // HubSpot during startup. Then every 30 min thereafter.
+    setTimeout(() => { pollHubspotPayments(); }, 30 * 1000);
+    setInterval(pollHubspotPayments, 30 * 60 * 1000);
   },
 });
 
@@ -316,6 +320,209 @@ const LOGIN_HTML = fs.readFileSync(path.join(__dirname, 'login.html'), 'utf8');
 // ── Main HTML (served from file) ──────────────────────────────────
 const HSO_BTN = `<a href="/auth/hubspot" class="hs-btn"><svg width="18" height="18" viewBox="0 0 512 512" fill="white"><path d="M267.4 211.6c-25.1 23.7-40.8 57-40.8 93.8 0 29.3 9.7 56.3 26 78L203.1 434c-4.4-1.6-9.1-2.5-14-2.5-21.9 0-39.7 17.8-39.7 39.7S167.2 511 189.1 511s39.7-17.8 39.7-39.7c0-4.9-.9-9.6-2.5-14l49.2-50.4c22 16.4 49.2 26.1 78.7 26.1 73.5 0 133.1-59.6 133.1-133.1 0-67.7-50.6-123.5-116.1-131.8v-65.2c13.4-6.8 22.6-20.7 22.6-36.7 0-22.8-18.5-41.3-41.3-41.3-22.8 0-41.3 18.5-41.3 41.3 0 16 9.2 29.9 22.6 36.7v65.7c-22.5 2.9-43.1 11.5-60.4 24.6zM354.2 439.8c-46.6 0-84.4-37.8-84.4-84.4s37.8-84.4 84.4-84.4 84.4 37.8 84.4 84.4-37.8 84.4-84.4 84.4z"/></svg> Sign in with HubSpot</a>`;
 const MAIN_HTML_PATH = path.join(__dirname, 'quote-builder.html');
+
+// ── HubSpot Commerce Payments sync ────────────────────────────────
+// Mirrors per-deal payment state into our `deal_payment_status` table so the
+// Deal Hub card chip + Process Order soft warning can read it cheaply (no
+// per-deal HubSpot calls on every board load). Two write paths:
+//   - /api/webhooks/invoice-paid (instant on the happy path)
+//   - 30-min polling sync below (catches ACH pending updates, failures, and
+//     any webhook misses; user explicitly OK'd 30-min latency for the
+//     failure case)
+//
+// HubSpot already computes `hs_estimated_payout_date` for us — no need to
+// re-implement the 3-vs-4-weekday math based on 5pm cutoff. We just store it.
+const HS_PAYMENT_PROPS = [
+  'hs_payment_method', 'hs_payment_method_type',
+  'hs_payment_method_bank_or_issuer', 'hs_payment_method_last_4',
+  'hs_initiated_date', 'hs_estimated_payout_date',
+  'hs_latest_status', 'hs_latest_status_updated_date',
+  'hs_initial_amount', 'hs_payment_source_id', 'hs_lastmodifieddate',
+];
+
+// Walk payment → invoice → deal so we know which deal this payment belongs
+// to. HubSpot Commerce Payments don't have a direct deal association — they
+// associate to the invoice, which then associates to the deal. Returns the
+// first deal_id found (invoices typically associate to exactly one deal).
+async function hsFindDealForInvoice(invoiceId) {
+  try {
+    const r = await httpsRequest({
+      hostname: 'api.hubapi.com',
+      path:     '/crm/v4/associations/invoices/deals/batch/read',
+      method:   'POST',
+      headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+    }, { inputs: [{ id: String(invoiceId) }] });
+    return r.body?.results?.[0]?.to?.[0]?.toObjectId || null;
+  } catch(e) {
+    console.warn(`[payments-sync] invoice→deal lookup failed for ${invoiceId}:`, e.message);
+    return null;
+  }
+}
+
+// Upsert one payment into deal_payment_status. Detects status transitions
+// AND mints notifications for two cases the user cares about:
+//   pending/processing → succeeded  (ACH only) → "Funds available, ready to process"
+//   anything           → failed                → "🚨 Payment failed — investigate"
+// Notifications are debounced via the *_notified_at columns so the 30-min
+// poller can't double-fire if it sees the same row twice in a row.
+async function upsertDealPaymentStatus(payment) {
+  if (!db) return;
+  const props = payment.properties || {};
+  const invoiceId = props.hs_payment_source_id || null;
+  if (!invoiceId) return; // not invoice-linked → not interesting here
+  const dealId = await hsFindDealForInvoice(invoiceId);
+  if (!dealId) return;
+
+  const paymentMethod = (props.hs_payment_method_type || props.hs_payment_method || '').toLowerCase();
+  const latestStatus  = (props.hs_latest_status || '').toLowerCase();
+  const newRow = {
+    deal_id:               String(dealId),
+    hs_invoice_id:         String(invoiceId),
+    hs_payment_id:         String(payment.id),
+    payment_method:        paymentMethod || null,
+    bank_or_issuer:        props.hs_payment_method_bank_or_issuer || null,
+    last_4:                props.hs_payment_method_last_4 || null,
+    amount:                parseFloat(props.hs_initial_amount || '0') || null,
+    initiated_at:          props.hs_initiated_date || null,
+    estimated_payout_date: props.hs_estimated_payout_date || null,
+    latest_status:         latestStatus || null,
+    latest_status_at:      props.hs_latest_status_updated_date || null,
+  };
+
+  // Read existing row so we can detect transitions
+  let prev = null;
+  try {
+    const r = await db.query(`SELECT * FROM deal_payment_status WHERE deal_id = $1`, [newRow.deal_id]);
+    prev = r.rows[0] || null;
+  } catch(e) { /* fresh insert path */ }
+
+  try {
+    await db.query(`
+      INSERT INTO deal_payment_status
+        (deal_id, hs_invoice_id, hs_payment_id, payment_method, bank_or_issuer,
+         last_4, amount, initiated_at, estimated_payout_date,
+         latest_status, latest_status_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())
+      ON CONFLICT (deal_id) DO UPDATE SET
+        hs_invoice_id         = EXCLUDED.hs_invoice_id,
+        hs_payment_id         = EXCLUDED.hs_payment_id,
+        payment_method        = EXCLUDED.payment_method,
+        bank_or_issuer        = EXCLUDED.bank_or_issuer,
+        last_4                = EXCLUDED.last_4,
+        amount                = EXCLUDED.amount,
+        initiated_at          = EXCLUDED.initiated_at,
+        estimated_payout_date = EXCLUDED.estimated_payout_date,
+        latest_status         = EXCLUDED.latest_status,
+        latest_status_at      = EXCLUDED.latest_status_at,
+        updated_at            = NOW()
+    `, [
+      newRow.deal_id, newRow.hs_invoice_id, newRow.hs_payment_id,
+      newRow.payment_method, newRow.bank_or_issuer, newRow.last_4,
+      newRow.amount, newRow.initiated_at, newRow.estimated_payout_date,
+      newRow.latest_status, newRow.latest_status_at,
+    ]);
+  } catch(e) {
+    console.warn('[payments-sync] upsert failed:', e.message);
+    return;
+  }
+
+  // ── Transition detection → notifications ──
+  // Fetch dealname + owner for the notification copy
+  const transitionedToSucceeded =
+    newRow.latest_status === 'succeeded' &&
+    (!prev || prev.latest_status !== 'succeeded') &&
+    !prev?.cleared_notified_at;
+  const transitionedToFailed =
+    newRow.latest_status === 'failed' &&
+    (!prev || prev.latest_status !== 'failed') &&
+    !prev?.failed_notified_at;
+
+  if (!transitionedToSucceeded && !transitionedToFailed) return;
+
+  let dealName = `Deal ${newRow.deal_id}`;
+  let ownerId = null;
+  try {
+    const dr = await httpsRequest({
+      hostname: 'api.hubapi.com',
+      path:     `/crm/v3/objects/deals/${newRow.deal_id}?properties=dealname,hubspot_owner_id`,
+      method:   'GET',
+      headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+    });
+    dealName = dr.body?.properties?.dealname || dealName;
+    ownerId  = dr.body?.properties?.hubspot_owner_id || null;
+  } catch(e) { /* notification will still go through with fallback name */ }
+
+  const amtFmt = newRow.amount
+    ? '$' + Number(newRow.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : '';
+
+  if (transitionedToSucceeded && ownerId) {
+    // Only fire the "ready to process" notification for ACH payments — CC
+    // payments are already greenlit by the existing invoice-paid webhook
+    // immediately, so a second notification here would be noise.
+    if (newRow.payment_method === 'ach') {
+      try {
+        await notifyRep(ownerId,
+          `💰 ACH Funds Available — ${dealName}`,
+          `${amtFmt} ACH payment cleared. Ready to process order.`,
+          { type: 'ach_cleared', dealId: newRow.deal_id, dealName }
+        );
+      } catch(e) { console.warn('[payments-sync] cleared notify failed:', e.message); }
+    }
+    await db.query(`UPDATE deal_payment_status SET cleared_notified_at = NOW() WHERE deal_id = $1`, [newRow.deal_id]).catch(() => {});
+  }
+
+  if (transitionedToFailed && ownerId) {
+    try {
+      const bank = newRow.bank_or_issuer ? ` (${newRow.bank_or_issuer}${newRow.last_4 ? ` ...${newRow.last_4}` : ''})` : '';
+      await notifyRep(ownerId,
+        `🚨 Payment Failed — ${dealName}`,
+        `${amtFmt} ${(newRow.payment_method || 'payment').toUpperCase()}${bank} payment failed or was reversed. Do NOT process this order — investigate in HubSpot.`,
+        { type: 'payment_failed', dealId: newRow.deal_id, dealName }
+      );
+    } catch(e) { console.warn('[payments-sync] failed notify failed:', e.message); }
+    await db.query(`UPDATE deal_payment_status SET failed_notified_at = NOW() WHERE deal_id = $1`, [newRow.deal_id]).catch(() => {});
+  }
+}
+
+// 30-min polling sync — fetch every commerce_payment modified since our
+// last poll (with a 60-min lookback safety margin to overlap), upsert each.
+let _lastPaymentsPollAt = null;
+async function pollHubspotPayments() {
+  if (!db || !HS_TOKEN) return;
+  const sinceMs = _lastPaymentsPollAt
+    ? _lastPaymentsPollAt - (60 * 60 * 1000) // 60min overlap on subsequent polls
+    : Date.now() - (7 * 24 * 60 * 60 * 1000); // first poll: look back 7 days
+  const sinceStr = String(sinceMs);
+  try {
+    let after, total = 0;
+    for (let page = 0; page < 10; page++) {
+      const r = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path:     '/crm/v3/objects/commerce_payments/search',
+        method:   'POST',
+        headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+      }, {
+        filterGroups: [{ filters: [{ propertyName: 'hs_lastmodifieddate', operator: 'GTE', value: sinceStr }] }],
+        properties: HS_PAYMENT_PROPS,
+        sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+        limit: 100,
+        ...(after ? { after } : {}),
+      });
+      const results = r.body?.results || [];
+      for (const p of results) await upsertDealPaymentStatus(p);
+      total += results.length;
+      const nextAfter = r.body?.paging?.next?.after;
+      if (!nextAfter || results.length < 100) break;
+      after = String(nextAfter);
+    }
+    _lastPaymentsPollAt = Date.now();
+    if (total > 0) console.log(`[payments-sync] polled ${total} commerce_payments updates`);
+  } catch(e) {
+    console.warn('[payments-sync] poll failed:', e.message);
+    writelog('error', 'payments-sync', `Poll failed: ${e.message}`, { stack: e.stack });
+  }
+}
 
 // ── Sales-goal report cache (in-memory, 5 min, keyed by current month) ──
 // The 12-month moving average + tier goals are identical for every viewer
@@ -1225,208 +1432,6 @@ const server = http.createServer(async (req, res) => {
         },
       });
     } catch(e) { json({ error: e.message }, 500); }
-    return;
-  }
-
-  // Debug: dump every HubSpot invoice property + linked deal + linked payments
-  // for one invoice. Used to discover which fields carry ACH-vs-CC payment
-  // method, payment timestamps, and fraud/reversal signals before scoping the
-  // ACH-clearing-date feature. Throwaway endpoint — remove once we've picked
-  // the property names. Usage: GET /api/debug/hs-invoice/4058784432
-  if (pathname.startsWith('/api/debug/hs-invoice/') && req.method === 'GET') {
-    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
-    try {
-      const invoiceId = pathname.replace('/api/debug/hs-invoice/', '').trim();
-      if (!invoiceId) { json({ error: 'No invoice ID' }, 400); return; }
-
-      // 1. Enumerate every invoice property name so we can request them all.
-      //    Without this we'd get HubSpot's default set and miss the long tail.
-      let allInvoiceProps = [];
-      try {
-        const propsRes = await httpsRequest({
-          hostname: 'api.hubapi.com',
-          path:     '/crm/v3/properties/invoices',
-          method:   'GET',
-          headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
-        });
-        allInvoiceProps = (propsRes.body?.results || []).map(p => p.name);
-      } catch(e) { /* fall back to default property set */ }
-
-      // 2. Same for the commerce_payments object (HubSpot's payment record
-      //    type). The Payments object name in CRM v3 is "commerce_payments".
-      let allPaymentProps = [];
-      try {
-        const ppRes = await httpsRequest({
-          hostname: 'api.hubapi.com',
-          path:     '/crm/v3/properties/commerce_payments',
-          method:   'GET',
-          headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
-        });
-        allPaymentProps = (ppRes.body?.results || []).map(p => p.name);
-      } catch(e) { /* may 404 if Commerce isn't enabled; non-fatal */ }
-
-      // 3. Fetch invoice with every property.
-      const propsQs = allInvoiceProps.length ? `?properties=${encodeURIComponent(allInvoiceProps.join(','))}` : '';
-      const invRes = await httpsRequest({
-        hostname: 'api.hubapi.com',
-        path:     `/crm/v3/objects/invoices/${invoiceId}${propsQs}`,
-        method:   'GET',
-        headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
-      });
-
-      // 4. Walk associations: invoice → deals, invoice → commerce_payments.
-      const fetchAssoc = async (toObjectType) => {
-        try {
-          const r = await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path:     `/crm/v4/associations/invoices/${toObjectType}/batch/read`,
-            method:   'POST',
-            headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
-          }, { inputs: [{ id: String(invoiceId) }] });
-          return (r.body?.results?.[0]?.to || []).map(t => String(t.toObjectId));
-        } catch(e) { return { error: e.message }; }
-      };
-      const dealIds    = await fetchAssoc('deals');
-      const paymentIds = await fetchAssoc('commerce_payments');
-
-      // 5. For each linked payment, fetch every property.
-      let payments = [];
-      if (Array.isArray(paymentIds) && paymentIds.length) {
-        const ppQs = allPaymentProps.length ? `?properties=${encodeURIComponent(allPaymentProps.join(','))}` : '';
-        for (const pid of paymentIds) {
-          try {
-            const pr = await httpsRequest({
-              hostname: 'api.hubapi.com',
-              path:     `/crm/v3/objects/commerce_payments/${pid}${ppQs}`,
-              method:   'GET',
-              headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
-            });
-            payments.push({ id: pid, status: pr.status, body: pr.body });
-          } catch(e) {
-            payments.push({ id: pid, error: e.message });
-          }
-        }
-      }
-
-      json({
-        invoiceId,
-        invoice: { status: invRes.status, body: invRes.body },
-        associations: { deals: dealIds, commerce_payments: paymentIds },
-        payments,
-        meta: {
-          invoicePropertyCount: allInvoiceProps.length,
-          paymentPropertyCount: allPaymentProps.length,
-        },
-      });
-    } catch(e) { json({ error: e.message, stack: e.stack }, 500); }
-    return;
-  }
-
-  // Debug: same as /api/debug/hs-invoice/:id but keyed by DEAL id. Finds
-  // every invoice linked to the deal and dumps each one + its payments.
-  // Use this when you have the deal ID handy but don't know the invoice's
-  // internal HubSpot CRM ID (the customer-facing share URL isn't the same
-  // thing as the CRM object ID).
-  if (pathname.startsWith('/api/debug/hs-invoices-for-deal/') && req.method === 'GET') {
-    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
-    try {
-      // Strip any embedded whitespace from the URL path (handles fat-finger
-      // `60 256150594` that decodes to `60%20256150594` and would otherwise
-      // 404 against HubSpot with no useful error).
-      const dealId = pathname.replace('/api/debug/hs-invoices-for-deal/', '').replace(/\s+/g, '').trim();
-      if (!dealId || !/^\d+$/.test(dealId)) { json({ error: `Invalid deal ID: "${dealId}". Expected digits only.` }, 400); return; }
-
-      // 1. deal → invoices association
-      let invoiceIds = [];
-      try {
-        const r = await httpsRequest({
-          hostname: 'api.hubapi.com',
-          path:     '/crm/v4/associations/deals/invoices/batch/read',
-          method:   'POST',
-          headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
-        }, { inputs: [{ id: String(dealId) }] });
-        invoiceIds = (r.body?.results?.[0]?.to || []).map(t => String(t.toObjectId));
-      } catch(e) {
-        json({ error: `deal→invoices association lookup failed: ${e.message}` }, 500);
-        return;
-      }
-
-      if (!invoiceIds.length) {
-        json({ dealId, invoiceIds: [], note: 'No invoices associated with this deal in HubSpot.' });
-        return;
-      }
-
-      // 2. Enumerate property name lists once (reused across invoices/payments).
-      let allInvoiceProps = [];
-      let allPaymentProps = [];
-      try {
-        const r = await httpsRequest({
-          hostname: 'api.hubapi.com',
-          path: '/crm/v3/properties/invoices', method: 'GET',
-          headers: { 'Authorization': `Bearer ${HS_TOKEN}` },
-        });
-        allInvoiceProps = (r.body?.results || []).map(p => p.name);
-      } catch(e) {}
-      try {
-        const r = await httpsRequest({
-          hostname: 'api.hubapi.com',
-          path: '/crm/v3/properties/commerce_payments', method: 'GET',
-          headers: { 'Authorization': `Bearer ${HS_TOKEN}` },
-        });
-        allPaymentProps = (r.body?.results || []).map(p => p.name);
-      } catch(e) {}
-
-      const invPropsQs = allInvoiceProps.length ? `?properties=${encodeURIComponent(allInvoiceProps.join(','))}` : '';
-      const payPropsQs = allPaymentProps.length ? `?properties=${encodeURIComponent(allPaymentProps.join(','))}` : '';
-
-      // 3. For each invoice: fetch all properties + linked payments + each payment's properties.
-      const invoices = [];
-      for (const invId of invoiceIds) {
-        const inv = { id: invId };
-        try {
-          const r = await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path:     `/crm/v3/objects/invoices/${invId}${invPropsQs}`,
-            method:   'GET',
-            headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
-          });
-          inv.invoice = { status: r.status, body: r.body };
-        } catch(e) { inv.invoice = { error: e.message }; }
-
-        try {
-          const r = await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path:     '/crm/v4/associations/invoices/commerce_payments/batch/read',
-            method:   'POST',
-            headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
-          }, { inputs: [{ id: String(invId) }] });
-          inv.paymentIds = (r.body?.results?.[0]?.to || []).map(t => String(t.toObjectId));
-        } catch(e) { inv.paymentIds = { error: e.message }; }
-
-        inv.payments = [];
-        if (Array.isArray(inv.paymentIds)) {
-          for (const pid of inv.paymentIds) {
-            try {
-              const r = await httpsRequest({
-                hostname: 'api.hubapi.com',
-                path:     `/crm/v3/objects/commerce_payments/${pid}${payPropsQs}`,
-                method:   'GET',
-                headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
-              });
-              inv.payments.push({ id: pid, status: r.status, body: r.body });
-            } catch(e) { inv.payments.push({ id: pid, error: e.message }); }
-          }
-        }
-        invoices.push(inv);
-      }
-
-      json({
-        dealId,
-        invoiceIds,
-        invoices,
-        meta: { invoicePropertyCount: allInvoiceProps.length, paymentPropertyCount: allPaymentProps.length },
-      });
-    } catch(e) { json({ error: e.message, stack: e.stack }, 500); }
     return;
   }
 
@@ -2588,7 +2593,7 @@ const server = http.createServer(async (req, res) => {
           const fields = [i?.name, i?.productName, i?.sku, i?.description].filter(Boolean);
           return fields.some(f => /^AP[\s\-_]?\d/i.test(f) || /^Acoustic\s+Package/i.test(f));
         };
-        const [dbRes, poRes] = await Promise.all([
+        const [dbRes, poRes, paymentRes] = await Promise.all([
           db.query(
             `SELECT
                q.deal_id,
@@ -2615,7 +2620,20 @@ const server = http.createServer(async (req, res) => {
              WHERE sp.deal_id = ANY($1)`,
             [ids]
           ).catch(() => ({ rows: [] })),
+          // HubSpot Commerce Payment state — mirrored from /api/webhooks/invoice-paid
+          // + the 30-min polling sync. Drives the per-card payment chip
+          // (ACH clearing / CC paid / funds available / payment failed).
+          db.query(
+            `SELECT deal_id, payment_method, bank_or_issuer, last_4, amount,
+                    initiated_at, estimated_payout_date,
+                    latest_status, latest_status_at
+             FROM deal_payment_status
+             WHERE deal_id = ANY($1)`,
+            [ids]
+          ).catch(() => ({ rows: [] })),
         ]);
+        const paymentByDeal = {};
+        (paymentRes.rows || []).forEach(r => { paymentByDeal[r.deal_id] = r; });
         // Index latest PO status per quote_number (within each deal)
         const poByQuote = {};
         (poRes.rows || []).forEach(r => {
@@ -2732,6 +2750,23 @@ const server = http.createServer(async (req, res) => {
             data.apStatus = apStatus;
             delete data._apQuotes;
             Object.assign(d, data);
+          }
+          // Attach payment info (separate from the quotes-derived data so it
+          // works even for deals without a quote in our DB — Shopify-created
+          // deals, for example, can be paid via a HubSpot invoice without
+          // ever passing through the quote builder).
+          const p = paymentByDeal[d.id];
+          if (p) {
+            d.paymentInfo = {
+              method:              p.payment_method,
+              bankOrIssuer:        p.bank_or_issuer,
+              last4:               p.last_4,
+              amount:              p.amount != null ? Number(p.amount) : null,
+              initiatedAt:         p.initiated_at,
+              estimatedPayoutDate: p.estimated_payout_date,
+              status:              p.latest_status,
+              statusAt:            p.latest_status_at,
+            };
           }
         });
       }
@@ -5104,6 +5139,34 @@ ${q.accepted ? `
             );
           }
         } catch(e) { console.warn('[invoice-webhook] notify failed:', e.message); }
+
+        // Also mirror the payment record into deal_payment_status so the
+        // Deal Hub chip flips to green (or stays amber for ACH if HubSpot
+        // hasn't marked it succeeded yet) without waiting for the 30-min
+        // polling sync. Walks invoice → commerce_payments associations,
+        // upserts the first payment found.
+        try {
+          if (invoiceId) {
+            const assocPayRes = await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path:     '/crm/v4/associations/invoices/commerce_payments/batch/read',
+              method:   'POST',
+              headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+            }, { inputs: [{ id: String(invoiceId) }] });
+            const paymentIds = (assocPayRes.body?.results?.[0]?.to || []).map(t => String(t.toObjectId));
+            for (const pid of paymentIds) {
+              try {
+                const pr = await httpsRequest({
+                  hostname: 'api.hubapi.com',
+                  path:     `/crm/v3/objects/commerce_payments/${pid}?properties=${encodeURIComponent(HS_PAYMENT_PROPS.join(','))}`,
+                  method:   'GET',
+                  headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+                });
+                if (pr.body?.id) await upsertDealPaymentStatus(pr.body);
+              } catch(e) { console.warn(`[invoice-webhook] payment ${pid} sync failed:`, e.message); }
+            }
+          }
+        } catch(e) { console.warn('[invoice-webhook] payment sync failed:', e.message); }
       }
     } catch(e) {
       console.warn('[invoice-webhook] error:', e.message);

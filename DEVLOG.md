@@ -6,14 +6,12 @@ Internal development notes. Last updated 2026-05-14.
 
 ---
 
-## Current focus (2026-05-18 — Sales Goal report shipped to staging; tax-compliance thread tabled)
+## Current focus (2026-05-19 — payment-clearing chips + ACH soft-warning shipped to staging)
 
-**Most recent shipped to PROD:** v1.21.10 — HubSpot freight_cost / amount / tax sync gaps in /api/process-order + /api/create-deal (open-stage path + locked-stage removal). Promoted 2026-05-15.
-
-**Most recent shipped to PROD (re-stated):** v1.23.2 — Sales Goal report promoted earlier today. v1.22.0 / v1.22.1 (TaxJar work) were reverted on staging on 2026-05-18 to keep the prod merge clean.
+**Most recent shipped to PROD:** v1.24.6 — intl shipping email SHIPMENT VALUE line. Promoted 2026-05-19. (Prior majors live in prod: v1.24.0–.5 Email Reply Assistant + polish, v1.23.x Sales Goal report. v1.22.x TaxJar work was reverted and tabled.)
 
 **On STAGING (NOT YET promoted to main):**
-- **v1.24.0** (this session) — Email Reply Assistant. New ✉️ button in Deal Hub topbar opens `/email-reply` in a new tab. Paste customer email + pick voice + generate. Vendored from Gabe\'s repo (`gabewhite438/whisperroom-reply-assistant`) into `assistant/`: system-prompt.txt, product-links.json, product-specs.json. New POST /api/email-reply server proxy keeps the Anthropic API key server-side. Frontend post-processing intact (em-dash scrub, URL force-injection, intro replacement). **Requires `ANTHROPIC_API_KEY` env var on Railway** (staging + prod) — without it the endpoint returns a clear "not configured" message and the UI shows the error. Until that env var is set, the button works but the call fails.
+- **v1.25.0** (this session) — Payment-state chips on Deal Hub cards + ACH-clearing soft warning on Process Order. New `deal_payment_status` table mirrors HubSpot Commerce Payments via the existing invoice-paid webhook (instant happy path) + new 30-min polling sync (catches failures/pending/missed webhooks). Card shows amber while ACH clearing, green when funds available, pulsing red on failed/reversed. Process Order asks "Continue anyway?" if ACH not yet cleared. notifyRep fires on pending→succeeded (ACH only) and any→failed transitions, debounced. **First test on staging:** after deploy + ~30s for first poll, hard-reload `/deals` and look for the Shopify #2145 deal (60256150594) — should show the red "🚨 Payment failed" chip since payment 4058784432 is in `hs_latest_status: failed`. Verify the soft warning fires by clicking Process Order on it.
 
 ### TaxJar compliance investigation (TABLED — keeping notes for future reference)
 
@@ -428,6 +426,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.25.0  | 2026-05-19 | **Payment-state chips + ACH clearing soft-warning.** New `deal_payment_status` table mirrors each deal\'s latest HubSpot Commerce Payment. Deal Hub card shows amber "💳 ACH clearing · funds 5/20" while in flight, green "✓ Funds available" once succeeded past payout date, green "✓ CC Paid" for cards, pulsing red "🚨 Payment failed" when failed/reversed (the fraud case). Process Order modal soft-blocks (confirm dialog) if ACH not yet cleared or payment failed. Two write paths: existing /api/webhooks/invoice-paid extended to upsert payment data instantly, plus new 30-min polling sync of `commerce_payments` for everything else. notifyRep fires on pending→succeeded (ACH only) and any→failed transitions, debounced via *_notified_at columns. We don\'t compute the 3-vs-4-weekday math — HubSpot already does it as `hs_estimated_payout_date`. Throwaway debug endpoints from earlier in v1.24.x (hs-invoice + hs-invoices-for-deal) removed; recoverable in git at 3947d7c, 70882b5. |
 | 1.24.6  | 2026-05-19 | **Intl shipping email — drop parenthetical from SHIPMENT VALUE.** Removed the "(for insurance, products only — excludes freight & tax)" tail from v1.24.5. Line now reads just `SHIPMENT VALUE: $X,XXX.XX`. |
 | 1.24.5  | 2026-05-19 | **International Shipping Request — SHIPMENT VALUE line added for insurance calc.** Overseas-quote email modal already emitted name / address / pallet dims / total weight. Added `SHIPMENT VALUE: ${fmt(sub - disc)} (for insurance, products only — excludes freight & tax)` directly below TOTAL WEIGHT so freight forwarder can quote insurance. Value is line-item subtotal minus discount (post-discount product price). |
 | 1.24.4  | 2026-05-18 | **Email Reply popup — shrink modal, keep panel sizing.** v1.24.3 stretched panels to fill iframe (felt too big). Reverted that — panels back to natural `min-height:520px`. Instead shrunk the modal itself from 88vh / max 900px down to 600px (max-height: 92vh). Popup\'s bottom edge now lands right at the Generate Reply button. |

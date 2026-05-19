@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.25.2', date:'May 19, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Quote Builder pre-flight: resolve dealId reliably even on loaded quotes.** v1.25.1 added the check to openOrderModal but relied solely on `window._lastPushedDealId` / `linkedDeal` / `selectedDeal`. Those globals are populated when a quote is freshly pushed, but in certain quote-load paths they don\'t get set — so the check silently no-op\'d. Now falls back to a /api/quote-snapshot/:quoteNumber lookup as last resort: gives us the dealId for any historical quote regardless of how it was loaded. Also added a `[pay-preflight]` console log at each branch so we can see in the browser console whether the check is firing, what dealId was resolved, and what the payment state is. Reused Deal Hub pattern — extracted into a named `_payClearanceCheck(quoteNumber)` helper so future entry points can call it.'},
+      ]
+    },
+    {
       v:'1.25.1', date:'May 19, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Payment pre-flight warning fires IMMEDIATELY at button click, on both Process Order buttons.** v1.25.0 buried the ACH-clearing / failed-payment confirm inside `confirmProcessOrderFromHub` — fired only after the rep had already opened the modal AND filled in foam / hinge / AP color / payment-method. Now the check runs at the click of the button: the blue "Process →" button in Deal Hub (`processOrderFromHub`) AND the orange "📦 Process Order" button in the Quote Builder (`openOrderModal`). New lightweight endpoint GET /api/deal-payment-status/:dealId returns the mirrored payment row so Quote Builder can hit it without pulling the full deal list. Deal Hub still prefers its in-memory `allDeals` cache (no fetch) and falls back to the endpoint only when the deal isn\'t cached.'},

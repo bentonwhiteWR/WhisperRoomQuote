@@ -6855,6 +6855,80 @@ function enableInvoiceBtn() {
 }
 
 // ── Process Order ─────────────────────────────────────────────────
+
+// Payment pre-flight check. Resolves the deal ID through three fallbacks
+// (window globals → linkedDeal → selectedDeal → quote-snapshot lookup) so
+// it works whether the rep is on a freshly-pushed quote or a loaded
+// historical one. Returns true to proceed, false to abort.
+async function _payClearanceCheck(quoteNumber) {
+  let dealId =
+    window._lastPushedDealId ||
+    (typeof linkedDeal !== 'undefined' && linkedDeal?.id) ||
+    (typeof selectedDeal !== 'undefined' && selectedDeal?.id) ||
+    null;
+
+  // Last-resort fallback: if no global dealId, the quote was loaded via a
+  // path that doesn't populate _lastPushedDealId. Pull dealId from the
+  // quote snapshot. Cheap and reliable.
+  if (!dealId && quoteNumber) {
+    try {
+      const r = await fetch(`/api/quote-snapshot/${encodeURIComponent(quoteNumber)}`, { credentials:'include' });
+      const snap = await r.json();
+      dealId = snap?.dealId || snap?.deal_id || null;
+    } catch(e) {}
+  }
+
+  if (!dealId) {
+    console.log('[pay-preflight] no dealId resolved for quote', quoteNumber, '— skipping check');
+    return true;
+  }
+
+  let pi = null;
+  try {
+    const r = await fetch(`/api/deal-payment-status/${encodeURIComponent(dealId)}`, { credentials:'include' });
+    const data = await r.json();
+    pi = data?.paymentInfo || null;
+  } catch(e) {
+    console.log('[pay-preflight] fetch failed for deal', dealId, e.message);
+    return true; // network blip → don't block rep
+  }
+  if (!pi || !pi.method) {
+    console.log('[pay-preflight] no payment data for deal', dealId, '— skipping check');
+    return true;
+  }
+
+  const method = (pi.method || '').toLowerCase();
+  const status = (pi.status || '').toLowerCase();
+  const todayIso = new Date().toISOString().slice(0,10);
+  const payoutDate = pi.estimatedPayoutDate || null;
+  const idLabel = (pi.bankOrIssuer ? pi.bankOrIssuer : '') + (pi.last4 ? ' ...' + pi.last4 : '');
+  const fmtDate = d => {
+    if (!d) return '';
+    const dt = new Date(d + 'T12:00:00');
+    return dt.toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
+  };
+  console.log('[pay-preflight] deal', dealId, '→', { method, status, payoutDate });
+
+  if (status === 'failed') {
+    return window.confirm(
+      `⚠️ This deal's payment is marked FAILED in HubSpot.\n\n` +
+      `${(method || 'Payment').toUpperCase()}${idLabel ? ' · ' + idLabel : ''}\n\n` +
+      `Processing this order means we ship with no money received. This is the fraud case Benton flagged.\n\n` +
+      `Continue anyway?`
+    );
+  }
+  if (method === 'ach' && status !== 'succeeded' && payoutDate && payoutDate > todayIso) {
+    return window.confirm(
+      `💳 ACH payment still clearing.\n\n` +
+      `Funds expected: ${fmtDate(payoutDate)}\n` +
+      `${idLabel}\n\n` +
+      `If you process now and the ACH bounces, we ship for free.\n\n` +
+      `Continue anyway?`
+    );
+  }
+  return true;
+}
+
 function enableOrderBtn() {
   const btn = document.getElementById('orderBtn');
   if (!btn) return;
@@ -6871,47 +6945,11 @@ async function openOrderModal() {
   // Payment pre-flight — fire BEFORE opening the modal so the rep doesn't
   // fill out foam / hinge / AP color / payment-method just to be warned at
   // submit time. Soft-blocks (confirm with default = Cancel) for two cases:
-  //   - ACH payment that hasn't cleared yet (estimated_payout_date in future)
+  //   - ACH payment that hasn't cleared yet
   //   - Payment marked failed/reversed in HubSpot (the fraud case)
-  // Mirrors paymentClearanceCheck() in deals-dashboard.html.
-  const _dealIdForPayCheck = window._lastPushedDealId || (typeof linkedDeal !== 'undefined' && linkedDeal?.id) || (typeof selectedDeal !== 'undefined' && selectedDeal?.id) || null;
-  if (_dealIdForPayCheck) {
-    try {
-      const r = await fetch(`/api/deal-payment-status/${encodeURIComponent(_dealIdForPayCheck)}`, { credentials:'include' });
-      const data = await r.json();
-      const pi = data?.paymentInfo;
-      if (pi && pi.method) {
-        const method = (pi.method || '').toLowerCase();
-        const status = (pi.status || '').toLowerCase();
-        const todayIso = new Date().toISOString().slice(0,10);
-        const payoutDate = pi.estimatedPayoutDate || null;
-        const idLabel = (pi.bankOrIssuer ? pi.bankOrIssuer : '') + (pi.last4 ? ' ...' + pi.last4 : '');
-        const fmtDate = d => {
-          if (!d) return '';
-          const dt = new Date(d + 'T12:00:00');
-          return dt.toLocaleDateString('en-US', { month:'long', day:'numeric', year:'numeric' });
-        };
-        if (status === 'failed') {
-          const ok = window.confirm(
-            `⚠️ This deal's payment is marked FAILED in HubSpot.\n\n` +
-            `${(method || 'Payment').toUpperCase()}${idLabel ? ' · ' + idLabel : ''}\n\n` +
-            `Processing this order means we ship with no money received. This is the fraud case Benton flagged.\n\n` +
-            `Continue anyway?`
-          );
-          if (!ok) return;
-        } else if (method === 'ach' && status !== 'succeeded' && payoutDate && payoutDate > todayIso) {
-          const ok = window.confirm(
-            `💳 ACH payment still clearing.\n\n` +
-            `Funds expected: ${fmtDate(payoutDate)}\n` +
-            `${idLabel}\n\n` +
-            `If you process now and the ACH bounces, we ship for free.\n\n` +
-            `Continue anyway?`
-          );
-          if (!ok) return;
-        }
-      }
-    } catch(e) { /* network blip → don't block the rep */ }
-  }
+  const _quoteNumForPay = (document.getElementById('quoteNumHidden')?.value || '').trim();
+  const _payCheckOK = await _payClearanceCheck(_quoteNumForPay);
+  if (!_payCheckOK) return;
 
   // Show modal first — nothing below can block this
   modalEl.style.display = 'flex';

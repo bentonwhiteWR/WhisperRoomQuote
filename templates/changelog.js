@@ -51,6 +51,34 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.25.3', date:'May 19, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Quote Builder pre-flight: look up payment by quote_number, not stale deal_id.** v1.25.2 fell back to /api/quote-snapshot which returns `quotes.deal_id` — but that value is STALE after a Merge Deal (post-merge the HubSpot invoice + payment live on the surviving deal, our quote still points at the pre-merge deal that was deleted). Reproed with W-1105142607: quotes.deal_id=60256026416, but the invoice WR-1210 + failed payment are on the surviving deal 60256150594 (Shopify #2145). New endpoint GET /api/deal-payment-status-by-quote/:quoteNumber searches HubSpot for the invoice by `quote_number` field, walks invoice → current deal association, then looks up our payment_status row by the actual current dealId. ~300ms latency per click but bulletproof against merges. Deal Hub side unchanged (its currentDealId is always the post-merge surviving deal, so the existing by-dealId lookup works fine).'},
+      ]
+    },
+    {
+      v:'1.25.2', date:'May 19, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Quote Builder pre-flight: resolve dealId reliably even on loaded quotes.** v1.25.1 added the check to openOrderModal but relied solely on `window._lastPushedDealId` / `linkedDeal` / `selectedDeal`. Those globals are populated when a quote is freshly pushed, but in certain quote-load paths they don\'t get set — so the check silently no-op\'d. Now falls back to a /api/quote-snapshot/:quoteNumber lookup as last resort: gives us the dealId for any historical quote regardless of how it was loaded. Also added a `[pay-preflight]` console log at each branch so we can see in the browser console whether the check is firing, what dealId was resolved, and what the payment state is. Reused Deal Hub pattern — extracted into a named `_payClearanceCheck(quoteNumber)` helper so future entry points can call it.'},
+      ]
+    },
+    {
+      v:'1.25.1', date:'May 19, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Payment pre-flight warning fires IMMEDIATELY at button click, on both Process Order buttons.** v1.25.0 buried the ACH-clearing / failed-payment confirm inside `confirmProcessOrderFromHub` — fired only after the rep had already opened the modal AND filled in foam / hinge / AP color / payment-method. Now the check runs at the click of the button: the blue "Process →" button in Deal Hub (`processOrderFromHub`) AND the orange "📦 Process Order" button in the Quote Builder (`openOrderModal`). New lightweight endpoint GET /api/deal-payment-status/:dealId returns the mirrored payment row so Quote Builder can hit it without pulling the full deal list. Deal Hub still prefers its in-memory `allDeals` cache (no fetch) and falls back to the endpoint only when the deal isn\'t cached.'},
+      ]
+    },
+    {
+      v:'1.25.0', date:'May 19, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Payment-state chips on Deal Hub cards + ACH clearing soft-warning on Process Order.** Mirrors each deal\'s latest HubSpot Commerce Payment into a new `deal_payment_status` table so the Deal Hub card shows: amber "💳 ACH clearing · funds 5/20 · BoA ...0228" while ACH is in flight, green "✓ Funds available" once HubSpot marks it succeeded past the estimated payout date, green "✓ CC Paid" for card payments that succeeded, and a pulsing red "🚨 Payment failed" chip when a payment fails or is reversed (the fraud case Benton flagged). Process Order modal now soft-blocks: confirm modal appears if the latest payment is ACH not yet cleared ("If you process now and the ACH bounces, we ship for free") or marked failed, with default = cancel.'},
+        {t:'add', d:'**Two write paths keep the table fresh.** Existing `/api/webhooks/invoice-paid` handler extended to also walk invoice → commerce_payments associations and upsert the payment record — instant update on the happy path. New 30-min polling sync scans `/crm/v3/objects/commerce_payments/search` for anything modified since the last poll (60-min lookback for safety) and upserts. The poll catches everything the webhook misses: ACH pending → succeeded transitions, payment failures, and any webhook delivery hiccups. Started from `lib/db.js` `onAfterInit` matching the existing tracking-poller pattern.'},
+        {t:'add', d:'**Status-transition notifications.** When a row\'s `latest_status` transitions to `succeeded` and the payment_method is ACH, fires `notifyRep()` with "💰 ACH Funds Available — Ready to process order" (skipped for CC since the existing invoice-paid notification already covers that case). When transitions to `failed`, fires "🚨 Payment Failed — Do NOT process this order; investigate in HubSpot" with bank/last-4 details. Both debounced via `cleared_notified_at` / `failed_notified_at` columns so the polling sync can\'t double-fire.'},
+        {t:'add', d:'**No date math needed on our side.** HubSpot already computes `hs_estimated_payout_date` on the commerce_payments object using their own 3-vs-4-weekday + cutoff rules — we just store it. Property mapping: `hs_payment_method_type` (card/ach/etc), `hs_payment_method_bank_or_issuer`, `hs_payment_method_last_4`, `hs_initiated_date`, `hs_estimated_payout_date`, `hs_latest_status`, `hs_latest_status_updated_date`, `hs_initial_amount`, `hs_payment_source_id`.'},
+        {t:'log', d:'**Removed throwaway debug endpoints.** `/api/debug/hs-invoice/:id` and `/api/debug/hs-invoices-for-deal/:dealId` (added earlier in v1.24.x to enumerate HubSpot invoice + payment properties for this feature) are gone now that we know the property names. Recoverable from git history (commits 3947d7c, 70882b5) if needed again.'},
+      ]
+    },
+    {
       v:'1.24.6', date:'May 19, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Intl shipping email — drop the parenthetical on SHIPMENT VALUE.** Removed the "(for insurance, products only — excludes freight & tax)" tail from v1.24.5. Line now reads just `SHIPMENT VALUE: $X,XXX.XX`. Forwarders know what the value is for.'},

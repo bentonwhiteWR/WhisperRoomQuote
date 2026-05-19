@@ -1330,8 +1330,11 @@ const server = http.createServer(async (req, res) => {
   if (pathname.startsWith('/api/debug/hs-invoices-for-deal/') && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
-      const dealId = pathname.replace('/api/debug/hs-invoices-for-deal/', '').trim();
-      if (!dealId) { json({ error: 'No deal ID' }, 400); return; }
+      // Strip any embedded whitespace from the URL path (handles fat-finger
+      // `60 256150594` that decodes to `60%20256150594` and would otherwise
+      // 404 against HubSpot with no useful error).
+      const dealId = pathname.replace('/api/debug/hs-invoices-for-deal/', '').replace(/\s+/g, '').trim();
+      if (!dealId || !/^\d+$/.test(dealId)) { json({ error: `Invalid deal ID: "${dealId}". Expected digits only.` }, 400); return; }
 
       // 1. deal → invoices association
       let invoiceIds = [];

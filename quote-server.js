@@ -1322,6 +1322,111 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Debug: same as /api/debug/hs-invoice/:id but keyed by DEAL id. Finds
+  // every invoice linked to the deal and dumps each one + its payments.
+  // Use this when you have the deal ID handy but don't know the invoice's
+  // internal HubSpot CRM ID (the customer-facing share URL isn't the same
+  // thing as the CRM object ID).
+  if (pathname.startsWith('/api/debug/hs-invoices-for-deal/') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const dealId = pathname.replace('/api/debug/hs-invoices-for-deal/', '').trim();
+      if (!dealId) { json({ error: 'No deal ID' }, 400); return; }
+
+      // 1. deal → invoices association
+      let invoiceIds = [];
+      try {
+        const r = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path:     '/crm/v4/associations/deals/invoices/batch/read',
+          method:   'POST',
+          headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+        }, { inputs: [{ id: String(dealId) }] });
+        invoiceIds = (r.body?.results?.[0]?.to || []).map(t => String(t.toObjectId));
+      } catch(e) {
+        json({ error: `deal→invoices association lookup failed: ${e.message}` }, 500);
+        return;
+      }
+
+      if (!invoiceIds.length) {
+        json({ dealId, invoiceIds: [], note: 'No invoices associated with this deal in HubSpot.' });
+        return;
+      }
+
+      // 2. Enumerate property name lists once (reused across invoices/payments).
+      let allInvoiceProps = [];
+      let allPaymentProps = [];
+      try {
+        const r = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/properties/invoices', method: 'GET',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}` },
+        });
+        allInvoiceProps = (r.body?.results || []).map(p => p.name);
+      } catch(e) {}
+      try {
+        const r = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/properties/commerce_payments', method: 'GET',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}` },
+        });
+        allPaymentProps = (r.body?.results || []).map(p => p.name);
+      } catch(e) {}
+
+      const invPropsQs = allInvoiceProps.length ? `?properties=${encodeURIComponent(allInvoiceProps.join(','))}` : '';
+      const payPropsQs = allPaymentProps.length ? `?properties=${encodeURIComponent(allPaymentProps.join(','))}` : '';
+
+      // 3. For each invoice: fetch all properties + linked payments + each payment's properties.
+      const invoices = [];
+      for (const invId of invoiceIds) {
+        const inv = { id: invId };
+        try {
+          const r = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path:     `/crm/v3/objects/invoices/${invId}${invPropsQs}`,
+            method:   'GET',
+            headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+          });
+          inv.invoice = { status: r.status, body: r.body };
+        } catch(e) { inv.invoice = { error: e.message }; }
+
+        try {
+          const r = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path:     '/crm/v4/associations/invoices/commerce_payments/batch/read',
+            method:   'POST',
+            headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+          }, { inputs: [{ id: String(invId) }] });
+          inv.paymentIds = (r.body?.results?.[0]?.to || []).map(t => String(t.toObjectId));
+        } catch(e) { inv.paymentIds = { error: e.message }; }
+
+        inv.payments = [];
+        if (Array.isArray(inv.paymentIds)) {
+          for (const pid of inv.paymentIds) {
+            try {
+              const r = await httpsRequest({
+                hostname: 'api.hubapi.com',
+                path:     `/crm/v3/objects/commerce_payments/${pid}${payPropsQs}`,
+                method:   'GET',
+                headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+              });
+              inv.payments.push({ id: pid, status: r.status, body: r.body });
+            } catch(e) { inv.payments.push({ id: pid, error: e.message }); }
+          }
+        }
+        invoices.push(inv);
+      }
+
+      json({
+        dealId,
+        invoiceIds,
+        invoices,
+        meta: { invoicePropertyCount: allInvoiceProps.length, paymentPropertyCount: allPaymentProps.length },
+      });
+    } catch(e) { json({ error: e.message, stack: e.stack }, 500); }
+    return;
+  }
+
   // Debug: dump tracking cache
   if (pathname === '/api/debug/tracking-cache' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

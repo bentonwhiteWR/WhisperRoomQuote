@@ -190,6 +190,9 @@ Don't store secrets in the repo. Everything is in Railway → service → Variab
 | `PUPPETEER_EXECUTABLE_PATH`  | Chrome path on Railway (set by buildpack)                        |
 | `ANTHROPIC_API_KEY`          | Email Reply Assistant — server-side proxy to Anthropic. Without it the /email-reply page loads but the Generate button returns "not configured." Get key from `console.anthropic.com` or copy from Gabe's reply-assistant `.env`. |
 | `ANTHROPIC_MODEL`            | Optional override for the Email Reply Assistant model. Defaults to `claude-opus-4-7` (matches Gabe's tool). |
+| `SHOPIFY_QB_CUSTOMER_NAME`   | Generic QB customer for Shopify parts auto-invoice. Default: `Shopify Web Orders`. |
+| `SHOPIFY_QB_FALLBACK_ITEM_NAME` | Generic QB non-inventory item used when a Shopify line item name doesn't match any QB item exactly. Default: `Shopify Order Line`. **Must exist in QB** (Products & Services → New non-inventory item) or `/api/shopify-parts/create-invoice` returns 503. |
+| `SHOPIFY_QB_CUTOFF_DATE`     | YYYY-MM-DD. Shopify deals created BEFORE this date don't get the auto-invoice button (Kim already handled them manually). Default: `2026-05-19`. |
 
 If you need to change one of these, do it in Railway and redeploy. Don't bake secrets into code.
 

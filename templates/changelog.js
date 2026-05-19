@@ -51,6 +51,35 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.26.3', date:'May 19, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Shopify drawer rows — type chip + left-edge accent.** Each row now shows a 🛋 Booth (blue) or 🛒 Parts (purple) chip on the meta row, plus a colored left edge (same color). Lets you tell booth vs parts at a glance without reading section headers — useful when scanning the drawer or when sections grow mixed in the future. Threshold matches server (≥$5k = Booth, <$5k = Parts).'},
+      ]
+    },
+    {
+      v:'1.26.2', date:'May 19, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Shopify drawer — new "📋 Parts Orders — Needs QB Invoice" section.** Without this, the only way to find a Shopify parts order to invoice was scrolling the Shipped column of the main Deal Hub board hoping to spot ecommerce-owned deals — bad workflow for Kim. Now the 🛒 Shopify drawer has a dedicated section listing every small (<$5k, post-cutoff) Shopify deal that hasn\'t been QB-invoiced yet. Click row → opens the deal → green "Create QB Invoice & Mark Paid" button right at the top. Server-side: /api/shopify-pending now returns small orders too (filtered to `needsQbInvoice`), and includes `needsInvoiceCount` in the response. The drawer badge glows + counts BOTH booth verifications AND parts-to-invoice (priorities visible separately in the tooltip).'},
+        {t:'fix', d:'**Backdated SHOPIFY_QB_CUTOFF_DATE default from 2026-05-19 to 2026-05-12** (one week back) so existing Shopify orders from this past week are eligible for QB auto-invoice. Useful for Kim to test on real orders without waiting for new ones. Env var override still works if you want to change the cutoff later.'},
+      ]
+    },
+    {
+      v:'1.26.1', date:'May 19, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Hot-fix: Deal Hub board broken on v1.26.0 — `shopifyQbRes is not defined`.** Added a 4th query to the /api/deals/list Promise.all (the new shopify_qb_invoices lookup) but forgot to add the variable to the destructure. Result: board threw a 500 + red error on every load. One-line fix. Should have caught with a smoke test before pushing — apologies.'},
+      ]
+    },
+    {
+      v:'1.26.0', date:'May 19, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Shopify parts orders — one-click QB invoice + mark paid.** Kim used to manually create a QuickBooks invoice + record the payment for every small Shopify order (<$5k) that came through HubSpot. Now there\'s a big green "📋 Create QB Invoice & Mark Paid" button on each eligible Shopify deal in the Deal Hub overlay. Click → confirm → server pulls HubSpot line items + contact, looks up each line item by name in QB (fallback to a generic "Shopify Order Line" item with the original name in the description), creates the invoice against the shared "Shopify Web Orders" QB customer, marks it paid via QB createPayment using the same payment method + deposit account as the regular Process Order flow, patches HubSpot deal payment_status=paid. Single tracking row in new `shopify_qb_invoices` table keys idempotency (button hides after success).'},
+        {t:'add', d:'**Backfill marker for historicals.** Older Shopify deals Kim already manually invoiced in QB get a small "Mark as already invoiced manually →" link below the button. Inserts a sentinel row (mode=\'backfill\', null invoice ID), button hides. Lets Kim clean up the backlog so it stops cluttering her view.'},
+        {t:'add', d:'**Cutoff gate.** Button only shows on Shopify deals CREATED on or after 2026-05-19 (today). Pre-cutoff deals already went through Kim\'s manual flow — we don\'t want to double-invoice. Cutoff is `SHOPIFY_QB_CUTOFF_DATE` env override-able. Server enforces the cutoff too (422 error if a stale client tries to invoice an old deal).'},
+        {t:'add', d:'**Semi-auto by design, not full auto.** Kim still clicks once per order so eyes-on stays in the loop while we learn what edge cases come up (weird SKU names, missing tax, contact mismatches). Once trusted, flip a switch to full auto via HubSpot Workflow → webhook fire. Today: 30+ seconds of QB data entry → 2 seconds of one click in our app.'},
+        {t:'log', d:'**Tax handling for v1:** line items go to QB as-is with `globalTaxCalc:NotApplicable`. The total matches what Shopify charged (line items already include whatever tax Shopify computed). Books revenue with tax included; if accounting wants separate tax treatment we\'ll iterate. Two new env vars: `SHOPIFY_QB_CUSTOMER_NAME` (default "Shopify Web Orders") and `SHOPIFY_QB_FALLBACK_ITEM_NAME` (default "Shopify Order Line"). The fallback item must exist in QB (Products & Services → New non-inventory item) before this works — server returns a clear 503 with instructions if missing.'},
+      ]
+    },
+    {
       v:'1.25.3', date:'May 19, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Quote Builder pre-flight: look up payment by quote_number, not stale deal_id.** v1.25.2 fell back to /api/quote-snapshot which returns `quotes.deal_id` — but that value is STALE after a Merge Deal (post-merge the HubSpot invoice + payment live on the surviving deal, our quote still points at the pre-merge deal that was deleted). Reproed with W-1105142607: quotes.deal_id=60256026416, but the invoice WR-1210 + failed payment are on the surviving deal 60256150594 (Shopify #2145). New endpoint GET /api/deal-payment-status-by-quote/:quoteNumber searches HubSpot for the invoice by `quote_number` field, walks invoice → current deal association, then looks up our payment_status row by the actual current dealId. ~300ms latency per click but bulletproof against merges. Deal Hub side unchanged (its currentDealId is always the post-merge surviving deal, so the existing by-dealId lookup works fine).'},

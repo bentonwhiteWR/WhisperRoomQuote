@@ -183,6 +183,14 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .shopify-item-meta { font-size:10px; color:var(--muted); margin-top:3px; display:flex; gap:8px; align-items:center; }
 .shopify-chip-verify { display:inline-block; font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; padding:2px 6px; border-radius:3px; background:rgba(238,98,22,.15); color:var(--orange); border:1px solid rgba(238,98,22,.35); }
 .shopify-chip-quoted { display:inline-block; font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; padding:2px 6px; border-radius:3px; background:rgba(34,197,94,.12); color:var(--green); border:1px solid rgba(34,197,94,.3); }
+/* Type chips — booth vs parts. Always present (regardless of section), so
+   you can tell at a glance even when scanning a mixed section. */
+.shopify-chip-booth { display:inline-block; font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; padding:2px 6px; border-radius:3px; background:rgba(59,130,246,.14); color:#3b82f6; border:1px solid rgba(59,130,246,.4); }
+.shopify-chip-parts { display:inline-block; font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; padding:2px 6px; border-radius:3px; background:rgba(168,85,247,.14); color:#a855f7; border:1px solid rgba(168,85,247,.4); }
+/* Subtle left-edge accent on each row to reinforce the chip at a glance.
+   Booth = blue, parts = purple — matches the chip colors. */
+.shopify-item.type-booth { border-left:3px solid #3b82f6; }
+.shopify-item.type-parts { border-left:3px solid #a855f7; }
 .shopify-empty { padding:30px 18px; text-align:center; color:var(--muted); font-size:12px; font-style:italic; }
 .notif-empty { padding:40px 20px; text-align:center; color:var(--muted); font-size:12px; }
 
@@ -607,6 +615,105 @@ async function openDeal(dealId) {
   }
 }
 
+// Shopify-parts QB auto-invoice block. Renders one of three states:
+//   (a) Eligible + not yet invoiced → big green action button + backfill link
+//   (b) Already invoiced (mode='auto')   → green "Invoiced" confirmation
+//   (c) Marked manual (mode='backfill')  → muted "Already handled manually"
+//   (d) Otherwise → nothing
+// Eligibility flag (shopifyQbEligible) computed server-side: ecommerce
+// owner + amount < $5k + createdate >= 2026-05-19 cutoff.
+function renderShopifyPartsBlock(deal) {
+  if (!deal) return '';
+  const sq = deal.shopifyQb;
+  const eligible = !!deal.shopifyQbEligible;
+  if (sq) {
+    if (sq.mode === 'auto') {
+      const amtStr = sq.amount != null ? '$' + Number(sq.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+      return `<div style="margin:8px 20px 4px;padding:12px 14px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.3);border-radius:8px;display:flex;align-items:center;gap:10px">
+        <div style="font-size:18px">✓</div>
+        <div style="flex:1;font-size:12px;color:var(--text)">
+          <div style="font-weight:700;color:var(--green)">Invoiced in QuickBooks</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">QB invoice ${sq.docNumber || sq.invoiceId || '—'}${amtStr ? ' · ' + amtStr : ''}${sq.paymentId ? ' · paid' : ' · invoice created, payment NOT recorded'}</div>
+        </div>
+      </div>`;
+    }
+    if (sq.mode === 'backfill') {
+      return `<div style="margin:8px 20px 4px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:8px">
+        <span>✓</span><span>Marked as already invoiced manually in QB on ${fmtDate(sq.createdAt)}</span>
+      </div>`;
+    }
+  }
+  if (!eligible) return '';
+  // Eligible + no row yet → action UI
+  return `<div style="margin:8px 20px 4px;padding:14px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.3);border-radius:8px">
+    <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--green);margin-bottom:8px">🛒 Shopify parts order</div>
+    <button onclick="doShopifyPartsCreateInvoice('${deal.id}')" style="width:100%;padding:11px;background:var(--green);color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.02em">
+      📋 Create QB Invoice &amp; Mark Paid
+    </button>
+    <div style="margin-top:8px;text-align:center">
+      <a href="#" onclick="event.preventDefault();doShopifyPartsMarkBackfill('${deal.id}')" style="font-size:10px;color:var(--muted);text-decoration:underline">Mark as already invoiced manually →</a>
+    </div>
+  </div>`;
+}
+
+async function doShopifyPartsCreateInvoice(dealId) {
+  const deal = allDeals.find(d => d.id === dealId);
+  const amtStr = deal && deal.amount ? '$' + Number(deal.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 'this amount';
+  if (!window.confirm(
+    `Create QuickBooks invoice for ${amtStr}?\n\n` +
+    `This will:\n` +
+    `  • Pull the Shopify line items from HubSpot\n` +
+    `  • Create a QB invoice against "Shopify Web Orders"\n` +
+    `  • Mark the invoice paid in QB\n` +
+    `  • Patch HubSpot deal payment_status = paid\n\n` +
+    `Cannot be undone from this app — would need to void/delete in QB manually.`
+  )) return;
+  try {
+    const r = await fetch('/api/shopify-parts/create-invoice', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dealId }),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      showToast('Failed: ' + (data.error || r.status), 'error');
+      return;
+    }
+    const docNum = data.qbDocNumber || data.qbInvoiceId;
+    const msg = data.paymentError
+      ? `Invoice ${docNum} created in QB — but payment failed (${data.paymentError}). Mark paid manually in QB.`
+      : `Invoice ${docNum} created & marked paid in QB.`;
+    showToast(msg, data.paymentError ? 'error' : 'success');
+    // Refresh the deal list + overlay so the block flips to the "Invoiced" state
+    await loadDeals();
+    if (currentDealId === dealId) openDeal(dealId);
+  } catch (e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
+async function doShopifyPartsMarkBackfill(dealId) {
+  if (!window.confirm(
+    `Mark this deal as already invoiced manually in QB?\n\n` +
+    `Use this for Shopify orders Kim already handled in QB before this feature shipped. The "Create QB Invoice" button will hide.\n\n` +
+    `Nothing gets pushed to QB.`
+  )) return;
+  try {
+    const r = await fetch('/api/shopify-parts/mark-already-invoiced', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dealId }),
+    });
+    const data = await r.json();
+    if (!r.ok) { showToast('Failed: ' + (data.error || r.status), 'error'); return; }
+    showToast('Marked as already invoiced.', 'success');
+    await loadDeals();
+    if (currentDealId === dealId) openDeal(dealId);
+  } catch (e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
 function renderHub(dealId,data) {
   window._lastHubData = data; // cache for invoice creation
   const deal=allDeals.find(d=>d.id===dealId)||{};
@@ -773,6 +880,7 @@ function renderHub(dealId,data) {
     </div>
     <div class="pipeline">${pipeHtml}</div>
     ${na?`<div class="next-action"><div class="na-icon">${na.icon}</div><div><div class="na-label">Next Action</div><div class="na-text">${na.text}</div></div></div>`:''}
+    ${renderShopifyPartsBlock(deal)}
     <div class="hub-section" style="margin-top:4px">
       <div class="section-label">Quotes (${data.quotes?.length||0})</div>
       ${quotesHtml}
@@ -1332,13 +1440,22 @@ async function loadShopifyPending() {
 function paintShopifyBadge() {
   const btn   = document.getElementById('shopifyBtn');
   const badge = document.getElementById('shopifyBadge');
-  const pending = _shopifyData.pendingCount || 0;
-  const total   = (_shopifyData.all || []).length;
-  badge.textContent = pending > 0 ? String(pending) : String(total);
-  if (pending > 0) {
+  // Glow when EITHER booth verifications are pending OR there are parts
+  // orders waiting for Kim to push to QB. Both are actionable; both deserve
+  // attention. Badge number = the higher-priority count (verifications first,
+  // then parts-to-invoice, then total).
+  const pending      = _shopifyData.pendingCount      || 0;
+  const needsInvoice = _shopifyData.needsInvoiceCount || 0;
+  const total        = (_shopifyData.all || []).length;
+  const actionable   = pending + needsInvoice;
+  badge.textContent  = actionable > 0 ? String(actionable) : String(total);
+  if (actionable > 0) {
     btn.classList.add('glow');
     badge.classList.remove('zero');
-    btn.title = `${pending} Shopify order${pending === 1 ? '' : 's'} awaiting verification — click to review`;
+    const parts = [];
+    if (pending)      parts.push(`${pending} awaiting verification`);
+    if (needsInvoice) parts.push(`${needsInvoice} parts order${needsInvoice===1?'':'s'} need QB invoice`);
+    btn.title = parts.join(' · ') + ' — click to review';
   } else {
     btn.classList.remove('glow');
     badge.classList.add('zero');
@@ -1365,39 +1482,55 @@ function renderShopifyList() {
     listEl.innerHTML = '<div class="shopify-empty">No Shopify orders</div>';
     return;
   }
-  // Two sections by urgency. Small orders (<$5k) are filtered out
-  // server-side per v1.24.2 — those parts orders auto-ship from Shopify
-  // and don't need a sales-team quote, so they don't belong in this drawer.
-  //   1. Awaiting Verification — booth-sized, no quote yet (orange chip)
-  //   2. In Progress — quote exists in our system
-  const pending = all.filter(d => d.isPending);
-  const inProg  = all.filter(d =>  d.hasQuote);
+  // Three sections by urgency:
+  //   1. Awaiting Verification — booth-sized (≥$5k), no quote yet (Jill)
+  //   2. Parts Orders — Needs QB Invoice — small (<$5k), post-cutoff, not
+  //      yet pushed to QB (Kim's auto-invoice to-do list, v1.26.x)
+  //   3. In Progress — quote exists in our system (booth-sized only)
+  const pending     = all.filter(d => d.isPending);
+  const partsToInv  = all.filter(d => d.needsQbInvoice);
+  const inProg      = all.filter(d => d.hasQuote);
 
   const sortByModified = (a, b) =>
     new Date(b.modified || 0).getTime() - new Date(a.modified || 0).getTime();
   pending.sort(sortByModified);
+  partsToInv.sort(sortByModified);
   inProg.sort(sortByModified);
 
   const fmtAmt = n => '$' + parseFloat(n||0).toLocaleString('en-US', { minimumFractionDigits:0, maximumFractionDigits:0 });
   const fmtD   = d => d ? new Date(d).toLocaleDateString('en-US', { month:'short', day:'numeric', timeZone:'America/New_York' }) : '—';
 
-  const renderItem = d => `
-    <div class="shopify-item" onclick="openDeal('${d.id}');toggleShopifyPanel();">
+  const SHOPIFY_PARTS_THRESHOLD = 5000; // matches server SHOPIFY_VERIFY_THRESHOLD
+  const renderItem = d => {
+    const amt = parseFloat(d.amount || 0);
+    const isBooth = amt >= SHOPIFY_PARTS_THRESHOLD;
+    const typeChip = isBooth
+      ? '<span class="shopify-chip-booth" title="Booth-sized order — needs verification + quote">🛋 Booth</span>'
+      : '<span class="shopify-chip-parts" title="Parts order — small order, push to QB">🛒 Parts</span>';
+    const typeClass = isBooth ? 'type-booth' : 'type-parts';
+    return `
+    <div class="shopify-item ${typeClass}" onclick="openDeal('${d.id}');toggleShopifyPanel();">
       <div class="shopify-item-row">
         <span class="shopify-item-name">${(d.name || '—').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</span>
         <span class="shopify-item-amount">${fmtAmt(d.amount)}</span>
       </div>
       <div class="shopify-item-meta">
+        ${typeChip}
         ${d.isPending ? '<span class="shopify-chip-verify">Booth — Verify</span>' : ''}
         ${d.hasQuote  ? `<span class="shopify-chip-quoted">Quote ${d.latestQuote}</span>` : ''}
         <span>${fmtD(d.modified)}</span>
       </div>
     </div>`;
+  };
 
   let html = '';
   if (pending.length) {
     html += `<div class="shopify-section-label pending">Awaiting Verification (${pending.length})</div>`;
     html += pending.map(renderItem).join('');
+  }
+  if (partsToInv.length) {
+    html += `<div class="shopify-section-label">📋 Parts Orders — Needs QB Invoice (${partsToInv.length})</div>`;
+    html += partsToInv.map(renderItem).join('');
   }
   if (inProg.length) {
     html += `<div class="shopify-section-label">In Progress / Quoted (${inProg.length})</div>`;

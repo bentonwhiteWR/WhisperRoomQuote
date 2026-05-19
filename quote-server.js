@@ -232,6 +232,14 @@ const SHOPIFY_VERIFY_THRESHOLD = parseFloat(process.env.SHOPIFY_VERIFY_THRESHOLD
 // that long ago auto-shipped via the integration) — we only care about
 // going forward from when the verification workflow started.
 const SHOPIFY_CUTOFF_DATE = process.env.SHOPIFY_CUTOFF_DATE || '2026-05-12';
+// Cutoff for the Shopify-parts QB auto-invoice feature (v1.26.0). Only
+// surface the "Create QB Invoice & Mark Paid" button for Shopify deals
+// CREATED on or after this date. Older deals were manually invoiced by
+// Kim before the feature shipped — we don't want to double-invoice them.
+const SHOPIFY_QB_CUTOFF_DATE = process.env.SHOPIFY_QB_CUTOFF_DATE || '2026-05-19';
+// QB customer + fallback item names for the Shopify-parts flow.
+const SHOPIFY_QB_CUSTOMER_NAME = process.env.SHOPIFY_QB_CUSTOMER_NAME || 'Shopify Web Orders';
+const SHOPIFY_QB_FALLBACK_ITEM_NAME = process.env.SHOPIFY_QB_FALLBACK_ITEM_NAME || 'Shopify Order Line';
 
 // ── Nexus states (freight taxability per state) ───────────────────
 const states = require('./lib/states');
@@ -2404,7 +2412,7 @@ const server = http.createServer(async (req, res) => {
         }, {
           filterGroups: [{ filters: idFilters }],
           properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
-                       'closedate','payment_status','payment_type','po_','tracking_number','carrier__c'],
+                       'closedate','createdate','payment_status','payment_type','po_','tracking_number','carrier__c'],
           limit: 50,
         });
         hsDeals = idRes.body?.results || [];
@@ -2418,7 +2426,7 @@ const server = http.createServer(async (req, res) => {
         }, {
           filterGroups: filters.length ? [{ filters }] : [],
           properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate',
-                       'closedate','payment_status','payment_type','po_','tracking_number','carrier__c'],
+                       'closedate','createdate','payment_status','payment_type','po_','tracking_number','carrier__c'],
           sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
           query: q,
           limit: 50,
@@ -2575,6 +2583,7 @@ const server = http.createServer(async (req, res) => {
         amount:        d.properties?.amount || '0',
         ownerId:       d.properties?.hubspot_owner_id || '',
         modified:      d.properties?.hs_lastmodifieddate || '',
+        createdate:    d.properties?.createdate || '',
         paymentStatus: d.properties?.payment_status || 'not_paid',
         paymentType:   (d.properties?.payment_type || '').toLowerCase(),
         po:            d.properties?.po_            || '',
@@ -2631,9 +2640,19 @@ const server = http.createServer(async (req, res) => {
              WHERE deal_id = ANY($1)`,
             [ids]
           ).catch(() => ({ rows: [] })),
+          // Shopify-parts QB-invoice state — drives the "Create QB Invoice"
+          // button in the deal overlay (button hides if a row exists).
+          db.query(
+            `SELECT deal_id, qb_invoice_id, qb_doc_number, qb_payment_id, total_amount, mode, created_at
+             FROM shopify_qb_invoices
+             WHERE deal_id = ANY($1)`,
+            [ids]
+          ).catch(() => ({ rows: [] })),
         ]);
         const paymentByDeal = {};
         (paymentRes.rows || []).forEach(r => { paymentByDeal[r.deal_id] = r; });
+        const shopifyQbByDeal = {};
+        (shopifyQbRes.rows || []).forEach(r => { shopifyQbByDeal[r.deal_id] = r; });
         // Index latest PO status per quote_number (within each deal)
         const poByQuote = {};
         (poRes.rows || []).forEach(r => {
@@ -2768,6 +2787,31 @@ const server = http.createServer(async (req, res) => {
               statusAt:            p.latest_status_at,
             };
           }
+          // Shopify-parts QB-invoice state (drives the Create QB Invoice
+          // button visibility in the deal overlay).
+          const sq = shopifyQbByDeal[d.id];
+          if (sq) {
+            d.shopifyQb = {
+              mode:       sq.mode,
+              invoiceId:  sq.qb_invoice_id,
+              docNumber:  sq.qb_doc_number,
+              paymentId:  sq.qb_payment_id,
+              amount:     sq.total_amount != null ? Number(sq.total_amount) : null,
+              createdAt:  sq.created_at,
+            };
+          }
+          // Eligibility flag for the auto-invoice button. Three checks:
+          //   - ecommerce-owned (Shopify-created)
+          //   - amount < $5k threshold (parts order, not booth)
+          //   - createdate >= cutoff (older deals were manually invoiced)
+          // Client uses this to decide whether to show the button (combined
+          // with !d.shopifyQb to hide on already-invoiced).
+          const _createdDate = (d.modified || '').slice(0, 10); // fallback if no createdate captured
+          const _hasCreateDate = (d.createdate || '').slice(0, 10);
+          const _ownerOK   = String(d.ownerId || '') === String(ECOMMERCE_OWNER_ID);
+          const _amountOK  = d.amount != null && parseFloat(d.amount) > 0 && parseFloat(d.amount) < SHOPIFY_VERIFY_THRESHOLD;
+          const _cutoffOK  = (_hasCreateDate || _createdDate) >= SHOPIFY_QB_CUTOFF_DATE;
+          d.shopifyQbEligible = !!(_ownerOK && _amountOK && _cutoffOK);
         });
       }
 
@@ -2860,6 +2904,276 @@ const server = http.createServer(async (req, res) => {
   // hasQuote  = some quote in our DB is bound to this deal_id (sales has touched it)
   //
   // Filters out closedlost — abandoned Shopify orders shouldn't clutter the drawer.
+  // ── API: Shopify Parts Order — create QB invoice + mark paid ────
+  // Semi-automates Kim's manual workflow for small (<$5k) Shopify orders.
+  // Pulls HubSpot's Shopify-synced line items + contact for the deal,
+  // builds a QB invoice against the shared "Shopify Web Orders" customer,
+  // marks it paid in QB, and patches the HubSpot deal's payment_status.
+  // Validates: ecommerce-owned + amount < SHOPIFY_VERIFY_THRESHOLD +
+  // createdate >= SHOPIFY_QB_CUTOFF_DATE + no existing row in
+  // shopify_qb_invoices (prevents double-invoicing on click-twice).
+  if (pathname === '/api/shopify-parts/create-invoice' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    if (!db) { json({ error: 'Database not initialized' }, 503); return; }
+    try {
+      const raw = await readBody(req);
+      const { dealId } = JSON.parse(raw || '{}');
+      if (!dealId || !/^\d+$/.test(String(dealId))) { json({ error: 'Invalid dealId' }, 400); return; }
+      const dealIdStr = String(dealId);
+
+      // 0. Idempotency guard
+      const existing = await db.query(`SELECT * FROM shopify_qb_invoices WHERE deal_id = $1`, [dealIdStr]);
+      if (existing.rows.length) {
+        const r = existing.rows[0];
+        json({ error: `Deal already invoiced via Shopify-parts flow (mode=${r.mode}, qb_doc=${r.qb_doc_number || '—'})`, code: 'ALREADY_INVOICED', existing: r }, 409);
+        return;
+      }
+
+      // 1. Fetch deal + line items + contact in parallel
+      const dealReq = httpsRequest({
+        hostname: 'api.hubapi.com',
+        path:     `/crm/v3/objects/deals/${dealIdStr}?properties=dealname,amount,hubspot_owner_id,createdate,dealstage,total_tax_amount`,
+        method:   'GET',
+        headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+      });
+      const lineItemAssocReq = httpsRequest({
+        hostname: 'api.hubapi.com',
+        path:     '/crm/v4/associations/deals/line_items/batch/read',
+        method:   'POST',
+        headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+      }, { inputs: [{ id: dealIdStr }] });
+      const contactAssocReq = httpsRequest({
+        hostname: 'api.hubapi.com',
+        path:     `/crm/v3/objects/deals/${dealIdStr}/associations/contacts`,
+        method:   'GET',
+        headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+      });
+      const [dealRes, liAssocRes, ctAssocRes] = await Promise.all([dealReq, lineItemAssocReq, contactAssocReq]);
+
+      const deal = dealRes.body;
+      if (!deal?.id) { json({ error: 'Deal not found in HubSpot' }, 404); return; }
+      const dp = deal.properties || {};
+
+      // 2. Validate
+      const ownerId   = dp.hubspot_owner_id || '';
+      const amount    = parseFloat(dp.amount || '0') || 0;
+      const createdAt = dp.createdate || '';
+      const createdDateOnly = createdAt.slice(0, 10);
+
+      if (String(ownerId) !== String(ECOMMERCE_OWNER_ID)) {
+        json({ error: `Not an ecommerce-owned deal (owner=${ownerId}). Use the regular Process Order flow.`, code: 'NOT_ECOMMERCE' }, 422);
+        return;
+      }
+      if (amount >= SHOPIFY_VERIFY_THRESHOLD) {
+        json({ error: `Deal amount ${amount} is at or above the $${SHOPIFY_VERIFY_THRESHOLD} threshold — booth orders need human verification, not auto-invoice.`, code: 'OVER_THRESHOLD' }, 422);
+        return;
+      }
+      if (createdDateOnly && createdDateOnly < SHOPIFY_QB_CUTOFF_DATE) {
+        json({ error: `Deal pre-dates the auto-invoice cutoff (${SHOPIFY_QB_CUTOFF_DATE}). Kim handled this one manually — use the "Mark as already invoiced" link instead.`, code: 'BEFORE_CUTOFF' }, 422);
+        return;
+      }
+
+      // 3. Fetch each line item's full record
+      const liIds = (liAssocRes.body?.results?.[0]?.to || []).map(t => String(t.toObjectId));
+      let hsLineItems = [];
+      if (liIds.length) {
+        const batchRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path:     '/crm/v3/objects/line_items/batch/read',
+          method:   'POST',
+          headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+        }, {
+          inputs: liIds.map(id => ({ id })),
+          properties: ['name', 'quantity', 'price', 'amount', 'hs_sku', 'description'],
+        });
+        hsLineItems = batchRes.body?.results || [];
+      }
+      if (!hsLineItems.length) {
+        json({ error: 'Deal has no line items in HubSpot — cannot build invoice. Add line items in HubSpot, or invoice manually in QB.', code: 'NO_LINE_ITEMS' }, 422);
+        return;
+      }
+
+      // 4. Fetch contact for memo (best-effort — invoice still goes to the
+      // generic "Shopify Web Orders" customer regardless)
+      let contact = null;
+      const contactId = ctAssocRes.body?.results?.[0]?.id;
+      if (contactId) {
+        try {
+          const cr = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path:     `/crm/v3/objects/contacts/${contactId}?properties=firstname,lastname,email,phone,company,address,city,state,zip`,
+            method:   'GET',
+            headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+          });
+          contact = cr.body?.properties || null;
+        } catch (e) { /* non-fatal */ }
+      }
+
+      // 5. Resolve QB customer + fallback item
+      const cust = await qb.findOrCreateCustomer({ displayName: SHOPIFY_QB_CUSTOMER_NAME });
+      if (!cust?.Id) throw new Error(`Could not find/create QB customer "${SHOPIFY_QB_CUSTOMER_NAME}"`);
+      const fallbackItem = await qb.findItemByName(SHOPIFY_QB_FALLBACK_ITEM_NAME);
+      if (!fallbackItem) {
+        json({ error: `QB fallback item "${SHOPIFY_QB_FALLBACK_ITEM_NAME}" not found. Create it in QB (Products & Services → New non-inventory item) then retry.`, code: 'MISSING_FALLBACK_ITEM' }, 503);
+        return;
+      }
+
+      // 6. Map line items → QB lines. Exact-name match first; fallback to
+      //    the generic "Shopify Order Line" with the HS name in description.
+      const qbLines = [];
+      for (const li of hsLineItems) {
+        const lp = li.properties || {};
+        const name = (lp.name || '').trim();
+        const qty  = parseFloat(lp.quantity || '1') || 1;
+        const unitPrice = lp.price != null && lp.price !== '' ? parseFloat(lp.price) : null;
+        const lineAmt = lp.amount != null && lp.amount !== ''
+          ? parseFloat(lp.amount)
+          : (unitPrice != null ? unitPrice * qty : 0);
+        const itemRef = name ? (await qb.findItemByName(name)) : null;
+        const useRef = itemRef || { value: fallbackItem.value, name: fallbackItem.name };
+        qbLines.push({
+          DetailType: 'SalesItemLineDetail',
+          Amount: Math.round(lineAmt * 100) / 100,
+          Description: name || lp.description || 'Shopify line',
+          SalesItemLineDetail: {
+            ItemRef:  useRef,
+            Qty:      qty,
+            ...(unitPrice != null ? { UnitPrice: unitPrice } : {}),
+          },
+        });
+      }
+      const linesTotal = qbLines.reduce((s, l) => s + (l.Amount || 0), 0);
+
+      // 7. Build memo / private note carrying the Shopify-side context
+      const contactName = contact ? [contact.firstname, contact.lastname].filter(Boolean).join(' ').trim() : '';
+      const memoParts = [
+        deal.properties?.dealname ? `Shopify deal: ${deal.properties.dealname}` : null,
+        contactName ? `Customer: ${contactName}` : null,
+        contact?.email ? `Email: ${contact.email}` : null,
+      ].filter(Boolean);
+      const memo = memoParts.join(' · ');
+
+      // 8. Create the invoice. globalTaxCalc:'NotApplicable' because the
+      // line items as Shopify provides them already include the full
+      // charge — we're not re-computing tax via QB AST. Total will match
+      // the Shopify-side amount the customer paid.
+      const sess = getRepFromReq(req);
+      const txnDate = new Date().toISOString().split('T')[0];
+      const invoice = await qb.createInvoice({
+        customerRef:   { value: cust.Id },
+        docNumber:     `SHOP-${dealIdStr}`,
+        txnDate,
+        lines:         qbLines,
+        memo,
+        billEmail:     contact?.email || null,
+        globalTaxCalc: 'NotApplicable',
+      });
+      if (!invoice?.Id) throw new Error('QB createInvoice returned no Id');
+
+      // 9. Mark paid — full invoice amount via the same payment method +
+      //    deposit account as the regular process-order flow.
+      let payment = null;
+      let paymentError = null;
+      try {
+        const pmName   = process.env.QB_PAYMENT_METHOD_NAME || 'Hubspot';
+        const acctName = process.env.QB_DEPOSIT_ACCOUNT_NAME || 'Southeast Bank Regular Checking 2545';
+        const [pm, acct] = await Promise.all([
+          qb.findPaymentMethodByName(pmName),
+          qb.findAccountByName(acctName),
+        ]);
+        if (!pm)   throw new Error(`QB PaymentMethod "${pmName}" not found`);
+        if (!acct) throw new Error(`QB Account "${acctName}" not found`);
+        const invTotal = parseFloat(invoice.TotalAmt || 0);
+        payment = await qb.createPayment({
+          customerRef:         invoice.CustomerRef,
+          invoiceId:           invoice.Id,
+          amount:              invTotal,
+          paymentMethodRef:    { value: pm.Id, name: pm.Name },
+          depositToAccountRef: { value: acct.Id, name: acct.Name },
+          txnDate,
+          privateNote:         `Auto-paid (Shopify parts order). Deal ${dealIdStr}${contactName ? ' · ' + contactName : ''}.`,
+        });
+      } catch (e) {
+        paymentError = e.message;
+        console.warn('[shopify-parts] createPayment failed:', e.message);
+        writelog('error', 'shopify-parts.payment', `Payment failed for ${dealIdStr}: ${e.message}`, { dealId: dealIdStr, meta: { qbInvoiceId: invoice.Id } });
+      }
+
+      // 10. Record what we did. Row goes in regardless of payment success
+      //    so we don't double-invoice on retry — Kim can manually pay if needed.
+      await db.query(`
+        INSERT INTO shopify_qb_invoices
+          (deal_id, qb_invoice_id, qb_doc_number, qb_payment_id, total_amount, mode, created_by, created_at)
+        VALUES ($1,$2,$3,$4,$5,'auto',$6,NOW())
+        ON CONFLICT (deal_id) DO NOTHING
+      `, [
+        dealIdStr,
+        String(invoice.Id),
+        invoice.DocNumber || null,
+        payment ? String(payment.Id) : null,
+        invoice.TotalAmt != null ? parseFloat(invoice.TotalAmt) : null,
+        sess?.email || sess?.name || 'system',
+      ]);
+
+      // 11. Patch HubSpot deal payment_status=paid. Leave dealstage at 845719
+      //     (Shipped) per Benton's call — small Shopify orders auto-ship and
+      //     stay in Shipped for tracking visibility on the board.
+      try {
+        await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path:     `/crm/v3/objects/deals/${dealIdStr}`,
+          method:   'PATCH',
+          headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+        }, { properties: { payment_status: 'paid' } });
+      } catch (e) { console.warn('[shopify-parts] HS payment_status patch failed:', e.message); }
+
+      writelog('info', 'shopify-parts.invoiced',
+        `Shopify parts order ${dealIdStr} (${dp.dealname || '—'}) → QB invoice ${invoice.DocNumber} ($${invoice.TotalAmt})${payment ? ' · paid' : ' · PAYMENT FAILED'}`,
+        { dealId: dealIdStr, rep: String(sess?.ownerId || ''), meta: { qbInvoiceId: invoice.Id, qbDocNumber: invoice.DocNumber, qbPaymentId: payment?.Id || null, amount: invoice.TotalAmt, paymentError } }
+      );
+
+      json({
+        success: true,
+        qbInvoiceId: invoice.Id,
+        qbDocNumber: invoice.DocNumber,
+        qbPaymentId: payment?.Id || null,
+        totalAmount: invoice.TotalAmt,
+        paymentError, // non-null = invoice created but payment failed → Kim should mark paid manually in QB
+      });
+    } catch (e) {
+      console.error('[shopify-parts/create-invoice]', e.message);
+      writelog('error', 'shopify-parts.exception', e.message, { stack: e.stack });
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Backfill marker for historicals Kim invoiced manually ────
+  // Inserts a sentinel row with mode='backfill' + null qb_invoice_id so the
+  // "Create QB Invoice" button hides on this deal. Doesn't touch QB.
+  if (pathname === '/api/shopify-parts/mark-already-invoiced' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    if (!db) { json({ error: 'Database not initialized' }, 503); return; }
+    try {
+      const raw = await readBody(req);
+      const { dealId, note } = JSON.parse(raw || '{}');
+      if (!dealId || !/^\d+$/.test(String(dealId))) { json({ error: 'Invalid dealId' }, 400); return; }
+      const dealIdStr = String(dealId);
+      const sess = getRepFromReq(req);
+      await db.query(`
+        INSERT INTO shopify_qb_invoices (deal_id, mode, created_by, created_at)
+        VALUES ($1, 'backfill', $2, NOW())
+        ON CONFLICT (deal_id) DO NOTHING
+      `, [dealIdStr, sess?.email || sess?.name || 'system']);
+      writelog('info', 'shopify-parts.backfill',
+        `${sess?.name || 'rep'} marked Shopify deal ${dealIdStr} as already invoiced manually${note ? ' — ' + note : ''}`,
+        { dealId: dealIdStr, rep: String(sess?.ownerId || '') }
+      );
+      json({ success: true });
+    } catch (e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   if (pathname === '/api/shopify-pending' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {

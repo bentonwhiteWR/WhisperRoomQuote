@@ -607,6 +607,105 @@ async function openDeal(dealId) {
   }
 }
 
+// Shopify-parts QB auto-invoice block. Renders one of three states:
+//   (a) Eligible + not yet invoiced → big green action button + backfill link
+//   (b) Already invoiced (mode='auto')   → green "Invoiced" confirmation
+//   (c) Marked manual (mode='backfill')  → muted "Already handled manually"
+//   (d) Otherwise → nothing
+// Eligibility flag (shopifyQbEligible) computed server-side: ecommerce
+// owner + amount < $5k + createdate >= 2026-05-19 cutoff.
+function renderShopifyPartsBlock(deal) {
+  if (!deal) return '';
+  const sq = deal.shopifyQb;
+  const eligible = !!deal.shopifyQbEligible;
+  if (sq) {
+    if (sq.mode === 'auto') {
+      const amtStr = sq.amount != null ? '$' + Number(sq.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+      return `<div style="margin:8px 20px 4px;padding:12px 14px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.3);border-radius:8px;display:flex;align-items:center;gap:10px">
+        <div style="font-size:18px">✓</div>
+        <div style="flex:1;font-size:12px;color:var(--text)">
+          <div style="font-weight:700;color:var(--green)">Invoiced in QuickBooks</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">QB invoice ${sq.docNumber || sq.invoiceId || '—'}${amtStr ? ' · ' + amtStr : ''}${sq.paymentId ? ' · paid' : ' · invoice created, payment NOT recorded'}</div>
+        </div>
+      </div>`;
+    }
+    if (sq.mode === 'backfill') {
+      return `<div style="margin:8px 20px 4px;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:8px">
+        <span>✓</span><span>Marked as already invoiced manually in QB on ${fmtDate(sq.createdAt)}</span>
+      </div>`;
+    }
+  }
+  if (!eligible) return '';
+  // Eligible + no row yet → action UI
+  return `<div style="margin:8px 20px 4px;padding:14px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.3);border-radius:8px">
+    <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--green);margin-bottom:8px">🛒 Shopify parts order</div>
+    <button onclick="doShopifyPartsCreateInvoice('${deal.id}')" style="width:100%;padding:11px;background:var(--green);color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.02em">
+      📋 Create QB Invoice &amp; Mark Paid
+    </button>
+    <div style="margin-top:8px;text-align:center">
+      <a href="#" onclick="event.preventDefault();doShopifyPartsMarkBackfill('${deal.id}')" style="font-size:10px;color:var(--muted);text-decoration:underline">Mark as already invoiced manually →</a>
+    </div>
+  </div>`;
+}
+
+async function doShopifyPartsCreateInvoice(dealId) {
+  const deal = allDeals.find(d => d.id === dealId);
+  const amtStr = deal && deal.amount ? '$' + Number(deal.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 'this amount';
+  if (!window.confirm(
+    `Create QuickBooks invoice for ${amtStr}?\n\n` +
+    `This will:\n` +
+    `  • Pull the Shopify line items from HubSpot\n` +
+    `  • Create a QB invoice against "Shopify Web Orders"\n` +
+    `  • Mark the invoice paid in QB\n` +
+    `  • Patch HubSpot deal payment_status = paid\n\n` +
+    `Cannot be undone from this app — would need to void/delete in QB manually.`
+  )) return;
+  try {
+    const r = await fetch('/api/shopify-parts/create-invoice', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dealId }),
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      showToast('Failed: ' + (data.error || r.status), 'error');
+      return;
+    }
+    const docNum = data.qbDocNumber || data.qbInvoiceId;
+    const msg = data.paymentError
+      ? `Invoice ${docNum} created in QB — but payment failed (${data.paymentError}). Mark paid manually in QB.`
+      : `Invoice ${docNum} created & marked paid in QB.`;
+    showToast(msg, data.paymentError ? 'error' : 'success');
+    // Refresh the deal list + overlay so the block flips to the "Invoiced" state
+    await loadDeals();
+    if (currentDealId === dealId) openDeal(dealId);
+  } catch (e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
+async function doShopifyPartsMarkBackfill(dealId) {
+  if (!window.confirm(
+    `Mark this deal as already invoiced manually in QB?\n\n` +
+    `Use this for Shopify orders Kim already handled in QB before this feature shipped. The "Create QB Invoice" button will hide.\n\n` +
+    `Nothing gets pushed to QB.`
+  )) return;
+  try {
+    const r = await fetch('/api/shopify-parts/mark-already-invoiced', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dealId }),
+    });
+    const data = await r.json();
+    if (!r.ok) { showToast('Failed: ' + (data.error || r.status), 'error'); return; }
+    showToast('Marked as already invoiced.', 'success');
+    await loadDeals();
+    if (currentDealId === dealId) openDeal(dealId);
+  } catch (e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
 function renderHub(dealId,data) {
   window._lastHubData = data; // cache for invoice creation
   const deal=allDeals.find(d=>d.id===dealId)||{};
@@ -773,6 +872,7 @@ function renderHub(dealId,data) {
     </div>
     <div class="pipeline">${pipeHtml}</div>
     ${na?`<div class="next-action"><div class="na-icon">${na.icon}</div><div><div class="na-label">Next Action</div><div class="na-text">${na.text}</div></div></div>`:''}
+    ${renderShopifyPartsBlock(deal)}
     <div class="hub-section" style="margin-top:4px">
       <div class="section-label">Quotes (${data.quotes?.length||0})</div>
       ${quotesHtml}

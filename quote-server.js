@@ -3026,6 +3026,13 @@ const server = http.createServer(async (req, res) => {
       //        description = deal name (carries the Shopify order # so
       //        Kim can cross-reference). Invoice total still matches
       //        what Shopify charged the customer.
+      //
+      // Every line gets TaxCodeRef = 'NON' to force QB's Automated Sales
+      // Tax to return $0. Shopify already collected (or correctly didn't
+      // collect) tax — we're just recording what was charged, not asking
+      // QB to recompute. Without 'NON', AST defaults to the company's
+      // home state (TN) and adds tax to non-nexus orders.
+      const NON_TAX = { value: 'NON' };
       const qbLines = [];
       if (hsLineItems.length) {
         for (const li of hsLineItems) {
@@ -3043,8 +3050,9 @@ const server = http.createServer(async (req, res) => {
             Amount: Math.round(lineAmt * 100) / 100,
             Description: name || lp.description || 'Shopify line',
             SalesItemLineDetail: {
-              ItemRef:  useRef,
-              Qty:      qty,
+              ItemRef:    useRef,
+              Qty:        qty,
+              TaxCodeRef: NON_TAX,
               ...(unitPrice != null ? { UnitPrice: unitPrice } : {}),
             },
           });
@@ -3058,13 +3066,38 @@ const server = http.createServer(async (req, res) => {
           Amount: dealAmt,
           Description: dp.dealname || `Shopify deal ${dealIdStr}`,
           SalesItemLineDetail: {
-            ItemRef:   { value: fallbackItem.value, name: fallbackItem.name },
-            Qty:       1,
-            UnitPrice: dealAmt,
+            ItemRef:    { value: fallbackItem.value, name: fallbackItem.name },
+            Qty:        1,
+            UnitPrice:  dealAmt,
+            TaxCodeRef: NON_TAX,
           },
         });
       }
       const linesTotal = qbLines.reduce((s, l) => s + (l.Amount || 0), 0);
+
+      // 6b. Build QB ship-to / bill-to addresses from the HubSpot contact.
+      // Without these, QB's Automated Sales Tax falls back to the company's
+      // home state and can compute tax even when 'NotApplicable' is set.
+      // Both must be present for AST to evaluate the destination correctly.
+      const addrFromContact = (c) => {
+        if (!c) return null;
+        const line1 = (c.address || '').trim();
+        const city  = (c.city || '').trim();
+        const state = (c.state || '').trim();
+        const zip   = (c.zip || '').trim();
+        if (!line1 && !city && !state && !zip) return null;
+        return {
+          ...(line1 ? { Line1: line1 } : {}),
+          ...(city  ? { City: city }   : {}),
+          ...(state ? { CountrySubDivisionCode: state } : {}),
+          ...(zip   ? { PostalCode: zip } : {}),
+          Country: 'USA',
+        };
+      };
+      const shipAddr = addrFromContact(contact);
+      const billAddr = shipAddr; // Shopify uses one address for both unless
+                                  // billing differs — HubSpot contact only
+                                  // has one. Same for QB.
 
       // 7. Build memo / private note carrying the Shopify-side context
       const contactName = contact ? [contact.firstname, contact.lastname].filter(Boolean).join(' ').trim() : '';
@@ -3087,8 +3120,14 @@ const server = http.createServer(async (req, res) => {
         txnDate,
         lines:         qbLines,
         memo,
+        billAddr,
+        shipAddr,
         billEmail:     contact?.email || null,
         globalTaxCalc: 'NotApplicable',
+        // Belt-and-suspenders for AST companies: explicitly zero tax.
+        // Combined with per-line TaxCodeRef='NON' this leaves no path for
+        // QB to add tax. Shopify already collected the right amount.
+        txnTaxDetail:  { TotalTax: 0 },
       });
       if (!invoice?.Id) throw new Error('QB createInvoice returned no Id');
 

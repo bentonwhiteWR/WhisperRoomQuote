@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.26.5', date:'May 19, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Shopify-parts QB invoice — force zero tax + pass ship-to address.** v1.26.4 created invoices but QB AST was adding TN tax to non-nexus orders because (a) no ship-to address was passed so AST defaulted to the company\'s home state, and (b) line items weren\'t marked non-taxable so `globalTaxCalc:NotApplicable` alone wasn\'t enough to stop it. Three fixes: (1) every QB line now carries `TaxCodeRef: { value: \'NON\' }` (QB\'s built-in non-taxable tax code). (2) BillAddr + ShipAddr are built from the HubSpot contact\'s address (line1/city/state/zip) and passed to createInvoice. (3) TxnTaxDetail = { TotalTax: 0 } as belt-and-suspenders. Invoice total now matches what Shopify charged the customer exactly, no AST surprises.'},
+      ]
+    },
+    {
       v:'1.26.4', date:'May 19, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Shopify-parts auto-invoice: collapsed-line fallback when HubSpot has no line items.** Turns out Shopify\'s HubSpot integration doesn\'t push line-item associations onto deals for small parts orders — only the deal name + amount. v1.26.0 treated no-line-items as a hard error (422 NO_LINE_ITEMS), which made the button always fail for the most common case. Now falls back to a single QB line: Item = "Shopify Order Line", Qty = 1, UnitPrice = deal.amount, Description = deal name (which carries the Shopify order # for cross-reference). Invoice total still matches what Shopify charged. If HubSpot DOES have line items (rare for Shopify, common for app-built invoices), the original itemized path still runs.'},

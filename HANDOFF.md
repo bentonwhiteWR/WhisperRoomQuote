@@ -192,7 +192,10 @@ Don't store secrets in the repo. Everything is in Railway → service → Variab
 | `ANTHROPIC_MODEL`            | Optional override for the Email Reply Assistant model. Defaults to `claude-opus-4-7` (matches Gabe's tool). |
 | `SHOPIFY_QB_CUSTOMER_NAME`   | Generic QB customer for Shopify parts auto-invoice. Default: `Shopify Web Orders`. |
 | `SHOPIFY_QB_FALLBACK_ITEM_NAME` | Generic QB non-inventory item used when a Shopify line item name doesn't match any QB item exactly. Default: `Shopify Order Line`. **Must exist in QB** (Products & Services → New non-inventory item) or `/api/shopify-parts/create-invoice` returns 503. |
-| `SHOPIFY_QB_CUTOFF_DATE`     | YYYY-MM-DD. Shopify deals created BEFORE this date don't get the auto-invoice button (Kim already handled them manually). Default: `2026-05-19`. |
+| `SHOPIFY_QB_CUTOFF_DATE`     | YYYY-MM-DD. Shopify deals created BEFORE this date don't get the auto-invoice button (Kim already handled them manually). Default: `2026-05-12`. |
+| `SHOPIFY_ACCESS_TOKEN`       | Shopify Custom App Admin API access token (`shpat_...`). Lets `/api/shopify-parts/create-invoice` pull canonical order data (customer, address, line items, tax, shipping). Without it, falls back to HubSpot's degraded mirror. Get from Shopify admin → Settings → Apps and sales channels → Develop apps → install → API credentials. Scopes: `read_orders`, `read_customers`, `read_products`. |
+| `SHOPIFY_STORE_DOMAIN`       | The canonical Shopify subdomain like `whisperroom-inc.myshopify.com` (NOT the custom domain `shop.whisperroom.com`). Find in Shopify admin → Settings → Domains. |
+| `SHOPIFY_API_VERSION`        | Optional. Default: `2024-10`. Bump when Shopify deprecates older API versions (~yearly). |
 
 If you need to change one of these, do it in Railway and redeploy. Don't bake secrets into code.
 

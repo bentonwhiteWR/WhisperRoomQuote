@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.27.0', date:'May 19, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Shopify-parts QB invoice now uses Shopify as source of truth.** HubSpot\'s Shopify integration only mirrors deal name + total — no customer, address, line items, tax, or shipping breakdown. Without that detail, every auto-invoice was minimal and risked QB tax surprises (the v1.26.5 saga). New `lib/shopify.js` Admin API client. When the rep clicks Create QB Invoice, server parses the Shopify order # from the deal name (regex /#(\\d+)/), fetches the canonical order from Shopify, and builds the QB invoice from THAT: real ship-to + bill-to addresses, customer name + email, itemized line items (mapped by SKU first then product name, fallback to "Shopify Order Line" with original name + SKU in description), shipping as its own QB line (mapped to a "Shipping" or "Freight" item if you have one in QB), tax as its own line at the bottom. Invoice total = exactly what Shopify charged the customer.'},
+        {t:'add', d:'**Graceful fallback if Shopify unavailable.** If SHOPIFY_ACCESS_TOKEN/SHOPIFY_STORE_DOMAIN aren\'t set, OR the order # can\'t be parsed from the deal name, OR Shopify returns 404 — the endpoint falls back to the v1.26.x HubSpot-only path (collapsed line for deal.amount). Memo on every invoice carries `[Data source: shopify|hubspot]` so you can tell which path ran. shopifyError surfaces in the memo when the fallback fires.'},
+        {t:'log', d:'**Two new env vars** (set on staging + prod already): `SHOPIFY_ACCESS_TOKEN` (Custom App access token from Shopify admin → Develop apps), `SHOPIFY_STORE_DOMAIN` (the canonical xxxxx.myshopify.com URL, not the custom domain). Token scopes needed: `read_orders` (60-day window — sufficient for this flow), `read_customers`, `read_products`. Optional `SHOPIFY_API_VERSION` defaults to 2024-10.'},
+      ]
+    },
+    {
       v:'1.26.5', date:'May 19, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Shopify-parts QB invoice — force zero tax + pass ship-to address.** v1.26.4 created invoices but QB AST was adding TN tax to non-nexus orders because (a) no ship-to address was passed so AST defaulted to the company\'s home state, and (b) line items weren\'t marked non-taxable so `globalTaxCalc:NotApplicable` alone wasn\'t enough to stop it. Three fixes: (1) every QB line now carries `TaxCodeRef: { value: \'NON\' }` (QB\'s built-in non-taxable tax code). (2) BillAddr + ShipAddr are built from the HubSpot contact\'s address (line1/city/state/zip) and passed to createInvoice. (3) TxnTaxDetail = { TotalTax: 0 } as belt-and-suspenders. Invoice total now matches what Shopify charged the customer exactly, no AST surprises.'},

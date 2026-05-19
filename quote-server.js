@@ -176,6 +176,8 @@ const { TAXJAR_KEY, calculateTaxProper } = taxjar;
 const qb = require('./lib/quickbooks');
 qb.init({ getDb: () => db });
 
+const shopifyLib = require('./lib/shopify');
+
 const stripeLib = require('./lib/stripe');
 // stripeLib.init(...) called below alongside the other httpsRequest-dependent libs
 
@@ -2973,7 +2975,30 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      // 3. Fetch each line item's full record
+      // 3. Try Shopify as the source of truth — HubSpot's mirror is
+      //    deal-name + total only, missing customer / address / per-line
+      //    detail / tax / shipping. If Shopify is configured AND we can
+      //    parse an order # from the deal name, we get the full canonical
+      //    order. If anything fails, fall back to HubSpot-derived data.
+      let shopifyOrder = null;
+      let shopifyError = null;
+      const shopifyOrderName = shopifyLib.parseOrderNumberFromDealName(dp.dealname || '');
+      if (shopifyLib.isConfigured() && shopifyOrderName) {
+        try {
+          shopifyOrder = await shopifyLib.findOrderByName(shopifyOrderName);
+          if (!shopifyOrder) shopifyError = `Shopify order #${shopifyOrderName} not found`;
+        } catch (e) {
+          shopifyError = e.message;
+          console.warn(`[shopify-parts] Shopify lookup failed for #${shopifyOrderName}: ${e.message}`);
+        }
+      } else if (!shopifyLib.isConfigured()) {
+        shopifyError = 'Shopify not configured (set SHOPIFY_ACCESS_TOKEN + SHOPIFY_STORE_DOMAIN)';
+      } else {
+        shopifyError = `Could not parse Shopify order # from deal name "${dp.dealname}"`;
+      }
+
+      // 4. HubSpot line items + contact (used as fallback if Shopify lookup
+      //    didn't work, AND for email when Shopify customer is missing one).
       const liIds = (liAssocRes.body?.results?.[0]?.to || []).map(t => String(t.toObjectId));
       let hsLineItems = [];
       if (liIds.length) {
@@ -2988,13 +3013,6 @@ const server = http.createServer(async (req, res) => {
         });
         hsLineItems = batchRes.body?.results || [];
       }
-      // Shopify's HubSpot integration doesn't push line-item associations
-      // onto deals for small parts orders — only the deal name + amount.
-      // So no-line-items is the COMMON case here, not an error. We fall
-      // back below to a single QB line built from deal.amount + deal.name.
-
-      // 4. Fetch contact for memo (best-effort — invoice still goes to the
-      // generic "Shopify Web Orders" customer regardless)
       let contact = null;
       const contactId = ctAssocRes.body?.results?.[0]?.id;
       if (contactId) {
@@ -3018,93 +3036,184 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      // 6. Map line items → QB lines. Three cases:
-      //    (a) HubSpot has line items → map each by name, fallback to
-      //        "Shopify Order Line" with HS name in description.
-      //    (b) HubSpot has NO line items (typical Shopify-synced parts
-      //        order) → one collapsed line for the full deal amount,
-      //        description = deal name (carries the Shopify order # so
-      //        Kim can cross-reference). Invoice total still matches
-      //        what Shopify charged the customer.
+      // 6. Build the QB invoice payload — lines, address, memo.
       //
       // Every line gets TaxCodeRef = 'NON' to force QB's Automated Sales
       // Tax to return $0. Shopify already collected (or correctly didn't
       // collect) tax — we're just recording what was charged, not asking
-      // QB to recompute. Without 'NON', AST defaults to the company's
-      // home state (TN) and adds tax to non-nexus orders.
+      // QB to recompute. Without 'NON', AST defaults to TN and adds tax
+      // to non-nexus orders.
       const NON_TAX = { value: 'NON' };
       const qbLines = [];
-      if (hsLineItems.length) {
-        for (const li of hsLineItems) {
-          const lp = li.properties || {};
-          const name = (lp.name || '').trim();
-          const qty  = parseFloat(lp.quantity || '1') || 1;
-          const unitPrice = lp.price != null && lp.price !== '' ? parseFloat(lp.price) : null;
-          const lineAmt = lp.amount != null && lp.amount !== ''
-            ? parseFloat(lp.amount)
-            : (unitPrice != null ? unitPrice * qty : 0);
-          const itemRef = name ? (await qb.findItemByName(name)) : null;
+      let shipAddr = null, billAddr = null, customerEmail = null, customerName = '';
+      let dataSource = 'hubspot'; // for logging / memo
+
+      if (shopifyOrder) {
+        // ── PATH A: Shopify canonical data ──
+        dataSource = 'shopify';
+        customerEmail = shopifyOrder.email || shopifyOrder.contact_email || contact?.email || null;
+        const sCust = shopifyOrder.customer || {};
+        customerName = [sCust.first_name, sCust.last_name].filter(Boolean).join(' ').trim()
+          || [shopifyOrder.billing_address?.first_name, shopifyOrder.billing_address?.last_name].filter(Boolean).join(' ').trim()
+          || '';
+
+        const addrFromShopify = (a) => {
+          if (!a) return null;
+          return {
+            ...(a.first_name || a.last_name ? { Line1: [a.first_name, a.last_name].filter(Boolean).join(' ') } : {}),
+            ...(a.company ? { Line2: a.company } : {}),
+            ...(a.address1 ? { Line3: a.address1 } : { ...(a.first_name || a.last_name ? {} : { Line1: 'Address on file' }) }),
+            ...(a.address2 ? { Line4: a.address2 } : {}),
+            ...(a.city ? { City: a.city } : {}),
+            ...(a.province_code || a.province ? { CountrySubDivisionCode: a.province_code || a.province } : {}),
+            ...(a.zip ? { PostalCode: a.zip } : {}),
+            Country: a.country_code || 'USA',
+          };
+        };
+        shipAddr = addrFromShopify(shopifyOrder.shipping_address);
+        billAddr = addrFromShopify(shopifyOrder.billing_address) || shipAddr;
+
+        // Line items
+        const sLineItems = shopifyOrder.line_items || [];
+        for (const li of sLineItems) {
+          const sku = (li.sku || '').trim();
+          const title = (li.title || '').trim();
+          const variant = (li.variant_title || '').trim();
+          const fullName = variant ? `${title} (${variant})` : title;
+          const qty = parseInt(li.quantity, 10) || 1;
+          const unitPrice = parseFloat(li.price || '0') || 0;
+          const lineAmt = unitPrice * qty;
+
+          // Try SKU first, then full name, then plain title — fall back to
+          // the generic "Shopify Order Line" item with the original name in
+          // the description so Kim can see what was ordered.
+          let itemRef = null;
+          if (sku) itemRef = await qb.findItemByName(sku);
+          if (!itemRef && fullName) itemRef = await qb.findItemByName(fullName);
+          if (!itemRef && title) itemRef = await qb.findItemByName(title);
           const useRef = itemRef || { value: fallbackItem.value, name: fallbackItem.name };
+
           qbLines.push({
             DetailType: 'SalesItemLineDetail',
             Amount: Math.round(lineAmt * 100) / 100,
-            Description: name || lp.description || 'Shopify line',
+            Description: fullName + (sku ? ` (SKU: ${sku})` : ''),
             SalesItemLineDetail: {
               ItemRef:    useRef,
               Qty:        qty,
+              UnitPrice:  unitPrice,
               TaxCodeRef: NON_TAX,
-              ...(unitPrice != null ? { UnitPrice: unitPrice } : {}),
+            },
+          });
+        }
+
+        // Shipping line (Shopify charges this separately)
+        const shippingTotal = (shopifyOrder.shipping_lines || [])
+          .reduce((s, sh) => s + (parseFloat(sh.price || '0') || 0), 0);
+        if (shippingTotal > 0) {
+          const shipItemRef = (await qb.findItemByName('Shipping')) || (await qb.findItemByName('Freight')) || { value: fallbackItem.value, name: fallbackItem.name };
+          qbLines.push({
+            DetailType: 'SalesItemLineDetail',
+            Amount: Math.round(shippingTotal * 100) / 100,
+            Description: (shopifyOrder.shipping_lines || []).map(s => s.title).filter(Boolean).join(', ') || 'Shipping',
+            SalesItemLineDetail: {
+              ItemRef:    shipItemRef,
+              Qty:        1,
+              UnitPrice:  shippingTotal,
+              TaxCodeRef: NON_TAX,
+            },
+          });
+        }
+
+        // Tax line — recorded as a line so total matches Shopify and we
+        // don't depend on TxnTaxDetail behavior. globalTaxCalc:'NotApplicable'
+        // means QB doesn't add tax itself; the line is just a recorded
+        // amount that the customer paid. Use the fallback item for this
+        // line (no need for a separate "Sales Tax" QB item).
+        const totalTax = parseFloat(shopifyOrder.total_tax || '0') || 0;
+        if (totalTax > 0) {
+          qbLines.push({
+            DetailType: 'SalesItemLineDetail',
+            Amount: Math.round(totalTax * 100) / 100,
+            Description: `Sales Tax (Shopify collected)`,
+            SalesItemLineDetail: {
+              ItemRef:    { value: fallbackItem.value, name: fallbackItem.name },
+              Qty:        1,
+              UnitPrice:  totalTax,
+              TaxCodeRef: NON_TAX,
             },
           });
         }
       } else {
-        // Collapsed-line fallback for Shopify-synced deals without
-        // line-item associations (the common case for parts orders).
-        const dealAmt = Math.round(amount * 100) / 100;
-        qbLines.push({
-          DetailType: 'SalesItemLineDetail',
-          Amount: dealAmt,
-          Description: dp.dealname || `Shopify deal ${dealIdStr}`,
-          SalesItemLineDetail: {
-            ItemRef:    { value: fallbackItem.value, name: fallbackItem.name },
-            Qty:        1,
-            UnitPrice:  dealAmt,
-            TaxCodeRef: NON_TAX,
-          },
-        });
+        // ── PATH B: HubSpot fallback (Shopify unavailable / unconfigured) ──
+        const addrFromContact = (c) => {
+          if (!c) return null;
+          const line1 = (c.address || '').trim();
+          const city  = (c.city || '').trim();
+          const state = (c.state || '').trim();
+          const zip   = (c.zip || '').trim();
+          if (!line1 && !city && !state && !zip) return null;
+          return {
+            ...(line1 ? { Line1: line1 } : {}),
+            ...(city  ? { City: city }   : {}),
+            ...(state ? { CountrySubDivisionCode: state } : {}),
+            ...(zip   ? { PostalCode: zip } : {}),
+            Country: 'USA',
+          };
+        };
+        shipAddr = addrFromContact(contact);
+        billAddr = shipAddr;
+        customerEmail = contact?.email || null;
+        customerName = contact ? [contact.firstname, contact.lastname].filter(Boolean).join(' ').trim() : '';
+
+        if (hsLineItems.length) {
+          for (const li of hsLineItems) {
+            const lp = li.properties || {};
+            const name = (lp.name || '').trim();
+            const qty  = parseFloat(lp.quantity || '1') || 1;
+            const unitPrice = lp.price != null && lp.price !== '' ? parseFloat(lp.price) : null;
+            const lineAmt = lp.amount != null && lp.amount !== ''
+              ? parseFloat(lp.amount)
+              : (unitPrice != null ? unitPrice * qty : 0);
+            const itemRef = name ? (await qb.findItemByName(name)) : null;
+            const useRef = itemRef || { value: fallbackItem.value, name: fallbackItem.name };
+            qbLines.push({
+              DetailType: 'SalesItemLineDetail',
+              Amount: Math.round(lineAmt * 100) / 100,
+              Description: name || lp.description || 'Shopify line',
+              SalesItemLineDetail: {
+                ItemRef:    useRef,
+                Qty:        qty,
+                TaxCodeRef: NON_TAX,
+                ...(unitPrice != null ? { UnitPrice: unitPrice } : {}),
+              },
+            });
+          }
+        } else {
+          // Collapsed-line fallback when neither Shopify nor HubSpot line
+          // items are available — single line for the full deal amount.
+          const dealAmt = Math.round(amount * 100) / 100;
+          qbLines.push({
+            DetailType: 'SalesItemLineDetail',
+            Amount: dealAmt,
+            Description: dp.dealname || `Shopify deal ${dealIdStr}`,
+            SalesItemLineDetail: {
+              ItemRef:    { value: fallbackItem.value, name: fallbackItem.name },
+              Qty:        1,
+              UnitPrice:  dealAmt,
+              TaxCodeRef: NON_TAX,
+            },
+          });
+        }
       }
+
       const linesTotal = qbLines.reduce((s, l) => s + (l.Amount || 0), 0);
 
-      // 6b. Build QB ship-to / bill-to addresses from the HubSpot contact.
-      // Without these, QB's Automated Sales Tax falls back to the company's
-      // home state and can compute tax even when 'NotApplicable' is set.
-      // Both must be present for AST to evaluate the destination correctly.
-      const addrFromContact = (c) => {
-        if (!c) return null;
-        const line1 = (c.address || '').trim();
-        const city  = (c.city || '').trim();
-        const state = (c.state || '').trim();
-        const zip   = (c.zip || '').trim();
-        if (!line1 && !city && !state && !zip) return null;
-        return {
-          ...(line1 ? { Line1: line1 } : {}),
-          ...(city  ? { City: city }   : {}),
-          ...(state ? { CountrySubDivisionCode: state } : {}),
-          ...(zip   ? { PostalCode: zip } : {}),
-          Country: 'USA',
-        };
-      };
-      const shipAddr = addrFromContact(contact);
-      const billAddr = shipAddr; // Shopify uses one address for both unless
-                                  // billing differs — HubSpot contact only
-                                  // has one. Same for QB.
-
       // 7. Build memo / private note carrying the Shopify-side context
-      const contactName = contact ? [contact.firstname, contact.lastname].filter(Boolean).join(' ').trim() : '';
       const memoParts = [
-        deal.properties?.dealname ? `Shopify deal: ${deal.properties.dealname}` : null,
-        contactName ? `Customer: ${contactName}` : null,
-        contact?.email ? `Email: ${contact.email}` : null,
+        dp.dealname ? `Shopify deal: ${dp.dealname}` : null,
+        customerName ? `Customer: ${customerName}` : null,
+        customerEmail ? `Email: ${customerEmail}` : null,
+        shopifyError ? `[Shopify lookup: ${shopifyError}]` : `[Data source: ${dataSource}]`,
       ].filter(Boolean);
       const memo = memoParts.join(' · ');
 
@@ -3122,7 +3231,7 @@ const server = http.createServer(async (req, res) => {
         memo,
         billAddr,
         shipAddr,
-        billEmail:     contact?.email || null,
+        billEmail:     customerEmail,
         globalTaxCalc: 'NotApplicable',
         // Belt-and-suspenders for AST companies: explicitly zero tax.
         // Combined with per-line TaxCodeRef='NON' this leaves no path for

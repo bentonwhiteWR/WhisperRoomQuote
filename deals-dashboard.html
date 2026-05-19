@@ -183,6 +183,14 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .shopify-item-meta { font-size:10px; color:var(--muted); margin-top:3px; display:flex; gap:8px; align-items:center; }
 .shopify-chip-verify { display:inline-block; font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; padding:2px 6px; border-radius:3px; background:rgba(238,98,22,.15); color:var(--orange); border:1px solid rgba(238,98,22,.35); }
 .shopify-chip-quoted { display:inline-block; font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; padding:2px 6px; border-radius:3px; background:rgba(34,197,94,.12); color:var(--green); border:1px solid rgba(34,197,94,.3); }
+/* Type chips — booth vs parts. Always present (regardless of section), so
+   you can tell at a glance even when scanning a mixed section. */
+.shopify-chip-booth { display:inline-block; font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; padding:2px 6px; border-radius:3px; background:rgba(59,130,246,.14); color:#3b82f6; border:1px solid rgba(59,130,246,.4); }
+.shopify-chip-parts { display:inline-block; font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; padding:2px 6px; border-radius:3px; background:rgba(168,85,247,.14); color:#a855f7; border:1px solid rgba(168,85,247,.4); }
+/* Subtle left-edge accent on each row to reinforce the chip at a glance.
+   Booth = blue, parts = purple — matches the chip colors. */
+.shopify-item.type-booth { border-left:3px solid #3b82f6; }
+.shopify-item.type-parts { border-left:3px solid #a855f7; }
 .shopify-empty { padding:30px 18px; text-align:center; color:var(--muted); font-size:12px; font-style:italic; }
 .notif-empty { padding:40px 20px; text-align:center; color:var(--muted); font-size:12px; }
 
@@ -1492,18 +1500,28 @@ function renderShopifyList() {
   const fmtAmt = n => '$' + parseFloat(n||0).toLocaleString('en-US', { minimumFractionDigits:0, maximumFractionDigits:0 });
   const fmtD   = d => d ? new Date(d).toLocaleDateString('en-US', { month:'short', day:'numeric', timeZone:'America/New_York' }) : '—';
 
-  const renderItem = d => `
-    <div class="shopify-item" onclick="openDeal('${d.id}');toggleShopifyPanel();">
+  const SHOPIFY_PARTS_THRESHOLD = 5000; // matches server SHOPIFY_VERIFY_THRESHOLD
+  const renderItem = d => {
+    const amt = parseFloat(d.amount || 0);
+    const isBooth = amt >= SHOPIFY_PARTS_THRESHOLD;
+    const typeChip = isBooth
+      ? '<span class="shopify-chip-booth" title="Booth-sized order — needs verification + quote">🛋 Booth</span>'
+      : '<span class="shopify-chip-parts" title="Parts order — small order, push to QB">🛒 Parts</span>';
+    const typeClass = isBooth ? 'type-booth' : 'type-parts';
+    return `
+    <div class="shopify-item ${typeClass}" onclick="openDeal('${d.id}');toggleShopifyPanel();">
       <div class="shopify-item-row">
         <span class="shopify-item-name">${(d.name || '—').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</span>
         <span class="shopify-item-amount">${fmtAmt(d.amount)}</span>
       </div>
       <div class="shopify-item-meta">
+        ${typeChip}
         ${d.isPending ? '<span class="shopify-chip-verify">Booth — Verify</span>' : ''}
         ${d.hasQuote  ? `<span class="shopify-chip-quoted">Quote ${d.latestQuote}</span>` : ''}
         <span>${fmtD(d.modified)}</span>
       </div>
     </div>`;
+  };
 
   let html = '';
   if (pending.length) {

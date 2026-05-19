@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.26.3', date:'May 19, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Shopify drawer rows — type chip + left-edge accent.** Each row now shows a 🛋 Booth (blue) or 🛒 Parts (purple) chip on the meta row, plus a colored left edge (same color). Lets you tell booth vs parts at a glance without reading section headers — useful when scanning the drawer or when sections grow mixed in the future. Threshold matches server (≥$5k = Booth, <$5k = Parts).'},
+      ]
+    },
+    {
       v:'1.26.2', date:'May 19, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Shopify drawer — new "📋 Parts Orders — Needs QB Invoice" section.** Without this, the only way to find a Shopify parts order to invoice was scrolling the Shipped column of the main Deal Hub board hoping to spot ecommerce-owned deals — bad workflow for Kim. Now the 🛒 Shopify drawer has a dedicated section listing every small (<$5k, post-cutoff) Shopify deal that hasn\'t been QB-invoiced yet. Click row → opens the deal → green "Create QB Invoice & Mark Paid" button right at the top. Server-side: /api/shopify-pending now returns small orders too (filtered to `needsQbInvoice`), and includes `needsInvoiceCount` in the response. The drawer badge glows + counts BOTH booth verifications AND parts-to-invoice (priorities visible separately in the tooltip).'},

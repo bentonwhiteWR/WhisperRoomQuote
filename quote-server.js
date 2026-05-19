@@ -236,7 +236,7 @@ const SHOPIFY_CUTOFF_DATE = process.env.SHOPIFY_CUTOFF_DATE || '2026-05-12';
 // surface the "Create QB Invoice & Mark Paid" button for Shopify deals
 // CREATED on or after this date. Older deals were manually invoiced by
 // Kim before the feature shipped — we don't want to double-invoice them.
-const SHOPIFY_QB_CUTOFF_DATE = process.env.SHOPIFY_QB_CUTOFF_DATE || '2026-05-19';
+const SHOPIFY_QB_CUTOFF_DATE = process.env.SHOPIFY_QB_CUTOFF_DATE || '2026-05-12';
 // QB customer + fallback item names for the Shopify-parts flow.
 const SHOPIFY_QB_CUSTOMER_NAME = process.env.SHOPIFY_QB_CUSTOMER_NAME || 'Shopify Web Orders';
 const SHOPIFY_QB_FALLBACK_ITEM_NAME = process.env.SHOPIFY_QB_FALLBACK_ITEM_NAME || 'Shopify Order Line';
@@ -3215,36 +3215,50 @@ const server = http.createServer(async (req, res) => {
         afterCur = String(nextAfter);
       }
 
-      // 2. Join with our quotes DB to flag which Shopify deals have been
-      //    touched by sales (quote created → no longer "pending verification").
+      // 2. Join with our quotes DB + shopify_qb_invoices to flag which
+      //    Shopify deals have been touched by sales (quote created → no
+      //    longer "pending verification") and which small ones still need
+      //    Kim to push a QB invoice.
       const dealIds = allShopify.map(d => d.id);
       let quoteByDealId = {};
+      let shopifyQbByDeal = {};
       if (db && dealIds.length) {
         try {
           const qr = await db.query(
             `SELECT deal_id, quote_number, total, created_at
-             FROM quotes
-             WHERE deal_id = ANY($1)
+             FROM quotes WHERE deal_id = ANY($1)
              ORDER BY created_at DESC`,
             [dealIds]
           );
-          // First row per deal_id (DESC order) is the latest quote.
           for (const row of qr.rows) {
             if (!quoteByDealId[row.deal_id]) quoteByDealId[row.deal_id] = row;
           }
         } catch(e) { console.warn('[shopify-pending] DB join error:', e.message); }
+        try {
+          const sqr = await db.query(
+            `SELECT deal_id, mode, qb_doc_number FROM shopify_qb_invoices WHERE deal_id = ANY($1)`,
+            [dealIds]
+          );
+          for (const row of sqr.rows) shopifyQbByDeal[row.deal_id] = row;
+        } catch(e) { /* table may not exist on first deploy */ }
       }
 
-      const all = allShopify
-        // ≥ threshold only — small parts orders (<$5k) auto-ship from
-        // Shopify without needing a sales-team quote, so they don't belong
-        // in the drawer. They still appear on the main Deal Hub board.
-        .filter(d => parseFloat(d.properties?.amount || 0) >= SHOPIFY_VERIFY_THRESHOLD)
-        .map(d => {
+      // Two parallel views now share /api/shopify-pending:
+      //   - Big (≥$5k): drives Jill's "Awaiting Verification" + "In Progress" sections
+      //   - Small (<$5k, post-cutoff, not yet invoiced): Kim's QB to-do
+      const all = allShopify.map(d => {
         const amount = parseFloat(d.properties?.amount || 0);
         const dbQuote = quoteByDealId[d.id] || null;
+        const sqRow = shopifyQbByDeal[d.id] || null;
         const hasQuote = !!dbQuote;
         const isPending = !hasQuote && amount >= SHOPIFY_VERIFY_THRESHOLD;
+        // Cutoff: only flag for QB-invoice action if deal createdate is on
+        // or after SHOPIFY_QB_CUTOFF_DATE. Older small orders Kim already
+        // handled manually — we don't want them in her to-do.
+        const createdDate = (d.properties?.createdate || '').slice(0, 10);
+        const afterCutoff = createdDate && createdDate >= SHOPIFY_QB_CUTOFF_DATE;
+        const needsQbInvoice = (amount > 0 && amount < SHOPIFY_VERIFY_THRESHOLD && afterCutoff && !sqRow);
+        const qbInvoiced = !!sqRow;
         return {
           id:           d.id,
           name:         d.properties?.dealname || '—',
@@ -3255,13 +3269,25 @@ const server = http.createServer(async (req, res) => {
           paymentStatus:d.properties?.payment_status || 'not_paid',
           hasQuote,
           isPending,
+          needsQbInvoice,
+          qbInvoiced,
+          qbDocNumber:  sqRow?.qb_doc_number || null,
+          qbMode:       sqRow?.mode || null,
           latestQuote:  dbQuote?.quote_number || null,
           quoteCreatedAt: dbQuote?.created_at || null,
         };
+      })
+      // Filter the response down to the two views the drawer actually shows:
+      //   big orders (≥$5k) — Jill's verification view
+      //   small orders that need a QB invoice — Kim's to-do view
+      .filter(d => {
+        const amt = parseFloat(d.amount || 0);
+        return amt >= SHOPIFY_VERIFY_THRESHOLD || d.needsQbInvoice;
       });
 
       const pendingCount = all.filter(d => d.isPending).length;
-      json({ pendingCount, all, total: all.length });
+      const needsInvoiceCount = all.filter(d => d.needsQbInvoice).length;
+      json({ pendingCount, needsInvoiceCount, all, total: all.length });
     } catch(e) {
       console.error('Shopify pending error:', e.message);
       json({ error: e.message }, 500);

@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.26.2', date:'May 19, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Shopify drawer — new "📋 Parts Orders — Needs QB Invoice" section.** Without this, the only way to find a Shopify parts order to invoice was scrolling the Shipped column of the main Deal Hub board hoping to spot ecommerce-owned deals — bad workflow for Kim. Now the 🛒 Shopify drawer has a dedicated section listing every small (<$5k, post-cutoff) Shopify deal that hasn\'t been QB-invoiced yet. Click row → opens the deal → green "Create QB Invoice & Mark Paid" button right at the top. Server-side: /api/shopify-pending now returns small orders too (filtered to `needsQbInvoice`), and includes `needsInvoiceCount` in the response. The drawer badge glows + counts BOTH booth verifications AND parts-to-invoice (priorities visible separately in the tooltip).'},
+        {t:'fix', d:'**Backdated SHOPIFY_QB_CUTOFF_DATE default from 2026-05-19 to 2026-05-12** (one week back) so existing Shopify orders from this past week are eligible for QB auto-invoice. Useful for Kim to test on real orders without waiting for new ones. Env var override still works if you want to change the cutoff later.'},
+      ]
+    },
+    {
       v:'1.26.1', date:'May 19, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Hot-fix: Deal Hub board broken on v1.26.0 — `shopifyQbRes is not defined`.** Added a 4th query to the /api/deals/list Promise.all (the new shopify_qb_invoices lookup) but forgot to add the variable to the destructure. Result: board threw a 500 + red error on every load. One-line fix. Should have caught with a smoke test before pushing — apologies.'},

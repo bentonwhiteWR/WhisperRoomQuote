@@ -1432,13 +1432,22 @@ async function loadShopifyPending() {
 function paintShopifyBadge() {
   const btn   = document.getElementById('shopifyBtn');
   const badge = document.getElementById('shopifyBadge');
-  const pending = _shopifyData.pendingCount || 0;
-  const total   = (_shopifyData.all || []).length;
-  badge.textContent = pending > 0 ? String(pending) : String(total);
-  if (pending > 0) {
+  // Glow when EITHER booth verifications are pending OR there are parts
+  // orders waiting for Kim to push to QB. Both are actionable; both deserve
+  // attention. Badge number = the higher-priority count (verifications first,
+  // then parts-to-invoice, then total).
+  const pending      = _shopifyData.pendingCount      || 0;
+  const needsInvoice = _shopifyData.needsInvoiceCount || 0;
+  const total        = (_shopifyData.all || []).length;
+  const actionable   = pending + needsInvoice;
+  badge.textContent  = actionable > 0 ? String(actionable) : String(total);
+  if (actionable > 0) {
     btn.classList.add('glow');
     badge.classList.remove('zero');
-    btn.title = `${pending} Shopify order${pending === 1 ? '' : 's'} awaiting verification — click to review`;
+    const parts = [];
+    if (pending)      parts.push(`${pending} awaiting verification`);
+    if (needsInvoice) parts.push(`${needsInvoice} parts order${needsInvoice===1?'':'s'} need QB invoice`);
+    btn.title = parts.join(' · ') + ' — click to review';
   } else {
     btn.classList.remove('glow');
     badge.classList.add('zero');
@@ -1465,17 +1474,19 @@ function renderShopifyList() {
     listEl.innerHTML = '<div class="shopify-empty">No Shopify orders</div>';
     return;
   }
-  // Two sections by urgency. Small orders (<$5k) are filtered out
-  // server-side per v1.24.2 — those parts orders auto-ship from Shopify
-  // and don't need a sales-team quote, so they don't belong in this drawer.
-  //   1. Awaiting Verification — booth-sized, no quote yet (orange chip)
-  //   2. In Progress — quote exists in our system
-  const pending = all.filter(d => d.isPending);
-  const inProg  = all.filter(d =>  d.hasQuote);
+  // Three sections by urgency:
+  //   1. Awaiting Verification — booth-sized (≥$5k), no quote yet (Jill)
+  //   2. Parts Orders — Needs QB Invoice — small (<$5k), post-cutoff, not
+  //      yet pushed to QB (Kim's auto-invoice to-do list, v1.26.x)
+  //   3. In Progress — quote exists in our system (booth-sized only)
+  const pending     = all.filter(d => d.isPending);
+  const partsToInv  = all.filter(d => d.needsQbInvoice);
+  const inProg      = all.filter(d => d.hasQuote);
 
   const sortByModified = (a, b) =>
     new Date(b.modified || 0).getTime() - new Date(a.modified || 0).getTime();
   pending.sort(sortByModified);
+  partsToInv.sort(sortByModified);
   inProg.sort(sortByModified);
 
   const fmtAmt = n => '$' + parseFloat(n||0).toLocaleString('en-US', { minimumFractionDigits:0, maximumFractionDigits:0 });
@@ -1498,6 +1509,10 @@ function renderShopifyList() {
   if (pending.length) {
     html += `<div class="shopify-section-label pending">Awaiting Verification (${pending.length})</div>`;
     html += pending.map(renderItem).join('');
+  }
+  if (partsToInv.length) {
+    html += `<div class="shopify-section-label">📋 Parts Orders — Needs QB Invoice (${partsToInv.length})</div>`;
+    html += partsToInv.map(renderItem).join('');
   }
   if (inProg.length) {
     html += `<div class="shopify-section-label">In Progress / Quoted (${inProg.length})</div>`;

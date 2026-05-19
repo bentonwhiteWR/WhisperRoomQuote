@@ -2602,7 +2602,7 @@ const server = http.createServer(async (req, res) => {
           const fields = [i?.name, i?.productName, i?.sku, i?.description].filter(Boolean);
           return fields.some(f => /^AP[\s\-_]?\d/i.test(f) || /^Acoustic\s+Package/i.test(f));
         };
-        const [dbRes, poRes, paymentRes] = await Promise.all([
+        const [dbRes, poRes, paymentRes, shopifyQbRes] = await Promise.all([
           db.query(
             `SELECT
                q.deal_id,

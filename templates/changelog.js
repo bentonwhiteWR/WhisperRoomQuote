@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.26.1', date:'May 19, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Hot-fix: Deal Hub board broken on v1.26.0 — `shopifyQbRes is not defined`.** Added a 4th query to the /api/deals/list Promise.all (the new shopify_qb_invoices lookup) but forgot to add the variable to the destructure. Result: board threw a 500 + red error on every load. One-line fix. Should have caught with a smoke test before pushing — apologies.'},
+      ]
+    },
+    {
       v:'1.26.0', date:'May 19, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Shopify parts orders — one-click QB invoice + mark paid.** Kim used to manually create a QuickBooks invoice + record the payment for every small Shopify order (<$5k) that came through HubSpot. Now there\'s a big green "📋 Create QB Invoice & Mark Paid" button on each eligible Shopify deal in the Deal Hub overlay. Click → confirm → server pulls HubSpot line items + contact, looks up each line item by name in QB (fallback to a generic "Shopify Order Line" item with the original name in the description), creates the invoice against the shared "Shopify Web Orders" QB customer, marks it paid via QB createPayment using the same payment method + deposit account as the regular Process Order flow, patches HubSpot deal payment_status=paid. Single tracking row in new `shopify_qb_invoices` table keys idempotency (button hides after success).'},

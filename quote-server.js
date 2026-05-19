@@ -1228,6 +1228,100 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Debug: dump every HubSpot invoice property + linked deal + linked payments
+  // for one invoice. Used to discover which fields carry ACH-vs-CC payment
+  // method, payment timestamps, and fraud/reversal signals before scoping the
+  // ACH-clearing-date feature. Throwaway endpoint — remove once we've picked
+  // the property names. Usage: GET /api/debug/hs-invoice/4058784432
+  if (pathname.startsWith('/api/debug/hs-invoice/') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const invoiceId = pathname.replace('/api/debug/hs-invoice/', '').trim();
+      if (!invoiceId) { json({ error: 'No invoice ID' }, 400); return; }
+
+      // 1. Enumerate every invoice property name so we can request them all.
+      //    Without this we'd get HubSpot's default set and miss the long tail.
+      let allInvoiceProps = [];
+      try {
+        const propsRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path:     '/crm/v3/properties/invoices',
+          method:   'GET',
+          headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+        });
+        allInvoiceProps = (propsRes.body?.results || []).map(p => p.name);
+      } catch(e) { /* fall back to default property set */ }
+
+      // 2. Same for the commerce_payments object (HubSpot's payment record
+      //    type). The Payments object name in CRM v3 is "commerce_payments".
+      let allPaymentProps = [];
+      try {
+        const ppRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path:     '/crm/v3/properties/commerce_payments',
+          method:   'GET',
+          headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+        });
+        allPaymentProps = (ppRes.body?.results || []).map(p => p.name);
+      } catch(e) { /* may 404 if Commerce isn't enabled; non-fatal */ }
+
+      // 3. Fetch invoice with every property.
+      const propsQs = allInvoiceProps.length ? `?properties=${encodeURIComponent(allInvoiceProps.join(','))}` : '';
+      const invRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path:     `/crm/v3/objects/invoices/${invoiceId}${propsQs}`,
+        method:   'GET',
+        headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+      });
+
+      // 4. Walk associations: invoice → deals, invoice → commerce_payments.
+      const fetchAssoc = async (toObjectType) => {
+        try {
+          const r = await httpsRequest({
+            hostname: 'api.hubapi.com',
+            path:     `/crm/v4/associations/invoices/${toObjectType}/batch/read`,
+            method:   'POST',
+            headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+          }, { inputs: [{ id: String(invoiceId) }] });
+          return (r.body?.results?.[0]?.to || []).map(t => String(t.toObjectId));
+        } catch(e) { return { error: e.message }; }
+      };
+      const dealIds    = await fetchAssoc('deals');
+      const paymentIds = await fetchAssoc('commerce_payments');
+
+      // 5. For each linked payment, fetch every property.
+      let payments = [];
+      if (Array.isArray(paymentIds) && paymentIds.length) {
+        const ppQs = allPaymentProps.length ? `?properties=${encodeURIComponent(allPaymentProps.join(','))}` : '';
+        for (const pid of paymentIds) {
+          try {
+            const pr = await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path:     `/crm/v3/objects/commerce_payments/${pid}${ppQs}`,
+              method:   'GET',
+              headers:  { 'Authorization': `Bearer ${HS_TOKEN}` },
+            });
+            payments.push({ id: pid, status: pr.status, body: pr.body });
+          } catch(e) {
+            payments.push({ id: pid, error: e.message });
+          }
+        }
+      }
+
+      json({
+        invoiceId,
+        invoice: { status: invRes.status, body: invRes.body },
+        associations: { deals: dealIds, commerce_payments: paymentIds },
+        payments,
+        meta: {
+          invoicePropertyCount: allInvoiceProps.length,
+          paymentPropertyCount: allPaymentProps.length,
+        },
+      });
+    } catch(e) { json({ error: e.message, stack: e.stack }, 500); }
+    return;
+  }
+
   // Debug: dump tracking cache
   if (pathname === '/api/debug/tracking-cache' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

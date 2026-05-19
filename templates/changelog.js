@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.26.4', date:'May 19, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Shopify-parts auto-invoice: collapsed-line fallback when HubSpot has no line items.** Turns out Shopify\'s HubSpot integration doesn\'t push line-item associations onto deals for small parts orders — only the deal name + amount. v1.26.0 treated no-line-items as a hard error (422 NO_LINE_ITEMS), which made the button always fail for the most common case. Now falls back to a single QB line: Item = "Shopify Order Line", Qty = 1, UnitPrice = deal.amount, Description = deal name (which carries the Shopify order # for cross-reference). Invoice total still matches what Shopify charged. If HubSpot DOES have line items (rare for Shopify, common for app-built invoices), the original itemized path still runs.'},
+      ]
+    },
+    {
       v:'1.26.3', date:'May 19, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Shopify drawer rows — type chip + left-edge accent.** Each row now shows a 🛋 Booth (blue) or 🛒 Parts (purple) chip on the meta row, plus a colored left edge (same color). Lets you tell booth vs parts at a glance without reading section headers — useful when scanning the drawer or when sections grow mixed in the future. Threshold matches server (≥$5k = Booth, <$5k = Parts).'},

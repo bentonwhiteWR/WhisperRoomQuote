@@ -2988,10 +2988,10 @@ const server = http.createServer(async (req, res) => {
         });
         hsLineItems = batchRes.body?.results || [];
       }
-      if (!hsLineItems.length) {
-        json({ error: 'Deal has no line items in HubSpot — cannot build invoice. Add line items in HubSpot, or invoice manually in QB.', code: 'NO_LINE_ITEMS' }, 422);
-        return;
-      }
+      // Shopify's HubSpot integration doesn't push line-item associations
+      // onto deals for small parts orders — only the deal name + amount.
+      // So no-line-items is the COMMON case here, not an error. We fall
+      // back below to a single QB line built from deal.amount + deal.name.
 
       // 4. Fetch contact for memo (best-effort — invoice still goes to the
       // generic "Shopify Web Orders" customer regardless)
@@ -3018,27 +3018,49 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      // 6. Map line items → QB lines. Exact-name match first; fallback to
-      //    the generic "Shopify Order Line" with the HS name in description.
+      // 6. Map line items → QB lines. Three cases:
+      //    (a) HubSpot has line items → map each by name, fallback to
+      //        "Shopify Order Line" with HS name in description.
+      //    (b) HubSpot has NO line items (typical Shopify-synced parts
+      //        order) → one collapsed line for the full deal amount,
+      //        description = deal name (carries the Shopify order # so
+      //        Kim can cross-reference). Invoice total still matches
+      //        what Shopify charged the customer.
       const qbLines = [];
-      for (const li of hsLineItems) {
-        const lp = li.properties || {};
-        const name = (lp.name || '').trim();
-        const qty  = parseFloat(lp.quantity || '1') || 1;
-        const unitPrice = lp.price != null && lp.price !== '' ? parseFloat(lp.price) : null;
-        const lineAmt = lp.amount != null && lp.amount !== ''
-          ? parseFloat(lp.amount)
-          : (unitPrice != null ? unitPrice * qty : 0);
-        const itemRef = name ? (await qb.findItemByName(name)) : null;
-        const useRef = itemRef || { value: fallbackItem.value, name: fallbackItem.name };
+      if (hsLineItems.length) {
+        for (const li of hsLineItems) {
+          const lp = li.properties || {};
+          const name = (lp.name || '').trim();
+          const qty  = parseFloat(lp.quantity || '1') || 1;
+          const unitPrice = lp.price != null && lp.price !== '' ? parseFloat(lp.price) : null;
+          const lineAmt = lp.amount != null && lp.amount !== ''
+            ? parseFloat(lp.amount)
+            : (unitPrice != null ? unitPrice * qty : 0);
+          const itemRef = name ? (await qb.findItemByName(name)) : null;
+          const useRef = itemRef || { value: fallbackItem.value, name: fallbackItem.name };
+          qbLines.push({
+            DetailType: 'SalesItemLineDetail',
+            Amount: Math.round(lineAmt * 100) / 100,
+            Description: name || lp.description || 'Shopify line',
+            SalesItemLineDetail: {
+              ItemRef:  useRef,
+              Qty:      qty,
+              ...(unitPrice != null ? { UnitPrice: unitPrice } : {}),
+            },
+          });
+        }
+      } else {
+        // Collapsed-line fallback for Shopify-synced deals without
+        // line-item associations (the common case for parts orders).
+        const dealAmt = Math.round(amount * 100) / 100;
         qbLines.push({
           DetailType: 'SalesItemLineDetail',
-          Amount: Math.round(lineAmt * 100) / 100,
-          Description: name || lp.description || 'Shopify line',
+          Amount: dealAmt,
+          Description: dp.dealname || `Shopify deal ${dealIdStr}`,
           SalesItemLineDetail: {
-            ItemRef:  useRef,
-            Qty:      qty,
-            ...(unitPrice != null ? { UnitPrice: unitPrice } : {}),
+            ItemRef:   { value: fallbackItem.value, name: fallbackItem.name },
+            Qty:       1,
+            UnitPrice: dealAmt,
           },
         });
       }

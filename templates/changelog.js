@@ -51,6 +51,18 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.24.6', date:'May 19, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Intl shipping email — drop the parenthetical on SHIPMENT VALUE.** Removed the "(for insurance, products only — excludes freight & tax)" tail from v1.24.5. Line now reads just `SHIPMENT VALUE: $X,XXX.XX`. Forwarders know what the value is for.'},
+      ]
+    },
+    {
+      v:'1.24.5', date:'May 19, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**International Shipping Request — adds SHIPMENT VALUE line for insurance calc.** The overseas-quote email built by the 🌐 International Shipping Request modal already includes name / address / pallet dims / total weight. Per request, now also includes a SHIPMENT VALUE line directly under TOTAL WEIGHT showing the products-only value (line-item subtotal minus discount, excludes freight + tax) so the freight forwarder can quote insurance correctly. Format: `SHIPMENT VALUE: $X,XXX.XX (for insurance, products only — excludes freight & tax)`.'},
+      ]
+    },
+    {
       v:'1.24.4', date:'May 18, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Email Reply popup — shrink the modal, keep the panel sizing.** v1.24.3 fixed the dead space by stretching the panels to fill the iframe, which made everything feel too big. Switching strategies: panels are back to their natural `min-height: 520px`, and the modal itself shrinks to 600px tall (from 88vh / 900px) so the popup\'s bottom edge lands right at the Generate Reply button instead of having ~250px of empty space below. `max-height: 92vh` keeps it from overflowing tiny windows.'},

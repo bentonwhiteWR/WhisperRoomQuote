@@ -2489,6 +2489,7 @@ function sendIntlShippingEmail() {
     `DIMS: ${palletText}`,
     '',
     `TOTAL WEIGHT: ${Math.round(totalWeight).toLocaleString()} lbs`,
+    `SHIPMENT VALUE: ${fmt(sub - disc)}`,
     '',
     'Please have this include insurance and transit time.',
     '',

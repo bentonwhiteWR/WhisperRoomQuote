@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.29.1', date:'May 20, 2026', tag:'log',
+      changes:[
+        {t:'fix', d:'**Email reply logs viewer — drop the admin gate.** v1.29.0 hid the reviewer behind `ADMIN_REP_EMAILS`. Simplifying: any authed rep can now see the logs (the content is the same email-body text they\'re already typing into the assistant — no extra PII exposure). Removed the env var, the `isAdmin(req)` helper, the page + API gates, and the `__IS_ADMIN__` injection on `/email-reply`. "⚙ Logs" button in the topbar is always visible now.'},
+      ]
+    },
+    {
       v:'1.29.0', date:'May 20, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Email reply assistant — input/output logging + reviewer page.** Every call to `/api/email-reply` now writes a row to the new `email_reply_logs` table capturing: rep info, voice picked, full input, full output, model, token usage (input/output/cache-read/cache-creation), duration, status (`success`/`anthropic_error`/`empty_reply`/`exception`), and any error message. Logging is fire-and-forget so a DB hiccup never blocks the rep\'s reply. New reviewer page `/email-reply-logs` shows the most recent entries with search (substring on input or output), pagination, status chips, token counts, and click-to-expand full-text input/output side-by-side with copy buttons. Admin-only — gated by new env var `ADMIN_REP_EMAILS` (comma-separated). A "⚙ Logs" button appears in the Email Reply topbar for admins (hidden for everyone else); opens the reviewer in a new tab. Feedback capture (thumbs up/down, edited final) is v2 — not in this release.'},

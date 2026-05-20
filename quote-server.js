@@ -689,22 +689,6 @@ function _flattenVendorSummary(reportJson) {
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const ANTHROPIC_MODEL   = process.env.ANTHROPIC_MODEL || 'claude-opus-4-7';
 const ANTHROPIC_VERSION = '2023-06-01';
-
-// Emails granted access to the email-reply logs viewer + any other future
-// admin-only surfaces. Comma-separated list in env, normalized to lowercase.
-// Edit ADMIN_REP_EMAILS in Railway to add/remove without a redeploy needed.
-const ADMIN_REP_EMAILS = String(process.env.ADMIN_REP_EMAILS || '')
-  .toLowerCase()
-  .split(',')
-  .map(s => s.trim())
-  .filter(Boolean);
-function isAdmin(req) {
-  try {
-    const sess = getRepFromReq(req);
-    const email = String(sess?.email || '').toLowerCase();
-    return !!email && ADMIN_REP_EMAILS.includes(email);
-  } catch { return false; }
-}
 const EMAIL_REPLY_MAX_TOKENS = 2048;
 let EMAIL_REPLY_SYSTEM_PROMPT = '';
 let EMAIL_REPLY_PRODUCT_LINKS_RAW = '';
@@ -7212,14 +7196,15 @@ ${q.accepted ? `
     return;
   }
 
-  // ── API: Email reply logs (admin only) ───────────────────────────
+  // ── API: Email reply logs ────────────────────────────────────────
   // Returns the most recent entries from email_reply_logs for the
-  // review-and-train workflow. Admin-only (gated by ADMIN_REP_EMAILS).
+  // review-and-train workflow. Any authed rep can view — there's no
+  // sensitive customer PII beyond what's already in the email body
+  // the rep just pasted into the assistant.
   // Query params: limit (default 50, max 200), offset (default 0),
   //               q (optional substring filter on input or output).
   if (pathname === '/api/email-reply-logs' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
-    if (!isAdmin(req)) { json({ error: 'Forbidden' }, 403); return; }
     if (!db) { json({ error: 'Database not initialized' }, 503); return; }
     try {
       const limit  = Math.min(parseInt(parsed.query.limit || '50', 10) || 50, 200);
@@ -9206,19 +9191,16 @@ ${q.accepted ? `
     const linksJson = EMAIL_REPLY_PRODUCT_LINKS_RAW || '{}';
     const escapeForScriptTag = (s) => s.replace(/<\/script/gi, '<\\/script');
     html = html.replace('__PRODUCT_LINKS__', () => escapeForScriptTag(linksJson));
-    html = html.replace('__IS_ADMIN__', () => isAdmin(req) ? 'true' : 'false');
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);
     return;
   }
 
-  // ── Email Reply Logs Page (admin only) ──────────────────────────
-  // Reviewer UI for the email_reply_logs table. Server-injects ADMIN
-  // gate at render time so non-admins get redirected even if they
-  // somehow guess the URL — defense in depth on top of the API gate.
+  // ── Email Reply Logs Page ────────────────────────────────────────
+  // Reviewer UI for the email_reply_logs table. Authed only — no
+  // additional gating; the API behind it has the same posture.
   if (pathname === '/email-reply-logs' && req.method === 'GET') {
     if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
-    if (!isAdmin(req)) { res.writeHead(302, { Location: '/email-reply' }); res.end(); return; }
     let html;
     try {
       html = fs.readFileSync(path.join(__dirname, 'assistant', 'email-reply-logs.html'), 'utf8');

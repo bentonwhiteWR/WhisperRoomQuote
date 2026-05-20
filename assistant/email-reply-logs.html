@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Email Reply Logs — WhisperRoom</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-size='18'>✉️</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0f0f0f; --surface:#1a1a1a; --surface2:#222; --border:#2a2a2a;
+    --orange:#ee6216; --text:#e8e8e8; --muted:#888;
+    --green:#22c55e; --red:#ef4444; --yellow:#f59e0b; --blue:#3b82f6;
+    --mono:'JetBrains Mono', Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:13px;}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:52px;background:#1a1a1a;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:100;}
+  .logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8;}
+  .logo span{color:#e8531a;}
+  .back{font-size:11px;font-weight:700;color:var(--muted);text-decoration:none;padding:5px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;letter-spacing:.05em;text-transform:uppercase;}
+  .back:hover{color:var(--text);background:rgba(255,255,255,.1);}
+  .main{max-width:1400px;margin:0 auto;padding:24px;}
+  h1{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin-bottom:4px;}
+  h1 span{color:var(--orange);}
+  .subtitle{font-size:12px;color:var(--muted);margin-bottom:20px;}
+
+  .controls{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;}
+  .controls input[type=text]{padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:var(--mono);min-width:260px;outline:none;}
+  .controls input[type=text]:focus{border-color:var(--orange);}
+  .controls button{padding:8px 14px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;}
+  .controls button:hover{background:var(--surface2);}
+  .controls button.primary{background:var(--orange);border-color:var(--orange);color:#fff;}
+  .controls .stats{margin-left:auto;font-size:11px;color:var(--muted);font-family:var(--mono);}
+
+  table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+  thead{background:var(--surface2);}
+  th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border);font-size:12px;vertical-align:top;}
+  th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);}
+  tr.row{cursor:pointer;}
+  tr.row:hover{background:rgba(255,255,255,.03);}
+  tr.detail-row td{background:#0c0c0c;padding:16px 20px;}
+
+  .chip{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;text-transform:uppercase;letter-spacing:.05em;}
+  .chip-success{background:rgba(34,197,94,.12);color:var(--green);}
+  .chip-anthropic_error,.chip-empty_reply,.chip-exception{background:rgba(239,68,68,.12);color:var(--red);}
+  .chip-voice{background:rgba(59,130,246,.12);color:var(--blue);font-family:var(--mono);text-transform:none;letter-spacing:0;}
+  .ts{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;}
+  .preview{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:380px;}
+  .tokens{font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap;}
+
+  .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .detail-block{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;}
+  .detail-block h3{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;}
+  .detail-block h3 button{font-size:10px;padding:3px 8px;background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer;font-family:inherit;text-transform:none;letter-spacing:0;}
+  .detail-block h3 button:hover{color:var(--text);border-color:var(--orange);}
+  .detail-block pre{font-family:var(--mono);font-size:11px;line-height:1.5;color:var(--text);white-space:pre-wrap;word-break:break-word;max-height:500px;overflow:auto;}
+  .detail-meta{font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:12px;padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;}
+  .detail-meta span{margin-right:14px;}
+  .detail-meta b{color:var(--text);font-weight:600;}
+
+  .empty{padding:60px;text-align:center;color:var(--muted);font-size:13px;}
+  .error{padding:16px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:6px;color:#ffb4b4;font-size:12px;font-family:var(--mono);}
+
+  .pager{display:flex;gap:8px;justify-content:center;align-items:center;margin-top:16px;font-size:11px;color:var(--muted);}
+  .pager button{padding:5px 10px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:11px;cursor:pointer;}
+  .pager button:disabled{opacity:.4;cursor:not-allowed;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">Whisper<span>Room</span></div>
+  <a href="/email-reply" class="back">← Email Reply</a>
+</div>
+
+<main class="main">
+  <h1>Email Reply <span>Logs</span></h1>
+  <div class="subtitle">Review what the assistant produced for which inputs. Admin only.</div>
+
+  <div class="controls">
+    <input type="text" id="search" placeholder="Filter input or output (substring match)..." />
+    <button onclick="reload()">Filter</button>
+    <button onclick="clearSearch()">Clear</button>
+    <div class="stats" id="stats">Loading…</div>
+  </div>
+
+  <div id="content"></div>
+
+  <div class="pager">
+    <button id="prevBtn" onclick="prevPage()">← Prev</button>
+    <span id="pageLabel">—</span>
+    <button id="nextBtn" onclick="nextPage()">Next →</button>
+  </div>
+</main>
+
+<script>
+"use strict";
+
+const PAGE_SIZE = 50;
+let _state = { offset: 0, q: "", total: 0, logs: [], expanded: null };
+
+document.getElementById("search").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { _state.offset = 0; reload(); }
+});
+
+function clearSearch() {
+  document.getElementById("search").value = "";
+  _state.q = "";
+  _state.offset = 0;
+  reload();
+}
+
+async function reload() {
+  _state.q = document.getElementById("search").value.trim();
+  const content = document.getElementById("content");
+  content.innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    const qs = new URLSearchParams({ limit: PAGE_SIZE, offset: _state.offset });
+    if (_state.q) qs.set("q", _state.q);
+    const res = await fetch("/api/email-reply-logs?" + qs.toString(), { credentials: "include" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+    _state.total = data.total;
+    _state.logs = data.logs;
+    render();
+  } catch (e) {
+    content.innerHTML = '<div class="error">Failed to load: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+function render() {
+  const content = document.getElementById("content");
+  if (!_state.logs.length) {
+    content.innerHTML = '<div class="empty">No logs to show.' + (_state.q ? ' (try clearing the filter)' : '') + '</div>';
+  } else {
+    let html = '<table><thead><tr>';
+    html += '<th>When</th><th>Rep</th><th>Voice</th><th>Status</th><th>Input preview</th><th>Tokens</th>';
+    html += '</tr></thead><tbody>';
+    for (const r of _state.logs) {
+      const ts = new Date(r.created_at).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", year: "2-digit", hour: "numeric", minute: "2-digit" });
+      const rep = escapeHtml(r.rep_name || r.rep_email || "—");
+      const voice = r.voice ? '<span class="chip chip-voice">' + escapeHtml(r.voice) + '</span>' : '<span style="color:var(--muted)">—</span>';
+      const status = '<span class="chip chip-' + r.status + '">' + escapeHtml(r.status || "—") + '</span>';
+      const preview = escapeHtml((r.input || "").replace(/\s+/g, " ").slice(0, 160));
+      const tokens = (r.input_tokens || r.output_tokens)
+        ? ('in:' + (r.input_tokens || 0) + ' out:' + (r.output_tokens || 0)
+          + (r.cache_read_tokens ? ' (cache:' + r.cache_read_tokens + ')' : ''))
+        : '—';
+      html += '<tr class="row" onclick="toggleDetail(' + r.id + ')"><td><span class="ts">' + ts + '</span></td>';
+      html += '<td>' + rep + '</td><td>' + voice + '</td><td>' + status + '</td>';
+      html += '<td><div class="preview">' + preview + '</div></td>';
+      html += '<td><div class="tokens">' + tokens + '</div></td></tr>';
+      if (_state.expanded === r.id) html += renderDetail(r);
+    }
+    html += '</tbody></table>';
+    content.innerHTML = html;
+  }
+  const start = _state.offset + 1;
+  const end = Math.min(_state.offset + _state.logs.length, _state.total);
+  document.getElementById("stats").textContent = _state.total
+    ? (_state.logs.length ? start + "–" + end + " of " + _state.total : "0 of " + _state.total)
+    : "no entries yet";
+  document.getElementById("pageLabel").textContent = "Page " + (Math.floor(_state.offset / PAGE_SIZE) + 1) + " of " + Math.max(1, Math.ceil(_state.total / PAGE_SIZE));
+  document.getElementById("prevBtn").disabled = _state.offset <= 0;
+  document.getElementById("nextBtn").disabled = (_state.offset + _state.logs.length) >= _state.total;
+}
+
+function renderDetail(r) {
+  const tokens = 'input:' + (r.input_tokens || 0) + ' · output:' + (r.output_tokens || 0)
+    + (r.cache_read_tokens ? ' · cache-read:' + r.cache_read_tokens : '')
+    + (r.cache_creation_tokens ? ' · cache-creation:' + r.cache_creation_tokens : '');
+  return '<tr class="detail-row"><td colspan="6">'
+    + '<div class="detail-meta">'
+    +   '<span><b>Log #' + r.id + '</b></span>'
+    +   '<span>Model: <b>' + escapeHtml(r.model || '—') + '</b></span>'
+    +   '<span>Duration: <b>' + (r.duration_ms ? r.duration_ms + 'ms' : '—') + '</b></span>'
+    +   '<span>Tokens: <b>' + tokens + '</b></span>'
+    +   (r.error ? '<span style="color:var(--red)">Error: <b>' + escapeHtml(r.error) + '</b></span>' : '')
+    + '</div>'
+    + '<div class="detail-grid">'
+    +   '<div class="detail-block"><h3>Input <button onclick="copy(\'in-' + r.id + '\')">Copy</button></h3><pre id="in-' + r.id + '">' + escapeHtml(r.input || '') + '</pre></div>'
+    +   '<div class="detail-block"><h3>Output <button onclick="copy(\'out-' + r.id + '\')">Copy</button></h3><pre id="out-' + r.id + '">' + escapeHtml(r.output || '(no output)') + '</pre></div>'
+    + '</div>'
+    + '</td></tr>';
+}
+
+function toggleDetail(id) {
+  _state.expanded = _state.expanded === id ? null : id;
+  render();
+}
+
+function copy(elemId) {
+  const el = document.getElementById(elemId);
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent).catch(() => {});
+}
+
+function prevPage() {
+  _state.offset = Math.max(0, _state.offset - PAGE_SIZE);
+  _state.expanded = null;
+  reload();
+}
+function nextPage() {
+  _state.offset += PAGE_SIZE;
+  _state.expanded = null;
+  reload();
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+reload();
+</script>
+</body>
+</html>

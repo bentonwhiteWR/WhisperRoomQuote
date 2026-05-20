@@ -1,6 +1,6 @@
 {
   "name": "whisperroom-quote-builder",
-  "version": "1.26.3",
+  "version": "1.30.2",
   "description": "WhisperRoom internal quote builder with HubSpot, TaxJar, and ABF integration",
   "main": "quote-server.js",
   "scripts": {
@@ -10,6 +10,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "pdf-lib": "^1.17.1",
     "pg": "^8.13.3",
     "puppeteer": "^21.0.0"
   }

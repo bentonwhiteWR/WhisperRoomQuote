@@ -176,6 +176,11 @@ const { TAXJAR_KEY, calculateTaxProper } = taxjar;
 const qb = require('./lib/quickbooks');
 qb.init({ getDb: () => db });
 
+const shopifyLib = require('./lib/shopify');
+
+const assemblyManual = require('./lib/assembly-manual');
+// assemblyManual.init({ gdrive }) called below after gdrive.init runs
+
 const stripeLib = require('./lib/stripe');
 // stripeLib.init(...) called below alongside the other httpsRequest-dependent libs
 
@@ -304,6 +309,7 @@ async function nextPoNumber() {
 // Wire up HubSpot module now that httpsRequest is defined
 hubspot.init({ httpsRequest });
 gdrive.init({ httpsRequest, getDb: () => db, writelog });
+assemblyManual.init({ gdrive });
 taxjar.init({ httpsRequest, NEXUS_STATES, toStateAbbr });
 notify.init({ getDb: () => db });
 freight.init({ httpsRequest, getDb: () => db, writelog, puppeteer });
@@ -537,6 +543,143 @@ async function pollHubspotPayments() {
 // in a given month, so a single shared cache cuts repeat loads to ~0ms.
 let _salesGoalCache = null;
 const SALES_GOAL_CACHE_MS = 5 * 60 * 1000;
+
+// ── Supplier-spend cache (in-memory, 24h, keyed by date range) ──
+// QB's ExpensesByVendorSummary is the same for everyone for a given
+// range — accounting data doesn't change every minute. Default 24h TTL,
+// busted on demand via ?refresh=1. Map keys are "YYYY-MM-DD_YYYY-MM-DD".
+const _supplierSpendCache = new Map();
+const SUPPLIER_SPEND_CACHE_MS = 24 * 60 * 60 * 1000;
+
+// ── Assembly-manual MDL list cache (in-memory, 24h) ──
+// QB's MDL catalog changes maybe once a year. Single global value (no
+// keying needed). Bust with ?refresh=1.
+let _assemblyMdlCache = null;
+const ASSEMBLY_MDL_CACHE_MS = 24 * 60 * 60 * 1000;
+
+// Fire-and-forget logging of every /api/email-reply call to the
+// email_reply_logs table. Used by the admin reviewer (/email-reply-logs)
+// to inspect what the model is producing for which inputs. Throws are
+// swallowed — the rep already has their reply when this runs.
+async function _logEmailReply({ sess, voice, input, output, usage, durationMs, status, error }) {
+  if (!db) return;
+  const u = usage || {};
+  try {
+    await db.query(
+      `INSERT INTO email_reply_logs
+        (rep_id, rep_name, rep_email, voice, input, output, model,
+         input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+         duration_ms, status, error)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [
+        String(sess?.ownerId || ''),
+        String(sess?.name || ''),
+        String(sess?.email || ''),
+        String(voice || ''),
+        String(input || ''),
+        output == null ? null : String(output),
+        ANTHROPIC_MODEL,
+        u.input_tokens               || null,
+        u.output_tokens              || null,
+        u.cache_read_input_tokens    || null,
+        u.cache_creation_input_tokens|| null,
+        durationMs || null,
+        String(status || 'success'),
+        error || null,
+      ]
+    );
+  } catch (e) {
+    console.warn('[email-reply-log] DB insert failed:', e.message);
+  }
+}
+
+// Resolve a supplier-spend range key into ISO dates. All dates in
+// America/New_York since TZ env is fixed to that. Returns YYYY-MM-DD
+// strings (QB's reports API wants date-only, not timestamps).
+function _resolveSupplierSpendRange(rangeKey, customStart, customEnd) {
+  const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const today = new Date();
+  const todayStr = ymd(today);
+  const y = today.getFullYear();
+  const m = today.getMonth(); // 0-indexed
+  const d = today.getDate();
+  // Quarter index: 0 (Jan-Mar), 1 (Apr-Jun), 2 (Jul-Sep), 3 (Oct-Dec)
+  const qIdx = Math.floor(m / 3);
+  const qStartMonth = qIdx * 3;
+  switch (rangeKey) {
+    case 'ytd':
+      return { startDate: `${y}-01-01`, endDate: todayStr, label: `YTD ${y}` };
+    case '12m': {
+      const start = new Date(y, m - 11, 1); // first of the month 12 months ago
+      return { startDate: ymd(start), endDate: todayStr, label: 'Trailing 12 months' };
+    }
+    case 'month': {
+      const start = new Date(y, m, 1);
+      return { startDate: ymd(start), endDate: todayStr, label: start.toLocaleString('en-US', { month: 'long', year: 'numeric' }) };
+    }
+    case 'lastmonth': {
+      const start = new Date(y, m - 1, 1);
+      const end   = new Date(y, m, 0); // last day of previous month
+      return { startDate: ymd(start), endDate: ymd(end), label: start.toLocaleString('en-US', { month: 'long', year: 'numeric' }) };
+    }
+    case 'quarter': {
+      const start = new Date(y, qStartMonth, 1);
+      return { startDate: ymd(start), endDate: todayStr, label: `Q${qIdx+1} ${y}` };
+    }
+    case 'lastquarter': {
+      const start = new Date(y, qStartMonth - 3, 1);
+      const end   = new Date(y, qStartMonth, 0); // last day of previous quarter
+      const lqIdx = (qIdx + 3) % 4;
+      const lqYear = qIdx === 0 ? y - 1 : y;
+      return { startDate: ymd(start), endDate: ymd(end), label: `Q${lqIdx+1} ${lqYear}` };
+    }
+    case 'custom': {
+      const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+      if (!isDate(customStart) || !isDate(customEnd)) return { startDate: null, endDate: null, label: '' };
+      return { startDate: customStart, endDate: customEnd, label: `${customStart} → ${customEnd}` };
+    }
+    default:
+      return { startDate: null, endDate: null, label: '' };
+  }
+}
+
+// Walk QB's ExpensesByVendorSummary response (Rows / Sections / ColData
+// tree) and produce a flat `[{ vendor, vendorId, total }]` sorted desc,
+// plus the grand total from the report's Summary row when present.
+function _flattenVendorSummary(reportJson) {
+  const out = [];
+  let total = 0;
+  function walk(rowArr) {
+    if (!Array.isArray(rowArr)) return;
+    for (const r of rowArr) {
+      if (r?.ColData && Array.isArray(r.ColData) && r.ColData.length >= 2) {
+        const vendorCol = r.ColData[0] || {};
+        const amountCol = r.ColData[1] || {};
+        const vendorName = String(vendorCol.value || '').trim();
+        const vendorId   = vendorCol.id || null;
+        const amount = parseFloat(amountCol.value || '0') || 0;
+        // Skip empty-vendor rows + the literal TOTAL/Total summary row
+        // that some QB reports emit inline rather than as Summary.
+        if (vendorName && vendorName.toUpperCase() !== 'TOTAL' && (vendorId || amount !== 0)) {
+          out.push({ vendor: vendorName, vendorId, total: amount });
+        }
+      }
+      if (r?.Rows?.Row) walk(r.Rows.Row);
+      if (r?.Summary?.ColData) {
+        const label = String(r.Summary.ColData[0]?.value || '').trim();
+        if (label.toUpperCase() === 'TOTAL') {
+          total = parseFloat(r.Summary.ColData[1]?.value || '0') || total;
+        }
+      }
+    }
+  }
+  walk(reportJson?.Rows?.Row || []);
+  // Fallback: if QB didn't emit a TOTAL row, derive from leaves.
+  if (!total) total = out.reduce((s, r) => s + r.total, 0);
+  // Stable sort: total desc, then name asc.
+  out.sort((a, b) => (b.total - a.total) || a.vendor.localeCompare(b.vendor));
+  return { rows: out, total };
+}
 
 // ── Email Reply Assistant (vendored from gabewhite438/whisperroom-reply-assistant) ──
 // System prompt is the model's brain (~1900 lines of rules, voice templates,
@@ -2917,15 +3060,18 @@ const server = http.createServer(async (req, res) => {
     if (!db) { json({ error: 'Database not initialized' }, 503); return; }
     try {
       const raw = await readBody(req);
-      const { dealId } = JSON.parse(raw || '{}');
+      const { dealId, dryRun } = JSON.parse(raw || '{}');
       if (!dealId || !/^\d+$/.test(String(dealId))) { json({ error: 'Invalid dealId' }, 400); return; }
       const dealIdStr = String(dealId);
+      const isDryRun = !!dryRun;
 
-      // 0. Idempotency guard
+      // 0. Idempotency guard. In dry-run mode this is informational (we return
+      //    `existingRow` so the UI can warn), not blocking — lets the rep
+      //    preview what WOULD be sent even after a botched prior attempt.
       const existing = await db.query(`SELECT * FROM shopify_qb_invoices WHERE deal_id = $1`, [dealIdStr]);
-      if (existing.rows.length) {
-        const r = existing.rows[0];
-        json({ error: `Deal already invoiced via Shopify-parts flow (mode=${r.mode}, qb_doc=${r.qb_doc_number || '—'})`, code: 'ALREADY_INVOICED', existing: r }, 409);
+      const existingRow = existing.rows[0] || null;
+      if (existingRow && !isDryRun) {
+        json({ error: `Deal already invoiced via Shopify-parts flow (mode=${existingRow.mode}, qb_doc=${existingRow.qb_doc_number || '—'})`, code: 'ALREADY_INVOICED', existing: existingRow }, 409);
         return;
       }
 
@@ -2973,7 +3119,30 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      // 3. Fetch each line item's full record
+      // 3. Try Shopify as the source of truth — HubSpot's mirror is
+      //    deal-name + total only, missing customer / address / per-line
+      //    detail / tax / shipping. If Shopify is configured AND we can
+      //    parse an order # from the deal name, we get the full canonical
+      //    order. If anything fails, fall back to HubSpot-derived data.
+      let shopifyOrder = null;
+      let shopifyError = null;
+      const shopifyOrderName = shopifyLib.parseOrderNumberFromDealName(dp.dealname || '');
+      if (shopifyLib.isConfigured() && shopifyOrderName) {
+        try {
+          shopifyOrder = await shopifyLib.findOrderByName(shopifyOrderName);
+          if (!shopifyOrder) shopifyError = `Shopify order #${shopifyOrderName} not found`;
+        } catch (e) {
+          shopifyError = e.message;
+          console.warn(`[shopify-parts] Shopify lookup failed for #${shopifyOrderName}: ${e.message}`);
+        }
+      } else if (!shopifyLib.isConfigured()) {
+        shopifyError = 'Shopify not configured (set SHOPIFY_ACCESS_TOKEN + SHOPIFY_STORE_DOMAIN)';
+      } else {
+        shopifyError = `Could not parse Shopify order # from deal name "${dp.dealname}"`;
+      }
+
+      // 4. HubSpot line items + contact (used as fallback if Shopify lookup
+      //    didn't work, AND for email when Shopify customer is missing one).
       const liIds = (liAssocRes.body?.results?.[0]?.to || []).map(t => String(t.toObjectId));
       let hsLineItems = [];
       if (liIds.length) {
@@ -2988,13 +3157,6 @@ const server = http.createServer(async (req, res) => {
         });
         hsLineItems = batchRes.body?.results || [];
       }
-      if (!hsLineItems.length) {
-        json({ error: 'Deal has no line items in HubSpot — cannot build invoice. Add line items in HubSpot, or invoice manually in QB.', code: 'NO_LINE_ITEMS' }, 422);
-        return;
-      }
-
-      // 4. Fetch contact for memo (best-effort — invoice still goes to the
-      // generic "Shopify Web Orders" customer regardless)
       let contact = null;
       const contactId = ctAssocRes.body?.results?.[0]?.id;
       if (contactId) {
@@ -3009,49 +3171,239 @@ const server = http.createServer(async (req, res) => {
         } catch (e) { /* non-fatal */ }
       }
 
-      // 5. Resolve QB customer + fallback item
-      const cust = await qb.findOrCreateCustomer({ displayName: SHOPIFY_QB_CUSTOMER_NAME });
-      if (!cust?.Id) throw new Error(`Could not find/create QB customer "${SHOPIFY_QB_CUSTOMER_NAME}"`);
+      // 5. Resolve QB customer + fallback item. In dry-run, don't create the
+      //    customer if it's missing — just report that it would be created.
+      let cust;
+      if (isDryRun) {
+        cust = await qb.findCustomerByDisplayName(SHOPIFY_QB_CUSTOMER_NAME);
+      } else {
+        cust = await qb.findOrCreateCustomer({ displayName: SHOPIFY_QB_CUSTOMER_NAME });
+        if (!cust?.Id) throw new Error(`Could not find/create QB customer "${SHOPIFY_QB_CUSTOMER_NAME}"`);
+      }
       const fallbackItem = await qb.findItemByName(SHOPIFY_QB_FALLBACK_ITEM_NAME);
       if (!fallbackItem) {
         json({ error: `QB fallback item "${SHOPIFY_QB_FALLBACK_ITEM_NAME}" not found. Create it in QB (Products & Services → New non-inventory item) then retry.`, code: 'MISSING_FALLBACK_ITEM' }, 503);
         return;
       }
 
-      // 6. Map line items → QB lines. Exact-name match first; fallback to
-      //    the generic "Shopify Order Line" with the HS name in description.
+      // 6. Build the QB invoice payload — lines, address, memo.
+      //
+      // Every line gets TaxCodeRef = 'NON' to force QB's Automated Sales
+      // Tax to return $0. Shopify already collected (or correctly didn't
+      // collect) tax — we're just recording what was charged, not asking
+      // QB to recompute. Without 'NON', AST defaults to TN and adds tax
+      // to non-nexus orders.
+      const NON_TAX = { value: 'NON' };
       const qbLines = [];
-      for (const li of hsLineItems) {
-        const lp = li.properties || {};
-        const name = (lp.name || '').trim();
-        const qty  = parseFloat(lp.quantity || '1') || 1;
-        const unitPrice = lp.price != null && lp.price !== '' ? parseFloat(lp.price) : null;
-        const lineAmt = lp.amount != null && lp.amount !== ''
-          ? parseFloat(lp.amount)
-          : (unitPrice != null ? unitPrice * qty : 0);
-        const itemRef = name ? (await qb.findItemByName(name)) : null;
-        const useRef = itemRef || { value: fallbackItem.value, name: fallbackItem.name };
-        qbLines.push({
-          DetailType: 'SalesItemLineDetail',
-          Amount: Math.round(lineAmt * 100) / 100,
-          Description: name || lp.description || 'Shopify line',
-          SalesItemLineDetail: {
-            ItemRef:  useRef,
-            Qty:      qty,
-            ...(unitPrice != null ? { UnitPrice: unitPrice } : {}),
-          },
-        });
+      let shipAddr = null, billAddr = null, customerEmail = null, customerName = '';
+      let dataSource = 'hubspot'; // for logging / memo
+
+      if (shopifyOrder) {
+        // ── PATH A: Shopify canonical data ──
+        dataSource = 'shopify';
+        customerEmail = shopifyOrder.email || shopifyOrder.contact_email || contact?.email || null;
+        const sCust = shopifyOrder.customer || {};
+        customerName = [sCust.first_name, sCust.last_name].filter(Boolean).join(' ').trim()
+          || [shopifyOrder.billing_address?.first_name, shopifyOrder.billing_address?.last_name].filter(Boolean).join(' ').trim()
+          || '';
+
+        const addrFromShopify = (a) => {
+          if (!a) return null;
+          return {
+            ...(a.first_name || a.last_name ? { Line1: [a.first_name, a.last_name].filter(Boolean).join(' ') } : {}),
+            ...(a.company ? { Line2: a.company } : {}),
+            ...(a.address1 ? { Line3: a.address1 } : { ...(a.first_name || a.last_name ? {} : { Line1: 'Address on file' }) }),
+            ...(a.address2 ? { Line4: a.address2 } : {}),
+            ...(a.city ? { City: a.city } : {}),
+            ...(a.province_code || a.province ? { CountrySubDivisionCode: a.province_code || a.province } : {}),
+            ...(a.zip ? { PostalCode: a.zip } : {}),
+            Country: a.country_code || 'USA',
+          };
+        };
+        shipAddr = addrFromShopify(shopifyOrder.shipping_address);
+        billAddr = addrFromShopify(shopifyOrder.billing_address) || shipAddr;
+
+        // Line items
+        const sLineItems = shopifyOrder.line_items || [];
+        for (const li of sLineItems) {
+          const sku = (li.sku || '').trim();
+          const title = (li.title || '').trim();
+          const variant = (li.variant_title || '').trim();
+          const fullName = variant ? `${title} (${variant})` : title;
+          const qty = parseInt(li.quantity, 10) || 1;
+          const unitPrice = parseFloat(li.price || '0') || 0;
+          const lineAmt = unitPrice * qty;
+
+          // Try SKU first, then full name, then plain title — fall back to
+          // the generic "Shopify Order Line" item with the original name in
+          // the description so Kim can see what was ordered.
+          let itemRef = null;
+          if (sku) itemRef = await qb.findItemByName(sku);
+          if (!itemRef && fullName) itemRef = await qb.findItemByName(fullName);
+          if (!itemRef && title) itemRef = await qb.findItemByName(title);
+          const useRef = itemRef || { value: fallbackItem.value, name: fallbackItem.name };
+
+          qbLines.push({
+            DetailType: 'SalesItemLineDetail',
+            Amount: Math.round(lineAmt * 100) / 100,
+            Description: fullName + (sku ? ` (SKU: ${sku})` : ''),
+            SalesItemLineDetail: {
+              ItemRef:    useRef,
+              Qty:        qty,
+              UnitPrice:  unitPrice,
+              TaxCodeRef: NON_TAX,
+            },
+          });
+        }
+
+        // Shipping line (Shopify charges this separately)
+        const shippingTotal = (shopifyOrder.shipping_lines || [])
+          .reduce((s, sh) => s + (parseFloat(sh.price || '0') || 0), 0);
+        if (shippingTotal > 0) {
+          const shipItemRef = (await qb.findItemByName('Shipping')) || (await qb.findItemByName('Freight')) || { value: fallbackItem.value, name: fallbackItem.name };
+          qbLines.push({
+            DetailType: 'SalesItemLineDetail',
+            Amount: Math.round(shippingTotal * 100) / 100,
+            Description: (shopifyOrder.shipping_lines || []).map(s => s.title).filter(Boolean).join(', ') || 'Shipping',
+            SalesItemLineDetail: {
+              ItemRef:    shipItemRef,
+              Qty:        1,
+              UnitPrice:  shippingTotal,
+              TaxCodeRef: NON_TAX,
+            },
+          });
+        }
+
+        // Tax line — recorded as a line so total matches Shopify and we
+        // don't depend on TxnTaxDetail behavior. globalTaxCalc:'NotApplicable'
+        // means QB doesn't add tax itself; the line is just a recorded
+        // amount that the customer paid. Use the fallback item for this
+        // line (no need for a separate "Sales Tax" QB item).
+        const totalTax = parseFloat(shopifyOrder.total_tax || '0') || 0;
+        if (totalTax > 0) {
+          qbLines.push({
+            DetailType: 'SalesItemLineDetail',
+            Amount: Math.round(totalTax * 100) / 100,
+            Description: `Sales Tax (Shopify collected)`,
+            SalesItemLineDetail: {
+              ItemRef:    { value: fallbackItem.value, name: fallbackItem.name },
+              Qty:        1,
+              UnitPrice:  totalTax,
+              TaxCodeRef: NON_TAX,
+            },
+          });
+        }
+      } else {
+        // ── PATH B: HubSpot fallback (Shopify unavailable / unconfigured) ──
+        const addrFromContact = (c) => {
+          if (!c) return null;
+          const line1 = (c.address || '').trim();
+          const city  = (c.city || '').trim();
+          const state = (c.state || '').trim();
+          const zip   = (c.zip || '').trim();
+          if (!line1 && !city && !state && !zip) return null;
+          return {
+            ...(line1 ? { Line1: line1 } : {}),
+            ...(city  ? { City: city }   : {}),
+            ...(state ? { CountrySubDivisionCode: state } : {}),
+            ...(zip   ? { PostalCode: zip } : {}),
+            Country: 'USA',
+          };
+        };
+        shipAddr = addrFromContact(contact);
+        billAddr = shipAddr;
+        customerEmail = contact?.email || null;
+        customerName = contact ? [contact.firstname, contact.lastname].filter(Boolean).join(' ').trim() : '';
+
+        if (hsLineItems.length) {
+          for (const li of hsLineItems) {
+            const lp = li.properties || {};
+            const name = (lp.name || '').trim();
+            const qty  = parseFloat(lp.quantity || '1') || 1;
+            const unitPrice = lp.price != null && lp.price !== '' ? parseFloat(lp.price) : null;
+            const lineAmt = lp.amount != null && lp.amount !== ''
+              ? parseFloat(lp.amount)
+              : (unitPrice != null ? unitPrice * qty : 0);
+            const itemRef = name ? (await qb.findItemByName(name)) : null;
+            const useRef = itemRef || { value: fallbackItem.value, name: fallbackItem.name };
+            qbLines.push({
+              DetailType: 'SalesItemLineDetail',
+              Amount: Math.round(lineAmt * 100) / 100,
+              Description: name || lp.description || 'Shopify line',
+              SalesItemLineDetail: {
+                ItemRef:    useRef,
+                Qty:        qty,
+                TaxCodeRef: NON_TAX,
+                ...(unitPrice != null ? { UnitPrice: unitPrice } : {}),
+              },
+            });
+          }
+        } else {
+          // Collapsed-line fallback when neither Shopify nor HubSpot line
+          // items are available — single line for the full deal amount.
+          const dealAmt = Math.round(amount * 100) / 100;
+          qbLines.push({
+            DetailType: 'SalesItemLineDetail',
+            Amount: dealAmt,
+            Description: dp.dealname || `Shopify deal ${dealIdStr}`,
+            SalesItemLineDetail: {
+              ItemRef:    { value: fallbackItem.value, name: fallbackItem.name },
+              Qty:        1,
+              UnitPrice:  dealAmt,
+              TaxCodeRef: NON_TAX,
+            },
+          });
+        }
       }
+
       const linesTotal = qbLines.reduce((s, l) => s + (l.Amount || 0), 0);
 
       // 7. Build memo / private note carrying the Shopify-side context
-      const contactName = contact ? [contact.firstname, contact.lastname].filter(Boolean).join(' ').trim() : '';
       const memoParts = [
-        deal.properties?.dealname ? `Shopify deal: ${deal.properties.dealname}` : null,
-        contactName ? `Customer: ${contactName}` : null,
-        contact?.email ? `Email: ${contact.email}` : null,
+        dp.dealname ? `Shopify deal: ${dp.dealname}` : null,
+        customerName ? `Customer: ${customerName}` : null,
+        customerEmail ? `Email: ${customerEmail}` : null,
+        shopifyError ? `[Shopify lookup: ${shopifyError}]` : `[Data source: ${dataSource}]`,
       ].filter(Boolean);
       const memo = memoParts.join(' · ');
+
+      // 7.5 Dry-run: return the assembled payload without touching QB / DB / HS.
+      //     UI uses this to render a preview modal so the rep can sanity-check
+      //     addresses, line items, totals, and the Shopify-vs-HubSpot data
+      //     source BEFORE committing. Skips steps 8–11 entirely.
+      if (isDryRun) {
+        const previewLines = qbLines.map(l => ({
+          description: l.Description || '',
+          amount:      l.Amount,
+          qty:         l.SalesItemLineDetail?.Qty,
+          unitPrice:   l.SalesItemLineDetail?.UnitPrice,
+          itemName:    l.SalesItemLineDetail?.ItemRef?.name || null,
+        }));
+        json({
+          preview:       true,
+          dryRun:        true,
+          dealId:        dealIdStr,
+          dealName:      dp.dealname || null,
+          dealAmount:    amount,
+          dataSource,
+          shopifyError,
+          shopifyOrderName: shopifyOrderName || null,
+          existingRow,
+          qbCustomer:    cust ? { id: cust.Id, displayName: cust.DisplayName, exists: true }
+                              : { displayName: SHOPIFY_QB_CUSTOMER_NAME, exists: false, note: 'Will be created on confirm' },
+          fallbackItem:  { id: fallbackItem.value, name: fallbackItem.name },
+          docNumber:     `SHOP-${dealIdStr}`,
+          txnDate:       new Date().toISOString().split('T')[0],
+          customerName,
+          customerEmail,
+          billAddr,
+          shipAddr,
+          lines:         previewLines,
+          linesTotal,
+          memo,
+        });
+        return;
+      }
 
       // 8. Create the invoice. globalTaxCalc:'NotApplicable' because the
       // line items as Shopify provides them already include the full
@@ -3065,8 +3417,14 @@ const server = http.createServer(async (req, res) => {
         txnDate,
         lines:         qbLines,
         memo,
-        billEmail:     contact?.email || null,
+        billAddr,
+        shipAddr,
+        billEmail:     customerEmail,
         globalTaxCalc: 'NotApplicable',
+        // Belt-and-suspenders for AST companies: explicitly zero tax.
+        // Combined with per-line TaxCodeRef='NON' this leaves no path for
+        // QB to add tax. Shopify already collected the right amount.
+        txnTaxDetail:  { TotalTax: 0 },
       });
       if (!invoice?.Id) throw new Error('QB createInvoice returned no Id');
 
@@ -3091,7 +3449,7 @@ const server = http.createServer(async (req, res) => {
           paymentMethodRef:    { value: pm.Id, name: pm.Name },
           depositToAccountRef: { value: acct.Id, name: acct.Name },
           txnDate,
-          privateNote:         `Auto-paid (Shopify parts order). Deal ${dealIdStr}${contactName ? ' · ' + contactName : ''}.`,
+          privateNote:         `Auto-paid (Shopify parts order). Deal ${dealIdStr}${customerName ? ' · ' + customerName : ''}.`,
         });
       } catch (e) {
         paymentError = e.message;
@@ -3139,6 +3497,8 @@ const server = http.createServer(async (req, res) => {
         qbPaymentId: payment?.Id || null,
         totalAmount: invoice.TotalAmt,
         paymentError, // non-null = invoice created but payment failed → Kim should mark paid manually in QB
+        dataSource,   // 'shopify' (canonical) or 'hubspot' (degraded fallback)
+        shopifyError, // non-null = Shopify lookup failed and we fell back to HubSpot mirror
       });
     } catch (e) {
       console.error('[shopify-parts/create-invoice]', e.message);
@@ -3296,6 +3656,112 @@ const server = http.createServer(async (req, res) => {
   }
 
 
+
+  // ── API: Assembly Manual — MDL list from QuickBooks ──────────────
+  // Returns every active Item in QB whose Name starts with "MDL ". Used
+  // to populate the Model dropdown in the Assembly Manual builder modal.
+  // 24h memory cache — the MDL catalog changes maybe once a year.
+  if (pathname === '/api/assembly-manual/models' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const refresh = parsed.query.refresh === '1';
+    try {
+      const now = Date.now();
+      if (!refresh && _assemblyMdlCache && (now - _assemblyMdlCache.cachedAt) < ASSEMBLY_MDL_CACHE_MS) {
+        json({ models: _assemblyMdlCache.models, cachedAt: _assemblyMdlCache.cachedAt, fromCache: true });
+        return;
+      }
+      // QB QOQL: LIKE 'MDL %' (note: QB matches with single quotes; escape any in needle)
+      const raw = await qb.qbQueryRaw(`SELECT Id, Name, Active FROM Item WHERE Name LIKE 'MDL %' MAXRESULTS 500`);
+      const items = raw?.QueryResponse?.Item || [];
+      // Only accept the canonical MDL naming pattern. QB occasionally
+      // accumulates one-off items like "MDL 9696 B" or "MDL 102186 CL Repl"
+      // (typos or special-purpose entries) that don't map to a real assembly
+      // manual variant. Valid format: MDL <digits> (LP )? (E|S|ENV|SNV)
+      // — same suffix set the quote builder's hardcoded MDL list uses.
+      const MDL_PATTERN = /^MDL\s+\d+(\s+LP)?\s+(E|S|ENV|SNV)$/i;
+      const models = items
+        .filter(i => i.Active !== false)
+        .filter(i => MDL_PATTERN.test(String(i.Name || '').trim()))
+        .map(i => ({ id: i.Id, name: i.Name }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      _assemblyMdlCache = { models, cachedAt: now };
+      json({ models, cachedAt: now, fromCache: false });
+    } catch (e) {
+      console.error('[assembly-manual/models]', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Assembly Manual — plan (dry-run preview) ───────────────
+  // Returns the list of sections that WOULD be included for a given
+  // set of options, without doing any Drive reads or PDF work. Cheap.
+  // Useful for the modal to show "here's what will be in the PDF"
+  // before the rep clicks Build.
+  if (pathname === '/api/assembly-manual/plan' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const raw = await readBody(req);
+      const opts = JSON.parse(raw || '{}');
+      if (!opts.model) { json({ error: 'model is required' }, 400); return; }
+      const { ctx, plan } = assemblyManual.planSections(opts);
+      json({ ctx, plan, sectionCount: plan.length });
+    } catch (e) {
+      console.error('[assembly-manual/plan]', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Assembly Manual — build merged PDF ─────────────────────
+  // Body: { model, adaSize, ada, hx, jackPanel, multiJackPanel, studioLight,
+  //         ap, overseas, rm, ramp, step, bassTraps, efp, expansion,
+  //         packingListPdfBase64? (optional uploaded Packing List, base64),
+  //         filename? (suggested download name) }
+  // Response: application/pdf, Content-Disposition attachment.
+  // X-Assembly-Sections header: comma-separated list of included `order` keys.
+  // X-Assembly-Missing header: comma-separated `order:folder:needle` for misses.
+  if (pathname === '/api/assembly-manual/build' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const raw = await readBody(req);
+      const opts = JSON.parse(raw || '{}');
+      if (!opts.model) { json({ error: 'model is required' }, 400); return; }
+
+      // Decode optional packing list upload
+      if (opts.packingListPdfBase64) {
+        try {
+          opts.packingListPdfBuffer = Buffer.from(opts.packingListPdfBase64, 'base64');
+        } catch (e) {
+          json({ error: 'Invalid packingListPdfBase64' }, 400);
+          return;
+        }
+        delete opts.packingListPdfBase64;
+      }
+
+      const result = await assemblyManual.buildAssemblyManual(opts);
+
+      const sess = getRepFromReq(req);
+      writelog('info', 'assembly-manual.built',
+        `Assembly manual built for ${opts.model} (${result.sectionsIncluded.length} sections, ${result.missing.length} missing) by ${sess?.name || sess?.email || 'unknown'}`,
+        { rep: String(sess?.ownerId || ''), meta: { model: opts.model, adaSize: opts.adaSize || null, sectionsIncluded: result.sectionsIncluded.map(s => s.order), missing: result.missing } }
+      );
+
+      const fname = (opts.filename ? String(opts.filename).replace(/[^A-Za-z0-9 ._-]/g, '_') : `AssemblyManual_${String(opts.model).replace(/\s+/g, '-')}`) + '.pdf';
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+      res.setHeader('Content-Length', String(result.pdfBuffer.length));
+      res.setHeader('X-Assembly-Sections', result.sectionsIncluded.map(s => s.order).join(','));
+      res.setHeader('X-Assembly-Missing', result.missing.map(m => `${m.order}:${m.folder || ''}:${m.needle || m.fileName || ''}`).join(','));
+      res.end(result.pdfBuffer);
+    } catch (e) {
+      console.error('[assembly-manual/build]', e.message, e.stack);
+      writelog('error', 'assembly-manual.build', e.message, { stack: e.stack });
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
 
   // ── API: Get freight quote ──
   if (pathname === '/api/freight' && req.method === 'POST') {
@@ -6665,9 +7131,15 @@ ${q.accepted ? `
       json({ error: 'Email Reply assistant files missing on server (assistant/system-prompt.txt).' }, 503);
       return;
     }
+    const startMs = Date.now();
+    const sess = getRepFromReq(req);
+    let userMessage = '';
+    let voice = '';
     try {
       const raw = await readBody(req);
-      const { userMessage } = JSON.parse(raw || '{}');
+      const body = JSON.parse(raw || '{}');
+      userMessage = body.userMessage || '';
+      voice = String(body.voice || '').trim();
       if (typeof userMessage !== 'string' || !userMessage.trim()) {
         json({ error: 'userMessage required.' }, 400); return;
       }
@@ -6697,17 +7169,18 @@ ${q.accepted ? `
       if (r.status >= 400) {
         const errMsg = (r.body && (r.body.error?.message || r.body.error)) || `Anthropic ${r.status}`;
         writelog('error', 'email-reply.anthropic', errMsg, { status: r.status, body: r.body });
+        _logEmailReply({ sess, voice, input: userMessage, output: null, usage: null, durationMs: Date.now() - startMs, status: 'anthropic_error', error: errMsg }).catch(() => {});
         json({ error: errMsg }, r.status);
         return;
       }
       const reply = r.body?.content?.[0]?.text || '';
       if (!reply) {
         writelog('error', 'email-reply.empty', 'Anthropic returned empty reply', { body: r.body });
+        _logEmailReply({ sess, voice, input: userMessage, output: null, usage: r.body?.usage || null, durationMs: Date.now() - startMs, status: 'empty_reply', error: 'Anthropic returned empty reply' }).catch(() => {});
         json({ error: 'Empty reply from Anthropic.' }, 502);
         return;
       }
 
-      const sess = getRepFromReq(req);
       try {
         writelog('info', 'email-reply.generated',
           `${sess?.name || sess?.email || 'rep'} generated a reply (${reply.length} chars)`,
@@ -6715,10 +7188,55 @@ ${q.accepted ? `
         );
       } catch (e) {}
 
+      // Persist input/output for the admin reviewer (table: email_reply_logs).
+      // Failures here must NEVER bubble up — the rep already has their reply,
+      // we just lose a log row. Fire-and-forget.
+      _logEmailReply({ sess, voice, input: userMessage, output: reply, usage: r.body?.usage || null, durationMs: Date.now() - startMs, status: 'success', error: null }).catch(() => {});
+
       json({ reply, usage: r.body?.usage || null });
     } catch (e) {
       console.error('[email-reply]', e.message);
       writelog('error', 'email-reply.exception', e.message, { stack: e.stack });
+      _logEmailReply({ sess, voice, input: userMessage || '(no input captured)', output: null, usage: null, durationMs: Date.now() - startMs, status: 'exception', error: e.message }).catch(() => {});
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Email reply logs ────────────────────────────────────────
+  // Returns the most recent entries from email_reply_logs for the
+  // review-and-train workflow. Any authed rep can view — there's no
+  // sensitive customer PII beyond what's already in the email body
+  // the rep just pasted into the assistant.
+  // Query params: limit (default 50, max 200), offset (default 0),
+  //               q (optional substring filter on input or output).
+  if (pathname === '/api/email-reply-logs' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    if (!db) { json({ error: 'Database not initialized' }, 503); return; }
+    try {
+      const limit  = Math.min(parseInt(parsed.query.limit || '50', 10) || 50, 200);
+      const offset = Math.max(parseInt(parsed.query.offset || '0', 10) || 0, 0);
+      const q      = String(parsed.query.q || '').trim();
+      const params = [];
+      let where = '';
+      if (q) {
+        params.push(`%${q}%`);
+        where = `WHERE input ILIKE $${params.length} OR output ILIKE $${params.length}`;
+      }
+      const countRes = await db.query(`SELECT COUNT(*)::int AS n FROM email_reply_logs ${where}`, params);
+      params.push(limit, offset);
+      const rowsRes = await db.query(
+        `SELECT id, created_at, rep_name, rep_email, voice, input, output, model,
+                input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+                duration_ms, status, error
+         FROM email_reply_logs ${where}
+         ORDER BY created_at DESC, id DESC
+         LIMIT $${params.length - 1} OFFSET $${params.length}`,
+        params
+      );
+      json({ total: countRes.rows[0].n, count: rowsRes.rows.length, limit, offset, logs: rowsRes.rows });
+    } catch (e) {
+      console.error('[email-reply-logs]', e.message);
       json({ error: e.message }, 500);
     }
     return;
@@ -7074,6 +7592,47 @@ ${q.accepted ? `
       json({ rep: repId, count: quotes.length, quotes });
     } catch(e) {
       console.error('[reports/quotes-timeline]', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Supplier spend (QB Expenses by Vendor) ─────────────────
+  // Pulls QB's ExpensesByVendorSummary report for a given range and
+  // returns a flat array sorted by total descending. 24h memory cache;
+  // bypass via ?refresh=1. Range options: ytd, 12m, month, lastmonth,
+  // quarter, lastquarter, custom (with ?start=YYYY-MM-DD&end=YYYY-MM-DD).
+  // Click-through detail lives on /api/reports/supplier-spend/:vendorId.
+  if (pathname === '/api/reports/supplier-spend' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const range = String(parsed.query.range || 'ytd').toLowerCase();
+      const customStart = parsed.query.start || null;
+      const customEnd   = parsed.query.end   || null;
+      const refresh = parsed.query.refresh === '1' || parsed.query.refresh === 'true';
+      const { startDate, endDate, label } = _resolveSupplierSpendRange(range, customStart, customEnd);
+      if (!startDate || !endDate) { json({ error: 'Invalid date range' }, 400); return; }
+
+      const cacheKey = `${startDate}_${endDate}`;
+      const cached = _supplierSpendCache.get(cacheKey);
+      const now = Date.now();
+      if (!refresh && cached && (now - cached.cachedAt) < SUPPLIER_SPEND_CACHE_MS) {
+        json({ ...cached.payload, cachedAt: cached.cachedAt, fromCache: true });
+        return;
+      }
+
+      const reportJson = await qb.fetchExpensesByVendorSummary({ startDate, endDate });
+      const { rows, total } = _flattenVendorSummary(reportJson);
+      const payload = {
+        range: { key: range, label, start: startDate, end: endDate },
+        total,
+        count: rows.length,
+        rows,
+      };
+      _supplierSpendCache.set(cacheKey, { payload, cachedAt: now });
+      json({ ...payload, cachedAt: now, fromCache: false });
+    } catch (e) {
+      console.error('[reports/supplier-spend]', e.message);
       json({ error: e.message }, 500);
     }
     return;
@@ -8639,6 +9198,24 @@ ${q.accepted ? `
     const linksJson = EMAIL_REPLY_PRODUCT_LINKS_RAW || '{}';
     const escapeForScriptTag = (s) => s.replace(/<\/script/gi, '<\\/script');
     html = html.replace('__PRODUCT_LINKS__', () => escapeForScriptTag(linksJson));
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+    return;
+  }
+
+  // ── Email Reply Logs Page ────────────────────────────────────────
+  // Reviewer UI for the email_reply_logs table. Authed only — no
+  // additional gating; the API behind it has the same posture.
+  if (pathname === '/email-reply-logs' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    let html;
+    try {
+      html = fs.readFileSync(path.join(__dirname, 'assistant', 'email-reply-logs.html'), 'utf8');
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Email reply logs viewer not installed.');
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);
     return;

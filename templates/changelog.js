@@ -51,6 +51,78 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.30.2', date:'May 20, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Supplier-spend: correct QB report name.** v1.28.1 used `ExpensesByVendorSummary` which Intuit renamed to `VendorExpenses` in their API. The old name returns a misleading code-5020 "Permission Denied Error" instead of 404, which sent us down a false trail looking at user roles. Switched to the current names: `VendorExpenses` for the summary and `TransactionListByVendor` for the drilldown. Retest `/api/reports/supplier-spend?range=ytd` — should return real data now.'},
+      ]
+    },
+    {
+      v:'1.30.1', date:'May 20, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Move Admin Tools button into the Email Reply output panel.** v1.29.0 put it in the topbar, which is hidden when the page is iframed inside the Deal Hub popup (embed mode) — so admins inside the popup couldn\'t see it. Moved to the bottom-right of the Generated Reply panel, renamed from "⚙ Logs" to "Admin Tools". Visible in both standalone and embedded modes. Still opens the logs viewer in a new tab.'},
+      ]
+    },
+    {
+      v:'1.30.0', date:'May 20, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Assembly Manual builder — quote-builder button + modal (step 2 of 2).** New "🛠 Build Assembly Manual" button under the existing action stack on the quote builder. Click → modal opens pre-filled from the current quote: detects the MDL from line items, reads the WA Type as ADA size, and ticks the right checkboxes by scanning line-item names for HX / Studio Light / Bass Traps / EFP / Multi Jack Panel / Acoustic Package / Roof Vent / Ramp / Step / Expansion / Jack Panel. Rep verifies, clicks "Build & Download" → server pulls source PDFs from Drive, merges with pdf-lib, streams the result as a download. Status banner inside the modal surfaces missing-section warnings (e.g., a folder didn\'t have a file matching the expected substring) so the rep can confirm before delivering the PDF to the floor. ADA Size dropdown mirrors the rep WA Type dropdown options exactly — one source of truth.'},
+        {t:'fix', d:'**Filter out invalid MDL names from the QB-driven model list.** `/api/assembly-manual/models` was returning typos like "MDL 9696 B" and one-off entries like "MDL 102186 CL Repl" that don\'t map to real assembly-manual variants. Now filtered against the canonical naming pattern: `MDL <digits>` optionally followed by ` LP`, then suffix in {E, S, ENV, SNV}. Anything else is dropped. (Underlying typo still lives in QB — flag with Kim if it bothers anyone there too.)'},
+      ]
+    },
+    {
+      v:'1.29.1', date:'May 20, 2026', tag:'log',
+      changes:[
+        {t:'fix', d:'**Email reply logs viewer — drop the admin gate.** v1.29.0 hid the reviewer behind `ADMIN_REP_EMAILS`. Simplifying: any authed rep can now see the logs (the content is the same email-body text they\'re already typing into the assistant — no extra PII exposure). Removed the env var, the `isAdmin(req)` helper, the page + API gates, and the `__IS_ADMIN__` injection on `/email-reply`. "⚙ Logs" button in the topbar is always visible now.'},
+      ]
+    },
+    {
+      v:'1.29.0', date:'May 20, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Email reply assistant — input/output logging + reviewer page.** Every call to `/api/email-reply` now writes a row to the new `email_reply_logs` table capturing: rep info, voice picked, full input, full output, model, token usage (input/output/cache-read/cache-creation), duration, status (`success`/`anthropic_error`/`empty_reply`/`exception`), and any error message. Logging is fire-and-forget so a DB hiccup never blocks the rep\'s reply. New reviewer page `/email-reply-logs` shows the most recent entries with search (substring on input or output), pagination, status chips, token counts, and click-to-expand full-text input/output side-by-side with copy buttons. Admin-only — gated by new env var `ADMIN_REP_EMAILS` (comma-separated). A "⚙ Logs" button appears in the Email Reply topbar for admins (hidden for everyone else); opens the reviewer in a new tab. Feedback capture (thumbs up/down, edited final) is v2 — not in this release.'},
+      ]
+    },
+    {
+      v:'1.28.2', date:'May 20, 2026', tag:'log',
+      changes:[
+        {t:'add', d:'**Assembly Manual builder — backend (step 1 of 2).** Replaces the legacy Excel/VBA workflow that lived in the packing-list software. Three new endpoints: `GET /api/assembly-manual/models` (MDL list from QB, filtered to `Name LIKE \'MDL %\'`, 24h cache), `POST /api/assembly-manual/plan` (dry-run that returns which sections WOULD be included for given options — no Drive reads), `POST /api/assembly-manual/build` (downloads matching PDFs from Drive, merges with pdf-lib, streams response as application/pdf). New module `lib/assembly-manual.js` carries the section config table (~20 sections each gated by checkbox + folder + filename-substring rules) and the merge logic. New helpers `gdriveListFilesInFolder` + `gdriveDownloadFile` in `lib/gdrive.js` (with proper binary-safe download — the existing _httpsRequest string-concats response bodies and corrupts PDFs). New dep: `pdf-lib`. New env var: `GDRIVE_ASSEMBLY_MANUALS_FOLDER` — set this to the Drive folder ID of `Server/AssemblyManuals/` before testing. Step 2 (Build Assembly Manual button + modal on quote builder, with feature pre-fill from quote state) lands next.'},
+      ]
+    },
+    {
+      v:'1.28.1', date:'May 20, 2026', tag:'log',
+      changes:[
+        {t:'add', d:'**Supplier-spend report — backend (step 1 of 3).** New endpoint `GET /api/reports/supplier-spend?range=ytd|12m|month|lastmonth|quarter|lastquarter|custom` returns a flat array of vendors sorted by total spend descending, sourced from QB\'s `ExpensesByVendorSummary` report (covers Bills, cash purchases, credit-card purchases). 24h in-memory cache keyed by date range; bypass via `?refresh=1`. `lib/quickbooks.js` gains a generic `fetchReport(name, params)` wrapper + specific `fetchExpensesByVendorSummary` and `fetchExpensesByVendorDetail` helpers. No UI yet — the tile + range picker + sortable table land in v1.29.0, drilldown in v1.29.1. Test by curling the endpoint while authed.'},
+      ]
+    },
+    {
+      v:'1.28.0', date:'May 20, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Create QB Invoice button now does a dry-run preview first.** Click → server builds the full QB payload (Shopify lookup, addresses, line items, totals, memo) but DOES NOT touch QB / Postgres / HubSpot. Returns the assembled payload. Frontend renders it in a confirm dialog so the rep can verify: data source (Shopify canonical vs HubSpot mirror), bill-to + ship-to, every line + amount, total, memo, AND whether a row already exists in shopify_qb_invoices. OK = commit; Cancel = nothing happens. Lets you iterate on a deal without having to clean up Postgres after each test. New request flag: `{dryRun:true}`. Server returns a `preview:true` envelope with the payload.'},
+        {t:'fix', d:'**Shopify-parts payment ReferenceError ("Contact name not defined").** Payment privateNote at quote-server.js:3264 referenced `contactName` but the actual variable is `customerName`. Threw `ReferenceError` inside the payment try/catch every time → QB invoice created but payment step ALWAYS failed with that message. One-character rename.'},
+        {t:'add', d:'**Surface Shopify-fallback reason in the toast.** When the Shopify lookup fails and the endpoint falls back to the HubSpot mirror (no canonical addresses, no split shipping), the toast now warns: "⚠ Shopify lookup failed (<reason>) — used HubSpot mirror, address/shipping may be incomplete." Response now also returns `dataSource` + `shopifyError`.'},
+        {t:'ui', d:'**Trim Create QB Invoice confirm dialog.** Dropped the internal-plumbing lines ("Pull Shopify line items from HubSpot", "Patch HubSpot deal payment_status=paid") and the "Cannot be undone" caveat. Dialog now lists only the two user-facing outcomes.'},
+      ]
+    },
+    {
+      v:'1.27.0', date:'May 19, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Shopify-parts QB invoice now uses Shopify as source of truth.** HubSpot\'s Shopify integration only mirrors deal name + total — no customer, address, line items, tax, or shipping breakdown. Without that detail, every auto-invoice was minimal and risked QB tax surprises (the v1.26.5 saga). New `lib/shopify.js` Admin API client. When the rep clicks Create QB Invoice, server parses the Shopify order # from the deal name (regex /#(\\d+)/), fetches the canonical order from Shopify, and builds the QB invoice from THAT: real ship-to + bill-to addresses, customer name + email, itemized line items (mapped by SKU first then product name, fallback to "Shopify Order Line" with original name + SKU in description), shipping as its own QB line (mapped to a "Shipping" or "Freight" item if you have one in QB), tax as its own line at the bottom. Invoice total = exactly what Shopify charged the customer.'},
+        {t:'add', d:'**Graceful fallback if Shopify unavailable.** If SHOPIFY_ACCESS_TOKEN/SHOPIFY_STORE_DOMAIN aren\'t set, OR the order # can\'t be parsed from the deal name, OR Shopify returns 404 — the endpoint falls back to the v1.26.x HubSpot-only path (collapsed line for deal.amount). Memo on every invoice carries `[Data source: shopify|hubspot]` so you can tell which path ran. shopifyError surfaces in the memo when the fallback fires.'},
+        {t:'log', d:'**Two new env vars** (set on staging + prod already): `SHOPIFY_ACCESS_TOKEN` (Custom App access token from Shopify admin → Develop apps), `SHOPIFY_STORE_DOMAIN` (the canonical xxxxx.myshopify.com URL, not the custom domain). Token scopes needed: `read_orders` (60-day window — sufficient for this flow), `read_customers`, `read_products`. Optional `SHOPIFY_API_VERSION` defaults to 2024-10.'},
+      ]
+    },
+    {
+      v:'1.26.5', date:'May 19, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Shopify-parts QB invoice — force zero tax + pass ship-to address.** v1.26.4 created invoices but QB AST was adding TN tax to non-nexus orders because (a) no ship-to address was passed so AST defaulted to the company\'s home state, and (b) line items weren\'t marked non-taxable so `globalTaxCalc:NotApplicable` alone wasn\'t enough to stop it. Three fixes: (1) every QB line now carries `TaxCodeRef: { value: \'NON\' }` (QB\'s built-in non-taxable tax code). (2) BillAddr + ShipAddr are built from the HubSpot contact\'s address (line1/city/state/zip) and passed to createInvoice. (3) TxnTaxDetail = { TotalTax: 0 } as belt-and-suspenders. Invoice total now matches what Shopify charged the customer exactly, no AST surprises.'},
+      ]
+    },
+    {
+      v:'1.26.4', date:'May 19, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Shopify-parts auto-invoice: collapsed-line fallback when HubSpot has no line items.** Turns out Shopify\'s HubSpot integration doesn\'t push line-item associations onto deals for small parts orders — only the deal name + amount. v1.26.0 treated no-line-items as a hard error (422 NO_LINE_ITEMS), which made the button always fail for the most common case. Now falls back to a single QB line: Item = "Shopify Order Line", Qty = 1, UnitPrice = deal.amount, Description = deal name (which carries the Shopify order # for cross-reference). Invoice total still matches what Shopify charged. If HubSpot DOES have line items (rare for Shopify, common for app-built invoices), the original itemized path still runs.'},
+      ]
+    },
+    {
       v:'1.26.3', date:'May 19, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Shopify drawer rows — type chip + left-edge accent.** Each row now shows a 🛋 Booth (blue) or 🛒 Parts (purple) chip on the meta row, plus a colored left edge (same color). Lets you tell booth vs parts at a glance without reading section headers — useful when scanning the drawer or when sections grow mixed in the future. Threshold matches server (≥$5k = Booth, <$5k = Parts).'},

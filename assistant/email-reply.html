@@ -260,6 +260,9 @@
       <button class="btn-secondary" id="copyBtn" onclick="copyReply()" disabled>Copy to Clipboard</button>
     </div>
     <div id="replyOutput" class="empty">Generated reply will appear here.</div>
+    <div style="display:flex;justify-content:flex-end;margin-top:10px">
+      <a href="/email-reply-logs" target="_blank" rel="noopener" style="font-size:11px;font-weight:700;color:#888;text-decoration:none;padding:5px 10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:6px;letter-spacing:.05em;text-transform:uppercase" title="Open the email-reply logs viewer in a new tab">Admin Tools</a>
+    </div>
   </section>
 </main>
 
@@ -623,7 +626,7 @@ async function generate() {
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ userMessage }),
+      body: JSON.stringify({ userMessage, voice: rep }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);

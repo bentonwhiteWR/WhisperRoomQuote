@@ -656,18 +656,80 @@ function renderShopifyPartsBlock(deal) {
   </div>`;
 }
 
+function _shopifyFormatAddr(a) {
+  if (!a) return '  (none)';
+  const lines = [a.Line1, a.Line2, a.Line3, a.Line4].filter(Boolean);
+  const cityLine = [a.City, a.CountrySubDivisionCode, a.PostalCode].filter(Boolean).join(' ');
+  if (cityLine) lines.push(cityLine);
+  if (a.Country) lines.push(a.Country);
+  return lines.map(l => '  ' + l).join('\n') || '  (empty)';
+}
+
+function _shopifyFormatPreview(p) {
+  const $ = (n) => (n == null ? '—' : '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  const src = p.dataSource === 'shopify'
+    ? 'Shopify (canonical) ✓'
+    : `HubSpot mirror ⚠ — ${p.shopifyError || 'unknown'}`;
+  const lines = (p.lines || []).map(li => {
+    const qty = li.qty != null ? li.qty + ' × ' : '';
+    const desc = (qty + (li.description || '(no description)')).slice(0, 50).padEnd(50, ' ');
+    return `  ${desc} ${$(li.amount).padStart(11, ' ')}`;
+  }).join('\n');
+  const existingWarn = p.existingRow
+    ? `\n\n⚠ EXISTING ROW in shopify_qb_invoices for this deal:\n  mode=${p.existingRow.mode}, qb_doc=${p.existingRow.qb_doc_number || '—'}\n  Confirming will fail with 409. Delete the row first to retry.`
+    : '';
+  const sameShip = JSON.stringify(p.billAddr || {}) === JSON.stringify(p.shipAddr || {});
+  return (
+    `PREVIEW — QB Invoice for deal ${p.dealId}\n` +
+    `Deal name:   ${p.dealName || '(none)'}\n` +
+    `Deal amount: ${$(p.dealAmount)}\n` +
+    `Data source: ${src}\n` +
+    `\n` +
+    `QB Customer: ${p.qbCustomer.displayName}` + (p.qbCustomer.exists ? ` (Id ${p.qbCustomer.id})` : ` (will be created)`) + `\n` +
+    `Doc #:       ${p.docNumber}\n` +
+    `Txn date:    ${p.txnDate}\n` +
+    `Customer:    ${p.customerName || '(none)'}\n` +
+    `Email:       ${p.customerEmail || '(none)'}\n` +
+    `\n` +
+    `Bill To:\n${_shopifyFormatAddr(p.billAddr)}\n` +
+    `\n` +
+    `Ship To:` + (sameShip && p.shipAddr ? ' (same as Bill To)' : `\n${_shopifyFormatAddr(p.shipAddr)}`) + `\n` +
+    `\n` +
+    `Line items:\n${lines || '  (none)'}\n` +
+    `\n` +
+    `Lines total: ${$(p.linesTotal)}\n` +
+    `\n` +
+    `Memo: ${p.memo}` +
+    existingWarn +
+    `\n\n──────────────\n` +
+    `OK = create QB invoice + payment, mark deal paid.\n` +
+    `Cancel = abort (nothing created).`
+  );
+}
+
 async function doShopifyPartsCreateInvoice(dealId) {
-  const deal = allDeals.find(d => d.id === dealId);
-  const amtStr = deal && deal.amount ? '$' + Number(deal.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 'this amount';
-  if (!window.confirm(
-    `Create QuickBooks invoice for ${amtStr}?\n\n` +
-    `This will:\n` +
-    `  • Pull the Shopify line items from HubSpot\n` +
-    `  • Create a QB invoice against "Shopify Web Orders"\n` +
-    `  • Mark the invoice paid in QB\n` +
-    `  • Patch HubSpot deal payment_status = paid\n\n` +
-    `Cannot be undone from this app — would need to void/delete in QB manually.`
-  )) return;
+  // Step 1: dry-run preview — server builds the full payload but doesn't
+  // touch QB / DB / HubSpot. Rep sees exactly what would be sent.
+  let preview;
+  try {
+    const r = await fetch('/api/shopify-parts/create-invoice', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dealId, dryRun: true }),
+    });
+    preview = await r.json();
+    if (!r.ok) {
+      showToast('Preview failed: ' + (preview.error || r.status), 'error');
+      return;
+    }
+  } catch (e) {
+    showToast('Preview error: ' + e.message, 'error');
+    return;
+  }
+
+  if (!window.confirm(_shopifyFormatPreview(preview))) return;
+
+  // Step 2: real run
   try {
     const r = await fetch('/api/shopify-parts/create-invoice', {
       method: 'POST', credentials: 'include',
@@ -680,10 +742,13 @@ async function doShopifyPartsCreateInvoice(dealId) {
       return;
     }
     const docNum = data.qbDocNumber || data.qbInvoiceId;
+    const sourceNote = data.dataSource === 'hubspot'
+      ? ` ⚠ Shopify lookup failed (${data.shopifyError || 'unknown'}) — used HubSpot mirror, address/shipping may be incomplete.`
+      : '';
     const msg = data.paymentError
-      ? `Invoice ${docNum} created in QB — but payment failed (${data.paymentError}). Mark paid manually in QB.`
-      : `Invoice ${docNum} created & marked paid in QB.`;
-    showToast(msg, data.paymentError ? 'error' : 'success');
+      ? `Invoice ${docNum} created in QB — but payment failed (${data.paymentError}). Mark paid manually in QB.${sourceNote}`
+      : `Invoice ${docNum} created & marked paid in QB.${sourceNote}`;
+    showToast(msg, (data.paymentError || data.dataSource === 'hubspot') ? 'error' : 'success');
     // Refresh the deal list + overlay so the block flips to the "Invoiced" state
     await loadDeals();
     if (currentDealId === dealId) openDeal(dealId);

@@ -1401,6 +1401,9 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
     <button class="create-btn" id="orderBtn" onclick="openOrderModal()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.4);margin-top:8px;opacity:.5;cursor:not-allowed" title="Create invoice first" disabled>
       &#x1F4E6; Process Order
     </button>
+    <button class="create-btn" id="assemblyManualBtn" onclick="openAssemblyManualModal()" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.8);margin-top:8px" title="Build a merged assembly manual PDF for the current booth selection">
+      &#x1F6E0; Build Assembly Manual
+    </button>
 
   <div class="result-box" id="resultBox"></div>
 
@@ -1824,6 +1827,62 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
         Send Order &#x2192;
       </button>
       <button onclick="closeOrderModal()" style="padding:13px 18px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Assembly Manual Modal ─────────────────────────────────────── -->
+<div id="amModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#1a1a1a;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:24px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;color:#f0ede8;font-family:inherit">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <h2 style="font-size:18px;font-weight:800;margin:0">&#x1F6E0; Build Assembly Manual</h2>
+      <button onclick="closeAssemblyManualModal()" style="background:none;border:none;color:rgba(255,255,255,.5);font-size:22px;cursor:pointer;line-height:1;padding:0 6px">&times;</button>
+    </div>
+    <div style="font-size:11px;color:rgba(255,255,255,.5);margin-bottom:18px">Pre-filled from the current quote — verify before building. Output is a merged PDF download.</div>
+
+    <div id="amStatus" style="display:none;padding:10px;border-radius:6px;font-size:12px;margin-bottom:12px"></div>
+
+    <!-- Model + ADA Size -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+      <div>
+        <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.6);display:block;margin-bottom:5px">Model</label>
+        <select id="amModel" style="width:100%;padding:8px 10px;background:#0f0f0f;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#f0ede8;font-size:12px;font-family:'JetBrains Mono',monospace">
+          <option value="">Loading...</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.6);display:block;margin-bottom:5px">ADA Size <span style="color:rgba(255,255,255,.3)">(WA Type)</span></label>
+        <select id="amAdaSize" style="width:100%;padding:8px 10px;background:#0f0f0f;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#f0ede8;font-size:12px;font-family:'JetBrains Mono',monospace">
+          <option value="">— None —</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Checkboxes — two columns to mirror VBA layout -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;margin-bottom:16px;font-size:13px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amAda"> ADA Door</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amJackPanel"> Jack Panel (OLD)</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amHx"> HX (Height Extension)</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amEfp"> EFP (Window)</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amStudioLight"> Studio Light</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amOverseas"> Overseas</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amAp"> Acoustic Package</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amRamp"> Ramp</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amRm"> Roof Ventilation</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amStep"> Step</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amMultiJackPanel"> Multi Jack Panel</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amExpansion"> Expansion</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amBassTraps"> Bass Traps</label>
+    </div>
+
+    <!-- Build + Cancel -->
+    <div style="display:flex;gap:10px">
+      <button id="amBuildBtn" onclick="submitAssemblyManual()" style="flex:1;padding:12px;background:#ee6216;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
+        Build &amp; Download
+      </button>
+      <button onclick="closeAssemblyManualModal()" style="padding:12px 18px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
         Cancel
       </button>
     </div>
@@ -7110,6 +7169,214 @@ async function prefillOrderPaymentFromHub() {
 
 function closeOrderModal() {
   document.getElementById('orderModal').style.display = 'none';
+}
+
+// ── Assembly Manual Modal ────────────────────────────────────────
+// "Build Assembly Manual" button → modal pre-filled from the current
+// quote's line items + WA Type → POST /api/assembly-manual/build →
+// stream PDF download. Replaces the legacy Excel/VBA workflow.
+
+let _amModelsLoaded = false;
+
+// Inspect lineItems + the rep WA Type dropdown to guess which sections
+// the rep wants. Best-effort — rep verifies in the modal before building.
+function _detectAMFeatures() {
+  const items = (typeof lineItems !== 'undefined' && Array.isArray(lineItems)) ? lineItems : [];
+  // line-item shape varies — try common name fields
+  const names = items
+    .map(i => String(i?.name || i?.productName || i?.title || i?.product || '').toUpperCase())
+    .filter(Boolean);
+  const has = (...needles) => names.some(n => needles.some(w => n.includes(w.toUpperCase())));
+
+  // First MDL line item = the booth model
+  const mdlName = names.find(n => /^MDL\s+\d/.test(n)) || '';
+  // Restore canonical case from the matching lineItem (the upper-case version
+  // is just for matching; the dropdown values are case-sensitive)
+  let model = '';
+  for (const it of items) {
+    const nm = String(it?.name || it?.productName || it?.title || it?.product || '');
+    if (/^MDL\s+\d/i.test(nm)) { model = nm; break; }
+  }
+
+  // WA Type dropdown — when set, that's the ADA door + the ADA size
+  const waVal = (document.getElementById('repWaType')?.value || '').trim();
+
+  return {
+    model,
+    ada:             !!waVal,
+    adaSize:         waVal,
+    hx:              has('HX', 'HEIGHT EXTENSION'),
+    studioLight:     has('STUDIO LIGHT'),
+    bassTraps:       has('BASS TRAP'),
+    efp:             has('EFP', 'ENERGY EFFICIENT WINDOW'),
+    multiJackPanel:  has('MJP', 'MULTI JACK', 'MULTI-JACK'),
+    jackPanel:       has('JACK PANEL') && !has('MJP', 'MULTI JACK', 'MULTI-JACK'),
+    ap:              has('ACOUSTIC PACKAGE') || has('AP '),
+    rm:              has('ROOF MOUNT', 'ROOF VENT'),
+    ramp:            has('RAMP'),
+    step:            !!names.find(n => /\bSTEP\b/.test(n)),
+    expansion:       has('EXPANSION'),
+    overseas:        false, // not easily detected from line items
+  };
+}
+
+async function _loadAMModels(preselect) {
+  const sel = document.getElementById('amModel');
+  if (_amModelsLoaded) {
+    if (preselect) _amSetModelValue(preselect);
+    return;
+  }
+  try {
+    const r = await fetch('/api/assembly-manual/models', { credentials: 'include' });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+    sel.innerHTML = '<option value="">— Pick a model —</option>'
+      + (data.models || []).map(m => `<option value="${m.name.replace(/"/g, '&quot;')}">${m.name}</option>`).join('');
+    _amModelsLoaded = true;
+    if (preselect) _amSetModelValue(preselect);
+  } catch (e) {
+    sel.innerHTML = '<option value="">(failed to load)</option>';
+    _amShowStatus('Could not load models: ' + e.message, 'error');
+  }
+}
+
+function _amSetModelValue(name) {
+  const sel = document.getElementById('amModel');
+  if (!sel) return;
+  // Exact match preferred
+  for (const opt of sel.options) {
+    if (opt.value === name) { sel.value = name; return; }
+  }
+  // Otherwise leave blank — rep picks from dropdown
+}
+
+// Mirror the rep WA Type dropdown's options into the ADA Size dropdown.
+// Same source list keeps the two in sync forever — one source of truth.
+function _loadAMAdaSizes(preselect) {
+  const src = document.getElementById('repWaType');
+  const dst = document.getElementById('amAdaSize');
+  if (!dst) return;
+  const opts = ['<option value="">— None —</option>'];
+  if (src) {
+    for (const opt of src.options) {
+      if (!opt.value) continue;
+      opts.push(`<option value="${String(opt.value).replace(/"/g,'&quot;')}">${opt.textContent}</option>`);
+    }
+  }
+  dst.innerHTML = opts.join('');
+  if (preselect) dst.value = preselect;
+}
+
+function _amApplyFeatures(f) {
+  document.getElementById('amAda').checked            = !!f.ada;
+  document.getElementById('amHx').checked             = !!f.hx;
+  document.getElementById('amStudioLight').checked    = !!f.studioLight;
+  document.getElementById('amAp').checked             = !!f.ap;
+  document.getElementById('amRm').checked             = !!f.rm;
+  document.getElementById('amMultiJackPanel').checked = !!f.multiJackPanel;
+  document.getElementById('amBassTraps').checked      = !!f.bassTraps;
+  document.getElementById('amJackPanel').checked      = !!f.jackPanel;
+  document.getElementById('amEfp').checked            = !!f.efp;
+  document.getElementById('amOverseas').checked       = !!f.overseas;
+  document.getElementById('amRamp').checked           = !!f.ramp;
+  document.getElementById('amStep').checked           = !!f.step;
+  document.getElementById('amExpansion').checked      = !!f.expansion;
+}
+
+function _amShowStatus(msg, kind) {
+  const box = document.getElementById('amStatus');
+  if (!box) return;
+  if (!msg) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  if (kind === 'error') {
+    box.style.background = 'rgba(239,68,68,.08)';
+    box.style.border = '1px solid rgba(239,68,68,.3)';
+    box.style.color = '#ffb4b4';
+  } else if (kind === 'warn') {
+    box.style.background = 'rgba(245,158,11,.1)';
+    box.style.border = '1px solid rgba(245,158,11,.3)';
+    box.style.color = '#f59e0b';
+  } else {
+    box.style.background = 'rgba(34,197,94,.08)';
+    box.style.border = '1px solid rgba(34,197,94,.3)';
+    box.style.color = '#86efac';
+  }
+  box.textContent = msg;
+}
+
+async function openAssemblyManualModal() {
+  _amShowStatus('', null);
+  document.getElementById('amModal').style.display = 'flex';
+  const f = _detectAMFeatures();
+  _loadAMAdaSizes(f.adaSize);
+  _amApplyFeatures(f);
+  await _loadAMModels(f.model);
+  if (!f.model) _amShowStatus('No MDL line item detected in this quote — pick a model from the dropdown.', 'warn');
+}
+
+function closeAssemblyManualModal() {
+  document.getElementById('amModal').style.display = 'none';
+}
+
+async function submitAssemblyManual() {
+  const body = {
+    model:          document.getElementById('amModel').value,
+    adaSize:        document.getElementById('amAdaSize').value,
+    ada:            document.getElementById('amAda').checked,
+    hx:             document.getElementById('amHx').checked,
+    studioLight:    document.getElementById('amStudioLight').checked,
+    ap:             document.getElementById('amAp').checked,
+    rm:             document.getElementById('amRm').checked,
+    multiJackPanel: document.getElementById('amMultiJackPanel').checked,
+    jackPanel:      document.getElementById('amJackPanel').checked,
+    bassTraps:      document.getElementById('amBassTraps').checked,
+    efp:            document.getElementById('amEfp').checked,
+    overseas:       document.getElementById('amOverseas').checked,
+    ramp:           document.getElementById('amRamp').checked,
+    step:           document.getElementById('amStep').checked,
+    expansion:      document.getElementById('amExpansion').checked,
+  };
+  if (!body.model) { _amShowStatus('Pick a model first.', 'error'); return; }
+  if (body.ada && !body.adaSize) { _amShowStatus('ADA is checked but no ADA size picked — uncheck ADA or pick a size.', 'error'); return; }
+
+  const btn = document.getElementById('amBuildBtn');
+  btn.disabled = true;
+  btn.textContent = 'Building...';
+  _amShowStatus('Pulling PDFs from Drive + merging — this can take 30-60s.', 'info');
+  try {
+    const res = await fetch('/api/assembly-manual/build', {
+      method: 'POST', credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ error: 'HTTP ' + res.status }));
+      throw new Error(data.error || ('HTTP ' + res.status));
+    }
+    const sections = res.headers.get('X-Assembly-Sections') || '';
+    const missing  = res.headers.get('X-Assembly-Missing')  || '';
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const cleanModel = body.model.replace(/\s+/g, '-');
+    a.href = url;
+    a.download = `AssemblyManual_${cleanModel}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    if (missing) {
+      _amShowStatus(`Built. Included: [${sections}]. Missing: [${missing}] — check the PDF and report back if these sections were expected.`, 'warn');
+    } else {
+      _amShowStatus(`Built. Sections included: [${sections}]. Download started.`, 'info');
+    }
+  } catch (e) {
+    _amShowStatus('Build failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Build & Download';
+  }
 }
 
 // ── Process Order: Shipping Email Recipients (To + CC list) ─────────

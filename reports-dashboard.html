@@ -522,15 +522,20 @@ async function loadSupplierSpend({ refresh = false } = {}) {
 function renderSupplierSpend() {
   const d = _supplierSpendData;
   if (!d) return;
-  // Summary line
+  // Summary line: range, vendor count, named-vendor total, optional
+  // uncategorized callout, cache indicator.
+  const namedTotal = (d.rows || []).reduce((s, r) => s + (r.total || 0), 0);
   const cachedLbl = d.fromCache
     ? ` · cached ${new Date(d.cachedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})}`
     : ' · fresh from QB';
+  const nsLbl = d.notSpecifiedTotal > 0
+    ? ` · <span title="Bills, sales tax filings, bank fees, journal entries — anything QB has tagged with no specific vendor">+ ${fmt(d.notSpecifiedTotal)} uncategorized ⓘ</span>`
+    : '';
   document.getElementById('ssSummary').innerHTML =
-    `<b>${d.range.label}</b> (${d.range.start} → ${d.range.end}) · ${d.count} vendors · total <b style="color:var(--text)">${fmt(d.total)}</b>${cachedLbl}`;
+    `<b>${d.range.label}</b> (${d.range.start} → ${d.range.end}) · ${d.count} vendors · named total <b style="color:var(--text)">${fmt(namedTotal)}</b>${nsLbl}${cachedLbl}`;
 
   // Table
-  const total = d.total || 0;
+  const total = namedTotal; // percentages are out of named-vendor total
   const rows = [...d.rows];
   rows.sort((a, b) => {
     let av, bv;
@@ -559,8 +564,11 @@ function renderSupplierSpend() {
     </tr></thead><tbody>`;
   for (const r of rows) {
     const pctVal = total ? (r.total / total * 100) : 0;
+    // Use data attributes + a single delegate handler (bound below in
+    // _bindSupplierDrilldownOnce). Embedding JSON in an inline onclick
+    // breaks the attribute when JSON.stringify emits double quotes.
     const drillLink = r.vendorId
-      ? `<a href="#" onclick="event.preventDefault();openSupplierDetail(${JSON.stringify(r.vendorId)},${JSON.stringify(r.vendor)})" style="color:var(--orange);text-decoration:none;font-weight:700">view →</a>`
+      ? `<a href="#" class="ss-drill" data-vendor-id="${escapeHtml(r.vendorId)}" data-vendor-name="${escapeHtml(r.vendor)}" style="color:var(--orange);text-decoration:none;font-weight:700">view →</a>`
       : '<span style="color:var(--muted)">—</span>';
     html += `<tr style="transition:.1s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">${
       td(`<span style="font-weight:600;color:var(--text)">${escapeHtml(r.vendor)}</span>`)
@@ -574,8 +582,25 @@ function renderSupplierSpend() {
   }
   html += '</tbody></table>';
   document.getElementById('ssState').style.display = 'none';
-  document.getElementById('ssTable').innerHTML = html;
-  document.getElementById('ssTable').style.display = 'block';
+  const tableEl = document.getElementById('ssTable');
+  tableEl.innerHTML = html;
+  tableEl.style.display = 'block';
+  _bindSupplierDrilldownOnce();
+}
+
+// Single event delegate for the "view →" links inside the table. Idempotent
+// — only attaches the listener once per page load even though renderSupplierSpend
+// runs every reload/sort.
+let _ssDelegateBound = false;
+function _bindSupplierDrilldownOnce() {
+  if (_ssDelegateBound) return;
+  _ssDelegateBound = true;
+  document.getElementById('ssTable').addEventListener('click', (e) => {
+    const a = e.target.closest('a.ss-drill');
+    if (!a) return;
+    e.preventDefault();
+    openSupplierDetail(a.dataset.vendorId, a.dataset.vendorName);
+  });
 }
 
 function ssSort(key) {

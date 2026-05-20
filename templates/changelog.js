@@ -51,6 +51,27 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.32.1', date:'May 20, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Ship Calendar tiles were all stuck on "Pending"** because the lookup against the shipping-board record read `s.status`, but the actual field is `s.trackStatus`. Fixed the status read, and corrected the rest of the field names in the summary popup to match the real shape: `trackDelivered` (not `delivered_at`), `trackEta` (not `eta`), `trackLastEvent` (not `last_event`), `trackUpdated` (not `last_event_at`), and `city`+`state` (no `destination` field). Delivered date now also shows "Signed: <name>" when the carrier returned a signer.'},
+      ]
+    },
+    {
+      v:'1.32.0', date:'May 20, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Ship Calendar on the Shipping page.** New sub-tab strip on `/shipping` — "📅 Ship Calendar" (default) and "📦 Tracking" (the existing table). Calendar mirrors the orders-dashboard month view but cross-references each order against the live shipment data so tile colors reflect *current* status, not just shipped-or-not: orange = In Production, blue = In Transit, yellow = Out for Delivery, green = Delivered, red = Exception, gray = Pending/Unknown. Legend strip below the grid explains the colors.'},
+        {t:'add', d:'**Shipment summary popup on tile click.** Instead of the heavy edit drawer the Orders page opens, clicking a calendar tile here pops a compact summary card: status badge, MDL(s), pallet count, ship date, carrier + tracking number when shipped, delivery date when delivered, ETA when in transit, destination + last tracking event when available. Footer has "Open in Tracking →" (jumps to the Tracking tab) and "View order ↗" (opens the deal in the orders dashboard in a new tab).'},
+        {t:'log', d:'**Calendar auto-refreshes when shipments reload.** Hitting the Refresh button on the Tracking tab now also re-renders the calendar with the new statuses — no need to flip back and forth.'},
+      ]
+    },
+    {
+      v:'1.31.3', date:'May 20, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Suppliers tab: "view →" drilldown buttons were dead** because of an HTML attribute escaping bug — `JSON.stringify(name)` returns a string wrapped in double quotes, which broke the surrounding `onclick="..."` attribute the moment any vendor row rendered. Switched the drilldown to `data-vendor-id` / `data-vendor-name` attributes + a single delegate click listener on the table, so vendor names with quotes/apostrophes/anything-weird no longer break the markup.'},
+        {t:'fix', d:'**Filter QB\'s "Not Specified" bucket out of the vendor list.** QB tags every Bill/Purchase that has no vendor assigned (sales tax filings, bank fees, journal entries, payroll, credit-card processor payments, etc.) as the literal `Not Specified` — these aren\'t suppliers but were dominating the table at ~47% of total. The QB UI itself hides this row from the same report. Now stripped out of `rows`, but tracked separately as `notSpecifiedTotal` in the response and surfaced in the summary line as "+ $X uncategorized ⓘ" with a hover tooltip explaining what it is. Table percentages are now out of the named-vendor total only.'},
+      ]
+    },
+    {
       v:'1.31.2', date:'May 20, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Assembly Manual: distinguish ADA (full package) from WA UPG (door only).** Per user spec — ADA line item means the full ADA-compatible package (door + Ramp + Elevated Floor), so all three auto-tick. WA UPG means just the Wide Access door alone — no Ramp, no EFP. Previously both triggered the same cascade. Now only `ADA ` line items trigger Ramp + EFP auto-tick; `WA UPG ` ticks just the ADA Door + ADA Size. Also removed the server-side cascade introduced in v1.31.1 — frontend pre-fill is now the source of truth (so WA UPG quotes don\'t get force-included Ramp/EFP).'},

@@ -122,7 +122,81 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 @keyframes shimmer{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
 .empty{padding:60px 20px;text-align:center;color:var(--muted)}
 .emico{font-size:32px;margin-bottom:10px;opacity:.4}
-</style>
+
+/* Sub-tab strip (Ship Calendar / Tracking). Same look as the report-tabs
+   on /reports — orange-underlined active tab, no background fill. */
+.subtabs{display:flex;gap:0;margin-bottom:18px;border-bottom:2px solid var(--border)}
+.subtab{padding:10px 18px;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border:none;background:none;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;font-family:inherit;transition:all .15s}
+.subtab:hover{color:var(--text)}
+.subtab.active{color:var(--orange);border-bottom-color:var(--orange)}
+
+/* Ship calendar (mirrored from orders-dashboard, with status-driven tile
+   colors replacing the simple shipped-or-not strikethrough). */
+.cal-wrap{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.cal-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+.cal-title{font-size:13px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:10px}
+.cal-title .cal-month{font-size:11px;font-weight:500;color:var(--muted);font-variant-numeric:tabular-nums}
+.cal-nav{display:flex;gap:6px}
+.cal-nav-btn{padding:5px 11px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}
+.cal-nav-btn:hover{border-color:var(--orange);color:var(--orange)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);border-top:1px solid var(--border)}
+.cal-dow{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:8px 10px;text-align:center;background:var(--surface);border-right:1px solid var(--border)}
+.cal-dow:last-child{border-right:none}
+.cal-day{min-height:90px;padding:6px 8px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:3px;font-size:11px;position:relative;background:var(--surface);min-width:0}
+.cal-day:nth-child(7n+7){border-right:none}
+.cal-day.cal-outside{background:rgba(0,0,0,.12);opacity:.45}
+.cal-day.cal-today .cal-day-num{color:var(--orange);font-weight:800}
+.cal-day-num{font-size:10px;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums}
+.cal-day-tally{font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;align-self:flex-end;letter-spacing:.05em}
+.cal-day-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px}
+.cal-day.pallet-green  .cal-day-tally{background:rgba(34,197,94,.12);color:var(--green)}
+.cal-day.pallet-yellow{background:rgba(245,158,11,.06)}
+.cal-day.pallet-yellow .cal-day-tally{background:rgba(245,158,11,.18);color:var(--yellow)}
+.cal-day.pallet-red{background:rgba(239,68,68,.09)}
+.cal-day.pallet-red    .cal-day-tally{background:rgba(239,68,68,.22);color:var(--red)}
+.cal-order{font-size:10.5px;font-weight:600;padding:3px 6px;border:1px solid var(--border);border-radius:4px;cursor:pointer;line-height:1.3;transition:border-color .1s;word-break:break-word;overflow-wrap:anywhere;display:flex;align-items:center;gap:4px}
+.cal-order:hover{border-color:var(--orange)}
+.cal-order .cal-order-qty{display:inline-block;min-width:14px;text-align:center;font-family:var(--mono);font-weight:800;margin-right:2px}
+/* Status-driven tile colors. Background tint + left border accent.
+   Order of specificity matters — delivered overrides in_transit etc. */
+.cal-order.st-in_production{background:rgba(238,98,22,.10);border-left:3px solid var(--orange);color:var(--text)}
+.cal-order.st-in_production .cal-order-qty{color:var(--orange)}
+.cal-order.st-pending{background:var(--surface2);border-left:3px solid var(--muted);color:var(--muted)}
+.cal-order.st-in_transit{background:rgba(96,165,250,.10);border-left:3px solid var(--blue);color:var(--text)}
+.cal-order.st-in_transit .cal-order-qty{color:var(--blue)}
+.cal-order.st-out_for_delivery{background:rgba(250,204,21,.12);border-left:3px solid var(--yellow);color:var(--text)}
+.cal-order.st-out_for_delivery .cal-order-qty{color:var(--yellow)}
+.cal-order.st-delivered{background:rgba(34,197,94,.10);border-left:3px solid var(--green);color:var(--text);opacity:.85}
+.cal-order.st-delivered .cal-order-qty{color:var(--green)}
+.cal-order.st-exception{background:rgba(239,68,68,.10);border-left:3px solid var(--red);color:var(--text)}
+.cal-order.st-exception .cal-order-qty{color:var(--red)}
+.cal-order.parts-order .cal-order-qty{font-size:9px;min-width:auto;padding:0 4px;background:rgba(59,130,246,.15);color:var(--blue);border-radius:3px;letter-spacing:.04em}
+.rm-chip   { display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: .08em; padding: 1px 5px; background: rgba(239,68,68,.18); color: var(--red); border-radius: 3px; margin-left: 4px; vertical-align: middle; }
+.cust-chip { display: inline-block; font-size: 9px; font-weight: 800; letter-spacing: .08em; padding: 1px 5px; background: rgba(245,158,11,.18); color: var(--yellow); border-radius: 3px; margin-left: 4px; vertical-align: middle; }
+
+/* Calendar status legend */
+.cal-legend{display:flex;gap:14px;flex-wrap:wrap;padding:10px 18px;font-size:10px;color:var(--muted);border-top:1px solid var(--border);background:var(--surface)}
+.cal-legend-item{display:inline-flex;align-items:center;gap:5px}
+.cal-legend-dot{width:8px;height:8px;border-radius:2px}
+
+/* Shipment summary popup (replaces the drawer behavior from the orders page) */
+.ship-summary-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;padding:24px}
+.ship-summary-overlay.open{display:flex}
+.ship-summary-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px 24px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;color:var(--text);box-shadow:0 12px 40px rgba(0,0,0,.35)}
+.ssum-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:14px}
+.ssum-title{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;line-height:1.25}
+.ssum-sub{font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:3px}
+.ssum-close{background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1;padding:0 6px}
+.ssum-close:hover{color:var(--text)}
+.ssum-status{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:50px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px}
+.ssum-status .pdot{width:6px;height:6px;border-radius:50%}
+.ssum-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin-bottom:14px;font-size:12px}
+.ssum-grid .label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:2px}
+.ssum-grid .value{color:var(--text);font-family:var(--mono);font-size:12px;word-break:break-word}
+.ssum-grid .full{grid-column:1/-1}
+.ssum-footer{display:flex;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.ssum-footer a, .ssum-footer button{padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.04em;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);text-decoration:none;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:5px}
+.ssum-footer a:hover, .ssum-footer button:hover{color:var(--text);border-color:var(--border2)}</style>
 </head>
 <body>
 <nav class="topbar">
@@ -145,48 +219,96 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 <div class="page">
   <div class="page-title">Shipments</div>
   <div class="page-sub" id="pageSub">Loading…</div>
-  <div class="filter-bar">
-    <div class="pill active" onclick="setFilter('all',this)"><span class="pcount" id="cnt-all">—</span> All</div>
-    <div class="pill ptransit" onclick="setFilter('in_transit',this)"><span class="pdot"></span><span class="pcount" id="cnt-in_transit">—</span> In Transit</div>
-    <div class="pill pout" onclick="setFilter('out_for_delivery',this)"><span class="pdot"></span><span class="pcount" id="cnt-out_for_delivery">—</span> Out for Delivery</div>
-    <div class="pill pdelivered" onclick="setFilter('delivered',this)"><span class="pdot"></span><span class="pcount" id="cnt-delivered">—</span> Delivered</div>
-    <div class="pill pexception" onclick="setFilter('exception',this)"><span class="pdot"></span><span class="pcount" id="cnt-exception">—</span> Exception</div>
-    <div class="pill" onclick="setFilter('pending',this)"><span class="pdot"></span><span class="pcount" id="cnt-pending">—</span> Pending</div>
+
+  <div class="subtabs">
+    <button class="subtab active" data-tab="calendar" onclick="switchShipTab('calendar')">📅 Ship Calendar</button>
+    <button class="subtab" data-tab="tracking" onclick="switchShipTab('tracking')">📦 Tracking</button>
   </div>
-  <div class="controls">
-    <div class="swrap">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input class="sinput" id="searchInput" placeholder="Search customer, tracking, rep…" oninput="renderTable()">
-    </div>
-    <select class="sselect" id="sortSelect" onchange="renderTable()">
-      <option value="date_desc">Date Shipped ↓</option>
-      <option value="date_asc">Date Shipped ↑</option>
-      <option value="status">Status</option>
-      <option value="amount_desc">Amount ↓</option>
-      <option value="eta">ETA</option>
-    </select>
-    <button class="cbtn" id="refreshBtn" onclick="loadBoard(true)">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
-      Refresh
-    </button>
-  </div>
-  <div class="twrap">
-    <div id="loadingRows"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
-    <div id="tableContent" style="display:none">
-      <div class="thead cols">
-        <div></div>
-        <div class="th" style="padding-left:4px">Customer</div>
-        <div class="th">Carrier</div>
-        <div class="th">Tracking</div>
-        <div class="th">Destination</div>
-        <div class="th">Last Event</div>
-        <div class="th">Shipped</div>
-        <div class="th">ETA / Delivered</div>
-        <div class="th">Status</div>
-        <div class="th" style="text-align:right">Actions</div>
+
+  <!-- ── Ship Calendar tab ───────────────────────────────────────── -->
+  <div id="tabCalendar">
+    <div class="cal-wrap">
+      <div class="cal-head">
+        <div class="cal-title">📅 Ship Calendar <span class="cal-month" id="calMonthLabel">—</span></div>
+        <div class="cal-nav">
+          <button class="cal-nav-btn" onclick="shiftCalendar(-1)">&lsaquo; Prev</button>
+          <button class="cal-nav-btn" onclick="shiftCalendar(0)">Today</button>
+          <button class="cal-nav-btn" onclick="shiftCalendar(1)">Next &rsaquo;</button>
+        </div>
       </div>
-      <div id="tableBody"></div>
+      <div class="cal-grid" id="calGrid"></div>
+      <div class="cal-legend">
+        <span class="cal-legend-item"><span class="cal-legend-dot" style="background:var(--orange)"></span> In Production</span>
+        <span class="cal-legend-item"><span class="cal-legend-dot" style="background:var(--blue)"></span> In Transit</span>
+        <span class="cal-legend-item"><span class="cal-legend-dot" style="background:var(--yellow)"></span> Out for Delivery</span>
+        <span class="cal-legend-item"><span class="cal-legend-dot" style="background:var(--green)"></span> Delivered</span>
+        <span class="cal-legend-item"><span class="cal-legend-dot" style="background:var(--red)"></span> Exception</span>
+        <span class="cal-legend-item"><span class="cal-legend-dot" style="background:var(--muted)"></span> Pending / Unknown</span>
+      </div>
     </div>
+  </div>
+
+  <!-- ── Tracking tab ────────────────────────────────────────────── -->
+  <div id="tabTracking" style="display:none">
+    <div class="filter-bar">
+      <div class="pill active" onclick="setFilter('all',this)"><span class="pcount" id="cnt-all">—</span> All</div>
+      <div class="pill ptransit" onclick="setFilter('in_transit',this)"><span class="pdot"></span><span class="pcount" id="cnt-in_transit">—</span> In Transit</div>
+      <div class="pill pout" onclick="setFilter('out_for_delivery',this)"><span class="pdot"></span><span class="pcount" id="cnt-out_for_delivery">—</span> Out for Delivery</div>
+      <div class="pill pdelivered" onclick="setFilter('delivered',this)"><span class="pdot"></span><span class="pcount" id="cnt-delivered">—</span> Delivered</div>
+      <div class="pill pexception" onclick="setFilter('exception',this)"><span class="pdot"></span><span class="pcount" id="cnt-exception">—</span> Exception</div>
+      <div class="pill" onclick="setFilter('pending',this)"><span class="pdot"></span><span class="pcount" id="cnt-pending">—</span> Pending</div>
+    </div>
+    <div class="controls">
+      <div class="swrap">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input class="sinput" id="searchInput" placeholder="Search customer, tracking, rep…" oninput="renderTable()">
+      </div>
+      <select class="sselect" id="sortSelect" onchange="renderTable()">
+        <option value="date_desc">Date Shipped ↓</option>
+        <option value="date_asc">Date Shipped ↑</option>
+        <option value="status">Status</option>
+        <option value="amount_desc">Amount ↓</option>
+        <option value="eta">ETA</option>
+      </select>
+      <button class="cbtn" id="refreshBtn" onclick="loadBoard(true)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+        Refresh
+      </button>
+    </div>
+    <div class="twrap">
+      <div id="loadingRows"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+      <div id="tableContent" style="display:none">
+        <div class="thead cols">
+          <div></div>
+          <div class="th" style="padding-left:4px">Customer</div>
+          <div class="th">Carrier</div>
+          <div class="th">Tracking</div>
+          <div class="th">Destination</div>
+          <div class="th">Last Event</div>
+          <div class="th">Shipped</div>
+          <div class="th">ETA / Delivered</div>
+          <div class="th">Status</div>
+          <div class="th" style="text-align:right">Actions</div>
+        </div>
+        <div id="tableBody"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Shipment summary popup (calendar-tile click target) ───────── -->
+<div id="shipSummaryOverlay" class="ship-summary-overlay" onclick="if(event.target===this)closeShipSummary()">
+  <div class="ship-summary-card" onclick="event.stopPropagation()">
+    <div class="ssum-head">
+      <div>
+        <div class="ssum-title" id="ssumTitle">—</div>
+        <div class="ssum-sub" id="ssumSub">—</div>
+      </div>
+      <button class="ssum-close" onclick="closeShipSummary()">&times;</button>
+    </div>
+    <div id="ssumStatus"></div>
+    <div class="ssum-grid" id="ssumGrid"></div>
+    <div class="ssum-footer" id="ssumFooter"></div>
   </div>
 </div>
 <script>
@@ -203,6 +325,8 @@ async function loadBoard(force=false){
     allShipments=data.shipments||[];
     updateCounts();
     renderTable();
+    // Re-render the calendar so tile colors reflect the latest shipment statuses.
+    if (typeof renderShipCalendar === 'function' && _calOrdersLoaded) renderShipCalendar();
     const t=new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
     document.getElementById('pageSub').textContent=`${allShipments.length} shipments · updated ${t}`;
   }catch(e){
@@ -363,7 +487,245 @@ function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 function cpTrack(btn,t){navigator.clipboard.writeText(t).then(()=>{btn.textContent='Copied';btn.classList.add('copied');setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied')},1800)})}
 function toggleTheme(){const l=document.documentElement.classList.toggle('light');document.getElementById('themeBtn').textContent=l?'🌙':'☀️';localStorage.setItem('wr-theme',l?'light':'dark')}
 if(localStorage.getItem('wr-theme')==='light'){document.documentElement.classList.add('light');document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('themeBtn');if(b)b.textContent='🌙'})}
+// ── Sub-tab switching (Ship Calendar / Tracking) ──────────────────
+let _activeShipTab = 'calendar';
+function switchShipTab(name) {
+  _activeShipTab = name;
+  document.getElementById('tabCalendar').style.display = name === 'calendar' ? '' : 'none';
+  document.getElementById('tabTracking').style.display = name === 'tracking' ? '' : 'none';
+  document.querySelectorAll('.subtab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  if (name === 'calendar' && !_calOrdersLoaded) loadShipCalendarOrders();
+}
+
+// ── Ship Calendar (mirrors orders-dashboard renderShipCalendar) ──
+// Loads orders separately from the shipment-board data so we can group
+// by planned/actual ship date. Cross-references each order's tracking
+// number against the shipments map to pick a status-driven tile color.
+let _calOrders = [];
+let _calOrdersLoaded = false;
+let _calCursor = new Date();
+_calCursor.setDate(1); _calCursor.setHours(0,0,0,0);
+
+async function loadShipCalendarOrders() {
+  try {
+    const res = await fetch('/api/orders', { credentials:'include' });
+    if (res.status === 401) { window.location.href = '/'; return; }
+    const data = await res.json();
+    _calOrders = data.orders || [];
+    _calOrdersLoaded = true;
+    renderShipCalendar();
+  } catch (e) {
+    const grid = document.getElementById('calGrid');
+    if (grid) grid.innerHTML = `<div class="cal-empty-note" style="padding:30px;text-align:center;color:var(--muted)">Failed to load orders: ${esc(e.message)}</div>`;
+  }
+}
+
+function shiftCalendar(delta) {
+  if (delta === 0) {
+    _calCursor = new Date();
+    _calCursor.setDate(1); _calCursor.setHours(0,0,0,0);
+  } else {
+    _calCursor = new Date(_calCursor.getFullYear(), _calCursor.getMonth() + delta, 1);
+  }
+  renderShipCalendar();
+}
+
+// Build a map of tracking# → shipment for fast status lookup. Used both
+// for calendar tile coloring and for the popup.
+function _shipmentsByTracking() {
+  const m = {};
+  for (const s of (allShipments || [])) {
+    if (s.tracking) m[String(s.tracking).trim()] = s;
+  }
+  return m;
+}
+
+// Map an order to one of the calendar tile status classes.
+//   in_production     — no tracking yet (still being built)
+//   in_transit        — tracking + trackStatus='in_transit'
+//   out_for_delivery  — tracking + trackStatus='out_for_delivery'
+//   delivered         — tracking + trackStatus='delivered'
+//   exception         — tracking + trackStatus='exception'
+//   pending           — tracking but no live status yet
+//
+// Note: the shipping-board record exposes status as `trackStatus`,
+// not `status` — easy field-name miss the first time around.
+function _orderShipStatus(order, shipMap) {
+  const sd = order.order_data?.shipped;
+  if (!sd || sd.unshipped || !sd.tracking) return 'in_production';
+  const s = shipMap[String(sd.tracking).trim()];
+  if (s?.trackStatus) return s.trackStatus;
+  return 'pending';
+}
+
+function renderShipCalendar() {
+  const grid  = document.getElementById('calGrid');
+  const label = document.getElementById('calMonthLabel');
+  if (!grid) return;
+
+  const shipMap = _shipmentsByTracking();
+
+  // Group orders by YYYY-MM-DD of planned/actual ship date
+  const byDay = {};
+  (_calOrders || []).forEach(o => {
+    const raw = o.order_data?.shipped?.date;
+    if (!raw) return;
+    const dayKey = raw.length >= 10 ? raw.slice(0, 10) : null;
+    if (!dayKey) return;
+    if (!byDay[dayKey]) byDay[dayKey] = [];
+    byDay[dayKey].push(o);
+  });
+
+  const year  = _calCursor.getFullYear();
+  const month = _calCursor.getMonth();
+  label.textContent = _calCursor.toLocaleDateString('en-US', { month:'long', year:'numeric' });
+
+  const firstOfMonth = new Date(year, month, 1);
+  const gridStart = new Date(year, month, 1 - firstOfMonth.getDay());
+  const todayKey = (() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
+  const dows = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const dowHtml = dows.map(d => `<div class="cal-dow">${d}</div>`).join('');
+
+  let cellsHtml = '';
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
+    const dayKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const outside = d.getMonth() !== month;
+    const isToday = dayKey === todayKey;
+    const orders = byDay[dayKey] || [];
+    const palletSum = orders.reduce((s, o) => s + (parseInt(o.order_data?.shipped?.pallets) || 0), 0);
+
+    let palletCls = '';
+    if (orders.length) {
+      if (palletSum >= 6)      palletCls = 'pallet-red';
+      else if (palletSum >= 4) palletCls = 'pallet-yellow';
+      else                     palletCls = 'pallet-green';
+    }
+
+    const ordersHtml = orders.map(o => {
+      const items = o.json_snapshot?.lineItems || [];
+      const mdl = items.find(i => i?.name?.startsWith('MDL'))?.name?.replace(/^MDL /, '') || '';
+      const hasRM       = items.some(i => /^RM\s/i.test(i?.name||''));
+      const hasCustHole = items.some(i => /^CUST HOLE\b/i.test(i?.name||''));
+      const hasMDL      = items.some(i => /^MDL\b/.test(i?.name||''));
+      const rawName = o.deal_name || o.quote_number;
+      const cleanName = rawName.replace(/\s*[–—-]\s*(New Deal|Quote|Revision|Updated Quote)\s*$/i, '').trim();
+      const palletsRaw = o.order_data?.shipped?.pallets;
+      const hasPalletValue = palletsRaw !== undefined && palletsRaw !== null && palletsRaw !== '';
+      const qty = hasPalletValue ? parseInt(palletsRaw) : NaN;
+      let qtyLabel;
+      if (qty > 0)                   qtyLabel = String(qty);
+      else if (qty === 0 && !hasMDL) qtyLabel = 'Parts';
+      else                           qtyLabel = '?';
+      const status = _orderShipStatus(o, shipMap);
+      const qn = (o.quote_number || '').replace(/'/g, "\\'");
+      const flagBits = [];
+      if (hasRM)       flagBits.push('Roof Mounted Ventilation');
+      if (hasCustHole) flagBits.push('Custom Holes');
+      const title = `${rawName}${mdl ? ' · ' + mdl : ''} — ${qtyLabel === 'Parts' ? 'Parts order' : qtyLabel + ' pallet' + (qty===1?'':'s')} · ${lbl(status === 'in_production' ? 'in_production' : status)}${flagBits.length ? ' · ' + flagBits.join(' · ') : ''}`;
+      const rmChip   = hasRM       ? ` <span class="rm-chip"   title="Roof Mounted Ventilation — 1-month lead">RM</span>` : '';
+      const custChip = hasCustHole ? ` <span class="cust-chip" title="Custom holes — 1-month lead">CUST</span>` : '';
+      return `<div class="cal-order st-${status}${qtyLabel === 'Parts' ? ' parts-order' : ''}" title="${esc(title)}" onclick="openShipSummary('${qn}')"><span class="cal-order-qty">${qtyLabel}</span><span style="flex:1;min-width:0">${esc(cleanName)}${mdl ? ` <span style="color:var(--muted);font-weight:500">${esc(mdl)}</span>` : ''}</span>${rmChip}${custChip}</div>`;
+    }).join('');
+
+    cellsHtml += `<div class="cal-day ${outside ? 'cal-outside' : ''} ${isToday ? 'cal-today' : ''} ${palletCls}">
+      <div class="cal-day-head">
+        <span class="cal-day-num">${d.getDate()}</span>
+        ${palletSum > 0 ? `<span class="cal-day-tally">${palletSum}P</span>` : ''}
+      </div>
+      ${ordersHtml}
+    </div>`;
+  }
+
+  grid.innerHTML = dowHtml + cellsHtml;
+}
+
+// ── Shipment summary popup ──
+// Opens when a calendar tile is clicked. Pulls the order out of
+// _calOrders by quote_number, cross-references the shipment for
+// live status/last-event, renders a compact summary card.
+function openShipSummary(quoteNumber) {
+  const order = (_calOrders || []).find(o => o.quote_number === quoteNumber);
+  if (!order) return;
+  const shipMap = _shipmentsByTracking();
+  const sd = order.order_data?.shipped || {};
+  const tracking = sd.tracking || '';
+  const ship = tracking ? shipMap[String(tracking).trim()] : null;
+  const status = _orderShipStatus(order, shipMap);
+  const items = order.json_snapshot?.lineItems || [];
+  const mdls = items.filter(i => i?.name?.startsWith('MDL')).map(i => i.name).join(', ') || '—';
+  const carrierLbl = sd.carrier || ship?.carrier || '—';
+
+  document.getElementById('ssumTitle').textContent = order.deal_name || order.quote_number || 'Shipment';
+  document.getElementById('ssumSub').textContent   = order.quote_number || '';
+
+  // Status pill — same color palette as the calendar tiles
+  const statusColors = {
+    in_production:    { bg:'rgba(238,98,22,.15)',  fg:'var(--orange)', dot:'var(--orange)' },
+    in_transit:       { bg:'rgba(96,165,250,.15)', fg:'var(--blue)',   dot:'var(--blue)'   },
+    out_for_delivery: { bg:'rgba(250,204,21,.15)', fg:'var(--yellow)', dot:'var(--yellow)' },
+    delivered:        { bg:'rgba(34,197,94,.15)',  fg:'var(--green)',  dot:'var(--green)'  },
+    exception:        { bg:'rgba(239,68,68,.15)',  fg:'var(--red)',    dot:'var(--red)'    },
+    pending:          { bg:'var(--surface3)',      fg:'var(--muted)',  dot:'var(--muted)'  },
+  };
+  const sc = statusColors[status] || statusColors.pending;
+  document.getElementById('ssumStatus').innerHTML =
+    `<span class="ssum-status" style="background:${sc.bg};color:${sc.fg}"><span class="pdot" style="background:${sc.dot}"></span>${lbl(status === 'in_production' ? 'in_production' : status)}</span>`;
+
+  // Field grid: what to show depends on whether it's shipped + delivered or not
+  const rows = [];
+  rows.push({ label:'MDL(s)',       value: esc(mdls), full: true });
+  rows.push({ label:'Pallets',      value: sd.pallets != null && sd.pallets !== '' ? esc(String(sd.pallets)) : '—' });
+  rows.push({ label:'Ship Date',    value: sd.date ? esc(fd(sd.date)) : '—' });
+  if (tracking) {
+    rows.push({ label:'Carrier',    value: esc(carrierLbl) });
+    rows.push({ label:'Tracking',   value: `<span style="word-break:break-all">${esc(tracking)}</span>` });
+  }
+  if (status === 'delivered' && ship?.trackDelivered) {
+    let deliveredVal = `<span style="color:var(--green);font-weight:700">${esc(fd(ship.trackDelivered))}</span>`;
+    if (ship.signedBy) deliveredVal += `<div style="font-size:10px;color:var(--muted);margin-top:2px">Signed: ${esc(ship.signedBy)}</div>`;
+    rows.push({ label:'Delivered',  value: deliveredVal });
+  } else if ((status === 'in_transit' || status === 'out_for_delivery') && ship?.trackEta) {
+    rows.push({ label:'ETA',        value: esc(fd(ship.trackEta)) });
+  }
+  if (ship) {
+    const destination = [ship.city, ship.state].filter(Boolean).join(', ');
+    if (destination) {
+      const destVal = ship.zip ? `${esc(destination)} ${esc(ship.zip)}` : esc(destination);
+      rows.push({ label:'Destination', value: destVal, full:true });
+    }
+  }
+  if (ship?.trackLastEvent) {
+    rows.push({ label:'Last Event', value: `<div style="font-family:inherit;font-size:11.5px;line-height:1.4">${esc(ship.trackLastEvent)}</div>${ship.trackUpdated ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${esc(ago(ship.trackUpdated))}</div>` : ''}`, full:true });
+  }
+
+  document.getElementById('ssumGrid').innerHTML = rows.map(r =>
+    `<div class="${r.full ? 'full' : ''}"><div class="label">${r.label}</div><div class="value">${r.value}</div></div>`
+  ).join('');
+
+  // Footer: link to the tracking tab + an "open in orders" jump-out
+  const footerBits = [];
+  if (tracking) {
+    footerBits.push(`<button onclick="switchShipTab('tracking');closeShipSummary();" title="Open the Tracking tab and filter to this shipment">Open in Tracking →</button>`);
+  }
+  footerBits.push(`<a href="/orders?q=${encodeURIComponent(quoteNumber)}" target="_blank" rel="noopener">View order ↗</a>`);
+  document.getElementById('ssumFooter').innerHTML = footerBits.join('');
+
+  document.getElementById('shipSummaryOverlay').classList.add('open');
+}
+
+function closeShipSummary() {
+  document.getElementById('shipSummaryOverlay').classList.remove('open');
+}
+
+// Extend lbl() to recognize the in_production calendar-only status
+const _origLbl = lbl;
+window.lbl = function(s) { return s === 'in_production' ? 'In Production' : _origLbl(s); };
+
+// Kick off both loads in parallel — calendar uses /api/orders, tracking
+// uses /api/shipping-board (loadBoard below).
 loadBoard();
+loadShipCalendarOrders();
 fetch('/api/version').then(r=>r.json()).then(d=>{const el=document.getElementById('appVersion');if(el&&d.version)el.textContent='v'+d.version}).catch(()=>{});
 </script>
 </body>

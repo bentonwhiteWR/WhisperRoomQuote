@@ -51,6 +51,26 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.31.2', date:'May 20, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Assembly Manual: distinguish ADA (full package) from WA UPG (door only).** Per user spec — ADA line item means the full ADA-compatible package (door + Ramp + Elevated Floor), so all three auto-tick. WA UPG means just the Wide Access door alone — no Ramp, no EFP. Previously both triggered the same cascade. Now only `ADA ` line items trigger Ramp + EFP auto-tick; `WA UPG ` ticks just the ADA Door + ADA Size. Also removed the server-side cascade introduced in v1.31.1 — frontend pre-fill is now the source of truth (so WA UPG quotes don\'t get force-included Ramp/EFP).'},
+        {t:'ui', d:'**Assembly Manual modal — light mode support.** Modal was hard-coded to dark colors (#1a1a1a surface, white-on-dark text) and looked broken on light theme. Switched all colors to the existing theme CSS variables (`--surface`, `--text`, `--muted`, `--border`, `--accent`). Status box (success/warn/error) now reads cleanly in either theme. Dropdown options force `<option>` background to follow theme so the popup doesn\'t fall back to OS defaults.'},
+      ]
+    },
+    {
+      v:'1.31.1', date:'May 20, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Assembly Manual: SNV/ENV models normalize to S/E + skip ventilation.** WhisperRoom doesn\'t ship dedicated "no-vent" manuals — an MDL XXXX SNV uses the same Cover/Series/EFP/etc PDFs as the vented S variant, and just omits the ventilation pages. `_stripMdlPrefix` now strips `SNV → S` and `ENV → E`, so file matching against names like "4848 S EFP.pdf" works even when the rep picks "MDL 4848 SNV". New `ctx.isNV` flag gates the K + L ventilation sections off for those models.'},
+        {t:'fix', d:'**EFP cascade now enforced server-side too.** Frontend already pre-ticks EFP + Ramp when ADA is detected, but the backend now also forces `efp = true` and `ramp = true` whenever `ada` is on — belt-and-suspenders so a direct API caller (or an accidentally unticked checkbox) still gets the right sections. Combined with the SNV/ENV normalization above, this fixes the "EFP not pulling when ADA is on quote" report.'},
+      ]
+    },
+    {
+      v:'1.31.0', date:'May 20, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Suppliers tab on Reports (steps 2 + 3 of 3).** New "Suppliers" tab on `/reports` showing QB vendor spend pulled from QB\'s `VendorExpenses` report. Range picker covers YTD, trailing 12 months, this/last month, this/last quarter, and custom date range. Sortable table (Vendor / Total / % of total) with hover rows and a click-through "view →" link on each row that opens a drilldown modal listing every Bill / Cash Purchase / Credit Card Purchase for that vendor in the same range (`TransactionListByVendor` report). Summary line above the table shows date range, vendor count, grand total, and whether the data is fresh-from-QB or 24h-cached. "↻ Refresh" button busts the cache. New endpoint `GET /api/reports/supplier-spend/detail?vendorId=...&range=...` carries the drilldown.'},
+      ]
+    },
+    {
       v:'1.30.4', date:'May 20, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Assembly Manual: EFP / Cover / Series file matching.** Files in those folders are named with the size+variant stem only (e.g. `4848 S EFP.pdf`), NOT the full `MDL ` prefix. Section config now matches on `ctx.modelStem` (the model with `MDL ` stripped) instead of `ctx.model`. EFP, Cover, and Series sections will now actually pull.'},

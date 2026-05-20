@@ -549,6 +549,7 @@ const SALES_GOAL_CACHE_MS = 5 * 60 * 1000;
 // range — accounting data doesn't change every minute. Default 24h TTL,
 // busted on demand via ?refresh=1. Map keys are "YYYY-MM-DD_YYYY-MM-DD".
 const _supplierSpendCache = new Map();
+const _supplierSpendDetailCache = new Map(); // key: "vendorId_start_end"
 const SUPPLIER_SPEND_CACHE_MS = 24 * 60 * 60 * 1000;
 
 // ── Assembly-manual MDL list cache (in-memory, 24h) ──
@@ -679,6 +680,55 @@ function _flattenVendorSummary(reportJson) {
   // Stable sort: total desc, then name asc.
   out.sort((a, b) => (b.total - a.total) || a.vendor.localeCompare(b.vendor));
   return { rows: out, total };
+}
+
+// Walk QB's TransactionListByVendor report and emit a flat array of
+// transactions sorted by date desc. Looks columns up by ColType so the
+// flatten doesn't break if Intuit reorders them in a future API rev.
+function _flattenVendorDetail(reportJson) {
+  const cols = reportJson?.Columns?.Column || [];
+  const idx = {};
+  cols.forEach((c, i) => {
+    if (c?.ColType)  idx[c.ColType]  = i;
+    if (c?.ColTitle) idx[c.ColTitle] = i;
+  });
+  const out = [];
+  function walk(rowArr) {
+    if (!Array.isArray(rowArr)) return;
+    for (const r of rowArr) {
+      if (r?.ColData && Array.isArray(r.ColData)) {
+        const cd = r.ColData;
+        const at = (...keys) => {
+          for (const k of keys) { if (idx[k] != null) return cd[idx[k]]; }
+          return null;
+        };
+        const dateCell    = at('TxnDate', 'Date');
+        const typeCell    = at('TxnType', 'Type');
+        const numCell     = at('DocNum', 'Num');
+        const memoCell    = at('Memo', 'Description', 'Memo/Description');
+        const accountCell = at('Account', 'AccountFullName', 'Acct');
+        const amountCell  = at('Amount', 'Subt_TotalAmount') || cd[cd.length - 1];
+        const date   = String(dateCell?.value || '').trim();
+        const type   = String(typeCell?.value || '').trim();
+        const amount = parseFloat(amountCell?.value || '0') || 0;
+        // Skip summary/total rows (no date + label like "Total ...")
+        if (!date && /total/i.test(type)) continue;
+        if (!date && !type && !amount) continue;
+        out.push({
+          date,
+          type,
+          docNum:  String(numCell?.value || ''),
+          memo:    String(memoCell?.value || ''),
+          account: String(accountCell?.value || ''),
+          amount,
+        });
+      }
+      if (r?.Rows?.Row) walk(r.Rows.Row);
+    }
+  }
+  walk(reportJson?.Rows?.Row || []);
+  out.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  return out;
 }
 
 // ── Email Reply Assistant (vendored from gabewhite438/whisperroom-reply-assistant) ──
@@ -7633,6 +7683,49 @@ ${q.accepted ? `
       json({ ...payload, cachedAt: now, fromCache: false });
     } catch (e) {
       console.error('[reports/supplier-spend]', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Supplier spend — per-vendor drilldown ──────────────────
+  // GET /api/reports/supplier-spend/detail?vendorId=...&range=...
+  // Returns every Bill / Cash Purchase / CC Purchase for the vendor in
+  // the same date range. Uses QB's TransactionListByVendor report.
+  // Same 24h cache as the summary, keyed by vendorId + range.
+  if (pathname === '/api/reports/supplier-spend/detail' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const vendorId = String(parsed.query.vendorId || '').trim();
+      if (!vendorId) { json({ error: 'vendorId is required' }, 400); return; }
+      const range = String(parsed.query.range || 'ytd').toLowerCase();
+      const customStart = parsed.query.start || null;
+      const customEnd   = parsed.query.end   || null;
+      const refresh = parsed.query.refresh === '1' || parsed.query.refresh === 'true';
+      const { startDate, endDate, label } = _resolveSupplierSpendRange(range, customStart, customEnd);
+      if (!startDate || !endDate) { json({ error: 'Invalid date range' }, 400); return; }
+
+      const cacheKey = `${vendorId}_${startDate}_${endDate}`;
+      const cached = _supplierSpendDetailCache.get(cacheKey);
+      const now = Date.now();
+      if (!refresh && cached && (now - cached.cachedAt) < SUPPLIER_SPEND_CACHE_MS) {
+        json({ ...cached.payload, cachedAt: cached.cachedAt, fromCache: true });
+        return;
+      }
+
+      const reportJson = await qb.fetchExpensesByVendorDetail({ startDate, endDate, vendorId });
+      const transactions = _flattenVendorDetail(reportJson);
+      const payload = {
+        vendorId,
+        range: { key: range, label, start: startDate, end: endDate },
+        count: transactions.length,
+        total: transactions.reduce((s, t) => s + (t.amount || 0), 0),
+        transactions,
+      };
+      _supplierSpendDetailCache.set(cacheKey, { payload, cachedAt: now });
+      json({ ...payload, cachedAt: now, fromCache: false });
+    } catch (e) {
+      console.error('[reports/supplier-spend/detail]', e.message);
       json({ error: e.message }, 500);
     }
     return;

@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.32.0', date:'May 20, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Ship Calendar on the Shipping page.** New sub-tab strip on `/shipping` — "📅 Ship Calendar" (default) and "📦 Tracking" (the existing table). Calendar mirrors the orders-dashboard month view but cross-references each order against the live shipment data so tile colors reflect *current* status, not just shipped-or-not: orange = In Production, blue = In Transit, yellow = Out for Delivery, green = Delivered, red = Exception, gray = Pending/Unknown. Legend strip below the grid explains the colors.'},
+        {t:'add', d:'**Shipment summary popup on tile click.** Instead of the heavy edit drawer the Orders page opens, clicking a calendar tile here pops a compact summary card: status badge, MDL(s), pallet count, ship date, carrier + tracking number when shipped, delivery date when delivered, ETA when in transit, destination + last tracking event when available. Footer has "Open in Tracking →" (jumps to the Tracking tab) and "View order ↗" (opens the deal in the orders dashboard in a new tab).'},
+        {t:'log', d:'**Calendar auto-refreshes when shipments reload.** Hitting the Refresh button on the Tracking tab now also re-renders the calendar with the new statuses — no need to flip back and forth.'},
+      ]
+    },
+    {
       v:'1.31.3', date:'May 20, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Suppliers tab: "view →" drilldown buttons were dead** because of an HTML attribute escaping bug — `JSON.stringify(name)` returns a string wrapped in double quotes, which broke the surrounding `onclick="..."` attribute the moment any vendor row rendered. Switched the drilldown to `data-vendor-id` / `data-vendor-name` attributes + a single delegate click listener on the table, so vendor names with quotes/apostrophes/anything-weird no longer break the markup.'},

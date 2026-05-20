@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.30.2', date:'May 20, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Supplier-spend: correct QB report name.** v1.28.1 used `ExpensesByVendorSummary` which Intuit renamed to `VendorExpenses` in their API. The old name returns a misleading code-5020 "Permission Denied Error" instead of 404, which sent us down a false trail looking at user roles. Switched to the current names: `VendorExpenses` for the summary and `TransactionListByVendor` for the drilldown. Retest `/api/reports/supplier-spend?range=ytd` — should return real data now.'},
+      ]
+    },
+    {
       v:'1.30.1', date:'May 20, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Move Admin Tools button into the Email Reply output panel.** v1.29.0 put it in the topbar, which is hidden when the page is iframed inside the Deal Hub popup (embed mode) — so admins inside the popup couldn\'t see it. Moved to the bottom-right of the Generated Reply panel, renamed from "⚙ Logs" to "Admin Tools". Visible in both standalone and embedded modes. Still opens the logs viewer in a new tab.'},

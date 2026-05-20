@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.29.0', date:'May 20, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Email reply assistant — input/output logging + reviewer page.** Every call to `/api/email-reply` now writes a row to the new `email_reply_logs` table capturing: rep info, voice picked, full input, full output, model, token usage (input/output/cache-read/cache-creation), duration, status (`success`/`anthropic_error`/`empty_reply`/`exception`), and any error message. Logging is fire-and-forget so a DB hiccup never blocks the rep\'s reply. New reviewer page `/email-reply-logs` shows the most recent entries with search (substring on input or output), pagination, status chips, token counts, and click-to-expand full-text input/output side-by-side with copy buttons. Admin-only — gated by new env var `ADMIN_REP_EMAILS` (comma-separated). A "⚙ Logs" button appears in the Email Reply topbar for admins (hidden for everyone else); opens the reviewer in a new tab. Feedback capture (thumbs up/down, edited final) is v2 — not in this release.'},
+      ]
+    },
+    {
       v:'1.28.2', date:'May 20, 2026', tag:'log',
       changes:[
         {t:'add', d:'**Assembly Manual builder — backend (step 1 of 2).** Replaces the legacy Excel/VBA workflow that lived in the packing-list software. Three new endpoints: `GET /api/assembly-manual/models` (MDL list from QB, filtered to `Name LIKE \'MDL %\'`, 24h cache), `POST /api/assembly-manual/plan` (dry-run that returns which sections WOULD be included for given options — no Drive reads), `POST /api/assembly-manual/build` (downloads matching PDFs from Drive, merges with pdf-lib, streams response as application/pdf). New module `lib/assembly-manual.js` carries the section config table (~20 sections each gated by checkbox + folder + filename-substring rules) and the merge logic. New helpers `gdriveListFilesInFolder` + `gdriveDownloadFile` in `lib/gdrive.js` (with proper binary-safe download — the existing _httpsRequest string-concats response bodies and corrupts PDFs). New dep: `pdf-lib`. New env var: `GDRIVE_ASSEMBLY_MANUALS_FOLDER` — set this to the Drive folder ID of `Server/AssemblyManuals/` before testing. Step 2 (Build Assembly Manual button + modal on quote builder, with feature pre-fill from quote state) lands next.'},

@@ -557,6 +557,42 @@ const SUPPLIER_SPEND_CACHE_MS = 24 * 60 * 60 * 1000;
 let _assemblyMdlCache = null;
 const ASSEMBLY_MDL_CACHE_MS = 24 * 60 * 60 * 1000;
 
+// Fire-and-forget logging of every /api/email-reply call to the
+// email_reply_logs table. Used by the admin reviewer (/email-reply-logs)
+// to inspect what the model is producing for which inputs. Throws are
+// swallowed — the rep already has their reply when this runs.
+async function _logEmailReply({ sess, voice, input, output, usage, durationMs, status, error }) {
+  if (!db) return;
+  const u = usage || {};
+  try {
+    await db.query(
+      `INSERT INTO email_reply_logs
+        (rep_id, rep_name, rep_email, voice, input, output, model,
+         input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+         duration_ms, status, error)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [
+        String(sess?.ownerId || ''),
+        String(sess?.name || ''),
+        String(sess?.email || ''),
+        String(voice || ''),
+        String(input || ''),
+        output == null ? null : String(output),
+        ANTHROPIC_MODEL,
+        u.input_tokens               || null,
+        u.output_tokens              || null,
+        u.cache_read_input_tokens    || null,
+        u.cache_creation_input_tokens|| null,
+        durationMs || null,
+        String(status || 'success'),
+        error || null,
+      ]
+    );
+  } catch (e) {
+    console.warn('[email-reply-log] DB insert failed:', e.message);
+  }
+}
+
 // Resolve a supplier-spend range key into ISO dates. All dates in
 // America/New_York since TZ env is fixed to that. Returns YYYY-MM-DD
 // strings (QB's reports API wants date-only, not timestamps).
@@ -653,6 +689,22 @@ function _flattenVendorSummary(reportJson) {
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const ANTHROPIC_MODEL   = process.env.ANTHROPIC_MODEL || 'claude-opus-4-7';
 const ANTHROPIC_VERSION = '2023-06-01';
+
+// Emails granted access to the email-reply logs viewer + any other future
+// admin-only surfaces. Comma-separated list in env, normalized to lowercase.
+// Edit ADMIN_REP_EMAILS in Railway to add/remove without a redeploy needed.
+const ADMIN_REP_EMAILS = String(process.env.ADMIN_REP_EMAILS || '')
+  .toLowerCase()
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+function isAdmin(req) {
+  try {
+    const sess = getRepFromReq(req);
+    const email = String(sess?.email || '').toLowerCase();
+    return !!email && ADMIN_REP_EMAILS.includes(email);
+  } catch { return false; }
+}
 const EMAIL_REPLY_MAX_TOKENS = 2048;
 let EMAIL_REPLY_SYSTEM_PROMPT = '';
 let EMAIL_REPLY_PRODUCT_LINKS_RAW = '';
@@ -7088,9 +7140,15 @@ ${q.accepted ? `
       json({ error: 'Email Reply assistant files missing on server (assistant/system-prompt.txt).' }, 503);
       return;
     }
+    const startMs = Date.now();
+    const sess = getRepFromReq(req);
+    let userMessage = '';
+    let voice = '';
     try {
       const raw = await readBody(req);
-      const { userMessage } = JSON.parse(raw || '{}');
+      const body = JSON.parse(raw || '{}');
+      userMessage = body.userMessage || '';
+      voice = String(body.voice || '').trim();
       if (typeof userMessage !== 'string' || !userMessage.trim()) {
         json({ error: 'userMessage required.' }, 400); return;
       }
@@ -7120,17 +7178,18 @@ ${q.accepted ? `
       if (r.status >= 400) {
         const errMsg = (r.body && (r.body.error?.message || r.body.error)) || `Anthropic ${r.status}`;
         writelog('error', 'email-reply.anthropic', errMsg, { status: r.status, body: r.body });
+        _logEmailReply({ sess, voice, input: userMessage, output: null, usage: null, durationMs: Date.now() - startMs, status: 'anthropic_error', error: errMsg }).catch(() => {});
         json({ error: errMsg }, r.status);
         return;
       }
       const reply = r.body?.content?.[0]?.text || '';
       if (!reply) {
         writelog('error', 'email-reply.empty', 'Anthropic returned empty reply', { body: r.body });
+        _logEmailReply({ sess, voice, input: userMessage, output: null, usage: r.body?.usage || null, durationMs: Date.now() - startMs, status: 'empty_reply', error: 'Anthropic returned empty reply' }).catch(() => {});
         json({ error: 'Empty reply from Anthropic.' }, 502);
         return;
       }
 
-      const sess = getRepFromReq(req);
       try {
         writelog('info', 'email-reply.generated',
           `${sess?.name || sess?.email || 'rep'} generated a reply (${reply.length} chars)`,
@@ -7138,10 +7197,54 @@ ${q.accepted ? `
         );
       } catch (e) {}
 
+      // Persist input/output for the admin reviewer (table: email_reply_logs).
+      // Failures here must NEVER bubble up — the rep already has their reply,
+      // we just lose a log row. Fire-and-forget.
+      _logEmailReply({ sess, voice, input: userMessage, output: reply, usage: r.body?.usage || null, durationMs: Date.now() - startMs, status: 'success', error: null }).catch(() => {});
+
       json({ reply, usage: r.body?.usage || null });
     } catch (e) {
       console.error('[email-reply]', e.message);
       writelog('error', 'email-reply.exception', e.message, { stack: e.stack });
+      _logEmailReply({ sess, voice, input: userMessage || '(no input captured)', output: null, usage: null, durationMs: Date.now() - startMs, status: 'exception', error: e.message }).catch(() => {});
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Email reply logs (admin only) ───────────────────────────
+  // Returns the most recent entries from email_reply_logs for the
+  // review-and-train workflow. Admin-only (gated by ADMIN_REP_EMAILS).
+  // Query params: limit (default 50, max 200), offset (default 0),
+  //               q (optional substring filter on input or output).
+  if (pathname === '/api/email-reply-logs' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    if (!isAdmin(req)) { json({ error: 'Forbidden' }, 403); return; }
+    if (!db) { json({ error: 'Database not initialized' }, 503); return; }
+    try {
+      const limit  = Math.min(parseInt(parsed.query.limit || '50', 10) || 50, 200);
+      const offset = Math.max(parseInt(parsed.query.offset || '0', 10) || 0, 0);
+      const q      = String(parsed.query.q || '').trim();
+      const params = [];
+      let where = '';
+      if (q) {
+        params.push(`%${q}%`);
+        where = `WHERE input ILIKE $${params.length} OR output ILIKE $${params.length}`;
+      }
+      const countRes = await db.query(`SELECT COUNT(*)::int AS n FROM email_reply_logs ${where}`, params);
+      params.push(limit, offset);
+      const rowsRes = await db.query(
+        `SELECT id, created_at, rep_name, rep_email, voice, input, output, model,
+                input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+                duration_ms, status, error
+         FROM email_reply_logs ${where}
+         ORDER BY created_at DESC, id DESC
+         LIMIT $${params.length - 1} OFFSET $${params.length}`,
+        params
+      );
+      json({ total: countRes.rows[0].n, count: rowsRes.rows.length, limit, offset, logs: rowsRes.rows });
+    } catch (e) {
+      console.error('[email-reply-logs]', e.message);
       json({ error: e.message }, 500);
     }
     return;
@@ -9103,6 +9206,27 @@ ${q.accepted ? `
     const linksJson = EMAIL_REPLY_PRODUCT_LINKS_RAW || '{}';
     const escapeForScriptTag = (s) => s.replace(/<\/script/gi, '<\\/script');
     html = html.replace('__PRODUCT_LINKS__', () => escapeForScriptTag(linksJson));
+    html = html.replace('__IS_ADMIN__', () => isAdmin(req) ? 'true' : 'false');
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+    return;
+  }
+
+  // ── Email Reply Logs Page (admin only) ──────────────────────────
+  // Reviewer UI for the email_reply_logs table. Server-injects ADMIN
+  // gate at render time so non-admins get redirected even if they
+  // somehow guess the URL — defense in depth on top of the API gate.
+  if (pathname === '/email-reply-logs' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    if (!isAdmin(req)) { res.writeHead(302, { Location: '/email-reply' }); res.end(); return; }
+    let html;
+    try {
+      html = fs.readFileSync(path.join(__dirname, 'assistant', 'email-reply-logs.html'), 'utf8');
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Email reply logs viewer not installed.');
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);
     return;

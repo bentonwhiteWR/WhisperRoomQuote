@@ -197,6 +197,7 @@ Don't store secrets in the repo. Everything is in Railway → service → Variab
 | `SHOPIFY_STORE_DOMAIN`       | The canonical Shopify subdomain like `whisperroom-inc.myshopify.com` (NOT the custom domain `shop.whisperroom.com`). Find in Shopify admin → Settings → Domains. |
 | `SHOPIFY_API_VERSION`        | Optional. Default: `2024-10`. Bump when Shopify deprecates older API versions (~yearly). |
 | `GDRIVE_ASSEMBLY_MANUALS_FOLDER` | Google Drive folder ID of the `AssemblyManuals` root (the migrated `Z:\Database\InventoryDB\AssemblyManuals\`). Lives under the `Server` shared drive at `Server/AssemblyManuals/`. To find: open the folder in Drive in a browser, copy the long ID from the URL. Subfolders (`CoverManuals`, `WarrantyManuals`, etc.) are resolved by name at request time (cached 1h). Required for `/api/assembly-manual/build`. |
+| `ADMIN_REP_EMAILS`           | Comma-separated list of rep emails that gate admin-only surfaces (e.g. the `/email-reply-logs` reviewer). Example: `bentonwhite@whisperroom.com,gabewhite@whisperroom.com`. Lowercased internally — matching is case-insensitive. Empty (default) = no admins. Server-side check is `isAdmin(req)` in `quote-server.js`. |
 
 If you need to change one of these, do it in Railway and redeploy. Don't bake secrets into code.
 

@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.31.1', date:'May 20, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Assembly Manual: SNV/ENV models normalize to S/E + skip ventilation.** WhisperRoom doesn\'t ship dedicated "no-vent" manuals — an MDL XXXX SNV uses the same Cover/Series/EFP/etc PDFs as the vented S variant, and just omits the ventilation pages. `_stripMdlPrefix` now strips `SNV → S` and `ENV → E`, so file matching against names like "4848 S EFP.pdf" works even when the rep picks "MDL 4848 SNV". New `ctx.isNV` flag gates the K + L ventilation sections off for those models.'},
+        {t:'fix', d:'**EFP cascade now enforced server-side too.** Frontend already pre-ticks EFP + Ramp when ADA is detected, but the backend now also forces `efp = true` and `ramp = true` whenever `ada` is on — belt-and-suspenders so a direct API caller (or an accidentally unticked checkbox) still gets the right sections. Combined with the SNV/ENV normalization above, this fixes the "EFP not pulling when ADA is on quote" report.'},
+      ]
+    },
+    {
       v:'1.31.0', date:'May 20, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Suppliers tab on Reports (steps 2 + 3 of 3).** New "Suppliers" tab on `/reports` showing QB vendor spend pulled from QB\'s `VendorExpenses` report. Range picker covers YTD, trailing 12 months, this/last month, this/last quarter, and custom date range. Sortable table (Vendor / Total / % of total) with hover rows and a click-through "view →" link on each row that opens a drilldown modal listing every Bill / Cash Purchase / Credit Card Purchase for that vendor in the same range (`TransactionListByVendor` report). Summary line above the table shows date range, vendor count, grand total, and whether the data is fresh-from-QB or 24h-cached. "↻ Refresh" button busts the cache. New endpoint `GET /api/reports/supplier-spend/detail?vendorId=...&range=...` carries the drilldown.'},

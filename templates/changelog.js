@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.31.0', date:'May 20, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Suppliers tab on Reports (steps 2 + 3 of 3).** New "Suppliers" tab on `/reports` showing QB vendor spend pulled from QB\'s `VendorExpenses` report. Range picker covers YTD, trailing 12 months, this/last month, this/last quarter, and custom date range. Sortable table (Vendor / Total / % of total) with hover rows and a click-through "view →" link on each row that opens a drilldown modal listing every Bill / Cash Purchase / Credit Card Purchase for that vendor in the same range (`TransactionListByVendor` report). Summary line above the table shows date range, vendor count, grand total, and whether the data is fresh-from-QB or 24h-cached. "↻ Refresh" button busts the cache. New endpoint `GET /api/reports/supplier-spend/detail?vendorId=...&range=...` carries the drilldown.'},
+      ]
+    },
+    {
       v:'1.30.4', date:'May 20, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Assembly Manual: EFP / Cover / Series file matching.** Files in those folders are named with the size+variant stem only (e.g. `4848 S EFP.pdf`), NOT the full `MDL ` prefix. Section config now matches on `ctx.modelStem` (the model with `MDL ` stripped) instead of `ctx.model`. EFP, Cover, and Series sections will now actually pull.'},

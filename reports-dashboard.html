@@ -353,6 +353,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
       <button class="report-tab active" data-tab="salesGoal" onclick="switchReportTab('salesGoal')">Sales Goal</button>
       <button class="report-tab" data-tab="overview" onclick="switchReportTab('overview')">Overview</button>
       <button class="report-tab" data-tab="quotes" onclick="switchReportTab('quotes')">Quotes</button>
+      <button class="report-tab" data-tab="suppliers" onclick="switchReportTab('suppliers')">Suppliers</button>
     </div>
 
     <div id="tabSalesGoal">
@@ -369,6 +370,47 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
       <div id="quotesTimelineState" style="padding:60px;text-align:center;color:var(--muted);font-size:14px">Pick a rep from the sidebar to see their last 7 days of quotes.</div>
       <div id="quotesTimelineContent" style="display:none"></div>
     </div>
+
+    <!-- Suppliers tab: QB Expenses by Vendor (24h cached). Click any
+         vendor row to see the underlying transactions. -->
+    <div id="tabSuppliers" style="display:none">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+        <select id="ssRange" onchange="loadSupplierSpend()" style="padding:7px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:var(--mono);outline:none;cursor:pointer">
+          <option value="ytd">Year-to-date</option>
+          <option value="12m">Trailing 12 months</option>
+          <option value="month">This month</option>
+          <option value="lastmonth">Last month</option>
+          <option value="quarter">This quarter</option>
+          <option value="lastquarter">Last quarter</option>
+          <option value="custom">Custom range…</option>
+        </select>
+        <div id="ssCustomRow" style="display:none;gap:8px;align-items:center">
+          <input type="date" id="ssCustomStart" style="padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-family:var(--mono);outline:none">
+          <span style="color:var(--muted);font-size:11px">→</span>
+          <input type="date" id="ssCustomEnd" style="padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-family:var(--mono);outline:none">
+          <button onclick="loadSupplierSpend()" style="padding:6px 12px;background:var(--orange-dim);border:1px solid var(--orange-border);border-radius:6px;color:var(--orange);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Apply</button>
+        </div>
+        <button onclick="loadSupplierSpend({refresh:true})" title="Bypass the 24h cache and re-pull from QB" style="margin-left:auto;padding:7px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">↻ Refresh</button>
+      </div>
+      <div id="ssSummary" style="margin-bottom:10px;font-size:12px;color:var(--text2);font-family:var(--mono);min-height:18px"></div>
+      <div id="ssState" style="padding:60px;text-align:center;color:var(--muted);font-size:14px">Pick a range above to load.</div>
+      <div id="ssTable" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Supplier-spend drilldown modal ───────────────────────────── -->
+<div id="ssDetailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;align-items:center;justify-content:center;padding:24px">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;max-width:900px;width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;gap:14px">
+      <div>
+        <div id="ssDetailVendor" style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800">Vendor</div>
+        <div id="ssDetailMeta" style="font-size:11px;color:var(--muted);font-family:var(--mono);margin-top:3px"></div>
+      </div>
+      <button onclick="closeSupplierDetail()" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer;line-height:1;padding:0 6px">&times;</button>
+    </div>
+    <div id="ssDetailState" style="padding:40px;text-align:center;color:var(--muted);font-size:13px">Loading transactions…</div>
+    <div id="ssDetailContent" style="display:none;flex:1;overflow-y:auto;margin-top:8px"></div>
   </div>
 </div>
 
@@ -429,10 +471,192 @@ function switchReportTab(name) {
   document.getElementById('tabSalesGoal').style.display = name === 'salesGoal' ? '' : 'none';
   document.getElementById('tabOverview').style.display  = name === 'overview'  ? '' : 'none';
   document.getElementById('tabQuotes').style.display    = name === 'quotes'    ? '' : 'none';
+  document.getElementById('tabSuppliers').style.display = name === 'suppliers' ? '' : 'none';
   document.querySelectorAll('.report-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   if (name === 'quotes') loadQuotesTimeline();
   if (name === 'overview' && !document.getElementById('reportContent').innerHTML) loadReport();
   if (name === 'salesGoal' && !_salesGoalLoaded) loadSalesGoal();
+  if (name === 'suppliers' && !_supplierSpendLoaded) loadSupplierSpend();
+}
+
+// ── Suppliers tab — QB Expenses by Vendor ─────────────────────────
+let _supplierSpendLoaded = false;
+let _supplierSpendData = null;
+let _ssSortKey = 'total';   // 'total' | 'vendor' | 'pct'
+let _ssSortDir = 'desc';    // 'asc' | 'desc'
+
+document.getElementById('ssRange').addEventListener('change', () => {
+  const row = document.getElementById('ssCustomRow');
+  row.style.display = document.getElementById('ssRange').value === 'custom' ? 'flex' : 'none';
+});
+
+async function loadSupplierSpend({ refresh = false } = {}) {
+  const range = document.getElementById('ssRange').value;
+  const start = document.getElementById('ssCustomStart').value;
+  const end   = document.getElementById('ssCustomEnd').value;
+  if (range === 'custom' && (!start || !end)) {
+    document.getElementById('ssState').textContent = 'Pick start + end dates for the custom range.';
+    document.getElementById('ssState').style.display = 'block';
+    document.getElementById('ssTable').style.display = 'none';
+    return;
+  }
+  document.getElementById('ssState').textContent = refresh ? 'Refreshing from QuickBooks…' : 'Loading…';
+  document.getElementById('ssState').style.display = 'block';
+  document.getElementById('ssTable').style.display = 'none';
+  document.getElementById('ssSummary').textContent = '';
+  try {
+    const qs = new URLSearchParams({ range });
+    if (range === 'custom') { qs.set('start', start); qs.set('end', end); }
+    if (refresh) qs.set('refresh', '1');
+    const res = await fetch('/api/reports/supplier-spend?' + qs.toString(), { credentials:'include' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    _supplierSpendData = data;
+    _supplierSpendLoaded = true;
+    renderSupplierSpend();
+  } catch (e) {
+    document.getElementById('ssState').textContent = 'Error: ' + e.message;
+  }
+}
+
+function renderSupplierSpend() {
+  const d = _supplierSpendData;
+  if (!d) return;
+  // Summary line
+  const cachedLbl = d.fromCache
+    ? ` · cached ${new Date(d.cachedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})}`
+    : ' · fresh from QB';
+  document.getElementById('ssSummary').innerHTML =
+    `<b>${d.range.label}</b> (${d.range.start} → ${d.range.end}) · ${d.count} vendors · total <b style="color:var(--text)">${fmt(d.total)}</b>${cachedLbl}`;
+
+  // Table
+  const total = d.total || 0;
+  const rows = [...d.rows];
+  rows.sort((a, b) => {
+    let av, bv;
+    if (_ssSortKey === 'vendor') { av = a.vendor.toLowerCase(); bv = b.vendor.toLowerCase(); }
+    else { av = a.total; bv = b.total; } // 'total' and 'pct' sort the same way
+    if (av < bv) return _ssSortDir === 'asc' ? -1 : 1;
+    if (av > bv) return _ssSortDir === 'asc' ?  1 : -1;
+    return 0;
+  });
+  const arrow = (k) => _ssSortKey === k ? (_ssSortDir === 'asc' ? ' ▲' : ' ▼') : '';
+  const td = (s, extra) => `<td style="padding:8px 12px;border-bottom:1px solid var(--border);${extra||''}">${s}</td>`;
+
+  if (!rows.length) {
+    document.getElementById('ssState').textContent = 'No vendor purchases in this range.';
+    document.getElementById('ssState').style.display = 'block';
+    document.getElementById('ssTable').style.display = 'none';
+    return;
+  }
+
+  let html = `<table style="width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:12px">
+    <thead style="background:var(--surface2)"><tr>
+      <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer" onclick="ssSort('vendor')">Vendor${arrow('vendor')}</th>
+      <th style="padding:9px 12px;text-align:right;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer" onclick="ssSort('total')">Total${arrow('total')}</th>
+      <th style="padding:9px 12px;text-align:right;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);cursor:pointer" onclick="ssSort('pct')">% of total${arrow('pct')}</th>
+      <th style="padding:9px 12px;text-align:right;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Detail</th>
+    </tr></thead><tbody>`;
+  for (const r of rows) {
+    const pctVal = total ? (r.total / total * 100) : 0;
+    const drillLink = r.vendorId
+      ? `<a href="#" onclick="event.preventDefault();openSupplierDetail(${JSON.stringify(r.vendorId)},${JSON.stringify(r.vendor)})" style="color:var(--orange);text-decoration:none;font-weight:700">view →</a>`
+      : '<span style="color:var(--muted)">—</span>';
+    html += `<tr style="transition:.1s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">${
+      td(`<span style="font-weight:600;color:var(--text)">${escapeHtml(r.vendor)}</span>`)
+    }${
+      td(`<span style="font-family:var(--mono)">${fmt(r.total)}</span>`, 'text-align:right')
+    }${
+      td(`<span style="font-family:var(--mono);color:var(--text2)">${pctVal.toFixed(1)}%</span>`, 'text-align:right')
+    }${
+      td(drillLink, 'text-align:right')
+    }</tr>`;
+  }
+  html += '</tbody></table>';
+  document.getElementById('ssState').style.display = 'none';
+  document.getElementById('ssTable').innerHTML = html;
+  document.getElementById('ssTable').style.display = 'block';
+}
+
+function ssSort(key) {
+  if (_ssSortKey === key) {
+    _ssSortDir = _ssSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _ssSortKey = key;
+    _ssSortDir = key === 'vendor' ? 'asc' : 'desc';
+  }
+  renderSupplierSpend();
+}
+
+async function openSupplierDetail(vendorId, vendorName) {
+  const modal = document.getElementById('ssDetailModal');
+  modal.style.display = 'flex';
+  document.getElementById('ssDetailVendor').textContent = vendorName;
+  document.getElementById('ssDetailMeta').textContent = '';
+  document.getElementById('ssDetailState').style.display = 'block';
+  document.getElementById('ssDetailState').textContent = 'Loading transactions…';
+  document.getElementById('ssDetailContent').style.display = 'none';
+
+  const range = document.getElementById('ssRange').value;
+  const start = document.getElementById('ssCustomStart').value;
+  const end   = document.getElementById('ssCustomEnd').value;
+  try {
+    const qs = new URLSearchParams({ range, vendorId });
+    if (range === 'custom') { qs.set('start', start); qs.set('end', end); }
+    const res = await fetch('/api/reports/supplier-spend/detail?' + qs.toString(), { credentials:'include' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    renderSupplierDetail(data);
+  } catch (e) {
+    document.getElementById('ssDetailState').textContent = 'Error: ' + e.message;
+  }
+}
+
+function renderSupplierDetail(d) {
+  const meta = `${d.range.label} (${d.range.start} → ${d.range.end}) · ${d.count} transactions · total ${fmt(d.total)}${d.fromCache ? ' · cached' : ''}`;
+  document.getElementById('ssDetailMeta').textContent = meta;
+  if (!d.transactions || !d.transactions.length) {
+    document.getElementById('ssDetailState').textContent = 'No transactions for this vendor in this range.';
+    document.getElementById('ssDetailContent').style.display = 'none';
+    return;
+  }
+  const td = (s, extra) => `<td style="padding:7px 10px;border-bottom:1px solid var(--border);${extra||''}">${s}</td>`;
+  let html = `<table style="width:100%;border-collapse:collapse;font-size:11px">
+    <thead style="background:var(--surface2);position:sticky;top:0"><tr>
+      <th style="padding:7px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Date</th>
+      <th style="padding:7px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Type</th>
+      <th style="padding:7px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Doc #</th>
+      <th style="padding:7px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Account</th>
+      <th style="padding:7px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Memo</th>
+      <th style="padding:7px 10px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Amount</th>
+    </tr></thead><tbody>`;
+  for (const t of d.transactions) {
+    html += `<tr>${
+      td(`<span style="font-family:var(--mono)">${escapeHtml(t.date)}</span>`)
+    }${
+      td(escapeHtml(t.type))
+    }${
+      td(`<span style="font-family:var(--mono);color:var(--text2)">${escapeHtml(t.docNum || '—')}</span>`)
+    }${
+      td(`<span style="color:var(--text2)">${escapeHtml(t.account || '—')}</span>`)
+    }${
+      td(`<span style="color:var(--text2)">${escapeHtml(t.memo || '')}</span>`)
+    }${
+      td(`<span style="font-family:var(--mono)">${fmt(t.amount)}</span>`, 'text-align:right')
+    }</tr>`;
+  }
+  html += '</tbody></table>';
+  document.getElementById('ssDetailState').style.display = 'none';
+  document.getElementById('ssDetailContent').innerHTML = html;
+  document.getElementById('ssDetailContent').style.display = 'block';
+}
+
+function closeSupplierDetail() {
+  document.getElementById('ssDetailModal').style.display = 'none';
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
 // ── Sales Goal report ─────────────────────────────────────────────

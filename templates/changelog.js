@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.31.2', date:'May 20, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Assembly Manual: distinguish ADA (full package) from WA UPG (door only).** Per user spec — ADA line item means the full ADA-compatible package (door + Ramp + Elevated Floor), so all three auto-tick. WA UPG means just the Wide Access door alone — no Ramp, no EFP. Previously both triggered the same cascade. Now only `ADA ` line items trigger Ramp + EFP auto-tick; `WA UPG ` ticks just the ADA Door + ADA Size. Also removed the server-side cascade introduced in v1.31.1 — frontend pre-fill is now the source of truth (so WA UPG quotes don\'t get force-included Ramp/EFP).'},
+        {t:'ui', d:'**Assembly Manual modal — light mode support.** Modal was hard-coded to dark colors (#1a1a1a surface, white-on-dark text) and looked broken on light theme. Switched all colors to the existing theme CSS variables (`--surface`, `--text`, `--muted`, `--border`, `--accent`). Status box (success/warn/error) now reads cleanly in either theme. Dropdown options force `<option>` background to follow theme so the popup doesn\'t fall back to OS defaults.'},
+      ]
+    },
+    {
       v:'1.31.1', date:'May 20, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Assembly Manual: SNV/ENV models normalize to S/E + skip ventilation.** WhisperRoom doesn\'t ship dedicated "no-vent" manuals — an MDL XXXX SNV uses the same Cover/Series/EFP/etc PDFs as the vented S variant, and just omits the ventilation pages. `_stripMdlPrefix` now strips `SNV → S` and `ENV → E`, so file matching against names like "4848 S EFP.pdf" works even when the rep picks "MDL 4848 SNV". New `ctx.isNV` flag gates the K + L ventilation sections off for those models.'},

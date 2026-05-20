@@ -637,14 +637,30 @@ async function openSupplierDetail(vendorId, vendorName) {
   }
 }
 
+// Map QB's TxnType label (e.g. "Bill", "Credit Card Expense", "Vendor
+// Credit") to the path under app.qbo.intuit.com that opens that record.
+// Unknown types return null → row gets a dash instead of a link.
+function _qbTxnPath(type) {
+  const t = String(type || '').toLowerCase().trim();
+  if (t === 'bill')                                 return 'bill';
+  if (t === 'vendor credit')                        return 'vendorcredit';
+  if (t === 'check')                                return 'check';
+  if (t === 'journal entry' || t === 'journal')     return 'journal';
+  if (t.includes('credit card credit'))             return 'creditcardcredit';
+  // Cash / CC / generic expense — all open via /app/expense
+  if (t.includes('expense') || t.includes('cash purchase') || t.includes('credit card')) return 'expense';
+  return null;
+}
+
 function renderSupplierDetail(d) {
-  const meta = `${d.range.label} (${d.range.start} → ${d.range.end}) · ${d.count} transactions · total ${fmt(d.total)}${d.fromCache ? ' · cached' : ''}`;
+  const meta = `${d.range.label} (${d.range.start} → ${d.range.end}) · ${d.count} transactions · total ${fmt(d.total)}${d.fromCache ? ' · cached' : ''} · payments excluded`;
   document.getElementById('ssDetailMeta').textContent = meta;
   if (!d.transactions || !d.transactions.length) {
-    document.getElementById('ssDetailState').textContent = 'No transactions for this vendor in this range.';
+    document.getElementById('ssDetailState').textContent = 'No bills or expenses for this vendor in this range.';
     document.getElementById('ssDetailContent').style.display = 'none';
     return;
   }
+  const realmId = d.qbRealmId || '';
   const td = (s, extra) => `<td style="padding:7px 10px;border-bottom:1px solid var(--border);${extra||''}">${s}</td>`;
   let html = `<table style="width:100%;border-collapse:collapse;font-size:11px">
     <thead style="background:var(--surface2);position:sticky;top:0"><tr>
@@ -654,8 +670,17 @@ function renderSupplierDetail(d) {
       <th style="padding:7px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Account</th>
       <th style="padding:7px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Memo</th>
       <th style="padding:7px 10px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Amount</th>
+      <th style="padding:7px 10px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">QB</th>
     </tr></thead><tbody>`;
   for (const t of d.transactions) {
+    const qbPath = _qbTxnPath(t.type);
+    let qbCell;
+    if (qbPath && t.id) {
+      const url = `https://app.qbo.intuit.com/app/${qbPath}?txnId=${encodeURIComponent(t.id)}` + (realmId ? `&realmId=${encodeURIComponent(realmId)}` : '');
+      qbCell = `<a href="${url}" target="_blank" rel="noopener" style="color:var(--orange);text-decoration:none;font-weight:700;font-size:10px">Open ↗</a>`;
+    } else {
+      qbCell = '<span style="color:var(--muted);font-size:10px">—</span>';
+    }
     html += `<tr>${
       td(`<span style="font-family:var(--mono)">${escapeHtml(t.date)}</span>`)
     }${
@@ -668,6 +693,8 @@ function renderSupplierDetail(d) {
       td(`<span style="color:var(--text2)">${escapeHtml(t.memo || '')}</span>`)
     }${
       td(`<span style="font-family:var(--mono)">${fmt(t.amount)}</span>`, 'text-align:right')
+    }${
+      td(qbCell, 'text-align:right')
     }</tr>`;
   }
   html += '</tbody></table>';

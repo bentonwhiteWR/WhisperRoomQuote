@@ -701,6 +701,12 @@ function _flattenVendorSummary(reportJson) {
 // Walk QB's TransactionListByVendor report and emit a flat array of
 // transactions sorted by date desc. Looks columns up by ColType so the
 // flatten doesn't break if Intuit reorders them in a future API rev.
+//
+// Filters out Bill Payment / Payment / Credit Card Payment rows — those
+// just settle the AP balance and aren't what reps care about when
+// reviewing supplier spend (they want the charges, not the settling).
+// Captures the underlying transaction id from whichever ColData cell
+// exposes one so the frontend can build "open in QB" deep links.
 function _flattenVendorDetail(reportJson) {
   const cols = reportJson?.Columns?.Column || [];
   const idx = {};
@@ -730,7 +736,27 @@ function _flattenVendorDetail(reportJson) {
         // Skip summary/total rows (no date + label like "Total ...")
         if (!date && /total/i.test(type)) continue;
         if (!date && !type && !amount) continue;
+        // Skip payment-settling transactions — reps want to see what
+        // was charged to AP, not the entries that paid those bills off.
+        // Covers "Bill Payment", "Bill Payment (Check)", "Bill Payment
+        // (Credit Card)", "Credit Card Payment", plain "Payment".
+        if (/payment/i.test(type)) continue;
+
+        // The txn id lives on whichever ColData cell QB attaches it to;
+        // varies by row type but usually shows up on TxnType, DocNum, or
+        // the date cell. Pick the first id we see that isn't the vendor
+        // (col 0 is usually date, not vendor — we filtered for that by
+        // resolving columns via ColType). Account cells also carry ids
+        // — skip those too.
+        let txnId = null;
+        const accountColIdx = idx.Account ?? idx.AccountFullName ?? idx.Acct;
+        for (let i = 0; i < cd.length; i++) {
+          if (i === accountColIdx) continue;
+          if (cd[i]?.id) { txnId = String(cd[i].id); break; }
+        }
+
         out.push({
+          id:      txnId,
           date,
           type,
           docNum:  String(numCell?.value || ''),
@@ -7732,8 +7758,13 @@ ${q.accepted ? `
 
       const reportJson = await qb.fetchExpensesByVendorDetail({ startDate, endDate, vendorId });
       const transactions = _flattenVendorDetail(reportJson);
+      // Grab the QB realmId so the frontend can build "open in QB"
+      // deep links. Read from the cached token row, no refresh needed.
+      let qbRealmId = null;
+      try { qbRealmId = (await qb.getStatus())?.realmId || null; } catch {}
       const payload = {
         vendorId,
+        qbRealmId,
         range: { key: range, label, start: startDate, end: endDate },
         count: transactions.length,
         total: transactions.reduce((s, t) => s + (t.amount || 0), 0),

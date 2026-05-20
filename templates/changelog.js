@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.32.2', date:'May 20, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Supplier drilldown: filter out payments + add "Open in QB ↗" per row.** Bill Payment / Credit Card Payment / Payment rows are now stripped server-side — reps want to see what was charged to AP, not the entries that paid those bills off. Header now reads "...payments excluded." New "QB" column on each row with an "Open ↗" link that deep-links to the transaction in QuickBooks Online (`app.qbo.intuit.com/app/<type>?txnId=<id>&realmId=<...>`). Type → path mapping covers Bills, Cash/CC Expenses, Vendor Credits, Checks, Journal Entries, Credit Card Credits. Unknown types show a "—" instead. Response now also returns `qbRealmId` so links scope to the right QB company.'},
+      ]
+    },
+    {
       v:'1.32.1', date:'May 20, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Ship Calendar tiles were all stuck on "Pending"** because the lookup against the shipping-board record read `s.status`, but the actual field is `s.trackStatus`. Fixed the status read, and corrected the rest of the field names in the summary popup to match the real shape: `trackDelivered` (not `delivered_at`), `trackEta` (not `eta`), `trackLastEvent` (not `last_event`), `trackUpdated` (not `last_event_at`), and `city`+`state` (no `destination` field). Delivered date now also shows "Signed: <name>" when the carrier returned a signer.'},

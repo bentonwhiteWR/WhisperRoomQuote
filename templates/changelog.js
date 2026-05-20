@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.30.0', date:'May 20, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Assembly Manual builder — quote-builder button + modal (step 2 of 2).** New "🛠 Build Assembly Manual" button under the existing action stack on the quote builder. Click → modal opens pre-filled from the current quote: detects the MDL from line items, reads the WA Type as ADA size, and ticks the right checkboxes by scanning line-item names for HX / Studio Light / Bass Traps / EFP / Multi Jack Panel / Acoustic Package / Roof Vent / Ramp / Step / Expansion / Jack Panel. Rep verifies, clicks "Build & Download" → server pulls source PDFs from Drive, merges with pdf-lib, streams the result as a download. Status banner inside the modal surfaces missing-section warnings (e.g., a folder didn\'t have a file matching the expected substring) so the rep can confirm before delivering the PDF to the floor. ADA Size dropdown mirrors the rep WA Type dropdown options exactly — one source of truth.'},
+        {t:'fix', d:'**Filter out invalid MDL names from the QB-driven model list.** `/api/assembly-manual/models` was returning typos like "MDL 9696 B" and one-off entries like "MDL 102186 CL Repl" that don\'t map to real assembly-manual variants. Now filtered against the canonical naming pattern: `MDL <digits>` optionally followed by ` LP`, then suffix in {E, S, ENV, SNV}. Anything else is dropped. (Underlying typo still lives in QB — flag with Kim if it bothers anyone there too.)'},
+      ]
+    },
+    {
       v:'1.29.1', date:'May 20, 2026', tag:'log',
       changes:[
         {t:'fix', d:'**Email reply logs viewer — drop the admin gate.** v1.29.0 hid the reviewer behind `ADMIN_REP_EMAILS`. Simplifying: any authed rep can now see the logs (the content is the same email-body text they\'re already typing into the assistant — no extra PII exposure). Removed the env var, the `isAdmin(req)` helper, the page + API gates, and the `__IS_ADMIN__` injection on `/email-reply`. "⚙ Logs" button in the topbar is always visible now.'},

@@ -3673,8 +3673,15 @@ const server = http.createServer(async (req, res) => {
       // QB QOQL: LIKE 'MDL %' (note: QB matches with single quotes; escape any in needle)
       const raw = await qb.qbQueryRaw(`SELECT Id, Name, Active FROM Item WHERE Name LIKE 'MDL %' MAXRESULTS 500`);
       const items = raw?.QueryResponse?.Item || [];
+      // Only accept the canonical MDL naming pattern. QB occasionally
+      // accumulates one-off items like "MDL 9696 B" or "MDL 102186 CL Repl"
+      // (typos or special-purpose entries) that don't map to a real assembly
+      // manual variant. Valid format: MDL <digits> (LP )? (E|S|ENV|SNV)
+      // — same suffix set the quote builder's hardcoded MDL list uses.
+      const MDL_PATTERN = /^MDL\s+\d+(\s+LP)?\s+(E|S|ENV|SNV)$/i;
       const models = items
         .filter(i => i.Active !== false)
+        .filter(i => MDL_PATTERN.test(String(i.Name || '').trim()))
         .map(i => ({ id: i.Id, name: i.Name }))
         .sort((a, b) => a.name.localeCompare(b.name));
       _assemblyMdlCache = { models, cachedAt: now };

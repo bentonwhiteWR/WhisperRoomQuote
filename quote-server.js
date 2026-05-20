@@ -645,11 +645,19 @@ function _resolveSupplierSpendRange(rangeKey, customStart, customEnd) {
 }
 
 // Walk QB's ExpensesByVendorSummary response (Rows / Sections / ColData
-// tree) and produce a flat `[{ vendor, vendorId, total }]` sorted desc,
-// plus the grand total from the report's Summary row when present.
+// tree) and produce a flat `[{ vendor, vendorId, total }]` sorted desc.
+//
+// QB tags every Bill/Purchase that has no vendor assigned (sales tax
+// filings, bank fees, journal entries, payroll, credit-card processor
+// payments, etc) as the literal vendor name "Not Specified". These
+// aren't suppliers — they're internal operating expenses — and the QB
+// UI itself hides them from the same report. We strip them out of the
+// vendor list and surface the total separately as `notSpecifiedTotal`
+// so the rep can still see what's unaccounted-for.
 function _flattenVendorSummary(reportJson) {
   const out = [];
   let total = 0;
+  let notSpecifiedTotal = 0;
   function walk(rowArr) {
     if (!Array.isArray(rowArr)) return;
     for (const r of rowArr) {
@@ -659,9 +667,16 @@ function _flattenVendorSummary(reportJson) {
         const vendorName = String(vendorCol.value || '').trim();
         const vendorId   = vendorCol.id || null;
         const amount = parseFloat(amountCol.value || '0') || 0;
-        // Skip empty-vendor rows + the literal TOTAL/Total summary row
-        // that some QB reports emit inline rather than as Summary.
-        if (vendorName && vendorName.toUpperCase() !== 'TOTAL' && (vendorId || amount !== 0)) {
+        const upper = vendorName.toUpperCase();
+        // Skip the inline TOTAL row some reports emit.
+        if (upper === 'TOTAL') continue;
+        // Hold "Not Specified" out of the vendor list but still tally
+        // it so the rep can see how much falls outside of named vendors.
+        if (upper === 'NOT SPECIFIED' || !vendorName) {
+          notSpecifiedTotal += amount;
+          continue;
+        }
+        if (vendorId || amount !== 0) {
           out.push({ vendor: vendorName, vendorId, total: amount });
         }
       }
@@ -675,11 +690,12 @@ function _flattenVendorSummary(reportJson) {
     }
   }
   walk(reportJson?.Rows?.Row || []);
-  // Fallback: if QB didn't emit a TOTAL row, derive from leaves.
-  if (!total) total = out.reduce((s, r) => s + r.total, 0);
+  // Fallback: if QB didn't emit a TOTAL row, derive from leaves +
+  // the not-specified bucket.
+  if (!total) total = out.reduce((s, r) => s + r.total, 0) + notSpecifiedTotal;
   // Stable sort: total desc, then name asc.
   out.sort((a, b) => (b.total - a.total) || a.vendor.localeCompare(b.vendor));
-  return { rows: out, total };
+  return { rows: out, total, notSpecifiedTotal };
 }
 
 // Walk QB's TransactionListByVendor report and emit a flat array of
@@ -7672,10 +7688,11 @@ ${q.accepted ? `
       }
 
       const reportJson = await qb.fetchExpensesByVendorSummary({ startDate, endDate });
-      const { rows, total } = _flattenVendorSummary(reportJson);
+      const { rows, total, notSpecifiedTotal } = _flattenVendorSummary(reportJson);
       const payload = {
         range: { key: range, label, start: startDate, end: endDate },
         total,
+        notSpecifiedTotal,
         count: rows.length,
         rows,
       };

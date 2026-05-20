@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.31.3', date:'May 20, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Suppliers tab: "view →" drilldown buttons were dead** because of an HTML attribute escaping bug — `JSON.stringify(name)` returns a string wrapped in double quotes, which broke the surrounding `onclick="..."` attribute the moment any vendor row rendered. Switched the drilldown to `data-vendor-id` / `data-vendor-name` attributes + a single delegate click listener on the table, so vendor names with quotes/apostrophes/anything-weird no longer break the markup.'},
+        {t:'fix', d:'**Filter QB\'s "Not Specified" bucket out of the vendor list.** QB tags every Bill/Purchase that has no vendor assigned (sales tax filings, bank fees, journal entries, payroll, credit-card processor payments, etc.) as the literal `Not Specified` — these aren\'t suppliers but were dominating the table at ~47% of total. The QB UI itself hides this row from the same report. Now stripped out of `rows`, but tracked separately as `notSpecifiedTotal` in the response and surfaced in the summary line as "+ $X uncategorized ⓘ" with a hover tooltip explaining what it is. Table percentages are now out of the named-vendor total only.'},
+      ]
+    },
+    {
       v:'1.31.2', date:'May 20, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Assembly Manual: distinguish ADA (full package) from WA UPG (door only).** Per user spec — ADA line item means the full ADA-compatible package (door + Ramp + Elevated Floor), so all three auto-tick. WA UPG means just the Wide Access door alone — no Ramp, no EFP. Previously both triggered the same cascade. Now only `ADA ` line items trigger Ramp + EFP auto-tick; `WA UPG ` ticks just the ADA Door + ADA Size. Also removed the server-side cascade introduced in v1.31.1 — frontend pre-fill is now the source of truth (so WA UPG quotes don\'t get force-included Ramp/EFP).'},

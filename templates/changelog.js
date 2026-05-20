@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.30.3', date:'May 20, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Assembly Manual modal — form + pre-fill rework.** Removed the "Jack Panel (OLD)" checkbox (not needed). Renamed "EFP (Window)" → "EFP (Elevated Floor Package)" — the underlying Drive files are still EFP*.pdf, just the label was wrong.'},
+        {t:'fix', d:'**Assembly Manual pre-fill — actually loop line items with starts-with rules.** Previous detection used loose substring matches and missed common cases (e.g., Studio Light line items that start with "SL "). New rules: `RM ` prefix → Roof Mount; `ADA ` or `WA UPG` prefix → ADA + auto-fill ADA Size from `repWaType` (or first dropdown option as default); `SL ` prefix → Studio Light; `EFP ` prefix → EFP. ADA-triggered cascade: when ADA is detected (or WA Type is set on the quote), Ramp and EFP are auto-ticked too. Substring rules retained for HX, Bass Traps, MJP, Acoustic Package, Step, Expansion.'},
+      ]
+    },
+    {
       v:'1.30.2', date:'May 20, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Supplier-spend: correct QB report name.** v1.28.1 used `ExpensesByVendorSummary` which Intuit renamed to `VendorExpenses` in their API. The old name returns a misleading code-5020 "Permission Denied Error" instead of 404, which sent us down a false trail looking at user roles. Switched to the current names: `VendorExpenses` for the summary and `TransactionListByVendor` for the drilldown. Retest `/api/reports/supplier-spend?range=ytd` — should return real data now.'},

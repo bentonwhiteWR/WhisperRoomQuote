@@ -1,19 +1,30 @@
 # WhisperRoom Quote Builder — Dev Log
 
-Internal development notes. Last updated 2026-05-14.
+Internal development notes. Last updated 2026-05-20.
 
 > **Read this first when starting a session.** The "Current focus" section below is the fastest way to know where we left off. Below that: session writeups, the audit (outstanding work), and the changelog table.
 
 ---
 
-## Current focus (2026-05-19 — payment-clearing chips + ACH soft-warning shipped to staging)
+## Current focus (2026-05-20 — Assembly Manual + Suppliers tab + Ship Calendar + email-reply logging all shipped)
 
-**Most recent shipped to PROD:** v1.24.6 — intl shipping email SHIPMENT VALUE line. Promoted 2026-05-19. (Prior majors live in prod: v1.24.0–.5 Email Reply Assistant + polish, v1.23.x Sales Goal report. v1.22.x TaxJar work was reverted and tabled.)
+**Most recent shipped to PROD:** v1.32.3 — DEVLOG session writeup for 2026-05-20. Functionally v1.32.2 — supplier-drilldown payments filter + open-in-QB links — is the last code change on prod. Promoted 2026-05-20.
 
-**Most recent shipped to PROD (re-stated):** v1.25.3 — payment-state chips + ACH/fraud pre-flight warning. Promoted 2026-05-19.
+Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in the project's history. Five parallel workstreams plus a Shopify-API investigation that didn't ship code but informed the path forward. Full breakdown lives in the **May 20 session writeup** below.
 
-**On STAGING (NOT YET promoted to main):**
-- **v1.26.0** (this session) — Shopify parts orders auto-invoice. One-click "📋 Create QB Invoice & Mark Paid" button on eligible Shopify deals in Deal Hub overlay (ecommerce-owned, <$5k, created >= 2026-05-19). Pulls HS line items + contact, creates QB invoice against "Shopify Web Orders" customer, marks paid. Cutoff date prevents double-invoicing the backlog. Backfill link for cleanup. **Before testing on prod**: need to create non-inventory item "Shopify Order Line" in QuickBooks (Products & Services → New non-inventory item). Without it the endpoint returns 503 with clear instructions.
+**On STAGING (NOT YET promoted to main):** nothing.
+
+**Open follow-ups from today (in priority order):**
+
+- **Assembly Manual — feature-combo testing.** Most code paths are exercised, but the user explicitly said "I need to test everything in the manual, but will get to that in due time." Coordinate a test build with each common combo (ADA / WA UPG / Roof Vent / Bass Traps / SNV / LP / etc.) and verify section files match. The `X-Assembly-Missing` response header surfaces any folder where the substring lookup didn't land.
+
+- **Supplier-spend drilldown deep links — verify QB txn-id mapping.** The "Open ↗" link on each row relies on QB exposing the underlying transaction id on one of the `ColData[i].id` cells. My flatten picks the first non-account id. If any row shows a dash in the QB column instead of "Open ↗", paste the row's type + doc # and we adjust the extraction.
+
+- **HubSpot workflow rewrite — validate next fresh Shopify order.** Today's rewrite changes parts-order deals to TRANSITION (not duplicate) into the Sales Pipeline, preserving tax_price / source store / line items / contact assoc from the original Shopify-synced deal. Next live parts order tells us whether the data actually flows through. Old duplicate deals from the prior workflow are still orphaned in HubSpot — possible cleanup later.
+
+- **Shopify API authentication — tabled.** Explored at length today. Conclusion: the new Shopify Dev Dashboard does not offer a static `shpat_` token for custom-distribution apps without standing up an OAuth callback handler (~30 min of work). Decision was to stick with HubSpot-mirror data for the Shopify-parts auto-invoice for now. If precision tax / address / line items become a real pain point, options are (a) install Intuit's official Shopify→QB integration and let it own all Shopify→QB sync, or (b) build the OAuth callback. See May 20 writeup §6 for the trail.
+
+- **Email-reply logs v2 — feedback capture.** Deliberately not in v1. Revisit once there's enough history in the `email_reply_logs` table to make manual review valuable. Likely shape: thumbs up/down + an "edited final" textarea that captures what the rep actually sent (if different from what the model produced), so we can build a dataset of "model output → human-corrected output" pairs.
 
 ### TaxJar compliance investigation (TABLED — keeping notes for future reference)
 
@@ -51,7 +62,11 @@ Today's progression (May 14, in order):
 - `GET /api/debug/deal/:id` — fetches raw HubSpot deal properties + the pipeline definition (with all stage IDs ↔ labels). Used to verify a deal's actual internal `dealstage`/`pipeline` vs. what we filter on.
 - `GET /api/debug/find-deal?q=...` — searches HubSpot deals by name and returns up to 20 matches with IDs and key properties.
 
-### Open investigation: Shopify deals invisible from Deal Hub
+### Open investigation: Shopify deals invisible from Deal Hub [RESOLVED 2026-05-20]
+
+The HubSpot workflow rewrite (transition the original Shopify-synced deal into the Sales Pipeline instead of creating a duplicate) sidesteps this entirely — the source-of-truth deal is now in the pipeline our app reads, complete with the Shopify-synced data. The HubSpot search-index quirk no longer matters. Keeping the notes below for historical context.
+
+---
 
 Late EOD May 14 we hit a real bug we couldn't fully diagnose. Two newly-arrived Shopify-generated deals — IDs `60254716188` (#2144, $5,046.50) and `60256150594` (#2145, $11,180.80) — landed in HubSpot's Sales Pipeline at stage `845719` (Shipped) with owner `49384873` (ecommerce@whisperroom.com). Both are missing from the Deal Hub board.
 
@@ -69,7 +84,11 @@ User comment from EOD: "I have to specifically search '2145'. If I type shopify,
 
 **Decision (user-driven):** rather than chase down the HubSpot search quirk, build a new **"Shopify Review" column** in the Deal Hub that pulls ALL ecommerce-owned deals (`ownerId === '49384873'`) regardless of HubSpot stage. This sidesteps the search bug AND fixes a real workflow gap (the HubSpot Shopify integration auto-advances new Shopify deals to "Shipped" stage on creation, which is correct for small parts orders but WRONG for booth orders that need human verification before processing).
 
-### Queued (next session): build "Shopify Review" column
+### Queued (next session): build "Shopify Review" column [SUPERSEDED 2026-05-20]
+
+User opted for a different approach: rewrite the upstream HubSpot workflow to TRANSITION the original Shopify-synced deal into the Sales Pipeline (booth orders → Verbal Confirmation stage; parts orders stay in Order Pipeline owned by ecommerce). That obviates the need for a separate "Shopify Review" column. Notes below retained as historical context.
+
+---
 
 **The workflow problem:** Shopify orders auto-create HubSpot deals via a workflow that drops them in "Shipped" (presumably because Shopify already collected payment + the small parts orders ship automatically from the Shopify side). But booth orders ($5k+) come through the same Shopify checkout and end up in the same "Shipped" stage — which is wrong because they haven't been verified, quoted, or processed by sales. Jill needs to contact the customer, confirm what they're getting + shipping, then create a real quote and process it like a normal order.
 
@@ -176,6 +195,94 @@ Yesterday's progression (May 13):
 - **Parked architectural cleanup:** Extract `BOOTH_DATA` (and probably `BOOTH_PRESETS`) out of `quote-builder.html` into a shared `lib/booth-data.js` served as a static JS bundle, included by both `quote-builder.html` and `orders-dashboard.html` via `<script src>`. The v1.12.4 incident — two divergent copies silently drifting — is the kind of bug this prevents. Low priority but high ROI when next touching this area.
 
 **Tooling note:** As of 2026-05-08 the user is moving day-to-day editing from Claude Desktop to Cursor. Local clone lives at `C:\Users\bento\Documents\Claude\WhisperRoomQuote-staging`. Workflow stays the same (staging-only, explicit ask to promote to main).
+
+---
+
+## Session writeup — May 20, 2026 (v1.27.1 → v1.32.3)
+
+Marathon day. Eighteen versions shipped across five parallel workstreams plus a Shopify-API rabbit hole that didn't ship code but informed the path forward. Promoted to main four times during the day (after v1.30.4, v1.31.2, v1.32.1, and v1.32.3). One genuinely-large batch.
+
+### 1. Shopify-parts QB auto-invoice — preview-before-commit + bug fix (v1.27.1, v1.28.0)
+
+Continued from the v1.26.x work shipped the prior session. Two iterations today:
+
+- **v1.27.1** — User asked to trim the confirm-dialog wording (drop the internal-plumbing bullets + the "Cannot be undone" caveat). One-line UI tweak.
+- **v1.28.0** — Three things bundled:
+  1. **Dry-run preview**. POST `/api/shopify-parts/create-invoice` now accepts `{dryRun:true}` and returns the assembled QB payload (addresses, line items, totals, memo, data source) without touching QB / Postgres / HubSpot. Frontend uses this for a confirm-dialog preview before the real commit. The idempotency-row check is informational in dry-run mode so reps can preview even after a botched prior attempt.
+  2. **`contactName` → `customerName`** in the payment privateNote at `quote-server.js:3264`. Threw `ReferenceError` every time, surfacing as "Contact name not defined" in the toast. QB invoice was being created but the payment step always failed.
+  3. **Toast surfaces fallback reason** when Shopify data isn't available — `dataSource: 'hubspot'` + `shopifyError: '...'` exposed in the API response.
+
+### 2. Email Reply assistant — input/output logging + admin reviewer (v1.29.0, v1.29.1, v1.30.1)
+
+New workstream. User wants to "review and train" the assistant. Logging + viewer in v1, feedback capture queued for v2.
+
+- **v1.29.0** — New `email_reply_logs` Postgres table captures every `/api/email-reply` call: rep info, voice picked, full input, full output, model, token usage (input/output/cache-read/cache-creation), duration, status, error. Fire-and-forget so a DB hiccup never blocks the rep's reply. New `/email-reply-logs` page with paginated list, substring filter on input/output, click-to-expand for full-text side-by-side with copy buttons.
+- **v1.29.1** — Dropped the admin gate after user said "anybody can see it, no PII concerns." Removed `ADMIN_REP_EMAILS` env var, `isAdmin(req)` helper, and the `__IS_ADMIN__` injection on the page.
+- **v1.30.1** — Moved the "Admin Tools" button (links to the logs viewer) from the topbar (hidden in embed mode) into the bottom-right of the Generated Reply output panel so it's visible when the page is iframed inside the Deal Hub modal.
+
+### 3. Assembly Manual builder — replace the Excel/VBA workflow (v1.28.2, v1.30.0, v1.30.3, v1.30.4, v1.31.1, v1.31.2)
+
+Biggest workstream of the day. Replaced the legacy Excel/VBA "AMPDFMerge" macro with a server-side PDF merge driven from the quote builder.
+
+**Architecture:**
+- Source PDFs migrated to Google Drive under `Server/AssemblyManuals/` (replaces `Z:\Database\InventoryDB\AssemblyManuals\`)
+- New `lib/assembly-manual.js` carries a declarative section config (~20 sections — one row per page-group) + a merge function using `pdf-lib`
+- New `gdriveListFilesInFolder` + `gdriveDownloadFile` helpers in `lib/gdrive.js` (the latter uses native https because `_httpsRequest` string-concats response bodies and corrupts binary PDFs)
+- Three endpoints: `/api/assembly-manual/models` (QB Item `LIKE 'MDL %'`, 24h cache, filtered to canonical naming pattern `MDL <digits>( LP)? (E|S|ENV|SNV)`), `/api/assembly-manual/plan` (dry-run preview), `/api/assembly-manual/build` (Drive lookup → merge → stream PDF)
+
+**Iteration timeline:**
+- **v1.28.2** — Backend (lib + endpoints + pdf-lib dep + `GDRIVE_ASSEMBLY_MANUALS_FOLDER` env var).
+- **v1.30.0** — Frontend (button on quote builder + modal with pre-fill from `lineItems` + multi-room handling).
+- **v1.30.3** — Form rework after user feedback: removed Jack Panel (OLD) checkbox, relabeled EFP from "(Window)" to "(Elevated Floor Package)", reworked pre-fill to use starts-with prefix rules (`RM `, `ADA `, `WA UPG`, `SL `, `EFP `) instead of loose substring matching that was missing common cases.
+- **v1.30.4** — Three fixes: (1) `ctx.modelStem` (model with `MDL ` stripped) used for Cover/Series/EFP file matching since those folders use names like `4848 S EFP.pdf` not `MDL 4848 S EFP.pdf`. (2) ADA Size dropdown hardcoded to all 4 options (`4016, 4040, 4622, 4646`) so reps can build for rooms not on the current quote. (3) Spinner on Build button + status copy telling rep they can close modal and keep working.
+- **v1.31.1** — SNV/ENV models normalize to S/E in the stem (WhisperRoom doesn't ship dedicated no-vent manuals; SNV/ENV share Cover/Series/EFP PDFs with their vented kin). New `ctx.isNV` flag gates the K + L ventilation sections off for those models.
+- **v1.31.2** — ADA vs WA UPG semantic split: ADA line item = full package (Door + Ramp + EFP — auto-cascade); WA UPG = Door only (no Ramp, no EFP). Also added light-mode CSS support to the modal (was hard-coded dark).
+
+**Status:** core functionality is shipped to prod. User needs to test feature combos and confirm section matching for the long tail.
+
+### 4. Supplier-spend report — QB-driven dashboard (v1.28.1, v1.30.2, v1.31.0, v1.31.3, v1.32.2)
+
+User asked for a dynamic supplier-spend report off QB data. Three-step build that took longer than expected because of two false starts (wrong QB report name → misleading "permission denied" error; wrong onclick escaping → silent-broken drilldown buttons).
+
+**Iteration:**
+- **v1.28.1** — Backend endpoint `/api/reports/supplier-spend?range=...` (24h cache, 7 range presets + custom). Initially used `ExpensesByVendorSummary` report — which 400'd with code 5020 "Permission Denied Error." Sent us down a false trail looking at QB user roles.
+- **v1.30.2** — Discovered Intuit renamed the API report. Switched to `VendorExpenses` (and `TransactionListByVendor` for drilldown). Endpoint actually works now.
+- **v1.31.0** — Frontend tile on `/reports` (new Suppliers tab) + sortable table + drilldown modal + sibling endpoint `/api/reports/supplier-spend/detail`.
+- **v1.31.3** — Two bug fixes after first user test: (1) the "view →" drilldown links were dead because the inline `onclick="...openSupplierDetail(${JSON.stringify(name)})"` got mangled by the double-quoted JSON inside the double-quoted attribute. Switched to `data-vendor-id`/`data-vendor-name` + a single delegate listener. (2) QB's "Not Specified" bucket (~47% of total in our case — sales tax filings, bank fees, journal entries, payroll, CC processor payments) was dominating the table. Stripped server-side and surfaced separately as `notSpecifiedTotal` + a "+ $X uncategorized ⓘ" callout in the summary line. Percentages now compute against the named-vendor total.
+- **v1.32.2** — User: "I only want accounts payable, not the payments. Can we add open-in-QB buttons?" Done both. `_flattenVendorDetail` now drops any row where `TxnType` matches `/payment/i`. New "QB" column with type-aware deep links to `app.qbo.intuit.com/app/<type>?txnId=<id>&realmId=<...>`. Response carries `qbRealmId` from `qb.getStatus()`.
+
+### 5. Ship Calendar on /shipping (v1.32.0, v1.32.1)
+
+User asked to copy the Ship Calendar from the Orders page to the Shipping page, with two key differences: (a) tile click opens a compact summary popup instead of the heavy edit drawer, (b) tile colors reflect *live* shipment status, not just shipped-or-not.
+
+- **v1.32.0** — New sub-tab strip on `/shipping` (📅 Ship Calendar / 📦 Tracking). Calendar HTML/CSS/JS mirrors `orders-dashboard.html` but cross-references each order against `allShipments` from `/api/shipping-board` to pick a status class: in_production (orange) / in_transit (blue) / out_for_delivery (yellow) / delivered (green) / exception (red) / pending (gray). Click → new `#shipSummaryOverlay` popup with MDL(s), pallets, ship date, carrier+tracking, delivery date or ETA, destination, last tracking event.
+- **v1.32.1** — Field-name fix. v1.32.0 read `s.status` off the shipping-board record but the actual field is `s.trackStatus` — lookup found the right shipment but the falsy access fell through to `'pending'` for every tile. Also corrected popup fields: `trackDelivered`/`trackEta`/`trackLastEvent`/`trackUpdated`/`city`+`state` (no `destination` field).
+
+### 6. Shopify API authentication exploration (no code shipped)
+
+Tried to get a static `shpat_` token so the Shopify-parts auto-invoice could pull canonical data (customer, address, line items, tax, shipping) instead of relying on HubSpot's deal-name-and-total mirror. Trail:
+
+1. Tried "App automation token" from the new Shopify Dev Dashboard — confirmed via Shopify's own docs that this is CLI-only (`shopify app deploy`) and **cannot** authenticate against the Admin API.
+2. Tried the legacy `/admin/settings/apps/development` URL on the merchant admin — redirects to the new Dev Dashboard. No way back to the old simple Custom App workflow.
+3. Reviewed the OAuth callback option (~30 min of code: implement `/api/shopify/oauth/callback`, set the App URL in Dev Dashboard, reinstall, capture the token from the OAuth response, log it, paste into Railway). Real path but ~85% confidence first-try without iteration.
+4. **Decision:** stick with the HubSpot-mirror fallback. The current code already has the fallback wired and surfaces "Data source: HubSpot mirror ⚠" in both the API response and the new dry-run preview dialog. For small parts orders the mirror is sufficient (deal name + total + contact email; tax handled via `TaxCodeRef:'NON'` per-line). If precision becomes a pain point, alternative paths considered: (a) install Intuit's official Shopify→QB integration and let it own all Shopify→QB sync (caveat: would auto-create QB records for booth orders too, requires reconciliation logic), (b) build the OAuth callback.
+
+### 7. HubSpot workflow rewrite (no code in this repo)
+
+While exploring the Shopify-data problem, realized the HubSpot workflow itself was CREATING NEW deals (Name + Total only) instead of TRANSITIONING the original Shopify-synced deals (which carry tax_price / order_number / source_store / line items / contact assoc) into our Sales Pipeline. User rewrote the workflow live during the session:
+
+- Step 1: Set Owner = ecommerce@whisperroom.com (unchanged)
+- Step 2: Branch on close date (unchanged)
+- Step 3: Branch on Amount in company currency
+  - ≥ $5,000 (booth) → Edit Deal Name + transition pipeline to Sales Pipeline / Verbal Confirmation
+  - < $5,000 (parts) → Edit Deal Name only, leave in Order Pipeline (still owned by ecommerce, still shows in our Shopify drawer via owner_id filter)
+
+Net effect: the original Shopify-synced deal is now the source-of-truth deal we read. Tax/source-store/line-item data should flow through automatically. Old duplicate deals from the prior workflow are orphaned in HubSpot — possible cleanup later. Resolves the v1.20.11 "Shopify deals invisible from Deal Hub" investigation (HubSpot search-index quirk no longer matters; we're not relying on multi-stage search filters).
+
+### Workflow / process notes
+
+- Promoted to main four times today: after v1.30.4 (Assembly Manual + Suppliers backend + email-reply logs + Shopify dry-run), after v1.31.2 (Assembly Manual SNV/ENV + ADA-vs-WA-UPG + light mode), after v1.32.1 (Ship Calendar + Suppliers drilldown fixes), and after v1.32.3 (this writeup). Rolling promotions kept staging-vs-prod drift small and let users start testing assembly-manual + suppliers in parallel.
+- The user's pace today was significantly faster than usual — feedback came in tight loops (often "test → bug report → fix" within 5 minutes). Held to the workflow: version-bump every push, changelog entry every push, DEVLOG row every push. Worth it for traceability even at speed.
 
 ---
 
@@ -428,6 +535,8 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.32.3  | 2026-05-20 | **DEVLOG: full session writeup for 2026-05-20.** Captured today's 18-version run across Assembly Manual, Email Reply logging, Suppliers tab, Ship Calendar, Shopify-parts preview + the Shopify auth investigation. Updated Current focus block + marked the v1.20.11 Shopify-deals-invisible investigation and the queued "Shopify Review column" task as RESOLVED/SUPERSEDED by the HubSpot workflow rewrite. |
+| 1.32.2  | 2026-05-20 | **Supplier drilldown: payments filtered out + "Open in QB ↗" per row.** `_flattenVendorDetail` now drops any row where `TxnType` matches /payment/i (Bill Payment, Bill Payment Check, Bill Payment Credit Card, Credit Card Payment, plain Payment) — reps care about what was charged to AP, not how it got settled. Also captures the underlying transaction id from whichever `ColData[i].id` exposes it (skipping the account column's id). New `qbRealmId` field on the detail response (sourced from `qb.getStatus()` cached tokens — no fresh OAuth refresh). Frontend renders a new "QB" column with type-aware deep links: `app.qbo.intuit.com/app/<type>?txnId=<id>&realmId=<...>` where type ∈ {bill, expense, vendorcredit, check, journal, creditcardcredit}. Unknown types render a dash. Detail-modal header now reads "... · payments excluded" to make the filter explicit. |
 | 1.32.1  | 2026-05-20 | **Ship Calendar: field-name fix — tiles were stuck on Pending.** v1.32.0 read `s.status` off the shipping-board record but the real field is `s.trackStatus`. Lookup was finding the right shipment but the falsy status fell through to `'pending'` for everything. Corrected the calendar status read + all the summary popup field names: `trackDelivered`/`trackEta`/`trackLastEvent`/`trackUpdated` instead of `delivered_at`/`eta`/`last_event`/`last_event_at`, and `city`+`state` (no `destination` field exists). Delivered popup now also shows "Signed: <name>" when present. |
 | 1.32.0  | 2026-05-20 | **Ship Calendar on /shipping + status-aware tile colors + summary popup.** Sub-tab strip splits the page into "📅 Ship Calendar" (new, default) and "📦 Tracking" (existing table). Calendar HTML/CSS/JS mirrors `orders-dashboard.html` but tile colors now reflect live shipment status by cross-referencing each order's `order_data.shipped.tracking` against `allShipments` from `/api/shipping-board`: in_production (orange) / in_transit (blue) / out_for_delivery (yellow) / delivered (green) / exception (red) / pending (gray). Click any tile → new `#shipSummaryOverlay` popup instead of opening the orders drawer — shows status pill, MDL(s), pallets, ship date, carrier + tracking, delivery date, ETA, destination, last tracking event. Footer has "Open in Tracking →" + "View order ↗" jumps. `loadBoard()` now re-renders the calendar after shipments load so the Refresh button on Tracking tab also refreshes tile colors. |
 | 1.31.3  | 2026-05-20 | **Suppliers tab: drilldown clicks fixed + "Not Specified" bucket separated out.** (1) `view →` links did nothing because the onclick attribute was `onclick="...openSupplierDetail(${JSON.stringify(...)})"` — the JSON-stringified value's double quotes broke the double-quoted HTML attribute. Switched to `data-vendor-id`/`data-vendor-name` attributes + a single delegated click listener on `#ssTable`. (2) QB tags transactions with no vendor as the literal `Not Specified` (sales tax filings, bank fees, payroll, journal entries — internal ops, not suppliers). Was showing up as a $790k 47% row. Now stripped from `rows` server-side and tracked as `notSpecifiedTotal` in the response; surfaced in the summary line as "+ $X uncategorized ⓘ" with a hover tooltip. Percentages now compute against named-vendor total only. |

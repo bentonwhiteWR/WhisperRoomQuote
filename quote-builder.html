@@ -1865,26 +1865,27 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amAda"> ADA Door</label>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amEfp"> EFP (Elevated Floor Package)</label>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amHx"> HX (Height Extension)</label>
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amOverseas"> Overseas</label>
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amStudioLight"> Studio Light</label>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amRamp"> Ramp</label>
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amAp"> Acoustic Package</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amStudioLight"> Studio Light</label>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amStep"> Step</label>
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amRm"> Roof Ventilation</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amAp"> Acoustic Package</label>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amExpansion"> Expansion</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amRm"> Roof Ventilation</label>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amMultiJackPanel"> Multi Jack Panel</label>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="amBassTraps"> Bass Traps</label>
     </div>
 
     <!-- Build + Cancel -->
-    <div style="display:flex;gap:10px">
-      <button id="amBuildBtn" onclick="submitAssemblyManual()" style="flex:1;padding:12px;background:#ee6216;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">
-        Build &amp; Download
+    <div style="display:flex;gap:10px;align-items:center">
+      <button id="amBuildBtn" onclick="submitAssemblyManual()" style="flex:1;padding:12px;background:#ee6216;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:8px">
+        <span id="amBuildSpinner" style="display:none;width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:amSpin 0.8s linear infinite"></span>
+        <span id="amBuildLabel">Build &amp; Download</span>
       </button>
       <button onclick="closeAssemblyManualModal()" style="padding:12px 18px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.12);border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
         Cancel
       </button>
     </div>
+    <style>@keyframes amSpin { to { transform: rotate(360deg); } }</style>
   </div>
 </div>
 
@@ -7248,7 +7249,6 @@ function _detectAMFeatures() {
     ramp:            ada || has('RAMP'),
     step:            !!names.find(n => /\bSTEP\b/.test(n)),
     expansion:       has('EXPANSION'),
-    overseas:        false, // not easily detected from line items
   };
 }
 
@@ -7282,21 +7282,19 @@ function _amSetModelValue(name) {
   // Otherwise leave blank — rep picks from dropdown
 }
 
-// Mirror the rep WA Type dropdown's options into the ADA Size dropdown.
-// Same source list keeps the two in sync forever — one source of truth.
+// The four canonical WA Type / ADA Size options. Always available in
+// the dropdown so the rep can build manuals for rooms that aren't on
+// the current quote (e.g., generating one ahead for a future build).
+// Source of truth: _WA_40 + _WA_46 tables (see refreshWATypeRow).
+const _AM_ADA_SIZES = ['4016', '4040', '4622', '4646'];
+
 function _loadAMAdaSizes(preselect) {
-  const src = document.getElementById('repWaType');
   const dst = document.getElementById('amAdaSize');
   if (!dst) return;
-  const opts = ['<option value="">— None —</option>'];
-  if (src) {
-    for (const opt of src.options) {
-      if (!opt.value) continue;
-      opts.push(`<option value="${String(opt.value).replace(/"/g,'&quot;')}">${opt.textContent}</option>`);
-    }
-  }
+  const opts = ['<option value="">— None —</option>']
+    .concat(_AM_ADA_SIZES.map(s => `<option value="${s}">${s}</option>`));
   dst.innerHTML = opts.join('');
-  if (preselect) dst.value = preselect;
+  if (preselect && _AM_ADA_SIZES.includes(preselect)) dst.value = preselect;
 }
 
 function _amApplyFeatures(f) {
@@ -7308,7 +7306,6 @@ function _amApplyFeatures(f) {
   document.getElementById('amMultiJackPanel').checked = !!f.multiJackPanel;
   document.getElementById('amBassTraps').checked      = !!f.bassTraps;
   document.getElementById('amEfp').checked            = !!f.efp;
-  document.getElementById('amOverseas').checked       = !!f.overseas;
   document.getElementById('amRamp').checked           = !!f.ramp;
   document.getElementById('amStep').checked           = !!f.step;
   document.getElementById('amExpansion').checked      = !!f.expansion;
@@ -7361,7 +7358,6 @@ async function submitAssemblyManual() {
     multiJackPanel: document.getElementById('amMultiJackPanel').checked,
     bassTraps:      document.getElementById('amBassTraps').checked,
     efp:            document.getElementById('amEfp').checked,
-    overseas:       document.getElementById('amOverseas').checked,
     ramp:           document.getElementById('amRamp').checked,
     step:           document.getElementById('amStep').checked,
     expansion:      document.getElementById('amExpansion').checked,
@@ -7370,9 +7366,12 @@ async function submitAssemblyManual() {
   if (body.ada && !body.adaSize) { _amShowStatus('ADA is checked but no ADA size picked — uncheck ADA or pick a size.', 'error'); return; }
 
   const btn = document.getElementById('amBuildBtn');
+  const spinner = document.getElementById('amBuildSpinner');
+  const label   = document.getElementById('amBuildLabel');
   btn.disabled = true;
-  btn.textContent = 'Building...';
-  _amShowStatus('Pulling PDFs from Drive + merging — this can take 30-60s.', 'info');
+  if (spinner) spinner.style.display = 'inline-block';
+  if (label)   label.textContent = 'Building…';
+  _amShowStatus('Pulling PDFs from Drive + merging — usually 30-60s. Feel free to close this and keep working; the download will trigger when it\'s ready.', 'info');
   try {
     const res = await fetch('/api/assembly-manual/build', {
       method: 'POST', credentials: 'include',
@@ -7405,7 +7404,8 @@ async function submitAssemblyManual() {
     _amShowStatus('Build failed: ' + e.message, 'error');
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Build & Download';
+    if (spinner) spinner.style.display = 'none';
+    if (label)   label.textContent = 'Build & Download';
   }
 }
 

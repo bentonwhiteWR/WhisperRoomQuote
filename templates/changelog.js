@@ -51,6 +51,15 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.30.4', date:'May 20, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Assembly Manual: EFP / Cover / Series file matching.** Files in those folders are named with the size+variant stem only (e.g. `4848 S EFP.pdf`), NOT the full `MDL ` prefix. Section config now matches on `ctx.modelStem` (the model with `MDL ` stripped) instead of `ctx.model`. EFP, Cover, and Series sections will now actually pull.'},
+        {t:'ui', d:'**ADA Size dropdown — always show all 4 options.** Previously cloned from `repWaType` which only populates when an ADA/WA UPG line item is on the quote. Now hardcodes `4016, 4040, 4622, 4646` so reps can build manuals for rooms not currently on the quote.'},
+        {t:'ui', d:'**Build button now shows a spinning indicator** instead of just disabling. Modal stays closable during the build — fetch runs async in the background, download still fires when the merge completes. Status text now says so explicitly.'},
+        {t:'ui', d:'**Removed the Overseas checkbox + retired the Overseas section** (no longer relevant per user). Backend section F is gone, frontend checkbox is gone, no migration needed.'},
+      ]
+    },
+    {
       v:'1.30.3', date:'May 20, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Assembly Manual modal — form + pre-fill rework.** Removed the "Jack Panel (OLD)" checkbox (not needed). Renamed "EFP (Window)" → "EFP (Elevated Floor Package)" — the underlying Drive files are still EFP*.pdf, just the label was wrong.'},

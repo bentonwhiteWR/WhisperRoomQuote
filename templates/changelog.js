@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.28.2', date:'May 20, 2026', tag:'log',
+      changes:[
+        {t:'add', d:'**Assembly Manual builder — backend (step 1 of 2).** Replaces the legacy Excel/VBA workflow that lived in the packing-list software. Three new endpoints: `GET /api/assembly-manual/models` (MDL list from QB, filtered to `Name LIKE \'MDL %\'`, 24h cache), `POST /api/assembly-manual/plan` (dry-run that returns which sections WOULD be included for given options — no Drive reads), `POST /api/assembly-manual/build` (downloads matching PDFs from Drive, merges with pdf-lib, streams response as application/pdf). New module `lib/assembly-manual.js` carries the section config table (~20 sections each gated by checkbox + folder + filename-substring rules) and the merge logic. New helpers `gdriveListFilesInFolder` + `gdriveDownloadFile` in `lib/gdrive.js` (with proper binary-safe download — the existing _httpsRequest string-concats response bodies and corrupts PDFs). New dep: `pdf-lib`. New env var: `GDRIVE_ASSEMBLY_MANUALS_FOLDER` — set this to the Drive folder ID of `Server/AssemblyManuals/` before testing. Step 2 (Build Assembly Manual button + modal on quote builder, with feature pre-fill from quote state) lands next.'},
+      ]
+    },
+    {
       v:'1.28.1', date:'May 20, 2026', tag:'log',
       changes:[
         {t:'add', d:'**Supplier-spend report — backend (step 1 of 3).** New endpoint `GET /api/reports/supplier-spend?range=ytd|12m|month|lastmonth|quarter|lastquarter|custom` returns a flat array of vendors sorted by total spend descending, sourced from QB\'s `ExpensesByVendorSummary` report (covers Bills, cash purchases, credit-card purchases). 24h in-memory cache keyed by date range; bypass via `?refresh=1`. `lib/quickbooks.js` gains a generic `fetchReport(name, params)` wrapper + specific `fetchExpensesByVendorSummary` and `fetchExpensesByVendorDetail` helpers. No UI yet — the tile + range picker + sortable table land in v1.29.0, drilldown in v1.29.1. Test by curling the endpoint while authed.'},

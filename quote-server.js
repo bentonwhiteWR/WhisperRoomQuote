@@ -178,6 +178,9 @@ qb.init({ getDb: () => db });
 
 const shopifyLib = require('./lib/shopify');
 
+const assemblyManual = require('./lib/assembly-manual');
+// assemblyManual.init({ gdrive }) called below after gdrive.init runs
+
 const stripeLib = require('./lib/stripe');
 // stripeLib.init(...) called below alongside the other httpsRequest-dependent libs
 
@@ -306,6 +309,7 @@ async function nextPoNumber() {
 // Wire up HubSpot module now that httpsRequest is defined
 hubspot.init({ httpsRequest });
 gdrive.init({ httpsRequest, getDb: () => db, writelog });
+assemblyManual.init({ gdrive });
 taxjar.init({ httpsRequest, NEXUS_STATES, toStateAbbr });
 notify.init({ getDb: () => db });
 freight.init({ httpsRequest, getDb: () => db, writelog, puppeteer });
@@ -546,6 +550,12 @@ const SALES_GOAL_CACHE_MS = 5 * 60 * 1000;
 // busted on demand via ?refresh=1. Map keys are "YYYY-MM-DD_YYYY-MM-DD".
 const _supplierSpendCache = new Map();
 const SUPPLIER_SPEND_CACHE_MS = 24 * 60 * 60 * 1000;
+
+// ── Assembly-manual MDL list cache (in-memory, 24h) ──
+// QB's MDL catalog changes maybe once a year. Single global value (no
+// keying needed). Bust with ?refresh=1.
+let _assemblyMdlCache = null;
+const ASSEMBLY_MDL_CACHE_MS = 24 * 60 * 60 * 1000;
 
 // Resolve a supplier-spend range key into ISO dates. All dates in
 // America/New_York since TZ env is fixed to that. Returns YYYY-MM-DD
@@ -3610,6 +3620,105 @@ const server = http.createServer(async (req, res) => {
   }
 
 
+
+  // ── API: Assembly Manual — MDL list from QuickBooks ──────────────
+  // Returns every active Item in QB whose Name starts with "MDL ". Used
+  // to populate the Model dropdown in the Assembly Manual builder modal.
+  // 24h memory cache — the MDL catalog changes maybe once a year.
+  if (pathname === '/api/assembly-manual/models' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const refresh = parsed.query.refresh === '1';
+    try {
+      const now = Date.now();
+      if (!refresh && _assemblyMdlCache && (now - _assemblyMdlCache.cachedAt) < ASSEMBLY_MDL_CACHE_MS) {
+        json({ models: _assemblyMdlCache.models, cachedAt: _assemblyMdlCache.cachedAt, fromCache: true });
+        return;
+      }
+      // QB QOQL: LIKE 'MDL %' (note: QB matches with single quotes; escape any in needle)
+      const raw = await qb.qbQueryRaw(`SELECT Id, Name, Active FROM Item WHERE Name LIKE 'MDL %' MAXRESULTS 500`);
+      const items = raw?.QueryResponse?.Item || [];
+      const models = items
+        .filter(i => i.Active !== false)
+        .map(i => ({ id: i.Id, name: i.Name }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      _assemblyMdlCache = { models, cachedAt: now };
+      json({ models, cachedAt: now, fromCache: false });
+    } catch (e) {
+      console.error('[assembly-manual/models]', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Assembly Manual — plan (dry-run preview) ───────────────
+  // Returns the list of sections that WOULD be included for a given
+  // set of options, without doing any Drive reads or PDF work. Cheap.
+  // Useful for the modal to show "here's what will be in the PDF"
+  // before the rep clicks Build.
+  if (pathname === '/api/assembly-manual/plan' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const raw = await readBody(req);
+      const opts = JSON.parse(raw || '{}');
+      if (!opts.model) { json({ error: 'model is required' }, 400); return; }
+      const { ctx, plan } = assemblyManual.planSections(opts);
+      json({ ctx, plan, sectionCount: plan.length });
+    } catch (e) {
+      console.error('[assembly-manual/plan]', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Assembly Manual — build merged PDF ─────────────────────
+  // Body: { model, adaSize, ada, hx, jackPanel, multiJackPanel, studioLight,
+  //         ap, overseas, rm, ramp, step, bassTraps, efp, expansion,
+  //         packingListPdfBase64? (optional uploaded Packing List, base64),
+  //         filename? (suggested download name) }
+  // Response: application/pdf, Content-Disposition attachment.
+  // X-Assembly-Sections header: comma-separated list of included `order` keys.
+  // X-Assembly-Missing header: comma-separated `order:folder:needle` for misses.
+  if (pathname === '/api/assembly-manual/build' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const raw = await readBody(req);
+      const opts = JSON.parse(raw || '{}');
+      if (!opts.model) { json({ error: 'model is required' }, 400); return; }
+
+      // Decode optional packing list upload
+      if (opts.packingListPdfBase64) {
+        try {
+          opts.packingListPdfBuffer = Buffer.from(opts.packingListPdfBase64, 'base64');
+        } catch (e) {
+          json({ error: 'Invalid packingListPdfBase64' }, 400);
+          return;
+        }
+        delete opts.packingListPdfBase64;
+      }
+
+      const result = await assemblyManual.buildAssemblyManual(opts);
+
+      const sess = getRepFromReq(req);
+      writelog('info', 'assembly-manual.built',
+        `Assembly manual built for ${opts.model} (${result.sectionsIncluded.length} sections, ${result.missing.length} missing) by ${sess?.name || sess?.email || 'unknown'}`,
+        { rep: String(sess?.ownerId || ''), meta: { model: opts.model, adaSize: opts.adaSize || null, sectionsIncluded: result.sectionsIncluded.map(s => s.order), missing: result.missing } }
+      );
+
+      const fname = (opts.filename ? String(opts.filename).replace(/[^A-Za-z0-9 ._-]/g, '_') : `AssemblyManual_${String(opts.model).replace(/\s+/g, '-')}`) + '.pdf';
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+      res.setHeader('Content-Length', String(result.pdfBuffer.length));
+      res.setHeader('X-Assembly-Sections', result.sectionsIncluded.map(s => s.order).join(','));
+      res.setHeader('X-Assembly-Missing', result.missing.map(m => `${m.order}:${m.folder || ''}:${m.needle || m.fileName || ''}`).join(','));
+      res.end(result.pdfBuffer);
+    } catch (e) {
+      console.error('[assembly-manual/build]', e.message, e.stack);
+      writelog('error', 'assembly-manual.build', e.message, { stack: e.stack });
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
 
   // ── API: Get freight quote ──
   if (pathname === '/api/freight' && req.method === 'POST') {

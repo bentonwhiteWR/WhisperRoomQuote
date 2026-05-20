@@ -542,16 +542,19 @@ function _shipmentsByTracking() {
 
 // Map an order to one of the calendar tile status classes.
 //   in_production     — no tracking yet (still being built)
-//   in_transit        — tracking + status='in_transit'
-//   out_for_delivery  — tracking + status='out_for_delivery'
-//   delivered         — tracking + status='delivered'
-//   exception         — tracking + status='exception'
+//   in_transit        — tracking + trackStatus='in_transit'
+//   out_for_delivery  — tracking + trackStatus='out_for_delivery'
+//   delivered         — tracking + trackStatus='delivered'
+//   exception         — tracking + trackStatus='exception'
 //   pending           — tracking but no live status yet
+//
+// Note: the shipping-board record exposes status as `trackStatus`,
+// not `status` — easy field-name miss the first time around.
 function _orderShipStatus(order, shipMap) {
   const sd = order.order_data?.shipped;
   if (!sd || sd.unshipped || !sd.tracking) return 'in_production';
   const s = shipMap[String(sd.tracking).trim()];
-  if (s?.status) return s.status; // 'in_transit'|'out_for_delivery'|'delivered'|'exception'|'pending'
+  if (s?.trackStatus) return s.trackStatus;
   return 'pending';
 }
 
@@ -678,14 +681,22 @@ function openShipSummary(quoteNumber) {
     rows.push({ label:'Carrier',    value: esc(carrierLbl) });
     rows.push({ label:'Tracking',   value: `<span style="word-break:break-all">${esc(tracking)}</span>` });
   }
-  if (status === 'delivered' && ship?.delivered_at) {
-    rows.push({ label:'Delivered',  value: `<span style="color:var(--green);font-weight:700">${esc(fd(ship.delivered_at))}</span>` });
-  } else if ((status === 'in_transit' || status === 'out_for_delivery') && ship?.eta) {
-    rows.push({ label:'ETA',        value: esc(fd(ship.eta)) });
+  if (status === 'delivered' && ship?.trackDelivered) {
+    let deliveredVal = `<span style="color:var(--green);font-weight:700">${esc(fd(ship.trackDelivered))}</span>`;
+    if (ship.signedBy) deliveredVal += `<div style="font-size:10px;color:var(--muted);margin-top:2px">Signed: ${esc(ship.signedBy)}</div>`;
+    rows.push({ label:'Delivered',  value: deliveredVal });
+  } else if ((status === 'in_transit' || status === 'out_for_delivery') && ship?.trackEta) {
+    rows.push({ label:'ETA',        value: esc(fd(ship.trackEta)) });
   }
-  if (ship?.destination) rows.push({ label:'Destination', value: esc(ship.destination), full:true });
-  if (ship?.last_event) {
-    rows.push({ label:'Last Event', value: `<div style="font-family:inherit;font-size:11.5px;line-height:1.4">${esc(ship.last_event)}</div>${ship.last_event_at ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${esc(ago(ship.last_event_at))}</div>` : ''}`, full:true });
+  if (ship) {
+    const destination = [ship.city, ship.state].filter(Boolean).join(', ');
+    if (destination) {
+      const destVal = ship.zip ? `${esc(destination)} ${esc(ship.zip)}` : esc(destination);
+      rows.push({ label:'Destination', value: destVal, full:true });
+    }
+  }
+  if (ship?.trackLastEvent) {
+    rows.push({ label:'Last Event', value: `<div style="font-family:inherit;font-size:11.5px;line-height:1.4">${esc(ship.trackLastEvent)}</div>${ship.trackUpdated ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${esc(ago(ship.trackUpdated))}</div>` : ''}`, full:true });
   }
 
   document.getElementById('ssumGrid').innerHTML = rows.map(r =>

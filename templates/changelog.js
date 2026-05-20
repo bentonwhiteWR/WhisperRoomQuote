@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.32.1', date:'May 20, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Ship Calendar tiles were all stuck on "Pending"** because the lookup against the shipping-board record read `s.status`, but the actual field is `s.trackStatus`. Fixed the status read, and corrected the rest of the field names in the summary popup to match the real shape: `trackDelivered` (not `delivered_at`), `trackEta` (not `eta`), `trackLastEvent` (not `last_event`), `trackUpdated` (not `last_event_at`), and `city`+`state` (no `destination` field). Delivered date now also shows "Signed: <name>" when the carrier returned a signer.'},
+      ]
+    },
+    {
       v:'1.32.0', date:'May 20, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Ship Calendar on the Shipping page.** New sub-tab strip on `/shipping` — "📅 Ship Calendar" (default) and "📦 Tracking" (the existing table). Calendar mirrors the orders-dashboard month view but cross-references each order against the live shipment data so tile colors reflect *current* status, not just shipped-or-not: orange = In Production, blue = In Transit, yellow = Out for Delivery, green = Delivered, red = Exception, gray = Pending/Unknown. Legend strip below the grid explains the colors.'},

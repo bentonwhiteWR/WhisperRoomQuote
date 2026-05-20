@@ -51,6 +51,15 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.28.0', date:'May 20, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Create QB Invoice button now does a dry-run preview first.** Click → server builds the full QB payload (Shopify lookup, addresses, line items, totals, memo) but DOES NOT touch QB / Postgres / HubSpot. Returns the assembled payload. Frontend renders it in a confirm dialog so the rep can verify: data source (Shopify canonical vs HubSpot mirror), bill-to + ship-to, every line + amount, total, memo, AND whether a row already exists in shopify_qb_invoices. OK = commit; Cancel = nothing happens. Lets you iterate on a deal without having to clean up Postgres after each test. New request flag: `{dryRun:true}`. Server returns a `preview:true` envelope with the payload.'},
+        {t:'fix', d:'**Shopify-parts payment ReferenceError ("Contact name not defined").** Payment privateNote at quote-server.js:3264 referenced `contactName` but the actual variable is `customerName`. Threw `ReferenceError` inside the payment try/catch every time → QB invoice created but payment step ALWAYS failed with that message. One-character rename.'},
+        {t:'add', d:'**Surface Shopify-fallback reason in the toast.** When the Shopify lookup fails and the endpoint falls back to the HubSpot mirror (no canonical addresses, no split shipping), the toast now warns: "⚠ Shopify lookup failed (<reason>) — used HubSpot mirror, address/shipping may be incomplete." Response now also returns `dataSource` + `shopifyError`.'},
+        {t:'ui', d:'**Trim Create QB Invoice confirm dialog.** Dropped the internal-plumbing lines ("Pull Shopify line items from HubSpot", "Patch HubSpot deal payment_status=paid") and the "Cannot be undone" caveat. Dialog now lists only the two user-facing outcomes.'},
+      ]
+    },
+    {
       v:'1.27.0', date:'May 19, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Shopify-parts QB invoice now uses Shopify as source of truth.** HubSpot\'s Shopify integration only mirrors deal name + total — no customer, address, line items, tax, or shipping breakdown. Without that detail, every auto-invoice was minimal and risked QB tax surprises (the v1.26.5 saga). New `lib/shopify.js` Admin API client. When the rep clicks Create QB Invoice, server parses the Shopify order # from the deal name (regex /#(\\d+)/), fetches the canonical order from Shopify, and builds the QB invoice from THAT: real ship-to + bill-to addresses, customer name + email, itemized line items (mapped by SKU first then product name, fallback to "Shopify Order Line" with original name + SKU in description), shipping as its own QB line (mapped to a "Shipping" or "Freight" item if you have one in QB), tax as its own line at the bottom. Invoice total = exactly what Shopify charged the customer.'},

@@ -2919,15 +2919,18 @@ const server = http.createServer(async (req, res) => {
     if (!db) { json({ error: 'Database not initialized' }, 503); return; }
     try {
       const raw = await readBody(req);
-      const { dealId } = JSON.parse(raw || '{}');
+      const { dealId, dryRun } = JSON.parse(raw || '{}');
       if (!dealId || !/^\d+$/.test(String(dealId))) { json({ error: 'Invalid dealId' }, 400); return; }
       const dealIdStr = String(dealId);
+      const isDryRun = !!dryRun;
 
-      // 0. Idempotency guard
+      // 0. Idempotency guard. In dry-run mode this is informational (we return
+      //    `existingRow` so the UI can warn), not blocking — lets the rep
+      //    preview what WOULD be sent even after a botched prior attempt.
       const existing = await db.query(`SELECT * FROM shopify_qb_invoices WHERE deal_id = $1`, [dealIdStr]);
-      if (existing.rows.length) {
-        const r = existing.rows[0];
-        json({ error: `Deal already invoiced via Shopify-parts flow (mode=${r.mode}, qb_doc=${r.qb_doc_number || '—'})`, code: 'ALREADY_INVOICED', existing: r }, 409);
+      const existingRow = existing.rows[0] || null;
+      if (existingRow && !isDryRun) {
+        json({ error: `Deal already invoiced via Shopify-parts flow (mode=${existingRow.mode}, qb_doc=${existingRow.qb_doc_number || '—'})`, code: 'ALREADY_INVOICED', existing: existingRow }, 409);
         return;
       }
 
@@ -3027,9 +3030,15 @@ const server = http.createServer(async (req, res) => {
         } catch (e) { /* non-fatal */ }
       }
 
-      // 5. Resolve QB customer + fallback item
-      const cust = await qb.findOrCreateCustomer({ displayName: SHOPIFY_QB_CUSTOMER_NAME });
-      if (!cust?.Id) throw new Error(`Could not find/create QB customer "${SHOPIFY_QB_CUSTOMER_NAME}"`);
+      // 5. Resolve QB customer + fallback item. In dry-run, don't create the
+      //    customer if it's missing — just report that it would be created.
+      let cust;
+      if (isDryRun) {
+        cust = await qb.findCustomerByDisplayName(SHOPIFY_QB_CUSTOMER_NAME);
+      } else {
+        cust = await qb.findOrCreateCustomer({ displayName: SHOPIFY_QB_CUSTOMER_NAME });
+        if (!cust?.Id) throw new Error(`Could not find/create QB customer "${SHOPIFY_QB_CUSTOMER_NAME}"`);
+      }
       const fallbackItem = await qb.findItemByName(SHOPIFY_QB_FALLBACK_ITEM_NAME);
       if (!fallbackItem) {
         json({ error: `QB fallback item "${SHOPIFY_QB_FALLBACK_ITEM_NAME}" not found. Create it in QB (Products & Services → New non-inventory item) then retry.`, code: 'MISSING_FALLBACK_ITEM' }, 503);
@@ -3217,6 +3226,44 @@ const server = http.createServer(async (req, res) => {
       ].filter(Boolean);
       const memo = memoParts.join(' · ');
 
+      // 7.5 Dry-run: return the assembled payload without touching QB / DB / HS.
+      //     UI uses this to render a preview modal so the rep can sanity-check
+      //     addresses, line items, totals, and the Shopify-vs-HubSpot data
+      //     source BEFORE committing. Skips steps 8–11 entirely.
+      if (isDryRun) {
+        const previewLines = qbLines.map(l => ({
+          description: l.Description || '',
+          amount:      l.Amount,
+          qty:         l.SalesItemLineDetail?.Qty,
+          unitPrice:   l.SalesItemLineDetail?.UnitPrice,
+          itemName:    l.SalesItemLineDetail?.ItemRef?.name || null,
+        }));
+        json({
+          preview:       true,
+          dryRun:        true,
+          dealId:        dealIdStr,
+          dealName:      dp.dealname || null,
+          dealAmount:    amount,
+          dataSource,
+          shopifyError,
+          shopifyOrderName: shopifyOrderName || null,
+          existingRow,
+          qbCustomer:    cust ? { id: cust.Id, displayName: cust.DisplayName, exists: true }
+                              : { displayName: SHOPIFY_QB_CUSTOMER_NAME, exists: false, note: 'Will be created on confirm' },
+          fallbackItem:  { id: fallbackItem.value, name: fallbackItem.name },
+          docNumber:     `SHOP-${dealIdStr}`,
+          txnDate:       new Date().toISOString().split('T')[0],
+          customerName,
+          customerEmail,
+          billAddr,
+          shipAddr,
+          lines:         previewLines,
+          linesTotal,
+          memo,
+        });
+        return;
+      }
+
       // 8. Create the invoice. globalTaxCalc:'NotApplicable' because the
       // line items as Shopify provides them already include the full
       // charge — we're not re-computing tax via QB AST. Total will match
@@ -3261,7 +3308,7 @@ const server = http.createServer(async (req, res) => {
           paymentMethodRef:    { value: pm.Id, name: pm.Name },
           depositToAccountRef: { value: acct.Id, name: acct.Name },
           txnDate,
-          privateNote:         `Auto-paid (Shopify parts order). Deal ${dealIdStr}${contactName ? ' · ' + contactName : ''}.`,
+          privateNote:         `Auto-paid (Shopify parts order). Deal ${dealIdStr}${customerName ? ' · ' + customerName : ''}.`,
         });
       } catch (e) {
         paymentError = e.message;
@@ -3309,6 +3356,8 @@ const server = http.createServer(async (req, res) => {
         qbPaymentId: payment?.Id || null,
         totalAmount: invoice.TotalAmt,
         paymentError, // non-null = invoice created but payment failed → Kim should mark paid manually in QB
+        dataSource,   // 'shopify' (canonical) or 'hubspot' (degraded fallback)
+        shopifyError, // non-null = Shopify lookup failed and we fell back to HubSpot mirror
       });
     } catch (e) {
       console.error('[shopify-parts/create-invoice]', e.message);

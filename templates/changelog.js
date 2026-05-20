@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.32.3', date:'May 20, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**DEVLOG: full session writeup for 2026-05-20.** Captured today\'s 18-version marathon: Shopify-parts dry-run preview, Email Reply logging + reviewer, Assembly Manual builder (replaces the Excel/VBA workflow), Supplier Spend report (with drilldown + open-in-QB links), Ship Calendar on /shipping with status-aware tiles, plus the Shopify-API auth exploration and the HubSpot workflow rewrite. Current focus block at the top of `DEVLOG.md` updated with open follow-ups for the next session.'},
+      ]
+    },
+    {
       v:'1.32.2', date:'May 20, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Supplier drilldown: filter out payments + add "Open in QB ↗" per row.** Bill Payment / Credit Card Payment / Payment rows are now stripped server-side — reps want to see what was charged to AP, not the entries that paid those bills off. Header now reads "...payments excluded." New "QB" column on each row with an "Open ↗" link that deep-links to the transaction in QuickBooks Online (`app.qbo.intuit.com/app/<type>?txnId=<id>&realmId=<...>`). Type → path mapping covers Bills, Cash/CC Expenses, Vendor Credits, Checks, Journal Entries, Credit Card Credits. Unknown types show a "—" instead. Response now also returns `qbRealmId` so links scope to the right QB company.'},

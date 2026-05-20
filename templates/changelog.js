@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.28.1', date:'May 20, 2026', tag:'log',
+      changes:[
+        {t:'add', d:'**Supplier-spend report — backend (step 1 of 3).** New endpoint `GET /api/reports/supplier-spend?range=ytd|12m|month|lastmonth|quarter|lastquarter|custom` returns a flat array of vendors sorted by total spend descending, sourced from QB\'s `ExpensesByVendorSummary` report (covers Bills, cash purchases, credit-card purchases). 24h in-memory cache keyed by date range; bypass via `?refresh=1`. `lib/quickbooks.js` gains a generic `fetchReport(name, params)` wrapper + specific `fetchExpensesByVendorSummary` and `fetchExpensesByVendorDetail` helpers. No UI yet — the tile + range picker + sortable table land in v1.29.0, drilldown in v1.29.1. Test by curling the endpoint while authed.'},
+      ]
+    },
+    {
       v:'1.28.0', date:'May 20, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Create QB Invoice button now does a dry-run preview first.** Click → server builds the full QB payload (Shopify lookup, addresses, line items, totals, memo) but DOES NOT touch QB / Postgres / HubSpot. Returns the assembled payload. Frontend renders it in a confirm dialog so the rep can verify: data source (Shopify canonical vs HubSpot mirror), bill-to + ship-to, every line + amount, total, memo, AND whether a row already exists in shopify_qb_invoices. OK = commit; Cancel = nothing happens. Lets you iterate on a deal without having to clean up Postgres after each test. New request flag: `{dryRun:true}`. Server returns a `preview:true` envelope with the payload.'},

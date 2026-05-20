@@ -540,6 +540,101 @@ async function pollHubspotPayments() {
 let _salesGoalCache = null;
 const SALES_GOAL_CACHE_MS = 5 * 60 * 1000;
 
+// ── Supplier-spend cache (in-memory, 24h, keyed by date range) ──
+// QB's ExpensesByVendorSummary is the same for everyone for a given
+// range — accounting data doesn't change every minute. Default 24h TTL,
+// busted on demand via ?refresh=1. Map keys are "YYYY-MM-DD_YYYY-MM-DD".
+const _supplierSpendCache = new Map();
+const SUPPLIER_SPEND_CACHE_MS = 24 * 60 * 60 * 1000;
+
+// Resolve a supplier-spend range key into ISO dates. All dates in
+// America/New_York since TZ env is fixed to that. Returns YYYY-MM-DD
+// strings (QB's reports API wants date-only, not timestamps).
+function _resolveSupplierSpendRange(rangeKey, customStart, customEnd) {
+  const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const today = new Date();
+  const todayStr = ymd(today);
+  const y = today.getFullYear();
+  const m = today.getMonth(); // 0-indexed
+  const d = today.getDate();
+  // Quarter index: 0 (Jan-Mar), 1 (Apr-Jun), 2 (Jul-Sep), 3 (Oct-Dec)
+  const qIdx = Math.floor(m / 3);
+  const qStartMonth = qIdx * 3;
+  switch (rangeKey) {
+    case 'ytd':
+      return { startDate: `${y}-01-01`, endDate: todayStr, label: `YTD ${y}` };
+    case '12m': {
+      const start = new Date(y, m - 11, 1); // first of the month 12 months ago
+      return { startDate: ymd(start), endDate: todayStr, label: 'Trailing 12 months' };
+    }
+    case 'month': {
+      const start = new Date(y, m, 1);
+      return { startDate: ymd(start), endDate: todayStr, label: start.toLocaleString('en-US', { month: 'long', year: 'numeric' }) };
+    }
+    case 'lastmonth': {
+      const start = new Date(y, m - 1, 1);
+      const end   = new Date(y, m, 0); // last day of previous month
+      return { startDate: ymd(start), endDate: ymd(end), label: start.toLocaleString('en-US', { month: 'long', year: 'numeric' }) };
+    }
+    case 'quarter': {
+      const start = new Date(y, qStartMonth, 1);
+      return { startDate: ymd(start), endDate: todayStr, label: `Q${qIdx+1} ${y}` };
+    }
+    case 'lastquarter': {
+      const start = new Date(y, qStartMonth - 3, 1);
+      const end   = new Date(y, qStartMonth, 0); // last day of previous quarter
+      const lqIdx = (qIdx + 3) % 4;
+      const lqYear = qIdx === 0 ? y - 1 : y;
+      return { startDate: ymd(start), endDate: ymd(end), label: `Q${lqIdx+1} ${lqYear}` };
+    }
+    case 'custom': {
+      const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+      if (!isDate(customStart) || !isDate(customEnd)) return { startDate: null, endDate: null, label: '' };
+      return { startDate: customStart, endDate: customEnd, label: `${customStart} → ${customEnd}` };
+    }
+    default:
+      return { startDate: null, endDate: null, label: '' };
+  }
+}
+
+// Walk QB's ExpensesByVendorSummary response (Rows / Sections / ColData
+// tree) and produce a flat `[{ vendor, vendorId, total }]` sorted desc,
+// plus the grand total from the report's Summary row when present.
+function _flattenVendorSummary(reportJson) {
+  const out = [];
+  let total = 0;
+  function walk(rowArr) {
+    if (!Array.isArray(rowArr)) return;
+    for (const r of rowArr) {
+      if (r?.ColData && Array.isArray(r.ColData) && r.ColData.length >= 2) {
+        const vendorCol = r.ColData[0] || {};
+        const amountCol = r.ColData[1] || {};
+        const vendorName = String(vendorCol.value || '').trim();
+        const vendorId   = vendorCol.id || null;
+        const amount = parseFloat(amountCol.value || '0') || 0;
+        // Skip empty-vendor rows + the literal TOTAL/Total summary row
+        // that some QB reports emit inline rather than as Summary.
+        if (vendorName && vendorName.toUpperCase() !== 'TOTAL' && (vendorId || amount !== 0)) {
+          out.push({ vendor: vendorName, vendorId, total: amount });
+        }
+      }
+      if (r?.Rows?.Row) walk(r.Rows.Row);
+      if (r?.Summary?.ColData) {
+        const label = String(r.Summary.ColData[0]?.value || '').trim();
+        if (label.toUpperCase() === 'TOTAL') {
+          total = parseFloat(r.Summary.ColData[1]?.value || '0') || total;
+        }
+      }
+    }
+  }
+  walk(reportJson?.Rows?.Row || []);
+  // Fallback: if QB didn't emit a TOTAL row, derive from leaves.
+  if (!total) total = out.reduce((s, r) => s + r.total, 0);
+  // Stable sort: total desc, then name asc.
+  out.sort((a, b) => (b.total - a.total) || a.vendor.localeCompare(b.vendor));
+  return { rows: out, total };
+}
+
 // ── Email Reply Assistant (vendored from gabewhite438/whisperroom-reply-assistant) ──
 // System prompt is the model's brain (~1900 lines of rules, voice templates,
 // locked phrases, product facts). Loaded once at startup; sent on every call
@@ -7293,6 +7388,47 @@ ${q.accepted ? `
       json({ rep: repId, count: quotes.length, quotes });
     } catch(e) {
       console.error('[reports/quotes-timeline]', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Supplier spend (QB Expenses by Vendor) ─────────────────
+  // Pulls QB's ExpensesByVendorSummary report for a given range and
+  // returns a flat array sorted by total descending. 24h memory cache;
+  // bypass via ?refresh=1. Range options: ytd, 12m, month, lastmonth,
+  // quarter, lastquarter, custom (with ?start=YYYY-MM-DD&end=YYYY-MM-DD).
+  // Click-through detail lives on /api/reports/supplier-spend/:vendorId.
+  if (pathname === '/api/reports/supplier-spend' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const range = String(parsed.query.range || 'ytd').toLowerCase();
+      const customStart = parsed.query.start || null;
+      const customEnd   = parsed.query.end   || null;
+      const refresh = parsed.query.refresh === '1' || parsed.query.refresh === 'true';
+      const { startDate, endDate, label } = _resolveSupplierSpendRange(range, customStart, customEnd);
+      if (!startDate || !endDate) { json({ error: 'Invalid date range' }, 400); return; }
+
+      const cacheKey = `${startDate}_${endDate}`;
+      const cached = _supplierSpendCache.get(cacheKey);
+      const now = Date.now();
+      if (!refresh && cached && (now - cached.cachedAt) < SUPPLIER_SPEND_CACHE_MS) {
+        json({ ...cached.payload, cachedAt: cached.cachedAt, fromCache: true });
+        return;
+      }
+
+      const reportJson = await qb.fetchExpensesByVendorSummary({ startDate, endDate });
+      const { rows, total } = _flattenVendorSummary(reportJson);
+      const payload = {
+        range: { key: range, label, start: startDate, end: endDate },
+        total,
+        count: rows.length,
+        rows,
+      };
+      _supplierSpendCache.set(cacheKey, { payload, cachedAt: now });
+      json({ ...payload, cachedAt: now, fromCache: false });
+    } catch (e) {
+      console.error('[reports/supplier-spend]', e.message);
       json({ error: e.message }, 500);
     }
     return;

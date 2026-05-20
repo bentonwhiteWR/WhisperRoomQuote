@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.30.1', date:'May 20, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Move Admin Tools button into the Email Reply output panel.** v1.29.0 put it in the topbar, which is hidden when the page is iframed inside the Deal Hub popup (embed mode) — so admins inside the popup couldn\'t see it. Moved to the bottom-right of the Generated Reply panel, renamed from "⚙ Logs" to "Admin Tools". Visible in both standalone and embedded modes. Still opens the logs viewer in a new tab.'},
+      ]
+    },
+    {
       v:'1.30.0', date:'May 20, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Assembly Manual builder — quote-builder button + modal (step 2 of 2).** New "🛠 Build Assembly Manual" button under the existing action stack on the quote builder. Click → modal opens pre-filled from the current quote: detects the MDL from line items, reads the WA Type as ADA size, and ticks the right checkboxes by scanning line-item names for HX / Studio Light / Bass Traps / EFP / Multi Jack Panel / Acoustic Package / Roof Vent / Ramp / Step / Expansion / Jack Panel. Rep verifies, clicks "Build & Download" → server pulls source PDFs from Drive, merges with pdf-lib, streams the result as a download. Status banner inside the modal surfaces missing-section warnings (e.g., a folder didn\'t have a file matching the expected substring) so the rep can confirm before delivering the PDF to the floor. ADA Size dropdown mirrors the rep WA Type dropdown options exactly — one source of truth.'},

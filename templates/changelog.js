@@ -51,6 +51,22 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.30.4', date:'May 20, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Assembly Manual: EFP / Cover / Series file matching.** Files in those folders are named with the size+variant stem only (e.g. `4848 S EFP.pdf`), NOT the full `MDL ` prefix. Section config now matches on `ctx.modelStem` (the model with `MDL ` stripped) instead of `ctx.model`. EFP, Cover, and Series sections will now actually pull.'},
+        {t:'ui', d:'**ADA Size dropdown — always show all 4 options.** Previously cloned from `repWaType` which only populates when an ADA/WA UPG line item is on the quote. Now hardcodes `4016, 4040, 4622, 4646` so reps can build manuals for rooms not currently on the quote.'},
+        {t:'ui', d:'**Build button now shows a spinning indicator** instead of just disabling. Modal stays closable during the build — fetch runs async in the background, download still fires when the merge completes. Status text now says so explicitly.'},
+        {t:'ui', d:'**Removed the Overseas checkbox + retired the Overseas section** (no longer relevant per user). Backend section F is gone, frontend checkbox is gone, no migration needed.'},
+      ]
+    },
+    {
+      v:'1.30.3', date:'May 20, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Assembly Manual modal — form + pre-fill rework.** Removed the "Jack Panel (OLD)" checkbox (not needed). Renamed "EFP (Window)" → "EFP (Elevated Floor Package)" — the underlying Drive files are still EFP*.pdf, just the label was wrong.'},
+        {t:'fix', d:'**Assembly Manual pre-fill — actually loop line items with starts-with rules.** Previous detection used loose substring matches and missed common cases (e.g., Studio Light line items that start with "SL "). New rules: `RM ` prefix → Roof Mount; `ADA ` or `WA UPG` prefix → ADA + auto-fill ADA Size from `repWaType` (or first dropdown option as default); `SL ` prefix → Studio Light; `EFP ` prefix → EFP. ADA-triggered cascade: when ADA is detected (or WA Type is set on the quote), Ramp and EFP are auto-ticked too. Substring rules retained for HX, Bass Traps, MJP, Acoustic Package, Step, Expansion.'},
+      ]
+    },
+    {
       v:'1.30.2', date:'May 20, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Supplier-spend: correct QB report name.** v1.28.1 used `ExpensesByVendorSummary` which Intuit renamed to `VendorExpenses` in their API. The old name returns a misleading code-5020 "Permission Denied Error" instead of 404, which sent us down a false trail looking at user roles. Switched to the current names: `VendorExpenses` for the summary and `TransactionListByVendor` for the drilldown. Retest `/api/reports/supplier-spend?range=ytd` — should return real data now.'},

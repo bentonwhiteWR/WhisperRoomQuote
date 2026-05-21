@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.36.5', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Removed the dead freight UI from the Deal Hub AP PO modal.** v1.35.1 → v1.36.2 had added Additional Charges inputs to the wrong modal (deals-dashboard.html). v1.36.4 put the real working version in the suppliers-dashboard modal where reps actually edit POs. This commit deletes the orphaned UI + JS + payload wiring from the Deal Hub side so there\'s only one freight code path. Server-side handling and the suppliers-dashboard UI are unchanged.'},
+      ]
+    },
+    {
       v:'1.36.4', date:'May 21, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Additional Charges (freight) section added to the SUPPLIERS DASHBOARD edit modal — which is where reps actually work.** Earlier versions (v1.35.1 → v1.36.2) had been wiring the freight inputs into the Deal Hub\'s AP PO modal, but reps almost always edit POs from `/suppliers` not the Deal Hub. The suppliers-dashboard edit modal (Edit button on each PO row) now has an "Additional Charges" section above Notes with a "+ Add Charge" button. Click it → reveals Amount + Description inputs → Save → freight saved to `po_data.freight` and renders on the customer-facing `/po/:poNumber` as a Freight row in the totals. "× Remove Charge" clears the freight on next save.'},

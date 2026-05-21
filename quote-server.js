@@ -1102,6 +1102,20 @@ const server = http.createServer(async (req, res) => {
     res.end(buf); return;
   }
 
+  // Shared notification bell snippet — included by every internal
+  // dashboard via <script src="/assets/notif-bell.js" defer></script>.
+  // Served from disk so we don't have to re-deploy on every UI tweak.
+  if (pathname === '/assets/notif-bell.js') {
+    try {
+      const buf = require('fs').readFileSync(require('path').join(__dirname, 'assets', 'notif-bell.js'));
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(buf);
+    } catch(e) {
+      res.writeHead(404); res.end('notif-bell.js missing');
+    }
+    return;
+  }
+
     // ── Shipping Dashboard ──────────────────────────────────────────
   if (pathname === '/shipping') {
     if (!isAuth(req)) { res.writeHead(302, {Location: '/deals'}); res.end(); return; }
@@ -1466,6 +1480,50 @@ const server = http.createServer(async (req, res) => {
     try {
       const type = event.type || '';
       const inv  = event.data?.object || {};
+
+      // ── ACH "initiated" branch: payment_intent.processing ────────
+      // For ACH, when the customer hits Pay, Stripe creates a PaymentIntent
+      // and transitions it through `processing` for 3-5 days while the bank
+      // clears. The `invoice.paid` event only fires once the funds clear.
+      // We want the rep notified at the START of the wait, not just the
+      // end. Event payload here is a PaymentIntent, not an Invoice — its
+      // `invoice` field references the Stripe invoice id, which we
+      // separately fetch to get our wr_quote_number metadata.
+      if (type === 'payment_intent.processing') {
+        const piInvoiceId = inv.invoice || null;
+        if (piInvoiceId && db) {
+          try {
+            const fullInv = await stripeLib.getInvoice(piInvoiceId);
+            const piQuoteNumber = fullInv?.metadata?.wr_quote_number || null;
+            const piDealId      = fullInv?.metadata?.wr_deal_id || null;
+            if (piQuoteNumber) {
+              const qrowP = await db.query('SELECT rep_id, deal_name FROM quotes WHERE quote_number = $1', [piQuoteNumber]);
+              const ownerIdP = qrowP?.rows?.[0]?.rep_id || null;
+              const dealNameP = qrowP?.rows?.[0]?.deal_name || '';
+              const amountP = fullInv?.amount_due != null
+                ? (fullInv.amount_due / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+                : '';
+              if (ownerIdP) {
+                await createNotification(
+                  ownerIdP,
+                  'stripe-ach-initiated',
+                  `🏦 ACH payment initiated — ${piQuoteNumber}`,
+                  `Customer started an ACH payment${amountP ? ' of ' + amountP : ''} for ${dealNameP || piQuoteNumber}. Funds typically clear in 3-5 business days; you'll get another notification when they settle.`,
+                  { dealId: piDealId, dealName: dealNameP, quoteNum: piQuoteNumber }
+                );
+              }
+              writelog('info', 'stripe.ach-initiated', `ACH payment initiated for ${piQuoteNumber}`, { quoteNum: piQuoteNumber, dealId: String(piDealId || ''), dealName: dealNameP, meta: { stripeInvoiceId: piInvoiceId, paymentIntentId: inv.id, amount: fullInv?.amount_due } });
+            }
+          } catch(e) {
+            console.warn('[stripe.webhook] payment_intent.processing handler failed:', e.message);
+          }
+        }
+        // Always 200 — the rest of the handler doesn't apply to PI events.
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ received: true, processed: !!piInvoiceId }));
+        return;
+      }
+
       const quoteNumber = inv.metadata?.wr_quote_number || null;
       const dealId      = inv.metadata?.wr_deal_id || null;
       const handled = ['invoice.paid', 'invoice.payment_failed', 'invoice.voided'].includes(type);
@@ -8338,6 +8396,9 @@ ${q.accepted ? `
   }
 
   // ── API: Notifications ───────────────────────────────────────────
+  // Active feed: unread only, capped at 50, newest first. The shared
+  // `/assets/notif-bell.js` bell polls this every 60s for the badge +
+  // dropdown content.
   if (pathname === '/api/notifications' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const sess = getSession(req);
@@ -8345,9 +8406,28 @@ ${q.accepted ? `
     try {
       const r = await db.query(
         `SELECT id, type, title, body, deal_id, deal_name, quote_num, read, created_at
-         FROM notifications WHERE owner_id=$1
+         FROM notifications WHERE owner_id=$1 AND read=false
          ORDER BY created_at DESC LIMIT 50`,
         [String(sess.ownerId)]
+      );
+      json({ notifications: r.rows });
+    } catch(e) { json({ notifications: [] }); }
+    return;
+  }
+
+  // History feed: previously-confirmed (read=true) notifications.
+  // Backs the "View history →" toggle inside the bell dropdown.
+  if (pathname === '/api/notifications/history' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const sess = getSession(req);
+    if (!sess?.ownerId) { json({ notifications: [] }); return; }
+    const limit = Math.min(parseInt(parsed.query.limit) || 200, 500);
+    try {
+      const r = await db.query(
+        `SELECT id, type, title, body, deal_id, deal_name, quote_num, read, created_at
+         FROM notifications WHERE owner_id=$1 AND read=true
+         ORDER BY created_at DESC LIMIT $2`,
+        [String(sess.ownerId), limit]
       );
       json({ notifications: r.rows });
     } catch(e) { json({ notifications: [] }); }
@@ -8365,11 +8445,24 @@ ${q.accepted ? `
     return;
   }
 
+  // Confirm a single notification — moves it from active → history.
+  // POST /api/notifications/:id/confirm
+  // (Legacy POST /api/notifications/:id still works — same handler.)
   if (pathname.startsWith('/api/notifications/') && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
-    const notifId = pathname.split('/')[3];
+    const sess = getSession(req);
+    if (!sess?.ownerId) { json({ success: false }); return; }
+    const parts = pathname.split('/');
+    const notifId = parts[3];
+    // Accept both /api/notifications/123 and /api/notifications/123/confirm.
+    if (parts[4] && parts[4] !== 'confirm') { json({ error: 'Not found' }, 404); return; }
     try {
-      await db.query(`UPDATE notifications SET read=true WHERE id=$1`, [notifId]);
+      // Scope the update to the session's owner so a rep can't confirm
+      // another rep's notification by guessing IDs.
+      await db.query(
+        `UPDATE notifications SET read=true WHERE id=$1 AND owner_id=$2`,
+        [notifId, String(sess.ownerId)]
+      );
       json({ success: true });
     } catch(e) { json({ success: false }); }
     return;
@@ -13523,6 +13616,27 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             console.log(`[process-order] AP task created: ${taskRes.body?.id}`);
           } catch(e) { console.warn('[process-order] AP task failed:', e.message); }
         })();
+
+        // In-app notification to Jill: she owns the Audimute PO flow
+        // downstream of process-order. Without this she has to either
+        // check the suppliers dashboard manually or wait for the email
+        // she's CC'd on. The notification surfaces in her bell with a
+        // ✓ Confirm button — she clears it once the PO is sent.
+        const JILL_OWNER_ID = '36330944';
+        const apColorLabel = apColor || 'Unknown';
+        const customerLabel = [customer?.firstName, customer?.lastName].filter(Boolean).join(' ')
+                            || customer?.company
+                            || customer?.email
+                            || 'customer';
+        try {
+          await createNotification(
+            JILL_OWNER_ID,
+            'ap-po-needed',
+            `🎨 Audimute PO needed — ${dealName || quoteNumber}`,
+            `Order ${quoteNumber} for ${customerLabel} includes an Acoustic Package (color: ${apColorLabel}). Create + send the Audimute PO from the Suppliers tab.`,
+            { dealId: dealId ? String(dealId) : null, dealName: dealName || null, quoteNum: quoteNumber }
+          );
+        } catch(e) { console.warn('[process-order] AP notification to Jill failed:', e.message); }
       }
 
       // Upload order PDF to shared orders folder (non-blocking)

@@ -51,6 +51,15 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.37.0', date:'May 21, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Notification system, end-to-end.** Bell icon on every internal dashboard (Deal Hub, Orders, Shipping, Reports, Suppliers, Reconcile) — green badge + pulsing border when you have unread notifications. Click → dropdown listing your active notifications with a **✓ Confirm** button per row (sole way to clear a notification from the active list — clicking "Open →" navigates without confirming so you can revisit). **View history →** link swaps the active list for previously-confirmed notifications (latest 200). New shared snippet at `/assets/notif-bell.js` — drop a `<div id="notifBellMount"></div>` into any page topbar to enable it. Was a half-built skeleton (table + API existed, only orders dashboard surfaced it, no Confirm UX, no history); this commit finishes the system and unifies it across all pages.'},
+        {t:'add', d:'**New notification triggers:** (1) Order processed with an Acoustic Package → notifies Jill (`36330944`) "🎨 Audimute PO needed — create + send from the Suppliers tab" so she doesn\'t have to manually check the suppliers dashboard. (2) Stripe `payment_intent.processing` webhook → notifies the owning rep "🏦 ACH payment initiated — funds typically clear in 3-5 business days" — fires when the customer commits to paying ACH, not just when funds settle (the existing `invoice.paid` notification still fires when ACH clears).'},
+        {t:'add', d:'**New API endpoints:** `GET /api/notifications` now returns *unread only* (was: all 50). `GET /api/notifications/history?limit=200` returns confirmed (read=true) notifications, backing the history view. `POST /api/notifications/:id/confirm` is the new explicit confirmation endpoint (legacy `POST /api/notifications/:id` still works — same handler). Confirm scope is locked to the session\'s owner so a rep can\'t confirm another rep\'s notification by guessing IDs.'},
+        {t:'log', d:'**Stripe webhook event subscriptions needed.** For the ACH-initiated notification to fire, the Stripe Dashboard webhook endpoint at `/api/stripe/webhook` must subscribe to `payment_intent.processing`. Existing subscriptions (`invoice.paid`, `invoice.payment_failed`, `invoice.voided`) are unchanged.'},
+      ]
+    },
+    {
       v:'1.36.6', date:'May 21, 2026', tag:'log',
       changes:[
         {t:'log', d:'**DEVLOG bookkeeping.** Current focus reflects v1.36.5 on prod (Closed Lost toggle column + PO freight UI in suppliers-dashboard). Staging clean.'},

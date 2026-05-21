@@ -12,7 +12,13 @@ Internal development notes. Last updated 2026-05-20.
 
 Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in the project's history. Five parallel workstreams plus a Shopify-API investigation that didn't ship code but informed the path forward. Full breakdown lives in the **May 20 session writeup** below.
 
-**On STAGING (NOT YET promoted to main):** nothing.
+**On STAGING (NOT YET promoted to main):**
+
+- **v1.37.0** (2026-05-21) — **Notification system, end-to-end.** Finished what was a half-built skeleton (table + API existed, only orders dashboard surfaced it). New shared snippet `/assets/notif-bell.js` (~250 lines) renders a bell + dropdown into any page that includes `<div id="notifBellMount"></div>` + `<script src="/assets/notif-bell.js" defer></script>`. Now on Deal Hub, Orders, Shipping, Reports, Suppliers, Reconcile.
+  - **UX:** Green badge + pulsing border when unread > 0. Dropdown lists active (unread) notifications. Each card has **✓ Confirm** button — only way to clear it from the active list. "Open →" navigates without auto-confirming so the rep can revisit. **View history →** swaps the list for read=true notifications (latest 200). "← Active" toggles back. "✓ Confirm all" clears everything.
+  - **Server:** `GET /api/notifications` now returns *unread only* (was: all). New `GET /api/notifications/history?limit=200`. New `POST /api/notifications/:id/confirm` (legacy `POST /api/notifications/:id` still works — same handler). Confirm queries are scoped to `owner_id = session.ownerId` so reps can't confirm each other's notifications.
+  - **New triggers:** (1) Process-order with AP items → `createNotification(JILL_OWNER_ID, 'ap-po-needed', ...)` so Jill gets pinged in-app to send the Audimute PO. Lives next to the existing Benton AP color task. (2) Stripe `payment_intent.processing` webhook → `createNotification(ownerId, 'stripe-ach-initiated', ...)` so the rep sees ACH activity start, not just when funds clear 3-5 days later. Fetches the related Stripe invoice to map back to our wr_quote_number metadata.
+  - **Stripe action needed:** add `payment_intent.processing` to the webhook subscription in the Stripe Dashboard for the ACH-initiated trigger to fire. Existing event subscriptions unchanged.
 
 - **v1.34.6** (2026-05-21) — `/promote` skill no longer pauses for a yes/no confirmation. Per user preference — pre-flight already lists what's about to land, so the prompt was friction. Edited `.claude/commands/promote.md` to remove the "Confirm to proceed?" step. Other guardrails kept.
 
@@ -541,6 +547,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.37.0  | 2026-05-21 | **Notification system, end-to-end.** Shared `/assets/notif-bell.js` snippet drops a bell into Deal Hub, Orders, Shipping, Reports, Suppliers, Reconcile via `<div id="notifBellMount"></div>` + `<script src=...>`. Green pulsing badge; per-row Confirm button; History view; new endpoints `/api/notifications/history` + `/api/notifications/:id/confirm`. New triggers: process-order with AP → notify Jill; Stripe `payment_intent.processing` → notify rep (ACH initiated). Stripe Dashboard needs to subscribe to `payment_intent.processing` for that to fire. |
 | 1.36.6  | 2026-05-21 | **DEVLOG bookkeeping** — Current focus updated post-promote; v1.36.5 now on prod, staging clean. |
 | 1.36.5  | 2026-05-21 | **Removed dead freight UI from Deal Hub AP PO modal.** Cleanup — v1.35.1–v1.36.2 wired freight into the wrong modal; v1.36.4 put it in the right one (suppliers dashboard); this commit deletes the orphan. One freight code path. |
 | 1.36.4  | 2026-05-21 | **PO Additional Charges section wired into the SUPPLIERS DASHBOARD edit modal.** v1.35.1–v1.36.2 had been adding freight UI to the wrong modal (Deal Hub) — reps actually edit POs from `/suppliers`. New "+ Add Charge" button in `editPoModal` reveals Amount + Description inputs; Save sends `freight` in the existing PATCH (server has accepted the field since v1.35.1, PO render already shows the Freight row in totals). |

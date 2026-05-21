@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.37.7', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Notification session hydration: synced `lib/notify.js` REP_EMAILS to match the real login emails.** The two REP_EMAILS maps in the codebase had drifted — `lib/notify.js` had placeholder/guessed values (`sarah@whisperroom.com`, `jill@whisperroom.com`, `travis@whisperroom.com`, `gabe@whisperroom.com`, etc.) while `orders-dashboard.html` had the real production emails (`ssmith@`, `jholdway@`, `tsingleton@`, `gabrielwhite@`, etc.). The v1.37.4 hydration fallback uses lib/notify.js, so Sarah\'s session (email `ssmith@whisperroom.com`) couldn\'t resolve to owner `38143901` because notify.js only had `sarah@`. Synced lib/notify.js to mirror the orders-dashboard map. All reps\' sessions now hydrate correctly on the first notification API hit.'},
+      ]
+    },
+    {
       v:'1.37.6', date:'May 21, 2026', tag:'add',
       changes:[
         {t:'add', d:'**Notification: new "order processed" trigger for Jeromy.** Every successful `/api/process-order` now fires `createNotification(JEROMY_OWNER_ID, \'order-processed\', ...)`. Title carries flag chips (`· RM` / `· CUST` / `· INTL`) so he can spot long-lead-time or international orders at a glance. He was previously only notified on order-modified addendums (after the fact); now he sees the order the moment a rep processes it.'},

@@ -14,6 +14,8 @@ Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in t
 
 **On STAGING (NOT YET promoted to main):**
 
+- **v1.37.7** (2026-05-21) — **Fix: synced `lib/notify.js` REP_EMAILS to match real login emails.** Two REP_EMAILS maps had drifted — notify.js had `sarah@whisperroom.com`/`jill@whisperroom.com`/`travis@whisperroom.com` placeholder values; orders-dashboard.html had the real `ssmith@`/`jholdway@`/`tsingleton@` etc. The v1.37.4 hydration fallback uses notify.js, so any rep other than Benton failed to resolve. Synced notify.js to mirror the orders-dashboard map. Sarah, Jill, Travis, etc. will now hydrate on first notification hit.
+
 - **v1.37.6** (2026-05-21) — **New notification trigger: process-order → Jeromy.** Every successful process-order now notifies Jeromy (owner `38732186`) in-app. Title shows flag chips for RM / Custom Hole / International. He was previously only notified on after-the-fact addendum modifications; now he sees the order land the moment a rep processes it.
 
 <details>
@@ -562,6 +564,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.37.7  | 2026-05-21 | **Fix: synced `lib/notify.js` REP_EMAILS to the real login emails** (notify.js had stale `sarah@`/`jill@`/`travis@` placeholders; orders-dashboard.html had real `ssmith@`/`jholdway@`/`tsingleton@`). v1.37.4 session hydration uses notify.js so anyone other than Benton failed to resolve. All reps now hydrate correctly. |
 | 1.37.6  | 2026-05-21 | **New notification trigger:** every `/api/process-order` now notifies Jeromy with `📦 New Order — <deal>` and flag chips (`· RM` / `· CUST` / `· INTL`). |
 | 1.37.5  | 2026-05-21 | **DEVLOG bookkeeping** — Current focus updated post-promote; v1.37.4 now on prod, staging clean. |
 | 1.37.4  | 2026-05-21 | **Tax: auto-fallback to city/state-level rate when TaxJar rejects ZIP + Notification hydration via REP_EMAILS fallback.** TaxJar retries without `to_zip`/`to_street` on "to_zip X is not used" errors; client shows yellow banner. Session ownerId hydration falls back to reverse REP_EMAILS lookup when HubSpot Owners API misses (casing differences). |

@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.37.4', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'add', d:'**Tax: auto-fallback to city/state-level rate when TaxJar rejects the ZIP.** When TaxJar 400s with `"to_zip X is not used within to_state Y"` (e.g. FL ZIP `33104` — retired or business-only), `lib/taxjar.js` automatically retries the same request without `to_zip` (and without `to_street`, which is meaningless without a ZIP). TaxJar then returns a city/state-level rate. Result carries `usedStateFallback: true` + a `fallbackReason` message. Quote builder shows a yellow info banner under the tax result: "⚠ Using city/state-level rate — ZIP not recognized, local surtax may be slightly higher. Override below if you know the exact rate." Rep no longer dead-ends on retired ZIPs.'},
+        {t:'fix', d:'**Notification session hydration: fall back to local REP_EMAILS map when HubSpot Owners API misses.** v1.37.2 added lazy-hydration of `session.ownerId` via HubSpot Owners API by email. Observed in testing: HubSpot Owners can miss when the Owner record\'s stored email differs in casing from the session email. Now `_hydrateSessionOwnerId` falls back to a reverse case-insensitive lookup in the hardcoded `REP_EMAILS` map (`lib/notify.js`) — which is our source of truth for notification routing anyway. Session ownerId now resolves for any rep with an email in REP_EMAILS, regardless of HubSpot Owners API state.'},
+      ]
+    },
+    {
       v:'1.37.3', date:'May 21, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Tax calculation: surface TaxJar\'s actual error message instead of "Bad Request".** When TaxJar rejects an address (e.g. ZIP `33104` returned `"to_zip 33104 is not used within to_state FL"`), `lib/taxjar.js` was throwing away the explanation and only returning `res.body.error` which is just the HTTP status text ("Bad Request"). Swapped to prefer `res.body.detail` so the rep-facing error translation regex (which looks for `/zip|postal/i`) now catches it and shows the friendly "Invalid ZIP code — please verify the ship-to ZIP and try again." instead of a generic failure.'},

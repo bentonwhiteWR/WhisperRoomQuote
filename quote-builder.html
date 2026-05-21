@@ -2902,6 +2902,12 @@ function renderTaxResult() {
     el.classList.add('visible');
     return;
   }
+  // Fallback rate banner: server retried without ZIP because TaxJar
+  // rejected the entered one. The rate IS valid (city/state level)
+  // but probably misses some local surtax — flag it for the rep.
+  const fallbackBanner = taxData.usedStateFallback
+    ? `<div style="margin-top:8px;padding:8px 10px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:6px;font-size:11px;color:#f59e0b;line-height:1.5">⚠ <strong>${taxData.fallbackReason || 'Using state-level rate'}.</strong> Verify the ship-to ZIP — the local surtax may be slightly higher. Override below if you know the exact rate.</div>`
+    : '';
   const rate = (taxData.rate || 0) * 100;
   const isOverride = !!taxData.override;
   const overrideBadge = isOverride
@@ -2916,7 +2922,8 @@ function renderTaxResult() {
       <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Tax Rate</div><div style="font-size:16px;margin-top:2px">${rate.toFixed(3)}%${overrideBadge}</div></div>
       <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Tax Amount</div><div style="font-size:16px;color:var(--green);margin-top:2px">${fmt(liveTax)}</div></div>
       <div><div style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em">Freight Taxed</div><div style="font-size:16px;margin-top:2px">${taxData.freightTaxed ? 'Yes' : 'No'}</div></div>
-    </div>`;
+    </div>
+    ${fallbackBanner}`;
   el.classList.add('visible');
 }
 

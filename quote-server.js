@@ -8416,6 +8416,9 @@ ${q.accepted ? `
   // logout/login-to-fix-notifications dance.
   async function _hydrateSessionOwnerId(req, sess) {
     if (!sess || sess.ownerId || !sess.email) return sess?.ownerId || null;
+    let ownerId = null;
+
+    // Primary: HubSpot Owners API by email.
     try {
       const ownerRes = await httpsRequest({
         hostname: 'api.hubapi.com',
@@ -8424,11 +8427,32 @@ ${q.accepted ? `
         headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
       });
       const owners = ownerRes.body?.results || [];
-      if (!owners.length) {
-        console.warn(`[auth] no HubSpot owner found for ${sess.email}; session stays without ownerId`);
-        return null;
+      if (owners.length) ownerId = String(owners[0].id);
+    } catch(e) {
+      console.warn(`[auth] HubSpot owner lookup threw for ${sess.email}: ${e.message}`);
+    }
+
+    // Fallback: reverse-lookup the hardcoded REP_EMAILS map (case-
+    // insensitive). HubSpot Owners API has been observed to miss our
+    // reps when the Owner record's email is in a different casing
+    // than what we query with — this map is the source of truth
+    // anyway for notification routing.
+    if (!ownerId) {
+      const emailLower = sess.email.toLowerCase();
+      for (const [id, mappedEmail] of Object.entries(REP_EMAILS)) {
+        if ((mappedEmail || '').toLowerCase() === emailLower) {
+          ownerId = id;
+          console.log(`[auth] HubSpot Owners API miss for ${sess.email}; resolved via REP_EMAILS map → ${ownerId}`);
+          break;
+        }
       }
-      const ownerId = String(owners[0].id);
+    }
+
+    if (!ownerId) {
+      console.warn(`[auth] could not resolve ownerId for ${sess.email} (HubSpot Owners + REP_EMAILS both missed); session stays without ownerId`);
+      return null;
+    }
+    try {
       sess.ownerId = ownerId;
       // Pull token from cookie to update both the in-memory cache + DB.
       const cookieHeader = req.headers.cookie || '';

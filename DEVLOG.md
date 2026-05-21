@@ -1,53 +1,60 @@
 # WhisperRoom Quote Builder — Dev Log
 
-Internal development notes. Last updated 2026-05-20.
+Internal development notes. Last updated 2026-05-21.
 
 > **Read this first when starting a session.** The "Current focus" section below is the fastest way to know where we left off. Below that: session writeups, the audit (outstanding work), and the changelog table.
 
 ---
 
-## Current focus (2026-05-20 — Assembly Manual + Suppliers tab + Ship Calendar + email-reply logging all shipped)
+## Current focus (2026-05-21 — Notification system end-to-end + AP PO freight + Closed Lost recovery + TaxJar fallback + Save-Changes silent-ship fix)
 
-**Most recent shipped to PROD:** v1.37.7 — Process-order → Jeromy notification trigger + synced `lib/notify.js` REP_EMAILS to real login emails so session hydration works for every rep (not just Benton). Promoted 2026-05-21.
+**Most recent shipped to PROD:** v1.37.7 — Process-order → Jeromy notification trigger + synced `lib/notify.js` REP_EMAILS to real login emails. Promoted 2026-05-21 (eveningish).
 
-Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in the project's history. Five parallel workstreams plus a Shopify-API investigation that didn't ship code but informed the path forward. Full breakdown lives in the **May 20 session writeup** below.
+Today was another marathon — 30+ versions across notification system buildout, Closed Lost recovery, AP/Audimute PO workflow, Modify Order line-items, a sneaky Save-Changes silent-ship bug, TaxJar resilience, plus a backtick typo that took the whole notification bell offline for a few minutes. Full breakdown in the **May 21 session writeup** below.
 
 **On STAGING (NOT YET promoted to main):**
 
-- **v1.37.11** (2026-05-21) — **Confirm + read-all endpoints now lazy-hydrate the session.** Was a v1.37.2 hydration gap — only GET endpoints called `_hydrateSessionOwnerId`. If a rep's session hadn't been refreshed via a GET first, POST confirm returned silent `{success:false}`, UI optimistically removed it from active anyway, DB stayed unread, next poll brought it back, history never picked it up. Confirm endpoint also returns `rowsUpdated` count for future diagnostics.
+- **v1.37.11** (2026-05-21) — Confirm + read-all POST endpoints now lazy-hydrate the session (matching the GET endpoints). Plugs a v1.37.2 gap. Confirm endpoint also returns `rowsUpdated` count.
+- **v1.37.10** (2026-05-21) — Notification bell came back from the dead. v1.37.9's CSS comment had literal backticks around `:root.light` inside the JS template literal — terminated the string early, script became a syntax error, bell vanished everywhere. Removed backticks. **Lesson saved to memory.**
+- **v1.37.9** (2026-05-21) — Notification dropdown light-mode styling.
+- **v1.37.8** (2026-05-21) — DEVLOG bookkeeping post-promote.
 
-- **v1.37.10** (2026-05-21) — **Fix: notification bell disappeared after v1.37.9 light-mode push.** A CSS comment inside the JS template literal in `/assets/notif-bell.js` contained literal backticks around `:root.light` — those terminated the template literal early, the rest of the file became a syntax error, the script never executed, and the bell vanished from every page. Replaced the backticks with plain text. Lesson saved as a memo: no backticks inside template-literal CSS comments.
+Promote v1.37.8–v1.37.11 first thing tomorrow once the history-view investigation below is resolved.
 
-- **v1.37.9** (2026-05-21) — **Notification dropdown light mode.** Added `:root.light .wr-notif-*` overrides in `/assets/notif-bell.js` for panel surface (white), card borders/backgrounds, text colors, links, and footer. Topbar bell button + badge stay dark since the topbars themselves stay dark in light mode.
+### ⚠️ Open at end-of-day: notification history view is empty for Benton
 
-**v1.37.5–1.37.7 promoted 2026-05-21.** Detail kept below for next-session pickup.
+User clicked ✓ Confirm on some test notifications. History view (`/api/notifications/history`) returned nothing. Latest `/api/notifications/debug` for Benton:
 
-- **v1.37.7** (2026-05-21) — **Fix: synced `lib/notify.js` REP_EMAILS to match real login emails.** Two REP_EMAILS maps had drifted — notify.js had `sarah@whisperroom.com`/`jill@whisperroom.com`/`travis@whisperroom.com` placeholder values; orders-dashboard.html had the real `ssmith@`/`jholdway@`/`tsingleton@` etc. The v1.37.4 hydration fallback uses notify.js, so any rep other than Benton failed to resolve. Synced notify.js to mirror the orders-dashboard map. Sarah, Jill, Travis, etc. will now hydrate on first notification hit.
+```json
+{
+  "session": { "email": "bentonwhite@whisperroom.com", "ownerId": "36303670" },
+  "recentForYou": [],
+  "latestAcrossAllReps": [
+    { "id": 95, "owner_id": "38143901", ... Echo Tech ... },
+    { "id": 94, "owner_id": "38143901", ... Echo Tech ... },
+    { "id": 89, "owner_id": "117442978", ... Erik Stalheim ... },
+    { "id": 88, "owner_id": "38732186", ... Order modified ... },
+    { "id": 87, "owner_id": "117442978", ... Kalamazoo ... }
+  ]
+}
+```
 
-- **v1.37.6** (2026-05-21) — **New notification trigger: process-order → Jeromy.** Every successful process-order now notifies Jeromy (owner `38732186`) in-app. Title shows flag chips for RM / Custom Hole / International. He was previously only notified on after-the-fact addendum modifications; now he sees the order land the moment a rep processes it.
+**Smoking gun:** earlier in the session Benton's debug dump showed notifications id 91 and 92 (both `owner_id="36303670"`, GloNova quote-accepted events). Those are **completely gone** from `recentForYou` — not just marked read, missing from the DB entirely. `recentForYou` is a `WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 10` query with no read filter, so they should appear even if read=true. They don't.
 
-<details>
-<summary>Just-shipped detail (v1.37.0–v1.37.4) — kept here for the next session pickup</summary>
+**Leading suspect:** quote-server.js has three `DELETE FROM notifications` paths that cascade when a deal/quote is deleted:
+- `/api/quotes/:n/delete` → `DELETE FROM notifications WHERE quote_num = $1` (line ~11833)
+- HubSpot deal deletion paths at ~11975 + ~11981
 
-- **v1.37.4** (2026-05-21) — **Tax: auto-fallback to city/state-level rate when TaxJar rejects the ZIP + Notification hydration falls back to local REP_EMAILS map.** (1) `lib/taxjar.js` now retries the TaxJar request without `to_zip`/`to_street` when the API 400s with `"to_zip X is not used within to_state Y"`. TaxJar returns city/state-level rate; result carries `usedStateFallback` + `fallbackReason`. Quote builder shows yellow info banner under the tax result. (2) `_hydrateSessionOwnerId` falls back to a case-insensitive reverse lookup of `REP_EMAILS` (from `lib/notify.js`) when HubSpot Owners API misses — Owner records sometimes have different email casing. Session ownerId now resolves for any rep with email in REP_EMAILS regardless of HubSpot Owners API state.
+If Benton deleted the GloNova test quote (or its parent deal) between the two debug dumps, that cascade would explain the missing rows. **Action tomorrow:** ask whether the GloNova test quote was deleted; if so, behavior is correct and we just need to also test history with a notification that hasn't been linked to a deleted quote. If not, dig deeper.
 
-- **v1.37.3** (2026-05-21) — **Tax: surface TaxJar's `detail` message instead of "Bad Request" + show 0% nexus result.** User hit "didn't pull anything" on FL ZIP 33104; Railway logs showed `TaxJar error response: {"detail":"to_zip 33104 is not used within to_state FL","status":400,"error":"Bad Request"}` but `lib/taxjar.js` was returning the bland `error` field and ignoring the useful `detail`. Fixed: prefer `detail`. Now the rep-facing regex catches "zip" and shows "Invalid ZIP code — please verify…". Also `renderTaxResult()` no longer silently hides when TaxJar succeeds with 0%/0$ for a nexus state — surfaces a yellow warning suggesting the city as the likely missing piece.
+**Possible related issue:** during the bell-vanished window (v1.37.9 → v1.37.10), the confirm button wasn't even rendered — script crashed before init(). So any clicks during that gap were no-ops. The user might have THOUGHT they confirmed but the page literally had no bell to click.
 
-- **v1.37.2** (2026-05-21) — **Notifications: auto-heal sessions with NULL ownerId.** User's session had no ownerId (predates the login mapping or HS rate-limited during login). Notifications were correctly being created for `owner_id='36303670'`, but `/api/notifications` filtered by `session.ownerId` which was null → empty list. New `_hydrateSessionOwnerId(req, sess)` helper: on first call to a notification endpoint with no ownerId, looks up by `session.email` via HubSpot Owners, stamps result onto both `_sessionCache` and the `sessions` DB row. Eliminates the logout/login dance.
+### Other open follow-ups
 
-- **v1.37.1** (2026-05-21) — **Notification system follow-up: tighter polling + fallbacks + debug endpoint.** (a) Bell poll 60s → 30s, plus refresh on tab focus / visibility change. (b) Accept-quote notification falls back to `quotes.rep_id` when HubSpot doesn't return `hubspot_owner_id` on the deal — was silently dropping the notification in that case. (c) `lib/notify.js` now logs every call (success + skipped) so Railway logs surface trigger problems. (d) New `GET /api/notifications/debug` endpoint returns session + recent notifications for the logged-in rep, lets you diagnose without Railway access.
-
-- **v1.37.0** (2026-05-21) — **Notification system, end-to-end.** Finished what was a half-built skeleton (table + API existed, only orders dashboard surfaced it). New shared snippet `/assets/notif-bell.js` (~250 lines) renders a bell + dropdown into any page that includes `<div id="notifBellMount"></div>` + `<script src="/assets/notif-bell.js" defer></script>`. Now on Deal Hub, Orders, Shipping, Reports, Suppliers, Reconcile.
-  - **UX:** Green badge + pulsing border when unread > 0. Dropdown lists active (unread) notifications. Each card has **✓ Confirm** button — only way to clear it from the active list. "Open →" navigates without auto-confirming so the rep can revisit. **View history →** swaps the list for read=true notifications (latest 200). "← Active" toggles back. "✓ Confirm all" clears everything.
-  - **Server:** `GET /api/notifications` now returns *unread only* (was: all). New `GET /api/notifications/history?limit=200`. New `POST /api/notifications/:id/confirm` (legacy `POST /api/notifications/:id` still works — same handler). Confirm queries are scoped to `owner_id = session.ownerId` so reps can't confirm each other's notifications.
-  - **New triggers:** (1) Process-order with AP items → `createNotification(JILL_OWNER_ID, 'ap-po-needed', ...)` so Jill gets pinged in-app to send the Audimute PO. Lives next to the existing Benton AP color task. (2) Stripe `payment_intent.processing` webhook → `createNotification(ownerId, 'stripe-ach-initiated', ...)` so the rep sees ACH activity start, not just when funds clear 3-5 days later. Fetches the related Stripe invoice to map back to our wr_quote_number metadata.
-  - **Stripe action needed:** add `payment_intent.processing` to the webhook subscription in the Stripe Dashboard for the ACH-initiated trigger to fire. Existing event subscriptions unchanged.
-
-</details>
-
-- **v1.34.6** (2026-05-21) — `/promote` skill no longer pauses for a yes/no confirmation. Per user preference — pre-flight already lists what's about to land, so the prompt was friction. Edited `.claude/commands/promote.md` to remove the "Confirm to proceed?" step. Other guardrails kept.
-
-- **v1.34.5** (2026-05-21) — **Bug fix: Save Changes on orders dashboard was silently shipping orders.** Typing a tracking number in the drawer + pressing Save Changes was merging `shipmentFields.tracking` into `order_data.shipped.tracking`. Since the board / calendar / Tracking tab all classify orders by `shipped.tracking && !shipped.unshipped`, the order jumped to Shipped without any of the Ship It side-effects (modal, email, dealstage advance) firing. Fix: server now writes draft shipment fields to a separate `order_data.shipmentDraft` slot when `shipped` isn't in the body; only Ship It (which sends the full `shipped` object) writes to `order_data.shipped`. Form re-populates from `shipmentDraft.*` for not-yet-shipped orders, falling back to `shipped.*` and the existing `_hs*` HS fallbacks.
+- **Promote v1.37.8–v1.37.11 to main** after the history investigation. v1.37.11 is the real load-bearing one (POST endpoints hydrate now).
+- **Stripe Dashboard subscription:** add `payment_intent.processing` to the webhook endpoint at `/api/stripe/webhook` so the ACH-initiated notification (v1.37.0) actually fires. Existing subscriptions (`invoice.paid`, `invoice.payment_failed`, `invoice.voided`) unchanged.
+- **Sarah's bell verification:** she hit the debug endpoint to hydrate, but we never visually confirmed the bell pulsed for her after. Tomorrow: have her test-accept a quote in another session and verify her bell pulses + the Confirm button persists.
+- **TaxJar ZIP 33104:** end-to-end test the v1.37.4 fallback. The rep should now see "Using city/state-level rate — ZIP not recognized" with a real percentage instead of dead-ending.
 
 **Queued / discussed but not yet built:** nothing.
 
@@ -232,6 +239,82 @@ Yesterday's progression (May 13):
 - **Parked architectural cleanup:** Extract `BOOTH_DATA` (and probably `BOOTH_PRESETS`) out of `quote-builder.html` into a shared `lib/booth-data.js` served as a static JS bundle, included by both `quote-builder.html` and `orders-dashboard.html` via `<script src>`. The v1.12.4 incident — two divergent copies silently drifting — is the kind of bug this prevents. Low priority but high ROI when next touching this area.
 
 **Tooling note:** As of 2026-05-08 the user is moving day-to-day editing from Claude Desktop to Cursor. Local clone lives at `C:\Users\bento\Documents\Claude\WhisperRoomQuote-staging`. Workflow stays the same (staging-only, explicit ask to promote to main).
+
+---
+
+## Session writeup — May 21, 2026 (v1.33.0 → v1.37.11)
+
+Another marathon. 30 versions across notification-system buildout, Closed Lost recovery, AP/Audimute PO workflow, Modify Order improvements, a silent-ship bug fix, TaxJar resilience, and one self-inflicted bell outage. Promoted to main four times (after v1.33.1, v1.34.3, v1.34.5, v1.35.x batch, v1.36.5, v1.37.4, v1.37.7). 11 workstreams worth of ground covered.
+
+### 1. Modify Order: line items inline + Own Shipping (v1.33.0, v1.33.1)
+
+The Modify Order flow was rendering addendum products only as a small block in the lower-right "Order Adjustments" section. User wanted the products to also appear as actual line items at the bottom of the items table, highlighted, so the customer sees what was added/credited. Built `addendumItemRows` rendering — orange "Added" badge for invoice addendums, red "Credit" badge for credit memos, left accent stripe. Subtotal math unchanged because the products are already counted via `addendumNet → total`. Modify Order PDF in the shared orders folder also now upserts (was creating duplicates).
+
+Also added a "Own Shipping" toggle in the Freight Estimate section. Stored as `freightData.ownShipping=true`, mutually exclusive with TBD. Customer-facing quote/order/invoice render "Shipping: Client will arrange own shipping" with no $ charge. Right-panel summary shows "Own Freight" instead of "Not quoted" (v1.33.1).
+
+### 2. WhisperRoom logo → Deal Hub (v1.33.0)
+
+The logo in every internal page topbar (Deal Hub, Orders, Quotes, Shipping, Reports, Suppliers, Reconcile, Admin Log, Email Reply, Email Reply Logs, Changelog) now links to `/deals`. Customer-facing pages (login, quote/order PDF headers) intentionally NOT changed.
+
+### 3. AP / Audimute PO workflow (v1.34.0 → v1.34.3, plus v1.36.4)
+
+Three pieces:
+- **v1.34.0:** Process Order shipping email auto-CCs Jill (`jholdway@whisperroom.com`) on any AP-containing order. Suppliers tab's `sendPoEmail` auto-CCs Benton. Deal Hub `submitApPoModal` create-flow auto-opens the Audimute mailto draft after PO creation (new `_openAudimutePoDraft` helper).
+- **v1.34.1 → v1.34.3:** Audimute requested the velcro hang tab SKU (`AHDAC000482`) on the PO. v1.34.1 put it in the lower totals box (wrong spot per user feedback). v1.34.2 moved it into the items table as a proper line item: Qty = `grandTabs`, Item = `AHDAC000482` (monospace bold), Description = "WhisperRoom Velcro Hang Tab Packs", Color/Unit Cost/Total dashed. v1.34.3 added the qty into the description text too.
+- **v1.36.4:** AP PO freight charges. User specifically wanted this in the `/suppliers` Edit modal (not the Deal Hub one). Original v1.35.1 → v1.36.2 had been wiring it into `deals-dashboard.html`'s `apPoModal` — wrong file. v1.36.4 moved it to `suppliers-dashboard.html`'s `editPoModal` with a "+ Add Charge" button that reveals Amount + Description inputs; Save sends `freight={amount,description}` to the existing PATCH `/api/supplier-pos/:po` endpoint. PO render shows Subtotal + Freight rows with description inline. v1.36.5 removed the dead code from the Deal Hub side.
+
+### 4. Save Changes was silently shipping orders (v1.34.5)
+
+**The bug:** typing a tracking number on the orders dashboard drawer + pressing Save Changes was merging `shipmentFields.tracking` into `order_data.shipped.tracking` on the server. Since the board / calendar / Tracking tab all classify orders by `shipped.tracking && !shipped.unshipped`, the order silently jumped to Shipped status without any of the Ship It side-effects (modal, email draft, HubSpot dealstage advance) firing. Caught by user testing — "press Save, it actually ships it."
+
+**The fix:** new `order_data.shipmentDraft` slot. When the request body has `shipmentFields` but no `shipped` object (Save Changes path), draft values go there. Only Ship It (which sends the full `shipped`) writes to `order_data.shipped`, and that path now also clears `shipmentDraft`. Form re-populates from `shipped.*` for actually-shipped orders, else `shipmentDraft.*`, else stale `shipped.*` for unship/re-ship, else legacy `_hs*` HS fallbacks. HubSpot deal-property sync (carrier, tracking, etc.) still fires on Save — only the dealstage advance was already correctly gated.
+
+### 5. `/promote` skill drops the confirmation prompt (v1.34.6)
+
+User got tired of typing "yes" after pre-flight already showed what was landing. Edited `.claude/commands/promote.md` to remove the "Confirm to proceed?" step. Skill now runs the merge dance directly after stating the commits. Other guardrails (working-tree-clean, never force-push, halt on upstream divergence) kept. Memory saved.
+
+### 6. Closed Lost recovery — false start with banner, then proper toggle column (v1.35.0 → v1.36.3)
+
+Origin: a deal accidentally moved to Closed Lost vanishes entirely from the Deal Hub board (BOARD_STAGES excludes `closedlost` to keep noise down). Jill hit this once; deal was unrecoverable from the UI.
+
+**v1.35.0:** Built search-recovery UX — when the search box probed `/api/deals/search-closedlost?q=...`, a banner appeared under the search input offering "Found N in Closed Lost matching '<q>' → [Show on board]". Clicking injected the results as a temporary column. User rejected: "isn't working right."
+
+**v1.36.0:** Rebuilt as a toggle column. New `○ Closed Lost` button next to the "HubSpot Only" filter; click to reveal a real column at the far right. Off by default. When searching, the column shows probe results (catches deals not in the recent 100); when not searching, shows cached 100 most recent closedlost deals. Pulls data from `/api/deals/list?stage=closedlost&limit=100`.
+
+**v1.36.1:** Board grid was hard-coded `repeat(4, minmax(170px, 1fr))` so the 5th column wrapped below. Added `.board.show-closedlost` modifier that switches to `repeat(5, minmax(140px, 1fr))` — columns shrink ~17% and Closed Lost slots in to the right of Shipped.
+
+**v1.36.3:** Glow signal. Original v1.36.0 condition required main board to have ZERO hits to glow. User reported "glows for 2 seconds then pops off" — caused by main search and closedlost probe being parallel async fetches: probe returned first → glow ON, then main search returned with any hit → glow OFF. Relaxed condition to `closedHits.length > 0 && !closedLostVisible && q.length >= 3` regardless of main. Color switched orange → green via new `closedlost-pulse` keyframe (positive "we found something" cue vs orange Shopify attention pulse).
+
+### 7. Notification system, end-to-end (v1.37.0 → v1.37.11)
+
+Started as a half-built skeleton: `notifications` table existed, `lib/notify.js` had `createNotification()` + `notifyRep()`, `/api/notifications` GET existed, but only `orders-dashboard.html` surfaced it inline — and the Deal Hub's bell button called an undefined `toggleNotifPanel()` function so it was completely broken. **v1.37.0** finished the system end-to-end.
+
+**v1.37.0 — shipped:**
+- New shared snippet `/assets/notif-bell.js` (~280 lines). Drops a bell + dropdown into any page that includes `<div id="notifBellMount"></div>` + the script src. Wired into Deal Hub, Orders, Shipping, Reports, Suppliers, Reconcile.
+- Bell UX: green badge + pulsing border when unread > 0. Click → dropdown lists active (unread) notifications. Each card has **✓ Confirm** button (sole way to clear from active list) and **Open →** link that navigates without confirming.
+- **View history →** swaps the list to read=true notifications (latest 200); **← Active** toggles back. **✓ Confirm all** clears every unread.
+- Server: `GET /api/notifications` returns unread only (was: all 50). New `GET /api/notifications/history?limit=200`. New `POST /api/notifications/:id/confirm` (legacy `POST /api/notifications/:id` still works — same handler). Confirm scoped to `owner_id = session.ownerId`.
+- New triggers: (a) Process-order with AP items → notify Jill (`createNotification(JILL_OWNER_ID, 'ap-po-needed', ...)`). (b) Stripe `payment_intent.processing` webhook → notify rep (ACH initiated, not just settled). Needs `payment_intent.processing` subscribed in Stripe Dashboard.
+- **v1.37.6** added: process-order → Jeromy. Every successful `/api/process-order` fires `createNotification(JEROMY_OWNER_ID, 'order-processed', ...)` with `📦 New Order — <deal>[· RM][· CUST][· INTL]` so he sees orders the moment a rep processes (was previously only addendum-modified).
+
+**v1.37.1 → v1.37.7 — diagnostic dance** (test → debug → fix → test cycle):
+- **v1.37.1** Tightened poll 60s → 30s + tab visibility/focus refresh. Accept-quote falls back to `quotes.rep_id` when HubSpot doesn't return a deal owner. Added `/api/notifications/debug` endpoint returning session + `recentForYou` + `latestAcrossAllReps`. lib/notify.js logs every call (success + skip reasons).
+- **v1.37.2** User's debug showed `session.ownerId: null` even though notifications were being created for the correct owner_id. Added `_hydrateSessionOwnerId(req, sess)` — when ownerId is null, lookup HubSpot Owners by `session.email`, stamp result onto `_sessionCache` + `sessions` DB row. Self-heals on first GET.
+- **v1.37.4** User STILL had `ownerId: null` after v1.37.2 — HubSpot Owners API was missing reps when their Owner record's email casing differed. Added case-insensitive reverse lookup of `REP_EMAILS` (from `lib/notify.js`) as a secondary fallback. Worked for Benton.
+- **v1.37.7** Sarah did the same test (typed `/api/notifications/debug`, then Benton accepted her quote) — nothing fired in her bell. Turned out the two `REP_EMAILS` maps in the codebase had drifted: `lib/notify.js` had placeholder values (`sarah@`/`jill@`/`travis@`/`gabe@`/`kim@`/`chet@`); `orders-dashboard.html` had the real production emails (`ssmith@`/`jholdway@`/`tsingleton@`/`gabrielwhite@`/`accounting@`/`cburgess@`). The v1.37.4 fallback used notify.js, so anyone other than Benton couldn't hydrate. Synced notify.js to mirror orders-dashboard.
+
+**v1.37.9 → v1.37.10 — bell vanished bug (self-inflicted):**
+- **v1.37.9** Added light-mode CSS for the dropdown. Looked great on the file diff. Deployed.
+- **v1.37.10** Then the bell vanished from every page. Cause: a CSS comment inside the JS template literal said `` Class hook is `:root.light` which... `` — those literal backticks around `:root.light` terminated the template literal early, the rest of the file became a syntax error, the script never executed. Verified with `node -e "require('./assets/notif-bell.js')"` — syntax error confirmed. Removed backticks from comment. **Saved as a feedback memory.**
+
+**v1.37.11** Closed a gap in v1.37.2's hydration: only the GET endpoints called `_hydrateSessionOwnerId`. Confirm + read-all POST endpoints went through the original `if (!sess?.ownerId) return` early-bail. Plugged. Confirm now also returns `rowsUpdated` so we can detect no-ops in future diagnostics.
+
+### 8. TaxJar improvements (v1.37.3, v1.37.4)
+
+User tested FL ZIP `33104` (a retired/business-only Miami-Dade ZIP). TaxJar 400'd with `"to_zip 33104 is not used within to_state FL"`. Three layers of fix:
+
+- **v1.37.3:** `lib/taxjar.js` was returning `res.body.error` ("Bad Request") and ignoring the actually-useful `res.body.detail` text. Swapped to prefer `detail`. Client's regex-based translator now matches "zip" and shows "Invalid ZIP code — please verify the ship-to ZIP" instead of generic "Tax calculation failed (Bad Request)". Also: `renderTaxResult()` was silently hiding the result box when TaxJar returned a 0%/0 result for a nexus state — now shows a yellow warning suggesting the city as the likely missing piece.
+- **v1.37.4:** Auto-fallback. When TaxJar 400s with the "to_zip not used" pattern, `lib/taxjar.js` retries the request without `to_zip` + `to_street`. TaxJar returns a city/state-level rate. Response carries `usedStateFallback: true` + `fallbackReason`. Quote builder shows a yellow info banner under the rate: "Using city/state-level rate — ZIP not recognized, local surtax may be slightly higher. Override below if you know the exact rate." Rep no longer dead-ends on retired ZIPs.
 
 ---
 
@@ -572,6 +655,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.37.12 | 2026-05-21 | **DEVLOG: full session writeup for 2026-05-21.** Captured today's 30-version marathon across the notification system buildout, Closed Lost recovery, AP PO freight UI, Modify Order improvements, the Save-Changes silent-ship bug, TaxJar resilience, and the bell-vanished-from-backticks incident. Current focus updated with open follow-ups (notably the empty-history investigation). |
 | 1.37.11 | 2026-05-21 | **Notification confirm + read-all now lazy-hydrate the session.** Was a v1.37.2 gap — only GET endpoints called the hydrate. Confirms by sessions-without-ownerId silently no-op'd; the UI optimistically hid them, the DB row stayed unread, history never picked them up. Confirm also returns `rowsUpdated` for diagnostics. |
 | 1.37.10 | 2026-05-21 | **Fix: bell came back from the dead.** v1.37.9 CSS comment had literal backticks inside a JS template literal — terminated the string early, script became a syntax error, bell vanished everywhere. Removed backticks from comment. |
 | 1.37.9  | 2026-05-21 | **Notification dropdown light mode.** Added `:root.light .wr-notif-*` overrides in `/assets/notif-bell.js` for panel surface, card borders, text colors, links, footer. Topbar bell stays dark (topbars stay dark in light mode). |

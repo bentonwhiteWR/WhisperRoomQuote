@@ -602,7 +602,10 @@ Please confirm receipt and let us know the expected ship date.
 Thank you!
 WhisperRoom`;
 
-  const mailto = `mailto:ewade@audimute.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  // CC Benton on every Audimute send so he has the paper trail without
+  // having to dig through the suppliers tab to confirm a PO went out.
+  const ccList = ['bentonwhite@whisperroom.com'];
+  const mailto = `mailto:ewade@audimute.com?cc=${encodeURIComponent(ccList.join(','))}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   window.open(mailto, '_blank');
 
   // Mark as sent

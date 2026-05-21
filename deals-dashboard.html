@@ -3000,6 +3000,17 @@ async function submitApPoModal() {
       const dataR = await res.json();
       if (dataR.error) throw new Error(dataR.error);
       showToast(`PO ${dataR.poNumber} created`, 'success');
+      // Auto-draft the Audimute email right after creation — same logic as
+      // the suppliers-dashboard "Send" button. Saves the rep a step (they
+      // were going to send it next anyway) and ensures the CC list +
+      // body wording are uniform regardless of where the PO was created.
+      _openAudimutePoDraft({
+        poNumber:   dataR.poNumber,
+        shareToken: dataR.shareToken,
+        customer,
+        apItems,
+        quoteNumber: ord.quoteNumber,
+      });
     }
     closeApPoModal();
     if (currentDealId) openDeal(currentDealId);
@@ -3025,6 +3036,57 @@ async function deleteApPoFromModal() {
     if (currentDealId) openDeal(currentDealId);
   } catch(e) {
     showToast('Delete failed: ' + e.message, 'error');
+  }
+}
+
+// Open a `mailto:` draft to Audimute (Elizabeth Wade) right after an AP
+// PO is created from the Deal Hub modal. Mirrors suppliers-dashboard.html
+// sendPoEmail(): same subject, same body shape, same CC (Benton). The
+// supplier-pos POST returns poNumber + shareToken; the rest comes from
+// the modal inputs that were just submitted.
+//
+// We deliberately do NOT mark the PO as sent here — the user still has to
+// hit Send in their mail client. The "sent" mark only fires from the
+// suppliers-dashboard Send button, which has the PATCH side-effect.
+function _openAudimutePoDraft({ poNumber, shareToken, customer, apItems, quoteNumber }) {
+  try {
+    const poUrl = `${location.origin}/po/${encodeURIComponent(poNumber)}?t=${shareToken || ''}`;
+    const customerName = [customer?.firstName, customer?.lastName].filter(Boolean).join(' ')
+                         || customer?.company
+                         || quoteNumber;
+    const apList = (apItems || []).map(i => `• ${i.name} ×${i.qty||1}${i.color ? ' — ' + i.color : ''}`).join('\n');
+    const shipTo = [
+      customer?.address,
+      customer?.city,
+      customer?.state && customer?.zip ? `${customer.state} ${customer.zip}` : (customer?.state || customer?.zip),
+    ].filter(Boolean).join(', ');
+
+    const subject = `Purchase Order ${poNumber} — ${customerName}`;
+    const body = `Hi Elizabeth,
+
+Please see the attached purchase order for a WhisperRoom customer. You can view the full PO here:
+
+${poUrl}
+
+Order Summary:
+${apList}
+
+Ship To:
+${customerName}
+${shipTo}
+
+WhisperRoom Order #: ${quoteNumber}
+
+Please confirm receipt and let us know the expected ship date.
+
+Thank you!
+WhisperRoom`;
+
+    const ccList = ['bentonwhite@whisperroom.com'];
+    const mailto = `mailto:ewade@audimute.com?cc=${encodeURIComponent(ccList.join(','))}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(mailto, '_blank');
+  } catch(e) {
+    console.warn('[_openAudimutePoDraft] failed:', e);
   }
 }
 

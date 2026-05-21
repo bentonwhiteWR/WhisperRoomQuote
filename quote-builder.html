@@ -7901,6 +7901,12 @@ async function confirmProcessOrder() {
 
       const ccList = ['accounting@whisperroom.com', 'bentonwhite@whisperroom.com'];
       if (garyFlag) ccList.push('gamos@whisperroom.com');
+      // CC Jill on any AP-containing order — she handles the Audimute PO
+      // step downstream of process-order, so she needs the same context the
+      // shipping team sees.
+      if (apColorVal || lineItems.some(i => i.name && /^AP\s/i.test(i.name))) {
+        ccList.push('jholdway@whisperroom.com');
+      }
       const mailto = `mailto:shipping@whisperroom.com?cc=${ccList.join(';')}&subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
 
       // Open mail client via a programmatic anchor click. This is far more

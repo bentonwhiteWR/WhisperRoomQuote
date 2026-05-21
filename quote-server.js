@@ -12292,6 +12292,21 @@ ${q.accepted ? `
 
       const subtotal = (d.apItems||[]).reduce((s,i) => s + (parseFloat(i.price||0)*parseInt(i.qty||1)), 0);
       const grandTabs = grand2x4 + grand1x4 + grand1x2;
+
+      // Per Audimute: include the hang tab packs as their own line item
+      // with the SKU in the Item column so they can scan + pull it like
+      // any other catalog item. Qty = total tab packs across all AP
+      // packages; pricing left dash since tabs are included in the AP
+      // package price (informational line, not a billable extra).
+      const tabRow = grandTabs > 0 ? `
+        <tr>
+          <td class="td-num">${grandTabs}</td>
+          <td class="td-item" style="font-family:'SFMono-Regular',Menlo,Consolas,monospace;font-weight:700">AHDAC000482</td>
+          <td class="td-desc">${grandTabs} WhisperRoom Velcro Hang Tab Packs</td>
+          <td class="td-color">—</td>
+          <td class="td-num">—</td>
+          <td class="td-num">—</td>
+        </tr>` : '';
       const shipTo   = [c.address, c.city, c.state && c.zip ? `${c.state} ${c.zip}` : (c.state||c.zip), c.country].filter(Boolean).join(', ');
 
       // ── Change log ────────────────────────────────────────────
@@ -12489,7 +12504,7 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
       </tr>
     </thead>
     <tbody>
-      ${itemRows}
+      ${itemRows}${tabRow}
     </tbody>
   </table>
 

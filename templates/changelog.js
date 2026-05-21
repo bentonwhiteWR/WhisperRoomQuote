@@ -51,6 +51,38 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.34.3', date:'May 21, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Audimute PO: hang tab pack row description now includes the quantity** — reads "16 WhisperRoom Velcro Hang Tab Packs" instead of just "WhisperRoom Velcro Hang Tab Packs". Quantity matches the Qty cell, just spelled out for Audimute\'s readability when scanning the line.'},
+      ]
+    },
+    {
+      v:'1.34.2', date:'May 21, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Audimute PO: hang tab packs now render as a dedicated line item in the items table.** Item column = `AHDAC000482` (monospace bold), Qty column = total tab packs across all AP packages on the PO, Description = "WhisperRoom Velcro Hang Tab Packs". Color / Unit Cost / Total dashed since tabs are included in the AP package price (informational, not a billable extra). Pulled the SKU back out of the Panel Totals lower box — the items table is now the authoritative place for it. v1.34.1 put the SKU in the wrong spot; this is what Audimute actually asked for.'},
+      ]
+    },
+    {
+      v:'1.34.1', date:'May 21, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Audimute PO: SKU `AHDAC000482` now shown to the left of "Total WhisperRoom Velcro Hang Tab Packs"** on the grand-total row in the Panel Totals section of `/po/:poNumber`. Per Audimute\'s request — lets them scan the SKU at a glance when fulfilling the tab packs. Monospace font, muted gray so it visually separates from the description. (Superseded by v1.34.2 — moved to the items table.)'},
+      ]
+    },
+    {
+      v:'1.34.0', date:'May 21, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Process Order shipping email auto-CCs Jill (`jholdway@whisperroom.com`) on any AP-containing order.** Same mechanism as the existing Gary auto-CC for RM / Custom Hole orders: when the order has an AP item (or the rep filled in an AP color), Jill is appended to the CC list on the `shipping@whisperroom.com` mailto draft. She handles the Audimute step downstream, so she needs the same context the shipping team gets.'},
+        {t:'add', d:'**Suppliers tab "Send" button now CCs Benton on every Audimute send.** `bentonwhite@whisperroom.com` is added to the mailto CC list when reps click Send (or Resend) on an Audimute PO from the suppliers dashboard. Paper trail without having to dig through the suppliers tab.'},
+        {t:'add', d:'**Creating an AP PO from the Deal Hub modal auto-opens the Audimute email draft.** Same as if you hit the suppliers-dashboard "Send" button manually right after — saves a step (you were going to send it next anyway) and keeps the body wording + CC list uniform regardless of where the PO was created. Note: this opens the draft, it does NOT mark the PO as sent — the "sent" mark only fires when you actually click Send from the suppliers dashboard, which has the PATCH side-effect.'},
+      ]
+    },
+    {
+      v:'1.33.2', date:'May 21, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**DEVLOG bookkeeping.** Current focus block updated post-promote — v1.33.1 is now the most recent on prod (Modify Order line items inline + Own Shipping toggle + T&C cleanup + process-order PDF upsert + global logo redirect). Staging is clean.'},
+      ]
+    },
+    {
       v:'1.33.1', date:'May 21, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Quote builder right-panel summary: "Own Freight" instead of "Not quoted" when Own Shipping is toggled on.** The Freight summary line in the right rail now mirrors the toggle state — pickup fee → "Pickup Fee $X", delivery+install → "Included with install", own shipping → "Own Freight" (italic muted), tbd → "TBD", real freight → "$X", nothing → "Not quoted". Was previously showing "Not quoted" when Own Shipping was on, which read like the rep forgot to quote.'},

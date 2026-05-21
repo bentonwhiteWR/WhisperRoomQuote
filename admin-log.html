@@ -11,7 +11,7 @@
   *{box-sizing:border-box;margin:0;padding:0;}
   body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
   .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:52px;background:#1a1a1a;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:100;gap:12px;}
-  .logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8;white-space:nowrap;}.logo span{color:#e8531a;}
+  .logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8;white-space:nowrap;text-decoration:none;}.logo span{color:#e8531a;}
   .topbar-right{display:flex;align-items:center;gap:10px;flex-shrink:0;}
   .back{font-size:11px;font-weight:700;color:var(--muted);text-decoration:none;padding:5px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;letter-spacing:.05em;text-transform:uppercase;}
   .stripe-toggle{font-size:11px;font-weight:700;padding:5px 10px;border-radius:6px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;font-family:inherit;border:1px solid transparent;transition:opacity .12s;}
@@ -73,7 +73,7 @@
 </head>
 <body>
 <div class="topbar">
-  <div class="logo">Whisper<span>Room</span> — System Log</div>
+  <a href="/deals" class="logo">Whisper<span>Room</span> — System Log</a>
   <div class="topbar-right">
     <div class="live-dot"></div>
     <span class="last-updated" id="lastUpdated">Loading…</span>

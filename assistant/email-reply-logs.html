@@ -16,7 +16,7 @@
   *{box-sizing:border-box;margin:0;padding:0;}
   body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:13px;}
   .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:52px;background:#1a1a1a;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:100;}
-  .logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8;}
+  .logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8;text-decoration:none;}
   .logo span{color:#e8531a;}
   .back{font-size:11px;font-weight:700;color:var(--muted);text-decoration:none;padding:5px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;letter-spacing:.05em;text-transform:uppercase;}
   .back:hover{color:var(--text);background:rgba(255,255,255,.1);}
@@ -70,7 +70,7 @@
 <body>
 
 <div class="topbar">
-  <div class="logo">Whisper<span>Room</span></div>
+  <a href="/deals" class="logo">Whisper<span>Room</span></a>
   <a href="/email-reply" class="back">← Email Reply</a>
 </div>
 

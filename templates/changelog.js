@@ -15,7 +15,7 @@ module.exports = function renderChangelog() {
   *{box-sizing:border-box;margin:0;padding:0;}
   body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
   .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:52px;background:#1a1a1a;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:100;}
-  .logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8;}.logo span{color:#e8531a;}
+  .logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8;text-decoration:none;}.logo span{color:#e8531a;}
   .back{font-size:11px;font-weight:700;color:var(--muted);text-decoration:none;padding:5px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;letter-spacing:.05em;text-transform:uppercase;}
   .main{max-width:860px;margin:0 auto;padding:32px 24px;}
   h1{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;margin-bottom:4px;}h1 span{color:var(--orange);}
@@ -42,7 +42,7 @@ module.exports = function renderChangelog() {
 </head>
 <body>
 <div class="topbar">
-  <div class="logo">Whisper<span>Room</span> — Changelog</div>
+  <a href="/deals" class="logo">Whisper<span>Room</span> — Changelog</a>
   <a href="/admin-log" class="back">← Admin Log</a>
 </div>
 <div class="main">
@@ -50,6 +50,22 @@ module.exports = function renderChangelog() {
   <div class="subtitle">Full history of changes to the WhisperRoom sales tool</div>
 
   ${[
+    {
+      v:'1.33.1', date:'May 21, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Quote builder right-panel summary: "Own Freight" instead of "Not quoted" when Own Shipping is toggled on.** The Freight summary line in the right rail now mirrors the toggle state — pickup fee → "Pickup Fee $X", delivery+install → "Included with install", own shipping → "Own Freight" (italic muted), tbd → "TBD", real freight → "$X", nothing → "Not quoted". Was previously showing "Not quoted" when Own Shipping was on, which read like the rep forgot to quote.'},
+      ]
+    },
+    {
+      v:'1.33.0', date:'May 21, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Modified-order line items now show inline on the customer order page.** When you Modify Order and merge a quote in, the addendum\'s actual line items (the products themselves) are appended to the bottom of the main Line Items table with an orange "Added" badge and a left accent stripe — not just summarized in the lower-right "Order Adjustments" block. Credit-memo addendums get red "Credit" badges and red totals. The Order Adjustments block stays put with the full reconciliation (products + freight + tax). Reps no longer have to point customers at the small totals block to see what changed.'},
+        {t:'add', d:'**"Own Shipping" toggle in the Freight Estimate area.** Sits next to the TBD button on the quote builder. Click it when the customer is arranging their own carrier — the freight line on the quote/order/invoice changes from "Freight: $X" to "Shipping: Client will arrange own shipping" with no dollar amount, and the total excludes any freight charge. Stored as `freightData.ownShipping = true` so it survives save/load alongside the existing `tbd` flag. Mutually exclusive with TBD (different concept: TBD = "we\'ll quote later", Own Shipping = "we won\'t quote, customer doesn\'t want us to"). Starting a fresh ABF estimate or override automatically clears it.'},
+        {t:'ui', d:'**Terms & Conditions cleanup across quote + invoice + order pages.** Removed "Any damage during shipping must be reported within five business days." and the entire "Standard delivery requires recipient to offload boxes from pallet. Standard delivery does not include extra services and fees related to those services such as Liftgate, Inside Delivery, Sort and Segregate and storage fees." paragraph. Added "WhisperRoom is not responsible for any issues or damages related to transportation." Applied to both T&C blocks in the quote builder live-preview AND the customer-facing quote/order/invoice pages on the server, plus the quote builder footer that had the standalone "Standard delivery requires recipient to offload boxes from pallet." line.'},
+        {t:'ui', d:'**WhisperRoom logo (top-left of every internal page) is now a link to Deal Hub.** Wraps the logo in `<a href="/deals">` across Deal Hub, Orders, Quotes (quote-builder), Shipping (already had it), Reports, Suppliers, Reconcile, Admin Log, Email Reply, Email Reply Logs, and Changelog. CSS gets `text-decoration:none` so the visual is identical. Customer-facing pages (login, quote/order PDF headers) intentionally NOT changed — those should not redirect customers into the internal app.'},
+        {t:'fix', d:'**Process Order now upserts the PDF in the shared orders folder** (find-by-name → overwrite, else create) instead of always creating fresh. Was the missing half of the existing add-charge/void-addendum upsert behavior — if process-order ever ran twice (force re-process, etc.) you ended up with two PDFs of the same name, and subsequent Modify Order regens patched the wrong (older) copy while the visible file stayed stale. One file per order, period.'},
+      ]
+    },
     {
       v:'1.32.3', date:'May 20, 2026', tag:'log',
       changes:[

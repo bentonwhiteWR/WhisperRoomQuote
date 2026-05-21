@@ -25,7 +25,7 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 
 /* Topbar — matches deals/orders/etc */
 .topbar { display:flex; align-items:center; padding:0 20px; min-height:52px; background:#1a1a1a; border-bottom:1px solid rgba(255,255,255,.1); position:sticky; top:0; z-index:200; gap:10px; }
-.topbar-logo { font-family:'Syne',sans-serif; font-size:20px; font-weight:800; color:#f0ede8; flex-shrink:0; margin-right:4px; display:flex; align-items:baseline; gap:8px; }
+.topbar-logo { font-family:'Syne',sans-serif; font-size:20px; font-weight:800; color:#f0ede8; flex-shrink:0; margin-right:4px; display:flex; align-items:baseline; gap:8px; text-decoration:none; }
 .topbar-logo span { color:#e8531a; }
 .topbar-logo small { font-family:'DM Sans',sans-serif; font-size:11px; font-weight:600; color:rgba(255,255,255,.4); text-transform:uppercase; letter-spacing:.08em; }
 .topbar-nav { display:flex; gap:5px; align-items:center; flex:1; }
@@ -158,7 +158,7 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
 <body>
 
 <div class="topbar">
-  <div class="topbar-logo">Whisper<span>Room</span> <small>Accounting</small></div>
+  <a href="/deals" class="topbar-logo">Whisper<span>Room</span> <small>Accounting</small></a>
   <nav class="topbar-nav">
     <a href="/deals" class="nav-link">⬡ Deal Hub</a>
     <a href="/quotes" class="nav-link">Quotes</a>

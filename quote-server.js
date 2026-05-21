@@ -4753,7 +4753,7 @@ tbody tr:hover td{background:#fdfcfb}
         <div class="totals" style="margin-top:0">
           <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
           ${disc>0?`<div class="tot"><span>Discount${q.discount&&q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
-          ${pickupFeeAmt>0?`<div class="tot"><span>Pickup Fee</span><span>${fmt(pickupFeeAmt)}</span></div>`:freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
+          ${pickupFeeAmt>0?`<div class="tot"><span>Pickup Fee</span><span>${fmt(pickupFeeAmt)}</span></div>`:q.freight?.ownShipping?'<div class="tot"><span>Shipping</span><span style="color:#888;font-style:italic;font-size:11px">Client will arrange own shipping</span></div>':freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
           ${installAmt>0?`<div class="tot"><span>${installMode==='delivery_install'?'Delivery and Installation':'Installation'}</span><span>${fmt(installAmt)}</span></div>`:''}
           ${taxAmt>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+(q.tax.rate*100).toFixed(2).replace(/\\.?0+$/,'')+'%)':''}</span><span>${fmt(taxAmt)}</span></div>`:''}
           ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
@@ -5189,7 +5189,7 @@ tbody tr:hover td{background:#fdfcfb}
         <div class="totals" style="margin-top:0">
           <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
           ${disc>0?`<div class="tot"><span>Discount${q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
-          ${pickupFeeAmt>0?`<div class="tot"><span>Pickup Fee</span><span>${fmt(pickupFeeAmt)}</span></div>`:freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freight>0?`<div class="tot"><span>Freight</span><span>${fmt(freight)}</span></div>`:''}
+          ${pickupFeeAmt>0?`<div class="tot"><span>Pickup Fee</span><span>${fmt(pickupFeeAmt)}</span></div>`:q.freight?.ownShipping?'<div class="tot"><span>Shipping</span><span style="color:#888;font-style:italic;font-size:11px">Client will arrange own shipping</span></div>':freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freight>0?`<div class="tot"><span>Freight</span><span>${fmt(freight)}</span></div>`:''}
           ${installAmt>0?`<div class="tot"><span>${installMode==='delivery_install'?'Delivery and Installation':'Installation'}</span><span>${fmt(installAmt)}</span></div>`:''}
           ${tax>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+( q.tax.rate*100).toFixed(2).replace(/\.?0+$/,'')+')%':''}</span><span>${fmt(tax)}</span></div>`:''}
           ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
@@ -5237,8 +5237,7 @@ tbody tr:hover td{background:#fdfcfb}
 
   <div class="card">
     <div class="card-label">Terms &amp; Conditions</div>
-    <p class="terms">I understand that WhisperRooms are not 100% soundproof. I understand that all products manufactured by WhisperRoom, Inc. are for indoor use only. Any returns will be at the sole discretion of WhisperRoom, Inc. and are subject to a restocking fee and freight charges. Any damage during shipping must be reported within five business days. Compliance with local, state and national building codes is my responsibility. Any alterations to the WhisperRoom will void the warranty.</p>
-    <p class="terms" style="margin-top:8px">Standard delivery requires recipient to offload boxes from pallet. Standard delivery does not include extra services and fees related to those services such as Liftgate, Inside Delivery, Sort and Segregate and storage fees.</p>
+    <p class="terms">I understand that WhisperRooms are not 100% soundproof. I understand that all products manufactured by WhisperRoom, Inc. are for indoor use only. Any returns will be at the sole discretion of WhisperRoom, Inc. and are subject to a restocking fee and freight charges. WhisperRoom is not responsible for any issues or damages related to transportation. Compliance with local, state and national building codes is my responsibility. Any alterations to the WhisperRoom will void the warranty.</p>
   </div>
 
   <div class="footer">
@@ -12669,6 +12668,39 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
         </tr>`;
       }).join('');
 
+      // Addendum products appended to the line items table so the
+      // customer sees what was added/credited inline, not just buried
+      // in the Order Adjustments totals block below. Highlighted with
+      // an orange (Added) or red (Credit) left border + badge so the
+      // change is visually obvious. Subtotal math is unchanged — these
+      // amounts are still accounted for via addendumNet → total.
+      const escHtml = s => String(s||'').replace(/[<>"&]/g, c => ({'<':'&lt;','>':'&gt;','"':'&quot;','&':'&amp;'}[c]));
+      const addendumItemRows = activeAddendums.flatMap(a => {
+        if (!Array.isArray(a.lineItems) || !a.lineItems.length) return [];
+        const isCredit = a.type === 'credit' || parseFloat(a.amount) < 0;
+        const accent   = isCredit ? '#ef4444' : '#ee6216';
+        const bg       = isCredit ? '#fef2f2' : '#fff7ed';
+        const badge    = isCredit ? 'Credit'  : 'Added';
+        return a.lineItems.map(item => {
+          const qty   = parseInt(item.qty || 1) || 1;
+          const price = parseFloat(item.price || 0) || 0;
+          const wt    = parseFloat(item.weight || 0) || 0;
+          const ext   = price * qty;
+          const dispExt = isCredit ? -Math.abs(ext) : ext;
+          const extStr = (dispExt < 0 ? '-' : '') + fmt(Math.abs(dispExt));
+          return `<tr style="background:${bg}">
+            <td style="padding:12px 12px 12px 12px;border-bottom:1px solid #f5f5f5;border-left:3px solid ${accent}">
+              <div class="item-name">${escHtml(item.name || 'Item')}<span style="margin-left:8px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:${accent};background:#fff;padding:2px 7px;border-radius:3px;border:1px solid ${accent};vertical-align:middle">${badge}</span></div>
+              ${item.description?`<div class="item-desc">${escHtml(item.description).replace(/\n/g,'<br>')}</div>`:''}
+            </td>
+            <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;text-align:center;color:#888;width:40px">${qty}</td>
+            <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;text-align:right;color:#888;width:90px">${fmt(price)}</td>
+            <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;text-align:right;color:#aaa;width:80px">${wt>0?fmtW(wt*qty):'—'}</td>
+            <td style="padding:12px 0;border-bottom:1px solid #f5f5f5;text-align:right;font-weight:700;color:${isCredit?'#ef4444':'#1a1a1a'};width:90px">${extStr}</td>
+          </tr>`;
+        });
+      }).join('');
+
       const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12800,12 +12832,12 @@ tbody tr:last-child td{border-bottom:none}
         <th style="text-align:right">Weight</th>
         <th style="text-align:right">Total</th>
       </tr></thead>
-      <tbody>${lineRows}</tbody>
+      <tbody>${lineRows}${addendumItemRows}</tbody>
     </table>
     <div class="totals">
       <div class="tot"><span>Subtotal</span><span>${fmt(sub)}</span></div>
       ${disc>0?`<div class="tot"><span>Discount${q.discount&&q.discount.type==='pct'?' ('+q.discount.value+'%)':''}</span><span class="discount-val">-${fmt(disc)}</span></div>`:''}
-      ${pickupFeeAmt>0?`<div class="tot"><span>Pickup Fee</span><span>${fmt(pickupFeeAmt)}</span></div>`:freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
+      ${pickupFeeAmt>0?`<div class="tot"><span>Pickup Fee</span><span>${fmt(pickupFeeAmt)}</span></div>`:q.freight?.ownShipping?'<div class="tot"><span>Shipping</span><span style="color:#888;font-style:italic;font-size:11px">Client will arrange own shipping</span></div>':freightTbd?'<div class="tot"><span>Freight</span><span style="color:#888;font-style:italic">TBD</span></div>':freightAmt>0?`<div class="tot"><span>Freight</span><span>${fmt(freightAmt)}</span></div>`:''}
       ${installAmt>0?`<div class="tot"><span>${installMode==='delivery_install'?'Delivery and Installation':'Installation'}</span><span>${fmt(installAmt)}</span></div>`:''}
       ${taxAmt>0?`<div class="tot"><span>Sales Tax${q.tax&&q.tax.rate?' ('+(q.tax.rate*100).toFixed(2).replace(/\.?0+$/,'')+'%)':''}</span><span>${fmt(taxAmt)}</span></div>`:''}
       ${(q.taxExempt||q.accessories?.taxexempt)?'<div class="tot"><span style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span style="color:#22c55e">'+(q.taxExemptCert||q.taxExemptCertificate||'Exempt')+'</span></div>':''}
@@ -13317,9 +13349,14 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
           const dealNameP = snapRowP?.rows[0]?.deal_name || dealName || '';
           const pdfBufO  = await generatePdfBuffer(orderUrl);
           const filename = buildPdfFilename(snapP, quoteNumber, 'Order', dealNameP);
-          const result   = await gdriveUploadFilePdf(filename, pdfBufO, SHARED_ORDERS_FOLDER);
+          // Upsert (find-by-name → patch, else create) so subsequent
+          // process-order re-runs OR add-charge regens land on the same
+          // Drive file id. Was gdriveUploadFilePdf — that would create a
+          // duplicate every time, leaving add-charge's upsert patching the
+          // wrong (first) copy and the visible file stale.
+          const result   = await gdriveUpsertFilePdf(filename, pdfBufO, SHARED_ORDERS_FOLDER);
           if (result?.id) {
-            console.log(`[process-order] PDF saved to shared orders folder: ${filename} — id: ${result.id}`);
+            console.log(`[process-order] PDF ${result._replaced ? 'replaced' : 'created'} in shared orders folder: ${filename} — id: ${result.id}`);
           } else {
             console.warn(`[process-order] PDF upload FAILED for ${filename}:`, JSON.stringify(result));
             writelog('error', 'error.gdrive', `Order PDF upload failed for ${filename}: ${JSON.stringify(result?.error || result)}`, { quoteNum: quoteNumber });

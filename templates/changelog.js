@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.36.0', date:'May 21, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Closed Lost is now a proper hideable column.** New "○ Closed Lost" toggle button in the Deal Hub toolbar (next to "HubSpot Only"). Off by default — board stays clean. Click to reveal the column at the far right, populated with the 100 most recent Closed Lost deals. The button **glows orange** when you type a search and the only matches live in Closed Lost (none on the active board) — visual cue that the deal you\'re looking for is over there, click to reveal. Replaces the v1.35.0 banner + temp-column UX, which was confusing.'},
+        {t:'ui', d:'**AP PO modal: freight section moved to the top.** Now lives in a dedicated "Additional Charges" card right under the title bar (above Ship-To), so it\'s the first thing you see when opening Edit. Was previously buried below the items list — easy to miss. Same `po_data.freight = {amount, description}` schema as v1.35.1; the layout is the only thing that changed.'},
+      ]
+    },
+    {
       v:'1.35.1', date:'May 21, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**AP Purchase Orders can now carry a freight charge with description.** New `Freight ($)` + `Freight description` inputs in the AP PO modal (both Create and Edit). Stored as `po_data.freight = {amount, description}`; accepted by both the create POST and the edit PATCH. Customer-facing PO page (`/po/:poNumber`) renders a Subtotal + Freight line when freight is set, with the description inline. Auto-draft Audimute email (from Deal Hub + suppliers-dashboard "Send") includes the freight line in the Order Summary. Change log records freight added/removed/changed events. Use case: Canadian POs where Audimute ships the package and bills WhisperRoom for the leg.'},

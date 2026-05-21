@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.33.2', date:'May 21, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**DEVLOG bookkeeping.** Current focus block updated post-promote — v1.33.1 is now the most recent on prod (Modify Order line items inline + Own Shipping toggle + T&C cleanup + process-order PDF upsert + global logo redirect). Staging is clean.'},
+      ]
+    },
+    {
       v:'1.33.1', date:'May 21, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Quote builder right-panel summary: "Own Freight" instead of "Not quoted" when Own Shipping is toggled on.** The Freight summary line in the right rail now mirrors the toggle state — pickup fee → "Pickup Fee $X", delivery+install → "Included with install", own shipping → "Own Freight" (italic muted), tbd → "TBD", real freight → "$X", nothing → "Not quoted". Was previously showing "Not quoted" when Own Shipping was on, which read like the rep forgot to quote.'},

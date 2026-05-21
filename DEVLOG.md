@@ -12,7 +12,9 @@ Internal development notes. Last updated 2026-05-20.
 
 Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in the project's history. Five parallel workstreams plus a Shopify-API investigation that didn't ship code but informed the path forward. Full breakdown lives in the **May 20 session writeup** below.
 
-**On STAGING (NOT YET promoted to main):** nothing.
+**On STAGING (NOT YET promoted to main):**
+
+- **v1.34.0** (2026-05-21) — AP / Audimute email-flow tweaks. Three pieces: (a) Process Order shipping email (the `shipping@whisperroom.com` mailto built in quote-builder.html after `/api/process-order` returns) auto-CCs `jholdway@whisperroom.com` when the order has an AP item or AP color — Jill handles the Audimute step downstream and was previously not on the loop. (b) Suppliers-dashboard "Send" button (`sendPoEmail`) auto-CCs `bentonwhite@whisperroom.com` for paper trail. (c) Deal Hub `submitApPoModal` create flow auto-opens the Audimute mailto draft right after the PO is created — new helper `_openAudimutePoDraft` builds the same subject/body/CC as the suppliers-dashboard Send button. Does NOT mark the PO as sent (only the actual Send click from suppliers dashboard PATCHes `sent_at`). **Awaiting user test.**
 
 **Open follow-ups from today (in priority order):**
 
@@ -535,6 +537,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.34.0  | 2026-05-21 | **AP / Audimute email-flow tweaks.** (1) Process Order shipping email auto-CCs Jill (`jholdway@whisperroom.com`) when the order has an AP item — she handles the Audimute step downstream. (2) Suppliers-dashboard `sendPoEmail` auto-CCs Benton (`bentonwhite@whisperroom.com`) for paper trail. (3) Deal Hub `submitApPoModal` create flow auto-opens the Audimute mailto draft after PO creation via new helper `_openAudimutePoDraft` — mirrors the suppliers-dashboard Send button (same subject/body/CC). Doesn't mark sent — that still requires hitting Send from the suppliers dashboard. |
 | 1.33.2  | 2026-05-21 | **DEVLOG bookkeeping** — Current focus block updated post-promote; v1.33.1 is now the most recent on prod, staging clean. |
 | 1.33.1  | 2026-05-21 | **Right-rail summary "Own Freight" label when Own Shipping is on.** Was falling through to "Not quoted" since the `else` branch of the Freight summary block only checked tbd/freight>0/else. Added an `else if (freightData?.ownShipping)` branch that renders italic muted "Own Freight". |
 | 1.33.0  | 2026-05-21 | **Modify Order line items inline + Own Shipping toggle + T&C cleanup + process-order PDF upsert + logo → Deal Hub.** (1) Order-page line items table appends each addendum's `lineItems` (v1.19+) as highlighted rows below the originals — orange "Added" / red "Credit" badge. Order Adjustments totals block unchanged. (2) New "Own Shipping" button in the Freight Estimate area: when on, freight line renders as "Shipping: Client will arrange own shipping" on quote/order/invoice with $0 charge. Stored as `freightData.ownShipping`, mutually exclusive with TBD. (3) T&Cs simplified across quote builder + customer-facing pages: removed damage-reporting + standard-delivery clauses, added "WhisperRoom is not responsible for any issues or damages related to transportation." (4) `process-order` PDF upload switched to `gdriveUpsertFilePdf` so all three order flows hit the same find-or-update path. (5) WhisperRoom logo on every internal dashboard now wraps in `<a href="/deals">` — single-click bounce home. Customer-facing pages intentionally skipped. |

@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.34.0', date:'May 21, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Process Order shipping email auto-CCs Jill (`jholdway@whisperroom.com`) on any AP-containing order.** Same mechanism as the existing Gary auto-CC for RM / Custom Hole orders: when the order has an AP item (or the rep filled in an AP color), Jill is appended to the CC list on the `shipping@whisperroom.com` mailto draft. She handles the Audimute step downstream, so she needs the same context the shipping team gets.'},
+        {t:'add', d:'**Suppliers tab "Send" button now CCs Benton on every Audimute send.** `bentonwhite@whisperroom.com` is added to the mailto CC list when reps click Send (or Resend) on an Audimute PO from the suppliers dashboard. Paper trail without having to dig through the suppliers tab.'},
+        {t:'add', d:'**Creating an AP PO from the Deal Hub modal auto-opens the Audimute email draft.** Same as if you hit the suppliers-dashboard "Send" button manually right after — saves a step (you were going to send it next anyway) and keeps the body wording + CC list uniform regardless of where the PO was created. Note: this opens the draft, it does NOT mark the PO as sent — the "sent" mark only fires when you actually click Send from the suppliers dashboard, which has the PATCH side-effect.'},
+      ]
+    },
+    {
       v:'1.33.2', date:'May 21, 2026', tag:'log',
       changes:[
         {t:'log', d:'**DEVLOG bookkeeping.** Current focus block updated post-promote — v1.33.1 is now the most recent on prod (Modify Order line items inline + Own Shipping toggle + T&C cleanup + process-order PDF upsert + global logo redirect). Staging is clean.'},

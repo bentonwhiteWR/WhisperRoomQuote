@@ -14,6 +14,8 @@ Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in t
 
 **On STAGING (NOT YET promoted to main):**
 
+- **v1.37.2** (2026-05-21) — **Notifications: auto-heal sessions with NULL ownerId.** User's session had no ownerId (predates the login mapping or HS rate-limited during login). Notifications were correctly being created for `owner_id='36303670'`, but `/api/notifications` filtered by `session.ownerId` which was null → empty list. New `_hydrateSessionOwnerId(req, sess)` helper: on first call to a notification endpoint with no ownerId, looks up by `session.email` via HubSpot Owners, stamps result onto both `_sessionCache` and the `sessions` DB row. Eliminates the logout/login dance.
+
 - **v1.37.1** (2026-05-21) — **Notification system follow-up: tighter polling + fallbacks + debug endpoint.** (a) Bell poll 60s → 30s, plus refresh on tab focus / visibility change. (b) Accept-quote notification falls back to `quotes.rep_id` when HubSpot doesn't return `hubspot_owner_id` on the deal — was silently dropping the notification in that case. (c) `lib/notify.js` now logs every call (success + skipped) so Railway logs surface trigger problems. (d) New `GET /api/notifications/debug` endpoint returns session + recent notifications for the logged-in rep, lets you diagnose without Railway access.
 
 - **v1.37.0** (2026-05-21) — **Notification system, end-to-end.** Finished what was a half-built skeleton (table + API existed, only orders dashboard surfaced it). New shared snippet `/assets/notif-bell.js` (~250 lines) renders a bell + dropdown into any page that includes `<div id="notifBellMount"></div>` + `<script src="/assets/notif-bell.js" defer></script>`. Now on Deal Hub, Orders, Shipping, Reports, Suppliers, Reconcile.
@@ -549,6 +551,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.37.2  | 2026-05-21 | **Notifications: auto-heal sessions with NULL ownerId.** Sessions predating the owner_id login mapping had `ownerId=null` and got an empty bell. Notification endpoints now lazy-hydrate via HubSpot Owners lookup by email; result stamped onto cache + DB row. No more logout/login required. |
 | 1.37.1  | 2026-05-21 | **Notification system follow-up.** Bell poll 60s→30s + visibilitychange/focus refresh. Accept-quote falls back to `quotes.rep_id` when HubSpot deal has no owner. `notify.js` logs every call. New `GET /api/notifications/debug` returns session + recent notifications. |
 | 1.37.0  | 2026-05-21 | **Notification system, end-to-end.** Shared `/assets/notif-bell.js` snippet drops a bell into Deal Hub, Orders, Shipping, Reports, Suppliers, Reconcile via `<div id="notifBellMount"></div>` + `<script src=...>`. Green pulsing badge; per-row Confirm button; History view; new endpoints `/api/notifications/history` + `/api/notifications/:id/confirm`. New triggers: process-order with AP → notify Jill; Stripe `payment_intent.processing` → notify rep (ACH initiated). Stripe Dashboard needs to subscribe to `payment_intent.processing` for that to fire. |
 | 1.36.6  | 2026-05-21 | **DEVLOG bookkeeping** — Current focus updated post-promote; v1.36.5 now on prod, staging clean. |

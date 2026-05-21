@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.37.2', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Notifications: auto-heal sessions that have a NULL ownerId.** Sessions created before the owner_id login mapping (or where the HubSpot Owners API was rate-limited at login) had `session.ownerId = null`, which made `/api/notifications` return an empty list even though notifications were correctly being inserted for that rep\'s HubSpot owner_id. Now the notification endpoints lazy-hydrate the session: on the first hit with a missing ownerId, do a one-shot HubSpot Owners lookup by `session.email`, stamp the result onto both the in-memory cache and the DB sessions row, and continue. No more logout/login dance.'},
+      ]
+    },
+    {
       v:'1.37.1', date:'May 21, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Notification system: tighter polling + owner-id fallback + debug endpoint.** (1) Bell poll dropped from 60s → 30s, and now also refreshes on tab focus / visibility change so accepting a quote in one tab then switching back shows the badge immediately. (2) Accept-quote notification now falls back to `quotes.rep_id` when HubSpot doesn\'t return a `hubspot_owner_id` on the deal — was silently dropping notifications when the HubSpot owner property was missing. (3) `lib/notify.js` logs every `createNotification` call (success + skipped reasons) so Railway logs surface trigger problems. (4) `GET /api/notifications/debug` returns session info + the rep\'s 10 most-recent notifications (read + unread) + the latest 5 across all reps — hit it in your browser to verify the loop end-to-end without needing Railway log access.'},

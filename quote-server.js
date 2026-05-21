@@ -8409,6 +8409,48 @@ ${q.accepted ? `
     return;
   }
 
+  // Self-heal a session that's missing ownerId (e.g. logged in before
+  // the owner_id login mapping existed, or HubSpot Owners API was rate-
+  // limited at login). Looks up by email, stamps the result onto the
+  // cache + DB session row, returns the ownerId. Eliminates the
+  // logout/login-to-fix-notifications dance.
+  async function _hydrateSessionOwnerId(req, sess) {
+    if (!sess || sess.ownerId || !sess.email) return sess?.ownerId || null;
+    try {
+      const ownerRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/owners?email=${encodeURIComponent(sess.email)}&limit=1`,
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+      });
+      const owners = ownerRes.body?.results || [];
+      if (!owners.length) {
+        console.warn(`[auth] no HubSpot owner found for ${sess.email}; session stays without ownerId`);
+        return null;
+      }
+      const ownerId = String(owners[0].id);
+      sess.ownerId = ownerId;
+      // Pull token from cookie to update both the in-memory cache + DB.
+      const cookieHeader = req.headers.cookie || '';
+      const m = cookieHeader.match(/(?:^|;\s*)wr_oauth_session=([^;]+)/);
+      const token = m ? decodeURIComponent(m[1]) : null;
+      if (token) {
+        _sessionCache.set(token, sess);
+        if (db) {
+          await db.query(
+            `UPDATE sessions SET owner_id = $1 WHERE token = $2 AND (owner_id IS NULL OR owner_id = '')`,
+            [ownerId, token]
+          ).catch(()=>{});
+        }
+      }
+      console.log(`[auth] hydrated session ownerId for ${sess.email} → ${ownerId}`);
+      return ownerId;
+    } catch(e) {
+      console.warn(`[auth] hydrate session failed for ${sess?.email || 'unknown'}: ${e.message}`);
+      return null;
+    }
+  }
+
   // ── API: Notifications ───────────────────────────────────────────
   // Active feed: unread only, capped at 50, newest first. The shared
   // `/assets/notif-bell.js` bell polls this every 60s for the badge +
@@ -8421,6 +8463,8 @@ ${q.accepted ? `
   if (pathname === '/api/notifications/debug' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const sess = getSession(req);
+    // Auto-heal sessions that predate the owner_id mapping.
+    if (sess && !sess.ownerId) await _hydrateSessionOwnerId(req, sess);
     try {
       const ownerId = sess?.ownerId || null;
       const recent = ownerId ? (await db.query(
@@ -8444,8 +8488,10 @@ ${q.accepted ? `
   if (pathname === '/api/notifications' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const sess = getSession(req);
+    // Auto-heal sessions that predate the owner_id mapping. One-shot
+    // HubSpot Owners lookup by email, then we're cached forever.
+    if (sess && !sess.ownerId) await _hydrateSessionOwnerId(req, sess);
     if (!sess?.ownerId) {
-      console.warn(`[notify] /api/notifications — session has no ownerId (email=${sess?.email || 'none'}). Bell will be empty for this user — they may need to log out + log back in to refresh the HubSpot owner mapping.`);
       json({ notifications: [], debug: { sessionOwnerId: null, sessionEmail: sess?.email || null } });
       return;
     }
@@ -8466,6 +8512,7 @@ ${q.accepted ? `
   if (pathname === '/api/notifications/history' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const sess = getSession(req);
+    if (sess && !sess.ownerId) await _hydrateSessionOwnerId(req, sess);
     if (!sess?.ownerId) { json({ notifications: [] }); return; }
     const limit = Math.min(parseInt(parsed.query.limit) || 200, 500);
     try {

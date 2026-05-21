@@ -14,6 +14,8 @@ Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in t
 
 **On STAGING (NOT YET promoted to main):**
 
+- **v1.37.11** (2026-05-21) — **Confirm + read-all endpoints now lazy-hydrate the session.** Was a v1.37.2 hydration gap — only GET endpoints called `_hydrateSessionOwnerId`. If a rep's session hadn't been refreshed via a GET first, POST confirm returned silent `{success:false}`, UI optimistically removed it from active anyway, DB stayed unread, next poll brought it back, history never picked it up. Confirm endpoint also returns `rowsUpdated` count for future diagnostics.
+
 - **v1.37.10** (2026-05-21) — **Fix: notification bell disappeared after v1.37.9 light-mode push.** A CSS comment inside the JS template literal in `/assets/notif-bell.js` contained literal backticks around `:root.light` — those terminated the template literal early, the rest of the file became a syntax error, the script never executed, and the bell vanished from every page. Replaced the backticks with plain text. Lesson saved as a memo: no backticks inside template-literal CSS comments.
 
 - **v1.37.9** (2026-05-21) — **Notification dropdown light mode.** Added `:root.light .wr-notif-*` overrides in `/assets/notif-bell.js` for panel surface (white), card borders/backgrounds, text colors, links, and footer. Topbar bell button + badge stay dark since the topbars themselves stay dark in light mode.
@@ -570,6 +572,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.37.11 | 2026-05-21 | **Notification confirm + read-all now lazy-hydrate the session.** Was a v1.37.2 gap — only GET endpoints called the hydrate. Confirms by sessions-without-ownerId silently no-op'd; the UI optimistically hid them, the DB row stayed unread, history never picked them up. Confirm also returns `rowsUpdated` for diagnostics. |
 | 1.37.10 | 2026-05-21 | **Fix: bell came back from the dead.** v1.37.9 CSS comment had literal backticks inside a JS template literal — terminated the string early, script became a syntax error, bell vanished everywhere. Removed backticks from comment. |
 | 1.37.9  | 2026-05-21 | **Notification dropdown light mode.** Added `:root.light .wr-notif-*` overrides in `/assets/notif-bell.js` for panel surface, card borders, text colors, links, footer. Topbar bell stays dark (topbars stay dark in light mode). |
 | 1.37.8  | 2026-05-21 | **DEVLOG bookkeeping** — Current focus updated post-promote; v1.37.7 now on prod, staging clean. |

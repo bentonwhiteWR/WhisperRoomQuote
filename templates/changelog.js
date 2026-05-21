@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.37.11', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Notification confirm + read-all endpoints now lazy-hydrate the session** (matching the GET endpoints from v1.37.2). Previously a rep whose session hadn\'t been hit GET-side first would get a silent `{success: false}` on confirm — the UI removed the notification from the active list optimistically, but the DB row stayed unread, so the next poll brought it back and history never picked it up. Also: confirm endpoint now returns `rowsUpdated` count so we can detect no-ops in future diagnostics.'},
+      ]
+    },
+    {
       v:'1.37.10', date:'May 21, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Notification bell came back from the dead.** The v1.37.9 light-mode CSS comment in `/assets/notif-bell.js` had literal backticks around `:root.light` — inside a JS template literal that holds the CSS string. The backticks terminated the template literal early, the rest of the file parsed as a syntax error, the script never ran, and the bell vanished from every page. Replaced the backticks with plain text in the comment. Lesson: don\'t put backticks inside a backtick-delimited template literal, even in CSS comments.'},

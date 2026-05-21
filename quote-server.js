@@ -8554,6 +8554,7 @@ ${q.accepted ? `
   if (pathname === '/api/notifications/read-all' && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const sess = getSession(req);
+    if (sess && !sess.ownerId) await _hydrateSessionOwnerId(req, sess);
     if (!sess?.ownerId) { json({ success: true }); return; }
     try {
       await db.query(`UPDATE notifications SET read=true WHERE owner_id=$1`, [String(sess.ownerId)]);
@@ -8568,6 +8569,7 @@ ${q.accepted ? `
   if (pathname.startsWith('/api/notifications/') && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const sess = getSession(req);
+    if (sess && !sess.ownerId) await _hydrateSessionOwnerId(req, sess);
     if (!sess?.ownerId) { json({ success: false }); return; }
     const parts = pathname.split('/');
     const notifId = parts[3];
@@ -8576,12 +8578,14 @@ ${q.accepted ? `
     try {
       // Scope the update to the session's owner so a rep can't confirm
       // another rep's notification by guessing IDs.
-      await db.query(
+      const r = await db.query(
         `UPDATE notifications SET read=true WHERE id=$1 AND owner_id=$2`,
         [notifId, String(sess.ownerId)]
       );
-      json({ success: true });
-    } catch(e) { json({ success: false }); }
+      // Surface row count so the client can detect a no-op (id didn't
+      // belong to this rep, or already read).
+      json({ success: true, rowsUpdated: r?.rowCount || 0 });
+    } catch(e) { console.warn('[notify] confirm failed:', e.message); json({ success: false }); }
     return;
   }
 

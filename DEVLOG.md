@@ -14,7 +14,9 @@ Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in t
 
 **On STAGING (NOT YET promoted to main):**
 
-- **v1.34.1** (2026-05-21) — Audimute PO: added SKU `AHDAC000482` to the left of "Total WhisperRoom Velcro Hang Tab Packs" grand-total row in the Panel Totals section. Per Audimute's request. Monospace + muted gray styling so it reads as a SKU and visually separates from the description.
+- **v1.34.2** (2026-05-21) — Audimute PO: hang tab packs moved into the items table as a dedicated row. Qty = `grandTabs`, Item = `AHDAC000482` (monospace bold), Description = "WhisperRoom Velcro Hang Tab Packs", Color/Unit Cost/Total dashed. Pulled the SKU back out of the Panel Totals lower box since the items table is now the authoritative place for it. (v1.34.1 was a misread of the user's request.)
+
+- **v1.34.1** (2026-05-21) — *Superseded by v1.34.2.* Added SKU to the Panel Totals lower box's grand-total row.
 
 - **v1.34.0** (2026-05-21) — AP / Audimute email-flow tweaks. Three pieces: (a) Process Order shipping email (the `shipping@whisperroom.com` mailto built in quote-builder.html after `/api/process-order` returns) auto-CCs `jholdway@whisperroom.com` when the order has an AP item or AP color — Jill handles the Audimute step downstream and was previously not on the loop. (b) Suppliers-dashboard "Send" button (`sendPoEmail`) auto-CCs `bentonwhite@whisperroom.com` for paper trail. (c) Deal Hub `submitApPoModal` create flow auto-opens the Audimute mailto draft right after the PO is created — new helper `_openAudimutePoDraft` builds the same subject/body/CC as the suppliers-dashboard Send button. Does NOT mark the PO as sent (only the actual Send click from suppliers dashboard PATCHes `sent_at`). **Awaiting user test.**
 
@@ -539,6 +541,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.34.2  | 2026-05-21 | **Audimute PO: hang tab packs now a proper line item.** Added a row at the bottom of the items table with Qty = `grandTabs`, Item = `AHDAC000482` (monospace bold), Description = "WhisperRoom Velcro Hang Tab Packs", Color/Unit Cost/Total dashed (included in AP package price). Pulled the SKU back out of the Panel Totals lower box (v1.34.1 placement was misread of the request). |
 | 1.34.1  | 2026-05-21 | **Audimute PO: SKU `AHDAC000482` added to the grand-total "Total WhisperRoom Velcro Hang Tab Packs" row** in the Panel Totals section of `/po/:poNumber`. Per Audimute's request. Monospace + muted color so it reads as a SKU. |
 | 1.34.0  | 2026-05-21 | **AP / Audimute email-flow tweaks.** (1) Process Order shipping email auto-CCs Jill (`jholdway@whisperroom.com`) when the order has an AP item — she handles the Audimute step downstream. (2) Suppliers-dashboard `sendPoEmail` auto-CCs Benton (`bentonwhite@whisperroom.com`) for paper trail. (3) Deal Hub `submitApPoModal` create flow auto-opens the Audimute mailto draft after PO creation via new helper `_openAudimutePoDraft` — mirrors the suppliers-dashboard Send button (same subject/body/CC). Doesn't mark sent — that still requires hitting Send from the suppliers dashboard. |
 | 1.33.2  | 2026-05-21 | **DEVLOG bookkeeping** — Current focus block updated post-promote; v1.33.1 is now the most recent on prod, staging clean. |

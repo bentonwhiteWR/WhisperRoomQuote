@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.34.1', date:'May 21, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Audimute PO: SKU `AHDAC000482` now shown to the left of "Total WhisperRoom Velcro Hang Tab Packs"** on the grand-total row in the Panel Totals section of `/po/:poNumber`. Per Audimute\'s request — lets them scan the SKU at a glance when fulfilling the tab packs. Monospace font, muted gray so it visually separates from the description.'},
+      ]
+    },
+    {
       v:'1.34.0', date:'May 21, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Process Order shipping email auto-CCs Jill (`jholdway@whisperroom.com`) on any AP-containing order.** Same mechanism as the existing Gary auto-CC for RM / Custom Hole orders: when the order has an AP item (or the rep filled in an AP color), Jill is appended to the CC list on the `shipping@whisperroom.com` mailto draft. She handles the Audimute step downstream, so she needs the same context the shipping team gets.'},

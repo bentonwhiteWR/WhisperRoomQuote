@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.37.8', date:'May 21, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**DEVLOG bookkeeping.** Current focus reflects v1.37.7 on prod (Jeromy process-order trigger + REP_EMAILS sync). Staging clean.'},
+      ]
+    },
+    {
       v:'1.37.7', date:'May 21, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Notification session hydration: synced `lib/notify.js` REP_EMAILS to match the real login emails.** The two REP_EMAILS maps in the codebase had drifted — `lib/notify.js` had placeholder/guessed values (`sarah@whisperroom.com`, `jill@whisperroom.com`, `travis@whisperroom.com`, `gabe@whisperroom.com`, etc.) while `orders-dashboard.html` had the real production emails (`ssmith@`, `jholdway@`, `tsingleton@`, `gabrielwhite@`, etc.). The v1.37.4 hydration fallback uses lib/notify.js, so Sarah\'s session (email `ssmith@whisperroom.com`) couldn\'t resolve to owner `38143901` because notify.js only had `sarah@`. Synced lib/notify.js to mirror the orders-dashboard map. All reps\' sessions now hydrate correctly on the first notification API hit.'},

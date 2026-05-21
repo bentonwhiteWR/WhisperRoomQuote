@@ -8,11 +8,13 @@ Internal development notes. Last updated 2026-05-20.
 
 ## Current focus (2026-05-20 — Assembly Manual + Suppliers tab + Ship Calendar + email-reply logging all shipped)
 
-**Most recent shipped to PROD:** v1.37.4 — Notification system end-to-end (shared `/assets/notif-bell.js` bell with Confirm + history + green pulse, new triggers for AP-order-to-Jill and ACH-initiated, session hydration with REP_EMAILS fallback) + TaxJar ZIP-rejection auto-fallback to city/state rate. Promoted 2026-05-21.
+**Most recent shipped to PROD:** v1.37.7 — Process-order → Jeromy notification trigger + synced `lib/notify.js` REP_EMAILS to real login emails so session hydration works for every rep (not just Benton). Promoted 2026-05-21.
 
 Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in the project's history. Five parallel workstreams plus a Shopify-API investigation that didn't ship code but informed the path forward. Full breakdown lives in the **May 20 session writeup** below.
 
-**On STAGING (NOT YET promoted to main):**
+**On STAGING (NOT YET promoted to main):** nothing.
+
+**v1.37.5–1.37.7 promoted 2026-05-21.** Detail kept below for next-session pickup.
 
 - **v1.37.7** (2026-05-21) — **Fix: synced `lib/notify.js` REP_EMAILS to match real login emails.** Two REP_EMAILS maps had drifted — notify.js had `sarah@whisperroom.com`/`jill@whisperroom.com`/`travis@whisperroom.com` placeholder values; orders-dashboard.html had the real `ssmith@`/`jholdway@`/`tsingleton@` etc. The v1.37.4 hydration fallback uses notify.js, so any rep other than Benton failed to resolve. Synced notify.js to mirror the orders-dashboard map. Sarah, Jill, Travis, etc. will now hydrate on first notification hit.
 
@@ -564,6 +566,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.37.8  | 2026-05-21 | **DEVLOG bookkeeping** — Current focus updated post-promote; v1.37.7 now on prod, staging clean. |
 | 1.37.7  | 2026-05-21 | **Fix: synced `lib/notify.js` REP_EMAILS to the real login emails** (notify.js had stale `sarah@`/`jill@`/`travis@` placeholders; orders-dashboard.html had real `ssmith@`/`jholdway@`/`tsingleton@`). v1.37.4 session hydration uses notify.js so anyone other than Benton failed to resolve. All reps now hydrate correctly. |
 | 1.37.6  | 2026-05-21 | **New notification trigger:** every `/api/process-order` now notifies Jeromy with `📦 New Order — <deal>` and flag chips (`· RM` / `· CUST` / `· INTL`). |
 | 1.37.5  | 2026-05-21 | **DEVLOG bookkeeping** — Current focus updated post-promote; v1.37.4 now on prod, staging clean. |

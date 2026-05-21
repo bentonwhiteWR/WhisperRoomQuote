@@ -8,11 +8,14 @@ Internal development notes. Last updated 2026-05-20.
 
 ## Current focus (2026-05-20 — Assembly Manual + Suppliers tab + Ship Calendar + email-reply logging all shipped)
 
-**Most recent shipped to PROD:** v1.36.5 — Closed Lost is a hideable toolbar-toggled column (green pulse signal when search has Closed Lost matches) + PO Additional Charges (freight + description) wired into the suppliers-dashboard edit modal with "+ Add Charge" / "× Remove Charge" UX. Promoted 2026-05-21.
+**Most recent shipped to PROD:** v1.37.4 — Notification system end-to-end (shared `/assets/notif-bell.js` bell with Confirm + history + green pulse, new triggers for AP-order-to-Jill and ACH-initiated, session hydration with REP_EMAILS fallback) + TaxJar ZIP-rejection auto-fallback to city/state rate. Promoted 2026-05-21.
 
 Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in the project's history. Five parallel workstreams plus a Shopify-API investigation that didn't ship code but informed the path forward. Full breakdown lives in the **May 20 session writeup** below.
 
-**On STAGING (NOT YET promoted to main):**
+**On STAGING (NOT YET promoted to main):** nothing.
+
+<details>
+<summary>Just-shipped detail (v1.37.0–v1.37.4) — kept here for the next session pickup</summary>
 
 - **v1.37.4** (2026-05-21) — **Tax: auto-fallback to city/state-level rate when TaxJar rejects the ZIP + Notification hydration falls back to local REP_EMAILS map.** (1) `lib/taxjar.js` now retries the TaxJar request without `to_zip`/`to_street` when the API 400s with `"to_zip X is not used within to_state Y"`. TaxJar returns city/state-level rate; result carries `usedStateFallback` + `fallbackReason`. Quote builder shows yellow info banner under the tax result. (2) `_hydrateSessionOwnerId` falls back to a case-insensitive reverse lookup of `REP_EMAILS` (from `lib/notify.js`) when HubSpot Owners API misses — Owner records sometimes have different email casing. Session ownerId now resolves for any rep with email in REP_EMAILS regardless of HubSpot Owners API state.
 
@@ -27,6 +30,8 @@ Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in t
   - **Server:** `GET /api/notifications` now returns *unread only* (was: all). New `GET /api/notifications/history?limit=200`. New `POST /api/notifications/:id/confirm` (legacy `POST /api/notifications/:id` still works — same handler). Confirm queries are scoped to `owner_id = session.ownerId` so reps can't confirm each other's notifications.
   - **New triggers:** (1) Process-order with AP items → `createNotification(JILL_OWNER_ID, 'ap-po-needed', ...)` so Jill gets pinged in-app to send the Audimute PO. Lives next to the existing Benton AP color task. (2) Stripe `payment_intent.processing` webhook → `createNotification(ownerId, 'stripe-ach-initiated', ...)` so the rep sees ACH activity start, not just when funds clear 3-5 days later. Fetches the related Stripe invoice to map back to our wr_quote_number metadata.
   - **Stripe action needed:** add `payment_intent.processing` to the webhook subscription in the Stripe Dashboard for the ACH-initiated trigger to fire. Existing event subscriptions unchanged.
+
+</details>
 
 - **v1.34.6** (2026-05-21) — `/promote` skill no longer pauses for a yes/no confirmation. Per user preference — pre-flight already lists what's about to land, so the prompt was friction. Edited `.claude/commands/promote.md` to remove the "Confirm to proceed?" step. Other guardrails kept.
 
@@ -555,6 +560,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.37.5  | 2026-05-21 | **DEVLOG bookkeeping** — Current focus updated post-promote; v1.37.4 now on prod, staging clean. |
 | 1.37.4  | 2026-05-21 | **Tax: auto-fallback to city/state-level rate when TaxJar rejects ZIP + Notification hydration via REP_EMAILS fallback.** TaxJar retries without `to_zip`/`to_street` on "to_zip X is not used" errors; client shows yellow banner. Session ownerId hydration falls back to reverse REP_EMAILS lookup when HubSpot Owners API misses (casing differences). |
 | 1.37.3  | 2026-05-21 | **Tax: TaxJar error detail surfaced + 0% nexus no longer silently hides.** `lib/taxjar.js` now prefers `res.body.detail` over `res.body.error` so the rep sees "Invalid ZIP code — please verify…" instead of generic "Bad Request". Client also stops hiding the tax result box when TaxJar returns 0/0 for a nexus state — shows yellow hint about adding city. |
 | 1.37.2  | 2026-05-21 | **Notifications: auto-heal sessions with NULL ownerId.** Sessions predating the owner_id login mapping had `ownerId=null` and got an empty bell. Notification endpoints now lazy-hydrate via HubSpot Owners lookup by email; result stamped onto cache + DB row. No more logout/login required. |

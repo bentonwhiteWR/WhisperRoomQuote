@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.37.5', date:'May 21, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**DEVLOG bookkeeping.** Current focus reflects v1.37.4 on prod (notification system + TaxJar ZIP fallback). Staging clean. v1.37.0–v1.37.4 session detail collapsed into a `<details>` block for the next session to skim.'},
+      ]
+    },
+    {
       v:'1.37.4', date:'May 21, 2026', tag:'fix',
       changes:[
         {t:'add', d:'**Tax: auto-fallback to city/state-level rate when TaxJar rejects the ZIP.** When TaxJar 400s with `"to_zip X is not used within to_state Y"` (e.g. FL ZIP `33104` — retired or business-only), `lib/taxjar.js` automatically retries the same request without `to_zip` (and without `to_street`, which is meaningless without a ZIP). TaxJar then returns a city/state-level rate. Result carries `usedStateFallback: true` + a `fallbackReason` message. Quote builder shows a yellow info banner under the tax result: "⚠ Using city/state-level rate — ZIP not recognized, local surtax may be slightly higher. Override below if you know the exact rate." Rep no longer dead-ends on retired ZIPs.'},

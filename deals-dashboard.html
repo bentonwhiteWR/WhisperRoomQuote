@@ -42,6 +42,11 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .rep-select { padding:7px 10px; background:var(--surface2); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:12px; font-family:inherit; outline:none; cursor:pointer; }
 .board-count { font-size:11px; color:var(--muted); margin-left:auto; }
 .board { flex:1; display:grid; grid-template-columns:repeat(4,minmax(170px,1fr)); gap:0; overflow-x:auto; overflow-y:hidden; }
+/* When Closed Lost is toggled on, fit 5 columns side-by-side instead
+   of letting the extra one wrap to a new row. Drop the per-column min
+   from 170 to 140 so they squeeze rather than triggering horizontal
+   scroll on common screens. */
+.board.show-closedlost { grid-template-columns:repeat(5,minmax(140px,1fr)); }
 .col { display:flex; flex-direction:column; border-right:1px solid var(--border); overflow:hidden; }
 .col:last-child { border-right:none; }
 .col-header { padding:10px 12px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:3px; flex-shrink:0; }
@@ -166,6 +171,24 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .shopify-btn:hover { background:var(--surface3); border-color:var(--orange-border); }
 .shopify-btn.glow { background:var(--orange-dim); border-color:var(--orange-border); color:var(--orange); box-shadow:0 0 0 0 rgba(238,98,22,.5); animation:shopify-pulse 2s infinite; }
 @keyframes shopify-pulse { 0%{box-shadow:0 0 0 0 rgba(238,98,22,.5)} 70%{box-shadow:0 0 0 10px rgba(238,98,22,0)} 100%{box-shadow:0 0 0 0 rgba(238,98,22,0)} }
+/* Closed Lost toggle pulses GREEN whenever the current search has
+   matches in Closed Lost (and the column is hidden) — signals the rep
+   that the missing deal lives in the off-board column. Green because
+   it's a positive "we found something" cue, distinct from the orange
+   Shopify Orders attention-pulse. */
+.closedlost-btn.glow {
+  background:rgba(34,197,94,.15);
+  border-color:rgba(34,197,94,.5);
+  color:#22c55e;
+  box-shadow:0 0 0 0 rgba(34,197,94,.5);
+  animation:closedlost-pulse 2s infinite;
+}
+@keyframes closedlost-pulse {
+  0%   { box-shadow:0 0 0 0 rgba(34,197,94,.5) }
+  70%  { box-shadow:0 0 0 10px rgba(34,197,94,0) }
+  100% { box-shadow:0 0 0 0 rgba(34,197,94,0) }
+}
+.closedlost-btn.active { background:rgba(85,85,85,.25); border-color:rgba(255,255,255,.25); color:var(--text); }
 .shopify-badge { position:absolute; top:-4px; right:-4px; background:var(--orange); color:#fff; font-size:9px; font-weight:800; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 3px; border:1px solid var(--surface); }
 .shopify-badge.zero { background:var(--surface3); color:var(--muted); border-color:var(--border); }
 .shopify-panel { position:fixed; top:52px; right:0; width:420px; height:calc(100vh - 52px); background:var(--surface); border-left:1px solid var(--border); box-shadow:-4px 0 20px rgba(0,0,0,.2); z-index:300; display:flex; flex-direction:column; transform:translateX(100%); transition:transform .25s ease; }
@@ -384,6 +407,9 @@ select option { background: var(--surface); color: var(--text); }
       <button class="filter-toggle" id="hideUnintegratedBtn" onclick="toggleHideUnintegrated()" title="Toggle display of HubSpot-only deals with no quotes or orders">
         ○ HubSpot Only
       </button>
+      <button class="filter-toggle closedlost-btn" id="closedLostBtn" onclick="toggleClosedLost()" title="Show / hide the Closed Lost column. Glows when a search matches deals in Closed Lost but not the active board.">
+        ○ Closed Lost
+      </button>
     </div>
     <div class="board" id="board">
       <div style="padding:40px;text-align:center;color:var(--muted);grid-column:1/-1">Loading deals…</div>
@@ -429,6 +455,20 @@ const PIPE_BG = {
 
 let allDeals=[], filteredDeals=[], currentDealId=null, searchTimeout=null, currentRepFilter='';
 let hideUnintegrated = false;
+// Closed Lost column state. Off by default (matches the historical
+// behavior — Closed Lost is excluded from BOARD_STAGES to keep the
+// board clean). Toggle button on the toolbar shows/hides the column.
+// `closedLostRecent` is the cached recent-history fetch (populated on
+// first toggle-on, reused thereafter). `closedLostHits` is the latest
+// per-search probe — used to (a) populate the column when a search is
+// active and (b) drive the toolbar button glow when a search matches
+// only Closed Lost.
+let closedLostVisible = false;
+let closedLostRecent  = [];
+let closedLostHits    = [];
+let closedLostQuery   = '';
+let _closedLostAbort  = null;
+let _closedLostTimer  = null;
 
 const fmt = n => '$'+parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
 const fmtAge = d => {
@@ -503,6 +543,7 @@ function renderBoard() {
     COLUMNS.forEach((c, i) => { window._colCollapseState[c.key] = i !== 0; });
   }
   board.innerHTML='';
+  board.classList.toggle('show-closedlost', closedLostVisible);
   let total=0;
   COLUMNS.forEach(col => {
     const deals=filteredDeals.filter(d=>col.stages.includes(d.stage))
@@ -587,6 +628,63 @@ function renderBoard() {
     colEl.appendChild(cardsEl);
     board.appendChild(colEl);
   });
+  // Closed Lost column — rendered only when the toolbar toggle is on.
+  // Data source: when a search is active, use the search probe results
+  // (catches old deals that aren't in the recent-100 cache); otherwise
+  // use the recent-history cache. Filter client-side by the search
+  // query so the column behaves like the rest of the board.
+  if (closedLostVisible) {
+    const q = document.getElementById('dealSearch').value.trim().toLowerCase();
+    let closedDeals = q ? closedLostHits : closedLostRecent;
+    if (q) {
+      closedDeals = closedDeals.filter(d =>
+        (d.name||'').toLowerCase().includes(q) ||
+        (d.latestQuote||'').toLowerCase().includes(q) ||
+        (REPS[d.ownerId]||'').toLowerCase().includes(q)
+      );
+    }
+    const colEl = document.createElement('div');
+    colEl.className = 'col col-closedlost';
+    colEl.style.opacity = '0.9';
+    const colTotal = closedDeals.reduce((s,d) => s + (parseFloat(d.amount)||0), 0);
+    const colTotalFmt = '$' + Math.round(colTotal).toLocaleString('en-US');
+    colEl.innerHTML = `<div class="col-header" style="background:rgba(85,85,85,.2);border-bottom:2px solid #666">
+      <div class="col-header-top">
+        <span class="col-title" style="color:#aaa">Closed Lost</span>
+        <span class="col-count" style="background:rgba(255,255,255,.1);color:#aaa">${closedDeals.length}</span>
+      </div>
+      ${closedDeals.length?`<div class="col-total" style="color:#888">${colTotalFmt}</div>`:''}
+    </div>`;
+    const cardsEl = document.createElement('div');
+    cardsEl.className = 'col-cards';
+    if (!closedDeals.length) {
+      cardsEl.innerHTML = '<div style="font-size:11px;color:var(--muted);text-align:center;padding:16px 4px;font-style:italic">No deals</div>';
+    } else {
+      closedDeals.forEach(d => {
+        const card = document.createElement('div');
+        card.className = 'deal-card' + (d.id===currentDealId?' active':'');
+        card.style.borderLeft = '2px solid #666';
+        card.onclick = () => openDeal(d.id);
+        card.innerHTML = `
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px">
+            <div class="card-name" style="flex:1">${(d.name||'—').replace(/</g,'&lt;')}</div>
+          </div>
+          <div class="card-meta">
+            ${d.amount&&parseFloat(d.amount)>0?`<span class="card-amount">${fmt(d.amount)}</span>`:''}
+            <span class="card-rep">${REPS[d.ownerId]||'—'}</span>
+            <span class="card-age">${fmtAge(d.modified)}</span>
+          </div>
+          ${d.latestQuote?`<div class="card-quote">${d.latestQuote}</div>`:''}
+        `;
+        cardsEl.appendChild(card);
+      });
+    }
+    colEl.appendChild(cardsEl);
+    board.appendChild(colEl);
+  }
+  // Re-evaluate the glow every render so changes to filteredDeals
+  // (e.g. searchAllDeals just returned) refresh the button state.
+  updateClosedLostGlow();
   document.getElementById('boardCount').textContent=`${total} deals`;
 }
 
@@ -1392,15 +1490,102 @@ async function doStageOverride(stage,label) {
 }
 function onSearch() {
   clearTimeout(searchTimeout);
+  clearTimeout(_closedLostTimer);
   const q = document.getElementById('dealSearch').value.trim();
   if (q.length === 0) {
-    // Back to cached deals
+    // Back to cached deals + clear search-driven Closed Lost state.
     filteredDeals = [...allDeals];
+    closedLostHits  = [];
+    closedLostQuery = '';
+    updateClosedLostGlow();
     renderBoard();
   } else if (q.length >= 2) {
-    // Live HubSpot search for full history
+    // Live HubSpot search for full history (active stages).
     searchTimeout = setTimeout(() => searchAllDeals(q), 300);
+    // Closed Lost probe runs in parallel after a slightly longer delay
+    // (400ms) so it doesn't fire on every keystroke. Drives both the
+    // toolbar glow (search matched only Closed Lost) and the column
+    // contents (when the column is visible).
+    if (q.length >= 3) {
+      _closedLostTimer = setTimeout(() => probeClosedLost(q), 400);
+    } else {
+      // Query too short for a probe — clear stale results.
+      closedLostHits  = [];
+      closedLostQuery = '';
+      updateClosedLostGlow();
+      if (closedLostVisible) renderBoard();
+    }
   }
+}
+
+// Fire the Closed Lost search probe. Always runs while typing (≥3
+// chars) regardless of whether the column is visible, because the
+// toolbar button needs to glow when a query matches Closed Lost but
+// not the active board.
+async function probeClosedLost(q) {
+  if (_closedLostAbort) _closedLostAbort.abort();
+  _closedLostAbort = new AbortController();
+  const signal = _closedLostAbort.signal;
+  try {
+    const res = await fetch('/api/deals/search-closedlost?q=' + encodeURIComponent(q), { credentials: 'include', signal });
+    const data = await res.json();
+    if (signal.aborted) return;
+    if (data.error) return;
+    closedLostHits  = data.deals || [];
+    closedLostQuery = q;
+    updateClosedLostGlow();
+    if (closedLostVisible) renderBoard();
+  } catch(e) {
+    if (e.name === 'AbortError') return;
+    // Silent fail — recovery is a nice-to-have, not a blocker.
+  }
+}
+
+// Toolbar button glow rule: pulse green whenever the current search
+// has matches in Closed Lost and the column is hidden. Originally only
+// glowed when the main board ALSO had zero hits, but that produced
+// inconsistent UX — if the main search finished first with zero hits
+// the glow turned on, then turned off the moment any active-board
+// match came in. Now the rule is "if there's something to find in
+// Closed Lost, glow regardless of whether main also matched" — more
+// useful (rep gets the signal even when both have hits) and immune to
+// the race between the two parallel fetches.
+function updateClosedLostGlow() {
+  const btn = document.getElementById('closedLostBtn');
+  if (!btn) return;
+  const q = document.getElementById('dealSearch').value.trim();
+  const shouldGlow = q.length >= 3 && closedLostHits.length > 0 && !closedLostVisible;
+  btn.classList.toggle('glow', shouldGlow);
+}
+
+async function toggleClosedLost() {
+  closedLostVisible = !closedLostVisible;
+  const btn = document.getElementById('closedLostBtn');
+  if (btn) {
+    btn.classList.toggle('active', closedLostVisible);
+    btn.textContent = closedLostVisible ? '● Closed Lost' : '○ Closed Lost';
+    // Showing the column resolves the "missing deal lives over here"
+    // signal — kill the glow regardless of search state.
+    if (closedLostVisible) btn.classList.remove('glow');
+  }
+  // First time we show the column, pull a recent-history fetch so the
+  // column has something to display when no search is active. Cached
+  // for subsequent toggles.
+  if (closedLostVisible && closedLostRecent.length === 0) {
+    try {
+      const qs = new URLSearchParams({ stage: 'closedlost', limit: 100 });
+      if (currentRepFilter) qs.set('rep', currentRepFilter);
+      const res  = await fetch('/api/deals/list?' + qs, { credentials: 'include' });
+      const data = await res.json();
+      if (!data.error) {
+        // Only keep deals that are actually in closedlost (the
+        // dbMatchDealIds path can leak other stages via name-search).
+        closedLostRecent = (data.deals || []).filter(d => d.stage === 'closedlost');
+      }
+    } catch(e) { /* silent — column will just be empty */ }
+  }
+  updateClosedLostGlow();
+  renderBoard();
 }
 
 let _searchAllDealsAbort = null;

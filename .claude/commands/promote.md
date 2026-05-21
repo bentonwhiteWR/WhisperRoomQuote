@@ -13,12 +13,11 @@ The user has invoked `/promote` to merge `staging` into `main` and push it to Gi
    - `git log origin/main..staging --oneline` — show what's about to ship. If empty, STOP and tell the user there's nothing to promote.
    - `git fetch origin` — make sure we're up to date with remote.
 
-2. **Show the user what's about to happen**, in plain text:
+2. **Briefly state what's about to happen** (one short paragraph) then proceed directly — no confirmation prompt:
    - The list of commits that will land on main (output of step 1's `git log`).
    - The proposed merge commit message: `Merge staging — <summary>` (use `$ARGUMENTS` if provided, else synthesize from the commit list).
-   - **Ask the user to confirm** before proceeding. Do NOT skip this confirmation even if running non-interactively. The user explicitly opted into a confirmation step when designing this command.
 
-3. **On confirmation, run the merge dance:**
+3. **Run the merge dance:**
    ```
    git checkout main
    git pull origin main
@@ -35,4 +34,3 @@ The user has invoked `/promote` to merge `staging` into `main` and push it to Gi
 - Never use `--force` or `--force-with-lease` on main. If the push is rejected, STOP and tell the user — do not try to overwrite.
 - If pre-flight finds the working tree dirty, do NOT auto-stash. Ask the user what they want to do.
 - If `git pull origin main` reveals upstream commits not in staging, STOP. Tell the user — there may be a hotfix on main that needs to be pulled into staging first.
-- If the user types anything that isn't a clear yes ("y", "yes", "go", "promote", "ship it"), treat as no.

@@ -3124,6 +3124,115 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── API: Closed Lost search (recovery) ─────────────────────────
+  // Deal Hub board excludes `closedlost` from BOARD_STAGES so the
+  // column doesn't accumulate noise over time. Side effect: if a deal
+  // is moved to Closed Lost by accident, it vanishes from the board
+  // and reps can't find it. This endpoint lets the dashboard probe
+  // Closed Lost specifically when the regular search returns nothing
+  // useful — surfacing a "found N in Closed Lost matching <q>" banner
+  // with an option to inject those deals into a temporary column.
+  //
+  // Cheap: one HubSpot search filtered to dealstage=closedlost,
+  // capped at 20 results, only fires from the client when query is
+  // ≥3 chars. No DB enrichment for AP / payment chips — Closed Lost
+  // deals are by definition lost, so the recovery flow only needs
+  // enough context to click into the deal hub.
+  if (pathname === '/api/deals/search-closedlost' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const q = (parsed.query.q || '').trim();
+      if (q.length < 3) { json({ deals: [] }); return; }
+      const filters = [{ propertyName: 'dealstage', operator: 'EQ', value: 'closedlost' }];
+      const nameRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path:     '/crm/v3/objects/deals/search',
+        method:   'POST',
+        headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, {
+        filterGroups: [{ filters }],
+        properties:   ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate','closedate','createdate'],
+        sorts:        [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+        query:        q,
+        limit:        20,
+      });
+      const hsDeals = nameRes.body?.results || [];
+      // Also catch the case where the rep is typing a quote number or
+      // contact name — DB has all quotes regardless of stage, so a
+      // quote-number / company match can give us a deal_id we then
+      // hydrate from HubSpot. Cheap: single DB scan, then batch read.
+      const dbMatchDealIds = new Set();
+      if (db) {
+        try {
+          const dbSearch = await db.query(
+            `SELECT DISTINCT deal_id FROM quotes
+             WHERE deal_id IS NOT NULL AND (
+               LOWER(quote_number) LIKE $1 OR
+               LOWER(customer_name) LIKE $1 OR
+               LOWER(company)       LIKE $1 OR
+               LOWER(deal_name)     LIKE $1
+             ) LIMIT 50`,
+            [`%${q.toLowerCase()}%`]
+          );
+          dbSearch.rows.forEach(r => { if (r.deal_id) dbMatchDealIds.add(String(r.deal_id)); });
+        } catch(e) { console.warn('[deals search-closedlost] DB search error:', e.message); }
+      }
+      const haveIds = new Set(hsDeals.map(d => d.id));
+      const fetchIds = [...dbMatchDealIds].filter(id => !haveIds.has(id));
+      if (fetchIds.length) {
+        const idRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path:     '/crm/v3/objects/deals/search',
+          method:   'POST',
+          headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, {
+          filterGroups: [{ filters: [
+            { propertyName: 'hs_object_id', operator: 'IN', values: fetchIds.slice(0, 50) },
+            { propertyName: 'dealstage',    operator: 'EQ', value:  'closedlost' },
+          ]}],
+          properties: ['dealname','dealstage','amount','hubspot_owner_id','hs_lastmodifieddate','closedate','createdate'],
+          limit: 20,
+        });
+        (idRes.body?.results || []).forEach(d => { if (!haveIds.has(d.id)) { haveIds.add(d.id); hsDeals.push(d); } });
+      }
+      // Map to the same shape the Deal Hub renders. AP/payment/etc. left
+      // empty — recovery flow doesn't need those chips.
+      const deals = hsDeals.slice(0, 20).map(d => ({
+        id:         d.id,
+        name:       d.properties?.dealname || '—',
+        stage:      d.properties?.dealstage || 'closedlost',
+        amount:     d.properties?.amount || '0',
+        ownerId:    d.properties?.hubspot_owner_id || '',
+        modified:   d.properties?.hs_lastmodifieddate || '',
+        closedate:  d.properties?.closedate || '',
+        createdate: d.properties?.createdate || '',
+      }));
+      // Enrich with latest quote number so the rep can confirm the deal
+      // matches what they were looking for.
+      if (db && deals.length) {
+        try {
+          const ids = deals.map(d => d.id);
+          const qr = await db.query(
+            `SELECT deal_id, quote_number FROM quotes
+             WHERE deal_id::text = ANY($1::text[])
+             ORDER BY created_at DESC`,
+            [ids]
+          );
+          const latestByDeal = {};
+          (qr.rows || []).forEach(r => {
+            if (!latestByDeal[r.deal_id]) latestByDeal[r.deal_id] = r.quote_number;
+          });
+          deals.forEach(d => { d.latestQuote = latestByDeal[d.id] || null; });
+        } catch(e) { console.warn('[deals search-closedlost] DB enrich error:', e.message); }
+      }
+      json({ deals, query: q });
+    } catch(e) {
+      console.error('[deals search-closedlost] error:', e.message);
+      json({ deals: [], error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── API: Shopify pending review ──────────────────────────────
   // Returns all deals owned by the Shopify integration's HubSpot user
   // (ecommerce@whisperroom.com). Used by the "🛒 Shopify" button in the
@@ -11090,7 +11199,7 @@ ${q.accepted ? `
     let body;
     try { body = JSON.parse(await readBody(req) || '{}'); }
     catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
-    const { quoteNumber, apItems: bodyApItems, notes: bodyNotes, customer: bodyCustomer } = body;
+    const { quoteNumber, apItems: bodyApItems, notes: bodyNotes, customer: bodyCustomer, freight: bodyFreight } = body;
     if (!quoteNumber) { json({ error: 'quoteNumber required' }, 400); return; }
     try {
       if (!db) { json({ error: 'No database' }, 500); return; }
@@ -11151,6 +11260,16 @@ ${q.accepted ? `
       const poNumber  = await nextPoNumber();
       const shareToken = generateToken();
 
+      // Optional freight (e.g. Canadian POs where Audimute ships + bills
+      // us for the leg). { amount, description } when set, null otherwise.
+      let freightAtCreate = null;
+      if (bodyFreight && typeof bodyFreight === 'object') {
+        const fAmt = parseFloat(bodyFreight.amount || 0) || 0;
+        if (fAmt > 0) {
+          freightAtCreate = { amount: fAmt, description: String(bodyFreight.description || '').trim() };
+        }
+      }
+
       const poData = {
         quoteNumber,
         dealId,
@@ -11159,6 +11278,7 @@ ${q.accepted ? `
         apItems,
         apColor: defaultColor, // legacy field — kept for backward compat with existing renderers
         notes: (bodyNotes != null ? String(bodyNotes) : (od?.productionNotes || '')),
+        freight: freightAtCreate,
         issueDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' }),
       };
 
@@ -11211,7 +11331,7 @@ ${q.accepted ? `
     const sess = getSession(req);
     const repName = sess?.name || repId || 'unknown';
 
-    const hasPoDataEdit = body.customer !== undefined || body.apItems !== undefined || body.poNotes !== undefined;
+    const hasPoDataEdit = body.customer !== undefined || body.apItems !== undefined || body.poNotes !== undefined || body.freight !== undefined;
     if (hasPoDataEdit) {
       try {
         if (!db) { json({ error: 'No database' }, 500); return; }
@@ -11276,6 +11396,26 @@ ${q.accepted ? `
             changes.push({ kind: 'notes', from: oldNotes, to: newNotes });
           }
           poData.notes = newNotes;
+        }
+
+        // Freight charge on the PO (e.g. Canadian orders where Audimute
+        // ships and bills us for the leg). Stored as { amount, description }.
+        // Setting amount to 0 / null / undefined clears the field.
+        if (body.freight !== undefined) {
+          const oldF       = poData.freight || null;
+          const oldAmt     = oldF ? parseFloat(oldF.amount || 0) || 0 : 0;
+          const oldDesc    = oldF ? String(oldF.description || '').trim() : '';
+          const incoming   = body.freight || {};
+          const newAmt     = parseFloat(incoming.amount || 0) || 0;
+          const newDesc    = String(incoming.description || '').trim();
+          if (newAmt > 0) {
+            poData.freight = { amount: newAmt, description: newDesc };
+          } else {
+            poData.freight = null;
+          }
+          if (oldAmt !== newAmt || oldDesc !== newDesc) {
+            changes.push({ kind: 'freight', fromAmt: oldAmt, toAmt: newAmt, fromDesc: oldDesc, toDesc: newDesc });
+          }
         }
 
         // Single UPDATE: po_data always; notes column too if poNotes was set
@@ -12369,6 +12509,16 @@ ${q.accepted ? `
           // Don't dump full notes diff — keep change log tidy
           return ch.to ? `Notes updated` : `Notes cleared`;
         }
+        if (ch.kind === 'freight') {
+          const fmtAmt = a => '$' + (parseFloat(a)||0).toFixed(2);
+          if (!ch.fromAmt && ch.toAmt) {
+            return `Freight added: <strong>${fmtAmt(ch.toAmt)}</strong>${ch.toDesc ? ` — ${escHtmlPo(ch.toDesc)}` : ''}`;
+          }
+          if (ch.fromAmt && !ch.toAmt) {
+            return `Freight removed (was ${fmtAmt(ch.fromAmt)})`;
+          }
+          return `Freight changed from ${fmtAmt(ch.fromAmt)} to <strong>${fmtAmt(ch.toAmt)}</strong>${ch.toDesc ? ` — ${escHtmlPo(ch.toDesc)}` : ''}`;
+        }
         if (ch.kind === 'column') {
           const isDate = ch.field === 'expected_ship_date';
           const isTs = ch.field === 'sent_at' || ch.field === 'shipped_at';
@@ -12533,7 +12683,11 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
   </div>` : ''}
 
   <div class="totals">
-    <div class="totals-row grand"><span>Order Total</span><span>${fmt(subtotal)}</span></div>
+    ${d.freight && parseFloat(d.freight.amount) > 0 ? `
+      <div class="totals-row"><span>Subtotal</span><span>${fmt(subtotal)}</span></div>
+      <div class="totals-row"><span>Freight${d.freight.description ? ` — ${escHtmlPo(d.freight.description)}` : ''}</span><span>${fmt(parseFloat(d.freight.amount))}</span></div>
+    ` : ''}
+    <div class="totals-row grand"><span>Order Total</span><span>${fmt(subtotal + (d.freight && parseFloat(d.freight.amount) > 0 ? parseFloat(d.freight.amount) : 0))}</span></div>
   </div>
 
   ${d.notes ? `

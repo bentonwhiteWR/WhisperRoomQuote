@@ -51,6 +51,61 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.36.5', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Removed the dead freight UI from the Deal Hub AP PO modal.** v1.35.1 → v1.36.2 had added Additional Charges inputs to the wrong modal (deals-dashboard.html). v1.36.4 put the real working version in the suppliers-dashboard modal where reps actually edit POs. This commit deletes the orphaned UI + JS + payload wiring from the Deal Hub side so there\'s only one freight code path. Server-side handling and the suppliers-dashboard UI are unchanged.'},
+      ]
+    },
+    {
+      v:'1.36.4', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Additional Charges (freight) section added to the SUPPLIERS DASHBOARD edit modal — which is where reps actually work.** Earlier versions (v1.35.1 → v1.36.2) had been wiring the freight inputs into the Deal Hub\'s AP PO modal, but reps almost always edit POs from `/suppliers` not the Deal Hub. The suppliers-dashboard edit modal (Edit button on each PO row) now has an "Additional Charges" section above Notes with a "+ Add Charge" button. Click it → reveals Amount + Description inputs → Save → freight saved to `po_data.freight` and renders on the customer-facing `/po/:poNumber` as a Freight row in the totals. "× Remove Charge" clears the freight on next save.'},
+      ]
+    },
+    {
+      v:'1.36.3', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Closed Lost button glow now green + consistent (no longer flickers off when the main board returns hits).** Previously the glow rule required main board to have zero results AND Closed Lost to have matches — so the glow turned on briefly between when the probe returned and when the main search returned, then flipped off if main had any hits. Now the rule is just "Closed Lost has matches AND column is hidden" — the rep gets the signal whenever there\'s something worth revealing, regardless of what the main board shows. Color switched from orange to green (positive "we found something" cue, distinct from the orange Shopify Orders attention-pulse).'},
+      ]
+    },
+    {
+      v:'1.36.2', date:'May 21, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**AP PO Edit modal: Additional Charges section moved to sit directly above Notes** (per user request). v1.36.0 had pinned it to the top of the modal under the title; user wanted it adjacent to Notes since both are PO-line additions. Same fields (Freight $ + Description), same `po_data.freight = {amount, description}` schema.'},
+      ]
+    },
+    {
+      v:'1.36.1', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Closed Lost column now squeezes in next to Shipped instead of wrapping to a new row.** The board grid was hard-coded to `repeat(4, minmax(170px, 1fr))` so the 5th column had nowhere to go. Added a `.board.show-closedlost` modifier that switches to `repeat(5, minmax(140px, 1fr))` — the four existing columns shrink ~17% and Closed Lost slots in on the right. Mobile (≤480px) was already a vertical stack, so nothing changes there.'},
+      ]
+    },
+    {
+      v:'1.36.0', date:'May 21, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Closed Lost is now a proper hideable column.** New "○ Closed Lost" toggle button in the Deal Hub toolbar (next to "HubSpot Only"). Off by default — board stays clean. Click to reveal the column at the far right, populated with the 100 most recent Closed Lost deals. The button **glows orange** when you type a search and the only matches live in Closed Lost (none on the active board) — visual cue that the deal you\'re looking for is over there, click to reveal. Replaces the v1.35.0 banner + temp-column UX, which was confusing.'},
+        {t:'ui', d:'**AP PO modal: freight section moved to the top.** Now lives in a dedicated "Additional Charges" card right under the title bar (above Ship-To), so it\'s the first thing you see when opening Edit. Was previously buried below the items list — easy to miss. Same `po_data.freight = {amount, description}` schema as v1.35.1; the layout is the only thing that changed.'},
+      ]
+    },
+    {
+      v:'1.35.1', date:'May 21, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**AP Purchase Orders can now carry a freight charge with description.** New `Freight ($)` + `Freight description` inputs in the AP PO modal (both Create and Edit). Stored as `po_data.freight = {amount, description}`; accepted by both the create POST and the edit PATCH. Customer-facing PO page (`/po/:poNumber`) renders a Subtotal + Freight line when freight is set, with the description inline. Auto-draft Audimute email (from Deal Hub + suppliers-dashboard "Send") includes the freight line in the Order Summary. Change log records freight added/removed/changed events. Use case: Canadian POs where Audimute ships the package and bills WhisperRoom for the leg.'},
+      ]
+    },
+    {
+      v:'1.35.0', date:'May 21, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Closed Lost recovery via Deal Hub search.** Deal Hub board still excludes `closedlost` from its default columns (zero noise), but typing in the search bar now ALSO probes Closed Lost server-side. If hits come back, a banner appears under the search box: "🔍 Not on the board, but found 2 deal(s) in Closed Lost matching \'jill smith\' [Show on board →]". Clicking the button injects those deals as a temporary "Closed Lost (search)" column at the far right of the board with muted styling — disappears when search is cleared. Solves the Jill-misclassification case where a deal accidentally sent to Closed Lost vanishes entirely from view with no way to recover it. New endpoint: `GET /api/deals/search-closedlost?q=...` — HubSpot search filtered to `dealstage=closedlost` + DB-by-quote/contact lookup, capped at 20 results, gated at ≥3 chars.'},
+      ]
+    },
+    {
+      v:'1.34.6', date:'May 21, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**Dev workflow: `/promote` no longer pauses for a confirmation prompt.** Per user preference — the pre-flight already lists what\'s about to land on main, which is enough context. Skill now runs the merge dance directly after stating the commits + proposed merge message. Edited `.claude/commands/promote.md` to remove the "Confirm to proceed?" step. Other guardrails (working-tree-clean check, never force-push to main, halt on upstream divergence) all preserved.'},
+      ]
+    },
+    {
       v:'1.34.5', date:'May 21, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Orders dashboard: Save Changes no longer silently ships the order.** Bug: typing a tracking number in the drawer + pressing Save Changes was merging `shipmentFields.tracking` into `order_data.shipped.tracking` on the server — which is the field the board, calendar, and Tracking tab all read to classify an order as Shipped. So the order moved to the Shipped column without the Ship It modal, email draft, or HubSpot dealstage advance ever firing. Fix: Save Changes now writes draft shipment fields to a separate `order_data.shipmentDraft` slot. The form repopulates from `shipmentDraft.*` (falling back to `shipped.*` for already-shipped orders, then the legacy HS fallbacks). Ship It still writes to `order_data.shipped` and clears the draft. HubSpot deal-property sync (freight_carrier / tracking_number / etc.) still happens on Save — only the dealstage advance was already gated and stays gated behind `markShipped`, which only Ship It sends.'},

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.37.9', date:'May 21, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Notification dropdown: light mode styling.** The shared `/assets/notif-bell.js` snippet had hardcoded dark colors that looked rough on the light theme — `#1a1a1a` panel on a white page, etc. Added `:root.light` overrides for the dropdown panel surfaces, text colors, card borders/backgrounds, links, and footer. Bell button + badge in the topbar stay dark since the topbars themselves stay dark in light mode.'},
+      ]
+    },
+    {
       v:'1.37.8', date:'May 21, 2026', tag:'log',
       changes:[
         {t:'log', d:'**DEVLOG bookkeeping.** Current focus reflects v1.37.7 on prod (Jeromy process-order trigger + REP_EMAILS sync). Staging clean.'},

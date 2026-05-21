@@ -12,7 +12,9 @@ Internal development notes. Last updated 2026-05-20.
 
 Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in the project's history. Five parallel workstreams plus a Shopify-API investigation that didn't ship code but informed the path forward. Full breakdown lives in the **May 20 session writeup** below.
 
-**On STAGING (NOT YET promoted to main):** nothing.
+**On STAGING (NOT YET promoted to main):**
+
+- **v1.37.9** (2026-05-21) — **Notification dropdown light mode.** Added `:root.light .wr-notif-*` overrides in `/assets/notif-bell.js` for panel surface (white), card borders/backgrounds, text colors, links, and footer. Topbar bell button + badge stay dark since the topbars themselves stay dark in light mode.
 
 **v1.37.5–1.37.7 promoted 2026-05-21.** Detail kept below for next-session pickup.
 
@@ -566,6 +568,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.37.9  | 2026-05-21 | **Notification dropdown light mode.** Added `:root.light .wr-notif-*` overrides in `/assets/notif-bell.js` for panel surface, card borders, text colors, links, footer. Topbar bell stays dark (topbars stay dark in light mode). |
 | 1.37.8  | 2026-05-21 | **DEVLOG bookkeeping** — Current focus updated post-promote; v1.37.7 now on prod, staging clean. |
 | 1.37.7  | 2026-05-21 | **Fix: synced `lib/notify.js` REP_EMAILS to the real login emails** (notify.js had stale `sarah@`/`jill@`/`travis@` placeholders; orders-dashboard.html had real `ssmith@`/`jholdway@`/`tsingleton@`). v1.37.4 session hydration uses notify.js so anyone other than Benton failed to resolve. All reps now hydrate correctly. |
 | 1.37.6  | 2026-05-21 | **New notification trigger:** every `/api/process-order` now notifies Jeromy with `📦 New Order — <deal>` and flag chips (`· RM` / `· CUST` / `· INTL`). |

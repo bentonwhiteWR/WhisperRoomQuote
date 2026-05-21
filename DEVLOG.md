@@ -12,7 +12,9 @@ Internal development notes. Last updated 2026-05-20.
 
 Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in the project's history. Five parallel workstreams plus a Shopify-API investigation that didn't ship code but informed the path forward. Full breakdown lives in the **May 20 session writeup** below.
 
-**On STAGING (NOT YET promoted to main):** nothing.
+**On STAGING (NOT YET promoted to main):**
+
+- **v1.37.6** (2026-05-21) — **New notification trigger: process-order → Jeromy.** Every successful process-order now notifies Jeromy (owner `38732186`) in-app. Title shows flag chips for RM / Custom Hole / International. He was previously only notified on after-the-fact addendum modifications; now he sees the order land the moment a rep processes it.
 
 <details>
 <summary>Just-shipped detail (v1.37.0–v1.37.4) — kept here for the next session pickup</summary>
@@ -560,6 +562,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.37.6  | 2026-05-21 | **New notification trigger:** every `/api/process-order` now notifies Jeromy with `📦 New Order — <deal>` and flag chips (`· RM` / `· CUST` / `· INTL`). |
 | 1.37.5  | 2026-05-21 | **DEVLOG bookkeeping** — Current focus updated post-promote; v1.37.4 now on prod, staging clean. |
 | 1.37.4  | 2026-05-21 | **Tax: auto-fallback to city/state-level rate when TaxJar rejects ZIP + Notification hydration via REP_EMAILS fallback.** TaxJar retries without `to_zip`/`to_street` on "to_zip X is not used" errors; client shows yellow banner. Session ownerId hydration falls back to reverse REP_EMAILS lookup when HubSpot Owners API misses (casing differences). |
 | 1.37.3  | 2026-05-21 | **Tax: TaxJar error detail surfaced + 0% nexus no longer silently hides.** `lib/taxjar.js` now prefers `res.body.detail` over `res.body.error` so the rep sees "Invalid ZIP code — please verify…" instead of generic "Bad Request". Client also stops hiding the tax result box when TaxJar returns 0/0 for a nexus state — shows yellow hint about adding city. |

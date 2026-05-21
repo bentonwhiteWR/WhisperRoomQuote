@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.37.6', date:'May 21, 2026', tag:'add',
+      changes:[
+        {t:'add', d:'**Notification: new "order processed" trigger for Jeromy.** Every successful `/api/process-order` now fires `createNotification(JEROMY_OWNER_ID, \'order-processed\', ...)`. Title carries flag chips (`· RM` / `· CUST` / `· INTL`) so he can spot long-lead-time or international orders at a glance. He was previously only notified on order-modified addendums (after the fact); now he sees the order the moment a rep processes it.'},
+      ]
+    },
+    {
       v:'1.37.5', date:'May 21, 2026', tag:'log',
       changes:[
         {t:'log', d:'**DEVLOG bookkeeping.** Current focus reflects v1.37.4 on prod (notification system + TaxJar ZIP fallback). Staging clean. v1.37.0–v1.37.4 session detail collapsed into a `<details>` block for the next session to skim.'},

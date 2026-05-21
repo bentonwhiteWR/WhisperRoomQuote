@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.37.10', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Notification bell came back from the dead.** The v1.37.9 light-mode CSS comment in `/assets/notif-bell.js` had literal backticks around `:root.light` — inside a JS template literal that holds the CSS string. The backticks terminated the template literal early, the rest of the file parsed as a syntax error, the script never ran, and the bell vanished from every page. Replaced the backticks with plain text in the comment. Lesson: don\'t put backticks inside a backtick-delimited template literal, even in CSS comments.'},
+      ]
+    },
+    {
       v:'1.37.9', date:'May 21, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Notification dropdown: light mode styling.** The shared `/assets/notif-bell.js` snippet had hardcoded dark colors that looked rough on the light theme — `#1a1a1a` panel on a white page, etc. Added `:root.light` overrides for the dropdown panel surfaces, text colors, card borders/backgrounds, links, and footer. Bell button + badge in the topbar stay dark since the topbars themselves stay dark in light mode.'},

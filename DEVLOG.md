@@ -14,6 +14,8 @@ Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in t
 
 **On STAGING (NOT YET promoted to main):**
 
+- **v1.37.10** (2026-05-21) — **Fix: notification bell disappeared after v1.37.9 light-mode push.** A CSS comment inside the JS template literal in `/assets/notif-bell.js` contained literal backticks around `:root.light` — those terminated the template literal early, the rest of the file became a syntax error, the script never executed, and the bell vanished from every page. Replaced the backticks with plain text. Lesson saved as a memo: no backticks inside template-literal CSS comments.
+
 - **v1.37.9** (2026-05-21) — **Notification dropdown light mode.** Added `:root.light .wr-notif-*` overrides in `/assets/notif-bell.js` for panel surface (white), card borders/backgrounds, text colors, links, and footer. Topbar bell button + badge stay dark since the topbars themselves stay dark in light mode.
 
 **v1.37.5–1.37.7 promoted 2026-05-21.** Detail kept below for next-session pickup.
@@ -568,6 +570,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.37.10 | 2026-05-21 | **Fix: bell came back from the dead.** v1.37.9 CSS comment had literal backticks inside a JS template literal — terminated the string early, script became a syntax error, bell vanished everywhere. Removed backticks from comment. |
 | 1.37.9  | 2026-05-21 | **Notification dropdown light mode.** Added `:root.light .wr-notif-*` overrides in `/assets/notif-bell.js` for panel surface, card borders, text colors, links, footer. Topbar bell stays dark (topbars stay dark in light mode). |
 | 1.37.8  | 2026-05-21 | **DEVLOG bookkeeping** — Current focus updated post-promote; v1.37.7 now on prod, staging clean. |
 | 1.37.7  | 2026-05-21 | **Fix: synced `lib/notify.js` REP_EMAILS to the real login emails** (notify.js had stale `sarah@`/`jill@`/`travis@` placeholders; orders-dashboard.html had real `ssmith@`/`jholdway@`/`tsingleton@`). v1.37.4 session hydration uses notify.js so anyone other than Benton failed to resolve. All reps now hydrate correctly. |

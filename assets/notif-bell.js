@@ -59,11 +59,10 @@
 .wr-notif-open-link { font-size:10px; color:#888; text-decoration:none; font-weight:600; padding:4px 0; }
 .wr-notif-open-link:hover { color:#ee6216; }
 .wr-notif-panel-footer { display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-top:1px solid #2a2a2a; flex-shrink:0; background:#161616; }
-/* Light mode overrides. Topbars in this app stay dark in light mode
-   (per the existing :root.light theme), so the bell button + badge
-   keep their dark-on-dark styling. Only the dropdown panel needs to
-   switch to a light surface. Class hook is `:root.light` which the
-   theme toggle sets on <html>. */
+/* Light mode overrides. Topbars in this app stay dark in light mode,
+   so the bell button + badge keep their dark-on-dark styling. Only
+   the dropdown panel needs to switch to a light surface. Class hook
+   is :root.light which the theme toggle sets on the html element. */
 :root.light .wr-notif-panel        { background:#ffffff; border-color:#e5e5e5; box-shadow:0 12px 36px rgba(0,0,0,.18); }
 :root.light .wr-notif-panel-header { border-bottom-color:#eee; }
 :root.light .wr-notif-panel-title  { color:#1a1a1a; }

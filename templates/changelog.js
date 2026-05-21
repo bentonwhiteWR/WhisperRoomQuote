@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.34.3', date:'May 21, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Audimute PO: hang tab pack row description now includes the quantity** — reads "16 WhisperRoom Velcro Hang Tab Packs" instead of just "WhisperRoom Velcro Hang Tab Packs". Quantity matches the Qty cell, just spelled out for Audimute\'s readability when scanning the line.'},
+      ]
+    },
+    {
       v:'1.34.2', date:'May 21, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Audimute PO: hang tab packs now render as a dedicated line item in the items table.** Item column = `AHDAC000482` (monospace bold), Qty column = total tab packs across all AP packages on the PO, Description = "WhisperRoom Velcro Hang Tab Packs". Color / Unit Cost / Total dashed since tabs are included in the AP package price (informational, not a billable extra). Pulled the SKU back out of the Panel Totals lower box — the items table is now the authoritative place for it. v1.34.1 put the SKU in the wrong spot; this is what Audimute actually asked for.'},

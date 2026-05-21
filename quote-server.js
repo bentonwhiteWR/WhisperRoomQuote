@@ -12302,7 +12302,7 @@ ${q.accepted ? `
         <tr>
           <td class="td-num">${grandTabs}</td>
           <td class="td-item" style="font-family:'SFMono-Regular',Menlo,Consolas,monospace;font-weight:700">AHDAC000482</td>
-          <td class="td-desc">WhisperRoom Velcro Hang Tab Packs</td>
+          <td class="td-desc">${grandTabs} WhisperRoom Velcro Hang Tab Packs</td>
           <td class="td-color">—</td>
           <td class="td-num">—</td>
           <td class="td-num">—</td>

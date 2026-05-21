@@ -8,11 +8,13 @@ Internal development notes. Last updated 2026-05-20.
 
 ## Current focus (2026-05-20 — Assembly Manual + Suppliers tab + Ship Calendar + email-reply logging all shipped)
 
-**Most recent shipped to PROD:** v1.34.3 — AP/Audimute email-flow tweaks (Jill auto-CC on AP orders, Benton CC on Audimute sends, auto-draft Audimute email after PO creation) + hang tab packs as Audimute PO line item with SKU `AHDAC000482`. Promoted 2026-05-21.
+**Most recent shipped to PROD:** v1.34.5 — Fix: Save Changes on orders dashboard was silently shipping orders. Draft shipment fields now persist to `order_data.shipmentDraft` instead of bleeding into `order_data.shipped`. Promoted 2026-05-21.
 
 Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in the project's history. Five parallel workstreams plus a Shopify-API investigation that didn't ship code but informed the path forward. Full breakdown lives in the **May 20 session writeup** below.
 
 **On STAGING (NOT YET promoted to main):**
+
+- **v1.34.6** (2026-05-21) — `/promote` skill no longer pauses for a yes/no confirmation. Per user preference — pre-flight already lists what's about to land, so the prompt was friction. Edited `.claude/commands/promote.md` to remove the "Confirm to proceed?" step. Other guardrails kept.
 
 - **v1.34.5** (2026-05-21) — **Bug fix: Save Changes on orders dashboard was silently shipping orders.** Typing a tracking number in the drawer + pressing Save Changes was merging `shipmentFields.tracking` into `order_data.shipped.tracking`. Since the board / calendar / Tracking tab all classify orders by `shipped.tracking && !shipped.unshipped`, the order jumped to Shipped without any of the Ship It side-effects (modal, email, dealstage advance) firing. Fix: server now writes draft shipment fields to a separate `order_data.shipmentDraft` slot when `shipped` isn't in the body; only Ship It (which sends the full `shipped` object) writes to `order_data.shipped`. Form re-populates from `shipmentDraft.*` for not-yet-shipped orders, falling back to `shipped.*` and the existing `_hs*` HS fallbacks.
 
@@ -541,6 +543,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.34.6  | 2026-05-21 | **Dev workflow: `/promote` runs without yes/no confirm.** Pre-flight already lists what's landing — the prompt was friction. Edited `.claude/commands/promote.md`. Other guardrails (working-tree-clean check, no force-push, halt on upstream divergence) kept. |
 | 1.34.5  | 2026-05-21 | **Fix: Save Changes was silently shipping orders.** Typing a tracking number + Save was merging `shipmentFields.tracking` into `order_data.shipped.tracking`, which is the field used for "is shipped" classification across the board / calendar / Tracking tab. Drafts now persist to a separate `order_data.shipmentDraft` slot; only Ship It (which sends the full `shipped` object) writes to `shipped`. Form repopulates from `shipmentDraft` → `shipped` → `_hs*` fallbacks. |
 | 1.34.4  | 2026-05-21 | **DEVLOG bookkeeping** — Current focus updated post-promote; v1.34.3 now on prod, staging clean. Closed Lost search-recovery design queued for next session. |
 | 1.34.3  | 2026-05-21 | **Audimute PO: hang tab pack row description now includes the qty** — "16 WhisperRoom Velcro Hang Tab Packs" instead of just the noun phrase. Mirrors the Qty cell, easier to scan. |

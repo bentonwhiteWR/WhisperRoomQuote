@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.34.6', date:'May 21, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**Dev workflow: `/promote` no longer pauses for a confirmation prompt.** Per user preference — the pre-flight already lists what\'s about to land on main, which is enough context. Skill now runs the merge dance directly after stating the commits + proposed merge message. Edited `.claude/commands/promote.md` to remove the "Confirm to proceed?" step. Other guardrails (working-tree-clean check, never force-push to main, halt on upstream divergence) all preserved.'},
+      ]
+    },
+    {
       v:'1.34.5', date:'May 21, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Orders dashboard: Save Changes no longer silently ships the order.** Bug: typing a tracking number in the drawer + pressing Save Changes was merging `shipmentFields.tracking` into `order_data.shipped.tracking` on the server — which is the field the board, calendar, and Tracking tab all read to classify an order as Shipped. So the order moved to the Shipped column without the Ship It modal, email draft, or HubSpot dealstage advance ever firing. Fix: Save Changes now writes draft shipment fields to a separate `order_data.shipmentDraft` slot. The form repopulates from `shipmentDraft.*` (falling back to `shipped.*` for already-shipped orders, then the legacy HS fallbacks). Ship It still writes to `order_data.shipped` and clears the draft. HubSpot deal-property sync (freight_carrier / tracking_number / etc.) still happens on Save — only the dealstage advance was already gated and stays gated behind `markShipped`, which only Ship It sends.'},

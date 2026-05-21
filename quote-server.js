@@ -11926,21 +11926,35 @@ ${q.accepted ? `
       }
 
       // 3. Build updated order data
-      // Merge shipmentFields into the shipped object for persistence
-      // This lets Save persist carrier/tracking/etc. without triggering Ship It logic
-      let mergedShipped = currentOrderData.shipped || null;
-      if (shipmentFields) {
-        mergedShipped = {
-          ...(mergedShipped || {}),
-          ...(shipmentFields.carrier   ? { carrier:     shipmentFields.carrier }             : {}),
-          ...(shipmentFields.tracking  ? { tracking:    shipmentFields.tracking }            : {}),
-          ...(shipmentFields.date      ? { date:        shipmentFields.date }                : {}),
-          ...(shipmentFields.pallets   !== undefined ? { pallets: parseInt(shipmentFields.pallets)||0 } : {}),
-          ...(shipmentFields.boxes     !== undefined ? { boxes:   parseInt(shipmentFields.boxes)||0 }   : {}),
-          ...(shipmentFields.hardwareBox !== undefined ? { hardwareBox: shipmentFields.hardwareBox }    : {}),
+      // Save Changes sends `shipmentFields` (draft carrier/tracking/etc.
+      // typed before pressing Ship It). Persist those to a separate
+      // `shipmentDraft` slot so they survive a page reload, but do NOT
+      // write them into `shipped` — that object is the source of truth
+      // for "this order is shipped" classification on the board, the
+      // calendar, and the Tracking tab. Previously this merge bled
+      // shipmentFields.tracking into shipped.tracking on every Save with
+      // a tracking value typed, silently flipping the order to Shipped
+      // status without the rep ever pressing Ship It. (v1.34.5 fix.)
+      let mergedShipped       = currentOrderData.shipped || null;
+      let mergedShipmentDraft = currentOrderData.shipmentDraft || null;
+      if (shipmentFields && shipped === undefined) {
+        // Save Changes path — stash as draft only.
+        mergedShipmentDraft = {
+          ...(mergedShipmentDraft || {}),
+          ...(shipmentFields.carrier     !== undefined ? { carrier:     shipmentFields.carrier }   : {}),
+          ...(shipmentFields.tracking    !== undefined ? { tracking:    shipmentFields.tracking }  : {}),
+          ...(shipmentFields.date        !== undefined ? { date:        shipmentFields.date }      : {}),
+          ...(shipmentFields.pallets     !== undefined ? { pallets:     parseInt(shipmentFields.pallets)||0 } : {}),
+          ...(shipmentFields.boxes       !== undefined ? { boxes:       parseInt(shipmentFields.boxes)||0 }   : {}),
+          ...(shipmentFields.hardwareBox !== undefined ? { hardwareBox: shipmentFields.hardwareBox } : {}),
         };
       }
-      if (shipped !== undefined) mergedShipped = shipped; // Ship It overrides everything
+      if (shipped !== undefined) {
+        // Ship It path — promote to actual shipment, clear the draft so
+        // the form re-populates from `shipped` after a reload.
+        mergedShipped       = shipped;
+        mergedShipmentDraft = null;
+      }
 
       const updatedOrderData = {
         ...currentOrderData,
@@ -11952,6 +11966,7 @@ ${q.accepted ? `
         productionNotes:  productionNotes  !== undefined ? productionNotes  : currentOrderData.productionNotes,
         deliveryNotes:    deliveryNotes    !== undefined ? deliveryNotes    : currentOrderData.deliveryNotes,
         shipped:          mergedShipped,
+        shipmentDraft:    mergedShipmentDraft,
         freightCost:      freightCost      !== undefined ? freightCost      : currentOrderData.freightCost,
         freightRef:       freightRef       !== undefined ? freightRef       : currentOrderData.freightRef,
         shipEmailTo:      shipEmailTo      !== undefined ? shipEmailTo      : currentOrderData.shipEmailTo,

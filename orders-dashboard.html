@@ -1927,18 +1927,30 @@ function openDrawer(quoteNumber) {
   document.getElementById('editProductionNotes').value = od.productionNotes || '';
   document.getElementById('editDeliveryNotes').value   = od.deliveryNotes   || '';
 
-  const shipped = od.shipped || {};
+  const shipped       = od.shipped       || {};
+  const shipmentDraft = od.shipmentDraft || {};
   const isShipped = !!(shipped.tracking && !shipped.unshipped);
-  // For HS-only orders, pre-populate shipment fields from HubSpot data (_hs* fields)
-  // without marking the order as shipped
-  document.getElementById('editCarrier').value      = shipped.carrier      || od._hsCarrier    || '';
-  document.getElementById('editTracking').value     = shipped.tracking     || od._hsTracking   || '';
-  document.getElementById('editPallets').value      = shipped.pallets      || od._hsPallets    || '';
-  document.getElementById('editBoxes').value        = shipped.boxes        || od._hsBoxes      || '';
-  document.getElementById('editHardwareBox').value  = shipped.hardwareBox  || od._hsHardwareBox|| '';
-  document.getElementById('editShipDate').value = shipped.date
-    ? new Date(shipped.date).toISOString().split('T')[0]
-    : (od._hsDate ? new Date(od._hsDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+  // Source priority for the shipment form fields:
+  //   1. `shipped.*` when the order is currently shipped (source of truth)
+  //   2. `shipmentDraft.*` — what the rep most recently typed + Saved
+  //      without pressing Ship It (added v1.34.5)
+  //   3. `shipped.*` even if unshipped — stale shipment data so re-ship
+  //      flows don't lose context
+  //   4. `_hs*` — legacy HubSpot-property fallback for HS-only orders
+  const pickShip = (key, hsKey) => {
+    if (isShipped) return shipped[key] || od[hsKey] || '';
+    return shipmentDraft[key] || shipped[key] || od[hsKey] || '';
+  };
+  document.getElementById('editCarrier').value      = pickShip('carrier',     '_hsCarrier');
+  document.getElementById('editTracking').value     = pickShip('tracking',    '_hsTracking');
+  document.getElementById('editPallets').value      = pickShip('pallets',     '_hsPallets');
+  document.getElementById('editBoxes').value        = pickShip('boxes',       '_hsBoxes');
+  document.getElementById('editHardwareBox').value  = pickShip('hardwareBox', '_hsHardwareBox');
+  const _draftDate = !isShipped ? shipmentDraft.date : null;
+  const _shipDate  = _draftDate || shipped.date || od._hsDate;
+  document.getElementById('editShipDate').value = _shipDate
+    ? new Date(_shipDate).toISOString().split('T')[0]
+    : new Date().toISOString().split('T')[0];
   document.getElementById('editFreightCost').value = od.freightCost || '';
   setFreightRef(od.freightRef || null);
 

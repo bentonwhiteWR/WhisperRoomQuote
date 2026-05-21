@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.34.4', date:'May 21, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**DEVLOG bookkeeping.** Current focus updated post-promote — v1.34.3 is now on prod (AP/Audimute email-flow tweaks + hang tab packs as Audimute PO line item). Staging clean. Captured the Closed Lost search-recovery UX in the "Queued / discussed" section for next session.'},
+      ]
+    },
+    {
       v:'1.34.3', date:'May 21, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Audimute PO: hang tab pack row description now includes the quantity** — reads "16 WhisperRoom Velcro Hang Tab Packs" instead of just "WhisperRoom Velcro Hang Tab Packs". Quantity matches the Qty cell, just spelled out for Audimute\'s readability when scanning the line.'},

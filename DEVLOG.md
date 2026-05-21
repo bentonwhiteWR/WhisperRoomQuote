@@ -8,19 +8,15 @@ Internal development notes. Last updated 2026-05-20.
 
 ## Current focus (2026-05-20 — Assembly Manual + Suppliers tab + Ship Calendar + email-reply logging all shipped)
 
-**Most recent shipped to PROD:** v1.33.1 — Modify Order line items inline + Own Shipping toggle + T&C cleanup + process-order PDF upsert + global logo redirect. Promoted 2026-05-21.
+**Most recent shipped to PROD:** v1.34.3 — AP/Audimute email-flow tweaks (Jill auto-CC on AP orders, Benton CC on Audimute sends, auto-draft Audimute email after PO creation) + hang tab packs as Audimute PO line item with SKU `AHDAC000482`. Promoted 2026-05-21.
 
 Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in the project's history. Five parallel workstreams plus a Shopify-API investigation that didn't ship code but informed the path forward. Full breakdown lives in the **May 20 session writeup** below.
 
-**On STAGING (NOT YET promoted to main):**
+**On STAGING (NOT YET promoted to main):** nothing.
 
-- **v1.34.3** (2026-05-21) — Audimute PO hang tab pack row description now includes the quantity ("16 WhisperRoom Velcro Hang Tab Packs"). Tiny readability tweak on top of v1.34.2.
+**Queued / discussed but not yet built:**
 
-- **v1.34.2** (2026-05-21) — Audimute PO: hang tab packs moved into the items table as a dedicated row. Qty = `grandTabs`, Item = `AHDAC000482` (monospace bold), Description = "WhisperRoom Velcro Hang Tab Packs", Color/Unit Cost/Total dashed. Pulled the SKU back out of the Panel Totals lower box since the items table is now the authoritative place for it. (v1.34.1 was a misread of the user's request.)
-
-- **v1.34.1** (2026-05-21) — *Superseded by v1.34.2.* Added SKU to the Panel Totals lower box's grand-total row.
-
-- **v1.34.0** (2026-05-21) — AP / Audimute email-flow tweaks. Three pieces: (a) Process Order shipping email (the `shipping@whisperroom.com` mailto built in quote-builder.html after `/api/process-order` returns) auto-CCs `jholdway@whisperroom.com` when the order has an AP item or AP color — Jill handles the Audimute step downstream and was previously not on the loop. (b) Suppliers-dashboard "Send" button (`sendPoEmail`) auto-CCs `bentonwhite@whisperroom.com` for paper trail. (c) Deal Hub `submitApPoModal` create flow auto-opens the Audimute mailto draft right after the PO is created — new helper `_openAudimutePoDraft` builds the same subject/body/CC as the suppliers-dashboard Send button. Does NOT mark the PO as sent (only the actual Send click from suppliers dashboard PATCHes `sent_at`). **Awaiting user test.**
+- **Closed Lost recovery via search.** Deal Hub search currently filters the loaded board (which excludes `closedlost`), so a misclassified deal vanishes entirely. Proposed UX: when client-side search yields zero matches and the query is ≥3 chars, fire a server-side HubSpot lookup scoped to `dealstage = closedlost`; if hits come back, show a banner under the search input ("Not on the board, but found 2 in Closed Lost matching 'jill smith' [Show on board →]"). Clicking injects them into a temporary "Closed Lost (search)" column at the far right of the board, which disappears when search is cleared. Needs new `GET /api/deals/search-closedlost?q=...` endpoint plus banner + on-demand column injection on the client. ~30 lines backend + ~80 lines frontend.
 
 **Open follow-ups from today (in priority order):**
 
@@ -543,6 +539,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.34.4  | 2026-05-21 | **DEVLOG bookkeeping** — Current focus updated post-promote; v1.34.3 now on prod, staging clean. Closed Lost search-recovery design queued for next session. |
 | 1.34.3  | 2026-05-21 | **Audimute PO: hang tab pack row description now includes the qty** — "16 WhisperRoom Velcro Hang Tab Packs" instead of just the noun phrase. Mirrors the Qty cell, easier to scan. |
 | 1.34.2  | 2026-05-21 | **Audimute PO: hang tab packs now a proper line item.** Added a row at the bottom of the items table with Qty = `grandTabs`, Item = `AHDAC000482` (monospace bold), Description = "WhisperRoom Velcro Hang Tab Packs", Color/Unit Cost/Total dashed (included in AP package price). Pulled the SKU back out of the Panel Totals lower box (v1.34.1 placement was misread of the request). |
 | 1.34.1  | 2026-05-21 | **Audimute PO: SKU `AHDAC000482` added to the grand-total "Total WhisperRoom Velcro Hang Tab Packs" row** in the Panel Totals section of `/po/:poNumber`. Per Audimute's request. Monospace + muted color so it reads as a SKU. |

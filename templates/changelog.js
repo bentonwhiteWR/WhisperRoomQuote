@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.37.3', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Tax calculation: surface TaxJar\'s actual error message instead of "Bad Request".** When TaxJar rejects an address (e.g. ZIP `33104` returned `"to_zip 33104 is not used within to_state FL"`), `lib/taxjar.js` was throwing away the explanation and only returning `res.body.error` which is just the HTTP status text ("Bad Request"). Swapped to prefer `res.body.detail` so the rep-facing error translation regex (which looks for `/zip|postal/i`) now catches it and shows the friendly "Invalid ZIP code — please verify the ship-to ZIP and try again." instead of a generic failure.'},
+        {t:'fix', d:'**Tax: in-nexus but 0% TaxJar result no longer silently hides the result box.** Previously `renderTaxResult()` early-returned if both `rate` and `tax` were 0, so the rep saw nothing on the page and assumed the button didn\'t work. Now it shows a yellow warning: "TaxJar returned 0% for FL on this address — add the ship-to city and re-run (some ZIPs need a city to disambiguate). Or enter tax manually below." Truly empty state (no fetch yet) still hides as before.'},
+      ]
+    },
+    {
       v:'1.37.2', date:'May 21, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Notifications: auto-heal sessions that have a NULL ownerId.** Sessions created before the owner_id login mapping (or where the HubSpot Owners API was rate-limited at login) had `session.ownerId = null`, which made `/api/notifications` return an empty list even though notifications were correctly being inserted for that rep\'s HubSpot owner_id. Now the notification endpoints lazy-hydrate the session: on the first hit with a missing ownerId, do a one-shot HubSpot Owners lookup by `session.email`, stamp the result onto both the in-memory cache and the DB sessions row, and continue. No more logout/login dance.'},

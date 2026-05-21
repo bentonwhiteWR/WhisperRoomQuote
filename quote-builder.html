@@ -2872,7 +2872,8 @@ function getTaxAmount() {
 function renderTaxResult() {
   const el = document.getElementById('taxResult');
   if (!el) return;
-  if (!taxData || (!taxData.rate && !taxData.tax)) {
+  // Truly empty result (no fetch yet, or cleared) — hide the box.
+  if (!taxData) {
     el.classList.remove('visible');
     el.innerHTML = '';
     return;
@@ -2884,6 +2885,20 @@ function renderTaxResult() {
   }
   if (taxData.inNexus === false) {
     el.innerHTML = `<span style="color:var(--muted)">No tax nexus — tax not applicable.</span>`;
+    el.classList.add('visible');
+    return;
+  }
+  // In-nexus but TaxJar returned 0 / 0. Used to silently hide the
+  // box here; that left the rep thinking the button did nothing.
+  // Surface the result with guidance — most often the ZIP needs a
+  // city to disambiguate (Miami-Dade business-only ZIPs, etc.).
+  if ((!taxData.rate || taxData.rate === 0) && (!taxData.tax || taxData.tax === 0)) {
+    const stateLbl = (document.getElementById('shipState')?.value || '').trim().toUpperCase() || 'this state';
+    const cityLbl  = (document.getElementById('shipCity')?.value  || '').trim();
+    const hint = cityLbl
+      ? 'Verify the ZIP — some sub-jurisdictions need a different ZIP to decode. Or enter tax manually below.'
+      : 'Add the ship-to <strong>city</strong> and re-run — some ZIPs (e.g. Miami-Dade business-only) need a city to disambiguate. Or enter tax manually below.';
+    el.innerHTML = `<span style="color:var(--yellow)">⚠ TaxJar returned <strong>0%</strong> for ${stateLbl} on this address. ${hint}</span>`;
     el.classList.add('visible');
     return;
   }

@@ -3490,27 +3490,6 @@ const submitCreateApPo = submitApPoModal;
     <!-- Status warning (edit mode, status >= sent) -->
     <div id="apPoStatusWarning" style="display:none;padding:10px 14px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;margin-bottom:14px;font-size:12px;color:#f59e0b;line-height:1.5"></div>
 
-    <!-- Additional Charges (freight, brokerage, etc.) — pinned to the
-         top of the modal because it's the most common edit reason for
-         already-created POs (Canadian drop-ships, etc.) and was easy
-         to miss when buried under the items list. -->
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px">
-      <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Additional Charges</div>
-      <div style="display:grid;grid-template-columns:120px 1fr;gap:10px;align-items:start">
-        <div>
-          <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px">Freight ($)</label>
-          <input type="number" id="apPoFreightAmount" placeholder="0.00" min="0" step="0.01"
-            style="width:100%;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:var(--mono);outline:none;box-sizing:border-box">
-        </div>
-        <div>
-          <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px">Description (optional)</label>
-          <input type="text" id="apPoFreightDescription" placeholder="e.g. Drop-ship to Canada, customs brokerage included"
-            style="width:100%;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;box-sizing:border-box">
-        </div>
-      </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">Adds a Freight line to the PO totals when saved. Leave empty (or set to 0) to clear.</div>
-    </div>
-
     <!-- Ship-To (editable) -->
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Ship-To Address — verify before submitting</div>
@@ -3555,6 +3534,27 @@ const submitCreateApPo = submitApPoModal;
     <div style="margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Acoustic Package items — pick a color for each</div>
       <div id="apPoItemsList"></div>
+    </div>
+
+    <!-- Additional Charges (freight, brokerage, etc.) — added as its
+         own line on the PO. Lives right above Notes per user request:
+         the most common edit reason for already-created POs is to add
+         freight for Canadian drop-ships. -->
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Additional Charges</div>
+      <div style="display:grid;grid-template-columns:120px 1fr;gap:10px;align-items:start">
+        <div>
+          <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px">Freight ($)</label>
+          <input type="number" id="apPoFreightAmount" placeholder="0.00" min="0" step="0.01"
+            style="width:100%;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:var(--mono);outline:none;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px">Description (optional)</label>
+          <input type="text" id="apPoFreightDescription" placeholder="e.g. Drop-ship to Canada, customs brokerage included"
+            style="width:100%;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;box-sizing:border-box">
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">Adds a Freight line to the PO totals when saved. Leave empty (or set to 0) to clear.</div>
     </div>
 
     <div style="margin-bottom:20px">

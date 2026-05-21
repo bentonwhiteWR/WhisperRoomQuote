@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.36.2', date:'May 21, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**AP PO Edit modal: Additional Charges section moved to sit directly above Notes** (per user request). v1.36.0 had pinned it to the top of the modal under the title; user wanted it adjacent to Notes since both are PO-line additions. Same fields (Freight $ + Description), same `po_data.freight = {amount, description}` schema.'},
+      ]
+    },
+    {
       v:'1.36.1', date:'May 21, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Closed Lost column now squeezes in next to Shipped instead of wrapping to a new row.** The board grid was hard-coded to `repeat(4, minmax(170px, 1fr))` so the 5th column had nowhere to go. Added a `.board.show-closedlost` modifier that switches to `repeat(5, minmax(140px, 1fr))` — the four existing columns shrink ~17% and Closed Lost slots in on the right. Mobile (≤480px) was already a vertical stack, so nothing changes there.'},

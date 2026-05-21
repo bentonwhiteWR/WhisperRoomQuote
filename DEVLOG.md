@@ -14,6 +14,8 @@ Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in t
 
 **On STAGING (NOT YET promoted to main):**
 
+- **v1.36.2** (2026-05-21) — **AP PO modal: Additional Charges section moved to sit directly above Notes** (per user request). v1.36.0 had pinned it at the top under the title; user wanted it adjacent to Notes since both are PO-line additions.
+
 - **v1.36.1** (2026-05-21) — **Closed Lost squeezes in beside Shipped instead of wrapping below.** Board grid was hard-coded to 4 columns; added a `.board.show-closedlost` modifier that switches to `repeat(5, minmax(140px, 1fr))` when the column is toggled on. Other columns shrink slightly to fit.
 
 - **v1.36.0** (2026-05-21) — **Closed Lost is a hideable column now (not a search banner) + AP PO freight section moved to the top of the modal.** (1) Replaced v1.35.0's banner + temp-column UX with a toolbar toggle button "○ Closed Lost". Off by default; click to reveal the column at the far right (populated with 100 most recent closedlost deals + any search probe matches). Button glows orange when a search has matches only in Closed Lost (none on the active board). Reuses the existing `/api/deals/search-closedlost` probe for the glow signal + the column data when searching. Pulls recent column data from `/api/deals/list?stage=closedlost&limit=100` (cached after first toggle-on). (2) AP PO modal: freight inputs moved out of the bottom (where they were "nothing showing first off" per the user) into a dedicated "Additional Charges" card right under the title. Same `po_data.freight = {amount, description}` schema.
@@ -549,6 +551,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.36.2  | 2026-05-21 | **AP PO modal: Additional Charges section moved above Notes** (per user spec — v1.36.0 had it at the top, user wanted it adjacent to Notes). |
 | 1.36.1  | 2026-05-21 | **Closed Lost column squeezes in next to Shipped instead of wrapping below.** Board grid was hard-coded to 4 columns; new `.board.show-closedlost` modifier switches to `repeat(5, minmax(140px, 1fr))`. |
 | 1.36.0  | 2026-05-21 | **Closed Lost = hideable toolbar-toggled column (replaces v1.35.0 banner) + AP PO freight section pinned to top of modal.** Closed Lost column off by default; toggle button glows orange when search matches only Closed Lost. AP PO freight inputs moved into a dedicated "Additional Charges" card at the top of the modal (was buried below items). |
 | 1.35.1  | 2026-05-21 | **AP PO freight field.** `po_data.freight = {amount, description}`. New inputs in the create + edit modal. `/po/:poNumber` renders Subtotal + Freight rows when set. Auto-draft Audimute email includes the freight line. Change log diff tracks add/remove/change events. Use case: Canadian POs where Audimute ships the package and bills WR for the leg. |

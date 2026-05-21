@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.35.0', date:'May 21, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Closed Lost recovery via Deal Hub search.** Deal Hub board still excludes `closedlost` from its default columns (zero noise), but typing in the search bar now ALSO probes Closed Lost server-side. If hits come back, a banner appears under the search box: "🔍 Not on the board, but found 2 deal(s) in Closed Lost matching \'jill smith\' [Show on board →]". Clicking the button injects those deals as a temporary "Closed Lost (search)" column at the far right of the board with muted styling — disappears when search is cleared. Solves the Jill-misclassification case where a deal accidentally sent to Closed Lost vanishes entirely from view with no way to recover it. New endpoint: `GET /api/deals/search-closedlost?q=...` — HubSpot search filtered to `dealstage=closedlost` + DB-by-quote/contact lookup, capped at 20 results, gated at ≥3 chars.'},
+      ]
+    },
+    {
       v:'1.34.6', date:'May 21, 2026', tag:'log',
       changes:[
         {t:'log', d:'**Dev workflow: `/promote` no longer pauses for a confirmation prompt.** Per user preference — the pre-flight already lists what\'s about to land on main, which is enough context. Skill now runs the merge dance directly after stating the commits + proposed merge message. Edited `.claude/commands/promote.md` to remove the "Confirm to proceed?" step. Other guardrails (working-tree-clean check, never force-push to main, halt on upstream divergence) all preserved.'},

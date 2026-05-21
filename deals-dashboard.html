@@ -385,6 +385,10 @@ select option { background: var(--surface); color: var(--text); }
         ○ HubSpot Only
       </button>
     </div>
+    <div id="closedLostBanner" style="display:none;margin:0 0 10px;padding:9px 14px;background:rgba(85,85,85,.15);border:1px solid rgba(255,255,255,.12);border-left:3px solid #888;border-radius:7px;font-size:12px;color:var(--text);align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <span id="closedLostBannerText">—</span>
+      <button id="closedLostBannerBtn" onclick="showClosedLostColumn()" style="padding:5px 12px;background:rgba(255,255,255,.08);color:var(--text);border:1px solid rgba(255,255,255,.18);border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.03em">Show on board →</button>
+    </div>
     <div class="board" id="board">
       <div style="padding:40px;text-align:center;color:var(--muted);grid-column:1/-1">Loading deals…</div>
     </div>
@@ -429,6 +433,12 @@ const PIPE_BG = {
 
 let allDeals=[], filteredDeals=[], currentDealId=null, searchTimeout=null, currentRepFilter='';
 let hideUnintegrated = false;
+// Closed Lost search-recovery state. closedLostHits holds the latest
+// /api/deals/search-closedlost response; closedLostShown gates whether
+// the temp column is currently rendered (rep clicked "Show on board").
+// Both are reset whenever the search box is cleared or the query changes.
+let closedLostHits = [], closedLostShown = false, closedLostQuery = '';
+let _closedLostAbort = null, _closedLostTimer = null;
 
 const fmt = n => '$'+parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
 const fmtAge = d => {
@@ -587,6 +597,49 @@ function renderBoard() {
     colEl.appendChild(cardsEl);
     board.appendChild(colEl);
   });
+  // Temporary "Closed Lost (search)" column — only rendered when the rep
+  // has clicked "Show on board →" on the recovery banner. Lives at the
+  // far right of the board with muted styling so it reads as off-pipeline
+  // search results, not a real pipeline stage. Cards use the same shape
+  // as the regular columns but skip integration chips since Closed Lost
+  // deals don't carry meaningful payment/AP state.
+  if (closedLostShown && closedLostHits.length > 0) {
+    const colEl = document.createElement('div');
+    colEl.className = 'col col-closedlost';
+    colEl.style.opacity = '0.85';
+    const colTotal = closedLostHits.reduce((s,d) => s + (parseFloat(d.amount)||0), 0);
+    const colTotalFmt = '$' + Math.round(colTotal).toLocaleString('en-US');
+    colEl.innerHTML = `<div class="col-header" style="background:rgba(85,85,85,.2);border-bottom:2px solid #666">
+      <div class="col-header-top">
+        <span class="col-title" style="color:#aaa">Closed Lost <span style="font-weight:400;opacity:.7">(search)</span></span>
+        <span class="col-count" style="background:rgba(255,255,255,.1);color:#aaa">${closedLostHits.length}</span>
+      </div>
+      ${closedLostHits.length?`<div class="col-total" style="color:#888">${colTotalFmt}</div>`:''}
+    </div>`;
+    const cardsEl = document.createElement('div');
+    cardsEl.className = 'col-cards';
+    closedLostHits.forEach(d => {
+      const card = document.createElement('div');
+      card.className = 'deal-card' + (d.id===currentDealId?' active':'');
+      card.style.opacity = '0.85';
+      card.style.borderLeft = '2px solid #666';
+      card.onclick = () => openDeal(d.id);
+      card.innerHTML = `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px">
+          <div class="card-name" style="flex:1">${(d.name||'—').replace(/</g,'&lt;')}</div>
+        </div>
+        <div class="card-meta">
+          ${d.amount&&parseFloat(d.amount)>0?`<span class="card-amount">${fmt(d.amount)}</span>`:''}
+          <span class="card-rep">${REPS[d.ownerId]||'—'}</span>
+          <span class="card-age">${fmtAge(d.modified)}</span>
+        </div>
+        ${d.latestQuote?`<div class="card-quote">${d.latestQuote}</div>`:''}
+      `;
+      cardsEl.appendChild(card);
+    });
+    colEl.appendChild(cardsEl);
+    board.appendChild(colEl);
+  }
   document.getElementById('boardCount').textContent=`${total} deals`;
 }
 
@@ -1392,15 +1445,94 @@ async function doStageOverride(stage,label) {
 }
 function onSearch() {
   clearTimeout(searchTimeout);
+  clearTimeout(_closedLostTimer);
   const q = document.getElementById('dealSearch').value.trim();
   if (q.length === 0) {
-    // Back to cached deals
+    // Back to cached deals + tear down any Closed Lost recovery state.
     filteredDeals = [...allDeals];
+    clearClosedLostState();
     renderBoard();
   } else if (q.length >= 2) {
-    // Live HubSpot search for full history
+    // Query changed — invalidate any prior Closed Lost hit so the column
+    // doesn't show stale results for a different search.
+    if (q !== closedLostQuery) {
+      closedLostHits = [];
+      closedLostShown = false;
+      hideClosedLostBanner();
+    }
+    // Live HubSpot search for full history (active stages).
     searchTimeout = setTimeout(() => searchAllDeals(q), 300);
+    // Closed Lost probe runs in parallel after a slightly longer delay
+    // (400ms) so it doesn't fire on every keystroke. Gated at ≥3 chars
+    // server-side; gated again here to skip the round-trip on short
+    // queries.
+    if (q.length >= 3) {
+      _closedLostTimer = setTimeout(() => probeClosedLost(q), 400);
+    }
   }
+}
+
+// Fire the Closed Lost recovery probe. Updates closedLostHits + the
+// banner; the temp column only renders after the rep clicks "Show on
+// board" (showClosedLostColumn).
+async function probeClosedLost(q) {
+  if (_closedLostAbort) _closedLostAbort.abort();
+  _closedLostAbort = new AbortController();
+  const signal = _closedLostAbort.signal;
+  try {
+    const res = await fetch('/api/deals/search-closedlost?q=' + encodeURIComponent(q), { credentials: 'include', signal });
+    const data = await res.json();
+    if (signal.aborted) return;
+    if (data.error) return;
+    closedLostHits  = data.deals || [];
+    closedLostQuery = q;
+    if (closedLostHits.length > 0) {
+      showClosedLostBanner(closedLostHits.length, q);
+      // If the user previously clicked Show on board, re-render so the
+      // column reflects the new query's hits.
+      if (closedLostShown) renderBoard();
+    } else {
+      hideClosedLostBanner();
+      if (closedLostShown) { closedLostShown = false; renderBoard(); }
+    }
+  } catch(e) {
+    if (e.name === 'AbortError') return;
+    // Silent fail — recovery is a nice-to-have, not a blocker.
+  }
+}
+
+function showClosedLostBanner(n, q) {
+  const banner = document.getElementById('closedLostBanner');
+  const text   = document.getElementById('closedLostBannerText');
+  const btn    = document.getElementById('closedLostBannerBtn');
+  if (!banner || !text || !btn) return;
+  text.textContent = closedLostShown
+    ? `Showing ${n} deal${n===1?'':'s'} from Closed Lost matching "${q}"`
+    : `🔍 Not on the board, but found ${n} deal${n===1?'':'s'} in Closed Lost matching "${q}"`;
+  btn.textContent = closedLostShown ? 'Hide' : 'Show on board →';
+  banner.style.display = 'flex';
+}
+
+function hideClosedLostBanner() {
+  const banner = document.getElementById('closedLostBanner');
+  if (banner) banner.style.display = 'none';
+}
+
+function showClosedLostColumn() {
+  closedLostShown = !closedLostShown;
+  if (closedLostHits.length > 0) {
+    showClosedLostBanner(closedLostHits.length, closedLostQuery);
+  }
+  renderBoard();
+}
+
+function clearClosedLostState() {
+  if (_closedLostAbort) _closedLostAbort.abort();
+  clearTimeout(_closedLostTimer);
+  closedLostHits  = [];
+  closedLostShown = false;
+  closedLostQuery = '';
+  hideClosedLostBanner();
 }
 
 let _searchAllDealsAbort = null;

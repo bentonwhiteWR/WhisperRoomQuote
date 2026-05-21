@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.36.1', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Closed Lost column now squeezes in next to Shipped instead of wrapping to a new row.** The board grid was hard-coded to `repeat(4, minmax(170px, 1fr))` so the 5th column had nowhere to go. Added a `.board.show-closedlost` modifier that switches to `repeat(5, minmax(140px, 1fr))` — the four existing columns shrink ~17% and Closed Lost slots in on the right. Mobile (≤480px) was already a vertical stack, so nothing changes there.'},
+      ]
+    },
+    {
       v:'1.36.0', date:'May 21, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Closed Lost is now a proper hideable column.** New "○ Closed Lost" toggle button in the Deal Hub toolbar (next to "HubSpot Only"). Off by default — board stays clean. Click to reveal the column at the far right, populated with the 100 most recent Closed Lost deals. The button **glows orange** when you type a search and the only matches live in Closed Lost (none on the active board) — visual cue that the deal you\'re looking for is over there, click to reveal. Replaces the v1.35.0 banner + temp-column UX, which was confusing.'},

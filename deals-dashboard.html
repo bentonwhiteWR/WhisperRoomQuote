@@ -42,6 +42,11 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .rep-select { padding:7px 10px; background:var(--surface2); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:12px; font-family:inherit; outline:none; cursor:pointer; }
 .board-count { font-size:11px; color:var(--muted); margin-left:auto; }
 .board { flex:1; display:grid; grid-template-columns:repeat(4,minmax(170px,1fr)); gap:0; overflow-x:auto; overflow-y:hidden; }
+/* When Closed Lost is toggled on, fit 5 columns side-by-side instead
+   of letting the extra one wrap to a new row. Drop the per-column min
+   from 170 to 140 so they squeeze rather than triggering horizontal
+   scroll on common screens. */
+.board.show-closedlost { grid-template-columns:repeat(5,minmax(140px,1fr)); }
 .col { display:flex; flex-direction:column; border-right:1px solid var(--border); overflow:hidden; }
 .col:last-child { border-right:none; }
 .col-header { padding:10px 12px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:3px; flex-shrink:0; }
@@ -526,6 +531,7 @@ function renderBoard() {
     COLUMNS.forEach((c, i) => { window._colCollapseState[c.key] = i !== 0; });
   }
   board.innerHTML='';
+  board.classList.toggle('show-closedlost', closedLostVisible);
   let total=0;
   COLUMNS.forEach(col => {
     const deals=filteredDeals.filter(d=>col.stages.includes(d.stage))

@@ -13705,6 +13705,29 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
 
       console.log(`Order processed: ${quoteNumber}, deal ${dealId} → closedwon`);
       writelog('info', 'order.processed', `Order processed: ${quoteNumber} — ${dealName || '—'}`, { rep: String(ownerId || ''), quoteNum: quoteNumber, dealId: String(dealId || ''), dealName: dealName || null });
+
+      // Notify Jeromy on every process-order — he owns production /
+      // shipping prep and was previously only notified on order-modified
+      // (after-the-fact addendums). Now he sees the order land in his
+      // bell the moment a rep processes it.
+      try {
+        const JEROMY_OWNER_ID = '38732186';
+        const customerLabel = [customer?.firstName, customer?.lastName].filter(Boolean).join(' ')
+                              || customer?.company
+                              || customer?.email
+                              || 'customer';
+        const rmFlag  = hasRM         ? ' · RM'   : '';
+        const chFlag  = hasCustomHole ? ' · CUST' : '';
+        const intFlag = effectiveCanadian ? ' · INTL' : '';
+        await createNotification(
+          JEROMY_OWNER_ID,
+          'order-processed',
+          `📦 New Order — ${dealName || quoteNumber}${rmFlag}${chFlag}${intFlag}`,
+          `Order ${quoteNumber} for ${customerLabel} is processed and ready for production / shipping prep.${hasRM || hasCustomHole ? ' Long-lead-time flag(s) on this order — see Production Notes.' : ''}`,
+          { dealId: dealId ? String(dealId) : null, dealName: dealName || null, quoteNum: quoteNumber }
+        );
+      } catch(e) { console.warn('[process-order] Jeromy notification failed:', e.message); }
+
       json({ success: true, orderUrl, hasRM, hasCustomHole, paymentType, poNumber, canadian: effectiveCanadian, customsBroker: effectiveCustomsBroker });
 
       // Create AP color task for Benton (non-blocking) if order has an AP item

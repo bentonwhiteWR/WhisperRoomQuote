@@ -541,6 +541,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.36.6  | 2026-05-21 | **DEVLOG bookkeeping** — Current focus updated post-promote; v1.36.5 now on prod, staging clean. |
 | 1.36.5  | 2026-05-21 | **Removed dead freight UI from Deal Hub AP PO modal.** Cleanup — v1.35.1–v1.36.2 wired freight into the wrong modal; v1.36.4 put it in the right one (suppliers dashboard); this commit deletes the orphan. One freight code path. |
 | 1.36.4  | 2026-05-21 | **PO Additional Charges section wired into the SUPPLIERS DASHBOARD edit modal.** v1.35.1–v1.36.2 had been adding freight UI to the wrong modal (Deal Hub) — reps actually edit POs from `/suppliers`. New "+ Add Charge" button in `editPoModal` reveals Amount + Description inputs; Save sends `freight` in the existing PATCH (server has accepted the field since v1.35.1, PO render already shows the Freight row in totals). |
 | 1.36.3  | 2026-05-21 | **Closed Lost glow: green + consistent.** Was orange and only fired when main board had zero hits, so it flickered off as soon as the active search returned anything. Now green, fires whenever a search has Closed Lost matches and the column is hidden. New `closedlost-pulse` keyframe. |

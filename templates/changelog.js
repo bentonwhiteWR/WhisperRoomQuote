@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.36.6', date:'May 21, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**DEVLOG bookkeeping.** Current focus reflects v1.36.5 on prod (Closed Lost toggle column + PO freight UI in suppliers-dashboard). Staging clean.'},
+      ]
+    },
+    {
       v:'1.36.5', date:'May 21, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Removed the dead freight UI from the Deal Hub AP PO modal.** v1.35.1 → v1.36.2 had added Additional Charges inputs to the wrong modal (deals-dashboard.html). v1.36.4 put the real working version in the suppliers-dashboard modal where reps actually edit POs. This commit deletes the orphaned UI + JS + payload wiring from the Deal Hub side so there\'s only one freight code path. Server-side handling and the suppliers-dashboard UI are unchanged.'},

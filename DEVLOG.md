@@ -14,6 +14,8 @@ Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in t
 
 **On STAGING (NOT YET promoted to main):**
 
+- **v1.36.3** (2026-05-21) — **Closed Lost glow: green + consistent.** Glow was inconsistent because the original condition `mainHasHits===0 && closedHasHits>0` meant it flipped off the moment the active-board search came back with anything. Relaxed to `closedHasHits>0 && !closedLostVisible && q.length>=3` so the glow stays on whenever there's something in Closed Lost worth surfacing, regardless of what the active board shows. Color now green (positive "we found something" cue) via new `closedlost-pulse` keyframe; distinct from orange Shopify Orders attention pulse.
+
 - **v1.36.2** (2026-05-21) — **AP PO modal: Additional Charges section moved to sit directly above Notes** (per user request). v1.36.0 had pinned it at the top under the title; user wanted it adjacent to Notes since both are PO-line additions.
 
 - **v1.36.1** (2026-05-21) — **Closed Lost squeezes in beside Shipped instead of wrapping below.** Board grid was hard-coded to 4 columns; added a `.board.show-closedlost` modifier that switches to `repeat(5, minmax(140px, 1fr))` when the column is toggled on. Other columns shrink slightly to fit.
@@ -551,6 +553,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.36.3  | 2026-05-21 | **Closed Lost glow: green + consistent.** Was orange and only fired when main board had zero hits, so it flickered off as soon as the active search returned anything. Now green, fires whenever a search has Closed Lost matches and the column is hidden. New `closedlost-pulse` keyframe. |
 | 1.36.2  | 2026-05-21 | **AP PO modal: Additional Charges section moved above Notes** (per user spec — v1.36.0 had it at the top, user wanted it adjacent to Notes). |
 | 1.36.1  | 2026-05-21 | **Closed Lost column squeezes in next to Shipped instead of wrapping below.** Board grid was hard-coded to 4 columns; new `.board.show-closedlost` modifier switches to `repeat(5, minmax(140px, 1fr))`. |
 | 1.36.0  | 2026-05-21 | **Closed Lost = hideable toolbar-toggled column (replaces v1.35.0 banner) + AP PO freight section pinned to top of modal.** Closed Lost column off by default; toggle button glows orange when search matches only Closed Lost. AP PO freight inputs moved into a dedicated "Additional Charges" card at the top of the modal (was buried below items). |

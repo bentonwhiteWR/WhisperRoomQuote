@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.36.3', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Closed Lost button glow now green + consistent (no longer flickers off when the main board returns hits).** Previously the glow rule required main board to have zero results AND Closed Lost to have matches — so the glow turned on briefly between when the probe returned and when the main search returned, then flipped off if main had any hits. Now the rule is just "Closed Lost has matches AND column is hidden" — the rep gets the signal whenever there\'s something worth revealing, regardless of what the main board shows. Color switched from orange to green (positive "we found something" cue, distinct from the orange Shopify Orders attention-pulse).'},
+      ]
+    },
+    {
       v:'1.36.2', date:'May 21, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**AP PO Edit modal: Additional Charges section moved to sit directly above Notes** (per user request). v1.36.0 had pinned it to the top of the modal under the title; user wanted it adjacent to Notes since both are PO-line additions. Same fields (Freight $ + Description), same `po_data.freight = {amount, description}` schema.'},

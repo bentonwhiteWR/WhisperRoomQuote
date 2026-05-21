@@ -171,11 +171,23 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .shopify-btn:hover { background:var(--surface3); border-color:var(--orange-border); }
 .shopify-btn.glow { background:var(--orange-dim); border-color:var(--orange-border); color:var(--orange); box-shadow:0 0 0 0 rgba(238,98,22,.5); animation:shopify-pulse 2s infinite; }
 @keyframes shopify-pulse { 0%{box-shadow:0 0 0 0 rgba(238,98,22,.5)} 70%{box-shadow:0 0 0 10px rgba(238,98,22,0)} 100%{box-shadow:0 0 0 0 rgba(238,98,22,0)} }
-/* Closed Lost toggle pulses orange when a search matched deals in
-   Closed Lost but the active board returned nothing — signals the rep
-   that the missing deal lives in the off-board column. Same pulse
-   pattern as the Shopify orders button for visual consistency. */
-.closedlost-btn.glow { background:var(--orange-dim); border-color:var(--orange-border); color:var(--orange); box-shadow:0 0 0 0 rgba(238,98,22,.5); animation:shopify-pulse 2s infinite; }
+/* Closed Lost toggle pulses GREEN whenever the current search has
+   matches in Closed Lost (and the column is hidden) — signals the rep
+   that the missing deal lives in the off-board column. Green because
+   it's a positive "we found something" cue, distinct from the orange
+   Shopify Orders attention-pulse. */
+.closedlost-btn.glow {
+  background:rgba(34,197,94,.15);
+  border-color:rgba(34,197,94,.5);
+  color:#22c55e;
+  box-shadow:0 0 0 0 rgba(34,197,94,.5);
+  animation:closedlost-pulse 2s infinite;
+}
+@keyframes closedlost-pulse {
+  0%   { box-shadow:0 0 0 0 rgba(34,197,94,.5) }
+  70%  { box-shadow:0 0 0 10px rgba(34,197,94,0) }
+  100% { box-shadow:0 0 0 0 rgba(34,197,94,0) }
+}
 .closedlost-btn.active { background:rgba(85,85,85,.25); border-color:rgba(255,255,255,.25); color:var(--text); }
 .shopify-badge { position:absolute; top:-4px; right:-4px; background:var(--orange); color:#fff; font-size:9px; font-weight:800; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 3px; border:1px solid var(--surface); }
 .shopify-badge.zero { background:var(--surface3); color:var(--muted); border-color:var(--border); }
@@ -1529,22 +1541,20 @@ async function probeClosedLost(q) {
   }
 }
 
-// Toolbar button glow rule: pulse orange when the current search
-// returned hits in Closed Lost but the main board has nothing. Tells
-// the rep "the deal you're searching for is over here, click to
-// reveal." Doesn't glow when (a) no search, (b) main board has hits,
-// (c) Closed Lost has no matches, (d) the column is already visible.
+// Toolbar button glow rule: pulse green whenever the current search
+// has matches in Closed Lost and the column is hidden. Originally only
+// glowed when the main board ALSO had zero hits, but that produced
+// inconsistent UX — if the main search finished first with zero hits
+// the glow turned on, then turned off the moment any active-board
+// match came in. Now the rule is "if there's something to find in
+// Closed Lost, glow regardless of whether main also matched" — more
+// useful (rep gets the signal even when both have hits) and immune to
+// the race between the two parallel fetches.
 function updateClosedLostGlow() {
   const btn = document.getElementById('closedLostBtn');
   if (!btn) return;
   const q = document.getElementById('dealSearch').value.trim();
-  // Count active-board (non-closedlost) matches in the current filter.
-  // filteredDeals never contains closedlost deals (allDeals is
-  // populated from /api/deals/list which filters to BOARD_STAGES),
-  // so a non-empty filteredDeals means we have on-board hits.
-  const mainHasHits   = filteredDeals.length > 0;
-  const closedHasHits = closedLostHits.length > 0;
-  const shouldGlow    = q.length >= 3 && !mainHasHits && closedHasHits && !closedLostVisible;
+  const shouldGlow = q.length >= 3 && closedLostHits.length > 0 && !closedLostVisible;
   btn.classList.toggle('glow', shouldGlow);
 }
 

@@ -51,6 +51,47 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.37.4', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'add', d:'**Tax: auto-fallback to city/state-level rate when TaxJar rejects the ZIP.** When TaxJar 400s with `"to_zip X is not used within to_state Y"` (e.g. FL ZIP `33104` — retired or business-only), `lib/taxjar.js` automatically retries the same request without `to_zip` (and without `to_street`, which is meaningless without a ZIP). TaxJar then returns a city/state-level rate. Result carries `usedStateFallback: true` + a `fallbackReason` message. Quote builder shows a yellow info banner under the tax result: "⚠ Using city/state-level rate — ZIP not recognized, local surtax may be slightly higher. Override below if you know the exact rate." Rep no longer dead-ends on retired ZIPs.'},
+        {t:'fix', d:'**Notification session hydration: fall back to local REP_EMAILS map when HubSpot Owners API misses.** v1.37.2 added lazy-hydration of `session.ownerId` via HubSpot Owners API by email. Observed in testing: HubSpot Owners can miss when the Owner record\'s stored email differs in casing from the session email. Now `_hydrateSessionOwnerId` falls back to a reverse case-insensitive lookup in the hardcoded `REP_EMAILS` map (`lib/notify.js`) — which is our source of truth for notification routing anyway. Session ownerId now resolves for any rep with an email in REP_EMAILS, regardless of HubSpot Owners API state.'},
+      ]
+    },
+    {
+      v:'1.37.3', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Tax calculation: surface TaxJar\'s actual error message instead of "Bad Request".** When TaxJar rejects an address (e.g. ZIP `33104` returned `"to_zip 33104 is not used within to_state FL"`), `lib/taxjar.js` was throwing away the explanation and only returning `res.body.error` which is just the HTTP status text ("Bad Request"). Swapped to prefer `res.body.detail` so the rep-facing error translation regex (which looks for `/zip|postal/i`) now catches it and shows the friendly "Invalid ZIP code — please verify the ship-to ZIP and try again." instead of a generic failure.'},
+        {t:'fix', d:'**Tax: in-nexus but 0% TaxJar result no longer silently hides the result box.** Previously `renderTaxResult()` early-returned if both `rate` and `tax` were 0, so the rep saw nothing on the page and assumed the button didn\'t work. Now it shows a yellow warning: "TaxJar returned 0% for FL on this address — add the ship-to city and re-run (some ZIPs need a city to disambiguate). Or enter tax manually below." Truly empty state (no fetch yet) still hides as before.'},
+      ]
+    },
+    {
+      v:'1.37.2', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Notifications: auto-heal sessions that have a NULL ownerId.** Sessions created before the owner_id login mapping (or where the HubSpot Owners API was rate-limited at login) had `session.ownerId = null`, which made `/api/notifications` return an empty list even though notifications were correctly being inserted for that rep\'s HubSpot owner_id. Now the notification endpoints lazy-hydrate the session: on the first hit with a missing ownerId, do a one-shot HubSpot Owners lookup by `session.email`, stamp the result onto both the in-memory cache and the DB sessions row, and continue. No more logout/login dance.'},
+      ]
+    },
+    {
+      v:'1.37.1', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Notification system: tighter polling + owner-id fallback + debug endpoint.** (1) Bell poll dropped from 60s → 30s, and now also refreshes on tab focus / visibility change so accepting a quote in one tab then switching back shows the badge immediately. (2) Accept-quote notification now falls back to `quotes.rep_id` when HubSpot doesn\'t return a `hubspot_owner_id` on the deal — was silently dropping notifications when the HubSpot owner property was missing. (3) `lib/notify.js` logs every `createNotification` call (success + skipped reasons) so Railway logs surface trigger problems. (4) `GET /api/notifications/debug` returns session info + the rep\'s 10 most-recent notifications (read + unread) + the latest 5 across all reps — hit it in your browser to verify the loop end-to-end without needing Railway log access.'},
+      ]
+    },
+    {
+      v:'1.37.0', date:'May 21, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Notification system, end-to-end.** Bell icon on every internal dashboard (Deal Hub, Orders, Shipping, Reports, Suppliers, Reconcile) — green badge + pulsing border when you have unread notifications. Click → dropdown listing your active notifications with a **✓ Confirm** button per row (sole way to clear a notification from the active list — clicking "Open →" navigates without confirming so you can revisit). **View history →** link swaps the active list for previously-confirmed notifications (latest 200). New shared snippet at `/assets/notif-bell.js` — drop a `<div id="notifBellMount"></div>` into any page topbar to enable it. Was a half-built skeleton (table + API existed, only orders dashboard surfaced it, no Confirm UX, no history); this commit finishes the system and unifies it across all pages.'},
+        {t:'add', d:'**New notification triggers:** (1) Order processed with an Acoustic Package → notifies Jill (`36330944`) "🎨 Audimute PO needed — create + send from the Suppliers tab" so she doesn\'t have to manually check the suppliers dashboard. (2) Stripe `payment_intent.processing` webhook → notifies the owning rep "🏦 ACH payment initiated — funds typically clear in 3-5 business days" — fires when the customer commits to paying ACH, not just when funds settle (the existing `invoice.paid` notification still fires when ACH clears).'},
+        {t:'add', d:'**New API endpoints:** `GET /api/notifications` now returns *unread only* (was: all 50). `GET /api/notifications/history?limit=200` returns confirmed (read=true) notifications, backing the history view. `POST /api/notifications/:id/confirm` is the new explicit confirmation endpoint (legacy `POST /api/notifications/:id` still works — same handler). Confirm scope is locked to the session\'s owner so a rep can\'t confirm another rep\'s notification by guessing IDs.'},
+        {t:'log', d:'**Stripe webhook event subscriptions needed.** For the ACH-initiated notification to fire, the Stripe Dashboard webhook endpoint at `/api/stripe/webhook` must subscribe to `payment_intent.processing`. Existing subscriptions (`invoice.paid`, `invoice.payment_failed`, `invoice.voided`) are unchanged.'},
+      ]
+    },
+    {
+      v:'1.36.6', date:'May 21, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**DEVLOG bookkeeping.** Current focus reflects v1.36.5 on prod (Closed Lost toggle column + PO freight UI in suppliers-dashboard). Staging clean.'},
+      ]
+    },
+    {
       v:'1.36.5', date:'May 21, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Removed the dead freight UI from the Deal Hub AP PO modal.** v1.35.1 → v1.36.2 had added Additional Charges inputs to the wrong modal (deals-dashboard.html). v1.36.4 put the real working version in the suppliers-dashboard modal where reps actually edit POs. This commit deletes the orphaned UI + JS + payload wiring from the Deal Hub side so there\'s only one freight code path. Server-side handling and the suppliers-dashboard UI are unchanged.'},

@@ -1102,6 +1102,20 @@ const server = http.createServer(async (req, res) => {
     res.end(buf); return;
   }
 
+  // Shared notification bell snippet — included by every internal
+  // dashboard via <script src="/assets/notif-bell.js" defer></script>.
+  // Served from disk so we don't have to re-deploy on every UI tweak.
+  if (pathname === '/assets/notif-bell.js') {
+    try {
+      const buf = require('fs').readFileSync(require('path').join(__dirname, 'assets', 'notif-bell.js'));
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(buf);
+    } catch(e) {
+      res.writeHead(404); res.end('notif-bell.js missing');
+    }
+    return;
+  }
+
     // ── Shipping Dashboard ──────────────────────────────────────────
   if (pathname === '/shipping') {
     if (!isAuth(req)) { res.writeHead(302, {Location: '/deals'}); res.end(); return; }
@@ -1466,6 +1480,50 @@ const server = http.createServer(async (req, res) => {
     try {
       const type = event.type || '';
       const inv  = event.data?.object || {};
+
+      // ── ACH "initiated" branch: payment_intent.processing ────────
+      // For ACH, when the customer hits Pay, Stripe creates a PaymentIntent
+      // and transitions it through `processing` for 3-5 days while the bank
+      // clears. The `invoice.paid` event only fires once the funds clear.
+      // We want the rep notified at the START of the wait, not just the
+      // end. Event payload here is a PaymentIntent, not an Invoice — its
+      // `invoice` field references the Stripe invoice id, which we
+      // separately fetch to get our wr_quote_number metadata.
+      if (type === 'payment_intent.processing') {
+        const piInvoiceId = inv.invoice || null;
+        if (piInvoiceId && db) {
+          try {
+            const fullInv = await stripeLib.getInvoice(piInvoiceId);
+            const piQuoteNumber = fullInv?.metadata?.wr_quote_number || null;
+            const piDealId      = fullInv?.metadata?.wr_deal_id || null;
+            if (piQuoteNumber) {
+              const qrowP = await db.query('SELECT rep_id, deal_name FROM quotes WHERE quote_number = $1', [piQuoteNumber]);
+              const ownerIdP = qrowP?.rows?.[0]?.rep_id || null;
+              const dealNameP = qrowP?.rows?.[0]?.deal_name || '';
+              const amountP = fullInv?.amount_due != null
+                ? (fullInv.amount_due / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+                : '';
+              if (ownerIdP) {
+                await createNotification(
+                  ownerIdP,
+                  'stripe-ach-initiated',
+                  `🏦 ACH payment initiated — ${piQuoteNumber}`,
+                  `Customer started an ACH payment${amountP ? ' of ' + amountP : ''} for ${dealNameP || piQuoteNumber}. Funds typically clear in 3-5 business days; you'll get another notification when they settle.`,
+                  { dealId: piDealId, dealName: dealNameP, quoteNum: piQuoteNumber }
+                );
+              }
+              writelog('info', 'stripe.ach-initiated', `ACH payment initiated for ${piQuoteNumber}`, { quoteNum: piQuoteNumber, dealId: String(piDealId || ''), dealName: dealNameP, meta: { stripeInvoiceId: piInvoiceId, paymentIntentId: inv.id, amount: fullInv?.amount_due } });
+            }
+          } catch(e) {
+            console.warn('[stripe.webhook] payment_intent.processing handler failed:', e.message);
+          }
+        }
+        // Always 200 — the rest of the handler doesn't apply to PI events.
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ received: true, processed: !!piInvoiceId }));
+        return;
+      }
+
       const quoteNumber = inv.metadata?.wr_quote_number || null;
       const dealId      = inv.metadata?.wr_deal_id || null;
       const handled = ['invoice.paid', 'invoice.payment_failed', 'invoice.voided'].includes(type);
@@ -5888,8 +5946,22 @@ ${q.accepted ? `
           method: 'GET',
           headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
         });
-        const ownerId = dealData.body?.properties?.hubspot_owner_id;
+        let ownerId  = dealData.body?.properties?.hubspot_owner_id;
         const dealName = dealData.body?.properties?.dealname || 'Deal';
+
+        // Fall back to the quote's stored rep_id if HubSpot didn't
+        // return one (deal could be missing owner, API rate-limited,
+        // etc.). Without this fallback the rep silently misses the
+        // in-app notification — same gap we hit in v1.37.0 testing.
+        if (!ownerId && db) {
+          try {
+            const repRow = await db.query('SELECT rep_id FROM quotes WHERE quote_number = $1 LIMIT 1', [quoteNumber]);
+            if (repRow.rows[0]?.rep_id) {
+              ownerId = repRow.rows[0].rep_id;
+              console.log(`[accept-quote] HubSpot didn't return owner for ${dealId}; fell back to quotes.rep_id=${ownerId}`);
+            }
+          } catch(e) { /* non-fatal */ }
+        }
 
         if (ownerId) {
           const dueDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -8337,17 +8409,142 @@ ${q.accepted ? `
     return;
   }
 
+  // Self-heal a session that's missing ownerId (e.g. logged in before
+  // the owner_id login mapping existed, or HubSpot Owners API was rate-
+  // limited at login). Looks up by email, stamps the result onto the
+  // cache + DB session row, returns the ownerId. Eliminates the
+  // logout/login-to-fix-notifications dance.
+  async function _hydrateSessionOwnerId(req, sess) {
+    if (!sess || sess.ownerId || !sess.email) return sess?.ownerId || null;
+    let ownerId = null;
+
+    // Primary: HubSpot Owners API by email.
+    try {
+      const ownerRes = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/owners?email=${encodeURIComponent(sess.email)}&limit=1`,
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+      });
+      const owners = ownerRes.body?.results || [];
+      if (owners.length) ownerId = String(owners[0].id);
+    } catch(e) {
+      console.warn(`[auth] HubSpot owner lookup threw for ${sess.email}: ${e.message}`);
+    }
+
+    // Fallback: reverse-lookup the hardcoded REP_EMAILS map (case-
+    // insensitive). HubSpot Owners API has been observed to miss our
+    // reps when the Owner record's email is in a different casing
+    // than what we query with — this map is the source of truth
+    // anyway for notification routing.
+    if (!ownerId) {
+      const emailLower = sess.email.toLowerCase();
+      for (const [id, mappedEmail] of Object.entries(REP_EMAILS)) {
+        if ((mappedEmail || '').toLowerCase() === emailLower) {
+          ownerId = id;
+          console.log(`[auth] HubSpot Owners API miss for ${sess.email}; resolved via REP_EMAILS map → ${ownerId}`);
+          break;
+        }
+      }
+    }
+
+    if (!ownerId) {
+      console.warn(`[auth] could not resolve ownerId for ${sess.email} (HubSpot Owners + REP_EMAILS both missed); session stays without ownerId`);
+      return null;
+    }
+    try {
+      sess.ownerId = ownerId;
+      // Pull token from cookie to update both the in-memory cache + DB.
+      const cookieHeader = req.headers.cookie || '';
+      const m = cookieHeader.match(/(?:^|;\s*)wr_oauth_session=([^;]+)/);
+      const token = m ? decodeURIComponent(m[1]) : null;
+      if (token) {
+        _sessionCache.set(token, sess);
+        if (db) {
+          await db.query(
+            `UPDATE sessions SET owner_id = $1 WHERE token = $2 AND (owner_id IS NULL OR owner_id = '')`,
+            [ownerId, token]
+          ).catch(()=>{});
+        }
+      }
+      console.log(`[auth] hydrated session ownerId for ${sess.email} → ${ownerId}`);
+      return ownerId;
+    } catch(e) {
+      console.warn(`[auth] hydrate session failed for ${sess?.email || 'unknown'}: ${e.message}`);
+      return null;
+    }
+  }
+
   // ── API: Notifications ───────────────────────────────────────────
+  // Active feed: unread only, capped at 50, newest first. The shared
+  // `/assets/notif-bell.js` bell polls this every 60s for the badge +
+  // dropdown content.
+  // Debug endpoint — returns session info + latest 10 notifications
+  // (unread AND read) for the logged-in rep. Lets you verify both
+  // sides of the loop without Railway log access: is the session
+  // owner_id correct? is the notification being inserted with that
+  // owner_id? Hit `/api/notifications/debug` in your browser.
+  if (pathname === '/api/notifications/debug' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const sess = getSession(req);
+    // Auto-heal sessions that predate the owner_id mapping.
+    if (sess && !sess.ownerId) await _hydrateSessionOwnerId(req, sess);
+    try {
+      const ownerId = sess?.ownerId || null;
+      const recent = ownerId ? (await db.query(
+        `SELECT id, type, title, owner_id, read, created_at FROM notifications
+         WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 10`,
+        [String(ownerId)]
+      )).rows : [];
+      const anyRecent = (await db.query(
+        `SELECT id, owner_id, type, title, created_at FROM notifications
+         ORDER BY created_at DESC LIMIT 5`
+      )).rows;
+      json({
+        session: { email: sess?.email || null, ownerId, name: sess?.name || null },
+        recentForYou: recent,
+        latestAcrossAllReps: anyRecent,
+      });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   if (pathname === '/api/notifications' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const sess = getSession(req);
-    if (!sess?.ownerId) { json({ notifications: [] }); return; }
+    // Auto-heal sessions that predate the owner_id mapping. One-shot
+    // HubSpot Owners lookup by email, then we're cached forever.
+    if (sess && !sess.ownerId) await _hydrateSessionOwnerId(req, sess);
+    if (!sess?.ownerId) {
+      json({ notifications: [], debug: { sessionOwnerId: null, sessionEmail: sess?.email || null } });
+      return;
+    }
     try {
       const r = await db.query(
         `SELECT id, type, title, body, deal_id, deal_name, quote_num, read, created_at
-         FROM notifications WHERE owner_id=$1
+         FROM notifications WHERE owner_id=$1 AND read=false
          ORDER BY created_at DESC LIMIT 50`,
         [String(sess.ownerId)]
+      );
+      json({ notifications: r.rows });
+    } catch(e) { json({ notifications: [] }); }
+    return;
+  }
+
+  // History feed: previously-confirmed (read=true) notifications.
+  // Backs the "View history →" toggle inside the bell dropdown.
+  if (pathname === '/api/notifications/history' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const sess = getSession(req);
+    if (sess && !sess.ownerId) await _hydrateSessionOwnerId(req, sess);
+    if (!sess?.ownerId) { json({ notifications: [] }); return; }
+    const limit = Math.min(parseInt(parsed.query.limit) || 200, 500);
+    try {
+      const r = await db.query(
+        `SELECT id, type, title, body, deal_id, deal_name, quote_num, read, created_at
+         FROM notifications WHERE owner_id=$1 AND read=true
+         ORDER BY created_at DESC LIMIT $2`,
+        [String(sess.ownerId), limit]
       );
       json({ notifications: r.rows });
     } catch(e) { json({ notifications: [] }); }
@@ -8365,11 +8562,24 @@ ${q.accepted ? `
     return;
   }
 
+  // Confirm a single notification — moves it from active → history.
+  // POST /api/notifications/:id/confirm
+  // (Legacy POST /api/notifications/:id still works — same handler.)
   if (pathname.startsWith('/api/notifications/') && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
-    const notifId = pathname.split('/')[3];
+    const sess = getSession(req);
+    if (!sess?.ownerId) { json({ success: false }); return; }
+    const parts = pathname.split('/');
+    const notifId = parts[3];
+    // Accept both /api/notifications/123 and /api/notifications/123/confirm.
+    if (parts[4] && parts[4] !== 'confirm') { json({ error: 'Not found' }, 404); return; }
     try {
-      await db.query(`UPDATE notifications SET read=true WHERE id=$1`, [notifId]);
+      // Scope the update to the session's owner so a rep can't confirm
+      // another rep's notification by guessing IDs.
+      await db.query(
+        `UPDATE notifications SET read=true WHERE id=$1 AND owner_id=$2`,
+        [notifId, String(sess.ownerId)]
+      );
       json({ success: true });
     } catch(e) { json({ success: false }); }
     return;
@@ -13523,6 +13733,27 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
             console.log(`[process-order] AP task created: ${taskRes.body?.id}`);
           } catch(e) { console.warn('[process-order] AP task failed:', e.message); }
         })();
+
+        // In-app notification to Jill: she owns the Audimute PO flow
+        // downstream of process-order. Without this she has to either
+        // check the suppliers dashboard manually or wait for the email
+        // she's CC'd on. The notification surfaces in her bell with a
+        // ✓ Confirm button — she clears it once the PO is sent.
+        const JILL_OWNER_ID = '36330944';
+        const apColorLabel = apColor || 'Unknown';
+        const customerLabel = [customer?.firstName, customer?.lastName].filter(Boolean).join(' ')
+                            || customer?.company
+                            || customer?.email
+                            || 'customer';
+        try {
+          await createNotification(
+            JILL_OWNER_ID,
+            'ap-po-needed',
+            `🎨 Audimute PO needed — ${dealName || quoteNumber}`,
+            `Order ${quoteNumber} for ${customerLabel} includes an Acoustic Package (color: ${apColorLabel}). Create + send the Audimute PO from the Suppliers tab.`,
+            { dealId: dealId ? String(dealId) : null, dealName: dealName || null, quoteNum: quoteNumber }
+          );
+        } catch(e) { console.warn('[process-order] AP notification to Jill failed:', e.message); }
       }
 
       // Upload order PDF to shared orders folder (non-blocking)

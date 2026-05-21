@@ -198,6 +198,34 @@
       <div id="editPoItemsList"></div>
     </div>
 
+    <!-- Additional Charges (freight, brokerage, etc.) — the "+ Add
+         Charge" button reveals two inputs (amount + description). Stored
+         as po_data.freight = {amount, description} and rendered on the
+         customer-facing /po/:poNumber page as a Freight row in the
+         totals. Used most often for Canadian POs where Audimute ships
+         + bills WR for the leg. -->
+    <div style="margin-bottom:16px;padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.08em">Additional Charges</div>
+        <button type="button" id="editPoAddChargeBtn" onclick="editPoToggleCharge()" style="padding:5px 12px;font-size:11px;font-weight:700;background:rgba(238,98,22,.15);border:1px solid rgba(238,98,22,.4);border-radius:6px;color:var(--orange);cursor:pointer;font-family:inherit">+ Add Charge</button>
+      </div>
+      <div id="editPoChargeForm" style="display:none">
+        <div style="display:grid;grid-template-columns:130px 1fr;gap:10px;align-items:start">
+          <div>
+            <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px">Amount ($)</label>
+            <input type="number" id="editPoFreightAmount" placeholder="0.00" min="0" step="0.01"
+              style="width:100%;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:var(--mono);outline:none;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:3px">Description</label>
+            <input type="text" id="editPoFreightDescription" placeholder="e.g. Freight to Canada"
+              style="width:100%;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;box-sizing:border-box">
+          </div>
+        </div>
+        <button type="button" onclick="editPoRemoveCharge()" style="margin-top:8px;padding:4px 10px;font-size:10px;font-weight:700;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:5px;color:#ef4444;cursor:pointer;font-family:inherit">× Remove Charge</button>
+      </div>
+    </div>
+
     <div style="margin-bottom:20px">
       <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Notes</div>
       <textarea id="editPoNotes" rows="2" placeholder="Anything Elizabeth needs to know..." style="width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:12px;font-family:inherit;resize:vertical;outline:none;box-sizing:border-box"></textarea>
@@ -258,6 +286,22 @@ function openEditPoModal(poNumber) {
   document.getElementById('editPoShipCountry').value   = c.country   || '';
   document.getElementById('editPoNotes').value         = d.notes     || '';
 
+  // Additional Charges: if the PO already has a freight charge, show
+  // the form pre-populated; otherwise hide and let the rep press
+  // "+ Add Charge" to reveal.
+  const freight = d.freight && parseFloat(d.freight.amount) > 0 ? d.freight : null;
+  document.getElementById('editPoFreightAmount').value      = freight ? freight.amount : '';
+  document.getElementById('editPoFreightDescription').value = freight ? (freight.description || '') : '';
+  const chargeForm = document.getElementById('editPoChargeForm');
+  const chargeBtn  = document.getElementById('editPoAddChargeBtn');
+  if (freight) {
+    chargeForm.style.display = 'block';
+    chargeBtn.style.display  = 'none';
+  } else {
+    chargeForm.style.display = 'none';
+    chargeBtn.style.display  = 'inline-block';
+  }
+
   const defaultColor = d.apColor || '';
   const rowsHtml = items.map((item, idx) => {
     const sel = item.color || defaultColor;
@@ -280,6 +324,26 @@ function openEditPoModal(poNumber) {
 function closeEditPoModal() {
   document.getElementById('editPoModal').style.display = 'none';
   _editPoCurrent = null;
+}
+
+// Reveal the Additional Charges form. Hides the "+ Add Charge" button
+// since the form is now the action target. Clearing happens via the
+// "× Remove Charge" button or by saving an empty amount.
+function editPoToggleCharge() {
+  document.getElementById('editPoChargeForm').style.display = 'block';
+  document.getElementById('editPoAddChargeBtn').style.display = 'none';
+  // Cursor jump for fast keyboard entry.
+  document.getElementById('editPoFreightAmount').focus();
+}
+
+// Clear the charge inputs and hide the form. Pressing Save Changes
+// after this sends freight={amount:0} which the server interprets as
+// "clear the charge" (sets po_data.freight to null + logs a removal).
+function editPoRemoveCharge() {
+  document.getElementById('editPoFreightAmount').value = '';
+  document.getElementById('editPoFreightDescription').value = '';
+  document.getElementById('editPoChargeForm').style.display = 'none';
+  document.getElementById('editPoAddChargeBtn').style.display = 'inline-block';
 }
 
 async function submitEditPo() {
@@ -310,13 +374,20 @@ async function submitEditPo() {
   };
   const notes = document.getElementById('editPoNotes').value.trim();
 
+  // Additional Charges: send the freight object on every save so the
+  // server can also process a clear (amount: 0 → po_data.freight=null,
+  // logged as "Freight removed" in the change log).
+  const _fAmt  = parseFloat(document.getElementById('editPoFreightAmount').value || 0) || 0;
+  const _fDesc = document.getElementById('editPoFreightDescription').value.trim();
+  const freight = { amount: _fAmt, description: _fDesc };
+
   const btn = document.getElementById('editPoSubmitBtn');
   const origLabel = btn.innerHTML;
   btn.disabled = true; btn.innerHTML = 'Saving…';
   try {
     const res = await fetch(`/api/supplier-pos/${encodeURIComponent(po.po_number)}`, {
       method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ customer, apItems, poNotes: notes, confirm: true }),
+      body: JSON.stringify({ customer, apItems, poNotes: notes, freight, confirm: true }),
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);

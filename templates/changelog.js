@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.36.4', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Additional Charges (freight) section added to the SUPPLIERS DASHBOARD edit modal — which is where reps actually work.** Earlier versions (v1.35.1 → v1.36.2) had been wiring the freight inputs into the Deal Hub\'s AP PO modal, but reps almost always edit POs from `/suppliers` not the Deal Hub. The suppliers-dashboard edit modal (Edit button on each PO row) now has an "Additional Charges" section above Notes with a "+ Add Charge" button. Click it → reveals Amount + Description inputs → Save → freight saved to `po_data.freight` and renders on the customer-facing `/po/:poNumber` as a Freight row in the totals. "× Remove Charge" clears the freight on next save.'},
+      ]
+    },
+    {
       v:'1.36.3', date:'May 21, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Closed Lost button glow now green + consistent (no longer flickers off when the main board returns hits).** Previously the glow rule required main board to have zero results AND Closed Lost to have matches — so the glow turned on briefly between when the probe returned and when the main search returned, then flipped off if main had any hits. Now the rule is just "Closed Lost has matches AND column is hidden" — the rep gets the signal whenever there\'s something worth revealing, regardless of what the main board shows. Color switched from orange to green (positive "we found something" cue, distinct from the orange Shopify Orders attention-pulse).'},

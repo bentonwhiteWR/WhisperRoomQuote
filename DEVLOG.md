@@ -8,27 +8,11 @@ Internal development notes. Last updated 2026-05-20.
 
 ## Current focus (2026-05-20 — Assembly Manual + Suppliers tab + Ship Calendar + email-reply logging all shipped)
 
-**Most recent shipped to PROD:** v1.34.5 — Fix: Save Changes on orders dashboard was silently shipping orders. Draft shipment fields now persist to `order_data.shipmentDraft` instead of bleeding into `order_data.shipped`. Promoted 2026-05-21.
+**Most recent shipped to PROD:** v1.36.5 — Closed Lost is a hideable toolbar-toggled column (green pulse signal when search has Closed Lost matches) + PO Additional Charges (freight + description) wired into the suppliers-dashboard edit modal with "+ Add Charge" / "× Remove Charge" UX. Promoted 2026-05-21.
 
 Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in the project's history. Five parallel workstreams plus a Shopify-API investigation that didn't ship code but informed the path forward. Full breakdown lives in the **May 20 session writeup** below.
 
-**On STAGING (NOT YET promoted to main):**
-
-- **v1.36.5** (2026-05-21) — **Removed dead freight UI from the Deal Hub AP PO modal.** Cleanup of v1.35.1–v1.36.2 which had been adding freight inputs to the wrong modal. v1.36.4 put the working version in the suppliers-dashboard modal; this removes the orphan from the Deal Hub side so there's only one freight code path. Server + suppliers-dashboard UI unchanged.
-
-- **v1.36.4** (2026-05-21) — **PO Additional Charges section added to the SUPPLIERS DASHBOARD edit modal (where reps actually work).** Earlier versions (v1.35.1 → v1.36.2) had wired the freight inputs into the Deal Hub AP PO modal, but reps edit POs from `/suppliers` not the Deal Hub. New "Additional Charges" section above Notes in `editPoModal` with a "+ Add Charge" button → reveals Amount + Description inputs → Save sends `freight={amount, description}` to the existing PATCH `/api/supplier-pos/:poNumber` endpoint (accepted since v1.35.1). PO `/po/:poNumber` already renders Freight in totals. "× Remove Charge" clears freight on next save.
-
-- **v1.36.3** (2026-05-21) — **Closed Lost glow: green + consistent.** Glow was inconsistent because the original condition `mainHasHits===0 && closedHasHits>0` meant it flipped off the moment the active-board search came back with anything. Relaxed to `closedHasHits>0 && !closedLostVisible && q.length>=3` so the glow stays on whenever there's something in Closed Lost worth surfacing, regardless of what the active board shows. Color now green (positive "we found something" cue) via new `closedlost-pulse` keyframe; distinct from orange Shopify Orders attention pulse.
-
-- **v1.36.2** (2026-05-21) — **AP PO modal: Additional Charges section moved to sit directly above Notes** (per user request). v1.36.0 had pinned it at the top under the title; user wanted it adjacent to Notes since both are PO-line additions.
-
-- **v1.36.1** (2026-05-21) — **Closed Lost squeezes in beside Shipped instead of wrapping below.** Board grid was hard-coded to 4 columns; added a `.board.show-closedlost` modifier that switches to `repeat(5, minmax(140px, 1fr))` when the column is toggled on. Other columns shrink slightly to fit.
-
-- **v1.36.0** (2026-05-21) — **Closed Lost is a hideable column now (not a search banner) + AP PO freight section moved to the top of the modal.** (1) Replaced v1.35.0's banner + temp-column UX with a toolbar toggle button "○ Closed Lost". Off by default; click to reveal the column at the far right (populated with 100 most recent closedlost deals + any search probe matches). Button glows orange when a search has matches only in Closed Lost (none on the active board). Reuses the existing `/api/deals/search-closedlost` probe for the glow signal + the column data when searching. Pulls recent column data from `/api/deals/list?stage=closedlost&limit=100` (cached after first toggle-on). (2) AP PO modal: freight inputs moved out of the bottom (where they were "nothing showing first off" per the user) into a dedicated "Additional Charges" card right under the title. Same `po_data.freight = {amount, description}` schema.
-
-- **v1.35.1** (2026-05-21) — **AP PO freight field.** Added `po_data.freight = {amount, description}` to the AP PO schema. New `Freight ($)` + `Freight description` inputs in the AP PO modal (both Create and Edit). Customer-facing `/po/:poNumber` renders a Subtotal + Freight row when freight is set, with the description inline (e.g. "Freight — Drop-ship to Canada, customs brokerage included"). Auto-draft Audimute email (Deal Hub + suppliers-dashboard) includes the freight line in the Order Summary. Change log diff tracks freight added/removed/changed.
-
-- **v1.35.0** (2026-05-21) — **Closed Lost recovery via Deal Hub search.** Typing in the search box now also probes a new `GET /api/deals/search-closedlost?q=...` endpoint (HubSpot search filtered to `dealstage=closedlost` + DB-by-quote/contact lookup, capped at 20 results, gated at ≥3 chars). If hits come back, a banner appears under the search box offering to inject those deals as a temp "Closed Lost (search)" column at the far right of the board. Solves the Jill-misclassification case where a deal accidentally moved to Closed Lost vanished from the board with no recovery path. Temp column + banner clear when search is cleared.
+**On STAGING (NOT YET promoted to main):** nothing.
 
 - **v1.34.6** (2026-05-21) — `/promote` skill no longer pauses for a yes/no confirmation. Per user preference — pre-flight already lists what's about to land, so the prompt was friction. Edited `.claude/commands/promote.md` to remove the "Confirm to proceed?" step. Other guardrails kept.
 

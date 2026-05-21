@@ -2999,6 +2999,8 @@ function openCreateApPo(ord) {
   _apPoFillShipInputs(c);
   document.getElementById('apPoItemsList').innerHTML = _apPoRenderItemRows(ord.apItems || [], ord.apColor || '');
   document.getElementById('apPoNotes').value = '';
+  document.getElementById('apPoFreightAmount').value = '';
+  document.getElementById('apPoFreightDescription').value = '';
   document.getElementById('apPoModal').style.display = 'flex';
 }
 
@@ -3076,6 +3078,10 @@ async function openEditApPo(ord) {
   _apPoFillShipInputs(d.customer || {});
   document.getElementById('apPoItemsList').innerHTML = _apPoRenderItemRows(items, d.apColor || '');
   document.getElementById('apPoNotes').value = d.notes || '';
+  // Pre-fill freight on edit; blank for POs without any.
+  const _f = d.freight || null;
+  document.getElementById('apPoFreightAmount').value      = _f && parseFloat(_f.amount) > 0 ? _f.amount : '';
+  document.getElementById('apPoFreightDescription').value = _f && _f.description ? _f.description : '';
   document.getElementById('apPoModal').style.display = 'flex';
 }
 
@@ -3106,6 +3112,12 @@ async function submitApPoModal() {
   }
   const customer = _apPoReadShipInputs();
   const notes = document.getElementById('apPoNotes').value.trim();
+  // Freight is optional. Send the object on edit so the server can also
+  // process a clear-out (amount → 0 nulls the freight field). On create
+  // we only include freight when actually filled in.
+  const _fAmt  = parseFloat(document.getElementById('apPoFreightAmount').value || 0) || 0;
+  const _fDesc = document.getElementById('apPoFreightDescription').value.trim();
+  const freight = _fAmt > 0 ? { amount: _fAmt, description: _fDesc } : { amount: 0, description: '' };
   const btn = document.getElementById('apPoSubmitBtn');
   const labelEl = document.getElementById('apPoSubmitBtnLabel');
   const origLabel = labelEl.textContent;
@@ -3119,7 +3131,7 @@ async function submitApPoModal() {
       // just always pass confirm — the backend is the real protection.
       const res = await fetch(`/api/supplier-pos/${encodeURIComponent(poNumber)}`, {
         method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customer, apItems, poNotes: notes, confirm: true }),
+        body: JSON.stringify({ customer, apItems, poNotes: notes, freight, confirm: true }),
       });
       const dataR = await res.json();
       if (dataR.error) throw new Error(dataR.error);
@@ -3127,7 +3139,7 @@ async function submitApPoModal() {
     } else {
       const res = await fetch('/api/supplier-pos', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quoteNumber: ord.quoteNumber, apItems, notes, customer }),
+        body: JSON.stringify({ quoteNumber: ord.quoteNumber, apItems, notes, customer, freight }),
       });
       const dataR = await res.json();
       if (dataR.error) throw new Error(dataR.error);
@@ -3142,6 +3154,7 @@ async function submitApPoModal() {
         customer,
         apItems,
         quoteNumber: ord.quoteNumber,
+        freight:    freight && parseFloat(freight.amount) > 0 ? freight : null,
       });
     }
     closeApPoModal();
@@ -3180,13 +3193,16 @@ async function deleteApPoFromModal() {
 // We deliberately do NOT mark the PO as sent here — the user still has to
 // hit Send in their mail client. The "sent" mark only fires from the
 // suppliers-dashboard Send button, which has the PATCH side-effect.
-function _openAudimutePoDraft({ poNumber, shareToken, customer, apItems, quoteNumber }) {
+function _openAudimutePoDraft({ poNumber, shareToken, customer, apItems, quoteNumber, freight }) {
   try {
     const poUrl = `${location.origin}/po/${encodeURIComponent(poNumber)}?t=${shareToken || ''}`;
     const customerName = [customer?.firstName, customer?.lastName].filter(Boolean).join(' ')
                          || customer?.company
                          || quoteNumber;
     const apList = (apItems || []).map(i => `• ${i.name} ×${i.qty||1}${i.color ? ' — ' + i.color : ''}`).join('\n');
+    const freightLine = freight && parseFloat(freight.amount) > 0
+      ? `\n• Freight: $${parseFloat(freight.amount).toFixed(2)}${freight.description ? ' — ' + freight.description : ''}`
+      : '';
     const shipTo = [
       customer?.address,
       customer?.city,
@@ -3201,7 +3217,7 @@ Please see the attached purchase order for a WhisperRoom customer. You can view 
 ${poUrl}
 
 Order Summary:
-${apList}
+${apList}${freightLine}
 
 Ship To:
 ${customerName}
@@ -3475,6 +3491,19 @@ const submitCreateApPo = submitApPoModal;
     <div style="margin-bottom:16px">
       <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Acoustic Package items — pick a color for each</div>
       <div id="apPoItemsList"></div>
+    </div>
+
+    <div style="margin-bottom:14px;display:grid;grid-template-columns:120px 1fr;gap:10px;align-items:start">
+      <div>
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Freight ($)</div>
+        <input type="number" id="apPoFreightAmount" placeholder="0.00" min="0" step="0.01"
+          style="width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:12px;font-family:var(--mono);outline:none;box-sizing:border-box">
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Freight description (optional)</div>
+        <input type="text" id="apPoFreightDescription" placeholder="e.g. Drop-ship to Canada, customs brokerage included"
+          style="width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:12px;font-family:inherit;outline:none;box-sizing:border-box">
+      </div>
     </div>
 
     <div style="margin-bottom:20px">

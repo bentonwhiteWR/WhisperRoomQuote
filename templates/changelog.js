@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.35.1', date:'May 21, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**AP Purchase Orders can now carry a freight charge with description.** New `Freight ($)` + `Freight description` inputs in the AP PO modal (both Create and Edit). Stored as `po_data.freight = {amount, description}`; accepted by both the create POST and the edit PATCH. Customer-facing PO page (`/po/:poNumber`) renders a Subtotal + Freight line when freight is set, with the description inline. Auto-draft Audimute email (from Deal Hub + suppliers-dashboard "Send") includes the freight line in the Order Summary. Change log records freight added/removed/changed events. Use case: Canadian POs where Audimute ships the package and bills WhisperRoom for the leg.'},
+      ]
+    },
+    {
       v:'1.35.0', date:'May 21, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Closed Lost recovery via Deal Hub search.** Deal Hub board still excludes `closedlost` from its default columns (zero noise), but typing in the search bar now ALSO probes Closed Lost server-side. If hits come back, a banner appears under the search box: "🔍 Not on the board, but found 2 deal(s) in Closed Lost matching \'jill smith\' [Show on board →]". Clicking the button injects those deals as a temporary "Closed Lost (search)" column at the far right of the board with muted styling — disappears when search is cleared. Solves the Jill-misclassification case where a deal accidentally sent to Closed Lost vanishes entirely from view with no way to recover it. New endpoint: `GET /api/deals/search-closedlost?q=...` — HubSpot search filtered to `dealstage=closedlost` + DB-by-quote/contact lookup, capped at 20 results, gated at ≥3 chars.'},

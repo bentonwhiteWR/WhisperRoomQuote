@@ -579,6 +579,9 @@ async function sendPoEmail(poNumber) {
   const poUrl = `${location.origin}/po/${encodeURIComponent(po.po_number)}?t=${po.share_token}`;
   const customerName = [d.customer?.firstName, d.customer?.lastName].filter(Boolean).join(' ') || d.customer?.company || po.quote_number;
   const apList = (d.apItems||[]).map(i => `• ${i.name} ×${i.qty||1}${d.apColor ? ' — ' + d.apColor : ''}`).join('\n');
+  const freightLine = d.freight && parseFloat(d.freight.amount) > 0
+    ? `\n• Freight: $${parseFloat(d.freight.amount).toFixed(2)}${d.freight.description ? ' — ' + d.freight.description : ''}`
+    : '';
   const shipTo = [d.customer?.address, d.customer?.city, d.customer?.state && d.customer?.zip ? `${d.customer?.state} ${d.customer?.zip}` : (d.customer?.state||d.customer?.zip)].filter(Boolean).join(', ');
 
   const subject = `Purchase Order ${po.po_number} — ${customerName}`;
@@ -589,7 +592,7 @@ Please see the attached purchase order for a WhisperRoom customer. You can view 
 ${poUrl}
 
 Order Summary:
-${apList}
+${apList}${freightLine}
 
 Ship To:
 ${customerName}

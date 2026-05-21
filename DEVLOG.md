@@ -14,15 +14,15 @@ Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in t
 
 **On STAGING (NOT YET promoted to main):**
 
+- **v1.35.1** (2026-05-21) — **AP PO freight field.** Added `po_data.freight = {amount, description}` to the AP PO schema. New `Freight ($)` + `Freight description` inputs in the AP PO modal (both Create and Edit). Customer-facing `/po/:poNumber` renders a Subtotal + Freight row when freight is set, with the description inline (e.g. "Freight — Drop-ship to Canada, customs brokerage included"). Auto-draft Audimute email (Deal Hub + suppliers-dashboard) includes the freight line in the Order Summary. Change log diff tracks freight added/removed/changed.
+
 - **v1.35.0** (2026-05-21) — **Closed Lost recovery via Deal Hub search.** Typing in the search box now also probes a new `GET /api/deals/search-closedlost?q=...` endpoint (HubSpot search filtered to `dealstage=closedlost` + DB-by-quote/contact lookup, capped at 20 results, gated at ≥3 chars). If hits come back, a banner appears under the search box offering to inject those deals as a temp "Closed Lost (search)" column at the far right of the board. Solves the Jill-misclassification case where a deal accidentally moved to Closed Lost vanished from the board with no recovery path. Temp column + banner clear when search is cleared.
 
 - **v1.34.6** (2026-05-21) — `/promote` skill no longer pauses for a yes/no confirmation. Per user preference — pre-flight already lists what's about to land, so the prompt was friction. Edited `.claude/commands/promote.md` to remove the "Confirm to proceed?" step. Other guardrails kept.
 
 - **v1.34.5** (2026-05-21) — **Bug fix: Save Changes on orders dashboard was silently shipping orders.** Typing a tracking number in the drawer + pressing Save Changes was merging `shipmentFields.tracking` into `order_data.shipped.tracking`. Since the board / calendar / Tracking tab all classify orders by `shipped.tracking && !shipped.unshipped`, the order jumped to Shipped without any of the Ship It side-effects (modal, email, dealstage advance) firing. Fix: server now writes draft shipment fields to a separate `order_data.shipmentDraft` slot when `shipped` isn't in the body; only Ship It (which sends the full `shipped` object) writes to `order_data.shipped`. Form re-populates from `shipmentDraft.*` for not-yet-shipped orders, falling back to `shipped.*` and the existing `_hs*` HS fallbacks.
 
-**Queued / discussed but not yet built:**
-
-- **Modify-PO flow** — currently AP POs are create-only (or edit with status guards). Need a path to add charges (e.g. freight on Canadian POs) to an already-created PO without recreating it. Scoping notes captured in v1.35.0 session writeup once design is settled.
+**Queued / discussed but not yet built:** nothing.
 
 **Open follow-ups from today (in priority order):**
 
@@ -545,6 +545,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.35.1  | 2026-05-21 | **AP PO freight field.** `po_data.freight = {amount, description}`. New inputs in the create + edit modal. `/po/:poNumber` renders Subtotal + Freight rows when set. Auto-draft Audimute email includes the freight line. Change log diff tracks add/remove/change events. Use case: Canadian POs where Audimute ships the package and bills WR for the leg. |
 | 1.35.0  | 2026-05-21 | **Closed Lost recovery via Deal Hub search.** New `GET /api/deals/search-closedlost?q=...` endpoint; client probes it alongside the regular search; banner offers to inject hits as a temp "Closed Lost (search)" column at the far right of the board. Banner + column clear when search is cleared. Solves the case where a deal accidentally moved to Closed Lost vanished entirely from the board. |
 | 1.34.6  | 2026-05-21 | **Dev workflow: `/promote` runs without yes/no confirm.** Pre-flight already lists what's landing — the prompt was friction. Edited `.claude/commands/promote.md`. Other guardrails (working-tree-clean check, no force-push, halt on upstream divergence) kept. |
 | 1.34.5  | 2026-05-21 | **Fix: Save Changes was silently shipping orders.** Typing a tracking number + Save was merging `shipmentFields.tracking` into `order_data.shipped.tracking`, which is the field used for "is shipped" classification across the board / calendar / Tracking tab. Drafts now persist to a separate `order_data.shipmentDraft` slot; only Ship It (which sends the full `shipped` object) writes to `shipped`. Form repopulates from `shipmentDraft` → `shipped` → `_hs*` fallbacks. |

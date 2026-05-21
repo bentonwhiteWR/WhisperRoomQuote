@@ -11199,7 +11199,7 @@ ${q.accepted ? `
     let body;
     try { body = JSON.parse(await readBody(req) || '{}'); }
     catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
-    const { quoteNumber, apItems: bodyApItems, notes: bodyNotes, customer: bodyCustomer } = body;
+    const { quoteNumber, apItems: bodyApItems, notes: bodyNotes, customer: bodyCustomer, freight: bodyFreight } = body;
     if (!quoteNumber) { json({ error: 'quoteNumber required' }, 400); return; }
     try {
       if (!db) { json({ error: 'No database' }, 500); return; }
@@ -11260,6 +11260,16 @@ ${q.accepted ? `
       const poNumber  = await nextPoNumber();
       const shareToken = generateToken();
 
+      // Optional freight (e.g. Canadian POs where Audimute ships + bills
+      // us for the leg). { amount, description } when set, null otherwise.
+      let freightAtCreate = null;
+      if (bodyFreight && typeof bodyFreight === 'object') {
+        const fAmt = parseFloat(bodyFreight.amount || 0) || 0;
+        if (fAmt > 0) {
+          freightAtCreate = { amount: fAmt, description: String(bodyFreight.description || '').trim() };
+        }
+      }
+
       const poData = {
         quoteNumber,
         dealId,
@@ -11268,6 +11278,7 @@ ${q.accepted ? `
         apItems,
         apColor: defaultColor, // legacy field — kept for backward compat with existing renderers
         notes: (bodyNotes != null ? String(bodyNotes) : (od?.productionNotes || '')),
+        freight: freightAtCreate,
         issueDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' }),
       };
 
@@ -11320,7 +11331,7 @@ ${q.accepted ? `
     const sess = getSession(req);
     const repName = sess?.name || repId || 'unknown';
 
-    const hasPoDataEdit = body.customer !== undefined || body.apItems !== undefined || body.poNotes !== undefined;
+    const hasPoDataEdit = body.customer !== undefined || body.apItems !== undefined || body.poNotes !== undefined || body.freight !== undefined;
     if (hasPoDataEdit) {
       try {
         if (!db) { json({ error: 'No database' }, 500); return; }
@@ -11385,6 +11396,26 @@ ${q.accepted ? `
             changes.push({ kind: 'notes', from: oldNotes, to: newNotes });
           }
           poData.notes = newNotes;
+        }
+
+        // Freight charge on the PO (e.g. Canadian orders where Audimute
+        // ships and bills us for the leg). Stored as { amount, description }.
+        // Setting amount to 0 / null / undefined clears the field.
+        if (body.freight !== undefined) {
+          const oldF       = poData.freight || null;
+          const oldAmt     = oldF ? parseFloat(oldF.amount || 0) || 0 : 0;
+          const oldDesc    = oldF ? String(oldF.description || '').trim() : '';
+          const incoming   = body.freight || {};
+          const newAmt     = parseFloat(incoming.amount || 0) || 0;
+          const newDesc    = String(incoming.description || '').trim();
+          if (newAmt > 0) {
+            poData.freight = { amount: newAmt, description: newDesc };
+          } else {
+            poData.freight = null;
+          }
+          if (oldAmt !== newAmt || oldDesc !== newDesc) {
+            changes.push({ kind: 'freight', fromAmt: oldAmt, toAmt: newAmt, fromDesc: oldDesc, toDesc: newDesc });
+          }
         }
 
         // Single UPDATE: po_data always; notes column too if poNotes was set
@@ -12478,6 +12509,16 @@ ${q.accepted ? `
           // Don't dump full notes diff — keep change log tidy
           return ch.to ? `Notes updated` : `Notes cleared`;
         }
+        if (ch.kind === 'freight') {
+          const fmtAmt = a => '$' + (parseFloat(a)||0).toFixed(2);
+          if (!ch.fromAmt && ch.toAmt) {
+            return `Freight added: <strong>${fmtAmt(ch.toAmt)}</strong>${ch.toDesc ? ` — ${escHtmlPo(ch.toDesc)}` : ''}`;
+          }
+          if (ch.fromAmt && !ch.toAmt) {
+            return `Freight removed (was ${fmtAmt(ch.fromAmt)})`;
+          }
+          return `Freight changed from ${fmtAmt(ch.fromAmt)} to <strong>${fmtAmt(ch.toAmt)}</strong>${ch.toDesc ? ` — ${escHtmlPo(ch.toDesc)}` : ''}`;
+        }
         if (ch.kind === 'column') {
           const isDate = ch.field === 'expected_ship_date';
           const isTs = ch.field === 'sent_at' || ch.field === 'shipped_at';
@@ -12642,7 +12683,11 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
   </div>` : ''}
 
   <div class="totals">
-    <div class="totals-row grand"><span>Order Total</span><span>${fmt(subtotal)}</span></div>
+    ${d.freight && parseFloat(d.freight.amount) > 0 ? `
+      <div class="totals-row"><span>Subtotal</span><span>${fmt(subtotal)}</span></div>
+      <div class="totals-row"><span>Freight${d.freight.description ? ` — ${escHtmlPo(d.freight.description)}` : ''}</span><span>${fmt(parseFloat(d.freight.amount))}</span></div>
+    ` : ''}
+    <div class="totals-row grand"><span>Order Total</span><span>${fmt(subtotal + (d.freight && parseFloat(d.freight.amount) > 0 ? parseFloat(d.freight.amount) : 0))}</span></div>
   </div>
 
   ${d.notes ? `

@@ -770,7 +770,7 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
 <body>
 
 <div class="topbar">
-  <span id="topbarLogo" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;letter-spacing:-.3px;flex-shrink:0"><span id="logoWhisper" style="color:#f0ede8">Whisper</span><span style="color:#e8531a">Room</span></span>
+  <a href="/deals" id="topbarLogo" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;letter-spacing:-.3px;flex-shrink:0;text-decoration:none"><span id="logoWhisper" style="color:#f0ede8">Whisper</span><span style="color:#e8531a">Room</span></a>
   <nav style="display:flex;gap:5px;align-items:center;flex:1;margin-left:8px;flex-wrap:nowrap">
     <a href="/deals" class="topbar-nav-btn">⬡ Deal Hub</a>
     <a href="/quotes" class="topbar-nav-btn active">Quotes</a>
@@ -1064,6 +1064,11 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
       <button id="freightTbdBtn" onclick="toggleFreightTbd()"
         style="padding:7px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.03em">
         TBD
+      </button>
+      <button id="freightOwnShipBtn" onclick="toggleFreightOwnShipping()"
+        title="Customer is arranging their own shipping — quote will show 'Client will arrange own shipping' in place of freight"
+        style="padding:7px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.03em">
+        Own Shipping
       </button>
       <div style="display:flex;align-items:center;gap:6px">
         <span style="font-size:11px;color:var(--muted)">Override:</span>
@@ -2213,9 +2218,12 @@ function addLineItem(product) {
   updateSummary();
   freightData = null;
   _freightTbd = false;
+  _freightOwnShipping = false;
   pickupFee = null;
   const tbdBtn = document.getElementById('freightTbdBtn');
   if (tbdBtn) { tbdBtn.style.background='var(--surface2)'; tbdBtn.style.borderColor='var(--border)'; tbdBtn.style.color='var(--muted)'; }
+  const ownShipResetBtn = document.getElementById('freightOwnShipBtn');
+  if (ownShipResetBtn) { ownShipResetBtn.style.background='var(--surface2)'; ownShipResetBtn.style.borderColor='var(--border)'; ownShipResetBtn.style.color='var(--muted)'; }
   const pfChk   = document.getElementById('pickupFeeCheck');
   const pfLabel = document.getElementById('check-pickupFee');
   const pfInput = document.getElementById('pickupFeeInput');
@@ -2701,7 +2709,9 @@ function getDiscountAmount() {
 }
 
 function getFreightTotal() {
-  return freightData && !freightData.tbd ? freightData.total : 0;
+  if (!freightData) return 0;
+  if (freightData.tbd || freightData.ownShipping) return 0;
+  return freightData.total || 0;
 }
 
 // ── Install / Delivery helpers ─────────────────────────────────────
@@ -2789,21 +2799,57 @@ function onInstallAmountInput() {
 }
 
 let _freightTbd = false;
+let _freightOwnShipping = false;
+function _resetFreightToggleStyle(btn) {
+  btn.style.background  = 'var(--surface2)';
+  btn.style.borderColor = 'var(--border)';
+  btn.style.color       = 'var(--muted)';
+}
+function _activeFreightToggleStyle(btn) {
+  btn.style.background  = 'rgba(238,98,22,.2)';
+  btn.style.borderColor = 'rgba(238,98,22,.5)';
+  btn.style.color       = '#ee6216';
+}
 function toggleFreightTbd() {
   _freightTbd = !_freightTbd;
-  const btn = document.getElementById('freightTbdBtn');
+  const btn       = document.getElementById('freightTbdBtn');
+  const ownBtn    = document.getElementById('freightOwnShipBtn');
   if (_freightTbd) {
+    // Turning TBD on — clear Own Shipping if it was on (mutually exclusive).
+    _freightOwnShipping = false;
+    if (ownBtn) _resetFreightToggleStyle(ownBtn);
     freightData = { tbd: true, total: 0 };
-    btn.style.background = 'rgba(238,98,22,.2)';
-    btn.style.borderColor = 'rgba(238,98,22,.5)';
-    btn.style.color = '#ee6216';
+    _activeFreightToggleStyle(btn);
     document.getElementById('freightResult').style.display = 'none';
     document.getElementById('freightStatus').textContent = 'Freight set to TBD — will show on quote';
   } else {
     freightData = null;
-    btn.style.background = 'var(--surface2)';
-    btn.style.borderColor = 'var(--border)';
-    btn.style.color = 'var(--muted)';
+    _resetFreightToggleStyle(btn);
+    document.getElementById('freightStatus').textContent = '';
+  }
+  updateSummary();
+}
+// "Own Shipping" — customer is arranging their own carrier. Stored as a
+// freightData flag so it survives save/load like TBD. On the customer-
+// facing quote/order/invoice the freight line renders as
+// "Client will arrange own shipping" with no dollar amount; the total
+// excludes any freight charge. Mutually exclusive with TBD (it's a
+// different concept — TBD = "we'll quote it later", ownShipping = "we
+// won't quote it because the customer doesn't want us to").
+function toggleFreightOwnShipping() {
+  _freightOwnShipping = !_freightOwnShipping;
+  const btn    = document.getElementById('freightOwnShipBtn');
+  const tbdBtn = document.getElementById('freightTbdBtn');
+  if (_freightOwnShipping) {
+    _freightTbd = false;
+    if (tbdBtn) _resetFreightToggleStyle(tbdBtn);
+    freightData = { ownShipping: true, total: 0 };
+    _activeFreightToggleStyle(btn);
+    document.getElementById('freightResult').style.display = 'none';
+    document.getElementById('freightStatus').textContent = 'Client will arrange own shipping — no freight charge';
+  } else {
+    freightData = null;
+    _resetFreightToggleStyle(btn);
     document.getElementById('freightStatus').textContent = '';
   }
   updateSummary();
@@ -3144,6 +3190,18 @@ async function getFreightAndTax() {
 }
 
 async function getFreight() {
+  // Clear TBD / Own Shipping flags if the rep is starting a fresh estimate.
+  // Both are mutually exclusive with a real ABF quote — fetching one
+  // implicitly cancels them.
+  if (_freightTbd || _freightOwnShipping) {
+    _freightTbd = false;
+    _freightOwnShipping = false;
+    const tbdBtn  = document.getElementById('freightTbdBtn');
+    const ownBtn  = document.getElementById('freightOwnShipBtn');
+    if (tbdBtn) { tbdBtn.style.background='var(--surface2)'; tbdBtn.style.borderColor='var(--border)'; tbdBtn.style.color='var(--muted)'; }
+    if (ownBtn) { ownBtn.style.background='var(--surface2)'; ownBtn.style.borderColor='var(--border)'; ownBtn.style.color='var(--muted)'; }
+    document.getElementById('freightStatus').textContent = '';
+  }
   const city = document.getElementById('shipCity').value.trim();
   const state = document.getElementById('shipState').value.trim().toUpperCase();
   const zip = document.getElementById('shipZip').value.trim().replace(/\s+/g, '');
@@ -3362,7 +3420,7 @@ async function createDeal() {
   // freight, no install/delivery, no pickup fee. Freight-only quotes are
   // valid (used for the addendum merge-quote workflow — e.g. a shipping
   // upgrade quote that gets merged into an existing order).
-  const _hasFreight = !!(freightData && (freightData.tbd === true || parseFloat(freightData.total || 0) > 0));
+  const _hasFreight = !!(freightData && (freightData.tbd === true || freightData.ownShipping === true || parseFloat(freightData.total || 0) > 0));
   const _hasInstall = !!(installData && parseFloat(installData.amount || 0) > 0);
   const _hasPickup  = !!(typeof pickupFee !== 'undefined' && pickupFee && parseFloat(pickupFee) > 0);
   if (lineItems.length === 0 && !_hasFreight && !_hasInstall && !_hasPickup) {
@@ -4280,7 +4338,7 @@ function generatePDF() {
   <div class="totals">
     <div class="totals-row"><span class="totals-label">Subtotal</span><span class="totals-val">${fmt(sub)}</span></div>
     ${disc > 0 ? `<div class="totals-row discount"><span class="totals-label">Discount${discPct ? ` (${discVal}%)` : ''}</span><span class="totals-val">−${fmt(disc)}</span></div>` : ''}
-    ${pFeePreview > 0 ? `<div class="totals-row"><span class="totals-label">Pickup Fee</span><span class="totals-val">${fmt(pFeePreview)}</span></div>` : freight > 0 ? `<div class="totals-row"><span class="totals-label">Freight</span><span class="totals-val">${fmt(freight)}</span></div>` : '<div class="totals-row"><span class="totals-label">Freight</span><span class="totals-val" style="color:#888">TBD</span></div>'}
+    ${pFeePreview > 0 ? `<div class="totals-row"><span class="totals-label">Pickup Fee</span><span class="totals-val">${fmt(pFeePreview)}</span></div>` : freightData?.ownShipping ? `<div class="totals-row"><span class="totals-label">Shipping</span><span class="totals-val" style="color:#888;font-style:italic;font-size:11px">Client will arrange own shipping</span></div>` : freight > 0 ? `<div class="totals-row"><span class="totals-label">Freight</span><span class="totals-val">${fmt(freight)}</span></div>` : '<div class="totals-row"><span class="totals-label">Freight</span><span class="totals-val" style="color:#888">TBD</span></div>'}
     ${tax > 0 ? `<div class="totals-row"><span class="totals-label">Sales Tax${taxData ? ` (${(taxData.rate*100).toFixed(3)}%)` : ''}</span><span class="totals-val">${fmt(tax)}</span></div>` : ''}
     ${isTaxExempt ? `<div class="totals-row"><span class="totals-label" style="color:#22c55e;font-weight:700">✓ Tax Exempt</span><span class="totals-val" style="color:#22c55e">${taxExemptCert ? taxExemptCert : 'Exempt'}</span></div>` : ''}
     <div class="totals-row grand"><span class="totals-label">Total USD</span><span class="totals-val">${fmt(total)}</span></div>
@@ -4293,18 +4351,17 @@ ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</
 
 <div style="margin-bottom:20px;padding:12px 16px;background:#f8f8f8;border:1px solid #e8e8e8;border-radius:4px;font-size:9px;color:#555;line-height:1.7;">
         <strong style="font-size:10px;color:#46484d;display:block;margin-bottom:6px;">TERMS AND CONDITIONS:</strong>
-        I understand that WhisperRooms are not 100% soundproof. I understand that all products manufactured by WhisperRoom, Inc. are for indoor use only. Any returns will be at the sole discretion of WhisperRoom, Inc. and are subject to a restocking fee and freight charges. Any damage that occurs during shipping or delivery must be reported to WhisperRoom, Inc. within five business days. I assume responsibility for any damage not reported to WhisperRoom, Inc. In the event that delivery is not accepted for any reason, I agree to pay in full, all shipping charges including all charges incurred for return freight and restocking charges. Compliance with local, state and national building codes and standards are my responsibility. Any alterations to the WhisperRoom will void the warranty.
+        I understand that WhisperRooms are not 100% soundproof. I understand that all products manufactured by WhisperRoom, Inc. are for indoor use only. Any returns will be at the sole discretion of WhisperRoom, Inc. and are subject to a restocking fee and freight charges. WhisperRoom is not responsible for any issues or damages related to transportation. In the event that delivery is not accepted for any reason, I agree to pay in full, all shipping charges including all charges incurred for return freight and restocking charges. Compliance with local, state and national building codes and standards are my responsibility. Any alterations to the WhisperRoom will void the warranty.
       </div>
       \${canadianBlock}
       <div style="margin:0 0 16px;padding:10px 14px;background:#f8f8f8;border:1px solid #ebebeb;font-size:8.5px;color:#555;line-height:1.75;">
         <strong style="font-size:9px;color:#333;display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em;">Terms and Conditions</strong>
-        I understand that WhisperRooms are not 100% soundproof. I understand that all products manufactured by WhisperRoom, Inc. are for indoor use only. Any returns will be at the sole discretion of WhisperRoom, Inc. and are subject to a restocking fee and freight charges. Any damage that occurs during shipping or delivery must be reported to WhisperRoom, Inc. within five business days. I assume responsibility for any damage not reported to WhisperRoom, Inc. In the event that delivery is not accepted for any reason, I agree to pay in full, all shipping charges including all charges incurred for return freight and restocking charges. Compliance with local, state and national building codes and standards are my responsibility. Any alterations to the WhisperRoom will void the warranty.
+        I understand that WhisperRooms are not 100% soundproof. I understand that all products manufactured by WhisperRoom, Inc. are for indoor use only. Any returns will be at the sole discretion of WhisperRoom, Inc. and are subject to a restocking fee and freight charges. WhisperRoom is not responsible for any issues or damages related to transportation. In the event that delivery is not accepted for any reason, I agree to pay in full, all shipping charges including all charges incurred for return freight and restocking charges. Compliance with local, state and national building codes and standards are my responsibility. Any alterations to the WhisperRoom will void the warranty.
       </div>
       <div class="footer">
   <div class="footer-left">
     Shipping charges are an estimate based on the zip code provided at time of quote.<br>
     Actual charges may vary based on delivery address accessibility.<br>
-    Standard delivery requires recipient to offload boxes from pallet.<br>
     Quote is valid for 30 days from issue date.
   </div>
   <div class="footer-right">
@@ -4887,7 +4944,24 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
     }
   }
 
-  if (freightData && !freightData.tbd) {
+  // Restore Own Shipping state
+  _freightOwnShipping = !!(freightData?.ownShipping);
+  const ownShipBtn = document.getElementById('freightOwnShipBtn');
+  if (ownShipBtn) {
+    if (_freightOwnShipping) {
+      ownShipBtn.style.background  = 'rgba(238,98,22,.2)';
+      ownShipBtn.style.borderColor = 'rgba(238,98,22,.5)';
+      ownShipBtn.style.color       = '#ee6216';
+      document.getElementById('freightResult').style.display = 'none';
+      document.getElementById('freightStatus').textContent = 'Client will arrange own shipping — no freight charge';
+    } else {
+      ownShipBtn.style.background  = 'var(--surface2)';
+      ownShipBtn.style.borderColor = 'var(--border)';
+      ownShipBtn.style.color       = 'var(--muted)';
+    }
+  }
+
+  if (freightData && !freightData.tbd && !freightData.ownShipping) {
     document.getElementById('freightBase').textContent = fmt(freightData.base);
     document.getElementById('freightMarkup').textContent = fmt(freightData.markup);
     document.getElementById('freightTotal').textContent = fmt(freightData.total);

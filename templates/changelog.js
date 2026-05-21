@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.33.1', date:'May 21, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Quote builder right-panel summary: "Own Freight" instead of "Not quoted" when Own Shipping is toggled on.** The Freight summary line in the right rail now mirrors the toggle state — pickup fee → "Pickup Fee $X", delivery+install → "Included with install", own shipping → "Own Freight" (italic muted), tbd → "TBD", real freight → "$X", nothing → "Not quoted". Was previously showing "Not quoted" when Own Shipping was on, which read like the rep forgot to quote.'},
+      ]
+    },
+    {
       v:'1.33.0', date:'May 21, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Modified-order line items now show inline on the customer order page.** When you Modify Order and merge a quote in, the addendum\'s actual line items (the products themselves) are appended to the bottom of the main Line Items table with an orange "Added" badge and a left accent stripe — not just summarized in the lower-right "Order Adjustments" block. Credit-memo addendums get red "Credit" badges and red totals. The Order Adjustments block stays put with the full reconciliation (products + freight + tax). Reps no longer have to point customers at the small totals block to see what changed.'},

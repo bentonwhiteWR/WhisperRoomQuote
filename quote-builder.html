@@ -3012,6 +3012,11 @@ function updateSummary() {
     sumFreightEl.textContent = 'Included with install';
     sumFreightEl.style.color = 'var(--muted)';
     sumFreightEl.style.fontStyle = 'italic';
+  } else if (freightData?.ownShipping) {
+    if (sumFreightLabel) sumFreightLabel.textContent = 'Freight';
+    sumFreightEl.textContent = 'Own Freight';
+    sumFreightEl.style.color = 'var(--muted)';
+    sumFreightEl.style.fontStyle = 'italic';
   } else {
     if (sumFreightLabel) sumFreightLabel.textContent = 'Freight';
     sumFreightEl.textContent = freightData?.tbd ? 'TBD' : (freight > 0 ? fmt(freight) : 'Not quoted');

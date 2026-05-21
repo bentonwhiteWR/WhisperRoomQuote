@@ -14,6 +14,8 @@ Today's prod batch (v1.26.x → v1.32.x) is the largest single-day shipment in t
 
 **On STAGING (NOT YET promoted to main):**
 
+- **v1.37.1** (2026-05-21) — **Notification system follow-up: tighter polling + fallbacks + debug endpoint.** (a) Bell poll 60s → 30s, plus refresh on tab focus / visibility change. (b) Accept-quote notification falls back to `quotes.rep_id` when HubSpot doesn't return `hubspot_owner_id` on the deal — was silently dropping the notification in that case. (c) `lib/notify.js` now logs every call (success + skipped) so Railway logs surface trigger problems. (d) New `GET /api/notifications/debug` endpoint returns session + recent notifications for the logged-in rep, lets you diagnose without Railway access.
+
 - **v1.37.0** (2026-05-21) — **Notification system, end-to-end.** Finished what was a half-built skeleton (table + API existed, only orders dashboard surfaced it). New shared snippet `/assets/notif-bell.js` (~250 lines) renders a bell + dropdown into any page that includes `<div id="notifBellMount"></div>` + `<script src="/assets/notif-bell.js" defer></script>`. Now on Deal Hub, Orders, Shipping, Reports, Suppliers, Reconcile.
   - **UX:** Green badge + pulsing border when unread > 0. Dropdown lists active (unread) notifications. Each card has **✓ Confirm** button — only way to clear it from the active list. "Open →" navigates without auto-confirming so the rep can revisit. **View history →** swaps the list for read=true notifications (latest 200). "← Active" toggles back. "✓ Confirm all" clears everything.
   - **Server:** `GET /api/notifications` now returns *unread only* (was: all). New `GET /api/notifications/history?limit=200`. New `POST /api/notifications/:id/confirm` (legacy `POST /api/notifications/:id` still works — same handler). Confirm queries are scoped to `owner_id = session.ownerId` so reps can't confirm each other's notifications.
@@ -547,6 +549,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.37.1  | 2026-05-21 | **Notification system follow-up.** Bell poll 60s→30s + visibilitychange/focus refresh. Accept-quote falls back to `quotes.rep_id` when HubSpot deal has no owner. `notify.js` logs every call. New `GET /api/notifications/debug` returns session + recent notifications. |
 | 1.37.0  | 2026-05-21 | **Notification system, end-to-end.** Shared `/assets/notif-bell.js` snippet drops a bell into Deal Hub, Orders, Shipping, Reports, Suppliers, Reconcile via `<div id="notifBellMount"></div>` + `<script src=...>`. Green pulsing badge; per-row Confirm button; History view; new endpoints `/api/notifications/history` + `/api/notifications/:id/confirm`. New triggers: process-order with AP → notify Jill; Stripe `payment_intent.processing` → notify rep (ACH initiated). Stripe Dashboard needs to subscribe to `payment_intent.processing` for that to fire. |
 | 1.36.6  | 2026-05-21 | **DEVLOG bookkeeping** — Current focus updated post-promote; v1.36.5 now on prod, staging clean. |
 | 1.36.5  | 2026-05-21 | **Removed dead freight UI from Deal Hub AP PO modal.** Cleanup — v1.35.1–v1.36.2 wired freight into the wrong modal; v1.36.4 put it in the right one (suppliers dashboard); this commit deletes the orphan. One freight code path. |

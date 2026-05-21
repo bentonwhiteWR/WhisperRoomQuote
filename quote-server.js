@@ -5946,8 +5946,22 @@ ${q.accepted ? `
           method: 'GET',
           headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
         });
-        const ownerId = dealData.body?.properties?.hubspot_owner_id;
+        let ownerId  = dealData.body?.properties?.hubspot_owner_id;
         const dealName = dealData.body?.properties?.dealname || 'Deal';
+
+        // Fall back to the quote's stored rep_id if HubSpot didn't
+        // return one (deal could be missing owner, API rate-limited,
+        // etc.). Without this fallback the rep silently misses the
+        // in-app notification — same gap we hit in v1.37.0 testing.
+        if (!ownerId && db) {
+          try {
+            const repRow = await db.query('SELECT rep_id FROM quotes WHERE quote_number = $1 LIMIT 1', [quoteNumber]);
+            if (repRow.rows[0]?.rep_id) {
+              ownerId = repRow.rows[0].rep_id;
+              console.log(`[accept-quote] HubSpot didn't return owner for ${dealId}; fell back to quotes.rep_id=${ownerId}`);
+            }
+          } catch(e) { /* non-fatal */ }
+        }
 
         if (ownerId) {
           const dueDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -8399,10 +8413,42 @@ ${q.accepted ? `
   // Active feed: unread only, capped at 50, newest first. The shared
   // `/assets/notif-bell.js` bell polls this every 60s for the badge +
   // dropdown content.
+  // Debug endpoint — returns session info + latest 10 notifications
+  // (unread AND read) for the logged-in rep. Lets you verify both
+  // sides of the loop without Railway log access: is the session
+  // owner_id correct? is the notification being inserted with that
+  // owner_id? Hit `/api/notifications/debug` in your browser.
+  if (pathname === '/api/notifications/debug' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const sess = getSession(req);
+    try {
+      const ownerId = sess?.ownerId || null;
+      const recent = ownerId ? (await db.query(
+        `SELECT id, type, title, owner_id, read, created_at FROM notifications
+         WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 10`,
+        [String(ownerId)]
+      )).rows : [];
+      const anyRecent = (await db.query(
+        `SELECT id, owner_id, type, title, created_at FROM notifications
+         ORDER BY created_at DESC LIMIT 5`
+      )).rows;
+      json({
+        session: { email: sess?.email || null, ownerId, name: sess?.name || null },
+        recentForYou: recent,
+        latestAcrossAllReps: anyRecent,
+      });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   if (pathname === '/api/notifications' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const sess = getSession(req);
-    if (!sess?.ownerId) { json({ notifications: [] }); return; }
+    if (!sess?.ownerId) {
+      console.warn(`[notify] /api/notifications — session has no ownerId (email=${sess?.email || 'none'}). Bell will be empty for this user — they may need to log out + log back in to refresh the HubSpot owner mapping.`);
+      json({ notifications: [], debug: { sessionOwnerId: null, sessionEmail: sess?.email || null } });
+      return;
+    }
     try {
       const r = await db.query(
         `SELECT id, type, title, body, deal_id, deal_name, quote_num, read, created_at

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.37.1', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Notification system: tighter polling + owner-id fallback + debug endpoint.** (1) Bell poll dropped from 60s → 30s, and now also refreshes on tab focus / visibility change so accepting a quote in one tab then switching back shows the badge immediately. (2) Accept-quote notification now falls back to `quotes.rep_id` when HubSpot doesn\'t return a `hubspot_owner_id` on the deal — was silently dropping notifications when the HubSpot owner property was missing. (3) `lib/notify.js` logs every `createNotification` call (success + skipped reasons) so Railway logs surface trigger problems. (4) `GET /api/notifications/debug` returns session info + the rep\'s 10 most-recent notifications (read + unread) + the latest 5 across all reps — hit it in your browser to verify the loop end-to-end without needing Railway log access.'},
+      ]
+    },
+    {
       v:'1.37.0', date:'May 21, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Notification system, end-to-end.** Bell icon on every internal dashboard (Deal Hub, Orders, Shipping, Reports, Suppliers, Reconcile) — green badge + pulsing border when you have unread notifications. Click → dropdown listing your active notifications with a **✓ Confirm** button per row (sole way to clear a notification from the active list — clicking "Open →" navigates without confirming so you can revisit). **View history →** link swaps the active list for previously-confirmed notifications (latest 200). New shared snippet at `/assets/notif-bell.js` — drop a `<div id="notifBellMount"></div>` into any page topbar to enable it. Was a half-built skeleton (table + API existed, only orders dashboard surfaced it, no Confirm UX, no history); this commit finishes the system and unifies it across all pages.'},

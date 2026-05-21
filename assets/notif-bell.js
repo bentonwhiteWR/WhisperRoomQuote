@@ -259,10 +259,16 @@
       if (_open && !wrap.contains(e.target)) closePanel();
     });
 
-    // Initial load + 60s poll for fresh notifications.
+    // Initial load + 30s poll. Also refresh whenever the tab regains
+    // focus so accepting a quote in another tab → switching back here
+    // surfaces the new badge immediately instead of waiting up to 30s.
     loadActive();
     if (_pollTimer) clearInterval(_pollTimer);
-    _pollTimer = setInterval(loadActive, 60000);
+    _pollTimer = setInterval(loadActive, 30000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') loadActive();
+    });
+    window.addEventListener('focus', loadActive);
   }
 
   if (document.readyState === 'loading') {

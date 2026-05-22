@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.38.3', date:'May 22, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Overdue-ship-date sweep:** background poller runs every 6h (plus 2 min after startup) checking `supplier_pos` rows where `expected_ship_date < CURRENT_DATE`, `tracking_number IS NULL`, and `status NOT IN (complete, cancelled)`. Each match fires a `po-overdue` notification to Jill + Benton (`⏰ PO past ship date — <deal>`). De-duped via new `overdue_notified_at` column on `supplier_pos` (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, no migration needed). PATCH endpoint clears the stamp when `expected_ship_date` or `tracking_number` is updated so the sweep can re-fire if the new date also goes by without tracking.'},
+      ]
+    },
+    {
       v:'1.38.2', date:'May 22, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Audimute PO: auto-status transitions + tracking widget + notification fan-out.** (1) `/api/supplier-pos/:poNumber` PATCH now auto-advances status when the rep doesn\'t set one explicitly: setting `expected_ship_date` from a pending/sent PO → `confirmed`; setting `tracking_number` from anything less than shipped → `shipped`. Logged as `auto: true` change-log entries so the timeline shows what triggered the transition. (2) Suppliers-dashboard tracking column gets a 📦 button (only visible when tracking_number is set). Click opens a popover showing the tracking number + a status pill ("In Transit" if shipped, "Delivered" if complete) + a "🔍 Open in Google" link (auto-detects carrier via search) + a "✓ Mark Delivered → Complete" button when status is `shipped`. (3) Process-order with AP items now notifies BOTH Jill and Benton (was Jill only); new notification trigger on PO creation fires the same Jill+Benton pair so they get a paper trail when the PO is generated.'},

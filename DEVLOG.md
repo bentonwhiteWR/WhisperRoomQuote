@@ -14,6 +14,8 @@ Today was another marathon — 30+ versions across notification system buildout,
 
 **On STAGING (NOT YET promoted to main):**
 
+- **v1.38.6** (2026-05-22) — **TaxJar ZIP-rejection fallback fixed.** v1.37.4 dropped `to_zip` on the retry, which TaxJar 400'd with `"No to zip, required when country is US"`. New approach: per-state `fallbackZip` in `lib/states.js` NEXUS_STATES (biggest commercial city — FL=33101, TN=37201, TX=78701, etc.); retry SUBSTITUTES instead of dropping. Result reflects that ZIP's local surtax. Banner surfaces the warning so rep knows to verify.
+
 - **v1.38.5** (2026-05-22) — **Freight Ref "Open ↗" URLs now match the Get Freight popup's Book Online button.** ABF → `https://arcb.com/tools/rate-quote.html#/<refNumber>` (deep-link, no clipboard needed); OD → `https://www.odfl.com/us/en/tools/rate-reference-search.html` (clipboard-copy of ref + search page). Replaces the generic tracking-page URLs from v1.38.4.
 
 - **v1.38.4** (2026-05-22) — **Editable Freight Quote Ref on the orders drawer.** Field always visible now; carrier picker (ABF / OD) + reference input + Open ↗ button. Open copies the ref to clipboard + opens the carrier's tracking page (`arcb.com/tools/tracking.html` for ABF, `odfl.com/.../ship-ltl-freight.html` for OD). Get Freight still pre-populates with the carrier-specific deep-link. Persists to the existing `order_data.freightRef` slot — no schema change. URL templates may need a refresh once we confirm which page each carrier wants — easy to swap in `FREIGHT_REF_URLS`.
@@ -671,6 +673,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.38.6  | 2026-05-22 | **TaxJar ZIP fallback fixed.** v1.37.4 dropped `to_zip` and TaxJar rejected with "No to zip, required when country is US." Now substitutes a `fallbackZip` per state (FL=33101, etc.) — TaxJar accepts and returns a real rate. |
 | 1.38.5  | 2026-05-22 | **Freight Ref Open ↗ uses the same URLs as the Get Freight popup.** ABF deep-links to `arcb.com/tools/rate-quote.html#/<ref>`; OD opens `rate-reference-search.html` + copies ref to clipboard. |
 | 1.38.4  | 2026-05-22 | **Editable Freight Quote Ref on the orders drawer.** Always-visible carrier picker (ABF / OD) + ref input + Open ↗ that copies ref + opens carrier tracking page. Get Freight still pre-populates the deep-link. |
 | 1.38.3  | 2026-05-22 | **Overdue-ship-date sweep.** 6h background poller fires `po-overdue` notification to Jill+Benton when a PO passes its expected ship date without tracking. De-duped via new `overdue_notified_at` column; PATCH endpoint clears it when ship date or tracking gets updated. |

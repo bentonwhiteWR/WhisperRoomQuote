@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.38.6', date:'May 22, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**TaxJar ZIP-rejection fallback actually works now.** v1.37.4 dropped `to_zip` on the retry, which made TaxJar 400 with `"No to zip, required when country is US"` — TaxJar requires to_zip for US shipments. Fixed: retry now SUBSTITUTES the rejected ZIP with a known-good `fallbackZip` per state (FL 33101, TN 37201, TX 78701, etc. — biggest commercial city in each nexus state). Returned rate reflects that fallback ZIP\'s local surtax (e.g. FL 33101 → Miami-Dade 7%, not state base 6%), so approximate but not silent. Banner still surfaces the warning so the rep knows to verify the ZIP. Configured in `lib/states.js` NEXUS_STATES map.'},
+      ]
+    },
+    {
       v:'1.38.5', date:'May 22, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Freight Quote Ref "Open ↗" now uses the same URLs as the Get Freight popup\'s Book Online button.** v1.38.4 used generic tracking pages; the rep correctly pointed out we already had the right URLs in `bookOnlineSelected()` — ABF\'s `https://arcb.com/tools/rate-quote.html#/<quoteId>` deep-link and OD\'s `rate-reference-search.html` page. Manual ABF entries now deep-link directly to the specific quote (no clipboard needed); manual OD entries open the rate-reference-search page + copy the ref to clipboard. Get Freight already-populated entries continue to use the carrier-provided `quoteUrl` from the API response when present.'},

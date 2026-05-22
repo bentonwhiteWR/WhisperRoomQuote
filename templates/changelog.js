@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.42.0', date:'May 22, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing dashboard opened up to all reps (temporary).** Gabe was hitting an ownerId mismatch on the v1.40.0 allowlist (Benton + Gabe only) — until that\'s diagnosed, the page + APIs are accessible to any authenticated user, and the nav link in the Deal Hub topbar shows for everyone. Re-gating is one config change: set `MARKETING_ALLOWLIST` in `marketing/router.js` to a non-empty array of ownerIds. Empty array = open.'},
+      ]
+    },
+    {
       v:'1.41.0', date:'May 22, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Quote expiration indicators across Deal Hub + Quote Builder.** Quotes are now treated as expired 30 days after their save date (matches the "Valid for 30 days" footer on the PDF). New yellow chip (EXP Nd) appears in the last 7 days; red EXPIRED chip after day 30. Shown on (a) each quote card in the Deal Hub right-panel quotes list, (b) each deal card in the main board (suppressed once the deal is accepted/paid/has a payment type — already locked in). When an expired quote is loaded into the quote builder, a dismissable amber/red banner shows at the top of the page nudging the rep to revise pricing. Accepted quotes never trigger the chip or banner — pricing was committed when the customer signed off. Useful for the Audimute price-book bump on 2026-05-22 since pre-bump quotes will roll into "expired" over the next 30 days and the rep gets a visible nudge to refresh.'},

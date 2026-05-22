@@ -49,6 +49,34 @@ Today was another marathon — 30+ versions across notification system buildout,
 
 Promote v1.37.8–v1.37.11 first thing tomorrow once the history-view investigation below is resolved.
 
+### Marketing dashboard — end-of-session handoff (2026-05-22, Gabe)
+
+Google Ads ETL is **working end-to-end** as of v1.42.1. Gabe ran "Sync All" on staging and confirmed the `marketing_*` tables populated with real Google Ads data. The session ended mid-sync — the 90-day "Sync All" was still running when Gabe logged off.
+
+**Shipped this session (all on `staging`, not promoted to `main`):**
+
+- **v1.40.0** — implemented all three ETL runners (`syncCampaigns`, `syncKeywords`, `syncSearchTerms`) in `marketing/google-ads-etl.js`; wired `_getCustomer()` to the real `google-ads-api` client.
+- **v1.42.0** (Benton) — opened the marketing dashboard to all reps temporarily (`MARKETING_ALLOWLIST = []`) to work around the ownerId bug in item 6 below.
+- **v1.42.1** — upgraded `google-ads-api` v17 → v23. The v17 library targeted a sunset Google Ads API version, so every sync failed with `12 UNIMPLEMENTED: GRPC target method can't be resolved`. v23 fixed it.
+
+**Auth setup is done:** all five `GOOGLE_ADS_*` env vars are set in Railway; MCC ID is `613-366-2660`. The sync pulled live data on the **Explorer**-tier developer token, so Explorer does allow production queries — the Basic Access application is about lifting the daily operation cap, not unlocking access.
+
+**Open items — pick up here next session:**
+
+1. **Confirm the full "Sync All" finished.** Gabe left mid-sync. Check `marketing_syncs` (all three rows should have a fresh `last_synced_at`, `rows_synced > 0`, `error: null`) and the dashboard tables. If "Sync All" hit Railway's HTTP request timeout, just re-run — the sync is idempotent (composite-PK upserts) and `_recordSync` records per-report progress, so nothing is lost. Reports can also be run individually via `POST /api/marketing/sync` with a single `report` and smaller `daysBack`.
+
+2. **Basic Access application — pending.** Submitted to the Google Ads API Compliance team 2026-05-22; stated SLA ~3 business days, so a decision is expected ~May 27–28 (Mon May 25 is the Memorial Day holiday). Form + API contact email is `gabrielwhite@whisperroom.com` — watch that inbox for any follow-up question. Until Basic is granted, large syncs may hit `RESOURCE_EXHAUSTED` (Explorer daily cap); Basic lifts it to 15,000 ops/day.
+
+3. **[Offered, not done] Batch the ETL upserts.** `marketing/google-ads-etl.js` does one `db.query` INSERT per row, sequentially, across 3 reports × 90 days. Search terms can be thousands of rows — slow, and it risks the Railway HTTP timeout on "Sync All". Convert to batched multi-row upserts. In marketing scope.
+
+4. **[Offered, not done] Fix the "unknown error" display gap.** The `report:'all'` branch in `marketing/router.js` returns `{ok, parts}` with no top-level `error`, so "Sync All" alerts "Sync failed: unknown error" on any failure. Real errors sit in `marketing_syncs.error` / `parts[]`. Roll the failed parts' errors into a top-level `error` string.
+
+5. **Re-gate marketing access before promoting to `main`.** `MARKETING_ALLOWLIST` in `marketing/router.js` is currently `[]` (open to every authenticated rep) — the temporary v1.42.0 workaround. Before the marketing module ships to prod, set it back to `['36303670', '36320208']` (Benton + Gabe), or all reps see Google Ads spend and the Sync button on prod.
+
+6. **Root-cause Gabe's `ownerId: null` (shared code — Benton).** Gabe's login session carries `ownerId: null` because the HubSpot owner lookup by email in the `quote-server.js` login flow (`/crm/v3/owners?email=...`) returns nothing for `gabrielwhite@whisperroom.com`. That hid the Marketing nav tab and blocked `/marketing` (both gated on a truthy ownerId), which is what forced the v1.42.0 open-to-all workaround. Likely cause: Gabe's HubSpot owner record (ID `36320208`) email does not match his login email, or the record is inactive. The login flow silently tolerates the failed lookup (`catch(e){ /* non-fatal */ }`). This affects more than marketing — the Admin Log button and anything else ownerId-gated. Fix belongs in Benton's files (`quote-server.js`, `deals-dashboard.html`).
+
+7. **Node version (low risk).** The Dockerfile pins `node:18-slim`. `google-ads-api@23` ran fine on it, so no action needed; if a future dependency needs newer, bump to `node:20-slim`.
+
 ### ⚠️ Open at end-of-day: notification history view is empty for Benton
 
 User clicked ✓ Confirm on some test notifications. History view (`/api/notifications/history`) returned nothing. Latest `/api/notifications/debug` for Benton:

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.42.1', date:'May 22, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Marketing sync fixed — `google-ads-api` upgraded v17 → v23.** Every Google Ads sync was failing with `12 UNIMPLEMENTED: GRPC target method can\'t be resolved`. The pinned v17 library targets a Google Ads API version Google has since sunset, so calls died at the gRPC layer before reaching authentication — not an auth or credential issue. Bumped the dependency to `^23.0.0` (current latest, targets a supported API version). No change needed in `marketing/google-ads-etl.js` — the `customer.report()` interface is stable across these versions. Sync now reaches Google; the remaining gate is the developer-token access level (Explorer vs Basic).'},
+      ]
+    },
+    {
       v:'1.42.0', date:'May 22, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Marketing dashboard opened up to all reps (temporary).** Gabe was hitting an ownerId mismatch on the v1.40.0 allowlist (Benton + Gabe only) — until that\'s diagnosed, the page + APIs are accessible to any authenticated user, and the nav link in the Deal Hub topbar shows for everyone. Re-gating is one config change: set `MARKETING_ALLOWLIST` in `marketing/router.js` to a non-empty array of ownerIds. Empty array = open.'},

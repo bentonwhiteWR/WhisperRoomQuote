@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.40.0', date:'May 22, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing dashboard — Google Ads sync is live.** The three ETL runners in `marketing/google-ads-etl.js` (`syncCampaigns`, `syncKeywords`, `syncSearchTerms`) are no longer stubs. `_getCustomer()` builds the `google-ads-api` client from the five `GOOGLE_ADS_*` Railway env vars; each runner pulls a daily-segmented report for the last N days (default 90) — `campaign`, `keyword_view` and `search_term_view` respectively — and upserts into `marketing_campaigns` / `marketing_keywords` / `marketing_search_terms`. Idempotent — re-running the same range overwrites via the composite key on each table. Google Ads API failures (bad credentials, unapproved developer token, wrong customer_id) are caught per-runner and written to `marketing_syncs.error`, so the dashboard status bar shows the reason instead of a bare 500. The "Sync All" button now populates the campaign, keyword and search-term tables in one pass.'},
+      ]
+    },
+    {
       v:'1.39.0', date:'May 22, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Marketing dashboard scaffolding** — new `/marketing` page for Benton + Gabe (allowlisted by ownerId). Isolated to a `marketing/` folder so Gabe can iterate without touching shared app files. `marketing/schema.sql` defines `marketing_campaigns` / `marketing_keywords` / `marketing_search_terms` / `marketing_syncs` tables (auto-created on first load). `marketing/router.js` handles all routes (`GET /marketing`, `GET /api/marketing/status`, `POST /api/marketing/sync`, plus `GET /api/marketing/{campaigns,keywords,search-terms}`). `marketing/google-ads-etl.js` is a stub — fetch logic TODO once Gabe has the developer token + OAuth refresh token. quote-server.js mounts the module via a single `marketingRouter.handle(req, res, ctx)` call early in the request handler. Dashboard page shows status, summary KPI cards, and per-campaign aggregation table. `google-ads-api` npm package pre-installed. Nav link shows on Deal Hub topbar only for the allowlist (Benton + Gabe).'},

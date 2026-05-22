@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.38.0', date:'May 22, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**New payment type: "Shopify".** Available everywhere the existing payment types live: Quote Builder Process Order modal (both quote-builder.html block instances), Deal Hub Process Order modal, Deal Hub Modify Order modal, and the admin Payment Method override dropdown. Server-side: added to the validation list in `/api/orders/:q/add-charge`, the PAY_TYPE_HS_VALUES map (in both spots that have it), and every internal label dict. Card chip shows `✓ Shopify` in green (same treatment as HS / CC / ACH / Other — all paid types). Behaviorally identical to other paid types — sets `payment_status=paid` on the HubSpot deal, creates the QB invoice + auto-payment. Requires a matching "Shopify" option on the HubSpot deal `payment_type` enum field (user is adding that separately).'},
+      ]
+    },
+    {
       v:'1.37.14', date:'May 22, 2026', tag:'ui',
       changes:[
         {t:'add', d:'**Payment-status chip now mirrors into the Deal Hub right panel.** When a deal is selected, the ACH-clearing (amber) / Funds-available (green) / Payment-failed (red, pulsing) chip — same `renderPaymentChip(deal.paymentInfo)` that drives the deal-card chip — also renders next to the other badges in the hub header meta row. Was previously only visible on the card; now visible inside the open deal too so the rep doesn\'t have to glance back at the board to see ACH state.'},

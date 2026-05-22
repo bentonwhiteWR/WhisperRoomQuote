@@ -1743,6 +1743,7 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
         <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderPayType" value="cc" style="accent-color:#ee6216" onchange="selectOrderPayType('cc')"> Credit Card</label>
         <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderPayType" value="ach" style="accent-color:#ee6216" onchange="selectOrderPayType('ach')"> ACH / Bank Deposit</label>
         <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderPayType" value="po" style="accent-color:#ee6216" onchange="selectOrderPayType('po')"> PO</label>
+        <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderPayType" value="shopify" style="accent-color:#ee6216" onchange="selectOrderPayType('shopify')"> Shopify</label>
         <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8);grid-column:span 2"><input type="radio" name="orderPayType" value="other" style="accent-color:#ee6216" onchange="selectOrderPayType('other')"> Other</label>
       </div>
       <div id="orderPoNumberRow" style="display:none;margin-top:10px">
@@ -4423,6 +4424,7 @@ ${notes ? `<div class="notes-box"><div class="notes-label">Notes</div>${notes}</
         <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderPayType" value="cc" style="accent-color:#ee6216" onchange="selectOrderPayType('cc')"> Credit Card</label>
         <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderPayType" value="ach" style="accent-color:#ee6216" onchange="selectOrderPayType('ach')"> ACH / Bank Deposit</label>
         <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderPayType" value="po" style="accent-color:#ee6216" onchange="selectOrderPayType('po')"> PO</label>
+        <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="orderPayType" value="shopify" style="accent-color:#ee6216" onchange="selectOrderPayType('shopify')"> Shopify</label>
         <label class="order-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8);grid-column:span 2"><input type="radio" name="orderPayType" value="other" style="accent-color:#ee6216" onchange="selectOrderPayType('other')"> Other</label>
       </div>
       <div id="orderPoNumberRow" style="display:none;margin-top:10px">
@@ -7874,7 +7876,7 @@ async function confirmProcessOrder() {
       const effectiveBroker  = (data.customsBroker || customsBrokerVal || '').trim();
 
       const emailSubject = `New Order: ${dealNameVal} — ${quoteNum}`;
-      const payLabelMap = { hs: 'HubSpot Invoice', cc: 'CC', ach: 'ACH', po: 'PO', other: 'Other' };
+      const payLabelMap = { hs: 'HubSpot Invoice', cc: 'CC', ach: 'ACH', shopify: 'Shopify', po: 'PO', other: 'Other' };
       const payLabel = payLabelMap[paymentType] || paymentType.toUpperCase();
       const payDisplay = (paymentType === 'po' && poNumber) ? payLabel + ' — PO #' + poNumber : payLabel;
       const emailBody = [

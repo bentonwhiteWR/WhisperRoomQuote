@@ -448,8 +448,8 @@ const COLUMNS = [
 
 ];
 // Payment type → card badge. PO stays amber (promise); all others green (money in).
-const PAY_TYPE_COLORS = {hs:'#22c55e',cc:'#22c55e',ach:'#22c55e',other:'#22c55e',po:'#f59e0b'};
-const PAY_TYPE_LABELS = {hs:'✓ HS',cc:'✓ CC',ach:'✓ ACH',other:'✓ Other',po:'PO'};
+const PAY_TYPE_COLORS = {hs:'#22c55e',cc:'#22c55e',ach:'#22c55e',shopify:'#22c55e',other:'#22c55e',po:'#f59e0b'};
+const PAY_TYPE_LABELS = {hs:'✓ HS',cc:'✓ CC',ach:'✓ ACH',shopify:'✓ Shopify',other:'✓ Other',po:'PO'};
 const PIPE_BG = {
   appointmentscheduled:'#ee6216',qualifiedtobuy:'#ee6216',contractsent:'#f59e0b',
   closedwon:'#22c55e','845719':'#3b82f6',closedlost:'#555'
@@ -1081,11 +1081,12 @@ function renderHub(dealId,data) {
           <label class="admin-label">Payment Method</label>
           <select class="admin-select" id="adminPayTypeSelect" onchange="onAdminPayTypeChange(this.value)">
             <option value="" ${!data.paymentType?'selected':''}>— Not set —</option>
-            <option value="hs"    ${data.paymentType==='hs'?'selected':''}>HubSpot Invoice</option>
-            <option value="cc"    ${data.paymentType==='cc'?'selected':''}>Credit Card</option>
-            <option value="ach"   ${data.paymentType==='ach'?'selected':''}>ACH / Bank</option>
-            <option value="po"    ${data.paymentType==='po'?'selected':''}>PO</option>
-            <option value="other" ${data.paymentType==='other'?'selected':''}>Other</option>
+            <option value="hs"      ${data.paymentType==='hs'?'selected':''}>HubSpot Invoice</option>
+            <option value="cc"      ${data.paymentType==='cc'?'selected':''}>Credit Card</option>
+            <option value="ach"     ${data.paymentType==='ach'?'selected':''}>ACH / Bank</option>
+            <option value="shopify" ${data.paymentType==='shopify'?'selected':''}>Shopify</option>
+            <option value="po"      ${data.paymentType==='po'?'selected':''}>PO</option>
+            <option value="other"   ${data.paymentType==='other'?'selected':''}>Other</option>
           </select>
           <div id="adminPoRow" style="display:${data.paymentType==='po'?'block':'none'};margin-top:8px">
             <label class="admin-label">PO Number</label>
@@ -2813,7 +2814,7 @@ function openShippingNotifyEmail(ctx) {
   const effectiveBroker = (ctx.customsBroker || '').trim();
   const dealNameVal = ctx.dealName || ctx.quoteNumber;
   const emailSubject = `New Order: ${dealNameVal} — ${ctx.quoteNumber}`;
-  const payLabelMap = { hs: 'HubSpot Invoice', cc: 'CC', ach: 'ACH', po: 'PO', other: 'Other' };
+  const payLabelMap = { hs: 'HubSpot Invoice', cc: 'CC', ach: 'ACH', shopify: 'Shopify', po: 'PO', other: 'Other' };
   const payLabel = payLabelMap[ctx.paymentType] || (ctx.paymentType || '').toUpperCase();
   const payDisplay = (ctx.paymentType === 'po' && ctx.poNumber) ? payLabel + ' — PO #' + ctx.poNumber : payLabel;
   const emailBody = [
@@ -3359,6 +3360,7 @@ const submitCreateApPo = submitApPoModal;
         <label class="proc-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procPayType" value="cc" style="accent-color:#ee6216" onchange="selectPaymentType('cc')"> Credit Card</label>
         <label class="proc-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procPayType" value="ach" style="accent-color:#ee6216" onchange="selectPaymentType('ach')"> ACH / Bank Deposit</label>
         <label class="proc-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procPayType" value="po" style="accent-color:#ee6216" onchange="selectPaymentType('po')"> PO</label>
+        <label class="proc-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8)"><input type="radio" name="procPayType" value="shopify" style="accent-color:#ee6216" onchange="selectPaymentType('shopify')"> Shopify</label>
         <label class="proc-pay-label" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.12);border-radius:6px;cursor:pointer;font-size:13px;color:rgba(255,255,255,.8);grid-column:span 2"><input type="radio" name="procPayType" value="other" style="accent-color:#ee6216" onchange="selectPaymentType('other')"> Other</label>
       </div>
       <div id="procPoNumberRow" style="display:none;margin-top:10px">
@@ -3595,6 +3597,7 @@ const submitCreateApPo = submitApPoModal;
             <option value="hs">HubSpot Payments</option>
             <option value="cc">Credit Card</option>
             <option value="ach">ACH</option>
+            <option value="shopify">Shopify</option>
             <option value="po">Purchase Order</option>
             <option value="other">Other</option>
           </select>
@@ -3661,7 +3664,7 @@ function openModifyOrderModal(quoteNumber) {
   // Default payment type from the original order's payment type.
   const defaultPt = ord.paymentType || 'hs';
   const ptSelect = document.getElementById('modifyPaymentType');
-  ptSelect.value = ['hs','cc','ach','po','other'].includes(defaultPt) ? defaultPt : 'hs';
+  ptSelect.value = ['hs','cc','ach','shopify','po','other'].includes(defaultPt) ? defaultPt : 'hs';
   document.getElementById('modifyPoNumber').value = '';
   document.getElementById('modifyError').style.display = 'none';
   // Reset preview UI; the picker renders below.

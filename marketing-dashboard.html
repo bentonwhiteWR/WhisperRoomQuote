@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Marketing — WhisperRoom</title>
+<link rel="icon" href="/assets/favicon.avif">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0f0f0f;--surface:#1a1a1a;--surface2:#222;--border:#2a2a2a;--orange:#ee6216;--text:#e8e8e8;--muted:#888;--green:#22c55e;--red:#ef4444;--yellow:#f59e0b;--blue:#3b82f6;--mono:'JetBrains Mono',ui-monospace,monospace;}
+:root.light{--bg:#f6f5f3;--surface:#fff;--surface2:#fafafa;--border:#e5e5e5;--text:#1a1a1a;--muted:#777;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased;font-size:13px}
+.topbar{display:flex;align-items:center;padding:0 20px;min-height:52px;background:#1a1a1a;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:200;gap:10px}
+.topbar-logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#f0ede8;flex-shrink:0;text-decoration:none}
+.topbar-logo span{color:#e8531a}
+.topbar-nav{display:flex;gap:5px;align-items:center;flex:1}
+.nav-link{padding:5px 10px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:6px;color:rgba(255,255,255,.5);text-decoration:none;transition:.15s;white-space:nowrap;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1)}
+.nav-link:hover{background:rgba(255,255,255,.12);color:rgba(255,255,255,.9)}
+.nav-link.active{background:rgba(238,98,22,.2);color:#ee6216;border-color:rgba(238,98,22,.4)}
+.theme-btn{padding:5px 9px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:#f0ede8;cursor:pointer;font-size:14px;line-height:1;font-family:inherit}
+
+.main{max-width:1400px;margin:0 auto;padding:24px}
+h1{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;margin-bottom:4px}
+h1 span{color:var(--orange)}
+.subtitle{font-size:12px;color:var(--muted);margin-bottom:24px}
+
+.status-bar{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.status-bar.warn{border-color:rgba(245,158,11,.45);background:rgba(245,158,11,.08)}
+.status-text{font-size:13px;color:var(--text)}
+.status-text .muted{color:var(--muted);font-size:11px;display:block;margin-top:3px}
+.sync-btn{padding:10px 18px;background:var(--orange);color:white;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.03em}
+.sync-btn:disabled{opacity:.5;cursor:not-allowed}
+.sync-btn:hover:not(:disabled){background:#d6571a}
+
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:20px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 20px}
+.card-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:6px}
+.card-value{font-size:22px;font-weight:800;color:var(--text);font-family:var(--mono)}
+.card-sub{font-size:11px;color:var(--muted);margin-top:4px}
+
+.section{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin-bottom:16px}
+.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.section-title{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--text)}
+.section-meta{font-size:11px;color:var(--muted)}
+
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:8px 10px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-bottom:1px solid var(--border)}
+td{padding:9px 10px;border-bottom:1px solid var(--border);color:var(--text)}
+tr:last-child td{border-bottom:none}
+td.num{text-align:right;font-family:var(--mono)}
+th.num{text-align:right}
+
+.empty{padding:40px;text-align:center;color:var(--muted);font-style:italic;font-size:12px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="/deals" class="topbar-logo">Whisper<span>Room</span></a>
+  <nav class="topbar-nav">
+    <a href="/deals" class="nav-link">⬡ Deal Hub</a>
+    <a href="/quotes" class="nav-link">Quotes</a>
+    <a href="/orders" class="nav-link">Orders</a>
+    <a href="/shipping" class="nav-link">Shipping</a>
+    <a href="/reports" class="nav-link">Reports</a>
+    <a href="/suppliers" class="nav-link">Suppliers</a>
+    <a href="/marketing" class="nav-link active">Marketing</a>
+  </nav>
+  <span id="appVersion" style="font-size:9px;font-weight:700;color:rgba(255,255,255,.25);letter-spacing:.06em;padding:2px 6px;border:1px solid rgba(255,255,255,.08);border-radius:4px;font-family:monospace;flex-shrink:0"></span>
+  <div id="notifBellMount"></div>
+  <script src="/assets/notif-bell.js" defer></script>
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☀️</button>
+</div>
+
+<div class="main">
+  <h1>Marketing <span>Spend</span></h1>
+  <div class="subtitle">Google Ads pull-and-analyze. Press Sync to pull the last 90 days of data into Postgres; queries below run against the local table (no API hit per click).</div>
+
+  <!-- Status bar — shows env readiness + last sync timestamps -->
+  <div id="statusBar" class="status-bar">
+    <div class="status-text">
+      <div id="statusHeadline">Loading status…</div>
+      <span class="muted" id="statusDetail"></span>
+    </div>
+    <button class="sync-btn" id="syncBtn" onclick="runSync()" disabled>↻ Sync All</button>
+  </div>
+
+  <!-- Summary cards — populated once we have data -->
+  <div class="cards" id="summaryCards" style="display:none">
+    <div class="card"><div class="card-label">Total Spend (90d)</div><div class="card-value" id="kpiSpend">—</div><div class="card-sub">Across all campaigns</div></div>
+    <div class="card"><div class="card-label">Clicks (90d)</div><div class="card-value" id="kpiClicks">—</div><div class="card-sub" id="kpiCpc">— avg CPC</div></div>
+    <div class="card"><div class="card-label">Conversions (90d)</div><div class="card-value" id="kpiConv">—</div><div class="card-sub" id="kpiCpa">— avg CPA</div></div>
+    <div class="card"><div class="card-label">Conversion Value (90d)</div><div class="card-value" id="kpiValue">—</div><div class="card-sub" id="kpiRoas">— ROAS</div></div>
+  </div>
+
+  <!-- Campaign-level table -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">Campaigns (last 90 days)</div>
+      <span class="section-meta" id="campaignsMeta">—</span>
+    </div>
+    <div id="campaignsBody">
+      <div class="empty">No data yet. Press <strong>↻ Sync All</strong> above to pull from Google Ads.</div>
+    </div>
+  </div>
+
+  <!-- Keywords / search-terms tables can be added the same way once
+       data starts flowing. Stubbed empty for now. -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">Keywords (last 90 days)</div>
+      <span class="section-meta" id="keywordsMeta">—</span>
+    </div>
+    <div id="keywordsBody"><div class="empty">No data yet.</div></div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">Search Terms (last 90 days)</div>
+      <span class="section-meta" id="searchTermsMeta">—</span>
+    </div>
+    <div id="searchTermsBody"><div class="empty">No data yet.</div></div>
+  </div>
+</div>
+
+<script>
+// ── Theme ────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const isLight = document.documentElement.classList.toggle('light');
+  document.getElementById('themeBtn').textContent = isLight ? '🌙' : '☀️';
+  localStorage.setItem('wr-theme', isLight ? 'light' : 'dark');
+}
+if (localStorage.getItem('wr-theme') === 'light') {
+  document.documentElement.classList.add('light');
+  document.addEventListener('DOMContentLoaded', () => {
+    const b = document.getElementById('themeBtn'); if (b) b.textContent = '🌙';
+  });
+}
+
+// ── App version ─────────────────────────────────────────────────────
+fetch('/api/version').then(r => r.json()).then(d => {
+  if (d.version) document.getElementById('appVersion').textContent = 'v' + d.version;
+}).catch(()=>{});
+
+// ── Helpers ─────────────────────────────────────────────────────────
+const fmtUSD = n => n == null ? '—' : '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtInt = n => n == null ? '—' : Number(n).toLocaleString('en-US');
+const fmtNum = n => n == null ? '—' : Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const fmtDate = iso => {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' });
+};
+const minutesAgo = iso => {
+  if (!iso) return null;
+  return Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+};
+
+// ── Status + sync ───────────────────────────────────────────────────
+async function loadStatus() {
+  try {
+    const res  = await fetch('/api/marketing/status', { credentials: 'include' });
+    const data = await res.json();
+    const bar  = document.getElementById('statusBar');
+    const head = document.getElementById('statusHeadline');
+    const det  = document.getElementById('statusDetail');
+    const btn  = document.getElementById('syncBtn');
+
+    if (!data.envReady) {
+      bar.classList.add('warn');
+      head.innerHTML = '⚠ Google Ads credentials not configured yet';
+      det.textContent = 'Missing env vars: ' + (data.missingEnv || []).join(', ') + '. Set in Railway, then redeploy.';
+      btn.disabled = true;
+      return;
+    }
+    bar.classList.remove('warn');
+    btn.disabled = false;
+
+    const syncs = data.syncs || [];
+    if (!syncs.length) {
+      head.textContent = 'Ready to sync — no data pulled yet.';
+      det.textContent  = 'Press Sync All to pull the last 90 days of campaign performance into Postgres.';
+    } else {
+      const campSync = syncs.find(s => s.report_type === 'campaigns');
+      if (campSync && campSync.last_synced_at) {
+        const m = minutesAgo(campSync.last_synced_at);
+        head.textContent = `Last synced ${m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.round(m/60) + ' h ago'} · ${fmtInt(campSync.rows_synced)} campaign-day rows`;
+      } else {
+        head.textContent = 'Ready to sync.';
+      }
+      det.textContent = 'Press Sync All to refresh. Existing rows are upserted (no duplicates).';
+    }
+  } catch(e) {
+    document.getElementById('statusHeadline').textContent = 'Status check failed: ' + e.message;
+  }
+}
+
+async function runSync() {
+  const btn = document.getElementById('syncBtn');
+  btn.disabled = true;
+  btn.textContent = 'Syncing…';
+  try {
+    const res  = await fetch('/api/marketing/sync', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report: 'all', daysBack: 90 }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      alert('Sync failed: ' + (data.error || 'unknown error'));
+    } else {
+      alert('Sync complete.');
+    }
+  } catch(e) {
+    alert('Sync error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '↻ Sync All';
+    await loadStatus();
+    await loadAllTables();
+  }
+}
+
+// ── Data loading + rendering ────────────────────────────────────────
+async function loadAllTables() {
+  const [camp, kw, st] = await Promise.all([
+    fetch('/api/marketing/campaigns',     { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/keywords',      { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/search-terms',  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+  ]);
+  renderCampaigns(camp.rows || []);
+  renderKeywords(kw.rows || []);
+  renderSearchTerms(st.rows || []);
+  renderSummary(camp.rows || []);
+}
+
+function renderSummary(rows) {
+  if (!rows.length) { document.getElementById('summaryCards').style.display = 'none'; return; }
+  document.getElementById('summaryCards').style.display = 'grid';
+  const spend = rows.reduce((s, r) => s + (parseFloat(r.cost_usd) || 0), 0);
+  const clicks = rows.reduce((s, r) => s + (parseInt(r.clicks) || 0), 0);
+  const conv  = rows.reduce((s, r) => s + (parseFloat(r.conversions) || 0), 0);
+  const value = rows.reduce((s, r) => s + (parseFloat(r.conversion_value) || 0), 0);
+  document.getElementById('kpiSpend').textContent  = fmtUSD(spend);
+  document.getElementById('kpiClicks').textContent = fmtInt(clicks);
+  document.getElementById('kpiConv').textContent   = fmtNum(conv);
+  document.getElementById('kpiValue').textContent  = fmtUSD(value);
+  document.getElementById('kpiCpc').textContent    = clicks ? fmtUSD(spend / clicks) + ' avg CPC' : '— avg CPC';
+  document.getElementById('kpiCpa').textContent    = conv   ? fmtUSD(spend / conv)   + ' avg CPA' : '— avg CPA';
+  document.getElementById('kpiRoas').textContent   = spend  ? (value / spend).toFixed(2) + 'x ROAS' : '— ROAS';
+}
+
+function renderCampaigns(rows) {
+  document.getElementById('campaignsMeta').textContent = rows.length ? `${fmtInt(rows.length)} rows` : '';
+  const body = document.getElementById('campaignsBody');
+  if (!rows.length) { body.innerHTML = '<div class="empty">No data yet. Press Sync All above to pull from Google Ads.</div>'; return; }
+  // Aggregate by campaign for the headline table (the per-day rows
+  // are still in the DB for trend analysis later).
+  const agg = {};
+  rows.forEach(r => {
+    const k = r.campaign_id;
+    if (!agg[k]) agg[k] = { name: r.campaign_name, status: r.status, impressions: 0, clicks: 0, cost: 0, conversions: 0, value: 0 };
+    agg[k].impressions += parseInt(r.impressions) || 0;
+    agg[k].clicks      += parseInt(r.clicks) || 0;
+    agg[k].cost        += parseFloat(r.cost_usd) || 0;
+    agg[k].conversions += parseFloat(r.conversions) || 0;
+    agg[k].value       += parseFloat(r.conversion_value) || 0;
+  });
+  const list = Object.values(agg).sort((a, b) => b.cost - a.cost);
+  body.innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Campaign</th><th>Status</th>
+        <th class="num">Spend</th><th class="num">Clicks</th><th class="num">CPC</th>
+        <th class="num">Conv.</th><th class="num">CPA</th><th class="num">Value</th><th class="num">ROAS</th>
+      </tr></thead>
+      <tbody>
+        ${list.map(r => `<tr>
+          <td>${(r.name || '—').replace(/</g,'&lt;')}</td>
+          <td>${(r.status || '—').toLowerCase()}</td>
+          <td class="num">${fmtUSD(r.cost)}</td>
+          <td class="num">${fmtInt(r.clicks)}</td>
+          <td class="num">${r.clicks ? fmtUSD(r.cost / r.clicks) : '—'}</td>
+          <td class="num">${fmtNum(r.conversions)}</td>
+          <td class="num">${r.conversions ? fmtUSD(r.cost / r.conversions) : '—'}</td>
+          <td class="num">${fmtUSD(r.value)}</td>
+          <td class="num">${r.cost ? (r.value / r.cost).toFixed(2) + 'x' : '—'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function renderKeywords(rows) {
+  document.getElementById('keywordsMeta').textContent = rows.length ? `${fmtInt(rows.length)} rows` : '';
+  const body = document.getElementById('keywordsBody');
+  if (!rows.length) { body.innerHTML = '<div class="empty">No data yet.</div>'; return; }
+  // TODO (Gabe): aggregate + render. Same pattern as renderCampaigns.
+  body.innerHTML = '<div class="empty">Keyword aggregation view — TODO (see renderCampaigns for the pattern).</div>';
+}
+
+function renderSearchTerms(rows) {
+  document.getElementById('searchTermsMeta').textContent = rows.length ? `${fmtInt(rows.length)} rows` : '';
+  const body = document.getElementById('searchTermsBody');
+  if (!rows.length) { body.innerHTML = '<div class="empty">No data yet.</div>'; return; }
+  // TODO (Gabe): aggregate + render. Same pattern as renderCampaigns.
+  body.innerHTML = '<div class="empty">Search term aggregation view — TODO (see renderCampaigns for the pattern).</div>';
+}
+
+// ── Boot ────────────────────────────────────────────────────────────
+loadStatus();
+loadAllTables();
+</script>
+</body>
+</html>

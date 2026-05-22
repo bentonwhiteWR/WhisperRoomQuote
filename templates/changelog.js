@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.38.4', date:'May 22, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Editable Freight Quote Ref on the orders drawer.** Field is now always visible (was hidden until Get Freight populated it) and lets reps paste references they got outside the app. New carrier picker (ABF / Old Dominion) sits next to the reference input. Open ↗ button copies the ref to the clipboard and opens the carrier\'s tracking page (`arcb.com/tools/tracking.html` for ABF, `odfl.com/...ship-ltl-freight.html` for OD). Get Freight still pre-populates with the carrier-specific deep-link as before. Saves to the existing `order_data.freightRef` slot — no schema change.'},
+      ]
+    },
+    {
       v:'1.38.3', date:'May 22, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Overdue-ship-date sweep:** background poller runs every 6h (plus 2 min after startup) checking `supplier_pos` rows where `expected_ship_date < CURRENT_DATE`, `tracking_number IS NULL`, and `status NOT IN (complete, cancelled)`. Each match fires a `po-overdue` notification to Jill + Benton (`⏰ PO past ship date — <deal>`). De-duped via new `overdue_notified_at` column on `supplier_pos` (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, no migration needed). PATCH endpoint clears the stamp when `expected_ship_date` or `tracking_number` is updated so the sweep can re-fire if the new date also goes by without tracking.'},

@@ -14,6 +14,8 @@ Today was another marathon — 30+ versions across notification system buildout,
 
 **On STAGING (NOT YET promoted to main):**
 
+- **v1.38.5** (2026-05-22) — **Freight Ref "Open ↗" URLs now match the Get Freight popup's Book Online button.** ABF → `https://arcb.com/tools/rate-quote.html#/<refNumber>` (deep-link, no clipboard needed); OD → `https://www.odfl.com/us/en/tools/rate-reference-search.html` (clipboard-copy of ref + search page). Replaces the generic tracking-page URLs from v1.38.4.
+
 - **v1.38.4** (2026-05-22) — **Editable Freight Quote Ref on the orders drawer.** Field always visible now; carrier picker (ABF / OD) + reference input + Open ↗ button. Open copies the ref to clipboard + opens the carrier's tracking page (`arcb.com/tools/tracking.html` for ABF, `odfl.com/.../ship-ltl-freight.html` for OD). Get Freight still pre-populates with the carrier-specific deep-link. Persists to the existing `order_data.freightRef` slot — no schema change. URL templates may need a refresh once we confirm which page each carrier wants — easy to swap in `FREIGHT_REF_URLS`.
 
 - **v1.38.3** (2026-05-22) — **Overdue-ship-date sweep.** New 6h background poller (2 min after startup) queries `supplier_pos` for rows where `expected_ship_date < CURRENT_DATE AND tracking_number IS NULL AND status NOT IN (complete, cancelled)` and notifies Jill + Benton (`⏰ PO past ship date`). De-duped via new `overdue_notified_at` column (additive ALTER, no migration). PATCH endpoint clears the stamp when ship date or tracking is updated so the sweep can re-fire on new overdue states.
@@ -669,6 +671,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.38.5  | 2026-05-22 | **Freight Ref Open ↗ uses the same URLs as the Get Freight popup.** ABF deep-links to `arcb.com/tools/rate-quote.html#/<ref>`; OD opens `rate-reference-search.html` + copies ref to clipboard. |
 | 1.38.4  | 2026-05-22 | **Editable Freight Quote Ref on the orders drawer.** Always-visible carrier picker (ABF / OD) + ref input + Open ↗ that copies ref + opens carrier tracking page. Get Freight still pre-populates the deep-link. |
 | 1.38.3  | 2026-05-22 | **Overdue-ship-date sweep.** 6h background poller fires `po-overdue` notification to Jill+Benton when a PO passes its expected ship date without tracking. De-duped via new `overdue_notified_at` column; PATCH endpoint clears it when ship date or tracking gets updated. |
 | 1.38.2  | 2026-05-22 | **AP PO lifecycle bundle.** Auto-status transitions on PATCH (expected_ship_date → confirmed, tracking_number → shipped), tracking widget popover (status pill + Google link + Mark Delivered), process-order AP notification mirrored to Benton, new supplier-po-created notification to Jill+Benton. |

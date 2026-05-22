@@ -1161,14 +1161,23 @@ function applyFreightRefFromCarrier(c) {
   setFreightRef({ carrier: c.carrier, refNumber, quoteUrl: c.quoteUrl });
 }
 
-// Carrier → tracking-page URL templates. Used for manual freight-ref
-// entries (Get Freight pre-populates a more-specific deep-link quoteUrl
-// when available; manual entries fall back to the carrier's public
-// search/tracking page + clipboard-copy of the reference).
-const FREIGHT_REF_URLS = {
-  'ABF Freight':  'https://arcb.com/tools/tracking.html',
-  'Old Dominion': 'https://www.odfl.com/us/en/tools/ship-ltl-freight.html',
-};
+// Per-carrier "open the quote on the carrier's site" URL. Mirrors the
+// behavior of the Get Freight popup's Book Online button:
+//   ABF: deep-link to the specific quote on arcb.com
+//        (https://arcb.com/tools/rate-quote.html#/<quoteId>)
+//   OD:  open OD's rate-reference-search page + copy the ref to the
+//        clipboard for the rep to paste (OD's form doesn't accept a
+//        URL-param deep link for arbitrary references).
+function buildFreightRefUrl(carrier, refNumber) {
+  if (!refNumber) return '';
+  if (carrier === 'ABF Freight') {
+    return `https://arcb.com/tools/rate-quote.html#/${encodeURIComponent(refNumber)}`;
+  }
+  if (carrier === 'Old Dominion') {
+    return 'https://www.odfl.com/us/en/tools/rate-reference-search.html';
+  }
+  return '';
+}
 
 // Single source of truth for the Freight Quote Ref UI. Field is now
 // always visible (rep can paste a reference manually for quotes
@@ -1209,13 +1218,14 @@ function onFreightRefManualEdit() {
   }
   const carrier = carrierSel.value;
   // Preserve any pre-existing quoteUrl (from a Get Freight fetch) when
-  // the rep is just editing the ref number; otherwise fall back to the
-  // carrier's generic tracking page so Open ↗ always has a destination.
+  // the rep is just editing the same carrier's ref number — that one
+  // already deep-links correctly. Otherwise rebuild from the carrier +
+  // current ref so the Open button always has a destination.
   let existing = null;
   try { existing = JSON.parse(input.dataset.freightRef || 'null'); } catch(e) {}
-  const quoteUrl = (existing && existing.carrier === carrier && existing.quoteUrl)
+  const quoteUrl = (existing && existing.carrier === carrier && existing.refNumber === refNumber && existing.quoteUrl)
     ? existing.quoteUrl
-    : (FREIGHT_REF_URLS[carrier] || '');
+    : buildFreightRefUrl(carrier, refNumber);
   input.dataset.freightRef = JSON.stringify({ carrier, refNumber, quoteUrl });
 }
 
@@ -1229,18 +1239,27 @@ function getStagedFreightRef() {
 // ref to the clipboard so the rep can paste it into the carrier's
 // search field (carrier tracking pages rarely accept URL-param deep
 // links for arbitrary references).
+// Open the saved freight ref on the carrier's site. Behavior mirrors
+// the Get Freight popup's Book Online button (`bookOnlineSelected`):
+//   ABF: open directly to the deep-linked quote (no clipboard needed)
+//   OD:  copy the ref to the clipboard + open OD's rate-reference-search
+//        page (OD's form doesn't accept a URL-param deep link)
 function openSavedFreightQuote() {
   const r = getStagedFreightRef();
   if (!r?.refNumber) { showToast('Enter a reference number first', 'info'); return; }
-  const url = r.quoteUrl || FREIGHT_REF_URLS[r.carrier] || '';
+  const url = r.quoteUrl || buildFreightRefUrl(r.carrier, r.refNumber);
   if (!url) { showToast('No carrier page available for this rate', 'info'); return; }
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(r.refNumber).then(
-      () => showToast(`Reference ${r.refNumber} copied — paste into the carrier's search field`, 'success'),
-      () => showToast(`Reference: ${r.refNumber} (copy failed — paste manually)`, 'info')
-    );
-  } else {
-    showToast(`Reference: ${r.refNumber}`, 'info');
+  // Only clipboard-copy on OD — ABF's deep-link already opens the
+  // specific quote and the rep doesn't need to paste anything.
+  if (r.carrier === 'Old Dominion') {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(r.refNumber).then(
+        () => showToast(`Reference ${r.refNumber} copied — paste into OD's search field`, 'success'),
+        () => showToast(`Reference: ${r.refNumber} (copy failed — paste manually)`, 'info')
+      );
+    } else {
+      showToast(`Reference: ${r.refNumber} (paste into OD's search field)`, 'info');
+    }
   }
   try { window.open(url, '_blank', 'noopener'); } catch(e) {}
 }

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.38.5', date:'May 22, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Freight Quote Ref "Open ↗" now uses the same URLs as the Get Freight popup\'s Book Online button.** v1.38.4 used generic tracking pages; the rep correctly pointed out we already had the right URLs in `bookOnlineSelected()` — ABF\'s `https://arcb.com/tools/rate-quote.html#/<quoteId>` deep-link and OD\'s `rate-reference-search.html` page. Manual ABF entries now deep-link directly to the specific quote (no clipboard needed); manual OD entries open the rate-reference-search page + copy the ref to clipboard. Get Freight already-populated entries continue to use the carrier-provided `quoteUrl` from the API response when present.'},
+      ]
+    },
+    {
       v:'1.38.4', date:'May 22, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Editable Freight Quote Ref on the orders drawer.** Field is now always visible (was hidden until Get Freight populated it) and lets reps paste references they got outside the app. New carrier picker (ABF / Old Dominion) sits next to the reference input. Open ↗ button copies the ref to the clipboard and opens the carrier\'s tracking page (`arcb.com/tools/tracking.html` for ABF, `odfl.com/...ship-ltl-freight.html` for OD). Get Freight still pre-populates with the carrier-specific deep-link as before. Saves to the existing `order_data.freightRef` slot — no schema change.'},

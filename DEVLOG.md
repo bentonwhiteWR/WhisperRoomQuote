@@ -8,11 +8,13 @@ Internal development notes. Last updated 2026-05-21.
 
 ## Current focus (2026-05-21 — Notification system end-to-end + AP PO freight + Closed Lost recovery + TaxJar fallback + Save-Changes silent-ship fix)
 
-**Most recent shipped to PROD:** v1.37.7 — Process-order → Jeromy notification trigger + synced `lib/notify.js` REP_EMAILS to real login emails. Promoted 2026-05-21 (eveningish).
+**Most recent shipped to PROD:** v1.39.0 — Marketing dashboard scaffolding (gated to Benton + Gabe ownerIds). Promoted 2026-05-22.
 
 Today was another marathon — 30+ versions across notification system buildout, Closed Lost recovery, AP/Audimute PO workflow, Modify Order line-items, a sneaky Save-Changes silent-ship bug, TaxJar resilience, plus a backtick typo that took the whole notification bell offline for a few minutes. Full breakdown in the **May 21 session writeup** below.
 
 **On STAGING (NOT YET promoted to main):**
+
+- **v1.41.0** (2026-05-22) — **Quote expiration indicators across Deal Hub + Quote Builder.** Yellow chip "EXP Nd" in last 7 days; red "EXPIRED" after 30 days. Driven by `quotes.created_at` (30-day rule matches the PDF footer). Shown on: (a) right-panel quote cards in Deal Hub, (b) deal cards on the main board (suppressed once deal is accepted/paid/has payment type — already locked in). Quote builder shows a dismissable banner on load when an expired/expiring quote opens. Accepted quotes never trigger the chip/banner. Server side: added `created_at` to `/api/deals/:id/hub` quotes array and `/api/quote-snapshot/`; `/api/history` injects `_createdAt` onto each snapshot row. Built ahead of Audimute price-book bump on 2026-05-22 — pre-bump quotes will naturally roll into "expired" over the next 30 days and the rep gets a visible nudge to refresh.
 
 - **v1.40.0** (2026-05-22) — **Marketing Google Ads sync implemented (Gabe).** All three runners in `marketing/google-ads-etl.js` (`syncCampaigns`, `syncKeywords`, `syncSearchTerms`) are no longer stubs. `_getCustomer()` now builds the real `google-ads-api` client from the `GOOGLE_ADS_*` Railway env vars (Gabe set all five before the session). Each runner pulls a daily-segmented report for the last N days (default 90) — `campaign` / `keyword_view` / `search_term_view` — and upserts into its `marketing_*` table on the composite PK, so re-runs overwrite cleanly. Google Ads API errors are caught per-runner and written to `marketing_syncs.error` so the dashboard status bar surfaces them. **Not yet tested on staging** — Gabe to verify the "Sync All" button pulls live data. Watch the developer-token gotcha: the token must have **Basic access** (not Test-account access) or the API rejects queries against the live WhisperRoom account.
 
@@ -677,6 +679,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.41.0  | 2026-05-22 | **Quote expiration indicators.** Yellow chip (≤7 days left) / red EXPIRED chip on both quote cards (Deal Hub right panel) and deal cards (board) once a quote crosses 23/30 days from save. Suppressed on accepted/paid deals. Quote builder shows a dismissable banner on load if the loaded quote is past (or near) its 30-day validity. Driven by `quotes.created_at`. Built ahead of the Audimute 2026-05-22 price-book bump so pre-bump quotes naturally roll into "expired" over the next 30 days and the rep gets a visible nudge to refresh. |
 | 1.40.0  | 2026-05-22 | **Google Ads sync live.** All three ETL runners (`syncCampaigns` / `syncKeywords` / `syncSearchTerms`) implemented — wire the `google-ads-api` client from the `GOOGLE_ADS_*` env vars and run daily-segmented `campaign` / `keyword_view` / `search_term_view` reports (last 90d default), upserting into the `marketing_*` tables. API errors recorded to `marketing_syncs.error` for the dashboard status bar. |
 | 1.39.0  | 2026-05-22 | **Marketing dashboard scaffolding.** New `marketing/` folder (schema.sql + router.js + google-ads-etl.js stub) + `marketing-dashboard.html`. Allowlisted to Benton + Gabe. ETL is a stub awaiting Gabe's Google Ads API auth. `google-ads-api` npm dep installed. |
 | 1.38.6  | 2026-05-22 | **TaxJar ZIP fallback fixed.** v1.37.4 dropped `to_zip` and TaxJar rejected with "No to zip, required when country is US." Now substitutes a `fallbackZip` per state (FL=33101, etc.) — TaxJar accepts and returns a real rate. |

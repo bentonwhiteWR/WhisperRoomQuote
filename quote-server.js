@@ -2629,7 +2629,9 @@ const server = http.createServer(async (req, res) => {
       // Try DB first, fall back to HubSpot Notes
       const dbResults = await searchQuotesInDb(q, repId, limit, offset);
       if (dbResults) {
-        json({ results: dbResults.results.map(r => r.json_snapshot), total: dbResults.total, source: 'db' });
+        // Inject _createdAt onto each snapshot so the client can compute
+        // expiration without needing a second fetch per quote.
+        json({ results: dbResults.results.map(r => ({ ...r.json_snapshot, _createdAt: r.created_at })), total: dbResults.total, source: 'db' });
       } else {
         const history = await fetchQuoteHistory();
         json({ results: history, source: 'hubspot' });
@@ -8670,7 +8672,7 @@ ${q.accepted ? `
       if (!snap) { json({ error: 'Quote not found' }, 404); return; }
       // Also fetch DB row for share_token and deal_id
       const row = db ? (await db.query(
-        'SELECT deal_id, deal_name, share_token, json_snapshot FROM quotes WHERE quote_number = $1',
+        'SELECT deal_id, deal_name, share_token, json_snapshot, created_at FROM quotes WHERE quote_number = $1',
         [qNum]
       ))?.rows[0] : null;
       json({
@@ -8687,6 +8689,7 @@ ${q.accepted ? `
         notes:           snap.notes        || '',
         quoteLabel:      snap.quoteLabel   || '',
         shareToken:      row?.share_token  || snap._shareToken || null,
+        createdAt:       row?.created_at   || null,
         accepted:        snap.accepted     || false,
         acceptedFoam:    snap.acceptedFoam    || '',
         acceptedHinge:   snap.acceptedHinge   || '',
@@ -8872,7 +8875,7 @@ ${q.accepted ? `
         // 3. Quotes from DB (need dealName for fallback — use dealId only for first pass)
         db ? db.query(
           `SELECT quote_number, total, date, deal_name, rep_id, share_token, payment_link,
-                  gdrive_folder_id,
+                  gdrive_folder_id, created_at,
                   (json_snapshot->>'accepted')::text            as accepted,
                   json_snapshot->>'acceptedFoam'                as accepted_foam,
                   json_snapshot->>'acceptedHinge'               as accepted_hinge,
@@ -8940,7 +8943,7 @@ ${q.accepted ? `
         try {
           const fallback = await db.query(
             `SELECT quote_number, total, date, deal_name, rep_id, share_token, payment_link,
-                    gdrive_folder_id,
+                    gdrive_folder_id, created_at,
                     (json_snapshot->>'accepted')::text            as accepted,
                     json_snapshot->>'acceptedFoam'                as accepted_foam,
                     json_snapshot->>'acceptedHinge'               as accepted_hinge,
@@ -8984,6 +8987,7 @@ ${q.accepted ? `
           quoteNumber:   r.quote_number,
           total:         r.total,
           date:          r.date,
+          createdAt:     r.created_at,
           dealName:      r.deal_name,
           repId:         r.rep_id,
           shareToken:    r.share_token,

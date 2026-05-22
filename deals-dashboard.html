@@ -72,6 +72,8 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text)
 .card-ap-red     { background:rgba(239,68,68,.18); color:var(--red);   border-color:rgba(239,68,68,.4); }
 .card-ap-yellow  { background:rgba(245,158,11,.18); color:#f59e0b;     border-color:rgba(245,158,11,.4); }
 .card-ap-green   { background:rgba(34,197,94,.16); color:var(--green); border-color:rgba(34,197,94,.4); }
+.card-expiring   { display:inline-block; font-size:9px; font-weight:800; letter-spacing:.08em; padding:1px 5px; background:rgba(245,158,11,.18); color:#f59e0b; border:1px solid rgba(245,158,11,.4); border-radius:3px; margin-left:5px; vertical-align:middle; }
+.card-expired    { display:inline-block; font-size:9px; font-weight:800; letter-spacing:.08em; padding:1px 5px; background:rgba(239,68,68,.18); color:var(--red); border:1px solid rgba(239,68,68,.4); border-radius:3px; margin-left:5px; vertical-align:middle; }
 .card-mdl  { font-size:10px; font-family:var(--mono); color:var(--text2); margin-bottom:4px; }
 .card-meta { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
 .card-amount { font-size:11px; font-weight:700; color:var(--orange); }
@@ -483,6 +485,26 @@ const fmtAge = d => {
   return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'America/New_York'});
 };
 const fmtDate = d => d?new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'America/New_York'}):'—';
+// Quote expires 30 days after created. Returns 'expired' / 'expiring' (≤7 days left) / null.
+function quoteExpiryState(createdAt) {
+  if (!createdAt) return null;
+  const created = new Date(createdAt).getTime();
+  if (!created) return null;
+  const daysSince = (Date.now() - created) / 86400000;
+  if (daysSince > 30) return 'expired';
+  if (daysSince > 23) return 'expiring';
+  return null;
+}
+function quoteExpiryChip(createdAt, accepted) {
+  if (accepted) return '';  // accepted quotes are locked in — pricing is committed
+  const state = quoteExpiryState(createdAt);
+  if (state === 'expired')  return '<span class="card-expired" title="Quote is past its 30-day expiration — pricing may be stale">EXPIRED</span>';
+  if (state === 'expiring') {
+    const daysLeft = Math.max(0, Math.ceil(30 - (Date.now() - new Date(createdAt).getTime()) / 86400000));
+    return `<span class="card-expiring" title="Expires in ${daysLeft} day${daysLeft===1?'':'s'} — refresh before sending">EXP ${daysLeft}d</span>`;
+  }
+  return '';
+}
 
 async function loadDeals() {
   try {
@@ -609,10 +631,14 @@ function renderBoard() {
           ? `<span class="card-cust" title="Custom holes — 1-month lead time">CUST</span>`
           : '';
         const apChip = d.hasAP ? renderApChipFromStatus(d.apStatus) : '';
+        // Expiration chip on the deal card mirrors the quote-card logic but
+        // suppresses on already-green deals (accepted/paid/payment type set)
+        // — those quotes are locked in and don't need a refresh nudge.
+        const expChip = (!dealGreen && d.lastQuoteAt) ? quoteExpiryChip(d.lastQuoteAt, false) : '';
         const payChip = renderPaymentChip(d.paymentInfo);
         card.innerHTML=`
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px">
-            <div class="card-name" style="flex:1">${d.name}${rmChip}${custChip}${apChip}</div>
+            <div class="card-name" style="flex:1">${d.name}${rmChip}${custChip}${apChip}${expChip}</div>
             ${isUnintegrated?`<div class="card-unintegrated-dot" title="HubSpot only — no quotes or orders in this system"></div>`:''}
           </div>
           ${(d.quoteLabel||d.firstMdl)?`<div class="card-mdl">${d.quoteLabel||d.firstMdl}</div>`:''}
@@ -931,11 +957,12 @@ function renderHub(dealId,data) {
       const qRmChip   = q.hasRM         ? `<span class="card-rm" title="Roof Mounted Ventilation — 1-month lead">RM</span>`   : '';
       const qCustChip = q.hasCustomHole ? `<span class="card-cust" title="Custom holes — 1-month lead">CUST</span>` : '';
       const qApChip   = q.hasAP         ? `<span class="card-ap" title="This quote includes an Audimute Acoustic Package">AP</span>` : '';
+      const qExpChip  = quoteExpiryChip(q.createdAt, acc);
       return `<div class="row-card ${acc?'row-accepted':''}" style="flex-direction:column;align-items:stretch;gap:6px;cursor:pointer" onclick="loadQuote('${q.quoteNumber}')">
         <!-- Row 1: Quote #, Accepted, Amount, Date, View/Copy/Email, Load -->
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="font-size:12px;font-weight:700;color:var(--text);font-family:var(--mono)">${q.quoteNumber}</span>
-          ${qRmChip}${qCustChip}${qApChip}
+          ${qRmChip}${qCustChip}${qApChip}${qExpChip}
           ${acc?'<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Accepted</span>':''}
           <span class="row-date">${fmtDate(q.date)}</span>
           <div style="display:flex;gap:4px;margin-left:auto" onclick="event.stopPropagation()">

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.42.2', date:'May 22, 2026', tag:'logging',
+      changes:[
+        {t:'log', d:'**DEVLOG: full session writeup for 2026-05-22.** Captured today\'s three-thread day — promote sweep clearing yesterday\'s staging backlog (v1.38.2 → v1.39.0 landed on main), marketing dashboard handoff to Gabe + his same-day v1.40.0 Google Ads ETL implementation (and the version-collision rebase), quote expiration indicators (v1.41.0) ahead of the Audimute price-book bump, the unrelated HubSpot file-replacement lockout, and the end-of-day v1.42.0 fix opening up `/marketing` after Gabe\'s ownerId-allowlist rejection. Current focus block updated to reflect today\'s state — four versions sitting on staging (v1.40.0 / v1.41.0 / v1.42.0 / v1.42.1), main still on v1.39.0. Yesterday\'s open EOD items (notification history empty, TaxJar 33104 verification) both confirmed resolved by user during the day.'},
+      ]
+    },
+    {
       v:'1.42.1', date:'May 22, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Marketing sync fixed — `google-ads-api` upgraded v17 → v23.** Every Google Ads sync was failing with `12 UNIMPLEMENTED: GRPC target method can\'t be resolved`. The pinned v17 library targets a Google Ads API version Google has since sunset, so calls died at the gRPC layer before reaching authentication — not an auth or credential issue. Bumped the dependency to `^23.0.0` (current latest, targets a supported API version). No change needed in `marketing/google-ads-etl.js` — the `customer.report()` interface is stable across these versions. Sync now reaches Google; the remaining gate is the developer-token access level (Explorer vs Basic).'},

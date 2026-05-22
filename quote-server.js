@@ -11515,6 +11515,24 @@ ${q.accepted ? `
         rep: repId, quoteNum: quoteNumber,
         meta: { poNumber, repName, itemCount: apItems.length }
       });
+
+      // In-app notification to Jill + Benton on PO creation. Gives them
+      // a paper trail in their bell (distinct from the auto-CC on the
+      // Audimute mailto — that's an email the rep still has to click
+      // "Send" on). Confirms once the rep marks the bell card done.
+      const PO_CREATE_NOTIFY = ['36330944', '36303670']; // Jill, Benton
+      for (const ownerId of PO_CREATE_NOTIFY) {
+        try {
+          await createNotification(
+            ownerId,
+            'supplier-po-created',
+            `📋 Audimute PO created — ${poData.dealName || quoteNumber}`,
+            `PO ${poNumber} created for ${quoteNumber}. Open the Suppliers tab to send it to Audimute, or use the auto-draft email link.`,
+            { dealId: dealId ? String(dealId) : null, dealName: poData.dealName || null, quoteNum: quoteNumber }
+          );
+        } catch(e) { console.warn(`[supplier-pos create] notification to ${ownerId} failed:`, e.message); }
+      }
+
       json({ success: true, poNumber, poUrl, shareToken });
     } catch(e) {
       console.error('[supplier-pos create] error:', e.message);
@@ -11695,6 +11713,33 @@ ${q.accepted ? `
           }
         }
       }
+
+      // Auto-status transitions — if the rep didn't explicitly set a
+      // status in this request, derive one from the field they DID
+      // change so the PO progresses through the lifecycle without
+      // requiring a separate dropdown click:
+      //   * setting tracking_number  → 'shipped'   (when not already shipped/complete)
+      //   * setting expected_ship_date → 'confirmed' (when still pending/sent)
+      // Skips on clear (newVal is null/empty). Doesn't downgrade — only
+      // advances forward through pending → sent → confirmed → shipped → complete.
+      const explicitStatus = body.status !== undefined;
+      const currentStatus  = old.status || 'pending';
+      const newTracking    = body.tracking_number !== undefined ? (body.tracking_number || null) : undefined;
+      const newExpected    = body.expected_ship_date !== undefined ? (body.expected_ship_date || null) : undefined;
+      let autoStatus = null;
+      if (!explicitStatus) {
+        if (newTracking && !['shipped', 'complete'].includes(currentStatus)) {
+          autoStatus = 'shipped';
+        } else if (newExpected && ['pending', 'sent'].includes(currentStatus)) {
+          autoStatus = 'confirmed';
+        }
+      }
+      if (autoStatus) {
+        sets.push(`status = $${vals.length + 1}`);
+        vals.push(autoStatus);
+        changes.push({ kind: 'column', field: 'status', label: 'Status', from: currentStatus, to: autoStatus, auto: true });
+      }
+
       vals.push(poNumber);
       await db.query(`UPDATE supplier_pos SET ${sets.join(', ')} WHERE po_number = $${vals.length}`, vals);
       const updated = await db.query('SELECT * FROM supplier_pos WHERE po_number = $1', [poNumber]);
@@ -13761,26 +13806,28 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
           } catch(e) { console.warn('[process-order] AP task failed:', e.message); }
         })();
 
-        // In-app notification to Jill: she owns the Audimute PO flow
-        // downstream of process-order. Without this she has to either
-        // check the suppliers dashboard manually or wait for the email
-        // she's CC'd on. The notification surfaces in her bell with a
-        // ✓ Confirm button — she clears it once the PO is sent.
-        const JILL_OWNER_ID = '36330944';
+        // In-app notification to Jill AND Benton: Jill owns the Audimute
+        // PO flow downstream of process-order; Benton mirrors so he can
+        // catch anything that slips through. Notification surfaces in
+        // each rep's bell with a ✓ Confirm button — they clear it once
+        // the PO is sent.
+        const AP_NOTIFY_OWNERS = ['36330944', '36303670']; // Jill, Benton
         const apColorLabel = apColor || 'Unknown';
         const customerLabel = [customer?.firstName, customer?.lastName].filter(Boolean).join(' ')
                             || customer?.company
                             || customer?.email
                             || 'customer';
-        try {
-          await createNotification(
-            JILL_OWNER_ID,
-            'ap-po-needed',
-            `🎨 Audimute PO needed — ${dealName || quoteNumber}`,
-            `Order ${quoteNumber} for ${customerLabel} includes an Acoustic Package (color: ${apColorLabel}). Create + send the Audimute PO from the Suppliers tab.`,
-            { dealId: dealId ? String(dealId) : null, dealName: dealName || null, quoteNum: quoteNumber }
-          );
-        } catch(e) { console.warn('[process-order] AP notification to Jill failed:', e.message); }
+        for (const ownerId of AP_NOTIFY_OWNERS) {
+          try {
+            await createNotification(
+              ownerId,
+              'ap-po-needed',
+              `🎨 Audimute PO needed — ${dealName || quoteNumber}`,
+              `Order ${quoteNumber} for ${customerLabel} includes an Acoustic Package (color: ${apColorLabel}). Create + send the Audimute PO from the Suppliers tab.`,
+              { dealId: dealId ? String(dealId) : null, dealName: dealName || null, quoteNum: quoteNumber }
+            );
+          } catch(e) { console.warn(`[process-order] AP notification to ${ownerId} failed:`, e.message); }
+        }
       }
 
       // Upload order PDF to shared orders folder (non-blocking)

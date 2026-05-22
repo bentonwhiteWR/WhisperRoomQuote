@@ -14,6 +14,8 @@ Today was another marathon — 30+ versions across notification system buildout,
 
 **On STAGING (NOT YET promoted to main):**
 
+- **v1.38.2** (2026-05-22) — **AP PO lifecycle bundle: auto-status transitions + tracking widget + notification fan-out.** (a) `/api/supplier-pos/:poNumber` PATCH auto-advances status when the rep doesn't set one: setting `expected_ship_date` from pending/sent → `confirmed`; setting `tracking_number` from anything less than shipped → `shipped`. Logged as `auto: true` in the change log. (b) Suppliers-dashboard tracking column gains a 📦 button (when tracking is set) that opens a popover with tracking number + In Transit/Delivered status pill + Google-search-by-tracking link + Mark Delivered button when shipped. (c) Process-order AP notification now fires to Benton too (was Jill only). (d) New `supplier-po-created` notification on POST `/api/supplier-pos` fires to both Jill + Benton.
+
 - **v1.38.1** (2026-05-22) — **No more "Load X? This will replace your current quote." confirm when arriving from Deal Hub.** Gated the confirm in `loadFromHistoryEntry()` on `skipClose` (already signals URL-param/Deal-Hub entry). In-page History panel clicks still confirm.
 
 - **v1.38.0** (2026-05-22) — **New payment type: "Shopify".** Wired into both Process Order modals (quote-builder + Deal Hub), the Modify Order modal, and the admin payment-method override. Server validation list + PAY_TYPE_HS_VALUES + every internal label dict updated to include `shopify: 'Shopify'`. Card chip styled green like other paid types. Behaviorally identical to other paid types (sets `payment_status=paid`, creates QB invoice + auto-payment). Needs a matching "Shopify" option in HubSpot's `payment_type` enum field — user adding separately.
@@ -663,6 +665,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.38.2  | 2026-05-22 | **AP PO lifecycle bundle.** Auto-status transitions on PATCH (expected_ship_date → confirmed, tracking_number → shipped), tracking widget popover (status pill + Google link + Mark Delivered), process-order AP notification mirrored to Benton, new supplier-po-created notification to Jill+Benton. |
 | 1.38.1  | 2026-05-22 | **No more "Load X? Replace your current quote?" confirm** when arriving at the quote builder from the Deal Hub. Gated on `skipClose` (already signals URL-param entry). History-panel clicks still confirm. |
 | 1.38.0  | 2026-05-22 | **New payment type: "Shopify"** in both Process Order modals + Modify Order + admin override. Server validation + label dicts updated. Same behavior as other paid types. HubSpot `payment_type` enum needs matching "Shopify" option (user adding). |
 | 1.37.14 | 2026-05-22 | **Payment-status chip mirrored into the Deal Hub right panel.** Same chip the cards show (ACH clearing/Funds available/Failed) now renders in the hub-meta row when a deal is open. |

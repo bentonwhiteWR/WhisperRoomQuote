@@ -14,6 +14,8 @@ Today was another marathon — 30+ versions across notification system buildout,
 
 **On STAGING (NOT YET promoted to main):**
 
+- **v1.38.1** (2026-05-22) — **No more "Load X? This will replace your current quote." confirm when arriving from Deal Hub.** Gated the confirm in `loadFromHistoryEntry()` on `skipClose` (already signals URL-param/Deal-Hub entry). In-page History panel clicks still confirm.
+
 - **v1.38.0** (2026-05-22) — **New payment type: "Shopify".** Wired into both Process Order modals (quote-builder + Deal Hub), the Modify Order modal, and the admin payment-method override. Server validation list + PAY_TYPE_HS_VALUES + every internal label dict updated to include `shopify: 'Shopify'`. Card chip styled green like other paid types. Behaviorally identical to other paid types (sets `payment_status=paid`, creates QB invoice + auto-payment). Needs a matching "Shopify" option in HubSpot's `payment_type` enum field — user adding separately.
 
 - **v1.37.14** (2026-05-22) — **Payment-status chip mirrored into the Deal Hub right panel.** Same `renderPaymentChip(deal.paymentInfo)` that drives the deal-card chip now also renders in the hub-meta row next to the dealstage/payment-type badges. Rep no longer has to glance back at the card to see ACH-clearing/cleared/failed state once a deal is open.
@@ -661,6 +663,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.38.1  | 2026-05-22 | **No more "Load X? Replace your current quote?" confirm** when arriving at the quote builder from the Deal Hub. Gated on `skipClose` (already signals URL-param entry). History-panel clicks still confirm. |
 | 1.38.0  | 2026-05-22 | **New payment type: "Shopify"** in both Process Order modals + Modify Order + admin override. Server validation + label dicts updated. Same behavior as other paid types. HubSpot `payment_type` enum needs matching "Shopify" option (user adding). |
 | 1.37.14 | 2026-05-22 | **Payment-status chip mirrored into the Deal Hub right panel.** Same chip the cards show (ACH clearing/Funds available/Failed) now renders in the hub-meta row when a deal is open. |
 | 1.37.13 | 2026-05-22 | **Deal Hub default view stays "All Reps".** Removed the auto-switch to logged-in user's ownerId that ran ~15s after page load when `/api/me` returned. Reps can pick a name themselves; default is no filter. |

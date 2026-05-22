@@ -4777,7 +4777,15 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
             allHistory.find(h => h.id === idOrIdx) ||
             allHistory[parseInt(idOrIdx)];
   if (!q) return;
-  if (!confirm('Load "' + (q.dealName || 'Untitled Quote') + '"? This will replace your current quote.')) return;
+  // Skip the "Load X? This will replace your current quote." confirm
+  // when called from the Deal Hub / URL-param entry path — same signal
+  // as skipClose. The page is fresh in those cases, so there's nothing
+  // to "replace" and the prompt is pure friction. The confirm still
+  // fires for clicks from the in-page History panel, where the rep may
+  // have unsaved work to overwrite.
+  if (!skipClose) {
+    if (!confirm('Load "' + (q.dealName || 'Untitled Quote') + '"? This will replace your current quote.')) return;
+  }
 
   window._suppressNameGuard = true; // don't trigger guard during history restore
   if (q.customer) {

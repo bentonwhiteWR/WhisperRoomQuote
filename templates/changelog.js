@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.38.1', date:'May 22, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Clicking a quote from Deal Hub no longer pops a "Load X? This will replace your current quote." confirm.** The quote builder\'s `loadFromHistoryEntry()` was firing the confirm on every load, including the URL-param entry from Deal Hub where the page is fresh and there\'s nothing to replace. Now gated on `skipClose` — same flag we already use to signal "called from Deal Hub / URL-param load, not from the in-page History panel". Clicks from the in-page History panel still confirm so the rep doesn\'t accidentally overwrite unsaved work.'},
+      ]
+    },
+    {
       v:'1.38.0', date:'May 22, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**New payment type: "Shopify".** Available everywhere the existing payment types live: Quote Builder Process Order modal (both quote-builder.html block instances), Deal Hub Process Order modal, Deal Hub Modify Order modal, and the admin Payment Method override dropdown. Server-side: added to the validation list in `/api/orders/:q/add-charge`, the PAY_TYPE_HS_VALUES map (in both spots that have it), and every internal label dict. Card chip shows `✓ Shopify` in green (same treatment as HS / CC / ACH / Other — all paid types). Behaviorally identical to other paid types — sets `payment_status=paid` on the HubSpot deal, creates the QB invoice + auto-payment. Requires a matching "Shopify" option on the HubSpot deal `payment_type` enum field (user is adding that separately).'},

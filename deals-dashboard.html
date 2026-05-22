@@ -363,6 +363,7 @@ select option { background: var(--surface); color: var(--text); }
     <a href="/reports" class="nav-link">Reports</a>
     <a href="/accounting" class="nav-link">Accounting</a>
     <a href="/suppliers" class="nav-link">Suppliers</a>
+    <a id="marketingNavLink" href="/marketing" class="nav-link" style="display:none">Marketing</a>
   <span id="appVersion" style="font-size:9px;font-weight:700;color:var(--muted,rgba(255,255,255,.25));letter-spacing:.06em;padding:2px 6px;border:1px solid rgba(255,255,255,.08);border-radius:4px;font-family:monospace;flex-shrink:0"></span>
   </nav>
   <div class="topbar-spacer"></div>
@@ -1821,6 +1822,15 @@ async function loadCurrentUser() {
       // Admin log button — visible to all
       const logBtn = document.getElementById('adminLogBtn');
       if (logBtn) logBtn.style.display = 'inline-flex';
+      // Marketing nav link — visible only to Benton + Gabe (matches
+      // the MARKETING_ALLOWLIST in marketing/router.js). Anyone else
+      // can still type /marketing in the URL but the server redirects
+      // them away — the link is just a UX hint.
+      const MARKETING_OWNERS = ['36303670', '36320208']; // Benton, Gabe
+      const mkLink = document.getElementById('marketingNavLink');
+      if (mkLink && MARKETING_OWNERS.includes(String(data.ownerId))) {
+        mkLink.style.display = '';
+      }
     }
   } catch(e) {}
 }

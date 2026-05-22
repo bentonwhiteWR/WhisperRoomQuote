@@ -186,6 +186,12 @@ const stripeLib = require('./lib/stripe');
 
 const apPackages = require('./lib/ap-packages');
 
+// Marketing dashboard module — isolated to marketing/ so Gabe can iterate
+// on it without touching shared app files. See marketing/router.js for
+// the route handlers; quote-server.js mounts it once via the
+// `marketingRouter.handle(...)` call in the main request handler.
+const marketingRouter = require('./marketing/router');
+
 
 const auth = require('./lib/auth');
 auth.init({ getDb: () => db, parseCookies });
@@ -890,6 +896,18 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(status, {'Content-Type':'application/json'});
     res.end(JSON.stringify(data));
   };
+
+  // ── Marketing dashboard handoff ──────────────────────────────────
+  // Self-contained module at marketing/router.js handles /marketing
+  // + /api/marketing/*. Mounted here so it short-circuits before the
+  // main route dispatcher. Marketing routes use their own allowlist
+  // (Benton + Gabe ownerIds) — see marketing/router.js for details.
+  try {
+    if (await marketingRouter.handle(req, res, { db, getSession, json, parsed })) return;
+  } catch(e) {
+    console.warn('[marketing] router error:', e.message);
+    // Fall through; non-marketing routes still work.
+  }
 
   // ── API: Admin — backfill missing share tokens ───────────────────
   if (pathname === '/api/admin/drive-config' && req.method === 'GET') {

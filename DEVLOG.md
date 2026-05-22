@@ -14,6 +14,8 @@ Today was another marathon — 30+ versions across notification system buildout,
 
 **On STAGING (NOT YET promoted to main):**
 
+- **v1.39.0** (2026-05-22) — **Marketing dashboard scaffolding** for Gabe to fill in. New `marketing/` folder holds the entire module: `schema.sql` (auto-applied), `router.js` (route handler), `google-ads-etl.js` (stub — TODO Gabe). `marketing-dashboard.html` is the page (status bar + summary KPI cards + campaign aggregation table). quote-server.js mounts via `marketingRouter.handle(...)` — one line. Allowlist (`36303670`, `36320208` = Benton + Gabe) controls both server-side access + nav link visibility on Deal Hub topbar. `google-ads-api` npm dep pre-installed. Schema is `marketing_*` prefix in the existing Postgres so cross-system joins (cost-per-quote etc.) stay trivial. Auth requirements documented in `marketing/google-ads-etl.js` header — Gabe needs developer token + OAuth client_id/secret + refresh_token + customer_id set as Railway env vars before sync will work.
+
 - **v1.38.6** (2026-05-22) — **TaxJar ZIP-rejection fallback fixed.** v1.37.4 dropped `to_zip` on the retry, which TaxJar 400'd with `"No to zip, required when country is US"`. New approach: per-state `fallbackZip` in `lib/states.js` NEXUS_STATES (biggest commercial city — FL=33101, TN=37201, TX=78701, etc.); retry SUBSTITUTES instead of dropping. Result reflects that ZIP's local surtax. Banner surfaces the warning so rep knows to verify.
 
 - **v1.38.5** (2026-05-22) — **Freight Ref "Open ↗" URLs now match the Get Freight popup's Book Online button.** ABF → `https://arcb.com/tools/rate-quote.html#/<refNumber>` (deep-link, no clipboard needed); OD → `https://www.odfl.com/us/en/tools/rate-reference-search.html` (clipboard-copy of ref + search page). Replaces the generic tracking-page URLs from v1.38.4.
@@ -673,6 +675,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.39.0  | 2026-05-22 | **Marketing dashboard scaffolding.** New `marketing/` folder (schema.sql + router.js + google-ads-etl.js stub) + `marketing-dashboard.html`. Allowlisted to Benton + Gabe. ETL is a stub awaiting Gabe's Google Ads API auth. `google-ads-api` npm dep installed. |
 | 1.38.6  | 2026-05-22 | **TaxJar ZIP fallback fixed.** v1.37.4 dropped `to_zip` and TaxJar rejected with "No to zip, required when country is US." Now substitutes a `fallbackZip` per state (FL=33101, etc.) — TaxJar accepts and returns a real rate. |
 | 1.38.5  | 2026-05-22 | **Freight Ref Open ↗ uses the same URLs as the Get Freight popup.** ABF deep-links to `arcb.com/tools/rate-quote.html#/<ref>`; OD opens `rate-reference-search.html` + copies ref to clipboard. |
 | 1.38.4  | 2026-05-22 | **Editable Freight Quote Ref on the orders drawer.** Always-visible carrier picker (ABF / OD) + ref input + Open ↗ that copies ref + opens carrier tracking page. Get Freight still pre-populates the deep-link. |

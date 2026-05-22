@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.39.0', date:'May 22, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing dashboard scaffolding** — new `/marketing` page for Benton + Gabe (allowlisted by ownerId). Isolated to a `marketing/` folder so Gabe can iterate without touching shared app files. `marketing/schema.sql` defines `marketing_campaigns` / `marketing_keywords` / `marketing_search_terms` / `marketing_syncs` tables (auto-created on first load). `marketing/router.js` handles all routes (`GET /marketing`, `GET /api/marketing/status`, `POST /api/marketing/sync`, plus `GET /api/marketing/{campaigns,keywords,search-terms}`). `marketing/google-ads-etl.js` is a stub — fetch logic TODO once Gabe has the developer token + OAuth refresh token. quote-server.js mounts the module via a single `marketingRouter.handle(req, res, ctx)` call early in the request handler. Dashboard page shows status, summary KPI cards, and per-campaign aggregation table. `google-ads-api` npm package pre-installed. Nav link shows on Deal Hub topbar only for the allowlist (Benton + Gabe).'},
+      ]
+    },
+    {
       v:'1.38.6', date:'May 22, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**TaxJar ZIP-rejection fallback actually works now.** v1.37.4 dropped `to_zip` on the retry, which made TaxJar 400 with `"No to zip, required when country is US"` — TaxJar requires to_zip for US shipments. Fixed: retry now SUBSTITUTES the rejected ZIP with a known-good `fallbackZip` per state (FL 33101, TN 37201, TX 78701, etc. — biggest commercial city in each nexus state). Returned rate reflects that fallback ZIP\'s local surtax (e.g. FL 33101 → Miami-Dade 7%, not state base 6%), so approximate but not silent. Banner still surfaces the warning so the rep knows to verify the ZIP. Configured in `lib/states.js` NEXUS_STATES map.'},

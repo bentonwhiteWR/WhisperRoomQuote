@@ -14,6 +14,8 @@ Today was another marathon — 30+ versions across notification system buildout,
 
 **On STAGING (NOT YET promoted to main):**
 
+- **v1.37.13** (2026-05-22) — **Deal Hub default view is always "All Reps" — no more auto-switch.** `loadCurrentUser()` was setting the rep filter to the logged-in user's ownerId ~15s after page load (once `/api/me` returned). Removed that auto-set. Filter stays on "All Reps" until the rep picks a name.
+
 - **v1.37.11** (2026-05-21) — Confirm + read-all POST endpoints now lazy-hydrate the session (matching the GET endpoints). Plugs a v1.37.2 gap. Confirm endpoint also returns `rowsUpdated` count.
 - **v1.37.10** (2026-05-21) — Notification bell came back from the dead. v1.37.9's CSS comment had literal backticks around `:root.light` inside the JS template literal — terminated the string early, script became a syntax error, bell vanished everywhere. Removed backticks. **Lesson saved to memory.**
 - **v1.37.9** (2026-05-21) — Notification dropdown light-mode styling.
@@ -655,6 +657,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.37.13 | 2026-05-22 | **Deal Hub default view stays "All Reps".** Removed the auto-switch to logged-in user's ownerId that ran ~15s after page load when `/api/me` returned. Reps can pick a name themselves; default is no filter. |
 | 1.37.12 | 2026-05-21 | **DEVLOG: full session writeup for 2026-05-21.** Captured today's 30-version marathon across the notification system buildout, Closed Lost recovery, AP PO freight UI, Modify Order improvements, the Save-Changes silent-ship bug, TaxJar resilience, and the bell-vanished-from-backticks incident. Current focus updated with open follow-ups (notably the empty-history investigation). |
 | 1.37.11 | 2026-05-21 | **Notification confirm + read-all now lazy-hydrate the session.** Was a v1.37.2 gap — only GET endpoints called the hydrate. Confirms by sessions-without-ownerId silently no-op'd; the UI optimistically hid them, the DB row stayed unread, history never picked them up. Confirm also returns `rowsUpdated` for diagnostics. |
 | 1.37.10 | 2026-05-21 | **Fix: bell came back from the dead.** v1.37.9 CSS comment had literal backticks inside a JS template literal — terminated the string early, script became a syntax error, bell vanished everywhere. Removed backticks from comment. |

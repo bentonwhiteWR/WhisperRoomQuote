@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.37.13', date:'May 22, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Deal Hub default view is now always "All Reps" — no more auto-switch to your own deals ~15s after page load.** `loadCurrentUser()` was setting the rep dropdown to the logged-in user\'s ownerId once `/api/me` returned, which is why the board would change view a few seconds after opening. Removed that block; the dropdown stays on "All Reps" until the rep explicitly picks a name. Admin log button visibility is unchanged.'},
+      ]
+    },
+    {
       v:'1.37.12', date:'May 21, 2026', tag:'log',
       changes:[
         {t:'log', d:'**DEVLOG: full session writeup for 2026-05-21.** Captured today\'s 30-version run across notification system end-to-end (v1.37.0–v1.37.11), Closed Lost hideable toggle column (v1.36.x), AP/Audimute PO freight charges in the suppliers dashboard, the hang-tab SKU `AHDAC000482` line item, Modify Order line items + Own Shipping, the Save-Changes-silently-ships bug fix (v1.34.5), TaxJar city/state fallback for retired ZIPs, the `/promote` no-confirmation tweak, and the self-inflicted v1.37.9 backtick-broke-the-bell incident. Current focus block flags the open history-empty issue for tomorrow.'},

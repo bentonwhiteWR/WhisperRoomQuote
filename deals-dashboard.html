@@ -1801,13 +1801,12 @@ async function loadCurrentUser() {
       if (badge) badge.style.display = 'flex';
       if (name)  name.textContent = data.name;
     }
-    // Auto-filter to logged-in rep's deals (they can clear it to see all)
+    // Default rep filter stays "All Reps" — every rep should see the
+    // full board on page load and pick a filter if they want. (Earlier
+    // behavior auto-set the dropdown to the logged-in rep's ownerId
+    // ~15s after the page loaded — once /api/me returned — which the
+    // user explicitly asked to drop.)
     if (data.ownerId) {
-      const repSel = document.getElementById('repFilter');
-      if (repSel) {
-        repSel.value = data.ownerId;
-        currentRepFilter = data.ownerId;
-      }
       // Admin log button — visible to all
       const logBtn = document.getElementById('adminLogBtn');
       if (logBtn) logBtn.style.display = 'inline-flex';

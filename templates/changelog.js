@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.37.14', date:'May 22, 2026', tag:'ui',
+      changes:[
+        {t:'add', d:'**Payment-status chip now mirrors into the Deal Hub right panel.** When a deal is selected, the ACH-clearing (amber) / Funds-available (green) / Payment-failed (red, pulsing) chip — same `renderPaymentChip(deal.paymentInfo)` that drives the deal-card chip — also renders next to the other badges in the hub header meta row. Was previously only visible on the card; now visible inside the open deal too so the rep doesn\'t have to glance back at the board to see ACH state.'},
+      ]
+    },
+    {
       v:'1.37.13', date:'May 22, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Deal Hub default view is now always "All Reps" — no more auto-switch to your own deals ~15s after page load.** `loadCurrentUser()` was setting the rep dropdown to the logged-in user\'s ownerId once `/api/me` returned, which is why the board would change view a few seconds after opening. Removed that block; the dropdown stays on "All Reps" until the rep explicitly picks a name. Admin log button visibility is unchanged.'},

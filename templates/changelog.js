@@ -51,6 +51,36 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.38.6', date:'May 22, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**TaxJar ZIP-rejection fallback actually works now.** v1.37.4 dropped `to_zip` on the retry, which made TaxJar 400 with `"No to zip, required when country is US"` — TaxJar requires to_zip for US shipments. Fixed: retry now SUBSTITUTES the rejected ZIP with a known-good `fallbackZip` per state (FL 33101, TN 37201, TX 78701, etc. — biggest commercial city in each nexus state). Returned rate reflects that fallback ZIP\'s local surtax (e.g. FL 33101 → Miami-Dade 7%, not state base 6%), so approximate but not silent. Banner still surfaces the warning so the rep knows to verify the ZIP. Configured in `lib/states.js` NEXUS_STATES map.'},
+      ]
+    },
+    {
+      v:'1.38.5', date:'May 22, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Freight Quote Ref "Open ↗" now uses the same URLs as the Get Freight popup\'s Book Online button.** v1.38.4 used generic tracking pages; the rep correctly pointed out we already had the right URLs in `bookOnlineSelected()` — ABF\'s `https://arcb.com/tools/rate-quote.html#/<quoteId>` deep-link and OD\'s `rate-reference-search.html` page. Manual ABF entries now deep-link directly to the specific quote (no clipboard needed); manual OD entries open the rate-reference-search page + copy the ref to clipboard. Get Freight already-populated entries continue to use the carrier-provided `quoteUrl` from the API response when present.'},
+      ]
+    },
+    {
+      v:'1.38.4', date:'May 22, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Editable Freight Quote Ref on the orders drawer.** Field is now always visible (was hidden until Get Freight populated it) and lets reps paste references they got outside the app. New carrier picker (ABF / Old Dominion) sits next to the reference input. Open ↗ button copies the ref to the clipboard and opens the carrier\'s tracking page (`arcb.com/tools/tracking.html` for ABF, `odfl.com/...ship-ltl-freight.html` for OD). Get Freight still pre-populates with the carrier-specific deep-link as before. Saves to the existing `order_data.freightRef` slot — no schema change.'},
+      ]
+    },
+    {
+      v:'1.38.3', date:'May 22, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Overdue-ship-date sweep:** background poller runs every 6h (plus 2 min after startup) checking `supplier_pos` rows where `expected_ship_date < CURRENT_DATE`, `tracking_number IS NULL`, and `status NOT IN (complete, cancelled)`. Each match fires a `po-overdue` notification to Jill + Benton (`⏰ PO past ship date — <deal>`). De-duped via new `overdue_notified_at` column on `supplier_pos` (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, no migration needed). PATCH endpoint clears the stamp when `expected_ship_date` or `tracking_number` is updated so the sweep can re-fire if the new date also goes by without tracking.'},
+      ]
+    },
+    {
+      v:'1.38.2', date:'May 22, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Audimute PO: auto-status transitions + tracking widget + notification fan-out.** (1) `/api/supplier-pos/:poNumber` PATCH now auto-advances status when the rep doesn\'t set one explicitly: setting `expected_ship_date` from a pending/sent PO → `confirmed`; setting `tracking_number` from anything less than shipped → `shipped`. Logged as `auto: true` change-log entries so the timeline shows what triggered the transition. (2) Suppliers-dashboard tracking column gets a 📦 button (only visible when tracking_number is set). Click opens a popover showing the tracking number + a status pill ("In Transit" if shipped, "Delivered" if complete) + a "🔍 Open in Google" link (auto-detects carrier via search) + a "✓ Mark Delivered → Complete" button when status is `shipped`. (3) Process-order with AP items now notifies BOTH Jill and Benton (was Jill only); new notification trigger on PO creation fires the same Jill+Benton pair so they get a paper trail when the PO is generated.'},
+      ]
+    },
+    {
       v:'1.38.1', date:'May 22, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Clicking a quote from Deal Hub no longer pops a "Load X? This will replace your current quote." confirm.** The quote builder\'s `loadFromHistoryEntry()` was firing the confirm on every load, including the URL-param entry from Deal Hub where the page is fresh and there\'s nothing to replace. Now gated on `skipClose` — same flag we already use to signal "called from Deal Hub / URL-param load, not from the in-page History panel". Clicks from the in-page History panel still confirm so the rep doesn\'t accidentally overwrite unsaved work.'},

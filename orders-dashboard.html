@@ -496,16 +496,24 @@
         <label>Freight Cost (actual)</label>
         <input type="text" inputmode="decimal" id="editFreightCost" placeholder="$0.00">
       </div>
-      <div class="field full" id="editFreightRefField" style="display:none">
+      <div class="field full" id="editFreightRefField">
         <label>Freight Quote Ref</label>
         <div style="display:flex;gap:8px;align-items:center">
-          <input type="text" id="editFreightRef" readonly
+          <select id="editFreightRefCarrier"
+                  style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:13px;font-family:inherit;outline:none;cursor:pointer"
+                  onchange="onFreightRefManualEdit()">
+            <option value="ABF Freight">ABF</option>
+            <option value="Old Dominion">OD</option>
+          </select>
+          <input type="text" id="editFreightRef" placeholder="Paste reference number"
+                 oninput="onFreightRefManualEdit()"
                  style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text);font-size:13px;font-family:'JetBrains Mono',ui-monospace,monospace;outline:none">
           <button type="button" onclick="openSavedFreightQuote()"
                   style="padding:8px 14px;background:rgba(59,130,246,.15);color:#3b82f6;border:1px solid rgba(59,130,246,.3);border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">
             Open &#x2197;
           </button>
         </div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:6px;line-height:1.5">Auto-populates when you run Get Freight, or paste a reference manually for quotes obtained outside the app. Open copies the ref + opens the carrier's tracking page.</div>
       </div>
     </div>
 
@@ -1153,24 +1161,72 @@ function applyFreightRefFromCarrier(c) {
   setFreightRef({ carrier: c.carrier, refNumber, quoteUrl: c.quoteUrl });
 }
 
-// Single source of truth for the Freight Quote Ref UI. Passing null
-// clears + hides the row. The freightRef object is stashed on the
-// element's dataset so saveOrder() can serialize it back into the
-// PATCH payload without re-deriving it.
+// Per-carrier "open the quote on the carrier's site" URL. Mirrors the
+// behavior of the Get Freight popup's Book Online button:
+//   ABF: deep-link to the specific quote on arcb.com
+//        (https://arcb.com/tools/rate-quote.html#/<quoteId>)
+//   OD:  open OD's rate-reference-search page + copy the ref to the
+//        clipboard for the rep to paste (OD's form doesn't accept a
+//        URL-param deep link for arbitrary references).
+function buildFreightRefUrl(carrier, refNumber) {
+  if (!refNumber) return '';
+  if (carrier === 'ABF Freight') {
+    return `https://arcb.com/tools/rate-quote.html#/${encodeURIComponent(refNumber)}`;
+  }
+  if (carrier === 'Old Dominion') {
+    return 'https://www.odfl.com/us/en/tools/rate-reference-search.html';
+  }
+  return '';
+}
+
+// Single source of truth for the Freight Quote Ref UI. Field is now
+// always visible (rep can paste a reference manually for quotes
+// obtained outside the app). Passing null clears the inputs but keeps
+// the field shown.
 function setFreightRef(refObj) {
-  const wrap = document.getElementById('editFreightRefField');
-  const input = document.getElementById('editFreightRef');
-  if (!wrap || !input) return;
+  const carrierSel = document.getElementById('editFreightRefCarrier');
+  const input      = document.getElementById('editFreightRef');
+  if (!carrierSel || !input) return;
   if (!refObj || !refObj.refNumber) {
-    wrap.style.display = 'none';
     input.value = '';
+    carrierSel.value = 'ABF Freight';
     delete input.dataset.freightRef;
     return;
   }
-  const carrierShort = refObj.carrier === 'ABF Freight' ? 'ABF' : (refObj.carrier === 'Old Dominion' ? 'OD' : refObj.carrier);
-  input.value = `${carrierShort}: ${refObj.refNumber}`;
-  input.dataset.freightRef = JSON.stringify(refObj);
-  wrap.style.display = '';
+  // Normalize carrier — the legacy stored value might be the full name
+  // ("ABF Freight" / "Old Dominion") or a short code. Match against the
+  // dropdown options.
+  const carrierFull = refObj.carrier === 'ABF' ? 'ABF Freight'
+                    : refObj.carrier === 'OD'  ? 'Old Dominion'
+                    : (refObj.carrier || 'ABF Freight');
+  carrierSel.value = carrierFull;
+  input.value = refObj.refNumber;
+  input.dataset.freightRef = JSON.stringify({ ...refObj, carrier: carrierFull });
+}
+
+// Called whenever the rep types in the reference input or changes the
+// carrier picker. Keeps the dataset.freightRef in sync so saveOrder()
+// picks up the current values without us needing a separate read path.
+function onFreightRefManualEdit() {
+  const carrierSel = document.getElementById('editFreightRefCarrier');
+  const input      = document.getElementById('editFreightRef');
+  if (!carrierSel || !input) return;
+  const refNumber = (input.value || '').trim();
+  if (!refNumber) {
+    delete input.dataset.freightRef;
+    return;
+  }
+  const carrier = carrierSel.value;
+  // Preserve any pre-existing quoteUrl (from a Get Freight fetch) when
+  // the rep is just editing the same carrier's ref number — that one
+  // already deep-links correctly. Otherwise rebuild from the carrier +
+  // current ref so the Open button always has a destination.
+  let existing = null;
+  try { existing = JSON.parse(input.dataset.freightRef || 'null'); } catch(e) {}
+  const quoteUrl = (existing && existing.carrier === carrier && existing.refNumber === refNumber && existing.quoteUrl)
+    ? existing.quoteUrl
+    : buildFreightRefUrl(carrier, refNumber);
+  input.dataset.freightRef = JSON.stringify({ carrier, refNumber, quoteUrl });
 }
 
 function getStagedFreightRef() {
@@ -1179,14 +1235,23 @@ function getStagedFreightRef() {
   try { return JSON.parse(input.dataset.freightRef); } catch(e) { return null; }
 }
 
-// Open the carrier page for the saved freight ref. Mirrors
-// bookOnlineSelected() but reads from the drawer's stashed ref rather
-// than the in-modal _selectedFqCarrier (which is gone once the modal
-// closed). ABF: open. OD: clipboard-copy the ref, then open.
+// Open the carrier page for the saved freight ref. Always copies the
+// ref to the clipboard so the rep can paste it into the carrier's
+// search field (carrier tracking pages rarely accept URL-param deep
+// links for arbitrary references).
+// Open the saved freight ref on the carrier's site. Behavior mirrors
+// the Get Freight popup's Book Online button (`bookOnlineSelected`):
+//   ABF: open directly to the deep-linked quote (no clipboard needed)
+//   OD:  copy the ref to the clipboard + open OD's rate-reference-search
+//        page (OD's form doesn't accept a URL-param deep link)
 function openSavedFreightQuote() {
   const r = getStagedFreightRef();
-  if (!r?.quoteUrl) { showToast('No saved freight quote on this order', 'info'); return; }
-  if (r.carrier === 'Old Dominion' && r.refNumber) {
+  if (!r?.refNumber) { showToast('Enter a reference number first', 'info'); return; }
+  const url = r.quoteUrl || buildFreightRefUrl(r.carrier, r.refNumber);
+  if (!url) { showToast('No carrier page available for this rate', 'info'); return; }
+  // Only clipboard-copy on OD — ABF's deep-link already opens the
+  // specific quote and the rep doesn't need to paste anything.
+  if (r.carrier === 'Old Dominion') {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(r.refNumber).then(
         () => showToast(`Reference ${r.refNumber} copied — paste into OD's search field`, 'success'),
@@ -1196,7 +1261,7 @@ function openSavedFreightQuote() {
       showToast(`Reference: ${r.refNumber} (paste into OD's search field)`, 'info');
     }
   }
-  try { window.open(r.quoteUrl, '_blank', 'noopener'); } catch(e) {}
+  try { window.open(url, '_blank', 'noopener'); } catch(e) {}
 }
 
 function selectFreightOption(el, carrier, cost, transit, service, bookable, odBookUrl) {

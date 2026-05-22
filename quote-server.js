@@ -324,8 +324,62 @@ db_mod.init({
     // HubSpot during startup. Then every 30 min thereafter.
     setTimeout(() => { pollHubspotPayments(); }, 30 * 1000);
     setInterval(pollHubspotPayments, 30 * 60 * 1000);
+    // Overdue-ship-date sweep: every 6 hours, check supplier POs that
+    // have passed their expected_ship_date without a tracking number
+    // and notify Jill + Benton. De-duped via overdue_notified_at on
+    // the supplier_pos row (cleared when the rep sets a new ship date).
+    setTimeout(() => { sweepOverduePOs(); }, 2 * 60 * 1000);
+    setInterval(sweepOverduePOs, 6 * 60 * 60 * 1000);
   },
 });
+
+// Sweep supplier POs that have passed their expected_ship_date without
+// a tracking number and notify Jill + Benton (once per PO until the
+// rep updates the ship date). Runs every 6h via setInterval above plus
+// once on startup (2 min delay).
+async function sweepOverduePOs() {
+  if (!db) return;
+  try {
+    const r = await db.query(`
+      SELECT po_number, quote_number, deal_id, deal_name, expected_ship_date
+      FROM supplier_pos
+      WHERE expected_ship_date IS NOT NULL
+        AND expected_ship_date < CURRENT_DATE
+        AND (tracking_number IS NULL OR tracking_number = '')
+        AND status NOT IN ('complete', 'cancelled')
+        AND overdue_notified_at IS NULL
+      ORDER BY expected_ship_date ASC
+      LIMIT 50
+    `);
+    if (!r.rows.length) return;
+    console.log(`[overdue-sweep] ${r.rows.length} PO(s) past expected ship date without tracking`);
+    const NOTIFY_OWNERS = ['36330944', '36303670']; // Jill, Benton
+    for (const po of r.rows) {
+      const dateStr = po.expected_ship_date ? new Date(po.expected_ship_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+      const title = `⏰ PO past ship date — ${po.deal_name || po.quote_number}`;
+      const body  = `PO ${po.po_number} for ${po.quote_number} was expected to ship by ${dateStr || 'an earlier date'} but no tracking number is set. Check status with Audimute or update the expected ship date.`;
+      for (const ownerId of NOTIFY_OWNERS) {
+        try {
+          await createNotification(ownerId, 'po-overdue', title, body, {
+            dealId:   po.deal_id ? String(po.deal_id) : null,
+            dealName: po.deal_name || null,
+            quoteNum: po.quote_number,
+          });
+        } catch(e) { console.warn(`[overdue-sweep] notify ${ownerId} failed for ${po.po_number}:`, e.message); }
+      }
+      // Stamp the dedup column so we don't re-notify on the next sweep.
+      await db.query(
+        `UPDATE supplier_pos SET overdue_notified_at = NOW() WHERE po_number = $1`,
+        [po.po_number]
+      ).catch(() => {});
+    }
+    writelog('info', 'supplier-po.overdue-sweep', `${r.rows.length} overdue PO notification(s) dispatched`, {
+      meta: { poNumbers: r.rows.map(p => p.po_number) }
+    });
+  } catch(e) {
+    console.warn('[overdue-sweep] error:', e.message);
+  }
+}
 
 
 // Login page template — placeholders {{HS_BTN}} and {{ERROR}} replaced at render time
@@ -11515,6 +11569,24 @@ ${q.accepted ? `
         rep: repId, quoteNum: quoteNumber,
         meta: { poNumber, repName, itemCount: apItems.length }
       });
+
+      // In-app notification to Jill + Benton on PO creation. Gives them
+      // a paper trail in their bell (distinct from the auto-CC on the
+      // Audimute mailto — that's an email the rep still has to click
+      // "Send" on). Confirms once the rep marks the bell card done.
+      const PO_CREATE_NOTIFY = ['36330944', '36303670']; // Jill, Benton
+      for (const ownerId of PO_CREATE_NOTIFY) {
+        try {
+          await createNotification(
+            ownerId,
+            'supplier-po-created',
+            `📋 Audimute PO created — ${poData.dealName || quoteNumber}`,
+            `PO ${poNumber} created for ${quoteNumber}. Open the Suppliers tab to send it to Audimute, or use the auto-draft email link.`,
+            { dealId: dealId ? String(dealId) : null, dealName: poData.dealName || null, quoteNum: quoteNumber }
+          );
+        } catch(e) { console.warn(`[supplier-pos create] notification to ${ownerId} failed:`, e.message); }
+      }
+
       json({ success: true, poNumber, poUrl, shareToken });
     } catch(e) {
       console.error('[supplier-pos create] error:', e.message);
@@ -11695,6 +11767,41 @@ ${q.accepted ? `
           }
         }
       }
+
+      // Auto-status transitions — if the rep didn't explicitly set a
+      // status in this request, derive one from the field they DID
+      // change so the PO progresses through the lifecycle without
+      // requiring a separate dropdown click:
+      //   * setting tracking_number  → 'shipped'   (when not already shipped/complete)
+      //   * setting expected_ship_date → 'confirmed' (when still pending/sent)
+      // Skips on clear (newVal is null/empty). Doesn't downgrade — only
+      // advances forward through pending → sent → confirmed → shipped → complete.
+      const explicitStatus = body.status !== undefined;
+      const currentStatus  = old.status || 'pending';
+      const newTracking    = body.tracking_number !== undefined ? (body.tracking_number || null) : undefined;
+      const newExpected    = body.expected_ship_date !== undefined ? (body.expected_ship_date || null) : undefined;
+      let autoStatus = null;
+      if (!explicitStatus) {
+        if (newTracking && !['shipped', 'complete'].includes(currentStatus)) {
+          autoStatus = 'shipped';
+        } else if (newExpected && ['pending', 'sent'].includes(currentStatus)) {
+          autoStatus = 'confirmed';
+        }
+      }
+      if (autoStatus) {
+        sets.push(`status = $${vals.length + 1}`);
+        vals.push(autoStatus);
+        changes.push({ kind: 'column', field: 'status', label: 'Status', from: currentStatus, to: autoStatus, auto: true });
+      }
+
+      // Clear the overdue-notified stamp whenever expected_ship_date is
+      // updated so the sweep can re-fire if the new date also goes by
+      // without a tracking number. Same logic if tracking_number is set
+      // — the PO is no longer overdue.
+      if (body.expected_ship_date !== undefined || body.tracking_number !== undefined) {
+        sets.push(`overdue_notified_at = NULL`);
+      }
+
       vals.push(poNumber);
       await db.query(`UPDATE supplier_pos SET ${sets.join(', ')} WHERE po_number = $${vals.length}`, vals);
       const updated = await db.query('SELECT * FROM supplier_pos WHERE po_number = $1', [poNumber]);
@@ -13761,26 +13868,28 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
           } catch(e) { console.warn('[process-order] AP task failed:', e.message); }
         })();
 
-        // In-app notification to Jill: she owns the Audimute PO flow
-        // downstream of process-order. Without this she has to either
-        // check the suppliers dashboard manually or wait for the email
-        // she's CC'd on. The notification surfaces in her bell with a
-        // ✓ Confirm button — she clears it once the PO is sent.
-        const JILL_OWNER_ID = '36330944';
+        // In-app notification to Jill AND Benton: Jill owns the Audimute
+        // PO flow downstream of process-order; Benton mirrors so he can
+        // catch anything that slips through. Notification surfaces in
+        // each rep's bell with a ✓ Confirm button — they clear it once
+        // the PO is sent.
+        const AP_NOTIFY_OWNERS = ['36330944', '36303670']; // Jill, Benton
         const apColorLabel = apColor || 'Unknown';
         const customerLabel = [customer?.firstName, customer?.lastName].filter(Boolean).join(' ')
                             || customer?.company
                             || customer?.email
                             || 'customer';
-        try {
-          await createNotification(
-            JILL_OWNER_ID,
-            'ap-po-needed',
-            `🎨 Audimute PO needed — ${dealName || quoteNumber}`,
-            `Order ${quoteNumber} for ${customerLabel} includes an Acoustic Package (color: ${apColorLabel}). Create + send the Audimute PO from the Suppliers tab.`,
-            { dealId: dealId ? String(dealId) : null, dealName: dealName || null, quoteNum: quoteNumber }
-          );
-        } catch(e) { console.warn('[process-order] AP notification to Jill failed:', e.message); }
+        for (const ownerId of AP_NOTIFY_OWNERS) {
+          try {
+            await createNotification(
+              ownerId,
+              'ap-po-needed',
+              `🎨 Audimute PO needed — ${dealName || quoteNumber}`,
+              `Order ${quoteNumber} for ${customerLabel} includes an Acoustic Package (color: ${apColorLabel}). Create + send the Audimute PO from the Suppliers tab.`,
+              { dealId: dealId ? String(dealId) : null, dealName: dealName || null, quoteNum: quoteNumber }
+            );
+          } catch(e) { console.warn(`[process-order] AP notification to ${ownerId} failed:`, e.message); }
+        }
       }
 
       // Upload order PDF to shared orders folder (non-blocking)

@@ -59,6 +59,28 @@
 .wr-notif-open-link { font-size:10px; color:#888; text-decoration:none; font-weight:600; padding:4px 0; }
 .wr-notif-open-link:hover { color:#ee6216; }
 .wr-notif-panel-footer { display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-top:1px solid #2a2a2a; flex-shrink:0; background:#161616; }
+/* Light mode overrides. Topbars in this app stay dark in light mode,
+   so the bell button + badge keep their dark-on-dark styling. Only
+   the dropdown panel needs to switch to a light surface. Class hook
+   is :root.light which the theme toggle sets on the html element. */
+:root.light .wr-notif-panel        { background:#ffffff; border-color:#e5e5e5; box-shadow:0 12px 36px rgba(0,0,0,.18); }
+:root.light .wr-notif-panel-header { border-bottom-color:#eee; }
+:root.light .wr-notif-panel-title  { color:#1a1a1a; }
+:root.light .wr-notif-link-btn     { color:#666; }
+:root.light .wr-notif-link-btn:hover { color:#1a1a1a; }
+:root.light .wr-notif-link-btn.primary       { color:#16a34a; }
+:root.light .wr-notif-link-btn.primary:hover { color:#15803d; }
+:root.light .wr-notif-empty        { color:#888; }
+:root.light .wr-notif-card         { border-bottom-color:#f0f0f0; }
+:root.light .wr-notif-card.unread  { background:rgba(34,197,94,.07); }
+:root.light .wr-notif-card-title   { color:#1a1a1a; }
+:root.light .wr-notif-card-body    { color:#555; }
+:root.light .wr-notif-card-meta    { color:#888; }
+:root.light .wr-notif-confirm-btn  { background:rgba(34,197,94,.12); border-color:rgba(34,197,94,.45); color:#16a34a; }
+:root.light .wr-notif-confirm-btn:hover { background:rgba(34,197,94,.2); }
+:root.light .wr-notif-open-link    { color:#666; }
+:root.light .wr-notif-open-link:hover { color:#ee6216; }
+:root.light .wr-notif-panel-footer { background:#fafafa; border-top-color:#eee; }
 `;
     document.head.appendChild(style);
   }

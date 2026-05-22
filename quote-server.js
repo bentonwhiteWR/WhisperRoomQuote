@@ -7343,7 +7343,7 @@ ${q.accepted ? `
     const dealId = pathname.split('/')[3];
     try {
       const { paymentType, poNumber } = JSON.parse(await readBody(req));
-      const PAY_TYPE_HS_VALUES = { hs: 'HS', cc: 'CC', ach: 'ACH', po: 'PO', other: 'Other' };
+      const PAY_TYPE_HS_VALUES = { hs: 'HS', cc: 'CC', ach: 'ACH', shopify: 'Shopify', po: 'PO', other: 'Other' };
       const props = {};
       if (paymentType) {
         props.payment_type = PAY_TYPE_HS_VALUES[paymentType] || paymentType;
@@ -8554,6 +8554,7 @@ ${q.accepted ? `
   if (pathname === '/api/notifications/read-all' && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const sess = getSession(req);
+    if (sess && !sess.ownerId) await _hydrateSessionOwnerId(req, sess);
     if (!sess?.ownerId) { json({ success: true }); return; }
     try {
       await db.query(`UPDATE notifications SET read=true WHERE owner_id=$1`, [String(sess.ownerId)]);
@@ -8568,6 +8569,7 @@ ${q.accepted ? `
   if (pathname.startsWith('/api/notifications/') && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     const sess = getSession(req);
+    if (sess && !sess.ownerId) await _hydrateSessionOwnerId(req, sess);
     if (!sess?.ownerId) { json({ success: false }); return; }
     const parts = pathname.split('/');
     const notifId = parts[3];
@@ -8576,12 +8578,14 @@ ${q.accepted ? `
     try {
       // Scope the update to the session's owner so a rep can't confirm
       // another rep's notification by guessing IDs.
-      await db.query(
+      const r = await db.query(
         `UPDATE notifications SET read=true WHERE id=$1 AND owner_id=$2`,
         [notifId, String(sess.ownerId)]
       );
-      json({ success: true });
-    } catch(e) { json({ success: false }); }
+      // Surface row count so the client can detect a no-op (id didn't
+      // belong to this rep, or already read).
+      json({ success: true, rowsUpdated: r?.rowCount || 0 });
+    } catch(e) { console.warn('[notify] confirm failed:', e.message); json({ success: false }); }
     return;
   }
 
@@ -10693,7 +10697,7 @@ ${q.accepted ? `
       // Payment type only matters when creating an Invoice (positive net).
       // Credit memos don't get auto-paid; ignore payment type for them.
       if (!isCreditMemo) {
-        if (!['hs','cc','ach','po','other'].includes(pt)) { json({ error: 'Invalid payment type' }, 400); return; }
+        if (!['hs','cc','ach','shopify','po','other'].includes(pt)) { json({ error: 'Invalid payment type' }, 400); return; }
         if (pt === 'po' && !poNumber)                     { json({ error: 'PO number required for PO payment type' }, 400); return; }
       }
 
@@ -13255,7 +13259,7 @@ tbody tr:last-child td{border-bottom:none}
       `:''}
       ${(() => {
         if (!o.paymentType) return '';
-        const labels = { hs: 'HubSpot Invoice', cc: 'Credit Card', ach: 'ACH / Bank Deposit', po: 'PO', other: 'Other' };
+        const labels = { hs: 'HubSpot Invoice', cc: 'Credit Card', ach: 'ACH / Bank Deposit', shopify: 'Shopify', po: 'PO', other: 'Other' };
         const label = labels[o.paymentType] || o.paymentType;
         const display = (o.paymentType === 'po' && o.poNumber) ? `${label} — PO #${o.poNumber}` : label;
         return `<div class="tot" style="margin-top:8px;padding-top:8px;border-top:1px solid #eee"><span>Payment Type</span><span>${display}</span></div>`;
@@ -13379,7 +13383,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       // processed.
       // HubSpot's payment_type dropdown uses uppercase internal values: HS, CC, ACH, PO, Other.
       // Client radios use lowercase ids. Map here at the boundary.
-      const PAY_TYPE_HS_VALUES = { hs: 'HS', cc: 'CC', ach: 'ACH', po: 'PO', other: 'Other' };
+      const PAY_TYPE_HS_VALUES = { hs: 'HS', cc: 'CC', ach: 'ACH', shopify: 'Shopify', po: 'PO', other: 'Other' };
       // Totals for both the closedwon PATCH and the email body below.
       const sub = (lineItems||[]).reduce((s,i) => s + (parseFloat(i.price)*parseInt(i.qty)), 0);
       const discAmt = discount && discount.value > 0
@@ -13651,7 +13655,7 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
         taxTotal > 0 ? `Sales Tax: ${fmt(taxTotal)}` : null,
         `Order Total: ${fmt(total)}`,
         totalWeight > 0 ? `Total Weight: ${totalWeight.toLocaleString()} lbs` : null,
-        `Payment Type: ${{ hs:'HubSpot Invoice', cc:'Credit Card', ach:'ACH / Bank Deposit', po:'PO', other:'Other' }[paymentType] || paymentType || '—'}${paymentType === 'po' && poNumber ? ` — PO #${poNumber}` : ''}`,
+        `Payment Type: ${{ hs:'HubSpot Invoice', cc:'Credit Card', ach:'ACH / Bank Deposit', shopify:'Shopify', po:'PO', other:'Other' }[paymentType] || paymentType || '—'}${paymentType === 'po' && poNumber ? ` — PO #${poNumber}` : ''}`,
         ``,
         `VIEW ORDER PAGE`,
         orderUrl,

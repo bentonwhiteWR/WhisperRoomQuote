@@ -51,6 +51,60 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.38.1', date:'May 22, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Clicking a quote from Deal Hub no longer pops a "Load X? This will replace your current quote." confirm.** The quote builder\'s `loadFromHistoryEntry()` was firing the confirm on every load, including the URL-param entry from Deal Hub where the page is fresh and there\'s nothing to replace. Now gated on `skipClose` — same flag we already use to signal "called from Deal Hub / URL-param load, not from the in-page History panel". Clicks from the in-page History panel still confirm so the rep doesn\'t accidentally overwrite unsaved work.'},
+      ]
+    },
+    {
+      v:'1.38.0', date:'May 22, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**New payment type: "Shopify".** Available everywhere the existing payment types live: Quote Builder Process Order modal (both quote-builder.html block instances), Deal Hub Process Order modal, Deal Hub Modify Order modal, and the admin Payment Method override dropdown. Server-side: added to the validation list in `/api/orders/:q/add-charge`, the PAY_TYPE_HS_VALUES map (in both spots that have it), and every internal label dict. Card chip shows `✓ Shopify` in green (same treatment as HS / CC / ACH / Other — all paid types). Behaviorally identical to other paid types — sets `payment_status=paid` on the HubSpot deal, creates the QB invoice + auto-payment. Requires a matching "Shopify" option on the HubSpot deal `payment_type` enum field (user is adding that separately).'},
+      ]
+    },
+    {
+      v:'1.37.14', date:'May 22, 2026', tag:'ui',
+      changes:[
+        {t:'add', d:'**Payment-status chip now mirrors into the Deal Hub right panel.** When a deal is selected, the ACH-clearing (amber) / Funds-available (green) / Payment-failed (red, pulsing) chip — same `renderPaymentChip(deal.paymentInfo)` that drives the deal-card chip — also renders next to the other badges in the hub header meta row. Was previously only visible on the card; now visible inside the open deal too so the rep doesn\'t have to glance back at the board to see ACH state.'},
+      ]
+    },
+    {
+      v:'1.37.13', date:'May 22, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Deal Hub default view is now always "All Reps" — no more auto-switch to your own deals ~15s after page load.** `loadCurrentUser()` was setting the rep dropdown to the logged-in user\'s ownerId once `/api/me` returned, which is why the board would change view a few seconds after opening. Removed that block; the dropdown stays on "All Reps" until the rep explicitly picks a name. Admin log button visibility is unchanged.'},
+      ]
+    },
+    {
+      v:'1.37.12', date:'May 21, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**DEVLOG: full session writeup for 2026-05-21.** Captured today\'s 30-version run across notification system end-to-end (v1.37.0–v1.37.11), Closed Lost hideable toggle column (v1.36.x), AP/Audimute PO freight charges in the suppliers dashboard, the hang-tab SKU `AHDAC000482` line item, Modify Order line items + Own Shipping, the Save-Changes-silently-ships bug fix (v1.34.5), TaxJar city/state fallback for retired ZIPs, the `/promote` no-confirmation tweak, and the self-inflicted v1.37.9 backtick-broke-the-bell incident. Current focus block flags the open history-empty issue for tomorrow.'},
+      ]
+    },
+    {
+      v:'1.37.11', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Notification confirm + read-all endpoints now lazy-hydrate the session** (matching the GET endpoints from v1.37.2). Previously a rep whose session hadn\'t been hit GET-side first would get a silent `{success: false}` on confirm — the UI removed the notification from the active list optimistically, but the DB row stayed unread, so the next poll brought it back and history never picked it up. Also: confirm endpoint now returns `rowsUpdated` count so we can detect no-ops in future diagnostics.'},
+      ]
+    },
+    {
+      v:'1.37.10', date:'May 21, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Notification bell came back from the dead.** The v1.37.9 light-mode CSS comment in `/assets/notif-bell.js` had literal backticks around `:root.light` — inside a JS template literal that holds the CSS string. The backticks terminated the template literal early, the rest of the file parsed as a syntax error, the script never ran, and the bell vanished from every page. Replaced the backticks with plain text in the comment. Lesson: don\'t put backticks inside a backtick-delimited template literal, even in CSS comments.'},
+      ]
+    },
+    {
+      v:'1.37.9', date:'May 21, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Notification dropdown: light mode styling.** The shared `/assets/notif-bell.js` snippet had hardcoded dark colors that looked rough on the light theme — `#1a1a1a` panel on a white page, etc. Added `:root.light` overrides for the dropdown panel surfaces, text colors, card borders/backgrounds, links, and footer. Bell button + badge in the topbar stay dark since the topbars themselves stay dark in light mode.'},
+      ]
+    },
+    {
+      v:'1.37.8', date:'May 21, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**DEVLOG bookkeeping.** Current focus reflects v1.37.7 on prod (Jeromy process-order trigger + REP_EMAILS sync). Staging clean.'},
+      ]
+    },
+    {
       v:'1.37.7', date:'May 21, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Notification session hydration: synced `lib/notify.js` REP_EMAILS to match the real login emails.** The two REP_EMAILS maps in the codebase had drifted — `lib/notify.js` had placeholder/guessed values (`sarah@whisperroom.com`, `jill@whisperroom.com`, `travis@whisperroom.com`, `gabe@whisperroom.com`, etc.) while `orders-dashboard.html` had the real production emails (`ssmith@`, `jholdway@`, `tsingleton@`, `gabrielwhite@`, etc.). The v1.37.4 hydration fallback uses lib/notify.js, so Sarah\'s session (email `ssmith@whisperroom.com`) couldn\'t resolve to owner `38143901` because notify.js only had `sarah@`. Synced lib/notify.js to mirror the orders-dashboard map. All reps\' sessions now hydrate correctly on the first notification API hit.'},

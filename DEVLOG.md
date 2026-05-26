@@ -710,6 +710,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.42.3  | 2026-05-26 | **Bot assistant: catalog PDF URL updated.** The three catalog links in `assistant/system-prompt.txt` pointed to the old hyphenated filename (`WhisperRoom-Catalog.pdf`). Swapped to the new URL (`WhisperRoomCatalog.pdf`). Same HubSpot host, just no hyphen. |
 | 1.42.2  | 2026-05-22 | **DEVLOG: full session writeup for 2026-05-22.** Captured the promote sweep (v1.38.2 → v1.39.0 to main), marketing dashboard handoff to Gabe + his same-day v1.40.0 ETL and v1.42.1 library upgrade, quote expiration indicators (v1.41.0), unrelated HubSpot file-lockout rabbit hole, and the v1.42.0 marketing-open fix. Current focus refreshed. |
 | 1.42.1  | 2026-05-22 | **Marketing sync fixed — `google-ads-api` v17 → v23.** Syncs failed with `12 UNIMPLEMENTED: GRPC target method can't be resolved` — the v17 library targets a sunset Google Ads API version. Bumped `package.json` to `^23.0.0`. No ETL code change; `customer.report()` is version-stable. |
 | 1.42.0  | 2026-05-22 | **Marketing dashboard opened to all reps (temporary).** Allowlist short-circuited (`MARKETING_ALLOWLIST = []` = open). Nav link in Deal Hub no longer gated to Benton + Gabe. Re-gate by populating the array. Pending: diagnose why Gabe's ownerId didn't match. |

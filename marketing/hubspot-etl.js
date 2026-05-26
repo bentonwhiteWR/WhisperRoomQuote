@@ -172,15 +172,25 @@ async function syncHubSpotContacts({ db, daysBack = 365 }) {
   let totalRows  = 0;
   let firstError = null;
   let truncated  = 0;  // count of buckets that hit the 10k cap
+  const startedAt = Date.now();
 
-  for (const { from, to } of buckets) {
+  for (let i = 0; i < buckets.length; i++) {
+    const { from, to } = buckets[i];
+    const bucketStart  = Date.now();
+    const label        = `${from.toISOString().slice(0,10)}..${to.toISOString().slice(0,10)}`;
     try {
       const { rows, capped } = await _fetchContactsBucket(db, from, to);
       totalRows += rows;
       if (capped) truncated++;
+      // v1.46.1 — per-bucket progress: console for Railway logs + intermediate
+      // marketing_syncs write so the dashboard count climbs in real time
+      // instead of staying frozen until the whole multi-hour sync finishes.
+      const secs = ((Date.now() - bucketStart) / 1000).toFixed(1);
+      console.log(`[hubspot-etl] contacts ${i+1}/${buckets.length} ${label}: ${rows} rows in ${secs}s${capped ? ' (CAPPED at 10k)' : ''} · total=${totalRows}`);
+      await _recordSync(db, 'hubspot_contacts', totalRows, dateFrom, dateTo, truncated > 0 ? `${truncated} bucket(s) capped at 10k` : null);
     } catch (e) {
       const msg = e.message || String(e);
-      console.warn(`[hubspot-etl] contacts bucket ${from.toISOString().slice(0,10)}..${to.toISOString().slice(0,10)} failed: ${msg}`);
+      console.warn(`[hubspot-etl] contacts ${i+1}/${buckets.length} ${label} FAILED: ${msg}`);
       if (!firstError) firstError = msg;
       // continue to next bucket
     }
@@ -191,6 +201,8 @@ async function syncHubSpotContacts({ db, daysBack = 365 }) {
     : null;
   const finalError = firstError || errNote;
   await _recordSync(db, 'hubspot_contacts', totalRows, dateFrom, dateTo, finalError);
+  const totalSecs = ((Date.now() - startedAt) / 1000).toFixed(1);
+  console.log(`[hubspot-etl] contacts SYNC DONE: ${totalRows} rows across ${buckets.length} buckets in ${totalSecs}s${truncated ? ` (${truncated} capped)` : ''}${firstError ? ` · first error: ${firstError}` : ''}`);
   return {
     ok: !firstError,
     report: 'hubspot_contacts',
@@ -302,15 +314,22 @@ async function syncHubSpotDeals({ db, daysBack = 365 }) {
   let totalRows  = 0;
   let firstError = null;
   let truncated  = 0;
+  const startedAt = Date.now();
 
-  for (const { from, to } of buckets) {
+  for (let i = 0; i < buckets.length; i++) {
+    const { from, to } = buckets[i];
+    const bucketStart  = Date.now();
+    const label        = `${from.toISOString().slice(0,10)}..${to.toISOString().slice(0,10)}`;
     try {
       const { rows, capped } = await _fetchDealsBucket(db, from, to);
       totalRows += rows;
       if (capped) truncated++;
+      const secs = ((Date.now() - bucketStart) / 1000).toFixed(1);
+      console.log(`[hubspot-etl] deals ${i+1}/${buckets.length} ${label}: ${rows} rows in ${secs}s${capped ? ' (CAPPED at 10k)' : ''} · total=${totalRows}`);
+      await _recordSync(db, 'hubspot_deals', totalRows, dateFrom, dateTo, truncated > 0 ? `${truncated} bucket(s) capped at 10k` : null);
     } catch (e) {
       const msg = e.message || String(e);
-      console.warn(`[hubspot-etl] deals bucket ${from.toISOString().slice(0,10)}..${to.toISOString().slice(0,10)} failed: ${msg}`);
+      console.warn(`[hubspot-etl] deals ${i+1}/${buckets.length} ${label} FAILED: ${msg}`);
       if (!firstError) firstError = msg;
     }
   }
@@ -320,6 +339,8 @@ async function syncHubSpotDeals({ db, daysBack = 365 }) {
     : null;
   const finalError = firstError || errNote;
   await _recordSync(db, 'hubspot_deals', totalRows, dateFrom, dateTo, finalError);
+  const totalSecs = ((Date.now() - startedAt) / 1000).toFixed(1);
+  console.log(`[hubspot-etl] deals SYNC DONE: ${totalRows} rows across ${buckets.length} buckets in ${totalSecs}s${truncated ? ` (${truncated} capped)` : ''}${firstError ? ` · first error: ${firstError}` : ''}`);
   return {
     ok: !firstError,
     report: 'hubspot_deals',

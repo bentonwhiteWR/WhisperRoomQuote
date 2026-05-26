@@ -52,6 +52,35 @@ td.num{text-align:right;font-family:var(--mono)}
 th.num{text-align:right}
 
 .empty{padding:40px;text-align:center;color:var(--muted);font-style:italic;font-size:12px}
+
+/* v1.46.1 — attribution column visual separation + ROAS color coding */
+/* Subtle left border on the first attribution column to signal "different data source" */
+th.attr-start, td.attr-start{border-left:1px solid rgba(238,98,22,.22);padding-left:14px}
+th.attr-col, td.attr-col{background:rgba(238,98,22,.025)}
+/* True ROAS color pill — instant scan of campaign performance */
+.roas-pill{display:inline-block;padding:2px 8px;border-radius:4px;font-weight:700;font-family:var(--mono);font-size:11px;letter-spacing:.02em}
+.roas-good{background:rgba(34,197,94,.12);color:var(--green)}
+.roas-mid {background:rgba(245,158,11,.12);color:var(--yellow)}
+.roas-bad {background:rgba(239,68,68,.12);color:var(--red)}
+.roas-na  {color:var(--muted);font-family:var(--mono);font-size:11px}
+
+/* Attribution coverage panel */
+.coverage{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin-bottom:16px}
+.coverage-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px}
+.coverage-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.coverage-detail{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.coverage-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;margin-top:6px}
+.coverage-stat{}
+.coverage-num{font-size:26px;font-weight:800;font-family:var(--mono);line-height:1.1}
+.coverage-num.good{color:var(--green)}
+.coverage-num.mid {color:var(--yellow)}
+.coverage-num.bad {color:var(--red)}
+.coverage-label{font-size:11px;color:var(--muted);margin-top:2px}
+.coverage-bar{height:6px;background:rgba(255,255,255,.06);border-radius:3px;margin-top:8px;overflow:hidden}
+.coverage-bar-fill{height:100%;border-radius:3px;transition:width .4s ease}
+.coverage-bar-fill.good{background:var(--green)}
+.coverage-bar-fill.mid {background:var(--yellow)}
+.coverage-bar-fill.bad {background:var(--red)}
 </style>
 </head>
 <body>
@@ -86,12 +115,42 @@ th.num{text-align:right}
     <button class="sync-btn" id="syncBtn" onclick="runSync()" disabled>↻ Sync All</button>
   </div>
 
+  <!-- Attribution coverage panel — the trust thermometer (v1.46.1).
+       Hidden until /api/marketing/attribution-coverage returns data. -->
+  <div class="coverage" id="coveragePanel" style="display:none">
+    <div class="coverage-head">
+      <span class="coverage-title">Attribution coverage (last 90 days)</span>
+      <span class="coverage-detail" id="coverageDetail"></span>
+    </div>
+    <div class="coverage-grid">
+      <div class="coverage-stat">
+        <div class="coverage-num" id="covDealsPct">—</div>
+        <div class="coverage-label">of <strong id="covDealsTotal">—</strong> closed-won deals have a known marketing source</div>
+        <div class="coverage-bar"><div class="coverage-bar-fill" id="covDealsBar" style="width:0%"></div></div>
+      </div>
+      <div class="coverage-stat">
+        <div class="coverage-num" id="covRevPct">—</div>
+        <div class="coverage-label">of <strong id="covRevTotal">—</strong> closed-won revenue is attributable</div>
+        <div class="coverage-bar"><div class="coverage-bar-fill" id="covRevBar" style="width:0%"></div></div>
+      </div>
+      <div class="coverage-stat">
+        <div class="coverage-num" id="covContactsPct">—</div>
+        <div class="coverage-label">of <strong id="covContactsTotal">—</strong> new contacts have a source or gclid</div>
+        <div class="coverage-bar"><div class="coverage-bar-fill" id="covContactsBar" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Summary cards — populated once we have data -->
   <div class="cards" id="summaryCards" style="display:none">
     <div class="card"><div class="card-label">Total Spend (90d)</div><div class="card-value" id="kpiSpend">—</div><div class="card-sub">Across all campaigns</div></div>
     <div class="card"><div class="card-label">Clicks (90d)</div><div class="card-value" id="kpiClicks">—</div><div class="card-sub" id="kpiCpc">— avg CPC</div></div>
     <div class="card"><div class="card-label">Conversions (90d)</div><div class="card-value" id="kpiConv">—</div><div class="card-sub" id="kpiCpa">— avg CPA</div></div>
-    <div class="card"><div class="card-label">Conversion Value (90d)</div><div class="card-value" id="kpiValue">—</div><div class="card-sub" id="kpiRoas">— ROAS</div></div>
+    <div class="card"><div class="card-label">GA4 Conv. Value (90d)</div><div class="card-value" id="kpiValue">—</div><div class="card-sub" id="kpiRoas">— GA4 ROAS</div></div>
+    <!-- v1.46.1 — closed-loop revenue from HubSpot deals. These two are
+         the "real" numbers; the GA4 estimates above are kept for comparison. -->
+    <div class="card"><div class="card-label">Closed Revenue (90d)</div><div class="card-value" id="kpiClosedRev">—</div><div class="card-sub" id="kpiDealCount">— deals</div></div>
+    <div class="card"><div class="card-label">True ROAS (90d)</div><div class="card-value" id="kpiTrueRoas">—</div><div class="card-sub" id="kpiTrueCac">— true CAC</div></div>
   </div>
 
   <!-- Campaign-level table -->
@@ -260,56 +319,139 @@ async function runSync() {
 
 // ── Data loading + rendering ────────────────────────────────────────
 async function loadAllTables() {
-  const [camp, kw, st] = await Promise.all([
-    fetch('/api/marketing/campaigns',     { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/keywords',      { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/search-terms',  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+  // v1.46.1 — also fetch attribution data + coverage in parallel. Both
+  // are resilient (return empty/null on error) so an attribution endpoint
+  // outage doesn't black out the Google Ads view.
+  const [camp, kw, st, attr, cov] = await Promise.all([
+    fetch('/api/marketing/campaigns',             { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/keywords',              { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/search-terms',          { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/campaign-attribution',  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/attribution-coverage',  { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
   ]);
-  renderCampaigns(camp.rows || []);
+  renderCoverage(cov || {});
+  renderCampaigns(camp.rows || [], attr.rows || []);
   renderKeywords(kw.rows || []);
   renderSearchTerms(st.rows || []);
-  renderSummary(camp.rows || []);
+  renderSummary(camp.rows || [], cov || {});
 }
 
-function renderSummary(rows) {
+function renderSummary(rows, cov) {
   if (!rows.length) { document.getElementById('summaryCards').style.display = 'none'; return; }
   document.getElementById('summaryCards').style.display = 'grid';
-  const spend = rows.reduce((s, r) => s + (parseFloat(r.cost_usd) || 0), 0);
+  const spend  = rows.reduce((s, r) => s + (parseFloat(r.cost_usd) || 0), 0);
   const clicks = rows.reduce((s, r) => s + (parseInt(r.clicks) || 0), 0);
-  const conv  = rows.reduce((s, r) => s + (parseFloat(r.conversions) || 0), 0);
-  const value = rows.reduce((s, r) => s + (parseFloat(r.conversion_value) || 0), 0);
+  const conv   = rows.reduce((s, r) => s + (parseFloat(r.conversions) || 0), 0);
+  const value  = rows.reduce((s, r) => s + (parseFloat(r.conversion_value) || 0), 0);
   document.getElementById('kpiSpend').textContent  = fmtUSD(spend);
   document.getElementById('kpiClicks').textContent = fmtInt(clicks);
   document.getElementById('kpiConv').textContent   = fmtNum(conv);
   document.getElementById('kpiValue').textContent  = fmtUSD(value);
   document.getElementById('kpiCpc').textContent    = clicks ? fmtUSD(spend / clicks) + ' avg CPC' : '— avg CPC';
   document.getElementById('kpiCpa').textContent    = conv   ? fmtUSD(spend / conv)   + ' avg CPA' : '— avg CPA';
-  document.getElementById('kpiRoas').textContent   = spend  ? (value / spend).toFixed(2) + 'x ROAS' : '— ROAS';
+  document.getElementById('kpiRoas').textContent   = spend  ? (value / spend).toFixed(2) + 'x GA4 ROAS' : '— GA4 ROAS';
+
+  // Closed-loop (real revenue) KPIs from attribution-coverage endpoint.
+  // These are the numbers to actually trust for budget decisions; the
+  // GA4 conv-value ones above are kept for comparison + cross-checking.
+  const revAttr = parseFloat(cov.revenue_attributed) || 0;
+  const dealsWonAttr = parseInt(cov.deals_won_attributed) || 0;
+  document.getElementById('kpiClosedRev').textContent = fmtUSD(revAttr);
+  document.getElementById('kpiDealCount').textContent = dealsWonAttr ? fmtInt(dealsWonAttr) + ' attributed deals' : '— deals';
+  document.getElementById('kpiTrueRoas').textContent  = spend ? (revAttr / spend).toFixed(2) + 'x' : '—';
+  document.getElementById('kpiTrueCac').textContent   = dealsWonAttr ? fmtUSD(spend / dealsWonAttr) + ' true CAC' : '— true CAC';
 }
 
-function renderCampaigns(rows) {
+// Attribution coverage — three stats with progress bars. Color rule:
+// good ≥ 60%, mid 30-60%, bad < 30%. Low numbers don't mean "broken,"
+// they mean "you have lots of organic/direct traffic" — but the
+// attribution-based metrics below should be interpreted accordingly.
+function renderCoverage(cov) {
+  const dealsTotal     = parseInt(cov.deals_won_total)        || 0;
+  const dealsAttr      = parseInt(cov.deals_won_attributed)   || 0;
+  const revTotal       = parseFloat(cov.revenue_total)        || 0;
+  const revAttr        = parseFloat(cov.revenue_attributed)   || 0;
+  const contactsTotal  = parseInt(cov.contacts_total)         || 0;
+  const contactsSource = parseInt(cov.contacts_with_source)   || 0;
+  if (dealsTotal === 0 && contactsTotal === 0) {
+    document.getElementById('coveragePanel').style.display = 'none';
+    return;
+  }
+  document.getElementById('coveragePanel').style.display = 'block';
+
+  const apply = (numId, totalId, barId, ratio, total, suffix) => {
+    const pct = total > 0 ? Math.round(ratio * 100) : 0;
+    const cls = pct >= 60 ? 'good' : pct >= 30 ? 'mid' : 'bad';
+    const numEl = document.getElementById(numId);
+    numEl.textContent = total > 0 ? pct + '%' : '—';
+    numEl.className = 'coverage-num ' + cls;
+    document.getElementById(totalId).textContent = suffix === '$' ? fmtUSD(total) : fmtInt(total);
+    const barEl = document.getElementById(barId);
+    barEl.style.width = pct + '%';
+    barEl.className = 'coverage-bar-fill ' + cls;
+  };
+  apply('covDealsPct',    'covDealsTotal',    'covDealsBar',    dealsTotal    ? dealsAttr / dealsTotal       : 0, dealsTotal);
+  apply('covRevPct',      'covRevTotal',      'covRevBar',      revTotal      ? revAttr / revTotal           : 0, revTotal, '$');
+  apply('covContactsPct', 'covContactsTotal', 'covContactsBar', contactsTotal ? contactsSource / contactsTotal: 0, contactsTotal);
+
+  const contactsGclid = parseInt(cov.contacts_with_gclid) || 0;
+  document.getElementById('coverageDetail').textContent =
+    `${fmtInt(contactsGclid)} contacts carry a Google Ads gclid · single-touch first-source attribution`;
+}
+
+// Render a True-ROAS value as a color pill (green > 3x, yellow 1-3x, red < 1x).
+// Returns '—' span when no spend or no attributed revenue.
+function roasPill(revenue, spend) {
+  if (!spend || revenue == null) return '<span class="roas-na">—</span>';
+  const r = revenue / spend;
+  const cls = r >= 3 ? 'roas-good' : r >= 1 ? 'roas-mid' : 'roas-bad';
+  return `<span class="roas-pill ${cls}">${r.toFixed(2)}x</span>`;
+}
+
+function renderCampaigns(rows, attrRows) {
   document.getElementById('campaignsMeta').textContent = rows.length ? `${fmtInt(rows.length)} rows` : '';
   const body = document.getElementById('campaignsBody');
   if (!rows.length) { body.innerHTML = '<div class="empty">No data yet. Press Sync All above to pull from Google Ads.</div>'; return; }
-  // Aggregate by campaign for the headline table (the per-day rows
-  // are still in the DB for trend analysis later).
+  // Aggregate Google Ads daily rows by campaign for the headline table.
   const agg = {};
   rows.forEach(r => {
     const k = r.campaign_id;
-    if (!agg[k]) agg[k] = { name: r.campaign_name, status: r.status, impressions: 0, clicks: 0, cost: 0, conversions: 0, value: 0 };
+    if (!agg[k]) agg[k] = { campaign_id: k, name: r.campaign_name, status: r.status, impressions: 0, clicks: 0, cost: 0, conversions: 0, value: 0 };
     agg[k].impressions += parseInt(r.impressions) || 0;
     agg[k].clicks      += parseInt(r.clicks) || 0;
     agg[k].cost        += parseFloat(r.cost_usd) || 0;
     agg[k].conversions += parseFloat(r.conversions) || 0;
     agg[k].value       += parseFloat(r.conversion_value) || 0;
   });
+
+  // v1.46.1 — merge attribution data by campaign_id, then by campaign_name
+  // as fallback (the attribution endpoint joins on name, so id-first
+  // covers exact matches and name covers any drift between the two paths).
+  const attrById = {}, attrByName = {};
+  (attrRows || []).forEach(a => {
+    if (a.campaign_id)   attrById[a.campaign_id]     = a;
+    if (a.campaign_name) attrByName[a.campaign_name] = a;
+  });
+  Object.values(agg).forEach(c => {
+    const a = attrById[c.campaign_id] || attrByName[c.name] || null;
+    c.leads      = a ? parseInt(a.leads)        || 0 : null;
+    c.dealsWon   = a ? parseInt(a.deals_won)    || 0 : null;
+    c.dealsTotal = a ? parseInt(a.deals_total)  || 0 : null;
+    c.revWon     = a ? parseFloat(a.revenue_won)|| 0 : null;
+  });
+
   const list = Object.values(agg).sort((a, b) => b.cost - a.cost);
   body.innerHTML = `
     <table>
       <thead><tr>
         <th>Campaign</th><th>Status</th>
         <th class="num">Spend</th><th class="num">Clicks</th><th class="num">CPC</th>
-        <th class="num">Conv.</th><th class="num">CPA</th><th class="num">Value</th><th class="num">ROAS</th>
+        <th class="num">Conv.</th><th class="num">CPA</th>
+        <th class="num">GA4 Value</th><th class="num">GA4 ROAS</th>
+        <th class="num attr-start attr-col" title="HubSpot contacts attributed to this campaign (first-touch)">Leads</th>
+        <th class="num attr-col" title="HubSpot closed-won deals attributed to this campaign">Deals</th>
+        <th class="num attr-col" title="Sum of closed-won deal amounts in USD">Revenue</th>
+        <th class="num attr-col" title="True ROAS = real HubSpot revenue / Google Ads spend">True ROAS</th>
       </tr></thead>
       <tbody>
         ${list.map(r => `<tr>
@@ -322,6 +464,10 @@ function renderCampaigns(rows) {
           <td class="num">${r.conversions ? fmtUSD(r.cost / r.conversions) : '—'}</td>
           <td class="num">${fmtUSD(r.value)}</td>
           <td class="num">${r.cost ? (r.value / r.cost).toFixed(2) + 'x' : '—'}</td>
+          <td class="num attr-start attr-col">${r.leads == null ? '—' : fmtInt(r.leads)}</td>
+          <td class="num attr-col">${r.dealsWon == null ? '—' : (r.dealsWon || (r.dealsTotal ? '0 / ' + fmtInt(r.dealsTotal) : '0'))}</td>
+          <td class="num attr-col">${r.revWon == null ? '—' : fmtUSD(r.revWon)}</td>
+          <td class="num attr-col">${roasPill(r.revWon, r.cost)}</td>
         </tr>`).join('')}
       </tbody>
     </table>`;

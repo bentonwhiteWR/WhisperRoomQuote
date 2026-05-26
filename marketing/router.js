@@ -7,9 +7,11 @@
 //   GET  /marketing                       → the dashboard HTML page
 //   GET  /api/marketing/status            → sync status + env readiness
 //   POST /api/marketing/sync              → kick off a Google Ads or HubSpot pull
-//   GET  /api/marketing/campaigns         → all rows from marketing_campaigns
-//   GET  /api/marketing/keywords          → all rows from marketing_keywords
-//   GET  /api/marketing/search-terms      → all rows from marketing_search_terms
+//   GET  /api/marketing/campaigns                → all rows from marketing_campaigns
+//   GET  /api/marketing/keywords                 → all rows from marketing_keywords
+//   GET  /api/marketing/search-terms             → all rows from marketing_search_terms
+//   GET  /api/marketing/campaign-attribution     → per-campaign leads/deals/revenue (v1.46.1)
+//   GET  /api/marketing/attribution-coverage     → % of contacts + deals + revenue attributable (v1.46.1)
 //
 // HubSpot ingestion (v1.44.0) shares the same /api/marketing/sync POST
 // endpoint — pass `report: 'hubspot_contacts' | 'hubspot_deals' | 'hubspot_all'`
@@ -214,6 +216,99 @@ async function handle(req, res, ctx) {
       `)).rows : [];
       ctx.json({ rows });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/campaign-attribution ───────────────────────
+  // First-touch campaign attribution (v1.46.1). For each Google Ads
+  // campaign active in the last 90 days, count attributed leads (HubSpot
+  // contacts whose first-touch was that campaign) and their deals (open
+  // / won / lost) + closed-won revenue.
+  //
+  // Attribution join: contact.first_converting_campaign OR
+  // contact.first_source_data_2 (Google Ads campaign name when
+  // first_source = PAID_SEARCH and first_source_data_1 = google).
+  // Both checked because HubSpot populates them inconsistently — the
+  // first is HubSpot's curated "what was the converting campaign,"
+  // the second is the raw drill-down. Exact name match; if WhisperRoom's
+  // UTM tagging diverges from campaign names, coverage drops and the
+  // attribution-coverage panel surfaces the gap.
+  //
+  // Single-touch only — we don't have full event/session history. This
+  // means our `leads` count will be LOWER than HubSpot's "All ad
+  // interactions" Ads view (which is multi-touch). Compare against
+  // HubSpot's "First ad interaction" report for apples-to-apples.
+  //
+  // Deal join: contact's primary associated contact link, denormalized
+  // onto marketing_hubspot_deals.primary_contact_id by the deal sync.
+  // Deals are NOT filtered by date — if a 60-day-old contact closed a
+  // deal today, that deal still attributes to their first-touch campaign.
+  if (pathname === '/api/marketing/campaign-attribution' && req.method === 'GET') {
+    try {
+      const rows = ctx.db ? (await ctx.db.query(`
+        WITH campaign_names AS (
+          SELECT DISTINCT campaign_id, campaign_name
+          FROM marketing_campaigns
+          WHERE date >= CURRENT_DATE - INTERVAL '90 days'
+            AND campaign_name IS NOT NULL
+        )
+        SELECT
+          cn.campaign_id,
+          cn.campaign_name,
+          COUNT(DISTINCT c.contact_id)                                                            AS leads,
+          COUNT(DISTINCT d.deal_id)                                                               AS deals_total,
+          COUNT(DISTINCT CASE WHEN d.is_closed_won  THEN d.deal_id END)                           AS deals_won,
+          COUNT(DISTINCT CASE WHEN d.is_closed_lost THEN d.deal_id END)                           AS deals_lost,
+          COUNT(DISTINCT CASE WHEN d.deal_id IS NOT NULL AND NOT d.is_closed THEN d.deal_id END)  AS deals_open,
+          COALESCE(SUM(CASE WHEN d.is_closed_won THEN d.amount ELSE 0 END), 0)::float             AS revenue_won
+        FROM campaign_names cn
+        LEFT JOIN marketing_hubspot_contacts c ON (
+          (c.first_converting_campaign = cn.campaign_name OR c.first_source_data_2 = cn.campaign_name)
+          AND c.first_source        = 'PAID_SEARCH'
+          AND c.first_source_data_1 = 'google'
+          AND c.created_at >= CURRENT_DATE - INTERVAL '90 days'
+        )
+        LEFT JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
+        GROUP BY cn.campaign_id, cn.campaign_name
+        ORDER BY revenue_won DESC, leads DESC
+      `)).rows : [];
+      ctx.json({ rows });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/attribution-coverage ───────────────────────
+  // The "trust thermometer" — what fraction of recent closed-won deals
+  // and recent contacts are actually attributable to a known marketing
+  // source. Low numbers mean the dashboard's attribution-based metrics
+  // (revenue, true ROAS, etc.) reflect only a slice of the real picture.
+  if (pathname === '/api/marketing/attribution-coverage' && req.method === 'GET') {
+    try {
+      const r = ctx.db ? (await ctx.db.query(`
+        SELECT
+          (SELECT COUNT(*) FROM marketing_hubspot_contacts
+             WHERE created_at >= CURRENT_DATE - INTERVAL '90 days')                                                  AS contacts_total,
+          (SELECT COUNT(*) FROM marketing_hubspot_contacts
+             WHERE created_at >= CURRENT_DATE - INTERVAL '90 days'
+               AND (first_source IS NOT NULL OR gclid IS NOT NULL))                                                  AS contacts_with_source,
+          (SELECT COUNT(*) FROM marketing_hubspot_contacts
+             WHERE created_at >= CURRENT_DATE - INTERVAL '90 days'
+               AND gclid IS NOT NULL)                                                                                AS contacts_with_gclid,
+          (SELECT COUNT(*) FROM marketing_hubspot_deals
+             WHERE created_at >= CURRENT_DATE - INTERVAL '90 days' AND is_closed_won)                                AS deals_won_total,
+          (SELECT COUNT(*) FROM marketing_hubspot_deals d
+             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.created_at >= CURRENT_DATE - INTERVAL '90 days' AND d.is_closed_won
+               AND (c.first_source IS NOT NULL OR c.gclid IS NOT NULL))                                              AS deals_won_attributed,
+          (SELECT COALESCE(SUM(amount), 0)::float FROM marketing_hubspot_deals
+             WHERE created_at >= CURRENT_DATE - INTERVAL '90 days' AND is_closed_won)                                AS revenue_total,
+          (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
+             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.created_at >= CURRENT_DATE - INTERVAL '90 days' AND d.is_closed_won
+               AND (c.first_source IS NOT NULL OR c.gclid IS NOT NULL))                                              AS revenue_attributed
+      `)).rows[0] : {};
+      ctx.json(r || {});
+    } catch(e) { ctx.json({ error: e.message }, 500); }
     return true;
   }
 

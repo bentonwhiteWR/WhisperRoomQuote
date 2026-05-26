@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.43.0', date:'May 26, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing dashboard — keyword + search-term aggregation views.** The two TODO stubs below the campaigns table (left over from v1.39.0 scaffolding) are now real aggregation tables following the `renderCampaigns` pattern. Keywords aggregate by `keyword_id` and show keyword text, match type, spend, clicks, CPC, conversions, CPA. Search terms aggregate by normalized (lowercased, trimmed) search term and show the same metrics minus match type. Both sort by spend descending and cap the display at the top 200 by spend (full row count still in the section header) — keeps the page responsive when a 90-day pull returns thousands of distinct keywords. ROAS isn\'t shown for either since `conversion_value` is a campaign-level metric in Google Ads and isn\'t pulled by the `keyword_view` or `search_term_view` reports.'},
+      ]
+    },
+    {
       v:'1.42.3', date:'May 26, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Bot assistant: catalog PDF URL updated.** The three catalog links in `assistant/system-prompt.txt` (Discovery lead intro, Contact Lead catalog block, vague-Discovery fallback) pointed to the old hyphenated filename. Swapped to the new URL — same HubSpot file host, just no hyphen.'},

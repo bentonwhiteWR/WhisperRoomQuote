@@ -292,20 +292,85 @@ function renderCampaigns(rows) {
     </table>`;
 }
 
+// Keywords have no conversion_value (campaign-level metric only), so no
+// ROAS column here — just spend efficiency. Aggregated by keyword_id since
+// the same keyword text can appear in multiple ad groups with independent
+// performance. Display capped to top 200 by spend; full row count shown in meta.
 function renderKeywords(rows) {
   document.getElementById('keywordsMeta').textContent = rows.length ? `${fmtInt(rows.length)} rows` : '';
   const body = document.getElementById('keywordsBody');
   if (!rows.length) { body.innerHTML = '<div class="empty">No data yet.</div>'; return; }
-  // TODO (Gabe): aggregate + render. Same pattern as renderCampaigns.
-  body.innerHTML = '<div class="empty">Keyword aggregation view — TODO (see renderCampaigns for the pattern).</div>';
+  const agg = {};
+  rows.forEach(r => {
+    const k = r.keyword_id;
+    if (!agg[k]) agg[k] = { text: r.keyword_text, match: r.match_type, impressions: 0, clicks: 0, cost: 0, conversions: 0 };
+    agg[k].impressions += parseInt(r.impressions) || 0;
+    agg[k].clicks      += parseInt(r.clicks) || 0;
+    agg[k].cost        += parseFloat(r.cost_usd) || 0;
+    agg[k].conversions += parseFloat(r.conversions) || 0;
+  });
+  const all = Object.values(agg).sort((a, b) => b.cost - a.cost);
+  const list = all.slice(0, 200);
+  const moreNote = all.length > list.length ? ` <span style="color:var(--muted);font-size:11px;font-weight:500;text-transform:none;letter-spacing:0">(top ${list.length} of ${fmtInt(all.length)} by spend)</span>` : '';
+  body.innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Keyword${moreNote}</th><th>Match</th>
+        <th class="num">Spend</th><th class="num">Clicks</th><th class="num">CPC</th>
+        <th class="num">Conv.</th><th class="num">CPA</th>
+      </tr></thead>
+      <tbody>
+        ${list.map(r => `<tr>
+          <td>${(r.text || '—').replace(/</g,'&lt;')}</td>
+          <td>${(r.match || '—').toLowerCase()}</td>
+          <td class="num">${fmtUSD(r.cost)}</td>
+          <td class="num">${fmtInt(r.clicks)}</td>
+          <td class="num">${r.clicks ? fmtUSD(r.cost / r.clicks) : '—'}</td>
+          <td class="num">${fmtNum(r.conversions)}</td>
+          <td class="num">${r.conversions ? fmtUSD(r.cost / r.conversions) : '—'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
 }
 
+// Search terms also lack conversion_value. Aggregated by normalized (lowercased,
+// trimmed) search_term to dedupe casing variants — "soundproof booth" and
+// "Soundproof Booth" are the same intent. Cap + meta same as keywords.
 function renderSearchTerms(rows) {
   document.getElementById('searchTermsMeta').textContent = rows.length ? `${fmtInt(rows.length)} rows` : '';
   const body = document.getElementById('searchTermsBody');
   if (!rows.length) { body.innerHTML = '<div class="empty">No data yet.</div>'; return; }
-  // TODO (Gabe): aggregate + render. Same pattern as renderCampaigns.
-  body.innerHTML = '<div class="empty">Search term aggregation view — TODO (see renderCampaigns for the pattern).</div>';
+  const agg = {};
+  rows.forEach(r => {
+    const k = (r.search_term || '').trim().toLowerCase();
+    if (!k) return;
+    if (!agg[k]) agg[k] = { term: k, impressions: 0, clicks: 0, cost: 0, conversions: 0 };
+    agg[k].impressions += parseInt(r.impressions) || 0;
+    agg[k].clicks      += parseInt(r.clicks) || 0;
+    agg[k].cost        += parseFloat(r.cost_usd) || 0;
+    agg[k].conversions += parseFloat(r.conversions) || 0;
+  });
+  const all = Object.values(agg).sort((a, b) => b.cost - a.cost);
+  const list = all.slice(0, 200);
+  const moreNote = all.length > list.length ? ` <span style="color:var(--muted);font-size:11px;font-weight:500;text-transform:none;letter-spacing:0">(top ${list.length} of ${fmtInt(all.length)} by spend)</span>` : '';
+  body.innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Search Term${moreNote}</th>
+        <th class="num">Spend</th><th class="num">Clicks</th><th class="num">CPC</th>
+        <th class="num">Conv.</th><th class="num">CPA</th>
+      </tr></thead>
+      <tbody>
+        ${list.map(r => `<tr>
+          <td>${r.term.replace(/</g,'&lt;')}</td>
+          <td class="num">${fmtUSD(r.cost)}</td>
+          <td class="num">${fmtInt(r.clicks)}</td>
+          <td class="num">${r.clicks ? fmtUSD(r.cost / r.clicks) : '—'}</td>
+          <td class="num">${fmtNum(r.conversions)}</td>
+          <td class="num">${r.conversions ? fmtUSD(r.cost / r.conversions) : '—'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
 }
 
 // ── Boot ────────────────────────────────────────────────────────────

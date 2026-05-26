@@ -6,19 +6,25 @@
 // Routes handled here:
 //   GET  /marketing                       → the dashboard HTML page
 //   GET  /api/marketing/status            → sync status + env readiness
-//   POST /api/marketing/sync              → kick off a Google Ads pull
+//   POST /api/marketing/sync              → kick off a Google Ads or HubSpot pull
 //   GET  /api/marketing/campaigns         → all rows from marketing_campaigns
 //   GET  /api/marketing/keywords          → all rows from marketing_keywords
 //   GET  /api/marketing/search-terms      → all rows from marketing_search_terms
+//
+// HubSpot ingestion (v1.44.0) shares the same /api/marketing/sync POST
+// endpoint — pass `report: 'hubspot_contacts' | 'hubspot_deals' | 'hubspot_all'`
+// to pull from HubSpot instead of Google Ads. The default `'all'` runs
+// everything (3 Google Ads reports + 2 HubSpot objects).
 //
 // Access: temporarily open to all authenticated reps while the allowlist
 // hydration is being sorted out (v1.42.0 — Gabe was being rejected by the
 // ownerId check). Re-lock by setting MARKETING_ALLOWLIST below to a non-
 // empty array; an empty array disables the check.
 
-const fs   = require('fs');
-const path = require('path');
-const etl  = require('./google-ads-etl');
+const fs    = require('fs');
+const path  = require('path');
+const etl   = require('./google-ads-etl');
+const hsEtl = require('./hubspot-etl');
 
 // Empty array = open to everyone (allowlist disabled). Populate with
 // ownerIds to re-lock — e.g. ['36303670', '36320208'] for Benton + Gabe.
@@ -78,12 +84,17 @@ async function handle(req, res, ctx) {
   // ── GET /api/marketing/status ─────────────────────────────────────
   // Returns: env-readiness flag + last-sync timestamp per report type.
   // Used by the dashboard header to show "Last synced 5 min ago" etc.
+  // The top-level envReady / missingEnv keys reflect Google Ads readiness
+  // only (preserves existing dashboard behavior — Sync All button gates on
+  // Google). HubSpot readiness is reported separately as `hubspot.envReady`
+  // so the dashboard can show it without blocking the Google sync.
   if (pathname === '/api/marketing/status' && req.method === 'GET') {
     try {
       const syncs = ctx.db ? (await ctx.db.query('SELECT * FROM marketing_syncs')).rows : [];
       ctx.json({
         envReady:    etl.envReady(),
         missingEnv:  etl.missingEnvVars(),
+        hubspot:     { envReady: hsEtl.envReady(), missingEnv: hsEtl.missingEnvVars() },
         allowlist:   MARKETING_ALLOWLIST,
         syncs,
       });
@@ -92,9 +103,16 @@ async function handle(req, res, ctx) {
   }
 
   // ── POST /api/marketing/sync ──────────────────────────────────────
-  // Body: { report: 'campaigns' | 'keywords' | 'search_terms' | 'all',
-  //         daysBack: 90 (optional) }
+  // Body: { report: 'campaigns' | 'keywords' | 'search_terms'
+  //               | 'hubspot_contacts' | 'hubspot_deals' | 'hubspot_all'
+  //               | 'all',
+  //         daysBack: number (optional) }
   // Triggers the corresponding ETL function(s). Returns the result.
+  //
+  // `daysBack` semantics differ by ETL family: Google Ads defaults to 90
+  // (daily aggregates, 90d window matches the dashboard view); HubSpot
+  // defaults to 365 (we want long lookback for slow-closing deals + first-
+  // touch contacts). The `'all'` shortcut uses each family's default.
   if (pathname === '/api/marketing/sync' && req.method === 'POST') {
     let body = {};
     try {
@@ -107,19 +125,35 @@ async function handle(req, res, ctx) {
       body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
     } catch(e) {}
 
-    const report   = body.report   || 'campaigns';
-    const daysBack = parseInt(body.daysBack) || 90;
+    const report   = body.report || 'campaigns';
+    const daysBack = body.daysBack != null ? parseInt(body.daysBack) : null;
+    const gaDays   = daysBack != null ? daysBack : 90;
+    const hsDays   = daysBack != null ? daysBack : 365;
     try {
       let result;
-      if (report === 'campaigns')         result = await etl.syncCampaigns({ db: ctx.db, daysBack });
-      else if (report === 'keywords')     result = await etl.syncKeywords({ db: ctx.db, daysBack });
-      else if (report === 'search_terms') result = await etl.syncSearchTerms({ db: ctx.db, daysBack });
+      if      (report === 'campaigns')        result = await etl.syncCampaigns({   db: ctx.db, daysBack: gaDays });
+      else if (report === 'keywords')         result = await etl.syncKeywords({    db: ctx.db, daysBack: gaDays });
+      else if (report === 'search_terms')     result = await etl.syncSearchTerms({ db: ctx.db, daysBack: gaDays });
+      else if (report === 'hubspot_contacts') result = await hsEtl.syncHubSpotContacts({ db: ctx.db, daysBack: hsDays });
+      else if (report === 'hubspot_deals')    result = await hsEtl.syncHubSpotDeals({    db: ctx.db, daysBack: hsDays });
+      else if (report === 'hubspot_all') {
+        const a = await hsEtl.syncHubSpotContacts({ db: ctx.db, daysBack: hsDays });
+        const b = await hsEtl.syncHubSpotDeals({    db: ctx.db, daysBack: hsDays });
+        result = { ok: a.ok && b.ok, parts: [a, b] };
+      }
       else if (report === 'all') {
-        const a = await etl.syncCampaigns({ db: ctx.db, daysBack });
-        const b = await etl.syncKeywords({ db: ctx.db, daysBack });
-        const c = await etl.syncSearchTerms({ db: ctx.db, daysBack });
-        result = { ok: a.ok && b.ok && c.ok, parts: [a, b, c] };
-      } else {
+        // Full refresh: Google Ads (3) + HubSpot (2). Run sequentially to
+        // avoid concurrent writes to marketing_syncs and to keep request
+        // memory bounded. Each runner records its own error to marketing_syncs
+        // even when failing, so a partial run still leaves useful state.
+        const a = await etl.syncCampaigns({       db: ctx.db, daysBack: gaDays });
+        const b = await etl.syncKeywords({        db: ctx.db, daysBack: gaDays });
+        const c = await etl.syncSearchTerms({     db: ctx.db, daysBack: gaDays });
+        const d = await hsEtl.syncHubSpotContacts({ db: ctx.db, daysBack: hsDays });
+        const e = await hsEtl.syncHubSpotDeals({    db: ctx.db, daysBack: hsDays });
+        result = { ok: a.ok && b.ok && c.ok && d.ok && e.ok, parts: [a, b, c, d, e] };
+      }
+      else {
         ctx.json({ ok: false, error: `Unknown report type: ${report}` }, 400);
         return true;
       }

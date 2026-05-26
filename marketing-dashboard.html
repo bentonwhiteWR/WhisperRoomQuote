@@ -158,6 +158,16 @@ const minutesAgo = iso => {
 };
 
 // ── Status + sync ───────────────────────────────────────────────────
+// Pretty-print "how long ago" for a sync timestamp.
+function agoText(iso) {
+  const m = minutesAgo(iso);
+  if (m == null)        return 'never';
+  if (m < 1)            return 'just now';
+  if (m < 60)           return m + ' min ago';
+  if (m < 60 * 24)      return Math.round(m / 60) + ' h ago';
+  return Math.round(m / (60 * 24)) + ' d ago';
+}
+
 async function loadStatus() {
   try {
     const res  = await fetch('/api/marketing/status', { credentials: 'include' });
@@ -167,6 +177,8 @@ async function loadStatus() {
     const det  = document.getElementById('statusDetail');
     const btn  = document.getElementById('syncBtn');
 
+    // Google Ads readiness gates the Sync All button. HubSpot is reported
+    // alongside but doesn't block — Google Ads is the primary data source.
     if (!data.envReady) {
       bar.classList.add('warn');
       head.innerHTML = '⚠ Google Ads credentials not configured yet';
@@ -177,20 +189,40 @@ async function loadStatus() {
     bar.classList.remove('warn');
     btn.disabled = false;
 
-    const syncs = data.syncs || [];
-    if (!syncs.length) {
+    const syncs    = data.syncs || [];
+    const findSync = type => syncs.find(s => s.report_type === type);
+
+    const campSync   = findSync('campaigns');
+    const hsContacts = findSync('hubspot_contacts');
+    const hsDeals    = findSync('hubspot_deals');
+    const hsReady    = data.hubspot && data.hubspot.envReady;
+
+    // Headline: Google Ads sync state (the primary signal).
+    if (campSync && campSync.last_synced_at) {
+      head.textContent = `Google Ads: synced ${agoText(campSync.last_synced_at)} · ${fmtInt(campSync.rows_synced)} campaign-day rows`;
+    } else if (!syncs.length) {
       head.textContent = 'Ready to sync — no data pulled yet.';
-      det.textContent  = 'Press Sync All to pull the last 90 days of campaign performance into Postgres.';
     } else {
-      const campSync = syncs.find(s => s.report_type === 'campaigns');
-      if (campSync && campSync.last_synced_at) {
-        const m = minutesAgo(campSync.last_synced_at);
-        head.textContent = `Last synced ${m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.round(m/60) + ' h ago'} · ${fmtInt(campSync.rows_synced)} campaign-day rows`;
-      } else {
-        head.textContent = 'Ready to sync.';
-      }
-      det.textContent = 'Press Sync All to refresh. Existing rows are upserted (no duplicates).';
+      head.textContent = 'Ready to sync.';
     }
+
+    // Detail line: HubSpot status (if env wired) + general sync hint.
+    const bits = [];
+    if (!hsReady) {
+      const miss = (data.hubspot && data.hubspot.missingEnv) || [];
+      bits.push(`HubSpot not configured (missing ${miss.join(', ') || 'HS_TOKEN'})`);
+    } else if (hsContacts && hsContacts.last_synced_at) {
+      const cErr     = hsContacts.error ? ' ⚠' : '';
+      const dErr     = hsDeals && hsDeals.error ? ' ⚠' : '';
+      const dealsBit = hsDeals && hsDeals.last_synced_at
+        ? `${fmtInt(hsDeals.rows_synced)} deals (${agoText(hsDeals.last_synced_at)})${dErr}`
+        : 'deals not yet synced';
+      bits.push(`HubSpot: ${fmtInt(hsContacts.rows_synced)} contacts (${agoText(hsContacts.last_synced_at)})${cErr} · ${dealsBit}`);
+    } else {
+      bits.push('HubSpot: ready, no data pulled yet');
+    }
+    bits.push('Press Sync All to refresh everything (Google Ads + HubSpot). Existing rows are upserted.');
+    det.textContent = bits.join(' — ');
   } catch(e) {
     document.getElementById('statusHeadline').textContent = 'Status check failed: ' + e.message;
   }
@@ -205,7 +237,10 @@ async function runSync() {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ report: 'all', daysBack: 90 }),
+      // No daysBack — let each ETL family use its own default: Google Ads
+      // uses 90d (matches the dashboard's 90-day campaign view); HubSpot
+      // uses 365d (long lookback for slow-closing deals + first-touch).
+      body: JSON.stringify({ report: 'all' }),
     });
     const data = await res.json();
     if (!data.ok) {

@@ -1123,7 +1123,7 @@ PRODUCT CATALOG LINK (for Discovery leads with no specific product identified):
 
 "You can browse our full product catalog here:
 
-[View WhisperRoom Catalog →](https://5764220.fs1.hubspotusercontent-na1.net/hubfs/5764220/WhisperRoom-Catalog.pdf)"
+[View WhisperRoom Catalog →](https://5764220.fs1.hubspotusercontent-na1.net/hubfs/5764220/WhisperRoomCatalog.pdf)"
 
 PRODUCT BREADTH CREDIBILITY LINE (use sparingly, where natural):
 
@@ -1424,7 +1424,7 @@ QUOTE-INTENT OVERRIDE: BEFORE asking a use-case question, check if the lead mess
 5. Catalog link block:
    "You can browse our full product catalog here:
 
-   [View WhisperRoom Catalog →](https://5764220.fs1.hubspotusercontent-na1.net/hubfs/5764220/WhisperRoom-Catalog.pdf)"
+   [View WhisperRoom Catalog →](https://5764220.fs1.hubspotusercontent-na1.net/hubfs/5764220/WhisperRoomCatalog.pdf)"
 6. "This quote is just a starting point. We can easily adjust the size or isolation if needed."
 7. Canada broker line if applicable (use the long-reply variant: "For delivery to Canada, we'll also guide you through the broker process so everything goes smoothly.")
 8. ONE clarifying question
@@ -1447,7 +1447,7 @@ QUOTE-INTENT OVERRIDE: BEFORE asking a use-case question, check if the lead mess
 6. Catalog link block (REQUIRED for these leads):
    "You can browse our full product catalog here:
 
-   [View WhisperRoom Catalog →](https://5764220.fs1.hubspotusercontent-na1.net/hubfs/5764220/WhisperRoom-Catalog.pdf)"
+   [View WhisperRoom Catalog →](https://5764220.fs1.hubspotusercontent-na1.net/hubfs/5764220/WhisperRoomCatalog.pdf)"
 7. "This quote is just a starting point. We can easily adjust the size or isolation if needed."
 8. ONE clarifying question targeting use case or space
 9. "Happy to help you dial this in."

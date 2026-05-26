@@ -11,16 +11,18 @@
 //   GET  /api/marketing/keywords          → all rows from marketing_keywords
 //   GET  /api/marketing/search-terms      → all rows from marketing_search_terms
 //
-// Access is gated to the MARKETING_ALLOWLIST ownerIds below — anyone
-// else hitting /marketing gets redirected to /deals; API endpoints
-// 403.
+// Access: temporarily open to all authenticated reps while the allowlist
+// hydration is being sorted out (v1.42.0 — Gabe was being rejected by the
+// ownerId check). Re-lock by setting MARKETING_ALLOWLIST below to a non-
+// empty array; an empty array disables the check.
 
 const fs   = require('fs');
 const path = require('path');
 const etl  = require('./google-ads-etl');
 
-// Benton + Gabe. Add more ownerIds here if scope expands.
-const MARKETING_ALLOWLIST = ['36303670', '36320208'];
+// Empty array = open to everyone (allowlist disabled). Populate with
+// ownerIds to re-lock — e.g. ['36303670', '36320208'] for Benton + Gabe.
+const MARKETING_ALLOWLIST = [];
 
 let _schemaInitialized = false;
 async function _initSchema(db) {
@@ -36,6 +38,7 @@ async function _initSchema(db) {
 }
 
 function isAllowed(sess) {
+  if (MARKETING_ALLOWLIST.length === 0) return !!sess;  // open to any auth'd user
   return !!(sess && MARKETING_ALLOWLIST.includes(String(sess.ownerId || '')));
 }
 

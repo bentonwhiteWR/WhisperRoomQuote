@@ -51,6 +51,42 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.42.3', date:'May 26, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Bot assistant: catalog PDF URL updated.** The three catalog links in `assistant/system-prompt.txt` (Discovery lead intro, Contact Lead catalog block, vague-Discovery fallback) pointed to the old hyphenated filename. Swapped to the new URL — same HubSpot file host, just no hyphen.'},
+      ]
+    },
+    {
+      v:'1.42.2', date:'May 22, 2026', tag:'logging',
+      changes:[
+        {t:'log', d:'**DEVLOG: full session writeup for 2026-05-22.** Captured today\'s three-thread day — promote sweep clearing yesterday\'s staging backlog (v1.38.2 → v1.39.0 landed on main), marketing dashboard handoff to Gabe + his same-day v1.40.0 Google Ads ETL implementation (and the version-collision rebase), quote expiration indicators (v1.41.0) ahead of the Audimute price-book bump, the unrelated HubSpot file-replacement lockout, and the end-of-day v1.42.0 fix opening up `/marketing` after Gabe\'s ownerId-allowlist rejection. Current focus block updated to reflect today\'s state — four versions sitting on staging (v1.40.0 / v1.41.0 / v1.42.0 / v1.42.1), main still on v1.39.0. Yesterday\'s open EOD items (notification history empty, TaxJar 33104 verification) both confirmed resolved by user during the day.'},
+      ]
+    },
+    {
+      v:'1.42.1', date:'May 22, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Marketing sync fixed — `google-ads-api` upgraded v17 → v23.** Every Google Ads sync was failing with `12 UNIMPLEMENTED: GRPC target method can\'t be resolved`. The pinned v17 library targets a Google Ads API version Google has since sunset, so calls died at the gRPC layer before reaching authentication — not an auth or credential issue. Bumped the dependency to `^23.0.0` (current latest, targets a supported API version). No change needed in `marketing/google-ads-etl.js` — the `customer.report()` interface is stable across these versions. Sync now reaches Google; the remaining gate is the developer-token access level (Explorer vs Basic).'},
+      ]
+    },
+    {
+      v:'1.42.0', date:'May 22, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing dashboard opened up to all reps (temporary).** Gabe was hitting an ownerId mismatch on the v1.40.0 allowlist (Benton + Gabe only) — until that\'s diagnosed, the page + APIs are accessible to any authenticated user, and the nav link in the Deal Hub topbar shows for everyone. Re-gating is one config change: set `MARKETING_ALLOWLIST` in `marketing/router.js` to a non-empty array of ownerIds. Empty array = open.'},
+      ]
+    },
+    {
+      v:'1.41.0', date:'May 22, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Quote expiration indicators across Deal Hub + Quote Builder.** Quotes are now treated as expired 30 days after their save date (matches the "Valid for 30 days" footer on the PDF). New yellow chip (EXP Nd) appears in the last 7 days; red EXPIRED chip after day 30. Shown on (a) each quote card in the Deal Hub right-panel quotes list, (b) each deal card in the main board (suppressed once the deal is accepted/paid/has a payment type — already locked in). When an expired quote is loaded into the quote builder, a dismissable amber/red banner shows at the top of the page nudging the rep to revise pricing. Accepted quotes never trigger the chip or banner — pricing was committed when the customer signed off. Useful for the Audimute price-book bump on 2026-05-22 since pre-bump quotes will roll into "expired" over the next 30 days and the rep gets a visible nudge to refresh.'},
+      ]
+    },
+    {
+      v:'1.40.0', date:'May 22, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing dashboard — Google Ads sync is live.** The three ETL runners in `marketing/google-ads-etl.js` (`syncCampaigns`, `syncKeywords`, `syncSearchTerms`) are no longer stubs. `_getCustomer()` builds the `google-ads-api` client from the five `GOOGLE_ADS_*` Railway env vars; each runner pulls a daily-segmented report for the last N days (default 90) — `campaign`, `keyword_view` and `search_term_view` respectively — and upserts into `marketing_campaigns` / `marketing_keywords` / `marketing_search_terms`. Idempotent — re-running the same range overwrites via the composite key on each table. Google Ads API failures (bad credentials, unapproved developer token, wrong customer_id) are caught per-runner and written to `marketing_syncs.error`, so the dashboard status bar shows the reason instead of a bare 500. The "Sync All" button now populates the campaign, keyword and search-term tables in one pass.'},
+      ]
+    },
+    {
       v:'1.39.0', date:'May 22, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Marketing dashboard scaffolding** — new `/marketing` page for Benton + Gabe (allowlisted by ownerId). Isolated to a `marketing/` folder so Gabe can iterate without touching shared app files. `marketing/schema.sql` defines `marketing_campaigns` / `marketing_keywords` / `marketing_search_terms` / `marketing_syncs` tables (auto-created on first load). `marketing/router.js` handles all routes (`GET /marketing`, `GET /api/marketing/status`, `POST /api/marketing/sync`, plus `GET /api/marketing/{campaigns,keywords,search-terms}`). `marketing/google-ads-etl.js` is a stub — fetch logic TODO once Gabe has the developer token + OAuth refresh token. quote-server.js mounts the module via a single `marketingRouter.handle(req, res, ctx)` call early in the request handler. Dashboard page shows status, summary KPI cards, and per-campaign aggregation table. `google-ads-api` npm package pre-installed. Nav link shows on Deal Hub topbar only for the allowlist (Benton + Gabe).'},

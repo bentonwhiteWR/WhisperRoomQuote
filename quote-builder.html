@@ -796,11 +796,15 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
   </div>
 </div>
 
+<!-- Expired-quote banner — shown when an existing quote is loaded that's
+     past its 30-day validity. Dismissable. -->
+<div id="expiredQuoteBanner" style="display:none;margin:8px 16px 0;padding:10px 14px;border-radius:6px;font-size:13px;font-weight:600;align-items:center;gap:10px;flex-wrap:wrap"></div>
+
 <div class="layout">
 <div class="main-col">
 
   <!-- DEAL SEARCH -->
-  
+
 
   <!-- CONTACT SEARCH -->
   <div class="contact-search-bar">
@@ -4772,6 +4776,41 @@ This removes it from the database. The HubSpot deal is not affected.`)) return;
   }
 }
 
+// Show the expired-quote banner if the loaded quote is stale.
+// Reads created_at from the snapshot (_createdAt from /api/history or
+// createdAt from /api/quote-snapshot — synth path). Date column on the
+// quote object isn't the actual save timestamp, so prefer the DB column.
+function showExpiredQuoteBannerIfStale(q) {
+  const banner = document.getElementById('expiredQuoteBanner');
+  if (!banner) return;
+  banner.style.display = 'none';
+  banner.innerHTML = '';
+  if (q.accepted || q._accepted) return;  // accepted = pricing locked in
+  const createdRaw = q._createdAt || q.createdAt || null;
+  if (!createdRaw) return;
+  const createdMs = new Date(createdRaw).getTime();
+  if (!createdMs) return;
+  const daysSince = Math.floor((Date.now() - createdMs) / 86400000);
+  if (daysSince <= 23) return;  // fresh — no banner
+  const expired = daysSince > 30;
+  const daysLeft = Math.max(0, 30 - daysSince);
+  const bg     = expired ? 'rgba(239,68,68,.14)' : 'rgba(245,158,11,.14)';
+  const border = expired ? 'rgba(239,68,68,.5)'  : 'rgba(245,158,11,.5)';
+  const color  = expired ? '#ef4444'              : '#f59e0b';
+  const msg    = expired
+    ? `Quote is <strong>expired</strong> (saved ${daysSince} days ago). Pricing may be stale — revise the quote with current pricing before sending.`
+    : `Quote expires in <strong>${daysLeft} day${daysLeft===1?'':'s'}</strong>. Refresh prices before sending if the customer hasn't committed.`;
+  banner.style.display      = 'flex';
+  banner.style.background   = bg;
+  banner.style.border       = '1px solid ' + border;
+  banner.style.color        = color;
+  banner.innerHTML = `
+    <span style="flex:1;line-height:1.4">${expired ? '⚠️' : '⏰'} ${msg}</span>
+    <button onclick="document.getElementById('expiredQuoteBanner').style.display='none'"
+            style="background:none;border:1px solid ${border};color:${color};font:inherit;cursor:pointer;padding:4px 10px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase">Dismiss</button>
+  `;
+}
+
 function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   const q = allHistory.find(h => h.quoteNumber === idOrIdx) ||
             allHistory.find(h => h.id === idOrIdx) ||
@@ -5096,6 +5135,10 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
     const hp = document.getElementById('historyPanel');
     if (hp?.classList.contains('open')) toggleHistory();
   }
+
+  // Show expiration banner if the loaded quote is past (or near) its 30-day validity.
+  // Suppressed for accepted quotes — those have committed pricing.
+  showExpiredQuoteBannerIfStale(q);
 
   // Check if any product prices have changed since this quote was saved
   const itemsWithIds = lineItems.filter(i => i.productId);
@@ -6342,6 +6385,7 @@ fetchHistory().then(() => {
               const synth = {
                 id:          decoded,
                 quoteNumber: decoded,
+                _createdAt:  snap.createdAt || null,
                 dealId:      snap.dealId   || fromHub || null,
                 dealName:    snap.dealName || '',
                 customer:    snap.customer || {},

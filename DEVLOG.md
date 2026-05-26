@@ -1,80 +1,69 @@
 # WhisperRoom Quote Builder — Dev Log
 
-Internal development notes. Last updated 2026-05-21.
+Internal development notes. Last updated 2026-05-22.
 
 > **Read this first when starting a session.** The "Current focus" section below is the fastest way to know where we left off. Below that: session writeups, the audit (outstanding work), and the changelog table.
 
 ---
 
-## Current focus (2026-05-21 — Notification system end-to-end + AP PO freight + Closed Lost recovery + TaxJar fallback + Save-Changes silent-ship fix)
+## Current focus (2026-05-22 — Quote expiration indicators + marketing dashboard handoff to Gabe + Audimute price bump)
 
-**Most recent shipped to PROD:** v1.37.7 — Process-order → Jeromy notification trigger + synced `lib/notify.js` REP_EMAILS to real login emails. Promoted 2026-05-21 (eveningish).
+**Most recent shipped to PROD:** v1.39.0 — Marketing dashboard scaffolding (gated to Benton + Gabe ownerIds). Promoted 2026-05-22.
 
-Today was another marathon — 30+ versions across notification system buildout, Closed Lost recovery, AP/Audimute PO workflow, Modify Order line-items, a sneaky Save-Changes silent-ship bug, TaxJar resilience, plus a backtick typo that took the whole notification bell offline for a few minutes. Full breakdown in the **May 21 session writeup** below.
+Today bundled three threads: (1) cleared yesterday's staging backlog with a five-version promote (v1.38.2 → v1.39.0), (2) handed the marketing dashboard off to Gabe via a kick-off prompt — he turned around the Google Ads ETL implementation the same day (v1.40.0), (3) built out quote expiration indicators (v1.41.0) ahead of the Audimute price-book bump the user is rolling out today. Side detour into a HubSpot file-replacement lockout that turned out to be unrelated to our app. Full breakdown in the **May 22 session writeup** below.
 
 **On STAGING (NOT YET promoted to main):**
 
-- **v1.39.0** (2026-05-22) — **Marketing dashboard scaffolding** for Gabe to fill in. New `marketing/` folder holds the entire module: `schema.sql` (auto-applied), `router.js` (route handler), `google-ads-etl.js` (stub — TODO Gabe). `marketing-dashboard.html` is the page (status bar + summary KPI cards + campaign aggregation table). quote-server.js mounts via `marketingRouter.handle(...)` — one line. Allowlist (`36303670`, `36320208` = Benton + Gabe) controls both server-side access + nav link visibility on Deal Hub topbar. `google-ads-api` npm dep pre-installed. Schema is `marketing_*` prefix in the existing Postgres so cross-system joins (cost-per-quote etc.) stay trivial. Auth requirements documented in `marketing/google-ads-etl.js` header — Gabe needs developer token + OAuth client_id/secret + refresh_token + customer_id set as Railway env vars before sync will work.
+- **v1.42.2** (2026-05-22) — **DEVLOG: full session writeup for 2026-05-22.** Captured today's three threads (promote sweep, marketing handoff to Gabe + his v1.40.0/v1.42.1, expiration indicators v1.41.0) plus the HubSpot file-lockout side detour and the v1.42.0 marketing-open fix.
 
-- **v1.38.6** (2026-05-22) — **TaxJar ZIP-rejection fallback fixed.** v1.37.4 dropped `to_zip` on the retry, which TaxJar 400'd with `"No to zip, required when country is US"`. New approach: per-state `fallbackZip` in `lib/states.js` NEXUS_STATES (biggest commercial city — FL=33101, TN=37201, TX=78701, etc.); retry SUBSTITUTES instead of dropping. Result reflects that ZIP's local surtax. Banner surfaces the warning so rep knows to verify.
+- **v1.42.1** (2026-05-22, Gabe) — **Marketing sync fixed: `google-ads-api` upgraded v17 → v23.** Every sync (campaigns, keywords, search terms) failed with `12 UNIMPLEMENTED: GRPC target method can't be resolved`. Root cause: the pinned `google-ads-api@^17.0.0` targets a Google Ads API version Google has sunset, so gRPC calls had no live endpoint and died before reaching authentication — not an auth or credential problem. Benton approved the upgrade; `package.json` now pins `^23.0.0` (current latest). No change to `marketing/google-ads-etl.js` — `customer.report()` is stable across these versions. Watch on deploy: the Docker base is `node:18-slim` and v23 declares no `engines`, so npm won't block; if the build or sync throws a Node-version error, bump the base image to `node:20-slim`. After redeploy, re-run Sync All — calls will reach Google; next gate is developer-token access level (still Explorer; Basic Access application pending).
 
-- **v1.38.5** (2026-05-22) — **Freight Ref "Open ↗" URLs now match the Get Freight popup's Book Online button.** ABF → `https://arcb.com/tools/rate-quote.html#/<refNumber>` (deep-link, no clipboard needed); OD → `https://www.odfl.com/us/en/tools/rate-reference-search.html` (clipboard-copy of ref + search page). Replaces the generic tracking-page URLs from v1.38.4.
+- **v1.42.0** (2026-05-22) — **Marketing dashboard opened to all reps (temporary).** Gabe was hitting an ownerId mismatch on the v1.40.0 allowlist — page kept redirecting him to /deals. Until that's diagnosed, `MARKETING_ALLOWLIST` in `marketing/router.js` is set to `[]` (empty array short-circuits the check to "any authenticated user"). Nav link in the Deal Hub topbar now shows for everyone (was gated client-side to Benton + Gabe). Re-gating is one edit — populate the array. User confirmed marketing page is working for Gabe after this change.
 
-- **v1.38.4** (2026-05-22) — **Editable Freight Quote Ref on the orders drawer.** Field always visible now; carrier picker (ABF / OD) + reference input + Open ↗ button. Open copies the ref to clipboard + opens the carrier's tracking page (`arcb.com/tools/tracking.html` for ABF, `odfl.com/.../ship-ltl-freight.html` for OD). Get Freight still pre-populates with the carrier-specific deep-link. Persists to the existing `order_data.freightRef` slot — no schema change. URL templates may need a refresh once we confirm which page each carrier wants — easy to swap in `FREIGHT_REF_URLS`.
+- **v1.41.0** (2026-05-22) — **Quote expiration indicators across Deal Hub + Quote Builder.** Yellow chip "EXP Nd" in last 7 days; red "EXPIRED" after 30 days. Driven by `quotes.created_at` (30-day rule matches the PDF footer). Shown on: (a) right-panel quote cards in Deal Hub, (b) deal cards on the main board (suppressed once deal is accepted/paid/has payment type — already locked in). Quote builder shows a dismissable banner on load when an expired/expiring quote opens. Accepted quotes never trigger the chip/banner. Server side: added `created_at` to `/api/deals/:id/hub` quotes array and `/api/quote-snapshot/`; `/api/history` injects `_createdAt` onto each snapshot row. **Not yet visually verified on staging** — user logged off before testing the chips/banner against a real expired quote.
 
-- **v1.38.3** (2026-05-22) — **Overdue-ship-date sweep.** New 6h background poller (2 min after startup) queries `supplier_pos` for rows where `expected_ship_date < CURRENT_DATE AND tracking_number IS NULL AND status NOT IN (complete, cancelled)` and notifies Jill + Benton (`⏰ PO past ship date`). De-duped via new `overdue_notified_at` column (additive ALTER, no migration). PATCH endpoint clears the stamp when ship date or tracking is updated so the sweep can re-fire on new overdue states.
+- **v1.40.0** (2026-05-22) — **Marketing Google Ads sync implemented (Gabe, in his own session).** All three runners in `marketing/google-ads-etl.js` (`syncCampaigns`, `syncKeywords`, `syncSearchTerms`) are no longer stubs. `_getCustomer()` now builds the real `google-ads-api` client from the `GOOGLE_ADS_*` Railway env vars. Each runner pulls a daily-segmented report for the last N days (default 90) — `campaign` / `keyword_view` / `search_term_view` — and upserts into its `marketing_*` table on the composite PK, so re-runs overwrite cleanly. Google Ads API errors are caught per-runner and written to `marketing_syncs.error` so the dashboard status bar surfaces them. User mentioned Gabe pushed "something that affected the library" during the session — worth a quick `git log` review next session, but marketing page is functional now.
 
-- **v1.38.2** (2026-05-22) — **AP PO lifecycle bundle: auto-status transitions + tracking widget + notification fan-out.** (a) `/api/supplier-pos/:poNumber` PATCH auto-advances status when the rep doesn't set one: setting `expected_ship_date` from pending/sent → `confirmed`; setting `tracking_number` from anything less than shipped → `shipped`. Logged as `auto: true` in the change log. (b) Suppliers-dashboard tracking column gains a 📦 button (when tracking is set) that opens a popover with tracking number + In Transit/Delivered status pill + Google-search-by-tracking link + Mark Delivered button when shipped. (c) Process-order AP notification now fires to Benton too (was Jill only). (d) New `supplier-po-created` notification on POST `/api/supplier-pos` fires to both Jill + Benton.
+### Open follow-ups
 
-- **v1.38.1** (2026-05-22) — **No more "Load X? This will replace your current quote." confirm when arriving from Deal Hub.** Gated the confirm in `loadFromHistoryEntry()` on `skipClose` (already signals URL-param/Deal-Hub entry). In-page History panel clicks still confirm.
+- **Promote v1.40.0–v1.42.0 to main** once the expiration indicators are visually verified and Gabe has had a chance to test marketing dashboard end-to-end on staging.
+- **Marketing dashboard re-lock** — diagnose why Gabe's session/ownerId didn't match the v1.40.0 allowlist (was `'36320208'`). Could be his `sessions` row never hydrated his ownerId from HubSpot Owners, or his actual ownerId differs from what we put in the list. Once known, populate `MARKETING_ALLOWLIST` back in `marketing/router.js` and the dashboard re-locks immediately.
+- **Audimute price-book bump (2026-05-22)** — user said today they were updating prices in the price books. Per their note: existing quotes stay at their original pricing (good for 30 days per the PDF footer); any new quote built going forward uses new pricing. v1.41.0 expiration indicators are designed exactly for this rollover — pre-bump quotes will roll into "expired" over the next 30 days and reps get a visible nudge to refresh.
+- **Stripe Dashboard subscription:** still TODO from yesterday. Add `payment_intent.processing` to the webhook endpoint at `/api/stripe/webhook` so the ACH-initiated notification (v1.37.0) actually fires. Existing subscriptions (`invoice.paid`, `invoice.payment_failed`, `invoice.voided`) unchanged.
 
-- **v1.38.0** (2026-05-22) — **New payment type: "Shopify".** Wired into both Process Order modals (quote-builder + Deal Hub), the Modify Order modal, and the admin payment-method override. Server validation list + PAY_TYPE_HS_VALUES + every internal label dict updated to include `shopify: 'Shopify'`. Card chip styled green like other paid types. Behaviorally identical to other paid types (sets `payment_status=paid`, creates QB invoice + auto-payment). Needs a matching "Shopify" option in HubSpot's `payment_type` enum field — user adding separately.
+### Resolved today
 
-- **v1.37.14** (2026-05-22) — **Payment-status chip mirrored into the Deal Hub right panel.** Same `renderPaymentChip(deal.paymentInfo)` that drives the deal-card chip now also renders in the hub-meta row next to the dealstage/payment-type badges. Rep no longer has to glance back at the card to see ACH-clearing/cleared/failed state once a deal is open.
+- **TaxJar 33104 fallback** — user confirmed the v1.38.6 fix works in normal use. Closed.
+- **Notification history empty for Benton** (yesterday's open question) — user confirmed in passing that history is working. Most likely cause was the GloNova test quote being deleted, which cascades into `DELETE FROM notifications WHERE quote_num = $1`. Closed.
 
-- **v1.37.13** (2026-05-22) — **Deal Hub default view is always "All Reps" — no more auto-switch.** `loadCurrentUser()` was setting the rep filter to the logged-in user's ownerId ~15s after page load (once `/api/me` returned). Removed that auto-set. Filter stays on "All Reps" until the rep picks a name.
+### Marketing dashboard — end-of-session handoff (2026-05-22, Gabe)
 
-- **v1.37.11** (2026-05-21) — Confirm + read-all POST endpoints now lazy-hydrate the session (matching the GET endpoints). Plugs a v1.37.2 gap. Confirm endpoint also returns `rowsUpdated` count.
-- **v1.37.10** (2026-05-21) — Notification bell came back from the dead. v1.37.9's CSS comment had literal backticks around `:root.light` inside the JS template literal — terminated the string early, script became a syntax error, bell vanished everywhere. Removed backticks. **Lesson saved to memory.**
-- **v1.37.9** (2026-05-21) — Notification dropdown light-mode styling.
-- **v1.37.8** (2026-05-21) — DEVLOG bookkeeping post-promote.
+Google Ads ETL is **working end-to-end** as of v1.42.1. Gabe ran "Sync All" on staging and confirmed the `marketing_*` tables populated with real Google Ads data. The session ended mid-sync — the 90-day "Sync All" was still running when Gabe logged off.
 
-Promote v1.37.8–v1.37.11 first thing tomorrow once the history-view investigation below is resolved.
+**Shipped this session (all on `staging`, not promoted to `main`):**
 
-### ⚠️ Open at end-of-day: notification history view is empty for Benton
+- **v1.40.0** — implemented all three ETL runners (`syncCampaigns`, `syncKeywords`, `syncSearchTerms`) in `marketing/google-ads-etl.js`; wired `_getCustomer()` to the real `google-ads-api` client.
+- **v1.42.0** (Benton) — opened the marketing dashboard to all reps temporarily (`MARKETING_ALLOWLIST = []`) to work around the ownerId bug in item 6 below.
+- **v1.42.1** — upgraded `google-ads-api` v17 → v23. The v17 library targeted a sunset Google Ads API version, so every sync failed with `12 UNIMPLEMENTED: GRPC target method can't be resolved`. v23 fixed it.
 
-User clicked ✓ Confirm on some test notifications. History view (`/api/notifications/history`) returned nothing. Latest `/api/notifications/debug` for Benton:
+**Auth setup is done:** all five `GOOGLE_ADS_*` env vars are set in Railway; MCC ID is `613-366-2660`. The sync pulled live data on the **Explorer**-tier developer token, so Explorer does allow production queries — the Basic Access application is about lifting the daily operation cap, not unlocking access.
 
-```json
-{
-  "session": { "email": "bentonwhite@whisperroom.com", "ownerId": "36303670" },
-  "recentForYou": [],
-  "latestAcrossAllReps": [
-    { "id": 95, "owner_id": "38143901", ... Echo Tech ... },
-    { "id": 94, "owner_id": "38143901", ... Echo Tech ... },
-    { "id": 89, "owner_id": "117442978", ... Erik Stalheim ... },
-    { "id": 88, "owner_id": "38732186", ... Order modified ... },
-    { "id": 87, "owner_id": "117442978", ... Kalamazoo ... }
-  ]
-}
-```
+**Open items — pick up here next session:**
 
-**Smoking gun:** earlier in the session Benton's debug dump showed notifications id 91 and 92 (both `owner_id="36303670"`, GloNova quote-accepted events). Those are **completely gone** from `recentForYou` — not just marked read, missing from the DB entirely. `recentForYou` is a `WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 10` query with no read filter, so they should appear even if read=true. They don't.
+1. **Confirm the full "Sync All" finished.** Gabe left mid-sync. Check `marketing_syncs` (all three rows should have a fresh `last_synced_at`, `rows_synced > 0`, `error: null`) and the dashboard tables. If "Sync All" hit Railway's HTTP request timeout, just re-run — the sync is idempotent (composite-PK upserts) and `_recordSync` records per-report progress, so nothing is lost. Reports can also be run individually via `POST /api/marketing/sync` with a single `report` and smaller `daysBack`.
 
-**Leading suspect:** quote-server.js has three `DELETE FROM notifications` paths that cascade when a deal/quote is deleted:
-- `/api/quotes/:n/delete` → `DELETE FROM notifications WHERE quote_num = $1` (line ~11833)
-- HubSpot deal deletion paths at ~11975 + ~11981
+2. **Basic Access application — pending.** Submitted to the Google Ads API Compliance team 2026-05-22; stated SLA ~3 business days, so a decision is expected ~May 27–28 (Mon May 25 is the Memorial Day holiday). Form + API contact email is `gabrielwhite@whisperroom.com` — watch that inbox for any follow-up question. Until Basic is granted, large syncs may hit `RESOURCE_EXHAUSTED` (Explorer daily cap); Basic lifts it to 15,000 ops/day.
 
-If Benton deleted the GloNova test quote (or its parent deal) between the two debug dumps, that cascade would explain the missing rows. **Action tomorrow:** ask whether the GloNova test quote was deleted; if so, behavior is correct and we just need to also test history with a notification that hasn't been linked to a deleted quote. If not, dig deeper.
+3. **[Offered, not done] Batch the ETL upserts.** `marketing/google-ads-etl.js` does one `db.query` INSERT per row, sequentially, across 3 reports × 90 days. Search terms can be thousands of rows — slow, and it risks the Railway HTTP timeout on "Sync All". Convert to batched multi-row upserts. In marketing scope.
 
-**Possible related issue:** during the bell-vanished window (v1.37.9 → v1.37.10), the confirm button wasn't even rendered — script crashed before init(). So any clicks during that gap were no-ops. The user might have THOUGHT they confirmed but the page literally had no bell to click.
+4. **[Offered, not done] Fix the "unknown error" display gap.** The `report:'all'` branch in `marketing/router.js` returns `{ok, parts}` with no top-level `error`, so "Sync All" alerts "Sync failed: unknown error" on any failure. Real errors sit in `marketing_syncs.error` / `parts[]`. Roll the failed parts' errors into a top-level `error` string.
 
-### Other open follow-ups
+5. **Re-gate marketing access before promoting to `main`.** `MARKETING_ALLOWLIST` in `marketing/router.js` is currently `[]` (open to every authenticated rep) — the temporary v1.42.0 workaround. Before the marketing module ships to prod, set it back to `['36303670', '36320208']` (Benton + Gabe), or all reps see Google Ads spend and the Sync button on prod.
 
-- **Promote v1.37.8–v1.37.11 to main** after the history investigation. v1.37.11 is the real load-bearing one (POST endpoints hydrate now).
-- **Stripe Dashboard subscription:** add `payment_intent.processing` to the webhook endpoint at `/api/stripe/webhook` so the ACH-initiated notification (v1.37.0) actually fires. Existing subscriptions (`invoice.paid`, `invoice.payment_failed`, `invoice.voided`) unchanged.
-- **Sarah's bell verification:** she hit the debug endpoint to hydrate, but we never visually confirmed the bell pulsed for her after. Tomorrow: have her test-accept a quote in another session and verify her bell pulses + the Confirm button persists.
-- **TaxJar ZIP 33104:** end-to-end test the v1.37.4 fallback. The rep should now see "Using city/state-level rate — ZIP not recognized" with a real percentage instead of dead-ending.
+6. **Root-cause Gabe's `ownerId: null` (shared code — Benton).** Gabe's login session carries `ownerId: null` because the HubSpot owner lookup by email in the `quote-server.js` login flow (`/crm/v3/owners?email=...`) returns nothing for `gabrielwhite@whisperroom.com`. That hid the Marketing nav tab and blocked `/marketing` (both gated on a truthy ownerId), which is what forced the v1.42.0 open-to-all workaround. Likely cause: Gabe's HubSpot owner record (ID `36320208`) email does not match his login email, or the record is inactive. The login flow silently tolerates the failed lookup (`catch(e){ /* non-fatal */ }`). This affects more than marketing — the Admin Log button and anything else ownerId-gated. Fix belongs in Benton's files (`quote-server.js`, `deals-dashboard.html`).
+
+7. **Node version (low risk).** The Dockerfile pins `node:18-slim`. `google-ads-api@23` ran fine on it, so no action needed; if a future dependency needs newer, bump to `node:20-slim`.
+
 
 **Queued / discussed but not yet built:** nothing.
 
@@ -262,7 +251,53 @@ Yesterday's progression (May 13):
 
 ---
 
-## Session writeup — May 21, 2026 (v1.33.0 → v1.37.11)
+## Session writeup — May 22, 2026 (promote sweep + v1.40.0 Gabe + v1.41.0 + v1.42.0)
+
+Shorter day than yesterday's marathon. Three workstreams plus an unrelated HubSpot rabbit hole.
+
+### 1. Promote sweep (cleared yesterday's backlog)
+
+Started the day promoting **v1.38.2 → v1.39.0** to main in one merge — five versions sitting on staging covering AP PO lifecycle (auto-status + tracking widget + Jill/Benton notifications), overdue-ship-date sweep, editable freight quote ref on the order drawer, TaxJar ZIP-rejection fallback fix, and the marketing dashboard scaffolding. Merge commit `18c4f5a`. After this, main is on v1.39.0.
+
+### 2. Marketing dashboard handoff to Gabe — and Gabe's same-day v1.40.0
+
+Wrote a self-contained kick-off prompt for Gabe to paste into a fresh Claude Code session. Included: repo URL pointing to `staging/marketing` (since `main` didn't have the folder yet at write time), required reading order (CLAUDE.md → DEVLOG → his ETL file → HANDOFF.md), hard constraints (only edit `marketing/` + `marketing-dashboard.html`, same Postgres with `marketing_` prefix, all work on staging), architecture overview, and the env-var bootstrap sequence (developer token → OAuth client id/secret → refresh token → customer id → optional login customer id).
+
+Gabe came back same-day with **v1.40.0** — wired all three ETL runners (`syncCampaigns`, `syncKeywords`, `syncSearchTerms`) to the `google-ads-api` client, each pulling a daily-segmented report and upserting into the corresponding `marketing_*` table on the composite PK. API errors recorded to `marketing_syncs.error` so the dashboard status bar surfaces them instead of bare 500s. Push collided with my in-progress v1.40.0 (expiration indicators) — rebased my work to **v1.41.0** to resolve the version clash. User mentioned in passing that Gabe pushed something that "affected the library" — unclear what that meant in context; marketing page works now and we'll dig in next session if anything else is amiss.
+
+### 3. Quote expiration indicators (v1.41.0)
+
+User's framing: Audimute is bumping prices, and existing quotes need to stay at their original pricing for the 30 days they were valid for. After that, any quote going out needs to reflect new pricing. So the ask was a visual nudge for reps — not a notification (rep explicitly said that would be too noisy) — to refresh expired/expiring quotes before sending.
+
+Three pieces built in concert:
+
+- **Quote card chip** (Deal Hub right panel, quotes list): yellow `EXP Nd` chip (countdown of days left) when within 7 days of the 30-day window, red `EXPIRED` chip past 30. Sits next to existing RM/CUST/AP chips. Suppressed for accepted quotes — pricing was committed when the customer signed.
+
+- **Deal card chip** (Deal Hub board): same yellow/red badge driven by `lastQuoteAt` (already on the deal-list response). Suppressed for deals already in a "green" state — accepted, paid, payment-type set. Locked-in deals stay clean.
+
+- **Quote builder banner**: dismissable amber/red banner at the top of the page when an existing quote with age > 23 days is loaded. Wired into `loadFromHistoryEntry()` so it triggers regardless of entry path (URL param, history-panel click, Deal Hub click). Accepted quotes skip the banner.
+
+Server side, exposed `created_at` (or its surrogates `createdAt` / `_createdAt`) on three endpoints so the client could compute expiration without a second fetch per quote: `/api/deals/:id/hub` (quotes array), `/api/quote-snapshot/:q` (top-level), `/api/history` (injected onto each snapshot via `{ ...r.json_snapshot, _createdAt: r.created_at }`). All driven off the canonical `quotes.created_at` DB column — matches the "Valid for 30 days" footer baked into the PDF.
+
+EOD note: the indicators are deployed to staging but **not yet visually verified** — user logged off before opening a >30-day-old quote to confirm the chip + banner render. Fast to validate next session.
+
+### 4. HubSpot file-replacement lockout (unrelated, no code change)
+
+User hit a HubSpot UI problem unrelated to our app: trying to replace the Assembly Manual PDF in Content > Files, the Replace button was grayed out with "Files used in quotes cannot be replaced." Spent time diagnosing — turned out one of his old test quotes (from before the switch to our custom builder) was accepted, and HubSpot won't let you delete accepted quotes or detach files from them. Even archiving doesn't release the lock; archive ≠ delete in HubSpot's lock check. Confirmed templates wouldn't help either (lock message specifically says "quotes," and once a template is used to create a quote, the quote owns its own copy of references).
+
+User chose the workaround: uploaded the new manual as a new file (HubSpot gives a new URL) and updated all the places his app references the URL. Frustrating but reversible. The cleaner exit was HubSpot Support → force-delete the accepted quote, but the URL-swap took less time than that conversation would have.
+
+### 5. Marketing dashboard opened to all reps (v1.42.0)
+
+Late-day fire. Gabe couldn't get into `/marketing` even after his v1.40.0 was live — server kept redirecting him to `/deals`. The v1.39.0 allowlist gates on `session.ownerId === '36303670' || '36320208'`. His session probably never hydrated his ownerId (we have the lazy-hydration code from v1.37.2/v1.37.4/v1.37.11 but it might not have fired for him), or his actual ownerId differs from what we put in the list.
+
+Quick fix: emptied `MARKETING_ALLOWLIST` to `[]` and made `isAllowed()` treat that as "any authenticated user." Also un-gated the nav link in the Deal Hub topbar (was hidden behind an inline `MARKETING_OWNERS = ['36303670', '36320208']` check in `loadCurrentUser()` — removed). User confirmed marketing is now working for Gabe.
+
+Re-locking is a one-line edit once we diagnose the mismatch: populate the array back in `marketing/router.js`. Worth doing — the marketing data isn't something we want every rep poking at.
+
+---
+
+
 
 Another marathon. 30 versions across notification-system buildout, Closed Lost recovery, AP/Audimute PO workflow, Modify Order improvements, a silent-ship bug fix, TaxJar resilience, and one self-inflicted bell outage. Promoted to main four times (after v1.33.1, v1.34.3, v1.34.5, v1.35.x batch, v1.36.5, v1.37.4, v1.37.7). 11 workstreams worth of ground covered.
 
@@ -675,6 +710,12 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.42.3  | 2026-05-26 | **Bot assistant: catalog PDF URL updated.** The three catalog links in `assistant/system-prompt.txt` pointed to the old hyphenated filename (`WhisperRoom-Catalog.pdf`). Swapped to the new URL (`WhisperRoomCatalog.pdf`). Same HubSpot host, just no hyphen. |
+| 1.42.2  | 2026-05-22 | **DEVLOG: full session writeup for 2026-05-22.** Captured the promote sweep (v1.38.2 → v1.39.0 to main), marketing dashboard handoff to Gabe + his same-day v1.40.0 ETL and v1.42.1 library upgrade, quote expiration indicators (v1.41.0), unrelated HubSpot file-lockout rabbit hole, and the v1.42.0 marketing-open fix. Current focus refreshed. |
+| 1.42.1  | 2026-05-22 | **Marketing sync fixed — `google-ads-api` v17 → v23.** Syncs failed with `12 UNIMPLEMENTED: GRPC target method can't be resolved` — the v17 library targets a sunset Google Ads API version. Bumped `package.json` to `^23.0.0`. No ETL code change; `customer.report()` is version-stable. |
+| 1.42.0  | 2026-05-22 | **Marketing dashboard opened to all reps (temporary).** Allowlist short-circuited (`MARKETING_ALLOWLIST = []` = open). Nav link in Deal Hub no longer gated to Benton + Gabe. Re-gate by populating the array. Pending: diagnose why Gabe's ownerId didn't match. |
+| 1.41.0  | 2026-05-22 | **Quote expiration indicators.** Yellow chip (≤7 days left) / red EXPIRED chip on both quote cards (Deal Hub right panel) and deal cards (board) once a quote crosses 23/30 days from save. Suppressed on accepted/paid deals. Quote builder shows a dismissable banner on load if the loaded quote is past (or near) its 30-day validity. Driven by `quotes.created_at`. Built ahead of the Audimute 2026-05-22 price-book bump so pre-bump quotes naturally roll into "expired" over the next 30 days and the rep gets a visible nudge to refresh. |
+| 1.40.0  | 2026-05-22 | **Google Ads sync live.** All three ETL runners (`syncCampaigns` / `syncKeywords` / `syncSearchTerms`) implemented — wire the `google-ads-api` client from the `GOOGLE_ADS_*` env vars and run daily-segmented `campaign` / `keyword_view` / `search_term_view` reports (last 90d default), upserting into the `marketing_*` tables. API errors recorded to `marketing_syncs.error` for the dashboard status bar. |
 | 1.39.0  | 2026-05-22 | **Marketing dashboard scaffolding.** New `marketing/` folder (schema.sql + router.js + google-ads-etl.js stub) + `marketing-dashboard.html`. Allowlisted to Benton + Gabe. ETL is a stub awaiting Gabe's Google Ads API auth. `google-ads-api` npm dep installed. |
 | 1.38.6  | 2026-05-22 | **TaxJar ZIP fallback fixed.** v1.37.4 dropped `to_zip` and TaxJar rejected with "No to zip, required when country is US." Now substitutes a `fallbackZip` per state (FL=33101, etc.) — TaxJar accepts and returns a real rate. |
 | 1.38.5  | 2026-05-22 | **Freight Ref Open ↗ uses the same URLs as the Get Freight popup.** ABF deep-links to `arcb.com/tools/rate-quote.html#/<ref>`; OD opens `rate-reference-search.html` + copies ref to clipboard. |

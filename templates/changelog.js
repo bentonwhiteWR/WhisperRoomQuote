@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.46.0', date:'May 26, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing dashboard — HubSpot sync now date-bucketed for complete coverage.** v1.44.0 hit HubSpot\'s hard 10,000-result cap on the search API and silently truncated — and because the sort was ascending, we got the *oldest* 10k records and missed the most-recently-modified (i.e. the most attribution-relevant) ones. The fix splits the 365-day lookback into ~30-day buckets (12 per year) and runs each as its own search query — each bucket has its own 10k headroom, so coverage now scales linearly with the lookback window. Real example: WhisperRoom has ~26.6k contacts modified in the last year — under v1.44.0 we got 10k (oldest); v1.46.0 gets all 26.6k across 12 buckets. Sort is now DESCENDING within each bucket, and buckets run newest-first, so the most useful data lands immediately even if the request times out partway through. Bucket errors are recorded but don\'t abort the remaining buckets (partial coverage > no coverage). If any individual bucket ever hits 10k (a viral month, etc.), the sync surfaces a warning via `marketing_syncs.error` so the dashboard reflects the truncation. Applies to both contacts and Sales-Pipeline deals.'},
+      ]
+    },
+    {
       v:'1.45.0', date:'May 26, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Reconcile: refunded deals now included + editable HubSpot deal popup.** Two related fixes on the Accounting → Reconcile page. (1) The HubSpot deal fetch was filtering to `dealstage IN [closedwon, 845719]` only, so any deal moved to the Refund stage (`895819`) never appeared in the reconciler — refunded deals can now be matched against their QB refund_receipts. (2) Clicking a HubSpot row in the reconcile table previously opened a read-only detail popup; the six HubSpot deal properties (Date, Ship State, Freight, Tax Rate, Tax $, Total) are now editable inline with a Save button. Save PATCHes the deal in HubSpot and updates the reconciler table in-place without a full reload. Subtotal + Discount remain read-only because they come from the local quote snapshot rather than the HubSpot deal record.'},

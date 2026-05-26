@@ -121,54 +121,120 @@ function _parseHsDate(v) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+// HubSpot's CRM Search API has a HARD limit of 10,000 results per query,
+// regardless of how many `after` cursors it returns. A single sync of
+// "last 365 days" silently truncates once it hits 10k — and because we
+// sort ascending, the truncation drops the most-recently-modified records
+// (the most attribution-relevant ones). The fix: split the lookback
+// window into smaller date buckets, each sized so the per-bucket result
+// count stays under 10k, and process them newest-first so the most
+// useful data lands even if the request times out partway through.
+//
+// Default bucket size = ~30 days. For WhisperRoom's volume (~26k contacts
+// modified per year ≈ ~2.2k/month) this is comfortably under the cap. If
+// a single bucket ever hits 10k (e.g. a viral month), we'd need to chunk
+// finer — that's a future improvement; for now we log a warning so the
+// next-run dashboard reflects the truncation.
+const BUCKET_DAYS = 30;
+
+// Build an array of non-overlapping {from, to} Date ranges that together
+// cover the last `daysBack` days, ordered newest-bucket-first. Each
+// bucket is up to BUCKET_DAYS long; the final bucket is shorter if
+// daysBack isn't a multiple of BUCKET_DAYS.
+function _dateBuckets(daysBack) {
+  const buckets = [];
+  const now = new Date();
+  for (let offset = 0; offset < daysBack; offset += BUCKET_DAYS) {
+    const to = new Date(now);
+    to.setDate(to.getDate() - offset);
+    const from = new Date(now);
+    from.setDate(from.getDate() - Math.min(offset + BUCKET_DAYS, daysBack));
+    buckets.push({ from, to });
+  }
+  return buckets;
+}
+
 // ── syncHubSpotContacts ───────────────────────────────────────────────
-// Pulls contacts modified in the last `daysBack` days. Pages via the
-// `paging.next.after` cursor, 100 per page, hard-capped at 100 pages
-// (10k contacts) per run as a safety net — sufficient for a daily sync
-// of a B2B-sized tenant. If you ever hit that ceiling, narrow daysBack.
+// Pulls contacts modified in the last `daysBack` days, in ~monthly date
+// buckets, newest-first. Each bucket runs its own search query (with its
+// own 10k cap headroom) so the cumulative coverage scales linearly with
+// the lookback window. Bucket errors are recorded but don't abort the
+// remaining buckets — partial coverage is better than nothing.
 
 async function syncHubSpotContacts({ db, daysBack = 365 }) {
   if (!envReady()) {
     throw new Error('HubSpot credentials not configured. Missing: HS_TOKEN');
   }
-  const sinceDate = _daysAgoDate(daysBack);
-  const dateFrom  = sinceDate.toISOString().slice(0, 10);
-  const dateTo    = new Date().toISOString().slice(0, 10);
+  const buckets   = _dateBuckets(daysBack);
+  const dateFrom  = buckets[buckets.length - 1].from.toISOString().slice(0, 10);
+  const dateTo    = buckets[0].to.toISOString().slice(0, 10);
 
-  let rowsSynced = 0;
-  let after;
-  try {
-    for (let page = 0; page < 100; page++) {
-      const body = {
-        filterGroups: [{
-          filters: [{
-            propertyName: 'lastmodifieddate',
-            operator:     'GTE',
-            value:        _hsTime(sinceDate),
-          }],
-        }],
-        properties: CONTACT_PROPS,
-        sorts:      [{ propertyName: 'lastmodifieddate', direction: 'ASCENDING' }],
-        limit:      100,
-        ...(after ? { after } : {}),
-      };
-      const r = await _request('/crm/v3/objects/contacts/search', 'POST', body);
-      const results = r.results || [];
-      for (const c of results) {
-        await _upsertContact(db, c);
-        rowsSynced++;
-      }
-      after = r.paging && r.paging.next && r.paging.next.after;
-      if (!after || results.length === 0) break;
+  let totalRows  = 0;
+  let firstError = null;
+  let truncated  = 0;  // count of buckets that hit the 10k cap
+
+  for (const { from, to } of buckets) {
+    try {
+      const { rows, capped } = await _fetchContactsBucket(db, from, to);
+      totalRows += rows;
+      if (capped) truncated++;
+    } catch (e) {
+      const msg = e.message || String(e);
+      console.warn(`[hubspot-etl] contacts bucket ${from.toISOString().slice(0,10)}..${to.toISOString().slice(0,10)} failed: ${msg}`);
+      if (!firstError) firstError = msg;
+      // continue to next bucket
     }
-  } catch (e) {
-    const msg = e.message || String(e);
-    await _recordSync(db, 'hubspot_contacts', rowsSynced, dateFrom, dateTo, msg);
-    return { ok: false, report: 'hubspot_contacts', rows: rowsSynced, error: msg };
   }
 
-  await _recordSync(db, 'hubspot_contacts', rowsSynced, dateFrom, dateTo, null);
-  return { ok: true, report: 'hubspot_contacts', rows: rowsSynced, date_from: dateFrom, date_to: dateTo };
+  const errNote = truncated > 0
+    ? `${truncated} bucket(s) hit the 10k cap — narrow BUCKET_DAYS or daysBack`
+    : null;
+  const finalError = firstError || errNote;
+  await _recordSync(db, 'hubspot_contacts', totalRows, dateFrom, dateTo, finalError);
+  return {
+    ok: !firstError,
+    report: 'hubspot_contacts',
+    rows: totalRows,
+    buckets: buckets.length,
+    truncated_buckets: truncated,
+    date_from: dateFrom,
+    date_to: dateTo,
+    error: finalError,
+  };
+}
+
+// Fetch a single contact bucket: all contacts with lastmodifieddate in
+// [from, to). Returns {rows, capped} so the caller can detect 10k truncation.
+async function _fetchContactsBucket(db, from, to) {
+  let rows  = 0;
+  let after;
+  let capped = false;
+  for (let page = 0; page < 100; page++) {
+    const body = {
+      filterGroups: [{
+        filters: [
+          { propertyName: 'lastmodifieddate', operator: 'GTE', value: _hsTime(from) },
+          { propertyName: 'lastmodifieddate', operator: 'LT',  value: _hsTime(to)   },
+        ],
+      }],
+      properties: CONTACT_PROPS,
+      sorts:      [{ propertyName: 'lastmodifieddate', direction: 'DESCENDING' }],
+      limit:      100,
+      ...(after ? { after } : {}),
+    };
+    const r = await _request('/crm/v3/objects/contacts/search', 'POST', body);
+    const results = r.results || [];
+    for (const c of results) {
+      await _upsertContact(db, c);
+      rows++;
+    }
+    after = r.paging && r.paging.next && r.paging.next.after;
+    if (!after || results.length === 0) break;
+    // If we exit via the page cap (100 × 100 = 10k), we hit HubSpot's
+    // search ceiling. Mark capped so the caller surfaces a warning.
+    if (page === 99 && after) capped = true;
+  }
+  return { rows, capped };
 }
 
 async function _upsertContact(db, c) {
@@ -219,55 +285,83 @@ async function _upsertContact(db, c) {
 }
 
 // ── syncHubSpotDeals ──────────────────────────────────────────────────
-// Pulls deals from the Sales Pipeline only (pipeline = 'default'),
-// modified in the last `daysBack` days. For each deal, makes one extra
-// call to /crm/v4/objects/deal/{id}/associations/contact to resolve the
-// primary contact — denormalized onto the deal row so attribution
-// queries don't need to traverse association tables. ~one extra API
-// call per deal; fine at the hundreds-per-sync volume we expect.
+// Same bucketed pattern as syncHubSpotContacts. Sales Pipeline only
+// (pipeline = 'default'); Test + Ecommerce pipelines excluded. Per-deal
+// extra call to /crm/v4/objects/deal/{id}/associations/contact resolves
+// the primary contact — slowest part of the sync. Future improvement:
+// batch the association calls via /crm/v4/associations/.../batch/read.
 
 async function syncHubSpotDeals({ db, daysBack = 365 }) {
   if (!envReady()) {
     throw new Error('HubSpot credentials not configured. Missing: HS_TOKEN');
   }
-  const sinceDate = _daysAgoDate(daysBack);
-  const dateFrom  = sinceDate.toISOString().slice(0, 10);
-  const dateTo    = new Date().toISOString().slice(0, 10);
+  const buckets   = _dateBuckets(daysBack);
+  const dateFrom  = buckets[buckets.length - 1].from.toISOString().slice(0, 10);
+  const dateTo    = buckets[0].to.toISOString().slice(0, 10);
 
-  let rowsSynced = 0;
-  let after;
-  try {
-    for (let page = 0; page < 100; page++) {
-      const body = {
-        filterGroups: [{
-          filters: [
-            { propertyName: 'hs_lastmodifieddate', operator: 'GTE', value: _hsTime(sinceDate) },
-            { propertyName: 'pipeline',            operator: 'EQ',  value: SALES_PIPELINE_ID },
-          ],
-        }],
-        properties: DEAL_PROPS,
-        sorts:      [{ propertyName: 'hs_lastmodifieddate', direction: 'ASCENDING' }],
-        limit:      100,
-        ...(after ? { after } : {}),
-      };
-      const r = await _request('/crm/v3/objects/deals/search', 'POST', body);
-      const results = r.results || [];
-      for (const d of results) {
-        const primaryContactId = await _resolvePrimaryContact(d.id);
-        await _upsertDeal(db, d, primaryContactId);
-        rowsSynced++;
-      }
-      after = r.paging && r.paging.next && r.paging.next.after;
-      if (!after || results.length === 0) break;
+  let totalRows  = 0;
+  let firstError = null;
+  let truncated  = 0;
+
+  for (const { from, to } of buckets) {
+    try {
+      const { rows, capped } = await _fetchDealsBucket(db, from, to);
+      totalRows += rows;
+      if (capped) truncated++;
+    } catch (e) {
+      const msg = e.message || String(e);
+      console.warn(`[hubspot-etl] deals bucket ${from.toISOString().slice(0,10)}..${to.toISOString().slice(0,10)} failed: ${msg}`);
+      if (!firstError) firstError = msg;
     }
-  } catch (e) {
-    const msg = e.message || String(e);
-    await _recordSync(db, 'hubspot_deals', rowsSynced, dateFrom, dateTo, msg);
-    return { ok: false, report: 'hubspot_deals', rows: rowsSynced, error: msg };
   }
 
-  await _recordSync(db, 'hubspot_deals', rowsSynced, dateFrom, dateTo, null);
-  return { ok: true, report: 'hubspot_deals', rows: rowsSynced, date_from: dateFrom, date_to: dateTo };
+  const errNote = truncated > 0
+    ? `${truncated} bucket(s) hit the 10k cap — narrow BUCKET_DAYS or daysBack`
+    : null;
+  const finalError = firstError || errNote;
+  await _recordSync(db, 'hubspot_deals', totalRows, dateFrom, dateTo, finalError);
+  return {
+    ok: !firstError,
+    report: 'hubspot_deals',
+    rows: totalRows,
+    buckets: buckets.length,
+    truncated_buckets: truncated,
+    date_from: dateFrom,
+    date_to: dateTo,
+    error: finalError,
+  };
+}
+
+async function _fetchDealsBucket(db, from, to) {
+  let rows  = 0;
+  let after;
+  let capped = false;
+  for (let page = 0; page < 100; page++) {
+    const body = {
+      filterGroups: [{
+        filters: [
+          { propertyName: 'hs_lastmodifieddate', operator: 'GTE', value: _hsTime(from) },
+          { propertyName: 'hs_lastmodifieddate', operator: 'LT',  value: _hsTime(to)   },
+          { propertyName: 'pipeline',            operator: 'EQ',  value: SALES_PIPELINE_ID },
+        ],
+      }],
+      properties: DEAL_PROPS,
+      sorts:      [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
+      limit:      100,
+      ...(after ? { after } : {}),
+    };
+    const r = await _request('/crm/v3/objects/deals/search', 'POST', body);
+    const results = r.results || [];
+    for (const d of results) {
+      const primaryContactId = await _resolvePrimaryContact(d.id);
+      await _upsertDeal(db, d, primaryContactId);
+      rows++;
+    }
+    after = r.paging && r.paging.next && r.paging.next.after;
+    if (!after || results.length === 0) break;
+    if (page === 99 && after) capped = true;
+  }
+  return { rows, capped };
 }
 
 // Resolve the primary associated contact for a deal. Prefers an

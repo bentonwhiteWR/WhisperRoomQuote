@@ -970,24 +970,82 @@ function showHsPopup(hsId) {
   const row = _allRows.find(r => r.hsId === hsId);
   if (!row) return;
   const hsLink = _portalId ? `https://app.hubspot.com/contacts/${_portalId}/deal/${hsId}` : null;
+  const inputStyle = 'style="width:100%;padding:4px 7px;font-size:12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;font-family:inherit;font-variant-numeric:tabular-nums;box-sizing:border-box"';
+  // Editable: HubSpot deal properties (closedate, shipping_state, freight_cost, tax_rate, total_tax_amount, amount).
+  // Read-only: subtotal + discount — derived from the quote snapshot, not stored on the HubSpot deal.
   document.getElementById('infoModalBody').innerHTML = `
     <div class="modal-label">HubSpot Deal</div>
     <div class="modal-name">${escHtml(row.hsName) || '—'}</div>
     <div class="modal-grid">
       ${detailRow('Deal ID', escHtml(hsId))}
-      ${detailRow('Date', row.hsDate || '—')}
-      ${row.state    ? detailRow('Ship State', `${escHtml(row.state)}${row.freight ? ` <span style="font-size:10px;color:var(--text2)">(freight ${row.freightTaxable ? 'taxed' : 'not taxed'})</span>` : ''}`) : ''}
-      ${row.subtotal ? detailRow('Subtotal', fmt(row.subtotal)) : ''}
-      ${row.discount ? detailRow('Discount', `<span style="color:var(--green)">−${fmt(row.discount)}</span>`) : ''}
-      ${row.freight  ? detailRow('Freight',  fmt(row.freight))  : ''}
-      ${row.taxRate  ? detailRow('Tax Rate', row.taxRate + '%') : ''}
-      ${row.taxAmt   ? detailRow('Tax $',    fmt(row.taxAmt))   : ''}
-      ${detailRow('Total', `<span style="color:var(--orange)">${fmt(row.hsAmount)}</span>`)}
+      ${detailRow('Date', `<input type="date" id="hsEditClosedate" value="${row.hsDate || ''}" ${inputStyle}>`)}
+      ${detailRow('Ship State', `<input type="text" id="hsEditState" value="${escHtml(row.state || '')}" maxlength="2" placeholder="e.g. FL" ${inputStyle}>${row.freight ? ` <span style="font-size:10px;color:var(--text2)">(freight ${row.freightTaxable ? 'taxed' : 'not taxed'})</span>` : ''}`)}
+      ${row.subtotal ? detailRow('Subtotal', `${fmt(row.subtotal)} <span style="font-size:10px;color:var(--text2)">(from quote)</span>`) : ''}
+      ${row.discount ? detailRow('Discount', `<span style="color:var(--green)">−${fmt(row.discount)}</span> <span style="font-size:10px;color:var(--text2)">(from quote)</span>`) : ''}
+      ${detailRow('Freight',  `<input type="number" step="0.01" id="hsEditFreight"  value="${row.freight  || 0}" ${inputStyle}>`)}
+      ${detailRow('Tax Rate', `<input type="number" step="0.01" id="hsEditTaxRate"  value="${row.taxRate  || 0}" ${inputStyle}>`)}
+      ${detailRow('Tax $',    `<input type="number" step="0.01" id="hsEditTaxAmt"   value="${row.taxAmt   || 0}" ${inputStyle}>`)}
+      ${detailRow('Total',    `<input type="number" step="0.01" id="hsEditTotal"    value="${row.hsAmount || 0}" ${inputStyle}>`)}
     </div>
+    <div id="hsEditStatus" style="font-size:11px;color:var(--text2);margin-bottom:10px;min-height:14px"></div>
     <div class="modal-actions">
-      ${hsLink ? `<a href="${hsLink}" target="_blank" rel="noopener" class="btn btn-orange" style="flex:1;justify-content:center">Open in HubSpot ↗</a>` : '<span style="font-size:11px;color:var(--text2)">HS portal ID not available</span>'}
+      <button id="hsSaveBtn" class="btn btn-orange" style="flex:1;justify-content:center" onclick="saveHsDeal('${hsId}')">Save changes</button>
+      ${hsLink ? `<a href="${hsLink}" target="_blank" rel="noopener" class="btn" style="flex:1;justify-content:center">Open in HubSpot ↗</a>` : ''}
     </div>`;
   document.getElementById('infoModal').style.display = 'flex';
+}
+
+async function saveHsDeal(hsId) {
+  const statusEl = document.getElementById('hsEditStatus');
+  const btn      = document.getElementById('hsSaveBtn');
+  const num = id => {
+    const v = parseFloat(document.getElementById(id).value);
+    return isNaN(v) ? 0 : v;
+  };
+  const props = {
+    closedate:        document.getElementById('hsEditClosedate').value,
+    shipping_state:   document.getElementById('hsEditState').value.trim().toUpperCase(),
+    freight_cost:     num('hsEditFreight'),
+    tax_rate:         num('hsEditTaxRate'),
+    total_tax_amount: num('hsEditTaxAmt'),
+    amount:           num('hsEditTotal'),
+  };
+  btn.disabled = true;
+  statusEl.textContent = 'Saving…';
+  statusEl.style.color = 'var(--text2)';
+  try {
+    const r = await fetch(`/api/reconcile/hs-deal/${hsId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(props),
+    }).then(r => r.json());
+    if (r.error) throw new Error(r.error);
+    // Patch the in-memory HS deal so the reconciler reflects the change
+    // without a full refetch. Subtotal is left alone — if it came from a
+    // line-item snapshot it shouldn't move; if it was the freight fallback
+    // (total - freight) the user will see a one-cycle stale value until
+    // they re-run reconcile.
+    const hs = _rawHs.find(d => d.dealId === hsId);
+    if (hs) {
+      hs.closedate = props.closedate;
+      hs.state     = props.shipping_state || hs.state;
+      hs.freight   = props.freight_cost;
+      hs.taxRate   = props.tax_rate;
+      hs.taxAmt    = props.total_tax_amount;
+      hs.total     = props.amount;
+      // freightTaxable is server-derived from NEXUS_STATES — leave as-is;
+      // it'll refresh on next reconcile-period rerun if the state changed.
+    }
+    _allRows = match(_rawHs, _rawQb, _savedLinks, _savedBlocks);
+    applyFilter();
+    statusEl.textContent = '✓ Saved';
+    statusEl.style.color = 'var(--green)';
+    setTimeout(closeModal, 700);
+  } catch(e) {
+    statusEl.textContent = 'Error: ' + e.message;
+    statusEl.style.color = 'var(--red)';
+    btn.disabled = false;
+  }
 }
 
 function renderQbInvoiceBlock(qbId, parentHsId) {

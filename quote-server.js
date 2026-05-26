@@ -2225,7 +2225,7 @@ const server = http.createServer(async (req, res) => {
           ...(after ? { after } : {}),
           filterGroups: [{
             filters: [
-              { propertyName: 'dealstage', operator: 'IN',  values: ['closedwon', '845719'] },
+              { propertyName: 'dealstage', operator: 'IN',  values: ['closedwon', '845719', '895819'] },
               { propertyName: 'closedate', operator: 'GTE', value: fromTs },
               { propertyName: 'closedate', operator: 'LTE', value: toTs },
             ]
@@ -2355,6 +2355,42 @@ const server = http.createServer(async (req, res) => {
       });
 
       json({ results: deals, total: deals.length });
+    } catch(e) { json({ error: e.message }, 500); }
+    return;
+  }
+
+  // PATCH /api/reconcile/hs-deal/:dealId — edit a HubSpot deal's financial
+  // fields directly from the reconcile detail popup. Whitelisted to the six
+  // properties the popup exposes; everything else (subtotal, discount) comes
+  // from our quote snapshot and isn't editable here.
+  if (pathname.startsWith('/api/reconcile/hs-deal/') && req.method === 'PATCH') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const dealId = pathname.replace('/api/reconcile/hs-deal/', '').trim();
+      if (!dealId || !/^\d+$/.test(dealId)) { json({ error: 'Invalid deal ID' }, 400); return; }
+      const body = JSON.parse(await readBody(req) || '{}');
+
+      const ALLOWED = new Set(['amount', 'freight_cost', 'tax_rate', 'total_tax_amount', 'closedate', 'shipping_state']);
+      const properties = {};
+      for (const [k, v] of Object.entries(body)) {
+        if (ALLOWED.has(k)) properties[k] = v;
+      }
+      if (!Object.keys(properties).length) { json({ error: 'No editable fields provided' }, 400); return; }
+
+      // HubSpot expects closedate as epoch ms — accept YYYY-MM-DD from the popup and convert.
+      if (properties.closedate && /^\d{4}-\d{2}-\d{2}$/.test(properties.closedate)) {
+        properties.closedate = String(new Date(properties.closedate + 'T00:00:00Z').getTime());
+      }
+
+      const r = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path:     `/crm/v3/objects/deals/${dealId}`,
+        method:   'PATCH',
+        headers:  { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+      }, { properties });
+      if (r.statusCode >= 400) { json({ error: r.body?.message || `HubSpot ${r.statusCode}` }, 500); return; }
+      writelog('info', 'reconcile.deal-patch', `Reconcile popup updated deal ${dealId}`, { dealId, props: properties });
+      json({ ok: true, updated: r.body?.properties || properties });
     } catch(e) { json({ error: e.message }, 500); }
     return;
   }

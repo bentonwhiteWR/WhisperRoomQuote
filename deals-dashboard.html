@@ -508,8 +508,10 @@ function quoteExpiryChip(createdAt, accepted) {
 
 async function loadDeals() {
   try {
+    // Rep filtering happens client-side in applyFilter() — the initial
+    // fetch and 60s auto-refresh always pull all board-stage deals so
+    // switching reps is a no-network operation.
     const qs=new URLSearchParams({limit:500});
-    if(currentRepFilter) qs.set('rep',currentRepFilter);
     const res=await fetch('/api/deals/list?'+qs,{credentials:'include'});
     const data=await res.json();
     if(data.error) throw new Error(data.error);
@@ -539,7 +541,9 @@ function mergeShopifyIntoAllDeals() {
 
 function applyFilter() {
   const q=document.getElementById('dealSearch').value.trim().toLowerCase();
-  filteredDeals=!q?[...allDeals]:allDeals.filter(d=>
+  let pool = allDeals;
+  if (currentRepFilter) pool = pool.filter(d => String(d.ownerId||'') === String(currentRepFilter));
+  filteredDeals=!q?[...pool]:pool.filter(d=>
     d.name?.toLowerCase().includes(q)||
     d.latestQuote?.toLowerCase().includes(q)||
     d.firstMdl?.toLowerCase().includes(q)||
@@ -731,13 +735,34 @@ async function openDeal(dealId) {
   document.querySelector('.main')?.classList.add('show-hub');
   const hc=document.getElementById('hubContent');
   hc.style.display='block';
-  hc.innerHTML='<div style="padding:48px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>';
+  // Optimistic skeleton render from the cached board entry — paints the
+  // panel header (name, amount, stage, payment chip, pipeline, action
+  // buttons) instantly. The quotes/invoices/orders sections show a
+  // "Loading…" placeholder until the /hub fetch returns.
+  const cached = allDeals.find(d => d.id === dealId);
+  if (cached) {
+    renderHub(dealId, {
+      dealStage:       cached.stage,
+      paymentType:     cached.paymentType || '',
+      quotes:          null,
+      invoices:        null,
+      orders:          null,
+      contact:         null,
+      driveFolderName: null,
+      _pending:        true,
+    });
+  } else {
+    hc.innerHTML='<div style="padding:48px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>';
+  }
   try {
     const res=await fetch(`/api/deals/${dealId}/hub`,{credentials:'include'});
     const data=await res.json();
     if(data.error) throw new Error(data.error);
+    // Discard if the user clicked a different deal mid-fetch.
+    if (currentDealId !== dealId) return;
     renderHub(dealId,data);
   } catch(e) {
+    if (currentDealId !== dealId) return;
     hc.innerHTML=`<div style="padding:40px;color:#ef4444;font-size:13px">Error: ${e.message}</div>`;
   }
 }
@@ -907,7 +932,11 @@ async function doShopifyPartsMarkBackfill(dealId) {
 }
 
 function renderHub(dealId,data) {
-  window._lastHubData = data; // cache for invoice creation
+  // Skip caching the skeleton — downstream actions (Create Invoice, Modify
+  // Order, etc.) read from _lastHubData and expect populated quotes/orders.
+  // Action buttons that would surface during _pending are gated on quotes
+  // existing, so they're not clickable during the skeleton phase anyway.
+  if (!data._pending) window._lastHubData = data;
   const deal=allDeals.find(d=>d.id===dealId)||{};
   // Store contact for email prefill
   window._hubContact = data.contact || null;
@@ -946,7 +975,9 @@ function renderHub(dealId,data) {
   const payStatusChip = renderPaymentChip(deal.paymentInfo);
 
   const quotesHtml=!data.quotes?.length
-    ?'<div style="font-size:12px;color:var(--muted);font-style:italic;padding:6px 0">No quotes yet</div>'
+    ?(data._pending
+      ?'<div style="font-size:12px;color:var(--muted);font-style:italic;padding:6px 0">Loading quotes…</div>'
+      :'<div style="font-size:12px;color:var(--muted);font-style:italic;padding:6px 0">No quotes yet</div>')
     :data.quotes.map(q=>{
       const acc=q.accepted;
       const qUrl=q.shareToken?`${location.origin}/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}`:'';
@@ -1081,7 +1112,7 @@ function renderHub(dealId,data) {
     ${na?`<div class="next-action"><div class="na-icon">${na.icon}</div><div><div class="na-label">Next Action</div><div class="na-text">${na.text}</div></div></div>`:''}
     ${renderShopifyPartsBlock(deal)}
     <div class="hub-section" style="margin-top:4px">
-      <div class="section-label">Quotes (${data.quotes?.length||0})</div>
+      <div class="section-label">Quotes (${data._pending ? '…' : (data.quotes?.length||0)})</div>
       ${quotesHtml}
     </div>
     ${invHtml}${ordHtml}
@@ -1645,7 +1676,14 @@ async function searchAllDeals(q) {
     document.getElementById('boardCount').textContent = 'Search error';
   }
 }
-function onRepFilter() { currentRepFilter=document.getElementById('repFilter').value; loadDeals(); }
+function onRepFilter() {
+  currentRepFilter = document.getElementById('repFilter').value;
+  // Bust the closed-lost cache so next toggle re-fetches for the new rep
+  // (the closed-lost fetch is still server-filtered since those deals
+  // aren't in the board-stage pool).
+  closedLostRecent = [];
+  applyFilter();
+}
 function showToast(msg,type='info') {
   const t=document.getElementById('toast');
   const el=document.createElement('div');

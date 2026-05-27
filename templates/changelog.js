@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.46.3', date:'May 27, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Deal Hub: rep filter and deal-card clicks now feel instant.** Two perceived-latency wins on the board. (1) **Rep filter is now client-side.** Switching reps previously re-fetched `/api/deals/list` from the server, which round-tripped HubSpot search (~1–3s). All deals are already in the browser\'s `allDeals` array (loaded once on page open, refreshed every 60s), so the rep dropdown now filters that array in-memory via `applyFilter()` — zero network. The 60s auto-refresh pulls all reps so the cache stays comprehensive. (2) **Deal cards paint instantly from cache.** Clicking a card previously showed "Loading…" while waiting for `/api/deals/:id/hub` (~1–2s, 5 parallel HubSpot + DB queries). Now the right panel renders immediately from the cached board data (name, amount, stage, payment chips, pipeline, action buttons) — the quotes/invoices/orders sections show "Loading quotes…" until the fetch returns, then fill in. Race-condition guard added: if a user clicks deal B before A\'s fetch returns, A\'s response is discarded. Pure UI perf — no API or behavior changes.'},
+      ]
+    },
+    {
       v:'1.46.2', date:'May 27, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Process Order email: CC Josh on custom-build orders.** When an order has the CUST badge (custom wall component, hole, or other custom work — flagged by `garyFlag`), the Process Order email already CCs `gamos@whisperroom.com`; now also CCs `jfletcher@whisperroom.com` (Josh) so he sees the same context Gary does. Applied in both surfaces that trigger Process Order — the Quote Builder (`quote-builder.html`) and the Deal Hub overlay (`deals-dashboard.html`). Non-CUST orders are unchanged.'},

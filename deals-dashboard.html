@@ -2997,7 +2997,13 @@ function renderPaymentChip(pi, opts) {
     return `<div class="card-pay-chip failed"${styleAttr} title="Payment failed or reversed — do NOT process this order; investigate in HubSpot">🚨 Payment failed</div>`;
   }
   if (method === 'ach') {
-    if (status === 'succeeded' && isPastPayout) {
+    // Once we're past the estimated payout date and HubSpot hasn't flipped
+    // to 'failed' (handled above), treat funds as available regardless of
+    // what hs_latest_status currently says. HubSpot's "processing" status
+    // commonly lags real bank availability — the payout date is calibrated
+    // to land AFTER the ACH return window, so absence of 'failed' by then
+    // is a strong signal funds actually cleared.
+    if (isPastPayout) {
       return `<div class="card-pay-chip cleared"${styleAttr} title="ACH funds available — ready to process">✓ Funds available</div>`;
     }
     if (payoutDate) {

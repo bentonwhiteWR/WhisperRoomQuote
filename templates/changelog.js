@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.46.5', date:'May 27, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**ACH chip flips to green on the payout date, not when HubSpot says succeeded.** Previously the green "✓ Funds available" chip required `hs_latest_status === succeeded` AND past payout date. In practice HubSpot\'s status lags real bank availability by hours-to-days — the chip would stay yellow ("ACH clearing · funds 5/27") even after the funds actually hit our account. New rule: once we\'re past the estimated payout date and the payment isn\'t marked `failed`, treat funds as available. Failed always wins (red chip is checked first), so the safety property is preserved. Justification: HubSpot calibrates the estimated payout date to land AFTER the ACH return window, so absence of a `failed` flip by that date is a strong signal funds actually cleared.'},
+      ]
+    },
+    {
       v:'1.46.4', date:'May 27, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Invoice cards mirror the deal-card payment chip.** When a HubSpot invoice is paid, the row in the right-side hub panel now shows the same processor chip the deal card already shows (`✓ CC Paid` / `💳 ACH clearing · funds 5/27` / `✓ Funds available` / `🚨 Payment failed`) instead of a generic green "✓ Paid" badge. Falls back to "✓ Paid" when there\'s no mirrored payment data (e.g. Stripe-paid invoices, which still also show the Stripe channel badge). Also dropped the redundant tiny "ACH"/"CC" badge that sat next to "Paid" — the new chip carries that info.'},

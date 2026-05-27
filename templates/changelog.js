@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.46.6', date:'May 27, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Payment chip now reads HubSpot\'s actual funds-deposited date.** HubSpot exposes `hs_payout_date` on Commerce Payments — null until settlement completes, then populated with the real bank-deposit date (the "Funds deposited to account ****X" event in the HubSpot UI). We now pull this through the webhook + 30-min poll into a new `actual_payout_date` column on `deal_payment_status` and surface it as `actualPayoutDate` in the deal payment info. Chip priority order rewritten: (1) failed → red, (2) actualPayoutDate set → green "✓ Funds deposited", (3) card + succeeded → green "✓ CC Paid", (4) ACH + estimated payout date → yellow "ACH clearing · funds X", (5) ACH otherwise → yellow "ACH initiated". This replaces the v1.46.5 "past estimated date → green" heuristic — that was a workaround for not having the real signal, and would have flipped chips green prematurely when HubSpot hadn\'t yet confirmed deposit. Now the green chip only appears when HubSpot says funds are actually in the bank. DB: idempotent `ADD COLUMN IF NOT EXISTS actual_payout_date DATE` on `deal_payment_status`. Failure to populate (e.g. the column is null because the poll hasn\'t caught up) gracefully falls through to the yellow clearing state.'},
+      ]
+    },
+    {
       v:'1.46.5', date:'May 27, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**ACH chip flips to green on the payout date, not when HubSpot says succeeded.** Previously the green "✓ Funds available" chip required `hs_latest_status === succeeded` AND past payout date. In practice HubSpot\'s status lags real bank availability by hours-to-days — the chip would stay yellow ("ACH clearing · funds 5/27") even after the funds actually hit our account. New rule: once we\'re past the estimated payout date and the payment isn\'t marked `failed`, treat funds as available. Failed always wins (red chip is checked first), so the safety property is preserved. Justification: HubSpot calibrates the estimated payout date to land AFTER the ACH return window, so absence of a `failed` flip by that date is a strong signal funds actually cleared.'},

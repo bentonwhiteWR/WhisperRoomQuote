@@ -2981,9 +2981,8 @@ function renderPaymentChip(pi, opts) {
   if (!pi || !pi.method) return '';
   const status = (pi.status || '').toLowerCase();
   const method = (pi.method || '').toLowerCase();
-  const payoutDate = pi.estimatedPayoutDate;
-  const today = new Date().toISOString().slice(0, 10);
-  const isPastPayout = !!(payoutDate && payoutDate <= today);
+  const estimatedPayout = pi.estimatedPayoutDate;
+  const actualPayout    = pi.actualPayoutDate;
   const fmtPayoutDate = (d) => {
     if (!d) return '';
     const dt = new Date(d + 'T12:00:00');
@@ -2993,26 +2992,26 @@ function renderPaymentChip(pi, opts) {
   // inside row-card flex layouts (invoice rows in the hub panel).
   const styleAttr = opts && opts.inline ? ' style="margin:0"' : '';
 
+  // Priority order (matches the user's intended chip semantics):
+  //   1. failed         → red       (always wins)
+  //   2. actual payout  → green     ("Funds deposited" — authoritative HS signal)
+  //   3. CC + succeeded → green     (card payments clear instantly on success)
+  //   4. ACH + estimated payout date → yellow "clearing · funds X"
+  //   5. ACH otherwise  → yellow "ACH initiated"
   if (status === 'failed') {
     return `<div class="card-pay-chip failed"${styleAttr} title="Payment failed or reversed — do NOT process this order; investigate in HubSpot">🚨 Payment failed</div>`;
   }
-  if (method === 'ach') {
-    // Once we're past the estimated payout date and HubSpot hasn't flipped
-    // to 'failed' (handled above), treat funds as available regardless of
-    // what hs_latest_status currently says. HubSpot's "processing" status
-    // commonly lags real bank availability — the payout date is calibrated
-    // to land AFTER the ACH return window, so absence of 'failed' by then
-    // is a strong signal funds actually cleared.
-    if (isPastPayout) {
-      return `<div class="card-pay-chip cleared"${styleAttr} title="ACH funds available — ready to process">✓ Funds available</div>`;
-    }
-    if (payoutDate) {
-      return `<div class="card-pay-chip clearing"${styleAttr} title="ACH still clearing — wait until ${fmtPayoutDate(payoutDate)} to process">💳 ACH clearing · funds ${fmtPayoutDate(payoutDate)}</div>`;
-    }
-    return `<div class="card-pay-chip clearing"${styleAttr} title="ACH initiated">💳 ACH initiated</div>`;
+  if (actualPayout) {
+    return `<div class="card-pay-chip cleared"${styleAttr} title="Funds deposited ${fmtPayoutDate(actualPayout)} — ready to process">✓ Funds deposited</div>`;
   }
   if (method === 'card' && status === 'succeeded') {
     return `<div class="card-pay-chip cleared"${styleAttr} title="Card payment cleared — ready to process">✓ CC Paid</div>`;
+  }
+  if (method === 'ach') {
+    if (estimatedPayout) {
+      return `<div class="card-pay-chip clearing"${styleAttr} title="ACH still clearing — funds expected ${fmtPayoutDate(estimatedPayout)}">💳 ACH clearing · funds ${fmtPayoutDate(estimatedPayout)}</div>`;
+    }
+    return `<div class="card-pay-chip clearing"${styleAttr} title="ACH initiated">💳 ACH initiated</div>`;
   }
   return '';
 }

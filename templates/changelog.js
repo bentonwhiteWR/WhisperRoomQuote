@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.46.4', date:'May 27, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Invoice cards mirror the deal-card payment chip.** When a HubSpot invoice is paid, the row in the right-side hub panel now shows the same processor chip the deal card already shows (`✓ CC Paid` / `💳 ACH clearing · funds 5/27` / `✓ Funds available` / `🚨 Payment failed`) instead of a generic green "✓ Paid" badge. Falls back to "✓ Paid" when there\'s no mirrored payment data (e.g. Stripe-paid invoices, which still also show the Stripe channel badge). Also dropped the redundant tiny "ACH"/"CC" badge that sat next to "Paid" — the new chip carries that info.'},
+        {t:'ui', d:'**Payment chip: bank name + last-4 dropped from all chip variants.** The `· Bank ...1234` suffix has been removed from every chip (`CC Paid`, `ACH clearing`, `Funds available`, `Payment failed`) on both deal cards and invoice rows. The full processor detail still lives in HubSpot if needed.'},
+        {t:'fix', d:'**CC Paid chip no longer requires last-4 to render.** The card-succeeded branch was gated on `pi.last4` — when HubSpot didn\'t populate `hs_payment_method_last_4` on a payment (some processors omit it), the chip was suppressed entirely even though the deal was clearly paid via card. Now any card + succeeded state surfaces the chip. Fixes the case observed earlier today where a CC-paid HubSpot invoice didn\'t show the green chip on its deal card.'},
+      ]
+    },
+    {
       v:'1.46.3', date:'May 27, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Deal Hub: rep filter and deal-card clicks now feel instant.** Two perceived-latency wins on the board. (1) **Rep filter is now client-side.** Switching reps previously re-fetched `/api/deals/list` from the server, which round-tripped HubSpot search (~1–3s). All deals are already in the browser\'s `allDeals` array (loaded once on page open, refreshed every 60s), so the rep dropdown now filters that array in-memory via `applyFilter()` — zero network. The 60s auto-refresh pulls all reps so the cache stays comprehensive. (2) **Deal cards paint instantly from cache.** Clicking a card previously showed "Loading…" while waiting for `/api/deals/:id/hub` (~1–2s, 5 parallel HubSpot + DB queries). Now the right panel renders immediately from the cached board data (name, amount, stage, payment chips, pipeline, action buttons) — the quotes/invoices/orders sections show "Loading quotes…" until the fetch returns, then fill in. Race-condition guard added: if a user clicks deal B before A\'s fetch returns, A\'s response is discarded. Pure UI perf — no API or behavior changes.'},

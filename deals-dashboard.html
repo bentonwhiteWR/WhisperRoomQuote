@@ -1020,18 +1020,24 @@ function renderHub(dealId,data) {
     ${data.invoices.map(inv=>{
       const paid=inv.status==='paid';
       const sc={paid:'#22c55e',open:'#f59e0b',draft:'var(--muted)',voided:'var(--muted)',overdue:'#ef4444'}[inv.status]||'var(--muted)';
-      const pmLabel = inv.paymentMethod === 'ach' ? 'ACH' : inv.paymentMethod === 'card' ? 'CC' : '';
       const viaStripe = inv.paidVia === 'stripe';
       const stripeChannelBadge = inv.stripeInvoiceId
         ? `<span class="row-badge" title="Stripe invoice — ${viaStripe?'paid via Stripe':(inv.stripeStatus||'open')}" style="background:rgba(99,91,255,.12);color:#7c5cff;border:1px solid rgba(99,91,255,.3)">Stripe</span>`
         : '';
+      // For HubSpot-paid invoices, mirror the deal-card payment chip
+      // (CC Paid / ACH clearing / Funds available / Failed) so the
+      // invoice row reflects the actual processor state instead of a
+      // generic "Paid" badge. Stripe-paid invoices keep "✓ Paid" since
+      // deal.paymentInfo only mirrors HubSpot Commerce Payments.
+      const hsPayChip = (paid && !viaStripe) ? renderPaymentChip(deal.paymentInfo, { inline: true }) : '';
+      const paidBadge = paid
+        ? (hsPayChip || '<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Paid</span>')
+        : `<span class="row-badge" style="color:${sc};border:1px solid ${sc}">${inv.status||'—'}</span>`;
       return `<div class="row-card ${paid?'row-paid':''}" style="cursor:default">
         <div style="flex:1;min-width:0;display:flex;align-items:center;gap:7px;flex-wrap:wrap">
           <span style="font-size:12px;font-weight:700;color:${paid?'var(--green)':'var(--text)'}">${inv.number||inv.title||'Invoice'}</span>
-          ${paid?'<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Paid</span>'
-                :`<span class="row-badge" style="color:${sc};border:1px solid ${sc}">${inv.status||'—'}</span>`}
+          ${paidBadge}
           ${stripeChannelBadge}
-          ${paid && pmLabel && !viaStripe ? `<span class="row-badge" style="background:rgba(99,102,241,.1);color:#818cf8;border:1px solid rgba(99,102,241,.25)">${pmLabel}</span>` : ''}
           ${inv.quoteNumber?`<span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${inv.quoteNumber}</span>`:''}
         </div>
         <span style="font-size:12px;font-weight:700;color:${paid?'var(--green)':'var(--text)'}">${fmt(inv.amount)}</span>
@@ -2971,7 +2977,7 @@ function renderApChipFromStatus(apStatus) {
 //   ACH + succeeded                            → green "Funds available"
 //   Card + succeeded + small note useful?      → green "CC Paid" (only when bank/last4 known)
 //   Any  + failed                              → red "Payment failed" (pulses)
-function renderPaymentChip(pi) {
+function renderPaymentChip(pi, opts) {
   if (!pi || !pi.method) return '';
   const status = (pi.status || '').toLowerCase();
   const method = (pi.method || '').toLowerCase();
@@ -2983,24 +2989,24 @@ function renderPaymentChip(pi) {
     const dt = new Date(d + 'T12:00:00');
     return dt.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
   };
-  const bankLabel = pi.bankOrIssuer && pi.last4
-    ? ` · ${pi.bankOrIssuer} ...${pi.last4}`
-    : (pi.last4 ? ` · ...${pi.last4}` : '');
+  // Inline variant kills the default top margin so the chip can sit flush
+  // inside row-card flex layouts (invoice rows in the hub panel).
+  const styleAttr = opts && opts.inline ? ' style="margin:0"' : '';
 
   if (status === 'failed') {
-    return `<div class="card-pay-chip failed" title="Payment failed or reversed — do NOT process this order; investigate in HubSpot">🚨 Payment failed${bankLabel}</div>`;
+    return `<div class="card-pay-chip failed"${styleAttr} title="Payment failed or reversed — do NOT process this order; investigate in HubSpot">🚨 Payment failed</div>`;
   }
   if (method === 'ach') {
     if (status === 'succeeded' && isPastPayout) {
-      return `<div class="card-pay-chip cleared" title="ACH funds available — ready to process">✓ Funds available${bankLabel}</div>`;
+      return `<div class="card-pay-chip cleared"${styleAttr} title="ACH funds available — ready to process">✓ Funds available</div>`;
     }
     if (payoutDate) {
-      return `<div class="card-pay-chip clearing" title="ACH still clearing — wait until ${fmtPayoutDate(payoutDate)} to process">💳 ACH clearing · funds ${fmtPayoutDate(payoutDate)}${bankLabel}</div>`;
+      return `<div class="card-pay-chip clearing"${styleAttr} title="ACH still clearing — wait until ${fmtPayoutDate(payoutDate)} to process">💳 ACH clearing · funds ${fmtPayoutDate(payoutDate)}</div>`;
     }
-    return `<div class="card-pay-chip clearing" title="ACH initiated">💳 ACH initiated${bankLabel}</div>`;
+    return `<div class="card-pay-chip clearing"${styleAttr} title="ACH initiated">💳 ACH initiated</div>`;
   }
-  if (method === 'card' && status === 'succeeded' && pi.last4) {
-    return `<div class="card-pay-chip cleared" title="Card payment cleared — ready to process">✓ CC Paid${bankLabel}</div>`;
+  if (method === 'card' && status === 'succeeded') {
+    return `<div class="card-pay-chip cleared"${styleAttr} title="Card payment cleared — ready to process">✓ CC Paid</div>`;
   }
   return '';
 }

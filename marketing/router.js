@@ -340,9 +340,48 @@ async function handle(req, res, ctx) {
           ORDER BY matched_via_converting_campaign DESC, matched_via_source_data_2 DESC
         `),
       ]);
+      // Broader breakdown — `paid_search_google` returned empty in the first
+      // run, so we need to see what first_source / first_source_data_1
+      // values HubSpot actually stores (case mismatch suspected).
+      const [overall, sources, data1ForTopSources, sampleRows] = await Promise.all([
+        ctx.db.query(`
+          SELECT
+            COUNT(*)::int                                                   AS total_contacts,
+            COUNT(*) FILTER (WHERE first_source IS NOT NULL)::int           AS with_first_source,
+            COUNT(*) FILTER (WHERE gclid IS NOT NULL)::int                  AS with_gclid,
+            COUNT(*) FILTER (WHERE first_converting_campaign IS NOT NULL)::int AS with_converting_campaign
+          FROM marketing_hubspot_contacts
+        `),
+        ctx.db.query(`
+          SELECT first_source, COUNT(*)::int AS n
+          FROM marketing_hubspot_contacts
+          GROUP BY first_source
+          ORDER BY n DESC
+          LIMIT 30
+        `),
+        ctx.db.query(`
+          SELECT first_source, first_source_data_1, COUNT(*)::int AS n
+          FROM marketing_hubspot_contacts
+          WHERE first_source IS NOT NULL
+          GROUP BY first_source, first_source_data_1
+          ORDER BY n DESC
+          LIMIT 50
+        `),
+        ctx.db.query(`
+          SELECT contact_id, first_source, first_source_data_1, first_source_data_2, first_converting_campaign, gclid
+          FROM marketing_hubspot_contacts
+          WHERE gclid IS NOT NULL
+          ORDER BY contact_id DESC
+          LIMIT 5
+        `),
+      ]);
       ctx.json({
-        note: 'If pattern 2_long_string_likely_gclid dominates and join_matches_per_campaign rows are all zeros, the gclid theory is confirmed.',
-        paid_search_google: {
+        note: 'paid_search_google.* came back empty — broader breakdown below shows what HubSpot ACTUALLY stores.',
+        overall: overall.rows[0],
+        first_source_distribution: sources.rows,
+        first_source_x_data1: data1ForTopSources.rows,
+        sample_rows_with_gclid: sampleRows.rows,
+        paid_search_google_filter_check: {
           patterns_breakdown:           patterns.rows,
           top_source_data_2_values:     samples.rows,
           converting_campaign_coverage: campaignCov.rows[0],

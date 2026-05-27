@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.46.11', date:'May 27, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Marketing dashboard — date range selector + sortable columns.** Pill-style date range bar above the cards (`Last 14d / 30d / 90d / 180d / 365d`, default 90d) drives `?days=N` on all six marketing endpoints, so the entire dashboard re-queries when the range changes. KPI card labels + the attribution coverage panel title update dynamically to reflect the selected range. Heads-up text notes that the Google Ads ETL defaults to 90 days so 180d/365d won\'t show extra data without a longer sync. All three data tables (Campaigns, Keywords, Search Terms) now have sortable column headers — click any header to sort by it; click again to flip direction; the active column shows ▲/▼. Default sort stays "Spend desc" so existing reading patterns survive. Derived columns (CPC, CPA, GA4 ROAS, True ROAS) are pre-computed so sorting works on them too. The 200-row cap on Keywords + Search Terms now applies AFTER sort, so sorting by Revenue lets you see the top-revenue terms even if their spend is low. Six endpoints accept `?days=N` (bounded [1, 730]); helper `_parseDays(req)` extracts it from the URL.'},
+      ]
+    },
+    {
       v:'1.46.10', date:'May 27, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Audimute PO header now uses the WhisperRoom SVG logo.** The supplier PO page (`/po/:poNumber`) was using a text-styled "WhisperRoom" header element; swapped it for the same inline SVG logo the quote + invoice pages use. The `.logo-img` styling was already present in the PO template (40px desktop / 28px mobile), just no `<img>` element was being rendered. No other PO content changed.'},

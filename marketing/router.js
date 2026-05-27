@@ -50,6 +50,19 @@ const HUBSPOT_CAMPAIGN_ALIASES = [
   { hsName: '**lp testing (us/can) - a', gaName: '**LP Testing (US/CAN) - Combined' },
 ];
 
+// v1.46.10 — parse ?days=N from the request URL. Used by every data
+// endpoint so the dashboard date-range selector can drive all six queries
+// from a single URL param. Bounded [1, 730] so a bad client can't ask
+// for an unbounded window; falls back to 90 (current dashboard default).
+function _parseDays(req) {
+  try {
+    const url = new URL(req.url, 'http://localhost');
+    const n = parseInt(url.searchParams.get('days'));
+    if (!Number.isFinite(n)) return 90;
+    return Math.min(Math.max(n, 1), 730);
+  } catch { return 90; }
+}
+
 let _schemaInitialized = false;
 async function _initSchema(db) {
   if (_schemaInitialized || !db) return;
@@ -186,18 +199,24 @@ async function handle(req, res, ctx) {
 
   // ── GET /api/marketing/campaigns ──────────────────────────────────
   // Returns daily rows for charting. cost_micros converted to cost_usd
-  // here so the client doesn't have to do micros math.
+  // here so the client doesn't have to do micros math. v1.46.10: accepts
+  // ?days=N (1-730, default 90) so the dashboard date picker can drive
+  // the window. Note: ETL only pulls 90 days by default, so 180/365
+  // queries return whatever is loaded (still useful — just doesn't extend
+  // beyond the ETL window without a longer sync).
   if (pathname === '/api/marketing/campaigns' && req.method === 'GET') {
     try {
+      const days = _parseDays(req);
       const rows = ctx.db ? (await ctx.db.query(`
         SELECT campaign_id, campaign_name, status, date,
                impressions, clicks,
                (cost_micros::float / 1000000) AS cost_usd,
                conversions, conversion_value
         FROM marketing_campaigns
+        WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
         ORDER BY date DESC, cost_micros DESC NULLS LAST
         LIMIT 5000
-      `)).rows : [];
+      `, [days])).rows : [];
       ctx.json({ rows });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
@@ -206,15 +225,17 @@ async function handle(req, res, ctx) {
   // ── GET /api/marketing/keywords ───────────────────────────────────
   if (pathname === '/api/marketing/keywords' && req.method === 'GET') {
     try {
+      const days = _parseDays(req);
       const rows = ctx.db ? (await ctx.db.query(`
         SELECT campaign_id, ad_group_id, keyword_id, keyword_text, match_type, date,
                impressions, clicks,
                (cost_micros::float / 1000000) AS cost_usd,
                conversions
         FROM marketing_keywords
+        WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
         ORDER BY date DESC, cost_micros DESC NULLS LAST
         LIMIT 5000
-      `)).rows : [];
+      `, [days])).rows : [];
       ctx.json({ rows });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
@@ -223,15 +244,17 @@ async function handle(req, res, ctx) {
   // ── GET /api/marketing/search-terms ───────────────────────────────
   if (pathname === '/api/marketing/search-terms' && req.method === 'GET') {
     try {
+      const days = _parseDays(req);
       const rows = ctx.db ? (await ctx.db.query(`
         SELECT campaign_id, ad_group_id, search_term, date,
                impressions, clicks,
                (cost_micros::float / 1000000) AS cost_usd,
                conversions
         FROM marketing_search_terms
+        WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
         ORDER BY date DESC, cost_micros DESC NULLS LAST
         LIMIT 5000
-      `)).rows : [];
+      `, [days])).rows : [];
       ctx.json({ rows });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
@@ -262,17 +285,14 @@ async function handle(req, res, ctx) {
   // `leads` count matches HubSpot's "First ad interaction" report.
   if (pathname === '/api/marketing/campaign-attribution' && req.method === 'GET') {
     try {
-      // Pass HUBSPOT_CAMPAIGN_ALIASES as two parallel text arrays so the
-      // CTE can unnest them into a 2-column virtual table. Keeps the
-      // canonical alias list in JS where it's easy to edit; SQL stays
-      // generic. unnest(arr1, arr2) is Postgres-native and parameter-safe.
+      const days = _parseDays(req);
       const aliasHsNames = HUBSPOT_CAMPAIGN_ALIASES.map(a => a.hsName);
       const aliasGaNames = HUBSPOT_CAMPAIGN_ALIASES.map(a => a.gaName);
       const rows = ctx.db ? (await ctx.db.query(`
         WITH campaign_names AS (
           SELECT DISTINCT campaign_id, campaign_name
           FROM marketing_campaigns
-          WHERE date >= CURRENT_DATE - INTERVAL '90 days'
+          WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $3
             AND campaign_name IS NOT NULL
         ),
         aliases AS (
@@ -299,12 +319,12 @@ async function handle(req, res, ctx) {
                 AND a.hs_name = LOWER(REPLACE(c.first_source_data_1, '+', ' '))
             )
           )
-          AND c.created_at >= CURRENT_DATE - INTERVAL '90 days'
+          AND c.created_at >= CURRENT_DATE - INTERVAL '1 day' * $3
         )
         LEFT JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
         GROUP BY cn.campaign_id, cn.campaign_name
         ORDER BY revenue_won DESC, leads DESC
-      `, [aliasHsNames, aliasGaNames])).rows : [];
+      `, [aliasHsNames, aliasGaNames, days])).rows : [];
       ctx.json({ rows });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
@@ -443,11 +463,12 @@ async function handle(req, res, ctx) {
   // on the HubSpot side, which we don't pull).
   if (pathname === '/api/marketing/search-term-attribution' && req.method === 'GET') {
     try {
+      const days = _parseDays(req);
       const rows = ctx.db ? (await ctx.db.query(`
         WITH search_terms AS (
           SELECT DISTINCT LOWER(TRIM(search_term)) AS search_term
           FROM marketing_search_terms
-          WHERE date >= CURRENT_DATE - INTERVAL '90 days'
+          WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
             AND search_term IS NOT NULL
             AND TRIM(search_term) <> ''
         )
@@ -463,12 +484,12 @@ async function handle(req, res, ctx) {
         LEFT JOIN marketing_hubspot_contacts c ON (
           c.first_source = 'PAID_SEARCH'
           AND LOWER(TRIM(c.first_source_data_2)) = st.search_term
-          AND c.created_at >= CURRENT_DATE - INTERVAL '90 days'
+          AND c.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1
         )
         LEFT JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
         GROUP BY st.search_term
         ORDER BY revenue_won DESC, leads DESC
-      `)).rows : [];
+      `, [days])).rows : [];
       ctx.json({ rows });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
@@ -497,47 +518,46 @@ async function handle(req, res, ctx) {
   // panel) for backward compatibility.
   if (pathname === '/api/marketing/attribution-coverage' && req.method === 'GET') {
     try {
+      const days = _parseDays(req);
       const r = ctx.db ? (await ctx.db.query(`
         SELECT
           (SELECT COUNT(*) FROM marketing_hubspot_contacts
-             WHERE created_at >= CURRENT_DATE - INTERVAL '90 days')                                                  AS contacts_total,
+             WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * $1)                                               AS contacts_total,
           (SELECT COUNT(*) FROM marketing_hubspot_contacts
-             WHERE created_at >= CURRENT_DATE - INTERVAL '90 days'
+             WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * $1
                AND (first_source IS NOT NULL OR gclid IS NOT NULL))                                                  AS contacts_with_source,
           (SELECT COUNT(*) FROM marketing_hubspot_contacts
-             WHERE created_at >= CURRENT_DATE - INTERVAL '90 days'
+             WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * $1
                AND gclid IS NOT NULL)                                                                                AS contacts_with_gclid,
           (SELECT COUNT(*) FROM marketing_hubspot_deals
-             WHERE created_at >= CURRENT_DATE - INTERVAL '90 days' AND is_closed_won)                                AS deals_won_total,
+             WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND is_closed_won)                             AS deals_won_total,
           (SELECT COUNT(*) FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '90 days' AND d.is_closed_won
+             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND (c.first_source IS NOT NULL OR c.gclid IS NOT NULL))                                              AS deals_won_attributed,
           (SELECT COALESCE(SUM(amount), 0)::float FROM marketing_hubspot_deals
-             WHERE created_at >= CURRENT_DATE - INTERVAL '90 days' AND is_closed_won)                                AS revenue_total,
+             WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND is_closed_won)                             AS revenue_total,
           (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '90 days' AND d.is_closed_won
+             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND (c.first_source IS NOT NULL OR c.gclid IS NOT NULL))                                              AS revenue_attributed,
-          -- v1.46.7 — first-touch paid only (HubSpot "First ad interaction")
           (SELECT COUNT(*) FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '90 days' AND d.is_closed_won
+             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND c.first_source = 'PAID_SEARCH')                                                                   AS deals_won_first_touch,
           (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '90 days' AND d.is_closed_won
+             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND c.first_source = 'PAID_SEARCH')                                                                   AS revenue_first_touch,
-          -- v1.46.7 — any-touch paid (Google Ads-style last-click leaning)
           (SELECT COUNT(*) FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '90 days' AND d.is_closed_won
+             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND (c.first_source = 'PAID_SEARCH' OR c.gclid IS NOT NULL))                                          AS deals_won_any_touch,
           (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '90 days' AND d.is_closed_won
+             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND (c.first_source = 'PAID_SEARCH' OR c.gclid IS NOT NULL))                                          AS revenue_any_touch
-      `)).rows[0] : {};
+      `, [days])).rows[0] : {};
       ctx.json(r || {});
     } catch(e) { ctx.json({ error: e.message }, 500); }
     return true;

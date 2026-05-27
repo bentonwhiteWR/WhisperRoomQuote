@@ -117,7 +117,7 @@ th.sortable .sort-arrow{display:inline-block;margin-left:3px;font-size:9px;color
 
 <div class="main">
   <h1>Marketing <span>Spend</span></h1>
-  <div class="subtitle">Google Ads pull-and-analyze. Press Sync to pull the last 90 days of data into Postgres; queries below run against the local table (no API hit per click).</div>
+  <div class="subtitle">Google Ads pull-and-analyze. Press Sync to pull the last 365 days of data into Postgres; queries below run against the local table (no API hit per click).</div>
 
   <!-- Status bar — shows env readiness + last sync timestamps -->
   <div id="statusBar" class="status-bar">
@@ -179,10 +179,10 @@ th.sortable .sort-arrow{display:inline-block;margin-left:3px;font-size:9px;color
     <div class="card" title="spend / revenue where first_source = 'PAID_SEARCH' OR gclid is set. Matches Google Ads' default last-click attribution."><div class="card-label">True ROAS — Any-Touch</div><div class="card-value" id="kpiRoasAnyTouch">—</div><div class="card-sub" id="kpiRoasAnyTouchSub">incl. gclid</div></div>
   </div>
 
-  <!-- Campaign-level table -->
+  <!-- Section titles include the current date range (set dynamically). -->
   <div class="section">
     <div class="section-head">
-      <div class="section-title">Campaigns (last 90 days)</div>
+      <div class="section-title" id="campaignsTitle">Campaigns (last 90 days)</div>
       <span class="section-meta" id="campaignsMeta">—</span>
     </div>
     <div id="campaignsBody">
@@ -190,11 +190,9 @@ th.sortable .sort-arrow{display:inline-block;margin-left:3px;font-size:9px;color
     </div>
   </div>
 
-  <!-- Keywords / search-terms tables can be added the same way once
-       data starts flowing. Stubbed empty for now. -->
   <div class="section">
     <div class="section-head">
-      <div class="section-title">Keywords (last 90 days)</div>
+      <div class="section-title" id="keywordsTitle">Keywords (last 90 days)</div>
       <span class="section-meta" id="keywordsMeta">—</span>
     </div>
     <div id="keywordsBody"><div class="empty">No data yet.</div></div>
@@ -202,7 +200,7 @@ th.sortable .sort-arrow{display:inline-block;margin-left:3px;font-size:9px;color
 
   <div class="section">
     <div class="section-head">
-      <div class="section-title">Search Terms (last 90 days)</div>
+      <div class="section-title" id="searchTermsTitle">Search Terms (last 90 days)</div>
       <span class="section-meta" id="searchTermsMeta">—</span>
     </div>
     <div id="searchTermsBody"><div class="empty">No data yet.</div></div>
@@ -322,9 +320,9 @@ async function runSync() {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      // No daysBack — let each ETL family use its own default: Google Ads
-      // uses 90d (matches the dashboard's 90-day campaign view); HubSpot
-      // uses 365d (long lookback for slow-closing deals + first-touch).
+      // No daysBack — both ETL families default to 365d (v1.46.12). Was
+      // Google Ads 90d / HubSpot 365d; the asymmetry caused the dashboard's
+      // 365d view to divide 365d revenue by 90d spend, inflating ROAS ~4x.
       body: JSON.stringify({ report: 'all' }),
     });
     const data = await res.json();
@@ -525,6 +523,7 @@ function roasPill(revenue, spend) {
 }
 
 function renderCampaigns(rows, attrRows) {
+  document.getElementById('campaignsTitle').textContent = `Campaigns (last ${currentDaysBack} days)`;
   document.getElementById('campaignsMeta').textContent = rows.length ? `${fmtInt(rows.length)} rows` : '';
   const body = document.getElementById('campaignsBody');
   if (!rows.length) { body.innerHTML = '<div class="empty">No data yet. Press Sync All above to pull from Google Ads.</div>'; return; }
@@ -604,6 +603,7 @@ function renderCampaigns(rows, attrRows) {
 // the same keyword text can appear in multiple ad groups with independent
 // performance. Display capped to top 200 by spend; full row count shown in meta.
 function renderKeywords(rows) {
+  document.getElementById('keywordsTitle').textContent = `Keywords (last ${currentDaysBack} days)`;
   document.getElementById('keywordsMeta').textContent = rows.length ? `${fmtInt(rows.length)} rows` : '';
   const body = document.getElementById('keywordsBody');
   if (!rows.length) { body.innerHTML = '<div class="empty">No data yet.</div>'; return; }
@@ -658,6 +658,7 @@ function renderKeywords(rows) {
 // /api/marketing/search-term-attribution (HubSpot first_source_data_2
 // holds the literal typed term — discovered in the 2026-05-27 diagnostic).
 function renderSearchTerms(rows, attrRows) {
+  document.getElementById('searchTermsTitle').textContent = `Search Terms (last ${currentDaysBack} days)`;
   document.getElementById('searchTermsMeta').textContent = rows.length ? `${fmtInt(rows.length)} rows` : '';
   const body = document.getElementById('searchTermsBody');
   if (!rows.length) { body.innerHTML = '<div class="empty">No data yet.</div>'; return; }

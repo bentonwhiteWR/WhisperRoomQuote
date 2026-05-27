@@ -160,7 +160,11 @@ async function handle(req, res, ctx) {
 
     const report   = body.report || 'campaigns';
     const daysBack = body.daysBack != null ? parseInt(body.daysBack) : null;
-    const gaDays   = daysBack != null ? daysBack : 90;
+    // v1.46.12 — Google Ads default bumped 90 → 365 to match HubSpot's
+    // window. Prior 90d default + 365d HubSpot meant the dashboard's
+    // 365d view divided 365d of revenue by 90d of spend, inflating ROAS
+    // by ~4x. ON CONFLICT upserts make the longer pull idempotent.
+    const gaDays   = daysBack != null ? daysBack : 365;
     const hsDays   = daysBack != null ? daysBack : 365;
     try {
       let result;

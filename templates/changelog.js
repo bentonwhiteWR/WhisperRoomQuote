@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.46.12', date:'May 27, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Marketing — fix the window mismatch that inflated 365d True ROAS by ~4x.** The dispatcher in `marketing/router.js` had Google Ads ETL defaulting to 90d while HubSpot defaulted to 365d. When the v1.46.11 date-range picker drove the dashboard\'s 365d view, queries returned 365 days of revenue but only 90 days of Google Ads spend (because that\'s all the table had). Result: True ROAS = 365d-rev / 90d-spend, ~4x inflated. Cross-checked against HubSpot\'s "First ad interaction" report: ours showed 7.85x first-touch, HubSpot showed 1.96x (96% ROI) — a ~4x gap matching the window asymmetry. Bumped Google Ads default to 365d so Sync All pulls a full year and both windows align. Three section titles ("Campaigns / Keywords / Search Terms (last 90 days)") are now dynamic and update with the selected date range — they were hardcoded strings before. Page subtitle updated to say 365 days. **Action required: click Sync All on the dashboard to backfill the 275 days of historical Google Ads data.** ON CONFLICT upserts keep the longer pull idempotent — no risk of duplicates against existing 90-day rows.'},
+      ]
+    },
+    {
       v:'1.46.11', date:'May 27, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Marketing dashboard — date range selector + sortable columns.** Pill-style date range bar above the cards (`Last 14d / 30d / 90d / 180d / 365d`, default 90d) drives `?days=N` on all six marketing endpoints, so the entire dashboard re-queries when the range changes. KPI card labels + the attribution coverage panel title update dynamically to reflect the selected range. Heads-up text notes that the Google Ads ETL defaults to 90 days so 180d/365d won\'t show extra data without a longer sync. All three data tables (Campaigns, Keywords, Search Terms) now have sortable column headers — click any header to sort by it; click again to flip direction; the active column shows ▲/▼. Default sort stays "Spend desc" so existing reading patterns survive. Derived columns (CPC, CPA, GA4 ROAS, True ROAS) are pre-computed so sorting works on them too. The 200-row cap on Keywords + Search Terms now applies AFTER sort, so sorting by Revenue lets you see the top-revenue terms even if their spend is low. Six endpoints accept `?days=N` (bounded [1, 730]); helper `_parseDays(req)` extracts it from the URL.'},

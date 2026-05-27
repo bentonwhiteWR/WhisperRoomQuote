@@ -277,6 +277,83 @@ async function handle(req, res, ctx) {
     return true;
   }
 
+  // ── GET /api/marketing/debug/source-data2 ─────────────────────────
+  // Diagnostic for the v1.46.1 per-campaign-zeros issue. Confirms what
+  // HubSpot actually stores in first_source_data_2 for PAID_SEARCH/google
+  // contacts: gclid (the failure mode that breaks the string JOIN in
+  // campaign-attribution) vs an actual campaign name (the assumed shape).
+  // Remove once the click_view-based attribution fix lands.
+  if (pathname === '/api/marketing/debug/source-data2' && req.method === 'GET') {
+    try {
+      if (!ctx.db) { ctx.json({ error: 'no db' }, 500); return true; }
+      const paidGoogle = `first_source = 'PAID_SEARCH' AND first_source_data_1 = 'google'`;
+      const [patterns, samples, campaignCov, campaigns, matches] = await Promise.all([
+        ctx.db.query(`
+          SELECT
+            CASE
+              WHEN first_source_data_2 IS NULL                                            THEN '1_null'
+              WHEN first_source_data_2 LIKE '% %'                                         THEN '4_has_spaces_likely_campaign'
+              WHEN char_length(first_source_data_2) >= 40                                 THEN '2_long_string_likely_gclid'
+              WHEN char_length(first_source_data_2) BETWEEN 20 AND 39                     THEN '3_medium_string'
+              ELSE                                                                             '5_short_string'
+            END AS pattern,
+            COUNT(*)::int AS contacts
+          FROM marketing_hubspot_contacts
+          WHERE ${paidGoogle}
+          GROUP BY 1
+          ORDER BY 1
+        `),
+        ctx.db.query(`
+          SELECT first_source_data_2 AS value,
+                 char_length(first_source_data_2) AS len,
+                 COUNT(*)::int AS n
+          FROM marketing_hubspot_contacts
+          WHERE ${paidGoogle} AND first_source_data_2 IS NOT NULL
+          GROUP BY first_source_data_2
+          ORDER BY n DESC
+          LIMIT 20
+        `),
+        ctx.db.query(`
+          SELECT
+            COUNT(*) FILTER (WHERE first_converting_campaign IS NOT NULL)::int AS with_campaign,
+            COUNT(*) FILTER (WHERE first_converting_campaign IS NULL)::int     AS without_campaign,
+            COUNT(*)::int                                                       AS total
+          FROM marketing_hubspot_contacts
+          WHERE ${paidGoogle}
+        `),
+        ctx.db.query(`
+          SELECT DISTINCT campaign_name
+          FROM marketing_campaigns
+          WHERE campaign_name IS NOT NULL
+          ORDER BY campaign_name
+        `),
+        ctx.db.query(`
+          SELECT
+            mc.campaign_name,
+            COUNT(DISTINCT c.contact_id) FILTER (WHERE c.first_converting_campaign = mc.campaign_name)::int AS matched_via_converting_campaign,
+            COUNT(DISTINCT c.contact_id) FILTER (WHERE c.first_source_data_2       = mc.campaign_name)::int AS matched_via_source_data_2
+          FROM (SELECT DISTINCT campaign_name FROM marketing_campaigns WHERE campaign_name IS NOT NULL) mc
+          LEFT JOIN marketing_hubspot_contacts c
+            ON (c.first_converting_campaign = mc.campaign_name OR c.first_source_data_2 = mc.campaign_name)
+           AND c.first_source = 'PAID_SEARCH' AND c.first_source_data_1 = 'google'
+          GROUP BY mc.campaign_name
+          ORDER BY matched_via_converting_campaign DESC, matched_via_source_data_2 DESC
+        `),
+      ]);
+      ctx.json({
+        note: 'If pattern 2_long_string_likely_gclid dominates and join_matches_per_campaign rows are all zeros, the gclid theory is confirmed.',
+        paid_search_google: {
+          patterns_breakdown:           patterns.rows,
+          top_source_data_2_values:     samples.rows,
+          converting_campaign_coverage: campaignCov.rows[0],
+        },
+        google_ads_campaign_names:    campaigns.rows.map(r => r.campaign_name),
+        join_matches_per_campaign:    matches.rows,
+      });
+    } catch(e) { ctx.json({ error: e.message }, 500); }
+    return true;
+  }
+
   // ── GET /api/marketing/attribution-coverage ───────────────────────
   // The "trust thermometer" — what fraction of recent closed-won deals
   // and recent contacts are actually attributable to a known marketing

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.46.8', date:'May 27, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Marketing — recover $17.3k of unattributed paid spend via campaign alias map.** v1.46.7 fixed the JOIN but left two big-spend campaigns showing $0 attribution: `**LP General (US/CAN) - Combined` ($9.5k 90-day spend) and `**LP Testing (US/CAN) - Combined` ($7.8k). Root cause: Google Ads renamed the A/B variants into a single "Combined" parent, but HubSpot retains the campaign name at first touch — so historical contacts still carry `**lp general (us/can) - b` and `**lp testing (us/can) - a`. Added `HUBSPOT_CAMPAIGN_ALIASES` map at the top of `marketing/router.js` (2 entries today, extend as more campaigns rename); injected into the campaign-attribution JOIN via `unnest($1::text[], $2::text[])` CTE so the list stays in JS and the SQL stays generic. Expected recovery: ~514 historical contacts now route to the right campaign, unlocking visibility on whether those two campaigns are actually profitable.'},
+      ]
+    },
+    {
       v:'1.46.7', date:'May 27, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Marketing — per-campaign attribution columns now actually populate.** v1.46.1\'s JOIN matched HubSpot contacts to Google Ads campaigns via `first_source_data_2 = campaign_name` filtered to `first_source_data_1 = google` — but HubSpot doesn\'t store either of those fields the way we assumed. Diagnostic against 22,534 contacts proved: for PAID_SEARCH contacts, `first_source_data_1` holds the campaign name (lowercased) and `first_source_data_2` holds the search keyword. The `data_1 = google` filter was eliminating everything. Rewrote the JOIN to match `LOWER(REPLACE(first_source_data_1, \'+\', \' \'))` against the campaign name (handles case + the "+" vs space difference in "Office Booth - Privacy + Competitors"). Dropped the dead `first_converting_campaign` branch (only 25 of 22,534 contacts have it set). Known gap: campaigns renamed in Google Ads (A/B variants merged into "Combined") leave ~500 historical contacts unmatched — would need a manual mapping table to recover.'},

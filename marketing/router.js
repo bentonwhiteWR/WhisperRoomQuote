@@ -32,6 +32,24 @@ const hsEtl = require('./hubspot-etl');
 // ownerIds to re-lock — e.g. ['36303670', '36320208'] for Benton + Gabe.
 const MARKETING_ALLOWLIST = [];
 
+// HubSpot's first_source_data_1 stores the campaign name at the time of
+// first touch. When a Google Ads campaign is renamed (e.g. A/B variants
+// merged into a "Combined" parent), historical HubSpot contacts retain
+// the OLD name forever. This alias table redirects known historical names
+// back to the current campaign_name so the attribution JOIN doesn't lose
+// them. Add an entry when a campaign rename leaves a visible gap on the
+// per-campaign table (real spend but zero leads/deals).
+//
+// hsName: the value stored in HubSpot, AFTER normalization (lowercased,
+//         '+' replaced with single space). Match against
+//         LOWER(REPLACE(first_source_data_1, '+', ' ')).
+// gaName: the current Google Ads campaign_name, VERBATIM (case-sensitive,
+//         matched exactly against marketing_campaigns.campaign_name).
+const HUBSPOT_CAMPAIGN_ALIASES = [
+  { hsName: '**lp general (us/can) - b', gaName: '**LP General (US/CAN) - Combined' },
+  { hsName: '**lp testing (us/can) - a', gaName: '**LP Testing (US/CAN) - Combined' },
+];
+
 let _schemaInitialized = false;
 async function _initSchema(db) {
   if (_schemaInitialized || !db) return;
@@ -244,12 +262,22 @@ async function handle(req, res, ctx) {
   // `leads` count matches HubSpot's "First ad interaction" report.
   if (pathname === '/api/marketing/campaign-attribution' && req.method === 'GET') {
     try {
+      // Pass HUBSPOT_CAMPAIGN_ALIASES as two parallel text arrays so the
+      // CTE can unnest them into a 2-column virtual table. Keeps the
+      // canonical alias list in JS where it's easy to edit; SQL stays
+      // generic. unnest(arr1, arr2) is Postgres-native and parameter-safe.
+      const aliasHsNames = HUBSPOT_CAMPAIGN_ALIASES.map(a => a.hsName);
+      const aliasGaNames = HUBSPOT_CAMPAIGN_ALIASES.map(a => a.gaName);
       const rows = ctx.db ? (await ctx.db.query(`
         WITH campaign_names AS (
           SELECT DISTINCT campaign_id, campaign_name
           FROM marketing_campaigns
           WHERE date >= CURRENT_DATE - INTERVAL '90 days'
             AND campaign_name IS NOT NULL
+        ),
+        aliases AS (
+          SELECT hs_name, ga_name
+          FROM unnest($1::text[], $2::text[]) AS t(hs_name, ga_name)
         )
         SELECT
           cn.campaign_id,
@@ -263,13 +291,20 @@ async function handle(req, res, ctx) {
         FROM campaign_names cn
         LEFT JOIN marketing_hubspot_contacts c ON (
           c.first_source = 'PAID_SEARCH'
-          AND LOWER(REPLACE(c.first_source_data_1, '+', ' ')) = LOWER(REPLACE(cn.campaign_name, '+', ' '))
+          AND (
+            LOWER(REPLACE(c.first_source_data_1, '+', ' ')) = LOWER(REPLACE(cn.campaign_name, '+', ' '))
+            OR EXISTS (
+              SELECT 1 FROM aliases a
+              WHERE a.ga_name = cn.campaign_name
+                AND a.hs_name = LOWER(REPLACE(c.first_source_data_1, '+', ' '))
+            )
+          )
           AND c.created_at >= CURRENT_DATE - INTERVAL '90 days'
         )
         LEFT JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
         GROUP BY cn.campaign_id, cn.campaign_name
         ORDER BY revenue_won DESC, leads DESC
-      `)).rows : [];
+      `, [aliasHsNames, aliasGaNames])).rows : [];
       ctx.json({ rows });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;

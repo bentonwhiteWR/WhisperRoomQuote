@@ -6,19 +6,27 @@
 // Routes handled here:
 //   GET  /marketing                       → the dashboard HTML page
 //   GET  /api/marketing/status            → sync status + env readiness
-//   POST /api/marketing/sync              → kick off a Google Ads pull
-//   GET  /api/marketing/campaigns         → all rows from marketing_campaigns
-//   GET  /api/marketing/keywords          → all rows from marketing_keywords
-//   GET  /api/marketing/search-terms      → all rows from marketing_search_terms
+//   POST /api/marketing/sync              → kick off a Google Ads or HubSpot pull
+//   GET  /api/marketing/campaigns                → all rows from marketing_campaigns
+//   GET  /api/marketing/keywords                 → all rows from marketing_keywords
+//   GET  /api/marketing/search-terms             → all rows from marketing_search_terms
+//   GET  /api/marketing/campaign-attribution     → per-campaign leads/deals/revenue (v1.46.1)
+//   GET  /api/marketing/attribution-coverage     → % of contacts + deals + revenue attributable (v1.46.1)
+//
+// HubSpot ingestion (v1.44.0) shares the same /api/marketing/sync POST
+// endpoint — pass `report: 'hubspot_contacts' | 'hubspot_deals' | 'hubspot_all'`
+// to pull from HubSpot instead of Google Ads. The default `'all'` runs
+// everything (3 Google Ads reports + 2 HubSpot objects).
 //
 // Access: temporarily open to all authenticated reps while the allowlist
 // hydration is being sorted out (v1.42.0 — Gabe was being rejected by the
 // ownerId check). Re-lock by setting MARKETING_ALLOWLIST below to a non-
 // empty array; an empty array disables the check.
 
-const fs   = require('fs');
-const path = require('path');
-const etl  = require('./google-ads-etl');
+const fs    = require('fs');
+const path  = require('path');
+const etl   = require('./google-ads-etl');
+const hsEtl = require('./hubspot-etl');
 
 // Empty array = open to everyone (allowlist disabled). Populate with
 // ownerIds to re-lock — e.g. ['36303670', '36320208'] for Benton + Gabe.
@@ -78,12 +86,17 @@ async function handle(req, res, ctx) {
   // ── GET /api/marketing/status ─────────────────────────────────────
   // Returns: env-readiness flag + last-sync timestamp per report type.
   // Used by the dashboard header to show "Last synced 5 min ago" etc.
+  // The top-level envReady / missingEnv keys reflect Google Ads readiness
+  // only (preserves existing dashboard behavior — Sync All button gates on
+  // Google). HubSpot readiness is reported separately as `hubspot.envReady`
+  // so the dashboard can show it without blocking the Google sync.
   if (pathname === '/api/marketing/status' && req.method === 'GET') {
     try {
       const syncs = ctx.db ? (await ctx.db.query('SELECT * FROM marketing_syncs')).rows : [];
       ctx.json({
         envReady:    etl.envReady(),
         missingEnv:  etl.missingEnvVars(),
+        hubspot:     { envReady: hsEtl.envReady(), missingEnv: hsEtl.missingEnvVars() },
         allowlist:   MARKETING_ALLOWLIST,
         syncs,
       });
@@ -92,9 +105,16 @@ async function handle(req, res, ctx) {
   }
 
   // ── POST /api/marketing/sync ──────────────────────────────────────
-  // Body: { report: 'campaigns' | 'keywords' | 'search_terms' | 'all',
-  //         daysBack: 90 (optional) }
+  // Body: { report: 'campaigns' | 'keywords' | 'search_terms'
+  //               | 'hubspot_contacts' | 'hubspot_deals' | 'hubspot_all'
+  //               | 'all',
+  //         daysBack: number (optional) }
   // Triggers the corresponding ETL function(s). Returns the result.
+  //
+  // `daysBack` semantics differ by ETL family: Google Ads defaults to 90
+  // (daily aggregates, 90d window matches the dashboard view); HubSpot
+  // defaults to 365 (we want long lookback for slow-closing deals + first-
+  // touch contacts). The `'all'` shortcut uses each family's default.
   if (pathname === '/api/marketing/sync' && req.method === 'POST') {
     let body = {};
     try {
@@ -107,19 +127,35 @@ async function handle(req, res, ctx) {
       body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
     } catch(e) {}
 
-    const report   = body.report   || 'campaigns';
-    const daysBack = parseInt(body.daysBack) || 90;
+    const report   = body.report || 'campaigns';
+    const daysBack = body.daysBack != null ? parseInt(body.daysBack) : null;
+    const gaDays   = daysBack != null ? daysBack : 90;
+    const hsDays   = daysBack != null ? daysBack : 365;
     try {
       let result;
-      if (report === 'campaigns')         result = await etl.syncCampaigns({ db: ctx.db, daysBack });
-      else if (report === 'keywords')     result = await etl.syncKeywords({ db: ctx.db, daysBack });
-      else if (report === 'search_terms') result = await etl.syncSearchTerms({ db: ctx.db, daysBack });
+      if      (report === 'campaigns')        result = await etl.syncCampaigns({   db: ctx.db, daysBack: gaDays });
+      else if (report === 'keywords')         result = await etl.syncKeywords({    db: ctx.db, daysBack: gaDays });
+      else if (report === 'search_terms')     result = await etl.syncSearchTerms({ db: ctx.db, daysBack: gaDays });
+      else if (report === 'hubspot_contacts') result = await hsEtl.syncHubSpotContacts({ db: ctx.db, daysBack: hsDays });
+      else if (report === 'hubspot_deals')    result = await hsEtl.syncHubSpotDeals({    db: ctx.db, daysBack: hsDays });
+      else if (report === 'hubspot_all') {
+        const a = await hsEtl.syncHubSpotContacts({ db: ctx.db, daysBack: hsDays });
+        const b = await hsEtl.syncHubSpotDeals({    db: ctx.db, daysBack: hsDays });
+        result = { ok: a.ok && b.ok, parts: [a, b] };
+      }
       else if (report === 'all') {
-        const a = await etl.syncCampaigns({ db: ctx.db, daysBack });
-        const b = await etl.syncKeywords({ db: ctx.db, daysBack });
-        const c = await etl.syncSearchTerms({ db: ctx.db, daysBack });
-        result = { ok: a.ok && b.ok && c.ok, parts: [a, b, c] };
-      } else {
+        // Full refresh: Google Ads (3) + HubSpot (2). Run sequentially to
+        // avoid concurrent writes to marketing_syncs and to keep request
+        // memory bounded. Each runner records its own error to marketing_syncs
+        // even when failing, so a partial run still leaves useful state.
+        const a = await etl.syncCampaigns({       db: ctx.db, daysBack: gaDays });
+        const b = await etl.syncKeywords({        db: ctx.db, daysBack: gaDays });
+        const c = await etl.syncSearchTerms({     db: ctx.db, daysBack: gaDays });
+        const d = await hsEtl.syncHubSpotContacts({ db: ctx.db, daysBack: hsDays });
+        const e = await hsEtl.syncHubSpotDeals({    db: ctx.db, daysBack: hsDays });
+        result = { ok: a.ok && b.ok && c.ok && d.ok && e.ok, parts: [a, b, c, d, e] };
+      }
+      else {
         ctx.json({ ok: false, error: `Unknown report type: ${report}` }, 400);
         return true;
       }
@@ -180,6 +216,99 @@ async function handle(req, res, ctx) {
       `)).rows : [];
       ctx.json({ rows });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/campaign-attribution ───────────────────────
+  // First-touch campaign attribution (v1.46.1). For each Google Ads
+  // campaign active in the last 90 days, count attributed leads (HubSpot
+  // contacts whose first-touch was that campaign) and their deals (open
+  // / won / lost) + closed-won revenue.
+  //
+  // Attribution join: contact.first_converting_campaign OR
+  // contact.first_source_data_2 (Google Ads campaign name when
+  // first_source = PAID_SEARCH and first_source_data_1 = google).
+  // Both checked because HubSpot populates them inconsistently — the
+  // first is HubSpot's curated "what was the converting campaign,"
+  // the second is the raw drill-down. Exact name match; if WhisperRoom's
+  // UTM tagging diverges from campaign names, coverage drops and the
+  // attribution-coverage panel surfaces the gap.
+  //
+  // Single-touch only — we don't have full event/session history. This
+  // means our `leads` count will be LOWER than HubSpot's "All ad
+  // interactions" Ads view (which is multi-touch). Compare against
+  // HubSpot's "First ad interaction" report for apples-to-apples.
+  //
+  // Deal join: contact's primary associated contact link, denormalized
+  // onto marketing_hubspot_deals.primary_contact_id by the deal sync.
+  // Deals are NOT filtered by date — if a 60-day-old contact closed a
+  // deal today, that deal still attributes to their first-touch campaign.
+  if (pathname === '/api/marketing/campaign-attribution' && req.method === 'GET') {
+    try {
+      const rows = ctx.db ? (await ctx.db.query(`
+        WITH campaign_names AS (
+          SELECT DISTINCT campaign_id, campaign_name
+          FROM marketing_campaigns
+          WHERE date >= CURRENT_DATE - INTERVAL '90 days'
+            AND campaign_name IS NOT NULL
+        )
+        SELECT
+          cn.campaign_id,
+          cn.campaign_name,
+          COUNT(DISTINCT c.contact_id)                                                            AS leads,
+          COUNT(DISTINCT d.deal_id)                                                               AS deals_total,
+          COUNT(DISTINCT CASE WHEN d.is_closed_won  THEN d.deal_id END)                           AS deals_won,
+          COUNT(DISTINCT CASE WHEN d.is_closed_lost THEN d.deal_id END)                           AS deals_lost,
+          COUNT(DISTINCT CASE WHEN d.deal_id IS NOT NULL AND NOT d.is_closed THEN d.deal_id END)  AS deals_open,
+          COALESCE(SUM(CASE WHEN d.is_closed_won THEN d.amount ELSE 0 END), 0)::float             AS revenue_won
+        FROM campaign_names cn
+        LEFT JOIN marketing_hubspot_contacts c ON (
+          (c.first_converting_campaign = cn.campaign_name OR c.first_source_data_2 = cn.campaign_name)
+          AND c.first_source        = 'PAID_SEARCH'
+          AND c.first_source_data_1 = 'google'
+          AND c.created_at >= CURRENT_DATE - INTERVAL '90 days'
+        )
+        LEFT JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
+        GROUP BY cn.campaign_id, cn.campaign_name
+        ORDER BY revenue_won DESC, leads DESC
+      `)).rows : [];
+      ctx.json({ rows });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/attribution-coverage ───────────────────────
+  // The "trust thermometer" — what fraction of recent closed-won deals
+  // and recent contacts are actually attributable to a known marketing
+  // source. Low numbers mean the dashboard's attribution-based metrics
+  // (revenue, true ROAS, etc.) reflect only a slice of the real picture.
+  if (pathname === '/api/marketing/attribution-coverage' && req.method === 'GET') {
+    try {
+      const r = ctx.db ? (await ctx.db.query(`
+        SELECT
+          (SELECT COUNT(*) FROM marketing_hubspot_contacts
+             WHERE created_at >= CURRENT_DATE - INTERVAL '90 days')                                                  AS contacts_total,
+          (SELECT COUNT(*) FROM marketing_hubspot_contacts
+             WHERE created_at >= CURRENT_DATE - INTERVAL '90 days'
+               AND (first_source IS NOT NULL OR gclid IS NOT NULL))                                                  AS contacts_with_source,
+          (SELECT COUNT(*) FROM marketing_hubspot_contacts
+             WHERE created_at >= CURRENT_DATE - INTERVAL '90 days'
+               AND gclid IS NOT NULL)                                                                                AS contacts_with_gclid,
+          (SELECT COUNT(*) FROM marketing_hubspot_deals
+             WHERE created_at >= CURRENT_DATE - INTERVAL '90 days' AND is_closed_won)                                AS deals_won_total,
+          (SELECT COUNT(*) FROM marketing_hubspot_deals d
+             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.created_at >= CURRENT_DATE - INTERVAL '90 days' AND d.is_closed_won
+               AND (c.first_source IS NOT NULL OR c.gclid IS NOT NULL))                                              AS deals_won_attributed,
+          (SELECT COALESCE(SUM(amount), 0)::float FROM marketing_hubspot_deals
+             WHERE created_at >= CURRENT_DATE - INTERVAL '90 days' AND is_closed_won)                                AS revenue_total,
+          (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
+             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.created_at >= CURRENT_DATE - INTERVAL '90 days' AND d.is_closed_won
+               AND (c.first_source IS NOT NULL OR c.gclid IS NOT NULL))                                              AS revenue_attributed
+      `)).rows[0] : {};
+      ctx.json(r || {});
+    } catch(e) { ctx.json({ error: e.message }, 500); }
     return true;
   }
 

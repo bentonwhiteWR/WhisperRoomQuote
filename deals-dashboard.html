@@ -2893,7 +2893,7 @@ function openShippingNotifyEmail(ctx) {
   ].filter(l => l !== null).join('\n');
 
   const ccList = ['accounting@whisperroom.com', 'bentonwhite@whisperroom.com'];
-  if (garyFlag) ccList.push('gamos@whisperroom.com');
+  if (garyFlag) ccList.push('gamos@whisperroom.com', 'jfletcher@whisperroom.com');
   const mailto = `mailto:shipping@whisperroom.com?cc=${ccList.join(';')}&subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
 
   console.log('[deal-hub process-order] mailto prepared, length=', mailto.length, 'opening...');

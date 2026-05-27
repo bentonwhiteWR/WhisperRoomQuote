@@ -61,10 +61,80 @@ CREATE INDEX IF NOT EXISTS idx_marketing_search_terms_date ON marketing_search_t
 -- many rows came back, and any error. Powers the "Last synced X
 -- minutes ago" UI on the dashboard.
 CREATE TABLE IF NOT EXISTS marketing_syncs (
-  report_type    TEXT PRIMARY KEY,   -- 'campaigns' | 'keywords' | 'search_terms'
+  report_type    TEXT PRIMARY KEY,   -- 'campaigns' | 'keywords' | 'search_terms' | 'hubspot_contacts' | 'hubspot_deals'
   last_synced_at TIMESTAMPTZ,
   rows_synced    INTEGER,
   date_from      DATE,
   date_to        DATE,
   error          TEXT
 );
+
+-- HubSpot contacts mirror — minimum fields needed for marketing
+-- attribution + reporting. Pulled from /crm/v3/objects/contacts/search
+-- with `lastmodifieddate >= sinceDate` filter (incremental). gclid lives
+-- in the standard `hs_google_click_id` property when HubSpot auto-captures
+-- it from a tracked landing page. First-touch / latest-touch source pairs
+-- come from `hs_analytics_*` and `hs_latest_source*` — both pulled so the
+-- attribution layer can choose its model per query without re-syncing.
+CREATE TABLE IF NOT EXISTS marketing_hubspot_contacts (
+  contact_id                BIGINT PRIMARY KEY,
+  email                     TEXT,
+  -- Click IDs (paid attribution)
+  gclid                     TEXT,         -- hs_google_click_id
+  fbclid                    TEXT,         -- hs_facebook_click_id (future expansion)
+  -- First-touch attribution
+  first_source              TEXT,         -- hs_analytics_source              (e.g. "PAID_SEARCH")
+  first_source_data_1       TEXT,         -- hs_analytics_source_data_1       (e.g. "google")
+  first_source_data_2       TEXT,         -- hs_analytics_source_data_2       (often campaign name or gclid)
+  first_converting_campaign TEXT,         -- hs_analytics_first_touch_converting_campaign
+  -- Latest-touch attribution
+  latest_source             TEXT,         -- hs_latest_source
+  latest_source_data_1      TEXT,         -- hs_latest_source_data_1
+  latest_source_data_2      TEXT,         -- hs_latest_source_data_2
+  latest_source_at          TIMESTAMPTZ,  -- hs_latest_source_timestamp
+  -- Lifecycle
+  lifecycle_stage           TEXT,         -- lifecyclestage (subscriber/lead/MQL/SQL/opportunity/customer/...)
+  lead_status               TEXT,         -- hs_lead_status
+  -- Timestamps
+  created_at                TIMESTAMPTZ,  -- createdate
+  last_modified_at          TIMESTAMPTZ,  -- lastmodifieddate
+  synced_at                 TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_mkt_hs_contacts_gclid   ON marketing_hubspot_contacts(gclid) WHERE gclid IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mkt_hs_contacts_email   ON marketing_hubspot_contacts(email);
+CREATE INDEX IF NOT EXISTS idx_mkt_hs_contacts_created ON marketing_hubspot_contacts(created_at);
+
+-- HubSpot deals mirror — Sales Pipeline only (pipeline ID = 'default';
+-- Test + Ecommerce pipelines are excluded so marketing reporting stays
+-- clean). primary_contact_id is resolved per-deal via the v4 associations
+-- API and stored denormalized so attribution joins are a single lookup.
+-- Foreign key is DEFERRABLE so contacts/deals sync order doesn't matter
+-- (deal can be inserted before its contact lands in the next sync run).
+CREATE TABLE IF NOT EXISTS marketing_hubspot_deals (
+  deal_id            BIGINT PRIMARY KEY,
+  deal_name          TEXT,
+  pipeline           TEXT,           -- 'default' = Sales Pipeline
+  dealstage          TEXT,
+  amount             NUMERIC(12,2),  -- amount_in_home_currency (USD)
+  -- Status flags
+  is_closed          BOOLEAN,
+  is_closed_won      BOOLEAN,
+  is_closed_lost     BOOLEAN,
+  -- Timestamps
+  created_at         TIMESTAMPTZ,    -- createdate
+  closed_at          TIMESTAMPTZ,    -- closedate (expected for open, actual for closed)
+  days_to_close      INTEGER,
+  last_modified_at   TIMESTAMPTZ,
+  -- Reasons (where filled)
+  closed_won_reason  TEXT,
+  closed_lost_reason TEXT,
+  -- Attribution join key — resolved via /crm/v4/objects/deal/{id}/associations/contact,
+  -- preferring association labels matching /primary/i, falling back to the first
+  -- associated contact. NULL for deals with no associated contact.
+  primary_contact_id BIGINT,
+  synced_at          TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_mkt_hs_deals_contact  ON marketing_hubspot_deals(primary_contact_id);
+CREATE INDEX IF NOT EXISTS idx_mkt_hs_deals_pipeline ON marketing_hubspot_deals(pipeline);
+CREATE INDEX IF NOT EXISTS idx_mkt_hs_deals_created  ON marketing_hubspot_deals(created_at);
+CREATE INDEX IF NOT EXISTS idx_mkt_hs_deals_closed   ON marketing_hubspot_deals(closed_at) WHERE closed_at IS NOT NULL;

@@ -51,6 +51,43 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.46.2', date:'May 27, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Process Order email: CC Josh on custom-build orders.** When an order has the CUST badge (custom wall component, hole, or other custom work — flagged by `garyFlag`), the Process Order email already CCs `gamos@whisperroom.com`; now also CCs `jfletcher@whisperroom.com` (Josh) so he sees the same context Gary does. Applied in both surfaces that trigger Process Order — the Quote Builder (`quote-builder.html`) and the Deal Hub overlay (`deals-dashboard.html`). Non-CUST orders are unchanged.'},
+      ]
+    },
+    {
+      v:'1.46.1', date:'May 26, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing dashboard — closed-loop attribution shipped + visual polish.** Two new endpoints: `GET /api/marketing/campaign-attribution` joins Google Ads campaigns to HubSpot contacts to HubSpot deals (first-touch attribution via `first_converting_campaign` then `first_source_data_2`, filtered to PAID_SEARCH / google sources, deals not date-filtered so old contacts still attribute when they close). `GET /api/marketing/attribution-coverage` returns the trust thermometer — what % of recent closed-won deals + revenue + contacts have a known marketing source. Campaign table extended with four new columns (Leads / Deals / Revenue / True ROAS) merged in client-side; True ROAS rendered as a color-coded pill (green ≥ 3x, yellow 1–3x, red < 1x) for instant scanning. New attribution coverage panel above the KPI cards (three progress bars: deals attributed, revenue attributed, contacts with a source) with the same color rule (green ≥ 60%, yellow 30–60%, red < 30%). Two new KPI cards (Closed Revenue from real HubSpot deals + True ROAS vs Google Ads spend) added alongside the existing GA4-estimated value/ROAS — both shown so you can compare GA4-assumed to actual-revenue. Single-touch first-touch only (multi-touch would need full event history we don\'t pull); match HubSpot Ads view to "First ad interaction" for apples-to-apples validation. Coverage is bounded by attribution match quality (exact name match on `first_converting_campaign` / `first_source_data_2`) — the coverage panel surfaces gaps.'},
+        {t:'add', d:'**HubSpot sync — per-bucket progress logging.** Sync runners now `console.log` per bucket completion (`[hubspot-etl] contacts 3/12 ...: N rows in T s · total=X`) so Railway logs show real-time progress instead of silence. Also writes intermediate `marketing_syncs` rows after each bucket, so the dashboard status count climbs in real time during long syncs rather than staying frozen until the entire multi-hour sync finishes. Addresses the v1.46.0 UX gap where the user had no way to tell if a sync was making progress vs hung.'},
+      ]
+    },
+    {
+      v:'1.46.0', date:'May 26, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing dashboard — HubSpot sync now date-bucketed for complete coverage.** v1.44.0 hit HubSpot\'s hard 10,000-result cap on the search API and silently truncated — and because the sort was ascending, we got the *oldest* 10k records and missed the most-recently-modified (i.e. the most attribution-relevant) ones. The fix splits the 365-day lookback into ~30-day buckets (12 per year) and runs each as its own search query — each bucket has its own 10k headroom, so coverage now scales linearly with the lookback window. Real example: WhisperRoom has ~26.6k contacts modified in the last year — under v1.44.0 we got 10k (oldest); v1.46.0 gets all 26.6k across 12 buckets. Sort is now DESCENDING within each bucket, and buckets run newest-first, so the most useful data lands immediately even if the request times out partway through. Bucket errors are recorded but don\'t abort the remaining buckets (partial coverage > no coverage). If any individual bucket ever hits 10k (a viral month, etc.), the sync surfaces a warning via `marketing_syncs.error` so the dashboard reflects the truncation. Applies to both contacts and Sales-Pipeline deals.'},
+      ]
+    },
+    {
+      v:'1.45.0', date:'May 26, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Reconcile: refunded deals now included + editable HubSpot deal popup.** Two related fixes on the Accounting → Reconcile page. (1) The HubSpot deal fetch was filtering to `dealstage IN [closedwon, 845719]` only, so any deal moved to the Refund stage (`895819`) never appeared in the reconciler — refunded deals can now be matched against their QB refund_receipts. (2) Clicking a HubSpot row in the reconcile table previously opened a read-only detail popup; the six HubSpot deal properties (Date, Ship State, Freight, Tax Rate, Tax $, Total) are now editable inline with a Save button. Save PATCHes the deal in HubSpot and updates the reconciler table in-place without a full reload. Subtotal + Discount remain read-only because they come from the local quote snapshot rather than the HubSpot deal record.'},
+      ]
+    },
+    {
+      v:'1.44.0', date:'May 26, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing dashboard — HubSpot ingestion (first leg of closed-loop attribution).** New `marketing/hubspot-etl.js` pulls HubSpot contacts and Sales-Pipeline deals into two new `marketing_hubspot_*` Postgres tables. Contacts carry the gclid (`hs_google_click_id`), both first-touch (`hs_analytics_*`) and latest-touch (`hs_latest_source*`) attribution pairs, plus lifecycle/lead-status — enough for the attribution layer to choose its model per query without re-syncing. Deals carry stage, USD amount, close date, won/lost flags, days-to-close, and a denormalized `primary_contact_id` resolved via the v4 associations API (preferring labels matching /primary/i, falling back to first associated contact). Sales Pipeline only (`pipeline = "default"`); Test + Ecommerce pipelines excluded as noise. Incremental sync via `hs_lastmodifieddate` filter + cursor pagination, default 365-day lookback for first sync. The existing `Sync All` button now refreshes everything (3 Google Ads reports + 2 HubSpot objects); new explicit report types `hubspot_contacts` / `hubspot_deals` / `hubspot_all` available on the `/api/marketing/sync` POST for targeted refresh. Status panel surfaces HubSpot sync timestamps + row counts alongside Google Ads — does NOT block the Sync All button if `HS_TOKEN` is missing (Google Ads can still sync independently). Auth reuses the existing `HS_TOKEN` Railway env var. No new npm deps — uses Node built-in `https`. **No attribution joins or dashboard view changes yet** — that\'s the next PR, once the data is live and Gabe has eyeballed the raw ingestion.'},
+      ]
+    },
+    {
+      v:'1.43.0', date:'May 26, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing dashboard — keyword + search-term aggregation views.** The two TODO stubs below the campaigns table (left over from v1.39.0 scaffolding) are now real aggregation tables following the `renderCampaigns` pattern. Keywords aggregate by `keyword_id` and show keyword text, match type, spend, clicks, CPC, conversions, CPA. Search terms aggregate by normalized (lowercased, trimmed) search term and show the same metrics minus match type. Both sort by spend descending and cap the display at the top 200 by spend (full row count still in the section header) — keeps the page responsive when a 90-day pull returns thousands of distinct keywords. ROAS isn\'t shown for either since `conversion_value` is a campaign-level metric in Google Ads and isn\'t pulled by the `keyword_view` or `search_term_view` reports.'},
+      ]
+    },
+    {
       v:'1.42.3', date:'May 26, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Bot assistant: catalog PDF URL updated.** The three catalog links in `assistant/system-prompt.txt` (Discovery lead intro, Contact Lead catalog block, vague-Discovery fallback) pointed to the old hyphenated filename. Swapped to the new URL — same HubSpot file host, just no hyphen.'},

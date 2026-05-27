@@ -326,17 +326,18 @@ async function loadAllTables() {
   // v1.46.1 — also fetch attribution data + coverage in parallel. Both
   // are resilient (return empty/null on error) so an attribution endpoint
   // outage doesn't black out the Google Ads view.
-  const [camp, kw, st, attr, cov] = await Promise.all([
-    fetch('/api/marketing/campaigns',             { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/keywords',              { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/search-terms',          { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/campaign-attribution',  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/attribution-coverage',  { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
+  const [camp, kw, st, attr, stAttr, cov] = await Promise.all([
+    fetch('/api/marketing/campaigns',                 { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/keywords',                  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/search-terms',              { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/campaign-attribution',      { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/search-term-attribution',   { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/attribution-coverage',      { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
   ]);
   renderCoverage(cov || {});
   renderCampaigns(camp.rows || [], attr.rows || []);
   renderKeywords(kw.rows || []);
-  renderSearchTerms(st.rows || []);
+  renderSearchTerms(st.rows || [], stAttr.rows || []);
   renderSummary(camp.rows || [], cov || {});
 }
 
@@ -535,7 +536,10 @@ function renderKeywords(rows) {
 // Search terms also lack conversion_value. Aggregated by normalized (lowercased,
 // trimmed) search_term to dedupe casing variants — "soundproof booth" and
 // "Soundproof Booth" are the same intent. Cap + meta same as keywords.
-function renderSearchTerms(rows) {
+// v1.46.9: closed-loop attribution columns merged in from
+// /api/marketing/search-term-attribution (HubSpot first_source_data_2
+// holds the literal typed term — discovered in the 2026-05-27 diagnostic).
+function renderSearchTerms(rows, attrRows) {
   document.getElementById('searchTermsMeta').textContent = rows.length ? `${fmtInt(rows.length)} rows` : '';
   const body = document.getElementById('searchTermsBody');
   if (!rows.length) { body.innerHTML = '<div class="empty">No data yet.</div>'; return; }
@@ -549,6 +553,21 @@ function renderSearchTerms(rows) {
     agg[k].cost        += parseFloat(r.cost_usd) || 0;
     agg[k].conversions += parseFloat(r.conversions) || 0;
   });
+
+  // Merge attribution by normalized term key. The endpoint already
+  // returns lowercased+trimmed terms, matching our aggregation key.
+  const attrByTerm = {};
+  (attrRows || []).forEach(a => {
+    if (a.search_term) attrByTerm[a.search_term] = a;
+  });
+  Object.values(agg).forEach(r => {
+    const a = attrByTerm[r.term] || null;
+    r.leads      = a ? parseInt(a.leads)         || 0 : null;
+    r.dealsWon   = a ? parseInt(a.deals_won)     || 0 : null;
+    r.dealsTotal = a ? parseInt(a.deals_total)   || 0 : null;
+    r.revWon     = a ? parseFloat(a.revenue_won) || 0 : null;
+  });
+
   const all = Object.values(agg).sort((a, b) => b.cost - a.cost);
   const list = all.slice(0, 200);
   const moreNote = all.length > list.length ? ` <span style="color:var(--muted);font-size:11px;font-weight:500;text-transform:none;letter-spacing:0">(top ${list.length} of ${fmtInt(all.length)} by spend)</span>` : '';
@@ -558,6 +577,10 @@ function renderSearchTerms(rows) {
         <th>Search Term${moreNote}</th>
         <th class="num">Spend</th><th class="num">Clicks</th><th class="num">CPC</th>
         <th class="num">Conv.</th><th class="num">CPA</th>
+        <th class="num attr-col">Leads</th>
+        <th class="num attr-col">Deals</th>
+        <th class="num attr-col">Revenue</th>
+        <th class="num attr-col" title="True ROAS = HubSpot won revenue / search-term spend">True ROAS</th>
       </tr></thead>
       <tbody>
         ${list.map(r => `<tr>
@@ -567,6 +590,10 @@ function renderSearchTerms(rows) {
           <td class="num">${r.clicks ? fmtUSD(r.cost / r.clicks) : '—'}</td>
           <td class="num">${fmtNum(r.conversions)}</td>
           <td class="num">${r.conversions ? fmtUSD(r.cost / r.conversions) : '—'}</td>
+          <td class="num attr-col">${r.leads == null ? '—' : fmtInt(r.leads)}</td>
+          <td class="num attr-col">${r.dealsWon == null ? '—' : (r.dealsWon || (r.dealsTotal ? '0 / ' + fmtInt(r.dealsTotal) : '0'))}</td>
+          <td class="num attr-col">${r.revWon == null ? '—' : fmtUSD(r.revWon)}</td>
+          <td class="num attr-col">${roasPill(r.revWon, r.cost)}</td>
         </tr>`).join('')}
       </tbody>
     </table>`;

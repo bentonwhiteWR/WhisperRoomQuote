@@ -426,6 +426,54 @@ async function handle(req, res, ctx) {
     return true;
   }
 
+  // ── GET /api/marketing/search-term-attribution ────────────────────
+  // Per-search-term first-touch attribution (v1.46.9). The 2026-05-27
+  // diagnostic proved HubSpot stores the LITERAL SEARCH TERM users typed
+  // in first_source_data_2 (previously assumed to be a gclid). That makes
+  // search-term-level closed-loop attribution trivial — just JOIN on the
+  // normalized term.
+  //
+  // Match: case-insensitive + trim on both sides. Mirrors campaign-
+  // attribution's shape so the frontend can merge attribution data onto
+  // the existing search-terms table the same way it does for campaigns.
+  //
+  // Aliases are NOT applied here — search terms are user-typed strings,
+  // not renamed marketing assets, so there's nothing to alias. PAID_SEARCH
+  // only (organic-search keyword attribution would need referrer parsing
+  // on the HubSpot side, which we don't pull).
+  if (pathname === '/api/marketing/search-term-attribution' && req.method === 'GET') {
+    try {
+      const rows = ctx.db ? (await ctx.db.query(`
+        WITH search_terms AS (
+          SELECT DISTINCT LOWER(TRIM(search_term)) AS search_term
+          FROM marketing_search_terms
+          WHERE date >= CURRENT_DATE - INTERVAL '90 days'
+            AND search_term IS NOT NULL
+            AND TRIM(search_term) <> ''
+        )
+        SELECT
+          st.search_term,
+          COUNT(DISTINCT c.contact_id)                                                            AS leads,
+          COUNT(DISTINCT d.deal_id)                                                               AS deals_total,
+          COUNT(DISTINCT CASE WHEN d.is_closed_won  THEN d.deal_id END)                           AS deals_won,
+          COUNT(DISTINCT CASE WHEN d.is_closed_lost THEN d.deal_id END)                           AS deals_lost,
+          COUNT(DISTINCT CASE WHEN d.deal_id IS NOT NULL AND NOT d.is_closed THEN d.deal_id END)  AS deals_open,
+          COALESCE(SUM(CASE WHEN d.is_closed_won THEN d.amount ELSE 0 END), 0)::float             AS revenue_won
+        FROM search_terms st
+        LEFT JOIN marketing_hubspot_contacts c ON (
+          c.first_source = 'PAID_SEARCH'
+          AND LOWER(TRIM(c.first_source_data_2)) = st.search_term
+          AND c.created_at >= CURRENT_DATE - INTERVAL '90 days'
+        )
+        LEFT JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
+        GROUP BY st.search_term
+        ORDER BY revenue_won DESC, leads DESC
+      `)).rows : [];
+      ctx.json({ rows });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
   // ── GET /api/marketing/attribution-coverage ───────────────────────
   // The "trust thermometer" + paid-revenue numbers. v1.46.7 splits the
   // single `revenue_attributed` into two paid-attribution definitions so

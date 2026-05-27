@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.46.9', date:'May 27, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing — search-term-level closed-loop attribution.** The 2026-05-27 diagnostic revealed HubSpot stores the literal search term users typed in `first_source_data_2` (e.g. "sound booth", "vocal booth", "audiology booth") — previously thought to be a gclid. That unlocks per-keyword closed-loop ROAS for free: just JOIN on the normalized term. New endpoint `/api/marketing/search-term-attribution` returns leads / deals / revenue / True ROAS per search term, mirroring `/api/marketing/campaign-attribution`. Search Terms table on `marketing-dashboard.html` now shows four new columns alongside the existing Spend / Clicks / CPC / Conv. / CPA — same color-coded True ROAS pill as the Campaigns table. PAID_SEARCH only (organic-search keyword attribution would need referrer parsing on the HubSpot side, which we don\'t pull). No aliases applied — search terms are user-typed strings, nothing to alias.'},
+      ]
+    },
+    {
       v:'1.46.8', date:'May 27, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Marketing — recover $17.3k of unattributed paid spend via campaign alias map.** v1.46.7 fixed the JOIN but left two big-spend campaigns showing $0 attribution: `**LP General (US/CAN) - Combined` ($9.5k 90-day spend) and `**LP Testing (US/CAN) - Combined` ($7.8k). Root cause: Google Ads renamed the A/B variants into a single "Combined" parent, but HubSpot retains the campaign name at first touch — so historical contacts still carry `**lp general (us/can) - b` and `**lp testing (us/can) - a`. Added `HUBSPOT_CAMPAIGN_ALIASES` map at the top of `marketing/router.js` (2 entries today, extend as more campaigns rename); injected into the campaign-attribution JOIN via `unnest($1::text[], $2::text[])` CTE so the list stays in JS and the SQL stays generic. Expected recovery: ~514 historical contacts now route to the right campaign, unlocking visibility on whether those two campaigns are actually profitable.'},

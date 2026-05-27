@@ -51,6 +51,31 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.46.10', date:'May 27, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Audimute PO header now uses the WhisperRoom SVG logo.** The supplier PO page (`/po/:poNumber`) was using a text-styled "WhisperRoom" header element; swapped it for the same inline SVG logo the quote + invoice pages use. The `.logo-img` styling was already present in the PO template (40px desktop / 28px mobile), just no `<img>` element was being rendered. No other PO content changed.'},
+      ]
+    },
+    {
+      v:'1.46.9', date:'May 27, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing — search-term-level closed-loop attribution.** The 2026-05-27 diagnostic revealed HubSpot stores the literal search term users typed in `first_source_data_2` (e.g. "sound booth", "vocal booth", "audiology booth") — previously thought to be a gclid. That unlocks per-keyword closed-loop ROAS for free: just JOIN on the normalized term. New endpoint `/api/marketing/search-term-attribution` returns leads / deals / revenue / True ROAS per search term, mirroring `/api/marketing/campaign-attribution`. Search Terms table on `marketing-dashboard.html` now shows four new columns alongside the existing Spend / Clicks / CPC / Conv. / CPA — same color-coded True ROAS pill as the Campaigns table. PAID_SEARCH only (organic-search keyword attribution would need referrer parsing on the HubSpot side, which we don\'t pull). No aliases applied — search terms are user-typed strings, nothing to alias.'},
+      ]
+    },
+    {
+      v:'1.46.8', date:'May 27, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Marketing — recover $17.3k of unattributed paid spend via campaign alias map.** v1.46.7 fixed the JOIN but left two big-spend campaigns showing $0 attribution: `**LP General (US/CAN) - Combined` ($9.5k 90-day spend) and `**LP Testing (US/CAN) - Combined` ($7.8k). Root cause: Google Ads renamed the A/B variants into a single "Combined" parent, but HubSpot retains the campaign name at first touch — so historical contacts still carry `**lp general (us/can) - b` and `**lp testing (us/can) - a`. Added `HUBSPOT_CAMPAIGN_ALIASES` map at the top of `marketing/router.js` (2 entries today, extend as more campaigns rename); injected into the campaign-attribution JOIN via `unnest($1::text[], $2::text[])` CTE so the list stays in JS and the SQL stays generic. Expected recovery: ~514 historical contacts now route to the right campaign, unlocking visibility on whether those two campaigns are actually profitable.'},
+      ]
+    },
+    {
+      v:'1.46.7', date:'May 27, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Marketing — per-campaign attribution columns now actually populate.** v1.46.1\'s JOIN matched HubSpot contacts to Google Ads campaigns via `first_source_data_2 = campaign_name` filtered to `first_source_data_1 = google` — but HubSpot doesn\'t store either of those fields the way we assumed. Diagnostic against 22,534 contacts proved: for PAID_SEARCH contacts, `first_source_data_1` holds the campaign name (lowercased) and `first_source_data_2` holds the search keyword. The `data_1 = google` filter was eliminating everything. Rewrote the JOIN to match `LOWER(REPLACE(first_source_data_1, \'+\', \' \'))` against the campaign name (handles case + the "+" vs space difference in "Office Booth - Privacy + Competitors"). Dropped the dead `first_converting_campaign` branch (only 25 of 22,534 contacts have it set). Known gap: campaigns renamed in Google Ads (A/B variants merged into "Combined") leave ~500 historical contacts unmatched — would need a manual mapping table to recover.'},
+        {t:'add', d:'**True ROAS split into First-Touch and Any-Touch.** Previous single ROAS card filtered on `first_source IS NOT NULL OR gclid IS NOT NULL` — but `first_source` is set on 100% of contacts, so it was effectively counting ALL revenue, not paid revenue. Headline 9.14x was misleading. Now two cards side by side: First-Touch (`first_source = PAID_SEARCH`, matches HubSpot\'s "First ad interaction" report — most conservative) and Any-Touch (`first_source = PAID_SEARCH OR gclid IS NOT NULL`, matches Google Ads\' default last-click attribution — catches customers who first found us via organic but did click an ad along the way). Showing both surfaces a strategic signal: if First-Touch < 1x but Any-Touch > 3x, paid is profitable as a closer, not as an acquisition channel. The gap between the two IS the information. Closed Revenue card now shows any-touch paid revenue (was: all-source revenue). New API fields on `/api/marketing/attribution-coverage`: `revenue_first_touch`, `deals_won_first_touch`, `revenue_any_touch`, `deals_won_any_touch`.'},
+      ]
+    },
+    {
       v:'1.46.6', date:'May 27, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Payment chip now reads HubSpot\'s actual funds-deposited date.** HubSpot exposes `hs_payout_date` on Commerce Payments — null until settlement completes, then populated with the real bank-deposit date (the "Funds deposited to account ****X" event in the HubSpot UI). We now pull this through the webhook + 30-min poll into a new `actual_payout_date` column on `deal_payment_status` and surface it as `actualPayoutDate` in the deal payment info. Chip priority order rewritten: (1) failed → red, (2) actualPayoutDate set → green "✓ Funds deposited", (3) card + succeeded → green "✓ CC Paid", (4) ACH + estimated payout date → yellow "ACH clearing · funds X", (5) ACH otherwise → yellow "ACH initiated". This replaces the v1.46.5 "past estimated date → green" heuristic — that was a workaround for not having the real signal, and would have flipped chips green prematurely when HubSpot hadn\'t yet confirmed deposit. Now the green chip only appears when HubSpot says funds are actually in the bank. DB: idempotent `ADD COLUMN IF NOT EXISTS actual_payout_date DATE` on `deal_payment_status`. Failure to populate (e.g. the column is null because the poll hasn\'t caught up) gracefully falls through to the yellow clearing state.'},

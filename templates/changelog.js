@@ -51,6 +51,32 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.46.6', date:'May 27, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Payment chip now reads HubSpot\'s actual funds-deposited date.** HubSpot exposes `hs_payout_date` on Commerce Payments — null until settlement completes, then populated with the real bank-deposit date (the "Funds deposited to account ****X" event in the HubSpot UI). We now pull this through the webhook + 30-min poll into a new `actual_payout_date` column on `deal_payment_status` and surface it as `actualPayoutDate` in the deal payment info. Chip priority order rewritten: (1) failed → red, (2) actualPayoutDate set → green "✓ Funds deposited", (3) card + succeeded → green "✓ CC Paid", (4) ACH + estimated payout date → yellow "ACH clearing · funds X", (5) ACH otherwise → yellow "ACH initiated". This replaces the v1.46.5 "past estimated date → green" heuristic — that was a workaround for not having the real signal, and would have flipped chips green prematurely when HubSpot hadn\'t yet confirmed deposit. Now the green chip only appears when HubSpot says funds are actually in the bank. DB: idempotent `ADD COLUMN IF NOT EXISTS actual_payout_date DATE` on `deal_payment_status`. Failure to populate (e.g. the column is null because the poll hasn\'t caught up) gracefully falls through to the yellow clearing state.'},
+      ]
+    },
+    {
+      v:'1.46.5', date:'May 27, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**ACH chip flips to green on the payout date, not when HubSpot says succeeded.** Previously the green "✓ Funds available" chip required `hs_latest_status === succeeded` AND past payout date. In practice HubSpot\'s status lags real bank availability by hours-to-days — the chip would stay yellow ("ACH clearing · funds 5/27") even after the funds actually hit our account. New rule: once we\'re past the estimated payout date and the payment isn\'t marked `failed`, treat funds as available. Failed always wins (red chip is checked first), so the safety property is preserved. Justification: HubSpot calibrates the estimated payout date to land AFTER the ACH return window, so absence of a `failed` flip by that date is a strong signal funds actually cleared.'},
+      ]
+    },
+    {
+      v:'1.46.4', date:'May 27, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Invoice cards mirror the deal-card payment chip.** When a HubSpot invoice is paid, the row in the right-side hub panel now shows the same processor chip the deal card already shows (`✓ CC Paid` / `💳 ACH clearing · funds 5/27` / `✓ Funds available` / `🚨 Payment failed`) instead of a generic green "✓ Paid" badge. Falls back to "✓ Paid" when there\'s no mirrored payment data (e.g. Stripe-paid invoices, which still also show the Stripe channel badge). Also dropped the redundant tiny "ACH"/"CC" badge that sat next to "Paid" — the new chip carries that info.'},
+        {t:'ui', d:'**Payment chip: bank name + last-4 dropped from all chip variants.** The `· Bank ...1234` suffix has been removed from every chip (`CC Paid`, `ACH clearing`, `Funds available`, `Payment failed`) on both deal cards and invoice rows. The full processor detail still lives in HubSpot if needed.'},
+        {t:'fix', d:'**CC Paid chip no longer requires last-4 to render.** The card-succeeded branch was gated on `pi.last4` — when HubSpot didn\'t populate `hs_payment_method_last_4` on a payment (some processors omit it), the chip was suppressed entirely even though the deal was clearly paid via card. Now any card + succeeded state surfaces the chip. Fixes the case observed earlier today where a CC-paid HubSpot invoice didn\'t show the green chip on its deal card.'},
+      ]
+    },
+    {
+      v:'1.46.3', date:'May 27, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Deal Hub: rep filter and deal-card clicks now feel instant.** Two perceived-latency wins on the board. (1) **Rep filter is now client-side.** Switching reps previously re-fetched `/api/deals/list` from the server, which round-tripped HubSpot search (~1–3s). All deals are already in the browser\'s `allDeals` array (loaded once on page open, refreshed every 60s), so the rep dropdown now filters that array in-memory via `applyFilter()` — zero network. The 60s auto-refresh pulls all reps so the cache stays comprehensive. (2) **Deal cards paint instantly from cache.** Clicking a card previously showed "Loading…" while waiting for `/api/deals/:id/hub` (~1–2s, 5 parallel HubSpot + DB queries). Now the right panel renders immediately from the cached board data (name, amount, stage, payment chips, pipeline, action buttons) — the quotes/invoices/orders sections show "Loading quotes…" until the fetch returns, then fill in. Race-condition guard added: if a user clicks deal B before A\'s fetch returns, A\'s response is discarded. Pure UI perf — no API or behavior changes.'},
+      ]
+    },
+    {
       v:'1.46.2', date:'May 27, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Process Order email: CC Josh on custom-build orders.** When an order has the CUST badge (custom wall component, hole, or other custom work — flagged by `garyFlag`), the Process Order email already CCs `gamos@whisperroom.com`; now also CCs `jfletcher@whisperroom.com` (Josh) so he sees the same context Gary does. Applied in both surfaces that trigger Process Order — the Quote Builder (`quote-builder.html`) and the Deal Hub overlay (`deals-dashboard.html`). Non-CUST orders are unchanged.'},

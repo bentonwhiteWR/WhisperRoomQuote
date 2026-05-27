@@ -508,8 +508,10 @@ function quoteExpiryChip(createdAt, accepted) {
 
 async function loadDeals() {
   try {
+    // Rep filtering happens client-side in applyFilter() — the initial
+    // fetch and 60s auto-refresh always pull all board-stage deals so
+    // switching reps is a no-network operation.
     const qs=new URLSearchParams({limit:500});
-    if(currentRepFilter) qs.set('rep',currentRepFilter);
     const res=await fetch('/api/deals/list?'+qs,{credentials:'include'});
     const data=await res.json();
     if(data.error) throw new Error(data.error);
@@ -539,7 +541,9 @@ function mergeShopifyIntoAllDeals() {
 
 function applyFilter() {
   const q=document.getElementById('dealSearch').value.trim().toLowerCase();
-  filteredDeals=!q?[...allDeals]:allDeals.filter(d=>
+  let pool = allDeals;
+  if (currentRepFilter) pool = pool.filter(d => String(d.ownerId||'') === String(currentRepFilter));
+  filteredDeals=!q?[...pool]:pool.filter(d=>
     d.name?.toLowerCase().includes(q)||
     d.latestQuote?.toLowerCase().includes(q)||
     d.firstMdl?.toLowerCase().includes(q)||
@@ -731,13 +735,34 @@ async function openDeal(dealId) {
   document.querySelector('.main')?.classList.add('show-hub');
   const hc=document.getElementById('hubContent');
   hc.style.display='block';
-  hc.innerHTML='<div style="padding:48px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>';
+  // Optimistic skeleton render from the cached board entry — paints the
+  // panel header (name, amount, stage, payment chip, pipeline, action
+  // buttons) instantly. The quotes/invoices/orders sections show a
+  // "Loading…" placeholder until the /hub fetch returns.
+  const cached = allDeals.find(d => d.id === dealId);
+  if (cached) {
+    renderHub(dealId, {
+      dealStage:       cached.stage,
+      paymentType:     cached.paymentType || '',
+      quotes:          null,
+      invoices:        null,
+      orders:          null,
+      contact:         null,
+      driveFolderName: null,
+      _pending:        true,
+    });
+  } else {
+    hc.innerHTML='<div style="padding:48px;text-align:center;color:var(--muted);font-size:13px">Loading…</div>';
+  }
   try {
     const res=await fetch(`/api/deals/${dealId}/hub`,{credentials:'include'});
     const data=await res.json();
     if(data.error) throw new Error(data.error);
+    // Discard if the user clicked a different deal mid-fetch.
+    if (currentDealId !== dealId) return;
     renderHub(dealId,data);
   } catch(e) {
+    if (currentDealId !== dealId) return;
     hc.innerHTML=`<div style="padding:40px;color:#ef4444;font-size:13px">Error: ${e.message}</div>`;
   }
 }
@@ -907,7 +932,11 @@ async function doShopifyPartsMarkBackfill(dealId) {
 }
 
 function renderHub(dealId,data) {
-  window._lastHubData = data; // cache for invoice creation
+  // Skip caching the skeleton — downstream actions (Create Invoice, Modify
+  // Order, etc.) read from _lastHubData and expect populated quotes/orders.
+  // Action buttons that would surface during _pending are gated on quotes
+  // existing, so they're not clickable during the skeleton phase anyway.
+  if (!data._pending) window._lastHubData = data;
   const deal=allDeals.find(d=>d.id===dealId)||{};
   // Store contact for email prefill
   window._hubContact = data.contact || null;
@@ -946,7 +975,9 @@ function renderHub(dealId,data) {
   const payStatusChip = renderPaymentChip(deal.paymentInfo);
 
   const quotesHtml=!data.quotes?.length
-    ?'<div style="font-size:12px;color:var(--muted);font-style:italic;padding:6px 0">No quotes yet</div>'
+    ?(data._pending
+      ?'<div style="font-size:12px;color:var(--muted);font-style:italic;padding:6px 0">Loading quotes…</div>'
+      :'<div style="font-size:12px;color:var(--muted);font-style:italic;padding:6px 0">No quotes yet</div>')
     :data.quotes.map(q=>{
       const acc=q.accepted;
       const qUrl=q.shareToken?`${location.origin}/q/${encodeURIComponent(q.quoteNumber)}?t=${q.shareToken}`:'';
@@ -989,18 +1020,24 @@ function renderHub(dealId,data) {
     ${data.invoices.map(inv=>{
       const paid=inv.status==='paid';
       const sc={paid:'#22c55e',open:'#f59e0b',draft:'var(--muted)',voided:'var(--muted)',overdue:'#ef4444'}[inv.status]||'var(--muted)';
-      const pmLabel = inv.paymentMethod === 'ach' ? 'ACH' : inv.paymentMethod === 'card' ? 'CC' : '';
       const viaStripe = inv.paidVia === 'stripe';
       const stripeChannelBadge = inv.stripeInvoiceId
         ? `<span class="row-badge" title="Stripe invoice — ${viaStripe?'paid via Stripe':(inv.stripeStatus||'open')}" style="background:rgba(99,91,255,.12);color:#7c5cff;border:1px solid rgba(99,91,255,.3)">Stripe</span>`
         : '';
+      // For HubSpot-paid invoices, mirror the deal-card payment chip
+      // (CC Paid / ACH clearing / Funds available / Failed) so the
+      // invoice row reflects the actual processor state instead of a
+      // generic "Paid" badge. Stripe-paid invoices keep "✓ Paid" since
+      // deal.paymentInfo only mirrors HubSpot Commerce Payments.
+      const hsPayChip = (paid && !viaStripe) ? renderPaymentChip(deal.paymentInfo, { inline: true }) : '';
+      const paidBadge = paid
+        ? (hsPayChip || '<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Paid</span>')
+        : `<span class="row-badge" style="color:${sc};border:1px solid ${sc}">${inv.status||'—'}</span>`;
       return `<div class="row-card ${paid?'row-paid':''}" style="cursor:default">
         <div style="flex:1;min-width:0;display:flex;align-items:center;gap:7px;flex-wrap:wrap">
           <span style="font-size:12px;font-weight:700;color:${paid?'var(--green)':'var(--text)'}">${inv.number||inv.title||'Invoice'}</span>
-          ${paid?'<span class="row-badge" style="background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.3)">✓ Paid</span>'
-                :`<span class="row-badge" style="color:${sc};border:1px solid ${sc}">${inv.status||'—'}</span>`}
+          ${paidBadge}
           ${stripeChannelBadge}
-          ${paid && pmLabel && !viaStripe ? `<span class="row-badge" style="background:rgba(99,102,241,.1);color:#818cf8;border:1px solid rgba(99,102,241,.25)">${pmLabel}</span>` : ''}
           ${inv.quoteNumber?`<span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${inv.quoteNumber}</span>`:''}
         </div>
         <span style="font-size:12px;font-weight:700;color:${paid?'var(--green)':'var(--text)'}">${fmt(inv.amount)}</span>
@@ -1081,7 +1118,7 @@ function renderHub(dealId,data) {
     ${na?`<div class="next-action"><div class="na-icon">${na.icon}</div><div><div class="na-label">Next Action</div><div class="na-text">${na.text}</div></div></div>`:''}
     ${renderShopifyPartsBlock(deal)}
     <div class="hub-section" style="margin-top:4px">
-      <div class="section-label">Quotes (${data.quotes?.length||0})</div>
+      <div class="section-label">Quotes (${data._pending ? '…' : (data.quotes?.length||0)})</div>
       ${quotesHtml}
     </div>
     ${invHtml}${ordHtml}
@@ -1645,7 +1682,14 @@ async function searchAllDeals(q) {
     document.getElementById('boardCount').textContent = 'Search error';
   }
 }
-function onRepFilter() { currentRepFilter=document.getElementById('repFilter').value; loadDeals(); }
+function onRepFilter() {
+  currentRepFilter = document.getElementById('repFilter').value;
+  // Bust the closed-lost cache so next toggle re-fetches for the new rep
+  // (the closed-lost fetch is still server-filtered since those deals
+  // aren't in the board-stage pool).
+  closedLostRecent = [];
+  applyFilter();
+}
 function showToast(msg,type='info') {
   const t=document.getElementById('toast');
   const el=document.createElement('div');
@@ -2933,36 +2977,41 @@ function renderApChipFromStatus(apStatus) {
 //   ACH + succeeded                            → green "Funds available"
 //   Card + succeeded + small note useful?      → green "CC Paid" (only when bank/last4 known)
 //   Any  + failed                              → red "Payment failed" (pulses)
-function renderPaymentChip(pi) {
+function renderPaymentChip(pi, opts) {
   if (!pi || !pi.method) return '';
   const status = (pi.status || '').toLowerCase();
   const method = (pi.method || '').toLowerCase();
-  const payoutDate = pi.estimatedPayoutDate;
-  const today = new Date().toISOString().slice(0, 10);
-  const isPastPayout = !!(payoutDate && payoutDate <= today);
+  const estimatedPayout = pi.estimatedPayoutDate;
+  const actualPayout    = pi.actualPayoutDate;
   const fmtPayoutDate = (d) => {
     if (!d) return '';
     const dt = new Date(d + 'T12:00:00');
     return dt.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
   };
-  const bankLabel = pi.bankOrIssuer && pi.last4
-    ? ` · ${pi.bankOrIssuer} ...${pi.last4}`
-    : (pi.last4 ? ` · ...${pi.last4}` : '');
+  // Inline variant kills the default top margin so the chip can sit flush
+  // inside row-card flex layouts (invoice rows in the hub panel).
+  const styleAttr = opts && opts.inline ? ' style="margin:0"' : '';
 
+  // Priority order (matches the user's intended chip semantics):
+  //   1. failed         → red       (always wins)
+  //   2. actual payout  → green     ("Funds deposited" — authoritative HS signal)
+  //   3. CC + succeeded → green     (card payments clear instantly on success)
+  //   4. ACH + estimated payout date → yellow "clearing · funds X"
+  //   5. ACH otherwise  → yellow "ACH initiated"
   if (status === 'failed') {
-    return `<div class="card-pay-chip failed" title="Payment failed or reversed — do NOT process this order; investigate in HubSpot">🚨 Payment failed${bankLabel}</div>`;
+    return `<div class="card-pay-chip failed"${styleAttr} title="Payment failed or reversed — do NOT process this order; investigate in HubSpot">🚨 Payment failed</div>`;
+  }
+  if (actualPayout) {
+    return `<div class="card-pay-chip cleared"${styleAttr} title="Funds deposited ${fmtPayoutDate(actualPayout)} — ready to process">✓ Funds deposited</div>`;
+  }
+  if (method === 'card' && status === 'succeeded') {
+    return `<div class="card-pay-chip cleared"${styleAttr} title="Card payment cleared — ready to process">✓ CC Paid</div>`;
   }
   if (method === 'ach') {
-    if (status === 'succeeded' && isPastPayout) {
-      return `<div class="card-pay-chip cleared" title="ACH funds available — ready to process">✓ Funds available${bankLabel}</div>`;
+    if (estimatedPayout) {
+      return `<div class="card-pay-chip clearing"${styleAttr} title="ACH still clearing — funds expected ${fmtPayoutDate(estimatedPayout)}">💳 ACH clearing · funds ${fmtPayoutDate(estimatedPayout)}</div>`;
     }
-    if (payoutDate) {
-      return `<div class="card-pay-chip clearing" title="ACH still clearing — wait until ${fmtPayoutDate(payoutDate)} to process">💳 ACH clearing · funds ${fmtPayoutDate(payoutDate)}${bankLabel}</div>`;
-    }
-    return `<div class="card-pay-chip clearing" title="ACH initiated">💳 ACH initiated${bankLabel}</div>`;
-  }
-  if (method === 'card' && status === 'succeeded' && pi.last4) {
-    return `<div class="card-pay-chip cleared" title="Card payment cleared — ready to process">✓ CC Paid${bankLabel}</div>`;
+    return `<div class="card-pay-chip clearing"${styleAttr} title="ACH initiated">💳 ACH initiated</div>`;
   }
   return '';
 }

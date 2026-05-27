@@ -409,7 +409,7 @@ const MAIN_HTML_PATH = path.join(__dirname, 'quote-builder.html');
 const HS_PAYMENT_PROPS = [
   'hs_payment_method', 'hs_payment_method_type',
   'hs_payment_method_bank_or_issuer', 'hs_payment_method_last_4',
-  'hs_initiated_date', 'hs_estimated_payout_date',
+  'hs_initiated_date', 'hs_estimated_payout_date', 'hs_payout_date',
   'hs_latest_status', 'hs_latest_status_updated_date',
   'hs_initial_amount', 'hs_payment_source_id', 'hs_lastmodifieddate',
 ];
@@ -459,6 +459,7 @@ async function upsertDealPaymentStatus(payment) {
     amount:                parseFloat(props.hs_initial_amount || '0') || null,
     initiated_at:          props.hs_initiated_date || null,
     estimated_payout_date: props.hs_estimated_payout_date || null,
+    actual_payout_date:    props.hs_payout_date || null,
     latest_status:         latestStatus || null,
     latest_status_at:      props.hs_latest_status_updated_date || null,
   };
@@ -474,9 +475,9 @@ async function upsertDealPaymentStatus(payment) {
     await db.query(`
       INSERT INTO deal_payment_status
         (deal_id, hs_invoice_id, hs_payment_id, payment_method, bank_or_issuer,
-         last_4, amount, initiated_at, estimated_payout_date,
+         last_4, amount, initiated_at, estimated_payout_date, actual_payout_date,
          latest_status, latest_status_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
       ON CONFLICT (deal_id) DO UPDATE SET
         hs_invoice_id         = EXCLUDED.hs_invoice_id,
         hs_payment_id         = EXCLUDED.hs_payment_id,
@@ -486,6 +487,7 @@ async function upsertDealPaymentStatus(payment) {
         amount                = EXCLUDED.amount,
         initiated_at          = EXCLUDED.initiated_at,
         estimated_payout_date = EXCLUDED.estimated_payout_date,
+        actual_payout_date    = EXCLUDED.actual_payout_date,
         latest_status         = EXCLUDED.latest_status,
         latest_status_at      = EXCLUDED.latest_status_at,
         updated_at            = NOW()
@@ -493,6 +495,7 @@ async function upsertDealPaymentStatus(payment) {
       newRow.deal_id, newRow.hs_invoice_id, newRow.hs_payment_id,
       newRow.payment_method, newRow.bank_or_issuer, newRow.last_4,
       newRow.amount, newRow.initiated_at, newRow.estimated_payout_date,
+      newRow.actual_payout_date,
       newRow.latest_status, newRow.latest_status_at,
     ]);
   } catch(e) {
@@ -3037,7 +3040,7 @@ const server = http.createServer(async (req, res) => {
           // (ACH clearing / CC paid / funds available / payment failed).
           db.query(
             `SELECT deal_id, payment_method, bank_or_issuer, last_4, amount,
-                    initiated_at, estimated_payout_date,
+                    initiated_at, estimated_payout_date, actual_payout_date,
                     latest_status, latest_status_at
              FROM deal_payment_status
              WHERE deal_id = ANY($1)`,
@@ -3186,6 +3189,7 @@ const server = http.createServer(async (req, res) => {
               amount:              p.amount != null ? Number(p.amount) : null,
               initiatedAt:         p.initiated_at,
               estimatedPayoutDate: p.estimated_payout_date,
+              actualPayoutDate:    p.actual_payout_date,
               status:              p.latest_status,
               statusAt:            p.latest_status_at,
             };
@@ -7668,7 +7672,7 @@ ${q.accepted ? `
       if (!db) { json({ paymentInfo: null }); return; }
       const r = await db.query(
         `SELECT payment_method, bank_or_issuer, last_4, amount,
-                initiated_at, estimated_payout_date,
+                initiated_at, estimated_payout_date, actual_payout_date,
                 latest_status, latest_status_at
          FROM deal_payment_status WHERE deal_id = $1`,
         [String(dealId)]
@@ -7684,6 +7688,7 @@ ${q.accepted ? `
           amount:              row.amount != null ? Number(row.amount) : null,
           initiatedAt:         row.initiated_at,
           estimatedPayoutDate: row.estimated_payout_date,
+          actualPayoutDate:    row.actual_payout_date,
           status:              row.latest_status,
           statusAt:            row.latest_status_at,
         }
@@ -7705,7 +7710,7 @@ ${q.accepted ? `
       if (!db) { json({ paymentInfo: null }); return; }
       const r = await db.query(
         `SELECT payment_method, bank_or_issuer, last_4, amount,
-                initiated_at, estimated_payout_date,
+                initiated_at, estimated_payout_date, actual_payout_date,
                 latest_status, latest_status_at
          FROM deal_payment_status WHERE deal_id = $1`,
         [dealId]
@@ -7720,6 +7725,7 @@ ${q.accepted ? `
           amount:              row.amount != null ? Number(row.amount) : null,
           initiatedAt:         row.initiated_at,
           estimatedPayoutDate: row.estimated_payout_date,
+          actualPayoutDate:    row.actual_payout_date,
           status:              row.latest_status,
           statusAt:            row.latest_status_at,
         }

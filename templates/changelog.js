@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.46.2', date:'May 27, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Process Order email: CC Josh on custom-build orders.** When an order has the CUST badge (custom wall component, hole, or other custom work — flagged by `garyFlag`), the Process Order email already CCs `gamos@whisperroom.com`; now also CCs `jfletcher@whisperroom.com` (Josh) so he sees the same context Gary does. Applied in both surfaces that trigger Process Order — the Quote Builder (`quote-builder.html`) and the Deal Hub overlay (`deals-dashboard.html`). Non-CUST orders are unchanged.'},
+      ]
+    },
+    {
       v:'1.46.1', date:'May 26, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Marketing dashboard — closed-loop attribution shipped + visual polish.** Two new endpoints: `GET /api/marketing/campaign-attribution` joins Google Ads campaigns to HubSpot contacts to HubSpot deals (first-touch attribution via `first_converting_campaign` then `first_source_data_2`, filtered to PAID_SEARCH / google sources, deals not date-filtered so old contacts still attribute when they close). `GET /api/marketing/attribution-coverage` returns the trust thermometer — what % of recent closed-won deals + revenue + contacts have a known marketing source. Campaign table extended with four new columns (Leads / Deals / Revenue / True ROAS) merged in client-side; True ROAS rendered as a color-coded pill (green ≥ 3x, yellow 1–3x, red < 1x) for instant scanning. New attribution coverage panel above the KPI cards (three progress bars: deals attributed, revenue attributed, contacts with a source) with the same color rule (green ≥ 60%, yellow 30–60%, red < 30%). Two new KPI cards (Closed Revenue from real HubSpot deals + True ROAS vs Google Ads spend) added alongside the existing GA4-estimated value/ROAS — both shown so you can compare GA4-assumed to actual-revenue. Single-touch first-touch only (multi-touch would need full event history we don\'t pull); match HubSpot Ads view to "First ad interaction" for apples-to-apples validation. Coverage is bounded by attribution match quality (exact name match on `first_converting_campaign` / `first_source_data_2`) — the coverage panel surfaces gaps.'},

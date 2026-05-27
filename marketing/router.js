@@ -220,29 +220,28 @@ async function handle(req, res, ctx) {
   }
 
   // ── GET /api/marketing/campaign-attribution ───────────────────────
-  // First-touch campaign attribution (v1.46.1). For each Google Ads
-  // campaign active in the last 90 days, count attributed leads (HubSpot
-  // contacts whose first-touch was that campaign) and their deals (open
-  // / won / lost) + closed-won revenue.
+  // First-touch campaign attribution. For each Google Ads campaign active
+  // in the last 90 days, count attributed leads (HubSpot contacts whose
+  // first-touch was that campaign) and their deals (open/won/lost) +
+  // closed-won revenue.
   //
-  // Attribution join: contact.first_converting_campaign OR
-  // contact.first_source_data_2 (Google Ads campaign name when
-  // first_source = PAID_SEARCH and first_source_data_1 = google).
-  // Both checked because HubSpot populates them inconsistently — the
-  // first is HubSpot's curated "what was the converting campaign,"
-  // the second is the raw drill-down. Exact name match; if WhisperRoom's
-  // UTM tagging diverges from campaign names, coverage drops and the
-  // attribution-coverage panel surfaces the gap.
+  // Attribution join (v1.46.7 — rewritten). The original v1.46.1 JOIN
+  // assumed first_source_data_2 held the campaign name and data_1 held
+  // 'google'. The 2026-05-27 diagnostic proved both wrong:
+  //   - For PAID_SEARCH contacts, HubSpot stores the CAMPAIGN NAME in
+  //     first_source_data_1 (lowercased, e.g. "**lp branded - a").
+  //   - first_source_data_2 holds the SEARCH KEYWORD ("sound booth").
+  //   - hs_analytics_first_touch_converting_campaign is essentially
+  //     unpopulated (25 of 22534 contacts) — dropped from the join.
   //
-  // Single-touch only — we don't have full event/session history. This
-  // means our `leads` count will be LOWER than HubSpot's "All ad
-  // interactions" Ads view (which is multi-touch). Compare against
-  // HubSpot's "First ad interaction" report for apples-to-apples.
+  // Match: case-insensitive on first_source_data_1 with '+' normalized
+  // to space (handles "Office Booth - Privacy + Competitors" vs HubSpot's
+  // "office booth - privacy   competitors"). Known gap: campaigns
+  // renamed in Google Ads (e.g. A/B variants merged into "Combined")
+  // leave historical HubSpot contacts unmatched against the new name.
   //
-  // Deal join: contact's primary associated contact link, denormalized
-  // onto marketing_hubspot_deals.primary_contact_id by the deal sync.
-  // Deals are NOT filtered by date — if a 60-day-old contact closed a
-  // deal today, that deal still attributes to their first-touch campaign.
+  // Single-touch only — we don't have full event/session history. Our
+  // `leads` count matches HubSpot's "First ad interaction" report.
   if (pathname === '/api/marketing/campaign-attribution' && req.method === 'GET') {
     try {
       const rows = ctx.db ? (await ctx.db.query(`
@@ -263,9 +262,8 @@ async function handle(req, res, ctx) {
           COALESCE(SUM(CASE WHEN d.is_closed_won THEN d.amount ELSE 0 END), 0)::float             AS revenue_won
         FROM campaign_names cn
         LEFT JOIN marketing_hubspot_contacts c ON (
-          (c.first_converting_campaign = cn.campaign_name OR c.first_source_data_2 = cn.campaign_name)
-          AND c.first_source        = 'PAID_SEARCH'
-          AND c.first_source_data_1 = 'google'
+          c.first_source = 'PAID_SEARCH'
+          AND LOWER(REPLACE(c.first_source_data_1, '+', ' ')) = LOWER(REPLACE(cn.campaign_name, '+', ' '))
           AND c.created_at >= CURRENT_DATE - INTERVAL '90 days'
         )
         LEFT JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
@@ -394,10 +392,26 @@ async function handle(req, res, ctx) {
   }
 
   // ── GET /api/marketing/attribution-coverage ───────────────────────
-  // The "trust thermometer" — what fraction of recent closed-won deals
-  // and recent contacts are actually attributable to a known marketing
-  // source. Low numbers mean the dashboard's attribution-based metrics
-  // (revenue, true ROAS, etc.) reflect only a slice of the real picture.
+  // The "trust thermometer" + paid-revenue numbers. v1.46.7 splits the
+  // single `revenue_attributed` into two paid-attribution definitions so
+  // the dashboard can show first-touch and any-touch ROAS side by side:
+  //
+  //   FIRST-TOUCH (strict): first_source = 'PAID_SEARCH'. Matches HubSpot's
+  //   "First ad interaction" report. Conservative — credits the ad only
+  //   when it was the customer's first interaction with WhisperRoom.
+  //
+  //   ANY-TOUCH (last-click leaning): first_source = 'PAID_SEARCH' OR
+  //   gclid IS NOT NULL. Catches customers who first found us via organic
+  //   / referral / offline but did click a Google Ad somewhere along the
+  //   way (a gclid is irrefutable proof of an ad click). Roughly matches
+  //   Google Ads' own default last-click attribution.
+  //
+  //   Showing both surfaces the gap — if first-touch < 1x but any-touch
+  //   > 3x, paid is profitable as a closer, not as an acquisition channel.
+  //
+  // The existing `revenue_attributed` / `deals_won_attributed` keys stay
+  // as the "any source set" definition (used by the coverage thermometer
+  // panel) for backward compatibility.
   if (pathname === '/api/marketing/attribution-coverage' && req.method === 'GET') {
     try {
       const r = ctx.db ? (await ctx.db.query(`
@@ -421,7 +435,25 @@ async function handle(req, res, ctx) {
           (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
              WHERE d.created_at >= CURRENT_DATE - INTERVAL '90 days' AND d.is_closed_won
-               AND (c.first_source IS NOT NULL OR c.gclid IS NOT NULL))                                              AS revenue_attributed
+               AND (c.first_source IS NOT NULL OR c.gclid IS NOT NULL))                                              AS revenue_attributed,
+          -- v1.46.7 — first-touch paid only (HubSpot "First ad interaction")
+          (SELECT COUNT(*) FROM marketing_hubspot_deals d
+             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.created_at >= CURRENT_DATE - INTERVAL '90 days' AND d.is_closed_won
+               AND c.first_source = 'PAID_SEARCH')                                                                   AS deals_won_first_touch,
+          (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
+             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.created_at >= CURRENT_DATE - INTERVAL '90 days' AND d.is_closed_won
+               AND c.first_source = 'PAID_SEARCH')                                                                   AS revenue_first_touch,
+          -- v1.46.7 — any-touch paid (Google Ads-style last-click leaning)
+          (SELECT COUNT(*) FROM marketing_hubspot_deals d
+             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.created_at >= CURRENT_DATE - INTERVAL '90 days' AND d.is_closed_won
+               AND (c.first_source = 'PAID_SEARCH' OR c.gclid IS NOT NULL))                                          AS deals_won_any_touch,
+          (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
+             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.created_at >= CURRENT_DATE - INTERVAL '90 days' AND d.is_closed_won
+               AND (c.first_source = 'PAID_SEARCH' OR c.gclid IS NOT NULL))                                          AS revenue_any_touch
       `)).rows[0] : {};
       ctx.json(r || {});
     } catch(e) { ctx.json({ error: e.message }, 500); }

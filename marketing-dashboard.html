@@ -147,10 +147,14 @@ th.attr-col, td.attr-col{background:rgba(238,98,22,.025)}
     <div class="card"><div class="card-label">Clicks (90d)</div><div class="card-value" id="kpiClicks">—</div><div class="card-sub" id="kpiCpc">— avg CPC</div></div>
     <div class="card"><div class="card-label">Conversions (90d)</div><div class="card-value" id="kpiConv">—</div><div class="card-sub" id="kpiCpa">— avg CPA</div></div>
     <div class="card"><div class="card-label">GA4 Conv. Value (90d)</div><div class="card-value" id="kpiValue">—</div><div class="card-sub" id="kpiRoas">— GA4 ROAS</div></div>
-    <!-- v1.46.1 — closed-loop revenue from HubSpot deals. These two are
-         the "real" numbers; the GA4 estimates above are kept for comparison. -->
-    <div class="card"><div class="card-label">Closed Revenue (90d)</div><div class="card-value" id="kpiClosedRev">—</div><div class="card-sub" id="kpiDealCount">— deals</div></div>
-    <div class="card"><div class="card-label">True ROAS (90d)</div><div class="card-value" id="kpiTrueRoas">—</div><div class="card-sub" id="kpiTrueCac">— true CAC</div></div>
+    <!-- Closed-loop revenue from HubSpot deals. v1.46.7 splits the single
+         True ROAS card into two — first-touch (HubSpot strict) + any-touch
+         (Google-Ads-style last-click) — so the gap between the two becomes
+         a strategic signal: if first-touch is < 1x but any-touch > 3x,
+         paid is a closer, not an acquisition channel. -->
+    <div class="card"><div class="card-label">Closed Revenue (90d, paid any-touch)</div><div class="card-value" id="kpiClosedRev">—</div><div class="card-sub" id="kpiDealCount">— deals</div></div>
+    <div class="card" title="spend / revenue where first_source = 'PAID_SEARCH'. Matches HubSpot's 'First ad interaction' report."><div class="card-label">True ROAS — First-Touch</div><div class="card-value" id="kpiRoasFirstTouch">—</div><div class="card-sub" id="kpiRoasFirstTouchSub">HubSpot strict</div></div>
+    <div class="card" title="spend / revenue where first_source = 'PAID_SEARCH' OR gclid is set. Matches Google Ads' default last-click attribution."><div class="card-label">True ROAS — Any-Touch</div><div class="card-value" id="kpiRoasAnyTouch">—</div><div class="card-sub" id="kpiRoasAnyTouchSub">incl. gclid</div></div>
   </div>
 
   <!-- Campaign-level table -->
@@ -352,14 +356,28 @@ function renderSummary(rows, cov) {
   document.getElementById('kpiRoas').textContent   = spend  ? (value / spend).toFixed(2) + 'x GA4 ROAS' : '— GA4 ROAS';
 
   // Closed-loop (real revenue) KPIs from attribution-coverage endpoint.
-  // These are the numbers to actually trust for budget decisions; the
-  // GA4 conv-value ones above are kept for comparison + cross-checking.
-  const revAttr = parseFloat(cov.revenue_attributed) || 0;
-  const dealsWonAttr = parseInt(cov.deals_won_attributed) || 0;
-  document.getElementById('kpiClosedRev').textContent = fmtUSD(revAttr);
-  document.getElementById('kpiDealCount').textContent = dealsWonAttr ? fmtInt(dealsWonAttr) + ' attributed deals' : '— deals';
-  document.getElementById('kpiTrueRoas').textContent  = spend ? (revAttr / spend).toFixed(2) + 'x' : '—';
-  document.getElementById('kpiTrueCac').textContent   = dealsWonAttr ? fmtUSD(spend / dealsWonAttr) + ' true CAC' : '— true CAC';
+  // v1.46.7 — two ROAS numbers: first-touch (strict, HubSpot-style) and
+  // any-touch (gclid-inclusive, Google-Ads-style). Showing both is the
+  // information; picking one would hide the channel-vs-closer signal.
+  const revFirst   = parseFloat(cov.revenue_first_touch)   || 0;
+  const dealsFirst = parseInt(cov.deals_won_first_touch)   || 0;
+  const revAny     = parseFloat(cov.revenue_any_touch)     || 0;
+  const dealsAny   = parseInt(cov.deals_won_any_touch)     || 0;
+
+  document.getElementById('kpiClosedRev').textContent = fmtUSD(revAny);
+  document.getElementById('kpiDealCount').textContent = dealsAny
+    ? `${fmtInt(dealsAny)} deals · ${fmtUSD(spend / dealsAny)} CAC`
+    : '— deals';
+
+  document.getElementById('kpiRoasFirstTouch').textContent     = spend ? (revFirst / spend).toFixed(2) + 'x' : '—';
+  document.getElementById('kpiRoasFirstTouchSub').textContent  = dealsFirst
+    ? `${fmtUSD(revFirst)} · ${fmtInt(dealsFirst)} deals`
+    : 'HubSpot strict';
+
+  document.getElementById('kpiRoasAnyTouch').textContent       = spend ? (revAny / spend).toFixed(2) + 'x' : '—';
+  document.getElementById('kpiRoasAnyTouchSub').textContent    = dealsAny
+    ? `${fmtUSD(revAny)} · ${fmtInt(dealsAny)} deals`
+    : 'incl. gclid';
 }
 
 // Attribution coverage — three stats with progress bars. Color rule:

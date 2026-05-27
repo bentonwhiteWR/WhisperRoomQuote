@@ -219,7 +219,7 @@ async function handle(req, res, ctx) {
         FROM marketing_campaigns
         WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
         ORDER BY date DESC, cost_micros DESC NULLS LAST
-        LIMIT 5000
+        LIMIT 50000
       `, [days])).rows : [];
       ctx.json({ rows });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
@@ -238,7 +238,7 @@ async function handle(req, res, ctx) {
         FROM marketing_keywords
         WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
         ORDER BY date DESC, cost_micros DESC NULLS LAST
-        LIMIT 5000
+        LIMIT 200000
       `, [days])).rows : [];
       ctx.json({ rows });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
@@ -257,7 +257,7 @@ async function handle(req, res, ctx) {
         FROM marketing_search_terms
         WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
         ORDER BY date DESC, cost_micros DESC NULLS LAST
-        LIMIT 5000
+        LIMIT 200000
       `, [days])).rows : [];
       ctx.json({ rows });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.46.13', date:'May 27, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Marketing — bump per-endpoint row LIMIT so 365d view returns full data.** After v1.46.12 backfilled 7,485 campaign-day rows for the full year, the 365d dashboard view still showed only $248k of spend vs HubSpot\'s $346k. Root cause: `/api/marketing/campaigns`, `/keywords`, and `/search-terms` all had a hardcoded `LIMIT 5000` in their SQL, leftover from when the table only held 90 days. With 365d in the table, the ORDER BY date DESC kept the most recent 5,000 rows (~227 days at 22 campaigns/day) and silently dropped the older ~138 days. Bumped `/campaigns` to LIMIT 50000, `/keywords` and `/search-terms` to LIMIT 200000 — well above any realistic 365d footprint. No re-sync needed; the data is already in the table, this just sends more of it to the browser. After this fix the 365d Total Spend should reconcile to ~$346k, First-Touch ROAS to ~2.2x (HubSpot reports 1.97x — within 12%, the residual is deal-window definition differences between `createdate` vs `closedate`).'},
+      ]
+    },
+    {
       v:'1.46.12', date:'May 27, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Marketing — fix the window mismatch that inflated 365d True ROAS by ~4x.** The dispatcher in `marketing/router.js` had Google Ads ETL defaulting to 90d while HubSpot defaulted to 365d. When the v1.46.11 date-range picker drove the dashboard\'s 365d view, queries returned 365 days of revenue but only 90 days of Google Ads spend (because that\'s all the table had). Result: True ROAS = 365d-rev / 90d-spend, ~4x inflated. Cross-checked against HubSpot\'s "First ad interaction" report: ours showed 7.85x first-touch, HubSpot showed 1.96x (96% ROI) — a ~4x gap matching the window asymmetry. Bumped Google Ads default to 365d so Sync All pulls a full year and both windows align. Three section titles ("Campaigns / Keywords / Search Terms (last 90 days)") are now dynamic and update with the selected date range — they were hardcoded strings before. Page subtitle updated to say 365 days. **Action required: click Sync All on the dashboard to backfill the 275 days of historical Google Ads data.** ON CONFLICT upserts keep the longer pull idempotent — no risk of duplicates against existing 90-day rows.'},

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.46.10', date:'May 27, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Audimute PO header now uses the WhisperRoom SVG logo.** The supplier PO page (`/po/:poNumber`) was using a text-styled "WhisperRoom" header element; swapped it for the same inline SVG logo the quote + invoice pages use. The `.logo-img` styling was already present in the PO template (40px desktop / 28px mobile), just no `<img>` element was being rendered. No other PO content changed.'},
+      ]
+    },
+    {
       v:'1.46.9', date:'May 27, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Marketing — search-term-level closed-loop attribution.** The 2026-05-27 diagnostic revealed HubSpot stores the literal search term users typed in `first_source_data_2` (e.g. "sound booth", "vocal booth", "audiology booth") — previously thought to be a gclid. That unlocks per-keyword closed-loop ROAS for free: just JOIN on the normalized term. New endpoint `/api/marketing/search-term-attribution` returns leads / deals / revenue / True ROAS per search term, mirroring `/api/marketing/campaign-attribution`. Search Terms table on `marketing-dashboard.html` now shows four new columns alongside the existing Spend / Clicks / CPC / Conv. / CPA — same color-coded True ROAS pill as the Campaigns table. PAID_SEARCH only (organic-search keyword attribution would need referrer parsing on the HubSpot side, which we don\'t pull). No aliases applied — search terms are user-typed strings, nothing to alias.'},

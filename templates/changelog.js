@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.47.1', date:'May 28, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Final Mile Delivery button moved below the freight controls.** v1.47.0 put the button in the upper-right of the Freight Estimate section header; per request, it now sits in its own row above the existing "Delivery &amp; Installation" row, matching that row\'s layout exactly (title + 1-line description on the left, button on the right, divider above). Same modal + email behavior as before. Description: "Optional. ArcBest white-glove inside delivery quote (2-man, room of choice, stairs)."'},
+        {t:'ui', d:'**Final Mile email copy tweaks:** opening line changed from "Good morning" to "Hello"; subject changed from "Final Mile Quote Request — {custName} — {city}, {state}" to "WhisperRoom FM RFQ".'},
+      ]
+    },
+    {
       v:'1.47.0', date:'May 28, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Final Mile Delivery quote request button in the Quote Builder.** New "Final Mile Delivery" button in the upper-right of the Freight Estimate section header. Opens a small modal asking for box count (the only thing the system can&rsquo;t know automatically), then drafts a mailto: to <code>finalmile@arcb.com</code> with pallet dimensions (from BOOTH_DATA per line item), total weight, freight Class 100, Origin 37813, the customer&rsquo;s ship address, and the standard Final Mile services line (2 man, 45 mins, SS, arrival notice, liftgate, inside delivery to room of choice, 2 flights of stairs max, dunnage removal). Same style + behavior as the existing "Request Installation" button below it. Pre-flight requires line items + a complete ship address; no HubSpot push needed since the email doesn&rsquo;t carry a quote link.'},

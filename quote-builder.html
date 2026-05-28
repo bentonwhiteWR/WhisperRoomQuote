@@ -1045,10 +1045,6 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
     <div class="section-head">
       <div class="section-num">4</div>
       <div class="section-title">Freight Estimate</div>
-      <button type="button" id="finalMileBtn" onclick="openFinalMileModal()"
-        style="margin-left:auto;padding:7px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
-        Final Mile Delivery
-      </button>
     </div>
     <p style="font-size:11px;color:var(--muted);margin-bottom:12px">
       Address auto-filled from ship-to. ABF LTL rate with 25% markup applied.
@@ -1115,6 +1111,20 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
       </div>
       <div style="margin-top:10px;font-size:11px;color:var(--muted)">Transit: <span id="freightTransit">—</span></div>
       <div class="freight-warning" id="freightWarning" style="display:none"></div>
+    </div>
+
+    <!-- Final Mile Delivery add-on ─────────────────────────────────── -->
+    <div id="finalMileBlock" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--text);letter-spacing:.03em">Final Mile Delivery</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Optional. ArcBest white-glove inside delivery quote (2-man, room of choice, stairs).</div>
+        </div>
+        <button type="button" id="finalMileBtn" onclick="openFinalMileModal()"
+          style="padding:7px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
+          Final Mile Delivery
+        </button>
+      </div>
     </div>
 
     <!-- Install / Delivery add-on ─────────────────────────────────── -->
@@ -2772,7 +2782,7 @@ function submitFinalMileRequest() {
   const zip     = document.getElementById('shipZip').value.trim();
 
   const body = [
-    'Good morning, I would like to get a FM quote for the following:',
+    'Hello, I would like to get a FM quote for the following:',
     '',
     palletText,
     `Total weight: ${Math.round(totalWeight)}`,
@@ -2788,13 +2798,8 @@ function submitFinalMileRequest() {
     'Final Mile services to include: 2 man, 45 mins, SS, arrival notice, liftgate, inside delivery to room of choice and up no more than 2 flights of stairs, dunnage removal.',
   ].join('\n');
 
-  const firstName = (document.getElementById('firstName').value || '').trim();
-  const lastName  = (document.getElementById('lastName').value || '').trim();
-  const company   = (document.getElementById('company').value || '').trim();
-  const custName  = [firstName, lastName].filter(Boolean).join(' ') || company || 'WhisperRoom';
-
   const to      = 'finalmile@arcb.com';
-  const subject = `Final Mile Quote Request — ${custName} — ${city}, ${state}`;
+  const subject = 'WhisperRoom FM RFQ';
 
   const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   window.location.href = mailto;

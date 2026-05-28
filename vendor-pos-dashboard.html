@@ -10,17 +10,17 @@
 <style>
   :root {
     --bg: #0f0f0f; --surface: #1a1a1a; --surface2: #222; --border: #2a2a2a;
-    --orange: #ee6216; --orange-dim: rgba(238,98,22,.12);
+    --orange: #ee6216; --orange-dim: rgba(238,98,22,.12); --orange-bright: rgba(238,98,22,.2); --orange-soft: rgba(238,98,22,.06);
     --text: #e8e8e8; --muted: #888;
     --green: #22c55e; --red: #ef4444; --blue: #3b82f6; --amber: #f59e0b; --purple: #a855f7;
-    --row-hover: rgba(255,255,255,.02);
+    --row-hover: rgba(238,98,22,.04);
   }
   :root.light {
     --bg: #f5f5f5; --surface: #ffffff; --surface2: #f0f0f0; --border: #e0e0e0;
-    --orange: #d44f0c; --orange-dim: rgba(212,79,12,.1);
+    --orange: #d44f0c; --orange-dim: rgba(212,79,12,.1); --orange-bright: rgba(212,79,12,.18); --orange-soft: rgba(212,79,12,.05);
     --text: #1a1a1a; --muted: #666;
     --green: #16a34a; --red: #dc2626; --blue: #2563eb; --amber: #d97706; --purple: #7c3aed;
-    --row-hover: rgba(0,0,0,.02);
+    --row-hover: rgba(212,79,12,.04);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased; }
@@ -54,34 +54,42 @@
   th { padding: 10px 14px; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); border-bottom: 1px solid var(--border); background: var(--surface2); }
   td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   tr:last-child td { border-bottom: none; }
-  tr:hover td { background: var(--row-hover); cursor: pointer; }
+  tbody tr:hover td { background: var(--row-hover); }
 
-  .po-num { font-family: ui-monospace, monospace; font-weight: 700; color: var(--text); font-size: 12px; }
+  .po-num { font-family: ui-monospace, monospace; font-weight: 700; color: var(--orange); font-size: 12px; }
   .vendor-cell { font-weight: 600; }
   .meta-cell { font-size: 11px; color: var(--muted); margin-top: 2px; }
   .total-cell { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--text); }
+  .td-num { text-align: right; font-variant-numeric: tabular-nums; }
 
   .status-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
-  .pill-DRAFT     { background: rgba(255,255,255,.06); color: var(--muted); border: 1px solid var(--border); }
-  .pill-APPROVED  { background: rgba(168,85,247,.12); color: var(--purple); }
+  .pill-OPEN      { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(238,98,22,.35); }
   .pill-SENT      { background: rgba(59,130,246,.12); color: var(--blue); }
   .pill-PARTIAL   { background: rgba(245,158,11,.15); color: var(--amber); }
   .pill-RECEIVED  { background: rgba(34,197,94,.15); color: var(--green); }
   .pill-CLOSED    { background: rgba(34,197,94,.25); color: var(--green); }
   .pill-CANCELLED { background: rgba(239,68,68,.1); color: var(--red); }
 
+  .inline-input { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; font-family: inherit; padding: 4px 8px; outline: none; }
+  .inline-input:focus { border-color: var(--orange); }
+  .inline-input.dirty { border-color: var(--orange); background: var(--orange-soft); }
+
   .btn { padding: 7px 14px; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border-radius: 7px; border: none; cursor: pointer; font-family: inherit; transition: all .15s; }
   .btn-orange { background: var(--orange); color: #fff; }
   .btn-orange:hover { opacity: .9; }
   .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
   .btn-ghost:hover { border-color: var(--orange); color: var(--orange); }
-  .btn-green { background: rgba(34,197,94,.12); color: var(--green); border: 1px solid rgba(34,197,94,.35); }
-  .btn-green:hover { background: rgba(34,197,94,.22); }
+  .btn-orange-soft { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(238,98,22,.35); }
+  .btn-orange-soft:hover { background: var(--orange-bright); }
   .btn-blue { background: rgba(59,130,246,.12); color: var(--blue); border: 1px solid rgba(59,130,246,.35); }
   .btn-blue:hover { background: rgba(59,130,246,.22); }
+  .btn-green { background: rgba(34,197,94,.12); color: var(--green); border: 1px solid rgba(34,197,94,.35); }
+  .btn-green:hover { background: rgba(34,197,94,.22); }
   .btn-red { background: rgba(239,68,68,.1); color: var(--red); border: 1px solid rgba(239,68,68,.3); }
   .btn-red:hover { background: rgba(239,68,68,.2); }
   .btn-sm { padding: 4px 10px; font-size: 10px; }
+
+  .row-actions { display: flex; gap: 6px; }
 
   .empty-state { padding: 56px 20px; text-align: center; color: var(--muted); }
   .empty-icon { font-size: 40px; margin-bottom: 12px; }
@@ -91,19 +99,22 @@
   /* ── Modal ─────────────────────────────────────────────────── */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 9000; display: none; align-items: center; justify-content: center; padding: 16px; overflow-y: auto; }
   .modal-overlay.open { display: flex; }
-  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 100%; max-width: 1100px; max-height: 92vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: 100%; max-width: 1100px; max-height: 92vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.5); border-top: 3px solid var(--orange); }
   .modal-header { padding: 16px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: var(--surface); z-index: 5; gap: 12px; flex-wrap: wrap; }
-  .modal-title { font-size: 16px; font-weight: 800; letter-spacing: .02em; }
-  .modal-meta { font-size: 11px; color: var(--muted); }
+  .modal-title { font-size: 16px; font-weight: 800; letter-spacing: .02em; color: var(--text); }
+  .modal-title .po-num-tag { color: var(--orange); font-family: ui-monospace, monospace; font-size: 14px; margin-left: 8px; }
+  .modal-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
   .modal-close { background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; padding: 0 6px; line-height: 1; }
   .modal-body { padding: 18px 22px; }
   .modal-footer { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 10px; position: sticky; bottom: 0; background: var(--surface); flex-wrap: wrap; }
 
   .section { margin-bottom: 22px; }
-  .section-label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+  .section-label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--orange); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid rgba(238,98,22,.25); display: flex; align-items: center; gap: 8px; }
+  .section-label .hint { color: var(--muted); font-weight: 600; letter-spacing: .04em; text-transform: none; font-size: 10px; margin-left: 6px; }
 
   .field { margin-bottom: 12px; }
   .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .field-row-3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
   label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 5px; }
   input, select, textarea {
     width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
@@ -112,25 +123,31 @@
   input:focus, select:focus, textarea:focus { border-color: var(--orange); }
   textarea { resize: vertical; min-height: 70px; }
 
-  .vendor-info { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; font-size: 12px; line-height: 1.6; color: var(--muted); }
-  .vendor-info strong { color: var(--text); }
-  .vendor-info .row { display: grid; grid-template-columns: 110px 1fr; gap: 8px; padding: 2px 0; }
-  .vendor-info .row-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding-top: 1px; }
+  /* Selected vendor — orange-accented form area */
+  .vendor-form { background: var(--orange-soft); border: 1px solid rgba(238,98,22,.25); border-radius: 8px; padding: 14px 16px; }
+
+  /* Chip list (emails / contacts) */
+  .chip-list { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; min-height: 40px; align-items: center; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px 4px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; font-size: 12px; }
+  .chip-remove { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
+  .chip-remove:hover { color: var(--red); }
+  .chip-input { flex: 1; min-width: 120px; background: transparent; border: none; outline: none; color: var(--text); font-family: inherit; font-size: 12px; padding: 4px 6px; }
 
   /* Catalog picker */
   .catalog-wrap { border: 1px solid var(--border); border-radius: 8px; max-height: 360px; overflow-y: auto; }
   .catalog-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
-  .catalog-tbl th { background: var(--surface2); padding: 7px 9px; text-align: left; font-size: 9px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 1; }
+  .catalog-tbl th { background: var(--surface2); padding: 7px 9px; text-align: left; font-size: 9px; font-weight: 800; color: var(--orange); text-transform: uppercase; letter-spacing: .07em; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 1; }
   .catalog-tbl td { padding: 7px 9px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   .catalog-tbl tr:last-child td { border-bottom: none; }
-  .catalog-tbl tr.row-checked td { background: rgba(238,98,22,.06); }
+  .catalog-tbl tr.row-checked td { background: var(--orange-soft); }
   .catalog-tbl td.td-num { text-align: right; font-variant-numeric: tabular-nums; }
+  .catalog-tbl input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--orange); cursor: pointer; }
   .stale-hint { font-size: 9px; color: var(--muted); }
 
   /* PO lines */
-  .lines-wrap { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .lines-wrap { border: 1px solid rgba(238,98,22,.35); border-radius: 8px; overflow: hidden; }
   .lines-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
-  .lines-tbl th { background: var(--surface2); padding: 7px 9px; text-align: left; font-size: 9px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; border-bottom: 1px solid var(--border); }
+  .lines-tbl th { background: var(--orange-soft); padding: 7px 9px; text-align: left; font-size: 9px; font-weight: 800; color: var(--orange); text-transform: uppercase; letter-spacing: .07em; border-bottom: 1px solid rgba(238,98,22,.25); }
   .lines-tbl td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   .lines-tbl tr:last-child td { border-bottom: none; }
   .lines-tbl input { font-size: 12px; padding: 5px 8px; }
@@ -138,8 +155,8 @@
   .lines-tbl .col-remove { width: 36px; text-align: center; }
   .row-remove { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 0 4px; line-height: 1; }
   .row-remove:hover { color: var(--red); }
-  .lines-add { padding: 9px 12px; background: var(--surface2); border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-  .lines-total { font-size: 13px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+  .lines-add { padding: 9px 12px; background: var(--orange-soft); border-top: 1px solid rgba(238,98,22,.25); display: flex; justify-content: space-between; align-items: center; }
+  .lines-total { font-size: 14px; font-weight: 800; color: var(--orange); font-variant-numeric: tabular-nums; }
 
   .helper { font-size: 11px; color: var(--muted); margin-top: 6px; }
 
@@ -174,7 +191,7 @@
   <div class="page-header">
     <div>
       <div class="page-title">Vendor <span>Purchase Orders</span></div>
-      <div class="page-sub">Create POs for vendors managed in <a href="/vendors" style="color:var(--orange);text-decoration:none">/vendors</a>. Drafts stay editable, approval + send transitions are status flips, PDFs upload to the WR PO Drive folder.</div>
+      <div class="page-sub">Vendor catalog lives at <a href="/vendors" style="color:var(--orange);text-decoration:none">/vendors</a>. POs are created live (no draft step). Hit Send when you&rsquo;re ready to email the vendor — the PDF auto-uploads to the WR PO Drive folder.</div>
     </div>
     <button class="btn btn-orange" onclick="openNewPo()">+ New PO</button>
   </div>
@@ -182,8 +199,7 @@
   <div class="toolbar">
     <div class="filters" id="filterRow">
       <button class="filter-btn active" onclick="setFilter('all')"       id="fAll">All</button>
-      <button class="filter-btn"        onclick="setFilter('DRAFT')"     id="fDRAFT">Draft</button>
-      <button class="filter-btn"        onclick="setFilter('APPROVED')"  id="fAPPROVED">Approved</button>
+      <button class="filter-btn"        onclick="setFilter('OPEN')"      id="fOPEN">Open</button>
       <button class="filter-btn"        onclick="setFilter('SENT')"      id="fSENT">Sent</button>
       <button class="filter-btn"        onclick="setFilter('PARTIAL')"   id="fPARTIAL">Partial</button>
       <button class="filter-btn"        onclick="setFilter('RECEIVED')"  id="fRECEIVED">Received</button>
@@ -198,15 +214,17 @@
         <tr>
           <th style="width:140px">PO #</th>
           <th>Vendor</th>
-          <th style="width:110px">Status</th>
-          <th style="width:70px;text-align:right">Lines</th>
-          <th style="width:120px;text-align:right">Total</th>
-          <th style="width:120px">Expected</th>
-          <th style="width:120px">Created</th>
+          <th style="width:100px">Status</th>
+          <th style="width:60px;text-align:right">Lines</th>
+          <th style="width:110px;text-align:right">Total</th>
+          <th style="width:160px">Expected</th>
+          <th style="width:110px">Sent</th>
+          <th style="width:110px">Created</th>
+          <th style="width:160px">Actions</th>
         </tr>
       </thead>
       <tbody id="poRows">
-        <tr><td colspan="7" class="empty-state"><div class="empty-icon">⏳</div><div class="empty-text">Loading…</div></td></tr>
+        <tr><td colspan="9" class="empty-state"><div class="empty-icon">⏳</div><div class="empty-text">Loading…</div></td></tr>
       </tbody>
     </table>
   </div>
@@ -221,38 +239,77 @@
         <div class="modal-meta" id="pmMeta"></div>
       </div>
       <div style="display:flex;align-items:center;gap:10px">
-        <button class="btn btn-ghost btn-sm" id="pmViewPdfBtn" onclick="openPdfTab()" style="display:none">View / Print PDF</button>
+        <button class="btn btn-orange-soft btn-sm" id="pmViewPdfBtn" onclick="openPdfTab()" style="display:none">View / Print PDF</button>
         <button class="modal-close" onclick="closePoModal()">&times;</button>
       </div>
     </div>
 
     <div class="modal-body">
 
-      <!-- Vendor select + autofill -->
+      <!-- Vendor select + editable info -->
       <div class="section">
-        <div class="section-label">Vendor</div>
+        <div class="section-label">Vendor <span class="hint">Pick one, then edit any fields for this PO. You&rsquo;ll be asked whether to save changes back to the vendor profile.</span></div>
         <div class="field">
           <label>Pick a vendor</label>
           <select id="pmVendorSelect" onchange="onVendorChange()">
             <option value="">— Select a vendor —</option>
           </select>
         </div>
-        <div id="pmVendorInfo" style="display:none">
-          <div class="vendor-info">
-            <div class="row"><div class="row-label">Address</div><div id="pmVendorAddr"></div></div>
-            <div class="row"><div class="row-label">Phone</div><div id="pmVendorPhone"></div></div>
-            <div class="row"><div class="row-label">Contacts</div><div id="pmVendorContacts"></div></div>
-            <div class="row"><div class="row-label">Send To</div><div id="pmVendorSendTo"></div></div>
-            <div class="row"><div class="row-label">Freight</div><div id="pmVendorFreight"></div></div>
-            <div class="row"><div class="row-label">Payment</div><div id="pmVendorPayment"></div></div>
-            <div class="row"><div class="row-label">Standing Notes</div><div id="pmVendorStanding"></div></div>
+        <div id="pmVendorForm" class="vendor-form" style="display:none">
+          <div class="field-row-3">
+            <div class="field">
+              <label>Vendor Name (read-only)</label>
+              <input type="text" id="pmvName" disabled>
+            </div>
+            <div class="field">
+              <label>Phone</label>
+              <input type="text" id="pmvPhone">
+            </div>
+            <div class="field">
+              <label>Payment Terms</label>
+              <input type="text" id="pmvPaymentTerms" placeholder="e.g. 1%10, Net 30">
+            </div>
+          </div>
+          <div class="field">
+            <label>Vendor Address (one line per row)</label>
+            <textarea id="pmvAddress" rows="2" placeholder="P.O. Box 11643&#10;Knoxville, TN 37939-1643"></textarea>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Contact Names</label>
+              <div class="chip-list" id="pmvContacts">
+                <input type="text" class="chip-input" placeholder="Type a name + Enter" onkeydown="chipKeydown(event, 'pmvContacts')">
+              </div>
+            </div>
+            <div class="field">
+              <label>Freight Terms</label>
+              <input type="text" id="pmvFreightTerms" placeholder="e.g. Ship COLLECT via ABF, Account #189059">
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>Send-To Emails (TO)</label>
+              <div class="chip-list" id="pmvSendTo">
+                <input type="text" class="chip-input" placeholder="email@vendor.com + Enter" onkeydown="chipKeydown(event, 'pmvSendTo')">
+              </div>
+            </div>
+            <div class="field">
+              <label>CC Emails</label>
+              <div class="chip-list" id="pmvCc">
+                <input type="text" class="chip-input" placeholder="optional" onkeydown="chipKeydown(event, 'pmvCc')">
+              </div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Standing Notes (always printed on this vendor&rsquo;s POs)</label>
+            <textarea id="pmvStandingNotes" rows="2"></textarea>
           </div>
         </div>
       </div>
 
       <!-- Catalog picker -->
       <div class="section" id="pmCatalogSection" style="display:none">
-        <div class="section-label">Catalog — click to add items to this PO</div>
+        <div class="section-label">Catalog <span class="hint">Click to add items to this PO. Default qty + price prefill from the catalog.</span></div>
         <div class="catalog-wrap">
           <table class="catalog-tbl">
             <thead>
@@ -271,12 +328,11 @@
             </tbody>
           </table>
         </div>
-        <div class="helper">Checking an item adds it (or the latest version of it) to the PO lines below. Unchecking removes it. Quantities + prices stay editable down below.</div>
       </div>
 
       <!-- PO Lines -->
       <div class="section">
-        <div class="section-label">PO Lines</div>
+        <div class="section-label">PO Lines <span class="hint">Edit qty and price freely. "+ Add Custom Line" for one-offs not in the catalog.</span></div>
         <div class="lines-wrap">
           <table class="lines-tbl">
             <thead>
@@ -294,28 +350,18 @@
             <tbody id="pmLinesBody"></tbody>
           </table>
           <div class="lines-add">
-            <button class="btn btn-ghost btn-sm" onclick="addPoLine()">+ Add Custom Line</button>
-            <div>Total: <span class="lines-total" id="pmLinesTotal">$0.00</span></div>
+            <button class="btn btn-orange-soft btn-sm" onclick="addPoLine()">+ Add Custom Line</button>
+            <div style="font-size:11px;color:var(--muted)">Total: <span class="lines-total" id="pmLinesTotal">$0.00</span></div>
           </div>
         </div>
       </div>
 
-      <!-- Notes + expected date -->
+      <!-- Notes + PO #-->
       <div class="section">
         <div class="section-label">PO Details</div>
-        <div class="field-row">
-          <div class="field">
-            <label>Expected Delivery</label>
-            <input type="date" id="pmExpectedDate">
-          </div>
-          <div class="field">
-            <label>PO Number</label>
-            <input type="text" id="pmPoNumber" disabled style="font-family:ui-monospace,monospace;color:var(--orange)" placeholder="(assigned on save)">
-          </div>
-        </div>
         <div class="field">
-          <label>PO Notes (printed on the PDF below the line items)</label>
-          <textarea id="pmNotes" rows="3" placeholder="One-time notes for this PO. Vendor standing notes are auto-applied separately."></textarea>
+          <label>PO Notes <span style="font-weight:600;text-transform:none;letter-spacing:0;font-size:10px;color:var(--muted);margin-left:4px">(printed on the PDF below line items)</span></label>
+          <textarea id="pmNotes" rows="2" placeholder="One-time notes for this PO. Vendor standing notes apply separately."></textarea>
         </div>
       </div>
 
@@ -324,14 +370,12 @@
     <div class="modal-footer">
       <div style="display:flex;gap:8px">
         <button class="btn btn-red btn-sm" id="pmCancelPoBtn" onclick="transitionPo('CANCELLED')" style="display:none">Cancel PO</button>
-        <button class="btn btn-red btn-sm" id="pmDeleteBtn"  onclick="deletePo()" style="display:none">Delete Draft</button>
+        <button class="btn btn-red btn-sm" id="pmDeleteBtn"  onclick="deletePo()" style="display:none">Delete</button>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
         <button class="btn btn-ghost"  onclick="closePoModal()">Close</button>
-        <button class="btn btn-ghost"  id="pmUnapproveBtn" onclick="transitionPo('DRAFT')"   style="display:none">Un-approve</button>
-        <button class="btn btn-orange" id="pmSaveBtn"      onclick="savePo()">Save Draft</button>
-        <button class="btn btn-blue"   id="pmApproveBtn"   onclick="approvePo()"             style="display:none">Approve</button>
-        <button class="btn btn-green"  id="pmSendBtn"      onclick="sendPo()"                style="display:none">Send (Mailto)</button>
+        <button class="btn btn-orange" id="pmSaveBtn" onclick="savePo()">Create PO</button>
+        <button class="btn btn-green"  id="pmSendBtn" onclick="sendPo()" style="display:none">Send (Mailto)</button>
       </div>
     </div>
   </div>
@@ -351,11 +395,13 @@ function toggleTheme() {
 }
 
 // ── State ───────────────────────────────────────────────────────
-let _pos = [];            // list of POs
-let _vendors = [];        // dropdown source
-let _currentVendor = null; // currently-selected vendor in modal
-let _editingPo = null;    // null = create, else the PO being edited
+let _pos = [];
+let _vendors = [];
+let _currentVendor = null;   // canonical vendor from /api/vendors
+let _initialSnapshot = null; // snapshot of the vendor form when the PO was loaded — used to diff against on save
+let _editingPo = null;
 let _statusFilter = 'all';
+let _dirtyExpected = {};     // {poNumber: date}
 
 // ── Toast ───────────────────────────────────────────────────────
 let _toastTimer = null;
@@ -378,6 +424,12 @@ function escapeHtml(s) {
 }
 function fmt$(n) {
   return '$' + parseFloat(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+function fmtTs(s, includeTime) {
+  if (!s) return '—';
+  try {
+    return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch(e) { return s; }
 }
 
 // ── Load ────────────────────────────────────────────────────────
@@ -420,9 +472,9 @@ function renderPos() {
 
   if (!filtered.length) {
     tbody.innerHTML =
-      '<tr><td colspan="7" class="empty-state">' +
+      '<tr><td colspan="9" class="empty-state">' +
       '<div class="empty-icon">📋</div>' +
-      '<div class="empty-text">No vendor POs yet</div>' +
+      '<div class="empty-text">No vendor POs in this view</div>' +
       '<div class="empty-sub">Click "+ New PO" to create one.</div>' +
       '</td></tr>';
     return;
@@ -432,38 +484,73 @@ function renderPos() {
     const lines = (p.po_data && Array.isArray(p.po_data.lines)) ? p.po_data.lines : [];
     const total = lines.reduce((s, l) => s + (parseFloat(l.unit_price || 0) * parseFloat(l.qty || 0)), 0);
     const created = p.created_at ? new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-    const expected = p.expected_date
-      ? new Date(p.expected_date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-      : '—';
+    const sent = p.sent_at ? new Date(p.sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+    const expected = p.expected_date || '';
+    const idSafe = p.po_number.replace(/[^a-z0-9]/gi, '_');
     return (
-      '<tr onclick="openEditPo(\'' + encodeURIComponent(p.po_number) + '\')">' +
+      '<tr>' +
         '<td><span class="po-num">' + escapeHtml(p.po_number) + '</span></td>' +
         '<td><div class="vendor-cell">' + escapeHtml(p.vendor_name || (p.vendor_snapshot && p.vendor_snapshot.name) || '(deleted vendor)') + '</div></td>' +
         '<td><span class="status-pill pill-' + escapeHtml(p.status) + '">' + escapeHtml(p.status) + '</span></td>' +
         '<td class="td-num">' + lines.length + '</td>' +
         '<td class="td-num total-cell">' + fmt$(total) + '</td>' +
-        '<td>' + escapeHtml(expected) + '</td>' +
+        '<td><input type="date" id="exp_' + idSafe + '" class="inline-input" value="' + escapeHtml(expected) + '" style="width:140px" onchange="markExpectedDirty(\'' + escapeHtml(p.po_number) + '\', this)" onblur="saveExpectedDate(\'' + escapeHtml(p.po_number) + '\')"></td>' +
+        '<td style="font-size:12px;color:var(--muted)">' + escapeHtml(sent) + '</td>' +
         '<td style="font-size:12px;color:var(--muted)">' + escapeHtml(created) + '</td>' +
+        '<td><div class="row-actions">' +
+          '<button class="btn btn-orange-soft btn-sm" onclick="viewPo(\'' + encodeURIComponent(p.po_number) + '\', \'' + escapeHtml(p.share_token) + '\')">View</button>' +
+          '<button class="btn btn-ghost btn-sm" onclick="openEditPo(\'' + encodeURIComponent(p.po_number) + '\')">Edit</button>' +
+        '</div></td>' +
       '</tr>'
     );
   }).join('');
 }
 
+function viewPo(encodedPoNumber, shareToken) {
+  window.open('/vpo/' + encodedPoNumber + '?t=' + shareToken, '_blank');
+}
+
+function markExpectedDirty(poNumber, input) {
+  _dirtyExpected[poNumber] = input.value || null;
+  input.classList.add('dirty');
+}
+
+async function saveExpectedDate(poNumber) {
+  if (!(poNumber in _dirtyExpected)) return;
+  const newDate = _dirtyExpected[poNumber];
+  try {
+    const r = await fetch('/api/vendor-pos/' + encodeURIComponent(poNumber), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ expected_date: newDate }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Save failed');
+    const idx = _pos.findIndex(p => p.po_number === poNumber);
+    if (idx >= 0) Object.assign(_pos[idx], data.po);
+    delete _dirtyExpected[poNumber];
+    const idSafe = poNumber.replace(/[^a-z0-9]/gi, '_');
+    document.getElementById('exp_' + idSafe)?.classList.remove('dirty');
+    showToast('Expected date saved', 'success');
+  } catch (e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
 // ── Modal: open new ────────────────────────────────────────────
 function openNewPo() {
   _editingPo = null;
-  document.getElementById('pmTitle').textContent = 'New Vendor PO';
+  _initialSnapshot = null;
+  document.getElementById('pmTitle').innerHTML = 'New Vendor PO';
   document.getElementById('pmMeta').textContent = '';
   document.getElementById('pmViewPdfBtn').style.display = 'none';
   document.getElementById('pmDeleteBtn').style.display = 'none';
   document.getElementById('pmCancelPoBtn').style.display = 'none';
-  document.getElementById('pmApproveBtn').style.display = 'none';
   document.getElementById('pmSendBtn').style.display = 'none';
-  document.getElementById('pmUnapproveBtn').style.display = 'none';
-  document.getElementById('pmSaveBtn').textContent = 'Save Draft';
+  document.getElementById('pmSaveBtn').textContent = 'Create PO';
   document.getElementById('pmSaveBtn').disabled = false;
 
-  // Populate vendor dropdown (non-archived only on create)
   const sel = document.getElementById('pmVendorSelect');
   sel.disabled = false;
   sel.innerHTML = '<option value="">— Select a vendor —</option>' +
@@ -493,11 +580,11 @@ async function openEditPo(encodedPoNumber) {
 }
 
 function populateModal(po) {
-  document.getElementById('pmTitle').textContent = 'PO ' + po.po_number;
+  document.getElementById('pmTitle').innerHTML = 'Edit Vendor PO <span class="po-num-tag">' + escapeHtml(po.po_number) + '</span>';
   document.getElementById('pmMeta').textContent = 'Status: ' + po.status +
     (po.sent_at ? ' • Sent: ' + new Date(po.sent_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
 
-  // Vendor dropdown locked to the snapshot vendor — switching vendors mid-PO is a footgun
+  // Vendor dropdown locked to the snapshot vendor
   const sel = document.getElementById('pmVendorSelect');
   const snap = po.vendor_snapshot || {};
   const liveVendor = _vendors.find(v => v.id === po.vendor_id);
@@ -505,9 +592,10 @@ function populateModal(po) {
   sel.value = String(po.vendor_id || '');
   sel.disabled = true;
 
-  // Use live vendor catalog if available (so newly-added catalog items show up); fall back to snapshot
-  _currentVendor = liveVendor || snap;
-  paintVendorInfo(_currentVendor);
+  // Vendor info uses the stored snapshot (frozen at create time + any later edits)
+  _currentVendor = liveVendor || null;
+  paintVendorForm(snap);
+  _initialSnapshot = readVendorForm();
   paintCatalog(_currentVendor, po.po_data?.lines || []);
 
   // Lines
@@ -515,25 +603,18 @@ function populateModal(po) {
   (po.po_data?.lines || []).forEach(l => addPoLine(l));
   updateLinesTotal();
 
-  // Other fields
-  document.getElementById('pmExpectedDate').value = po.expected_date || '';
   document.getElementById('pmNotes').value = (po.po_data && po.po_data.notes) || '';
-  document.getElementById('pmPoNumber').value = po.po_number;
 
   // Buttons by status
   document.getElementById('pmViewPdfBtn').style.display = 'inline-block';
-  document.getElementById('pmDeleteBtn').style.display    = po.status === 'DRAFT' ? 'inline-block' : 'none';
-  document.getElementById('pmCancelPoBtn').style.display  = (po.status === 'DRAFT' || po.status === 'APPROVED' || po.status === 'SENT' || po.status === 'PARTIAL') ? 'inline-block' : 'none';
-  document.getElementById('pmApproveBtn').style.display   = po.status === 'DRAFT'    ? 'inline-block' : 'none';
-  document.getElementById('pmSendBtn').style.display      = po.status === 'APPROVED' ? 'inline-block' : 'none';
-  document.getElementById('pmUnapproveBtn').style.display = po.status === 'APPROVED' ? 'inline-block' : 'none';
+  document.getElementById('pmDeleteBtn').style.display    = po.status === 'OPEN' ? 'inline-block' : 'none';
+  document.getElementById('pmCancelPoBtn').style.display  = (po.status === 'OPEN' || po.status === 'SENT' || po.status === 'PARTIAL') ? 'inline-block' : 'none';
+  document.getElementById('pmSendBtn').style.display      = po.status === 'OPEN' ? 'inline-block' : 'none';
 
-  // Save button enabled unless terminal status
   const canEdit = po.status !== 'RECEIVED' && po.status !== 'CLOSED' && po.status !== 'CANCELLED';
-  document.getElementById('pmSaveBtn').textContent = po.status === 'SENT' ? 'Save (regenerate PDF)' : 'Save Changes';
+  document.getElementById('pmSaveBtn').textContent = po.status === 'SENT' ? 'Save (re-generate PDF)' : 'Save Changes';
   document.getElementById('pmSaveBtn').disabled = !canEdit;
   document.querySelectorAll('#pmLinesBody input').forEach(i => i.disabled = !canEdit);
-  document.getElementById('pmExpectedDate').disabled = !canEdit;
   document.getElementById('pmNotes').disabled = !canEdit;
 }
 
@@ -541,58 +622,124 @@ function closePoModal() {
   document.getElementById('poModal').classList.remove('open');
   _editingPo = null;
   _currentVendor = null;
+  _initialSnapshot = null;
 }
 
 function resetForm() {
-  document.getElementById('pmVendorInfo').style.display = 'none';
+  document.getElementById('pmVendorForm').style.display = 'none';
   document.getElementById('pmCatalogSection').style.display = 'none';
   document.getElementById('pmCatalogBody').innerHTML = '';
   document.getElementById('pmLinesBody').innerHTML = '';
-  document.getElementById('pmExpectedDate').value = '';
   document.getElementById('pmNotes').value = '';
-  document.getElementById('pmPoNumber').value = '';
+  paintVendorForm({});
   _currentVendor = null;
+  _initialSnapshot = null;
   updateLinesTotal();
 }
 
-// ── Vendor change ───────────────────────────────────────────────
+// ── Vendor change (new PO) ──────────────────────────────────────
 function onVendorChange() {
   const id = parseInt(document.getElementById('pmVendorSelect').value || 0, 10);
   if (!id) {
-    document.getElementById('pmVendorInfo').style.display = 'none';
+    document.getElementById('pmVendorForm').style.display = 'none';
     document.getElementById('pmCatalogSection').style.display = 'none';
     _currentVendor = null;
+    _initialSnapshot = null;
     return;
   }
   _currentVendor = _vendors.find(v => v.id === id) || null;
   if (!_currentVendor) return;
-  paintVendorInfo(_currentVendor);
+  paintVendorForm(_currentVendor);
+  _initialSnapshot = readVendorForm();
   paintCatalog(_currentVendor, []);
 }
 
-function paintVendorInfo(v) {
-  document.getElementById('pmVendorInfo').style.display = 'block';
-  const addr = (Array.isArray(v.address_lines) ? v.address_lines : []).join(', ') || '<span style="color:var(--muted)">—</span>';
-  const contacts = (Array.isArray(v.contacts) ? v.contacts : [])
-    .map(c => (c && c.name) ? c.name : (typeof c === 'string' ? c : ''))
-    .filter(Boolean).join(', ') || '<span style="color:var(--muted)">—</span>';
-  const sendTo = (Array.isArray(v.send_to_emails) ? v.send_to_emails : []);
-  const sendToLine = sendTo.length ? sendTo.join(', ') : '<span style="color:var(--red)">no send-to email set — fix in /vendors before sending</span>';
-  document.getElementById('pmVendorAddr').innerHTML = addr;
-  document.getElementById('pmVendorPhone').textContent = v.phone || '—';
-  document.getElementById('pmVendorContacts').innerHTML = contacts;
-  document.getElementById('pmVendorSendTo').innerHTML = sendToLine;
-  document.getElementById('pmVendorFreight').textContent = v.freight_terms || '—';
-  document.getElementById('pmVendorPayment').textContent = v.payment_terms || '—';
-  document.getElementById('pmVendorStanding').textContent = v.standard_notes || '—';
+// ── Vendor info form (editable) ─────────────────────────────────
+function paintVendorForm(v) {
+  v = v || {};
+  document.getElementById('pmVendorForm').style.display = 'block';
+  document.getElementById('pmvName').value = v.name || '';
+  document.getElementById('pmvPhone').value = v.phone || '';
+  document.getElementById('pmvPaymentTerms').value = v.payment_terms || '';
+  const addrLines = Array.isArray(v.address_lines) ? v.address_lines : [];
+  document.getElementById('pmvAddress').value = addrLines.join('\n');
+  document.getElementById('pmvFreightTerms').value = v.freight_terms || '';
+  document.getElementById('pmvStandingNotes').value = v.standard_notes || '';
+
+  clearChips('pmvContacts');
+  (Array.isArray(v.contacts) ? v.contacts : []).forEach(c => {
+    const name = (c && c.name) ? c.name : (typeof c === 'string' ? c : '');
+    if (name) addChip('pmvContacts', name);
+  });
+  clearChips('pmvSendTo');
+  (Array.isArray(v.send_to_emails) ? v.send_to_emails : []).forEach(e => addChip('pmvSendTo', e));
+  clearChips('pmvCc');
+  (Array.isArray(v.cc_emails) ? v.cc_emails : []).forEach(e => addChip('pmvCc', e));
 }
 
+function readVendorForm() {
+  return {
+    phone: document.getElementById('pmvPhone').value.trim(),
+    payment_terms: document.getElementById('pmvPaymentTerms').value.trim(),
+    freight_terms: document.getElementById('pmvFreightTerms').value.trim(),
+    standard_notes: document.getElementById('pmvStandingNotes').value.trim(),
+    address_lines: document.getElementById('pmvAddress').value.split('\n').map(l => l.trim()).filter(Boolean),
+    contacts: readChips('pmvContacts').map(name => ({ name })),
+    send_to_emails: readChips('pmvSendTo'),
+    cc_emails: readChips('pmvCc'),
+  };
+}
+
+function vendorFormChanged() {
+  if (!_initialSnapshot) return false;
+  const now = readVendorForm();
+  return JSON.stringify(now) !== JSON.stringify(_initialSnapshot);
+}
+
+// ── Chip helpers ────────────────────────────────────────────────
+function chipKeydown(e, listId) {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    const v = e.target.value.trim().replace(/,$/, '');
+    if (v) {
+      addChip(listId, v);
+      e.target.value = '';
+    }
+  } else if (e.key === 'Backspace' && !e.target.value) {
+    const chips = document.getElementById(listId).querySelectorAll('.chip');
+    if (chips.length) chips[chips.length - 1].remove();
+  }
+}
+function addChip(listId, text) {
+  const list = document.getElementById(listId);
+  const input = list.querySelector('.chip-input');
+  const chip = document.createElement('span');
+  chip.className = 'chip';
+  chip.textContent = text;
+  const x = document.createElement('button');
+  x.className = 'chip-remove';
+  x.type = 'button';
+  x.textContent = '×';
+  x.onclick = () => chip.remove();
+  chip.appendChild(x);
+  list.insertBefore(chip, input);
+}
+function clearChips(listId) {
+  document.getElementById(listId).querySelectorAll('.chip').forEach(c => c.remove());
+}
+function readChips(listId) {
+  return Array.from(document.getElementById(listId).querySelectorAll('.chip'))
+    .map(c => c.firstChild.textContent.trim())
+    .filter(Boolean);
+}
+
+// ── Catalog picker ──────────────────────────────────────────────
 function paintCatalog(v, preselectedLines) {
   document.getElementById('pmCatalogSection').style.display = 'block';
   const tbody = document.getElementById('pmCatalogBody');
-  const catalog = Array.isArray(v.catalog) ? v.catalog : [];
+  const catalog = (v && Array.isArray(v.catalog)) ? v.catalog : [];
   if (!catalog.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:18px;font-style:italic">This vendor has no catalog items yet. Add some in /vendors, or use "+ Add Custom Line" below to enter one-off items.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:18px;font-style:italic">This vendor has no catalog items in /vendors. Use "+ Add Custom Line" below for one-off items.</td></tr>';
     return;
   }
   const checkedIds = new Set((preselectedLines || []).map(l => l.catalog_id).filter(Boolean));
@@ -619,7 +766,6 @@ function onCatalogToggle(checkbox, catalogId) {
   if (!item) return;
   if (checkbox.checked) {
     row.classList.add('row-checked');
-    // Skip if already in lines (e.g. on re-open of an edit)
     const alreadyIn = Array.from(document.querySelectorAll('#pmLinesBody tr'))
       .some(tr => tr.dataset.catalogId === catalogId);
     if (!alreadyIn) {
@@ -642,7 +788,7 @@ function onCatalogToggle(checkbox, catalogId) {
   }
 }
 
-// ── PO lines table ──────────────────────────────────────────────
+// ── PO lines ────────────────────────────────────────────────────
 function addPoLine(l) {
   l = l || {};
   const tr = document.createElement('tr');
@@ -675,7 +821,6 @@ function updateLinesTotal() {
 }
 
 function syncCatalogCheckboxes() {
-  // After a row is removed manually, uncheck its corresponding catalog checkbox
   const idsInLines = new Set(Array.from(document.querySelectorAll('#pmLinesBody tr'))
     .map(tr => tr.dataset.catalogId).filter(Boolean));
   document.querySelectorAll('#pmCatalogBody tr').forEach(tr => {
@@ -701,18 +846,52 @@ function readLines() {
   })).filter(l => l.description);
 }
 
-// ── Save / Approve / Send / Cancel / Delete ─────────────────────
+// ── Save vendor info changes back to the vendor profile (optional) ─
+async function maybeSyncVendorProfile() {
+  if (!_currentVendor) return false;
+  if (!vendorFormChanged()) return false;
+  const yes = confirm('You changed the vendor info on this PO.\n\nAlso save these changes back to the vendor profile (' + (_currentVendor.name || 'this vendor') + ') so future POs use them?');
+  if (!yes) return false;
+  try {
+    const payload = readVendorForm();
+    const r = await fetch('/api/vendors/' + _currentVendor.id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Vendor profile save failed');
+    // Update local cache so subsequent edits diff against the new baseline
+    const idx = _vendors.findIndex(v => v.id === _currentVendor.id);
+    if (idx >= 0) _vendors[idx] = data.vendor;
+    _currentVendor = data.vendor;
+    _initialSnapshot = readVendorForm();
+    showToast('Vendor profile updated', 'success');
+    return true;
+  } catch (e) {
+    showToast('Vendor profile save failed: ' + e.message, 'error');
+    return false;
+  }
+}
+
+// ── Save / Send / Cancel / Delete ───────────────────────────────
 async function savePo() {
-  const vendorId = parseInt(document.getElementById('pmVendorSelect').value || 0, 10);
-  if (!vendorId) { showToast('Pick a vendor first', 'error'); return; }
+  if (!_currentVendor) { showToast('Pick a vendor first', 'error'); return; }
   const lines = readLines();
   if (!lines.length) { showToast('Add at least one line item with a description', 'error'); return; }
 
+  // Offer to sync vendor info changes back first
+  await maybeSyncVendorProfile();
+
+  // PO snapshot picks up the (possibly updated) vendor form values
+  const vendorSnapshotForPo = Object.assign({}, _currentVendor, readVendorForm(), { name: (_currentVendor && _currentVendor.name) || '' });
+
   const payload = {
-    vendor_id: vendorId,
+    vendor_id: _currentVendor.id,
     lines,
     notes: document.getElementById('pmNotes').value.trim(),
-    expected_date: document.getElementById('pmExpectedDate').value || null,
+    vendor_snapshot: vendorSnapshotForPo,
   };
 
   const btn = document.getElementById('pmSaveBtn');
@@ -721,9 +900,8 @@ async function savePo() {
   btn.textContent = 'Saving…';
   try {
     const isEdit = !!_editingPo;
-    // SENT edits: warn before saving
     if (isEdit && _editingPo.status === 'SENT') {
-      if (!confirm('This PO has already been SENT to the vendor. Saving will overwrite the PDF in Drive (the vendor still has the original email). Continue?')) {
+      if (!confirm('This PO has already been SENT. Saving will regenerate the PDF in Drive (the vendor still has the original email). Continue?')) {
         btn.disabled = false; btn.textContent = orig; return;
       }
     }
@@ -738,13 +916,8 @@ async function savePo() {
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Save failed');
     showToast(isEdit ? 'PO updated' : 'PO created — ' + data.po.po_number, 'success');
-    if (!isEdit) {
-      // Re-open in edit mode so Approve becomes visible
-      _editingPo = data.po;
-      populateModal(data.po);
-    } else {
-      populateModal(data.po);
-    }
+    _editingPo = data.po;
+    populateModal(data.po);
     await loadPos();
   } catch (e) {
     showToast('Error: ' + e.message, 'error');
@@ -753,16 +926,15 @@ async function savePo() {
   }
 }
 
-async function approvePo() {
-  // Approval also persists any pending edits in one round-trip
-  await transitionPo('APPROVED');
-}
-
 async function sendPo() {
-  if (!_editingPo) return;
-  const v = _currentVendor || _editingPo.vendor_snapshot || {};
+  // Always save current edits first so the PDF + snapshot reflect what's
+  // actually being sent. savePo() handles both create (POST) and update
+  // (PATCH); after it runs _editingPo holds the latest PO row.
+  await savePo();
+  if (!_editingPo) return; // save failed
+  const v = readVendorForm();
   const sendTo = (Array.isArray(v.send_to_emails) ? v.send_to_emails : []).filter(Boolean);
-  if (!sendTo.length) { showToast('Vendor has no send-to email — set it in /vendors first', 'error'); return; }
+  if (!sendTo.length) { showToast('Vendor has no send-to email — add one above before sending', 'error'); return; }
   const cc = (Array.isArray(v.cc_emails) ? v.cc_emails : []).filter(Boolean);
   const poNumber = _editingPo.po_number;
   const shareToken = _editingPo.share_token;
@@ -780,6 +952,7 @@ async function sendPo() {
     'View online: ' + poLink,
     '',
     'Thank you,',
+    'Josh Fletcher',
     'WhisperRoom, Inc.',
   ].join('\n');
 
@@ -787,9 +960,6 @@ async function sendPo() {
   const params = 'subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body) + (cc.length ? '&cc=' + encodeURIComponent(cc.join(',')) : '');
   const mailto = 'mailto:' + encodeURIComponent(sendTo.join(',')) + '?' + params;
 
-  // Flip status BEFORE opening mailto so we don't miss the transition if the
-  // browser navigates away (some mail clients close the tab). The transition
-  // call returns the updated PO; mailto fires immediately after.
   await transitionPo('SENT', { silent: true });
   window.location.href = mailto;
   showToast('Draft opened. Attach the PDF before sending. (PO marked Sent.)', 'success');
@@ -797,7 +967,7 @@ async function sendPo() {
 
 async function deletePo() {
   if (!_editingPo) return;
-  if (!confirm('Delete draft ' + _editingPo.po_number + '? This can\'t be undone.')) return;
+  if (!confirm('Delete ' + _editingPo.po_number + '? This can\'t be undone.')) return;
   try {
     const r = await fetch('/api/vendor-pos/' + encodeURIComponent(_editingPo.po_number), {
       method: 'DELETE',
@@ -805,7 +975,7 @@ async function deletePo() {
     });
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Delete failed');
-    showToast('Draft deleted', 'success');
+    showToast('PO deleted', 'success');
     closePoModal();
     await loadPos();
   } catch (e) {
@@ -816,20 +986,9 @@ async function deletePo() {
 async function transitionPo(newStatus, opts) {
   if (!_editingPo) return;
   opts = opts || {};
-  // If transitioning AND there are unsaved edits, save first
-  const needsSave = newStatus === 'APPROVED' || newStatus === 'SENT';
   let payload = { status: newStatus };
-  if (needsSave) {
-    payload = {
-      status: newStatus,
-      lines: readLines(),
-      notes: document.getElementById('pmNotes').value.trim(),
-      expected_date: document.getElementById('pmExpectedDate').value || null,
-    };
-    if (!payload.lines.length) { showToast('Add at least one line item with a description', 'error'); return; }
-  }
   if (newStatus === 'CANCELLED') {
-    if (!confirm('Cancel ' + _editingPo.po_number + '? Status can\'t be returned to active.')) return;
+    if (!confirm('Cancel ' + _editingPo.po_number + '? This can\'t be un-done.')) return;
   }
   try {
     const r = await fetch('/api/vendor-pos/' + encodeURIComponent(_editingPo.po_number), {

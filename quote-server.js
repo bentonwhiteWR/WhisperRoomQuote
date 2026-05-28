@@ -211,6 +211,22 @@ const HS_REDIRECT_URI  = process.env.HS_REDIRECT_URI  || 'https://sales.whisperr
 // Override on staging via env var so reps can click through the full flow.
 const PUBLIC_BASE_URL  = (process.env.PUBLIC_BASE_URL || 'https://sales.whisperroom.com').replace(/\/+$/, '');
 
+// WhisperRoom logo (base64 SVG) — loaded once at startup. Used on the
+// vendor PO doc and re-usable on any other printable doc that wants
+// the same logo as the Audimute PO. File is the SVG base64, no <img>
+// wrapping; the helper builds the tag.
+let _WR_LOGO_B64 = '';
+try {
+  _WR_LOGO_B64 = fs.readFileSync(path.join(__dirname, 'assets', 'whisperroom-logo.svg.b64'), 'utf8').trim();
+} catch(e) {
+  console.warn('[startup] WR logo asset missing:', e.message);
+}
+function wrLogoImg(extraClass) {
+  if (!_WR_LOGO_B64) return '';
+  const cls = ['logo-img', extraClass].filter(Boolean).join(' ');
+  return `<img src="data:image/svg+xml;base64,${_WR_LOGO_B64}" alt="WhisperRoom" class="${cls}">`;
+}
+
 // Emails allowed to delete QB invoices. Defaults to Benton + Accounting.
 // Override with comma-separated emails via env: QB_INVOICE_DELETE_EMAILS=...
 // Comparison is case-insensitive.
@@ -712,13 +728,11 @@ function _normalizeVendorPoLines(raw) {
 }
 
 // Valid vendor-PO status transitions. CANCELLED is reachable from any
-// pre-RECEIVED state. APPROVED -> DRAFT is allowed so Josh can pull a
-// PO back to DRAFT for major edits before send. SENT -> APPROVED is
-// NOT allowed — once it's gone to the vendor, the audit trail should
-// reflect that. Receive/Close transitions are Phase 2 (v1.50+).
+// pre-RECEIVED state. POs start OPEN — no draft/approval gate, Josh
+// edits freely and hits Send when he's ready. Receive/Close
+// transitions are Phase 2 (v1.50+).
 const _VENDOR_PO_TRANSITIONS = {
-  DRAFT:     ['APPROVED', 'CANCELLED'],
-  APPROVED:  ['SENT', 'DRAFT', 'CANCELLED'],
+  OPEN:      ['SENT', 'CANCELLED'],
   SENT:      ['PARTIAL', 'RECEIVED', 'CANCELLED'],
   PARTIAL:   ['PARTIAL', 'RECEIVED', 'CANCELLED'],
   RECEIVED:  ['CLOSED'],
@@ -11898,10 +11912,14 @@ ${q.accepted ? `
       if (!db) { json({ error: 'No database' }, 500); return; }
 
       // Snapshot the vendor row at PO creation time so future vendor
-      // edits don't rewrite history.
+      // edits don't rewrite history. If the client passed a
+      // vendor_snapshot override (the rep edited vendor info inline in
+      // the PO modal), merge those edits over the canonical row.
       const vRes = await db.query(`SELECT * FROM vendors WHERE id = $1`, [vendorId]);
       if (!vRes.rows.length) { json({ error: 'Vendor not found' }, 404); return; }
-      const vendor = vRes.rows[0];
+      const vendorRow = vRes.rows[0];
+      const snapshotOverride = (body.vendor_snapshot && typeof body.vendor_snapshot === 'object') ? body.vendor_snapshot : {};
+      const vendor = Object.assign({}, vendorRow, snapshotOverride);
 
       const poNumber = await nextVendorPoNumber();
       const shareToken = crypto.randomBytes(12).toString('hex');
@@ -11915,7 +11933,7 @@ ${q.accepted ? `
         `INSERT INTO vendor_pos (
            po_number, vendor_id, vendor_snapshot, share_token, status,
            po_data, expected_date, created_by
-         ) VALUES ($1,$2,$3,$4,'DRAFT',$5,$6,$7) RETURNING *`,
+         ) VALUES ($1,$2,$3,$4,'OPEN',$5,$6,$7) RETURNING *`,
         [
           poNumber,
           vendorId,
@@ -11929,6 +11947,11 @@ ${q.accepted ? `
       writelog('info', 'vendor-po.created', `Vendor PO created: ${poNumber} (${vendor.name})`, {
         rep: String(rep || ''),
         meta: { poNumber, vendorId, lineCount: lines.length },
+      });
+      // Kick off PDF generation immediately so the Drive file is ready
+      // by the time Josh hits Send.
+      _regenerateVendorPoPdf(result.rows[0]).catch(e => {
+        console.warn('[vendor-po] PDF regen error:', e.message);
       });
       json({ po: result.rows[0] });
     } catch(e) {
@@ -11959,7 +11982,8 @@ ${q.accepted ? `
 
       // Field edits — only when status allows
       const fieldEditRequested =
-        body.lines !== undefined || body.notes !== undefined || body.expected_date !== undefined;
+        body.lines !== undefined || body.notes !== undefined ||
+        body.expected_date !== undefined || body.vendor_snapshot !== undefined;
       if (fieldEditRequested) {
         if (!_vendorPoCanEditFields(cur.status)) {
           json({ error: `Cannot edit a ${cur.status} PO` }, 409); return;
@@ -11975,6 +11999,14 @@ ${q.accepted ? `
         }
         setField('po_data', JSON.stringify(newPoData));
         if (body.expected_date !== undefined) setField('expected_date', body.expected_date || null);
+        // Vendor snapshot update — Josh can tweak vendor info per-PO without
+        // touching the vendor record (or with, via a separate /api/vendors
+        // PATCH the client makes). Merge over the existing snapshot so the
+        // client doesn't have to send every field every time.
+        if (body.vendor_snapshot !== undefined && body.vendor_snapshot && typeof body.vendor_snapshot === 'object') {
+          const mergedSnap = Object.assign({}, cur.vendor_snapshot || {}, body.vendor_snapshot);
+          setField('vendor_snapshot', JSON.stringify(mergedSnap));
+        }
       }
 
       // Status transition
@@ -12010,11 +12042,13 @@ ${q.accepted ? `
         });
       }
 
-      // Fire-and-forget PDF regen on any edit while in APPROVED/SENT.
-      // Drive uploads happen in slice 4 (next commit), so for now this
-      // is a placeholder hook the next commit will populate.
+      // Fire-and-forget PDF regen on any field edit or status transition
+      // into SENT — keeps the Drive folder in sync with the latest PO
+      // state. Skipped for terminal/cancelled states.
       const final = result.rows[0];
-      if ((final.status === 'APPROVED' || final.status === 'SENT') && (fieldEditRequested || newStatus === 'APPROVED')) {
+      const shouldRegen = (fieldEditRequested || newStatus === 'SENT') &&
+        final.status !== 'CANCELLED' && final.status !== 'CLOSED';
+      if (shouldRegen) {
         _regenerateVendorPoPdf(final).catch(e => {
           console.warn('[vendor-po] PDF regen error:', e.message);
         });
@@ -12037,8 +12071,8 @@ ${q.accepted ? `
       if (!db) { json({ error: 'No database' }, 500); return; }
       const curRes = await db.query(`SELECT status FROM vendor_pos WHERE po_number = $1`, [poNumber]);
       if (!curRes.rows.length) { json({ error: 'PO not found' }, 404); return; }
-      if (curRes.rows[0].status !== 'DRAFT') {
-        json({ error: `Only DRAFT POs can be deleted. Cancel ${poNumber} instead.` }, 409); return;
+      if (curRes.rows[0].status !== 'OPEN') {
+        json({ error: `Only unsent (OPEN) POs can be deleted. Cancel ${poNumber} instead.` }, 409); return;
       }
       await db.query(`DELETE FROM vendor_pos WHERE po_number = $1`, [poNumber]);
       writelog('info', 'vendor-po.deleted', `Vendor PO deleted: ${poNumber}`, { rep: String(getRepFromReq(req) || '') });
@@ -13680,22 +13714,21 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
         ? new Date(po.expected_date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
         : '';
 
-      // Resolve rep name from the created_by ownerId via REPS map
-      const repNameVpo = REPS[String(po.created_by || '')] || 'WhisperRoom';
+      // PO contact on the doc is always Josh Fletcher (the WR PO System
+      // is his home — supply-chain side). Don't surface the rep ownerId.
+      const repNameVpo = 'Josh Fletcher';
 
       const vendorAddrLines = Array.isArray(v.address_lines) ? v.address_lines : [];
       const vendorContacts = Array.isArray(v.contacts) ? v.contacts.map(c => c && c.name ? c.name : (typeof c === 'string' ? c : '')).filter(Boolean) : [];
       const vendorEmails = Array.isArray(v.send_to_emails) ? v.send_to_emails : [];
 
       // Billing override falls back to WhisperRoom's standard billing addr.
-      const billingDefault = 'WhisperRoom, Inc.\n322 Nancy Lynn Lane, Suite 14\nKnoxville, TN 37919\nAttn: Accounting';
+      const billingDefault = 'WhisperRoom, Inc.\n322 Nancy Lynn Lane, Suite 14\nKnoxville, TN 37919\naccounting@whisperroom.com';
       const billingBlock = (v.billing_address_override && v.billing_address_override.trim()) || billingDefault;
 
-      const statusBadge = po.status === 'DRAFT'
-        ? '<span class="status-pill status-draft">DRAFT — Not Yet Approved</span>'
-        : po.status === 'CANCELLED'
-          ? '<span class="status-pill status-cancelled">CANCELLED</span>'
-          : '';
+      const statusBadge = po.status === 'CANCELLED'
+        ? '<span class="status-pill status-cancelled">CANCELLED</span>'
+        : '';
 
       const lineRows = lines.map(l => (
         '<tr>' +
@@ -13721,9 +13754,8 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
 "body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-font-smoothing:antialiased;padding:32px 16px}" +
 '.page{background:#fff;max-width:820px;margin:0 auto;padding:44px 50px;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.08)}' +
 '.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:18px;border-bottom:2px solid #ee6216}' +
-'.logo-wrap{display:flex;flex-direction:column;gap:3px}' +
-'.logo{font-size:24px;font-weight:800;color:#1a1a1a;letter-spacing:-.5px}' +
-'.logo span{color:#ee6216}' +
+'.logo-wrap{display:flex;flex-direction:column;gap:6px}' +
+'.logo-img{height:40px;display:block}' +
 '.logo-sub{font-size:11px;color:#888;font-weight:500}' +
 '.po-title{text-align:right}' +
 '.po-label{font-size:24px;font-weight:800;color:#1a1a1a;letter-spacing:-.4px}' +
@@ -13775,7 +13807,7 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
 
   '<div class="header">' +
     '<div class="logo-wrap">' +
-      '<div class="logo">Whisper<span>Room</span></div>' +
+      wrLogoImg() +
       '<div class="logo-sub">322 Nancy Lynn Lane Suite 14, Knoxville, TN 37919</div>' +
       '<div class="logo-sub">800-200-8168 &middot; whisperroom.com</div>' +
     '</div>' +
@@ -13847,8 +13879,7 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
     : '') +
 
   '<div class="signoff">' +
-    '<div class="signoff-line">ORDER CONFIRMED BY:<span class="underline"></span>DATE:<span class="underline-sm"></span></div>' +
-    '<div class="signoff-line" style="margin-top:8px"><strong>Billing Address:</strong><br>' + esc(billingBlock).replace(/\n/g, '<br>') + '</div>' +
+    '<div class="signoff-line"><strong>Billing Address:</strong><br>' + esc(billingBlock).replace(/\n/g, '<br>') + '</div>' +
     '<div class="sincerely">Sincerely,<br><br><strong>' + esc(repNameVpo) + '</strong><br>WhisperRoom, Inc.</div>' +
   '</div>' +
 

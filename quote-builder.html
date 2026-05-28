@@ -1046,9 +1046,15 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
       <div class="section-num">4</div>
       <div class="section-title">Freight Estimate</div>
     </div>
-    <p style="font-size:11px;color:var(--muted);margin-bottom:12px">
-      Address auto-filled from ship-to. ABF LTL rate with 25% markup applied.
-    </p>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+      <p style="font-size:11px;color:var(--muted);margin:0">
+        Address auto-filled from ship-to. ABF LTL rate with 25% markup applied.
+      </p>
+      <button type="button" id="finalMileBtn" onclick="openFinalMileModal()"
+        style="padding:7px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
+        Final Mile Delivery
+      </button>
+    </div>
     <div class="accessorials">
       <label class="acc-check" id="check-residential" onclick="toggleAcc(this,'residential')">
         <input type="checkbox" id="residential"><div class="acc-box"></div>Residential
@@ -1111,20 +1117,6 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
       </div>
       <div style="margin-top:10px;font-size:11px;color:var(--muted)">Transit: <span id="freightTransit">—</span></div>
       <div class="freight-warning" id="freightWarning" style="display:none"></div>
-    </div>
-
-    <!-- Final Mile Delivery add-on ─────────────────────────────────── -->
-    <div id="finalMileBlock" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-        <div>
-          <div style="font-size:12px;font-weight:700;color:var(--text);letter-spacing:.03em">Final Mile Delivery</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">Optional. ArcBest white-glove inside delivery quote (2-man, room of choice, stairs).</div>
-        </div>
-        <button type="button" id="finalMileBtn" onclick="openFinalMileModal()"
-          style="padding:7px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
-          Final Mile Delivery
-        </button>
-      </div>
     </div>
 
     <!-- Install / Delivery add-on ─────────────────────────────────── -->

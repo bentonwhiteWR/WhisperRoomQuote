@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.47.2', date:'May 28, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Final Mile Delivery button repositioned inline with the freight description line.** Final placement: directly right of the "Address auto-filled from ship-to. ABF LTL rate with 25% markup applied." paragraph, right-aligned via flex justify-content:space-between. Dropped the standalone row added in v1.47.1. Modal + email behavior unchanged.'},
+      ]
+    },
+    {
       v:'1.47.1', date:'May 28, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Final Mile Delivery button moved below the freight controls.** v1.47.0 put the button in the upper-right of the Freight Estimate section header; per request, it now sits in its own row above the existing "Delivery &amp; Installation" row, matching that row\'s layout exactly (title + 1-line description on the left, button on the right, divider above). Same modal + email behavior as before. Description: "Optional. ArcBest white-glove inside delivery quote (2-man, room of choice, stairs)."'},

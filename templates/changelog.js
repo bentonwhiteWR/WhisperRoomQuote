@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.49.8', date:'May 28, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Removed the Expected Delivery row from the `/vpo/` doc.** Lives only on the Vendor Hub listing now (where it&rsquo;s inline-editable). The doc was showing it twice in two places, redundant.'},
+      ]
+    },
+    {
       v:'1.49.7', date:'May 28, 2026', tag:'feature',
       changes:[
         {t:'fix', d:'**TOTAL row recomputes on edits.** Added `refreshTotal()` to the `/vpo/` JS; it sums every line&rsquo;s qty × unit price and updates `#poGrandTotal`. Called after every line edit (qty/price commit), catalog-picker add, "+ Blank Line", and remove. Previously the TOTAL stayed at the server-rendered value until page refresh.'},

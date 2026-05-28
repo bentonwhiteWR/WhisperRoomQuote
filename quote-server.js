@@ -13927,7 +13927,6 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
     })() +
   '</div>' +
 
-  '<div class="meta-row"><span>Expected Delivery</span><span><strong><span class="editable" data-field="expected_date" data-type="date" data-raw="' + esc(po.expected_date || '') + '">' + esc(expectedDate || '—') + '</span></strong></span></div>' +
 
   '<div class="terms">' +
     '<div class="term"><div class="term-label">Freight Terms</div><div class="term-body"><span class="editable editable-block" data-snap-field="freight_terms" data-type="textarea">' + esc(v.freight_terms || '') + '</span></div></div>' +

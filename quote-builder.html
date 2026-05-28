@@ -1045,6 +1045,10 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
     <div class="section-head">
       <div class="section-num">4</div>
       <div class="section-title">Freight Estimate</div>
+      <button type="button" id="finalMileBtn" onclick="openFinalMileModal()"
+        style="margin-left:auto;padding:7px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
+        Final Mile Delivery
+      </button>
     </div>
     <p style="font-size:11px;color:var(--muted);margin-bottom:12px">
       Address auto-filled from ship-to. ABF LTL rate with 25% markup applied.
@@ -1148,6 +1152,31 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
         </div>
       </div>
       <div id="installStatus" style="font-size:11px;color:var(--muted);margin-top:8px"></div>
+    </div>
+  </div>
+
+  <!-- Final Mile Delivery Modal ─────────────────────────────────── -->
+  <div id="finalMileOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9000;align-items:center;justify-content:center">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:22px 24px;max-width:520px;width:94%;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div style="font-size:16px;font-weight:700">&#x1F69A; Final Mile Delivery Quote</div>
+        <button onclick="closeFinalMileModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:0 4px;line-height:1">&times;</button>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+        Opens a draft email to <code style="color:var(--text)">finalmile@arcb.com</code> with pallet dimensions, weight, and ship address pre-filled from the quote.
+      </div>
+      <div class="field">
+        <label>Total box count (manual &mdash; system doesn&rsquo;t know)</label>
+        <input type="number" id="finalMileBoxes" min="1" step="1" placeholder="e.g. 19" style="width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:14px">
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+        <button onclick="closeFinalMileModal()" style="padding:8px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">
+          Cancel
+        </button>
+        <button onclick="submitFinalMileRequest()" style="padding:8px 16px;background:var(--accent);border:1px solid var(--accent);border-radius:6px;color:white;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
+          Open Draft Email
+        </button>
+      </div>
     </div>
   </div>
 
@@ -2674,6 +2703,102 @@ function submitInstallRequest() {
   // Open the draft
   window.location.href = mailto;
   closeInstallRequestModal();
+}
+
+// ── Final Mile Delivery Quote ───────────────────────────────────
+// Opens a modal that asks for box count, then builds a mailto: to
+// finalmile@arcb.com with pallet dims, total weight, origin ZIP, and
+// the ship address pre-filled from the quote. No HubSpot push needed —
+// this is just a vendor RFQ.
+function openFinalMileModal() {
+  if (!lineItems || lineItems.length === 0) {
+    alert('Add line items first so the pallet dimensions and weight can be pre-filled.');
+    return;
+  }
+  const address = (document.getElementById('shipAddress').value || '').trim();
+  const city    = (document.getElementById('shipCity').value || '').trim();
+  const state   = (document.getElementById('shipState').value || '').trim();
+  const zip     = (document.getElementById('shipZip').value || '').trim();
+  if (!address || !city || !state || !zip) {
+    alert('Ship address is incomplete — fill in street, city, state, and ZIP before requesting Final Mile.');
+    return;
+  }
+  document.getElementById('finalMileBoxes').value = '';
+  document.getElementById('finalMileOverlay').style.display = 'flex';
+  setTimeout(() => { document.getElementById('finalMileBoxes')?.focus(); }, 50);
+}
+
+function closeFinalMileModal() {
+  document.getElementById('finalMileOverlay').style.display = 'none';
+}
+
+function submitFinalMileRequest() {
+  const boxesRaw = (document.getElementById('finalMileBoxes')?.value || '').trim();
+  const boxes = parseInt(boxesRaw, 10);
+  if (!boxes || isNaN(boxes) || boxes < 1) {
+    alert('Enter the total number of boxes.');
+    document.getElementById('finalMileBoxes')?.focus();
+    return;
+  }
+
+  // Aggregate weight + pallet dims from line items (same approach the
+  // intl shipping flow uses — BOOTH_DATA is keyed by item name).
+  let totalWeight = 0;
+  const palletList = [];
+  lineItems.forEach(item => {
+    totalWeight += (parseFloat(item.weight) || 0) * (parseInt(item.qty) || 1);
+    const bd = BOOTH_DATA[item.name];
+    if (bd) {
+      const qty = parseInt(item.qty) || 1;
+      for (let q = 0; q < qty; q++) {
+        bd.pallets.forEach(p => palletList.push({ l: p.l, w: p.w, h: p.h }));
+      }
+    }
+  });
+
+  let palletText;
+  if (palletList.length === 0) {
+    palletText = '[pallet dimensions not available — no BOOTH_DATA match for line items]';
+  } else if (palletList.length === 1) {
+    const p = palletList[0];
+    palletText = `1 pallet ${p.l}x${p.w}x${p.h}`;
+  } else {
+    palletText = palletList.map((p, i) => `Pallet ${i+1}: ${p.l}x${p.w}x${p.h}`).join('\n');
+  }
+
+  const address = document.getElementById('shipAddress').value.trim();
+  const city    = document.getElementById('shipCity').value.trim();
+  const state   = document.getElementById('shipState').value.trim();
+  const zip     = document.getElementById('shipZip').value.trim();
+
+  const body = [
+    'Good morning, I would like to get a FM quote for the following:',
+    '',
+    palletText,
+    `Total weight: ${Math.round(totalWeight)}`,
+    `${boxes} boxes, Packing List attached`,
+    'Class 100',
+    'Origin: 37813',
+    '',
+    'Complete shipping address:',
+    '',
+    address,
+    `${city}, ${state} ${zip}`,
+    '',
+    'Final Mile services to include: 2 man, 45 mins, SS, arrival notice, liftgate, inside delivery to room of choice and up no more than 2 flights of stairs, dunnage removal.',
+  ].join('\n');
+
+  const firstName = (document.getElementById('firstName').value || '').trim();
+  const lastName  = (document.getElementById('lastName').value || '').trim();
+  const company   = (document.getElementById('company').value || '').trim();
+  const custName  = [firstName, lastName].filter(Boolean).join(' ') || company || 'WhisperRoom';
+
+  const to      = 'finalmile@arcb.com';
+  const subject = `Final Mile Quote Request — ${custName} — ${city}, ${state}`;
+
+  const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href = mailto;
+  closeFinalMileModal();
 }
 
 function bakeInDiscount() {

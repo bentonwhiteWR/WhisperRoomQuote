@@ -51,6 +51,18 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.47.0', date:'May 28, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Final Mile Delivery quote request button in the Quote Builder.** New "Final Mile Delivery" button in the upper-right of the Freight Estimate section header. Opens a small modal asking for box count (the only thing the system can&rsquo;t know automatically), then drafts a mailto: to <code>finalmile@arcb.com</code> with pallet dimensions (from BOOTH_DATA per line item), total weight, freight Class 100, Origin 37813, the customer&rsquo;s ship address, and the standard Final Mile services line (2 man, 45 mins, SS, arrival notice, liftgate, inside delivery to room of choice, 2 flights of stairs max, dunnage removal). Same style + behavior as the existing "Request Installation" button below it. Pre-flight requires line items + a complete ship address; no HubSpot push needed since the email doesn&rsquo;t carry a quote link.'},
+      ]
+    },
+    {
+      v:'1.46.14', date:'May 28, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**HubSpot invoice creation: block ACH-only invoices over $100k.** HubSpot caps ACH at $100k per transaction (CC: $250k); the draft&rarr;open transition on ACH-only invoices over $100k fails with "the total amount exceeds the maximum allowed," leaving a "WR-DRAFT" orphan with a dead Pay Now link (404). New red warning in the Create Invoice modal fires when the quote total is >$100k AND Credit/Debit Card is unchecked; Create button is disabled until CC is re-enabled. CC being in the allowed methods lifts the cap &mdash; customer doesn&rsquo;t have to use it. Alt workaround per HubSpot docs: enable partial payments on the invoice so the customer pays in sub-$100k chunks. Discovered after a $170k quote (Travis) got stuck with CC unchecked.'},
+      ]
+    },
+    {
       v:'1.46.13', date:'May 27, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Marketing — bump per-endpoint row LIMIT so 365d view returns full data.** After v1.46.12 backfilled 7,485 campaign-day rows for the full year, the 365d dashboard view still showed only $248k of spend vs HubSpot\'s $346k. Root cause: `/api/marketing/campaigns`, `/keywords`, and `/search-terms` all had a hardcoded `LIMIT 5000` in their SQL, leftover from when the table only held 90 days. With 365d in the table, the ORDER BY date DESC kept the most recent 5,000 rows (~227 days at 22 campaigns/day) and silently dropped the older ~138 days. Bumped `/campaigns` to LIMIT 50000, `/keywords` and `/search-terms` to LIMIT 200000 — well above any realistic 365d footprint. No re-sync needed; the data is already in the table, this just sends more of it to the browser. After this fix the 365d Total Spend should reconcile to ~$346k, First-Touch ROAS to ~2.2x (HubSpot reports 1.97x — within 12%, the residual is deal-window definition differences between `createdate` vs `closedate`).'},

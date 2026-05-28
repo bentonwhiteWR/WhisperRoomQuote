@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.49.1', date:'May 28, 2026', tag:'log',
+      changes:[
+        {t:'add', d:'**Reference vendor seed script for trial.** Added `scripts/seed-test-vendors.js` — a browser-console-paste IIFE that loads the three example vendors from the old Excel POs (Bertelkamp Automation, Carpenter, AJ Nonwovens-Hampton/Foss) into the new vendor catalog, complete with the ~20 catalog items they carry (extrusions, foam sheets, Duralock rolls, etc.). Idempotent — re-runs PATCH the existing rows instead of duplicating. Paste into DevTools console at `/vendors` while logged into staging to populate. No runtime change.'},
+      ]
+    },
+    {
       v:'1.49.0', date:'May 28, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**WR PO System — Phase 1 part 2: Vendor PO builder.** New `/vendor-pos` page (Vendor POs nav link added across all 9 dashboards). Click "+ New PO" → pick a vendor from the dropdown → all vendor info auto-fills (address, contacts, send-to emails, freight + payment terms, standing notes) → the vendor&rsquo;s catalog appears as a checkable table. Tick items to add them to the PO; default qty + unit price prefill from the catalog and stay editable in the lines table below. "+ Add Custom Line" handles one-off items. Save creates the PO as DRAFT with a `WV-{YY}{MM}{DD}{NN}` number. Lifecycle: DRAFT → APPROVED (Josh self-approves, status flip is the audit trail) → SENT (opens mailto:vendor.send_to_emails with the PO link in the body; Josh manually attaches the PDF). Edits after SENT regenerate the PDF and overwrite the Drive file in place via stored `pdf_drive_file_id`. Cancel and Delete (DRAFT only) options. The PO document at `/vpo/:poNumber` is a printable HTML page (vendor block / WhisperRoom ship-to / line items / freight + payment terms / standing notes / sign-off line / billing address) that Puppeteer scrapes to PDF — same pipeline as quotes/invoices/orders. Drive uploads land in `GDRIVE_VENDOR_POS_FOLDER` (env var set in Railway). Backed by new `vendor_pos` table (`vendor_snapshot` JSONB freezes the vendor record at PO creation time so historical POs stay correct even when Josh edits a vendor later). Phase 2 (receive workflow + Kim&rsquo;s invoice match modal + urgency dashboard) lands in v1.50 once Josh has run a few real POs through this.'},

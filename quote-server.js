@@ -657,6 +657,39 @@ async function _logEmailReply({ sess, voice, input, output, usage, durationMs, s
   }
 }
 
+// Coerce body fields to JSON-stringifiable arrays. Used by /api/vendors
+// to defensively normalize address_lines / contacts / send_to_emails / etc.
+// when the client sends a single string, null, or omits the field.
+function _asArray(v) {
+  if (v == null) return [];
+  if (Array.isArray(v)) return v;
+  return [v];
+}
+
+// Normalize a vendor catalog payload from the admin UI: each item gets
+// a stable id (generated if missing), numeric default_qty + unit_price,
+// and a trimmed description. Items without a description are dropped —
+// they'd be useless on a PO and the UI never intentionally creates one.
+function _normalizeVendorCatalog(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(it => {
+      const description = String(it?.description || '').trim();
+      if (!description) return null;
+      return {
+        id:                   it.id || ('vci_' + crypto.randomBytes(6).toString('hex')),
+        sku:                  String(it?.sku || '').trim() || null,
+        description,
+        mfg:                  String(it?.mfg || '').trim() || null,
+        mfg_part_no:          String(it?.mfg_part_no || '').trim() || null,
+        default_qty:          Math.max(0, parseFloat(it?.default_qty || 0)) || 0,
+        unit_price:           Math.max(0, parseFloat(it?.unit_price  || 0)) || 0,
+        price_updated_date:   String(it?.price_updated_date || '').trim() || null,
+      };
+    })
+    .filter(Boolean);
+}
+
 // Resolve a supplier-spend range key into ISO dates. All dates in
 // America/New_York since TZ env is fixed to that. Returns YYYY-MM-DD
 // strings (QB's reports API wants date-only, not timestamps).
@@ -9843,6 +9876,14 @@ ${q.accepted ? `
     return;
   }
 
+  // ── Vendors Dashboard Page (WR PO System — Josh's home) ───────────
+  if (pathname === '/vendors' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(fs.readFileSync(path.join(__dirname, 'vendors-dashboard.html'), 'utf8'));
+    return;
+  }
+
     // ── API: Logs ────────────────────────────────────────────────────
   if (pathname === '/api/logs' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
@@ -11504,6 +11545,159 @@ ${q.accepted ? `
         balance:    parseFloat(inv.Balance || 0),
         fullyPaid:  parseFloat(inv.Balance || 0) < 0.01,
       });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Vendors (WR PO System catalog) ──────────────────────────
+  // List all vendors. ?archived=1 to include archived.
+  if (pathname === '/api/vendors' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      if (!db) { json({ vendors: [] }); return; }
+      const includeArchived = new URLSearchParams(search).get('archived') === '1';
+      const result = await db.query(
+        includeArchived
+          ? `SELECT * FROM vendors ORDER BY lower(name)`
+          : `SELECT * FROM vendors WHERE archived = FALSE ORDER BY lower(name)`
+      );
+      json({ vendors: result.rows });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // Get single vendor (full catalog included).
+  if (pathname.startsWith('/api/vendors/') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const id = parseInt(pathname.replace('/api/vendors/', '').trim(), 10);
+    if (!id) { json({ error: 'Invalid vendor id' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const result = await db.query(`SELECT * FROM vendors WHERE id = $1`, [id]);
+      if (!result.rows.length) { json({ error: 'Vendor not found' }, 404); return; }
+      json({ vendor: result.rows[0] });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // Create vendor.
+  if (pathname === '/api/vendors' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    let body;
+    try { body = JSON.parse(await readBody(req) || '{}'); }
+    catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
+    const name = (body.name || '').trim();
+    if (!name) { json({ error: 'Vendor name required' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const rep = getRepFromReq(req, body);
+      const catalog = _normalizeVendorCatalog(body.catalog);
+      const result = await db.query(
+        `INSERT INTO vendors (
+           name, address_lines, phone, contacts, send_to_emails, cc_emails,
+           billing_address_override, payment_terms, freight_terms, standard_notes,
+           catalog, created_by
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+        [
+          name,
+          JSON.stringify(_asArray(body.address_lines)),
+          body.phone || null,
+          JSON.stringify(_asArray(body.contacts)),
+          JSON.stringify(_asArray(body.send_to_emails)),
+          JSON.stringify(_asArray(body.cc_emails)),
+          body.billing_address_override || null,
+          body.payment_terms || null,
+          body.freight_terms || null,
+          body.standard_notes || null,
+          JSON.stringify(catalog),
+          String(rep || ''),
+        ]
+      );
+      writelog('info', 'vendor.created', `Vendor created: ${name}`, { rep: String(rep || ''), meta: { vendorId: result.rows[0].id } });
+      json({ vendor: result.rows[0] });
+    } catch(e) {
+      if (/duplicate key/.test(e.message)) {
+        json({ error: 'A vendor with that name already exists' }, 409);
+      } else {
+        json({ error: e.message }, 500);
+      }
+    }
+    return;
+  }
+
+  // Update vendor (any subset of fields, full catalog replace).
+  if (pathname.startsWith('/api/vendors/') && req.method === 'PATCH') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const id = parseInt(pathname.replace('/api/vendors/', '').trim(), 10);
+    if (!id) { json({ error: 'Invalid vendor id' }, 400); return; }
+    let body;
+    try { body = JSON.parse(await readBody(req) || '{}'); }
+    catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+
+      const sets = [];
+      const vals = [];
+      let idx = 1;
+      const setField = (col, val) => { sets.push(`${col} = $${idx++}`); vals.push(val); };
+
+      if (body.name !== undefined) {
+        const trimmed = (body.name || '').trim();
+        if (!trimmed) { json({ error: 'Vendor name cannot be empty' }, 400); return; }
+        setField('name', trimmed);
+      }
+      if (body.address_lines !== undefined)            setField('address_lines',            JSON.stringify(_asArray(body.address_lines)));
+      if (body.phone !== undefined)                    setField('phone',                    body.phone || null);
+      if (body.contacts !== undefined)                 setField('contacts',                 JSON.stringify(_asArray(body.contacts)));
+      if (body.send_to_emails !== undefined)           setField('send_to_emails',           JSON.stringify(_asArray(body.send_to_emails)));
+      if (body.cc_emails !== undefined)                setField('cc_emails',                JSON.stringify(_asArray(body.cc_emails)));
+      if (body.billing_address_override !== undefined) setField('billing_address_override', body.billing_address_override || null);
+      if (body.payment_terms !== undefined)            setField('payment_terms',            body.payment_terms || null);
+      if (body.freight_terms !== undefined)            setField('freight_terms',            body.freight_terms || null);
+      if (body.standard_notes !== undefined)           setField('standard_notes',           body.standard_notes || null);
+      if (body.catalog !== undefined)                  setField('catalog',                  JSON.stringify(_normalizeVendorCatalog(body.catalog)));
+      if (body.archived !== undefined)                 setField('archived',                 !!body.archived);
+
+      if (!sets.length) { json({ error: 'No fields to update' }, 400); return; }
+      sets.push(`updated_at = NOW()`);
+      vals.push(id);
+
+      const result = await db.query(
+        `UPDATE vendors SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+        vals
+      );
+      if (!result.rows.length) { json({ error: 'Vendor not found' }, 404); return; }
+      json({ vendor: result.rows[0] });
+    } catch(e) {
+      if (/duplicate key/.test(e.message)) {
+        json({ error: 'A vendor with that name already exists' }, 409);
+      } else {
+        json({ error: e.message }, 500);
+      }
+    }
+    return;
+  }
+
+  // Archive vendor (soft delete).
+  if (pathname.startsWith('/api/vendors/') && req.method === 'DELETE') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const id = parseInt(pathname.replace('/api/vendors/', '').trim(), 10);
+    if (!id) { json({ error: 'Invalid vendor id' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const result = await db.query(
+        `UPDATE vendors SET archived = TRUE, updated_at = NOW() WHERE id = $1 RETURNING id, name`,
+        [id]
+      );
+      if (!result.rows.length) { json({ error: 'Vendor not found' }, 404); return; }
+      writelog('info', 'vendor.archived', `Vendor archived: ${result.rows[0].name}`, { rep: String(getRepFromReq(req) || ''), meta: { vendorId: id } });
+      json({ ok: true });
     } catch(e) {
       json({ error: e.message }, 500);
     }

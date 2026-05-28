@@ -1,12 +1,37 @@
 # WhisperRoom Quote Builder — Dev Log
 
-Internal development notes. Last updated 2026-05-22.
+Internal development notes. Last updated 2026-05-28.
 
 > **Read this first when starting a session.** The "Current focus" section below is the fastest way to know where we left off. Below that: session writeups, the audit (outstanding work), and the changelog table.
 
 ---
 
-## Current focus (2026-05-22 — Quote expiration indicators + marketing dashboard handoff to Gabe + Audimute price bump)
+## Current focus (2026-05-28 — WR PO System Phase 1 shipped; Phase 2/3 pending vendor data from Josh)
+
+**Most recent shipped to PROD:** Merge commit `846d3da` (2026-05-28) — Final Mile RFQ button + ACH-cap invoice warning + marketing ROAS fixes.
+
+**On STAGING (NOT YET promoted to main):**
+
+- **v1.48.0** (2026-05-28, Benton) — **WR PO System Phase 1: Vendor catalog.** New `/vendors` page where Josh manages his supplier catalog (parallel to the existing Audimute `/suppliers` system — Audimute stays as a separate sales-rep drop-ship flow). `vendors` table + `/api/vendors` CRUD; admin UI with chip-based email/contact lists and inline catalog editor (SKU, description, MFG, MFG part #, default qty, unit price, price-last-updated date). Nav link added across all 8 dashboards. **Pending Josh:** populating ~30 vendors with their catalogs (he has Excel POs for Bertelkamp, Carpenter, Foss as starting points at `C:\Users\bento\Documents\Claude\WR PO System\Old PO Files`).
+
+### Open follow-ups — WR PO System
+
+- **Phase 2 (v1.49.0): Vendor PO builder.** New `vendor_pos` table (separate from `supplier_pos`), `WV-{YY}{MM}{DD}{NN}` numbering, PO create flow (pick vendor → check items → edit qty/price → save as DRAFT), `/vpo/:poNumber` doc render, PDF gen + Drive upload to `GDRIVE_VENDOR_POS_FOLDER` (env var already in Railway), approval gate (Josh self-approves — status flip is the audit trail), mailto send (one email per vendor's `send_to_emails`, manual PDF attach), `Vendor POs` tab on `/suppliers` dashboard. **Blocker:** wait for Josh to populate vendor data first so real test data exists.
+- **Phase 3: Receive workflow + invoice match + urgency dashboard.** Single Receive button → modal defaulting each line to max qty (Josh adjusts down for partials); PO status derives from per-line `qtyReceived` (RECEIVED if all full, PARTIAL if any > 0). Kim's invoice match as a modal (invoice #, date, total, discrepancies). Dashboard tile: yellow ≤7d expected / red overdue / aging >30d open with zero received.
+
+### Decisions captured during scoping (2026-05-28)
+
+- Audimute stays separate — it's sales-rep oriented (drop-ship to clients), not supply-chain. May move it elsewhere later.
+- PO number prefix `WV-` (Vendor) to visually distinguish from Audimute's `WR` POs.
+- Mailto-with-manual-attach is the right pattern (mailto can't carry attachments).
+- One PO per vendor at a time.
+- Multiple send-to emails per vendor (Carpenter: only Bridget.Hoke@carpenter.com active, but schema supports N).
+- Stale-price flagging is visual only (date column), no auto-warning.
+- Approval = status flip, no separate `approved_by` column.
+
+---
+
+## Earlier focus (2026-05-22 — Quote expiration indicators + marketing dashboard handoff to Gabe + Audimute price bump)
 
 **Most recent shipped to PROD:** v1.39.0 — Marketing dashboard scaffolding (gated to Benton + Gabe ownerIds). Promoted 2026-05-22.
 
@@ -720,6 +745,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.48.0  | 2026-05-28 | **WR PO System Phase 1 — Vendor catalog.** New `/vendors` admin page (Vendors nav link added to all 8 dashboards). `vendors` Postgres table + `/api/vendors` CRUD (GET list/single, POST create, PATCH update, DELETE soft-archive). Schema covers multiple contacts/emails, freight + payment terms, standing notes, billing override, and a `catalog` JSONB array (`[{id, sku, description, mfg, mfg_part_no, default_qty, unit_price, price_updated_date}]`). Admin UI supports chip-based email/contact lists, inline catalog row add/remove, and archive-with-confirm. Helpers `_asArray` + `_normalizeVendorCatalog` at `quote-server.js:~661` normalize the payload (drops empty-description rows, stamps stable `vci_*` IDs on new items). Foundation only — vendor PO builder + receive/invoice match flow lands in v1.49 once Josh has a few vendors populated. Audimute AP POs (`supplier_pos`/`/suppliers`) untouched — that's a separate sales-rep system. Env var `GDRIVE_VENDOR_POS_FOLDER` already in Railway, will be consumed in v1.49. |
 | 1.47.2  | 2026-05-28 | **Final Mile button moved inline with the freight description line.** Now sits directly right of "Address auto-filled from ship-to. ABF LTL rate with 25% markup applied." (flex `justify-content:space-between`). Dropped the standalone row that v1.47.1 introduced. Modal/email behavior unchanged. |
 | 1.47.1  | 2026-05-28 | **Final Mile button repositioned + email copy tweaks.** Moved out of the Freight Estimate section header and into its own row above the existing Delivery & Installation row, mirroring that row's layout exactly (title + description left, button right, divider above). Email opener changed from "Good morning" → "Hello"; subject changed to `WhisperRoom FM RFQ` (was `Final Mile Quote Request — {custName} — {city}, {state}`). |
 | 1.47.0  | 2026-05-28 | **Final Mile Delivery quote button in Quote Builder.** New button upper-right of the Freight Estimate section header (same style as Request Installation). Opens modal asking for box count (only manually-known field), drafts `mailto:finalmile@arcb.com` with pallet dims (from `BOOTH_DATA`), total weight, Class 100, Origin 37813, ship address, and the canned services line. Subject: `Final Mile Quote Request — {custName} — {city}, {state}`. Pre-flight requires line items + complete ship address; no HubSpot push needed (no quote link in body). |

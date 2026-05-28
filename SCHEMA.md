@@ -14,7 +14,8 @@ Last verified: 2026-05-08, against v1.7.33.
 |--------------------|-----------------------------------------------|------------------------------|---------------------------------|
 | `quotes`           | Every quote created, with full snapshot       | `lib/db.js`, `quote-server.js` | most pages, all dashboards       |
 | `orders`           | Quotes that have been processed into orders   | `quote-server.js`            | orders-dashboard, deal-hub       |
-| `supplier_pos`     | Audimute (and future) supplier POs            | `quote-server.js`            | suppliers-dashboard, deal-hub    |
+| `supplier_pos`     | Audimute supplier POs (sales-rep, drop-ship)  | `quote-server.js`            | suppliers-dashboard, deal-hub    |
+| `vendors`          | WR PO System vendor catalog (Josh's home, supply-chain) | `quote-server.js`  | vendors-dashboard (v1.48+)       |
 | `sessions`         | Logged-in rep sessions                        | `lib/auth.js`                | every authenticated request      |
 | `notifications`    | Per-rep notification feed                     | `lib/notify.js`              | admin-log, dashboards (badge)    |
 | `logs`             | Admin/event log                               | `lib/logger.js` (`writelog`) | admin-log page                   |
@@ -97,6 +98,32 @@ Audimute Purchase Orders (system extends to other suppliers — `supplier` colum
 | `created_at`         | TIMESTAMPTZ     |                                                                |
 
 **Indexes:** `quote_number`, `(status, created_at DESC)`.
+
+---
+
+## vendors
+
+Catalog of suppliers for the new WR PO System (v1.48+). Parallel to `supplier_pos` (which holds Audimute drop-ship POs) — this is the supply-chain side that Josh owns. Will be joined by `vendor_pos` (v1.49+) when the PO create flow ships.
+
+| Column                       | Type            | Notes                                                          |
+|------------------------------|-----------------|----------------------------------------------------------------|
+| `id`                         | SERIAL PK       |                                                                |
+| `name`                       | TEXT UNIQUE     | Display name (e.g. `Bertelkamp Automation, Inc.`)              |
+| `address_lines`              | JSONB           | `["P.O. Box 11643", "Knoxville, TN 37939-1643"]`               |
+| `phone`                      | TEXT            |                                                                |
+| `contacts`                   | JSONB           | `[{name}]` — who to address (multiple OK)                      |
+| `send_to_emails`             | JSONB           | TO recipients on the mailto draft                              |
+| `cc_emails`                  | JSONB           | CC recipients                                                  |
+| `billing_address_override`   | TEXT            | NULL = default WR billing addr; set for Foss-style overrides   |
+| `payment_terms`              | TEXT            | e.g. `1%10, Net 30`                                            |
+| `freight_terms`              | TEXT            | e.g. `Ship COLLECT via ABF Account #189059`                    |
+| `standard_notes`             | TEXT            | Always-on PO notes (e.g. foam tolerances)                      |
+| `catalog`                    | JSONB           | `[{id, sku, description, mfg, mfg_part_no, default_qty, unit_price, price_updated_date}]` |
+| `archived`                   | BOOLEAN         | Soft delete                                                    |
+| `created_by`                 | TEXT            |                                                                |
+| `created_at`, `updated_at`   | TIMESTAMPTZ     |                                                                |
+
+**Indexes:** `lower(name)`, `(archived, lower(name))`.
 
 ---
 

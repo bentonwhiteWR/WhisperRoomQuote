@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.48.0', date:'May 28, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**WR PO System — Phase 1: Vendor catalog.** New `/vendors` page (Vendors nav link added across all dashboards). Josh can create, edit, and archive vendors here, each with: vendor address, multiple contacts, multiple TO + CC emails, payment terms, freight terms (e.g. Bertelkamp&rsquo;s "Ship COLLECT via ABF Account #189059"), standing notes, billing address override, and an inline catalog editor (SKU, description, MFG, MFG part #, default qty, unit price, price-last-updated date — the last is a free-text hint, no auto-staleness flagging per spec). Backed by a new `vendors` Postgres table (JSONB columns for repeating fields) and a full CRUD API at `/api/vendors`. This is the foundation for the Vendor PO builder coming in v1.49. Audimute AP POs (`supplier_pos` table, `/suppliers` page) are unchanged &mdash; that&rsquo;s a separate sales-rep-oriented drop-ship system.'},
+      ]
+    },
+    {
       v:'1.47.2', date:'May 28, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Final Mile Delivery button repositioned inline with the freight description line.** Final placement: directly right of the "Address auto-filled from ship-to. ABF LTL rate with 25% markup applied." paragraph, right-aligned via flex justify-content:space-between. Dropped the standalone row added in v1.47.1. Modal + email behavior unchanged.'},

@@ -51,6 +51,49 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.47.2', date:'May 28, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Final Mile Delivery button repositioned inline with the freight description line.** Final placement: directly right of the "Address auto-filled from ship-to. ABF LTL rate with 25% markup applied." paragraph, right-aligned via flex justify-content:space-between. Dropped the standalone row added in v1.47.1. Modal + email behavior unchanged.'},
+      ]
+    },
+    {
+      v:'1.47.1', date:'May 28, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Final Mile Delivery button moved below the freight controls.** v1.47.0 put the button in the upper-right of the Freight Estimate section header; per request, it now sits in its own row above the existing "Delivery &amp; Installation" row, matching that row\'s layout exactly (title + 1-line description on the left, button on the right, divider above). Same modal + email behavior as before. Description: "Optional. ArcBest white-glove inside delivery quote (2-man, room of choice, stairs)."'},
+        {t:'ui', d:'**Final Mile email copy tweaks:** opening line changed from "Good morning" to "Hello"; subject changed from "Final Mile Quote Request — {custName} — {city}, {state}" to "WhisperRoom FM RFQ".'},
+      ]
+    },
+    {
+      v:'1.47.0', date:'May 28, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Final Mile Delivery quote request button in the Quote Builder.** New "Final Mile Delivery" button in the upper-right of the Freight Estimate section header. Opens a small modal asking for box count (the only thing the system can&rsquo;t know automatically), then drafts a mailto: to <code>finalmile@arcb.com</code> with pallet dimensions (from BOOTH_DATA per line item), total weight, freight Class 100, Origin 37813, the customer&rsquo;s ship address, and the standard Final Mile services line (2 man, 45 mins, SS, arrival notice, liftgate, inside delivery to room of choice, 2 flights of stairs max, dunnage removal). Same style + behavior as the existing "Request Installation" button below it. Pre-flight requires line items + a complete ship address; no HubSpot push needed since the email doesn&rsquo;t carry a quote link.'},
+      ]
+    },
+    {
+      v:'1.46.14', date:'May 28, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**HubSpot invoice creation: block ACH-only invoices over $100k.** HubSpot caps ACH at $100k per transaction (CC: $250k); the draft&rarr;open transition on ACH-only invoices over $100k fails with "the total amount exceeds the maximum allowed," leaving a "WR-DRAFT" orphan with a dead Pay Now link (404). New red warning in the Create Invoice modal fires when the quote total is >$100k AND Credit/Debit Card is unchecked; Create button is disabled until CC is re-enabled. CC being in the allowed methods lifts the cap &mdash; customer doesn&rsquo;t have to use it. Alt workaround per HubSpot docs: enable partial payments on the invoice so the customer pays in sub-$100k chunks. Discovered after a $170k quote (Travis) got stuck with CC unchecked.'},
+      ]
+    },
+    {
+      v:'1.46.13', date:'May 27, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Marketing — bump per-endpoint row LIMIT so 365d view returns full data.** After v1.46.12 backfilled 7,485 campaign-day rows for the full year, the 365d dashboard view still showed only $248k of spend vs HubSpot\'s $346k. Root cause: `/api/marketing/campaigns`, `/keywords`, and `/search-terms` all had a hardcoded `LIMIT 5000` in their SQL, leftover from when the table only held 90 days. With 365d in the table, the ORDER BY date DESC kept the most recent 5,000 rows (~227 days at 22 campaigns/day) and silently dropped the older ~138 days. Bumped `/campaigns` to LIMIT 50000, `/keywords` and `/search-terms` to LIMIT 200000 — well above any realistic 365d footprint. No re-sync needed; the data is already in the table, this just sends more of it to the browser. After this fix the 365d Total Spend should reconcile to ~$346k, First-Touch ROAS to ~2.2x (HubSpot reports 1.97x — within 12%, the residual is deal-window definition differences between `createdate` vs `closedate`).'},
+      ]
+    },
+    {
+      v:'1.46.12', date:'May 27, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Marketing — fix the window mismatch that inflated 365d True ROAS by ~4x.** The dispatcher in `marketing/router.js` had Google Ads ETL defaulting to 90d while HubSpot defaulted to 365d. When the v1.46.11 date-range picker drove the dashboard\'s 365d view, queries returned 365 days of revenue but only 90 days of Google Ads spend (because that\'s all the table had). Result: True ROAS = 365d-rev / 90d-spend, ~4x inflated. Cross-checked against HubSpot\'s "First ad interaction" report: ours showed 7.85x first-touch, HubSpot showed 1.96x (96% ROI) — a ~4x gap matching the window asymmetry. Bumped Google Ads default to 365d so Sync All pulls a full year and both windows align. Three section titles ("Campaigns / Keywords / Search Terms (last 90 days)") are now dynamic and update with the selected date range — they were hardcoded strings before. Page subtitle updated to say 365 days. **Action required: click Sync All on the dashboard to backfill the 275 days of historical Google Ads data.** ON CONFLICT upserts keep the longer pull idempotent — no risk of duplicates against existing 90-day rows.'},
+      ]
+    },
+    {
+      v:'1.46.11', date:'May 27, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Marketing dashboard — date range selector + sortable columns.** Pill-style date range bar above the cards (`Last 14d / 30d / 90d / 180d / 365d`, default 90d) drives `?days=N` on all six marketing endpoints, so the entire dashboard re-queries when the range changes. KPI card labels + the attribution coverage panel title update dynamically to reflect the selected range. Heads-up text notes that the Google Ads ETL defaults to 90 days so 180d/365d won\'t show extra data without a longer sync. All three data tables (Campaigns, Keywords, Search Terms) now have sortable column headers — click any header to sort by it; click again to flip direction; the active column shows ▲/▼. Default sort stays "Spend desc" so existing reading patterns survive. Derived columns (CPC, CPA, GA4 ROAS, True ROAS) are pre-computed so sorting works on them too. The 200-row cap on Keywords + Search Terms now applies AFTER sort, so sorting by Revenue lets you see the top-revenue terms even if their spend is low. Six endpoints accept `?days=N` (bounded [1, 730]); helper `_parseDays(req)` extracts it from the URL.'},
+      ]
+    },
+    {
       v:'1.46.10', date:'May 27, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Audimute PO header now uses the WhisperRoom SVG logo.** The supplier PO page (`/po/:poNumber`) was using a text-styled "WhisperRoom" header element; swapped it for the same inline SVG logo the quote + invoice pages use. The `.logo-img` styling was already present in the PO template (40px desktop / 28px mobile), just no `<img>` element was being rendered. No other PO content changed.'},

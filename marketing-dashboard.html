@@ -64,6 +64,19 @@ th.attr-col, td.attr-col{background:rgba(238,98,22,.025)}
 .roas-bad {background:rgba(239,68,68,.12);color:var(--red)}
 .roas-na  {color:var(--muted);font-family:var(--mono);font-size:11px}
 
+/* v1.46.10 — date range pill selector */
+.date-range-bar{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.date-range-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-right:4px}
+.date-pill{padding:6px 14px;border-radius:16px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit}
+.date-pill:hover{border-color:var(--orange);color:var(--orange)}
+.date-pill.active{background:var(--orange);color:#fff;border-color:var(--orange)}
+.date-range-hint{font-size:11px;color:var(--muted);margin-left:8px;font-style:italic}
+
+/* v1.46.10 — sortable column headers */
+th.sortable{cursor:pointer;user-select:none;transition:color .12s}
+th.sortable:hover{color:var(--orange)}
+th.sortable .sort-arrow{display:inline-block;margin-left:3px;font-size:9px;color:var(--orange);vertical-align:1px}
+
 /* Attribution coverage panel */
 .coverage{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin-bottom:16px}
 .coverage-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px}
@@ -104,7 +117,7 @@ th.attr-col, td.attr-col{background:rgba(238,98,22,.025)}
 
 <div class="main">
   <h1>Marketing <span>Spend</span></h1>
-  <div class="subtitle">Google Ads pull-and-analyze. Press Sync to pull the last 90 days of data into Postgres; queries below run against the local table (no API hit per click).</div>
+  <div class="subtitle">Google Ads pull-and-analyze. Press Sync to pull the last 365 days of data into Postgres; queries below run against the local table (no API hit per click).</div>
 
   <!-- Status bar — shows env readiness + last sync timestamps -->
   <div id="statusBar" class="status-bar">
@@ -115,11 +128,23 @@ th.attr-col, td.attr-col{background:rgba(238,98,22,.025)}
     <button class="sync-btn" id="syncBtn" onclick="runSync()" disabled>↻ Sync All</button>
   </div>
 
+  <!-- v1.46.10 — date range selector. Drives ?days=N on all six data
+       endpoints. Default 90d matches the prior hardcoded window. -->
+  <div class="date-range-bar">
+    <span class="date-range-label">Date range</span>
+    <button class="date-pill"        data-days="14"  onclick="changeDateRange(14)">Last 14d</button>
+    <button class="date-pill"        data-days="30"  onclick="changeDateRange(30)">Last 30d</button>
+    <button class="date-pill active" data-days="90"  onclick="changeDateRange(90)">Last 90d</button>
+    <button class="date-pill"        data-days="180" onclick="changeDateRange(180)">Last 180d</button>
+    <button class="date-pill"        data-days="365" onclick="changeDateRange(365)">Last 365d</button>
+    <span class="date-range-hint" id="dateRangeHint">Google Ads ETL pulls 90 days by default — 180/365 may show no extra rows until a longer sync.</span>
+  </div>
+
   <!-- Attribution coverage panel — the trust thermometer (v1.46.1).
        Hidden until /api/marketing/attribution-coverage returns data. -->
   <div class="coverage" id="coveragePanel" style="display:none">
     <div class="coverage-head">
-      <span class="coverage-title">Attribution coverage (last 90 days)</span>
+      <span class="coverage-title" id="coverageTitle">Attribution coverage (last 90 days)</span>
       <span class="coverage-detail" id="coverageDetail"></span>
     </div>
     <div class="coverage-grid">
@@ -141,26 +166,23 @@ th.attr-col, td.attr-col{background:rgba(238,98,22,.025)}
     </div>
   </div>
 
-  <!-- Summary cards — populated once we have data -->
+  <!-- Summary cards — populated once we have data. v1.46.10: labels are
+       updated dynamically with the current day range, so "(90d)" in the
+       static HTML is just the initial state. -->
   <div class="cards" id="summaryCards" style="display:none">
-    <div class="card"><div class="card-label">Total Spend (90d)</div><div class="card-value" id="kpiSpend">—</div><div class="card-sub">Across all campaigns</div></div>
-    <div class="card"><div class="card-label">Clicks (90d)</div><div class="card-value" id="kpiClicks">—</div><div class="card-sub" id="kpiCpc">— avg CPC</div></div>
-    <div class="card"><div class="card-label">Conversions (90d)</div><div class="card-value" id="kpiConv">—</div><div class="card-sub" id="kpiCpa">— avg CPA</div></div>
-    <div class="card"><div class="card-label">GA4 Conv. Value (90d)</div><div class="card-value" id="kpiValue">—</div><div class="card-sub" id="kpiRoas">— GA4 ROAS</div></div>
-    <!-- Closed-loop revenue from HubSpot deals. v1.46.7 splits the single
-         True ROAS card into two — first-touch (HubSpot strict) + any-touch
-         (Google-Ads-style last-click) — so the gap between the two becomes
-         a strategic signal: if first-touch is < 1x but any-touch > 3x,
-         paid is a closer, not an acquisition channel. -->
-    <div class="card"><div class="card-label">Closed Revenue (90d, paid any-touch)</div><div class="card-value" id="kpiClosedRev">—</div><div class="card-sub" id="kpiDealCount">— deals</div></div>
+    <div class="card"><div class="card-label" id="lblSpend">Total Spend (90d)</div><div class="card-value" id="kpiSpend">—</div><div class="card-sub">Across all campaigns</div></div>
+    <div class="card"><div class="card-label" id="lblClicks">Clicks (90d)</div><div class="card-value" id="kpiClicks">—</div><div class="card-sub" id="kpiCpc">— avg CPC</div></div>
+    <div class="card"><div class="card-label" id="lblConv">Conversions (90d)</div><div class="card-value" id="kpiConv">—</div><div class="card-sub" id="kpiCpa">— avg CPA</div></div>
+    <div class="card"><div class="card-label" id="lblValue">GA4 Conv. Value (90d)</div><div class="card-value" id="kpiValue">—</div><div class="card-sub" id="kpiRoas">— GA4 ROAS</div></div>
+    <div class="card"><div class="card-label" id="lblClosedRev">Closed Revenue (90d, paid any-touch)</div><div class="card-value" id="kpiClosedRev">—</div><div class="card-sub" id="kpiDealCount">— deals</div></div>
     <div class="card" title="spend / revenue where first_source = 'PAID_SEARCH'. Matches HubSpot's 'First ad interaction' report."><div class="card-label">True ROAS — First-Touch</div><div class="card-value" id="kpiRoasFirstTouch">—</div><div class="card-sub" id="kpiRoasFirstTouchSub">HubSpot strict</div></div>
     <div class="card" title="spend / revenue where first_source = 'PAID_SEARCH' OR gclid is set. Matches Google Ads' default last-click attribution."><div class="card-label">True ROAS — Any-Touch</div><div class="card-value" id="kpiRoasAnyTouch">—</div><div class="card-sub" id="kpiRoasAnyTouchSub">incl. gclid</div></div>
   </div>
 
-  <!-- Campaign-level table -->
+  <!-- Section titles include the current date range (set dynamically). -->
   <div class="section">
     <div class="section-head">
-      <div class="section-title">Campaigns (last 90 days)</div>
+      <div class="section-title" id="campaignsTitle">Campaigns (last 90 days)</div>
       <span class="section-meta" id="campaignsMeta">—</span>
     </div>
     <div id="campaignsBody">
@@ -168,11 +190,9 @@ th.attr-col, td.attr-col{background:rgba(238,98,22,.025)}
     </div>
   </div>
 
-  <!-- Keywords / search-terms tables can be added the same way once
-       data starts flowing. Stubbed empty for now. -->
   <div class="section">
     <div class="section-head">
-      <div class="section-title">Keywords (last 90 days)</div>
+      <div class="section-title" id="keywordsTitle">Keywords (last 90 days)</div>
       <span class="section-meta" id="keywordsMeta">—</span>
     </div>
     <div id="keywordsBody"><div class="empty">No data yet.</div></div>
@@ -180,7 +200,7 @@ th.attr-col, td.attr-col{background:rgba(238,98,22,.025)}
 
   <div class="section">
     <div class="section-head">
-      <div class="section-title">Search Terms (last 90 days)</div>
+      <div class="section-title" id="searchTermsTitle">Search Terms (last 90 days)</div>
       <span class="section-meta" id="searchTermsMeta">—</span>
     </div>
     <div id="searchTermsBody"><div class="empty">No data yet.</div></div>
@@ -300,9 +320,9 @@ async function runSync() {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      // No daysBack — let each ETL family use its own default: Google Ads
-      // uses 90d (matches the dashboard's 90-day campaign view); HubSpot
-      // uses 365d (long lookback for slow-closing deals + first-touch).
+      // No daysBack — both ETL families default to 365d (v1.46.12). Was
+      // Google Ads 90d / HubSpot 365d; the asymmetry caused the dashboard's
+      // 365d view to divide 365d revenue by 90d spend, inflating ROAS ~4x.
       body: JSON.stringify({ report: 'all' }),
     });
     const data = await res.json();
@@ -321,29 +341,104 @@ async function runSync() {
   }
 }
 
+// ── State (v1.46.10) ────────────────────────────────────────────────
+// Date range drives all six data endpoints via ?days=N. Sort state
+// per table lets header clicks re-sort without refetching. Raw rows
+// + attribution rows are cached in state so re-sort just re-renders.
+let currentDaysBack = 90;
+const tableState = {
+  campaigns:   { rawRows: [], attrRows: [], sortBy: 'cost', sortDir: 'desc' },
+  keywords:    { rawRows: [], attrRows: [], sortBy: 'cost', sortDir: 'desc' },
+  searchTerms: { rawRows: [], attrRows: [], sortBy: 'cost', sortDir: 'desc' },
+};
+
+function changeDateRange(days) {
+  if (days === currentDaysBack) return;
+  currentDaysBack = days;
+  document.querySelectorAll('.date-pill').forEach(el => {
+    el.classList.toggle('active', parseInt(el.dataset.days) === days);
+  });
+  loadAllTables();
+}
+
+// Sort handler. First click on a column sorts DESC (most common need —
+// "show me top by X"). Re-click on same column flips direction.
+function sortBy(tableName, column) {
+  const s = tableState[tableName];
+  if (s.sortBy === column) {
+    s.sortDir = s.sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    s.sortBy = column;
+    s.sortDir = 'desc';
+  }
+  if (tableName === 'campaigns')   renderCampaigns(s.rawRows, s.attrRows);
+  else if (tableName === 'keywords') renderKeywords(s.rawRows);
+  else if (tableName === 'searchTerms') renderSearchTerms(s.rawRows, s.attrRows);
+}
+
+// Apply current sort to a list of aggregated row objects. Nulls always
+// sink to the bottom regardless of direction — they're "no data," not
+// "low value." Strings use localeCompare; numbers use subtraction.
+function sortRows(tableName, rows) {
+  const s = tableState[tableName];
+  return [...rows].sort((a, b) => {
+    const av = a[s.sortBy], bv = b[s.sortBy];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv;
+    return s.sortDir === 'asc' ? cmp : -cmp;
+  });
+}
+
+function arrow(tableName, col) {
+  const s = tableState[tableName];
+  if (s.sortBy !== col) return '';
+  return `<span class="sort-arrow">${s.sortDir === 'asc' ? '▲' : '▼'}</span>`;
+}
+
+function sortableTh(tableName, col, label, extraClass = '') {
+  const cls = 'sortable' + (extraClass ? ' ' + extraClass : '');
+  return `<th class="${cls}" onclick="sortBy('${tableName}', '${col}')">${label}${arrow(tableName, col)}</th>`;
+}
+
 // ── Data loading + rendering ────────────────────────────────────────
 async function loadAllTables() {
-  // v1.46.1 — also fetch attribution data + coverage in parallel. Both
-  // are resilient (return empty/null on error) so an attribution endpoint
-  // outage doesn't black out the Google Ads view.
+  const d = currentDaysBack;
+  const q = `?days=${d}`;
   const [camp, kw, st, attr, stAttr, cov] = await Promise.all([
-    fetch('/api/marketing/campaigns',                 { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/keywords',                  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/search-terms',              { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/campaign-attribution',      { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/search-term-attribution',   { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/attribution-coverage',      { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
+    fetch('/api/marketing/campaigns'                 + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/keywords'                  + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/search-terms'              + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/campaign-attribution'      + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/search-term-attribution'   + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/attribution-coverage'      + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
   ]);
+  // Cache raw rows so sort-by-column doesn't have to refetch.
+  tableState.campaigns.rawRows   = camp.rows   || [];
+  tableState.campaigns.attrRows  = attr.rows   || [];
+  tableState.keywords.rawRows    = kw.rows     || [];
+  tableState.searchTerms.rawRows = st.rows     || [];
+  tableState.searchTerms.attrRows= stAttr.rows || [];
   renderCoverage(cov || {});
-  renderCampaigns(camp.rows || [], attr.rows || []);
-  renderKeywords(kw.rows || []);
-  renderSearchTerms(st.rows || [], stAttr.rows || []);
+  renderCampaigns(tableState.campaigns.rawRows, tableState.campaigns.attrRows);
+  renderKeywords(tableState.keywords.rawRows);
+  renderSearchTerms(tableState.searchTerms.rawRows, tableState.searchTerms.attrRows);
   renderSummary(camp.rows || [], cov || {});
 }
 
 function renderSummary(rows, cov) {
   if (!rows.length) { document.getElementById('summaryCards').style.display = 'none'; return; }
   document.getElementById('summaryCards').style.display = 'grid';
+  // v1.46.10 — update card labels + coverage panel title with current range.
+  const d = currentDaysBack;
+  document.getElementById('lblSpend').textContent     = `Total Spend (${d}d)`;
+  document.getElementById('lblClicks').textContent    = `Clicks (${d}d)`;
+  document.getElementById('lblConv').textContent      = `Conversions (${d}d)`;
+  document.getElementById('lblValue').textContent     = `GA4 Conv. Value (${d}d)`;
+  document.getElementById('lblClosedRev').textContent = `Closed Revenue (${d}d, paid any-touch)`;
+  const covTitle = document.getElementById('coverageTitle');
+  if (covTitle) covTitle.textContent = `Attribution coverage (last ${d} days)`;
   const spend  = rows.reduce((s, r) => s + (parseFloat(r.cost_usd) || 0), 0);
   const clicks = rows.reduce((s, r) => s + (parseInt(r.clicks) || 0), 0);
   const conv   = rows.reduce((s, r) => s + (parseFloat(r.conversions) || 0), 0);
@@ -428,9 +523,11 @@ function roasPill(revenue, spend) {
 }
 
 function renderCampaigns(rows, attrRows) {
+  document.getElementById('campaignsTitle').textContent = `Campaigns (last ${currentDaysBack} days)`;
   document.getElementById('campaignsMeta').textContent = rows.length ? `${fmtInt(rows.length)} rows` : '';
   const body = document.getElementById('campaignsBody');
   if (!rows.length) { body.innerHTML = '<div class="empty">No data yet. Press Sync All above to pull from Google Ads.</div>'; return; }
+
   // Aggregate Google Ads daily rows by campaign for the headline table.
   const agg = {};
   rows.forEach(r => {
@@ -443,9 +540,7 @@ function renderCampaigns(rows, attrRows) {
     agg[k].value       += parseFloat(r.conversion_value) || 0;
   });
 
-  // v1.46.1 — merge attribution data by campaign_id, then by campaign_name
-  // as fallback (the attribution endpoint joins on name, so id-first
-  // covers exact matches and name covers any drift between the two paths).
+  // Merge attribution data by campaign_id, falling back to campaign_name.
   const attrById = {}, attrByName = {};
   (attrRows || []).forEach(a => {
     if (a.campaign_id)   attrById[a.campaign_id]     = a;
@@ -457,20 +552,31 @@ function renderCampaigns(rows, attrRows) {
     c.dealsWon   = a ? parseInt(a.deals_won)    || 0 : null;
     c.dealsTotal = a ? parseInt(a.deals_total)  || 0 : null;
     c.revWon     = a ? parseFloat(a.revenue_won)|| 0 : null;
+    // v1.46.10 — pre-compute derived columns so sort works on them.
+    c.cpc        = c.clicks      ? c.cost / c.clicks      : null;
+    c.cpa        = c.conversions ? c.cost / c.conversions : null;
+    c.ga4Roas    = c.cost        ? c.value / c.cost       : null;
+    c.trueRoas   = (c.revWon != null && c.cost) ? c.revWon / c.cost : null;
   });
 
-  const list = Object.values(agg).sort((a, b) => b.cost - a.cost);
+  const list = sortRows('campaigns', Object.values(agg));
+  const t = 'campaigns';
   body.innerHTML = `
     <table>
       <thead><tr>
-        <th>Campaign</th><th>Status</th>
-        <th class="num">Spend</th><th class="num">Clicks</th><th class="num">CPC</th>
-        <th class="num">Conv.</th><th class="num">CPA</th>
-        <th class="num">GA4 Value</th><th class="num">GA4 ROAS</th>
-        <th class="num attr-start attr-col" title="HubSpot contacts attributed to this campaign (first-touch)">Leads</th>
-        <th class="num attr-col" title="HubSpot closed-won deals attributed to this campaign">Deals</th>
-        <th class="num attr-col" title="Sum of closed-won deal amounts in USD">Revenue</th>
-        <th class="num attr-col" title="True ROAS = real HubSpot revenue / Google Ads spend">True ROAS</th>
+        ${sortableTh(t, 'name',        'Campaign')}
+        ${sortableTh(t, 'status',      'Status')}
+        ${sortableTh(t, 'cost',        'Spend',     'num')}
+        ${sortableTh(t, 'clicks',      'Clicks',    'num')}
+        ${sortableTh(t, 'cpc',         'CPC',       'num')}
+        ${sortableTh(t, 'conversions', 'Conv.',     'num')}
+        ${sortableTh(t, 'cpa',         'CPA',       'num')}
+        ${sortableTh(t, 'value',       'GA4 Value', 'num')}
+        ${sortableTh(t, 'ga4Roas',     'GA4 ROAS',  'num')}
+        ${sortableTh(t, 'leads',       'Leads',     'num attr-start attr-col')}
+        ${sortableTh(t, 'dealsWon',    'Deals',     'num attr-col')}
+        ${sortableTh(t, 'revWon',      'Revenue',   'num attr-col')}
+        ${sortableTh(t, 'trueRoas',    'True ROAS', 'num attr-col')}
       </tr></thead>
       <tbody>
         ${list.map(r => `<tr>
@@ -478,11 +584,11 @@ function renderCampaigns(rows, attrRows) {
           <td>${(r.status || '—').toLowerCase()}</td>
           <td class="num">${fmtUSD(r.cost)}</td>
           <td class="num">${fmtInt(r.clicks)}</td>
-          <td class="num">${r.clicks ? fmtUSD(r.cost / r.clicks) : '—'}</td>
+          <td class="num">${r.cpc != null ? fmtUSD(r.cpc) : '—'}</td>
           <td class="num">${fmtNum(r.conversions)}</td>
-          <td class="num">${r.conversions ? fmtUSD(r.cost / r.conversions) : '—'}</td>
+          <td class="num">${r.cpa != null ? fmtUSD(r.cpa) : '—'}</td>
           <td class="num">${fmtUSD(r.value)}</td>
-          <td class="num">${r.cost ? (r.value / r.cost).toFixed(2) + 'x' : '—'}</td>
+          <td class="num">${r.ga4Roas != null ? r.ga4Roas.toFixed(2) + 'x' : '—'}</td>
           <td class="num attr-start attr-col">${r.leads == null ? '—' : fmtInt(r.leads)}</td>
           <td class="num attr-col">${r.dealsWon == null ? '—' : (r.dealsWon || (r.dealsTotal ? '0 / ' + fmtInt(r.dealsTotal) : '0'))}</td>
           <td class="num attr-col">${r.revWon == null ? '—' : fmtUSD(r.revWon)}</td>
@@ -497,6 +603,7 @@ function renderCampaigns(rows, attrRows) {
 // the same keyword text can appear in multiple ad groups with independent
 // performance. Display capped to top 200 by spend; full row count shown in meta.
 function renderKeywords(rows) {
+  document.getElementById('keywordsTitle').textContent = `Keywords (last ${currentDaysBack} days)`;
   document.getElementById('keywordsMeta').textContent = rows.length ? `${fmtInt(rows.length)} rows` : '';
   const body = document.getElementById('keywordsBody');
   if (!rows.length) { body.innerHTML = '<div class="empty">No data yet.</div>'; return; }
@@ -509,15 +616,26 @@ function renderKeywords(rows) {
     agg[k].cost        += parseFloat(r.cost_usd) || 0;
     agg[k].conversions += parseFloat(r.conversions) || 0;
   });
-  const all = Object.values(agg).sort((a, b) => b.cost - a.cost);
-  const list = all.slice(0, 200);
-  const moreNote = all.length > list.length ? ` <span style="color:var(--muted);font-size:11px;font-weight:500;text-transform:none;letter-spacing:0">(top ${list.length} of ${fmtInt(all.length)} by spend)</span>` : '';
+  // v1.46.10 — derived columns + sort-then-cap so the top 200 reflects
+  // whatever the user is currently sorting by, not always by spend.
+  Object.values(agg).forEach(r => {
+    r.cpc = r.clicks      ? r.cost / r.clicks      : null;
+    r.cpa = r.conversions ? r.cost / r.conversions : null;
+  });
+  const sorted = sortRows('keywords', Object.values(agg));
+  const list = sorted.slice(0, 200);
+  const moreNote = sorted.length > list.length ? ` <span style="color:var(--muted);font-size:11px;font-weight:500;text-transform:none;letter-spacing:0">(top ${list.length} of ${fmtInt(sorted.length)})</span>` : '';
+  const t = 'keywords';
   body.innerHTML = `
     <table>
       <thead><tr>
-        <th>Keyword${moreNote}</th><th>Match</th>
-        <th class="num">Spend</th><th class="num">Clicks</th><th class="num">CPC</th>
-        <th class="num">Conv.</th><th class="num">CPA</th>
+        ${sortableTh(t, 'text',        'Keyword' + moreNote)}
+        ${sortableTh(t, 'match',       'Match')}
+        ${sortableTh(t, 'cost',        'Spend',  'num')}
+        ${sortableTh(t, 'clicks',      'Clicks', 'num')}
+        ${sortableTh(t, 'cpc',         'CPC',    'num')}
+        ${sortableTh(t, 'conversions', 'Conv.',  'num')}
+        ${sortableTh(t, 'cpa',         'CPA',    'num')}
       </tr></thead>
       <tbody>
         ${list.map(r => `<tr>
@@ -525,9 +643,9 @@ function renderKeywords(rows) {
           <td>${(r.match || '—').toLowerCase()}</td>
           <td class="num">${fmtUSD(r.cost)}</td>
           <td class="num">${fmtInt(r.clicks)}</td>
-          <td class="num">${r.clicks ? fmtUSD(r.cost / r.clicks) : '—'}</td>
+          <td class="num">${r.cpc != null ? fmtUSD(r.cpc) : '—'}</td>
           <td class="num">${fmtNum(r.conversions)}</td>
-          <td class="num">${r.conversions ? fmtUSD(r.cost / r.conversions) : '—'}</td>
+          <td class="num">${r.cpa != null ? fmtUSD(r.cpa) : '—'}</td>
         </tr>`).join('')}
       </tbody>
     </table>`;
@@ -540,6 +658,7 @@ function renderKeywords(rows) {
 // /api/marketing/search-term-attribution (HubSpot first_source_data_2
 // holds the literal typed term — discovered in the 2026-05-27 diagnostic).
 function renderSearchTerms(rows, attrRows) {
+  document.getElementById('searchTermsTitle').textContent = `Search Terms (last ${currentDaysBack} days)`;
   document.getElementById('searchTermsMeta').textContent = rows.length ? `${fmtInt(rows.length)} rows` : '';
   const body = document.getElementById('searchTermsBody');
   if (!rows.length) { body.innerHTML = '<div class="empty">No data yet.</div>'; return; }
@@ -554,8 +673,7 @@ function renderSearchTerms(rows, attrRows) {
     agg[k].conversions += parseFloat(r.conversions) || 0;
   });
 
-  // Merge attribution by normalized term key. The endpoint already
-  // returns lowercased+trimmed terms, matching our aggregation key.
+  // Merge attribution by normalized term key.
   const attrByTerm = {};
   (attrRows || []).forEach(a => {
     if (a.search_term) attrByTerm[a.search_term] = a;
@@ -566,30 +684,37 @@ function renderSearchTerms(rows, attrRows) {
     r.dealsWon   = a ? parseInt(a.deals_won)     || 0 : null;
     r.dealsTotal = a ? parseInt(a.deals_total)   || 0 : null;
     r.revWon     = a ? parseFloat(a.revenue_won) || 0 : null;
+    r.cpc        = r.clicks      ? r.cost / r.clicks      : null;
+    r.cpa        = r.conversions ? r.cost / r.conversions : null;
+    r.trueRoas   = (r.revWon != null && r.cost) ? r.revWon / r.cost : null;
   });
 
-  const all = Object.values(agg).sort((a, b) => b.cost - a.cost);
-  const list = all.slice(0, 200);
-  const moreNote = all.length > list.length ? ` <span style="color:var(--muted);font-size:11px;font-weight:500;text-transform:none;letter-spacing:0">(top ${list.length} of ${fmtInt(all.length)} by spend)</span>` : '';
+  const sorted = sortRows('searchTerms', Object.values(agg));
+  const list = sorted.slice(0, 200);
+  const moreNote = sorted.length > list.length ? ` <span style="color:var(--muted);font-size:11px;font-weight:500;text-transform:none;letter-spacing:0">(top ${list.length} of ${fmtInt(sorted.length)})</span>` : '';
+  const t = 'searchTerms';
   body.innerHTML = `
     <table>
       <thead><tr>
-        <th>Search Term${moreNote}</th>
-        <th class="num">Spend</th><th class="num">Clicks</th><th class="num">CPC</th>
-        <th class="num">Conv.</th><th class="num">CPA</th>
-        <th class="num attr-col">Leads</th>
-        <th class="num attr-col">Deals</th>
-        <th class="num attr-col">Revenue</th>
-        <th class="num attr-col" title="True ROAS = HubSpot won revenue / search-term spend">True ROAS</th>
+        ${sortableTh(t, 'term',        'Search Term' + moreNote)}
+        ${sortableTh(t, 'cost',        'Spend',     'num')}
+        ${sortableTh(t, 'clicks',      'Clicks',    'num')}
+        ${sortableTh(t, 'cpc',         'CPC',       'num')}
+        ${sortableTh(t, 'conversions', 'Conv.',     'num')}
+        ${sortableTh(t, 'cpa',         'CPA',       'num')}
+        ${sortableTh(t, 'leads',       'Leads',     'num attr-col')}
+        ${sortableTh(t, 'dealsWon',    'Deals',     'num attr-col')}
+        ${sortableTh(t, 'revWon',      'Revenue',   'num attr-col')}
+        ${sortableTh(t, 'trueRoas',    'True ROAS', 'num attr-col')}
       </tr></thead>
       <tbody>
         ${list.map(r => `<tr>
           <td>${r.term.replace(/</g,'&lt;')}</td>
           <td class="num">${fmtUSD(r.cost)}</td>
           <td class="num">${fmtInt(r.clicks)}</td>
-          <td class="num">${r.clicks ? fmtUSD(r.cost / r.clicks) : '—'}</td>
+          <td class="num">${r.cpc != null ? fmtUSD(r.cpc) : '—'}</td>
           <td class="num">${fmtNum(r.conversions)}</td>
-          <td class="num">${r.conversions ? fmtUSD(r.cost / r.conversions) : '—'}</td>
+          <td class="num">${r.cpa != null ? fmtUSD(r.cpa) : '—'}</td>
           <td class="num attr-col">${r.leads == null ? '—' : fmtInt(r.leads)}</td>
           <td class="num attr-col">${r.dealsWon == null ? '—' : (r.dealsWon || (r.dealsTotal ? '0 / ' + fmtInt(r.dealsTotal) : '0'))}</td>
           <td class="num attr-col">${r.revWon == null ? '—' : fmtUSD(r.revWon)}</td>

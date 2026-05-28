@@ -1314,8 +1314,6 @@ async function createInvoiceForDeal(event, quoteNumber) {
   const customer  = snap?.customer  || q.customer  || {};
   const install   = snap?.install   || q.install   || null;
 
-  window._pendingInvoice = { dealId: currentDealId, quoteNumber: q.quoteNumber, snap: { lineItems, freight, tax, discount, customer, install } };
-
   // Calculate total for preview + $50k warning.
   // When install mode is 'delivery_install', install REPLACES freight; otherwise it adds on top.
   const sub = lineItems.reduce((s, i) => s + (parseFloat(i.price||0) * parseInt(i.qty||1)), 0);
@@ -1330,6 +1328,8 @@ async function createInvoiceForDeal(event, quoteNumber) {
   // Use deal amount from hub as fallback if line items are empty
   const displayTotal = total > 0 ? total : parseFloat(q.amount || 0);
   const fmtTotal = '$' + displayTotal.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+  window._pendingInvoice = { dealId: currentDealId, quoteNumber: q.quoteNumber, total: displayTotal, snap: { lineItems, freight, tax, discount, customer, install } };
 
   document.getElementById('dhInvoicePreviewName').textContent = q.dealName || q.quoteNumber || '—';
   document.getElementById('dhInvoicePreviewQuote').textContent = q.quoteNumber || '—';
@@ -1347,6 +1347,22 @@ async function createInvoiceForDeal(event, quoteNumber) {
     warning.style.display = 'none';
   }
 
+  // $100k ACH cap — HubSpot/Stripe rejects ACH-only invoices over $100k.
+  // CC must be in the allowed methods to lift the cap (customer isn't forced to use it).
+  const achCapEl   = document.getElementById('dhInvoiceACHCapWarning');
+  const ccCheckbox = document.getElementById('dhInvoiceAllowCC');
+  const confirmBtn = document.getElementById('dhInvoiceConfirmBtn');
+  const syncACHCap = () => {
+    const overCap = displayTotal > 100000 && !ccCheckbox.checked;
+    achCapEl.style.display = overCap ? 'block' : 'none';
+    confirmBtn.disabled = overCap;
+    confirmBtn.style.opacity = overCap ? '0.45' : '';
+    confirmBtn.style.cursor  = overCap ? 'not-allowed' : 'pointer';
+    confirmBtn.title = overCap ? 'Enable Credit/Debit Card — HubSpot caps ACH-only invoices at $100k' : '';
+  };
+  ccCheckbox.onchange = syncACHCap;
+  syncACHCap();
+
   btn.textContent = '+ Invoice';
   btn.disabled = false;
   document.getElementById('dhInvoiceModal').style.display = 'flex';
@@ -1356,6 +1372,11 @@ async function confirmDealInvoice() {
   const pending = window._pendingInvoice;
   if (!pending) return;
   const confirmBtn = document.getElementById('dhInvoiceConfirmBtn');
+  const allowCC = document.getElementById('dhInvoiceAllowCC').checked;
+  if ((pending.total || 0) > 100000 && !allowCC) {
+    showToast('Enable Credit/Debit Card — HubSpot caps ACH-only invoices at $100k', 'error');
+    return;
+  }
   confirmBtn.disabled = true;
   confirmBtn.textContent = 'Creating…';
   try {
@@ -3404,6 +3425,9 @@ const submitCreateApPo = submitApPoModal;
       </div>
       <div id="dhInvoiceCCWarning" style="display:none;margin-top:10px;padding:9px 12px;background:rgba(238,98,22,.08);border:1px solid rgba(238,98,22,.25);border-radius:7px;font-size:11px;color:#ee6216;line-height:1.5">
         &#x26A0; <strong>Recommendation:</strong> Consider disabling Credit Card for orders over $50,000 — the processing fee (~3.4%) would exceed <span id="dhInvoiceCCFeeAmt"></span>.
+      </div>
+      <div id="dhInvoiceACHCapWarning" style="display:none;margin-top:10px;padding:9px 12px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.4);border-radius:7px;font-size:11px;color:#ef4444;line-height:1.5">
+        &#x26A0; <strong>Required:</strong> HubSpot caps ACH at $100k per transaction (CC: $250k). For orders over $100k you must either re-enable Credit/Debit Card (the customer doesn&rsquo;t have to use it &mdash; it just lifts the cap), or enable partial payments directly on the invoice inside HubSpot so the customer can pay in sub-$100k chunks. Otherwise HubSpot rejects the invoice and you get a "WR-DRAFT" with a 404 Pay Now link.
       </div>
     </div>
 

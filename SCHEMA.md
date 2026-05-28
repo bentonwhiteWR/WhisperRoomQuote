@@ -16,6 +16,7 @@ Last verified: 2026-05-08, against v1.7.33.
 | `orders`           | Quotes that have been processed into orders   | `quote-server.js`            | orders-dashboard, deal-hub       |
 | `supplier_pos`     | Audimute supplier POs (sales-rep, drop-ship)  | `quote-server.js`            | suppliers-dashboard, deal-hub    |
 | `vendors`          | WR PO System vendor catalog (Josh's home, supply-chain) | `quote-server.js`  | vendors-dashboard (v1.48+)       |
+| `vendor_pos`       | WR PO System purchase orders (Josh's POs to vendors) | `quote-server.js`  | vendor-pos-dashboard (v1.49+)    |
 | `sessions`         | Logged-in rep sessions                        | `lib/auth.js`                | every authenticated request      |
 | `notifications`    | Per-rep notification feed                     | `lib/notify.js`              | admin-log, dashboards (badge)    |
 | `logs`             | Admin/event log                               | `lib/logger.js` (`writelog`) | admin-log page                   |
@@ -124,6 +125,34 @@ Catalog of suppliers for the new WR PO System (v1.48+). Parallel to `supplier_po
 | `created_at`, `updated_at`   | TIMESTAMPTZ     |                                                                |
 
 **Indexes:** `lower(name)`, `(archived, lower(name))`.
+
+---
+
+## vendor_pos
+
+Vendor Purchase Orders for the WR PO System (v1.49+). Parallel to `supplier_pos` (Audimute). `vendor_snapshot` freezes the vendor row at PO creation time so historical POs stay correct when Josh edits a vendor record later.
+
+| Column                | Type            | Notes                                                          |
+|-----------------------|-----------------|----------------------------------------------------------------|
+| `id`                  | SERIAL PK       |                                                                |
+| `po_number`           | TEXT UNIQUE     | `WV-{YY}{MM}{DD}{NN}` (e.g. `WV-26052801`)                     |
+| `vendor_id`           | INT FK          | References `vendors(id)`; `ON DELETE SET NULL` for safety      |
+| `vendor_snapshot`     | JSONB           | Frozen vendor row at creation time                             |
+| `share_token`         | TEXT UNIQUE     | Used by `/vpo/:poNumber` viewer                                |
+| `status`              | TEXT NOT NULL   | `DRAFT` → `APPROVED` → `SENT` → `PARTIAL` → `RECEIVED` → `CLOSED` (+ `CANCELLED`) |
+| `po_data`             | JSONB           | `{lines:[{itemId,sku,description,mfg,mfg_part_no,qty,unit_price}], notes}` |
+| `received_data`       | JSONB           | Phase 2 (v1.50+) — per-line receive state                      |
+| `invoice_data`        | JSONB           | Phase 2 (v1.50+) — Kim's invoice match                         |
+| `approved_at`         | TIMESTAMPTZ     | Stamped on Approve                                             |
+| `sent_at`             | TIMESTAMPTZ     | Stamped on Send (mailto fires)                                 |
+| `expected_date`       | DATE            | Inline-editable                                                |
+| `received_at`         | TIMESTAMPTZ     | Phase 2                                                        |
+| `closed_at`           | TIMESTAMPTZ     | Phase 2                                                        |
+| `pdf_drive_file_id`   | TEXT            | Drive file ID; reused on PDF re-upload so edits overwrite      |
+| `created_by`          | TEXT            | Rep owner ID                                                   |
+| `created_at`, `updated_at` | TIMESTAMPTZ |                                                                |
+
+**Indexes:** `(vendor_id, created_at DESC)`, `(status, created_at DESC)`.
 
 ---
 

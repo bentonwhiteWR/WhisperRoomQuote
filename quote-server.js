@@ -40,6 +40,7 @@ const {
   gdriveSavePdfToDeal,
   gdriveUploadFilePdf,
   gdriveUpsertFilePdf,
+  gdriveUpdateFilePdfContent,
 } = gdrive;
 
 
@@ -305,6 +306,24 @@ async function nextPoNumber() {
   if (!db) return prefix + '01';
   const row = await db.query(
     `SELECT po_number FROM supplier_pos WHERE po_number LIKE $1 ORDER BY po_number DESC LIMIT 1`,
+    [prefix + '%']
+  );
+  if (row.rows.length === 0) return prefix + '01';
+  const last = parseInt(row.rows[0].po_number.slice(-2), 10);
+  return prefix + String(last + 1).padStart(2, '0');
+}
+
+// Vendor PO numbers use a different prefix (WV-) so they're visually
+// distinct from Audimute AP POs (WR-) — same {YY}{MM}{DD}{NN} format.
+async function nextVendorPoNumber() {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const yy = String(now.getFullYear()).slice(2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const prefix = `WV-${yy}${mm}${dd}`;
+  if (!db) return prefix + '01';
+  const row = await db.query(
+    `SELECT po_number FROM vendor_pos WHERE po_number LIKE $1 ORDER BY po_number DESC LIMIT 1`,
     [prefix + '%']
   );
   if (row.rows.length === 0) return prefix + '01';
@@ -664,6 +683,102 @@ function _asArray(v) {
   if (v == null) return [];
   if (Array.isArray(v)) return v;
   return [v];
+}
+
+// Normalize PO line items from the PO builder UI. Lines without a
+// description are dropped (same reasoning as the catalog normalizer).
+// catalog_id (optional) links back to the vendors.catalog item this was
+// derived from, so a later "show items I order most" report can roll up.
+function _normalizeVendorPoLines(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(l => {
+      const description = String(l?.description || '').trim();
+      if (!description) return null;
+      const qty = Math.max(0, parseFloat(l?.qty || 0)) || 0;
+      const unit_price = Math.max(0, parseFloat(l?.unit_price || 0)) || 0;
+      return {
+        id:           l.id || ('vpl_' + crypto.randomBytes(6).toString('hex')),
+        catalog_id:   l.catalog_id || null,
+        sku:          String(l?.sku || '').trim() || null,
+        description,
+        mfg:          String(l?.mfg || '').trim() || null,
+        mfg_part_no:  String(l?.mfg_part_no || '').trim() || null,
+        qty,
+        unit_price,
+      };
+    })
+    .filter(Boolean);
+}
+
+// Valid vendor-PO status transitions. CANCELLED is reachable from any
+// pre-RECEIVED state. APPROVED -> DRAFT is allowed so Josh can pull a
+// PO back to DRAFT for major edits before send. SENT -> APPROVED is
+// NOT allowed — once it's gone to the vendor, the audit trail should
+// reflect that. Receive/Close transitions are Phase 2 (v1.50+).
+const _VENDOR_PO_TRANSITIONS = {
+  DRAFT:     ['APPROVED', 'CANCELLED'],
+  APPROVED:  ['SENT', 'DRAFT', 'CANCELLED'],
+  SENT:      ['PARTIAL', 'RECEIVED', 'CANCELLED'],
+  PARTIAL:   ['PARTIAL', 'RECEIVED', 'CANCELLED'],
+  RECEIVED:  ['CLOSED'],
+  CLOSED:    [],
+  CANCELLED: [],
+};
+function _vendorPoTransitionOK(from, to) {
+  const allowed = _VENDOR_PO_TRANSITIONS[from] || [];
+  return allowed.includes(to);
+}
+// Whether free-form edits (lines, notes, expected_date) are still
+// permitted. After SENT we allow it but the UI surfaces a confirm —
+// PDF regenerates and overwrites the file in Drive.
+function _vendorPoCanEditFields(status) {
+  return status !== 'RECEIVED' && status !== 'CLOSED' && status !== 'CANCELLED';
+}
+
+// Generate or regenerate the Drive PDF for a vendor PO. If the PO
+// already has a pdf_drive_file_id we PATCH the file contents in place
+// (so the Drive link Josh shared earlier still works). Otherwise we
+// create a new file in GDRIVE_VENDOR_POS_FOLDER and stash the id.
+// Failures are logged but never thrown — the PDF is a convenience, not
+// a guarantee, and Josh can hit Re-render manually if Drive is flaky.
+async function _regenerateVendorPoPdf(po) {
+  const folderId = process.env.GDRIVE_VENDOR_POS_FOLDER;
+  if (!folderId) {
+    console.warn('[vendor-po pdf] GDRIVE_VENDOR_POS_FOLDER not set; skipping upload');
+    return;
+  }
+  try {
+    const url = `${PUBLIC_BASE_URL}/vpo/${encodeURIComponent(po.po_number)}?t=${po.share_token}`;
+    const buf = await generatePdfBuffer(url);
+    const vendorName = (po.vendor_snapshot && po.vendor_snapshot.name) || 'Vendor';
+    const safeName = vendorName.replace(/[\\\/:*?"<>|]+/g, ' ').trim();
+    const filename = `${po.po_number} — ${safeName}.pdf`;
+
+    let driveFile;
+    if (po.pdf_drive_file_id) {
+      driveFile = await gdriveUpdateFilePdfContent(po.pdf_drive_file_id, buf);
+      // If the file was deleted out-of-band, the PATCH returns an error
+      // — fall back to a fresh upload so we don't drop the PDF on the floor.
+      if (driveFile && driveFile.error) {
+        console.warn('[vendor-po pdf] update failed, creating new:', JSON.stringify(driveFile.error).slice(0, 200));
+        driveFile = await gdriveUploadFilePdf(filename, buf, folderId);
+      }
+    } else {
+      driveFile = await gdriveUploadFilePdf(filename, buf, folderId);
+    }
+    if (driveFile && driveFile.id && db) {
+      await db.query(
+        `UPDATE vendor_pos SET pdf_drive_file_id = $1, updated_at = NOW() WHERE po_number = $2`,
+        [driveFile.id, po.po_number]
+      );
+    }
+  } catch(e) {
+    console.warn('[vendor-po pdf] regen error:', e.message);
+    writelog('error', 'error.vendor-po.pdf', `PDF regen failed for ${po.po_number}: ${e.message}`, {
+      meta: { poNumber: po.po_number },
+    });
+  }
 }
 
 // Normalize a vendor catalog payload from the admin UI: each item gets
@@ -1174,7 +1289,7 @@ const server = http.createServer(async (req, res) => {
 
   // ── Auth gate ──
   // Public routes — no auth required but rate limited + token validated
-  const isPublicRoute = pathname.startsWith('/q/') || pathname.startsWith('/i/') || pathname.startsWith('/o/') || pathname.startsWith('/po/') || pathname === '/api/accept-quote' || pathname === '/api/update-specs' || pathname === '/api/stripe/webhook';
+  const isPublicRoute = pathname.startsWith('/q/') || pathname.startsWith('/i/') || pathname.startsWith('/o/') || pathname.startsWith('/po/') || pathname.startsWith('/vpo/') || pathname === '/api/accept-quote' || pathname === '/api/update-specs' || pathname === '/api/stripe/webhook';
   if (isPublicRoute) {
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
     if (!checkRateLimit(ip, 30, 60000)) {
@@ -9884,6 +9999,14 @@ ${q.accepted ? `
     return;
   }
 
+  // ── Vendor POs Dashboard Page (WR PO System — listing + create) ───
+  if (pathname === '/vendor-pos' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(fs.readFileSync(path.join(__dirname, 'vendor-pos-dashboard.html'), 'utf8'));
+    return;
+  }
+
     // ── API: Logs ────────────────────────────────────────────────────
   if (pathname === '/api/logs' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
@@ -11704,6 +11827,228 @@ ${q.accepted ? `
     return;
   }
 
+  // ── API: Vendor POs (WR PO System) ───────────────────────────────
+  // List with optional ?status=X, ?vendor_id=N filters. Returns the
+  // 200 most recent by default — Josh shouldn't be paginating dozens
+  // of pages of POs in v1.
+  if (pathname === '/api/vendor-pos' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      if (!db) { json({ pos: [] }); return; }
+      const params = new URLSearchParams(search);
+      const status = params.get('status');
+      const vendorId = parseInt(params.get('vendor_id') || '', 10);
+      const where = [];
+      const vals = [];
+      let idx = 1;
+      if (status) { where.push(`status = $${idx++}`); vals.push(status); }
+      if (vendorId) { where.push(`vendor_id = $${idx++}`); vals.push(vendorId); }
+      const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+      const result = await db.query(
+        `SELECT po.*, v.name AS vendor_name
+           FROM vendor_pos po
+           LEFT JOIN vendors v ON v.id = po.vendor_id
+           ${whereSql}
+          ORDER BY po.created_at DESC
+          LIMIT 200`,
+        vals
+      );
+      json({ pos: result.rows });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // Get single PO by po_number.
+  if (pathname.startsWith('/api/vendor-pos/') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const poNumber = decodeURIComponent(pathname.replace('/api/vendor-pos/', '').trim());
+    if (!poNumber) { json({ error: 'PO number required' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const result = await db.query(
+        `SELECT po.*, v.name AS vendor_name
+           FROM vendor_pos po
+           LEFT JOIN vendors v ON v.id = po.vendor_id
+          WHERE po.po_number = $1`,
+        [poNumber]
+      );
+      if (!result.rows.length) { json({ error: 'PO not found' }, 404); return; }
+      json({ po: result.rows[0] });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // Create vendor PO. Snapshots the vendor row so historical POs aren't
+  // affected by later edits to the vendor record. Status is always
+  // DRAFT on create.
+  if (pathname === '/api/vendor-pos' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    let body;
+    try { body = JSON.parse(await readBody(req) || '{}'); }
+    catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
+    const vendorId = parseInt(body.vendor_id || 0, 10);
+    if (!vendorId) { json({ error: 'vendor_id required' }, 400); return; }
+    const lines = _normalizeVendorPoLines(body.lines);
+    if (!lines.length) { json({ error: 'At least one line item with a description is required' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+
+      // Snapshot the vendor row at PO creation time so future vendor
+      // edits don't rewrite history.
+      const vRes = await db.query(`SELECT * FROM vendors WHERE id = $1`, [vendorId]);
+      if (!vRes.rows.length) { json({ error: 'Vendor not found' }, 404); return; }
+      const vendor = vRes.rows[0];
+
+      const poNumber = await nextVendorPoNumber();
+      const shareToken = crypto.randomBytes(12).toString('hex');
+      const rep = getRepFromReq(req, body);
+      const poData = {
+        lines,
+        notes: String(body.notes || '').trim() || null,
+      };
+
+      const result = await db.query(
+        `INSERT INTO vendor_pos (
+           po_number, vendor_id, vendor_snapshot, share_token, status,
+           po_data, expected_date, created_by
+         ) VALUES ($1,$2,$3,$4,'DRAFT',$5,$6,$7) RETURNING *`,
+        [
+          poNumber,
+          vendorId,
+          JSON.stringify(vendor),
+          shareToken,
+          JSON.stringify(poData),
+          body.expected_date || null,
+          String(rep || ''),
+        ]
+      );
+      writelog('info', 'vendor-po.created', `Vendor PO created: ${poNumber} (${vendor.name})`, {
+        rep: String(rep || ''),
+        meta: { poNumber, vendorId, lineCount: lines.length },
+      });
+      json({ po: result.rows[0] });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // Update vendor PO — line edits + status transitions + expected_date + notes.
+  if (pathname.startsWith('/api/vendor-pos/') && req.method === 'PATCH') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const poNumber = decodeURIComponent(pathname.replace('/api/vendor-pos/', '').trim());
+    if (!poNumber) { json({ error: 'PO number required' }, 400); return; }
+    let body;
+    try { body = JSON.parse(await readBody(req) || '{}'); }
+    catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+
+      const curRes = await db.query(`SELECT * FROM vendor_pos WHERE po_number = $1`, [poNumber]);
+      if (!curRes.rows.length) { json({ error: 'PO not found' }, 404); return; }
+      const cur = curRes.rows[0];
+
+      const sets = [];
+      const vals = [];
+      let idx = 1;
+      const setField = (col, val) => { sets.push(`${col} = $${idx++}`); vals.push(val); };
+
+      // Field edits — only when status allows
+      const fieldEditRequested =
+        body.lines !== undefined || body.notes !== undefined || body.expected_date !== undefined;
+      if (fieldEditRequested) {
+        if (!_vendorPoCanEditFields(cur.status)) {
+          json({ error: `Cannot edit a ${cur.status} PO` }, 409); return;
+        }
+        const newPoData = Object.assign({}, cur.po_data || {});
+        if (body.lines !== undefined) {
+          const newLines = _normalizeVendorPoLines(body.lines);
+          if (!newLines.length) { json({ error: 'At least one line item with a description is required' }, 400); return; }
+          newPoData.lines = newLines;
+        }
+        if (body.notes !== undefined) {
+          newPoData.notes = String(body.notes || '').trim() || null;
+        }
+        setField('po_data', JSON.stringify(newPoData));
+        if (body.expected_date !== undefined) setField('expected_date', body.expected_date || null);
+      }
+
+      // Status transition
+      let newStatus = null;
+      if (body.status !== undefined && body.status !== cur.status) {
+        if (!_vendorPoTransitionOK(cur.status, body.status)) {
+          json({ error: `Cannot transition ${cur.status} → ${body.status}` }, 409); return;
+        }
+        newStatus = body.status;
+        setField('status', newStatus);
+        if (newStatus === 'APPROVED' && !cur.approved_at) setField('approved_at', new Date().toISOString());
+        if (newStatus === 'SENT'     && !cur.sent_at)     setField('sent_at',     new Date().toISOString());
+        if (newStatus === 'RECEIVED' && !cur.received_at) setField('received_at', new Date().toISOString());
+        if (newStatus === 'CLOSED'   && !cur.closed_at)   setField('closed_at',   new Date().toISOString());
+        // Un-approve clears approved_at so the lifecycle stays honest
+        if (newStatus === 'DRAFT' && cur.status === 'APPROVED') setField('approved_at', null);
+      }
+
+      if (!sets.length) { json({ error: 'No fields to update' }, 400); return; }
+      sets.push(`updated_at = NOW()`);
+      vals.push(poNumber);
+
+      const result = await db.query(
+        `UPDATE vendor_pos SET ${sets.join(', ')} WHERE po_number = $${idx} RETURNING *`,
+        vals
+      );
+
+      if (newStatus) {
+        const rep = getRepFromReq(req, body);
+        writelog('info', `vendor-po.${newStatus.toLowerCase()}`, `Vendor PO ${poNumber} → ${newStatus}`, {
+          rep: String(rep || ''),
+          meta: { poNumber, from: cur.status, to: newStatus },
+        });
+      }
+
+      // Fire-and-forget PDF regen on any edit while in APPROVED/SENT.
+      // Drive uploads happen in slice 4 (next commit), so for now this
+      // is a placeholder hook the next commit will populate.
+      const final = result.rows[0];
+      if ((final.status === 'APPROVED' || final.status === 'SENT') && (fieldEditRequested || newStatus === 'APPROVED')) {
+        _regenerateVendorPoPdf(final).catch(e => {
+          console.warn('[vendor-po] PDF regen error:', e.message);
+        });
+      }
+
+      json({ po: final });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // Delete a DRAFT vendor PO. Anything past DRAFT cancels (status flip),
+  // not deletes.
+  if (pathname.startsWith('/api/vendor-pos/') && req.method === 'DELETE') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const poNumber = decodeURIComponent(pathname.replace('/api/vendor-pos/', '').trim());
+    if (!poNumber) { json({ error: 'PO number required' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const curRes = await db.query(`SELECT status FROM vendor_pos WHERE po_number = $1`, [poNumber]);
+      if (!curRes.rows.length) { json({ error: 'PO not found' }, 404); return; }
+      if (curRes.rows[0].status !== 'DRAFT') {
+        json({ error: `Only DRAFT POs can be deleted. Cancel ${poNumber} instead.` }, 409); return;
+      }
+      await db.query(`DELETE FROM vendor_pos WHERE po_number = $1`, [poNumber]);
+      writelog('info', 'vendor-po.deleted', `Vendor PO deleted: ${poNumber}`, { rep: String(getRepFromReq(req) || '') });
+      json({ ok: true });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── API: Supplier POs — list ─────────────────────────────────────
   if (pathname === '/api/supplier-pos' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
@@ -13293,6 +13638,226 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
       res.end(poHtml);
     } catch(e) {
       console.error('[po page] error:', e.message);
+      res.writeHead(500); res.end('Server error');
+    }
+    return;
+  }
+
+  // ── Vendor PO Page (/vpo/:poNumber) — WR PO System ────────────────
+  // Public-with-share-token. Renders the PO as a printable doc; the
+  // same URL is what Puppeteer scrapes for PDF gen.
+  if (pathname.startsWith('/vpo/') && req.method === 'GET') {
+    const poNumber = decodeURIComponent(pathname.replace('/vpo/', '').trim());
+    if (!poNumber) { res.writeHead(404); res.end('Not found'); return; }
+    const reqToken = new URLSearchParams(search).get('t');
+    try {
+      if (!db) { res.writeHead(503); res.end('Database unavailable'); return; }
+      const row = await db.query('SELECT * FROM vendor_pos WHERE po_number = $1', [poNumber]);
+      if (!row.rows.length) {
+        res.writeHead(404, { 'Content-Type': 'text/html' });
+        res.end('<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px"><h2>Purchase Order Not Found</h2></body></html>');
+        return;
+      }
+      const po = row.rows[0];
+      if (!isAuth(req) && reqToken !== po.share_token) {
+        res.writeHead(403, { 'Content-Type': 'text/html' });
+        res.end('<!DOCTYPE html><html><head><title>Link Expired</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#f5f5f5}div{text-align:center}</style></head><body><div><h2 style="color:#ee6216">This link is no longer valid</h2><p style="color:#888;margin-top:8px">Please contact WhisperRoom for an updated link.</p></div></body></html>');
+        return;
+      }
+
+      const v = po.vendor_snapshot || {};
+      const d = po.po_data || {};
+      const lines = Array.isArray(d.lines) ? d.lines : [];
+      const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+      const subtotal = lines.reduce((s, l) => s + (parseFloat(l.unit_price||0) * parseFloat(l.qty||0)), 0);
+
+      const createdDate = po.created_at
+        ? new Date(po.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' })
+        : '';
+      const expectedDate = po.expected_date
+        ? new Date(po.expected_date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+        : '';
+
+      // Resolve rep name from the created_by ownerId via REPS map
+      const repNameVpo = REPS[String(po.created_by || '')] || 'WhisperRoom';
+
+      const vendorAddrLines = Array.isArray(v.address_lines) ? v.address_lines : [];
+      const vendorContacts = Array.isArray(v.contacts) ? v.contacts.map(c => c && c.name ? c.name : (typeof c === 'string' ? c : '')).filter(Boolean) : [];
+      const vendorEmails = Array.isArray(v.send_to_emails) ? v.send_to_emails : [];
+
+      // Billing override falls back to WhisperRoom's standard billing addr.
+      const billingDefault = 'WhisperRoom, Inc.\n322 Nancy Lynn Lane, Suite 14\nKnoxville, TN 37919\nAttn: Accounting';
+      const billingBlock = (v.billing_address_override && v.billing_address_override.trim()) || billingDefault;
+
+      const statusBadge = po.status === 'DRAFT'
+        ? '<span class="status-pill status-draft">DRAFT — Not Yet Approved</span>'
+        : po.status === 'CANCELLED'
+          ? '<span class="status-pill status-cancelled">CANCELLED</span>'
+          : '';
+
+      const lineRows = lines.map(l => (
+        '<tr>' +
+          '<td class="td-num">' + esc(l.sku || '') + '</td>' +
+          '<td class="td-desc"><div class="line-desc">' + esc(l.description || '') + '</div>' +
+            (l.mfg_part_no ? '<div class="line-sub">MFG Part #' + esc(l.mfg_part_no) + '</div>' : '') +
+          '</td>' +
+          '<td class="td-num">' + esc(l.mfg || '') + '</td>' +
+          '<td class="td-num">' + esc(l.qty || 0) + '</td>' +
+          '<td class="td-num">' + fmt(l.unit_price) + '</td>' +
+          '<td class="td-num"><strong>' + fmt(parseFloat(l.unit_price||0) * parseFloat(l.qty||0)) + '</strong></td>' +
+        '</tr>'
+      )).join('');
+
+      const vpoHtml =
+'<!DOCTYPE html><html lang="en"><head>' +
+'<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+'<title>PO ' + esc(poNumber) + '</title>' +
+'<link rel="icon" href="/assets/favicon.avif">' +
+'<style>' +
+"@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');" +
+'*{box-sizing:border-box;margin:0;padding:0}' +
+"body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-font-smoothing:antialiased;padding:32px 16px}" +
+'.page{background:#fff;max-width:820px;margin:0 auto;padding:44px 50px;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.08)}' +
+'.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:18px;border-bottom:2px solid #ee6216}' +
+'.logo-wrap{display:flex;flex-direction:column;gap:3px}' +
+'.logo{font-size:24px;font-weight:800;color:#1a1a1a;letter-spacing:-.5px}' +
+'.logo span{color:#ee6216}' +
+'.logo-sub{font-size:11px;color:#888;font-weight:500}' +
+'.po-title{text-align:right}' +
+'.po-label{font-size:24px;font-weight:800;color:#1a1a1a;letter-spacing:-.4px}' +
+'.po-number{font-size:14px;font-weight:700;color:#ee6216;margin-top:3px;font-family:ui-monospace,monospace;letter-spacing:.04em}' +
+'.po-date{font-size:12px;color:#888;margin-top:2px}' +
+'.status-pill{display:inline-block;margin-top:6px;padding:2px 9px;font-size:10px;font-weight:800;letter-spacing:.08em;border-radius:10px;text-transform:uppercase}' +
+'.status-draft{background:rgba(245,158,11,.15);color:#b45309;border:1px solid rgba(245,158,11,.4)}' +
+'.status-cancelled{background:rgba(239,68,68,.12);color:#b91c1c;border:1px solid rgba(239,68,68,.35)}' +
+'.parties{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-bottom:26px}' +
+'.party{background:#fafafa;border:1px solid #eee;border-radius:8px;padding:14px 16px}' +
+'.party-label{font-size:9px;font-weight:800;letter-spacing:.12em;color:#aaa;text-transform:uppercase;margin-bottom:6px}' +
+'.party-name{font-size:14px;font-weight:700;color:#1a1a1a;margin-bottom:3px}' +
+'.party-line{font-size:12px;color:#555;line-height:1.5}' +
+'.party-line a{color:#555;text-decoration:none}' +
+'.terms{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px}' +
+'.term{background:#fff8f2;border:1px solid #f5dec4;border-radius:7px;padding:10px 13px}' +
+'.term-label{font-size:9px;font-weight:800;letter-spacing:.1em;color:#ee6216;text-transform:uppercase;margin-bottom:3px}' +
+'.term-body{font-size:11px;color:#5a3a18;line-height:1.5}' +
+'.meta-row{display:flex;justify-content:space-between;align-items:center;background:#fafafa;border:1px solid #eee;border-radius:7px;padding:9px 14px;font-size:11px;color:#666;margin-bottom:14px}' +
+'.meta-row strong{color:#1a1a1a}' +
+'table.lines{width:100%;border-collapse:collapse;margin:6px 0 14px}' +
+'table.lines th{background:#1a1a1a;color:#fff;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:8px 9px;text-align:left}' +
+'table.lines td{padding:9px;border-bottom:1px solid #eee;font-size:12px;vertical-align:top}' +
+'.td-num{text-align:right;font-variant-numeric:tabular-nums}' +
+'.td-desc{text-align:left}' +
+'.line-desc{font-weight:600;color:#1a1a1a}' +
+'.line-sub{font-size:10px;color:#888;margin-top:2px}' +
+'.totals{display:flex;justify-content:flex-end;margin-top:6px;margin-bottom:24px}' +
+'.totals-inner{min-width:280px}' +
+'.tot-row{display:flex;justify-content:space-between;padding:5px 0;font-size:12px;color:#666}' +
+'.tot-row.grand{font-size:18px;font-weight:800;color:#1a1a1a;border-top:2px solid #1a1a1a;padding-top:10px;margin-top:6px}' +
+'.tot-row.grand span:last-child{color:#ee6216}' +
+'.notes-block{background:#fafafa;border-left:3px solid #ee6216;border-radius:0 6px 6px 0;padding:11px 14px;margin-bottom:14px}' +
+'.notes-label{font-size:9px;font-weight:800;letter-spacing:.1em;color:#888;text-transform:uppercase;margin-bottom:4px}' +
+'.notes-body{font-size:11px;color:#444;line-height:1.55;white-space:pre-wrap}' +
+'.signoff{margin-top:30px;padding-top:18px;border-top:1px solid #e5e5e5;font-size:11px;color:#666;line-height:2.4}' +
+'.signoff-line{font-size:12px;color:#1a1a1a;font-weight:600;margin-bottom:18px}' +
+'.signoff-line .underline{display:inline-block;border-bottom:1px solid #999;min-width:240px;margin:0 6px}' +
+'.signoff-line .underline-sm{display:inline-block;border-bottom:1px solid #999;min-width:120px;margin:0 6px}' +
+'.sincerely{margin-top:18px;font-size:12px;color:#444;line-height:1.7}' +
+'.print-bar{position:fixed;top:14px;right:14px;display:flex;gap:8px;z-index:10}' +
+'.print-bar button{padding:8px 14px;background:#1a1a1a;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;font-family:inherit}' +
+'@media print {.print-bar{display:none} body{background:#fff;padding:0} .page{box-shadow:none;border-radius:0;max-width:100%;padding:36px 40px}}' +
+'</style></head><body>' +
+
+'<div class="print-bar"><button onclick="window.print()">Print / Save PDF</button></div>' +
+
+'<div class="page">' +
+
+  '<div class="header">' +
+    '<div class="logo-wrap">' +
+      '<div class="logo">Whisper<span>Room</span></div>' +
+      '<div class="logo-sub">322 Nancy Lynn Lane Suite 14, Knoxville, TN 37919</div>' +
+      '<div class="logo-sub">800-200-8168 &middot; whisperroom.com</div>' +
+    '</div>' +
+    '<div class="po-title">' +
+      '<div class="po-label">PURCHASE ORDER</div>' +
+      '<div class="po-number">' + esc(poNumber) + '</div>' +
+      '<div class="po-date">' + esc(createdDate) + '</div>' +
+      statusBadge +
+    '</div>' +
+  '</div>' +
+
+  '<div class="parties">' +
+    '<div class="party">' +
+      '<div class="party-label">Vendor</div>' +
+      '<div class="party-name">' + esc(v.name || '—') + '</div>' +
+      (vendorContacts.length ? '<div class="party-line">ATTN: ' + esc(vendorContacts.join(', ')) + '</div>' : '') +
+      (vendorAddrLines.length ? '<div class="party-line">' + vendorAddrLines.map(esc).join('<br>') + '</div>' : '') +
+      (v.phone ? '<div class="party-line">PH: ' + esc(v.phone) + '</div>' : '') +
+      (vendorEmails.length ? '<div class="party-line">' + vendorEmails.map(e => '<a href="mailto:' + esc(e) + '">' + esc(e) + '</a>').join('<br>') + '</div>' : '') +
+    '</div>' +
+    '<div class="party">' +
+      '<div class="party-label">Ship To</div>' +
+      '<div class="party-name">WhisperRoom, Inc.</div>' +
+      '<div class="party-line">103 S. Sugar Hollow Rd.</div>' +
+      '<div class="party-line">Morristown, TN 37813</div>' +
+      '<div class="party-line">ATTN: ' + esc(repNameVpo) + '</div>' +
+      '<div class="party-line">PH: 423-585-5828</div>' +
+      '<div class="party-line"><a href="mailto:jfletcher@whisperroom.com">jfletcher@whisperroom.com</a></div>' +
+    '</div>' +
+  '</div>' +
+
+  (expectedDate
+    ? '<div class="meta-row"><span>Expected Delivery</span><span><strong>' + esc(expectedDate) + '</strong></span></div>'
+    : '') +
+
+  ((v.freight_terms && v.freight_terms.trim()) || (v.payment_terms && v.payment_terms.trim())
+    ? '<div class="terms">' +
+        (v.freight_terms && v.freight_terms.trim()
+          ? '<div class="term"><div class="term-label">Freight Terms</div><div class="term-body">' + esc(v.freight_terms) + '</div></div>'
+          : '') +
+        (v.payment_terms && v.payment_terms.trim()
+          ? '<div class="term"><div class="term-label">Payment Terms</div><div class="term-body">' + esc(v.payment_terms) + '</div></div>'
+          : '') +
+      '</div>'
+    : '') +
+
+  '<table class="lines">' +
+    '<thead><tr>' +
+      '<th style="width:80px">SKU</th>' +
+      '<th>Description</th>' +
+      '<th style="width:80px">MFG</th>' +
+      '<th style="width:60px;text-align:right">Qty</th>' +
+      '<th style="width:90px;text-align:right">Unit Price</th>' +
+      '<th style="width:100px;text-align:right">Ext Price</th>' +
+    '</tr></thead>' +
+    '<tbody>' + (lineRows || '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:20px;font-style:italic">No line items</td></tr>') + '</tbody>' +
+  '</table>' +
+
+  '<div class="totals"><div class="totals-inner">' +
+    '<div class="tot-row grand"><span>TOTAL</span><span>' + fmt(subtotal) + '</span></div>' +
+  '</div></div>' +
+
+  (d.notes && d.notes.trim()
+    ? '<div class="notes-block"><div class="notes-label">PO Notes</div><div class="notes-body">' + esc(d.notes) + '</div></div>'
+    : '') +
+
+  (v.standard_notes && v.standard_notes.trim()
+    ? '<div class="notes-block"><div class="notes-label">Standing Vendor Notes</div><div class="notes-body">' + esc(v.standard_notes) + '</div></div>'
+    : '') +
+
+  '<div class="signoff">' +
+    '<div class="signoff-line">ORDER CONFIRMED BY:<span class="underline"></span>DATE:<span class="underline-sm"></span></div>' +
+    '<div class="signoff-line" style="margin-top:8px"><strong>Billing Address:</strong><br>' + esc(billingBlock).replace(/\n/g, '<br>') + '</div>' +
+    '<div class="sincerely">Sincerely,<br><br><strong>' + esc(repNameVpo) + '</strong><br>WhisperRoom, Inc.</div>' +
+  '</div>' +
+
+'</div></body></html>';
+
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(vpoHtml);
+    } catch(e) {
+      console.error('[vpo page] error:', e.message);
       res.writeHead(500); res.end('Server error');
     }
     return;

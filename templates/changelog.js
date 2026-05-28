@@ -51,6 +51,15 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.49.7', date:'May 28, 2026', tag:'feature',
+      changes:[
+        {t:'fix', d:'**TOTAL row recomputes on edits.** Added `refreshTotal()` to the `/vpo/` JS; it sums every line&rsquo;s qty × unit price and updates `#poGrandTotal`. Called after every line edit (qty/price commit), catalog-picker add, "+ Blank Line", and remove. Previously the TOTAL stayed at the server-rendered value until page refresh.'},
+        {t:'add', d:'**"Create / Download PDF" button on the doc.** Replaces the Print/Save PDF button. Clicking it `POST`s to a new `/api/vendor-pos/:poNumber/pdf` endpoint that (1) generates a fresh PDF via Puppeteer, (2) uploads/overwrites in `GDRIVE_VENDOR_POS_FOLDER`, (3) streams the bytes back with `Content-Disposition: attachment` so the browser saves it locally as `{po_number}.pdf`. Refactored `_regenerateVendorPoPdf` to return `{buf, filename}`; existing fire-and-forget callers ignore the return.'},
+        {t:'ui', d:'**× removes a line with no confirm.** The "Remove this line?" confirm popup on the line × button is gone — clicking × clears the row immediately. Edits autosave, so accidentally-removed lines are easy enough to re-add via the catalog picker.'},
+        {t:'add', d:'**Standing Vendor Notes are now editable on the doc.** Click the standing notes block to edit. Saves to both the PO snapshot and the vendor record (same as the other vendor_snapshot fields) so the next PO Josh creates for that vendor inherits the latest notes.'},
+      ]
+    },
+    {
       v:'1.49.6', date:'May 28, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**+ New PO opens the new PO in a new tab.** Previously redirected the current tab; now the listing stays put while the new `/vpo/` opens fresh. Listing also refreshes so the new PO shows up immediately in the table.'},

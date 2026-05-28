@@ -754,14 +754,10 @@ function _vendorPoCanEditFields(status) {
 // already has a pdf_drive_file_id we PATCH the file contents in place
 // (so the Drive link Josh shared earlier still works). Otherwise we
 // create a new file in GDRIVE_VENDOR_POS_FOLDER and stash the id.
-// Failures are logged but never thrown — the PDF is a convenience, not
-// a guarantee, and Josh can hit Re-render manually if Drive is flaky.
+// Returns the PDF Buffer on success (caller may stream it as a
+// download), or null on failure / when Drive isn't configured.
+// Failures are logged but never thrown — the PDF is a convenience.
 async function _regenerateVendorPoPdf(po) {
-  const folderId = process.env.GDRIVE_VENDOR_POS_FOLDER;
-  if (!folderId) {
-    console.warn('[vendor-po pdf] GDRIVE_VENDOR_POS_FOLDER not set; skipping upload');
-    return;
-  }
   try {
     const url = `${PUBLIC_BASE_URL}/vpo/${encodeURIComponent(po.po_number)}?t=${po.share_token}`;
     const buf = await generatePdfBuffer(url);
@@ -769,11 +765,15 @@ async function _regenerateVendorPoPdf(po) {
     const safeName = vendorName.replace(/[\\\/:*?"<>|]+/g, ' ').trim();
     const filename = `${po.po_number} — ${safeName}.pdf`;
 
+    const folderId = process.env.GDRIVE_VENDOR_POS_FOLDER;
+    if (!folderId) {
+      console.warn('[vendor-po pdf] GDRIVE_VENDOR_POS_FOLDER not set; returning buffer without Drive upload');
+      return { buf, filename };
+    }
+
     let driveFile;
     if (po.pdf_drive_file_id) {
       driveFile = await gdriveUpdateFilePdfContent(po.pdf_drive_file_id, buf);
-      // If the file was deleted out-of-band, the PATCH returns an error
-      // — fall back to a fresh upload so we don't drop the PDF on the floor.
       if (driveFile && driveFile.error) {
         console.warn('[vendor-po pdf] update failed, creating new:', JSON.stringify(driveFile.error).slice(0, 200));
         driveFile = await gdriveUploadFilePdf(filename, buf, folderId);
@@ -787,11 +787,13 @@ async function _regenerateVendorPoPdf(po) {
         [driveFile.id, po.po_number]
       );
     }
+    return { buf, filename };
   } catch(e) {
     console.warn('[vendor-po pdf] regen error:', e.message);
     writelog('error', 'error.vendor-po.pdf', `PDF regen failed for ${po.po_number}: ${e.message}`, {
       meta: { poNumber: po.po_number },
     });
+    return null;
   }
 }
 
@@ -12086,6 +12088,32 @@ ${q.accepted ? `
     return;
   }
 
+  // POST /api/vendor-pos/:poNumber/pdf — sync PDF gen + Drive upload +
+  // stream the bytes back as a browser download. Used by the "Create /
+  // Download PDF" button on /vpo/.
+  if (pathname.match(/^\/api\/vendor-pos\/[^/]+\/pdf$/) && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const poNumber = decodeURIComponent(pathname.split('/').slice(-2)[0]);
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const r = await db.query(`SELECT * FROM vendor_pos WHERE po_number = $1`, [poNumber]);
+      if (!r.rows.length) { json({ error: 'PO not found' }, 404); return; }
+      const result = await _regenerateVendorPoPdf(r.rows[0]);
+      if (!result || !result.buf) { json({ error: 'PDF generation failed' }, 500); return; }
+      res.writeHead(200, {
+        'Content-Type':        'application/pdf',
+        'Content-Disposition': 'attachment; filename="' + result.filename.replace(/"/g, '') + '"',
+        'Content-Length':       result.buf.length,
+        'Cache-Control':       'no-store',
+      });
+      res.end(result.buf);
+      writelog('info', 'vendor-po.pdf-downloaded', `PDF downloaded: ${poNumber}`, { rep: String(getRepFromReq(req) || ''), meta: { poNumber } });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── API: Supplier POs — list ─────────────────────────────────────
   if (pathname === '/api/supplier-pos' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
@@ -13848,10 +13876,10 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
 
 '<div class="edit-banner"><span class="dot"></span><span>Edit mode</span><span class="save-status" id="saveStatus"></span></div>' +
 '<div class="print-bar">' +
+  (isAuth(req) ? '<button id="createPoBtn" style="background:#ee6216">Create / Download PDF</button>' : '') +
   (isAuth(req) && po.status === 'OPEN' ? '<button id="sendPoBtn" style="background:#16a34a">Send (Mailto)</button>' : '') +
   (isAuth(req) && (po.status === 'OPEN' || po.status === 'SENT' || po.status === 'PARTIAL') ? '<button id="cancelPoBtn" style="background:#444">Cancel PO</button>' : '') +
   (isAuth(req) && po.status === 'OPEN' ? '<button id="deletePoBtn" style="background:#dc2626">Delete</button>' : '') +
-  '<button onclick="window.print()">Print / Save PDF</button>' +
 '</div>' +
 
 '<div class="page">' +
@@ -13919,14 +13947,12 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
   '</table>' +
 
   '<div class="totals"><div class="totals-inner">' +
-    '<div class="tot-row grand"><span>TOTAL</span><span>' + fmt(subtotal) + '</span></div>' +
+    '<div class="tot-row grand"><span>TOTAL</span><span id="poGrandTotal">' + fmt(subtotal) + '</span></div>' +
   '</div></div>' +
 
   '<div class="notes-block"><div class="notes-label">PO Notes</div><div class="notes-body"><span class="editable editable-block" data-field="notes" data-type="textarea">' + esc(d.notes || '') + '</span></div></div>' +
 
-  (v.standard_notes && v.standard_notes.trim()
-    ? '<div class="notes-block"><div class="notes-label">Standing Vendor Notes</div><div class="notes-body">' + esc(v.standard_notes) + '</div></div>'
-    : '') +
+  '<div class="notes-block"><div class="notes-label">Standing Vendor Notes</div><div class="notes-body"><span class="editable editable-block" data-snap-field="standard_notes" data-type="textarea">' + esc(v.standard_notes || '') + '</span></div></div>' +
 
   '<div class="signoff">' +
     '<div class="signoff-line"><strong>Billing Address:</strong><br>' + esc(billingBlock).replace(/\n/g, '<br>') + '</div>' +
@@ -13952,9 +13978,10 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
   "function readLines(){return Array.prototype.slice.call(document.querySelectorAll('.line-row')).map(function(tr){return{id:tr.dataset.lineId||undefined,catalog_id:tr.dataset.catalogId||null,sku:tr.querySelector('.l-sku').textContent.trim(),description:tr.querySelector('.l-desc').textContent.trim(),mfg:tr.querySelector('.l-mfg').textContent.trim(),mfg_part_no:tr.querySelector('.l-mfgpart').textContent.trim(),qty:parseFloat(tr.querySelector('.l-qty').textContent.replace(/[^0-9.-]/g,'')||0)||0,unit_price:parseFloat(tr.querySelector('.l-price').textContent.replace(/[^0-9.-]/g,'')||0)||0};}).filter(function(l){return l.description;});}" +
   "function fmtMoney(n){return '$'+(parseFloat(n)||0).toFixed(2).replace(/\\B(?=(\\d{3})+(?!\\d))/g,',');}" +
   "function refreshExt(tr){if(!tr)return;var qty=parseFloat(tr.querySelector('.l-qty').textContent.replace(/[^0-9.-]/g,'')||0)||0;var price=parseFloat(tr.querySelector('.l-price').textContent.replace(/[^0-9.-]/g,'')||0)||0;var ext=tr.querySelector('.l-ext');if(ext)ext.textContent=fmtMoney(qty*price);}" +
+  "function refreshTotal(){var t=0;document.querySelectorAll('.line-row').forEach(function(tr){var q=parseFloat(tr.querySelector('.l-qty').textContent.replace(/[^0-9.-]/g,'')||0)||0;var p=parseFloat(tr.querySelector('.l-price').textContent.replace(/[^0-9.-]/g,'')||0)||0;t+=q*p;});var el=document.getElementById('poGrandTotal');if(el)el.textContent=fmtMoney(t);}" +
   "function buildSnapPatch(field,val){if(field==='contacts_csv'){var names=val.split(',').map(function(s){return s.trim();}).filter(Boolean);return{contacts:names.map(function(n){return{name:n};})};}if(field==='address_lines_text'){return{address_lines:val.split('\\n').map(function(s){return s.trim();}).filter(Boolean)};}if(field==='send_to_emails_csv'){return{send_to_emails:val.split(',').map(function(s){return s.trim();}).filter(Boolean)};}var o={};o[field]=val;return o;}" +
   "function renderEmailsBlock(emails){if(!emails.length)return '—';return emails.map(function(e){return '<a class=\"vendor-email\" href=\"mailto:'+e.replace(/\"/g,'&quot;')+'\">'+e.replace(/</g,'&lt;')+'</a>';}).join('<br>');}" +
-  "function commit(el,inp){var newVal=inp.value;el.classList.remove('editing');var lineTr=el.closest('.line-row');var field=el.dataset.field;var snapField=el.dataset.snapField;var shipField=el.dataset.shipField;if(el.classList.contains('l-price')){el.textContent=(parseFloat(newVal||0)||0).toFixed(2);refreshExt(lineTr);patchPo({lines:readLines()});}else if(el.classList.contains('l-qty')){el.textContent=String(parseFloat(newVal||0)||0);refreshExt(lineTr);patchPo({lines:readLines()});}else if(lineTr){el.textContent=newVal;patchPo({lines:readLines()});}else if(field==='expected_date'){el.dataset.raw=newVal||'';el.textContent=newVal?new Date(newVal+'T12:00:00Z').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'—';patchPo({expected_date:newVal||null});}else if(field==='notes'){el.textContent=newVal;patchPo({notes:newVal||null});}else if(shipField){var stObj={};stObj[shipField]=newVal;el.textContent=newVal||'—';if(shipField==='email'){el.innerHTML='<a class=\"wr-email-link\" href=\"mailto:'+newVal.replace(/\"/g,'&quot;')+'\">'+newVal.replace(/</g,'&lt;')+'</a>';}patchPo({ship_to:stObj});}else if(snapField){var partial=buildSnapPatch(snapField,newVal);if(snapField==='send_to_emails_csv'){el.innerHTML=renderEmailsBlock(partial.send_to_emails);}else if(snapField==='address_lines_text'){el.innerHTML=partial.address_lines.map(function(s){return s.replace(/</g,'&lt;');}).join('<br>')||'—';}else{el.textContent=newVal||'—';}patchPo({vendor_snapshot:partial});patchVendor(partial);}}" +
+  "function commit(el,inp){var newVal=inp.value;el.classList.remove('editing');var lineTr=el.closest('.line-row');var field=el.dataset.field;var snapField=el.dataset.snapField;var shipField=el.dataset.shipField;if(el.classList.contains('l-price')){el.textContent=(parseFloat(newVal||0)||0).toFixed(2);refreshExt(lineTr);refreshTotal();patchPo({lines:readLines()});}else if(el.classList.contains('l-qty')){el.textContent=String(parseFloat(newVal||0)||0);refreshExt(lineTr);refreshTotal();patchPo({lines:readLines()});}else if(lineTr){el.textContent=newVal;patchPo({lines:readLines()});}else if(field==='expected_date'){el.dataset.raw=newVal||'';el.textContent=newVal?new Date(newVal+'T12:00:00Z').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'—';patchPo({expected_date:newVal||null});}else if(field==='notes'){el.textContent=newVal;patchPo({notes:newVal||null});}else if(shipField){var stObj={};stObj[shipField]=newVal;el.textContent=newVal||'—';if(shipField==='email'){el.innerHTML='<a class=\"wr-email-link\" href=\"mailto:'+newVal.replace(/\"/g,'&quot;')+'\">'+newVal.replace(/</g,'&lt;')+'</a>';}patchPo({ship_to:stObj});}else if(snapField){var partial=buildSnapPatch(snapField,newVal);if(snapField==='send_to_emails_csv'){el.innerHTML=renderEmailsBlock(partial.send_to_emails);}else if(snapField==='address_lines_text'){el.innerHTML=partial.address_lines.map(function(s){return s.replace(/</g,'&lt;');}).join('<br>')||'—';}else{el.textContent=newVal||'—';}patchPo({vendor_snapshot:partial});patchVendor(partial);}}" +
   "function openEditor(el){if(el.classList.contains('editing'))return;el.classList.add('editing');var type=el.dataset.type||'text';var current;if(el.dataset.field==='expected_date'){current=el.dataset.raw||'';}else if(el.classList.contains('l-price')||el.classList.contains('l-qty')){current=el.textContent.replace(/[^0-9.-]/g,'').trim();}else if(el.dataset.snapField==='send_to_emails_csv'){current=Array.prototype.slice.call(el.querySelectorAll('a.vendor-email')).map(function(a){return a.textContent.trim();}).join(', ');}else if(el.dataset.snapField==='address_lines_text'){current=Array.prototype.slice.call(el.childNodes).map(function(n){return n.textContent||(n.nodeValue||'');}).join('').trim().split(/\\n+|\\s*<br\\/?>\\s*/i).join('\\n');current=el.innerText||current;}else{current=(el.innerText||el.textContent).replace(/—/g,'').trim();}var inp;if(type==='textarea'){inp=document.createElement('textarea');inp.className='cell-input cell-textarea';}else{inp=document.createElement('input');inp.type=type==='date'?'date':(type==='number'?'number':'text');if(type==='number')inp.step='any';inp.className='cell-input';}inp.value=current;el.innerHTML='';el.appendChild(inp);inp.focus();if(inp.select&&type!=='date')inp.select();var done=false;function commitOnce(){if(done)return;done=true;commit(el,inp);}inp.addEventListener('blur',commitOnce);inp.addEventListener('keydown',function(e){if(e.key==='Enter'&&type!=='textarea'){e.preventDefault();inp.blur();}else if(e.key==='Enter'&&e.ctrlKey&&type==='textarea'){e.preventDefault();inp.blur();}else if(e.key==='Escape'){done=true;el.classList.remove('editing');el.textContent=current||'—';}});}" +
   "function wireAll(){document.querySelectorAll('.editable').forEach(function(el){if(el._wired)return;el._wired=true;el.addEventListener('click',function(ev){ev.stopPropagation();ev.preventDefault();openEditor(el);});});}" +
   // Suppress mailto: links from launching the mail client in edit mode —
@@ -13963,9 +13990,9 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
   // ── Catalog picker overlay ─────────────────────────────────────
   "var _catalogCache=null;function loadCatalog(){if(_catalogCache)return Promise.resolve(_catalogCache);if(!vendorId)return Promise.resolve([]);return fetch('/api/vendors/'+vendorId,{credentials:'include'}).then(function(r){return r.json();}).then(function(d){_catalogCache=(d.vendor&&Array.isArray(d.vendor.catalog))?d.vendor.catalog:[];return _catalogCache;});}" +
   "function openCatalogPicker(){var existingIds=new Set(Array.prototype.slice.call(document.querySelectorAll('.line-row')).map(function(tr){return tr.dataset.catalogId;}).filter(Boolean));loadCatalog().then(function(items){var ov=document.createElement('div');ov.className='picker-overlay';ov.innerHTML='<div class=\"picker-modal\"><div class=\"picker-head\"><div>Add items from catalog</div><button class=\"picker-close\" type=\"button\">&times;</button></div><div class=\"picker-body\"></div><div class=\"picker-foot\"><button class=\"picker-blank\" type=\"button\">+ Blank Line</button><div style=\"flex:1\"></div><button class=\"picker-cancel\" type=\"button\">Cancel</button><button class=\"picker-add\" type=\"button\">Add Selected</button></div></div>';document.body.appendChild(ov);var body=ov.querySelector('.picker-body');if(!items.length){body.innerHTML='<div style=\"padding:32px;text-align:center;color:#888;font-size:13px\">This vendor has no catalog items yet. Add some on the Vendor Hub or use \"+ Blank Line\" below.</div>';}else{body.innerHTML='<table class=\"picker-tbl\"><thead><tr><th style=\"width:30px\"></th><th>SKU</th><th>Description</th><th>MFG</th><th style=\"text-align:right\">Def Qty</th><th style=\"text-align:right\">Unit $</th></tr></thead><tbody>'+items.map(function(it){var checked=existingIds.has(it.id)?'disabled checked':'';var dis=existingIds.has(it.id)?' style=\"opacity:.5\"':'';return '<tr'+dis+'><td><input type=\"checkbox\" data-id=\"'+it.id+'\" '+checked+'></td><td>'+(it.sku||'').replace(/</g,'&lt;')+'</td><td>'+(it.description||'').replace(/</g,'&lt;')+'</td><td>'+(it.mfg||'').replace(/</g,'&lt;')+'</td><td style=\"text-align:right\">'+(it.default_qty||0)+'</td><td style=\"text-align:right\">$'+(parseFloat(it.unit_price)||0).toFixed(2)+'</td></tr>';}).join('')+'</tbody></table>';}function close(){ov.remove();}ov.querySelector('.picker-close').addEventListener('click',close);ov.querySelector('.picker-cancel').addEventListener('click',close);ov.addEventListener('click',function(e){if(e.target===ov)close();});ov.querySelector('.picker-blank').addEventListener('click',function(){close();addBlankLine();});ov.querySelector('.picker-add').addEventListener('click',function(){var picks=Array.prototype.slice.call(ov.querySelectorAll('input[type=checkbox]:checked:not([disabled])'));if(!picks.length){close();return;}picks.forEach(function(cb){var id=cb.dataset.id;var it=items.find(function(x){return x.id===id;});if(it)appendLineFromCatalog(it);});close();patchPo({lines:readLines()});});});}" +
-  "function appendLineFromCatalog(it){var tbody=document.querySelector('table.lines tbody');var addRow=tbody.querySelector('.add-line-row');var noLines=tbody.querySelector('.no-lines-row');if(noLines)noLines.remove();var tr=document.createElement('tr');tr.className='line-row';tr.dataset.lineId='';tr.dataset.catalogId=it.id||'';var q=it.default_qty||0;var p=parseFloat(it.unit_price)||0;tr.innerHTML='<td class=\"td-num\"><span class=\"editable l-sku\" data-type=\"text\">'+((it.sku||'').replace(/</g,'&lt;'))+'</span></td>'+'<td class=\"td-desc\"><span class=\"editable editable-block l-desc\" data-type=\"text\">'+((it.description||'').replace(/</g,'&lt;'))+'</span><div class=\"line-sub\">MFG Part #<span class=\"editable l-mfgpart\" data-type=\"text\">'+((it.mfg_part_no||'').replace(/</g,'&lt;'))+'</span></div></td>'+'<td class=\"td-num\"><span class=\"editable l-mfg\" data-type=\"text\">'+((it.mfg||'').replace(/</g,'&lt;'))+'</span></td>'+'<td class=\"td-num\"><span class=\"editable l-qty\" data-type=\"number\">'+q+'</span></td>'+'<td class=\"td-num\">$<span class=\"editable l-price\" data-type=\"number\">'+p.toFixed(2)+'</span></td>'+'<td class=\"td-num\"><strong class=\"l-ext\">'+fmtMoney(q*p)+'</strong><button type=\"button\" class=\"remove-line edit-only\" title=\"Remove line\" style=\"margin-left:6px\">×</button></td>';tbody.insertBefore(tr,addRow);tr.querySelector('.remove-line').addEventListener('click',function(ev){ev.stopPropagation();removeLine(tr);});wireAll();}" +
+  "function appendLineFromCatalog(it){var tbody=document.querySelector('table.lines tbody');var addRow=tbody.querySelector('.add-line-row');var noLines=tbody.querySelector('.no-lines-row');if(noLines)noLines.remove();var tr=document.createElement('tr');tr.className='line-row';tr.dataset.lineId='';tr.dataset.catalogId=it.id||'';var q=it.default_qty||0;var p=parseFloat(it.unit_price)||0;tr.innerHTML='<td class=\"td-num\"><span class=\"editable l-sku\" data-type=\"text\">'+((it.sku||'').replace(/</g,'&lt;'))+'</span></td>'+'<td class=\"td-desc\"><span class=\"editable editable-block l-desc\" data-type=\"text\">'+((it.description||'').replace(/</g,'&lt;'))+'</span><div class=\"line-sub\">MFG Part #<span class=\"editable l-mfgpart\" data-type=\"text\">'+((it.mfg_part_no||'').replace(/</g,'&lt;'))+'</span></div></td>'+'<td class=\"td-num\"><span class=\"editable l-mfg\" data-type=\"text\">'+((it.mfg||'').replace(/</g,'&lt;'))+'</span></td>'+'<td class=\"td-num\"><span class=\"editable l-qty\" data-type=\"number\">'+q+'</span></td>'+'<td class=\"td-num\">$<span class=\"editable l-price\" data-type=\"number\">'+p.toFixed(2)+'</span></td>'+'<td class=\"td-num\"><strong class=\"l-ext\">'+fmtMoney(q*p)+'</strong><button type=\"button\" class=\"remove-line edit-only\" title=\"Remove line\" style=\"margin-left:6px\">×</button></td>';tbody.insertBefore(tr,addRow);tr.querySelector('.remove-line').addEventListener('click',function(ev){ev.stopPropagation();removeLine(tr);});wireAll();refreshTotal();}" +
   "function addBlankLine(){var tbody=document.querySelector('table.lines tbody');var addRow=tbody.querySelector('.add-line-row');var noLines=tbody.querySelector('.no-lines-row');if(noLines)noLines.remove();var tr=document.createElement('tr');tr.className='line-row';tr.dataset.lineId='';tr.dataset.catalogId='';tr.innerHTML='<td class=\"td-num\"><span class=\"editable l-sku\" data-type=\"text\"></span></td>'+'<td class=\"td-desc\"><span class=\"editable editable-block l-desc\" data-type=\"text\"></span><div class=\"line-sub\">MFG Part #<span class=\"editable l-mfgpart\" data-type=\"text\"></span></div></td>'+'<td class=\"td-num\"><span class=\"editable l-mfg\" data-type=\"text\"></span></td>'+'<td class=\"td-num\"><span class=\"editable l-qty\" data-type=\"number\">0</span></td>'+'<td class=\"td-num\">$<span class=\"editable l-price\" data-type=\"number\">0.00</span></td>'+'<td class=\"td-num\"><strong class=\"l-ext\">$0.00</strong><button type=\"button\" class=\"remove-line edit-only\" title=\"Remove line\" style=\"margin-left:6px\">×</button></td>';tbody.insertBefore(tr,addRow);tr.querySelector('.remove-line').addEventListener('click',function(ev){ev.stopPropagation();removeLine(tr);});wireAll();setTimeout(function(){tr.querySelector('.l-desc').click();},20);}" +
-  "function removeLine(tr){if(!confirm('Remove this line?'))return;tr.remove();patchPo({lines:readLines()});}" +
+  "function removeLine(tr){tr.remove();refreshTotal();patchPo({lines:readLines()});}" +
   "function wireButtons(){document.querySelectorAll('.remove-line').forEach(function(b){b.addEventListener('click',function(e){e.stopPropagation();removeLine(b.closest('.line-row'));});});var addBtn=document.getElementById('addLineBtn');if(addBtn)addBtn.addEventListener('click',openCatalogPicker);}" +
   // ── Status transition buttons (Send / Cancel / Delete) ────────
   "var SEND_TO=" + JSON.stringify(vendorEmails) + ";" +
@@ -13975,6 +14002,8 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
   "function sendPo(){if(!SEND_TO.length){alert('Vendor has no send-to email — click the email row above to add one.');return;}var greeting=CONTACTS.length?'Hello '+CONTACTS[0].split(/\\s+/)[0]+',':'Hello,';var poLink=location.origin+'/vpo/'+encodeURIComponent(poNumber)+'?t='+SHARE_TOKEN;var body=greeting+'\\n\\nAttached is WhisperRoom Purchase Order '+poNumber+'. Please confirm receipt and let us know expected ship date.\\n\\nView online: '+poLink+'\\n\\nThank you,\\nJosh Fletcher\\nWhisperRoom, Inc.';var subject='WhisperRoom PO '+poNumber;var params='subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body)+(CC.length?'&cc='+encodeURIComponent(CC.join(',')):'');patchPo({status:'SENT'}).then(function(){window.location.href='mailto:'+encodeURIComponent(SEND_TO.join(','))+'?'+params;});}" +
   "function cancelPo(){if(!confirm('Cancel this PO? This can\\'t be undone.'))return;patchPo({status:'CANCELLED'}).then(function(){setTimeout(function(){window.location.href='/vendor-pos';},800);});}" +
   "function deletePo(){if(!confirm('Delete this PO? This can\\'t be undone.'))return;fetch('/api/vendor-pos/'+encodeURIComponent(poNumber),{method:'DELETE',credentials:'include'}).then(function(r){return r.json();}).then(function(d){if(d.error){setStatus(d.error,true);return;}window.location.href='/vendor-pos';});}" +
+  "function createAndDownload(){if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();var btn=document.getElementById('createPoBtn');var origText=btn.textContent;btn.disabled=true;btn.textContent='Generating…';setStatus('Generating PDF…',false);setTimeout(function(){fetch('/api/vendor-pos/'+encodeURIComponent(poNumber)+'/pdf',{method:'POST',credentials:'include'}).then(function(r){if(!r.ok)return r.json().then(function(d){throw new Error(d.error||'Failed');});return r.blob();}).then(function(blob){var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download=poNumber+'.pdf';document.body.appendChild(a);a.click();URL.revokeObjectURL(url);a.remove();setStatus('Saved');btn.disabled=false;btn.textContent=origText;}).catch(function(e){setStatus(e.message||'Error',true);btn.disabled=false;btn.textContent=origText;});},150);}" +
+  "var cb_create=document.getElementById('createPoBtn');if(cb_create)cb_create.addEventListener('click',createAndDownload);" +
   "var sb=document.getElementById('sendPoBtn');if(sb)sb.addEventListener('click',sendPo);" +
   "var cb=document.getElementById('cancelPoBtn');if(cb)cb.addEventListener('click',cancelPo);" +
   "var db=document.getElementById('deletePoBtn');if(db)db.addEventListener('click',deletePo);" +

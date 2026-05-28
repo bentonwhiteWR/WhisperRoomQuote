@@ -10005,15 +10005,15 @@ ${q.accepted ? `
     return;
   }
 
-  // ── Vendors Dashboard Page (WR PO System — Josh's home) ───────────
+  // ── Vendor Hub (WR PO System — merged POs + Vendor catalog) ───────
+  // /vendor-pos serves the merged page. /vendors redirects there with
+  // the Vendors tab pre-selected so older bookmarks keep working.
   if (pathname === '/vendors' && req.method === 'GET') {
     if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
-    res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(fs.readFileSync(path.join(__dirname, 'vendors-dashboard.html'), 'utf8'));
+    res.writeHead(302, { Location: '/vendor-pos#vendors' });
+    res.end();
     return;
   }
-
-  // ── Vendor POs Dashboard Page (WR PO System — listing + create) ───
   if (pathname === '/vendor-pos' && req.method === 'GET') {
     if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
     res.writeHead(200, { 'Content-Type': 'text/html' });

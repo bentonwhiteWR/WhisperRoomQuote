@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.49.3', date:'May 28, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Vendor Hub: merged Vendors + Vendor POs into one page with tabs.** `/vendor-pos` is now a single page with two tabs &mdash; **Purchase Orders** (default) and **Vendors**. `/vendors` redirects to `/vendor-pos#vendors` so old bookmarks still work. The nav link across all 9 dashboards collapsed from two links to one ("Vendor Hub"). The page-sub blurb about "Suppliers Josh orders from..." was dropped (per request).'},
+        {t:'ui', d:'**Reverted the v1.49.2 orange theming pass on the PO modal.** Section labels back to muted (was orange); PO Lines table header back to surface2/muted (was orange tint); lines-add background and total back to standard (was orange); modal&rsquo;s 3px orange top border removed; vendor info form back to surface2 background (was orange); catalog header back to muted (was orange); PO# in listing back to text color (was orange); OPEN status pill back to neutral gray (was orange). Kept: orange "+ New PO" / "+ New Vendor" buttons, orange filter-pill active state, subtle orange tint on "checked" catalog rows, orange tab indicator.'},
+      ]
+    },
+    {
       v:'1.49.2', date:'May 28, 2026', tag:'ui',
       changes:[
         {t:'ui',  d:'**Vendor PO doc (`/vpo/:poNumber`) polish.** Header now uses the WhisperRoom SVG logo (same one as the Audimute `/po/` doc) instead of the styled "WhisperRoom" text — loaded from `assets/whisperroom-logo.svg.b64` at startup, served via new `wrLogoImg()` helper. Removed "ORDER CONFIRMED BY: ___ DATE: ___" sign-off line. Billing block now drops "Attn: Accounting" and adds `accounting@whisperroom.com`. PO contact name is hardcoded to "Josh Fletcher" everywhere (was the logged-in rep, which surfaced "Benton" on docs from Benton&rsquo;s sessions). DRAFT status badge removed (status enum changed — see below).'},

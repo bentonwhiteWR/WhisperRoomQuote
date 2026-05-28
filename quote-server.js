@@ -13730,18 +13730,26 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
         ? '<span class="status-pill status-cancelled">CANCELLED</span>'
         : '';
 
+      const fmtRaw = n => parseFloat(n||0).toFixed(2);
       const lineRows = lines.map(l => (
-        '<tr>' +
-          '<td class="td-num">' + esc(l.sku || '') + '</td>' +
-          '<td class="td-desc"><div class="line-desc">' + esc(l.description || '') + '</div>' +
-            (l.mfg_part_no ? '<div class="line-sub">MFG Part #' + esc(l.mfg_part_no) + '</div>' : '') +
+        '<tr class="line-row" data-line-id="' + esc(l.id || '') + '" data-catalog-id="' + esc(l.catalog_id || '') + '">' +
+          '<td class="td-num"><span class="editable l-sku" data-type="text">' + esc(l.sku || '') + '</span></td>' +
+          '<td class="td-desc">' +
+            '<span class="editable editable-block l-desc" data-type="text">' + esc(l.description || '') + '</span>' +
+            '<div class="line-sub">MFG Part #<span class="editable l-mfgpart" data-type="text">' + esc(l.mfg_part_no || '') + '</span></div>' +
           '</td>' +
-          '<td class="td-num">' + esc(l.mfg || '') + '</td>' +
-          '<td class="td-num">' + esc(l.qty || 0) + '</td>' +
-          '<td class="td-num">' + fmt(l.unit_price) + '</td>' +
-          '<td class="td-num"><strong>' + fmt(parseFloat(l.unit_price||0) * parseFloat(l.qty||0)) + '</strong></td>' +
+          '<td class="td-num"><span class="editable l-mfg" data-type="text">' + esc(l.mfg || '') + '</span></td>' +
+          '<td class="td-num"><span class="editable l-qty" data-type="number">' + esc(String(l.qty || 0)) + '</span></td>' +
+          '<td class="td-num">$<span class="editable l-price" data-type="number">' + fmtRaw(l.unit_price) + '</span></td>' +
+          '<td class="td-num"><strong class="l-ext">' + fmt(parseFloat(l.unit_price||0) * parseFloat(l.qty||0)) + '</strong>' +
+            '<button type="button" class="remove-line edit-only" title="Remove line" style="margin-left:6px">&times;</button>' +
+          '</td>' +
         '</tr>'
       )).join('');
+      const addLineRow =
+        '<tr class="add-line-row edit-only"><td colspan="6">' +
+          '<button type="button" class="add-line-btn" id="addLineBtn">+ Add Line</button>' +
+        '</td></tr>';
 
       const vpoHtml =
 '<!DOCTYPE html><html lang="en"><head>' +
@@ -13798,9 +13806,28 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
 '.sincerely{margin-top:18px;font-size:12px;color:#444;line-height:1.7}' +
 '.print-bar{position:fixed;top:14px;right:14px;display:flex;gap:8px;z-index:10}' +
 '.print-bar button{padding:8px 14px;background:#1a1a1a;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;font-family:inherit}' +
-'@media print {.print-bar{display:none} body{background:#fff;padding:0} .page{box-shadow:none;border-radius:0;max-width:100%;padding:36px 40px}}' +
-'</style></head><body>' +
+'.edit-banner{position:fixed;top:14px;left:14px;display:none;align-items:center;gap:10px;padding:6px 12px;background:#1a1a1a;color:#fff;border-radius:7px;font-size:11px;font-weight:600;z-index:10;box-shadow:0 4px 14px rgba(0,0,0,.2)}' +
+'.edit-banner .dot{width:7px;height:7px;border-radius:50%;background:#ee6216;box-shadow:0 0 8px rgba(238,98,22,.6)}' +
+'.edit-banner .save-status{color:#888;font-weight:500;margin-left:4px}' +
+'.editable{cursor:text;border-radius:3px;padding:1px 4px;margin:-1px -4px;transition:background .12s,box-shadow .12s;display:inline-block}' +
+'.editable:empty:before{content:"\\2014";color:#bbb}' +
+'.editable.editable-block{display:block;min-height:22px}' +
+'body[data-edit-mode="1"] .editable:hover{background:rgba(238,98,22,.08);box-shadow:inset 0 0 0 1px rgba(238,98,22,.25)}' +
+'body[data-edit-mode="1"] .editable.editing{background:#fff;box-shadow:inset 0 0 0 2px #ee6216;cursor:text}' +
+'body[data-edit-mode="1"] .edit-banner{display:flex}' +
+'.cell-input{width:100%;border:none;outline:none;font-family:inherit;font-size:inherit;color:inherit;background:transparent;padding:0;margin:0}' +
+'.cell-input.cell-textarea{resize:vertical;min-height:60px}' +
+'.edit-only{display:none}' +
+'body[data-edit-mode="1"] .edit-only{display:inline-block}' +
+'.line-row .remove-line{background:none;border:none;color:#bbb;cursor:pointer;font-size:16px;line-height:1;padding:0 4px}' +
+'.line-row .remove-line:hover{color:#dc2626}' +
+'.add-line-row td{background:#fafafa;padding:8px 9px;border-top:1px dashed #ddd}' +
+'.add-line-btn{padding:5px 11px;background:rgba(238,98,22,.1);color:#ee6216;border:1px solid rgba(238,98,22,.35);border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase}' +
+'.add-line-btn:hover{background:rgba(238,98,22,.18)}' +
+'@media print {.print-bar{display:none} .edit-banner{display:none!important} .edit-only{display:none!important} .editable:hover{background:transparent!important;box-shadow:none!important} body{background:#fff;padding:0} .page{box-shadow:none;border-radius:0;max-width:100%;padding:36px 40px}}' +
+'</style></head><body' + (isAuth(req) ? ' data-edit-mode="1"' : '') + '>' +
 
+'<div class="edit-banner"><span class="dot"></span><span>Edit mode</span><span class="save-status" id="saveStatus"></span></div>' +
 '<div class="print-bar"><button onclick="window.print()">Print / Save PDF</button></div>' +
 
 '<div class="page">' +
@@ -13823,9 +13850,9 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
     '<div class="party">' +
       '<div class="party-label">Vendor</div>' +
       '<div class="party-name">' + esc(v.name || '—') + '</div>' +
-      (vendorContacts.length ? '<div class="party-line">ATTN: ' + esc(vendorContacts.join(', ')) + '</div>' : '') +
+      '<div class="party-line">ATTN: <span class="editable" data-snap-field="contacts_csv" data-type="text">' + esc(vendorContacts.join(', ') || '—') + '</span></div>' +
       (vendorAddrLines.length ? '<div class="party-line">' + vendorAddrLines.map(esc).join('<br>') + '</div>' : '') +
-      (v.phone ? '<div class="party-line">PH: ' + esc(v.phone) + '</div>' : '') +
+      '<div class="party-line">PH: <span class="editable" data-snap-field="phone" data-type="text">' + esc(v.phone || '—') + '</span></div>' +
       (vendorEmails.length ? '<div class="party-line">' + vendorEmails.map(e => '<a href="mailto:' + esc(e) + '">' + esc(e) + '</a>').join('<br>') + '</div>' : '') +
     '</div>' +
     '<div class="party">' +
@@ -13839,20 +13866,12 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
     '</div>' +
   '</div>' +
 
-  (expectedDate
-    ? '<div class="meta-row"><span>Expected Delivery</span><span><strong>' + esc(expectedDate) + '</strong></span></div>'
-    : '') +
+  '<div class="meta-row"><span>Expected Delivery</span><span><strong><span class="editable" data-field="expected_date" data-type="date" data-raw="' + esc(po.expected_date || '') + '">' + esc(expectedDate || '—') + '</span></strong></span></div>' +
 
-  ((v.freight_terms && v.freight_terms.trim()) || (v.payment_terms && v.payment_terms.trim())
-    ? '<div class="terms">' +
-        (v.freight_terms && v.freight_terms.trim()
-          ? '<div class="term"><div class="term-label">Freight Terms</div><div class="term-body">' + esc(v.freight_terms) + '</div></div>'
-          : '') +
-        (v.payment_terms && v.payment_terms.trim()
-          ? '<div class="term"><div class="term-label">Payment Terms</div><div class="term-body">' + esc(v.payment_terms) + '</div></div>'
-          : '') +
-      '</div>'
-    : '') +
+  '<div class="terms">' +
+    '<div class="term"><div class="term-label">Freight Terms</div><div class="term-body"><span class="editable editable-block" data-snap-field="freight_terms" data-type="textarea">' + esc(v.freight_terms || '') + '</span></div></div>' +
+    '<div class="term"><div class="term-label">Payment Terms</div><div class="term-body"><span class="editable" data-snap-field="payment_terms" data-type="text">' + esc(v.payment_terms || '') + '</span></div></div>' +
+  '</div>' +
 
   '<table class="lines">' +
     '<thead><tr>' +
@@ -13863,16 +13882,14 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
       '<th style="width:90px;text-align:right">Unit Price</th>' +
       '<th style="width:100px;text-align:right">Ext Price</th>' +
     '</tr></thead>' +
-    '<tbody>' + (lineRows || '<tr><td colspan="6" style="text-align:center;color:#aaa;padding:20px;font-style:italic">No line items</td></tr>') + '</tbody>' +
+    '<tbody>' + (lineRows || '<tr class="no-lines-row"><td colspan="6" style="text-align:center;color:#aaa;padding:20px;font-style:italic">No line items</td></tr>') + addLineRow + '</tbody>' +
   '</table>' +
 
   '<div class="totals"><div class="totals-inner">' +
     '<div class="tot-row grand"><span>TOTAL</span><span>' + fmt(subtotal) + '</span></div>' +
   '</div></div>' +
 
-  (d.notes && d.notes.trim()
-    ? '<div class="notes-block"><div class="notes-label">PO Notes</div><div class="notes-body">' + esc(d.notes) + '</div></div>'
-    : '') +
+  '<div class="notes-block"><div class="notes-label">PO Notes</div><div class="notes-body"><span class="editable editable-block" data-field="notes" data-type="textarea">' + esc(d.notes || '') + '</span></div></div>' +
 
   (v.standard_notes && v.standard_notes.trim()
     ? '<div class="notes-block"><div class="notes-label">Standing Vendor Notes</div><div class="notes-body">' + esc(v.standard_notes) + '</div></div>'
@@ -13883,7 +13900,32 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
     '<div class="sincerely">Sincerely,<br><br><strong>' + esc(repNameVpo) + '</strong><br>WhisperRoom, Inc.</div>' +
   '</div>' +
 
-'</div></body></html>';
+'</div>' +
+
+// ── Inline edit JS ────────────────────────────────────────────────
+// Only fires when body[data-edit-mode="1"]; gated server-side to
+// authenticated reps. Puppeteer scrapes /vpo/ with share-token only,
+// so PDF rendering never sees this UI.
+'<script>(function(){' +
+  "if(document.body.dataset.editMode!=='1')return;" +
+  "var poNumber=" + JSON.stringify(poNumber) + ";" +
+  "var saveStatus=document.getElementById('saveStatus');" +
+  "var saveTimer;function setStatus(t,err){if(!saveStatus)return;saveStatus.textContent=t||'';saveStatus.style.color=err?'#ef4444':(t==='Saved'?'#22c55e':'#888');if(saveTimer)clearTimeout(saveTimer);if(t==='Saved')saveTimer=setTimeout(function(){saveStatus.textContent='';},2200);}" +
+  "function patchPo(body){setStatus('Saving…',false);return fetch('/api/vendor-pos/'+encodeURIComponent(poNumber),{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify(body)}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||'Save failed');return d;});}).then(function(d){setStatus('Saved');return d;}).catch(function(e){setStatus(e.message||'Error',true);throw e;});}" +
+  "function readLines(){return Array.prototype.slice.call(document.querySelectorAll('.line-row')).map(function(tr){return{id:tr.dataset.lineId||undefined,catalog_id:tr.dataset.catalogId||null,sku:tr.querySelector('.l-sku').textContent.trim(),description:tr.querySelector('.l-desc').textContent.trim(),mfg:tr.querySelector('.l-mfg').textContent.trim(),mfg_part_no:tr.querySelector('.l-mfgpart').textContent.trim(),qty:parseFloat(tr.querySelector('.l-qty').textContent.replace(/[^0-9.-]/g,'')||0)||0,unit_price:parseFloat(tr.querySelector('.l-price').textContent.replace(/[^0-9.-]/g,'')||0)||0};}).filter(function(l){return l.description;});}" +
+  "function fmtMoney(n){return '$'+(parseFloat(n)||0).toFixed(2).replace(/\\B(?=(\\d{3})+(?!\\d))/g,',');}" +
+  "function refreshExt(tr){if(!tr)return;var qty=parseFloat(tr.querySelector('.l-qty').textContent.replace(/[^0-9.-]/g,'')||0)||0;var price=parseFloat(tr.querySelector('.l-price').textContent.replace(/[^0-9.-]/g,'')||0)||0;var ext=tr.querySelector('.l-ext');if(ext)ext.textContent=fmtMoney(qty*price);}" +
+  "function buildSnapPatch(field,val){if(field==='contacts_csv'){var names=val.split(',').map(function(s){return s.trim();}).filter(Boolean);return{contacts:names.map(function(n){return{name:n};})};}var o={};o[field]=val;return o;}" +
+  "function commit(el,inp){var newVal=inp.value;el.classList.remove('editing');var lineTr=el.closest('.line-row');var field=el.dataset.field;var snapField=el.dataset.snapField;if(el.classList.contains('l-price')){el.textContent=(parseFloat(newVal||0)||0).toFixed(2);refreshExt(lineTr);patchPo({lines:readLines()});}else if(el.classList.contains('l-qty')){el.textContent=String(parseFloat(newVal||0)||0);refreshExt(lineTr);patchPo({lines:readLines()});}else if(lineTr){el.textContent=newVal;patchPo({lines:readLines()});}else if(field==='expected_date'){el.dataset.raw=newVal||'';el.textContent=newVal?new Date(newVal+'T12:00:00Z').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'—';patchPo({expected_date:newVal||null});}else if(field==='notes'){el.textContent=newVal;patchPo({notes:newVal||null});}else if(snapField){el.textContent=newVal||'—';patchPo({vendor_snapshot:buildSnapPatch(snapField,newVal)});}}" +
+  "function openEditor(el){if(el.classList.contains('editing'))return;el.classList.add('editing');var type=el.dataset.type||'text';var current;if(el.dataset.field==='expected_date'){current=el.dataset.raw||'';}else if(el.classList.contains('l-price')||el.classList.contains('l-qty')){current=el.textContent.replace(/[^0-9.-]/g,'').trim();}else{current=el.textContent.replace(/—/g,'').trim();}var inp;if(type==='textarea'){inp=document.createElement('textarea');inp.className='cell-input cell-textarea';}else{inp=document.createElement('input');inp.type=type==='date'?'date':(type==='number'?'number':'text');if(type==='number')inp.step='any';inp.className='cell-input';}inp.value=current;el.innerHTML='';el.appendChild(inp);inp.focus();if(inp.select&&type!=='date')inp.select();var done=false;function commitOnce(){if(done)return;done=true;commit(el,inp);}inp.addEventListener('blur',commitOnce);inp.addEventListener('keydown',function(e){if(e.key==='Enter'&&type!=='textarea'){e.preventDefault();inp.blur();}else if(e.key==='Enter'&&e.ctrlKey&&type==='textarea'){e.preventDefault();inp.blur();}else if(e.key==='Escape'){done=true;el.classList.remove('editing');el.textContent=current||'—';}});}" +
+  "function wireAll(){document.querySelectorAll('.editable').forEach(function(el){if(el._wired)return;el._wired=true;el.addEventListener('click',function(ev){ev.stopPropagation();openEditor(el);});});}" +
+  "function addLine(){var tbody=document.querySelector('table.lines tbody');var addRow=tbody.querySelector('.add-line-row');var noLines=tbody.querySelector('.no-lines-row');if(noLines)noLines.remove();var tr=document.createElement('tr');tr.className='line-row';tr.dataset.lineId='';tr.dataset.catalogId='';tr.innerHTML='<td class=\"td-num\"><span class=\"editable l-sku\" data-type=\"text\"></span></td>'+'<td class=\"td-desc\"><span class=\"editable editable-block l-desc\" data-type=\"text\"></span><div class=\"line-sub\">MFG Part #<span class=\"editable l-mfgpart\" data-type=\"text\"></span></div></td>'+'<td class=\"td-num\"><span class=\"editable l-mfg\" data-type=\"text\"></span></td>'+'<td class=\"td-num\"><span class=\"editable l-qty\" data-type=\"number\">0</span></td>'+'<td class=\"td-num\">$<span class=\"editable l-price\" data-type=\"number\">0.00</span></td>'+'<td class=\"td-num\"><strong class=\"l-ext\">$0.00</strong><button type=\"button\" class=\"remove-line edit-only\" title=\"Remove line\" style=\"margin-left:6px\">×</button></td>';tbody.insertBefore(tr,addRow);tr.querySelector('.remove-line').addEventListener('click',function(ev){ev.stopPropagation();removeLine(tr);});wireAll();setTimeout(function(){tr.querySelector('.l-desc').click();},20);}" +
+  "function removeLine(tr){if(!confirm('Remove this line?'))return;tr.remove();patchPo({lines:readLines()});}" +
+  "function wireButtons(){document.querySelectorAll('.remove-line').forEach(function(b){b.addEventListener('click',function(e){e.stopPropagation();removeLine(b.closest('.line-row'));});});var addBtn=document.getElementById('addLineBtn');if(addBtn)addBtn.addEventListener('click',addLine);}" +
+  "wireAll();wireButtons();" +
+'})();</script>' +
+
+'</body></html>';
 
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(vpoHtml);

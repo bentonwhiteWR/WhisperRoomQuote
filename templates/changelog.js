@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.49.4', date:'May 28, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Edit-in-place on the PO doc page (`/vpo/:poNumber`).** When an authenticated rep opens the PO link, every editable field on the doc lights up on hover and accepts a click to edit: line item SKU, description, MFG, MFG Part #, qty, unit price; PO Notes (textarea); Expected Delivery date; vendor block phone, contacts (comma-separated), freight terms, payment terms. Add new lines via a "+ Add Line" button at the bottom of the table; remove with the × on each row. Each blur fires a PATCH `/api/vendor-pos/:poNumber`; the server kicks off PDF regen + Drive overwrite as before. A small "Edit mode" pill in the top-left shows "Saving…" → "Saved" status on every change. Mode is server-gated on `isAuth(req)` — Puppeteer scrapes `/vpo/` with the share token only, so PDF rendering still sees the clean read-only doc. `@media print` rules also hide all edit chrome so the browser&rsquo;s built-in print preview matches what vendors get. Escape cancels an active edit; Enter commits (Ctrl+Enter in textareas).'},
+      ]
+    },
+    {
       v:'1.49.3', date:'May 28, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Vendor Hub: merged Vendors + Vendor POs into one page with tabs.** `/vendor-pos` is now a single page with two tabs &mdash; **Purchase Orders** (default) and **Vendors**. `/vendors` redirects to `/vendor-pos#vendors` so old bookmarks still work. The nav link across all 9 dashboards collapsed from two links to one ("Vendor Hub"). The page-sub blurb about "Suppliers Josh orders from..." was dropped (per request).'},

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.49.6', date:'May 28, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**+ New PO opens the new PO in a new tab.** Previously redirected the current tab; now the listing stays put while the new `/vpo/` opens fresh. Listing also refreshes so the new PO shows up immediately in the table.'},
+      ]
+    },
+    {
       v:'1.49.5', date:'May 28, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**`/vpo/` is now the primary PO edit surface.** Clicking "+ New PO" on the Vendor Hub opens a tiny "pick a vendor" modal; on Create the server stamps an empty `OPEN` PO and the browser is redirected to `/vpo/{po_number}` where all editing happens. The "Edit" button on each listing row was replaced with "Open" (same behavior — opens the doc page in a new tab). Empty-lines POST is now allowed; POs are filled in on the doc.'},

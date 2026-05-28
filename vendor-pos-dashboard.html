@@ -774,8 +774,10 @@ async function createNewPoFromPicker() {
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Create failed');
     closeNewPoModal();
-    // Navigate to the doc page where editing happens
-    window.location.href = '/vpo/' + encodeURIComponent(data.po.po_number) + '?t=' + data.po.share_token;
+    // Open the doc page in a new tab so the listing stays put
+    window.open('/vpo/' + encodeURIComponent(data.po.po_number) + '?t=' + data.po.share_token, '_blank');
+    await loadPos();
+    showToast('PO created — ' + data.po.po_number, 'success');
   } catch (e) {
     showToast('Error: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Create PO';

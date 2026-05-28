@@ -40,6 +40,7 @@ const {
   gdriveSavePdfToDeal,
   gdriveUploadFilePdf,
   gdriveUpsertFilePdf,
+  gdriveUpdateFilePdfContent,
 } = gdrive;
 
 
@@ -210,6 +211,22 @@ const HS_REDIRECT_URI  = process.env.HS_REDIRECT_URI  || 'https://sales.whisperr
 // Override on staging via env var so reps can click through the full flow.
 const PUBLIC_BASE_URL  = (process.env.PUBLIC_BASE_URL || 'https://sales.whisperroom.com').replace(/\/+$/, '');
 
+// WhisperRoom logo (base64 SVG) — loaded once at startup. Used on the
+// vendor PO doc and re-usable on any other printable doc that wants
+// the same logo as the Audimute PO. File is the SVG base64, no <img>
+// wrapping; the helper builds the tag.
+let _WR_LOGO_B64 = '';
+try {
+  _WR_LOGO_B64 = fs.readFileSync(path.join(__dirname, 'assets', 'whisperroom-logo.svg.b64'), 'utf8').trim();
+} catch(e) {
+  console.warn('[startup] WR logo asset missing:', e.message);
+}
+function wrLogoImg(extraClass) {
+  if (!_WR_LOGO_B64) return '';
+  const cls = ['logo-img', extraClass].filter(Boolean).join(' ');
+  return `<img src="data:image/svg+xml;base64,${_WR_LOGO_B64}" alt="WhisperRoom" class="${cls}">`;
+}
+
 // Emails allowed to delete QB invoices. Defaults to Benton + Accounting.
 // Override with comma-separated emails via env: QB_INVOICE_DELETE_EMAILS=...
 // Comparison is case-insensitive.
@@ -305,6 +322,24 @@ async function nextPoNumber() {
   if (!db) return prefix + '01';
   const row = await db.query(
     `SELECT po_number FROM supplier_pos WHERE po_number LIKE $1 ORDER BY po_number DESC LIMIT 1`,
+    [prefix + '%']
+  );
+  if (row.rows.length === 0) return prefix + '01';
+  const last = parseInt(row.rows[0].po_number.slice(-2), 10);
+  return prefix + String(last + 1).padStart(2, '0');
+}
+
+// Vendor PO numbers use a different prefix (WV-) so they're visually
+// distinct from Audimute AP POs (WR-) — same {YY}{MM}{DD}{NN} format.
+async function nextVendorPoNumber() {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const yy = String(now.getFullYear()).slice(2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const prefix = `WV-${yy}${mm}${dd}`;
+  if (!db) return prefix + '01';
+  const row = await db.query(
+    `SELECT po_number FROM vendor_pos WHERE po_number LIKE $1 ORDER BY po_number DESC LIMIT 1`,
     [prefix + '%']
   );
   if (row.rows.length === 0) return prefix + '01';
@@ -655,6 +690,135 @@ async function _logEmailReply({ sess, voice, input, output, usage, durationMs, s
   } catch (e) {
     console.warn('[email-reply-log] DB insert failed:', e.message);
   }
+}
+
+// Coerce body fields to JSON-stringifiable arrays. Used by /api/vendors
+// to defensively normalize address_lines / contacts / send_to_emails / etc.
+// when the client sends a single string, null, or omits the field.
+function _asArray(v) {
+  if (v == null) return [];
+  if (Array.isArray(v)) return v;
+  return [v];
+}
+
+// Normalize PO line items from the PO builder UI. Lines without a
+// description are dropped (same reasoning as the catalog normalizer).
+// catalog_id (optional) links back to the vendors.catalog item this was
+// derived from, so a later "show items I order most" report can roll up.
+function _normalizeVendorPoLines(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(l => {
+      const description = String(l?.description || '').trim();
+      if (!description) return null;
+      const qty = Math.max(0, parseFloat(l?.qty || 0)) || 0;
+      const unit_price = Math.max(0, parseFloat(l?.unit_price || 0)) || 0;
+      return {
+        id:           l.id || ('vpl_' + crypto.randomBytes(6).toString('hex')),
+        catalog_id:   l.catalog_id || null,
+        sku:          String(l?.sku || '').trim() || null,
+        description,
+        mfg:          String(l?.mfg || '').trim() || null,
+        mfg_part_no:  String(l?.mfg_part_no || '').trim() || null,
+        qty,
+        unit_price,
+      };
+    })
+    .filter(Boolean);
+}
+
+// Valid vendor-PO status transitions. CANCELLED is reachable from any
+// pre-RECEIVED state. POs start OPEN — no draft/approval gate, Josh
+// edits freely and hits Send when he's ready. Receive/Close
+// transitions are Phase 2 (v1.50+).
+const _VENDOR_PO_TRANSITIONS = {
+  OPEN:      ['SENT', 'CANCELLED'],
+  SENT:      ['PARTIAL', 'RECEIVED', 'CANCELLED'],
+  PARTIAL:   ['PARTIAL', 'RECEIVED', 'CANCELLED'],
+  RECEIVED:  ['CLOSED'],
+  CLOSED:    [],
+  CANCELLED: [],
+};
+function _vendorPoTransitionOK(from, to) {
+  const allowed = _VENDOR_PO_TRANSITIONS[from] || [];
+  return allowed.includes(to);
+}
+// Whether free-form edits (lines, notes, expected_date) are still
+// permitted. After SENT we allow it but the UI surfaces a confirm —
+// PDF regenerates and overwrites the file in Drive.
+function _vendorPoCanEditFields(status) {
+  return status !== 'RECEIVED' && status !== 'CLOSED' && status !== 'CANCELLED';
+}
+
+// Generate or regenerate the Drive PDF for a vendor PO. If the PO
+// already has a pdf_drive_file_id we PATCH the file contents in place
+// (so the Drive link Josh shared earlier still works). Otherwise we
+// create a new file in GDRIVE_VENDOR_POS_FOLDER and stash the id.
+// Returns the PDF Buffer on success (caller may stream it as a
+// download), or null on failure / when Drive isn't configured.
+// Failures are logged but never thrown — the PDF is a convenience.
+async function _regenerateVendorPoPdf(po) {
+  try {
+    const url = `${PUBLIC_BASE_URL}/vpo/${encodeURIComponent(po.po_number)}?t=${po.share_token}`;
+    const buf = await generatePdfBuffer(url);
+    const vendorName = (po.vendor_snapshot && po.vendor_snapshot.name) || 'Vendor';
+    const safeName = vendorName.replace(/[\\\/:*?"<>|]+/g, ' ').trim();
+    const filename = `${po.po_number} — ${safeName}.pdf`;
+
+    const folderId = process.env.GDRIVE_VENDOR_POS_FOLDER;
+    if (!folderId) {
+      console.warn('[vendor-po pdf] GDRIVE_VENDOR_POS_FOLDER not set; returning buffer without Drive upload');
+      return { buf, filename };
+    }
+
+    let driveFile;
+    if (po.pdf_drive_file_id) {
+      driveFile = await gdriveUpdateFilePdfContent(po.pdf_drive_file_id, buf);
+      if (driveFile && driveFile.error) {
+        console.warn('[vendor-po pdf] update failed, creating new:', JSON.stringify(driveFile.error).slice(0, 200));
+        driveFile = await gdriveUploadFilePdf(filename, buf, folderId);
+      }
+    } else {
+      driveFile = await gdriveUploadFilePdf(filename, buf, folderId);
+    }
+    if (driveFile && driveFile.id && db) {
+      await db.query(
+        `UPDATE vendor_pos SET pdf_drive_file_id = $1, updated_at = NOW() WHERE po_number = $2`,
+        [driveFile.id, po.po_number]
+      );
+    }
+    return { buf, filename };
+  } catch(e) {
+    console.warn('[vendor-po pdf] regen error:', e.message);
+    writelog('error', 'error.vendor-po.pdf', `PDF regen failed for ${po.po_number}: ${e.message}`, {
+      meta: { poNumber: po.po_number },
+    });
+    return null;
+  }
+}
+
+// Normalize a vendor catalog payload from the admin UI: each item gets
+// a stable id (generated if missing), numeric default_qty + unit_price,
+// and a trimmed description. Items without a description are dropped —
+// they'd be useless on a PO and the UI never intentionally creates one.
+function _normalizeVendorCatalog(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(it => {
+      const description = String(it?.description || '').trim();
+      if (!description) return null;
+      return {
+        id:                   it.id || ('vci_' + crypto.randomBytes(6).toString('hex')),
+        sku:                  String(it?.sku || '').trim() || null,
+        description,
+        mfg:                  String(it?.mfg || '').trim() || null,
+        mfg_part_no:          String(it?.mfg_part_no || '').trim() || null,
+        default_qty:          Math.max(0, parseFloat(it?.default_qty || 0)) || 0,
+        unit_price:           Math.max(0, parseFloat(it?.unit_price  || 0)) || 0,
+        price_updated_date:   String(it?.price_updated_date || '').trim() || null,
+      };
+    })
+    .filter(Boolean);
 }
 
 // Resolve a supplier-spend range key into ISO dates. All dates in
@@ -1141,7 +1305,7 @@ const server = http.createServer(async (req, res) => {
 
   // ── Auth gate ──
   // Public routes — no auth required but rate limited + token validated
-  const isPublicRoute = pathname.startsWith('/q/') || pathname.startsWith('/i/') || pathname.startsWith('/o/') || pathname.startsWith('/po/') || pathname === '/api/accept-quote' || pathname === '/api/update-specs' || pathname === '/api/stripe/webhook';
+  const isPublicRoute = pathname.startsWith('/q/') || pathname.startsWith('/i/') || pathname.startsWith('/o/') || pathname.startsWith('/po/') || pathname.startsWith('/vpo/') || pathname === '/api/accept-quote' || pathname === '/api/update-specs' || pathname === '/api/stripe/webhook';
   if (isPublicRoute) {
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
     if (!checkRateLimit(ip, 30, 60000)) {
@@ -9843,6 +10007,22 @@ ${q.accepted ? `
     return;
   }
 
+  // ── Vendor Hub (WR PO System — merged POs + Vendor catalog) ───────
+  // /vendor-pos serves the merged page. /vendors redirects there with
+  // the Vendors tab pre-selected so older bookmarks keep working.
+  if (pathname === '/vendors' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    res.writeHead(302, { Location: '/vendor-pos#vendors' });
+    res.end();
+    return;
+  }
+  if (pathname === '/vendor-pos' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(fs.readFileSync(path.join(__dirname, 'vendor-pos-dashboard.html'), 'utf8'));
+    return;
+  }
+
     // ── API: Logs ────────────────────────────────────────────────────
   if (pathname === '/api/logs' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
@@ -11510,6 +11690,430 @@ ${q.accepted ? `
     return;
   }
 
+  // ── API: Vendors (WR PO System catalog) ──────────────────────────
+  // List all vendors. ?archived=1 to include archived.
+  if (pathname === '/api/vendors' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      if (!db) { json({ vendors: [] }); return; }
+      const includeArchived = new URLSearchParams(search).get('archived') === '1';
+      const result = await db.query(
+        includeArchived
+          ? `SELECT * FROM vendors ORDER BY lower(name)`
+          : `SELECT * FROM vendors WHERE archived = FALSE ORDER BY lower(name)`
+      );
+      json({ vendors: result.rows });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // Get single vendor (full catalog included).
+  if (pathname.startsWith('/api/vendors/') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const id = parseInt(pathname.replace('/api/vendors/', '').trim(), 10);
+    if (!id) { json({ error: 'Invalid vendor id' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const result = await db.query(`SELECT * FROM vendors WHERE id = $1`, [id]);
+      if (!result.rows.length) { json({ error: 'Vendor not found' }, 404); return; }
+      json({ vendor: result.rows[0] });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // Create vendor.
+  if (pathname === '/api/vendors' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    let body;
+    try { body = JSON.parse(await readBody(req) || '{}'); }
+    catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
+    const name = (body.name || '').trim();
+    if (!name) { json({ error: 'Vendor name required' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const rep = getRepFromReq(req, body);
+      const catalog = _normalizeVendorCatalog(body.catalog);
+      const result = await db.query(
+        `INSERT INTO vendors (
+           name, address_lines, phone, contacts, send_to_emails, cc_emails,
+           billing_address_override, payment_terms, freight_terms, standard_notes,
+           catalog, created_by
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+        [
+          name,
+          JSON.stringify(_asArray(body.address_lines)),
+          body.phone || null,
+          JSON.stringify(_asArray(body.contacts)),
+          JSON.stringify(_asArray(body.send_to_emails)),
+          JSON.stringify(_asArray(body.cc_emails)),
+          body.billing_address_override || null,
+          body.payment_terms || null,
+          body.freight_terms || null,
+          body.standard_notes || null,
+          JSON.stringify(catalog),
+          String(rep || ''),
+        ]
+      );
+      writelog('info', 'vendor.created', `Vendor created: ${name}`, { rep: String(rep || ''), meta: { vendorId: result.rows[0].id } });
+      json({ vendor: result.rows[0] });
+    } catch(e) {
+      if (/duplicate key/.test(e.message)) {
+        json({ error: 'A vendor with that name already exists' }, 409);
+      } else {
+        json({ error: e.message }, 500);
+      }
+    }
+    return;
+  }
+
+  // Update vendor (any subset of fields, full catalog replace).
+  if (pathname.startsWith('/api/vendors/') && req.method === 'PATCH') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const id = parseInt(pathname.replace('/api/vendors/', '').trim(), 10);
+    if (!id) { json({ error: 'Invalid vendor id' }, 400); return; }
+    let body;
+    try { body = JSON.parse(await readBody(req) || '{}'); }
+    catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+
+      const sets = [];
+      const vals = [];
+      let idx = 1;
+      const setField = (col, val) => { sets.push(`${col} = $${idx++}`); vals.push(val); };
+
+      if (body.name !== undefined) {
+        const trimmed = (body.name || '').trim();
+        if (!trimmed) { json({ error: 'Vendor name cannot be empty' }, 400); return; }
+        setField('name', trimmed);
+      }
+      if (body.address_lines !== undefined)            setField('address_lines',            JSON.stringify(_asArray(body.address_lines)));
+      if (body.phone !== undefined)                    setField('phone',                    body.phone || null);
+      if (body.contacts !== undefined)                 setField('contacts',                 JSON.stringify(_asArray(body.contacts)));
+      if (body.send_to_emails !== undefined)           setField('send_to_emails',           JSON.stringify(_asArray(body.send_to_emails)));
+      if (body.cc_emails !== undefined)                setField('cc_emails',                JSON.stringify(_asArray(body.cc_emails)));
+      if (body.billing_address_override !== undefined) setField('billing_address_override', body.billing_address_override || null);
+      if (body.payment_terms !== undefined)            setField('payment_terms',            body.payment_terms || null);
+      if (body.freight_terms !== undefined)            setField('freight_terms',            body.freight_terms || null);
+      if (body.standard_notes !== undefined)           setField('standard_notes',           body.standard_notes || null);
+      if (body.catalog !== undefined)                  setField('catalog',                  JSON.stringify(_normalizeVendorCatalog(body.catalog)));
+      if (body.archived !== undefined)                 setField('archived',                 !!body.archived);
+
+      if (!sets.length) { json({ error: 'No fields to update' }, 400); return; }
+      sets.push(`updated_at = NOW()`);
+      vals.push(id);
+
+      const result = await db.query(
+        `UPDATE vendors SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+        vals
+      );
+      if (!result.rows.length) { json({ error: 'Vendor not found' }, 404); return; }
+      json({ vendor: result.rows[0] });
+    } catch(e) {
+      if (/duplicate key/.test(e.message)) {
+        json({ error: 'A vendor with that name already exists' }, 409);
+      } else {
+        json({ error: e.message }, 500);
+      }
+    }
+    return;
+  }
+
+  // Archive vendor (soft delete).
+  if (pathname.startsWith('/api/vendors/') && req.method === 'DELETE') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const id = parseInt(pathname.replace('/api/vendors/', '').trim(), 10);
+    if (!id) { json({ error: 'Invalid vendor id' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const result = await db.query(
+        `UPDATE vendors SET archived = TRUE, updated_at = NOW() WHERE id = $1 RETURNING id, name`,
+        [id]
+      );
+      if (!result.rows.length) { json({ error: 'Vendor not found' }, 404); return; }
+      writelog('info', 'vendor.archived', `Vendor archived: ${result.rows[0].name}`, { rep: String(getRepFromReq(req) || ''), meta: { vendorId: id } });
+      json({ ok: true });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Vendor POs (WR PO System) ───────────────────────────────
+  // List with optional ?status=X, ?vendor_id=N filters. Returns the
+  // 200 most recent by default — Josh shouldn't be paginating dozens
+  // of pages of POs in v1.
+  if (pathname === '/api/vendor-pos' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      if (!db) { json({ pos: [] }); return; }
+      const params = new URLSearchParams(search);
+      const status = params.get('status');
+      const vendorId = parseInt(params.get('vendor_id') || '', 10);
+      const where = [];
+      const vals = [];
+      let idx = 1;
+      if (status) { where.push(`status = $${idx++}`); vals.push(status); }
+      if (vendorId) { where.push(`vendor_id = $${idx++}`); vals.push(vendorId); }
+      const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+      const result = await db.query(
+        `SELECT po.*, v.name AS vendor_name
+           FROM vendor_pos po
+           LEFT JOIN vendors v ON v.id = po.vendor_id
+           ${whereSql}
+          ORDER BY po.created_at DESC
+          LIMIT 200`,
+        vals
+      );
+      json({ pos: result.rows });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // Get single PO by po_number.
+  if (pathname.startsWith('/api/vendor-pos/') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const poNumber = decodeURIComponent(pathname.replace('/api/vendor-pos/', '').trim());
+    if (!poNumber) { json({ error: 'PO number required' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const result = await db.query(
+        `SELECT po.*, v.name AS vendor_name
+           FROM vendor_pos po
+           LEFT JOIN vendors v ON v.id = po.vendor_id
+          WHERE po.po_number = $1`,
+        [poNumber]
+      );
+      if (!result.rows.length) { json({ error: 'PO not found' }, 404); return; }
+      json({ po: result.rows[0] });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // Create vendor PO. Snapshots the vendor row so historical POs aren't
+  // affected by later edits to the vendor record. Status is always
+  // DRAFT on create.
+  if (pathname === '/api/vendor-pos' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    let body;
+    try { body = JSON.parse(await readBody(req) || '{}'); }
+    catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
+    const vendorId = parseInt(body.vendor_id || 0, 10);
+    if (!vendorId) { json({ error: 'vendor_id required' }, 400); return; }
+    // Empty lines OK at create time — the rep fills them in on the
+    // /vpo/ doc page (which is now the primary edit surface).
+    const lines = _normalizeVendorPoLines(body.lines);
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+
+      // Snapshot the vendor row at PO creation time so future vendor
+      // edits don't rewrite history. If the client passed a
+      // vendor_snapshot override (the rep edited vendor info inline in
+      // the PO modal), merge those edits over the canonical row.
+      const vRes = await db.query(`SELECT * FROM vendors WHERE id = $1`, [vendorId]);
+      if (!vRes.rows.length) { json({ error: 'Vendor not found' }, 404); return; }
+      const vendorRow = vRes.rows[0];
+      const snapshotOverride = (body.vendor_snapshot && typeof body.vendor_snapshot === 'object') ? body.vendor_snapshot : {};
+      const vendor = Object.assign({}, vendorRow, snapshotOverride);
+
+      const poNumber = await nextVendorPoNumber();
+      const shareToken = crypto.randomBytes(12).toString('hex');
+      const rep = getRepFromReq(req, body);
+      const poData = {
+        lines,
+        notes: String(body.notes || '').trim() || null,
+      };
+
+      const result = await db.query(
+        `INSERT INTO vendor_pos (
+           po_number, vendor_id, vendor_snapshot, share_token, status,
+           po_data, expected_date, created_by
+         ) VALUES ($1,$2,$3,$4,'OPEN',$5,$6,$7) RETURNING *`,
+        [
+          poNumber,
+          vendorId,
+          JSON.stringify(vendor),
+          shareToken,
+          JSON.stringify(poData),
+          body.expected_date || null,
+          String(rep || ''),
+        ]
+      );
+      writelog('info', 'vendor-po.created', `Vendor PO created: ${poNumber} (${vendor.name})`, {
+        rep: String(rep || ''),
+        meta: { poNumber, vendorId, lineCount: lines.length },
+      });
+      // Kick off PDF generation immediately so the Drive file is ready
+      // by the time Josh hits Send.
+      _regenerateVendorPoPdf(result.rows[0]).catch(e => {
+        console.warn('[vendor-po] PDF regen error:', e.message);
+      });
+      json({ po: result.rows[0] });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // Update vendor PO — line edits + status transitions + expected_date + notes.
+  if (pathname.startsWith('/api/vendor-pos/') && req.method === 'PATCH') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const poNumber = decodeURIComponent(pathname.replace('/api/vendor-pos/', '').trim());
+    if (!poNumber) { json({ error: 'PO number required' }, 400); return; }
+    let body;
+    try { body = JSON.parse(await readBody(req) || '{}'); }
+    catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+
+      const curRes = await db.query(`SELECT * FROM vendor_pos WHERE po_number = $1`, [poNumber]);
+      if (!curRes.rows.length) { json({ error: 'PO not found' }, 404); return; }
+      const cur = curRes.rows[0];
+
+      const sets = [];
+      const vals = [];
+      let idx = 1;
+      const setField = (col, val) => { sets.push(`${col} = $${idx++}`); vals.push(val); };
+
+      // Field edits — only when status allows
+      const fieldEditRequested =
+        body.lines !== undefined || body.notes !== undefined ||
+        body.expected_date !== undefined || body.vendor_snapshot !== undefined;
+      if (fieldEditRequested) {
+        if (!_vendorPoCanEditFields(cur.status)) {
+          json({ error: `Cannot edit a ${cur.status} PO` }, 409); return;
+        }
+        const newPoData = Object.assign({}, cur.po_data || {});
+        if (body.lines !== undefined) {
+          // Empty lines OK during editing (rep may remove all then add new).
+          newPoData.lines = _normalizeVendorPoLines(body.lines);
+        }
+        if (body.ship_to !== undefined && body.ship_to && typeof body.ship_to === 'object') {
+          newPoData.ship_to = body.ship_to;
+        }
+        if (body.notes !== undefined) {
+          newPoData.notes = String(body.notes || '').trim() || null;
+        }
+        setField('po_data', JSON.stringify(newPoData));
+        if (body.expected_date !== undefined) setField('expected_date', body.expected_date || null);
+        // Vendor snapshot update — Josh can tweak vendor info per-PO without
+        // touching the vendor record (or with, via a separate /api/vendors
+        // PATCH the client makes). Merge over the existing snapshot so the
+        // client doesn't have to send every field every time.
+        if (body.vendor_snapshot !== undefined && body.vendor_snapshot && typeof body.vendor_snapshot === 'object') {
+          const mergedSnap = Object.assign({}, cur.vendor_snapshot || {}, body.vendor_snapshot);
+          setField('vendor_snapshot', JSON.stringify(mergedSnap));
+        }
+      }
+
+      // Status transition
+      let newStatus = null;
+      if (body.status !== undefined && body.status !== cur.status) {
+        if (!_vendorPoTransitionOK(cur.status, body.status)) {
+          json({ error: `Cannot transition ${cur.status} → ${body.status}` }, 409); return;
+        }
+        newStatus = body.status;
+        setField('status', newStatus);
+        if (newStatus === 'APPROVED' && !cur.approved_at) setField('approved_at', new Date().toISOString());
+        if (newStatus === 'SENT'     && !cur.sent_at)     setField('sent_at',     new Date().toISOString());
+        if (newStatus === 'RECEIVED' && !cur.received_at) setField('received_at', new Date().toISOString());
+        if (newStatus === 'CLOSED'   && !cur.closed_at)   setField('closed_at',   new Date().toISOString());
+        // Un-approve clears approved_at so the lifecycle stays honest
+        if (newStatus === 'DRAFT' && cur.status === 'APPROVED') setField('approved_at', null);
+      }
+
+      if (!sets.length) { json({ error: 'No fields to update' }, 400); return; }
+      sets.push(`updated_at = NOW()`);
+      vals.push(poNumber);
+
+      const result = await db.query(
+        `UPDATE vendor_pos SET ${sets.join(', ')} WHERE po_number = $${idx} RETURNING *`,
+        vals
+      );
+
+      if (newStatus) {
+        const rep = getRepFromReq(req, body);
+        writelog('info', `vendor-po.${newStatus.toLowerCase()}`, `Vendor PO ${poNumber} → ${newStatus}`, {
+          rep: String(rep || ''),
+          meta: { poNumber, from: cur.status, to: newStatus },
+        });
+      }
+
+      // Fire-and-forget PDF regen on any field edit or status transition
+      // into SENT — keeps the Drive folder in sync with the latest PO
+      // state. Skipped for terminal/cancelled states.
+      const final = result.rows[0];
+      const shouldRegen = (fieldEditRequested || newStatus === 'SENT') &&
+        final.status !== 'CANCELLED' && final.status !== 'CLOSED';
+      if (shouldRegen) {
+        _regenerateVendorPoPdf(final).catch(e => {
+          console.warn('[vendor-po] PDF regen error:', e.message);
+        });
+      }
+
+      json({ po: final });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // Delete a DRAFT vendor PO. Anything past DRAFT cancels (status flip),
+  // not deletes.
+  if (pathname.startsWith('/api/vendor-pos/') && req.method === 'DELETE') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const poNumber = decodeURIComponent(pathname.replace('/api/vendor-pos/', '').trim());
+    if (!poNumber) { json({ error: 'PO number required' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const curRes = await db.query(`SELECT status FROM vendor_pos WHERE po_number = $1`, [poNumber]);
+      if (!curRes.rows.length) { json({ error: 'PO not found' }, 404); return; }
+      if (curRes.rows[0].status !== 'OPEN') {
+        json({ error: `Only unsent (OPEN) POs can be deleted. Cancel ${poNumber} instead.` }, 409); return;
+      }
+      await db.query(`DELETE FROM vendor_pos WHERE po_number = $1`, [poNumber]);
+      writelog('info', 'vendor-po.deleted', `Vendor PO deleted: ${poNumber}`, { rep: String(getRepFromReq(req) || '') });
+      json({ ok: true });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // POST /api/vendor-pos/:poNumber/pdf — sync PDF gen + Drive upload +
+  // stream the bytes back as a browser download. Used by the "Create /
+  // Download PDF" button on /vpo/.
+  if (pathname.match(/^\/api\/vendor-pos\/[^/]+\/pdf$/) && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const poNumber = decodeURIComponent(pathname.split('/').slice(-2)[0]);
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const r = await db.query(`SELECT * FROM vendor_pos WHERE po_number = $1`, [poNumber]);
+      if (!r.rows.length) { json({ error: 'PO not found' }, 404); return; }
+      const result = await _regenerateVendorPoPdf(r.rows[0]);
+      if (!result || !result.buf) { json({ error: 'PDF generation failed' }, 500); return; }
+      res.writeHead(200, {
+        'Content-Type':        'application/pdf',
+        'Content-Disposition': 'attachment; filename="' + result.filename.replace(/"/g, '') + '"',
+        'Content-Length':       result.buf.length,
+        'Cache-Control':       'no-store',
+      });
+      res.end(result.buf);
+      writelog('info', 'vendor-po.pdf-downloaded', `PDF downloaded: ${poNumber}`, { rep: String(getRepFromReq(req) || ''), meta: { poNumber } });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── API: Supplier POs — list ─────────────────────────────────────
   if (pathname === '/api/supplier-pos' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
@@ -13099,6 +13703,318 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
       res.end(poHtml);
     } catch(e) {
       console.error('[po page] error:', e.message);
+      res.writeHead(500); res.end('Server error');
+    }
+    return;
+  }
+
+  // ── Vendor PO Page (/vpo/:poNumber) — WR PO System ────────────────
+  // Public-with-share-token. Renders the PO as a printable doc; the
+  // same URL is what Puppeteer scrapes for PDF gen.
+  if (pathname.startsWith('/vpo/') && req.method === 'GET') {
+    const poNumber = decodeURIComponent(pathname.replace('/vpo/', '').trim());
+    if (!poNumber) { res.writeHead(404); res.end('Not found'); return; }
+    const reqToken = new URLSearchParams(search).get('t');
+    try {
+      if (!db) { res.writeHead(503); res.end('Database unavailable'); return; }
+      const row = await db.query('SELECT * FROM vendor_pos WHERE po_number = $1', [poNumber]);
+      if (!row.rows.length) {
+        res.writeHead(404, { 'Content-Type': 'text/html' });
+        res.end('<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px"><h2>Purchase Order Not Found</h2></body></html>');
+        return;
+      }
+      const po = row.rows[0];
+      if (!isAuth(req) && reqToken !== po.share_token) {
+        res.writeHead(403, { 'Content-Type': 'text/html' });
+        res.end('<!DOCTYPE html><html><head><title>Link Expired</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#f5f5f5}div{text-align:center}</style></head><body><div><h2 style="color:#ee6216">This link is no longer valid</h2><p style="color:#888;margin-top:8px">Please contact WhisperRoom for an updated link.</p></div></body></html>');
+        return;
+      }
+
+      const v = po.vendor_snapshot || {};
+      const d = po.po_data || {};
+      const lines = Array.isArray(d.lines) ? d.lines : [];
+      const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+      const subtotal = lines.reduce((s, l) => s + (parseFloat(l.unit_price||0) * parseFloat(l.qty||0)), 0);
+
+      const createdDate = po.created_at
+        ? new Date(po.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' })
+        : '';
+      const expectedDate = po.expected_date
+        ? new Date(po.expected_date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+        : '';
+
+      // PO contact on the doc is always Josh Fletcher (the WR PO System
+      // is his home — supply-chain side). Don't surface the rep ownerId.
+      const repNameVpo = 'Josh Fletcher';
+
+      const vendorAddrLines = Array.isArray(v.address_lines) ? v.address_lines : [];
+      const vendorContacts = Array.isArray(v.contacts) ? v.contacts.map(c => c && c.name ? c.name : (typeof c === 'string' ? c : '')).filter(Boolean) : [];
+      const vendorEmails = Array.isArray(v.send_to_emails) ? v.send_to_emails : [];
+
+      // Billing override falls back to WhisperRoom's standard billing addr.
+      const billingDefault = 'WhisperRoom, Inc.\n322 Nancy Lynn Lane, Suite 14\nKnoxville, TN 37919\naccounting@whisperroom.com';
+      const billingBlock = (v.billing_address_override && v.billing_address_override.trim()) || billingDefault;
+
+      const statusBadge = po.status === 'CANCELLED'
+        ? '<span class="status-pill status-cancelled">CANCELLED</span>'
+        : '';
+
+      const fmtRaw = n => parseFloat(n||0).toFixed(2);
+      const lineRows = lines.map(l => (
+        '<tr class="line-row" data-line-id="' + esc(l.id || '') + '" data-catalog-id="' + esc(l.catalog_id || '') + '">' +
+          '<td class="td-num"><span class="editable l-sku" data-type="text">' + esc(l.sku || '') + '</span></td>' +
+          '<td class="td-desc">' +
+            '<span class="editable editable-block l-desc" data-type="text">' + esc(l.description || '') + '</span>' +
+            '<div class="line-sub">MFG Part #<span class="editable l-mfgpart" data-type="text">' + esc(l.mfg_part_no || '') + '</span></div>' +
+          '</td>' +
+          '<td class="td-num"><span class="editable l-mfg" data-type="text">' + esc(l.mfg || '') + '</span></td>' +
+          '<td class="td-num"><span class="editable l-qty" data-type="number">' + esc(String(l.qty || 0)) + '</span></td>' +
+          '<td class="td-num">$<span class="editable l-price" data-type="number">' + fmtRaw(l.unit_price) + '</span></td>' +
+          '<td class="td-num"><strong class="l-ext">' + fmt(parseFloat(l.unit_price||0) * parseFloat(l.qty||0)) + '</strong>' +
+            '<button type="button" class="remove-line edit-only" title="Remove line" style="margin-left:6px">&times;</button>' +
+          '</td>' +
+        '</tr>'
+      )).join('');
+      const addLineRow =
+        '<tr class="add-line-row edit-only"><td colspan="6">' +
+          '<button type="button" class="add-line-btn" id="addLineBtn">+ Add Line</button>' +
+        '</td></tr>';
+
+      const vpoHtml =
+'<!DOCTYPE html><html lang="en"><head>' +
+'<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+'<title>PO ' + esc(poNumber) + '</title>' +
+'<link rel="icon" href="/assets/favicon.avif">' +
+'<style>' +
+"@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap');" +
+'*{box-sizing:border-box;margin:0;padding:0}' +
+"body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-font-smoothing:antialiased;padding:32px 16px}" +
+'.page{background:#fff;max-width:820px;margin:0 auto;padding:44px 50px;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.08)}' +
+'.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:18px;border-bottom:2px solid #ee6216}' +
+'.logo-wrap{display:flex;flex-direction:column;gap:6px}' +
+'.logo-img{height:40px;display:block}' +
+'.logo-sub{font-size:11px;color:#888;font-weight:500}' +
+'.po-title{text-align:right}' +
+'.po-label{font-size:24px;font-weight:800;color:#1a1a1a;letter-spacing:-.4px}' +
+'.po-number{font-size:14px;font-weight:700;color:#ee6216;margin-top:3px;font-family:ui-monospace,monospace;letter-spacing:.04em}' +
+'.po-date{font-size:12px;color:#888;margin-top:2px}' +
+'.status-pill{display:inline-block;margin-top:6px;padding:2px 9px;font-size:10px;font-weight:800;letter-spacing:.08em;border-radius:10px;text-transform:uppercase}' +
+'.status-draft{background:rgba(245,158,11,.15);color:#b45309;border:1px solid rgba(245,158,11,.4)}' +
+'.status-cancelled{background:rgba(239,68,68,.12);color:#b91c1c;border:1px solid rgba(239,68,68,.35)}' +
+'.parties{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-bottom:26px}' +
+'.party{background:#fafafa;border:1px solid #eee;border-radius:8px;padding:14px 16px}' +
+'.party-label{font-size:9px;font-weight:800;letter-spacing:.12em;color:#aaa;text-transform:uppercase;margin-bottom:6px}' +
+'.party-name{font-size:14px;font-weight:700;color:#1a1a1a;margin-bottom:3px}' +
+'.party-line{font-size:12px;color:#555;line-height:1.5}' +
+'.party-line a{color:#555;text-decoration:none}' +
+'.terms{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px}' +
+'.term{background:#fff8f2;border:1px solid #f5dec4;border-radius:7px;padding:10px 13px}' +
+'.term-label{font-size:9px;font-weight:800;letter-spacing:.1em;color:#ee6216;text-transform:uppercase;margin-bottom:3px}' +
+'.term-body{font-size:11px;color:#5a3a18;line-height:1.5}' +
+'.meta-row{display:flex;justify-content:space-between;align-items:center;background:#fafafa;border:1px solid #eee;border-radius:7px;padding:9px 14px;font-size:11px;color:#666;margin-bottom:14px}' +
+'.meta-row strong{color:#1a1a1a}' +
+'table.lines{width:100%;border-collapse:collapse;margin:6px 0 14px}' +
+'table.lines th{background:#1a1a1a;color:#fff;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:8px 9px;text-align:left}' +
+'table.lines td{padding:9px;border-bottom:1px solid #eee;font-size:12px;vertical-align:top}' +
+'.td-num{text-align:right;font-variant-numeric:tabular-nums}' +
+'.td-desc{text-align:left}' +
+'.line-desc{font-weight:600;color:#1a1a1a}' +
+'.line-sub{font-size:10px;color:#888;margin-top:2px}' +
+'.totals{display:flex;justify-content:flex-end;margin-top:6px;margin-bottom:24px}' +
+'.totals-inner{min-width:280px}' +
+'.tot-row{display:flex;justify-content:space-between;padding:5px 0;font-size:12px;color:#666}' +
+'.tot-row.grand{font-size:18px;font-weight:800;color:#1a1a1a;border-top:2px solid #1a1a1a;padding-top:10px;margin-top:6px}' +
+'.tot-row.grand span:last-child{color:#ee6216}' +
+'.notes-block{background:#fafafa;border-left:3px solid #ee6216;border-radius:0 6px 6px 0;padding:11px 14px;margin-bottom:14px}' +
+'.notes-label{font-size:9px;font-weight:800;letter-spacing:.1em;color:#888;text-transform:uppercase;margin-bottom:4px}' +
+'.notes-body{font-size:11px;color:#444;line-height:1.55;white-space:pre-wrap}' +
+'.signoff{margin-top:30px;padding-top:18px;border-top:1px solid #e5e5e5;font-size:11px;color:#666;line-height:2.4}' +
+'.signoff-line{font-size:12px;color:#1a1a1a;font-weight:600;margin-bottom:18px}' +
+'.signoff-line .underline{display:inline-block;border-bottom:1px solid #999;min-width:240px;margin:0 6px}' +
+'.signoff-line .underline-sm{display:inline-block;border-bottom:1px solid #999;min-width:120px;margin:0 6px}' +
+'.sincerely{margin-top:18px;font-size:12px;color:#444;line-height:1.7}' +
+'.print-bar{position:fixed;top:14px;right:14px;display:flex;gap:8px;z-index:10}' +
+'.print-bar button{padding:8px 14px;background:#1a1a1a;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;font-family:inherit}' +
+'.edit-banner{position:fixed;top:14px;left:14px;display:none;align-items:center;gap:10px;padding:6px 12px;background:#1a1a1a;color:#fff;border-radius:7px;font-size:11px;font-weight:600;z-index:10;box-shadow:0 4px 14px rgba(0,0,0,.2)}' +
+'.edit-banner .dot{width:7px;height:7px;border-radius:50%;background:#ee6216;box-shadow:0 0 8px rgba(238,98,22,.6)}' +
+'.edit-banner .save-status{color:#888;font-weight:500;margin-left:4px}' +
+'.editable{cursor:text;border-radius:3px;padding:1px 4px;margin:-1px -4px;transition:background .12s,box-shadow .12s;display:inline-block}' +
+'.editable:empty:before{content:"\\2014";color:#bbb}' +
+'.editable.editable-block{display:block;min-height:22px}' +
+'body[data-edit-mode="1"] .editable:hover{background:rgba(238,98,22,.08);box-shadow:inset 0 0 0 1px rgba(238,98,22,.25)}' +
+'body[data-edit-mode="1"] .editable.editing{background:#fff;box-shadow:inset 0 0 0 2px #ee6216;cursor:text}' +
+'body[data-edit-mode="1"] .edit-banner{display:flex}' +
+'.cell-input{width:100%;border:none;outline:none;font-family:inherit;font-size:inherit;color:inherit;background:transparent;padding:0;margin:0}' +
+'.cell-input.cell-textarea{resize:vertical;min-height:60px}' +
+'.edit-only{display:none}' +
+'body[data-edit-mode="1"] .edit-only{display:inline-block}' +
+'.line-row .remove-line{background:none;border:none;color:#bbb;cursor:pointer;font-size:16px;line-height:1;padding:0 4px}' +
+'.line-row .remove-line:hover{color:#dc2626}' +
+'.add-line-row td{background:#fafafa;padding:8px 9px;border-top:1px dashed #ddd}' +
+'.add-line-btn{padding:5px 11px;background:rgba(238,98,22,.1);color:#ee6216;border:1px solid rgba(238,98,22,.35);border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase}' +
+'.add-line-btn:hover{background:rgba(238,98,22,.18)}' +
+'.picker-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}' +
+'.picker-modal{background:#fff;border-radius:10px;max-width:780px;width:100%;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden}' +
+'.picker-head{padding:14px 18px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:700;color:#1a1a1a}' +
+'.picker-close{background:none;border:none;color:#888;font-size:20px;cursor:pointer;padding:0 6px;line-height:1}' +
+'.picker-body{padding:0;overflow-y:auto;flex:1}' +
+'.picker-tbl{width:100%;border-collapse:collapse;font-size:12px}' +
+'.picker-tbl th{background:#fafafa;padding:8px 10px;text-align:left;font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid #eee;position:sticky;top:0}' +
+'.picker-tbl td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}' +
+'.picker-tbl tr:hover td{background:#fdfcfb}' +
+'.picker-foot{padding:12px 18px;border-top:1px solid #eee;display:flex;gap:8px;align-items:center}' +
+'.picker-foot button{padding:7px 14px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:6px;border:none;cursor:pointer;font-family:inherit}' +
+'.picker-foot .picker-blank{background:#fafafa;color:#555;border:1px solid #ddd}' +
+'.picker-foot .picker-blank:hover{background:#f0f0f0}' +
+'.picker-foot .picker-cancel{background:transparent;color:#888;border:1px solid #ddd}' +
+'.picker-foot .picker-add{background:#ee6216;color:#fff}' +
+'.picker-foot .picker-add:hover{opacity:.9}' +
+'@media print {.print-bar{display:none} .edit-banner{display:none!important} .edit-only{display:none!important} .editable:hover{background:transparent!important;box-shadow:none!important} .picker-overlay{display:none!important} body{background:#fff;padding:0} .page{box-shadow:none;border-radius:0;max-width:100%;padding:36px 40px}}' +
+'</style></head><body' + (isAuth(req) ? ' data-edit-mode="1"' : '') + '>' +
+
+'<div class="edit-banner"><span class="dot"></span><span>Edit mode</span><span class="save-status" id="saveStatus"></span></div>' +
+'<div class="print-bar">' +
+  (isAuth(req) ? '<button id="createPoBtn" style="background:#ee6216">Create / Download PDF</button>' : '') +
+  (isAuth(req) && po.status === 'OPEN' ? '<button id="sendPoBtn" style="background:#16a34a">Send (Mailto)</button>' : '') +
+  (isAuth(req) && (po.status === 'OPEN' || po.status === 'SENT' || po.status === 'PARTIAL') ? '<button id="cancelPoBtn" style="background:#444">Cancel PO</button>' : '') +
+  (isAuth(req) && po.status === 'OPEN' ? '<button id="deletePoBtn" style="background:#dc2626">Delete</button>' : '') +
+'</div>' +
+
+'<div class="page">' +
+
+  '<div class="header">' +
+    '<div class="logo-wrap">' +
+      wrLogoImg() +
+      '<div class="logo-sub">322 Nancy Lynn Lane Suite 14, Knoxville, TN 37919</div>' +
+      '<div class="logo-sub">800-200-8168 &middot; whisperroom.com</div>' +
+    '</div>' +
+    '<div class="po-title">' +
+      '<div class="po-label">PURCHASE ORDER</div>' +
+      '<div class="po-number">' + esc(poNumber) + '</div>' +
+      '<div class="po-date">' + esc(createdDate) + '</div>' +
+      statusBadge +
+    '</div>' +
+  '</div>' +
+
+  '<div class="parties">' +
+    '<div class="party">' +
+      '<div class="party-label">Vendor</div>' +
+      '<div class="party-name">' + esc(v.name || '—') + '</div>' +
+      '<div class="party-line">ATTN: <span class="editable" data-snap-field="contacts_csv" data-type="text">' + esc(vendorContacts.join(', ') || '—') + '</span></div>' +
+      '<div class="party-line"><span class="editable editable-block" data-snap-field="address_lines_text" data-type="textarea">' + esc(vendorAddrLines.join('\n')) + '</span></div>' +
+      '<div class="party-line">PH: <span class="editable" data-snap-field="phone" data-type="text">' + esc(v.phone || '—') + '</span></div>' +
+      '<div class="party-line"><span class="editable editable-block email-line" data-snap-field="send_to_emails_csv" data-type="text">' + (vendorEmails.length ? vendorEmails.map(e => '<a class="vendor-email" href="mailto:' + esc(e) + '">' + esc(e) + '</a>').join('<br>') : '—') + '</span></div>' +
+    '</div>' +
+    (function() {
+      const st = d.ship_to || {};
+      const stName    = st.name    != null ? st.name    : 'WhisperRoom, Inc.';
+      const stAddr1   = st.address1 != null ? st.address1 : '103 S. Sugar Hollow Rd.';
+      const stAddr2   = st.address2 != null ? st.address2 : 'Morristown, TN 37813';
+      const stAttn    = st.attn    != null ? st.attn    : repNameVpo;
+      const stPhone   = st.phone   != null ? st.phone   : '423-585-5828';
+      const stEmail   = st.email   != null ? st.email   : 'jfletcher@whisperroom.com';
+      return '<div class="party">' +
+        '<div class="party-label">Ship To</div>' +
+        '<div class="party-name"><span class="editable" data-ship-field="name" data-type="text">' + esc(stName) + '</span></div>' +
+        '<div class="party-line"><span class="editable" data-ship-field="address1" data-type="text">' + esc(stAddr1) + '</span></div>' +
+        '<div class="party-line"><span class="editable" data-ship-field="address2" data-type="text">' + esc(stAddr2) + '</span></div>' +
+        '<div class="party-line">ATTN: <span class="editable" data-ship-field="attn" data-type="text">' + esc(stAttn) + '</span></div>' +
+        '<div class="party-line">PH: <span class="editable" data-ship-field="phone" data-type="text">' + esc(stPhone) + '</span></div>' +
+        '<div class="party-line"><span class="editable wr-email" data-ship-field="email" data-type="text"><a class="wr-email-link" href="mailto:' + esc(stEmail) + '">' + esc(stEmail) + '</a></span></div>' +
+      '</div>';
+    })() +
+  '</div>' +
+
+
+  '<div class="terms">' +
+    '<div class="term"><div class="term-label">Freight Terms</div><div class="term-body"><span class="editable editable-block" data-snap-field="freight_terms" data-type="textarea">' + esc(v.freight_terms || '') + '</span></div></div>' +
+    '<div class="term"><div class="term-label">Payment Terms</div><div class="term-body"><span class="editable" data-snap-field="payment_terms" data-type="text">' + esc(v.payment_terms || '') + '</span></div></div>' +
+  '</div>' +
+
+  '<table class="lines">' +
+    '<thead><tr>' +
+      '<th style="width:80px">SKU</th>' +
+      '<th>Description</th>' +
+      '<th style="width:80px">MFG</th>' +
+      '<th style="width:60px;text-align:right">Qty</th>' +
+      '<th style="width:90px;text-align:right">Unit Price</th>' +
+      '<th style="width:100px;text-align:right">Ext Price</th>' +
+    '</tr></thead>' +
+    '<tbody>' + (lineRows || '<tr class="no-lines-row"><td colspan="6" style="text-align:center;color:#aaa;padding:20px;font-style:italic">No line items</td></tr>') + addLineRow + '</tbody>' +
+  '</table>' +
+
+  '<div class="totals"><div class="totals-inner">' +
+    '<div class="tot-row grand"><span>TOTAL</span><span id="poGrandTotal">' + fmt(subtotal) + '</span></div>' +
+  '</div></div>' +
+
+  '<div class="notes-block"><div class="notes-label">PO Notes</div><div class="notes-body"><span class="editable editable-block" data-field="notes" data-type="textarea">' + esc(d.notes || '') + '</span></div></div>' +
+
+  '<div class="notes-block"><div class="notes-label">Standing Vendor Notes</div><div class="notes-body"><span class="editable editable-block" data-snap-field="standard_notes" data-type="textarea">' + esc(v.standard_notes || '') + '</span></div></div>' +
+
+  '<div class="signoff">' +
+    '<div class="signoff-line"><strong>Billing Address:</strong><br>' + esc(billingBlock).replace(/\n/g, '<br>') + '</div>' +
+    '<div class="sincerely">Sincerely,<br><br><strong>' + esc(repNameVpo) + '</strong><br>WhisperRoom, Inc.</div>' +
+  '</div>' +
+
+'</div>' +
+
+// ── Inline edit JS ────────────────────────────────────────────────
+// Only fires when body[data-edit-mode="1"]; gated server-side to
+// authenticated reps. Puppeteer scrapes /vpo/ with share-token only,
+// so PDF rendering never sees this UI. Every blur PATCHes both the
+// PO and the vendor record (the user wants vendor edits to persist
+// across future POs).
+'<script>(function(){' +
+  "if(document.body.dataset.editMode!=='1')return;" +
+  "var poNumber=" + JSON.stringify(poNumber) + ";" +
+  "var vendorId=" + JSON.stringify(po.vendor_id || null) + ";" +
+  "var saveStatus=document.getElementById('saveStatus');" +
+  "var saveTimer;function setStatus(t,err){if(!saveStatus)return;saveStatus.textContent=t||'';saveStatus.style.color=err?'#ef4444':(t==='Saved'?'#22c55e':'#888');if(saveTimer)clearTimeout(saveTimer);if(t==='Saved')saveTimer=setTimeout(function(){saveStatus.textContent='';},2200);}" +
+  "function patchPo(body){setStatus('Saving…',false);return fetch('/api/vendor-pos/'+encodeURIComponent(poNumber),{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify(body)}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||'Save failed');return d;});}).then(function(d){setStatus('Saved');return d;}).catch(function(e){setStatus(e.message||'Error',true);throw e;});}" +
+  "function patchVendor(partial){if(!vendorId)return Promise.resolve(null);return fetch('/api/vendors/'+vendorId,{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify(partial)}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});}" +
+  "function readLines(){return Array.prototype.slice.call(document.querySelectorAll('.line-row')).map(function(tr){return{id:tr.dataset.lineId||undefined,catalog_id:tr.dataset.catalogId||null,sku:tr.querySelector('.l-sku').textContent.trim(),description:tr.querySelector('.l-desc').textContent.trim(),mfg:tr.querySelector('.l-mfg').textContent.trim(),mfg_part_no:tr.querySelector('.l-mfgpart').textContent.trim(),qty:parseFloat(tr.querySelector('.l-qty').textContent.replace(/[^0-9.-]/g,'')||0)||0,unit_price:parseFloat(tr.querySelector('.l-price').textContent.replace(/[^0-9.-]/g,'')||0)||0};}).filter(function(l){return l.description;});}" +
+  "function fmtMoney(n){return '$'+(parseFloat(n)||0).toFixed(2).replace(/\\B(?=(\\d{3})+(?!\\d))/g,',');}" +
+  "function refreshExt(tr){if(!tr)return;var qty=parseFloat(tr.querySelector('.l-qty').textContent.replace(/[^0-9.-]/g,'')||0)||0;var price=parseFloat(tr.querySelector('.l-price').textContent.replace(/[^0-9.-]/g,'')||0)||0;var ext=tr.querySelector('.l-ext');if(ext)ext.textContent=fmtMoney(qty*price);}" +
+  "function refreshTotal(){var t=0;document.querySelectorAll('.line-row').forEach(function(tr){var q=parseFloat(tr.querySelector('.l-qty').textContent.replace(/[^0-9.-]/g,'')||0)||0;var p=parseFloat(tr.querySelector('.l-price').textContent.replace(/[^0-9.-]/g,'')||0)||0;t+=q*p;});var el=document.getElementById('poGrandTotal');if(el)el.textContent=fmtMoney(t);}" +
+  "function buildSnapPatch(field,val){if(field==='contacts_csv'){var names=val.split(',').map(function(s){return s.trim();}).filter(Boolean);return{contacts:names.map(function(n){return{name:n};})};}if(field==='address_lines_text'){return{address_lines:val.split('\\n').map(function(s){return s.trim();}).filter(Boolean)};}if(field==='send_to_emails_csv'){return{send_to_emails:val.split(',').map(function(s){return s.trim();}).filter(Boolean)};}var o={};o[field]=val;return o;}" +
+  "function renderEmailsBlock(emails){if(!emails.length)return '—';return emails.map(function(e){return '<a class=\"vendor-email\" href=\"mailto:'+e.replace(/\"/g,'&quot;')+'\">'+e.replace(/</g,'&lt;')+'</a>';}).join('<br>');}" +
+  "function commit(el,inp){var newVal=inp.value;el.classList.remove('editing');var lineTr=el.closest('.line-row');var field=el.dataset.field;var snapField=el.dataset.snapField;var shipField=el.dataset.shipField;if(el.classList.contains('l-price')){el.textContent=(parseFloat(newVal||0)||0).toFixed(2);refreshExt(lineTr);refreshTotal();patchPo({lines:readLines()});}else if(el.classList.contains('l-qty')){el.textContent=String(parseFloat(newVal||0)||0);refreshExt(lineTr);refreshTotal();patchPo({lines:readLines()});}else if(lineTr){el.textContent=newVal;patchPo({lines:readLines()});}else if(field==='expected_date'){el.dataset.raw=newVal||'';el.textContent=newVal?new Date(newVal+'T12:00:00Z').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'—';patchPo({expected_date:newVal||null});}else if(field==='notes'){el.textContent=newVal;patchPo({notes:newVal||null});}else if(shipField){var stObj={};stObj[shipField]=newVal;el.textContent=newVal||'—';if(shipField==='email'){el.innerHTML='<a class=\"wr-email-link\" href=\"mailto:'+newVal.replace(/\"/g,'&quot;')+'\">'+newVal.replace(/</g,'&lt;')+'</a>';}patchPo({ship_to:stObj});}else if(snapField){var partial=buildSnapPatch(snapField,newVal);if(snapField==='send_to_emails_csv'){el.innerHTML=renderEmailsBlock(partial.send_to_emails);}else if(snapField==='address_lines_text'){el.innerHTML=partial.address_lines.map(function(s){return s.replace(/</g,'&lt;');}).join('<br>')||'—';}else{el.textContent=newVal||'—';}patchPo({vendor_snapshot:partial});patchVendor(partial);}}" +
+  "function openEditor(el){if(el.classList.contains('editing'))return;el.classList.add('editing');var type=el.dataset.type||'text';var current;if(el.dataset.field==='expected_date'){current=el.dataset.raw||'';}else if(el.classList.contains('l-price')||el.classList.contains('l-qty')){current=el.textContent.replace(/[^0-9.-]/g,'').trim();}else if(el.dataset.snapField==='send_to_emails_csv'){current=Array.prototype.slice.call(el.querySelectorAll('a.vendor-email')).map(function(a){return a.textContent.trim();}).join(', ');}else if(el.dataset.snapField==='address_lines_text'){current=Array.prototype.slice.call(el.childNodes).map(function(n){return n.textContent||(n.nodeValue||'');}).join('').trim().split(/\\n+|\\s*<br\\/?>\\s*/i).join('\\n');current=el.innerText||current;}else{current=(el.innerText||el.textContent).replace(/—/g,'').trim();}var inp;if(type==='textarea'){inp=document.createElement('textarea');inp.className='cell-input cell-textarea';}else{inp=document.createElement('input');inp.type=type==='date'?'date':(type==='number'?'number':'text');if(type==='number')inp.step='any';inp.className='cell-input';}inp.value=current;el.innerHTML='';el.appendChild(inp);inp.focus();if(inp.select&&type!=='date')inp.select();var done=false;function commitOnce(){if(done)return;done=true;commit(el,inp);}inp.addEventListener('blur',commitOnce);inp.addEventListener('keydown',function(e){if(e.key==='Enter'&&type!=='textarea'){e.preventDefault();inp.blur();}else if(e.key==='Enter'&&e.ctrlKey&&type==='textarea'){e.preventDefault();inp.blur();}else if(e.key==='Escape'){done=true;el.classList.remove('editing');el.textContent=current||'—';}});}" +
+  "function wireAll(){document.querySelectorAll('.editable').forEach(function(el){if(el._wired)return;el._wired=true;el.addEventListener('click',function(ev){ev.stopPropagation();ev.preventDefault();openEditor(el);});});}" +
+  // Suppress mailto: links from launching the mail client in edit mode —
+  // clicking them should open the editor instead.
+  "document.addEventListener('click',function(ev){var a=ev.target.closest&&ev.target.closest('a[href^=mailto]');if(a){ev.preventDefault();ev.stopPropagation();var host=a.closest('.editable');if(host)openEditor(host);}},true);" +
+  // ── Catalog picker overlay ─────────────────────────────────────
+  "var _catalogCache=null;function loadCatalog(){if(_catalogCache)return Promise.resolve(_catalogCache);if(!vendorId)return Promise.resolve([]);return fetch('/api/vendors/'+vendorId,{credentials:'include'}).then(function(r){return r.json();}).then(function(d){_catalogCache=(d.vendor&&Array.isArray(d.vendor.catalog))?d.vendor.catalog:[];return _catalogCache;});}" +
+  "function openCatalogPicker(){var existingIds=new Set(Array.prototype.slice.call(document.querySelectorAll('.line-row')).map(function(tr){return tr.dataset.catalogId;}).filter(Boolean));loadCatalog().then(function(items){var ov=document.createElement('div');ov.className='picker-overlay';ov.innerHTML='<div class=\"picker-modal\"><div class=\"picker-head\"><div>Add items from catalog</div><button class=\"picker-close\" type=\"button\">&times;</button></div><div class=\"picker-body\"></div><div class=\"picker-foot\"><button class=\"picker-blank\" type=\"button\">+ Blank Line</button><div style=\"flex:1\"></div><button class=\"picker-cancel\" type=\"button\">Cancel</button><button class=\"picker-add\" type=\"button\">Add Selected</button></div></div>';document.body.appendChild(ov);var body=ov.querySelector('.picker-body');if(!items.length){body.innerHTML='<div style=\"padding:32px;text-align:center;color:#888;font-size:13px\">This vendor has no catalog items yet. Add some on the Vendor Hub or use \"+ Blank Line\" below.</div>';}else{body.innerHTML='<table class=\"picker-tbl\"><thead><tr><th style=\"width:30px\"></th><th>SKU</th><th>Description</th><th>MFG</th><th style=\"text-align:right\">Def Qty</th><th style=\"text-align:right\">Unit $</th></tr></thead><tbody>'+items.map(function(it){var checked=existingIds.has(it.id)?'disabled checked':'';var dis=existingIds.has(it.id)?' style=\"opacity:.5\"':'';return '<tr'+dis+'><td><input type=\"checkbox\" data-id=\"'+it.id+'\" '+checked+'></td><td>'+(it.sku||'').replace(/</g,'&lt;')+'</td><td>'+(it.description||'').replace(/</g,'&lt;')+'</td><td>'+(it.mfg||'').replace(/</g,'&lt;')+'</td><td style=\"text-align:right\">'+(it.default_qty||0)+'</td><td style=\"text-align:right\">$'+(parseFloat(it.unit_price)||0).toFixed(2)+'</td></tr>';}).join('')+'</tbody></table>';}function close(){ov.remove();}ov.querySelector('.picker-close').addEventListener('click',close);ov.querySelector('.picker-cancel').addEventListener('click',close);ov.addEventListener('click',function(e){if(e.target===ov)close();});ov.querySelector('.picker-blank').addEventListener('click',function(){close();addBlankLine();});ov.querySelector('.picker-add').addEventListener('click',function(){var picks=Array.prototype.slice.call(ov.querySelectorAll('input[type=checkbox]:checked:not([disabled])'));if(!picks.length){close();return;}picks.forEach(function(cb){var id=cb.dataset.id;var it=items.find(function(x){return x.id===id;});if(it)appendLineFromCatalog(it);});close();patchPo({lines:readLines()});});});}" +
+  "function appendLineFromCatalog(it){var tbody=document.querySelector('table.lines tbody');var addRow=tbody.querySelector('.add-line-row');var noLines=tbody.querySelector('.no-lines-row');if(noLines)noLines.remove();var tr=document.createElement('tr');tr.className='line-row';tr.dataset.lineId='';tr.dataset.catalogId=it.id||'';var q=it.default_qty||0;var p=parseFloat(it.unit_price)||0;tr.innerHTML='<td class=\"td-num\"><span class=\"editable l-sku\" data-type=\"text\">'+((it.sku||'').replace(/</g,'&lt;'))+'</span></td>'+'<td class=\"td-desc\"><span class=\"editable editable-block l-desc\" data-type=\"text\">'+((it.description||'').replace(/</g,'&lt;'))+'</span><div class=\"line-sub\">MFG Part #<span class=\"editable l-mfgpart\" data-type=\"text\">'+((it.mfg_part_no||'').replace(/</g,'&lt;'))+'</span></div></td>'+'<td class=\"td-num\"><span class=\"editable l-mfg\" data-type=\"text\">'+((it.mfg||'').replace(/</g,'&lt;'))+'</span></td>'+'<td class=\"td-num\"><span class=\"editable l-qty\" data-type=\"number\">'+q+'</span></td>'+'<td class=\"td-num\">$<span class=\"editable l-price\" data-type=\"number\">'+p.toFixed(2)+'</span></td>'+'<td class=\"td-num\"><strong class=\"l-ext\">'+fmtMoney(q*p)+'</strong><button type=\"button\" class=\"remove-line edit-only\" title=\"Remove line\" style=\"margin-left:6px\">×</button></td>';tbody.insertBefore(tr,addRow);tr.querySelector('.remove-line').addEventListener('click',function(ev){ev.stopPropagation();removeLine(tr);});wireAll();refreshTotal();}" +
+  "function addBlankLine(){var tbody=document.querySelector('table.lines tbody');var addRow=tbody.querySelector('.add-line-row');var noLines=tbody.querySelector('.no-lines-row');if(noLines)noLines.remove();var tr=document.createElement('tr');tr.className='line-row';tr.dataset.lineId='';tr.dataset.catalogId='';tr.innerHTML='<td class=\"td-num\"><span class=\"editable l-sku\" data-type=\"text\"></span></td>'+'<td class=\"td-desc\"><span class=\"editable editable-block l-desc\" data-type=\"text\"></span><div class=\"line-sub\">MFG Part #<span class=\"editable l-mfgpart\" data-type=\"text\"></span></div></td>'+'<td class=\"td-num\"><span class=\"editable l-mfg\" data-type=\"text\"></span></td>'+'<td class=\"td-num\"><span class=\"editable l-qty\" data-type=\"number\">0</span></td>'+'<td class=\"td-num\">$<span class=\"editable l-price\" data-type=\"number\">0.00</span></td>'+'<td class=\"td-num\"><strong class=\"l-ext\">$0.00</strong><button type=\"button\" class=\"remove-line edit-only\" title=\"Remove line\" style=\"margin-left:6px\">×</button></td>';tbody.insertBefore(tr,addRow);tr.querySelector('.remove-line').addEventListener('click',function(ev){ev.stopPropagation();removeLine(tr);});wireAll();setTimeout(function(){tr.querySelector('.l-desc').click();},20);}" +
+  "function removeLine(tr){tr.remove();refreshTotal();patchPo({lines:readLines()});}" +
+  "function wireButtons(){document.querySelectorAll('.remove-line').forEach(function(b){b.addEventListener('click',function(e){e.stopPropagation();removeLine(b.closest('.line-row'));});});var addBtn=document.getElementById('addLineBtn');if(addBtn)addBtn.addEventListener('click',openCatalogPicker);}" +
+  // ── Status transition buttons (Send / Cancel / Delete) ────────
+  "var SEND_TO=" + JSON.stringify(vendorEmails) + ";" +
+  "var CC=" + JSON.stringify(Array.isArray(v.cc_emails) ? v.cc_emails : []) + ";" +
+  "var CONTACTS=" + JSON.stringify(vendorContacts) + ";" +
+  "var SHARE_TOKEN=" + JSON.stringify(po.share_token || '') + ";" +
+  "function sendPo(){if(!SEND_TO.length){alert('Vendor has no send-to email — click the email row above to add one.');return;}var greeting=CONTACTS.length?'Hello '+CONTACTS[0].split(/\\s+/)[0]+',':'Hello,';var poLink=location.origin+'/vpo/'+encodeURIComponent(poNumber)+'?t='+SHARE_TOKEN;var body=greeting+'\\n\\nAttached is WhisperRoom Purchase Order '+poNumber+'. Please confirm receipt and let us know expected ship date.\\n\\nView online: '+poLink+'\\n\\nThank you,\\nJosh Fletcher\\nWhisperRoom, Inc.';var subject='WhisperRoom PO '+poNumber;var params='subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body)+(CC.length?'&cc='+encodeURIComponent(CC.join(',')):'');patchPo({status:'SENT'}).then(function(){window.location.href='mailto:'+encodeURIComponent(SEND_TO.join(','))+'?'+params;});}" +
+  "function cancelPo(){if(!confirm('Cancel this PO? This can\\'t be undone.'))return;patchPo({status:'CANCELLED'}).then(function(){setTimeout(function(){window.location.href='/vendor-pos';},800);});}" +
+  "function deletePo(){if(!confirm('Delete this PO? This can\\'t be undone.'))return;fetch('/api/vendor-pos/'+encodeURIComponent(poNumber),{method:'DELETE',credentials:'include'}).then(function(r){return r.json();}).then(function(d){if(d.error){setStatus(d.error,true);return;}window.location.href='/vendor-pos';});}" +
+  "function createAndDownload(){if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();var btn=document.getElementById('createPoBtn');var origText=btn.textContent;btn.disabled=true;btn.textContent='Generating…';setStatus('Generating PDF…',false);setTimeout(function(){fetch('/api/vendor-pos/'+encodeURIComponent(poNumber)+'/pdf',{method:'POST',credentials:'include'}).then(function(r){if(!r.ok)return r.json().then(function(d){throw new Error(d.error||'Failed');});return r.blob();}).then(function(blob){var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download=poNumber+'.pdf';document.body.appendChild(a);a.click();URL.revokeObjectURL(url);a.remove();setStatus('Saved');btn.disabled=false;btn.textContent=origText;}).catch(function(e){setStatus(e.message||'Error',true);btn.disabled=false;btn.textContent=origText;});},150);}" +
+  "var cb_create=document.getElementById('createPoBtn');if(cb_create)cb_create.addEventListener('click',createAndDownload);" +
+  "var sb=document.getElementById('sendPoBtn');if(sb)sb.addEventListener('click',sendPo);" +
+  "var cb=document.getElementById('cancelPoBtn');if(cb)cb.addEventListener('click',cancelPo);" +
+  "var db=document.getElementById('deletePoBtn');if(db)db.addEventListener('click',deletePo);" +
+  "wireAll();wireButtons();" +
+'})();</script>' +
+
+'</body></html>';
+
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(vpoHtml);
+    } catch(e) {
+      console.error('[vpo page] error:', e.message);
       res.writeHead(500); res.end('Server error');
     }
     return;

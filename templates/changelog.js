@@ -51,6 +51,80 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.49.8', date:'May 28, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Removed the Expected Delivery row from the `/vpo/` doc.** Lives only on the Vendor Hub listing now (where it&rsquo;s inline-editable). The doc was showing it twice in two places, redundant.'},
+      ]
+    },
+    {
+      v:'1.49.7', date:'May 28, 2026', tag:'feature',
+      changes:[
+        {t:'fix', d:'**TOTAL row recomputes on edits.** Added `refreshTotal()` to the `/vpo/` JS; it sums every line&rsquo;s qty × unit price and updates `#poGrandTotal`. Called after every line edit (qty/price commit), catalog-picker add, "+ Blank Line", and remove. Previously the TOTAL stayed at the server-rendered value until page refresh.'},
+        {t:'add', d:'**"Create / Download PDF" button on the doc.** Replaces the Print/Save PDF button. Clicking it `POST`s to a new `/api/vendor-pos/:poNumber/pdf` endpoint that (1) generates a fresh PDF via Puppeteer, (2) uploads/overwrites in `GDRIVE_VENDOR_POS_FOLDER`, (3) streams the bytes back with `Content-Disposition: attachment` so the browser saves it locally as `{po_number}.pdf`. Refactored `_regenerateVendorPoPdf` to return `{buf, filename}`; existing fire-and-forget callers ignore the return.'},
+        {t:'ui', d:'**× removes a line with no confirm.** The "Remove this line?" confirm popup on the line × button is gone — clicking × clears the row immediately. Edits autosave, so accidentally-removed lines are easy enough to re-add via the catalog picker.'},
+        {t:'add', d:'**Standing Vendor Notes are now editable on the doc.** Click the standing notes block to edit. Saves to both the PO snapshot and the vendor record (same as the other vendor_snapshot fields) so the next PO Josh creates for that vendor inherits the latest notes.'},
+      ]
+    },
+    {
+      v:'1.49.6', date:'May 28, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**+ New PO opens the new PO in a new tab.** Previously redirected the current tab; now the listing stays put while the new `/vpo/` opens fresh. Listing also refreshes so the new PO shows up immediately in the table.'},
+      ]
+    },
+    {
+      v:'1.49.5', date:'May 28, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**`/vpo/` is now the primary PO edit surface.** Clicking "+ New PO" on the Vendor Hub opens a tiny "pick a vendor" modal; on Create the server stamps an empty `OPEN` PO and the browser is redirected to `/vpo/{po_number}` where all editing happens. The "Edit" button on each listing row was replaced with "Open" (same behavior — opens the doc page in a new tab). Empty-lines POST is now allowed; POs are filled in on the doc.'},
+        {t:'add', d:'**Full editability on the PO doc.** The entire vendor block and the Ship-To block are now editable inline: vendor address (multi-line textarea), send-to emails (comma-separated, mailto: links suppressed in edit mode so clicks open the editor instead of the mail client), freight + payment terms (already in v1.49.4), plus all six ship-to fields (name, address line 1, address line 2, ATTN, phone, email). Ship-to overrides save to `po_data.ship_to`; the WhisperRoom default still shows when no override is set.'},
+        {t:'add', d:'**Vendor edits auto-propagate to the vendor profile.** When the rep edits any vendor_snapshot field on the PO doc, the change PATCHes both the PO (snapshot) and the vendor record (`/api/vendors/:id`) in parallel — so the next PO Josh creates for that vendor starts with the updated info. The v1.49.2 confirm prompt ("save to profile?") is gone; it&rsquo;s automatic now.'},
+        {t:'add', d:'**Catalog picker on "+ Add Line".** Clicking + Add Line opens a popup overlay listing the vendor&rsquo;s catalog items with checkboxes. Pick any subset → "Add Selected" appends them as PO lines with default qty + price pre-filled. Already-on-PO items are disabled (checked + greyed) so they can&rsquo;t be added twice. There&rsquo;s also a "+ Blank Line" button in the picker footer for one-off items.'},
+        {t:'add', d:'**Send / Cancel / Delete buttons on the doc page.** When viewed by an authenticated rep, the top-right action bar gains: Send (when OPEN — flips status to SENT and opens mailto), Cancel PO (when OPEN/SENT/PARTIAL — flips to CANCELLED), Delete (when OPEN). All gated server-side via `isAuth(req)` so vendors hitting the share-token link see only the Print button.'},
+      ]
+    },
+    {
+      v:'1.49.4', date:'May 28, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Edit-in-place on the PO doc page (`/vpo/:poNumber`).** When an authenticated rep opens the PO link, every editable field on the doc lights up on hover and accepts a click to edit: line item SKU, description, MFG, MFG Part #, qty, unit price; PO Notes (textarea); Expected Delivery date; vendor block phone, contacts (comma-separated), freight terms, payment terms. Add new lines via a "+ Add Line" button at the bottom of the table; remove with the × on each row. Each blur fires a PATCH `/api/vendor-pos/:poNumber`; the server kicks off PDF regen + Drive overwrite as before. A small "Edit mode" pill in the top-left shows "Saving…" → "Saved" status on every change. Mode is server-gated on `isAuth(req)` — Puppeteer scrapes `/vpo/` with the share token only, so PDF rendering still sees the clean read-only doc. `@media print` rules also hide all edit chrome so the browser&rsquo;s built-in print preview matches what vendors get. Escape cancels an active edit; Enter commits (Ctrl+Enter in textareas).'},
+      ]
+    },
+    {
+      v:'1.49.3', date:'May 28, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Vendor Hub: merged Vendors + Vendor POs into one page with tabs.** `/vendor-pos` is now a single page with two tabs &mdash; **Purchase Orders** (default) and **Vendors**. `/vendors` redirects to `/vendor-pos#vendors` so old bookmarks still work. The nav link across all 9 dashboards collapsed from two links to one ("Vendor Hub"). The page-sub blurb about "Suppliers Josh orders from..." was dropped (per request).'},
+        {t:'ui', d:'**Reverted the v1.49.2 orange theming pass on the PO modal.** Section labels back to muted (was orange); PO Lines table header back to surface2/muted (was orange tint); lines-add background and total back to standard (was orange); modal&rsquo;s 3px orange top border removed; vendor info form back to surface2 background (was orange); catalog header back to muted (was orange); PO# in listing back to text color (was orange); OPEN status pill back to neutral gray (was orange). Kept: orange "+ New PO" / "+ New Vendor" buttons, orange filter-pill active state, subtle orange tint on "checked" catalog rows, orange tab indicator.'},
+      ]
+    },
+    {
+      v:'1.49.2', date:'May 28, 2026', tag:'ui',
+      changes:[
+        {t:'ui',  d:'**Vendor PO doc (`/vpo/:poNumber`) polish.** Header now uses the WhisperRoom SVG logo (same one as the Audimute `/po/` doc) instead of the styled "WhisperRoom" text — loaded from `assets/whisperroom-logo.svg.b64` at startup, served via new `wrLogoImg()` helper. Removed "ORDER CONFIRMED BY: ___ DATE: ___" sign-off line. Billing block now drops "Attn: Accounting" and adds `accounting@whisperroom.com`. PO contact name is hardcoded to "Josh Fletcher" everywhere (was the logged-in rep, which surfaced "Benton" on docs from Benton&rsquo;s sessions). DRAFT status badge removed (status enum changed — see below).'},
+        {t:'fix', d:'**Vendor PO status lifecycle simplified — no more draft + approve gate.** Per request: when Josh hits Create, the PO is live (status OPEN), no approval step. New lifecycle: `OPEN → SENT → PARTIAL → RECEIVED → CLOSED` (+ `CANCELLED`). The modal&rsquo;s Save+Approve+Unapprove buttons collapsed into just "Create PO" / "Save Changes" + "Send (Mailto)". POST `/api/vendor-pos` now stamps `OPEN` instead of `DRAFT`; the transition map (`_VENDOR_PO_TRANSITIONS`) lost DRAFT/APPROVED entries.'},
+        {t:'ui',  d:'**Editable vendor info inside the PO modal.** The vendor block (phone, address, contacts, send-to + cc emails, freight + payment terms, standing notes) became a full editable form (previously a read-only display). On Save, if any field changed vs the loaded snapshot, a confirm prompt asks whether to also save the changes back to the vendor profile via PATCH `/api/vendors/:id`. Either way the PO snapshot captures the edited values. Vendor name itself stays read-only (changing it would create a new vendor).'},
+        {t:'ui',  d:'**Listing table fields + inline edit + View button.** Table now mirrors the Audimute `/suppliers` shape: PO # / Vendor / Status / Lines / Total / Expected (inline-editable date) / Sent / Created / Actions. Each row has [View] (opens `/vpo/...` in new tab) and [Edit] (opens modal). Expected date is inline-editable — typing turns the field orange ("dirty") and `onblur` PATCHes. The Expected Delivery field was removed from the modal — it lives only on the table now.'},
+        {t:'ui',  d:'**More orange in the PO creation modal.** Section labels became orange with subtle dividers; PO Lines block has an orange-tinted header and borders; catalog "checked" rows tint orange; running total displays in orange; modal gets a 3px orange top border. The bland gray modal got a brand-aligned identity pass.'},
+        {t:'fix', d:'**PDF auto-generates on initial create and on every edit.** Was previously only firing on DRAFT→APPROVED transitions; now fires on POST (so a PDF exists in Drive the moment Josh hits Create) and on any subsequent PATCH that touches lines/notes/vendor info or transitions into SENT. Skipped for CANCELLED / CLOSED.'},
+        {t:'fix', d:'**Send always saves first.** `sendPo()` previously skipped saving when the PO already existed, so edits sitting in the modal would not make it onto the SENT version. Now always calls savePo() before transitioning + opening the mailto draft.'},
+      ]
+    },
+    {
+      v:'1.49.1', date:'May 28, 2026', tag:'log',
+      changes:[
+        {t:'add', d:'**Reference vendor seed script for trial.** Added `scripts/seed-test-vendors.js` — a browser-console-paste IIFE that loads the three example vendors from the old Excel POs (Bertelkamp Automation, Carpenter, AJ Nonwovens-Hampton/Foss) into the new vendor catalog, complete with the ~20 catalog items they carry (extrusions, foam sheets, Duralock rolls, etc.). Idempotent — re-runs PATCH the existing rows instead of duplicating. Paste into DevTools console at `/vendors` while logged into staging to populate. No runtime change.'},
+      ]
+    },
+    {
+      v:'1.49.0', date:'May 28, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**WR PO System — Phase 1 part 2: Vendor PO builder.** New `/vendor-pos` page (Vendor POs nav link added across all 9 dashboards). Click "+ New PO" → pick a vendor from the dropdown → all vendor info auto-fills (address, contacts, send-to emails, freight + payment terms, standing notes) → the vendor&rsquo;s catalog appears as a checkable table. Tick items to add them to the PO; default qty + unit price prefill from the catalog and stay editable in the lines table below. "+ Add Custom Line" handles one-off items. Save creates the PO as DRAFT with a `WV-{YY}{MM}{DD}{NN}` number. Lifecycle: DRAFT → APPROVED (Josh self-approves, status flip is the audit trail) → SENT (opens mailto:vendor.send_to_emails with the PO link in the body; Josh manually attaches the PDF). Edits after SENT regenerate the PDF and overwrite the Drive file in place via stored `pdf_drive_file_id`. Cancel and Delete (DRAFT only) options. The PO document at `/vpo/:poNumber` is a printable HTML page (vendor block / WhisperRoom ship-to / line items / freight + payment terms / standing notes / sign-off line / billing address) that Puppeteer scrapes to PDF — same pipeline as quotes/invoices/orders. Drive uploads land in `GDRIVE_VENDOR_POS_FOLDER` (env var set in Railway). Backed by new `vendor_pos` table (`vendor_snapshot` JSONB freezes the vendor record at PO creation time so historical POs stay correct even when Josh edits a vendor later). Phase 2 (receive workflow + Kim&rsquo;s invoice match modal + urgency dashboard) lands in v1.50 once Josh has run a few real POs through this.'},
+      ]
+    },
+    {
+      v:'1.48.0', date:'May 28, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**WR PO System — Phase 1: Vendor catalog.** New `/vendors` page (Vendors nav link added across all dashboards). Josh can create, edit, and archive vendors here, each with: vendor address, multiple contacts, multiple TO + CC emails, payment terms, freight terms (e.g. Bertelkamp&rsquo;s "Ship COLLECT via ABF Account #189059"), standing notes, billing address override, and an inline catalog editor (SKU, description, MFG, MFG part #, default qty, unit price, price-last-updated date — the last is a free-text hint, no auto-staleness flagging per spec). Backed by a new `vendors` Postgres table (JSONB columns for repeating fields) and a full CRUD API at `/api/vendors`. This is the foundation for the Vendor PO builder coming in v1.49. Audimute AP POs (`supplier_pos` table, `/suppliers` page) are unchanged &mdash; that&rsquo;s a separate sales-rep-oriented drop-ship system.'},
+      ]
+    },
+    {
       v:'1.47.2', date:'May 28, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Final Mile Delivery button repositioned inline with the freight description line.** Final placement: directly right of the "Address auto-filled from ship-to. ABF LTL rate with 25% markup applied." paragraph, right-aligned via flex justify-content:space-between. Dropped the standalone row added in v1.47.1. Modal + email behavior unchanged.'},

@@ -292,6 +292,32 @@
 </div>
 
 <!-- ── PO Edit/Create Modal ────────────────────────────────────── -->
+<!-- ── Pick-a-vendor mini modal for "+ New PO" ─────────────────── -->
+<div class="modal-overlay" id="newPoModal" onclick="if (event.target === this) closeNewPoModal()">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <div class="modal-title">New PO — Pick Vendor</div>
+      <button class="modal-close" onclick="closeNewPoModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Vendor</label>
+        <select id="newPoVendorSelect">
+          <option value="">— Select a vendor —</option>
+        </select>
+      </div>
+      <div class="helper">After Create you&rsquo;ll be taken to the PO document where you can add line items, edit vendor info, and Send.</div>
+    </div>
+    <div class="modal-footer">
+      <div></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost" onclick="closeNewPoModal()">Cancel</button>
+        <button class="btn btn-orange" id="newPoCreateBtn" onclick="createNewPoFromPicker()">Create PO</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="poModal" onclick="if (event.target === this) closePoModal()">
   <div class="modal">
     <div class="modal-header">
@@ -676,8 +702,7 @@ function renderPos() {
         '<td style="font-size:12px;color:var(--muted)">' + escapeHtml(sent) + '</td>' +
         '<td style="font-size:12px;color:var(--muted)">' + escapeHtml(created) + '</td>' +
         '<td><div class="row-actions">' +
-          '<button class="btn btn-orange-soft btn-sm" onclick="viewPo(\'' + encodeURIComponent(p.po_number) + '\', \'' + escapeHtml(p.share_token) + '\')">View</button>' +
-          '<button class="btn btn-ghost btn-sm" onclick="openEditPo(\'' + encodeURIComponent(p.po_number) + '\')">Edit</button>' +
+          '<button class="btn btn-orange-soft btn-sm" onclick="viewPo(\'' + encodeURIComponent(p.po_number) + '\', \'' + escapeHtml(p.share_token) + '\')">Open</button>' +
         '</div></td>' +
       '</tr>'
     );
@@ -716,45 +741,53 @@ async function saveExpectedDate(poNumber) {
   }
 }
 
-// ── Modal: open new ────────────────────────────────────────────
+// ── + New PO: tiny pick-vendor modal -> POST -> redirect to /vpo/ ──
+// The /vpo/:poNumber doc page is the primary edit surface (v1.49.5+),
+// so all the catalog + line + vendor info editing happens there.
 function openNewPo() {
-  _editingPo = null;
-  _initialSnapshot = null;
-  document.getElementById('pmTitle').innerHTML = 'New Vendor PO';
-  document.getElementById('pmMeta').textContent = '';
-  document.getElementById('pmViewPdfBtn').style.display = 'none';
-  document.getElementById('pmDeleteBtn').style.display = 'none';
-  document.getElementById('pmCancelPoBtn').style.display = 'none';
-  document.getElementById('pmSendBtn').style.display = 'none';
-  document.getElementById('pmSaveBtn').textContent = 'Create PO';
-  document.getElementById('pmSaveBtn').disabled = false;
-
-  const sel = document.getElementById('pmVendorSelect');
-  sel.disabled = false;
+  const sel = document.getElementById('newPoVendorSelect');
   sel.innerHTML = '<option value="">— Select a vendor —</option>' +
     _vendors.filter(v => !v.archived).map(v =>
       '<option value="' + v.id + '">' + escapeHtml(v.name) + '</option>'
     ).join('');
   sel.value = '';
-
-  resetForm();
-  document.getElementById('poModal').classList.add('open');
+  document.getElementById('newPoCreateBtn').disabled = false;
+  document.getElementById('newPoCreateBtn').textContent = 'Create PO';
+  document.getElementById('newPoModal').classList.add('open');
   setTimeout(() => sel.focus(), 60);
 }
-
-// ── Modal: open edit ────────────────────────────────────────────
-async function openEditPo(encodedPoNumber) {
-  const poNumber = decodeURIComponent(encodedPoNumber);
+function closeNewPoModal() {
+  document.getElementById('newPoModal').classList.remove('open');
+}
+async function createNewPoFromPicker() {
+  const id = parseInt(document.getElementById('newPoVendorSelect').value || 0, 10);
+  if (!id) { showToast('Pick a vendor first', 'error'); return; }
+  const btn = document.getElementById('newPoCreateBtn');
+  btn.disabled = true; btn.textContent = 'Creating…';
   try {
-    const r = await fetch('/api/vendor-pos/' + encodeURIComponent(poNumber), { credentials: 'include' });
+    const r = await fetch('/api/vendor-pos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ vendor_id: id, lines: [] }),
+    });
     const data = await r.json();
-    if (!r.ok) throw new Error(data.error || 'Failed to load PO');
-    _editingPo = data.po;
-    populateModal(data.po);
-    document.getElementById('poModal').classList.add('open');
+    if (!r.ok) throw new Error(data.error || 'Create failed');
+    closeNewPoModal();
+    // Navigate to the doc page where editing happens
+    window.location.href = '/vpo/' + encodeURIComponent(data.po.po_number) + '?t=' + data.po.share_token;
   } catch (e) {
     showToast('Error: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = 'Create PO';
   }
+}
+
+// ── Edit a row: navigate to /vpo/ (the doc page is the edit surface) ─
+function openEditPo(encodedPoNumber) {
+  const poNumber = decodeURIComponent(encodedPoNumber);
+  const po = _pos.find(p => p.po_number === poNumber);
+  const t = po && po.share_token ? ('?t=' + po.share_token) : '';
+  window.location.href = '/vpo/' + encodeURIComponent(poNumber) + t;
 }
 
 function populateModal(po) {
@@ -1408,6 +1441,7 @@ async function archiveVendor() {
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
+    if (document.getElementById('newPoModal').classList.contains('open'))  closeNewPoModal();
     if (document.getElementById('poModal').classList.contains('open'))     closePoModal();
     if (document.getElementById('vendorModal').classList.contains('open')) closeVendorModal();
   }

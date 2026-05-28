@@ -11906,8 +11906,9 @@ ${q.accepted ? `
     catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
     const vendorId = parseInt(body.vendor_id || 0, 10);
     if (!vendorId) { json({ error: 'vendor_id required' }, 400); return; }
+    // Empty lines OK at create time — the rep fills them in on the
+    // /vpo/ doc page (which is now the primary edit surface).
     const lines = _normalizeVendorPoLines(body.lines);
-    if (!lines.length) { json({ error: 'At least one line item with a description is required' }, 400); return; }
     try {
       if (!db) { json({ error: 'No database' }, 500); return; }
 
@@ -11990,9 +11991,11 @@ ${q.accepted ? `
         }
         const newPoData = Object.assign({}, cur.po_data || {});
         if (body.lines !== undefined) {
-          const newLines = _normalizeVendorPoLines(body.lines);
-          if (!newLines.length) { json({ error: 'At least one line item with a description is required' }, 400); return; }
-          newPoData.lines = newLines;
+          // Empty lines OK during editing (rep may remove all then add new).
+          newPoData.lines = _normalizeVendorPoLines(body.lines);
+        }
+        if (body.ship_to !== undefined && body.ship_to && typeof body.ship_to === 'object') {
+          newPoData.ship_to = body.ship_to;
         }
         if (body.notes !== undefined) {
           newPoData.notes = String(body.notes || '').trim() || null;
@@ -13824,11 +13827,32 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
 '.add-line-row td{background:#fafafa;padding:8px 9px;border-top:1px dashed #ddd}' +
 '.add-line-btn{padding:5px 11px;background:rgba(238,98,22,.1);color:#ee6216;border:1px solid rgba(238,98,22,.35);border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase}' +
 '.add-line-btn:hover{background:rgba(238,98,22,.18)}' +
-'@media print {.print-bar{display:none} .edit-banner{display:none!important} .edit-only{display:none!important} .editable:hover{background:transparent!important;box-shadow:none!important} body{background:#fff;padding:0} .page{box-shadow:none;border-radius:0;max-width:100%;padding:36px 40px}}' +
+'.picker-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}' +
+'.picker-modal{background:#fff;border-radius:10px;max-width:780px;width:100%;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden}' +
+'.picker-head{padding:14px 18px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:700;color:#1a1a1a}' +
+'.picker-close{background:none;border:none;color:#888;font-size:20px;cursor:pointer;padding:0 6px;line-height:1}' +
+'.picker-body{padding:0;overflow-y:auto;flex:1}' +
+'.picker-tbl{width:100%;border-collapse:collapse;font-size:12px}' +
+'.picker-tbl th{background:#fafafa;padding:8px 10px;text-align:left;font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid #eee;position:sticky;top:0}' +
+'.picker-tbl td{padding:7px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}' +
+'.picker-tbl tr:hover td{background:#fdfcfb}' +
+'.picker-foot{padding:12px 18px;border-top:1px solid #eee;display:flex;gap:8px;align-items:center}' +
+'.picker-foot button{padding:7px 14px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:6px;border:none;cursor:pointer;font-family:inherit}' +
+'.picker-foot .picker-blank{background:#fafafa;color:#555;border:1px solid #ddd}' +
+'.picker-foot .picker-blank:hover{background:#f0f0f0}' +
+'.picker-foot .picker-cancel{background:transparent;color:#888;border:1px solid #ddd}' +
+'.picker-foot .picker-add{background:#ee6216;color:#fff}' +
+'.picker-foot .picker-add:hover{opacity:.9}' +
+'@media print {.print-bar{display:none} .edit-banner{display:none!important} .edit-only{display:none!important} .editable:hover{background:transparent!important;box-shadow:none!important} .picker-overlay{display:none!important} body{background:#fff;padding:0} .page{box-shadow:none;border-radius:0;max-width:100%;padding:36px 40px}}' +
 '</style></head><body' + (isAuth(req) ? ' data-edit-mode="1"' : '') + '>' +
 
 '<div class="edit-banner"><span class="dot"></span><span>Edit mode</span><span class="save-status" id="saveStatus"></span></div>' +
-'<div class="print-bar"><button onclick="window.print()">Print / Save PDF</button></div>' +
+'<div class="print-bar">' +
+  (isAuth(req) && po.status === 'OPEN' ? '<button id="sendPoBtn" style="background:#16a34a">Send (Mailto)</button>' : '') +
+  (isAuth(req) && (po.status === 'OPEN' || po.status === 'SENT' || po.status === 'PARTIAL') ? '<button id="cancelPoBtn" style="background:#444">Cancel PO</button>' : '') +
+  (isAuth(req) && po.status === 'OPEN' ? '<button id="deletePoBtn" style="background:#dc2626">Delete</button>' : '') +
+  '<button onclick="window.print()">Print / Save PDF</button>' +
+'</div>' +
 
 '<div class="page">' +
 
@@ -13851,19 +13875,28 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
       '<div class="party-label">Vendor</div>' +
       '<div class="party-name">' + esc(v.name || '—') + '</div>' +
       '<div class="party-line">ATTN: <span class="editable" data-snap-field="contacts_csv" data-type="text">' + esc(vendorContacts.join(', ') || '—') + '</span></div>' +
-      (vendorAddrLines.length ? '<div class="party-line">' + vendorAddrLines.map(esc).join('<br>') + '</div>' : '') +
+      '<div class="party-line"><span class="editable editable-block" data-snap-field="address_lines_text" data-type="textarea">' + esc(vendorAddrLines.join('\n')) + '</span></div>' +
       '<div class="party-line">PH: <span class="editable" data-snap-field="phone" data-type="text">' + esc(v.phone || '—') + '</span></div>' +
-      (vendorEmails.length ? '<div class="party-line">' + vendorEmails.map(e => '<a href="mailto:' + esc(e) + '">' + esc(e) + '</a>').join('<br>') + '</div>' : '') +
+      '<div class="party-line"><span class="editable editable-block email-line" data-snap-field="send_to_emails_csv" data-type="text">' + (vendorEmails.length ? vendorEmails.map(e => '<a class="vendor-email" href="mailto:' + esc(e) + '">' + esc(e) + '</a>').join('<br>') : '—') + '</span></div>' +
     '</div>' +
-    '<div class="party">' +
-      '<div class="party-label">Ship To</div>' +
-      '<div class="party-name">WhisperRoom, Inc.</div>' +
-      '<div class="party-line">103 S. Sugar Hollow Rd.</div>' +
-      '<div class="party-line">Morristown, TN 37813</div>' +
-      '<div class="party-line">ATTN: ' + esc(repNameVpo) + '</div>' +
-      '<div class="party-line">PH: 423-585-5828</div>' +
-      '<div class="party-line"><a href="mailto:jfletcher@whisperroom.com">jfletcher@whisperroom.com</a></div>' +
-    '</div>' +
+    (function() {
+      const st = d.ship_to || {};
+      const stName    = st.name    != null ? st.name    : 'WhisperRoom, Inc.';
+      const stAddr1   = st.address1 != null ? st.address1 : '103 S. Sugar Hollow Rd.';
+      const stAddr2   = st.address2 != null ? st.address2 : 'Morristown, TN 37813';
+      const stAttn    = st.attn    != null ? st.attn    : repNameVpo;
+      const stPhone   = st.phone   != null ? st.phone   : '423-585-5828';
+      const stEmail   = st.email   != null ? st.email   : 'jfletcher@whisperroom.com';
+      return '<div class="party">' +
+        '<div class="party-label">Ship To</div>' +
+        '<div class="party-name"><span class="editable" data-ship-field="name" data-type="text">' + esc(stName) + '</span></div>' +
+        '<div class="party-line"><span class="editable" data-ship-field="address1" data-type="text">' + esc(stAddr1) + '</span></div>' +
+        '<div class="party-line"><span class="editable" data-ship-field="address2" data-type="text">' + esc(stAddr2) + '</span></div>' +
+        '<div class="party-line">ATTN: <span class="editable" data-ship-field="attn" data-type="text">' + esc(stAttn) + '</span></div>' +
+        '<div class="party-line">PH: <span class="editable" data-ship-field="phone" data-type="text">' + esc(stPhone) + '</span></div>' +
+        '<div class="party-line"><span class="editable wr-email" data-ship-field="email" data-type="text"><a class="wr-email-link" href="mailto:' + esc(stEmail) + '">' + esc(stEmail) + '</a></span></div>' +
+      '</div>';
+    })() +
   '</div>' +
 
   '<div class="meta-row"><span>Expected Delivery</span><span><strong><span class="editable" data-field="expected_date" data-type="date" data-raw="' + esc(po.expected_date || '') + '">' + esc(expectedDate || '—') + '</span></strong></span></div>' +
@@ -13905,23 +13938,46 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
 // ── Inline edit JS ────────────────────────────────────────────────
 // Only fires when body[data-edit-mode="1"]; gated server-side to
 // authenticated reps. Puppeteer scrapes /vpo/ with share-token only,
-// so PDF rendering never sees this UI.
+// so PDF rendering never sees this UI. Every blur PATCHes both the
+// PO and the vendor record (the user wants vendor edits to persist
+// across future POs).
 '<script>(function(){' +
   "if(document.body.dataset.editMode!=='1')return;" +
   "var poNumber=" + JSON.stringify(poNumber) + ";" +
+  "var vendorId=" + JSON.stringify(po.vendor_id || null) + ";" +
   "var saveStatus=document.getElementById('saveStatus');" +
   "var saveTimer;function setStatus(t,err){if(!saveStatus)return;saveStatus.textContent=t||'';saveStatus.style.color=err?'#ef4444':(t==='Saved'?'#22c55e':'#888');if(saveTimer)clearTimeout(saveTimer);if(t==='Saved')saveTimer=setTimeout(function(){saveStatus.textContent='';},2200);}" +
   "function patchPo(body){setStatus('Saving…',false);return fetch('/api/vendor-pos/'+encodeURIComponent(poNumber),{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify(body)}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||'Save failed');return d;});}).then(function(d){setStatus('Saved');return d;}).catch(function(e){setStatus(e.message||'Error',true);throw e;});}" +
+  "function patchVendor(partial){if(!vendorId)return Promise.resolve(null);return fetch('/api/vendors/'+vendorId,{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify(partial)}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});}" +
   "function readLines(){return Array.prototype.slice.call(document.querySelectorAll('.line-row')).map(function(tr){return{id:tr.dataset.lineId||undefined,catalog_id:tr.dataset.catalogId||null,sku:tr.querySelector('.l-sku').textContent.trim(),description:tr.querySelector('.l-desc').textContent.trim(),mfg:tr.querySelector('.l-mfg').textContent.trim(),mfg_part_no:tr.querySelector('.l-mfgpart').textContent.trim(),qty:parseFloat(tr.querySelector('.l-qty').textContent.replace(/[^0-9.-]/g,'')||0)||0,unit_price:parseFloat(tr.querySelector('.l-price').textContent.replace(/[^0-9.-]/g,'')||0)||0};}).filter(function(l){return l.description;});}" +
   "function fmtMoney(n){return '$'+(parseFloat(n)||0).toFixed(2).replace(/\\B(?=(\\d{3})+(?!\\d))/g,',');}" +
   "function refreshExt(tr){if(!tr)return;var qty=parseFloat(tr.querySelector('.l-qty').textContent.replace(/[^0-9.-]/g,'')||0)||0;var price=parseFloat(tr.querySelector('.l-price').textContent.replace(/[^0-9.-]/g,'')||0)||0;var ext=tr.querySelector('.l-ext');if(ext)ext.textContent=fmtMoney(qty*price);}" +
-  "function buildSnapPatch(field,val){if(field==='contacts_csv'){var names=val.split(',').map(function(s){return s.trim();}).filter(Boolean);return{contacts:names.map(function(n){return{name:n};})};}var o={};o[field]=val;return o;}" +
-  "function commit(el,inp){var newVal=inp.value;el.classList.remove('editing');var lineTr=el.closest('.line-row');var field=el.dataset.field;var snapField=el.dataset.snapField;if(el.classList.contains('l-price')){el.textContent=(parseFloat(newVal||0)||0).toFixed(2);refreshExt(lineTr);patchPo({lines:readLines()});}else if(el.classList.contains('l-qty')){el.textContent=String(parseFloat(newVal||0)||0);refreshExt(lineTr);patchPo({lines:readLines()});}else if(lineTr){el.textContent=newVal;patchPo({lines:readLines()});}else if(field==='expected_date'){el.dataset.raw=newVal||'';el.textContent=newVal?new Date(newVal+'T12:00:00Z').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'—';patchPo({expected_date:newVal||null});}else if(field==='notes'){el.textContent=newVal;patchPo({notes:newVal||null});}else if(snapField){el.textContent=newVal||'—';patchPo({vendor_snapshot:buildSnapPatch(snapField,newVal)});}}" +
-  "function openEditor(el){if(el.classList.contains('editing'))return;el.classList.add('editing');var type=el.dataset.type||'text';var current;if(el.dataset.field==='expected_date'){current=el.dataset.raw||'';}else if(el.classList.contains('l-price')||el.classList.contains('l-qty')){current=el.textContent.replace(/[^0-9.-]/g,'').trim();}else{current=el.textContent.replace(/—/g,'').trim();}var inp;if(type==='textarea'){inp=document.createElement('textarea');inp.className='cell-input cell-textarea';}else{inp=document.createElement('input');inp.type=type==='date'?'date':(type==='number'?'number':'text');if(type==='number')inp.step='any';inp.className='cell-input';}inp.value=current;el.innerHTML='';el.appendChild(inp);inp.focus();if(inp.select&&type!=='date')inp.select();var done=false;function commitOnce(){if(done)return;done=true;commit(el,inp);}inp.addEventListener('blur',commitOnce);inp.addEventListener('keydown',function(e){if(e.key==='Enter'&&type!=='textarea'){e.preventDefault();inp.blur();}else if(e.key==='Enter'&&e.ctrlKey&&type==='textarea'){e.preventDefault();inp.blur();}else if(e.key==='Escape'){done=true;el.classList.remove('editing');el.textContent=current||'—';}});}" +
-  "function wireAll(){document.querySelectorAll('.editable').forEach(function(el){if(el._wired)return;el._wired=true;el.addEventListener('click',function(ev){ev.stopPropagation();openEditor(el);});});}" +
-  "function addLine(){var tbody=document.querySelector('table.lines tbody');var addRow=tbody.querySelector('.add-line-row');var noLines=tbody.querySelector('.no-lines-row');if(noLines)noLines.remove();var tr=document.createElement('tr');tr.className='line-row';tr.dataset.lineId='';tr.dataset.catalogId='';tr.innerHTML='<td class=\"td-num\"><span class=\"editable l-sku\" data-type=\"text\"></span></td>'+'<td class=\"td-desc\"><span class=\"editable editable-block l-desc\" data-type=\"text\"></span><div class=\"line-sub\">MFG Part #<span class=\"editable l-mfgpart\" data-type=\"text\"></span></div></td>'+'<td class=\"td-num\"><span class=\"editable l-mfg\" data-type=\"text\"></span></td>'+'<td class=\"td-num\"><span class=\"editable l-qty\" data-type=\"number\">0</span></td>'+'<td class=\"td-num\">$<span class=\"editable l-price\" data-type=\"number\">0.00</span></td>'+'<td class=\"td-num\"><strong class=\"l-ext\">$0.00</strong><button type=\"button\" class=\"remove-line edit-only\" title=\"Remove line\" style=\"margin-left:6px\">×</button></td>';tbody.insertBefore(tr,addRow);tr.querySelector('.remove-line').addEventListener('click',function(ev){ev.stopPropagation();removeLine(tr);});wireAll();setTimeout(function(){tr.querySelector('.l-desc').click();},20);}" +
+  "function buildSnapPatch(field,val){if(field==='contacts_csv'){var names=val.split(',').map(function(s){return s.trim();}).filter(Boolean);return{contacts:names.map(function(n){return{name:n};})};}if(field==='address_lines_text'){return{address_lines:val.split('\\n').map(function(s){return s.trim();}).filter(Boolean)};}if(field==='send_to_emails_csv'){return{send_to_emails:val.split(',').map(function(s){return s.trim();}).filter(Boolean)};}var o={};o[field]=val;return o;}" +
+  "function renderEmailsBlock(emails){if(!emails.length)return '—';return emails.map(function(e){return '<a class=\"vendor-email\" href=\"mailto:'+e.replace(/\"/g,'&quot;')+'\">'+e.replace(/</g,'&lt;')+'</a>';}).join('<br>');}" +
+  "function commit(el,inp){var newVal=inp.value;el.classList.remove('editing');var lineTr=el.closest('.line-row');var field=el.dataset.field;var snapField=el.dataset.snapField;var shipField=el.dataset.shipField;if(el.classList.contains('l-price')){el.textContent=(parseFloat(newVal||0)||0).toFixed(2);refreshExt(lineTr);patchPo({lines:readLines()});}else if(el.classList.contains('l-qty')){el.textContent=String(parseFloat(newVal||0)||0);refreshExt(lineTr);patchPo({lines:readLines()});}else if(lineTr){el.textContent=newVal;patchPo({lines:readLines()});}else if(field==='expected_date'){el.dataset.raw=newVal||'';el.textContent=newVal?new Date(newVal+'T12:00:00Z').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'—';patchPo({expected_date:newVal||null});}else if(field==='notes'){el.textContent=newVal;patchPo({notes:newVal||null});}else if(shipField){var stObj={};stObj[shipField]=newVal;el.textContent=newVal||'—';if(shipField==='email'){el.innerHTML='<a class=\"wr-email-link\" href=\"mailto:'+newVal.replace(/\"/g,'&quot;')+'\">'+newVal.replace(/</g,'&lt;')+'</a>';}patchPo({ship_to:stObj});}else if(snapField){var partial=buildSnapPatch(snapField,newVal);if(snapField==='send_to_emails_csv'){el.innerHTML=renderEmailsBlock(partial.send_to_emails);}else if(snapField==='address_lines_text'){el.innerHTML=partial.address_lines.map(function(s){return s.replace(/</g,'&lt;');}).join('<br>')||'—';}else{el.textContent=newVal||'—';}patchPo({vendor_snapshot:partial});patchVendor(partial);}}" +
+  "function openEditor(el){if(el.classList.contains('editing'))return;el.classList.add('editing');var type=el.dataset.type||'text';var current;if(el.dataset.field==='expected_date'){current=el.dataset.raw||'';}else if(el.classList.contains('l-price')||el.classList.contains('l-qty')){current=el.textContent.replace(/[^0-9.-]/g,'').trim();}else if(el.dataset.snapField==='send_to_emails_csv'){current=Array.prototype.slice.call(el.querySelectorAll('a.vendor-email')).map(function(a){return a.textContent.trim();}).join(', ');}else if(el.dataset.snapField==='address_lines_text'){current=Array.prototype.slice.call(el.childNodes).map(function(n){return n.textContent||(n.nodeValue||'');}).join('').trim().split(/\\n+|\\s*<br\\/?>\\s*/i).join('\\n');current=el.innerText||current;}else{current=(el.innerText||el.textContent).replace(/—/g,'').trim();}var inp;if(type==='textarea'){inp=document.createElement('textarea');inp.className='cell-input cell-textarea';}else{inp=document.createElement('input');inp.type=type==='date'?'date':(type==='number'?'number':'text');if(type==='number')inp.step='any';inp.className='cell-input';}inp.value=current;el.innerHTML='';el.appendChild(inp);inp.focus();if(inp.select&&type!=='date')inp.select();var done=false;function commitOnce(){if(done)return;done=true;commit(el,inp);}inp.addEventListener('blur',commitOnce);inp.addEventListener('keydown',function(e){if(e.key==='Enter'&&type!=='textarea'){e.preventDefault();inp.blur();}else if(e.key==='Enter'&&e.ctrlKey&&type==='textarea'){e.preventDefault();inp.blur();}else if(e.key==='Escape'){done=true;el.classList.remove('editing');el.textContent=current||'—';}});}" +
+  "function wireAll(){document.querySelectorAll('.editable').forEach(function(el){if(el._wired)return;el._wired=true;el.addEventListener('click',function(ev){ev.stopPropagation();ev.preventDefault();openEditor(el);});});}" +
+  // Suppress mailto: links from launching the mail client in edit mode —
+  // clicking them should open the editor instead.
+  "document.addEventListener('click',function(ev){var a=ev.target.closest&&ev.target.closest('a[href^=mailto]');if(a){ev.preventDefault();ev.stopPropagation();var host=a.closest('.editable');if(host)openEditor(host);}},true);" +
+  // ── Catalog picker overlay ─────────────────────────────────────
+  "var _catalogCache=null;function loadCatalog(){if(_catalogCache)return Promise.resolve(_catalogCache);if(!vendorId)return Promise.resolve([]);return fetch('/api/vendors/'+vendorId,{credentials:'include'}).then(function(r){return r.json();}).then(function(d){_catalogCache=(d.vendor&&Array.isArray(d.vendor.catalog))?d.vendor.catalog:[];return _catalogCache;});}" +
+  "function openCatalogPicker(){var existingIds=new Set(Array.prototype.slice.call(document.querySelectorAll('.line-row')).map(function(tr){return tr.dataset.catalogId;}).filter(Boolean));loadCatalog().then(function(items){var ov=document.createElement('div');ov.className='picker-overlay';ov.innerHTML='<div class=\"picker-modal\"><div class=\"picker-head\"><div>Add items from catalog</div><button class=\"picker-close\" type=\"button\">&times;</button></div><div class=\"picker-body\"></div><div class=\"picker-foot\"><button class=\"picker-blank\" type=\"button\">+ Blank Line</button><div style=\"flex:1\"></div><button class=\"picker-cancel\" type=\"button\">Cancel</button><button class=\"picker-add\" type=\"button\">Add Selected</button></div></div>';document.body.appendChild(ov);var body=ov.querySelector('.picker-body');if(!items.length){body.innerHTML='<div style=\"padding:32px;text-align:center;color:#888;font-size:13px\">This vendor has no catalog items yet. Add some on the Vendor Hub or use \"+ Blank Line\" below.</div>';}else{body.innerHTML='<table class=\"picker-tbl\"><thead><tr><th style=\"width:30px\"></th><th>SKU</th><th>Description</th><th>MFG</th><th style=\"text-align:right\">Def Qty</th><th style=\"text-align:right\">Unit $</th></tr></thead><tbody>'+items.map(function(it){var checked=existingIds.has(it.id)?'disabled checked':'';var dis=existingIds.has(it.id)?' style=\"opacity:.5\"':'';return '<tr'+dis+'><td><input type=\"checkbox\" data-id=\"'+it.id+'\" '+checked+'></td><td>'+(it.sku||'').replace(/</g,'&lt;')+'</td><td>'+(it.description||'').replace(/</g,'&lt;')+'</td><td>'+(it.mfg||'').replace(/</g,'&lt;')+'</td><td style=\"text-align:right\">'+(it.default_qty||0)+'</td><td style=\"text-align:right\">$'+(parseFloat(it.unit_price)||0).toFixed(2)+'</td></tr>';}).join('')+'</tbody></table>';}function close(){ov.remove();}ov.querySelector('.picker-close').addEventListener('click',close);ov.querySelector('.picker-cancel').addEventListener('click',close);ov.addEventListener('click',function(e){if(e.target===ov)close();});ov.querySelector('.picker-blank').addEventListener('click',function(){close();addBlankLine();});ov.querySelector('.picker-add').addEventListener('click',function(){var picks=Array.prototype.slice.call(ov.querySelectorAll('input[type=checkbox]:checked:not([disabled])'));if(!picks.length){close();return;}picks.forEach(function(cb){var id=cb.dataset.id;var it=items.find(function(x){return x.id===id;});if(it)appendLineFromCatalog(it);});close();patchPo({lines:readLines()});});});}" +
+  "function appendLineFromCatalog(it){var tbody=document.querySelector('table.lines tbody');var addRow=tbody.querySelector('.add-line-row');var noLines=tbody.querySelector('.no-lines-row');if(noLines)noLines.remove();var tr=document.createElement('tr');tr.className='line-row';tr.dataset.lineId='';tr.dataset.catalogId=it.id||'';var q=it.default_qty||0;var p=parseFloat(it.unit_price)||0;tr.innerHTML='<td class=\"td-num\"><span class=\"editable l-sku\" data-type=\"text\">'+((it.sku||'').replace(/</g,'&lt;'))+'</span></td>'+'<td class=\"td-desc\"><span class=\"editable editable-block l-desc\" data-type=\"text\">'+((it.description||'').replace(/</g,'&lt;'))+'</span><div class=\"line-sub\">MFG Part #<span class=\"editable l-mfgpart\" data-type=\"text\">'+((it.mfg_part_no||'').replace(/</g,'&lt;'))+'</span></div></td>'+'<td class=\"td-num\"><span class=\"editable l-mfg\" data-type=\"text\">'+((it.mfg||'').replace(/</g,'&lt;'))+'</span></td>'+'<td class=\"td-num\"><span class=\"editable l-qty\" data-type=\"number\">'+q+'</span></td>'+'<td class=\"td-num\">$<span class=\"editable l-price\" data-type=\"number\">'+p.toFixed(2)+'</span></td>'+'<td class=\"td-num\"><strong class=\"l-ext\">'+fmtMoney(q*p)+'</strong><button type=\"button\" class=\"remove-line edit-only\" title=\"Remove line\" style=\"margin-left:6px\">×</button></td>';tbody.insertBefore(tr,addRow);tr.querySelector('.remove-line').addEventListener('click',function(ev){ev.stopPropagation();removeLine(tr);});wireAll();}" +
+  "function addBlankLine(){var tbody=document.querySelector('table.lines tbody');var addRow=tbody.querySelector('.add-line-row');var noLines=tbody.querySelector('.no-lines-row');if(noLines)noLines.remove();var tr=document.createElement('tr');tr.className='line-row';tr.dataset.lineId='';tr.dataset.catalogId='';tr.innerHTML='<td class=\"td-num\"><span class=\"editable l-sku\" data-type=\"text\"></span></td>'+'<td class=\"td-desc\"><span class=\"editable editable-block l-desc\" data-type=\"text\"></span><div class=\"line-sub\">MFG Part #<span class=\"editable l-mfgpart\" data-type=\"text\"></span></div></td>'+'<td class=\"td-num\"><span class=\"editable l-mfg\" data-type=\"text\"></span></td>'+'<td class=\"td-num\"><span class=\"editable l-qty\" data-type=\"number\">0</span></td>'+'<td class=\"td-num\">$<span class=\"editable l-price\" data-type=\"number\">0.00</span></td>'+'<td class=\"td-num\"><strong class=\"l-ext\">$0.00</strong><button type=\"button\" class=\"remove-line edit-only\" title=\"Remove line\" style=\"margin-left:6px\">×</button></td>';tbody.insertBefore(tr,addRow);tr.querySelector('.remove-line').addEventListener('click',function(ev){ev.stopPropagation();removeLine(tr);});wireAll();setTimeout(function(){tr.querySelector('.l-desc').click();},20);}" +
   "function removeLine(tr){if(!confirm('Remove this line?'))return;tr.remove();patchPo({lines:readLines()});}" +
-  "function wireButtons(){document.querySelectorAll('.remove-line').forEach(function(b){b.addEventListener('click',function(e){e.stopPropagation();removeLine(b.closest('.line-row'));});});var addBtn=document.getElementById('addLineBtn');if(addBtn)addBtn.addEventListener('click',addLine);}" +
+  "function wireButtons(){document.querySelectorAll('.remove-line').forEach(function(b){b.addEventListener('click',function(e){e.stopPropagation();removeLine(b.closest('.line-row'));});});var addBtn=document.getElementById('addLineBtn');if(addBtn)addBtn.addEventListener('click',openCatalogPicker);}" +
+  // ── Status transition buttons (Send / Cancel / Delete) ────────
+  "var SEND_TO=" + JSON.stringify(vendorEmails) + ";" +
+  "var CC=" + JSON.stringify(Array.isArray(v.cc_emails) ? v.cc_emails : []) + ";" +
+  "var CONTACTS=" + JSON.stringify(vendorContacts) + ";" +
+  "var SHARE_TOKEN=" + JSON.stringify(po.share_token || '') + ";" +
+  "function sendPo(){if(!SEND_TO.length){alert('Vendor has no send-to email — click the email row above to add one.');return;}var greeting=CONTACTS.length?'Hello '+CONTACTS[0].split(/\\s+/)[0]+',':'Hello,';var poLink=location.origin+'/vpo/'+encodeURIComponent(poNumber)+'?t='+SHARE_TOKEN;var body=greeting+'\\n\\nAttached is WhisperRoom Purchase Order '+poNumber+'. Please confirm receipt and let us know expected ship date.\\n\\nView online: '+poLink+'\\n\\nThank you,\\nJosh Fletcher\\nWhisperRoom, Inc.';var subject='WhisperRoom PO '+poNumber;var params='subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body)+(CC.length?'&cc='+encodeURIComponent(CC.join(',')):'');patchPo({status:'SENT'}).then(function(){window.location.href='mailto:'+encodeURIComponent(SEND_TO.join(','))+'?'+params;});}" +
+  "function cancelPo(){if(!confirm('Cancel this PO? This can\\'t be undone.'))return;patchPo({status:'CANCELLED'}).then(function(){setTimeout(function(){window.location.href='/vendor-pos';},800);});}" +
+  "function deletePo(){if(!confirm('Delete this PO? This can\\'t be undone.'))return;fetch('/api/vendor-pos/'+encodeURIComponent(poNumber),{method:'DELETE',credentials:'include'}).then(function(r){return r.json();}).then(function(d){if(d.error){setStatus(d.error,true);return;}window.location.href='/vendor-pos';});}" +
+  "var sb=document.getElementById('sendPoBtn');if(sb)sb.addEventListener('click',sendPo);" +
+  "var cb=document.getElementById('cancelPoBtn');if(cb)cb.addEventListener('click',cancelPo);" +
+  "var db=document.getElementById('deletePoBtn');if(db)db.addEventListener('click',deletePo);" +
   "wireAll();wireButtons();" +
 '})();</script>' +
 

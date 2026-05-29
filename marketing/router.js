@@ -63,6 +63,73 @@ function _parseDays(req) {
   } catch { return 90; }
 }
 
+// v1.50.8 — attribution-model selector. Lets the dashboard switch the
+// closed-loop layer between three definitions, ALL backed by fields the
+// ETL already ingests (schema.sql deliberately pulls the first_* AND
+// latest_* source pairs + gclid so the model can change per-query with
+// NO re-sync):
+//
+//   'first' (default) — first_source = 'PAID_SEARCH'. The customer's FIRST
+//        interaction was a paid-search ad. Matches HubSpot's "First ad
+//        interaction" report. Strict / most conservative.
+//   'last'  — latest_source = 'PAID_SEARCH'. The customer's MOST-RECENT
+//        source was paid search. Matches HubSpot's last-interaction lens.
+//        Windowed on latest_source_at (when the last touch happened), not
+//        createdate, so a long-known contact re-engaged by an ad counts.
+//   'all'   — first OR latest source is PAID_SEARCH, OR a gclid is present.
+//        Any KNOWN ad touch. Approximates HubSpot's "All ad interactions"
+//        report. Caveat: we store first + latest + gclid, NOT the full
+//        event history, so a contact whose only ad touch was a middle
+//        interaction with no gclid is missed — close to HubSpot's number,
+//        not guaranteed exact.
+//
+// Returns SQL fragments referencing the contact alias `c` (and, for
+// campMatch, the `cn` campaign-names CTE + `aliases` CTE that the
+// attribution queries already define). `model` is whitelisted to three
+// literals and never interpolates raw request text, so building the SQL
+// by string concat here is injection-safe.
+function _attrModel(req) {
+  let model = 'first';
+  try {
+    const m = (new URL(req.url, 'http://localhost').searchParams.get('model') || '').toLowerCase();
+    if (m === 'last' || m === 'all') model = m;
+  } catch {}
+
+  // Campaign-name match for one (source, data_1) column pair. Mirrors the
+  // v1.46.7 first-touch join: case-insensitive, '+'→space normalized, with
+  // the historical-rename alias fallback.
+  const campMatch = (src, d1) => `(${src} = 'PAID_SEARCH' AND (
+            LOWER(REPLACE(${d1}, '+', ' ')) = LOWER(REPLACE(cn.campaign_name, '+', ' '))
+            OR EXISTS (SELECT 1 FROM aliases a
+                         WHERE a.ga_name = cn.campaign_name
+                           AND a.hs_name = LOWER(REPLACE(${d1}, '+', ' ')))))`;
+  // Search-term match for one (source, data_2) column pair. HubSpot stores
+  // the literal typed term in *_source_data_2 for PAID_SEARCH (v1.46.9).
+  const termMatch = (src, d2) => `(${src} = 'PAID_SEARCH' AND LOWER(TRIM(${d2})) = st.search_term)`;
+
+  const MODELS = {
+    first: {
+      contactPaid: `c.first_source = 'PAID_SEARCH'`,
+      contactDate: `c.created_at`,
+      campMatch:   campMatch('c.first_source', 'c.first_source_data_1'),
+      termMatch:   termMatch('c.first_source', 'c.first_source_data_2'),
+    },
+    last: {
+      contactPaid: `c.latest_source = 'PAID_SEARCH'`,
+      contactDate: `COALESCE(c.latest_source_at, c.created_at)`,
+      campMatch:   campMatch('c.latest_source', 'c.latest_source_data_1'),
+      termMatch:   termMatch('c.latest_source', 'c.latest_source_data_2'),
+    },
+    all: {
+      contactPaid: `(c.first_source = 'PAID_SEARCH' OR c.latest_source = 'PAID_SEARCH' OR c.gclid IS NOT NULL)`,
+      contactDate: `c.created_at`,
+      campMatch:   `(${campMatch('c.first_source', 'c.first_source_data_1')} OR ${campMatch('c.latest_source', 'c.latest_source_data_1')})`,
+      termMatch:   `(${termMatch('c.first_source', 'c.first_source_data_2')} OR ${termMatch('c.latest_source', 'c.latest_source_data_2')})`,
+    },
+  };
+  return { model, ...MODELS[model] };
+}
+
 let _schemaInitialized = false;
 async function _initSchema(db) {
   if (_schemaInitialized || !db) return;
@@ -285,11 +352,16 @@ async function handle(req, res, ctx) {
   // renamed in Google Ads (e.g. A/B variants merged into "Combined")
   // leave historical HubSpot contacts unmatched against the new name.
   //
-  // Single-touch only — we don't have full event/session history. Our
-  // `leads` count matches HubSpot's "First ad interaction" report.
+  // Single-touch only — we don't have full event/session history. Under the
+  // default 'first' model our `leads` count matches HubSpot's "First ad
+  // interaction" report. v1.50.8 — `?model=first|last|all` swaps the
+  // contact-side predicate (see _attrModel). gclid-only contacts under 'all'
+  // can't be mapped to a specific campaign without click_view resolution, so
+  // they raise the KPI contact count but don't join to a campaign row here.
   if (pathname === '/api/marketing/campaign-attribution' && req.method === 'GET') {
     try {
       const days = _parseDays(req);
+      const am   = _attrModel(req);
       const aliasHsNames = HUBSPOT_CAMPAIGN_ALIASES.map(a => a.hsName);
       const aliasGaNames = HUBSPOT_CAMPAIGN_ALIASES.map(a => a.gaName);
       const rows = ctx.db ? (await ctx.db.query(`
@@ -314,22 +386,14 @@ async function handle(req, res, ctx) {
           COALESCE(SUM(CASE WHEN d.is_closed_won THEN d.amount ELSE 0 END), 0)::float             AS revenue_won
         FROM campaign_names cn
         LEFT JOIN marketing_hubspot_contacts c ON (
-          c.first_source = 'PAID_SEARCH'
-          AND (
-            LOWER(REPLACE(c.first_source_data_1, '+', ' ')) = LOWER(REPLACE(cn.campaign_name, '+', ' '))
-            OR EXISTS (
-              SELECT 1 FROM aliases a
-              WHERE a.ga_name = cn.campaign_name
-                AND a.hs_name = LOWER(REPLACE(c.first_source_data_1, '+', ' '))
-            )
-          )
-          AND c.created_at >= CURRENT_DATE - INTERVAL '1 day' * $3
+          ${am.campMatch}
+          AND ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $3
         )
         LEFT JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
         GROUP BY cn.campaign_id, cn.campaign_name
         ORDER BY revenue_won DESC, leads DESC
       `, [aliasHsNames, aliasGaNames, days])).rows : [];
-      ctx.json({ rows });
+      ctx.json({ rows, model: am.model });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
   }
@@ -468,6 +532,7 @@ async function handle(req, res, ctx) {
   if (pathname === '/api/marketing/search-term-attribution' && req.method === 'GET') {
     try {
       const days = _parseDays(req);
+      const am   = _attrModel(req);  // v1.50.8 — first/last/all, matched on the matching *_source_data_2
       const rows = ctx.db ? (await ctx.db.query(`
         WITH search_terms AS (
           SELECT DISTINCT LOWER(TRIM(search_term)) AS search_term
@@ -486,15 +551,14 @@ async function handle(req, res, ctx) {
           COALESCE(SUM(CASE WHEN d.is_closed_won THEN d.amount ELSE 0 END), 0)::float             AS revenue_won
         FROM search_terms st
         LEFT JOIN marketing_hubspot_contacts c ON (
-          c.first_source = 'PAID_SEARCH'
-          AND LOWER(TRIM(c.first_source_data_2)) = st.search_term
-          AND c.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1
+          ${am.termMatch}
+          AND ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1
         )
         LEFT JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
         GROUP BY st.search_term
         ORDER BY revenue_won DESC, leads DESC
       `, [days])).rows : [];
-      ctx.json({ rows });
+      ctx.json({ rows, model: am.model });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
   }
@@ -523,10 +587,26 @@ async function handle(req, res, ctx) {
   if (pathname === '/api/marketing/attribution-coverage' && req.method === 'GET') {
     try {
       const days = _parseDays(req);
+      const am   = _attrModel(req);
+      // The trust-thermometer keys (contacts_with_source, *_attributed) stay
+      // model-INDEPENDENT — they answer "how much is attributable at all?".
+      // The *_selected keys + contacts_attributed are model-DRIVEN and feed
+      // the Closed Revenue / HubSpot Contacts / True ROAS cards (v1.50.8).
       const r = ctx.db ? (await ctx.db.query(`
         SELECT
           (SELECT COUNT(*) FROM marketing_hubspot_contacts
              WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * $1)                                               AS contacts_total,
+          (SELECT COUNT(*) FROM marketing_hubspot_contacts c
+             WHERE ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1
+               AND ${am.contactPaid})                                                                                AS contacts_attributed,
+          (SELECT COUNT(*) FROM marketing_hubspot_deals d
+             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+               AND ${am.contactPaid})                                                                                AS deals_won_selected,
+          (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
+             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+               AND ${am.contactPaid})                                                                                AS revenue_selected,
           (SELECT COUNT(*) FROM marketing_hubspot_contacts
              WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * $1
                AND (first_source IS NOT NULL OR gclid IS NOT NULL))                                                  AS contacts_with_source,
@@ -562,7 +642,7 @@ async function handle(req, res, ctx) {
              WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND (c.first_source = 'PAID_SEARCH' OR c.gclid IS NOT NULL))                                          AS revenue_any_touch
       `, [days])).rows[0] : {};
-      ctx.json(r || {});
+      ctx.json({ ...(r || {}), model: am.model });
     } catch(e) { ctx.json({ error: e.message }, 500); }
     return true;
   }

@@ -130,25 +130,30 @@ function _parseHsDate(v) {
 // count stays under 10k, and process them newest-first so the most
 // useful data lands even if the request times out partway through.
 //
-// Default bucket size = ~30 days. For WhisperRoom's volume (~26k contacts
-// modified per year ≈ ~2.2k/month) this is comfortably under the cap. If
-// a single bucket ever hits 10k (e.g. a viral month), we'd need to chunk
-// finer — that's a future improvement; for now we log a warning so the
-// next-run dashboard reflects the truncation.
+// Bucket size for DEALS = ~30 days. Deal volume (~14.8k/365d, evenly spread)
+// never approaches the 10k cap, so monthly buckets keep that sync fast.
 const BUCKET_DAYS = 30;
 
+// v1.50.8 — CONTACTS use a tighter WEEKLY bucket. WhisperRoom averages
+// ~2.2k contacts/month, but a viral month (2026-04) spiked a single 30-day
+// bucket past the 10k cap, silently dropping the most-recent ~4k contacts.
+// 7-day buckets keep even a viral week well under 10k. The trade is ~52
+// contact queries instead of ~13 (deals stay monthly), so a full Sync All
+// is a bit slower — acceptable to stop losing attribution-critical rows.
+const CONTACT_BUCKET_DAYS = 7;
+
 // Build an array of non-overlapping {from, to} Date ranges that together
-// cover the last `daysBack` days, ordered newest-bucket-first. Each
-// bucket is up to BUCKET_DAYS long; the final bucket is shorter if
-// daysBack isn't a multiple of BUCKET_DAYS.
-function _dateBuckets(daysBack) {
+// cover the last `daysBack` days, ordered newest-bucket-first. Each bucket
+// is up to `bucketDays` long (default BUCKET_DAYS); the final bucket is
+// shorter if daysBack isn't a multiple of bucketDays.
+function _dateBuckets(daysBack, bucketDays = BUCKET_DAYS) {
   const buckets = [];
   const now = new Date();
-  for (let offset = 0; offset < daysBack; offset += BUCKET_DAYS) {
+  for (let offset = 0; offset < daysBack; offset += bucketDays) {
     const to = new Date(now);
     to.setDate(to.getDate() - offset);
     const from = new Date(now);
-    from.setDate(from.getDate() - Math.min(offset + BUCKET_DAYS, daysBack));
+    from.setDate(from.getDate() - Math.min(offset + bucketDays, daysBack));
     buckets.push({ from, to });
   }
   return buckets;
@@ -165,7 +170,7 @@ async function syncHubSpotContacts({ db, daysBack = 365 }) {
   if (!envReady()) {
     throw new Error('HubSpot credentials not configured. Missing: HS_TOKEN');
   }
-  const buckets   = _dateBuckets(daysBack);
+  const buckets   = _dateBuckets(daysBack, CONTACT_BUCKET_DAYS);  // weekly — cap-safe
   const dateFrom  = buckets[buckets.length - 1].from.toISOString().slice(0, 10);
   const dateTo    = buckets[0].to.toISOString().slice(0, 10);
 

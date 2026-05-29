@@ -51,6 +51,15 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.50.8', date:'May 29, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing — attribution model selector.** New First interaction / Last click / All ad interactions toggle on the marketing dashboard, beside the date range. It re-drives the closed-loop cards (Closed Revenue, HubSpot Contacts, True ROAS) and the per-campaign + per-search-term lead/deal/revenue columns. All three models run off fields the ETL already ingests (first_* and latest_* source pairs + gclid) — no re-sync needed. <em>First</em> = HubSpot&rsquo;s "First ad interaction" (strict first touch); <em>Last click</em> = latest_source paid, windowed on the last-touch date; <em>All</em> = any known ad touch (first OR latest paid, or a gclid present) ≈ HubSpot&rsquo;s "All ad interactions" (close, not exact — we store first + latest + gclid, not full event history).'},
+        {t:'add', d:'**New "HubSpot Contacts" KPI card.** Unique HubSpot contacts attributed to paid search under the selected model — the people-level analog to Google Conversions. Flipping the selector toggles it between the first-touch and all-interactions contact counts, lining up with the matching HubSpot Ads report.'},
+        {t:'ui', d:'**Conversions card relabeled "Google Conversions."** Clarifies it&rsquo;s Google Ads conversion <em>events</em> (form fills, calls, etc., possibly several per person, fractional under data-driven attribution) — NOT unique HubSpot contacts. Tooltip explains the distinction and points to the new HubSpot Contacts card for the people-level number.'},
+        {t:'fix', d:'**HubSpot contact sync no longer drops viral-month rows.** Contact ingestion now uses 7-day buckets (was 30) so a spike month can&rsquo;t blow a single bucket past HubSpot&rsquo;s 10k search-API cap (which had silently dropped ~4k of the most-recent contacts). Deals stay on monthly buckets — they never approach the cap — so only the contact sync runs the extra queries.'},
+      ]
+    },
+    {
       v:'1.50.7', date:'May 29, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Send button stays on Vendor Hub rows after status flips to SENT.** Was hidden once a PO was sent; now stays visible for both OPEN and SENT so Josh can reopen the mail draft if he closed it by accident. Click on an already-SENT PO skips the status PATCH (it&rsquo;s already SENT) and just re-opens the mailto. Hidden on PARTIAL / RECEIVED / CLOSED / CANCELLED. Toast wording differs: first send shows "Draft opened… (PO marked Sent.)", re-send shows "Draft re-opened."'},

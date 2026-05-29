@@ -72,6 +72,12 @@ th.attr-col, td.attr-col{background:rgba(238,98,22,.025)}
 .date-pill.active{background:var(--orange);color:#fff;border-color:var(--orange)}
 .date-range-hint{font-size:11px;color:var(--muted);margin-left:8px;font-style:italic}
 
+/* v1.50.8 — attribution model selector (mirrors date-pill styling) */
+.model-bar{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.model-pill{padding:6px 14px;border-radius:16px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit}
+.model-pill:hover{border-color:var(--orange);color:var(--orange)}
+.model-pill.active{background:var(--orange);color:#fff;border-color:var(--orange)}
+
 /* v1.46.10 — sortable column headers */
 th.sortable{cursor:pointer;user-select:none;transition:color .12s}
 th.sortable:hover{color:var(--orange)}
@@ -142,6 +148,19 @@ th.sortable .sort-arrow{display:inline-block;margin-left:3px;font-size:9px;color
     <span class="date-range-hint" id="dateRangeHint">Google Ads ETL pulls 90 days by default — 180/365 may show no extra rows until a longer sync.</span>
   </div>
 
+  <!-- v1.50.8 — attribution model selector. Drives ?model=first|last|all
+       on the closed-loop endpoints (attribution + coverage), re-driving the
+       Closed Revenue / HubSpot Contacts / True ROAS cards and the per-
+       campaign + per-search-term lead/deal/revenue columns. Raw Google Ads
+       spend metrics are model-independent and don't refetch. -->
+  <div class="model-bar">
+    <span class="date-range-label">Attribution</span>
+    <button class="model-pill active" data-model="first" onclick="changeModel('first')">First interaction</button>
+    <button class="model-pill"        data-model="last"  onclick="changeModel('last')">Last click</button>
+    <button class="model-pill"        data-model="all"   onclick="changeModel('all')">All ad interactions</button>
+    <span class="date-range-hint" id="modelHint">First interaction = HubSpot's "First ad interaction" (strict first touch).</span>
+  </div>
+
   <!-- Attribution coverage panel — the trust thermometer (v1.46.1).
        Hidden until /api/marketing/attribution-coverage returns data. -->
   <div class="coverage" id="coveragePanel" style="display:none">
@@ -174,11 +193,11 @@ th.sortable .sort-arrow{display:inline-block;margin-left:3px;font-size:9px;color
   <div class="cards" id="summaryCards" style="display:none">
     <div class="card"><div class="card-label" id="lblSpend">Total Spend (90d)</div><div class="card-value" id="kpiSpend">—</div><div class="card-sub">Across all campaigns</div></div>
     <div class="card"><div class="card-label" id="lblClicks">Clicks (90d)</div><div class="card-value" id="kpiClicks">—</div><div class="card-sub" id="kpiCpc">— avg CPC</div></div>
-    <div class="card"><div class="card-label" id="lblConv">Conversions (90d)</div><div class="card-value" id="kpiConv">—</div><div class="card-sub" id="kpiCpa">— avg CPA</div></div>
+    <div class="card" title="Google Ads conversion EVENTS (form fills, calls, etc.) as reported by Google's own tracking — NOT unique people. One contact can fire several, and counts can be fractional under data-driven attribution. For the people-level number, see HubSpot Contacts."><div class="card-label" id="lblConv">Google Conversions (90d)</div><div class="card-value" id="kpiConv">—</div><div class="card-sub" id="kpiCpa">— avg CPA</div></div>
     <div class="card"><div class="card-label" id="lblValue">GA4 Conv. Value (90d)</div><div class="card-value" id="kpiValue">—</div><div class="card-sub" id="kpiRoas">— GA4 ROAS</div></div>
-    <div class="card"><div class="card-label" id="lblClosedRev">Closed Revenue (90d, paid any-touch)</div><div class="card-value" id="kpiClosedRev">—</div><div class="card-sub" id="kpiDealCount">— deals</div></div>
-    <div class="card" title="spend / revenue where first_source = 'PAID_SEARCH'. Matches HubSpot's 'First ad interaction' report."><div class="card-label">True ROAS — First-Touch</div><div class="card-value" id="kpiRoasFirstTouch">—</div><div class="card-sub" id="kpiRoasFirstTouchSub">HubSpot strict</div></div>
-    <div class="card" title="spend / revenue where first_source = 'PAID_SEARCH' OR gclid is set. Matches Google Ads' default last-click attribution."><div class="card-label">True ROAS — Any-Touch</div><div class="card-value" id="kpiRoasAnyTouch">—</div><div class="card-sub" id="kpiRoasAnyTouchSub">incl. gclid</div></div>
+    <div class="card"><div class="card-label" id="lblClosedRev">Closed Revenue (90d)</div><div class="card-value" id="kpiClosedRev">—</div><div class="card-sub" id="kpiDealCount">— deals</div></div>
+    <div class="card" title="Unique HubSpot contacts attributed to paid search under the selected attribution model. The people-level analog to Google Conversions. Under 'First interaction' this lines up with HubSpot's 'First ad interaction' contact count; under 'All ad interactions' with its 'All ad interactions' count."><div class="card-label" id="lblHsContacts">HubSpot Contacts (First interaction)</div><div class="card-value" id="kpiHsContacts">—</div><div class="card-sub" id="kpiHsContactsSub">attributed to paid</div></div>
+    <div class="card" title="Closed-won revenue ÷ total paid-search spend, for contacts attributed under the selected model. Switch models with the Attribution selector above."><div class="card-label" id="lblTrueRoas">True ROAS (First interaction)</div><div class="card-value" id="kpiTrueRoas">—</div><div class="card-sub" id="kpiTrueRoasSub">closed rev ÷ spend</div></div>
   </div>
 
   <!-- Section titles include the current date range (set dynamically). -->
@@ -348,6 +367,15 @@ async function runSync() {
 // per table lets header clicks re-sort without refetching. Raw rows
 // + attribution rows are cached in state so re-sort just re-renders.
 let currentDaysBack = 90;
+// v1.50.8 — selected attribution model. Drives ?model= on the closed-loop
+// endpoints. 'first' matches the prior hardcoded first-touch behavior.
+let currentModel = 'first';
+const MODEL_LABELS = { first: 'First interaction', last: 'Last click', all: 'All ad interactions' };
+const MODEL_HINTS = {
+  first: 'First interaction = HubSpot\'s "First ad interaction" (strict first touch).',
+  last:  'Last click = the contact\'s most-recent source was paid search (HubSpot last-interaction lens).',
+  all:   'All ad interactions ≈ any known ad touch (first OR latest paid, or a gclid). Approximates HubSpot\'s "All ad interactions" — close, not exact (we store first + latest + gclid, not full event history).',
+};
 const tableState = {
   campaigns:   { rawRows: [], attrRows: [], sortBy: 'cost', sortDir: 'desc' },
   keywords:    { rawRows: [], attrRows: [], sortBy: 'cost', sortDir: 'desc' },
@@ -360,6 +388,20 @@ function changeDateRange(days) {
   document.querySelectorAll('.date-pill').forEach(el => {
     el.classList.toggle('active', parseInt(el.dataset.days) === days);
   });
+  loadAllTables();
+}
+
+// v1.50.8 — switch attribution model. Refetches the closed-loop endpoints
+// (raw Google Ads spend is model-independent, but loadAllTables refetches
+// all six together — cheap and keeps the code simple).
+function changeModel(model) {
+  if (model === currentModel) return;
+  currentModel = model;
+  document.querySelectorAll('.model-pill').forEach(el => {
+    el.classList.toggle('active', el.dataset.model === model);
+  });
+  const hint = document.getElementById('modelHint');
+  if (hint) hint.textContent = MODEL_HINTS[model] || '';
   loadAllTables();
 }
 
@@ -407,14 +449,15 @@ function sortableTh(tableName, col, label, extraClass = '') {
 // ── Data loading + rendering ────────────────────────────────────────
 async function loadAllTables() {
   const d = currentDaysBack;
-  const q = `?days=${d}`;
+  const q  = `?days=${d}`;
+  const qm = `?days=${d}&model=${currentModel}`;  // closed-loop endpoints also take the attribution model
   const [camp, kw, st, attr, stAttr, cov] = await Promise.all([
-    fetch('/api/marketing/campaigns'                 + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/keywords'                  + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/search-terms'              + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/campaign-attribution'      + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/search-term-attribution'   + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/attribution-coverage'      + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
+    fetch('/api/marketing/campaigns'                 + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/keywords'                  + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/search-terms'              + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/campaign-attribution'      + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/search-term-attribution'   + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/attribution-coverage'      + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
   ]);
   // Cache raw rows so sort-by-column doesn't have to refetch.
   tableState.campaigns.rawRows   = camp.rows   || [];
@@ -434,11 +477,14 @@ function renderSummary(rows, cov) {
   document.getElementById('summaryCards').style.display = 'grid';
   // v1.46.10 — update card labels + coverage panel title with current range.
   const d = currentDaysBack;
-  document.getElementById('lblSpend').textContent     = `Total Spend (${d}d)`;
-  document.getElementById('lblClicks').textContent    = `Clicks (${d}d)`;
-  document.getElementById('lblConv').textContent      = `Conversions (${d}d)`;
-  document.getElementById('lblValue').textContent     = `GA4 Conv. Value (${d}d)`;
-  document.getElementById('lblClosedRev').textContent = `Closed Revenue (${d}d, paid any-touch)`;
+  const ml = MODEL_LABELS[currentModel] || 'First interaction';
+  document.getElementById('lblSpend').textContent      = `Total Spend (${d}d)`;
+  document.getElementById('lblClicks').textContent     = `Clicks (${d}d)`;
+  document.getElementById('lblConv').textContent       = `Google Conversions (${d}d)`;
+  document.getElementById('lblValue').textContent      = `GA4 Conv. Value (${d}d)`;
+  document.getElementById('lblClosedRev').textContent  = `Closed Revenue (${d}d)`;
+  document.getElementById('lblHsContacts').textContent = `HubSpot Contacts (${ml})`;
+  document.getElementById('lblTrueRoas').textContent   = `True ROAS (${ml})`;
   const covTitle = document.getElementById('coverageTitle');
   if (covTitle) covTitle.textContent = `Attribution coverage (last ${d} days)`;
   const spend  = rows.reduce((s, r) => s + (parseFloat(r.cost_usd) || 0), 0);
@@ -454,28 +500,26 @@ function renderSummary(rows, cov) {
   document.getElementById('kpiRoas').textContent   = spend  ? (value / spend).toFixed(2) + 'x GA4 ROAS' : '— GA4 ROAS';
 
   // Closed-loop (real revenue) KPIs from attribution-coverage endpoint.
-  // v1.46.7 — two ROAS numbers: first-touch (strict, HubSpot-style) and
-  // any-touch (gclid-inclusive, Google-Ads-style). Showing both is the
-  // information; picking one would hide the channel-vs-closer signal.
-  const revFirst   = parseFloat(cov.revenue_first_touch)   || 0;
-  const dealsFirst = parseInt(cov.deals_won_first_touch)   || 0;
-  const revAny     = parseFloat(cov.revenue_any_touch)     || 0;
-  const dealsAny   = parseInt(cov.deals_won_any_touch)     || 0;
+  // v1.50.8 — model-driven: Closed Revenue, HubSpot Contacts, and True
+  // ROAS all reflect the attribution model selected above (revenue_selected
+  // / deals_won_selected / contacts_attributed). Flip the selector to see
+  // first-touch vs last-click vs all-interactions side by side over time.
+  const revSel       = parseFloat(cov.revenue_selected)     || 0;
+  const dealsSel     = parseInt(cov.deals_won_selected)     || 0;
+  const contactsSel  = parseInt(cov.contacts_attributed)    || 0;
 
-  document.getElementById('kpiClosedRev').textContent = fmtUSD(revAny);
-  document.getElementById('kpiDealCount').textContent = dealsAny
-    ? `${fmtInt(dealsAny)} deals · ${fmtUSD(spend / dealsAny)} CAC`
+  document.getElementById('kpiClosedRev').textContent = fmtUSD(revSel);
+  document.getElementById('kpiDealCount').textContent = dealsSel
+    ? `${fmtInt(dealsSel)} deals · ${fmtUSD(spend / dealsSel)} CAC`
     : '— deals';
 
-  document.getElementById('kpiRoasFirstTouch').textContent     = spend ? (revFirst / spend).toFixed(2) + 'x' : '—';
-  document.getElementById('kpiRoasFirstTouchSub').textContent  = dealsFirst
-    ? `${fmtUSD(revFirst)} · ${fmtInt(dealsFirst)} deals`
-    : 'HubSpot strict';
+  document.getElementById('kpiHsContacts').textContent    = fmtInt(contactsSel);
+  document.getElementById('kpiHsContactsSub').textContent = 'attributed to paid';
 
-  document.getElementById('kpiRoasAnyTouch').textContent       = spend ? (revAny / spend).toFixed(2) + 'x' : '—';
-  document.getElementById('kpiRoasAnyTouchSub').textContent    = dealsAny
-    ? `${fmtUSD(revAny)} · ${fmtInt(dealsAny)} deals`
-    : 'incl. gclid';
+  document.getElementById('kpiTrueRoas').textContent      = spend ? (revSel / spend).toFixed(2) + 'x' : '—';
+  document.getElementById('kpiTrueRoasSub').textContent   = dealsSel
+    ? `${fmtUSD(revSel)} · ${fmtInt(dealsSel)} deals`
+    : 'closed rev ÷ spend';
 }
 
 // Attribution coverage — three stats with progress bars. Color rule:

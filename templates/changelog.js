@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.49.10', date:'May 29, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Tax calc now works in the ZIP-only freight flow.** The Quote Builder lets reps run a freight quote with just a ZIP code (no city/state) — but in that path the tax call was silently returning $0 because `lib/taxjar.js:18-20` short-circuits to `tax: 0` when state is empty (it doesn&rsquo;t match anything in `NEXUS_STATES`). Added a `zipToState()` helper in `lib/states.js` that maps the ZIP-3 prefix to a US state via USPS Sectional Center ranges (~55 ranges, ~30 LOC). `calculateTaxProper` now derives state from ZIP when the input state is empty before doing the nexus lookup; explicit state still wins when present. Canadian postal codes / non-state territories return empty and tax stays $0 (correct — no US nexus there). Wired into `taxjar.init({ zipToState })` from the existing module destructure.'},
+      ]
+    },
+    {
       v:'1.49.9', date:'May 29, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Create / Download PDF was throwing "Invalid character in header content [Content-Disposition]".** Node&rsquo;s HTTP layer strictly rejects non-ASCII characters in raw header values; the PDF filename was using an em-dash (`WV-… — Vendor.pdf`), which blew up serialization and prevented the browser download. Switched to a hyphen and ASCII-stripped the vendor name in `_regenerateVendorPoPdf`; added a defensive non-ASCII strip in the response header path too for any future unicode that sneaks in (accented vendor names, etc.). Drive upload + browser download both work now.'},

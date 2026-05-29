@@ -273,7 +273,7 @@ const SHOPIFY_QB_FALLBACK_ITEM_NAME = process.env.SHOPIFY_QB_FALLBACK_ITEM_NAME 
 const states = require('./lib/states');
 const {
   NEXUS_STATES, STATE_ABBR_MAP, STATE_FULL_NAME,
-  toStateAbbr, toStateFull, isCanadianProvince,
+  toStateAbbr, toStateFull, isCanadianProvince, zipToState,
 } = states;
 
 // ── HTTPS helper ──────────────────────────────────────────────────
@@ -351,7 +351,7 @@ async function nextVendorPoNumber() {
 hubspot.init({ httpsRequest });
 gdrive.init({ httpsRequest, getDb: () => db, writelog });
 assemblyManual.init({ gdrive });
-taxjar.init({ httpsRequest, NEXUS_STATES, toStateAbbr });
+taxjar.init({ httpsRequest, NEXUS_STATES, toStateAbbr, zipToState });
 notify.init({ getDb: () => db });
 freight.init({ httpsRequest, getDb: () => db, writelog, puppeteer });
 stripeLib.init({ httpsRequest, writelog, getDb: () => db });

@@ -704,7 +704,7 @@ function renderPos() {
         '<td style="font-size:12px;color:var(--muted)">' + escapeHtml(created) + '</td>' +
         '<td><div class="row-actions">' +
           '<button class="btn btn-orange-soft btn-sm" onclick="viewPo(\'' + encodeURIComponent(p.po_number) + '\', \'' + escapeHtml(p.share_token) + '\')">Open</button>' +
-          (p.status === 'OPEN'
+          (p.status === 'OPEN' || p.status === 'SENT'
             ? '<button class="btn btn-green btn-sm" onclick="sendFromTable(\'' + encodeURIComponent(p.po_number) + '\')">Send</button>'
             : '') +
           (p.status !== 'CANCELLED'
@@ -754,18 +754,23 @@ async function sendFromTable(encodedPoNumber) {
     (cc.length ? '&cc=' + encodeURIComponent(cc.join(',')) : '');
   const mailto = 'mailto:' + encodeURIComponent(sendTo.join(',')) + '?' + params;
 
-  try {
-    const r = await fetch('/api/vendor-pos/' + encodeURIComponent(poNumber), {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ status: 'SENT' }),
-    });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error || 'Status update failed');
-  } catch (e) {
-    showToast('Error: ' + e.message, 'error');
-    return;
+  // Only flip status on the initial send — re-sending an already-SENT
+  // PO (e.g. Josh accidentally closed the email draft) keeps status
+  // as-is and just re-opens the mailto.
+  if (po.status === 'OPEN') {
+    try {
+      const r = await fetch('/api/vendor-pos/' + encodeURIComponent(poNumber), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: 'SENT' }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Status update failed');
+    } catch (e) {
+      showToast('Error: ' + e.message, 'error');
+      return;
+    }
   }
 
   // Use a hidden anchor click instead of window.location.href so the
@@ -775,7 +780,7 @@ async function sendFromTable(encodedPoNumber) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  showToast('Draft opened. Attach the PDF before sending. (PO marked Sent.)', 'success');
+  showToast(po.status === 'OPEN' ? 'Draft opened. Attach the PDF before sending. (PO marked Sent.)' : 'Draft re-opened.', 'success');
   await loadPos();
 }
 

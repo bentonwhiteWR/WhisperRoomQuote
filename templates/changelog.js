@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.50.7', date:'May 29, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Send button stays on Vendor Hub rows after status flips to SENT.** Was hidden once a PO was sent; now stays visible for both OPEN and SENT so Josh can reopen the mail draft if he closed it by accident. Click on an already-SENT PO skips the status PATCH (it&rsquo;s already SENT) and just re-opens the mailto. Hidden on PARTIAL / RECEIVED / CLOSED / CANCELLED. Toast wording differs: first send shows "Draft opened… (PO marked Sent.)", re-send shows "Draft re-opened."'},
+      ]
+    },
+    {
       v:'1.50.6', date:'May 29, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Shortened the "Update PO" confirm text** to just "This will replace the existing PO." (was a multi-paragraph explanation).'},

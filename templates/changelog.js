@@ -51,6 +51,15 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.49.13', date:'May 29, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Delete POs from the Vendor Hub table.** New red × button on each row in the Vendor Hub Purchase Orders tab. Confirms then DELETEs and refreshes the table. The server-side gate that only allowed deletes of OPEN POs is gone — table cleanup is unrestricted (the audit log captures the prior status so deletions stay traceable).'},
+        {t:'fix', d:'**Vendor PO number prefix: WV → WP.** New POs start with `WP-{YY}{MM}{DD}{NN}` ("WhisperRoom Purchase"). Existing WV- POs stay as-is — no migration; both prefixes coexist.'},
+        {t:'ui', d:'**PDF download filename now leads with the vendor name.** Was `{po_number}.pdf` → now `{Vendor Name} - {po_number}.pdf` (e.g. `Bertelkamp Automation Inc - WP-26052901.pdf`). Sorts the downloads folder by vendor when Josh saves a few in a row. Server-side filename + browser `a.download` attribute both updated; `VENDOR_NAME` baked into the `/vpo/` JS so the client knows the sanitized name.'},
+        {t:'add', d:'**Price-change prompt for catalog-linked lines.** When Josh edits the unit price on a line that came from the vendor&rsquo;s catalog (has a `catalog_id`), and the new price differs from the catalog price, a confirm fires after the PO save: "Price for `X` changed from $A to $B. Keep this price for future orders?" If yes, the vendor catalog row is updated (with today&rsquo;s date stamped as `price_updated_date`) so the next PO prefills with the new price. Description / SKU / MFG / qty edits stay PO-only (don&rsquo;t propagate to the catalog) — per request, only price changes prompt.'},
+      ]
+    },
+    {
       v:'1.49.12', date:'May 29, 2026', tag:'log',
       changes:[
         {t:'fix', d:'**Added `.gitignore` and untracked two accidentally-committed `.code-workspace` files.** The v1.49.11 commit used `git add -A` and swept in `lib/Viking Idle Game.code-workspace` + `lib/Work.code-workspace` (local IDE config). New `.gitignore` covers `*.code-workspace`, `node_modules/`, `.env*`, `.DS_Store`, etc. so future bulk-adds stay clean. Files removed from the index with `git rm --cached` so local copies are preserved.'},

@@ -704,6 +704,7 @@ function renderPos() {
         '<td style="font-size:12px;color:var(--muted)">' + escapeHtml(created) + '</td>' +
         '<td><div class="row-actions">' +
           '<button class="btn btn-orange-soft btn-sm" onclick="viewPo(\'' + encodeURIComponent(p.po_number) + '\', \'' + escapeHtml(p.share_token) + '\')">Open</button>' +
+          '<button class="btn btn-red btn-sm" title="Delete PO" onclick="deletePoFromTable(\'' + encodeURIComponent(p.po_number) + '\')">&times;</button>' +
         '</div></td>' +
       '</tr>'
     );
@@ -712,6 +713,23 @@ function renderPos() {
 
 function viewPo(encodedPoNumber, shareToken) {
   window.open('/vpo/' + encodedPoNumber + '?t=' + shareToken, '_blank');
+}
+
+async function deletePoFromTable(encodedPoNumber) {
+  const poNumber = decodeURIComponent(encodedPoNumber);
+  if (!confirm('Delete ' + poNumber + '?\n\nThis can\'t be undone.')) return;
+  try {
+    const r = await fetch('/api/vendor-pos/' + encodeURIComponent(poNumber), {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Delete failed');
+    showToast('PO deleted', 'success');
+    await loadPos();
+  } catch (e) {
+    showToast('Error: ' + e.message, 'error');
+  }
 }
 
 function markExpectedDirty(poNumber, input) {

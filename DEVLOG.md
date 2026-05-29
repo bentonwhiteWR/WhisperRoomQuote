@@ -747,6 +747,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.50.5  | 2026-05-29 | **"Update PO" confirms before replacing the Drive PDF.** Confirm dialog fires when the button is in "Update PO" mode (i.e. `pdf_drive_file_id` is set). First-time generations still go through without a prompt. |
 | 1.50.4  | 2026-05-29 | **"Create / Download PDF" button flips to "Update PO" once a Drive PDF exists.** Server renders the label based on whether `pdf_drive_file_id` is set on the row. After any successful generation the JS sets the label to "Update PO" so it sticks. Same `/pdf` endpoint behavior — regen + Drive PATCH-in-place still overwrites the existing file via the stored ID, so shared Drive links survive. |
 | 1.50.3  | 2026-05-29 | **Send button on Vendor Hub table + dropped "View online" link from Send body.** Each OPEN PO row gets a green Send button (between Open and Receive). PATCHes status to SENT, then opens `mailto:` to vendor send_to/cc with greeting + "Attached is …" + sign-off — no `/vpo/` link, since Josh attaches the PDF. Hidden-anchor click keeps the listing page put. Existing `/vpo/` Send updated for consistency (link line removed there too). |
 | 1.50.2  | 2026-05-29 | Receipt log header: dropped "— not on vendor PDF" from the Internal tag. |

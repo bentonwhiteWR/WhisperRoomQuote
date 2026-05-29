@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.50.5', date:'May 29, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**"Update PO" now confirms before replacing the Drive PDF.** Clicking the button when it&rsquo;s in "Update PO" mode (i.e. a PDF already exists) fires a confirm: "This will replace the existing PDF in the Drive folder with the current state of the PO… The shared Drive link stays the same. Continue?" First-time generations (label = "Create / Download PDF") still go straight through with no prompt.'},
+      ]
+    },
+    {
       v:'1.50.4', date:'May 29, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**"Create / Download PDF" → "Update PO" once a PDF exists.** First click on a fresh PO says "Create / Download PDF" — generates, uploads to Drive, downloads. Once `pdf_drive_file_id` is set on the row, subsequent visits show "Update PO" instead. Same endpoint (`POST /api/vendor-pos/:n/pdf`) — server-side regen + Drive PATCH-in-place still overwrites the existing Drive file via the stored file ID, so vendors keep the same shared link if Josh circulated it. After any successful generation the button label is sticky at "Update PO".'},

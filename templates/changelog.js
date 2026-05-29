@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.51.4', date:'May 29, 2026', tag:'add',
+      changes:[
+        {t:'add', d:'**"View deals counted" expandable list on Sales Goal.** Below the 12-month chart on `/reports` → Sales Goal, a collapsed `<details>` block listing every deal counted toward this month&rsquo;s MTD revenue. Columns: closedate / deal name / stage pill (Won / Shipped) / total / tax / net revenue, plus a HubSpot deep link per row. Footer row totals the net revenue and ties out to the headline MTD number. Helpful for spotting missing or double-counted deals (and refunds — which are explicitly NOT included; a note in the block points to reconcile for those). New `mtdDeals` array on the `/api/reports/sales-goal` response with per-deal details; `dealname` added to the HubSpot properties pull.'},
+      ]
+    },
+    {
       v:'1.51.3', date:'May 29, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Removed Arizona + Utah from `NEXUS_STATES`.** We no longer have nexus in those states (per the rep, TaxJar&rsquo;s already been corrected). `lib/states.js` now lists 14 states (was 16). The tax calculator was over-charging AZ and UT orders &mdash; from this version forward, those ZIP codes route through the same "no nexus → tax: 0" path as any non-nexus state. The Quote Builder Nexus States popup will reflect the new list automatically (it&rsquo;s sourced from the same map).'},

@@ -828,6 +828,56 @@ function renderSalesGoal(d) {
         <span><b>${d.dealsCounted - d.dealsWithHsTax - d.dealsBackCalcTax}</b> tax-exempt / no tax</span>
       </div>
     </div>
+
+    <details class="sg-deals-block" style="margin-top:14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px">
+      <summary style="cursor:pointer;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text);user-select:none;outline:none">
+        View ${d.mtdDealCount || 0} deal${(d.mtdDealCount||0)===1?'':'s'} counted in ${d.monthLabel}
+        <span style="font-size:11px;color:var(--muted);font-weight:500;letter-spacing:0;text-transform:none;margin-left:8px">click to expand</span>
+      </summary>
+      <div style="margin-top:12px;font-size:11px;color:var(--muted);line-height:1.5">
+        Closed Won + Shipped deals with a closedate in ${d.monthLabel} (Eastern time). Refund deals (dealstage <code>895819</code>) are <strong>not</strong> included — verify refunds against the reconcile tab.
+      </div>
+      ${!d.mtdDeals || d.mtdDeals.length === 0
+        ? '<div style="padding:18px;text-align:center;color:var(--muted);font-style:italic">No deals counted yet this month.</div>'
+        : `<div style="margin-top:10px;overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:12px">
+              <thead>
+                <tr style="border-bottom:1px solid var(--border)">
+                  <th style="text-align:left;padding:8px 10px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Closed</th>
+                  <th style="text-align:left;padding:8px 10px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Deal</th>
+                  <th style="text-align:center;padding:8px 10px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Stage</th>
+                  <th style="text-align:right;padding:8px 10px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Total</th>
+                  <th style="text-align:right;padding:8px 10px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Tax</th>
+                  <th style="text-align:right;padding:8px 10px;font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">Net Revenue</th>
+                  <th style="width:40px"></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${d.mtdDeals.map(dl => {
+                  const stage = dl.dealstage === 'closedwon' ? '<span style="display:inline-block;padding:1px 7px;background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.4);border-radius:8px;font-size:9px;font-weight:700;letter-spacing:.04em">Won</span>' : dl.dealstage === '845719' ? '<span style="display:inline-block;padding:1px 7px;background:rgba(59,130,246,.12);color:#3b82f6;border:1px solid rgba(59,130,246,.4);border-radius:8px;font-size:9px;font-weight:700;letter-spacing:.04em">Shipped</span>' : esc(dl.dealstage);
+                  const dt = dl.closedate ? new Date(dl.closedate).toLocaleDateString('en-US', { month:'short', day:'numeric', timeZone:'America/New_York' }) : '—';
+                  return `<tr style="border-bottom:1px solid var(--border)">
+                    <td style="padding:8px 10px;color:var(--text2);white-space:nowrap">${dt}</td>
+                    <td style="padding:8px 10px;color:var(--text);font-weight:600">${esc(dl.dealName)}</td>
+                    <td style="padding:8px 10px;text-align:center">${stage}</td>
+                    <td style="padding:8px 10px;text-align:right;font-family:var(--mono);color:var(--text2)">${fmt(dl.total)}</td>
+                    <td style="padding:8px 10px;text-align:right;font-family:var(--mono);color:var(--text2)">${fmt(dl.taxAmt)}</td>
+                    <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-weight:700;color:var(--text)">${fmt(dl.revenue)}</td>
+                    <td style="padding:8px 10px;text-align:center"><a href="https://app.hubspot.com/contacts/5764220/deal/${esc(dl.dealId)}" target="_blank" title="Open in HubSpot" style="color:var(--orange);text-decoration:none;font-size:11px">HS ↗</a></td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+              <tfoot>
+                <tr style="border-top:2px solid var(--border);background:rgba(255,255,255,.02)">
+                  <td colspan="5" style="padding:8px 10px;text-align:right;color:var(--text2);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.04em">Total Net Revenue</td>
+                  <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-weight:800;color:var(--green)">${fmt(d.mtdRevenue)}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>`
+      }
+    </details>
   `;
 }
 

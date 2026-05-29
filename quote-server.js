@@ -7987,7 +7987,7 @@ ${q.accepted ? `
               { propertyName: 'closedate', operator: 'LTE', value: toTs },
             ]
           }],
-          properties: ['amount','closedate','dealstage','tax_rate','total_tax_amount','freight_cost','shipping_state'],
+          properties: ['dealname','amount','closedate','dealstage','tax_rate','total_tax_amount','freight_cost','shipping_state'],
           sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
         });
         const results = r.body?.results || [];
@@ -8014,6 +8014,7 @@ ${q.accepted ? `
       let dealsCounted = 0;
       let dealsWithHsTax = 0;
       let dealsBackCalcTax = 0;
+      const mtdDeals = []; // per-deal detail for the "View deals counted" list
 
       for (const d of allDeals) {
         const cdRaw = d.properties?.closedate;
@@ -8065,12 +8066,23 @@ ${q.accepted ? `
         if (key === monthKey) {
           mtdRevenue += revenue;
           mtdDealCount++;
+          mtdDeals.push({
+            dealId:     d.id,
+            dealName:   d.properties?.dealname || '(no name)',
+            dealstage:  d.properties?.dealstage || '',
+            closedate:  dt.toISOString(),
+            total:      Math.round(total * 100) / 100,
+            taxAmt:     Math.round(taxAmt * 100) / 100,
+            revenue:    Math.round(revenue * 100) / 100,
+          });
         } else if (buckets[key]) {
           buckets[key].revenue += revenue;
           buckets[key].dealCount++;
         }
         dealsCounted++;
       }
+      // Sort MTD deals newest first
+      mtdDeals.sort((a, b) => (b.closedate || '').localeCompare(a.closedate || ''));
 
       const monthsArr = orderedKeys.map(k => ({
         key: k,
@@ -8105,6 +8117,7 @@ ${q.accepted ? `
         goal120: Math.round(goal120 * 100) / 100,
         mtdRevenue: Math.round(mtdRevenue * 100) / 100,
         mtdDealCount,
+        mtdDeals,
         mtdPctOfGoal: goal100 > 0 ? Math.round((mtdRevenue / goal100) * 1000) / 10 : null,
         currentTier,
         nextTier,

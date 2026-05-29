@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.50.9', date:'May 29, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Closed Revenue + True ROAS now window on closedate, not createdate.** "Closed Revenue (90d)" was summing closed-won deals *created* in the window; it now sums deals that *closed* in the window — the intuitive meaning, and the same basis HubSpot\'s Ads tool uses. Verified against live HubSpot: the gclid-attributed closed-won pool moves from ~$291k (createdate) to ~$433k (closedate), reconciling cleanly with HubSpot\'s "All ad interactions" revenue (~$487k; the residual is the no-gclid ad-clickers we structurally can\'t see). All deal-based coverage metrics moved to closedate for consistency; contact counts stay on createdate (a cohort question, and how first-touch was validated).'},
+        {t:'ui', d:'**"HubSpot Contacts" card relabeled to reflect the real signal.** Was "HubSpot Contacts (All ad interactions)" — but that count is effectively "contacts carrying a gclid" (proven: 223 gclid vs 224 all). Now labels per model: <em>first-touch paid</em> / <em>last-touch paid</em> / <em>gclid / paid touch</em>. Tooltip clarifies it\'s a provable floor — HubSpot\'s Ads tool counts more ad interactions (no-gclid clicks) so it reads higher.'},
+        {t:'ui', d:'**Closed Revenue + True ROAS tooltips** now state the basis: closed-won by closedate, single-touch full deal-amount credit (matching HubSpot\'s crediting, not a fractional multi-touch split).'},
+      ]
+    },
+    {
       v:'1.50.8', date:'May 29, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Marketing — attribution model selector.** New First interaction / Last click / All ad interactions toggle on the marketing dashboard, beside the date range. It re-drives the closed-loop cards (Closed Revenue, HubSpot Contacts, True ROAS) and the per-campaign + per-search-term lead/deal/revenue columns. All three models run off fields the ETL already ingests (first_* and latest_* source pairs + gclid) — no re-sync needed. <em>First</em> = HubSpot&rsquo;s "First ad interaction" (strict first touch); <em>Last click</em> = latest_source paid, windowed on the last-touch date; <em>All</em> = any known ad touch (first OR latest paid, or a gclid present) ≈ HubSpot&rsquo;s "All ad interactions" (close, not exact — we store first + latest + gclid, not full event history).'},

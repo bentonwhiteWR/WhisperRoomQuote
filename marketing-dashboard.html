@@ -195,9 +195,9 @@ th.sortable .sort-arrow{display:inline-block;margin-left:3px;font-size:9px;color
     <div class="card"><div class="card-label" id="lblClicks">Clicks (90d)</div><div class="card-value" id="kpiClicks">—</div><div class="card-sub" id="kpiCpc">— avg CPC</div></div>
     <div class="card" title="Google Ads conversion EVENTS (form fills, calls, etc.) as reported by Google's own tracking — NOT unique people. One contact can fire several, and counts can be fractional under data-driven attribution. For the people-level number, see HubSpot Contacts."><div class="card-label" id="lblConv">Google Conversions (90d)</div><div class="card-value" id="kpiConv">—</div><div class="card-sub" id="kpiCpa">— avg CPA</div></div>
     <div class="card"><div class="card-label" id="lblValue">GA4 Conv. Value (90d)</div><div class="card-value" id="kpiValue">—</div><div class="card-sub" id="kpiRoas">— GA4 ROAS</div></div>
-    <div class="card"><div class="card-label" id="lblClosedRev">Closed Revenue (90d)</div><div class="card-value" id="kpiClosedRev">—</div><div class="card-sub" id="kpiDealCount">— deals</div></div>
-    <div class="card" title="Unique HubSpot contacts attributed to paid search under the selected attribution model. The people-level analog to Google Conversions. Under 'First interaction' this lines up with HubSpot's 'First ad interaction' contact count; under 'All ad interactions' with its 'All ad interactions' count."><div class="card-label" id="lblHsContacts">HubSpot Contacts (First interaction)</div><div class="card-value" id="kpiHsContacts">—</div><div class="card-sub" id="kpiHsContactsSub">attributed to paid</div></div>
-    <div class="card" title="Closed-won revenue ÷ total paid-search spend, for contacts attributed under the selected model. Switch models with the Attribution selector above."><div class="card-label" id="lblTrueRoas">True ROAS (First interaction)</div><div class="card-value" id="kpiTrueRoas">—</div><div class="card-sub" id="kpiTrueRoasSub">closed rev ÷ spend</div></div>
+    <div class="card" title="Closed-won deal revenue for deals that CLOSED in the selected window (by closedate), attributed to paid under the selected model. Full deal amount per ad-touched deal (single-touch full-credit) — the same way HubSpot's Ads tool credits, NOT a fractional multi-touch split."><div class="card-label" id="lblClosedRev">Closed Revenue (90d)</div><div class="card-value" id="kpiClosedRev">—</div><div class="card-sub" id="kpiDealCount">— deals</div></div>
+    <div class="card" title="Unique HubSpot contacts we can tie to paid search via STORED signals — a captured Google gclid, or a paid-search first/latest analytics source — created in range. This is a provable floor: HubSpot's Ads tool counts MORE ad interactions (clicks that never stored a gclid), so 'all' here (~gclid count) reads lower than the Ads page's 'All ad interactions'. The First-interaction model lines up with HubSpot's 'First ad interaction'."><div class="card-label" id="lblHsContacts">HubSpot Contacts (first-touch paid)</div><div class="card-value" id="kpiHsContacts">—</div><div class="card-sub" id="kpiHsContactsSub">attributed to paid</div></div>
+    <div class="card" title="Closed-won revenue (deals that closed in the window, by closedate) ÷ total paid-search spend, for contacts attributed under the selected model. Switch models with the Attribution selector above."><div class="card-label" id="lblTrueRoas">True ROAS (First interaction)</div><div class="card-value" id="kpiTrueRoas">—</div><div class="card-sub" id="kpiTrueRoasSub">closed rev ÷ spend</div></div>
   </div>
 
   <!-- Section titles include the current date range (set dynamically). -->
@@ -371,6 +371,17 @@ let currentDaysBack = 90;
 // endpoints. 'first' matches the prior hardcoded first-touch behavior.
 let currentModel = 'first';
 const MODEL_LABELS = { first: 'First interaction', last: 'Last click', all: 'All ad interactions' };
+// Honest, signal-level labels for the HubSpot Contacts card. Our paid
+// attribution is bounded by what's STORED on the contact (a captured gclid
+// + analytics source), so the 'all' count is effectively "contacts carrying
+// a gclid" (proven 2026-05-29: 223 gclid vs 224 all). Label it for what it
+// actually counts — NOT HubSpot's Ads-tool "All ad interactions" (higher,
+// because it tracks no-gclid ad clicks we never see).
+const HS_CONTACTS_LABELS = {
+  first: 'HubSpot Contacts (first-touch paid)',
+  last:  'HubSpot Contacts (last-touch paid)',
+  all:   'HubSpot Contacts (gclid / paid touch)',
+};
 const MODEL_HINTS = {
   first: 'First interaction = HubSpot\'s "First ad interaction" (strict first touch).',
   last:  'Last click = the contact\'s most-recent source was paid search (HubSpot last-interaction lens).',
@@ -483,7 +494,7 @@ function renderSummary(rows, cov) {
   document.getElementById('lblConv').textContent       = `Google Conversions (${d}d)`;
   document.getElementById('lblValue').textContent      = `GA4 Conv. Value (${d}d)`;
   document.getElementById('lblClosedRev').textContent  = `Closed Revenue (${d}d)`;
-  document.getElementById('lblHsContacts').textContent = `HubSpot Contacts (${ml})`;
+  document.getElementById('lblHsContacts').textContent = HS_CONTACTS_LABELS[currentModel] || HS_CONTACTS_LABELS.first;
   document.getElementById('lblTrueRoas').textContent   = `True ROAS (${ml})`;
   const covTitle = document.getElementById('coverageTitle');
   if (covTitle) covTitle.textContent = `Attribution coverage (last ${d} days)`;

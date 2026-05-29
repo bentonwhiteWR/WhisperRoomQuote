@@ -592,6 +592,13 @@ async function handle(req, res, ctx) {
       // model-INDEPENDENT — they answer "how much is attributable at all?".
       // The *_selected keys + contacts_attributed are model-DRIVEN and feed
       // the Closed Revenue / HubSpot Contacts / True ROAS cards (v1.50.8).
+      //
+      // v1.50.9 — DEAL metrics window on closed_at (closedate), NOT created_at:
+      // "Closed Revenue (90d)" must mean revenue that *closed* in the window,
+      // matching HubSpot's Ads-tool basis (full deal amount per ad-touched
+      // closed-won deal). CONTACT metrics stay on created_at — that's a cohort
+      // question ("new contacts attributable"), and matches how first-touch was
+      // validated against HubSpot's "First ad interaction" report.
       const r = ctx.db ? (await ctx.db.query(`
         SELECT
           (SELECT COUNT(*) FROM marketing_hubspot_contacts
@@ -601,11 +608,11 @@ async function handle(req, res, ctx) {
                AND ${am.contactPaid})                                                                                AS contacts_attributed,
           (SELECT COUNT(*) FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND ${am.contactPaid})                                                                                AS deals_won_selected,
           (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND ${am.contactPaid})                                                                                AS revenue_selected,
           (SELECT COUNT(*) FROM marketing_hubspot_contacts
              WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * $1
@@ -614,32 +621,32 @@ async function handle(req, res, ctx) {
              WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * $1
                AND gclid IS NOT NULL)                                                                                AS contacts_with_gclid,
           (SELECT COUNT(*) FROM marketing_hubspot_deals
-             WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND is_closed_won)                             AS deals_won_total,
+             WHERE closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND is_closed_won)                             AS deals_won_total,
           (SELECT COUNT(*) FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND (c.first_source IS NOT NULL OR c.gclid IS NOT NULL))                                              AS deals_won_attributed,
           (SELECT COALESCE(SUM(amount), 0)::float FROM marketing_hubspot_deals
-             WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND is_closed_won)                             AS revenue_total,
+             WHERE closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND is_closed_won)                             AS revenue_total,
           (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND (c.first_source IS NOT NULL OR c.gclid IS NOT NULL))                                              AS revenue_attributed,
           (SELECT COUNT(*) FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND c.first_source = 'PAID_SEARCH')                                                                   AS deals_won_first_touch,
           (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND c.first_source = 'PAID_SEARCH')                                                                   AS revenue_first_touch,
           (SELECT COUNT(*) FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND (c.first_source = 'PAID_SEARCH' OR c.gclid IS NOT NULL))                                          AS deals_won_any_touch,
           (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND (c.first_source = 'PAID_SEARCH' OR c.gclid IS NOT NULL))                                          AS revenue_any_touch
       `, [days])).rows[0] : {};
       ctx.json({ ...(r || {}), model: am.model });

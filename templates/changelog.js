@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.50.6', date:'May 29, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Shortened the "Update PO" confirm text** to just "This will replace the existing PO." (was a multi-paragraph explanation).'},
+      ]
+    },
+    {
       v:'1.50.5', date:'May 29, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**"Update PO" now confirms before replacing the Drive PDF.** Clicking the button when it&rsquo;s in "Update PO" mode (i.e. a PDF already exists) fires a confirm: "This will replace the existing PDF in the Drive folder with the current state of the PO… The shared Drive link stays the same. Continue?" First-time generations (label = "Create / Download PDF") still go straight through with no prompt.'},

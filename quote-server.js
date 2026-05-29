@@ -14067,7 +14067,7 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
           }).join('');
           return '<div class="receive-event"><div class="receive-event-meta"><strong>' + esc(e.by_name || 'Rep') + '</strong> &middot; ' + esc(when) + '</div><ul>' + itemList + '</ul></div>';
         }).join('');
-        return '<div class="receive-log-block"><h3>Receipt Log <span class="internal-tag">Internal — not on vendor PDF</span></h3>' + items + '</div>';
+        return '<div class="receive-log-block"><h3>Receipt Log <span class="internal-tag">Internal</span></h3>' + items + '</div>';
       })()
     : '') +
 

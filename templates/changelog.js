@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.50.2', date:'May 29, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Receipt log header pared back.** Dropped the "— not on vendor PDF" suffix from the Internal tag; just says "Internal" now.'},
+      ]
+    },
+    {
       v:'1.50.1', date:'May 29, 2026', tag:'feature',
       changes:[
         {t:'fix', d:'**PDF no longer auto-regenerates on edits.** The Drive PDF is now a snapshot of what was sent to the vendor — it only changes when Josh explicitly hits the **Create / Download PDF** button on `/vpo/`. Stripped the fire-and-forget regen calls from POST `/api/vendor-pos` (create), PATCH `/api/vendor-pos` (every edit), and POST `/api/vendor-pos/:poNumber/receive`. The `/pdf` endpoint (the explicit button) still generates fresh + uploads + downloads as before.'},

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.49.14', date:'May 29, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Back link on the PO builder.** New ← Vendor Hub button top-left of `/vpo/`. Visible only to authenticated reps (share-token vendor views don&rsquo;t see it). Edit-mode banner bumped down to row 2 so the two don&rsquo;t overlap. Both hidden in `@media print` so the PDF render stays clean.'},
+      ]
+    },
+    {
       v:'1.49.13', date:'May 29, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Delete POs from the Vendor Hub table.** New red × button on each row in the Vendor Hub Purchase Orders tab. Confirms then DELETEs and refreshes the table. The server-side gate that only allowed deletes of OPEN POs is gone — table cleanup is unrestricted (the audit log captures the prior status so deletions stay traceable).'},

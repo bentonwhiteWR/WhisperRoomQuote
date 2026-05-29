@@ -13847,7 +13847,9 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
 '.sincerely{margin-top:18px;font-size:12px;color:#444;line-height:1.7}' +
 '.print-bar{position:fixed;top:14px;right:14px;display:flex;gap:8px;z-index:10}' +
 '.print-bar button{padding:8px 14px;background:#1a1a1a;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;font-family:inherit}' +
-'.edit-banner{position:fixed;top:14px;left:14px;display:none;align-items:center;gap:10px;padding:6px 12px;background:#1a1a1a;color:#fff;border-radius:7px;font-size:11px;font-weight:600;z-index:10;box-shadow:0 4px 14px rgba(0,0,0,.2)}' +
+'.edit-banner{position:fixed;top:56px;left:14px;display:none;align-items:center;gap:10px;padding:6px 12px;background:#1a1a1a;color:#fff;border-radius:7px;font-size:11px;font-weight:600;z-index:10;box-shadow:0 4px 14px rgba(0,0,0,.2)}' +
+'.back-link{position:fixed;top:14px;left:14px;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#1a1a1a;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;text-decoration:none;font-family:inherit;z-index:10;box-shadow:0 4px 14px rgba(0,0,0,.2)}' +
+'.back-link:hover{background:#333;color:#fff}' +
 '.edit-banner .dot{width:7px;height:7px;border-radius:50%;background:#ee6216;box-shadow:0 0 8px rgba(238,98,22,.6)}' +
 '.edit-banner .save-status{color:#888;font-weight:500;margin-left:4px}' +
 '.editable{cursor:text;border-radius:3px;padding:1px 4px;margin:-1px -4px;transition:background .12s,box-shadow .12s;display:inline-block}' +
@@ -13881,9 +13883,10 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
 '.picker-foot .picker-cancel{background:transparent;color:#888;border:1px solid #ddd}' +
 '.picker-foot .picker-add{background:#ee6216;color:#fff}' +
 '.picker-foot .picker-add:hover{opacity:.9}' +
-'@media print {.print-bar{display:none} .edit-banner{display:none!important} .edit-only{display:none!important} .editable:hover{background:transparent!important;box-shadow:none!important} .picker-overlay{display:none!important} body{background:#fff;padding:0} .page{box-shadow:none;border-radius:0;max-width:100%;padding:36px 40px}}' +
+'@media print {.print-bar{display:none} .edit-banner{display:none!important} .back-link{display:none!important} .edit-only{display:none!important} .editable:hover{background:transparent!important;box-shadow:none!important} .picker-overlay{display:none!important} body{background:#fff;padding:0} .page{box-shadow:none;border-radius:0;max-width:100%;padding:36px 40px}}' +
 '</style></head><body' + (isAuth(req) ? ' data-edit-mode="1"' : '') + '>' +
 
+(isAuth(req) ? '<a class="back-link" href="/vendor-pos">&larr; Vendor Hub</a>' : '') +
 '<div class="edit-banner"><span class="dot"></span><span>Edit mode</span><span class="save-status" id="saveStatus"></span></div>' +
 '<div class="print-bar">' +
   (isAuth(req) ? '<button id="createPoBtn" style="background:#ee6216">Create / Download PDF</button>' : '') +

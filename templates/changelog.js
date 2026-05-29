@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.49.11', date:'May 29, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Nav bar audit + consistency.** Audited the topbar nav across all 9 dashboards; the canonical set is now: Deal Hub / Quotes / Orders / Shipping / Reports / Accounting / Suppliers / Vendor Hub / Marketing. Added Marketing to 7 dashboards that didn&rsquo;t have it (orders, reconcile, reports, shipping, suppliers, vendor-pos, email-reply). Added Accounting to marketing-dashboard.html. Removed the Email Reply self-link from `assistant/email-reply.html` — Email Reply opens via the ✉ icon button on Deal Hub (popup modal); no dedicated nav slot. Deleted the orphaned `vendors-dashboard.html` (the `/vendors` route 302-redirects to `/vendor-pos#vendors` since v1.49.3; the file was unreferenced).'},
+      ]
+    },
+    {
       v:'1.49.10', date:'May 29, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Tax calc now works in the ZIP-only freight flow.** The Quote Builder lets reps run a freight quote with just a ZIP code (no city/state) — but in that path the tax call was silently returning $0 because `lib/taxjar.js:18-20` short-circuits to `tax: 0` when state is empty (it doesn&rsquo;t match anything in `NEXUS_STATES`). Added a `zipToState()` helper in `lib/states.js` that maps the ZIP-3 prefix to a US state via USPS Sectional Center ranges (~55 ranges, ~30 LOC). `calculateTaxProper` now derives state from ZIP when the input state is empty before doing the nexus lookup; explicit state still wins when present. Canadian postal codes / non-state territories return empty and tax stays $0 (correct — no US nexus there). Wired into `taxjar.init({ zipToState })` from the existing module destructure.'},

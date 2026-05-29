@@ -762,8 +762,11 @@ async function _regenerateVendorPoPdf(po) {
     const url = `${PUBLIC_BASE_URL}/vpo/${encodeURIComponent(po.po_number)}?t=${po.share_token}`;
     const buf = await generatePdfBuffer(url);
     const vendorName = (po.vendor_snapshot && po.vendor_snapshot.name) || 'Vendor';
-    const safeName = vendorName.replace(/[\\\/:*?"<>|]+/g, ' ').trim();
-    const filename = `${po.po_number} — ${safeName}.pdf`;
+    // Strip filesystem-unsafe chars AND non-ASCII (the em-dash and any
+    // accented vendor names would otherwise blow up Node's strict
+    // Content-Disposition header validation downstream).
+    const safeName = vendorName.replace(/[\\\/:*?"<>|]+/g, ' ').replace(/[^\x20-\x7E]/g, '').replace(/\s+/g, ' ').trim();
+    const filename = `${po.po_number} - ${safeName}.pdf`;
 
     const folderId = process.env.GDRIVE_VENDOR_POS_FOLDER;
     if (!folderId) {
@@ -12100,9 +12103,12 @@ ${q.accepted ? `
       if (!r.rows.length) { json({ error: 'PO not found' }, 404); return; }
       const result = await _regenerateVendorPoPdf(r.rows[0]);
       if (!result || !result.buf) { json({ error: 'PDF generation failed' }, 500); return; }
+      // Defensive: Node rejects non-ASCII in raw header values. Strip
+      // anything outside printable ASCII before serializing.
+      const headerFilename = result.filename.replace(/"/g, '').replace(/[^\x20-\x7E]/g, '-');
       res.writeHead(200, {
         'Content-Type':        'application/pdf',
-        'Content-Disposition': 'attachment; filename="' + result.filename.replace(/"/g, '') + '"',
+        'Content-Disposition': 'attachment; filename="' + headerFilename + '"',
         'Content-Length':       result.buf.length,
         'Cache-Control':       'no-store',
       });

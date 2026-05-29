@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.50.3', date:'May 29, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Send button on the Vendor Hub table.** Each OPEN PO row gets a green **Send** button (between Open and Receive). Flips the row to SENT, then opens a `mailto:` draft addressed to the vendor&rsquo;s send-to/cc with the standard greeting + "Attached is WhisperRoom Purchase Order WP-… Please confirm receipt…". Josh attaches the PDF before sending. Uses a hidden anchor click so the listing stays put and refreshes.'},
+        {t:'fix', d:'**Dropped the "View online: /vpo/…" link from the Send body.** Both the table Send button and the existing `/vpo/` Send button. The PDF is the artifact for the vendor; no need for the internal link in vendor-facing mail.'},
+      ]
+    },
+    {
       v:'1.50.2', date:'May 29, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Receipt log header pared back.** Dropped the "— not on vendor PDF" suffix from the Internal tag; just says "Internal" now.'},

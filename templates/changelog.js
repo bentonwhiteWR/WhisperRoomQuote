@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.51.3', date:'May 29, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Removed Arizona + Utah from `NEXUS_STATES`.** We no longer have nexus in those states (per the rep, TaxJar&rsquo;s already been corrected). `lib/states.js` now lists 14 states (was 16). The tax calculator was over-charging AZ and UT orders &mdash; from this version forward, those ZIP codes route through the same "no nexus → tax: 0" path as any non-nexus state. The Quote Builder Nexus States popup will reflect the new list automatically (it&rsquo;s sourced from the same map).'},
+      ]
+    },
+    {
       v:'1.51.2', date:'May 29, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Marketing — Spend → Quote → Close → Revenue funnel + segment overlay.** New funnel strip below the KPI cards (above the Campaigns table) showing Spend → Quotes → Closed → Revenue with **cost-per-quote**, **cost-per-closed-deal (CAC)**, and ROAS — driven by the same model-windowed numbers as the cards, so they always agree. "Quote" = a deal that reached the Sent-Quote stage or beyond (HubSpot Sales Pipeline). Respects the active attribution toggle (First / Last / All) and date range.'},

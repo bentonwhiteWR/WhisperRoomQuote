@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.50.4', date:'May 29, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**"Create / Download PDF" → "Update PO" once a PDF exists.** First click on a fresh PO says "Create / Download PDF" — generates, uploads to Drive, downloads. Once `pdf_drive_file_id` is set on the row, subsequent visits show "Update PO" instead. Same endpoint (`POST /api/vendor-pos/:n/pdf`) — server-side regen + Drive PATCH-in-place still overwrites the existing Drive file via the stored file ID, so vendors keep the same shared link if Josh circulated it. After any successful generation the button label is sticky at "Update PO".'},
+      ]
+    },
+    {
       v:'1.50.3', date:'May 29, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Send button on the Vendor Hub table.** Each OPEN PO row gets a green **Send** button (between Open and Receive). Flips the row to SENT, then opens a `mailto:` draft addressed to the vendor&rsquo;s send-to/cc with the standard greeting + "Attached is WhisperRoom Purchase Order WP-… Please confirm receipt…". Josh attaches the PDF before sending. Uses a hidden anchor click so the listing stays put and refreshes.'},

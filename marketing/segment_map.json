@@ -1,0 +1,41 @@
+{
+  "_comment": "DRAFT proposal for Gabe's review — NOT yet wired into any UI. Campaign -> buyer-segment mapping for the Segment Performance section. Resolution order applied by the classifier: (1) exact `overrides` match wins, (2) else the first `rules` entry whose match_any hits the campaign_name (top-to-bottom), (3) else if any `mixed_signals` token hits -> 'Mixed', (4) else 'Unclassified'. Matching is case-insensitive; match_any values are regex fragments. 'Mixed' campaigns can later be replaced with a split-allocation object, e.g. {\"type\":\"split\",\"allocation\":{\"Audiology\":0.4,\"Office / Privacy\":0.6}}. The override list below only covers campaigns visible so far in screenshots — the read-only diagnostic endpoint will classify the FULL live campaign set from marketing_campaigns so we can fill the gaps before building the UI.",
+  "version": 1,
+  "segments": [
+    "Audiology",
+    "Education",
+    "Voice Over",
+    "Music / Recording",
+    "Office / Privacy",
+    "Broadcast / Podcast"
+  ],
+  "rules": [
+    { "segment": "Audiology",          "match_any": ["audiolog", "hearing", "telehealth", "therapy", "medical", "clinic", "exam", "speech"] },
+    { "segment": "Education",          "match_any": ["educat", "school", "univers", "college", "classroom", "campus", "student", "library", "practice room", "k-?12"] },
+    { "segment": "Voice Over",         "match_any": ["voice ?over", "\\bvo\\b", "vocal", "narration", "audiobook", "dubbing"] },
+    { "segment": "Music / Recording",  "match_any": ["music", "record", "\\bstudio\\b", "drum", "instrument", "rehears", "\\bband\\b", "producer", "mixing", "tracking"] },
+    { "segment": "Office / Privacy",   "match_any": ["office", "privacy", "focus room", "workspace", "cowork", "phone booth", "huddle", "\\bwfh\\b", "open office", "meeting pod"] },
+    { "segment": "Broadcast / Podcast","match_any": ["broadcast", "podcast", "radio", "streaming", "content creat", "youtuber", "twitch", "on-air"] }
+  ],
+  "mixed_signals": ["branded", "\\bbrand\\b", "general", "competitor", "remarket", "re-?engag", "shopping", "testing", "combined", "core booths"],
+  "overrides": {
+    "Shopify Booth Packages - Audiology": "Audiology",
+    "Vocal & Voice Over Booths (2025)": "Voice Over",
+    "Telehealth / Therapy Booths": "Audiology",
+    "**LP Branded - A": "Mixed",
+    "**LP Branded - B": "Mixed",
+    "**LP General (US/CAN) - Combined": "Mixed",
+    "**LP Testing (US/CAN) - Combined": "Mixed",
+    "**LP Soundproof (US/CAN) - B": "Mixed",
+    "Competitors - Sound Booths": "Mixed",
+    "2025 WR Active User Remarketing": "Mixed",
+    "Site Re-Engagement - High Interaction": "Mixed",
+    "Shopping | Core Booths | US": "Mixed",
+    "Soundproofing (US/CAN) - Home Soundproofing Solutions": "Mixed"
+  },
+  "review_flags": {
+    "Telehealth / Therapy Booths": "Mapped to Audiology (medical/therapy use). Could be Office / Privacy (private telehealth rooms). Confirm.",
+    "Soundproofing (US/CAN) - Home Soundproofing Solutions": "Flagged Mixed — 'home soundproofing' spans Music / Recording (home studio) and Office / Privacy (home office). Confirm or set a split.",
+    "**LP Soundproof (US/CAN) - B": "Generic soundproofing lander — flagged Mixed pending a landing-page-URL signal."
+  }
+}

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.50.10', date:'May 29, 2026', tag:'log',
+      changes:[
+        {t:'add', d:'**Marketing — segment classifier groundwork (read-only).** New `marketing/segment_map.json` (Gabe-editable config) maps Google Ads campaigns → buyer segments (Audiology / Education / Voice Over / Music·Recording / Office·Privacy / Broadcast·Podcast) by keyword rules + exact overrides, with a "Mixed" bucket for cross-segment campaigns (Branded/General/Competitor/Remarketing/Shopping). New read-only diagnostic `GET /api/marketing/segments/proposed` classifies EVERY campaign in `marketing_campaigns` (all-time) and returns per-segment spend rollups + the Mixed/Unclassified lists for review. No UI yet — this is the data-grounding step before the Segment Performance section is built (awaiting sign-off on the mapping).'},
+      ]
+    },
+    {
       v:'1.50.9', date:'May 29, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Closed Revenue + True ROAS now window on closedate, not createdate.** "Closed Revenue (90d)" was summing closed-won deals *created* in the window; it now sums deals that *closed* in the window — the intuitive meaning, and the same basis HubSpot\'s Ads tool uses. Verified against live HubSpot: the gclid-attributed closed-won pool moves from ~$291k (createdate) to ~$433k (closedate), reconciling cleanly with HubSpot\'s "All ad interactions" revenue (~$487k; the residual is the no-gclid ad-clickers we structurally can\'t see). All deal-based coverage metrics moved to closedate for consistency; contact counts stay on createdate (a cohort question, and how first-touch was validated).'},

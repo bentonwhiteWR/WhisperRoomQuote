@@ -148,6 +148,52 @@ function isAllowed(sess) {
   return !!(sess && MARKETING_ALLOWLIST.includes(String(sess.ownerId || '')));
 }
 
+// ── Segment classifier (v1.50.10) ─────────────────────────────────────
+// Maps a Google Ads campaign_name to a buyer segment using marketing/
+// segment_map.json (Gabe-editable config — NOT hardcoded). Resolution
+// order: exact override → first matching segment rule → mixed_signals →
+// 'Unclassified'. Read by the read-only /segments/proposed diagnostic now;
+// the Segment Performance UI will reuse the exact same classifier so the
+// table and the diagnostic can never drift. Map is cached after first load;
+// editing the file requires a redeploy/restart to pick up (fine — it's a
+// reviewed config, not live data).
+let _segmentMap = null;
+function _loadSegmentMap() {
+  if (_segmentMap) return _segmentMap;
+  try {
+    _segmentMap = JSON.parse(fs.readFileSync(path.join(__dirname, 'segment_map.json'), 'utf8'));
+  } catch (e) {
+    console.warn('[marketing] segment_map.json load failed:', e.message);
+    _segmentMap = { segments: [], rules: [], mixed_signals: [], overrides: {} };
+  }
+  return _segmentMap;
+}
+
+// Classify one campaign name. Returns { segment, rule, split? }. `rule` is a
+// short provenance string so the diagnostic can show WHY each campaign landed
+// where it did (override / rule:<frag> / mixed:<frag> / null).
+function _classifyCampaign(name, map) {
+  if (!name) return { segment: 'Unclassified', rule: null };
+  if (map.overrides && Object.prototype.hasOwnProperty.call(map.overrides, name)) {
+    const ov = map.overrides[name];
+    if (ov && typeof ov === 'object') return { segment: 'Mixed', rule: 'override:split', split: ov.allocation || null };
+    return { segment: ov, rule: 'override' };
+  }
+  const test = (frag) => {
+    try { return new RegExp(frag, 'i').test(name); }
+    catch { return name.toLowerCase().includes(String(frag).toLowerCase()); }
+  };
+  for (const r of (map.rules || [])) {
+    for (const frag of (r.match_any || [])) {
+      if (test(frag)) return { segment: r.segment, rule: `rule:${frag}` };
+    }
+  }
+  for (const frag of (map.mixed_signals || [])) {
+    if (test(frag)) return { segment: 'Mixed', rule: `mixed:${frag}` };
+  }
+  return { segment: 'Unclassified', rule: null };
+}
+
 // Entry point. Returns true if the request was handled (caller stops
 // dispatching), false otherwise. ctx provides everything from
 // quote-server.js's request handler closure: { db, getSession, json,
@@ -650,6 +696,66 @@ async function handle(req, res, ctx) {
                AND (c.first_source = 'PAID_SEARCH' OR c.gclid IS NOT NULL))                                          AS revenue_any_touch
       `, [days])).rows[0] : {};
       ctx.json({ ...(r || {}), model: am.model });
+    } catch(e) { ctx.json({ error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/segments/proposed ──────────────────────────
+  // Read-only diagnostic (v1.50.10). Classifies EVERY distinct campaign in
+  // marketing_campaigns (all-time, no date window — we want the full
+  // campaign universe) via segment_map.json, so Gabe can review + edit the
+  // mapping before the Segment Performance UI is built. No writes, no schema
+  // change. Spend/clicks/conversions are lifetime totals per campaign purely
+  // to sort by materiality. Returns by-segment rollups + the Mixed and
+  // Unclassified lists called out for review.
+  if (pathname === '/api/marketing/segments/proposed' && req.method === 'GET') {
+    try {
+      const map  = _loadSegmentMap();
+      const rows = ctx.db ? (await ctx.db.query(`
+        SELECT campaign_name,
+               (SUM(cost_micros)::float / 1000000) AS spend,
+               SUM(clicks)::bigint                 AS clicks,
+               SUM(conversions)::float             AS conversions,
+               MIN(date)                           AS first_date,
+               MAX(date)                           AS last_date
+        FROM marketing_campaigns
+        WHERE campaign_name IS NOT NULL
+        GROUP BY campaign_name
+        ORDER BY spend DESC NULLS LAST
+      `)).rows : [];
+      const campaigns = rows.map(r => {
+        const c = _classifyCampaign(r.campaign_name, map);
+        return {
+          campaign_name: r.campaign_name,
+          spend:       Math.round((r.spend || 0) * 100) / 100,
+          clicks:      Number(r.clicks) || 0,
+          conversions: r.conversions || 0,
+          segment:     c.segment,
+          rule:        c.rule,
+          split:       c.split || null,
+          first_date:  r.first_date,
+          last_date:   r.last_date,
+        };
+      });
+      // Roll up by segment (spend + campaign count) for an at-a-glance review.
+      const bySeg = {};
+      for (const c of campaigns) {
+        (bySeg[c.segment] = bySeg[c.segment] || { segment: c.segment, campaigns: 0, spend: 0 });
+        bySeg[c.segment].campaigns += 1;
+        bySeg[c.segment].spend     += c.spend;
+      }
+      const by_segment = Object.values(bySeg)
+        .map(s => ({ ...s, spend: Math.round(s.spend * 100) / 100 }))
+        .sort((a, b) => b.spend - a.spend);
+      ctx.json({
+        note: 'PROPOSED campaign→segment mapping for review. Edit marketing/segment_map.json, redeploy, reload. Resolution: override → rule → mixed_signals → Unclassified.',
+        total_campaigns: campaigns.length,
+        segments_defined: map.segments || [],
+        by_segment,
+        unclassified: campaigns.filter(c => c.segment === 'Unclassified'),
+        mixed:        campaigns.filter(c => c.segment === 'Mixed'),
+        campaigns,
+      });
     } catch(e) { ctx.json({ error: e.message }, 500); }
     return true;
   }

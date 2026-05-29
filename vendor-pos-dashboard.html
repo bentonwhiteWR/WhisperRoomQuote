@@ -704,6 +704,9 @@ function renderPos() {
         '<td style="font-size:12px;color:var(--muted)">' + escapeHtml(created) + '</td>' +
         '<td><div class="row-actions">' +
           '<button class="btn btn-orange-soft btn-sm" onclick="viewPo(\'' + encodeURIComponent(p.po_number) + '\', \'' + escapeHtml(p.share_token) + '\')">Open</button>' +
+          (p.status !== 'CANCELLED'
+            ? '<button class="btn btn-sm" style="background:rgba(168,85,247,.12);color:#a855f7;border:1px solid rgba(168,85,247,.35)" onclick="openReceiveFromTable(\'' + encodeURIComponent(p.po_number) + '\')">' + (p.status === 'RECEIVED' || p.status === 'CLOSED' ? 'Receipts' : 'Receive') + '</button>'
+            : '') +
           '<button class="btn btn-red btn-sm" title="Delete PO" onclick="deletePoFromTable(\'' + encodeURIComponent(p.po_number) + '\')">&times;</button>' +
         '</div></td>' +
       '</tr>'
@@ -729,6 +732,121 @@ async function deletePoFromTable(encodedPoNumber) {
     await loadPos();
   } catch (e) {
     showToast('Error: ' + e.message, 'error');
+  }
+}
+
+// Open the Receive modal directly from a Vendor Hub row. Fetches the
+// latest PO so we never show stale received_data, then builds a
+// programmatic overlay that mirrors the /vpo/ Receive modal — same
+// columns (Ordered / Received / Remaining / Receiving Now), same
+// Receipt Log at the bottom.
+async function openReceiveFromTable(encodedPoNumber) {
+  const poNumber = decodeURIComponent(encodedPoNumber);
+  let po;
+  try {
+    const r = await fetch('/api/vendor-pos/' + encodeURIComponent(poNumber), { credentials: 'include' });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Failed to load PO');
+    po = data.po;
+  } catch (e) {
+    showToast('Error: ' + e.message, 'error');
+    return;
+  }
+  const lines = (po.po_data && Array.isArray(po.po_data.lines)) ? po.po_data.lines : [];
+  const received = (po.received_data && typeof po.received_data === 'object') ? po.received_data : { events: [], totals: {} };
+  const totals = received.totals || {};
+  const events = Array.isArray(received.events) ? received.events : [];
+  const readOnly = po.status === 'RECEIVED' || po.status === 'CLOSED' || po.status === 'CANCELLED';
+  const linesById = {};
+  lines.forEach(l => { linesById[l.id] = l; });
+
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  const fmtTs = iso => {
+    try { return new Date(iso).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }); }
+    catch (e) { return iso; }
+  };
+
+  const rows = lines.map(l => {
+    const ordered = parseFloat(l.qty || 0) || 0;
+    const rec = parseFloat(totals[l.id] || 0) || 0;
+    const remaining = Math.max(0, ordered - rec);
+    const inp = readOnly
+      ? '<span style="color:var(--muted)">—</span>'
+      : '<input type="number" class="r-now" data-line-id="' + esc(l.id) + '" min="0" step="any" value="' + remaining + '" style="width:90px;padding:5px 8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:5px;text-align:right;font-family:inherit;font-size:12px">';
+    const doneTag = (ordered > 0 && rec >= ordered) ? ' <span style="color:var(--green);font-size:10px;font-weight:700;margin-left:4px">&#10003; DONE</span>' : '';
+    return '<tr><td>' + esc(l.description || '') + (l.sku ? ' <span style="color:var(--muted);font-size:11px">(' + esc(l.sku) + ')</span>' : '') + doneTag + '</td><td style="text-align:right">' + ordered + '</td><td style="text-align:right">' + rec + '</td><td style="text-align:right">' + remaining + '</td><td style="text-align:right">' + inp + '</td></tr>';
+  }).join('');
+
+  const logHtml = events.length === 0
+    ? '<div style="padding:14px;color:var(--muted);font-style:italic;text-align:center">No receipts yet.</div>'
+    : events.slice().reverse().map(e => {
+        const itemsList = (e.items || []).map(i => {
+          const l = linesById[i.lineId];
+          return '<li>' + i.qty + ' &times; ' + esc((l && l.description) || i.lineId) + '</li>';
+        }).join('');
+        return '<div style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px"><div style="font-size:11px;color:var(--muted);margin-bottom:4px"><strong style="color:var(--text)">' + esc(e.by_name || 'Rep') + '</strong> &middot; ' + esc(fmtTs(e.at)) + '</div><ul style="margin:0;padding-left:18px;color:var(--text);line-height:1.6">' + itemsList + '</ul></div>';
+      }).join('');
+
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML =
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;max-width:880px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.4);overflow:hidden">' +
+      '<div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:700">' +
+        '<div>' + (readOnly ? 'Receipts' : 'Receive Items') + ' &mdash; ' + esc(po.po_number) + '</div>' +
+        '<button class="r-close" type="button" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:0 6px;line-height:1">&times;</button>' +
+      '</div>' +
+      '<div style="padding:0;overflow-y:auto;flex:1">' +
+        (lines.length === 0
+          ? '<div style="padding:24px;text-align:center;color:var(--muted)">PO has no line items.</div>'
+          : ('<h4 style="margin:14px 18px 10px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">' + (readOnly ? 'Line Items' : 'Receive Now') + '</h4>' +
+             '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>' +
+               '<th style="background:var(--surface2);padding:8px 10px;text-align:left;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)">Item</th>' +
+               '<th style="background:var(--surface2);padding:8px 10px;text-align:right;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);width:80px">Ordered</th>' +
+               '<th style="background:var(--surface2);padding:8px 10px;text-align:right;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);width:80px">Received</th>' +
+               '<th style="background:var(--surface2);padding:8px 10px;text-align:right;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);width:90px">Remaining</th>' +
+               '<th style="background:var(--surface2);padding:8px 10px;text-align:right;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);width:120px">' + (readOnly ? '' : 'Receiving Now') + '</th>' +
+             '</tr></thead><tbody>' + rows + '</tbody></table>' +
+             '<h4 style="margin:18px 18px 6px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">Receipt Log</h4>' +
+             '<div style="max-height:220px;overflow-y:auto;border-top:1px solid var(--border)">' + logHtml + '</div>'
+          )) +
+      '</div>' +
+      '<div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;justify-content:flex-end">' +
+        '<button class="r-cancel btn btn-ghost" type="button">' + (readOnly ? 'Close' : 'Cancel') + '</button>' +
+        (readOnly ? '' : '<button class="r-save btn btn-orange" type="button">Save Receipt</button>') +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(ov);
+  const close = () => ov.remove();
+  ov.querySelector('.r-close').addEventListener('click', close);
+  ov.querySelector('.r-cancel').addEventListener('click', close);
+  ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+
+  if (!readOnly) {
+    ov.querySelector('.r-save').addEventListener('click', async () => {
+      const items = Array.from(ov.querySelectorAll('input.r-now')).map(i => ({
+        lineId: i.dataset.lineId,
+        qty: parseFloat(i.value || 0) || 0,
+      })).filter(it => it.qty > 0);
+      if (!items.length) { showToast('Enter at least one quantity', 'error'); return; }
+      const btn = ov.querySelector('.r-save');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      try {
+        const r = await fetch('/api/vendor-pos/' + encodeURIComponent(po.po_number) + '/receive', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ items }),
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Save failed');
+        showToast('Receipt saved', 'success');
+        close();
+        await loadPos();
+      } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+        btn.disabled = false; btn.textContent = 'Save Receipt';
+      }
+    });
   }
 }
 

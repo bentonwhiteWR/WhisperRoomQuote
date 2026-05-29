@@ -11957,11 +11957,9 @@ ${q.accepted ? `
         rep: String(rep || ''),
         meta: { poNumber, vendorId, lineCount: lines.length },
       });
-      // Kick off PDF generation immediately so the Drive file is ready
-      // by the time Josh hits Send.
-      _regenerateVendorPoPdf(result.rows[0]).catch(e => {
-        console.warn('[vendor-po] PDF regen error:', e.message);
-      });
+      // PDF is NOT auto-generated. The Drive PDF is the snapshot of
+      // what was sent to the vendor — Josh creates it explicitly via
+      // the Create/Download PDF button on /vpo/ when he's ready.
       json({ po: result.rows[0] });
     } catch(e) {
       json({ error: e.message }, 500);
@@ -12054,17 +12052,10 @@ ${q.accepted ? `
       }
 
       // Fire-and-forget PDF regen on any field edit or status transition
-      // into SENT — keeps the Drive folder in sync with the latest PO
-      // state. Skipped for terminal/cancelled states.
+      // PDF is NOT auto-regenerated on edits. The Drive PDF reflects
+      // what was sent to the vendor — it only changes when Josh
+      // explicitly hits Create/Download PDF on /vpo/.
       const final = result.rows[0];
-      const shouldRegen = (fieldEditRequested || newStatus === 'SENT') &&
-        final.status !== 'CANCELLED' && final.status !== 'CLOSED';
-      if (shouldRegen) {
-        _regenerateVendorPoPdf(final).catch(e => {
-          console.warn('[vendor-po] PDF regen error:', e.message);
-        });
-      }
-
       json({ po: final });
     } catch(e) {
       json({ error: e.message }, 500);
@@ -12165,11 +12156,8 @@ ${q.accepted ? `
         meta: { poNumber, items, newStatus, priorStatus: po.status },
       });
 
-      // Fire-and-forget PDF regen so Drive reflects the new status banner
-      _regenerateVendorPoPdf(updated.rows[0]).catch(e => {
-        console.warn('[vendor-po] PDF regen after receive:', e.message);
-      });
-
+      // No PDF regen — receipts are internal tracking only. The Drive
+      // PDF stays as the snapshot of what was sent to the vendor.
       json({ po: updated.rows[0] });
     } catch(e) {
       json({ error: e.message }, 500);
@@ -13920,6 +13908,15 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
 '.tot-row.grand{font-size:18px;font-weight:800;color:#1a1a1a;border-top:2px solid #1a1a1a;padding-top:10px;margin-top:6px}' +
 '.tot-row.grand span:last-child{color:#ee6216}' +
 '.notes-block{background:#fafafa;border-left:3px solid #ee6216;border-radius:0 6px 6px 0;padding:11px 14px;margin-bottom:14px}' +
+'.receive-log-block{margin-top:28px;padding:14px 18px;background:#fafafa;border-radius:6px;border-left:3px solid #a855f7}' +
+'.receive-log-block h3{font-size:11px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.08em;margin:0 0 10px;display:flex;align-items:center;gap:8px}' +
+'.receive-log-block .internal-tag{font-size:9px;background:rgba(168,85,247,.12);color:#a855f7;padding:2px 6px;border-radius:4px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}' +
+'.receive-event{padding:8px 0;border-bottom:1px solid #eee;font-size:12px}' +
+'.receive-event:last-child{border-bottom:none}' +
+'.receive-event-meta{color:#888;font-size:11px;margin-bottom:4px}' +
+'.receive-event-meta strong{color:#1a1a1a;font-weight:700}' +
+'.receive-event ul{margin:0;padding-left:18px;color:#444;line-height:1.6}' +
+'@media print {.receive-log-block{display:none}}' +
 '.notes-label{font-size:9px;font-weight:800;letter-spacing:.1em;color:#888;text-transform:uppercase;margin-bottom:4px}' +
 '.notes-body{font-size:11px;color:#444;line-height:1.55;white-space:pre-wrap}' +
 '.signoff{margin-top:30px;padding-top:18px;border-top:1px solid #e5e5e5;font-size:11px;color:#666;line-height:2.4}' +
@@ -14053,6 +14050,26 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
     '<div class="signoff-line"><strong>Billing Address:</strong><br>' + esc(billingBlock).replace(/\n/g, '<br>') + '</div>' +
     '<div class="sincerely">Sincerely,<br><br><strong>' + esc(repNameVpo) + '</strong><br>WhisperRoom, Inc.</div>' +
   '</div>' +
+
+  // Receipt log — internal tracking, auth-only. Puppeteer scrapes
+  // /vpo/ with share-token (no auth) → log doesn't appear on the
+  // vendor PDF. Also hidden in @media print.
+  ((isAuth(req) && po.received_data && Array.isArray(po.received_data.events) && po.received_data.events.length > 0)
+    ? (function() {
+        const events = po.received_data.events.slice().reverse();
+        const linesById = {};
+        lines.forEach(l => { linesById[l.id] = l; });
+        const items = events.map(e => {
+          const when = e.at ? new Date(e.at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }) : '';
+          const itemList = (e.items || []).map(i => {
+            const l = linesById[i.lineId];
+            return '<li>' + esc(i.qty) + ' &times; ' + esc((l && l.description) || i.lineId) + '</li>';
+          }).join('');
+          return '<div class="receive-event"><div class="receive-event-meta"><strong>' + esc(e.by_name || 'Rep') + '</strong> &middot; ' + esc(when) + '</div><ul>' + itemList + '</ul></div>';
+        }).join('');
+        return '<div class="receive-log-block"><h3>Receipt Log <span class="internal-tag">Internal — not on vendor PDF</span></h3>' + items + '</div>';
+      })()
+    : '') +
 
 '</div>' +
 

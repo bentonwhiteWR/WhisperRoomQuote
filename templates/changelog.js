@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.50.1', date:'May 29, 2026', tag:'feature',
+      changes:[
+        {t:'fix', d:'**PDF no longer auto-regenerates on edits.** The Drive PDF is now a snapshot of what was sent to the vendor — it only changes when Josh explicitly hits the **Create / Download PDF** button on `/vpo/`. Stripped the fire-and-forget regen calls from POST `/api/vendor-pos` (create), PATCH `/api/vendor-pos` (every edit), and POST `/api/vendor-pos/:poNumber/receive`. The `/pdf` endpoint (the explicit button) still generates fresh + uploads + downloads as before.'},
+        {t:'add', d:'**Receipt log on the `/vpo/` page.** Below the sincerely block, when there&rsquo;s any receive history, a purple-accented "Receipt Log" section lists every receive event (date, who, items). Auth-only — Puppeteer scrapes `/vpo/` via share-token (no auth), so the vendor-facing PDF stays clean. Also hidden in `@media print` for the same reason if a rep prints the page. Carries an "Internal — not on vendor PDF" tag so there&rsquo;s no confusion.'},
+        {t:'add', d:'**Receive button on the Vendor Hub table.** Each row gains a purple Receive button (or "Receipts" when the PO is already RECEIVED/CLOSED — same modal, read-only view). Opens an inline modal matching the `/vpo/` Receive UX: per-line Ordered / Received / Remaining / Receiving Now, plus the historical event log. Saves to the same `/api/vendor-pos/:poNumber/receive` endpoint and refreshes the listing.'},
+      ]
+    },
+    {
       v:'1.50.0', date:'May 29, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**WR PO System Phase 2 — Receive workflow.** New purple **Receive** button in the `/vpo/` action bar (auth-only; status-gated so it doesn&rsquo;t appear on RECEIVED/CLOSED/CANCELLED POs). Opens a modal showing each line item with Ordered / Received-so-far / Remaining / Receiving Now columns. Default value for each input is the line&rsquo;s remaining qty (so hitting Save with no edits records a full receipt of everything still open). The bottom half shows the **Receipt Log** — every prior receive event with who and when, plus the items received. The same modal serves as the read-only receipts view when the PO is fully received (button label flips to "Receipts" and the input column disappears). Backend: new `POST /api/vendor-pos/:poNumber/receive` endpoint that appends an event to `received_data.events`, recomputes per-line totals, and derives the new status — `RECEIVED` if every line&rsquo;s cumulative received qty meets or exceeds its ordered qty, `PARTIAL` if any received qty is > 0 but not all lines are full. Stamps `received_at` on first full-receive. Logs to `vendor-po.received` for the audit trail. Fires the standard PDF regen + Drive overwrite after the status update so the doc on Drive reflects the new state. **Open follow-up:** receive history isn&rsquo;t yet shown on the PDF render — Phase 3.'},

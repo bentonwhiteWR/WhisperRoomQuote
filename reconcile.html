@@ -187,6 +187,7 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
     <button class="tab-btn" data-tab="ar" onclick="switchTab('ar')">Accounts Receivable</button>
     <button class="tab-btn" data-tab="reconcile" onclick="switchTab('reconcile')">Reconcile</button>
     <button class="tab-btn" data-tab="hs-fees" onclick="switchTab('hs-fees')">HubSpot Fees</button>
+    <button class="tab-btn" data-tab="vendor-bills" onclick="switchTab('vendor-bills')">Vendor Bills</button>
   </div>
 
   <!-- ── Reconcile tab ── -->
@@ -432,6 +433,74 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
     </div>
   </div><!-- /tabHsFees -->
 
+  <!-- ── Vendor Bills tab (Kim's invoice matching) ── -->
+  <div id="tabVendorBills" style="display:none">
+    <div class="card">
+      <div class="card-title">Vendor Bills <span style="font-size:11px;font-weight:600;color:var(--text2);margin-left:8px">Match WR POs to vendor invoices &middot; opens QB&rsquo;s New Bill page</span></div>
+      <div class="row" style="margin-bottom:10px">
+        <button class="btn btn-ghost btn-sm" onclick="loadVendorBills(true)" title="Refresh">↻ Refresh</button>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);margin-left:auto"><input type="checkbox" id="vbShowFullyInvoiced" onchange="renderVendorBills()"> Show fully invoiced</label>
+      </div>
+      <div class="msg" id="vbMsg"></div>
+      <div class="tbl-wrap" id="vbTableWrap" style="display:none">
+        <table>
+          <thead>
+            <tr>
+              <th>PO #</th>
+              <th>Vendor</th>
+              <th>Status</th>
+              <th style="text-align:right">PO Total</th>
+              <th style="text-align:right">Invoiced</th>
+              <th style="text-align:right">Outstanding</th>
+              <th>Last Match</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="vbBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /tabVendorBills -->
+
+</div>
+
+<!-- Mark Invoiced modal — Kim's bill match -->
+<div id="markInvoicedModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeMarkInvoiced()">
+  <div class="modal-box" style="width:520px">
+    <button class="modal-close" onclick="closeMarkInvoiced()">✕</button>
+    <div class="modal-label">Mark Bill Received</div>
+    <div class="modal-name" id="miTitle">PO</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:14px" id="miSub"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <label style="display:block;font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Vendor Invoice # *</label>
+        <input type="text" id="miInvNum" placeholder="e.g. INV-12345" style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:13px;font-family:inherit;outline:none;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="display:block;font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Invoice Date</label>
+        <input type="date" id="miInvDate" style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:13px;font-family:inherit;outline:none;box-sizing:border-box">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <label style="display:block;font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Vendor Total ($) *</label>
+        <input type="number" id="miInvTotal" min="0" step="0.01" placeholder="0.00" oninput="miUpdateDelta()" style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:13px;font-family:var(--mono,monospace);outline:none;box-sizing:border-box;text-align:right">
+      </div>
+      <div>
+        <label style="display:block;font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">QB Bill # <span style="font-weight:400;color:var(--text2)">(if created)</span></label>
+        <input type="text" id="miQbBill" placeholder="leave blank if not in QB yet" style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:13px;font-family:inherit;outline:none;box-sizing:border-box">
+      </div>
+    </div>
+    <div id="miDeltaRow" style="display:none;padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:10px"></div>
+    <div style="margin-bottom:14px">
+      <label style="display:block;font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Notes</label>
+      <textarea id="miNotes" rows="2" placeholder="optional" style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:13px;font-family:inherit;outline:none;box-sizing:border-box;resize:vertical"></textarea>
+    </div>
+    <div class="modal-actions" style="justify-content:flex-end;gap:8px">
+      <button class="btn btn-ghost" onclick="closeMarkInvoiced()">Cancel</button>
+      <button class="btn btn-orange" id="miSaveBtn" onclick="saveMarkInvoiced()">Save Bill</button>
+    </div>
+  </div>
 </div>
 
 <!-- Delete confirmation modal -->
@@ -1363,14 +1432,16 @@ if (new URLSearchParams(location.search).get('qb') === 'connected') {
 
 // ── Tab switching ─────────────────────────────────────────────────
 function switchTab(name) {
-  document.getElementById('tabReconcile').style.display   = name === 'reconcile'    ? '' : 'none';
-  document.getElementById('tabQbInvoices').style.display  = name === 'qb-invoices'  ? '' : 'none';
-  document.getElementById('tabAr').style.display          = name === 'ar'           ? '' : 'none';
-  document.getElementById('tabHsFees').style.display      = name === 'hs-fees'      ? '' : 'none';
+  document.getElementById('tabReconcile').style.display    = name === 'reconcile'     ? '' : 'none';
+  document.getElementById('tabQbInvoices').style.display   = name === 'qb-invoices'   ? '' : 'none';
+  document.getElementById('tabAr').style.display           = name === 'ar'            ? '' : 'none';
+  document.getElementById('tabHsFees').style.display       = name === 'hs-fees'       ? '' : 'none';
+  document.getElementById('tabVendorBills').style.display  = name === 'vendor-bills'  ? '' : 'none';
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
-  if (name === 'qb-invoices' && _qbInvoices == null) loadQbInvoices();
-  if (name === 'ar'          && _arInvoices == null) loadAr();
-  if (name === 'hs-fees'     && _hsFeesData == null) {
+  if (name === 'qb-invoices'   && _qbInvoices == null) loadQbInvoices();
+  if (name === 'ar'            && _arInvoices == null) loadAr();
+  if (name === 'vendor-bills'  && _vendorBills == null) loadVendorBills();
+  if (name === 'hs-fees'       && _hsFeesData == null) {
     // Default the month input to last full calendar month on first open.
     const inp = document.getElementById('hsFeesMonth');
     if (inp && !inp.value) {
@@ -1494,6 +1565,180 @@ function downloadHsFeesCsv() {
   document.body.appendChild(a);
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); document.body.removeChild(a); }, 100);
+}
+
+// ── Vendor Bills tab (Kim's matching workflow) ───────────────────
+let _vendorBills = null;       // cache of last /api/vendor-pos pull
+let _vendorBillsCurrent = null; // PO being matched in the modal
+
+function vbInvoicedSum(po) {
+  const evs = (po.invoice_data && Array.isArray(po.invoice_data.events)) ? po.invoice_data.events : [];
+  return evs.reduce((s, e) => s + (parseFloat(e.vendor_invoice_total) || 0), 0);
+}
+function vbPoTotal(po) {
+  const lines = (po.po_data && Array.isArray(po.po_data.lines)) ? po.po_data.lines : [];
+  return lines.reduce((s, l) => s + ((parseFloat(l.qty) || 0) * (parseFloat(l.unit_price) || 0)), 0);
+}
+function vbFmt$(n) {
+  return '$' + parseFloat(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+function vbEscapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+async function loadVendorBills(force) {
+  const msg = document.getElementById('vbMsg');
+  msg.textContent = 'Loading…';
+  try {
+    const r = await fetch('/api/vendor-pos', { credentials: 'include' });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Failed to load');
+    _vendorBills = data.pos || [];
+    msg.textContent = '';
+    renderVendorBills();
+  } catch (e) {
+    msg.textContent = 'Error: ' + e.message;
+  }
+}
+
+function renderVendorBills() {
+  const tbody = document.getElementById('vbBody');
+  const wrap = document.getElementById('vbTableWrap');
+  if (!_vendorBills) return;
+  const showFully = document.getElementById('vbShowFullyInvoiced').checked;
+  // Only POs that have actually been sent are eligible for bill matching.
+  // CANCELLED skipped — there's no bill to match.
+  const eligible = _vendorBills.filter(p => p.status === 'SENT' || p.status === 'PARTIAL' || p.status === 'RECEIVED' || p.status === 'CLOSED');
+  const rows = eligible.filter(p => {
+    const invoiced = vbInvoicedSum(p);
+    const total = vbPoTotal(p);
+    const fullyInvoiced = total > 0 && invoiced + 0.01 >= total;
+    return showFully || !fullyInvoiced;
+  });
+  if (!rows.length) {
+    wrap.style.display = 'none';
+    document.getElementById('vbMsg').textContent = showFully ? 'No vendor POs to display.' : 'Nothing waiting on a bill match.';
+    return;
+  }
+  wrap.style.display = '';
+  tbody.innerHTML = rows.map(p => {
+    const total = vbPoTotal(p);
+    const invoiced = vbInvoicedSum(p);
+    const outstanding = Math.max(0, total - invoiced);
+    const evs = (p.invoice_data && Array.isArray(p.invoice_data.events)) ? p.invoice_data.events : [];
+    const lastEv = evs.length ? evs[evs.length - 1] : null;
+    const lastMatch = lastEv
+      ? '<div style="font-size:11px"><strong>' + vbEscapeHtml(lastEv.vendor_invoice_number || '—') + '</strong></div><div style="font-size:10px;color:var(--text2)">' + (lastEv.at ? new Date(lastEv.at).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : '') + '</div>'
+      : '<span style="color:var(--text2);font-size:11px">—</span>';
+    const fullyInvoiced = total > 0 && invoiced + 0.01 >= total;
+    const vendorName = (p.vendor_snapshot && p.vendor_snapshot.name) || p.vendor_name || '(deleted vendor)';
+    const statusColor = ({ SENT:'#3b82f6', PARTIAL:'#f59e0b', RECEIVED:'#22c55e', CLOSED:'#16a34a' })[p.status] || 'var(--text2)';
+    return (
+      '<tr>' +
+        '<td style="font-family:var(--mono,monospace);font-size:11px"><a href="/vpo/' + encodeURIComponent(p.po_number) + '?t=' + vbEscapeHtml(p.share_token) + '" target="_blank" style="color:var(--orange);text-decoration:none">' + vbEscapeHtml(p.po_number) + '</a></td>' +
+        '<td style="font-weight:600">' + vbEscapeHtml(vendorName) + '</td>' +
+        '<td><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,.06);color:' + statusColor + ';border:1px solid ' + statusColor + '33">' + vbEscapeHtml(p.status) + '</span></td>' +
+        '<td style="text-align:right;font-family:var(--mono,monospace);font-variant-numeric:tabular-nums">' + vbFmt$(total) + '</td>' +
+        '<td style="text-align:right;font-family:var(--mono,monospace);font-variant-numeric:tabular-nums;color:' + (invoiced > 0 ? 'var(--text)' : 'var(--text2)') + '">' + vbFmt$(invoiced) + '</td>' +
+        '<td style="text-align:right;font-family:var(--mono,monospace);font-variant-numeric:tabular-nums;font-weight:700;color:' + (fullyInvoiced ? 'var(--text2)' : '#ee6216') + '">' + vbFmt$(outstanding) + '</td>' +
+        '<td>' + lastMatch + '</td>' +
+        '<td><div style="display:flex;gap:4px">' +
+          '<a class="btn btn-ghost btn-sm" href="https://app.qbo.intuit.com/app/bill?txnId=-1" target="_blank" title="Open a blank New Bill page in QuickBooks. Pick the vendor + add lines.">Open in QB</a>' +
+          (fullyInvoiced
+            ? '<button class="btn btn-ghost btn-sm" disabled>Fully Billed</button>'
+            : '<button class="btn btn-orange btn-sm" onclick="openMarkInvoiced(\'' + encodeURIComponent(p.po_number) + '\')">Mark Bill Received</button>') +
+        '</div></td>' +
+      '</tr>'
+    );
+  }).join('');
+}
+
+function openMarkInvoiced(encodedPoNumber) {
+  const poNumber = decodeURIComponent(encodedPoNumber);
+  const po = _vendorBills.find(p => p.po_number === poNumber);
+  if (!po) return;
+  _vendorBillsCurrent = po;
+  const total = vbPoTotal(po);
+  const invoiced = vbInvoicedSum(po);
+  const outstanding = Math.max(0, total - invoiced);
+  const vendorName = (po.vendor_snapshot && po.vendor_snapshot.name) || po.vendor_name || '(deleted vendor)';
+  document.getElementById('miTitle').textContent = po.po_number + ' — ' + vendorName;
+  document.getElementById('miSub').innerHTML = 'PO Total ' + vbFmt$(total) + ' &nbsp;·&nbsp; Already invoiced ' + vbFmt$(invoiced) + ' &nbsp;·&nbsp; Outstanding <strong style="color:#ee6216">' + vbFmt$(outstanding) + '</strong>';
+  document.getElementById('miInvNum').value = '';
+  document.getElementById('miInvDate').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('miInvTotal').value = outstanding.toFixed(2);
+  document.getElementById('miQbBill').value = '';
+  document.getElementById('miNotes').value = '';
+  document.getElementById('miDeltaRow').style.display = 'none';
+  document.getElementById('markInvoicedModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('miInvNum').focus(), 60);
+  miUpdateDelta();
+}
+function closeMarkInvoiced() {
+  document.getElementById('markInvoicedModal').style.display = 'none';
+  _vendorBillsCurrent = null;
+}
+function miUpdateDelta() {
+  if (!_vendorBillsCurrent) return;
+  const total = vbPoTotal(_vendorBillsCurrent);
+  const invoiced = vbInvoicedSum(_vendorBillsCurrent);
+  const outstanding = Math.max(0, total - invoiced);
+  const entered = parseFloat(document.getElementById('miInvTotal').value || 0) || 0;
+  const row = document.getElementById('miDeltaRow');
+  if (entered <= 0) { row.style.display = 'none'; return; }
+  const delta = entered - outstanding;
+  if (Math.abs(delta) < 0.01) {
+    row.style.display = 'block';
+    row.style.background = 'rgba(34,197,94,.1)';
+    row.style.color = '#22c55e';
+    row.style.border = '1px solid rgba(34,197,94,.3)';
+    row.textContent = '✓ Matches the outstanding balance exactly.';
+  } else if (delta < 0) {
+    row.style.display = 'block';
+    row.style.background = 'rgba(245,158,11,.1)';
+    row.style.color = '#f59e0b';
+    row.style.border = '1px solid rgba(245,158,11,.3)';
+    row.textContent = '⚠ Partial bill — ' + vbFmt$(Math.abs(delta)) + ' will remain outstanding.';
+  } else {
+    row.style.display = 'block';
+    row.style.background = 'rgba(239,68,68,.1)';
+    row.style.color = '#ef4444';
+    row.style.border = '1px solid rgba(239,68,68,.3)';
+    row.textContent = '⚠ Bill exceeds outstanding by ' + vbFmt$(delta) + ' — vendor may have over-billed.';
+  }
+}
+async function saveMarkInvoiced() {
+  if (!_vendorBillsCurrent) return;
+  const invNum = document.getElementById('miInvNum').value.trim();
+  if (!invNum) { alert('Vendor Invoice # is required.'); return; }
+  const total = parseFloat(document.getElementById('miInvTotal').value || 0) || 0;
+  if (!(total > 0)) { alert('Vendor Total must be greater than 0.'); return; }
+  const payload = {
+    vendor_invoice_number: invNum,
+    vendor_invoice_date: document.getElementById('miInvDate').value || null,
+    vendor_invoice_total: total,
+    qb_bill_number: document.getElementById('miQbBill').value.trim() || null,
+    notes: document.getElementById('miNotes').value.trim() || null,
+  };
+  const btn = document.getElementById('miSaveBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const r = await fetch('/api/vendor-pos/' + encodeURIComponent(_vendorBillsCurrent.po_number) + '/invoice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Save failed');
+    closeMarkInvoiced();
+    await loadVendorBills();
+  } catch (e) {
+    alert('Error: ' + e.message);
+    btn.disabled = false; btn.textContent = 'Save Bill';
+    return;
+  }
+  btn.disabled = false; btn.textContent = 'Save Bill';
 }
 
 // ── Shared invoice helpers ────────────────────────────────────────

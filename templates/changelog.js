@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.51.0', date:'May 29, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**WR PO System Phase 3 — Kim&rsquo;s invoice matching workflow.** New **Vendor Bills** tab on `/accounting` (5th tab on `reconcile.html`). Lists vendor POs in status SENT / PARTIAL / RECEIVED / CLOSED with a per-row Outstanding column (`PO Total − sum(invoiced)`). Fully-invoiced POs are hidden by default; toggle the checkbox to show them. Each row has two buttons: **Open in QB** opens a blank New Bill page in QuickBooks in a new tab (Kim picks the vendor and adds lines manually — QB Online doesn&rsquo;t support vendor pre-fill via URL params; Phase 4 will add an API stub-create). **Mark Bill Received** opens a modal capturing `{vendor invoice #, invoice date, vendor total, QB Bill #, notes}`. Live discrepancy banner shows when the entered total ≠ outstanding (matches green / partial bill amber / over-bill red). On save, `POST /api/vendor-pos/:poNumber/invoice` appends to `invoice_data.events`, sums totals, and flips PO status to **CLOSED** when fully received AND fully invoiced (within $0.01). Stamps `closed_at`. Supports partial bills out of the box — multiple events per PO. PO row links to `/vpo/` (new tab) for cross-reference.'},
+      ]
+    },
+    {
       v:'1.50.10', date:'May 29, 2026', tag:'log',
       changes:[
         {t:'add', d:'**Marketing — segment classifier groundwork (read-only).** New `marketing/segment_map.json` (Gabe-editable config) maps Google Ads campaigns → buyer segments (Audiology / Education / Voice Over / Music·Recording / Office·Privacy / Broadcast·Podcast) by keyword rules + exact overrides, with a "Mixed" bucket for cross-segment campaigns (Branded/General/Competitor/Remarketing/Shopping). New read-only diagnostic `GET /api/marketing/segments/proposed` classifies EVERY campaign in `marketing_campaigns` (all-time) and returns per-segment spend rollups + the Mixed/Unclassified lists for review. No UI yet — this is the data-grounding step before the Segment Performance section is built (awaiting sign-off on the mapping).'},

@@ -12165,6 +12165,82 @@ ${q.accepted ? `
     return;
   }
 
+  // POST /api/vendor-pos/:poNumber/invoice — Kim&apos;s invoice match.
+  // Appends an event to invoice_data.events, sums the cumulative
+  // invoiced amount, and flips status to CLOSED when the PO is fully
+  // received AND fully invoiced. Vendors often partial-bill, so this
+  // takes an array shape (mirrors received_data).
+  if (pathname.match(/^\/api\/vendor-pos\/[^/]+\/invoice$/) && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const poNumber = decodeURIComponent(pathname.split('/').slice(-2)[0]);
+    let body;
+    try { body = JSON.parse(await readBody(req) || '{}'); }
+    catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const r = await db.query(`SELECT * FROM vendor_pos WHERE po_number = $1`, [poNumber]);
+      if (!r.rows.length) { json({ error: 'PO not found' }, 404); return; }
+      const po = r.rows[0];
+      if (po.status === 'CANCELLED') { json({ error: 'Cannot invoice a CANCELLED PO' }, 409); return; }
+
+      const total = parseFloat(body.vendor_invoice_total || 0);
+      if (!(total > 0)) { json({ error: 'Vendor invoice total required' }, 400); return; }
+      const invNum = String(body.vendor_invoice_number || '').trim();
+      if (!invNum) { json({ error: 'Vendor invoice number required' }, 400); return; }
+
+      const rep = getRepFromReq(req, body);
+      const repName = REPS[String(rep || '')] || String(rep || 'Rep');
+      const ev = {
+        at: new Date().toISOString(),
+        by: String(rep || ''),
+        by_name: repName,
+        vendor_invoice_number: invNum,
+        vendor_invoice_date: String(body.vendor_invoice_date || '').trim() || null,
+        vendor_invoice_total: total,
+        qb_bill_number: String(body.qb_bill_number || '').trim() || null,
+        notes: String(body.notes || '').trim() || null,
+      };
+
+      const cur = (po.invoice_data && typeof po.invoice_data === 'object') ? po.invoice_data : {};
+      const events = Array.isArray(cur.events) ? cur.events.concat([ev]) : [ev];
+      const invoicedTotal = events.reduce((s, e) => s + (parseFloat(e.vendor_invoice_total) || 0), 0);
+
+      // PO total for "fully invoiced" check
+      const lines = (po.po_data && Array.isArray(po.po_data.lines)) ? po.po_data.lines : [];
+      const poTotal = lines.reduce((s, l) => s + ((parseFloat(l.qty) || 0) * (parseFloat(l.unit_price) || 0)), 0);
+
+      // CLOSED only when fully received AND fully invoiced (within $0.01 tolerance)
+      const fullyInvoiced = invoicedTotal + 0.01 >= poTotal && poTotal > 0;
+      let newStatus = po.status;
+      if (fullyInvoiced && po.status === 'RECEIVED') newStatus = 'CLOSED';
+
+      const newInvoice = { events, totals: { invoiced_amount: invoicedTotal } };
+
+      const sets = ['invoice_data = $1', 'status = $2', 'updated_at = NOW()'];
+      const vals = [JSON.stringify(newInvoice), newStatus];
+      let idx = 3;
+      if (newStatus === 'CLOSED' && !po.closed_at) {
+        sets.push(`closed_at = $${idx++}`);
+        vals.push(new Date().toISOString());
+      }
+      vals.push(poNumber);
+      const updated = await db.query(
+        `UPDATE vendor_pos SET ${sets.join(', ')} WHERE po_number = $${idx} RETURNING *`,
+        vals
+      );
+
+      writelog('info', 'vendor-po.invoice-matched', `Vendor PO ${poNumber}: invoice ${invNum} matched ($${total.toFixed(2)}) — invoiced $${invoicedTotal.toFixed(2)} / $${poTotal.toFixed(2)}${newStatus !== po.status ? ` (status → ${newStatus})` : ''}`, {
+        rep: String(rep || ''),
+        meta: { poNumber, vendor_invoice_number: invNum, total, invoicedTotal, poTotal, newStatus, priorStatus: po.status },
+      });
+
+      json({ po: updated.rows[0] });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // POST /api/vendor-pos/:poNumber/pdf — sync PDF gen + Drive upload +
   // stream the bytes back as a browser download. Used by the "Create /
   // Download PDF" button on /vpo/.

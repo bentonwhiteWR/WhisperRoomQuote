@@ -4349,6 +4349,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── API: Nexus state reference ────────────────────────────────────
+  // Used by the Quote Builder "Nexus States" reference popup so the
+  // sales team can see which states we collect tax in and which of
+  // those also tax freight. Data is the same NEXUS_STATES used by
+  // lib/taxjar.js — single source of truth.
+  if (pathname === '/api/nexus-states' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const list = Object.keys(NEXUS_STATES).sort().map(abbr => ({
+      abbr,
+      name: STATE_FULL_NAME[abbr] || abbr,
+      taxes_freight: !!NEXUS_STATES[abbr].taxFreight,
+    }));
+    json({ states: list });
+    return;
+  }
+
   // ── API: Push to HubSpot ──
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {

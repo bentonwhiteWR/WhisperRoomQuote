@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.51.1', date:'May 29, 2026', tag:'add',
+      changes:[
+        {t:'add', d:'**Tax Nexus States reference popup on the Quote Builder.** Small "Nexus States" button in the Sales Tax section header opens a modal listing every state where WhisperRoom is registered to collect sales tax, with a green YES / muted NO pill in the "Taxes Freight" column. Backed by a new `GET /api/nexus-states` endpoint that serializes `lib/states.js`&rsquo;s `NEXUS_STATES` map — single source of truth, so the popup never drifts from what the calculator actually does. Cached client-side after first open. Useful when a rep is on the phone with a customer asking about tax in their state.'},
+      ]
+    },
+    {
       v:'1.51.0', date:'May 29, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**WR PO System Phase 3 — Kim&rsquo;s invoice matching workflow.** New **Vendor Bills** tab on `/accounting` (5th tab on `reconcile.html`). Lists vendor POs in status SENT / PARTIAL / RECEIVED / CLOSED with a per-row Outstanding column (`PO Total − sum(invoiced)`). Fully-invoiced POs are hidden by default; toggle the checkbox to show them. Each row has two buttons: **Open in QB** opens a blank New Bill page in QuickBooks in a new tab (Kim picks the vendor and adds lines manually — QB Online doesn&rsquo;t support vendor pre-fill via URL params; Phase 4 will add an API stub-create). **Mark Bill Received** opens a modal capturing `{vendor invoice #, invoice date, vendor total, QB Bill #, notes}`. Live discrepancy banner shows when the entered total ≠ outstanding (matches green / partial bill amber / over-bill red). On save, `POST /api/vendor-pos/:poNumber/invoice` appends to `invoice_data.events`, sums totals, and flips PO status to **CLOSED** when fully received AND fully invoiced (within $0.01). Stamps `closed_at`. Supports partial bills out of the box — multiple events per PO. PO row links to `/vpo/` (new tab) for cross-reference.'},

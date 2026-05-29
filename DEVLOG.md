@@ -6,21 +6,20 @@ Internal development notes. Last updated 2026-05-28.
 
 ---
 
-## Current focus (2026-05-28 — WR PO System Phase 1 complete; Phase 2 starts after Josh runs real POs)
+## Current focus (2026-05-29 — WR PO System Phase 2 shipped; Kim's invoice match + urgency dashboard pending)
 
-**Most recent shipped to PROD:** Merge commit `846d3da` (2026-05-28) — Final Mile RFQ button + ACH-cap invoice warning + marketing ROAS fixes.
+**Most recent shipped to PROD:** Merge commit `63a4b9a` (2026-05-29) — ZIP-only freight tax fix + PDF Content-Disposition em-dash fix.
 
 **On STAGING (NOT YET promoted to main):**
 
-- **v1.49.0** (2026-05-28, Benton) — **WR PO System Phase 1 part 2: Vendor PO builder.** New `/vendor-pos` page: pick vendor from dropdown → vendor info + catalog auto-load → check items to add → editable qty/price → save as `WV-{YY}{MM}{DD}{NN}` DRAFT. Approve = status flip; Send opens mailto with PO link (manual PDF attach). Edits after SENT regen the PDF and overwrite in Drive (`GDRIVE_VENDOR_POS_FOLDER`). New `vendor_pos` table, `/vpo/:poNumber` printable doc, `/api/vendor-pos` CRUD. Lifecycle Phase 1 wires DRAFT→APPROVED→SENT + CANCELLED; receive/close ship in v1.50.
-- **v1.48.0** (2026-05-28, Benton) — **WR PO System Phase 1: Vendor catalog.** New `/vendors` page where Josh manages his supplier catalog. Foundation for v1.49.
-
-**Pending Josh:** populate ~30 vendors with their catalogs at `/vendors` (he has Excel POs for Bertelkamp, Carpenter, Foss as starting points at `C:\Users\bento\Documents\Claude\WR PO System\Old PO Files`), then run a few real POs through `/vendor-pos` end-to-end so we can shape v1.50 (receive + invoice match) against real workflow.
+- **v1.50.0** (2026-05-29, Benton) — **WR PO System Phase 2: Receive workflow.** Purple Receive button on `/vpo/`; modal shows each line&rsquo;s ordered / received / remaining / receiving-now (default = remaining). Backend `POST /api/vendor-pos/:poNumber/receive` appends to `received_data.events`, recomputes status (RECEIVED if every line full, PARTIAL otherwise), stamps `received_at`. Receipt log visible in the same modal — date/who/items per event. Button re-labels to "Receipts" once fully RECEIVED.
+- **v1.49.x** — many iterations on the PO surface: `/vpo/` is now the primary edit page with inline editing, catalog picker for + Add Line, dual-save vendor edits, Create/Download PDF, Send/Cancel/Delete buttons, WP- prefix, vendor-first PDF filename, back link, catalog price-change prompt, table-row Delete, nav consistency pass, ZIP-only tax derivation. **Iteration count is high because Josh hasn&rsquo;t test-driven yet — many of these were rapid UX corrections.** Once he runs real POs, expect more.
 
 ### Open follow-ups — WR PO System
 
-- **Phase 2 (v1.50.0): Receive workflow + Kim's invoice match.** Single Receive button on each PO → modal defaulting each line to max qty (Josh adjusts down for partials). PO status derives from per-line `received_qty` in `received_data` JSONB (RECEIVED if all full, PARTIAL if any > 0). Kim's invoice match as a modal (invoice #, date, total, discrepancy flag against PO total). Wait for Josh's first few POs to land before designing the receive modal — see what actually happens in practice.
-- **Phase 3 (v1.51.0): Urgency dashboard.** Tile/section showing POs Expected ≤7d (yellow) / overdue (red) / aging >30d open with zero received (orange "vendor sandbagging").
+- **Receipt log on the printable doc.** Today the receipt log only shows in the Receipts modal. Phase 3 polish: render it as a section on `/vpo/` itself below the line items so the PDF in Drive carries the full receive history.
+- **Kim&rsquo;s invoice match.** Modal off the Vendor Hub row or `/vpo/` action bar: invoice #, invoice date, total, discrepancy flag against PO total + per-line check. Stored in `invoice_data` JSONB column (already in schema, reserved since v1.49.0).
+- **Urgency dashboard tile.** Yellow POs with Expected ≤7d, red overdue, orange "aging > 30d open with zero received" (vendor sandbagging). Best sized as a top-of-page section on the Vendor Hub Purchase Orders tab.
 
 ### Decisions captured during scoping (2026-05-28)
 
@@ -748,6 +747,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.50.0  | 2026-05-29 | **WR PO System Phase 2 — Receive workflow.** New purple Receive button on `/vpo/` (auth-only; hidden on RECEIVED/CLOSED/CANCELLED). Modal lists each line: Ordered / Received / Remaining / Receiving Now (default = remaining). Below: Receipt Log with date/who/items per prior event. New endpoint `POST /api/vendor-pos/:poNumber/receive` appends to `received_data.events`, recomputes per-line totals, derives status (RECEIVED if all lines full, PARTIAL if any > 0), stamps `received_at` on first full-receive, regenerates PDF. Button label flips to "Receipts" once fully RECEIVED — same modal, read-only view. Phase 3 will surface the receipt log on the PDF render itself. |
 | 1.49.14 | 2026-05-29 | **Back link on `/vpo/`.** Top-left `← Vendor Hub` button, auth-only. Edit-mode banner moved to row 2 so they stack cleanly. Both hidden in print/PDF render. |
 | 1.49.13 | 2026-05-29 | **Vendor PO: delete from table + prefix WP + PDF filename + catalog price prompt.** Red × on each Vendor Hub PO row (unrestricted DELETE; audit log captures prior status). New PO prefix `WP-` (was `WV-`); existing rows stay as-is. PDF filename now `{Vendor Name} - {po_number}.pdf` so downloads sort by vendor. When Josh edits the unit price on a catalog-linked line and the value differs from the catalog price, a confirm asks whether to also persist the new price to the vendor catalog (so future POs prefill). Description/SKU/MFG/qty edits stay PO-only. |
 | 1.49.12 | 2026-05-29 | **Added `.gitignore` + untracked accidentally-committed `.code-workspace` files.** v1.49.11&rsquo;s `git add -A` swept in two IDE workspace files. New `.gitignore` covers `*.code-workspace`, `node_modules/`, `.env*`, `.DS_Store`, etc. Files untracked via `git rm --cached` (local copies preserved). |

@@ -12095,6 +12095,88 @@ ${q.accepted ? `
     return;
   }
 
+  // POST /api/vendor-pos/:poNumber/receive — append a receive event,
+  // recompute status. Body: { items: [{lineId, qty}] } where qty is
+  // the quantity being received NOW (not the cumulative total). Server
+  // sums across all events to derive per-line totals + overall status.
+  if (pathname.match(/^\/api\/vendor-pos\/[^/]+\/receive$/) && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const poNumber = decodeURIComponent(pathname.split('/').slice(-2)[0]);
+    let body;
+    try { body = JSON.parse(await readBody(req) || '{}'); }
+    catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const r = await db.query(`SELECT * FROM vendor_pos WHERE po_number = $1`, [poNumber]);
+      if (!r.rows.length) { json({ error: 'PO not found' }, 404); return; }
+      const po = r.rows[0];
+      if (po.status === 'RECEIVED' || po.status === 'CLOSED' || po.status === 'CANCELLED') {
+        json({ error: `Cannot receive items on a ${po.status} PO` }, 409); return;
+      }
+
+      const lines = (po.po_data && Array.isArray(po.po_data.lines)) ? po.po_data.lines : [];
+      if (!lines.length) { json({ error: 'PO has no line items' }, 400); return; }
+      const validIds = new Set(lines.map(l => l.id).filter(Boolean));
+
+      // Normalize incoming items — keep only positive qty on known lines
+      const items = (Array.isArray(body.items) ? body.items : [])
+        .map(i => ({ lineId: String(i?.lineId || ''), qty: Math.max(0, parseFloat(i?.qty || 0)) || 0 }))
+        .filter(i => i.lineId && validIds.has(i.lineId) && i.qty > 0);
+      if (!items.length) { json({ error: 'No quantities entered' }, 400); return; }
+
+      const rep = getRepFromReq(req, body);
+      const repName = REPS[String(rep || '')] || String(rep || 'Rep');
+      const ev = {
+        at: new Date().toISOString(),
+        by: String(rep || ''),
+        by_name: repName,
+        items,
+      };
+
+      const cur = (po.received_data && typeof po.received_data === 'object') ? po.received_data : {};
+      const events = Array.isArray(cur.events) ? cur.events.concat([ev]) : [ev];
+
+      // Per-line totals + status derivation
+      const totals = {};
+      events.forEach(e => (e.items || []).forEach(i => {
+        totals[i.lineId] = (totals[i.lineId] || 0) + parseFloat(i.qty || 0);
+      }));
+      const allFull = lines.every(l => (totals[l.id] || 0) >= parseFloat(l.qty || 0));
+      const anyReceived = Object.values(totals).some(q => q > 0);
+      const newStatus = allFull ? 'RECEIVED' : (anyReceived ? 'PARTIAL' : po.status);
+
+      const newReceived = { events, totals };
+
+      const sets = ['received_data = $1', 'status = $2', 'updated_at = NOW()'];
+      const vals = [JSON.stringify(newReceived), newStatus];
+      let idx = 3;
+      if (newStatus === 'RECEIVED' && !po.received_at) {
+        sets.push(`received_at = $${idx++}`);
+        vals.push(new Date().toISOString());
+      }
+      vals.push(poNumber);
+      const updated = await db.query(
+        `UPDATE vendor_pos SET ${sets.join(', ')} WHERE po_number = $${idx} RETURNING *`,
+        vals
+      );
+
+      writelog('info', 'vendor-po.received', `Vendor PO ${poNumber}: received ${items.length} line(s) (status → ${newStatus})`, {
+        rep: String(rep || ''),
+        meta: { poNumber, items, newStatus, priorStatus: po.status },
+      });
+
+      // Fire-and-forget PDF regen so Drive reflects the new status banner
+      _regenerateVendorPoPdf(updated.rows[0]).catch(e => {
+        console.warn('[vendor-po] PDF regen after receive:', e.message);
+      });
+
+      json({ po: updated.rows[0] });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // POST /api/vendor-pos/:poNumber/pdf — sync PDF gen + Drive upload +
   // stream the bytes back as a browser download. Used by the "Create /
   // Download PDF" button on /vpo/.
@@ -13891,6 +13973,7 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
 '<div class="print-bar">' +
   (isAuth(req) ? '<button id="createPoBtn" style="background:#ee6216">Create / Download PDF</button>' : '') +
   (isAuth(req) && po.status === 'OPEN' ? '<button id="sendPoBtn" style="background:#16a34a">Send (Mailto)</button>' : '') +
+  (isAuth(req) ? '<button id="receivePoBtn" style="background:#a855f7">' + (po.status === 'RECEIVED' || po.status === 'CLOSED' ? 'Receipts' : 'Receive') + '</button>' : '') +
   (isAuth(req) && (po.status === 'OPEN' || po.status === 'SENT' || po.status === 'PARTIAL') ? '<button id="cancelPoBtn" style="background:#444">Cancel PO</button>' : '') +
   (isAuth(req) && po.status === 'OPEN' ? '<button id="deletePoBtn" style="background:#dc2626">Delete</button>' : '') +
 '</div>' +
@@ -14016,6 +14099,9 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
   "var CC=" + JSON.stringify(Array.isArray(v.cc_emails) ? v.cc_emails : []) + ";" +
   "var CONTACTS=" + JSON.stringify(vendorContacts) + ";" +
   "var SHARE_TOKEN=" + JSON.stringify(po.share_token || '') + ";" +
+  "var PO_STATUS=" + JSON.stringify(po.status || '') + ";" +
+  "var PO_LINES=" + JSON.stringify(lines) + ";" +
+  "var RECEIVED=" + JSON.stringify(po.received_data || { events: [], totals: {} }) + ";" +
   "var VENDOR_NAME=" + JSON.stringify(
     (v.name || 'Vendor')
       .replace(/[\\\/:*?"<>|]+/g, ' ')
@@ -14031,6 +14117,16 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
   "var sb=document.getElementById('sendPoBtn');if(sb)sb.addEventListener('click',sendPo);" +
   "var cb=document.getElementById('cancelPoBtn');if(cb)cb.addEventListener('click',cancelPo);" +
   "var db=document.getElementById('deletePoBtn');if(db)db.addEventListener('click',deletePo);" +
+  // ── Receive modal ────────────────────────────────────────────────
+  // Opens a popup listing each PO line with ordered/received/remaining
+  // and a "Receiving Now" input. Saving POSTs to /receive which
+  // appends an event, recomputes status (PARTIAL or RECEIVED), and
+  // regenerates the PDF. If status is RECEIVED/CLOSED/CANCELLED the
+  // inputs are hidden and it's a read-only receipt log.
+  "function fmtDateTime(iso){try{return new Date(iso).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});}catch(e){return iso;}}" +
+  "function escAttr(s){return String(s==null?'':s).replace(/[&<>\"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;','\\'':'&#39;'}[c];});}" +
+  "function openReceiveModal(){var totals=(RECEIVED&&RECEIVED.totals)||{};var events=(RECEIVED&&Array.isArray(RECEIVED.events))?RECEIVED.events:[];var readOnly=(PO_STATUS==='RECEIVED'||PO_STATUS==='CLOSED'||PO_STATUS==='CANCELLED');var linesById={};PO_LINES.forEach(function(l){linesById[l.id]=l;});var rows=PO_LINES.map(function(l){var ordered=parseFloat(l.qty||0)||0;var rec=parseFloat(totals[l.id]||0)||0;var remaining=Math.max(0,ordered-rec);var inp=readOnly?'<span style=\"color:#888\">—</span>':('<input type=\"number\" class=\"r-now\" data-line-id=\"'+escAttr(l.id)+'\" min=\"0\" step=\"any\" value=\"'+remaining+'\" style=\"width:90px;padding:5px 8px;border:1px solid #ddd;border-radius:5px;text-align:right;font-family:inherit;font-size:12px\">');var doneTag=(ordered>0&&rec>=ordered)?' <span style=\"color:#16a34a;font-size:10px;font-weight:700;margin-left:4px\">✓ DONE</span>':'';return '<tr><td>'+escAttr(l.description||'')+(l.sku?' <span style=\"color:#888;font-size:11px\">('+escAttr(l.sku)+')</span>':'')+doneTag+'</td><td style=\"text-align:right\">'+ordered+'</td><td style=\"text-align:right\">'+rec+'</td><td style=\"text-align:right\">'+remaining+'</td><td style=\"text-align:right\">'+inp+'</td></tr>';}).join('');var logHtml=events.length===0?'<div style=\"padding:14px;color:#888;font-style:italic;text-align:center\">No receipts yet.</div>':events.slice().reverse().map(function(e){var itemsList=(e.items||[]).map(function(i){var l=linesById[i.lineId];return '<li>'+i.qty+' &times; '+escAttr((l&&l.description)||i.lineId)+'</li>';}).join('');return '<div style=\"padding:10px 14px;border-bottom:1px solid #f0f0f0\"><div style=\"font-size:11px;color:#888;margin-bottom:4px\"><strong style=\"color:#1a1a1a\">'+escAttr(e.by_name||'Rep')+'</strong> &middot; '+escAttr(fmtDateTime(e.at))+'</div><ul style=\"margin:0;padding-left:18px;font-size:12px;color:#444;line-height:1.6\">'+itemsList+'</ul></div>';}).join('');var ov=document.createElement('div');ov.className='picker-overlay';ov.innerHTML='<div class=\"picker-modal\" style=\"max-width:880px\"><div class=\"picker-head\"><div>'+(readOnly?'Receipts':'Receive Items')+' &mdash; '+poNumber+'</div><button class=\"picker-close\" type=\"button\">&times;</button></div><div class=\"picker-body\">'+(PO_LINES.length===0?'<div style=\"padding:24px;text-align:center;color:#888\">PO has no line items yet.</div>':('<div style=\"padding:0\"><h4 style=\"margin:14px 18px 10px;font-size:11px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.08em\">'+(readOnly?'Line Items':'Receive Now')+'</h4><table class=\"picker-tbl\"><thead><tr><th>Item</th><th style=\"text-align:right;width:80px\">Ordered</th><th style=\"text-align:right;width:80px\">Received</th><th style=\"text-align:right;width:90px\">Remaining</th><th style=\"text-align:right;width:120px\">'+(readOnly?'':'Receiving Now')+'</th></tr></thead><tbody>'+rows+'</tbody></table></div><h4 style=\"margin:18px 18px 6px;font-size:11px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.08em\">Receipt Log</h4><div style=\"max-height:220px;overflow-y:auto;border-top:1px solid #f0f0f0\">'+logHtml+'</div>'))+'</div><div class=\"picker-foot\"><div style=\"flex:1\"></div><button class=\"picker-cancel\" type=\"button\">'+(readOnly?'Close':'Cancel')+'</button>'+(readOnly?'':'<button class=\"picker-add\" type=\"button\" id=\"receiveSaveBtn\">Save Receipt</button>')+'</div></div>';document.body.appendChild(ov);function close(){ov.remove();}ov.querySelector('.picker-close').addEventListener('click',close);ov.querySelector('.picker-cancel').addEventListener('click',close);ov.addEventListener('click',function(e){if(e.target===ov)close();});if(!readOnly){ov.querySelector('#receiveSaveBtn').addEventListener('click',function(){var items=Array.prototype.slice.call(ov.querySelectorAll('input.r-now')).map(function(i){return{lineId:i.dataset.lineId,qty:parseFloat(i.value||0)||0};}).filter(function(it){return it.qty>0;});if(!items.length){alert('Enter at least one quantity to receive.');return;}var btn=ov.querySelector('#receiveSaveBtn');btn.disabled=true;btn.textContent='Saving…';setStatus('Saving receipt…',false);fetch('/api/vendor-pos/'+encodeURIComponent(poNumber)+'/receive',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:items})}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||'Failed');return d;});}).then(function(d){setStatus('Saved');close();location.reload();}).catch(function(e){setStatus(e.message||'Error',true);btn.disabled=false;btn.textContent='Save Receipt';});});}}" +
+  "var rb=document.getElementById('receivePoBtn');if(rb)rb.addEventListener('click',openReceiveModal);" +
   "wireAll();wireButtons();" +
 '})();</script>' +
 

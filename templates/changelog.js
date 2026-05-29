@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.50.0', date:'May 29, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**WR PO System Phase 2 — Receive workflow.** New purple **Receive** button in the `/vpo/` action bar (auth-only; status-gated so it doesn&rsquo;t appear on RECEIVED/CLOSED/CANCELLED POs). Opens a modal showing each line item with Ordered / Received-so-far / Remaining / Receiving Now columns. Default value for each input is the line&rsquo;s remaining qty (so hitting Save with no edits records a full receipt of everything still open). The bottom half shows the **Receipt Log** — every prior receive event with who and when, plus the items received. The same modal serves as the read-only receipts view when the PO is fully received (button label flips to "Receipts" and the input column disappears). Backend: new `POST /api/vendor-pos/:poNumber/receive` endpoint that appends an event to `received_data.events`, recomputes per-line totals, and derives the new status — `RECEIVED` if every line&rsquo;s cumulative received qty meets or exceeds its ordered qty, `PARTIAL` if any received qty is > 0 but not all lines are full. Stamps `received_at` on first full-receive. Logs to `vendor-po.received` for the audit trail. Fires the standard PDF regen + Drive overwrite after the status update so the doc on Drive reflects the new state. **Open follow-up:** receive history isn&rsquo;t yet shown on the PDF render — Phase 3.'},
+      ]
+    },
+    {
       v:'1.49.14', date:'May 29, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Back link on the PO builder.** New ← Vendor Hub button top-left of `/vpo/`. Visible only to authenticated reps (share-token vendor views don&rsquo;t see it). Edit-mode banner bumped down to row 2 so the two don&rsquo;t overlap. Both hidden in `@media print` so the PDF render stays clean.'},

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.51.6', date:'May 29, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**End-of-session DEVLOG writeup for 2026-05-29.** Today shipped WR PO System Phases 2 (Receive) and 3 (Kim&rsquo;s invoice matching) end-to-end plus heavy iteration on `/vpo/` (PDF is now a snapshot, not a live doc — only "Update PO" regenerates). Current focus block rewritten; session writeup captures Phase 4 (QB Bills API auto-stub) as deferred until Kim asks. No runtime change.'},
+      ]
+    },
+    {
       v:'1.51.5', date:'May 29, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Sales Goal report crashed — `esc is not defined`.** v1.51.4 used `esc(...)` in the new "View deals counted" block but `reports-dashboard.html` exposes the helper as `escapeHtml`. Three call sites swapped to `escapeHtml`; the deal-ID link uses `encodeURIComponent` instead since it&rsquo;s a URL segment.'},

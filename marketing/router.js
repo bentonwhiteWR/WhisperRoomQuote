@@ -194,6 +194,26 @@ function _classifyCampaign(name, map) {
   return { segment: 'Unclassified', rule: null };
 }
 
+// ── Funnel: Quote stage (v1.51.2) ────────────────────────────────────
+// Sales Pipeline (pipeline='default') stages that mean "a quote was sent or
+// beyond" — i.e. the deal reached the funnel's Quote leg. Stage values read
+// from the live pipeline 2026-05-29 (HubSpot keeps legacy internal ids like
+// 'appointmentscheduled' = the "Sent Quote" stage). Deliberately EXCLUDES the
+// pre-quote 'Bid' stage ('1169840404'). Closed-lost is included — those deals
+// were quoted, then lost. Used by both the per-campaign funnel and the
+// top-line funnel strip so "Quotes" means the same thing everywhere.
+const QUOTE_STAGES = [
+  'appointmentscheduled', // Sent Quote
+  'qualifiedtobuy',       // Updated Quote
+  'contractsent',         // Verbal Confirmation
+  'closedwon',            // Closed won
+  '845719',               // Shipped (post-won)
+  'closedlost',           // Closed lost (quoted, then lost)
+  '895819',               // Refund (post-won)
+  '1021560863',           // Return In Progress
+  '1846401',              // COVID-19 Delay
+];
+
 // Entry point. Returns true if the request was handled (caller stops
 // dispatching), false otherwise. ctx provides everything from
 // quote-server.js's request handler closure: { db, getSession, json,
@@ -425,11 +445,19 @@ async function handle(req, res, ctx) {
           cn.campaign_id,
           cn.campaign_name,
           COUNT(DISTINCT c.contact_id)                                                            AS leads,
+          -- v1.51.2 funnel legs. Quotes = deals that reached a quote stage,
+          -- by quote/create date in window. Closes + revenue = closed-won by
+          -- CLOSE date in window (matches the closedate KPI cards). deals_total
+          -- stays all-time for the "0 / N" context display.
+          COUNT(DISTINCT CASE WHEN d.dealstage = ANY($4::text[])
+                               AND d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $3 THEN d.deal_id END) AS quotes,
           COUNT(DISTINCT d.deal_id)                                                               AS deals_total,
-          COUNT(DISTINCT CASE WHEN d.is_closed_won  THEN d.deal_id END)                           AS deals_won,
+          COUNT(DISTINCT CASE WHEN d.is_closed_won
+                               AND d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $3 THEN d.deal_id END)  AS deals_won,
           COUNT(DISTINCT CASE WHEN d.is_closed_lost THEN d.deal_id END)                           AS deals_lost,
           COUNT(DISTINCT CASE WHEN d.deal_id IS NOT NULL AND NOT d.is_closed THEN d.deal_id END)  AS deals_open,
-          COALESCE(SUM(CASE WHEN d.is_closed_won THEN d.amount ELSE 0 END), 0)::float             AS revenue_won
+          COALESCE(SUM(CASE WHEN d.is_closed_won
+                             AND d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $3 THEN d.amount ELSE 0 END), 0)::float AS revenue_won
         FROM campaign_names cn
         LEFT JOIN marketing_hubspot_contacts c ON (
           ${am.campMatch}
@@ -438,7 +466,12 @@ async function handle(req, res, ctx) {
         LEFT JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
         GROUP BY cn.campaign_id, cn.campaign_name
         ORDER BY revenue_won DESC, leads DESC
-      `, [aliasHsNames, aliasGaNames, days])).rows : [];
+      `, [aliasHsNames, aliasGaNames, days, QUOTE_STAGES])).rows : [];
+      // Tag each campaign with its buyer segment (same classifier as the
+      // /segments/proposed diagnostic) so the table + segment rollup share
+      // one source of truth.
+      const segMap = _loadSegmentMap();
+      for (const r of rows) r.segment = _classifyCampaign(r.campaign_name, segMap).segment;
       ctx.json({ rows, model: am.model });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
@@ -660,6 +693,11 @@ async function handle(req, res, ctx) {
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
              WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND ${am.contactPaid})                                                                                AS revenue_selected,
+          (SELECT COUNT(*) FROM marketing_hubspot_deals d
+             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1
+               AND d.dealstage = ANY($2::text[])
+               AND ${am.contactPaid})                                                                                AS quotes_selected,
           (SELECT COUNT(*) FROM marketing_hubspot_contacts
              WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * $1
                AND (first_source IS NOT NULL OR gclid IS NOT NULL))                                                  AS contacts_with_source,
@@ -694,7 +732,7 @@ async function handle(req, res, ctx) {
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
              WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND (c.first_source = 'PAID_SEARCH' OR c.gclid IS NOT NULL))                                          AS revenue_any_touch
-      `, [days])).rows[0] : {};
+      `, [days, QUOTE_STAGES])).rows[0] : {};
       ctx.json({ ...(r || {}), model: am.model });
     } catch(e) { ctx.json({ error: e.message }, 500); }
     return true;

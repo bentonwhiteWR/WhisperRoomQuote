@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.51.2', date:'May 29, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing — Spend → Quote → Close → Revenue funnel + segment overlay.** New funnel strip below the KPI cards (above the Campaigns table) showing Spend → Quotes → Closed → Revenue with **cost-per-quote**, **cost-per-closed-deal (CAC)**, and ROAS — driven by the same model-windowed numbers as the cards, so they always agree. "Quote" = a deal that reached the Sent-Quote stage or beyond (HubSpot Sales Pipeline). Respects the active attribution toggle (First / Last / All) and date range.'},
+        {t:'add', d:'**Per-campaign funnel columns + segment tags.** The Campaigns table gains <em>Segment</em> (color-coded tag from `segment_map.json`), <em>Quotes</em>, <em>CPQ</em>, and <em>CAC</em> columns, plus a one-line "share of closed revenue by segment" rollup under the funnel. Built on the existing gclid/UTM attribution join — no duplicate query. (Data note: WhisperRoom\'s paid revenue is ~77% Branded/General "Mixed" with Voice Over the only segment-specific winner, so the segment view rides on the campaign table as an overlay rather than replacing it.)'},
+      ]
+    },
+    {
       v:'1.51.1', date:'May 29, 2026', tag:'add',
       changes:[
         {t:'add', d:'**Tax Nexus States reference popup on the Quote Builder.** Small "Nexus States" button in the Sales Tax section header opens a modal listing every state where WhisperRoom is registered to collect sales tax, with a green YES / muted NO pill in the "Taxes Freight" column. Backed by a new `GET /api/nexus-states` endpoint that serializes `lib/states.js`&rsquo;s `NEXUS_STATES` map — single source of truth, so the popup never drifts from what the calculator actually does. Cached client-side after first open. Useful when a rep is on the phone with a customer asking about tax in their state.'},

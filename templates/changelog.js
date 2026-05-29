@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.49.12', date:'May 29, 2026', tag:'log',
+      changes:[
+        {t:'fix', d:'**Added `.gitignore` and untracked two accidentally-committed `.code-workspace` files.** The v1.49.11 commit used `git add -A` and swept in `lib/Viking Idle Game.code-workspace` + `lib/Work.code-workspace` (local IDE config). New `.gitignore` covers `*.code-workspace`, `node_modules/`, `.env*`, `.DS_Store`, etc. so future bulk-adds stay clean. Files removed from the index with `git rm --cached` so local copies are preserved.'},
+      ]
+    },
+    {
       v:'1.49.11', date:'May 29, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Nav bar audit + consistency.** Audited the topbar nav across all 9 dashboards; the canonical set is now: Deal Hub / Quotes / Orders / Shipping / Reports / Accounting / Suppliers / Vendor Hub / Marketing. Added Marketing to 7 dashboards that didn&rsquo;t have it (orders, reconcile, reports, shipping, suppliers, vendor-pos, email-reply). Added Accounting to marketing-dashboard.html. Removed the Email Reply self-link from `assistant/email-reply.html` — Email Reply opens via the ✉ icon button on Deal Hub (popup modal); no dedicated nav slot. Deleted the orphaned `vendors-dashboard.html` (the `/vendors` route 302-redirects to `/vendor-pos#vendors` since v1.49.3; the file was unreferenced).'},

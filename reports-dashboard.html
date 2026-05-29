@@ -854,16 +854,16 @@ function renderSalesGoal(d) {
               </thead>
               <tbody>
                 ${d.mtdDeals.map(dl => {
-                  const stage = dl.dealstage === 'closedwon' ? '<span style="display:inline-block;padding:1px 7px;background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.4);border-radius:8px;font-size:9px;font-weight:700;letter-spacing:.04em">Won</span>' : dl.dealstage === '845719' ? '<span style="display:inline-block;padding:1px 7px;background:rgba(59,130,246,.12);color:#3b82f6;border:1px solid rgba(59,130,246,.4);border-radius:8px;font-size:9px;font-weight:700;letter-spacing:.04em">Shipped</span>' : esc(dl.dealstage);
+                  const stage = dl.dealstage === 'closedwon' ? '<span style="display:inline-block;padding:1px 7px;background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.4);border-radius:8px;font-size:9px;font-weight:700;letter-spacing:.04em">Won</span>' : dl.dealstage === '845719' ? '<span style="display:inline-block;padding:1px 7px;background:rgba(59,130,246,.12);color:#3b82f6;border:1px solid rgba(59,130,246,.4);border-radius:8px;font-size:9px;font-weight:700;letter-spacing:.04em">Shipped</span>' : escapeHtml(dl.dealstage);
                   const dt = dl.closedate ? new Date(dl.closedate).toLocaleDateString('en-US', { month:'short', day:'numeric', timeZone:'America/New_York' }) : '—';
                   return `<tr style="border-bottom:1px solid var(--border)">
                     <td style="padding:8px 10px;color:var(--text2);white-space:nowrap">${dt}</td>
-                    <td style="padding:8px 10px;color:var(--text);font-weight:600">${esc(dl.dealName)}</td>
+                    <td style="padding:8px 10px;color:var(--text);font-weight:600">${escapeHtml(dl.dealName)}</td>
                     <td style="padding:8px 10px;text-align:center">${stage}</td>
                     <td style="padding:8px 10px;text-align:right;font-family:var(--mono);color:var(--text2)">${fmt(dl.total)}</td>
                     <td style="padding:8px 10px;text-align:right;font-family:var(--mono);color:var(--text2)">${fmt(dl.taxAmt)}</td>
                     <td style="padding:8px 10px;text-align:right;font-family:var(--mono);font-weight:700;color:var(--text)">${fmt(dl.revenue)}</td>
-                    <td style="padding:8px 10px;text-align:center"><a href="https://app.hubspot.com/contacts/5764220/deal/${esc(dl.dealId)}" target="_blank" title="Open in HubSpot" style="color:var(--orange);text-decoration:none;font-size:11px">HS ↗</a></td>
+                    <td style="padding:8px 10px;text-align:center"><a href="https://app.hubspot.com/contacts/5764220/deal/${encodeURIComponent(dl.dealId)}" target="_blank" title="Open in HubSpot" style="color:var(--orange);text-decoration:none;font-size:11px">HS ↗</a></td>
                   </tr>`;
                 }).join('')}
               </tbody>

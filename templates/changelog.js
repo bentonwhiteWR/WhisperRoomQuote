@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.51.5', date:'May 29, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Sales Goal report crashed — `esc is not defined`.** v1.51.4 used `esc(...)` in the new "View deals counted" block but `reports-dashboard.html` exposes the helper as `escapeHtml`. Three call sites swapped to `escapeHtml`; the deal-ID link uses `encodeURIComponent` instead since it&rsquo;s a URL segment.'},
+      ]
+    },
+    {
       v:'1.51.4', date:'May 29, 2026', tag:'add',
       changes:[
         {t:'add', d:'**"View deals counted" expandable list on Sales Goal.** Below the 12-month chart on `/reports` → Sales Goal, a collapsed `<details>` block listing every deal counted toward this month&rsquo;s MTD revenue. Columns: closedate / deal name / stage pill (Won / Shipped) / total / tax / net revenue, plus a HubSpot deep link per row. Footer row totals the net revenue and ties out to the headline MTD number. Helpful for spotting missing or double-counted deals (and refunds — which are explicitly NOT included; a note in the block points to reconcile for those). New `mtdDeals` array on the `/api/reports/sales-goal` response with per-deal details; `dealname` added to the HubSpot properties pull.'},

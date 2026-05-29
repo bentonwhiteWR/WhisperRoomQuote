@@ -135,7 +135,7 @@ Vendor Purchase Orders for the WR PO System (v1.49+). Parallel to `supplier_pos`
 | Column                | Type            | Notes                                                          |
 |-----------------------|-----------------|----------------------------------------------------------------|
 | `id`                  | SERIAL PK       |                                                                |
-| `po_number`           | TEXT UNIQUE     | `WV-{YY}{MM}{DD}{NN}` (e.g. `WV-26052801`)                     |
+| `po_number`           | TEXT UNIQUE     | `WP-{YY}{MM}{DD}{NN}` (e.g. `WP-26052901`). Older PO numbers created before v1.49.13 used the `WV-` prefix; both formats coexist. |
 | `vendor_id`           | INT FK          | References `vendors(id)`; `ON DELETE SET NULL` for safety      |
 | `vendor_snapshot`     | JSONB           | Frozen vendor row at creation time                             |
 | `share_token`         | TEXT UNIQUE     | Used by `/vpo/:poNumber` viewer                                |

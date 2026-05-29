@@ -63,6 +63,73 @@ function _parseDays(req) {
   } catch { return 90; }
 }
 
+// v1.50.8 — attribution-model selector. Lets the dashboard switch the
+// closed-loop layer between three definitions, ALL backed by fields the
+// ETL already ingests (schema.sql deliberately pulls the first_* AND
+// latest_* source pairs + gclid so the model can change per-query with
+// NO re-sync):
+//
+//   'first' (default) — first_source = 'PAID_SEARCH'. The customer's FIRST
+//        interaction was a paid-search ad. Matches HubSpot's "First ad
+//        interaction" report. Strict / most conservative.
+//   'last'  — latest_source = 'PAID_SEARCH'. The customer's MOST-RECENT
+//        source was paid search. Matches HubSpot's last-interaction lens.
+//        Windowed on latest_source_at (when the last touch happened), not
+//        createdate, so a long-known contact re-engaged by an ad counts.
+//   'all'   — first OR latest source is PAID_SEARCH, OR a gclid is present.
+//        Any KNOWN ad touch. Approximates HubSpot's "All ad interactions"
+//        report. Caveat: we store first + latest + gclid, NOT the full
+//        event history, so a contact whose only ad touch was a middle
+//        interaction with no gclid is missed — close to HubSpot's number,
+//        not guaranteed exact.
+//
+// Returns SQL fragments referencing the contact alias `c` (and, for
+// campMatch, the `cn` campaign-names CTE + `aliases` CTE that the
+// attribution queries already define). `model` is whitelisted to three
+// literals and never interpolates raw request text, so building the SQL
+// by string concat here is injection-safe.
+function _attrModel(req) {
+  let model = 'first';
+  try {
+    const m = (new URL(req.url, 'http://localhost').searchParams.get('model') || '').toLowerCase();
+    if (m === 'last' || m === 'all') model = m;
+  } catch {}
+
+  // Campaign-name match for one (source, data_1) column pair. Mirrors the
+  // v1.46.7 first-touch join: case-insensitive, '+'→space normalized, with
+  // the historical-rename alias fallback.
+  const campMatch = (src, d1) => `(${src} = 'PAID_SEARCH' AND (
+            LOWER(REPLACE(${d1}, '+', ' ')) = LOWER(REPLACE(cn.campaign_name, '+', ' '))
+            OR EXISTS (SELECT 1 FROM aliases a
+                         WHERE a.ga_name = cn.campaign_name
+                           AND a.hs_name = LOWER(REPLACE(${d1}, '+', ' ')))))`;
+  // Search-term match for one (source, data_2) column pair. HubSpot stores
+  // the literal typed term in *_source_data_2 for PAID_SEARCH (v1.46.9).
+  const termMatch = (src, d2) => `(${src} = 'PAID_SEARCH' AND LOWER(TRIM(${d2})) = st.search_term)`;
+
+  const MODELS = {
+    first: {
+      contactPaid: `c.first_source = 'PAID_SEARCH'`,
+      contactDate: `c.created_at`,
+      campMatch:   campMatch('c.first_source', 'c.first_source_data_1'),
+      termMatch:   termMatch('c.first_source', 'c.first_source_data_2'),
+    },
+    last: {
+      contactPaid: `c.latest_source = 'PAID_SEARCH'`,
+      contactDate: `COALESCE(c.latest_source_at, c.created_at)`,
+      campMatch:   campMatch('c.latest_source', 'c.latest_source_data_1'),
+      termMatch:   termMatch('c.latest_source', 'c.latest_source_data_2'),
+    },
+    all: {
+      contactPaid: `(c.first_source = 'PAID_SEARCH' OR c.latest_source = 'PAID_SEARCH' OR c.gclid IS NOT NULL)`,
+      contactDate: `c.created_at`,
+      campMatch:   `(${campMatch('c.first_source', 'c.first_source_data_1')} OR ${campMatch('c.latest_source', 'c.latest_source_data_1')})`,
+      termMatch:   `(${termMatch('c.first_source', 'c.first_source_data_2')} OR ${termMatch('c.latest_source', 'c.latest_source_data_2')})`,
+    },
+  };
+  return { model, ...MODELS[model] };
+}
+
 let _schemaInitialized = false;
 async function _initSchema(db) {
   if (_schemaInitialized || !db) return;
@@ -80,6 +147,72 @@ function isAllowed(sess) {
   if (MARKETING_ALLOWLIST.length === 0) return !!sess;  // open to any auth'd user
   return !!(sess && MARKETING_ALLOWLIST.includes(String(sess.ownerId || '')));
 }
+
+// ── Segment classifier (v1.50.10) ─────────────────────────────────────
+// Maps a Google Ads campaign_name to a buyer segment using marketing/
+// segment_map.json (Gabe-editable config — NOT hardcoded). Resolution
+// order: exact override → first matching segment rule → mixed_signals →
+// 'Unclassified'. Read by the read-only /segments/proposed diagnostic now;
+// the Segment Performance UI will reuse the exact same classifier so the
+// table and the diagnostic can never drift. Map is cached after first load;
+// editing the file requires a redeploy/restart to pick up (fine — it's a
+// reviewed config, not live data).
+let _segmentMap = null;
+function _loadSegmentMap() {
+  if (_segmentMap) return _segmentMap;
+  try {
+    _segmentMap = JSON.parse(fs.readFileSync(path.join(__dirname, 'segment_map.json'), 'utf8'));
+  } catch (e) {
+    console.warn('[marketing] segment_map.json load failed:', e.message);
+    _segmentMap = { segments: [], rules: [], mixed_signals: [], overrides: {} };
+  }
+  return _segmentMap;
+}
+
+// Classify one campaign name. Returns { segment, rule, split? }. `rule` is a
+// short provenance string so the diagnostic can show WHY each campaign landed
+// where it did (override / rule:<frag> / mixed:<frag> / null).
+function _classifyCampaign(name, map) {
+  if (!name) return { segment: 'Unclassified', rule: null };
+  if (map.overrides && Object.prototype.hasOwnProperty.call(map.overrides, name)) {
+    const ov = map.overrides[name];
+    if (ov && typeof ov === 'object') return { segment: 'Mixed', rule: 'override:split', split: ov.allocation || null };
+    return { segment: ov, rule: 'override' };
+  }
+  const test = (frag) => {
+    try { return new RegExp(frag, 'i').test(name); }
+    catch { return name.toLowerCase().includes(String(frag).toLowerCase()); }
+  };
+  for (const r of (map.rules || [])) {
+    for (const frag of (r.match_any || [])) {
+      if (test(frag)) return { segment: r.segment, rule: `rule:${frag}` };
+    }
+  }
+  for (const frag of (map.mixed_signals || [])) {
+    if (test(frag)) return { segment: 'Mixed', rule: `mixed:${frag}` };
+  }
+  return { segment: 'Unclassified', rule: null };
+}
+
+// ── Funnel: Quote stage (v1.51.2) ────────────────────────────────────
+// Sales Pipeline (pipeline='default') stages that mean "a quote was sent or
+// beyond" — i.e. the deal reached the funnel's Quote leg. Stage values read
+// from the live pipeline 2026-05-29 (HubSpot keeps legacy internal ids like
+// 'appointmentscheduled' = the "Sent Quote" stage). Deliberately EXCLUDES the
+// pre-quote 'Bid' stage ('1169840404'). Closed-lost is included — those deals
+// were quoted, then lost. Used by both the per-campaign funnel and the
+// top-line funnel strip so "Quotes" means the same thing everywhere.
+const QUOTE_STAGES = [
+  'appointmentscheduled', // Sent Quote
+  'qualifiedtobuy',       // Updated Quote
+  'contractsent',         // Verbal Confirmation
+  'closedwon',            // Closed won
+  '845719',               // Shipped (post-won)
+  'closedlost',           // Closed lost (quoted, then lost)
+  '895819',               // Refund (post-won)
+  '1021560863',           // Return In Progress
+  '1846401',              // COVID-19 Delay
+];
 
 // Entry point. Returns true if the request was handled (caller stops
 // dispatching), false otherwise. ctx provides everything from
@@ -285,11 +418,16 @@ async function handle(req, res, ctx) {
   // renamed in Google Ads (e.g. A/B variants merged into "Combined")
   // leave historical HubSpot contacts unmatched against the new name.
   //
-  // Single-touch only — we don't have full event/session history. Our
-  // `leads` count matches HubSpot's "First ad interaction" report.
+  // Single-touch only — we don't have full event/session history. Under the
+  // default 'first' model our `leads` count matches HubSpot's "First ad
+  // interaction" report. v1.50.8 — `?model=first|last|all` swaps the
+  // contact-side predicate (see _attrModel). gclid-only contacts under 'all'
+  // can't be mapped to a specific campaign without click_view resolution, so
+  // they raise the KPI contact count but don't join to a campaign row here.
   if (pathname === '/api/marketing/campaign-attribution' && req.method === 'GET') {
     try {
       const days = _parseDays(req);
+      const am   = _attrModel(req);
       const aliasHsNames = HUBSPOT_CAMPAIGN_ALIASES.map(a => a.hsName);
       const aliasGaNames = HUBSPOT_CAMPAIGN_ALIASES.map(a => a.gaName);
       const rows = ctx.db ? (await ctx.db.query(`
@@ -307,29 +445,34 @@ async function handle(req, res, ctx) {
           cn.campaign_id,
           cn.campaign_name,
           COUNT(DISTINCT c.contact_id)                                                            AS leads,
+          -- v1.51.2 funnel legs. Quotes = deals that reached a quote stage,
+          -- by quote/create date in window. Closes + revenue = closed-won by
+          -- CLOSE date in window (matches the closedate KPI cards). deals_total
+          -- stays all-time for the "0 / N" context display.
+          COUNT(DISTINCT CASE WHEN d.dealstage = ANY($4::text[])
+                               AND d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $3 THEN d.deal_id END) AS quotes,
           COUNT(DISTINCT d.deal_id)                                                               AS deals_total,
-          COUNT(DISTINCT CASE WHEN d.is_closed_won  THEN d.deal_id END)                           AS deals_won,
+          COUNT(DISTINCT CASE WHEN d.is_closed_won
+                               AND d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $3 THEN d.deal_id END)  AS deals_won,
           COUNT(DISTINCT CASE WHEN d.is_closed_lost THEN d.deal_id END)                           AS deals_lost,
           COUNT(DISTINCT CASE WHEN d.deal_id IS NOT NULL AND NOT d.is_closed THEN d.deal_id END)  AS deals_open,
-          COALESCE(SUM(CASE WHEN d.is_closed_won THEN d.amount ELSE 0 END), 0)::float             AS revenue_won
+          COALESCE(SUM(CASE WHEN d.is_closed_won
+                             AND d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $3 THEN d.amount ELSE 0 END), 0)::float AS revenue_won
         FROM campaign_names cn
         LEFT JOIN marketing_hubspot_contacts c ON (
-          c.first_source = 'PAID_SEARCH'
-          AND (
-            LOWER(REPLACE(c.first_source_data_1, '+', ' ')) = LOWER(REPLACE(cn.campaign_name, '+', ' '))
-            OR EXISTS (
-              SELECT 1 FROM aliases a
-              WHERE a.ga_name = cn.campaign_name
-                AND a.hs_name = LOWER(REPLACE(c.first_source_data_1, '+', ' '))
-            )
-          )
-          AND c.created_at >= CURRENT_DATE - INTERVAL '1 day' * $3
+          ${am.campMatch}
+          AND ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $3
         )
         LEFT JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
         GROUP BY cn.campaign_id, cn.campaign_name
         ORDER BY revenue_won DESC, leads DESC
-      `, [aliasHsNames, aliasGaNames, days])).rows : [];
-      ctx.json({ rows });
+      `, [aliasHsNames, aliasGaNames, days, QUOTE_STAGES])).rows : [];
+      // Tag each campaign with its buyer segment (same classifier as the
+      // /segments/proposed diagnostic) so the table + segment rollup share
+      // one source of truth.
+      const segMap = _loadSegmentMap();
+      for (const r of rows) r.segment = _classifyCampaign(r.campaign_name, segMap).segment;
+      ctx.json({ rows, model: am.model });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
   }
@@ -468,6 +611,7 @@ async function handle(req, res, ctx) {
   if (pathname === '/api/marketing/search-term-attribution' && req.method === 'GET') {
     try {
       const days = _parseDays(req);
+      const am   = _attrModel(req);  // v1.50.8 — first/last/all, matched on the matching *_source_data_2
       const rows = ctx.db ? (await ctx.db.query(`
         WITH search_terms AS (
           SELECT DISTINCT LOWER(TRIM(search_term)) AS search_term
@@ -486,15 +630,14 @@ async function handle(req, res, ctx) {
           COALESCE(SUM(CASE WHEN d.is_closed_won THEN d.amount ELSE 0 END), 0)::float             AS revenue_won
         FROM search_terms st
         LEFT JOIN marketing_hubspot_contacts c ON (
-          c.first_source = 'PAID_SEARCH'
-          AND LOWER(TRIM(c.first_source_data_2)) = st.search_term
-          AND c.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1
+          ${am.termMatch}
+          AND ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1
         )
         LEFT JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
         GROUP BY st.search_term
         ORDER BY revenue_won DESC, leads DESC
       `, [days])).rows : [];
-      ctx.json({ rows });
+      ctx.json({ rows, model: am.model });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
   }
@@ -523,10 +666,38 @@ async function handle(req, res, ctx) {
   if (pathname === '/api/marketing/attribution-coverage' && req.method === 'GET') {
     try {
       const days = _parseDays(req);
+      const am   = _attrModel(req);
+      // The trust-thermometer keys (contacts_with_source, *_attributed) stay
+      // model-INDEPENDENT — they answer "how much is attributable at all?".
+      // The *_selected keys + contacts_attributed are model-DRIVEN and feed
+      // the Closed Revenue / HubSpot Contacts / True ROAS cards (v1.50.8).
+      //
+      // v1.50.9 — DEAL metrics window on closed_at (closedate), NOT created_at:
+      // "Closed Revenue (90d)" must mean revenue that *closed* in the window,
+      // matching HubSpot's Ads-tool basis (full deal amount per ad-touched
+      // closed-won deal). CONTACT metrics stay on created_at — that's a cohort
+      // question ("new contacts attributable"), and matches how first-touch was
+      // validated against HubSpot's "First ad interaction" report.
       const r = ctx.db ? (await ctx.db.query(`
         SELECT
           (SELECT COUNT(*) FROM marketing_hubspot_contacts
              WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * $1)                                               AS contacts_total,
+          (SELECT COUNT(*) FROM marketing_hubspot_contacts c
+             WHERE ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1
+               AND ${am.contactPaid})                                                                                AS contacts_attributed,
+          (SELECT COUNT(*) FROM marketing_hubspot_deals d
+             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+               AND ${am.contactPaid})                                                                                AS deals_won_selected,
+          (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
+             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+               AND ${am.contactPaid})                                                                                AS revenue_selected,
+          (SELECT COUNT(*) FROM marketing_hubspot_deals d
+             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1
+               AND d.dealstage = ANY($2::text[])
+               AND ${am.contactPaid})                                                                                AS quotes_selected,
           (SELECT COUNT(*) FROM marketing_hubspot_contacts
              WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * $1
                AND (first_source IS NOT NULL OR gclid IS NOT NULL))                                                  AS contacts_with_source,
@@ -534,35 +705,95 @@ async function handle(req, res, ctx) {
              WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * $1
                AND gclid IS NOT NULL)                                                                                AS contacts_with_gclid,
           (SELECT COUNT(*) FROM marketing_hubspot_deals
-             WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND is_closed_won)                             AS deals_won_total,
+             WHERE closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND is_closed_won)                             AS deals_won_total,
           (SELECT COUNT(*) FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND (c.first_source IS NOT NULL OR c.gclid IS NOT NULL))                                              AS deals_won_attributed,
           (SELECT COALESCE(SUM(amount), 0)::float FROM marketing_hubspot_deals
-             WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND is_closed_won)                             AS revenue_total,
+             WHERE closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND is_closed_won)                             AS revenue_total,
           (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND (c.first_source IS NOT NULL OR c.gclid IS NOT NULL))                                              AS revenue_attributed,
           (SELECT COUNT(*) FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND c.first_source = 'PAID_SEARCH')                                                                   AS deals_won_first_touch,
           (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND c.first_source = 'PAID_SEARCH')                                                                   AS revenue_first_touch,
           (SELECT COUNT(*) FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND (c.first_source = 'PAID_SEARCH' OR c.gclid IS NOT NULL))                                          AS deals_won_any_touch,
           (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
                AND (c.first_source = 'PAID_SEARCH' OR c.gclid IS NOT NULL))                                          AS revenue_any_touch
-      `, [days])).rows[0] : {};
-      ctx.json(r || {});
+      `, [days, QUOTE_STAGES])).rows[0] : {};
+      ctx.json({ ...(r || {}), model: am.model });
+    } catch(e) { ctx.json({ error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/segments/proposed ──────────────────────────
+  // Read-only diagnostic (v1.50.10). Classifies EVERY distinct campaign in
+  // marketing_campaigns (all-time, no date window — we want the full
+  // campaign universe) via segment_map.json, so Gabe can review + edit the
+  // mapping before the Segment Performance UI is built. No writes, no schema
+  // change. Spend/clicks/conversions are lifetime totals per campaign purely
+  // to sort by materiality. Returns by-segment rollups + the Mixed and
+  // Unclassified lists called out for review.
+  if (pathname === '/api/marketing/segments/proposed' && req.method === 'GET') {
+    try {
+      const map  = _loadSegmentMap();
+      const rows = ctx.db ? (await ctx.db.query(`
+        SELECT campaign_name,
+               (SUM(cost_micros)::float / 1000000) AS spend,
+               SUM(clicks)::bigint                 AS clicks,
+               SUM(conversions)::float             AS conversions,
+               MIN(date)                           AS first_date,
+               MAX(date)                           AS last_date
+        FROM marketing_campaigns
+        WHERE campaign_name IS NOT NULL
+        GROUP BY campaign_name
+        ORDER BY spend DESC NULLS LAST
+      `)).rows : [];
+      const campaigns = rows.map(r => {
+        const c = _classifyCampaign(r.campaign_name, map);
+        return {
+          campaign_name: r.campaign_name,
+          spend:       Math.round((r.spend || 0) * 100) / 100,
+          clicks:      Number(r.clicks) || 0,
+          conversions: r.conversions || 0,
+          segment:     c.segment,
+          rule:        c.rule,
+          split:       c.split || null,
+          first_date:  r.first_date,
+          last_date:   r.last_date,
+        };
+      });
+      // Roll up by segment (spend + campaign count) for an at-a-glance review.
+      const bySeg = {};
+      for (const c of campaigns) {
+        (bySeg[c.segment] = bySeg[c.segment] || { segment: c.segment, campaigns: 0, spend: 0 });
+        bySeg[c.segment].campaigns += 1;
+        bySeg[c.segment].spend     += c.spend;
+      }
+      const by_segment = Object.values(bySeg)
+        .map(s => ({ ...s, spend: Math.round(s.spend * 100) / 100 }))
+        .sort((a, b) => b.spend - a.spend);
+      ctx.json({
+        note: 'PROPOSED campaign→segment mapping for review. Edit marketing/segment_map.json, redeploy, reload. Resolution: override → rule → mixed_signals → Unclassified.',
+        total_campaigns: campaigns.length,
+        segments_defined: map.segments || [],
+        by_segment,
+        unclassified: campaigns.filter(c => c.segment === 'Unclassified'),
+        mixed:        campaigns.filter(c => c.segment === 'Mixed'),
+        campaigns,
+      });
     } catch(e) { ctx.json({ error: e.message }, 500); }
     return true;
   }

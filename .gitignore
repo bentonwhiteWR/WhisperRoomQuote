@@ -1,0 +1,23 @@
+# Local IDE / editor config
+*.code-workspace
+.vscode/
+.idea/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+
+# Env files (we use Railway env vars; .env should never be committed)
+.env
+.env.local
+.env.*.local
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Build / runtime
+*.log
+.cache/
+tmp/

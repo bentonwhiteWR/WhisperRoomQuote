@@ -1207,6 +1207,25 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
     </div>
   </div>
 
+  <!-- Nexus States Reference Modal ─────────────────────────────────── -->
+  <div id="nexusOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9000;align-items:center;justify-content:center" onclick="if(event.target===this)closeNexusModal()">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:22px 24px;max-width:520px;width:94%;box-shadow:0 20px 60px rgba(0,0,0,.5);max-height:90vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div style="font-size:16px;font-weight:700">Tax Nexus States</div>
+        <button onclick="closeNexusModal()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:0 4px;line-height:1">&times;</button>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px">
+        States where WhisperRoom is registered to collect sales tax. The Freight column shows whether the state also taxes shipping/freight charges on taxable orders.
+      </div>
+      <div id="nexusTableWrap">
+        <div style="text-align:center;color:var(--muted);padding:20px;font-size:12px">Loading…</div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:14px;padding-top:10px;border-top:1px solid var(--border);line-height:1.5">
+        Reference: <a href="https://www.taxjar.com/sales-tax/sales-tax-and-shipping" target="_blank" style="color:var(--accent);text-decoration:none">TaxJar &mdash; Sales tax + shipping rules by state</a>. The classification is what we apply in our calculator; verify in TaxJar if a state&rsquo;s rules change.
+      </div>
+    </div>
+  </div>
+
   <!-- ⑤ TAX -->
   <div class="section">
     <div class="section-head">
@@ -1215,6 +1234,11 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
     </div>
     <p style="font-size:11px;color:var(--muted);margin-bottom:12px">
       Calculated via TaxJar based on ship-to state. Only applied for nexus states.
+      <button type="button" onclick="openNexusModal()"
+        style="margin-left:8px;background:transparent;border:1px solid var(--border);color:var(--text);font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:5px;cursor:pointer;font-family:inherit"
+        title="Show all states where WhisperRoom collects sales tax, and which of those also tax freight">
+        Nexus States
+      </button>
     </p>
     <div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap">
       <div style="font-size:11px;color:var(--muted)">Tax auto-calculates with freight, or calculate separately:</div>
@@ -2639,6 +2663,63 @@ function openInstallRequestModal() {
 function closeInstallRequestModal() {
   document.getElementById('installRequestOverlay').style.display = 'none';
 }
+
+// ── Nexus States reference modal ───────────────────────────────
+// Sales team reference: which states we collect tax in, and which
+// of those also tax freight. Source of truth is lib/states.js
+// `NEXUS_STATES` — fetched via /api/nexus-states so the list never
+// drifts from the calculator behavior.
+let _nexusStatesCache = null;
+async function openNexusModal() {
+  document.getElementById('nexusOverlay').style.display = 'flex';
+  const wrap = document.getElementById('nexusTableWrap');
+  if (!_nexusStatesCache) {
+    try {
+      const r = await fetch('/api/nexus-states', { credentials: 'include' });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Failed to load');
+      _nexusStatesCache = data.states || [];
+    } catch (e) {
+      wrap.innerHTML = '<div style="color:#ef4444;padding:14px;font-size:12px">Error loading: ' + e.message + '</div>';
+      return;
+    }
+  }
+  const states = _nexusStatesCache;
+  const freightYes = states.filter(s => s.taxes_freight).length;
+  const total = states.length;
+  const rows = states.map(s => (
+    '<tr>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid var(--border);font-weight:700;font-family:var(--mono);font-size:12px;color:var(--text)">' + s.abbr + '</td>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid var(--border);font-size:13px">' + s.name + '</td>' +
+      '<td style="padding:8px 10px;border-bottom:1px solid var(--border);text-align:center">' +
+        (s.taxes_freight
+          ? '<span style="display:inline-block;padding:2px 9px;background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.4);border-radius:10px;font-size:10px;font-weight:700;letter-spacing:.04em">YES</span>'
+          : '<span style="display:inline-block;padding:2px 9px;background:rgba(255,255,255,.04);color:var(--muted);border:1px solid var(--border);border-radius:10px;font-size:10px;font-weight:700;letter-spacing:.04em">NO</span>') +
+      '</td>' +
+    '</tr>'
+  )).join('');
+  wrap.innerHTML =
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">' +
+      '<strong style="color:var(--text)">' + total + '</strong> nexus states &middot; ' +
+      '<strong style="color:#22c55e">' + freightYes + '</strong> tax freight too' +
+    '</div>' +
+    '<table style="width:100%;border-collapse:collapse">' +
+      '<thead><tr>' +
+        '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-bottom:2px solid var(--border);width:50px">Abbr</th>' +
+        '<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-bottom:2px solid var(--border)">State</th>' +
+        '<th style="padding:8px 10px;text-align:center;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-bottom:2px solid var(--border);width:90px">Taxes Freight</th>' +
+      '</tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+    '</table>';
+}
+function closeNexusModal() {
+  document.getElementById('nexusOverlay').style.display = 'none';
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('nexusOverlay').style.display === 'flex') {
+    closeNexusModal();
+  }
+});
 
 function submitInstallRequest() {
   const quoteNumber = (document.getElementById('quoteNumHidden')?.value || '').trim();

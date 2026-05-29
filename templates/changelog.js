@@ -51,6 +51,132 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.51.3', date:'May 29, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Removed Arizona + Utah from `NEXUS_STATES`.** We no longer have nexus in those states (per the rep, TaxJar&rsquo;s already been corrected). `lib/states.js` now lists 14 states (was 16). The tax calculator was over-charging AZ and UT orders &mdash; from this version forward, those ZIP codes route through the same "no nexus → tax: 0" path as any non-nexus state. The Quote Builder Nexus States popup will reflect the new list automatically (it&rsquo;s sourced from the same map).'},
+      ]
+    },
+    {
+      v:'1.51.2', date:'May 29, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing — Spend → Quote → Close → Revenue funnel + segment overlay.** New funnel strip below the KPI cards (above the Campaigns table) showing Spend → Quotes → Closed → Revenue with **cost-per-quote**, **cost-per-closed-deal (CAC)**, and ROAS — driven by the same model-windowed numbers as the cards, so they always agree. "Quote" = a deal that reached the Sent-Quote stage or beyond (HubSpot Sales Pipeline). Respects the active attribution toggle (First / Last / All) and date range.'},
+        {t:'add', d:'**Per-campaign funnel columns + segment tags.** The Campaigns table gains <em>Segment</em> (color-coded tag from `segment_map.json`), <em>Quotes</em>, <em>CPQ</em>, and <em>CAC</em> columns, plus a one-line "share of closed revenue by segment" rollup under the funnel. Built on the existing gclid/UTM attribution join — no duplicate query. (Data note: WhisperRoom\'s paid revenue is ~77% Branded/General "Mixed" with Voice Over the only segment-specific winner, so the segment view rides on the campaign table as an overlay rather than replacing it.)'},
+      ]
+    },
+    {
+      v:'1.51.1', date:'May 29, 2026', tag:'add',
+      changes:[
+        {t:'add', d:'**Tax Nexus States reference popup on the Quote Builder.** Small "Nexus States" button in the Sales Tax section header opens a modal listing every state where WhisperRoom is registered to collect sales tax, with a green YES / muted NO pill in the "Taxes Freight" column. Backed by a new `GET /api/nexus-states` endpoint that serializes `lib/states.js`&rsquo;s `NEXUS_STATES` map — single source of truth, so the popup never drifts from what the calculator actually does. Cached client-side after first open. Useful when a rep is on the phone with a customer asking about tax in their state.'},
+      ]
+    },
+    {
+      v:'1.51.0', date:'May 29, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**WR PO System Phase 3 — Kim&rsquo;s invoice matching workflow.** New **Vendor Bills** tab on `/accounting` (5th tab on `reconcile.html`). Lists vendor POs in status SENT / PARTIAL / RECEIVED / CLOSED with a per-row Outstanding column (`PO Total − sum(invoiced)`). Fully-invoiced POs are hidden by default; toggle the checkbox to show them. Each row has two buttons: **Open in QB** opens a blank New Bill page in QuickBooks in a new tab (Kim picks the vendor and adds lines manually — QB Online doesn&rsquo;t support vendor pre-fill via URL params; Phase 4 will add an API stub-create). **Mark Bill Received** opens a modal capturing `{vendor invoice #, invoice date, vendor total, QB Bill #, notes}`. Live discrepancy banner shows when the entered total ≠ outstanding (matches green / partial bill amber / over-bill red). On save, `POST /api/vendor-pos/:poNumber/invoice` appends to `invoice_data.events`, sums totals, and flips PO status to **CLOSED** when fully received AND fully invoiced (within $0.01). Stamps `closed_at`. Supports partial bills out of the box — multiple events per PO. PO row links to `/vpo/` (new tab) for cross-reference.'},
+      ]
+    },
+    {
+      v:'1.50.10', date:'May 29, 2026', tag:'log',
+      changes:[
+        {t:'add', d:'**Marketing — segment classifier groundwork (read-only).** New `marketing/segment_map.json` (Gabe-editable config) maps Google Ads campaigns → buyer segments (Audiology / Education / Voice Over / Music·Recording / Office·Privacy / Broadcast·Podcast) by keyword rules + exact overrides, with a "Mixed" bucket for cross-segment campaigns (Branded/General/Competitor/Remarketing/Shopping). New read-only diagnostic `GET /api/marketing/segments/proposed` classifies EVERY campaign in `marketing_campaigns` (all-time) and returns per-segment spend rollups + the Mixed/Unclassified lists for review. No UI yet — this is the data-grounding step before the Segment Performance section is built (awaiting sign-off on the mapping).'},
+      ]
+    },
+    {
+      v:'1.50.9', date:'May 29, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Closed Revenue + True ROAS now window on closedate, not createdate.** "Closed Revenue (90d)" was summing closed-won deals *created* in the window; it now sums deals that *closed* in the window — the intuitive meaning, and the same basis HubSpot\'s Ads tool uses. Verified against live HubSpot: the gclid-attributed closed-won pool moves from ~$291k (createdate) to ~$433k (closedate), reconciling cleanly with HubSpot\'s "All ad interactions" revenue (~$487k; the residual is the no-gclid ad-clickers we structurally can\'t see). All deal-based coverage metrics moved to closedate for consistency; contact counts stay on createdate (a cohort question, and how first-touch was validated).'},
+        {t:'ui', d:'**"HubSpot Contacts" card relabeled to reflect the real signal.** Was "HubSpot Contacts (All ad interactions)" — but that count is effectively "contacts carrying a gclid" (proven: 223 gclid vs 224 all). Now labels per model: <em>first-touch paid</em> / <em>last-touch paid</em> / <em>gclid / paid touch</em>. Tooltip clarifies it\'s a provable floor — HubSpot\'s Ads tool counts more ad interactions (no-gclid clicks) so it reads higher.'},
+        {t:'ui', d:'**Closed Revenue + True ROAS tooltips** now state the basis: closed-won by closedate, single-touch full deal-amount credit (matching HubSpot\'s crediting, not a fractional multi-touch split).'},
+      ]
+    },
+    {
+      v:'1.50.8', date:'May 29, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing — attribution model selector.** New First interaction / Last click / All ad interactions toggle on the marketing dashboard, beside the date range. It re-drives the closed-loop cards (Closed Revenue, HubSpot Contacts, True ROAS) and the per-campaign + per-search-term lead/deal/revenue columns. All three models run off fields the ETL already ingests (first_* and latest_* source pairs + gclid) — no re-sync needed. <em>First</em> = HubSpot&rsquo;s "First ad interaction" (strict first touch); <em>Last click</em> = latest_source paid, windowed on the last-touch date; <em>All</em> = any known ad touch (first OR latest paid, or a gclid present) ≈ HubSpot&rsquo;s "All ad interactions" (close, not exact — we store first + latest + gclid, not full event history).'},
+        {t:'add', d:'**New "HubSpot Contacts" KPI card.** Unique HubSpot contacts attributed to paid search under the selected model — the people-level analog to Google Conversions. Flipping the selector toggles it between the first-touch and all-interactions contact counts, lining up with the matching HubSpot Ads report.'},
+        {t:'ui', d:'**Conversions card relabeled "Google Conversions."** Clarifies it&rsquo;s Google Ads conversion <em>events</em> (form fills, calls, etc., possibly several per person, fractional under data-driven attribution) — NOT unique HubSpot contacts. Tooltip explains the distinction and points to the new HubSpot Contacts card for the people-level number.'},
+        {t:'fix', d:'**HubSpot contact sync no longer drops viral-month rows.** Contact ingestion now uses 7-day buckets (was 30) so a spike month can&rsquo;t blow a single bucket past HubSpot&rsquo;s 10k search-API cap (which had silently dropped ~4k of the most-recent contacts). Deals stay on monthly buckets — they never approach the cap — so only the contact sync runs the extra queries.'},
+      ]
+    },
+    {
+      v:'1.50.7', date:'May 29, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Send button stays on Vendor Hub rows after status flips to SENT.** Was hidden once a PO was sent; now stays visible for both OPEN and SENT so Josh can reopen the mail draft if he closed it by accident. Click on an already-SENT PO skips the status PATCH (it&rsquo;s already SENT) and just re-opens the mailto. Hidden on PARTIAL / RECEIVED / CLOSED / CANCELLED. Toast wording differs: first send shows "Draft opened… (PO marked Sent.)", re-send shows "Draft re-opened."'},
+      ]
+    },
+    {
+      v:'1.50.6', date:'May 29, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Shortened the "Update PO" confirm text** to just "This will replace the existing PO." (was a multi-paragraph explanation).'},
+      ]
+    },
+    {
+      v:'1.50.5', date:'May 29, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**"Update PO" now confirms before replacing the Drive PDF.** Clicking the button when it&rsquo;s in "Update PO" mode (i.e. a PDF already exists) fires a confirm: "This will replace the existing PDF in the Drive folder with the current state of the PO… The shared Drive link stays the same. Continue?" First-time generations (label = "Create / Download PDF") still go straight through with no prompt.'},
+      ]
+    },
+    {
+      v:'1.50.4', date:'May 29, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**"Create / Download PDF" → "Update PO" once a PDF exists.** First click on a fresh PO says "Create / Download PDF" — generates, uploads to Drive, downloads. Once `pdf_drive_file_id` is set on the row, subsequent visits show "Update PO" instead. Same endpoint (`POST /api/vendor-pos/:n/pdf`) — server-side regen + Drive PATCH-in-place still overwrites the existing Drive file via the stored file ID, so vendors keep the same shared link if Josh circulated it. After any successful generation the button label is sticky at "Update PO".'},
+      ]
+    },
+    {
+      v:'1.50.3', date:'May 29, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Send button on the Vendor Hub table.** Each OPEN PO row gets a green **Send** button (between Open and Receive). Flips the row to SENT, then opens a `mailto:` draft addressed to the vendor&rsquo;s send-to/cc with the standard greeting + "Attached is WhisperRoom Purchase Order WP-… Please confirm receipt…". Josh attaches the PDF before sending. Uses a hidden anchor click so the listing stays put and refreshes.'},
+        {t:'fix', d:'**Dropped the "View online: /vpo/…" link from the Send body.** Both the table Send button and the existing `/vpo/` Send button. The PDF is the artifact for the vendor; no need for the internal link in vendor-facing mail.'},
+      ]
+    },
+    {
+      v:'1.50.2', date:'May 29, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Receipt log header pared back.** Dropped the "— not on vendor PDF" suffix from the Internal tag; just says "Internal" now.'},
+      ]
+    },
+    {
+      v:'1.50.1', date:'May 29, 2026', tag:'feature',
+      changes:[
+        {t:'fix', d:'**PDF no longer auto-regenerates on edits.** The Drive PDF is now a snapshot of what was sent to the vendor — it only changes when Josh explicitly hits the **Create / Download PDF** button on `/vpo/`. Stripped the fire-and-forget regen calls from POST `/api/vendor-pos` (create), PATCH `/api/vendor-pos` (every edit), and POST `/api/vendor-pos/:poNumber/receive`. The `/pdf` endpoint (the explicit button) still generates fresh + uploads + downloads as before.'},
+        {t:'add', d:'**Receipt log on the `/vpo/` page.** Below the sincerely block, when there&rsquo;s any receive history, a purple-accented "Receipt Log" section lists every receive event (date, who, items). Auth-only — Puppeteer scrapes `/vpo/` via share-token (no auth), so the vendor-facing PDF stays clean. Also hidden in `@media print` for the same reason if a rep prints the page. Carries an "Internal — not on vendor PDF" tag so there&rsquo;s no confusion.'},
+        {t:'add', d:'**Receive button on the Vendor Hub table.** Each row gains a purple Receive button (or "Receipts" when the PO is already RECEIVED/CLOSED — same modal, read-only view). Opens an inline modal matching the `/vpo/` Receive UX: per-line Ordered / Received / Remaining / Receiving Now, plus the historical event log. Saves to the same `/api/vendor-pos/:poNumber/receive` endpoint and refreshes the listing.'},
+      ]
+    },
+    {
+      v:'1.50.0', date:'May 29, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**WR PO System Phase 2 — Receive workflow.** New purple **Receive** button in the `/vpo/` action bar (auth-only; status-gated so it doesn&rsquo;t appear on RECEIVED/CLOSED/CANCELLED POs). Opens a modal showing each line item with Ordered / Received-so-far / Remaining / Receiving Now columns. Default value for each input is the line&rsquo;s remaining qty (so hitting Save with no edits records a full receipt of everything still open). The bottom half shows the **Receipt Log** — every prior receive event with who and when, plus the items received. The same modal serves as the read-only receipts view when the PO is fully received (button label flips to "Receipts" and the input column disappears). Backend: new `POST /api/vendor-pos/:poNumber/receive` endpoint that appends an event to `received_data.events`, recomputes per-line totals, and derives the new status — `RECEIVED` if every line&rsquo;s cumulative received qty meets or exceeds its ordered qty, `PARTIAL` if any received qty is > 0 but not all lines are full. Stamps `received_at` on first full-receive. Logs to `vendor-po.received` for the audit trail. Fires the standard PDF regen + Drive overwrite after the status update so the doc on Drive reflects the new state. **Open follow-up:** receive history isn&rsquo;t yet shown on the PDF render — Phase 3.'},
+      ]
+    },
+    {
+      v:'1.49.14', date:'May 29, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Back link on the PO builder.** New ← Vendor Hub button top-left of `/vpo/`. Visible only to authenticated reps (share-token vendor views don&rsquo;t see it). Edit-mode banner bumped down to row 2 so the two don&rsquo;t overlap. Both hidden in `@media print` so the PDF render stays clean.'},
+      ]
+    },
+    {
+      v:'1.49.13', date:'May 29, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Delete POs from the Vendor Hub table.** New red × button on each row in the Vendor Hub Purchase Orders tab. Confirms then DELETEs and refreshes the table. The server-side gate that only allowed deletes of OPEN POs is gone — table cleanup is unrestricted (the audit log captures the prior status so deletions stay traceable).'},
+        {t:'fix', d:'**Vendor PO number prefix: WV → WP.** New POs start with `WP-{YY}{MM}{DD}{NN}` ("WhisperRoom Purchase"). Existing WV- POs stay as-is — no migration; both prefixes coexist.'},
+        {t:'ui', d:'**PDF download filename now leads with the vendor name.** Was `{po_number}.pdf` → now `{Vendor Name} - {po_number}.pdf` (e.g. `Bertelkamp Automation Inc - WP-26052901.pdf`). Sorts the downloads folder by vendor when Josh saves a few in a row. Server-side filename + browser `a.download` attribute both updated; `VENDOR_NAME` baked into the `/vpo/` JS so the client knows the sanitized name.'},
+        {t:'add', d:'**Price-change prompt for catalog-linked lines.** When Josh edits the unit price on a line that came from the vendor&rsquo;s catalog (has a `catalog_id`), and the new price differs from the catalog price, a confirm fires after the PO save: "Price for `X` changed from $A to $B. Keep this price for future orders?" If yes, the vendor catalog row is updated (with today&rsquo;s date stamped as `price_updated_date`) so the next PO prefills with the new price. Description / SKU / MFG / qty edits stay PO-only (don&rsquo;t propagate to the catalog) — per request, only price changes prompt.'},
+      ]
+    },
+    {
+      v:'1.49.12', date:'May 29, 2026', tag:'log',
+      changes:[
+        {t:'fix', d:'**Added `.gitignore` and untracked two accidentally-committed `.code-workspace` files.** The v1.49.11 commit used `git add -A` and swept in `lib/Viking Idle Game.code-workspace` + `lib/Work.code-workspace` (local IDE config). New `.gitignore` covers `*.code-workspace`, `node_modules/`, `.env*`, `.DS_Store`, etc. so future bulk-adds stay clean. Files removed from the index with `git rm --cached` so local copies are preserved.'},
+      ]
+    },
+    {
+      v:'1.49.11', date:'May 29, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Nav bar audit + consistency.** Audited the topbar nav across all 9 dashboards; the canonical set is now: Deal Hub / Quotes / Orders / Shipping / Reports / Accounting / Suppliers / Vendor Hub / Marketing. Added Marketing to 7 dashboards that didn&rsquo;t have it (orders, reconcile, reports, shipping, suppliers, vendor-pos, email-reply). Added Accounting to marketing-dashboard.html. Removed the Email Reply self-link from `assistant/email-reply.html` — Email Reply opens via the ✉ icon button on Deal Hub (popup modal); no dedicated nav slot. Deleted the orphaned `vendors-dashboard.html` (the `/vendors` route 302-redirects to `/vendor-pos#vendors` since v1.49.3; the file was unreferenced).'},
+      ]
+    },
+    {
       v:'1.49.10', date:'May 29, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Tax calc now works in the ZIP-only freight flow.** The Quote Builder lets reps run a freight quote with just a ZIP code (no city/state) — but in that path the tax call was silently returning $0 because `lib/taxjar.js:18-20` short-circuits to `tax: 0` when state is empty (it doesn&rsquo;t match anything in `NEXUS_STATES`). Added a `zipToState()` helper in `lib/states.js` that maps the ZIP-3 prefix to a US state via USPS Sectional Center ranges (~55 ranges, ~30 LOC). `calculateTaxProper` now derives state from ZIP when the input state is empty before doing the nexus lookup; explicit state still wins when present. Canadian postal codes / non-state territories return empty and tax stays $0 (correct — no US nexus there). Wired into `taxjar.init({ zipToState })` from the existing module destructure.'},

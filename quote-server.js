@@ -329,14 +329,16 @@ async function nextPoNumber() {
   return prefix + String(last + 1).padStart(2, '0');
 }
 
-// Vendor PO numbers use a different prefix (WV-) so they're visually
-// distinct from Audimute AP POs (WR-) — same {YY}{MM}{DD}{NN} format.
+// Vendor PO numbers use the WP- prefix ("WhisperRoom Purchase") so
+// they're visually distinct from Audimute AP POs (WR-) — same
+// {YY}{MM}{DD}{NN} format. Older POs created before v1.49.13 used
+// the WV- prefix; they stay as-is, no migration.
 async function nextVendorPoNumber() {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
   const yy = String(now.getFullYear()).slice(2);
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   const dd = String(now.getDate()).padStart(2, '0');
-  const prefix = `WV-${yy}${mm}${dd}`;
+  const prefix = `WP-${yy}${mm}${dd}`;
   if (!db) return prefix + '01';
   const row = await db.query(
     `SELECT po_number FROM vendor_pos WHERE po_number LIKE $1 ORDER BY po_number DESC LIMIT 1`,
@@ -766,7 +768,8 @@ async function _regenerateVendorPoPdf(po) {
     // accented vendor names would otherwise blow up Node's strict
     // Content-Disposition header validation downstream).
     const safeName = vendorName.replace(/[\\\/:*?"<>|]+/g, ' ').replace(/[^\x20-\x7E]/g, '').replace(/\s+/g, ' ').trim();
-    const filename = `${po.po_number} - ${safeName}.pdf`;
+    // Filename format: "{Vendor} - {PO#}.pdf" so listings sort by vendor.
+    const filename = `${safeName || 'Vendor'} - ${po.po_number}.pdf`;
 
     const folderId = process.env.GDRIVE_VENDOR_POS_FOLDER;
     if (!folderId) {
@@ -4343,6 +4346,22 @@ const server = http.createServer(async (req, res) => {
       writelog('error', 'error.tax', `Tax exception: ${e.message}`, { rep: body.rep || null, meta: { state: body.state||null, zip: body.zip||null } });
       json({error: e.message}, 500);
     }
+    return;
+  }
+
+  // ── API: Nexus state reference ────────────────────────────────────
+  // Used by the Quote Builder "Nexus States" reference popup so the
+  // sales team can see which states we collect tax in and which of
+  // those also tax freight. Data is the same NEXUS_STATES used by
+  // lib/taxjar.js — single source of truth.
+  if (pathname === '/api/nexus-states' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const list = Object.keys(NEXUS_STATES).sort().map(abbr => ({
+      abbr,
+      name: STATE_FULL_NAME[abbr] || abbr,
+      taxes_freight: !!NEXUS_STATES[abbr].taxFreight,
+    }));
+    json({ states: list });
     return;
   }
 
@@ -11954,11 +11973,9 @@ ${q.accepted ? `
         rep: String(rep || ''),
         meta: { poNumber, vendorId, lineCount: lines.length },
       });
-      // Kick off PDF generation immediately so the Drive file is ready
-      // by the time Josh hits Send.
-      _regenerateVendorPoPdf(result.rows[0]).catch(e => {
-        console.warn('[vendor-po] PDF regen error:', e.message);
-      });
+      // PDF is NOT auto-generated. The Drive PDF is the snapshot of
+      // what was sent to the vendor — Josh creates it explicitly via
+      // the Create/Download PDF button on /vpo/ when he's ready.
       json({ po: result.rows[0] });
     } catch(e) {
       json({ error: e.message }, 500);
@@ -12051,17 +12068,10 @@ ${q.accepted ? `
       }
 
       // Fire-and-forget PDF regen on any field edit or status transition
-      // into SENT — keeps the Drive folder in sync with the latest PO
-      // state. Skipped for terminal/cancelled states.
+      // PDF is NOT auto-regenerated on edits. The Drive PDF reflects
+      // what was sent to the vendor — it only changes when Josh
+      // explicitly hits Create/Download PDF on /vpo/.
       const final = result.rows[0];
-      const shouldRegen = (fieldEditRequested || newStatus === 'SENT') &&
-        final.status !== 'CANCELLED' && final.status !== 'CLOSED';
-      if (shouldRegen) {
-        _regenerateVendorPoPdf(final).catch(e => {
-          console.warn('[vendor-po] PDF regen error:', e.message);
-        });
-      }
-
       json({ po: final });
     } catch(e) {
       json({ error: e.message }, 500);
@@ -12079,12 +12089,168 @@ ${q.accepted ? `
       if (!db) { json({ error: 'No database' }, 500); return; }
       const curRes = await db.query(`SELECT status FROM vendor_pos WHERE po_number = $1`, [poNumber]);
       if (!curRes.rows.length) { json({ error: 'PO not found' }, 404); return; }
-      if (curRes.rows[0].status !== 'OPEN') {
-        json({ error: `Only unsent (OPEN) POs can be deleted. Cancel ${poNumber} instead.` }, 409); return;
-      }
+      // No status gate — the Vendor Hub table needs to be cleanable
+      // regardless of where a PO ended up. Audit log captures the prior
+      // status so the deletion stays traceable.
+      const priorStatus = curRes.rows[0].status;
       await db.query(`DELETE FROM vendor_pos WHERE po_number = $1`, [poNumber]);
-      writelog('info', 'vendor-po.deleted', `Vendor PO deleted: ${poNumber}`, { rep: String(getRepFromReq(req) || '') });
+      writelog('info', 'vendor-po.deleted', `Vendor PO deleted: ${poNumber} (was ${priorStatus})`, { rep: String(getRepFromReq(req) || ''), meta: { poNumber, priorStatus } });
       json({ ok: true });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // POST /api/vendor-pos/:poNumber/receive — append a receive event,
+  // recompute status. Body: { items: [{lineId, qty}] } where qty is
+  // the quantity being received NOW (not the cumulative total). Server
+  // sums across all events to derive per-line totals + overall status.
+  if (pathname.match(/^\/api\/vendor-pos\/[^/]+\/receive$/) && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const poNumber = decodeURIComponent(pathname.split('/').slice(-2)[0]);
+    let body;
+    try { body = JSON.parse(await readBody(req) || '{}'); }
+    catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const r = await db.query(`SELECT * FROM vendor_pos WHERE po_number = $1`, [poNumber]);
+      if (!r.rows.length) { json({ error: 'PO not found' }, 404); return; }
+      const po = r.rows[0];
+      if (po.status === 'RECEIVED' || po.status === 'CLOSED' || po.status === 'CANCELLED') {
+        json({ error: `Cannot receive items on a ${po.status} PO` }, 409); return;
+      }
+
+      const lines = (po.po_data && Array.isArray(po.po_data.lines)) ? po.po_data.lines : [];
+      if (!lines.length) { json({ error: 'PO has no line items' }, 400); return; }
+      const validIds = new Set(lines.map(l => l.id).filter(Boolean));
+
+      // Normalize incoming items — keep only positive qty on known lines
+      const items = (Array.isArray(body.items) ? body.items : [])
+        .map(i => ({ lineId: String(i?.lineId || ''), qty: Math.max(0, parseFloat(i?.qty || 0)) || 0 }))
+        .filter(i => i.lineId && validIds.has(i.lineId) && i.qty > 0);
+      if (!items.length) { json({ error: 'No quantities entered' }, 400); return; }
+
+      const rep = getRepFromReq(req, body);
+      const repName = REPS[String(rep || '')] || String(rep || 'Rep');
+      const ev = {
+        at: new Date().toISOString(),
+        by: String(rep || ''),
+        by_name: repName,
+        items,
+      };
+
+      const cur = (po.received_data && typeof po.received_data === 'object') ? po.received_data : {};
+      const events = Array.isArray(cur.events) ? cur.events.concat([ev]) : [ev];
+
+      // Per-line totals + status derivation
+      const totals = {};
+      events.forEach(e => (e.items || []).forEach(i => {
+        totals[i.lineId] = (totals[i.lineId] || 0) + parseFloat(i.qty || 0);
+      }));
+      const allFull = lines.every(l => (totals[l.id] || 0) >= parseFloat(l.qty || 0));
+      const anyReceived = Object.values(totals).some(q => q > 0);
+      const newStatus = allFull ? 'RECEIVED' : (anyReceived ? 'PARTIAL' : po.status);
+
+      const newReceived = { events, totals };
+
+      const sets = ['received_data = $1', 'status = $2', 'updated_at = NOW()'];
+      const vals = [JSON.stringify(newReceived), newStatus];
+      let idx = 3;
+      if (newStatus === 'RECEIVED' && !po.received_at) {
+        sets.push(`received_at = $${idx++}`);
+        vals.push(new Date().toISOString());
+      }
+      vals.push(poNumber);
+      const updated = await db.query(
+        `UPDATE vendor_pos SET ${sets.join(', ')} WHERE po_number = $${idx} RETURNING *`,
+        vals
+      );
+
+      writelog('info', 'vendor-po.received', `Vendor PO ${poNumber}: received ${items.length} line(s) (status → ${newStatus})`, {
+        rep: String(rep || ''),
+        meta: { poNumber, items, newStatus, priorStatus: po.status },
+      });
+
+      // No PDF regen — receipts are internal tracking only. The Drive
+      // PDF stays as the snapshot of what was sent to the vendor.
+      json({ po: updated.rows[0] });
+    } catch(e) {
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // POST /api/vendor-pos/:poNumber/invoice — Kim&apos;s invoice match.
+  // Appends an event to invoice_data.events, sums the cumulative
+  // invoiced amount, and flips status to CLOSED when the PO is fully
+  // received AND fully invoiced. Vendors often partial-bill, so this
+  // takes an array shape (mirrors received_data).
+  if (pathname.match(/^\/api\/vendor-pos\/[^/]+\/invoice$/) && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const poNumber = decodeURIComponent(pathname.split('/').slice(-2)[0]);
+    let body;
+    try { body = JSON.parse(await readBody(req) || '{}'); }
+    catch(e) { json({ error: 'Invalid JSON body' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      const r = await db.query(`SELECT * FROM vendor_pos WHERE po_number = $1`, [poNumber]);
+      if (!r.rows.length) { json({ error: 'PO not found' }, 404); return; }
+      const po = r.rows[0];
+      if (po.status === 'CANCELLED') { json({ error: 'Cannot invoice a CANCELLED PO' }, 409); return; }
+
+      const total = parseFloat(body.vendor_invoice_total || 0);
+      if (!(total > 0)) { json({ error: 'Vendor invoice total required' }, 400); return; }
+      const invNum = String(body.vendor_invoice_number || '').trim();
+      if (!invNum) { json({ error: 'Vendor invoice number required' }, 400); return; }
+
+      const rep = getRepFromReq(req, body);
+      const repName = REPS[String(rep || '')] || String(rep || 'Rep');
+      const ev = {
+        at: new Date().toISOString(),
+        by: String(rep || ''),
+        by_name: repName,
+        vendor_invoice_number: invNum,
+        vendor_invoice_date: String(body.vendor_invoice_date || '').trim() || null,
+        vendor_invoice_total: total,
+        qb_bill_number: String(body.qb_bill_number || '').trim() || null,
+        notes: String(body.notes || '').trim() || null,
+      };
+
+      const cur = (po.invoice_data && typeof po.invoice_data === 'object') ? po.invoice_data : {};
+      const events = Array.isArray(cur.events) ? cur.events.concat([ev]) : [ev];
+      const invoicedTotal = events.reduce((s, e) => s + (parseFloat(e.vendor_invoice_total) || 0), 0);
+
+      // PO total for "fully invoiced" check
+      const lines = (po.po_data && Array.isArray(po.po_data.lines)) ? po.po_data.lines : [];
+      const poTotal = lines.reduce((s, l) => s + ((parseFloat(l.qty) || 0) * (parseFloat(l.unit_price) || 0)), 0);
+
+      // CLOSED only when fully received AND fully invoiced (within $0.01 tolerance)
+      const fullyInvoiced = invoicedTotal + 0.01 >= poTotal && poTotal > 0;
+      let newStatus = po.status;
+      if (fullyInvoiced && po.status === 'RECEIVED') newStatus = 'CLOSED';
+
+      const newInvoice = { events, totals: { invoiced_amount: invoicedTotal } };
+
+      const sets = ['invoice_data = $1', 'status = $2', 'updated_at = NOW()'];
+      const vals = [JSON.stringify(newInvoice), newStatus];
+      let idx = 3;
+      if (newStatus === 'CLOSED' && !po.closed_at) {
+        sets.push(`closed_at = $${idx++}`);
+        vals.push(new Date().toISOString());
+      }
+      vals.push(poNumber);
+      const updated = await db.query(
+        `UPDATE vendor_pos SET ${sets.join(', ')} WHERE po_number = $${idx} RETURNING *`,
+        vals
+      );
+
+      writelog('info', 'vendor-po.invoice-matched', `Vendor PO ${poNumber}: invoice ${invNum} matched ($${total.toFixed(2)}) — invoiced $${invoicedTotal.toFixed(2)} / $${poTotal.toFixed(2)}${newStatus !== po.status ? ` (status → ${newStatus})` : ''}`, {
+        rep: String(rep || ''),
+        meta: { poNumber, vendor_invoice_number: invNum, total, invoicedTotal, poTotal, newStatus, priorStatus: po.status },
+      });
+
+      json({ po: updated.rows[0] });
     } catch(e) {
       json({ error: e.message }, 500);
     }
@@ -13834,6 +14000,15 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
 '.tot-row.grand{font-size:18px;font-weight:800;color:#1a1a1a;border-top:2px solid #1a1a1a;padding-top:10px;margin-top:6px}' +
 '.tot-row.grand span:last-child{color:#ee6216}' +
 '.notes-block{background:#fafafa;border-left:3px solid #ee6216;border-radius:0 6px 6px 0;padding:11px 14px;margin-bottom:14px}' +
+'.receive-log-block{margin-top:28px;padding:14px 18px;background:#fafafa;border-radius:6px;border-left:3px solid #a855f7}' +
+'.receive-log-block h3{font-size:11px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.08em;margin:0 0 10px;display:flex;align-items:center;gap:8px}' +
+'.receive-log-block .internal-tag{font-size:9px;background:rgba(168,85,247,.12);color:#a855f7;padding:2px 6px;border-radius:4px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}' +
+'.receive-event{padding:8px 0;border-bottom:1px solid #eee;font-size:12px}' +
+'.receive-event:last-child{border-bottom:none}' +
+'.receive-event-meta{color:#888;font-size:11px;margin-bottom:4px}' +
+'.receive-event-meta strong{color:#1a1a1a;font-weight:700}' +
+'.receive-event ul{margin:0;padding-left:18px;color:#444;line-height:1.6}' +
+'@media print {.receive-log-block{display:none}}' +
 '.notes-label{font-size:9px;font-weight:800;letter-spacing:.1em;color:#888;text-transform:uppercase;margin-bottom:4px}' +
 '.notes-body{font-size:11px;color:#444;line-height:1.55;white-space:pre-wrap}' +
 '.signoff{margin-top:30px;padding-top:18px;border-top:1px solid #e5e5e5;font-size:11px;color:#666;line-height:2.4}' +
@@ -13843,7 +14018,9 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
 '.sincerely{margin-top:18px;font-size:12px;color:#444;line-height:1.7}' +
 '.print-bar{position:fixed;top:14px;right:14px;display:flex;gap:8px;z-index:10}' +
 '.print-bar button{padding:8px 14px;background:#1a1a1a;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;font-family:inherit}' +
-'.edit-banner{position:fixed;top:14px;left:14px;display:none;align-items:center;gap:10px;padding:6px 12px;background:#1a1a1a;color:#fff;border-radius:7px;font-size:11px;font-weight:600;z-index:10;box-shadow:0 4px 14px rgba(0,0,0,.2)}' +
+'.edit-banner{position:fixed;top:56px;left:14px;display:none;align-items:center;gap:10px;padding:6px 12px;background:#1a1a1a;color:#fff;border-radius:7px;font-size:11px;font-weight:600;z-index:10;box-shadow:0 4px 14px rgba(0,0,0,.2)}' +
+'.back-link{position:fixed;top:14px;left:14px;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#1a1a1a;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;text-decoration:none;font-family:inherit;z-index:10;box-shadow:0 4px 14px rgba(0,0,0,.2)}' +
+'.back-link:hover{background:#333;color:#fff}' +
 '.edit-banner .dot{width:7px;height:7px;border-radius:50%;background:#ee6216;box-shadow:0 0 8px rgba(238,98,22,.6)}' +
 '.edit-banner .save-status{color:#888;font-weight:500;margin-left:4px}' +
 '.editable{cursor:text;border-radius:3px;padding:1px 4px;margin:-1px -4px;transition:background .12s,box-shadow .12s;display:inline-block}' +
@@ -13877,13 +14054,15 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
 '.picker-foot .picker-cancel{background:transparent;color:#888;border:1px solid #ddd}' +
 '.picker-foot .picker-add{background:#ee6216;color:#fff}' +
 '.picker-foot .picker-add:hover{opacity:.9}' +
-'@media print {.print-bar{display:none} .edit-banner{display:none!important} .edit-only{display:none!important} .editable:hover{background:transparent!important;box-shadow:none!important} .picker-overlay{display:none!important} body{background:#fff;padding:0} .page{box-shadow:none;border-radius:0;max-width:100%;padding:36px 40px}}' +
+'@media print {.print-bar{display:none} .edit-banner{display:none!important} .back-link{display:none!important} .edit-only{display:none!important} .editable:hover{background:transparent!important;box-shadow:none!important} .picker-overlay{display:none!important} body{background:#fff;padding:0} .page{box-shadow:none;border-radius:0;max-width:100%;padding:36px 40px}}' +
 '</style></head><body' + (isAuth(req) ? ' data-edit-mode="1"' : '') + '>' +
 
+(isAuth(req) ? '<a class="back-link" href="/vendor-pos">&larr; Vendor Hub</a>' : '') +
 '<div class="edit-banner"><span class="dot"></span><span>Edit mode</span><span class="save-status" id="saveStatus"></span></div>' +
 '<div class="print-bar">' +
-  (isAuth(req) ? '<button id="createPoBtn" style="background:#ee6216">Create / Download PDF</button>' : '') +
+  (isAuth(req) ? '<button id="createPoBtn" style="background:#ee6216">' + (po.pdf_drive_file_id ? 'Update PO' : 'Create / Download PDF') + '</button>' : '') +
   (isAuth(req) && po.status === 'OPEN' ? '<button id="sendPoBtn" style="background:#16a34a">Send (Mailto)</button>' : '') +
+  (isAuth(req) ? '<button id="receivePoBtn" style="background:#a855f7">' + (po.status === 'RECEIVED' || po.status === 'CLOSED' ? 'Receipts' : 'Receive') + '</button>' : '') +
   (isAuth(req) && (po.status === 'OPEN' || po.status === 'SENT' || po.status === 'PARTIAL') ? '<button id="cancelPoBtn" style="background:#444">Cancel PO</button>' : '') +
   (isAuth(req) && po.status === 'OPEN' ? '<button id="deletePoBtn" style="background:#dc2626">Delete</button>' : '') +
 '</div>' +
@@ -13964,6 +14143,26 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
     '<div class="sincerely">Sincerely,<br><br><strong>' + esc(repNameVpo) + '</strong><br>WhisperRoom, Inc.</div>' +
   '</div>' +
 
+  // Receipt log — internal tracking, auth-only. Puppeteer scrapes
+  // /vpo/ with share-token (no auth) → log doesn't appear on the
+  // vendor PDF. Also hidden in @media print.
+  ((isAuth(req) && po.received_data && Array.isArray(po.received_data.events) && po.received_data.events.length > 0)
+    ? (function() {
+        const events = po.received_data.events.slice().reverse();
+        const linesById = {};
+        lines.forEach(l => { linesById[l.id] = l; });
+        const items = events.map(e => {
+          const when = e.at ? new Date(e.at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }) : '';
+          const itemList = (e.items || []).map(i => {
+            const l = linesById[i.lineId];
+            return '<li>' + esc(i.qty) + ' &times; ' + esc((l && l.description) || i.lineId) + '</li>';
+          }).join('');
+          return '<div class="receive-event"><div class="receive-event-meta"><strong>' + esc(e.by_name || 'Rep') + '</strong> &middot; ' + esc(when) + '</div><ul>' + itemList + '</ul></div>';
+        }).join('');
+        return '<div class="receive-log-block"><h3>Receipt Log <span class="internal-tag">Internal</span></h3>' + items + '</div>';
+      })()
+    : '') +
+
 '</div>' +
 
 // ── Inline edit JS ────────────────────────────────────────────────
@@ -13986,7 +14185,12 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
   "function refreshTotal(){var t=0;document.querySelectorAll('.line-row').forEach(function(tr){var q=parseFloat(tr.querySelector('.l-qty').textContent.replace(/[^0-9.-]/g,'')||0)||0;var p=parseFloat(tr.querySelector('.l-price').textContent.replace(/[^0-9.-]/g,'')||0)||0;t+=q*p;});var el=document.getElementById('poGrandTotal');if(el)el.textContent=fmtMoney(t);}" +
   "function buildSnapPatch(field,val){if(field==='contacts_csv'){var names=val.split(',').map(function(s){return s.trim();}).filter(Boolean);return{contacts:names.map(function(n){return{name:n};})};}if(field==='address_lines_text'){return{address_lines:val.split('\\n').map(function(s){return s.trim();}).filter(Boolean)};}if(field==='send_to_emails_csv'){return{send_to_emails:val.split(',').map(function(s){return s.trim();}).filter(Boolean)};}var o={};o[field]=val;return o;}" +
   "function renderEmailsBlock(emails){if(!emails.length)return '—';return emails.map(function(e){return '<a class=\"vendor-email\" href=\"mailto:'+e.replace(/\"/g,'&quot;')+'\">'+e.replace(/</g,'&lt;')+'</a>';}).join('<br>');}" +
-  "function commit(el,inp){var newVal=inp.value;el.classList.remove('editing');var lineTr=el.closest('.line-row');var field=el.dataset.field;var snapField=el.dataset.snapField;var shipField=el.dataset.shipField;if(el.classList.contains('l-price')){el.textContent=(parseFloat(newVal||0)||0).toFixed(2);refreshExt(lineTr);refreshTotal();patchPo({lines:readLines()});}else if(el.classList.contains('l-qty')){el.textContent=String(parseFloat(newVal||0)||0);refreshExt(lineTr);refreshTotal();patchPo({lines:readLines()});}else if(lineTr){el.textContent=newVal;patchPo({lines:readLines()});}else if(field==='expected_date'){el.dataset.raw=newVal||'';el.textContent=newVal?new Date(newVal+'T12:00:00Z').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'—';patchPo({expected_date:newVal||null});}else if(field==='notes'){el.textContent=newVal;patchPo({notes:newVal||null});}else if(shipField){var stObj={};stObj[shipField]=newVal;el.textContent=newVal||'—';if(shipField==='email'){el.innerHTML='<a class=\"wr-email-link\" href=\"mailto:'+newVal.replace(/\"/g,'&quot;')+'\">'+newVal.replace(/</g,'&lt;')+'</a>';}patchPo({ship_to:stObj});}else if(snapField){var partial=buildSnapPatch(snapField,newVal);if(snapField==='send_to_emails_csv'){el.innerHTML=renderEmailsBlock(partial.send_to_emails);}else if(snapField==='address_lines_text'){el.innerHTML=partial.address_lines.map(function(s){return s.replace(/</g,'&lt;');}).join('<br>')||'—';}else{el.textContent=newVal||'—';}patchPo({vendor_snapshot:partial});patchVendor(partial);}}" +
+  "function commit(el,inp){var newVal=inp.value;el.classList.remove('editing');var lineTr=el.closest('.line-row');var field=el.dataset.field;var snapField=el.dataset.snapField;var shipField=el.dataset.shipField;if(el.classList.contains('l-price')){var newP=parseFloat(newVal||0)||0;el.textContent=newP.toFixed(2);refreshExt(lineTr);refreshTotal();patchPo({lines:readLines()});var catId=lineTr&&lineTr.dataset.catalogId;if(catId)maybeUpdateCatalogPrice(catId,newP,lineTr);}else if(el.classList.contains('l-qty')){el.textContent=String(parseFloat(newVal||0)||0);refreshExt(lineTr);refreshTotal();patchPo({lines:readLines()});}else if(lineTr){el.textContent=newVal;patchPo({lines:readLines()});}else if(field==='expected_date'){el.dataset.raw=newVal||'';el.textContent=newVal?new Date(newVal+'T12:00:00Z').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'—';patchPo({expected_date:newVal||null});}else if(field==='notes'){el.textContent=newVal;patchPo({notes:newVal||null});}else if(shipField){var stObj={};stObj[shipField]=newVal;el.textContent=newVal||'—';if(shipField==='email'){el.innerHTML='<a class=\"wr-email-link\" href=\"mailto:'+newVal.replace(/\"/g,'&quot;')+'\">'+newVal.replace(/</g,'&lt;')+'</a>';}patchPo({ship_to:stObj});}else if(snapField){var partial=buildSnapPatch(snapField,newVal);if(snapField==='send_to_emails_csv'){el.innerHTML=renderEmailsBlock(partial.send_to_emails);}else if(snapField==='address_lines_text'){el.innerHTML=partial.address_lines.map(function(s){return s.replace(/</g,'&lt;');}).join('<br>')||'—';}else{el.textContent=newVal||'—';}patchPo({vendor_snapshot:partial});patchVendor(partial);}}" +
+  // Catalog price-change prompt. Fires only after the PO save when a
+  // line with a catalog_id has its unit_price changed. Asks Josh
+  // whether to also persist the new price back to the vendor catalog
+  // so future POs prefill with it. No prompt if price is unchanged.
+  "function maybeUpdateCatalogPrice(catalogId,newPrice,lineTr){if(!catalogId||!vendorId)return;loadCatalog().then(function(items){var it=items.find(function(x){return x.id===catalogId;});if(!it)return;var oldPrice=parseFloat(it.unit_price)||0;if(Math.abs(oldPrice-newPrice)<0.001)return;var desc=lineTr?lineTr.querySelector('.l-desc').textContent.trim():'this item';if(!confirm('Price for \"'+desc+'\" changed from $'+oldPrice.toFixed(2)+' to $'+newPrice.toFixed(2)+'.\\n\\nKeep this price for future orders?'))return;var today=new Date().toISOString().slice(0,10);var updated=items.map(function(x){return x.id===catalogId?Object.assign({},x,{unit_price:newPrice,price_updated_date:today}):x;});patchVendor({catalog:updated}).then(function(){_catalogCache=updated;setStatus('Catalog price updated');});});}" +
   "function openEditor(el){if(el.classList.contains('editing'))return;el.classList.add('editing');var type=el.dataset.type||'text';var current;if(el.dataset.field==='expected_date'){current=el.dataset.raw||'';}else if(el.classList.contains('l-price')||el.classList.contains('l-qty')){current=el.textContent.replace(/[^0-9.-]/g,'').trim();}else if(el.dataset.snapField==='send_to_emails_csv'){current=Array.prototype.slice.call(el.querySelectorAll('a.vendor-email')).map(function(a){return a.textContent.trim();}).join(', ');}else if(el.dataset.snapField==='address_lines_text'){current=Array.prototype.slice.call(el.childNodes).map(function(n){return n.textContent||(n.nodeValue||'');}).join('').trim().split(/\\n+|\\s*<br\\/?>\\s*/i).join('\\n');current=el.innerText||current;}else{current=(el.innerText||el.textContent).replace(/—/g,'').trim();}var inp;if(type==='textarea'){inp=document.createElement('textarea');inp.className='cell-input cell-textarea';}else{inp=document.createElement('input');inp.type=type==='date'?'date':(type==='number'?'number':'text');if(type==='number')inp.step='any';inp.className='cell-input';}inp.value=current;el.innerHTML='';el.appendChild(inp);inp.focus();if(inp.select&&type!=='date')inp.select();var done=false;function commitOnce(){if(done)return;done=true;commit(el,inp);}inp.addEventListener('blur',commitOnce);inp.addEventListener('keydown',function(e){if(e.key==='Enter'&&type!=='textarea'){e.preventDefault();inp.blur();}else if(e.key==='Enter'&&e.ctrlKey&&type==='textarea'){e.preventDefault();inp.blur();}else if(e.key==='Escape'){done=true;el.classList.remove('editing');el.textContent=current||'—';}});}" +
   "function wireAll(){document.querySelectorAll('.editable').forEach(function(el){if(el._wired)return;el._wired=true;el.addEventListener('click',function(ev){ev.stopPropagation();ev.preventDefault();openEditor(el);});});}" +
   // Suppress mailto: links from launching the mail client in edit mode —
@@ -14004,14 +14208,34 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
   "var CC=" + JSON.stringify(Array.isArray(v.cc_emails) ? v.cc_emails : []) + ";" +
   "var CONTACTS=" + JSON.stringify(vendorContacts) + ";" +
   "var SHARE_TOKEN=" + JSON.stringify(po.share_token || '') + ";" +
-  "function sendPo(){if(!SEND_TO.length){alert('Vendor has no send-to email — click the email row above to add one.');return;}var greeting=CONTACTS.length?'Hello '+CONTACTS[0].split(/\\s+/)[0]+',':'Hello,';var poLink=location.origin+'/vpo/'+encodeURIComponent(poNumber)+'?t='+SHARE_TOKEN;var body=greeting+'\\n\\nAttached is WhisperRoom Purchase Order '+poNumber+'. Please confirm receipt and let us know expected ship date.\\n\\nView online: '+poLink+'\\n\\nThank you,\\nJosh Fletcher\\nWhisperRoom, Inc.';var subject='WhisperRoom PO '+poNumber;var params='subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body)+(CC.length?'&cc='+encodeURIComponent(CC.join(',')):'');patchPo({status:'SENT'}).then(function(){window.location.href='mailto:'+encodeURIComponent(SEND_TO.join(','))+'?'+params;});}" +
+  "var PO_STATUS=" + JSON.stringify(po.status || '') + ";" +
+  "var PO_LINES=" + JSON.stringify(lines) + ";" +
+  "var RECEIVED=" + JSON.stringify(po.received_data || { events: [], totals: {} }) + ";" +
+  "var VENDOR_NAME=" + JSON.stringify(
+    (v.name || 'Vendor')
+      .replace(/[\\\/:*?"<>|]+/g, ' ')
+      .replace(/[^\x20-\x7E]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  ) + ";" +
+  "function sendPo(){if(!SEND_TO.length){alert('Vendor has no send-to email — click the email row above to add one.');return;}var greeting=CONTACTS.length?'Hello '+CONTACTS[0].split(/\\s+/)[0]+',':'Hello,';var body=greeting+'\\n\\nAttached is WhisperRoom Purchase Order '+poNumber+'. Please confirm receipt and let us know expected ship date.\\n\\nThank you,\\nJosh Fletcher\\nWhisperRoom, Inc.';var subject='WhisperRoom PO '+poNumber;var params='subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body)+(CC.length?'&cc='+encodeURIComponent(CC.join(',')):'');patchPo({status:'SENT'}).then(function(){window.location.href='mailto:'+encodeURIComponent(SEND_TO.join(','))+'?'+params;});}" +
   "function cancelPo(){if(!confirm('Cancel this PO? This can\\'t be undone.'))return;patchPo({status:'CANCELLED'}).then(function(){setTimeout(function(){window.location.href='/vendor-pos';},800);});}" +
   "function deletePo(){if(!confirm('Delete this PO? This can\\'t be undone.'))return;fetch('/api/vendor-pos/'+encodeURIComponent(poNumber),{method:'DELETE',credentials:'include'}).then(function(r){return r.json();}).then(function(d){if(d.error){setStatus(d.error,true);return;}window.location.href='/vendor-pos';});}" +
-  "function createAndDownload(){if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();var btn=document.getElementById('createPoBtn');var origText=btn.textContent;btn.disabled=true;btn.textContent='Generating…';setStatus('Generating PDF…',false);setTimeout(function(){fetch('/api/vendor-pos/'+encodeURIComponent(poNumber)+'/pdf',{method:'POST',credentials:'include'}).then(function(r){if(!r.ok)return r.json().then(function(d){throw new Error(d.error||'Failed');});return r.blob();}).then(function(blob){var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download=poNumber+'.pdf';document.body.appendChild(a);a.click();URL.revokeObjectURL(url);a.remove();setStatus('Saved');btn.disabled=false;btn.textContent=origText;}).catch(function(e){setStatus(e.message||'Error',true);btn.disabled=false;btn.textContent=origText;});},150);}" +
+  "function createAndDownload(){var btn=document.getElementById('createPoBtn');var origText=btn.textContent;if(origText==='Update PO'){if(!confirm('This will replace the existing PO.'))return;}if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();btn.disabled=true;btn.textContent='Generating…';setStatus('Generating PDF…',false);setTimeout(function(){fetch('/api/vendor-pos/'+encodeURIComponent(poNumber)+'/pdf',{method:'POST',credentials:'include'}).then(function(r){if(!r.ok)return r.json().then(function(d){throw new Error(d.error||'Failed');});return r.blob();}).then(function(blob){var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download=(VENDOR_NAME?VENDOR_NAME+' - ':'')+poNumber+'.pdf';document.body.appendChild(a);a.click();URL.revokeObjectURL(url);a.remove();setStatus('Saved');btn.disabled=false;btn.textContent='Update PO';}).catch(function(e){setStatus(e.message||'Error',true);btn.disabled=false;btn.textContent=origText;});},150);}" +
   "var cb_create=document.getElementById('createPoBtn');if(cb_create)cb_create.addEventListener('click',createAndDownload);" +
   "var sb=document.getElementById('sendPoBtn');if(sb)sb.addEventListener('click',sendPo);" +
   "var cb=document.getElementById('cancelPoBtn');if(cb)cb.addEventListener('click',cancelPo);" +
   "var db=document.getElementById('deletePoBtn');if(db)db.addEventListener('click',deletePo);" +
+  // ── Receive modal ────────────────────────────────────────────────
+  // Opens a popup listing each PO line with ordered/received/remaining
+  // and a "Receiving Now" input. Saving POSTs to /receive which
+  // appends an event, recomputes status (PARTIAL or RECEIVED), and
+  // regenerates the PDF. If status is RECEIVED/CLOSED/CANCELLED the
+  // inputs are hidden and it's a read-only receipt log.
+  "function fmtDateTime(iso){try{return new Date(iso).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});}catch(e){return iso;}}" +
+  "function escAttr(s){return String(s==null?'':s).replace(/[&<>\"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;','\\'':'&#39;'}[c];});}" +
+  "function openReceiveModal(){var totals=(RECEIVED&&RECEIVED.totals)||{};var events=(RECEIVED&&Array.isArray(RECEIVED.events))?RECEIVED.events:[];var readOnly=(PO_STATUS==='RECEIVED'||PO_STATUS==='CLOSED'||PO_STATUS==='CANCELLED');var linesById={};PO_LINES.forEach(function(l){linesById[l.id]=l;});var rows=PO_LINES.map(function(l){var ordered=parseFloat(l.qty||0)||0;var rec=parseFloat(totals[l.id]||0)||0;var remaining=Math.max(0,ordered-rec);var inp=readOnly?'<span style=\"color:#888\">—</span>':('<input type=\"number\" class=\"r-now\" data-line-id=\"'+escAttr(l.id)+'\" min=\"0\" step=\"any\" value=\"'+remaining+'\" style=\"width:90px;padding:5px 8px;border:1px solid #ddd;border-radius:5px;text-align:right;font-family:inherit;font-size:12px\">');var doneTag=(ordered>0&&rec>=ordered)?' <span style=\"color:#16a34a;font-size:10px;font-weight:700;margin-left:4px\">✓ DONE</span>':'';return '<tr><td>'+escAttr(l.description||'')+(l.sku?' <span style=\"color:#888;font-size:11px\">('+escAttr(l.sku)+')</span>':'')+doneTag+'</td><td style=\"text-align:right\">'+ordered+'</td><td style=\"text-align:right\">'+rec+'</td><td style=\"text-align:right\">'+remaining+'</td><td style=\"text-align:right\">'+inp+'</td></tr>';}).join('');var logHtml=events.length===0?'<div style=\"padding:14px;color:#888;font-style:italic;text-align:center\">No receipts yet.</div>':events.slice().reverse().map(function(e){var itemsList=(e.items||[]).map(function(i){var l=linesById[i.lineId];return '<li>'+i.qty+' &times; '+escAttr((l&&l.description)||i.lineId)+'</li>';}).join('');return '<div style=\"padding:10px 14px;border-bottom:1px solid #f0f0f0\"><div style=\"font-size:11px;color:#888;margin-bottom:4px\"><strong style=\"color:#1a1a1a\">'+escAttr(e.by_name||'Rep')+'</strong> &middot; '+escAttr(fmtDateTime(e.at))+'</div><ul style=\"margin:0;padding-left:18px;font-size:12px;color:#444;line-height:1.6\">'+itemsList+'</ul></div>';}).join('');var ov=document.createElement('div');ov.className='picker-overlay';ov.innerHTML='<div class=\"picker-modal\" style=\"max-width:880px\"><div class=\"picker-head\"><div>'+(readOnly?'Receipts':'Receive Items')+' &mdash; '+poNumber+'</div><button class=\"picker-close\" type=\"button\">&times;</button></div><div class=\"picker-body\">'+(PO_LINES.length===0?'<div style=\"padding:24px;text-align:center;color:#888\">PO has no line items yet.</div>':('<div style=\"padding:0\"><h4 style=\"margin:14px 18px 10px;font-size:11px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.08em\">'+(readOnly?'Line Items':'Receive Now')+'</h4><table class=\"picker-tbl\"><thead><tr><th>Item</th><th style=\"text-align:right;width:80px\">Ordered</th><th style=\"text-align:right;width:80px\">Received</th><th style=\"text-align:right;width:90px\">Remaining</th><th style=\"text-align:right;width:120px\">'+(readOnly?'':'Receiving Now')+'</th></tr></thead><tbody>'+rows+'</tbody></table></div><h4 style=\"margin:18px 18px 6px;font-size:11px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.08em\">Receipt Log</h4><div style=\"max-height:220px;overflow-y:auto;border-top:1px solid #f0f0f0\">'+logHtml+'</div>'))+'</div><div class=\"picker-foot\"><div style=\"flex:1\"></div><button class=\"picker-cancel\" type=\"button\">'+(readOnly?'Close':'Cancel')+'</button>'+(readOnly?'':'<button class=\"picker-add\" type=\"button\" id=\"receiveSaveBtn\">Save Receipt</button>')+'</div></div>';document.body.appendChild(ov);function close(){ov.remove();}ov.querySelector('.picker-close').addEventListener('click',close);ov.querySelector('.picker-cancel').addEventListener('click',close);ov.addEventListener('click',function(e){if(e.target===ov)close();});if(!readOnly){ov.querySelector('#receiveSaveBtn').addEventListener('click',function(){var items=Array.prototype.slice.call(ov.querySelectorAll('input.r-now')).map(function(i){return{lineId:i.dataset.lineId,qty:parseFloat(i.value||0)||0};}).filter(function(it){return it.qty>0;});if(!items.length){alert('Enter at least one quantity to receive.');return;}var btn=ov.querySelector('#receiveSaveBtn');btn.disabled=true;btn.textContent='Saving…';setStatus('Saving receipt…',false);fetch('/api/vendor-pos/'+encodeURIComponent(poNumber)+'/receive',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:items})}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||'Failed');return d;});}).then(function(d){setStatus('Saved');close();location.reload();}).catch(function(e){setStatus(e.message||'Error',true);btn.disabled=false;btn.textContent='Save Receipt';});});}}" +
+  "var rb=document.getElementById('receivePoBtn');if(rb)rb.addEventListener('click',openReceiveModal);" +
   "wireAll();wireButtons();" +
 '})();</script>' +
 

@@ -51,6 +51,38 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.52.0', date:'June 1, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Sales Goal report — pick any of the last 13 months.** The Sales Goal view header now has a month dropdown (current month + 12 prior). Selecting a past month re-runs the whole report against that month: its deals populate the "View deals counted" list, the headline shows that month&rsquo;s full total (labeled "total" instead of "MTD"), and the goal tiers reflect the trailing-12-month average ending that month. Defaults to the current month as before.'},
+        {t:'add', d:'**Notification when an acoustic-package color is confirmed.** When an AP order&rsquo;s color flips from "Unknown" to a real color (the moment we send Audimute the PO), Benton and Jill now get a notification: "AP color confirmed: &lt;color&gt; — time to send Audimute the PO," with an Open-order link. Fires once on the Unknown&rarr;color transition.'},
+        {t:'fix', d:'**WA Type selector now reliably appears on WA/ADA orders.** Hardened the v1.51.7 fix: the orders drawer now shows the WA Type dropdown whenever a WA/ADA line item is present (checking both `name` and `productName`), and when the booth dimensions can&rsquo;t be parsed to narrow the list it falls back to all four canonical types (4016/4040/4622/4646) so the rep can always make a selection.'},
+      ]
+    },
+    {
+      v:'1.51.7', date:'June 1, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Orders drawer now shows the WA Type selector for WA/ADA orders.** Previously the pop-out order drawer only revealed the WA Type dropdown if a value had already been saved — so an order with a Wide Access / ADA booth but no type picked yet had no way to set it. The drawer now detects WA/ADA line items and offers the eligible types for the booth&rsquo;s dimensions (e.g. a 40-series booth shows 4016/4040), matching the order-processing flow. A previously-saved value is always preserved even if it&rsquo;s outside the eligible set.'},
+      ]
+    },
+    {
+      v:'1.51.6', date:'May 29, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**End-of-session DEVLOG writeup for 2026-05-29.** Today shipped WR PO System Phases 2 (Receive) and 3 (Kim&rsquo;s invoice matching) end-to-end plus heavy iteration on `/vpo/` (PDF is now a snapshot, not a live doc — only "Update PO" regenerates). Current focus block rewritten; session writeup captures Phase 4 (QB Bills API auto-stub) as deferred until Kim asks. No runtime change.'},
+      ]
+    },
+    {
+      v:'1.51.5', date:'May 29, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Sales Goal report crashed — `esc is not defined`.** v1.51.4 used `esc(...)` in the new "View deals counted" block but `reports-dashboard.html` exposes the helper as `escapeHtml`. Three call sites swapped to `escapeHtml`; the deal-ID link uses `encodeURIComponent` instead since it&rsquo;s a URL segment.'},
+      ]
+    },
+    {
+      v:'1.51.4', date:'May 29, 2026', tag:'add',
+      changes:[
+        {t:'add', d:'**"View deals counted" expandable list on Sales Goal.** Below the 12-month chart on `/reports` → Sales Goal, a collapsed `<details>` block listing every deal counted toward this month&rsquo;s MTD revenue. Columns: closedate / deal name / stage pill (Won / Shipped) / total / tax / net revenue, plus a HubSpot deep link per row. Footer row totals the net revenue and ties out to the headline MTD number. Helpful for spotting missing or double-counted deals (and refunds — which are explicitly NOT included; a note in the block points to reconcile for those). New `mtdDeals` array on the `/api/reports/sales-goal` response with per-deal details; `dealname` added to the HubSpot properties pull.'},
+      ]
+    },
+    {
       v:'1.51.3', date:'May 29, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Removed Arizona + Utah from `NEXUS_STATES`.** We no longer have nexus in those states (per the rep, TaxJar&rsquo;s already been corrected). `lib/states.js` now lists 14 states (was 16). The tax calculator was over-charging AZ and UT orders &mdash; from this version forward, those ZIP codes route through the same "no nexus → tax: 0" path as any non-nexus state. The Quote Builder Nexus States popup will reflect the new list automatically (it&rsquo;s sourced from the same map).'},

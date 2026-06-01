@@ -6,32 +6,42 @@ Internal development notes. Last updated 2026-05-28.
 
 ---
 
-## Current focus (2026-05-29 — WR PO System Phases 1-3 shipped; Phase 4 = QB Bill auto-create when Kim asks)
+## Current focus (2026-05-29 EOD — WR PO System Phases 1–3 done end-to-end; Phase 4 (QB Bills API auto-create) deferred until Kim asks)
 
-**Most recent shipped to PROD:** Merge commit `63a4b9a` (2026-05-29) — ZIP-only freight tax fix + PDF Content-Disposition em-dash fix.
+**Done for today** — session wrapped after v1.51.5.
+
+**Most recent shipped to PROD:** Merge commit `b9c658d` (2026-05-29) — WR PO Phases 2–3 + marketing attribution + AZ/UT nexus removal.
 
 **On STAGING (NOT YET promoted to main):**
 
-- **v1.50.8–v1.50.9** (2026-05-29, Gabe) — **Marketing — attribution model selector + HubSpot Contacts card + closedate revenue fix.** Dashboard switches the closed-loop layer between First interaction / Last click / All ad interactions (all off already-ingested `first_*`/`latest_*` fields + gclid, no re-sync). New HubSpot Contacts KPI card (paid-attributed contacts under the selected model) beside a relabeled "Google Conversions" card. Fixed the contact sync's viral-month 10k cap (30→7-day buckets). **v1.50.9:** Closed Revenue + True ROAS now window on **closedate** (was createdate) — verified live that this reconciles the dashboard to HubSpot's Ads-tool numbers (gclid closed-won ~$291k createdate → ~$433k closedate ≈ HubSpot All-interaction ~$487k; residual = no-gclid ad-clickers, structural). HubSpot Contacts card relabeled per-model since "all" ≈ gclid count (223 vs 224). **Key learning this session:** dashboard vs HubSpot gaps were all definitional/coverage, NOT bugs — see [[hubspot-ads-data-not-api-accessible]]. Both systems use full-deal-amount crediting (confirmed by Gabe). First-touch validated 2.16x/1.97x. **Verify-on-staging:** per-campaign/search-term TABLE breakdown under Last/All assumes `latest_source_data_1` holds the campaign name like `first_source_data_1` (proven for first-touch only); KPI cards don't depend on it.
-- **NEXT / proposed (not built):** Spend → Quote → Close → Revenue funnel — join Google Ads spend/clicks to HubSpot deals via gclid/campaign UTM for true cost-per-quote + cost-per-closed-deal (not cost-per-form-fill). Gabe requested 2026-05-29; needs a quote↔ad-contact join (HubSpot deal→quote object, or the app's own `quotes` table). Scope before building.
-- **v1.50.0** (2026-05-29, Benton) — **WR PO System Phase 2: Receive workflow.** Purple Receive button on `/vpo/`; modal shows each line&rsquo;s ordered / received / remaining / receiving-now (default = remaining). Backend `POST /api/vendor-pos/:poNumber/receive` appends to `received_data.events`, recomputes status (RECEIVED if every line full, PARTIAL otherwise), stamps `received_at`. Receipt log visible in the same modal — date/who/items per event. Button re-labels to "Receipts" once fully RECEIVED.
-- **v1.49.x** — many iterations on the PO surface: `/vpo/` is now the primary edit page with inline editing, catalog picker for + Add Line, dual-save vendor edits, Create/Download PDF, Send/Cancel/Delete buttons, WP- prefix, vendor-first PDF filename, back link, catalog price-change prompt, table-row Delete, nav consistency pass, ZIP-only tax derivation. **Iteration count is high because Josh hasn&rsquo;t test-driven yet — many of these were rapid UX corrections.** Once he runs real POs, expect more.
+- **v1.51.5** (Benton) — Hotfix: Sales Goal report was throwing `esc is not defined` after v1.51.4 (the helper in `reports-dashboard.html` is `escapeHtml`, not `esc`). Three call sites swapped; deal-ID switched to `encodeURIComponent`.
+- **v1.51.4** (Benton) — **"View deals counted" expandable list on Sales Goal.** `<details>` block below the 12-mo chart listing every MTD-counted deal (closedate / name / Won-or-Shipped pill / total / tax / net / HS link) with a footer total that ties to the headline. Note in the block makes it explicit that refunds (dealstage `895819`) are **not** counted — reconcile is the source of truth there. Server: `mtdDeals[]` added to `/api/reports/sales-goal`.
+- **v1.51.3** (Benton) — Removed AZ + UT from `NEXUS_STATES` (Benton confirmed nexus dropped; TaxJar already corrected). 14 states now.
+- **v1.51.2** (Gabe) — Marketing funnel: Spend → Quote → Close → Revenue with CPQ / CAC / ROAS, plus segment overlay on the Campaigns table (driven by `segment_map.json` classifier from v1.50.10).
+- **v1.51.1** (Benton) — Tax Nexus States reference popup on the Quote Builder Sales Tax section.
+
+### Today's session — WR PO System rollout
+
+Today shipped **Phases 2 and 3** of the WR PO System end-to-end. Heavy iteration on the `/vpo/` doc page based on Benton testing the flow as we went:
+
+- **Phase 2 (v1.50.0–v1.50.7):** Receive workflow — purple Receive button on `/vpo/` + Vendor Hub rows, modal with per-line ordered / received / remaining / receiving-now (default = remaining for one-click "receive everything"), receipt log on `/vpo/` (auth-only), button label flips to "Receipts" when RECEIVED. Big design decision mid-session: **the PDF is now a snapshot of what was sent, not a live document.** Stripped auto-PDF-regen from POST / PATCH / receive; PDF only updates when Josh explicitly hits "Update PO" (formerly Create / Download PDF — label flips after first generation, confirm dialog before replacing). Vendor Hub gained inline Send / Receive / Delete / × buttons; Send stays visible after status flips to SENT so Josh can reopen the draft if the mail client closed.
+- **Phase 3 (v1.51.0):** Kim's invoice matching — new **Vendor Bills** tab on `/accounting` listing every PO that needs (or has) a vendor invoice matched. Two actions per row: **Open in QB** (opens blank `/app/bill?txnId=-1` New Bill page; QB Online doesn't support URL pre-fill so Kim picks vendor manually — Phase 4 would API-stub-create) + **Mark Bill Received** (modal: invoice # / date / total / QB Bill # / notes with live discrepancy banner). On save, appends to `invoice_data.events`, sums totals, flips status to **CLOSED** when fully received AND fully invoiced (±$0.01), stamps `closed_at`. Partial bills supported natively (array of events, mirrors `received_data`).
+- **Bonus:** the Sales Goal report on `/reports` got a "View deals counted" expandable list so reps can eyeball which deals are/aren't being counted toward MTD (with an explicit note that refunds aren't included).
 
 ### Open follow-ups — WR PO System
 
-- **Receipt log on the printable doc.** Today the receipt log only shows in the Receipts modal. Phase 3 polish: render it as a section on `/vpo/` itself below the line items so the PDF in Drive carries the full receive history.
-- **Kim&rsquo;s invoice match.** Modal off the Vendor Hub row or `/vpo/` action bar: invoice #, invoice date, total, discrepancy flag against PO total + per-line check. Stored in `invoice_data` JSONB column (already in schema, reserved since v1.49.0).
-- **Urgency dashboard tile.** Yellow POs with Expected ≤7d, red overdue, orange "aging > 30d open with zero received" (vendor sandbagging). Best sized as a top-of-page section on the Vendor Hub Purchase Orders tab.
+- **Phase 4: QB Bill auto-create.** Skip-aheaded today; ship when Kim asks. Build a `createQbBill()` wrapper in `lib/quickbooks.js` (first AP code — all existing exports are sales/AR), add `qb_vendor_id` column to `vendors`, on "Open in QB" POST a stub Bill (vendor + total + single Materials line) and deep-link to `/app/bill?txnId=<id>` so Kim opens a partially-created Bill to edit lines + attach PDF. Decision rationale: ship Phase 3 manual-flow first, watch Kim use it, design Phase 4 against real friction points.
+- **Receipt log on the printable PDF.** Today the receive log only shows on the `/vpo/` URL view (auth-gated). If you ever want it baked into the Drive PDF too, that's a server-render flag — but with PDF now being a snapshot of what we sent the vendor, that's probably NOT what you want.
+- **Urgency dashboard tile on Vendor Hub.** Yellow POs expected ≤7d, red overdue, orange "aging > 30d open with zero received" (vendor sandbagging). Tagged as Phase 5; not blocking anything.
 
-### Decisions captured during scoping (2026-05-28)
+### Decisions captured this week (2026-05-28 to 2026-05-29)
 
-- Audimute stays separate — it's sales-rep oriented (drop-ship to clients), not supply-chain. May move it elsewhere later.
-- PO number prefix `WV-` (Vendor) to visually distinguish from Audimute's `WR` POs.
-- Mailto-with-manual-attach is the right pattern (mailto can't carry attachments).
-- One PO per vendor at a time.
-- Multiple send-to emails per vendor (Carpenter: only Bridget.Hoke@carpenter.com active, but schema supports N).
-- Stale-price flagging is visual only (date column), no auto-warning.
-- Approval = status flip, no separate `approved_by` column.
+- **Audimute stays separate** — sales-rep drop-ship system, not supply-chain. Lives in its own `supplier_pos` table and `/suppliers` page.
+- **PO prefix changed mid-flight** from `WV-` to `WP-` ("WhisperRoom Purchase") on 2026-05-29; existing WV-… POs stay as-is (no migration).
+- **Mailto with manual PDF attach** is the canonical send pattern (mailto can't carry attachments). Send body dropped the `/vpo/` link since Josh always attaches the PDF.
+- **PDF lifecycle**: PDF is the snapshot we sent vendor. `/vpo/` URL is the live internal resource (with receipt log, edit affordances). Only the explicit "Update PO" button regenerates the Drive PDF.
+- **Vendor info edits auto-propagate** to the vendor record (no confirm prompt) so the next PO inherits the latest info. Only catalog *price* changes prompt before propagating.
+- **Refunds invisible to sales-goal calc** (per Benton 2026-05-29) — reconcile remains the source of truth for refund tracking.
 
 ---
 
@@ -749,6 +759,11 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.52.0  | 2026-06-01 | **Sales Goal month picker + AP-color-confirmed notification + WA Type hardening.** (1) `/reports` Sales Goal header gets a month dropdown (current + 12 prior); past months re-run the report (full-month total, trailing-12 goal tiers) — server `/api/reports/sales-goal` takes `?month=YYYY-MM` + returns `isCurrentMonth`. (2) Order PATCH handler detects AP color `Unknown`→real-color and notifies Benton (36303670) + Jill (36330944) — type `ap-color-confirmed`, the cue to send Audimute the PO. (3) WA Type drawer now keys off `orderHasWAItem` (checks `name`+`productName`) and falls back to all four canonical types when booth dims don&rsquo;t parse. |
+| 1.51.7  | 2026-06-01 | **Orders drawer: show + select WA Type for WA/ADA orders.** Drawer previously only revealed the WA Type dropdown when a value was already saved; now it detects WA/ADA line items and offers eligible types by booth dims (ported `getWATypeOptions()` from quote-builder), matching the order-processing flow. Saved value always preserved. |
+| 1.51.6  | 2026-05-29 | End-of-session DEVLOG writeup for 2026-05-29 (Phases 2+3 of WR PO System shipped end-to-end, PDF lifecycle pinned to "snapshot of what we sent vendor", Phase 4 deferred). No runtime change. |
+| 1.51.5  | 2026-05-29 | **Sales Goal hotfix — `esc is not defined`.** v1.51.4 used `esc(...)` but the helper in `reports-dashboard.html` is `escapeHtml`. Three call sites swapped; deal-ID URL segment switched to `encodeURIComponent`. |
+| 1.51.4  | 2026-05-29 | **"View deals counted" expandable list on Sales Goal report.** Below the 12-mo chart, a `<details>` block lists every deal counted toward MTD revenue: closedate / name / stage (Won/Shipped pill) / total / tax / net / HS link, with a footer total that ties to the MTD headline. Note in the block explicitly states refunds (dealstage `895819`) aren't counted — reconcile is the source of truth for those. Server-side: `mtdDeals` array added to `/api/reports/sales-goal` response; `dealname` added to the HubSpot properties pull. |
 | 1.51.3  | 2026-05-29 | **Removed AZ + UT from `NEXUS_STATES`.** No longer have nexus there (per rep, TaxJar already corrected). `lib/states.js` map now 14 states (was 16). Tax calculator + Quote Builder Nexus States popup both update automatically since they share the map. |
 | 1.51.2  | 2026-05-29 | **Marketing — Spend→Quote→Close→Revenue funnel + segment overlay (campaign-level).** Funnel strip below KPI cards (Spend → Quotes → Closed → Revenue with CPQ / CAC / ROAS), driven by attribution-coverage so it agrees with the cards. "Quote" = deal reached Sent-Quote stage+ (new `QUOTE_STAGES` in router + `quotes_selected` in coverage + per-campaign `quotes`). Campaigns table gains Segment tag (from `segment_map.json` classifier, server-tagged on each attribution row) + Quotes / CPQ / CAC columns + a share-of-revenue-by-segment rollup strip. **Decision rationale:** segment view is an overlay, NOT a standalone table — live HubSpot showed ~77% of paid closed-won revenue is Mixed (Branded/General), Voice Over the only segment-specific winner, 3 of 6 segments have zero paid-acquired deals. Respects attribution toggle + date range. |
 | 1.51.1  | 2026-05-29 | **Tax Nexus States reference popup on the Quote Builder.** "Nexus States" button in the Sales Tax section header opens a modal listing all 16 nexus states + a "Taxes Freight" YES/NO pill (8 yes, 8 no per the current `NEXUS_STATES` map in `lib/states.js`). New `GET /api/nexus-states` endpoint serializes the map — single source of truth. Cached client-side after first open. Reference link to TaxJar shipping/sales-tax docs at the bottom of the modal. |

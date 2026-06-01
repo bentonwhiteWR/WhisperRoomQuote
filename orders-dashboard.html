@@ -948,6 +948,63 @@ function computeShipmentEstimate(order) {
   return { pallets, totalWeight, unknownItems };
 }
 
+// ── WA Type detection ────────────────────────────────────────────────
+// Ported from quote-builder.html (~line 7835) so the orders drawer offers
+// the same eligible WA Types as the order-processing flow. WA type per
+// eligible side dimension, keyed by wall series.
+const _WA_40 = { 60:'4016', 84:'4040', 102:'4016', 126:'4040', 144:'4016', 168:'4040', 186:'4016' };
+const _WA_46 = { 72:'4622', 96:'4646', 120:'4622', 144:'4646', 168:'4622', 192:'4646' };
+// Dims that unambiguously identify the series; 144/168 are resolved from the other dim.
+const _DIMS_40 = new Set([42, 60, 84, 102, 126, 186]);
+const _DIMS_46 = new Set([48, 72, 96, 120, 192]);
+const _ALL_BOOTH_DIMS = [30, 42, 48, 60, 72, 84, 96, 102, 120, 126, 144, 168, 186, 192];
+
+function _parseBoothDims(numStr) {
+  for (let i = 1; i < numStr.length; i++) {
+    const a = parseInt(numStr.slice(0, i), 10);
+    const b = parseInt(numStr.slice(i), 10);
+    if (_ALL_BOOTH_DIMS.includes(a) && _ALL_BOOTH_DIMS.includes(b)) return [a, b];
+  }
+  return [null, null];
+}
+
+// The four canonical WA Type / ADA Size options — used as the fallback set
+// when a WA/ADA order's booth dims can't be parsed to narrow the list.
+const _ALL_WA_TYPES = ['4016', '4040', '4622', '4646'];
+
+// Line-item display name — HubSpot orders carry the name under `name`, but
+// some snapshots use `productName`, so check both (mirrors quote-builder's
+// _detectAMFeatures field fallback).
+const _waItemName = i => String(i?.name || i?.productName || '');
+
+// True when an order's line items include a Wide Access / ADA item.
+function orderHasWAItem(lineItems) {
+  return (lineItems || []).some(i => /^(ADA|WA UPG)\s/i.test(_waItemName(i)));
+}
+
+// Eligible WA Types for an order's line items, narrowed by booth dimensions.
+// Empty unless a WA/ADA item is present (mirrors quote-builder's
+// getWATypeOptions()). May still be empty if the booth dims don't parse — the
+// drawer falls back to _ALL_WA_TYPES in that case so the selector is never
+// hidden on a genuine WA/ADA order.
+function getWATypeOptions(lineItems) {
+  const items = lineItems || [];
+  if (!orderHasWAItem(items)) return [];
+  const opts = new Set();
+  for (const item of items) {
+    const m = _waItemName(item).match(/^(?:MDL|ADA)\s+(\d+)/i);
+    if (!m) continue;
+    const [a, b] = _parseBoothDims(m[1]);
+    if (!a || !b) continue;
+    const series = _DIMS_40.has(a) || _DIMS_40.has(b) ? '40'
+                 : _DIMS_46.has(a) || _DIMS_46.has(b) ? '46' : null;
+    if (!series) continue;
+    const table = series === '40' ? _WA_40 : _WA_46;
+    [a, b].filter(d => d >= 60).forEach(d => { if (table[d]) opts.add(table[d]); });
+  }
+  return [...opts].sort();
+}
+
 let _freightPallets = [];
 
 function openFreightModal() {
@@ -1853,11 +1910,32 @@ function openDrawer(quoteNumber) {
   setRadio('editFoam',  od.foamColor       || '');
   setRadio('editHinge', od.hingePreference || '');
   setApColor(od.apColor || '');
-  const _waType = od.waType || order.json_snapshot?.repWaType || '';
-  const _waSection = document.getElementById('editWaTypeSection');
-  if (_waSection) _waSection.style.display = _waType ? 'block' : 'none';
-  const _waSelect = document.getElementById('editWaType');
-  if (_waSelect) _waSelect.value = _waType;
+  // WA Type: show whenever the order contains a WA/ADA item (matching the
+  // order-processing flow), populated with the eligible types for the booth's
+  // dimensions — not just when a value was already saved. (v1.51.7 / v1.52.0)
+  const _waLineItems = order.json_snapshot?.lineItems || [];
+  const _savedWaType = od.waType || order.json_snapshot?.repWaType || '';
+  const _hasWA       = orderHasWAItem(_waLineItems) || !!_savedWaType;
+  const _waSection   = document.getElementById('editWaTypeSection');
+  const _waSelect    = document.getElementById('editWaType');
+  if (_waSection) _waSection.style.display = _hasWA ? 'block' : 'none';
+  if (_waSelect) {
+    // Prefer the dim-eligible options; if a WA/ADA order's booth dims don't
+    // parse, fall back to all four canonical types so the rep can still pick.
+    const _dimOpts = getWATypeOptions(_waLineItems);
+    let _opts = _dimOpts.length ? [..._dimOpts] : (_hasWA ? [..._ALL_WA_TYPES] : []);
+    // Always include a saved value even if it's not in the eligible set, so
+    // an existing selection is never silently dropped.
+    if (_savedWaType && !_opts.includes(_savedWaType)) _opts.push(_savedWaType);
+    _opts = [...new Set(_opts)].sort();
+    _waSelect.innerHTML = '<option value="">— Not specified —</option>';
+    _opts.forEach(t => {
+      const o = document.createElement('option');
+      o.value = t; o.textContent = t;
+      _waSelect.appendChild(o);
+    });
+    _waSelect.value = _savedWaType;
+  }
   document.getElementById('editSerialNumber').value   = od.serialNumber    || '';
   document.getElementById('editProductionNotes').value = od.productionNotes || '';
   document.getElementById('editDeliveryNotes').value   = od.deliveryNotes   || '';

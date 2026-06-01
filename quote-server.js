@@ -7948,8 +7948,26 @@ ${q.accepted ? `
         year: 'numeric', month: '2-digit', day: '2-digit',
       }).split('/');
       // toLocaleString en-US returns "MM/DD/YYYY"
-      const curM = parseInt(estParts[0], 10) - 1; // 0-indexed
-      const curY = parseInt(estParts[2], 10);
+      const nowM = parseInt(estParts[0], 10) - 1; // 0-indexed
+      const nowY = parseInt(estParts[2], 10);
+
+      // Selected month — `?month=YYYY-MM` lets the rep look back at a prior
+      // month. Defaults to the current EST month. Future months and malformed
+      // values fall back to the current month. When a past month is selected,
+      // `mtdRevenue`/`mtdDeals` represent that month's full total (not MTD),
+      // and the goal tiers reflect the trailing-12-month avg ending that month.
+      let curM = nowM, curY = nowY;
+      const reqMonth = String(parsed.query.month || '').trim();
+      const mMatch = /^(\d{4})-(\d{2})$/.exec(reqMonth);
+      if (mMatch) {
+        const ry = parseInt(mMatch[1], 10);
+        const rm = parseInt(mMatch[2], 10) - 1; // 0-indexed
+        if (rm >= 0 && rm <= 11 &&
+            new Date(ry, rm, 1).getTime() <= new Date(nowY, nowM, 1).getTime()) {
+          curY = ry; curM = rm;
+        }
+      }
+      const isCurrentMonth = (curY === nowY && curM === nowM);
       const monthKey = `${curY}-${String(curM + 1).padStart(2, '0')}`;
 
       if (!force && _salesGoalCache && _salesGoalCache.key === monthKey
@@ -7987,7 +8005,7 @@ ${q.accepted ? `
               { propertyName: 'closedate', operator: 'LTE', value: toTs },
             ]
           }],
-          properties: ['amount','closedate','dealstage','tax_rate','total_tax_amount','freight_cost','shipping_state'],
+          properties: ['dealname','amount','closedate','dealstage','tax_rate','total_tax_amount','freight_cost','shipping_state'],
           sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
         });
         const results = r.body?.results || [];
@@ -8014,6 +8032,7 @@ ${q.accepted ? `
       let dealsCounted = 0;
       let dealsWithHsTax = 0;
       let dealsBackCalcTax = 0;
+      const mtdDeals = []; // per-deal detail for the "View deals counted" list
 
       for (const d of allDeals) {
         const cdRaw = d.properties?.closedate;
@@ -8065,12 +8084,23 @@ ${q.accepted ? `
         if (key === monthKey) {
           mtdRevenue += revenue;
           mtdDealCount++;
+          mtdDeals.push({
+            dealId:     d.id,
+            dealName:   d.properties?.dealname || '(no name)',
+            dealstage:  d.properties?.dealstage || '',
+            closedate:  dt.toISOString(),
+            total:      Math.round(total * 100) / 100,
+            taxAmt:     Math.round(taxAmt * 100) / 100,
+            revenue:    Math.round(revenue * 100) / 100,
+          });
         } else if (buckets[key]) {
           buckets[key].revenue += revenue;
           buckets[key].dealCount++;
         }
         dealsCounted++;
       }
+      // Sort MTD deals newest first
+      mtdDeals.sort((a, b) => (b.closedate || '').localeCompare(a.closedate || ''));
 
       const monthsArr = orderedKeys.map(k => ({
         key: k,
@@ -8098,6 +8128,7 @@ ${q.accepted ? `
       const payload = {
         monthLabel,
         monthKey,
+        isCurrentMonth,
         months: monthsArr,
         movingAvg: Math.round(movingAvg * 100) / 100,
         goal100: Math.round(goal100 * 100) / 100,
@@ -8105,6 +8136,7 @@ ${q.accepted ? `
         goal120: Math.round(goal120 * 100) / 100,
         mtdRevenue: Math.round(mtdRevenue * 100) / 100,
         mtdDealCount,
+        mtdDeals,
         mtdPctOfGoal: goal100 > 0 ? Math.round((mtdRevenue / goal100) * 1000) / 10 : null,
         currentTier,
         nextTier,
@@ -13257,6 +13289,16 @@ ${q.accepted ? `
         mergedShipmentDraft = null;
       }
 
+      // AP color just confirmed: the order had an acoustic package with the
+      // color still "Unknown", and this update sets it to a real color. That's
+      // the moment we send Audimute the PO, so flag it to notify Benton + Jill
+      // after the save lands (fired below, after the JSON response).
+      const _prevAp = String(currentOrderData.apColor || '').trim();
+      const _newAp  = String(apColor !== undefined ? (apColor || '') : _prevAp).trim();
+      const apColorJustConfirmed =
+        _prevAp.toLowerCase() === 'unknown' &&
+        !!_newAp && _newAp.toLowerCase() !== 'unknown';
+
       const updatedOrderData = {
         ...currentOrderData,
         foamColor:        foamColor        !== undefined ? foamColor        : currentOrderData.foamColor,
@@ -13401,6 +13443,30 @@ ${q.accepted ? `
       }
       console.log(`[ship] company for file scan: "${orderCompany}" (quoteNumber=${quoteNumber})`);
       json({ success: true, shipped: isNowShipped, quoteNumber, company: orderCompany });
+
+      // ── AP color confirmed → notify Benton + Jill (send Audimute the PO) ──
+      // Fires once when an AP order's color flips from "Unknown" to a real
+      // color. Non-blocking; runs after the response is sent.
+      if (apColorJustConfirmed) {
+        (async () => {
+          try {
+            let dealNameN = quoteNumber;
+            try {
+              const dr = await db.query('SELECT deal_name FROM quotes WHERE quote_number = $1 LIMIT 1', [quoteNumber]);
+              dealNameN = dr.rows[0]?.deal_name || orderCompany || quoteNumber;
+            } catch(e) { /* fall back to quoteNumber */ }
+            const title   = `AP color confirmed: ${_newAp}`;
+            const bodyTxt = `${dealNameN} — acoustic package color set to ${_newAp} (was Unknown). Time to send Audimute the PO.`;
+            // Benton (36303670) + Jill (36330944).
+            for (const ownerId of ['36303670', '36330944']) {
+              await createNotification(ownerId, 'ap-color-confirmed', title, bodyTxt, {
+                dealId: dealId ? String(dealId) : null, dealName: dealNameN, quoteNum: quoteNumber,
+              });
+            }
+            writelog('info', 'order.ap-color-confirmed', `AP color confirmed for ${quoteNumber}: ${_newAp}`, { quoteNum: quoteNumber, dealId: String(dealId || ''), meta: { apColor: _newAp } });
+          } catch(e) { console.warn('[orders] AP-color-confirmed notify failed:', e.message); }
+        })();
+      }
 
       // ── Accounting task when Jeromy ships ────────────────────────
       // Fire when: Ship It is clicked AND shipper is Jeromy (38732186)

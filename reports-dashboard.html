@@ -716,6 +716,29 @@ function escapeHtml(s) {
 }
 
 // ── Sales Goal report ─────────────────────────────────────────────
+// Selected month for the Sales Goal view ('' = current EST month). Set by the
+// month dropdown in the hero; the server computes everything relative to it.
+let _salesGoalMonth = '';
+
+// Build <option>s for the last 13 months (current + 12 prior), value=YYYY-MM.
+function sgMonthOptions(selectedKey) {
+  const now = new Date();
+  let html = '';
+  for (let i = 0; i <= 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = d.toLocaleString('en-US', { month: 'long', year: 'numeric' })
+      + (i === 0 ? ' (current)' : '');
+    html += `<option value="${key}"${key === selectedKey ? ' selected' : ''}>${label}</option>`;
+  }
+  return html;
+}
+
+function onSalesGoalMonthChange(monthKey) {
+  _salesGoalMonth = monthKey || '';
+  loadSalesGoal(true);
+}
+
 async function loadSalesGoal(force) {
   const state   = document.getElementById('salesGoalState');
   const content = document.getElementById('salesGoalContent');
@@ -723,7 +746,10 @@ async function loadSalesGoal(force) {
   state.textContent   = 'Loading sales goal…';
   content.style.display = 'none';
   try {
-    const url = '/api/reports/sales-goal' + (force ? '?force=1' : '');
+    const params = [];
+    if (force) params.push('force=1');
+    if (_salesGoalMonth) params.push('month=' + encodeURIComponent(_salesGoalMonth));
+    const url = '/api/reports/sales-goal' + (params.length ? '?' + params.join('&') : '');
     const res  = await fetch(url, { credentials:'include' });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -775,7 +801,11 @@ function renderSalesGoal(d) {
   document.getElementById('salesGoalContent').innerHTML = `
     <div class="sg-hero">
       <div class="sg-hero-l">
-        <span class="sg-hero-title">Sales Goal — ${d.monthLabel}</span>
+        <span class="sg-hero-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Sales Goal —
+          <select onchange="onSalesGoalMonthChange(this.value)" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:15px;font-weight:700;font-family:inherit;padding:4px 8px;cursor:pointer;outline:none">
+            ${sgMonthOptions(d.monthKey)}
+          </select>
+        </span>
         <span class="sg-hero-month">${fmt(d.goal100)} <span style="font-size:13px;color:var(--text2);font-weight:600">target</span></span>
         <span class="sg-hero-note">12-mo moving avg ${fmt(d.movingAvg)} × 1.05 — locked at month start</span>
       </div>
@@ -794,7 +824,7 @@ function renderSalesGoal(d) {
 
     <div class="sg-progress-wrap">
       <div class="sg-progress-top">
-        <span><b>${fmt(d.mtdRevenue)}</b> MTD &middot; ${d.mtdDealCount} deal${d.mtdDealCount===1?'':'s'}</span>
+        <span><b>${fmt(d.mtdRevenue)}</b> ${d.isCurrentMonth === false ? 'total' : 'MTD'} &middot; ${d.mtdDealCount} deal${d.mtdDealCount===1?'':'s'}</span>
         <div class="sg-progress-top-r">
           <span><b>${d.mtdPctOfGoal != null ? d.mtdPctOfGoal.toFixed(1) : '—'}%</b> of 100% goal &middot; <b class="sg-tier-${tierClass}">${tierLabel}</b></span>
           <span style="font-size:10px;color:var(--muted)">${nextLine}</span>

@@ -968,15 +968,31 @@ function _parseBoothDims(numStr) {
   return [null, null];
 }
 
-// Eligible WA Types for an order's line items. Empty unless a WA/ADA item
-// is present (mirrors quote-builder's getWATypeOptions()).
+// The four canonical WA Type / ADA Size options — used as the fallback set
+// when a WA/ADA order's booth dims can't be parsed to narrow the list.
+const _ALL_WA_TYPES = ['4016', '4040', '4622', '4646'];
+
+// Line-item display name — HubSpot orders carry the name under `name`, but
+// some snapshots use `productName`, so check both (mirrors quote-builder's
+// _detectAMFeatures field fallback).
+const _waItemName = i => String(i?.name || i?.productName || '');
+
+// True when an order's line items include a Wide Access / ADA item.
+function orderHasWAItem(lineItems) {
+  return (lineItems || []).some(i => /^(ADA|WA UPG)\s/i.test(_waItemName(i)));
+}
+
+// Eligible WA Types for an order's line items, narrowed by booth dimensions.
+// Empty unless a WA/ADA item is present (mirrors quote-builder's
+// getWATypeOptions()). May still be empty if the booth dims don't parse — the
+// drawer falls back to _ALL_WA_TYPES in that case so the selector is never
+// hidden on a genuine WA/ADA order.
 function getWATypeOptions(lineItems) {
   const items = lineItems || [];
-  const hasWAItem = items.some(i => /^(ADA|WA UPG)\s/i.test(i.name || ''));
-  if (!hasWAItem) return [];
+  if (!orderHasWAItem(items)) return [];
   const opts = new Set();
   for (const item of items) {
-    const m = (item.name || '').match(/^(?:MDL|ADA)\s+(\d+)/i);
+    const m = _waItemName(item).match(/^(?:MDL|ADA)\s+(\d+)/i);
     if (!m) continue;
     const [a, b] = _parseBoothDims(m[1]);
     if (!a || !b) continue;
@@ -1896,21 +1912,22 @@ function openDrawer(quoteNumber) {
   setApColor(od.apColor || '');
   // WA Type: show whenever the order contains a WA/ADA item (matching the
   // order-processing flow), populated with the eligible types for the booth's
-  // dimensions — not just when a value was already saved. (v1.51.7 bugfix)
+  // dimensions — not just when a value was already saved. (v1.51.7 / v1.52.0)
+  const _waLineItems = order.json_snapshot?.lineItems || [];
   const _savedWaType = od.waType || order.json_snapshot?.repWaType || '';
-  const _waOpts      = getWATypeOptions(order.json_snapshot?.lineItems || []);
+  const _hasWA       = orderHasWAItem(_waLineItems) || !!_savedWaType;
   const _waSection   = document.getElementById('editWaTypeSection');
   const _waSelect    = document.getElementById('editWaType');
-  // Show if the booth yields eligible types, or a value was previously saved
-  // (legacy/odd data whose items don't parse — don't hide a stored selection).
-  const _showWa = _waOpts.length > 0 || !!_savedWaType;
-  if (_waSection) _waSection.style.display = _showWa ? 'block' : 'none';
+  if (_waSection) _waSection.style.display = _hasWA ? 'block' : 'none';
   if (_waSelect) {
+    // Prefer the dim-eligible options; if a WA/ADA order's booth dims don't
+    // parse, fall back to all four canonical types so the rep can still pick.
+    const _dimOpts = getWATypeOptions(_waLineItems);
+    let _opts = _dimOpts.length ? [..._dimOpts] : (_hasWA ? [..._ALL_WA_TYPES] : []);
     // Always include a saved value even if it's not in the eligible set, so
     // an existing selection is never silently dropped.
-    const _opts = [..._waOpts];
     if (_savedWaType && !_opts.includes(_savedWaType)) _opts.push(_savedWaType);
-    _opts.sort();
+    _opts = [...new Set(_opts)].sort();
     _waSelect.innerHTML = '<option value="">— Not specified —</option>';
     _opts.forEach(t => {
       const o = document.createElement('option');

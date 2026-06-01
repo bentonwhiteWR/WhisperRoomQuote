@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.51.7', date:'June 1, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Orders drawer now shows the WA Type selector for WA/ADA orders.** Previously the pop-out order drawer only revealed the WA Type dropdown if a value had already been saved — so an order with a Wide Access / ADA booth but no type picked yet had no way to set it. The drawer now detects WA/ADA line items and offers the eligible types for the booth&rsquo;s dimensions (e.g. a 40-series booth shows 4016/4040), matching the order-processing flow. A previously-saved value is always preserved even if it&rsquo;s outside the eligible set.'},
+      ]
+    },
+    {
       v:'1.51.6', date:'May 29, 2026', tag:'log',
       changes:[
         {t:'log', d:'**End-of-session DEVLOG writeup for 2026-05-29.** Today shipped WR PO System Phases 2 (Receive) and 3 (Kim&rsquo;s invoice matching) end-to-end plus heavy iteration on `/vpo/` (PDF is now a snapshot, not a live doc — only "Update PO" regenerates). Current focus block rewritten; session writeup captures Phase 4 (QB Bills API auto-stub) as deferred until Kim asks. No runtime change.'},

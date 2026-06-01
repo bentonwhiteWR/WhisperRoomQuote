@@ -759,6 +759,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.51.7  | 2026-06-01 | **Orders drawer: show + select WA Type for WA/ADA orders.** Drawer previously only revealed the WA Type dropdown when a value was already saved; now it detects WA/ADA line items and offers eligible types by booth dims (ported `getWATypeOptions()` from quote-builder), matching the order-processing flow. Saved value always preserved. |
 | 1.51.6  | 2026-05-29 | End-of-session DEVLOG writeup for 2026-05-29 (Phases 2+3 of WR PO System shipped end-to-end, PDF lifecycle pinned to "snapshot of what we sent vendor", Phase 4 deferred). No runtime change. |
 | 1.51.5  | 2026-05-29 | **Sales Goal hotfix — `esc is not defined`.** v1.51.4 used `esc(...)` but the helper in `reports-dashboard.html` is `escapeHtml`. Three call sites swapped; deal-ID URL segment switched to `encodeURIComponent`. |
 | 1.51.4  | 2026-05-29 | **"View deals counted" expandable list on Sales Goal report.** Below the 12-mo chart, a `<details>` block lists every deal counted toward MTD revenue: closedate / name / stage (Won/Shipped pill) / total / tax / net / HS link, with a footer total that ties to the MTD headline. Note in the block explicitly states refunds (dealstage `895819`) aren't counted — reconcile is the source of truth for those. Server-side: `mtdDeals` array added to `/api/reports/sales-goal` response; `dealname` added to the HubSpot properties pull. |

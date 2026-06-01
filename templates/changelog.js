@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.53.0', date:'June 1, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Truckload calculator** (new page at <code>/truckload</code>). Estimate how many truckloads a set of booths needs — pick a truck (53′ dry van default, plus 48′, 26′ box, or custom dimensions), add booth models + quantities, and it returns trucks needed, total pallets, linear feet used, and a per-truck fill bar. Models the load as <b>floor space only (no stacking)</b> with two side-by-side lanes: narrow pallets (≤ half the trailer width) pair up two-to-a-row, wide booth pallets (52–54″) block the full width, and pallets are packed truck-by-truck so a pallet never splits across two trucks. Open it standalone, or hit “🚚 Estimate truckloads” in an order’s drawer to pre-fill from that order’s booths.'},
+      ]
+    },
+    {
       v:'1.52.1', date:'June 1, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Tennessee sales tax was undercollecting 0.5%.** TN is origin-based for in-state sellers, so all TN orders source to our Morristown / Hamblen County rate of **9.75%** (7% state + 2.75% local) — but TaxJar was resolving our origin ZIP to **9.25%** (missing the 0.5% city portion), so every TN order came up short. Added a `minRate` floor (0.0975) to the TN nexus config: when TaxJar returns a rate below it, the tax is recomputed on the same taxable base at 9.75%. Floors up only — a higher rate is left alone. (Already-collected orders from before this fix undercollected; reconcile separately.)'},

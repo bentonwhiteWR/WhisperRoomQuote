@@ -452,6 +452,9 @@
     </div>
     <div id="estPalletList" style="display:none;margin-top:6px"></div>
     <div id="estUnknownWrap" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:#f59e0b">⚠ <span id="estUnknownLabel"></span></div>
+    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+      <button type="button" onclick="openTruckCalc()" style="width:100%;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--orange);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer">🚚 Estimate truckloads →</button>
+    </div>
   </div>
 
   <div class="drawer-section" id="shipmentSection">
@@ -1003,6 +1006,12 @@ function getWATypeOptions(lineItems) {
     [a, b].filter(d => d >= 60).forEach(d => { if (table[d]) opts.add(table[d]); });
   }
   return [...opts].sort();
+}
+
+// Open the standalone truckload calculator, pre-filled from the current order.
+function openTruckCalc(){
+  if(!currentQuoteNumber) return;
+  window.open('/truckload?order=' + encodeURIComponent(currentQuoteNumber), '_blank');
 }
 
 let _freightPallets = [];

@@ -10100,6 +10100,16 @@ ${q.accepted ? `
     return;
   }
 
+  // Truckload calculator — pallet floor-space → number of truckloads.
+  // Standalone (manual model+qty entry) and pre-fillable via ?order=<quoteNumber>.
+  if (pathname === '/truckload' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/deals' }); res.end(); return; }
+    const html = fs.readFileSync(path.join(__dirname, 'truck-loadout.html'), 'utf8');
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+    return;
+  }
+
   // ── API: HubSpot Closed Won deals (for orders board) ─────────────
   if (pathname === '/api/orders/hubspot-deals' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

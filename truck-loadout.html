@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Truckload Calculator — WhisperRoom</title>
+<style>
+  :root{
+    --bg:#161616; --surface:#1e1e1e; --surface2:#262626; --border:#333;
+    --text:#e8e8e8; --muted:#8a8a8a; --orange:#ee6216; --green:#3fb950; --amber:#f59e0b;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:14px;line-height:1.4}
+  a{color:var(--orange);text-decoration:none}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 22px;border-bottom:1px solid var(--border);background:var(--surface)}
+  .topbar .logo{font-size:16px;font-weight:800;letter-spacing:-.01em}
+  .topbar .logo span{color:var(--orange)}
+  .wrap{max-width:1000px;margin:0 auto;padding:24px 22px 64px}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 22px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:18px}
+  .card-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 14px}
+  .truck-opts{display:flex;flex-wrap:wrap;gap:8px}
+  .truck-btn{padding:9px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  .truck-btn.active{border-color:var(--orange);background:rgba(238,98,22,.12);color:var(--orange)}
+  .custom-dims{display:none;gap:10px;margin-top:12px;flex-wrap:wrap}
+  .custom-dims.show{display:flex}
+  .custom-dims label{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+  input[type=number],select{background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;padding:8px 10px;outline:none}
+  input[type=number]{width:90px}
+  .row{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+  .row select{flex:1;min-width:0}
+  .row .qty{width:74px}
+  .row .rm{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0 6px;line-height:1}
+  .row .rm:hover{color:#ef4444}
+  .addbtn{margin-top:4px;padding:8px 14px;background:var(--surface2);border:1px dashed var(--border);border-radius:8px;color:var(--text);font-size:13px;cursor:pointer;font-family:inherit}
+  .addbtn:hover{border-color:var(--orange);color:var(--orange)}
+  /* results */
+  .res-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:18px}
+  .stat{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+  .stat .v{font-size:28px;font-weight:800;font-family:var(--mono);line-height:1}
+  .stat .v.big{color:var(--orange)}
+  .stat .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:6px}
+  .truckbar-wrap{margin-bottom:8px}
+  .truckbar-head{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px}
+  .truckbar{height:22px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;overflow:hidden;position:relative}
+  .truckbar-fill{height:100%;background:linear-gradient(90deg,var(--orange),#f5853f);display:flex;align-items:center;padding-left:8px;font-size:11px;font-weight:700;color:#1a1a1a;white-space:nowrap}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--border)}
+  th{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:800}
+  td.num,th.num{text-align:right;font-family:var(--mono)}
+  .note{font-size:11px;color:var(--muted);line-height:1.6;margin-top:14px}
+  .empty{color:var(--muted);font-style:italic;padding:30px;text-align:center}
+  .banner{background:rgba(238,98,22,.1);border:1px solid rgba(238,98,22,.4);border-radius:8px;padding:9px 13px;font-size:12px;color:var(--orange);margin-bottom:16px}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="logo">Whisper<span>Room</span> — Truckload Calculator</div>
+    <a href="/orders">← Orders</a>
+  </div>
+  <div class="wrap">
+    <h1>Truckload Calculator</h1>
+    <p class="sub">Estimate how many truckloads a set of booths needs. Floor space only (no stacking), two side-by-side lanes down the trailer.</p>
+
+    <div id="prefillBanner" class="banner" style="display:none"></div>
+
+    <div class="card">
+      <div class="card-title">Truck</div>
+      <div class="truck-opts" id="truckOpts"></div>
+      <div class="custom-dims" id="customDims">
+        <label>Length (ft)<input type="number" id="cuLen" value="53" min="1" oninput="recompute()"></label>
+        <label>Width (in)<input type="number" id="cuWid" value="98" min="1" oninput="recompute()"></label>
+        <label>Height (in)<input type="number" id="cuHt" value="108" min="1" oninput="recompute()"></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Booths</div>
+      <div id="rows"></div>
+      <button class="addbtn" onclick="addRow()">+ Add model</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Result</div>
+      <div id="results"><div class="empty">Add at least one booth to see truckloads.</div></div>
+    </div>
+  </div>
+
+<script>
+// ── Booth pallet map (l/w/h inches per pallet) ───────────────────────
+// THIRD copy of BOOTH_DATA. Source of truth is quote-builder.html
+// (~line 1806); orders-dashboard.html (~line 749) carries the second.
+// When adding/correcting a shell, update ALL THREE. (Follow-up still
+// open: hoist to a shared lib/booth-data.js served as a static bundle.)
+const BOOTH_DATA = {
+  "Voice Over Basic":{pallets:[{l:90,w:52,h:42}]},
+  "Voice Over Deluxe":{pallets:[{l:90,w:52,h:60}]},
+  "Audiology Basic":{pallets:[{l:90,w:52,h:48}]},
+  "Audiology Deluxe":{pallets:[{l:90,w:52,h:52}]},
+  "Office Booth":{pallets:[{l:90,w:47,h:37}]},
+  "Work From Home Booth":{pallets:[{l:90,w:52,h:48}]},
+  "Drum Booth":{pallets:[{l:90,w:52,h:45},{l:90,w:52,h:45},{l:102,w:52,h:45}]},
+  "Audiology Basic Plus":{pallets:[{l:90,w:52,h:48}]},
+  "Audiology Compact":{pallets:[{l:90,w:52,h:42}]},
+  "Audiology Ultra":{pallets:[{l:90,w:52,h:52},{l:90,w:52,h:41}]},
+  "Audiology Premium":{pallets:[{l:90,w:52,h:59}]},
+  "Creator Basic":{pallets:[{l:90,w:52,h:52}]},
+  "Creator Deluxe":{pallets:[{l:90,w:52,h:52},{l:90,w:52,h:41}]},
+  "Practice Basic":{pallets:[{l:90,w:52,h:52}]},
+  "Practice Deluxe":{pallets:[{l:90,w:52,h:52},{l:90,w:52,h:41}]},
+  "Recording Studio":{pallets:[{l:102,w:52,h:37},{l:90,w:52,h:43}]},
+  "Drum Studio":{pallets:[{l:102,w:52,h:44},{l:90,w:52,h:46},{l:102,w:52,h:54}]},
+  "Meeting Booth":{pallets:[{l:90,w:52,h:59}]},
+  "Maker Space":{pallets:[{l:102,w:52,h:28},{l:90,w:52,h:41}]},
+  "MDL 4230 E":{pallets:[{l:90,w:47,h:51}]},
+  "MDL 4230 S":{pallets:[{l:90,w:47,h:35}]},
+  "MDL 127 LP E":{pallets:[{l:90,w:54,h:62}]},
+  "MDL 127 LP S":{pallets:[{l:90,w:54,h:40}]},
+  "MDL 4242 E":{pallets:[{l:90,w:47,h:58}]},
+  "MDL 4242 S":{pallets:[{l:90,w:47,h:37}]},
+  "MDL 4260 E":{pallets:[{l:90,w:47,h:64}]},
+  "MDL 4260 S":{pallets:[{l:90,w:47,h:41}]},
+  "MDL 4284 E":{pallets:[{l:90,w:47,h:57},{l:90,w:47,h:38}]},
+  "MDL 4284 S":{pallets:[{l:90,w:47,h:57}]},
+  "MDL 4848 E":{pallets:[{l:90,w:52,h:60}]},
+  "MDL 4848 S":{pallets:[{l:90,w:52,h:42}]},
+  "MDL 4872 E":{pallets:[{l:90,w:52,h:48},{l:90,w:52,h:27}]},
+  "MDL 4872 S":{pallets:[{l:90,w:52,h:48}]},
+  "MDL 4896 E":{pallets:[{l:102,w:52,h:48},{l:102,w:52,h:38}]},
+  "MDL 4896 S":{pallets:[{l:102,w:52,h:48}]},
+  "MDL 6060 E":{pallets:[{l:90,w:47,h:54},{l:90,w:47,h:42}]},
+  "MDL 6060 S":{pallets:[{l:90,w:47,h:54}]},
+  "MDL 6084 E":{pallets:[{l:90,w:47,h:60},{l:90,w:47,h:42}]},
+  "MDL 6084 S":{pallets:[{l:90,w:47,h:60}]},
+  "MDL 7272 E":{pallets:[{l:90,w:52,h:52},{l:90,w:52,h:41}]},
+  "MDL 7272 S":{pallets:[{l:90,w:52,h:52}]},
+  "MDL 7296 E":{pallets:[{l:90,w:52,h:59},{l:90,w:52,h:43}]},
+  "MDL 7296 S":{pallets:[{l:90,w:52,h:59}]},
+  "MDL 8484 E":{pallets:[{l:90,w:47,h:48},{l:90,w:47,h:27},{l:90,w:47,h:46}]},
+  "MDL 8484 S":{pallets:[{l:90,w:47,h:48},{l:90,w:47,h:27}]},
+  "MDL 9696 E":{pallets:[{l:90,w:52,h:45},{l:90,w:52,h:45},{l:102,w:52,h:45}]},
+  "MDL 9696 S":{pallets:[{l:102,w:52,h:28},{l:90,w:52,h:41}]},
+  "MDL 10284 E":{pallets:[{l:90,w:47,h:40},{l:108,w:47,h:37},{l:102,w:52,h:44}]},
+  "MDL 10284 S":{pallets:[{l:90,w:47,h:40},{l:108,w:47,h:37}]},
+  "MDL 84102 E":{pallets:[{l:90,w:47,h:53},{l:90,w:47,h:31},{l:90,w:47,h:50}]},
+  "MDL 84102 S":{pallets:[{l:90,w:47,h:53},{l:90,w:47,h:31}]},
+  "MDL 84126 E":{pallets:[{l:90,w:47,h:51},{l:90,w:47,h:44},{l:90,w:47,h:57}]},
+  "MDL 84126 S":{pallets:[{l:90,w:47,h:51},{l:90,w:47,h:44}]},
+  "MDL 96120 E":{pallets:[{l:102,w:52,h:37},{l:90,w:52,h:43},{l:102,w:52,h:50}]},
+  "MDL 96120 S":{pallets:[{l:102,w:52,h:37},{l:90,w:52,h:43}]},
+  "MDL 96144 E":{pallets:[{l:102,w:52,h:44},{l:90,w:52,h:46},{l:102,w:52,h:54}]},
+  "MDL 96144 S":{pallets:[{l:102,w:52,h:44},{l:90,w:52,h:46}]},
+  "MDL 96168 E":{pallets:[{l:102,w:52,h:46},{l:90,w:52,h:49},{l:102,w:52,h:30},{l:90,w:47,h:42}]},
+  "MDL 96168 S":{pallets:[{l:102,w:52,h:46},{l:90,w:52,h:49}]},
+  "MDL 96192 E":{pallets:[{l:102,w:52,h:41},{l:90,w:52,h:49},{l:90,w:47,h:25},{l:102,w:52,h:33},{l:90,w:47,h:42}]},
+  "MDL 96192 S":{pallets:[{l:102,w:52,h:41},{l:90,w:52,h:49},{l:90,w:47,h:25}]},
+  "MDL 102102 E":{pallets:[{l:90,w:47,h:45},{l:108,w:47,h:44},{l:90,w:47,h:40}]},
+  "MDL 102102 S":{pallets:[{l:90,w:47,h:45},{l:108,w:47,h:44}]},
+  "MDL 102126 E":{pallets:[{l:90,w:47,h:61},{l:108,w:47,h:46},{l:108,w:47,h:48}]},
+  "MDL 102126 S":{pallets:[{l:90,w:47,h:61},{l:108,w:47,h:46}]},
+  "MDL 102144 E":{pallets:[{l:90,w:47,h:61},{l:108,w:47,h:37},{l:90,w:47,h:40},{l:108,w:47,h:27}]},
+  "MDL 102144 S":{pallets:[{l:90,w:47,h:61},{l:108,w:47,h:37}]},
+  "MDL 102168 E":{pallets:[{l:90,w:47,h:53},{l:108,w:47,h:43},{l:90,w:47,h:22},{l:90,w:47,h:51},{l:108,w:47,h:29}]},
+  "MDL 102168 S":{pallets:[{l:90,w:47,h:53},{l:108,w:47,h:43},{l:90,w:47,h:22}]},
+  "MDL 102186 E":{pallets:[{l:90,w:47,h:55},{l:108,w:47,h:43},{l:90,w:47,h:22},{l:90,w:47,h:52},{l:108,w:47,h:31}]},
+  "MDL 102186 S":{pallets:[{l:90,w:47,h:55},{l:108,w:47,h:43},{l:90,w:47,h:22}]},
+  "MDL 4230 ENV":{pallets:[{l:90,w:47,h:51}]},
+  "MDL 4230 SNV":{pallets:[{l:90,w:47,h:35}]},
+  "MDL 127 LP ENV":{pallets:[{l:90,w:54,h:62}]},
+  "MDL 127 LP SNV":{pallets:[{l:90,w:54,h:40}]},
+  "MDL 4242 ENV":{pallets:[{l:90,w:47,h:58}]},
+  "MDL 4242 SNV":{pallets:[{l:90,w:47,h:37}]},
+  "MDL 4260 ENV":{pallets:[{l:90,w:47,h:64}]},
+  "MDL 4260 SNV":{pallets:[{l:90,w:47,h:41}]},
+  "MDL 4284 ENV":{pallets:[{l:90,w:47,h:57},{l:90,w:47,h:38}]},
+  "MDL 4284 SNV":{pallets:[{l:90,w:47,h:57}]},
+  "MDL 4848 ENV":{pallets:[{l:90,w:52,h:60}]},
+  "MDL 4848 SNV":{pallets:[{l:90,w:52,h:42}]},
+  "MDL 4872 ENV":{pallets:[{l:90,w:52,h:48},{l:90,w:52,h:27}]},
+  "MDL 4872 SNV":{pallets:[{l:90,w:52,h:48}]},
+  "MDL 4896 ENV":{pallets:[{l:102,w:52,h:48},{l:102,w:52,h:38}]},
+  "MDL 4896 SNV":{pallets:[{l:102,w:52,h:48}]},
+  "MDL 6060 ENV":{pallets:[{l:90,w:47,h:54},{l:90,w:47,h:42}]},
+  "MDL 6060 SNV":{pallets:[{l:90,w:47,h:54}]},
+  "MDL 6084 ENV":{pallets:[{l:90,w:47,h:60},{l:90,w:47,h:42}]},
+  "MDL 6084 SNV":{pallets:[{l:90,w:47,h:60}]},
+  "MDL 7272 ENV":{pallets:[{l:90,w:52,h:52},{l:90,w:52,h:41}]},
+  "MDL 7272 SNV":{pallets:[{l:90,w:52,h:52}]},
+  "MDL 7296 ENV":{pallets:[{l:90,w:52,h:59},{l:90,w:52,h:43}]},
+  "MDL 7296 SNV":{pallets:[{l:90,w:52,h:59}]},
+  "MDL 8484 ENV":{pallets:[{l:90,w:47,h:48},{l:90,w:47,h:27},{l:90,w:47,h:46}]},
+  "MDL 8484 SNV":{pallets:[{l:90,w:47,h:48},{l:90,w:47,h:27}]},
+  "MDL 9696 ENV":{pallets:[{l:102,w:52,h:28},{l:90,w:52,h:41},{l:102,w:52,h:44}]},
+  "MDL 9696 SNV":{pallets:[{l:102,w:52,h:28},{l:90,w:52,h:41}]},
+  "MDL 10284 ENV":{pallets:[{l:90,w:47,h:40},{l:108,w:47,h:37},{l:102,w:52,h:44}]},
+  "MDL 10284 SNV":{pallets:[{l:90,w:47,h:40},{l:108,w:47,h:37}]},
+  "MDL 84102 ENV":{pallets:[{l:90,w:47,h:53},{l:90,w:47,h:31},{l:90,w:47,h:50}]},
+  "MDL 84102 SNV":{pallets:[{l:90,w:47,h:53},{l:90,w:47,h:31}]},
+  "MDL 84126 ENV":{pallets:[{l:90,w:47,h:51},{l:90,w:47,h:44},{l:90,w:47,h:57}]},
+  "MDL 84126 SNV":{pallets:[{l:90,w:47,h:51},{l:90,w:47,h:44}]},
+  "MDL 96120 ENV":{pallets:[{l:102,w:52,h:37},{l:90,w:52,h:43},{l:102,w:52,h:50}]},
+  "MDL 96120 SNV":{pallets:[{l:102,w:52,h:37},{l:90,w:52,h:43}]},
+  "MDL 96144 ENV":{pallets:[{l:102,w:52,h:44},{l:90,w:52,h:46},{l:102,w:52,h:54}]},
+  "MDL 96144 SNV":{pallets:[{l:102,w:52,h:44},{l:90,w:52,h:46}]},
+  "MDL 96168 ENV":{pallets:[{l:102,w:52,h:46},{l:90,w:52,h:49},{l:102,w:52,h:30},{l:90,w:47,h:42}]},
+  "MDL 96168 SNV":{pallets:[{l:102,w:52,h:46},{l:90,w:52,h:49}]},
+  "MDL 96192 ENV":{pallets:[{l:102,w:52,h:41},{l:90,w:52,h:49},{l:90,w:47,h:25},{l:102,w:52,h:33},{l:90,w:47,h:42}]},
+  "MDL 96192 SNV":{pallets:[{l:102,w:52,h:41},{l:90,w:52,h:49},{l:90,w:47,h:25}]},
+  "MDL 102102 ENV":{pallets:[{l:90,w:47,h:45},{l:108,w:47,h:44},{l:90,w:47,h:40}]},
+  "MDL 102102 SNV":{pallets:[{l:90,w:47,h:45},{l:108,w:47,h:44}]},
+  "MDL 102126 ENV":{pallets:[{l:90,w:47,h:61},{l:108,w:47,h:46},{l:108,w:47,h:48}]},
+  "MDL 102126 SNV":{pallets:[{l:90,w:47,h:61},{l:108,w:47,h:46}]},
+  "MDL 102144 ENV":{pallets:[{l:90,w:47,h:61},{l:108,w:47,h:37},{l:90,w:47,h:40},{l:108,w:47,h:27}]},
+  "MDL 102144 SNV":{pallets:[{l:90,w:47,h:61},{l:108,w:47,h:37}]},
+  "MDL 102168 ENV":{pallets:[{l:90,w:47,h:53},{l:108,w:47,h:43},{l:90,w:47,h:22},{l:90,w:47,h:51},{l:108,w:47,h:29}]},
+  "MDL 102168 SNV":{pallets:[{l:90,w:47,h:53},{l:108,w:47,h:43},{l:90,w:47,h:22}]},
+  "MDL 102186 ENV":{pallets:[{l:90,w:47,h:55},{l:108,w:47,h:43},{l:90,w:47,h:22},{l:90,w:47,h:52},{l:108,w:47,h:31}]},
+  "MDL 102186 SNV":{pallets:[{l:90,w:47,h:55},{l:108,w:47,h:43},{l:90,w:47,h:22}]}
+};
+const BOOTH_KEYS = Object.keys(BOOTH_DATA);
+const BOOTH_KEYS_BY_LEN = [...BOOTH_KEYS].sort((a,b)=>b.length-a.length);
+
+// Match a free-form line-item name to a BOOTH_DATA key (mirrors
+// orders-dashboard.html findBoothData, but returns the key).
+function findBoothKey(rawName){
+  if(!rawName) return null;
+  if(BOOTH_DATA[rawName]) return rawName;
+  const norm=String(rawName).trim().toLowerCase();
+  if(!norm) return null;
+  for(const key of BOOTH_KEYS_BY_LEN){
+    const k=key.toLowerCase();
+    if(norm===k) return key;
+    if(norm.startsWith(k)){
+      const next=norm.charAt(k.length);
+      if(next===''||/[\s\-—,(/]/.test(next)) return key;
+    }
+  }
+  return null;
+}
+
+// ── Truck specs (usable interior, inches). Floor-only, so height is
+// informational. Conservative usable length (interior minus nose/door). ──
+const TRUCKS = [
+  { id:"53", label:"53' dry van", len:630, width:98,  height:108 },
+  { id:"48", label:"48' dry van", len:570, width:98,  height:108 },
+  { id:"26", label:"26' box",     len:312, width:96,  height:90  },
+  { id:"custom", label:"Custom",  len:630, width:98,  height:108 },
+];
+let _truckId = "53";
+
+// ── State ────────────────────────────────────────────────────────────
+let rows = [];  // [{model, qty}]
+
+function activeTruck(){
+  if(_truckId === "custom"){
+    return {
+      id:"custom", label:"Custom",
+      len: (parseFloat(document.getElementById('cuLen').value)||0) * 12,
+      width: parseFloat(document.getElementById('cuWid').value)||0,
+      height: parseFloat(document.getElementById('cuHt').value)||0,
+    };
+  }
+  return TRUCKS.find(t=>t.id===_truckId);
+}
+
+// ── Calc engine — two-lane linear-feet, floor only ───────────────────
+// Each pallet sits with its narrow side across a lane. Pallets that fit a
+// half-width lane pair up two-to-a-row; wider ones block the full width.
+// Segments (a paired row, a lone narrow pallet, or a wide pallet) are then
+// packed into trucks first-fit-decreasing — a segment can't span two trucks.
+function computeLoad(palletList, truck){
+  const laneThreshold = truck.width / 2;
+  const halves = [], fulls = [];
+  for(const p of palletList){
+    const across = Math.min(p.l, p.w);
+    const along  = Math.max(p.l, p.w);
+    if(across <= laneThreshold) halves.push(along);
+    else fulls.push(along);
+  }
+  halves.sort((a,b)=>b-a);
+  const segments = [];
+  for(let i=0;i<halves.length;i+=2){
+    segments.push({ len:halves[i], kind:(i+1<halves.length)?'pair':'narrow' });
+  }
+  for(const f of fulls) segments.push({ len:f, kind:'wide' });
+  segments.sort((a,b)=>b.len-a.len);
+
+  const linearTotal = segments.reduce((s,seg)=>s+seg.len,0);
+  // First-fit-decreasing bin packing into trucks of `truck.len`.
+  const bins = [];
+  let oversize = false;
+  for(const seg of segments){
+    if(seg.len > truck.len){ oversize = true; bins.push({used:seg.len, segs:[seg]}); continue; }
+    let placed=false;
+    for(const b of bins){ if(b.used + seg.len <= truck.len){ b.used+=seg.len; b.segs.push(seg); placed=true; break; } }
+    if(!placed) bins.push({used:seg.len, segs:[seg]});
+  }
+  return { linearTotal, bins, halfCount:halves.length, fullCount:fulls.length, laneThreshold, oversize };
+}
+
+function palletsForRows(){
+  const list = [], breakdown = [];
+  for(const r of rows){
+    const bd = BOOTH_DATA[r.model];
+    const qty = parseInt(r.qty)||0;
+    if(!bd || qty<=0) continue;
+    for(let q=0;q<qty;q++) for(const p of bd.pallets) list.push({l:p.l,w:p.w,h:p.h});
+    breakdown.push({ model:r.model, qty, palletsEach:bd.pallets.length, total:bd.pallets.length*qty });
+  }
+  return { list, breakdown };
+}
+
+// ── Render ───────────────────────────────────────────────────────────
+function renderTruckOpts(){
+  document.getElementById('truckOpts').innerHTML = TRUCKS.map(t=>
+    `<button class="truck-btn${t.id===_truckId?' active':''}" onclick="pickTruck('${t.id}')">${t.label}</button>`
+  ).join('');
+  document.getElementById('customDims').classList.toggle('show', _truckId==='custom');
+}
+function pickTruck(id){ _truckId=id; renderTruckOpts(); recompute(); }
+
+function renderRows(){
+  const opts = BOOTH_KEYS.map(k=>`<option value="${k}">${k}</option>`).join('');
+  document.getElementById('rows').innerHTML = rows.map((r,i)=>`
+    <div class="row">
+      <select onchange="rows[${i}].model=this.value;recompute()">
+        <option value="">— Select model —</option>
+        ${opts}
+      </select>
+      <input class="qty" type="number" min="1" value="${r.qty}" oninput="rows[${i}].qty=this.value;recompute()">
+      <button class="rm" title="Remove" onclick="rows.splice(${i},1);renderRows();recompute()">&times;</button>
+    </div>
+  `).join('');
+  // set selected model values (can't inline because of quoting on long keys)
+  document.querySelectorAll('#rows .row select').forEach((sel,i)=>{ sel.value = rows[i].model || ''; });
+}
+function addRow(){ rows.push({model:'', qty:1}); renderRows(); }
+
+function fmtFt(inches){ return (inches/12).toFixed(1); }
+
+function recompute(){
+  const truck = activeTruck();
+  const { list, breakdown } = palletsForRows();
+  const el = document.getElementById('results');
+  if(!list.length || !truck.len){
+    el.innerHTML = '<div class="empty">Add at least one booth to see truckloads.</div>';
+    return;
+  }
+  const r = computeLoad(list, truck);
+  const trucks = r.bins.length;
+  const capacity = trucks * truck.len;
+  const util = capacity>0 ? (r.linearTotal/capacity)*100 : 0;
+
+  const barsHtml = r.bins.map((b,i)=>{
+    const pct = Math.min(100, (b.used/truck.len)*100);
+    return `<div class="truckbar-wrap">
+      <div class="truckbar-head"><span>Truck ${i+1}</span><span>${fmtFt(b.used)} / ${fmtFt(truck.len)} ft &middot; ${pct.toFixed(0)}%</span></div>
+      <div class="truckbar"><div class="truckbar-fill" style="width:${Math.max(pct,6)}%">${pct.toFixed(0)}%</div></div>
+    </div>`;
+  }).join('');
+
+  const totalPallets = list.length;
+  const rowsHtml = breakdown.map(b=>`<tr>
+    <td>${b.model}</td><td class="num">${b.qty}</td><td class="num">${b.palletsEach}</td><td class="num">${b.total}</td>
+  </tr>`).join('');
+
+  el.innerHTML = `
+    <div class="res-grid">
+      <div class="stat"><div class="v big">${trucks}</div><div class="l">${truck.label}${trucks===1?'':'s'} needed</div></div>
+      <div class="stat"><div class="v">${totalPallets}</div><div class="l">Pallets</div></div>
+      <div class="stat"><div class="v">${fmtFt(r.linearTotal)}<span style="font-size:14px;color:var(--muted)"> ft</span></div><div class="l">Linear feet used</div></div>
+      <div class="stat"><div class="v">${util.toFixed(0)}<span style="font-size:14px;color:var(--muted)">%</span></div><div class="l">Avg fill across trucks</div></div>
+    </div>
+    ${r.oversize?'<div class="banner">⚠ A pallet is longer than the selected truck — check the truck dimensions.</div>':''}
+    ${barsHtml}
+    <table>
+      <thead><tr><th>Model</th><th class="num">Qty</th><th class="num">Pallets ea.</th><th class="num">Total pallets</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    <div class="note">
+      <b>How this is figured:</b> ${truck.label} usable floor ≈ ${fmtFt(truck.len)} ft long × ${truck.width}" wide.
+      Pallets ≤ ${r.laneThreshold}" across pair up two side-by-side; wider booth pallets (52–54") block the full width.
+      Floor space only — <b>no stacking</b>. A pallet can't be split across two trucks, so the truck count rounds up at the pallet, not the foot.
+      This is a planning estimate; real loadout depends on how the driver builds the load.
+    </div>`;
+}
+
+// ── Pre-fill from an order (?order=<quoteNumber>) ────────────────────
+async function prefillFromOrder(quoteNumber){
+  const banner = document.getElementById('prefillBanner');
+  try{
+    const res = await fetch('/api/orders', { credentials:'include' });
+    const data = await res.json();
+    const order = (data.orders||[]).find(o=>o.quote_number===quoteNumber);
+    if(!order){ banner.style.display='block'; banner.textContent=`Couldn't find order ${quoteNumber} — start from scratch below.`; return; }
+    const items = order.json_snapshot?.lineItems || [];
+    const counts = {};
+    for(const it of items){
+      const key = findBoothKey(it.name || it.productName);
+      if(!key) continue;
+      counts[key] = (counts[key]||0) + (parseInt(it.qty)||1);
+    }
+    rows = Object.entries(counts).map(([model,qty])=>({model,qty}));
+    if(!rows.length){ rows=[{model:'',qty:1}]; }
+    const co = order.company || order.json_snapshot?.customer?.company || order.deal_name || quoteNumber;
+    banner.style.display='block';
+    banner.textContent = `Pre-filled from order ${quoteNumber}${co?` — ${co}`:''}. Adjust below as needed.`;
+  }catch(e){
+    banner.style.display='block';
+    banner.textContent = `Couldn't load order ${quoteNumber} (${e.message}). Start from scratch below.`;
+    rows=[{model:'',qty:1}];
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────
+(async function init(){
+  renderTruckOpts();
+  const orderParam = new URLSearchParams(location.search).get('order');
+  if(orderParam){ await prefillFromOrder(orderParam); }
+  if(!rows.length) rows=[{model:'',qty:1}];
+  renderRows();
+  recompute();
+})();
+</script>
+</body>
+</html>

@@ -1596,7 +1596,7 @@ const server = http.createServer(async (req, res) => {
         { description: 'MDL 9696 — booth shell (8\'×8\')',     amount: 350000 },
         { description: 'AP 9696 — acoustic panel package',     amount:  58800 },
         { description: 'Freight — ABF Standard LTL',           amount:  25000 },
-        { description: 'Sales Tax (TaxJar, TN 9.25%)',         amount:  37840 },
+        { description: 'Sales Tax (TaxJar, TN 9.75%)',         amount:  42296 },
       ];
       for (const it of lines) {
         await stripeReq('/invoiceitems', {

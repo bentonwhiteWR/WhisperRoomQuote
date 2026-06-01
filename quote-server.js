@@ -1596,7 +1596,7 @@ const server = http.createServer(async (req, res) => {
         { description: 'MDL 9696 — booth shell (8\'×8\')',     amount: 350000 },
         { description: 'AP 9696 — acoustic panel package',     amount:  58800 },
         { description: 'Freight — ABF Standard LTL',           amount:  25000 },
-        { description: 'Sales Tax (TaxJar, TN 9.25%)',         amount:  37840 },
+        { description: 'Sales Tax (TaxJar, TN 9.75%)',         amount:  42296 },
       ];
       for (const it of lines) {
         await stripeReq('/invoiceitems', {
@@ -10095,6 +10095,16 @@ ${q.accepted ? `
 
   if (pathname === '/orders' && req.method === 'GET') {
     const html = fs.readFileSync(path.join(__dirname, 'orders-dashboard.html'), 'utf8');
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+    return;
+  }
+
+  // Truckload calculator — pallet floor-space → number of truckloads.
+  // Standalone (manual model+qty entry) and pre-fillable via ?order=<quoteNumber>.
+  if (pathname === '/truckload' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/deals' }); res.end(); return; }
+    const html = fs.readFileSync(path.join(__dirname, 'truck-loadout.html'), 'utf8');
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);
     return;

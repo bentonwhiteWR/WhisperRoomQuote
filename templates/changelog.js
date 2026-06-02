@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.59.6', date:'June 2, 2026', tag:'feature',
+      changes:[
+        {t:'feature', d:'**Marketing dashboard: "ad-acquisition quality" strip on the paid funnel.** A new line under the funnel splits your closed-won deals into how customers actually found us through ads: **Prospecting touch** (a genuine non-branded search — real new-customer acquisition), **Branded-only** (they only ever searched for us by name), and **Unknown** (clicked an ad but no detail to tell). It answers “how much of our ad ROAS is winning new customers vs recapturing people who already know us?” Honest caveat shown on the strip: we only store each contact&rsquo;s first and last ad touch, so the prospecting count is a floor — the real number is at least that high.'},
+      ]
+    },
+    {
       v:'1.59.5', date:'June 2, 2026', tag:'add',
       changes:[
         {t:'add', d:'**Ship calendar: "Track with carrier" button.** Click a shipment on the Shipping ship calendar and the detail popup now has a button that opens the carrier&rsquo;s own live tracking page (ABF, Old Dominion, FedEx, UPS, USPS) for that PRO/tracking number — no more copy-pasting into the carrier site.'},

@@ -234,6 +234,14 @@ const STAGE_LABELS = {
   '1846401':            'COVID-19 Delay',
 };
 
+// Brand-intent markers for the ad-acquisition-quality strip (v1.59.6). A
+// captured paid touch counts as "branded" when its search term contains one
+// of these, or its campaign name looks branded — i.e. the customer was
+// searching for us by name, the least-incremental kind of paid click. Edit
+// here (or add branded campaign names) if the brand string ever changes.
+// Matched case-insensitively as a substring (ILIKE '%term%'). (v1.59.6)
+const BRAND_TERMS = ['whisper'];
+
 // Entry point. Returns true if the request was handled (caller stops
 // dispatching), false otherwise. ctx provides everything from
 // quote-server.js's request handler closure: { db, getSession, json,
@@ -828,6 +836,69 @@ async function handle(req, res, ctx) {
         return true;
       }
       ctx.json({ rows, type, model: am.model });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/ad-quality ─────────────────────────────────
+  // Backs the "ad-acquisition quality" strip (v1.59.6). Splits the SAME
+  // closed-won deal set as the funnel's Closed/Revenue (closedate-windowed,
+  // attributed to paid under the selected model) into three buckets by what
+  // the captured ad touches look like:
+  //   prospecting → ≥1 captured touch is a NON-branded paid search (real
+  //                 acquisition beyond brand) — the number that makes the
+  //                 all-interactions ROAS a defensible incremental read.
+  //   branded     → every captured paid touch is branded (searching for us
+  //                 by name — least incremental).
+  //   unknown     → qualifies via a gclid only, with no campaign/term detail
+  //                 to judge.
+  // IMPORTANT (honesty): we store only the FIRST and LATEST touch per contact,
+  // not the full event history — so a branded-only-looking contact may have
+  // had a non-branded MIDDLE touch we never captured. That means `prospecting`
+  // is a FLOOR (genuine ad acquisition is ≥ this), never an overcount. The
+  // brand heuristic (BRAND_TERMS) is config Gabe should eyeball, like
+  // segment_map.json. Returns one row per non-empty bucket: {bucket,deals,revenue}.
+  if (pathname === '/api/marketing/ad-quality' && req.method === 'GET') {
+    try {
+      const days = _parseDays(req);
+      const am   = _attrModel(req);
+      if (!ctx.db) { ctx.json({ rows: [], model: am.model }); return true; }
+
+      // Brand-intent SQL fragments. BRAND_TERMS is controlled config (not user
+      // input), so inlining as ILIKE substrings is safe. A touch is "branded"
+      // when its term matches a brand word OR its campaign name looks branded.
+      const brandLike = col => BRAND_TERMS.map(t => `COALESCE(${col}, '') ILIKE '%${t}%'`).join(' OR ');
+      const touchBranded = (term, camp) => `((${brandLike(term)}) OR COALESCE(${camp}, '') ILIKE '%brand%')`;
+      // A non-branded paid touch: paid-search, has some campaign/term detail, and isn't branded.
+      const prospect = (src, term, camp) =>
+        `(${src} = 'PAID_SEARCH' AND (${camp} IS NOT NULL OR ${term} IS NOT NULL) AND NOT ${touchBranded(term, camp)})`;
+      const brandedPaid = (src, term, camp) => `(${src} = 'PAID_SEARCH' AND ${touchBranded(term, camp)})`;
+
+      const hasProspect =
+        `(${prospect('c.first_source', 'c.first_source_data_2', 'c.first_source_data_1')} ` +
+        `OR ${prospect('c.latest_source', 'c.latest_source_data_2', 'c.latest_source_data_1')})`;
+      const hasBranded =
+        `(${brandedPaid('c.first_source', 'c.first_source_data_2', 'c.first_source_data_1')} ` +
+        `OR ${brandedPaid('c.latest_source', 'c.latest_source_data_2', 'c.latest_source_data_1')})`;
+
+      const rows = (await ctx.db.query(`
+        WITH classified AS (
+          SELECT d.deal_id, d.amount,
+                 CASE WHEN ${hasProspect} THEN 'prospecting'
+                      WHEN ${hasBranded}  THEN 'branded'
+                      ELSE 'unknown' END AS bucket
+            FROM marketing_hubspot_deals d
+            JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+           WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+             AND ${am.contactPaid}
+        )
+        SELECT bucket,
+               COUNT(*)::int                  AS deals,
+               COALESCE(SUM(amount), 0)::float AS revenue
+          FROM classified
+         GROUP BY bucket
+      `, [days])).rows;
+      ctx.json({ rows, model: am.model });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
   }

@@ -97,6 +97,16 @@ th.sortable .sort-arrow{display:inline-block;margin-left:3px;font-size:9px;color
 /* Segment rollup strip — one-line share-of-revenue bar */
 .seg-rollup{margin-top:16px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px}
 .seg-rollup-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-right:4px}
+/* Ad-acquisition quality strip — branded-only vs genuine prospecting touch */
+.ad-quality{margin-top:10px;padding-top:12px;border-top:1px dashed var(--border);display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px}
+.ad-quality-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-right:4px;cursor:help}
+.aq-pill{display:inline-flex;align-items:baseline;gap:6px;padding:2px 9px;border-radius:11px;font-size:11px;border:1px solid transparent;white-space:nowrap}
+.aq-pill .aq-n{font-weight:800;font-family:var(--mono)}
+.aq-pill .aq-rev{font-family:var(--mono);opacity:.75;font-size:10px}
+.aq-prospecting{background:rgba(34,197,94,.13);color:#5fd98a;border-color:rgba(34,197,94,.28)}
+.aq-branded{background:rgba(245,158,11,.13);color:#f0b54e;border-color:rgba(245,158,11,.28)}
+.aq-unknown{background:rgba(255,255,255,.05);color:var(--muted);border-color:var(--border)}
+.aq-note{color:var(--muted);font-style:italic;margin-left:auto}
 /* Maturity bar — % of window spend old enough to have closed (29d cycle) */
 .funnel-maturity{display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);flex-wrap:wrap}
 .mat-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
@@ -278,6 +288,7 @@ th.sortable .sort-arrow{display:inline-block;margin-left:3px;font-size:9px;color
     <div class="funnel" id="funnelStages"></div>
     <div class="funnel-maturity" id="funnelMaturity"></div>
     <div class="seg-rollup" id="segRollup"></div>
+    <div class="ad-quality" id="adQuality"></div>
     <div class="vs-hubspot">
       <button class="vs-hubspot-toggle" id="vsHsToggle" onclick="toggleVsHubspot()">ⓘ Why these numbers differ from HubSpot &rsaquo; Ads <span id="vsHsCaret">▾</span></button>
       <div class="vs-hubspot-body" id="vsHsBody" style="display:none">
@@ -622,13 +633,14 @@ async function loadAllTables() {
   const d = currentDaysBack;
   const q  = `?days=${d}`;
   const qm = `?days=${d}&model=${currentModel}`;  // closed-loop endpoints also take the attribution model
-  const [camp, kw, st, attr, stAttr, cov] = await Promise.all([
+  const [camp, kw, st, attr, stAttr, cov, aq] = await Promise.all([
     fetch('/api/marketing/campaigns'                 + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     fetch('/api/marketing/keywords'                  + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     fetch('/api/marketing/search-terms'              + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     fetch('/api/marketing/campaign-attribution'      + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     fetch('/api/marketing/search-term-attribution'   + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     fetch('/api/marketing/attribution-coverage'      + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
+    fetch('/api/marketing/ad-quality'                + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
   ]);
   // Cache raw rows so sort-by-column doesn't have to refetch.
   tableState.campaigns.rawRows   = camp.rows   || [];
@@ -641,6 +653,7 @@ async function loadAllTables() {
   renderKeywords(tableState.keywords.rawRows);
   renderSearchTerms(tableState.searchTerms.rawRows, tableState.searchTerms.attrRows);
   renderSummary(camp.rows || [], cov || {});
+  renderAdQuality(aq || {});
 }
 
 function renderSummary(rows, cov) {
@@ -830,6 +843,37 @@ function renderSegRollup(list) {
       return `${segTag(s.seg)}<span style="color:var(--muted);margin:0 12px 0 4px;font-family:var(--mono)">${p}%</span>`;
     }).join('') +
     `<span style="color:var(--muted);font-style:italic;margin-left:auto">${MODEL_LABELS[currentModel] || 'First interaction'} attribution</span>`;
+}
+
+// v1.59.6 — ad-acquisition quality strip. Splits the same closed-won deals as
+// the funnel's Closed/Revenue into prospecting / branded-only / unknown by
+// what the captured ad touches look like, so you can see how much of the
+// all-interactions ROAS rests on genuine prospecting vs branded (least-
+// incremental) clicks. Prospecting is a FLOOR — we store only first+latest
+// touch, so unseen middle touches can only push it up. Shown on all models
+// (like the segment rollup); the classification always reads first+latest
+// touch regardless of which model gates the deal set.
+function renderAdQuality(aq) {
+  const el = document.getElementById('adQuality');
+  if (!el) return;
+  const rows = (aq && aq.rows) || [];
+  const by = { prospecting: { deals: 0, revenue: 0 }, branded: { deals: 0, revenue: 0 }, unknown: { deals: 0, revenue: 0 } };
+  rows.forEach(r => { if (by[r.bucket]) by[r.bucket] = { deals: r.deals || 0, revenue: r.revenue || 0 }; });
+  const totalDeals = by.prospecting.deals + by.branded.deals + by.unknown.deals;
+  if (!totalDeals) { el.innerHTML = ''; return; }
+  const order = [
+    { key: 'prospecting', cls: 'aq-prospecting', label: 'Prospecting touch' },
+    { key: 'branded',     cls: 'aq-branded',     label: 'Branded-only' },
+    { key: 'unknown',     cls: 'aq-unknown',     label: 'Unknown' },
+  ];
+  el.innerHTML =
+    `<span class="ad-quality-label" title="Of the ${totalDeals} paid-attributed closed-won deals, how many show a genuine non-branded ('prospecting') ad touch vs only branded searches. We store first + latest touch only, so 'prospecting' is a FLOOR — real ad acquisition is at least this high.">Ad-acquisition quality</span>` +
+    order.filter(o => by[o.key].deals > 0).map(o => {
+      const b = by[o.key];
+      return `<span class="aq-pill ${o.cls}">${o.label} <span class="aq-n">${fmtInt(b.deals)}</span>` +
+             (b.revenue ? `<span class="aq-rev">· ${fmtUSD(b.revenue)}</span>` : '') + `</span>`;
+    }).join('') +
+    `<span class="aq-note">${by.prospecting.deals}/${totalDeals} deals show a real prospecting touch (floor)</span>`;
 }
 
 function renderCampaigns(rows, attrRows) {

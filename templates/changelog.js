@@ -51,9 +51,9 @@ module.exports = function renderChangelog() {
 
   ${[
     {
-      v:'1.59.1', date:'June 2, 2026', tag:'fix',
+      v:'1.59.2', date:'June 2, 2026', tag:'fix',
       changes:[
-        {t:'fix', d:'**Assembly manuals: EFP section now finds its file reliably.** EFP PDFs are filed per size under whichever vent variant exists (e.g. only "8484 E EFP.pdf"), so an "S" booth was failing to find its EFP. The builder now matches the exact size + variant first, then falls back to size-only — so it picks the right file when both variants exist and still finds the size&rsquo;s EFP when only one is on file.'},
+        {t:'fix', d:'**Assembly manuals: EFP now matches the exact "{size} {type} EFP" filename** (e.g. an MDL 9696 E pulls "9696 E EFP.pdf"). Simplified from the previous attempt to the literal naming convention.'},
       ]
     },
     {

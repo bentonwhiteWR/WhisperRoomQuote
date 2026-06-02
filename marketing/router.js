@@ -32,6 +32,11 @@ const hsEtl = require('./hubspot-etl');
 // ownerIds to re-lock — e.g. ['36303670', '36320208'] for Benton + Gabe.
 const MARKETING_ALLOWLIST = [];
 
+// WhisperRoom's HubSpot portal/account id (from get_user_details / record
+// URLs). Used to build deep links to contact (0-1) and deal (0-3) records
+// for the drill-down popups. Single place to change if the portal ever moves.
+const HS_PORTAL_ID = '5764220';
+
 // HubSpot's first_source_data_1 stores the campaign name at the time of
 // first touch. When a Google Ads campaign is renamed (e.g. A/B variants
 // merged into a "Combined" parent), historical HubSpot contacts retain
@@ -213,6 +218,21 @@ const QUOTE_STAGES = [
   '1021560863',           // Return In Progress
   '1846401',              // COVID-19 Delay
 ];
+
+// Human labels for the (legacy-id) dealstage values above — used by the
+// drill-down popup so a Quotes-row reads "Sent Quote", not "appointmentscheduled".
+// Anything not listed falls back to the raw stage id.
+const STAGE_LABELS = {
+  appointmentscheduled: 'Sent Quote',
+  qualifiedtobuy:       'Updated Quote',
+  contractsent:         'Verbal Confirmation',
+  closedwon:            'Closed won',
+  '845719':             'Shipped',
+  closedlost:           'Closed lost',
+  '895819':             'Refund',
+  '1021560863':         'Return In Progress',
+  '1846401':            'COVID-19 Delay',
+};
 
 // Entry point. Returns true if the request was handled (caller stops
 // dispatching), false otherwise. ctx provides everything from
@@ -735,6 +755,80 @@ async function handle(req, res, ctx) {
       `, [days, QUOTE_STAGES])).rows[0] : {};
       ctx.json({ ...(r || {}), model: am.model });
     } catch(e) { ctx.json({ error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/drill ──────────────────────────────────────
+  // Backs the drill-down popups (v1.59.2). Returns the ACTUAL records behind
+  // the four model-windowed numbers shown by attribution-coverage, each with a
+  // deep link to its HubSpot record so a click can land on the contact/deal:
+  //   type=contacts → paid-attributed contacts created in window (kpiHsContacts)
+  //   type=quotes   → paid deals that reached a Quote stage, created in window
+  //   type=closed   → paid closed-won deals, closed in window (deals_won_selected)
+  //   type=revenue  → same closed-won set as `closed`, ordered by amount DESC
+  //                   (the records summing to revenue_selected)
+  // Uses the SAME ?days= window + ?model= attribution as the cards, so the
+  // modal's row count matches the number the user clicked. Capped at 500 rows
+  // (no realistic window approaches that; the cap just protects the browser).
+  // Contact records are HubSpot object type 0-1, deals 0-3.
+  if (pathname === '/api/marketing/drill' && req.method === 'GET') {
+    try {
+      const days = _parseDays(req);
+      const am   = _attrModel(req);
+      const type = (new URL(req.url, 'http://localhost').searchParams.get('type') || '').toLowerCase();
+      const rec  = `https://app.hubspot.com/contacts/${HS_PORTAL_ID}/record`;
+      if (!ctx.db) { ctx.json({ rows: [], type }); return true; }
+
+      let rows = [];
+      if (type === 'contacts') {
+        rows = (await ctx.db.query(`
+          SELECT c.contact_id AS id,
+                 COALESCE(NULLIF(c.email, ''), 'Contact ' || c.contact_id) AS label,
+                 COALESCE(c.lifecycle_stage, '—')                          AS sublabel,
+                 NULL::float                                               AS amount
+            FROM marketing_hubspot_contacts c
+           WHERE ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1
+             AND ${am.contactPaid}
+           ORDER BY ${am.contactDate} DESC
+           LIMIT 500
+        `, [days])).rows.map(r => ({ ...r, url: `${rec}/0-1/${r.id}` }));
+      } else if (type === 'quotes') {
+        rows = (await ctx.db.query(`
+          SELECT d.deal_id AS id,
+                 COALESCE(NULLIF(d.deal_name, ''), 'Deal ' || d.deal_id) AS label,
+                 d.dealstage                                             AS stage,
+                 d.amount::float                                         AS amount
+            FROM marketing_hubspot_deals d
+            JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+           WHERE d.created_at >= CURRENT_DATE - INTERVAL '1 day' * $1
+             AND d.dealstage = ANY($2::text[])
+             AND ${am.contactPaid}
+           ORDER BY d.created_at DESC
+           LIMIT 500
+        `, [days, QUOTE_STAGES])).rows.map(r => ({
+          id: r.id, label: r.label, amount: r.amount,
+          sublabel: STAGE_LABELS[r.stage] || r.stage,
+          url: `${rec}/0-3/${r.id}`,
+        }));
+      } else if (type === 'closed' || type === 'revenue') {
+        rows = (await ctx.db.query(`
+          SELECT d.deal_id AS id,
+                 COALESCE(NULLIF(d.deal_name, ''), 'Deal ' || d.deal_id) AS label,
+                 to_char(d.closed_at, 'Mon DD, YYYY')                    AS sublabel,
+                 d.amount::float                                         AS amount
+            FROM marketing_hubspot_deals d
+            JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+           WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+             AND ${am.contactPaid}
+           ORDER BY ${type === 'revenue' ? 'd.amount' : 'd.closed_at'} DESC
+           LIMIT 500
+        `, [days])).rows.map(r => ({ ...r, url: `${rec}/0-3/${r.id}` }));
+      } else {
+        ctx.json({ rows: [], error: 'unknown drill type' }, 400);
+        return true;
+      }
+      ctx.json({ rows, type, model: am.model });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
   }
 

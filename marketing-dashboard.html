@@ -97,6 +97,47 @@ th.sortable .sort-arrow{display:inline-block;margin-left:3px;font-size:9px;color
 /* Segment rollup strip — one-line share-of-revenue bar */
 .seg-rollup{margin-top:16px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px}
 .seg-rollup-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin-right:4px}
+/* Maturity bar — % of window spend old enough to have closed (29d cycle) */
+.funnel-maturity{display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);flex-wrap:wrap}
+.mat-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+.mat-bar{display:inline-block;width:120px;height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;flex-shrink:0}
+.mat-fill{display:block;height:100%;border-radius:3px;transition:width .4s ease}
+.mat-fill.good{background:var(--green)}.mat-fill.mid{background:var(--yellow)}.mat-fill.bad{background:var(--red)}
+.mat-text{font-size:11px;color:var(--muted);flex:1;min-width:200px}
+/* "Why these differ from HubSpot" expandable methodology panel */
+.vs-hubspot{margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.vs-hubspot-toggle{background:none;border:none;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;padding:0;letter-spacing:.02em}
+.vs-hubspot-toggle:hover{color:var(--orange)}
+.vs-hubspot-body{margin-top:12px;display:grid;gap:9px}
+.vs-note{font-size:11.5px;line-height:1.5;color:var(--muted);padding-left:11px;border-left:2px solid var(--border)}
+.vs-note strong{color:var(--text);font-weight:700}
+.vs-note em{color:var(--text);font-style:normal;opacity:.85}
+/* Drill-down — clickable funnel/KPI numbers + the record-list modal they open */
+.drillable{cursor:pointer}
+.card.drillable:hover{border-color:var(--orange)}
+.card.drillable .card-value{transition:color .12s}
+.card.drillable:hover .card-value{color:var(--orange)}
+.funnel-stage.drillable:hover .funnel-stage-value{color:var(--orange)}
+.funnel-stage.drillable .funnel-stage-value::after{content:' ↗';font-size:11px;color:var(--muted);font-family:inherit}
+.drill-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:1000;justify-content:center;align-items:flex-start;padding:56px 16px;overflow-y:auto}
+.drill-overlay.open{display:flex}
+.drill-modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;width:100%;max-width:640px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.55)}
+.drill-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:17px 20px;border-bottom:1px solid var(--border)}
+.drill-title{font-size:15px;font-weight:800}
+.drill-meta{font-size:11px;color:var(--muted);margin-top:3px}
+.drill-close{background:none;border:none;color:var(--muted);font-size:25px;line-height:1;cursor:pointer;padding:0 2px;font-family:inherit}
+.drill-close:hover{color:var(--text)}
+.drill-body{overflow-y:auto;padding:4px 0}
+.drill-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 20px;text-decoration:none;color:inherit;border-bottom:1px solid rgba(255,255,255,.035)}
+.drill-row:hover{background:rgba(255,255,255,.045)}
+.drill-row-main{min-width:0;flex:1}
+.drill-row-label{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.drill-row-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.drill-row-amt{font-size:13px;font-weight:700;font-family:var(--mono);color:var(--green);white-space:nowrap}
+.drill-row-link{font-size:11px;color:var(--orange);white-space:nowrap;margin-left:2px}
+.drill-foot{padding:11px 20px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)}
+.drill-empty{padding:34px 20px;text-align:center;color:var(--muted);font-size:13px}
+
 /* Segment tags (table + rollup). Color by segment for instant scanning. */
 .seg-tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:.02em;white-space:nowrap;border:1px solid transparent}
 .seg-Audiology{background:rgba(59,130,246,.14);color:#6ba8ff;border-color:rgba(59,130,246,.25)}
@@ -221,8 +262,8 @@ th.sortable .sort-arrow{display:inline-block;margin-left:3px;font-size:9px;color
     <div class="card"><div class="card-label" id="lblClicks">Clicks (90d)</div><div class="card-value" id="kpiClicks">—</div><div class="card-sub" id="kpiCpc">— avg CPC</div></div>
     <div class="card" title="Google Ads conversion EVENTS (form fills, calls, etc.) as reported by Google's own tracking — NOT unique people. One contact can fire several, and counts can be fractional under data-driven attribution. For the people-level number, see HubSpot Contacts."><div class="card-label" id="lblConv">Google Conversions (90d)</div><div class="card-value" id="kpiConv">—</div><div class="card-sub" id="kpiCpa">— avg CPA</div></div>
     <div class="card"><div class="card-label" id="lblValue">GA4 Conv. Value (90d)</div><div class="card-value" id="kpiValue">—</div><div class="card-sub" id="kpiRoas">— GA4 ROAS</div></div>
-    <div class="card" title="Closed-won deal revenue for deals that CLOSED in the selected window (by closedate), attributed to paid under the selected model. Full deal amount per ad-touched deal (single-touch full-credit) — the same way HubSpot's Ads tool credits, NOT a fractional multi-touch split."><div class="card-label" id="lblClosedRev">Closed Revenue (90d)</div><div class="card-value" id="kpiClosedRev">—</div><div class="card-sub" id="kpiDealCount">— deals</div></div>
-    <div class="card" title="Unique HubSpot contacts we can tie to paid search via STORED signals — a captured Google gclid, or a paid-search first/latest analytics source — created in range. This is a provable floor: HubSpot's Ads tool counts MORE ad interactions (clicks that never stored a gclid), so 'all' here (~gclid count) reads lower than the Ads page's 'All ad interactions'. The First-interaction model lines up with HubSpot's 'First ad interaction'."><div class="card-label" id="lblHsContacts">HubSpot Contacts (first-touch paid)</div><div class="card-value" id="kpiHsContacts">—</div><div class="card-sub" id="kpiHsContactsSub">attributed to paid</div></div>
+    <div class="card drillable" onclick="openDrill('revenue','Closed-won revenue — paid-attributed deals')" title="Closed-won deal revenue for deals that CLOSED in the selected window (by closedate), attributed to paid under the selected model. Full deal amount per ad-touched deal (single-touch full-credit) — the same way HubSpot's Ads tool credits, NOT a fractional multi-touch split. Click to list the deals."><div class="card-label" id="lblClosedRev">Closed Revenue (90d)</div><div class="card-value" id="kpiClosedRev">—</div><div class="card-sub" id="kpiDealCount">— deals</div></div>
+    <div class="card drillable" onclick="openDrill('contacts','HubSpot contacts attributed to paid')" title="Unique HubSpot contacts we can tie to paid search via STORED signals — a captured Google gclid, or a paid-search first/latest analytics source — created in range. This is a provable floor: HubSpot's Ads tool counts MORE ad interactions (clicks that never stored a gclid), so 'all' here (~gclid count) reads lower than the Ads page's 'All ad interactions'. The First-interaction model lines up with HubSpot's 'First ad interaction'. Click to list the contacts."><div class="card-label" id="lblHsContacts">HubSpot Contacts (first-touch paid)</div><div class="card-value" id="kpiHsContacts">—</div><div class="card-sub" id="kpiHsContactsSub">attributed to paid</div></div>
     <div class="card" title="Closed-won revenue (deals that closed in the window, by closedate) ÷ total paid-search spend, for contacts attributed under the selected model. Switch models with the Attribution selector above."><div class="card-label" id="lblTrueRoas">True ROAS (First interaction)</div><div class="card-value" id="kpiTrueRoas">—</div><div class="card-sub" id="kpiTrueRoasSub">closed rev ÷ spend</div></div>
   </div>
 
@@ -235,7 +276,19 @@ th.sortable .sort-arrow{display:inline-block;margin-left:3px;font-size:9px;color
       <span class="coverage-detail" id="funnelModelNote">—</span>
     </div>
     <div class="funnel" id="funnelStages"></div>
+    <div class="funnel-maturity" id="funnelMaturity"></div>
     <div class="seg-rollup" id="segRollup"></div>
+    <div class="vs-hubspot">
+      <button class="vs-hubspot-toggle" id="vsHsToggle" onclick="toggleVsHubspot()">ⓘ Why these numbers differ from HubSpot &rsaquo; Ads <span id="vsHsCaret">▾</span></button>
+      <div class="vs-hubspot-body" id="vsHsBody" style="display:none">
+        <div class="vs-note"><strong>Close date vs click date.</strong> We count revenue by when a deal <em>closed</em>; HubSpot Ads counts by when the ad was <em>clicked</em> (ad interaction inside the date range). With your ~29-day-plus sales cycle, recent windows undercount in HubSpot — its ROI climbed from −46% (30d) to +37% (90d) purely as clicks matured. (See the maturity bar above.)</div>
+        <div class="vs-note"><strong>ROAS vs ROI — different formula, same data.</strong> We show <em>ROAS = revenue ÷ spend</em>. HubSpot shows <em>ROI = (revenue − spend) ÷ spend</em>. So our 2.93x ROAS is the same as +193% ROI; HubSpot's "37% ROI" equals 1.37x ROAS.</div>
+        <div class="vs-note"><strong>Lifecycle stage (a HubSpot data-hygiene gap).</strong> HubSpot's ROI is built to count a deal once its contact reaches the <em>Customer</em> lifecycle stage. Your paid contacts never advance past <em>Sales Qualified Lead</em> (0 are Customer), so HubSpot's native Customer/ROI reporting is unreliable for you. We count every closed-won deal regardless of lifecycle. <em>Worth fixing in HubSpot: a workflow that sets Lifecycle = Customer when a deal is won.</em></div>
+        <div class="vs-note"><strong>Ad-click coverage (Last-click / All only).</strong> We can only credit ad-clickers who left a captured gclid on the contact record (~28% of HubSpot-tracked clicks don't). HubSpot's Ads tool tracks every click server-side, so its Last/All counts read higher. First-interaction matches closely.</div>
+        <div class="vs-note"><strong>Credit model — we match HubSpot.</strong> Both credit the <em>full</em> deal amount to each ad-touched deal (single-touch), not a fractional multi-touch split.</div>
+        <div class="vs-note"><strong>Currency.</strong> Both in USD (company currency), matching HubSpot's default ROI currency setting.</div>
+      </div>
+    </div>
   </div>
 
   <!-- Section titles include the current date range (set dynamically). -->
@@ -266,6 +319,22 @@ th.sortable .sort-arrow{display:inline-block;margin-left:3px;font-size:9px;color
   </div>
 </div>
 
+<!-- Drill-down modal (v1.59.2) — lists the actual HubSpot records behind a
+     clicked funnel/KPI number, each row linking to its HubSpot record page. -->
+<div class="drill-overlay" id="drillOverlay" onclick="if(event.target===this)closeDrill()">
+  <div class="drill-modal" role="dialog" aria-modal="true" aria-labelledby="drillTitle">
+    <div class="drill-head">
+      <div>
+        <div class="drill-title" id="drillTitle">Records</div>
+        <div class="drill-meta" id="drillMeta">—</div>
+      </div>
+      <button class="drill-close" onclick="closeDrill()" aria-label="Close">&times;</button>
+    </div>
+    <div class="drill-body" id="drillBody"></div>
+    <div class="drill-foot" id="drillFoot"></div>
+  </div>
+</div>
+
 <script>
 // ── Theme ────────────────────────────────────────────────────────────
 function toggleTheme() {
@@ -289,6 +358,9 @@ fetch('/api/version').then(r => r.json()).then(d => {
 const fmtUSD = n => n == null ? '—' : '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtInt = n => n == null ? '—' : Number(n).toLocaleString('en-US');
 const fmtNum = n => n == null ? '—' : Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+// Escape user/HubSpot-sourced text (emails, deal names) before injecting into innerHTML.
+const escHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmtDate = iso => {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -408,6 +480,9 @@ let currentDaysBack = 90;
 // v1.50.8 — selected attribution model. Drives ?model= on the closed-loop
 // endpoints. 'first' matches the prior hardcoded first-touch behavior.
 let currentModel = 'first';
+// v1.51.x — WhisperRoom's average close cycle. Spend younger than this hasn't
+// had a full cycle to convert, so it's "immature" for ROAS judgment.
+const AVG_CYCLE_DAYS = 29;
 const MODEL_LABELS = { first: 'First interaction', last: 'Last click', all: 'All ad interactions' };
 // Honest, signal-level labels for the HubSpot Contacts card. Our paid
 // attribution is bounded by what's STORED on the contact (a captured gclid
@@ -453,6 +528,53 @@ function changeModel(model) {
   if (hint) hint.textContent = MODEL_HINTS[model] || '';
   loadAllTables();
 }
+
+// v1.51.x — expand/collapse the "why this differs from HubSpot" notes.
+function toggleVsHubspot() {
+  const body = document.getElementById('vsHsBody');
+  const open = body.style.display === 'none';
+  body.style.display = open ? 'grid' : 'none';
+  document.getElementById('vsHsCaret').textContent = open ? '▴' : '▾';
+}
+
+// v1.59.2 — drill-down popups. Clicking a funnel/KPI number opens a modal
+// listing the actual HubSpot records behind it, each linking to its record
+// page. Hits /api/marketing/drill with the SAME days+model as the cards, so
+// the modal's count agrees with the number the user clicked.
+// type ∈ contacts | quotes | closed | revenue.
+function openDrill(type, title) {
+  const set = (id, html) => { document.getElementById(id).innerHTML = html; };
+  document.getElementById('drillOverlay').classList.add('open');
+  document.getElementById('drillTitle').textContent = title;
+  document.getElementById('drillMeta').textContent =
+    `${MODEL_LABELS[currentModel] || 'First interaction'} attribution · last ${currentDaysBack} days`;
+  set('drillBody', '<div class="drill-empty">Loading…</div>');
+  document.getElementById('drillFoot').textContent = '';
+  fetch(`/api/marketing/drill?type=${encodeURIComponent(type)}&days=${currentDaysBack}&model=${currentModel}`,
+        { credentials: 'include' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { set('drillBody', `<div class="drill-empty">Couldn't load records: ${escHtml(d.error)}</div>`); return; }
+      const rows = d.rows || [];
+      if (!rows.length) { set('drillBody', '<div class="drill-empty">No records in this window.</div>'); return; }
+      set('drillBody', rows.map(r => `
+        <a class="drill-row" href="${escHtml(r.url)}" target="_blank" rel="noopener">
+          <div class="drill-row-main">
+            <div class="drill-row-label">${escHtml(r.label)}</div>
+            ${r.sublabel ? `<div class="drill-row-sub">${escHtml(r.sublabel)}</div>` : ''}
+          </div>
+          ${r.amount != null ? `<div class="drill-row-amt">${fmtUSD(r.amount)}</div>` : ''}
+          <span class="drill-row-link">HubSpot ↗</span>
+        </a>`).join(''));
+      const total = rows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+      document.getElementById('drillFoot').textContent =
+        (rows.length >= 500 ? 'Showing first 500 records (capped). ' : `${fmtInt(rows.length)} record${rows.length === 1 ? '' : 's'}`)
+        + (total ? ` · ${fmtUSD(total)} total` : '');
+    })
+    .catch(() => set('drillBody', '<div class="drill-empty">Couldn\'t load records.</div>'));
+}
+function closeDrill() { document.getElementById('drillOverlay').classList.remove('open'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrill(); });
 
 // Sort handler. First click on a column sorts DESC (most common need —
 // "show me top by X"). Re-click on same column flips direction.
@@ -572,7 +694,13 @@ function renderSummary(rows, cov) {
 
   // v1.51.2 — drive the Spend→Quote→Close→Revenue funnel from the same
   // model-windowed coverage numbers, so it agrees with the cards above.
-  renderFunnel(spend, cov);
+  // Maturity = share of in-window spend old enough (≥ AVG_CYCLE_DAYS) to have
+  // had a full close cycle. Computed from the daily campaign rows.
+  const cutoff = Date.now() - AVG_CYCLE_DAYS * 86400000;
+  let matureSpend = 0;
+  rows.forEach(r => { if (new Date(r.date).getTime() <= cutoff) matureSpend += parseFloat(r.cost_usd) || 0; });
+  const maturePct = spend ? Math.round(matureSpend / spend * 100) : 0;
+  renderFunnel(spend, cov, maturePct);
 }
 
 // Attribution coverage — three stats with progress bars. Color rule:
@@ -629,7 +757,7 @@ function segTag(seg)   { return seg ? `<span class="seg-tag ${segClass(seg)}">${
 // Spend → Quote → Close → Revenue funnel strip. Driven by attribution-coverage
 // (same model-windowed numbers as the Closed Revenue / True ROAS cards), so the
 // strip and the cards always agree. CPQ = spend/quotes, CAC = spend/closes.
-function renderFunnel(spend, cov) {
+function renderFunnel(spend, cov, maturePct) {
   const quotes = parseInt(cov.quotes_selected)    || 0;
   const closes = parseInt(cov.deals_won_selected) || 0;
   const rev    = parseFloat(cov.revenue_selected) || 0;
@@ -643,20 +771,36 @@ function renderFunnel(spend, cov) {
   const cac  = closes ? spend / closes : null;
   const roas = spend  ? rev / spend    : null;
   const pct  = (a, b) => b ? Math.round(a / b * 100) + '%' : '—';
+  // `drill` = the drill-down type for stages backed by HubSpot records.
+  // Spend has none (it's Google Ads, not a HubSpot object set).
   const stages = [
     { label: 'Spend',   value: fmtUSD(spend),  sub: 'Google Ads',                              rate: '' },
-    { label: 'Quotes',  value: fmtInt(quotes), sub: cpq  != null ? fmtUSD(cpq) + ' / quote'  : '—', rate: '' },
-    { label: 'Closed',  value: fmtInt(closes), sub: cac  != null ? fmtUSD(cac) + ' / close'  : '—', rate: quotes ? pct(closes, quotes) + ' of quotes' : '' },
-    { label: 'Revenue', value: fmtUSD(rev),    sub: roas != null ? roas.toFixed(2) + 'x ROAS' : '—', rate: '' },
+    { label: 'Quotes',  value: fmtInt(quotes), sub: cpq  != null ? fmtUSD(cpq) + ' / quote'  : '—', rate: '', drill: 'quotes',  title: 'Paid deals at a Quote stage' },
+    { label: 'Closed',  value: fmtInt(closes), sub: cac  != null ? fmtUSD(cac) + ' / close'  : '—', rate: quotes ? pct(closes, quotes) + ' of quotes' : '', drill: 'closed',  title: 'Paid closed-won deals' },
+    { label: 'Revenue', value: fmtUSD(rev),    sub: roas != null ? roas.toFixed(2) + 'x ROAS' : '—', rate: '', drill: 'revenue', title: 'Closed-won revenue — paid-attributed deals' },
   ];
   document.getElementById('funnelStages').innerHTML = stages.map((s, i) => `
-    <div class="funnel-stage">
+    <div class="funnel-stage${s.drill ? ' drillable' : ''}"${s.drill ? ` onclick="openDrill('${s.drill}','${s.title}')"` : ''}>
       <div class="funnel-stage-label">${s.label}</div>
       <div class="funnel-stage-value">${s.value}</div>
       <div class="funnel-stage-sub">${s.sub}</div>
       ${s.rate ? `<div class="funnel-stage-rate">${s.rate}</div>` : ''}
       ${i < stages.length - 1 ? '<span class="arrow">▸</span>' : ''}
     </div>`).join('');
+
+  // Maturity bar — recent spend hasn't had time to close, so don't judge it.
+  const mEl = document.getElementById('funnelMaturity');
+  if (mEl) {
+    const mp  = (maturePct == null || isNaN(maturePct)) ? 0 : maturePct;
+    const cls = mp >= 70 ? 'good' : mp >= 40 ? 'mid' : 'bad';
+    const tail = mp >= 70
+      ? 'Most of this window\'s spend has had time to convert — ROAS here is reliable.'
+      : `Only ~${mp}% has had a full ~${AVG_CYCLE_DAYS}-day cycle to close — treat this window's ROAS as a floor that will rise as recent spend matures.`;
+    mEl.innerHTML =
+      `<span class="mat-label">Maturity</span>` +
+      `<span class="mat-bar"><span class="mat-fill ${cls}" style="width:${mp}%"></span></span>` +
+      `<span class="mat-text"><strong style="color:var(--text)">~${mp}%</strong> of spend is old enough to have closed. ${tail}</span>`;
+  }
 }
 
 // One-line "share of closed revenue by segment" rollup under the funnel.

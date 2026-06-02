@@ -2619,7 +2619,9 @@ function openShipEmail() {
     ccList.push(repEmail);
   }
 
-  const ccStr = ccList.filter(Boolean).join(',');
+  // Outlook treats commas as part of the address and breaks the CC list —
+  // semicolons are the separator it expects.
+  const ccStr = ccList.filter(Boolean).join(';');
   let mailto = `mailto:${toAddress}`;
   if (ccStr) mailto += `?cc=${encodeURIComponent(ccStr)}`;
   const emailWin = window.open(mailto, '_blank');

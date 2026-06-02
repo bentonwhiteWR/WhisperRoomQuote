@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.59.3', date:'June 2, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Order email no longer breaks the CC line.** When you hit Email on an order, the CC list (saved addresses + your rep email) was joined with commas, which Outlook reads as one bad address. Now joined with semicolons so the CC recipients come through correctly.'},
+      ]
+    },
+    {
       v:'1.59.2', date:'June 2, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Assembly manuals: EFP now matches the exact "{size} {type} EFP" filename** (e.g. an MDL 9696 E pulls "9696 E EFP.pdf"). Simplified from the previous attempt to the literal naming convention.'},

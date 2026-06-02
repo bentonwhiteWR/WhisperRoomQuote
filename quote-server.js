@@ -166,6 +166,42 @@ const REPS = {
   '38900892':'Chet','38732186':'Jeromy'
 };
 
+// Resolve a HubSpot owner ID from an email. Tries the exact ?email= filter
+// first, then — because that filter misses owners whose record email differs
+// in casing/whitespace — pages through ALL owners and matches case-insensitively.
+// Returns { id, firstName, lastName } or null. Used by login + session hydrate
+// so a new HubSpot user resolves automatically without being hardcoded into
+// REP_EMAILS (that map stays as a last-resort fallback for non-HubSpot logins).
+async function hubspotOwnerIdByEmail(email) {
+  if (!email) return null;
+  const target = String(email).trim().toLowerCase();
+  try {
+    const r = await httpsRequest({
+      hostname: 'api.hubapi.com',
+      path: `/crm/v3/owners?email=${encodeURIComponent(email)}&limit=1`,
+      method: 'GET', headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+    });
+    const o = (r.body?.results || [])[0];
+    if (o) return { id: String(o.id), firstName: o.firstName, lastName: o.lastName };
+  } catch(e) { /* fall through to full list */ }
+  try {
+    let after = null;
+    do {
+      const r = await httpsRequest({
+        hostname: 'api.hubapi.com',
+        path: `/crm/v3/owners?limit=100${after ? `&after=${encodeURIComponent(after)}` : ''}`,
+        method: 'GET', headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+      });
+      const hit = (r.body?.results || []).find(o => (o.email || '').trim().toLowerCase() === target);
+      if (hit) return { id: String(hit.id), firstName: hit.firstName, lastName: hit.lastName };
+      after = r.body?.paging?.next?.after || null;
+    } while (after);
+  } catch(e) {
+    console.warn(`[auth] owner list lookup threw for ${email}: ${e.message}`);
+  }
+  return null;
+}
+
 const notify = require('./lib/notify');
 const { REP_EMAILS, createNotification, notifyRep } = notify;
 // notify.init(...) called after db is available (below)
@@ -1240,15 +1276,10 @@ const server = http.createServer(async (req, res) => {
       // Look up their owner record for name + ownerId
       let ownerId = null; let displayName = user.split('@')[0];
       try {
-        const ownerRes = await httpsRequest({
-          hostname: 'api.hubapi.com',
-          path: `/crm/v3/owners?email=${encodeURIComponent(user)}&limit=1`,
-          method: 'GET', headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-        });
-        const owners = ownerRes.body?.results || [];
-        if (owners.length) {
-          ownerId = owners[0].id;
-          displayName = [owners[0].firstName, owners[0].lastName].filter(Boolean).join(' ') || displayName;
+        const owner = await hubspotOwnerIdByEmail(user);
+        if (owner) {
+          ownerId = owner.id;
+          displayName = [owner.firstName, owner.lastName].filter(Boolean).join(' ') || displayName;
         }
       } catch(e) { /* non-fatal */ }
 
@@ -8777,16 +8808,11 @@ ${q.accepted ? `
     if (!sess || sess.ownerId || !sess.email) return sess?.ownerId || null;
     let ownerId = null;
 
-    // Primary: HubSpot Owners API by email.
+    // Primary: HubSpot Owners API by email (exact filter, then full-list
+    // case-insensitive fallback — new owners often miss the exact filter).
     try {
-      const ownerRes = await httpsRequest({
-        hostname: 'api.hubapi.com',
-        path: `/crm/v3/owners?email=${encodeURIComponent(sess.email)}&limit=1`,
-        method: 'GET',
-        headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-      });
-      const owners = ownerRes.body?.results || [];
-      if (owners.length) ownerId = String(owners[0].id);
+      const owner = await hubspotOwnerIdByEmail(sess.email);
+      if (owner) ownerId = owner.id;
     } catch(e) {
       console.warn(`[auth] HubSpot owner lookup threw for ${sess.email}: ${e.message}`);
     }

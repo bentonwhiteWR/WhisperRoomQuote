@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.58.2', date:'June 2, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**New users now resolve their HubSpot owner correctly.** A newly-added HubSpot user (e.g. Josh) wasn&rsquo;t getting matched to an owner ID at login, so their session had none — which silently disables their notifications and rep attribution. The lookup used HubSpot&rsquo;s exact-email filter, which misses owners whose record email differs in casing. It now also pages through all owners and matches case-insensitively, so new logins resolve automatically (existing sessions self-heal on next load). No more per-user hardcoding needed.'},
+      ]
+    },
+    {
       v:'1.58.1', date:'June 2, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Fixed intermittent PDF failures ("Failed to launch the browser process… Cannot fork").** All server-side PDF generation is now serialized through one semaphore. The background "save to Drive" path (invoices, quotes, orders, vendor POs) was bypassing the single-at-a-time gate, so two PDFs generating at once could overload the server and fail to launch — which is why some invoice/PO PDFs silently didn&rsquo;t generate. Chromium launches also now retry a few times for transient hiccups.'},

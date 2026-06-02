@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.58.1', date:'June 2, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Fixed intermittent PDF failures ("Failed to launch the browser process… Cannot fork").** All server-side PDF generation is now serialized through one semaphore. The background "save to Drive" path (invoices, quotes, orders, vendor POs) was bypassing the single-at-a-time gate, so two PDFs generating at once could overload the server and fail to launch — which is why some invoice/PO PDFs silently didn&rsquo;t generate. Chromium launches also now retry a few times for transient hiccups.'},
+      ]
+    },
+    {
       v:'1.58.0', date:'June 2, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Vendor PO: confirm before saving vendor-profile fields.** Editing the Vendor info, Freight Terms, Payment Terms, or Standing Vendor Notes on a PO now asks whether to save the change to the vendor for future POs (OK = update the vendor profile, Cancel = this PO only) — same pattern as the existing unit-price prompt.'},

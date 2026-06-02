@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.55.0', date:'June 2, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Truckload calc: pallet rotation for tighter loads.** Pallets can now lie sideways when their long side fits across the trailer width (98″) and turning saves length — e.g. a 90×52 pallet rotated costs 52″ of trailer length instead of 90″. Rotated pallets are marked ⟳ in the diagram and tooltip. This often drops the truck count (10× single-pallet 90×52 booths now fit in one 52′ truck instead of two). Narrow 47″ pallets still pair side-by-side, which packs tighter than rotating them.'},
+        {t:'add', d:'**Wide Access (WA) toggle per booth.** Each booth row has a “WA” checkbox; when checked, one 47″ pallet on that booth (if it has one) becomes a 52″ pallet — the wide-access door’s wider crate — and the layout/truck count update accordingly. Flagged “WA” in the legend and breakdown.'},
+        {t:'fix', d:'**Hid the ENV/SNV (no-vent) models from the picker.** They duplicated the standard E/S pallet dimensions and cluttered the list. Pre-fill from an order still recognizes them, normalized back to the plain E/S model.'},
+      ]
+    },
+    {
       v:'1.54.0', date:'June 2, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Truckload calculator now draws a to-scale layout diagram.** Each truck gets a top-down floor plan with every pallet placed to scale and labeled with its L×W footprint, color-coded by model (with a legend). The engine was upgraded from a linear-feet estimate to real 2D placement (same two-lane, floor-only, no-split rules), so the picture matches the count. Hover a pallet for its full L×W×H and model.'},

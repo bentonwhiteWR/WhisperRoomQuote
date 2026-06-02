@@ -51,6 +51,53 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.57.3', date:'June 2, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Renamed the Quote Builder’s freight-area button from “Truckload” to “Truckload Estimator.”'},
+      ]
+    },
+    {
+      v:'1.57.2', date:'June 2, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Truckload diagram now lines up same-size pallets.** Within each truck, pallets are grouped by footprint (all the 102s in a row, then the 90×52s, etc.) instead of interleaving by booth — a cleaner, more realistic load picture. Ordering only; doesn’t change the truck count or split any rooms.'},
+      ]
+    },
+    {
+      v:'1.57.1', date:'June 2, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Truckload calc now keeps each booth (“room”) together on one truck.** Two packing rules: (1) fewest trucks first, then (2) never split a single booth’s pallets across trucks. Previously it packed pallet-by-pallet, so a booth with a mix (say a 102″ pallet + a 90×52) could get its pieces optimized onto different trucks. Now the calculator groups by booth and packs whole rooms — still sharing width between booths inside a truck to keep the count down.'},
+      ]
+    },
+    {
+      v:'1.57.0', date:'June 2, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Quote Builder’s 🚚 Truckload button now opens a popup** instead of jumping to the Orders page — the calculator appears right over the quote, pre-filled with its booths. Close it and you’re back on the quote, nothing lost.'},
+        {t:'log', d:'**Truckload calculator is now one shared component** (`/assets/truckload-calc.js`) used by both the Orders subtab and the Quote Builder popup, so there’s a single engine to maintain (no duplicated logic). Theme-adaptive, so it looks right on both the dark dashboards and the lighter Quote Builder.'},
+      ]
+    },
+    {
+      v:'1.56.0', date:'June 2, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Truckload calculator moved into the Orders page** as its own “🚚 Truckload” tab (the standalone /truckload page is gone). Open an order and hit “🚚 Estimate truckloads” in the drawer to jump to it pre-filled, or open it empty and add models by hand. The Quote Builder also gets a **🚚 Truckload** button next to the freight estimate that opens it pre-filled with the current quote’s booths.'},
+        {t:'add', d:'**New truck list:** 53′ dry van (52′ usable), 28′ pup (27′ usable), 40′ container (39′ usable), 20′ container (19′ usable). Containers use a 92″ interior width. Removed the 48′ van and the Custom option.'},
+      ]
+    },
+    {
+      v:'1.55.0', date:'June 2, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Truckload calc: pallet rotation for tighter loads.** Pallets can now lie sideways when their long side fits across the trailer width (98″) and turning saves length — e.g. a 90×52 pallet rotated costs 52″ of trailer length instead of 90″. Rotated pallets are marked ⟳ in the diagram and tooltip. This often drops the truck count (10× single-pallet 90×52 booths now fit in one 52′ truck instead of two). Narrow 47″ pallets still pair side-by-side, which packs tighter than rotating them.'},
+        {t:'add', d:'**Wide Access (WA) toggle per booth.** Each booth row has a “WA” checkbox; when checked, one 47″ pallet on that booth (if it has one) becomes a 52″ pallet — the wide-access door’s wider crate — and the layout/truck count update accordingly. Flagged “WA” in the legend and breakdown.'},
+        {t:'fix', d:'**Hid the ENV/SNV (no-vent) models from the picker.** They duplicated the standard E/S pallet dimensions and cluttered the list. Pre-fill from an order still recognizes them, normalized back to the plain E/S model.'},
+      ]
+    },
+    {
+      v:'1.54.0', date:'June 2, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Truckload calculator now draws a to-scale layout diagram.** Each truck gets a top-down floor plan with every pallet placed to scale and labeled with its L×W footprint, color-coded by model (with a legend). The engine was upgraded from a linear-feet estimate to real 2D placement (same two-lane, floor-only, no-split rules), so the picture matches the count. Hover a pallet for its full L×W×H and model.'},
+        {t:'fix', d:'**Default truck is now 52′, not 53′.** Matches the trailers WhisperRoom actually uses (usable floor ≈ 618″). 48′ / 26′ box / custom options unchanged.'},
+      ]
+    },
+    {
       v:'1.53.0', date:'June 1, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Truckload calculator** (new page at <code>/truckload</code>). Estimate how many truckloads a set of booths needs — pick a truck (53′ dry van default, plus 48′, 26′ box, or custom dimensions), add booth models + quantities, and it returns trucks needed, total pallets, linear feet used, and a per-truck fill bar. Models the load as <b>floor space only (no stacking)</b> with two side-by-side lanes: narrow pallets (≤ half the trailer width) pair up two-to-a-row, wide booth pallets (52–54″) block the full width, and pallets are packed truck-by-truck so a pallet never splits across two trucks. Open it standalone, or hit “🚚 Estimate truckloads” in an order’s drawer to pre-fill from that order’s booths.'},

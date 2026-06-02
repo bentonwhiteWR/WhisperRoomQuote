@@ -1361,6 +1361,19 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Shared Truckload calculator — included by orders-dashboard (subtab) and
+  // quote-builder (popup). Served from disk; no re-deploy on UI tweaks.
+  if (pathname === '/assets/truckload-calc.js') {
+    try {
+      const buf = require('fs').readFileSync(require('path').join(__dirname, 'assets', 'truckload-calc.js'));
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(buf);
+    } catch(e) {
+      res.writeHead(404); res.end('truckload-calc.js missing');
+    }
+    return;
+  }
+
     // ── Shipping Dashboard ──────────────────────────────────────────
   if (pathname === '/shipping') {
     if (!isAuth(req)) { res.writeHead(302, {Location: '/deals'}); res.end(); return; }
@@ -10095,16 +10108,6 @@ ${q.accepted ? `
 
   if (pathname === '/orders' && req.method === 'GET') {
     const html = fs.readFileSync(path.join(__dirname, 'orders-dashboard.html'), 'utf8');
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(html);
-    return;
-  }
-
-  // Truckload calculator — pallet floor-space → number of truckloads.
-  // Standalone (manual model+qty entry) and pre-fillable via ?order=<quoteNumber>.
-  if (pathname === '/truckload' && req.method === 'GET') {
-    if (!isAuth(req)) { res.writeHead(302, { Location: '/deals' }); res.end(); return; }
-    const html = fs.readFileSync(path.join(__dirname, 'truck-loadout.html'), 'utf8');
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);
     return;

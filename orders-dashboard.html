@@ -214,6 +214,7 @@
     tbody td:nth-child(4),
     tbody td:nth-child(5) { display: none; }
   }
+
 </style>
 </head>
 <body>
@@ -235,6 +236,7 @@
   <!-- Shared notification bell — see /assets/notif-bell.js -->
   <div id="notifBellMount"></div>
   <script src="/assets/notif-bell.js" defer></script>
+  <script src="/assets/truckload-calc.js" defer></script>
   <div id="userBadge" style="display:none;align-items:center;gap:8px;flex-shrink:0">
     <span id="userName" style="font-size:11px;color:rgba(255,255,255,.5);font-weight:600"></span>
     <a href="/auth/logout" style="padding:5px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.4);text-decoration:none;white-space:nowrap">Sign Out</a>
@@ -273,9 +275,10 @@
     <div class="tab" id="tab-shipped" onclick="switchOrderFilter('shipped')">Shipped <span id="shippedCount" style="opacity:.5"></span></div>
     <div class="tab" id="tab-all" onclick="switchOrderFilter('all')">All Orders <span id="allCount" style="opacity:.5"></span></div>
     <div class="tab" id="tab-hs" onclick="switchTab('hs')">HubSpot Closed Won <span id="hsCount" style="opacity:.5"></span></div>
+    <div class="tab" id="tab-truckload" onclick="switchTab('truckload')">🚚 Truckload</div>
   </div>
 
-  <div class="filter-bar">
+  <div class="filter-bar" id="ordersFilterBar">
     <input type="text" class="search-input" id="searchInput" placeholder="Search by name, company, quote number..." oninput="filterOrders()">
   </div>
 
@@ -334,6 +337,11 @@
         </tbody>
       </table>
     </div>
+  </div>
+
+  <!-- Truckload calculator (shared asset renders into this container) -->
+  <div id="panel-truckload" style="display:none">
+    <div id="ordersTruckloadCalc"></div>
   </div>
 </div>
 
@@ -1008,11 +1016,31 @@ function getWATypeOptions(lineItems) {
   return [...opts].sort();
 }
 
-// Open the standalone truckload calculator, pre-filled from the current order.
+// Switch to the Truckload subtab, pre-filled from the current order's booths.
 function openTruckCalc(){
-  if(!currentQuoteNumber) return;
-  window.open('/truckload?order=' + encodeURIComponent(currentQuoteNumber), '_blank');
+  const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
+  const items = order?.json_snapshot?.lineItems || [];
+  tlPrefillFromItems(items);
+  const co = order?.company || order?.json_snapshot?.customer?.company || order?.deal_name || currentQuoteNumber;
+  tlShowPrefillBanner(`Pre-filled from order ${currentQuoteNumber}${co ? ' — ' + co : ''}. Adjust below as needed.`);
+  closeDrawer();
+  switchTab('truckload');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+
+// Truckload calculator subtab — rendered by the shared
+// /assets/truckload-calc.js asset (same engine the Quote Builder popup uses).
+// Created lazily on first view, reusing this page's BOOTH_DATA +
+// _BOOTH_DATA_KEYS_BY_LEN so there's no second copy of the data or engine.
+let _ordersTlCalc = null;
+function tlEnsureInit(){
+  if (_ordersTlCalc || !window.TruckloadCalc) return;
+  const el = document.getElementById('ordersTruckloadCalc');
+  if (!el) return;
+  _ordersTlCalc = TruckloadCalc.create({ container: el, boothData: BOOTH_DATA, keysByLen: _BOOTH_DATA_KEYS_BY_LEN });
+}
+function tlPrefillFromItems(items){ tlEnsureInit(); if (_ordersTlCalc) _ordersTlCalc.prefill(items); }
+function tlShowPrefillBanner(msg){ tlEnsureInit(); if (_ordersTlCalc) _ordersTlCalc.showBanner(msg); }
 
 let _freightPallets = [];
 
@@ -1593,8 +1621,14 @@ function switchOrderFilter(filter) {
     if (tab) tab.classList.toggle('active', f === filter);
   });
   document.getElementById('tab-hs').classList.remove('active');
+  const _tlTab = document.getElementById('tab-truckload');
+  if (_tlTab) _tlTab.classList.remove('active');
   document.getElementById('panel-db').style.display = '';
   document.getElementById('panel-hs').style.display = 'none';
+  const _tlPanel = document.getElementById('panel-truckload');
+  if (_tlPanel) _tlPanel.style.display = 'none';
+  const _fb = document.getElementById('ordersFilterBar');
+  if (_fb) _fb.style.display = '';
   const cal = document.getElementById('shipCalendarWrap');
   if (cal) cal.style.display = '';
   currentTab = 'db';
@@ -1609,12 +1643,19 @@ function switchTab(tab) {
     if (t) t.classList.remove('active');
   });
   document.getElementById('tab-hs').classList.toggle('active', tab === 'hs');
+  const _tlTab = document.getElementById('tab-truckload');
+  if (_tlTab) _tlTab.classList.toggle('active', tab === 'truckload');
   document.getElementById('panel-db').style.display = tab === 'db' ? '' : 'none';
   document.getElementById('panel-hs').style.display = tab === 'hs' ? '' : 'none';
+  const _tlPanel = document.getElementById('panel-truckload');
+  if (_tlPanel) _tlPanel.style.display = tab === 'truckload' ? '' : 'none';
+  const _fb = document.getElementById('ordersFilterBar');
+  if (_fb) _fb.style.display = tab === 'truckload' ? 'none' : '';
   const cal = document.getElementById('shipCalendarWrap');
   if (cal) cal.style.display = tab === 'db' ? '' : 'none';
-  filterOrders();
+  if (tab !== 'truckload') filterOrders();
   if (tab === 'hs' && allHsDeals.length === 0) loadHsDeals();
+  if (tab === 'truckload') tlEnsureInit();
 }
 
 // ── Load Data ─────────────────────────────────────────────────────
@@ -2674,6 +2715,17 @@ if (_savedRep) {
 
 loadOrders().then(() => {
   const params = new URLSearchParams(window.location.search);
+  // Deep-link to the Truckload subtab (/orders?tab=truckload). Optional
+  // booth prefill can be handed off via localStorage.wr_truckload_prefill.
+  if (params.get('tab') === 'truckload') {
+    const raw = localStorage.getItem('wr_truckload_prefill');
+    if (raw) {
+      try { tlPrefillFromItems(JSON.parse(raw)); tlShowPrefillBanner('Pre-filled booths. Adjust below as needed.'); } catch(e) {}
+      localStorage.removeItem('wr_truckload_prefill');
+    }
+    switchTab('truckload');
+    window.history.replaceState({}, '', '/orders');
+  }
   const openOrder = params.get('openOrder');
   if (openOrder) {
     switchTab('active');

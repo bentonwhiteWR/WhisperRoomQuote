@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.57.3', date:'June 2, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'Renamed the Quote Builder’s freight-area button from “Truckload” to “Truckload Estimator.”'},
+      ]
+    },
+    {
       v:'1.57.2', date:'June 2, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Truckload diagram now lines up same-size pallets.** Within each truck, pallets are grouped by footprint (all the 102s in a row, then the 90×52s, etc.) instead of interleaving by booth — a cleaner, more realistic load picture. Ordering only; doesn’t change the truck count or split any rooms.'},

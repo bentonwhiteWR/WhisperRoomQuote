@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.59.0', date:'June 2, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Tidied the top navbar.** “Suppliers” (Audimute POs) is no longer its own nav button — it now lives under **Vendor Hub** as a tab. Open Vendor Hub and use the **WhisperRoom POs · Audimute POs** switcher at the top to flip between the two PO systems. One fewer button up top, and the two purchasing areas are grouped where you’d expect.'},
+        {t:'ui', d:'Under the hood, the navbar is now a single shared component instead of being copied into every page — so it stays consistent and is quicker to adjust going forward.'},
+      ]
+    },
+    {
       v:'1.58.3', date:'June 2, 2026', tag:'add',
       changes:[
         {t:'add', d:'**Audimute POs can now hold multiple tracking numbers.** When a PO ships in several boxes with separate tracking numbers, enter them comma-separated in the Tracking Number field on the Suppliers dashboard. The 📦 tracking widget lists each number with its own Track ↗ link and Copy button.'},

@@ -195,6 +195,7 @@
   .toast.error   { background: #dc2626; color: #fff; }
   .toast.info    { background: #1a1a1a; color: #fff; border: 1px solid var(--border); }
 </style>
+  <script src="/assets/nav.js" defer></script>
 </head>
 <body>
 
@@ -217,6 +218,11 @@
 </div>
 
 <div class="main">
+  <!-- Purchasing section switcher: WhisperRoom POs (this page) ↔ Audimute POs -->
+  <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:18px">
+    <a href="/vendor-pos" style="padding:9px 18px;font-size:12.5px;font-weight:700;letter-spacing:.03em;text-decoration:none;color:var(--orange);border-bottom:2px solid var(--orange);margin-bottom:-1px">WhisperRoom POs</a>
+    <a href="/suppliers" style="padding:9px 18px;font-size:12.5px;font-weight:700;letter-spacing:.03em;text-decoration:none;color:var(--muted);border-bottom:2px solid transparent">Audimute POs</a>
+  </div>
   <div class="page-header">
     <div>
       <div class="page-title">Vendor <span>Hub</span></div>

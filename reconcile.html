@@ -1577,7 +1577,14 @@ function vbInvoicedSum(po) {
 }
 function vbPoTotal(po) {
   const lines = (po.po_data && Array.isArray(po.po_data.lines)) ? po.po_data.lines : [];
-  return lines.reduce((s, l) => s + ((parseFloat(l.qty) || 0) * (parseFloat(l.unit_price) || 0)), 0);
+  // Overage counts toward the expected bill: if more was received than
+  // ordered, the vendor bills the extra units (max(ordered, received) × price).
+  const recTotals = (po.received_data && po.received_data.totals) || {};
+  return lines.reduce((s, l) => {
+    const ordered = parseFloat(l.qty) || 0;
+    const received = parseFloat(recTotals[l.id] || 0) || 0;
+    return s + (Math.max(ordered, received) * (parseFloat(l.unit_price) || 0));
+  }, 0);
 }
 function vbFmt$(n) {
   return '$' + parseFloat(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');

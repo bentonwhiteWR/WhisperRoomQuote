@@ -1080,6 +1080,11 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
         style="padding:7px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.03em">
         Own Shipping
       </button>
+      <button id="truckloadBtn" onclick="openTruckloadCalc()"
+        title="Estimate how many truckloads these booths need"
+        style="padding:7px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--orange);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.03em">
+        🚚 Truckload
+      </button>
       <div style="display:flex;align-items:center;gap:6px">
         <span style="font-size:11px;color:var(--muted)">Override:</span>
         <input type="number" id="freightOverride" placeholder="Manual $"
@@ -3061,6 +3066,17 @@ function toggleFreightOwnShipping() {
     document.getElementById('freightStatus').textContent = '';
   }
   updateSummary();
+}
+
+// Hand the current quote's booths to the Truckload calculator (Orders → 🚚
+// Truckload subtab) via localStorage, then open it in a new tab.
+function openTruckloadCalc() {
+  try {
+    const items = (typeof lineItems !== 'undefined' && Array.isArray(lineItems) ? lineItems : [])
+      .map(i => ({ name: i.name || i.productName || '', qty: i.qty || 1 }));
+    localStorage.setItem('wr_truckload_prefill', JSON.stringify(items));
+  } catch(e) { /* non-fatal — opens empty */ }
+  window.open('/orders?tab=truckload', '_blank');
 }
 
 function getTaxAmount() {

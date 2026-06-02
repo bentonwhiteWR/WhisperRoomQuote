@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.56.0', date:'June 2, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Truckload calculator moved into the Orders page** as its own “🚚 Truckload” tab (the standalone /truckload page is gone). Open an order and hit “🚚 Estimate truckloads” in the drawer to jump to it pre-filled, or open it empty and add models by hand. The Quote Builder also gets a **🚚 Truckload** button next to the freight estimate that opens it pre-filled with the current quote’s booths.'},
+        {t:'add', d:'**New truck list:** 53′ dry van (52′ usable), 28′ pup (27′ usable), 40′ container (39′ usable), 20′ container (19′ usable). Containers use a 92″ interior width. Removed the 48′ van and the Custom option.'},
+      ]
+    },
+    {
       v:'1.55.0', date:'June 2, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Truckload calc: pallet rotation for tighter loads.** Pallets can now lie sideways when their long side fits across the trailer width (98″) and turning saves length — e.g. a 90×52 pallet rotated costs 52″ of trailer length instead of 90″. Rotated pallets are marked ⟳ in the diagram and tooltip. This often drops the truck count (10× single-pallet 90×52 booths now fit in one 52′ truck instead of two). Narrow 47″ pallets still pair side-by-side, which packs tighter than rotating them.'},

@@ -214,6 +214,35 @@
     tbody td:nth-child(4),
     tbody td:nth-child(5) { display: none; }
   }
+
+  /* ── Truckload calculator subtab ── */
+  .tl-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:16px}
+  .tl-card-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
+  .tl-truck-opts{display:flex;flex-wrap:wrap;gap:8px}
+  .tl-truck-btn{padding:9px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  .tl-truck-btn.active{border-color:var(--orange);background:rgba(238,98,22,.12);color:var(--orange)}
+  .tl-row{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+  .tl-row select{flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;padding:8px 10px;outline:none}
+  .tl-qty{width:74px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;padding:8px 10px;outline:none}
+  .tl-wa{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap;cursor:pointer;user-select:none}
+  .tl-wa input{cursor:pointer;accent-color:var(--orange)}
+  .tl-rm{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0 6px;line-height:1}
+  .tl-rm:hover{color:#ef4444}
+  .tl-addbtn{margin-top:4px;padding:8px 14px;background:var(--surface2);border:1px dashed var(--border);border-radius:8px;color:var(--text);font-size:13px;cursor:pointer;font-family:inherit}
+  .tl-addbtn:hover{border-color:var(--orange);color:var(--orange)}
+  .tl-res-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:16px}
+  .tl-stat{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+  .tl-stat .v{font-size:26px;font-weight:800;font-family:var(--mono,ui-monospace,monospace);line-height:1}
+  .tl-stat .v.big{color:var(--orange)}
+  .tl-stat .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:6px}
+  .tl-bar-head{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px}
+  .tl-empty{color:var(--muted);font-style:italic;padding:30px;text-align:center}
+  .tl-banner{background:rgba(238,98,22,.1);border:1px solid rgba(238,98,22,.4);border-radius:8px;padding:9px 13px;font-size:12px;color:var(--orange);margin-bottom:14px}
+  .tl-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  .tl-table th,.tl-table td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--border)}
+  .tl-table th{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:800}
+  .tl-table td.num,.tl-table th.num{text-align:right;font-family:var(--mono,ui-monospace,monospace)}
+  .tl-note{font-size:11px;color:var(--muted);line-height:1.6;margin-top:14px}
 </style>
 </head>
 <body>
@@ -273,9 +302,10 @@
     <div class="tab" id="tab-shipped" onclick="switchOrderFilter('shipped')">Shipped <span id="shippedCount" style="opacity:.5"></span></div>
     <div class="tab" id="tab-all" onclick="switchOrderFilter('all')">All Orders <span id="allCount" style="opacity:.5"></span></div>
     <div class="tab" id="tab-hs" onclick="switchTab('hs')">HubSpot Closed Won <span id="hsCount" style="opacity:.5"></span></div>
+    <div class="tab" id="tab-truckload" onclick="switchTab('truckload')">🚚 Truckload</div>
   </div>
 
-  <div class="filter-bar">
+  <div class="filter-bar" id="ordersFilterBar">
     <input type="text" class="search-input" id="searchInput" placeholder="Search by name, company, quote number..." oninput="filterOrders()">
   </div>
 
@@ -333,6 +363,24 @@
           <tr><td colspan="5"><div style="padding:40px;text-align:center;color:var(--muted)">Loading HubSpot deals...</div></td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- Truckload calculator -->
+  <div id="panel-truckload" style="display:none">
+    <div id="tlPrefillBanner" class="tl-banner" style="display:none"></div>
+    <div class="tl-card">
+      <div class="tl-card-title">Truck</div>
+      <div class="tl-truck-opts" id="tlTruckOpts"></div>
+    </div>
+    <div class="tl-card">
+      <div class="tl-card-title">Booths</div>
+      <div id="tlRows"></div>
+      <button class="tl-addbtn" onclick="tlAddRow()">+ Add model</button>
+    </div>
+    <div class="tl-card">
+      <div class="tl-card-title">Result</div>
+      <div id="tlResults"><div class="tl-empty">Add at least one booth to see truckloads.</div></div>
     </div>
   </div>
 </div>
@@ -1008,10 +1056,237 @@ function getWATypeOptions(lineItems) {
   return [...opts].sort();
 }
 
-// Open the standalone truckload calculator, pre-filled from the current order.
+// Switch to the Truckload subtab, pre-filled from the current order's booths.
 function openTruckCalc(){
-  if(!currentQuoteNumber) return;
-  window.open('/truckload?order=' + encodeURIComponent(currentQuoteNumber), '_blank');
+  const order = allOrders.find(o => o.quote_number === currentQuoteNumber);
+  const items = order?.json_snapshot?.lineItems || [];
+  tlPrefillFromItems(items);
+  const co = order?.company || order?.json_snapshot?.customer?.company || order?.deal_name || currentQuoteNumber;
+  tlShowPrefillBanner(`Pre-filled from order ${currentQuoteNumber}${co ? ' — ' + co : ''}. Adjust below as needed.`);
+  closeDrawer();
+  switchTab('truckload');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Truckload calculator (subtab). Floor-only, rotation-aware shelf packing.
+// Reuses BOOTH_DATA + _BOOTH_DATA_KEYS_BY_LEN. Merged from the former
+// standalone /truckload page (v1.56.0).
+// ════════════════════════════════════════════════════════════════════
+const TL_TRUCKS = [
+  { id:"53",  label:"53' dry van",   len:624, width:98, height:108 }, // 52' usable
+  { id:"28",  label:"28' pup",       len:324, width:98, height:108 }, // 27' usable
+  { id:"40c", label:"40' container", len:468, width:92, height:94 },  // 39' usable, 92" interior
+  { id:"20c", label:"20' container", len:228, width:92, height:94 },  // 19' usable, 92" interior
+];
+let _tlTruckId = "53";
+let tlRows = [];
+
+const TL_MODEL_OPTIONS = Object.keys(BOOTH_DATA).filter(k => !/(ENV|SNV)$/.test(k));
+const TL_PALETTE = ['#ee6216','#3b82f6','#10b981','#a855f7','#f59e0b','#ef4444','#14b8a6','#ec4899','#84cc16','#6366f1','#eab308','#06b6d4'];
+
+function tlNormalizeKey(key){
+  if(key && /(ENV|SNV)$/.test(key)){ const b = key.slice(0,-2); if(BOOTH_DATA[b]) return b; }
+  return key;
+}
+function tlFindBoothKey(rawName){
+  if(!rawName) return null;
+  if(BOOTH_DATA[rawName]) return rawName;
+  const norm = String(rawName).trim().toLowerCase();
+  if(!norm) return null;
+  for(const key of _BOOTH_DATA_KEYS_BY_LEN){
+    const k = key.toLowerCase();
+    if(norm === k) return key;
+    if(norm.startsWith(k)){ const nx = norm.charAt(k.length); if(nx === '' || /[\s\-—,(/]/.test(nx)) return key; }
+  }
+  return null;
+}
+function tlFmtFt(inches){ return (inches/12).toFixed(1); }
+function tlActiveTruck(){ return TL_TRUCKS.find(t => t.id === _tlTruckId) || TL_TRUCKS[0]; }
+
+// Orient each pallet (rotate when long side fits the width AND it's too wide to
+// pair anyway), shelf-pack across the width, then FFD shelves into trucks.
+function tlPackLayout(palletList, truck){
+  const items = palletList.map(p => {
+    const L = Math.max(p.l,p.w), W = Math.min(p.l,p.w);
+    let len = L, wid = W, rotated = false;
+    if(L <= truck.width && W > truck.width/2){ len = W; wid = L; rotated = true; }
+    return { len, wid, rotated, l:p.l, w:p.w, h:p.h, model:p.model };
+  });
+  items.sort((a,b) => b.len - a.len || b.wid - a.wid);
+  const shelves = [];
+  for(const it of items){
+    let placed = false;
+    for(const sh of shelves){
+      if(sh.widthUsed + it.wid <= truck.width){
+        it.y = sh.widthUsed; sh.widthUsed += it.wid;
+        sh.len = Math.max(sh.len, it.len); sh.items.push(it); placed = true; break;
+      }
+    }
+    if(!placed){ it.y = 0; shelves.push({ len:it.len, widthUsed:it.wid, items:[it] }); }
+  }
+  shelves.sort((a,b) => b.len - a.len);
+  const bins = [];
+  for(const sh of shelves){
+    let placed = false;
+    for(const b of bins){ if(b.used + sh.len <= truck.len){ sh.x = b.used; b.used += sh.len; b.shelves.push(sh); placed = true; break; } }
+    if(!placed){ sh.x = 0; bins.push({ used:sh.len, shelves:[sh] }); }
+  }
+  return bins;
+}
+
+function tlPalletCell(px, py, pw, ph, it, color){
+  const L = Math.max(it.l,it.w), W = Math.min(it.l,it.w);
+  const label = `${L}×${W}${it.rotated ? ' ⟳' : ''}`;
+  const show = pw > 26 && ph > 14;
+  const fs = Math.max(8, Math.min(13, ph*0.30, pw*0.16));
+  return `<g>
+    <rect x="${(px+1).toFixed(1)}" y="${(py+1).toFixed(1)}" width="${Math.max(0,pw-2).toFixed(1)}" height="${Math.max(0,ph-2).toFixed(1)}" rx="3" fill="${color}" fill-opacity="0.85" stroke="#0d0d0d" stroke-width="1"><title>${(it.model||'').replace(/"/g,'')} — ${L}×${W}×${it.h||'?'} in${it.rotated ? ' (rotated 90°)' : ''}</title></rect>
+    ${show ? `<text x="${(px+pw/2).toFixed(1)}" y="${(py+ph/2).toFixed(1)}" font-size="${fs.toFixed(1)}" fill="#0d0d0d" font-weight="700" text-anchor="middle" dominant-baseline="central" font-family="ui-monospace,monospace">${label}</text>` : ''}
+  </g>`;
+}
+
+function tlDrawTruck(bin, truck, colorOf, idx){
+  const PX = 900;
+  const scale = PX / truck.len;
+  const W = truck.len * scale, H = truck.width * scale;
+  const pct = Math.min(100, (bin.used/truck.len)*100);
+  let cells = '';
+  for(const sh of bin.shelves){
+    const x = sh.x * scale;
+    for(const it of sh.items){ cells += tlPalletCell(x, it.y*scale, it.len*scale, it.wid*scale, it, colorOf(it.model)); }
+  }
+  return `<div style="margin:6px 0 16px">
+    <div class="tl-bar-head"><span><b>Truck ${idx+1}</b></span><span>${tlFmtFt(bin.used)} / ${tlFmtFt(truck.len)} ft &middot; ${pct.toFixed(0)}% full</span></div>
+    <svg viewBox="0 0 ${W.toFixed(1)} ${H.toFixed(1)}" width="100%" style="max-width:${W.toFixed(0)}px;height:auto;background:#141414;border:1px solid var(--border);border-radius:6px;display:block">
+      <rect x="0.5" y="0.5" width="${(W-1).toFixed(1)}" height="${(H-1).toFixed(1)}" fill="none" stroke="#555" stroke-width="1"/>
+      ${cells}
+    </svg>
+    <div style="font-size:10px;color:var(--muted);margin-top:3px;display:flex;justify-content:space-between">
+      <span>◄ nose</span><span>${tlFmtFt(truck.len)} ft × ${truck.width}" — top-down, to scale (⟳ = rotated 90°)</span><span>doors ►</span>
+    </div>
+  </div>`;
+}
+
+function tlPalletsForRows(){
+  const list = [], breakdown = [];
+  for(const r of tlRows){
+    const bd = BOOTH_DATA[r.model];
+    const qty = parseInt(r.qty)||0;
+    if(!bd || qty <= 0) continue;
+    let pals = bd.pallets.map(p => ({ l:p.l, w:p.w, h:p.h }));
+    if(r.wa){ const idx = pals.findIndex(p => p.w === 47); if(idx >= 0) pals[idx] = { ...pals[idx], w:52 }; }
+    for(let q=0; q<qty; q++) for(const p of pals) list.push({ l:p.l, w:p.w, h:p.h, model:r.model });
+    breakdown.push({ model:r.model, qty, palletsEach:pals.length, total:pals.length*qty, wa:!!r.wa });
+  }
+  return { list, breakdown };
+}
+
+function tlRenderTruckOpts(){
+  const el = document.getElementById('tlTruckOpts');
+  if(!el) return;
+  el.innerHTML = TL_TRUCKS.map(t => `<button class="tl-truck-btn${t.id===_tlTruckId?' active':''}" onclick="tlPickTruck('${t.id}')">${t.label}</button>`).join('');
+}
+function tlPickTruck(id){ _tlTruckId = id; tlRenderTruckOpts(); tlRecompute(); }
+
+function tlSetModel(i,v){ tlRows[i].model = v; tlRecompute(); }
+function tlSetQty(i,v){ tlRows[i].qty = v; tlRecompute(); }
+function tlSetWA(i,c){ tlRows[i].wa = c; tlRecompute(); }
+function tlRemoveRow(i){ tlRows.splice(i,1); tlRenderRows(); tlRecompute(); }
+
+function tlRenderRows(){
+  const el = document.getElementById('tlRows');
+  if(!el) return;
+  const opts = TL_MODEL_OPTIONS.map(k => `<option value="${k}">${k}</option>`).join('');
+  el.innerHTML = tlRows.map((r,i) => `
+    <div class="tl-row">
+      <select onchange="tlSetModel(${i}, this.value)">
+        <option value="">— Select model —</option>
+        ${opts}
+      </select>
+      <input class="tl-qty" type="number" min="1" value="${r.qty}" oninput="tlSetQty(${i}, this.value)">
+      <label class="tl-wa" title="Wide Access — swaps one 47&quot; pallet for a 52&quot; pallet"><input type="checkbox" ${r.wa?'checked':''} onchange="tlSetWA(${i}, this.checked)"> WA</label>
+      <button class="tl-rm" title="Remove" onclick="tlRemoveRow(${i})">&times;</button>
+    </div>`).join('');
+  el.querySelectorAll('select').forEach((sel,i) => { sel.value = tlRows[i].model || ''; });
+}
+function tlAddRow(){ tlRows.push({ model:'', qty:1, wa:false }); tlRenderRows(); }
+
+function tlShowPrefillBanner(msg){
+  const b = document.getElementById('tlPrefillBanner');
+  if(!b) return;
+  if(msg){ b.style.display = 'block'; b.textContent = msg; } else { b.style.display = 'none'; }
+}
+
+function tlPrefillFromItems(items){
+  const counts = {};
+  for(const it of (items||[])){
+    const key = tlNormalizeKey(tlFindBoothKey(it.name || it.productName));
+    if(!key) continue;
+    counts[key] = (counts[key]||0) + (parseInt(it.qty)||1);
+  }
+  tlRows = Object.entries(counts).map(([model,qty]) => ({ model, qty, wa:false }));
+  if(!tlRows.length) tlRows = [{ model:'', qty:1, wa:false }];
+}
+
+// Render the subtab (called on first show + when its inputs change).
+function tlEnsureInit(){
+  if(!tlRows.length) tlRows = [{ model:'', qty:1, wa:false }];
+  tlRenderTruckOpts();
+  tlRenderRows();
+  tlRecompute();
+}
+
+function tlRecompute(){
+  const truck = tlActiveTruck();
+  const { list, breakdown } = tlPalletsForRows();
+  const el = document.getElementById('tlResults');
+  if(!el) return;
+  if(!list.length || !truck.len){
+    el.innerHTML = '<div class="tl-empty">Add at least one booth to see truckloads.</div>';
+    return;
+  }
+  const colorMap = {};
+  breakdown.forEach((b,i) => { colorMap[b.model] = TL_PALETTE[i % TL_PALETTE.length]; });
+  const colorOf = m => colorMap[m] || '#888';
+
+  const bins = tlPackLayout(list, truck);
+  const trucks = bins.length;
+  const linearTotal = bins.reduce((s,b) => s + b.used, 0);
+  const capacity = trucks * truck.len;
+  const util = capacity > 0 ? (linearTotal/capacity)*100 : 0;
+  const oversize = bins.some(b => b.shelves.some(s => s.len > truck.len));
+
+  const diagrams = bins.map((b,i) => tlDrawTruck(b, truck, colorOf, i)).join('');
+  const legend = breakdown.map(b =>
+    `<span style="display:inline-flex;align-items:center;gap:6px;margin:0 14px 6px 0;font-size:12px">
+       <span style="width:12px;height:12px;border-radius:3px;background:${colorOf(b.model)};display:inline-block;flex-shrink:0"></span>${b.model}${b.wa?' <span style="color:var(--orange);font-weight:700">WA</span>':''}</span>`
+  ).join('');
+  const totalPallets = list.length;
+  const rowsHtml = breakdown.map(b => `<tr>
+    <td>${b.model}${b.wa?' <span style="color:var(--orange);font-size:10px;font-weight:700">WA</span>':''}</td><td class="num">${b.qty}</td><td class="num">${b.palletsEach}</td><td class="num">${b.total}</td>
+  </tr>`).join('');
+
+  el.innerHTML = `
+    <div class="tl-res-grid">
+      <div class="tl-stat"><div class="v big">${trucks}</div><div class="l">${truck.label}${trucks===1?'':'s'} needed</div></div>
+      <div class="tl-stat"><div class="v">${totalPallets}</div><div class="l">Pallets</div></div>
+      <div class="tl-stat"><div class="v">${tlFmtFt(linearTotal)}<span style="font-size:14px;color:var(--muted)"> ft</span></div><div class="l">Linear feet used</div></div>
+      <div class="tl-stat"><div class="v">${util.toFixed(0)}<span style="font-size:14px;color:var(--muted)">%</span></div><div class="l">Avg fill across trucks</div></div>
+    </div>
+    ${oversize?'<div class="tl-banner">⚠ A pallet is longer than the selected truck — check the truck.</div>':''}
+    <div style="margin:4px 0 12px">${legend}</div>
+    ${diagrams}
+    <table class="tl-table">
+      <thead><tr><th>Model</th><th class="num">Qty</th><th class="num">Pallets ea.</th><th class="num">Total pallets</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    <div class="tl-note">
+      <b>How this is figured:</b> ${truck.label} usable floor ≈ ${tlFmtFt(truck.len)} ft long × ${truck.width}" wide.
+      Pallets sit side-by-side across the width and may be <b>rotated 90°</b> (⟳) when the long side fits the ${truck.width}" width and turning saves length.
+      Floor space only — <b>no stacking</b>. A pallet can't be split across two trucks, so the truck count rounds up at the pallet, not the foot.
+      <b>WA</b> swaps one 47" pallet for a 52" pallet. A to-scale top-down estimate of one good arrangement; real loadout depends on how the driver builds the load.
+    </div>`;
 }
 
 let _freightPallets = [];
@@ -1593,8 +1868,14 @@ function switchOrderFilter(filter) {
     if (tab) tab.classList.toggle('active', f === filter);
   });
   document.getElementById('tab-hs').classList.remove('active');
+  const _tlTab = document.getElementById('tab-truckload');
+  if (_tlTab) _tlTab.classList.remove('active');
   document.getElementById('panel-db').style.display = '';
   document.getElementById('panel-hs').style.display = 'none';
+  const _tlPanel = document.getElementById('panel-truckload');
+  if (_tlPanel) _tlPanel.style.display = 'none';
+  const _fb = document.getElementById('ordersFilterBar');
+  if (_fb) _fb.style.display = '';
   const cal = document.getElementById('shipCalendarWrap');
   if (cal) cal.style.display = '';
   currentTab = 'db';
@@ -1609,12 +1890,19 @@ function switchTab(tab) {
     if (t) t.classList.remove('active');
   });
   document.getElementById('tab-hs').classList.toggle('active', tab === 'hs');
+  const _tlTab = document.getElementById('tab-truckload');
+  if (_tlTab) _tlTab.classList.toggle('active', tab === 'truckload');
   document.getElementById('panel-db').style.display = tab === 'db' ? '' : 'none';
   document.getElementById('panel-hs').style.display = tab === 'hs' ? '' : 'none';
+  const _tlPanel = document.getElementById('panel-truckload');
+  if (_tlPanel) _tlPanel.style.display = tab === 'truckload' ? '' : 'none';
+  const _fb = document.getElementById('ordersFilterBar');
+  if (_fb) _fb.style.display = tab === 'truckload' ? 'none' : '';
   const cal = document.getElementById('shipCalendarWrap');
   if (cal) cal.style.display = tab === 'db' ? '' : 'none';
-  filterOrders();
+  if (tab !== 'truckload') filterOrders();
   if (tab === 'hs' && allHsDeals.length === 0) loadHsDeals();
+  if (tab === 'truckload') tlEnsureInit();
 }
 
 // ── Load Data ─────────────────────────────────────────────────────
@@ -2674,6 +2962,17 @@ if (_savedRep) {
 
 loadOrders().then(() => {
   const params = new URLSearchParams(window.location.search);
+  // Truckload subtab entry point — opened from the Quote Builder button,
+  // with the quote's booths handed off via localStorage.
+  if (params.get('tab') === 'truckload') {
+    const raw = localStorage.getItem('wr_truckload_prefill');
+    if (raw) {
+      try { tlPrefillFromItems(JSON.parse(raw)); tlShowPrefillBanner('Pre-filled from the Quote Builder. Adjust below as needed.'); } catch(e) {}
+      localStorage.removeItem('wr_truckload_prefill');
+    }
+    switchTab('truckload');
+    window.history.replaceState({}, '', '/orders');
+  }
   const openOrder = params.get('openOrder');
   if (openOrder) {
     switchTab('active');

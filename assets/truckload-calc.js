@@ -149,7 +149,13 @@
         for(const t of trucks){ if(addBooth(t, booth, truck, false)){ placed = true; break; } }
         if(!placed){ const t = { shelves:[] }; addBooth(t, booth, truck, true); trucks.push(t); }
       }
-      for(const t of trucks){ let x=0; for(const s of t.shelves){ s.x=x; x+=s.len; } t.used=x; }
+      // Tidy each truck: line up same-size pallets (longest shelves first) so
+      // the load reads cleanly — all the 102s together, then the 90×52s, etc.
+      // Within-truck only; nothing moves between trucks, so rooms stay together.
+      for(const t of trucks){
+        t.shelves.sort((a,b) => b.len - a.len || b.widthUsed - a.widthUsed);
+        let x=0; for(const s of t.shelves){ s.x=x; x+=s.len; } t.used=x;
+      }
       return trucks.map(t => ({ used:t.used, shelves:t.shelves }));
     }
 

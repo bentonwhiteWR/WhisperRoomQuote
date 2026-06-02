@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.57.2', date:'June 2, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Truckload diagram now lines up same-size pallets.** Within each truck, pallets are grouped by footprint (all the 102s in a row, then the 90×52s, etc.) instead of interleaving by booth — a cleaner, more realistic load picture. Ordering only; doesn’t change the truck count or split any rooms.'},
+      ]
+    },
+    {
       v:'1.57.1', date:'June 2, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Truckload calc now keeps each booth (“room”) together on one truck.** Two packing rules: (1) fewest trucks first, then (2) never split a single booth’s pallets across trucks. Previously it packed pallet-by-pallet, so a booth with a mix (say a 102″ pallet + a 90×52) could get its pieces optimized onto different trucks. Now the calculator groups by booth and packs whole rooms — still sharing width between booths inside a truck to keep the count down.'},

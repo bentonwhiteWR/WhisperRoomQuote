@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.58.3', date:'June 2, 2026', tag:'add',
+      changes:[
+        {t:'add', d:'**Audimute POs can now hold multiple tracking numbers.** When a PO ships in several boxes with separate tracking numbers, enter them comma-separated in the Tracking Number field on the Suppliers dashboard. The 📦 tracking widget lists each number with its own Track ↗ link and Copy button.'},
+      ]
+    },
+    {
       v:'1.58.2', date:'June 2, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**New users now resolve their HubSpot owner correctly.** A newly-added HubSpot user (e.g. Josh) wasn&rsquo;t getting matched to an owner ID at login, so their session had none — which silently disables their notifications and rep attribution. The lookup used HubSpot&rsquo;s exact-email filter, which misses owners whose record email differs in casing. It now also pages through all owners and matches case-insensitively, so new logins resolve automatically (existing sessions self-heal on next load). No more per-user hardcoding needed.'},

@@ -97,30 +97,60 @@
     }
     function activeTruck(){ return TRUCKS.find(t=>t.id===truckId) || TRUCKS[0]; }
 
+    // Orient one pallet: rotate 90° when the long side fits across the width
+    // and it's too wide to pair anyway (saves trailer length).
+    function orient(p, truck){
+      const L=Math.max(p.l,p.w), W=Math.min(p.l,p.w);
+      let len=L, wid=W, rotated=false;
+      if(L<=truck.width && W>truck.width/2){ len=W; wid=L; rotated=true; }
+      return { len, wid, rotated, l:p.l, w:p.w, h:p.h, model:p.model };
+    }
+    // Standalone trailer-length a set of items needs (shelf-packed across width).
+    function shelfLen(itemsList, truck){
+      const sh=[];
+      for(const it of [...itemsList].sort((a,b)=>b.len-a.len||b.wid-a.wid)){
+        let pl=false;
+        for(const s of sh){ if(s.widthUsed+it.wid<=truck.width){ s.widthUsed+=it.wid; s.len=Math.max(s.len,it.len); pl=true; break; } }
+        if(!pl) sh.push({ len:it.len, widthUsed:it.wid });
+      }
+      return sh.reduce((a,s)=>a+s.len,0);
+    }
+    // Try to add a whole booth's pallets to a truck, sharing width with shelves
+    // already there. Reverts (returns false) if it would overflow the truck —
+    // unless force (used when opening a fresh truck so a booth is never lost).
+    function addBooth(t, items, truck, force){
+      const snap = t.shelves.map(s=>({ len:s.len, widthUsed:s.widthUsed, items:s.items.slice() }));
+      for(const it of [...items].sort((a,b)=>b.len-a.len||b.wid-a.wid)){
+        let pl=false;
+        for(const s of t.shelves){ if(s.widthUsed+it.wid<=truck.width){ it.y=s.widthUsed; s.widthUsed+=it.wid; s.len=Math.max(s.len,it.len); s.items.push(it); pl=true; break; } }
+        if(!pl){ it.y=0; t.shelves.push({ len:it.len, widthUsed:it.wid, items:[it] }); }
+      }
+      const used = t.shelves.reduce((a,s)=>a+s.len,0);
+      if(used > truck.len && !force){ t.shelves = snap; return false; }
+      return true;
+    }
+    // Rule 1: fewest trucks. Rule 2: keep each booth ("room") on ONE truck.
+    // Group pallets by booth instance, then first-fit-decreasing the booths
+    // into trucks (cross-booth width-sharing keeps the truck count down).
     function packLayout(palletList, truck){
-      const items = palletList.map(p=>{
-        const L=Math.max(p.l,p.w), W=Math.min(p.l,p.w);
-        let len=L, wid=W, rotated=false;
-        if(L<=truck.width && W>truck.width/2){ len=W; wid=L; rotated=true; }
-        return { len, wid, rotated, l:p.l, w:p.w, h:p.h, model:p.model };
-      });
-      items.sort((a,b)=>b.len-a.len || b.wid-a.wid);
-      const shelves=[];
-      for(const it of items){
-        let placed=false;
-        for(const sh of shelves){
-          if(sh.widthUsed+it.wid<=truck.width){ it.y=sh.widthUsed; sh.widthUsed+=it.wid; sh.len=Math.max(sh.len,it.len); sh.items.push(it); placed=true; break; }
-        }
-        if(!placed){ it.y=0; shelves.push({ len:it.len, widthUsed:it.wid, items:[it] }); }
+      const groups = new Map();
+      let solo = 0;
+      for(const p of palletList){
+        const g = (p.g == null) ? ('_solo'+(solo++)) : p.g;
+        if(!groups.has(g)) groups.set(g, []);
+        groups.get(g).push(orient(p, truck));
       }
-      shelves.sort((a,b)=>b.len-a.len);
-      const bins=[];
-      for(const sh of shelves){
-        let placed=false;
-        for(const b of bins){ if(b.used+sh.len<=truck.len){ sh.x=b.used; b.used+=sh.len; b.shelves.push(sh); placed=true; break; } }
-        if(!placed){ sh.x=0; bins.push({ used:sh.len, shelves:[sh] }); }
+      const booths = [...groups.values()];
+      for(const b of booths){ b._len = shelfLen(b, truck); }
+      booths.sort((a,b) => b._len - a._len);
+      const trucks = [];
+      for(const booth of booths){
+        let placed = false;
+        for(const t of trucks){ if(addBooth(t, booth, truck, false)){ placed = true; break; } }
+        if(!placed){ const t = { shelves:[] }; addBooth(t, booth, truck, true); trucks.push(t); }
       }
-      return bins;
+      for(const t of trucks){ let x=0; for(const s of t.shelves){ s.x=x; x+=s.len; } t.used=x; }
+      return trucks.map(t => ({ used:t.used, shelves:t.shelves }));
     }
 
     function palletCell(px,py,pw,ph,it,color){
@@ -153,12 +183,15 @@
 
     function palletsForRows(){
       const list=[], breakdown=[];
+      let gid=0;
       for(const r of rows){
         const bd=BOOTH_DATA[r.model]; const qty=parseInt(r.qty)||0;
         if(!bd || qty<=0) continue;
         let pals = bd.pallets.map(p=>({l:p.l,w:p.w,h:p.h}));
         if(r.wa){ const idx=pals.findIndex(p=>p.w===47); if(idx>=0) pals[idx]={...pals[idx],w:52}; }
-        for(let q=0;q<qty;q++) for(const p of pals) list.push({l:p.l,w:p.w,h:p.h,model:r.model});
+        // Each booth instance gets a unique group id `g` so packLayout can keep
+        // all of one booth's pallets on the same truck.
+        for(let q=0;q<qty;q++){ const g='b'+(gid++); for(const p of pals) list.push({l:p.l,w:p.w,h:p.h,model:r.model,g}); }
         breakdown.push({ model:r.model, qty, palletsEach:pals.length, total:pals.length*qty, wa:!!r.wa });
       }
       return { list, breakdown };
@@ -209,7 +242,7 @@
         <div class="tlc-note">
           <b>How this is figured:</b> ${truck.label} usable floor ≈ ${fmtFt(truck.len)} ft long × ${truck.width}" wide.
           Pallets sit side-by-side across the width and may be <b>rotated 90°</b> (⟳) when the long side fits the ${truck.width}" width and turning saves length.
-          Floor space only — <b>no stacking</b>. A pallet can't be split across two trucks, so the count rounds up at the pallet, not the foot.
+          Floor space only — <b>no stacking</b>. Fewest trucks first, but <b>each booth stays together on one truck</b> — a room's pallets are never split across trucks.
           <b>WA</b> swaps one 47" pallet for a 52" pallet. A to-scale estimate of one good arrangement; real loadout depends on how the driver builds it.
         </div>`;
     }

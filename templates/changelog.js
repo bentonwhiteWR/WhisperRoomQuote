@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.57.1', date:'June 2, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Truckload calc now keeps each booth (“room”) together on one truck.** Two packing rules: (1) fewest trucks first, then (2) never split a single booth’s pallets across trucks. Previously it packed pallet-by-pallet, so a booth with a mix (say a 102″ pallet + a 90×52) could get its pieces optimized onto different trucks. Now the calculator groups by booth and packs whole rooms — still sharing width between booths inside a truck to keep the count down.'},
+      ]
+    },
+    {
       v:'1.57.0', date:'June 2, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Quote Builder’s 🚚 Truckload button now opens a popup** instead of jumping to the Orders page — the calculator appears right over the quote, pre-filled with its booths. Close it and you’re back on the quote, nothing lost.'},

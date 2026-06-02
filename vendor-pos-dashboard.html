@@ -839,7 +839,10 @@ async function openReceiveFromTable(encodedPoNumber) {
     const inp = readOnly
       ? '<span style="color:var(--muted)">—</span>'
       : '<input type="number" class="r-now" data-line-id="' + esc(l.id) + '" min="0" step="any" value="' + remaining + '" style="width:90px;padding:5px 8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:5px;text-align:right;font-family:inherit;font-size:12px">';
-    const doneTag = (ordered > 0 && rec >= ordered) ? ' <span style="color:var(--green);font-size:10px;font-weight:700;margin-left:4px">&#10003; DONE</span>' : '';
+    const over = rec - ordered;
+    const doneTag = (ordered > 0 && over > 0)
+      ? ' <span style="color:#f59e0b;font-size:10px;font-weight:700;margin-left:4px">&#9888; OVERAGE &mdash; ' + over + ' over</span>'
+      : ((ordered > 0 && rec >= ordered) ? ' <span style="color:var(--green);font-size:10px;font-weight:700;margin-left:4px">&#10003; DONE</span>' : '');
     return '<tr><td>' + esc(l.description || '') + (l.sku ? ' <span style="color:var(--muted);font-size:11px">(' + esc(l.sku) + ')</span>' : '') + doneTag + '</td><td style="text-align:right">' + ordered + '</td><td style="text-align:right">' + rec + '</td><td style="text-align:right">' + remaining + '</td><td style="text-align:right">' + inp + '</td></tr>';
   }).join('');
 

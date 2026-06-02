@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.58.0', date:'June 2, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Vendor PO: confirm before saving vendor-profile fields.** Editing the Vendor info, Freight Terms, Payment Terms, or Standing Vendor Notes on a PO now asks whether to save the change to the vendor for future POs (OK = update the vendor profile, Cancel = this PO only) — same pattern as the existing unit-price prompt.'},
+        {t:'add', d:'**Vendor PO: "REVISION n" stamp.** Pressing "Update PO" (regenerating a PO that already has a PDF) now stamps "REVISION 1/2/3…" in red just under the date in the top-right of the PO. The first PDF is not a revision.'},
+        {t:'add', d:'**Vendor PO: overage tracking on receiving.** When you receive more than was ordered, the extra is flagged as "⚠ OVERAGE — N over" on the receive screen and in the PO receipt log. The overage also flows into invoice matching: the expected bill total now uses max(ordered, received) × unit price, so Kim&rsquo;s reconcile total goes up by the overage × unit price and a partial bill won&rsquo;t falsely read as fully billed.'},
+      ]
+    },
+    {
       v:'1.57.3', date:'June 2, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'Renamed the Quote Builder’s freight-area button from “Truckload” to “Truckload Estimator.”'},

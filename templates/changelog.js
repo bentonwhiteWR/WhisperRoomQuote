@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.57.0', date:'June 2, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Quote Builder’s 🚚 Truckload button now opens a popup** instead of jumping to the Orders page — the calculator appears right over the quote, pre-filled with its booths. Close it and you’re back on the quote, nothing lost.'},
+        {t:'log', d:'**Truckload calculator is now one shared component** (`/assets/truckload-calc.js`) used by both the Orders subtab and the Quote Builder popup, so there’s a single engine to maintain (no duplicated logic). Theme-adaptive, so it looks right on both the dark dashboards and the lighter Quote Builder.'},
+      ]
+    },
+    {
       v:'1.56.0', date:'June 2, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Truckload calculator moved into the Orders page** as its own “🚚 Truckload” tab (the standalone /truckload page is gone). Open an order and hit “🚚 Estimate truckloads” in the drawer to jump to it pre-filled, or open it empty and add models by hand. The Quote Builder also gets a **🚚 Truckload** button next to the freight estimate that opens it pre-filled with the current quote’s booths.'},

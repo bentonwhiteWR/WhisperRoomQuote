@@ -1361,6 +1361,19 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Shared Truckload calculator — included by orders-dashboard (subtab) and
+  // quote-builder (popup). Served from disk; no re-deploy on UI tweaks.
+  if (pathname === '/assets/truckload-calc.js') {
+    try {
+      const buf = require('fs').readFileSync(require('path').join(__dirname, 'assets', 'truckload-calc.js'));
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(buf);
+    } catch(e) {
+      res.writeHead(404); res.end('truckload-calc.js missing');
+    }
+    return;
+  }
+
     // ── Shipping Dashboard ──────────────────────────────────────────
   if (pathname === '/shipping') {
     if (!isAuth(req)) { res.writeHead(302, {Location: '/deals'}); res.end(); return; }

@@ -3068,15 +3068,23 @@ function toggleFreightOwnShipping() {
   updateSummary();
 }
 
-// Hand the current quote's booths to the Truckload calculator (Orders → 🚚
-// Truckload subtab) via localStorage, then open it in a new tab.
+// Truckload calculator popup — renders the shared calculator into a modal,
+// pre-filled with this quote's booths. No navigation.
+let _qbTlCalc = null;
 function openTruckloadCalc() {
-  try {
-    const items = (typeof lineItems !== 'undefined' && Array.isArray(lineItems) ? lineItems : [])
-      .map(i => ({ name: i.name || i.productName || '', qty: i.qty || 1 }));
-    localStorage.setItem('wr_truckload_prefill', JSON.stringify(items));
-  } catch(e) { /* non-fatal — opens empty */ }
-  window.open('/orders?tab=truckload', '_blank');
+  const modal = document.getElementById('truckloadModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  if (!_qbTlCalc && window.TruckloadCalc) {
+    _qbTlCalc = TruckloadCalc.create({ container: document.getElementById('qbTruckloadCalc'), boothData: BOOTH_DATA });
+  }
+  const items = (typeof lineItems !== 'undefined' && Array.isArray(lineItems) ? lineItems : [])
+    .map(i => ({ name: i.name || i.productName || '', qty: i.qty || 1 }));
+  if (_qbTlCalc) { _qbTlCalc.prefill(items); _qbTlCalc.showBanner('Booths from this quote. Adjust below as needed.'); }
+}
+function closeTruckloadModal() {
+  const modal = document.getElementById('truckloadModal');
+  if (modal) modal.style.display = 'none';
 }
 
 function getTaxAmount() {
@@ -8663,6 +8671,18 @@ function selectDriveFolder(folderId, folderName) {
     </div>
   </div>
 </div>
+
+<!-- Truckload calculator popup (shared /assets/truckload-calc.js) -->
+<div id="truckloadModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);align-items:flex-start;justify-content:center;overflow:auto;padding:32px 16px">
+  <div style="background:var(--bg,#edeae4);border:1px solid var(--border,#ccc);border-radius:14px;max-width:1000px;width:100%;margin:auto;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border,#ccc)">
+      <div style="font-size:15px;font-weight:800;color:var(--charcoal,#333)">🚚 Truckload Calculator</div>
+      <button onclick="closeTruckloadModal()" title="Close" style="background:none;border:none;font-size:22px;line-height:1;color:var(--muted,#888);cursor:pointer">&times;</button>
+    </div>
+    <div style="padding:18px 20px"><div id="qbTruckloadCalc"></div></div>
+  </div>
+</div>
+<script src="/assets/truckload-calc.js" defer></script>
 
 </body>
 </html>

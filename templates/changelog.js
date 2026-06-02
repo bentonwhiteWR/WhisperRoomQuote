@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.59.1', date:'June 2, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Assembly manuals: EFP section now finds its file reliably.** EFP PDFs are filed per size under whichever vent variant exists (e.g. only "8484 E EFP.pdf"), so an "S" booth was failing to find its EFP. The builder now matches the exact size + variant first, then falls back to size-only — so it picks the right file when both variants exist and still finds the size&rsquo;s EFP when only one is on file.'},
+      ]
+    },
+    {
       v:'1.59.0', date:'June 2, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Tidied the top navbar.** “Suppliers” (Audimute POs) is no longer its own nav button — it now lives under **Vendor Hub** as a tab. Open Vendor Hub and use the **WhisperRoom POs · Audimute POs** switcher at the top to flip between the two PO systems. One fewer button up top, and the two purchasing areas are grouped where you’d expect.'},

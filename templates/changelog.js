@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.54.0', date:'June 2, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Truckload calculator now draws a to-scale layout diagram.** Each truck gets a top-down floor plan with every pallet placed to scale and labeled with its L×W footprint, color-coded by model (with a legend). The engine was upgraded from a linear-feet estimate to real 2D placement (same two-lane, floor-only, no-split rules), so the picture matches the count. Hover a pallet for its full L×W×H and model.'},
+        {t:'fix', d:'**Default truck is now 52′, not 53′.** Matches the trailers WhisperRoom actually uses (usable floor ≈ 618″). 48′ / 26′ box / custom options unchanged.'},
+      ]
+    },
+    {
       v:'1.53.0', date:'June 1, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Truckload calculator** (new page at <code>/truckload</code>). Estimate how many truckloads a set of booths needs — pick a truck (53′ dry van default, plus 48′, 26′ box, or custom dimensions), add booth models + quantities, and it returns trucks needed, total pallets, linear feet used, and a per-truck fill bar. Models the load as <b>floor space only (no stacking)</b> with two side-by-side lanes: narrow pallets (≤ half the trailer width) pair up two-to-a-row, wide booth pallets (52–54″) block the full width, and pallets are packed truck-by-truck so a pallet never splits across two trucks. Open it standalone, or hit “🚚 Estimate truckloads” in an order’s drawer to pre-fill from that order’s booths.'},

@@ -70,7 +70,7 @@
       <div class="card-title">Truck</div>
       <div class="truck-opts" id="truckOpts"></div>
       <div class="custom-dims" id="customDims">
-        <label>Length (ft)<input type="number" id="cuLen" value="53" min="1" oninput="recompute()"></label>
+        <label>Length (ft)<input type="number" id="cuLen" value="52" min="1" oninput="recompute()"></label>
         <label>Width (in)<input type="number" id="cuWid" value="98" min="1" oninput="recompute()"></label>
         <label>Height (in)<input type="number" id="cuHt" value="108" min="1" oninput="recompute()"></label>
       </div>
@@ -243,12 +243,12 @@ function findBoothKey(rawName){
 // ── Truck specs (usable interior, inches). Floor-only, so height is
 // informational. Conservative usable length (interior minus nose/door). ──
 const TRUCKS = [
-  { id:"53", label:"53' dry van", len:630, width:98,  height:108 },
+  { id:"52", label:"52' dry van", len:618, width:98,  height:108 },
   { id:"48", label:"48' dry van", len:570, width:98,  height:108 },
   { id:"26", label:"26' box",     len:312, width:96,  height:90  },
-  { id:"custom", label:"Custom",  len:630, width:98,  height:108 },
+  { id:"custom", label:"Custom",  len:618, width:98,  height:108 },
 ];
-let _truckId = "53";
+let _truckId = "52";
 
 // ── State ────────────────────────────────────────────────────────────
 let rows = [];  // [{model, qty}]
@@ -265,39 +265,83 @@ function activeTruck(){
   return TRUCKS.find(t=>t.id===_truckId);
 }
 
-// ── Calc engine — two-lane linear-feet, floor only ───────────────────
-// Each pallet sits with its narrow side across a lane. Pallets that fit a
-// half-width lane pair up two-to-a-row; wider ones block the full width.
-// Segments (a paired row, a lone narrow pallet, or a wide pallet) are then
-// packed into trucks first-fit-decreasing — a segment can't span two trucks.
-function computeLoad(palletList, truck){
+// ── Calc engine — two-lane floor layout, floor only ──────────────────
+// Each pallet sits with its narrow side across the trailer. A "row" is a
+// full-width slice of trailer length: narrow pallets (≤ width/2 across) pair
+// up two-to-a-row; wider booth pallets (52–54") take a row alone. Rows are
+// packed into trucks first-fit-decreasing so no pallet spans two trucks.
+// Returns one bin per truck with real x positions, so the layout can be drawn.
+//   bins: [{ used, rows:[{ x, len, kind, items:[{along,across,h,model}] }] }]
+function packLayout(palletList, truck){
   const laneThreshold = truck.width / 2;
-  const halves = [], fulls = [];
+  const half=[], full=[];
   for(const p of palletList){
     const across = Math.min(p.l, p.w);
     const along  = Math.max(p.l, p.w);
-    if(across <= laneThreshold) halves.push(along);
-    else fulls.push(along);
+    const item = { along, across, h:p.h, model:p.model };
+    if(across <= laneThreshold) half.push(item); else full.push(item);
   }
-  halves.sort((a,b)=>b-a);
-  const segments = [];
-  for(let i=0;i<halves.length;i+=2){
-    segments.push({ len:halves[i], kind:(i+1<halves.length)?'pair':'narrow' });
+  half.sort((a,b)=>b.along-a.along);
+  full.sort((a,b)=>b.along-a.along);
+  const rows=[];
+  for(let i=0;i<half.length;i+=2){
+    const a=half[i], b=half[i+1];
+    rows.push({ kind:b?'pair':'single', items:b?[a,b]:[a], len:b?Math.max(a.along,b.along):a.along });
   }
-  for(const f of fulls) segments.push({ len:f, kind:'wide' });
-  segments.sort((a,b)=>b.len-a.len);
-
-  const linearTotal = segments.reduce((s,seg)=>s+seg.len,0);
-  // First-fit-decreasing bin packing into trucks of `truck.len`.
-  const bins = [];
-  let oversize = false;
-  for(const seg of segments){
-    if(seg.len > truck.len){ oversize = true; bins.push({used:seg.len, segs:[seg]}); continue; }
+  for(const f of full) rows.push({ kind:'wide', items:[f], len:f.along });
+  rows.sort((a,b)=>b.len-a.len);
+  const bins=[];
+  for(const row of rows){
     let placed=false;
-    for(const b of bins){ if(b.used + seg.len <= truck.len){ b.used+=seg.len; b.segs.push(seg); placed=true; break; } }
-    if(!placed) bins.push({used:seg.len, segs:[seg]});
+    for(const b of bins){ if(b.used + row.len <= truck.len){ row.x=b.used; b.used+=row.len; b.rows.push(row); placed=true; break; } }
+    if(!placed){ row.x=0; bins.push({ used:row.len, rows:[row] }); }
   }
-  return { linearTotal, bins, halfCount:halves.length, fullCount:fulls.length, laneThreshold, oversize };
+  return bins;
+}
+
+// Stable color per model for the diagram + legend.
+const PALETTE = ['#ee6216','#3b82f6','#10b981','#a855f7','#f59e0b','#ef4444','#14b8a6','#ec4899','#84cc16','#6366f1','#eab308','#06b6d4'];
+
+// One pallet rectangle (top-down), labeled with its L×W footprint.
+function palletCell(x, y, w, h, it, color){
+  const label = `${it.along}×${it.across}`;
+  const show  = w > 30 && h > 14;
+  const fs    = Math.max(8, Math.min(13, h*0.34, w*0.18));
+  return `<g>
+    <rect x="${(x+1).toFixed(1)}" y="${(y+1).toFixed(1)}" width="${Math.max(0,w-2).toFixed(1)}" height="${Math.max(0,h-2).toFixed(1)}" rx="3" fill="${color}" fill-opacity="0.85" stroke="#0d0d0d" stroke-width="1"><title>${(it.model||'').replace(/"/g,'')} — ${it.along}×${it.across}×${it.h||'?'} in</title></rect>
+    ${show?`<text x="${(x+w/2).toFixed(1)}" y="${(y+h/2).toFixed(1)}" font-size="${fs.toFixed(1)}" fill="#0d0d0d" font-weight="700" text-anchor="middle" dominant-baseline="central" font-family="ui-monospace,monospace">${label}</text>`:''}
+  </g>`;
+}
+
+// Scale top-down SVG of one truck's floor with all pallets placed to scale.
+function drawTruck(bin, truck, colorOf, idx){
+  const PX = 900;                     // target px for trailer length
+  const scale = PX / truck.len;
+  const W = truck.len * scale, H = truck.width * scale;
+  const pct = Math.min(100, (bin.used/truck.len)*100);
+  let cells = '';
+  for(const row of bin.rows){
+    const x = row.x * scale;
+    if(row.kind === 'pair'){
+      const [a,b] = row.items;
+      cells += palletCell(x, 0,              a.along*scale, a.across*scale, a, colorOf(a.model));
+      cells += palletCell(x, a.across*scale, b.along*scale, b.across*scale, b, colorOf(b.model));
+    } else {
+      const it = row.items[0];
+      cells += palletCell(x, 0, it.along*scale, it.across*scale, it, colorOf(it.model));
+    }
+  }
+  // Nose label + length ruler caption
+  return `<div style="margin:6px 0 16px">
+    <div class="truckbar-head"><span><b>Truck ${idx+1}</b></span><span>${fmtFt(bin.used)} / ${fmtFt(truck.len)} ft &middot; ${pct.toFixed(0)}% full</span></div>
+    <svg viewBox="0 0 ${W.toFixed(1)} ${H.toFixed(1)}" width="100%" style="max-width:${W.toFixed(0)}px;height:auto;background:#141414;border:1px solid var(--border);border-radius:6px;display:block">
+      <rect x="0.5" y="0.5" width="${(W-1).toFixed(1)}" height="${(H-1).toFixed(1)}" fill="none" stroke="#555" stroke-width="1"/>
+      ${cells}
+    </svg>
+    <div style="font-size:10px;color:var(--muted);margin-top:3px;display:flex;justify-content:space-between">
+      <span>◄ nose</span><span>${fmtFt(truck.len)} ft × ${truck.width}" — top-down, to scale (labels = L×W in)</span><span>doors ►</span>
+    </div>
+  </div>`;
 }
 
 function palletsForRows(){
@@ -306,7 +350,7 @@ function palletsForRows(){
     const bd = BOOTH_DATA[r.model];
     const qty = parseInt(r.qty)||0;
     if(!bd || qty<=0) continue;
-    for(let q=0;q<qty;q++) for(const p of bd.pallets) list.push({l:p.l,w:p.w,h:p.h});
+    for(let q=0;q<qty;q++) for(const p of bd.pallets) list.push({l:p.l,w:p.w,h:p.h,model:r.model});
     breakdown.push({ model:r.model, qty, palletsEach:bd.pallets.length, total:bd.pallets.length*qty });
   }
   return { list, breakdown };
@@ -348,18 +392,24 @@ function recompute(){
     el.innerHTML = '<div class="empty">Add at least one booth to see truckloads.</div>';
     return;
   }
-  const r = computeLoad(list, truck);
-  const trucks = r.bins.length;
-  const capacity = trucks * truck.len;
-  const util = capacity>0 ? (r.linearTotal/capacity)*100 : 0;
+  // Color per model (stable, by breakdown order).
+  const colorMap = {};
+  breakdown.forEach((b,i)=>{ colorMap[b.model] = PALETTE[i % PALETTE.length]; });
+  const colorOf = m => colorMap[m] || '#888';
 
-  const barsHtml = r.bins.map((b,i)=>{
-    const pct = Math.min(100, (b.used/truck.len)*100);
-    return `<div class="truckbar-wrap">
-      <div class="truckbar-head"><span>Truck ${i+1}</span><span>${fmtFt(b.used)} / ${fmtFt(truck.len)} ft &middot; ${pct.toFixed(0)}%</span></div>
-      <div class="truckbar"><div class="truckbar-fill" style="width:${Math.max(pct,6)}%">${pct.toFixed(0)}%</div></div>
-    </div>`;
-  }).join('');
+  const bins = packLayout(list, truck);
+  const trucks = bins.length;
+  const linearTotal = bins.reduce((s,b)=>s+b.used,0);
+  const capacity = trucks * truck.len;
+  const util = capacity>0 ? (linearTotal/capacity)*100 : 0;
+  const laneThreshold = truck.width/2;
+  const oversize = bins.some(b=>b.rows.some(r=>r.len>truck.len));
+
+  const diagrams = bins.map((b,i)=>drawTruck(b, truck, colorOf, i)).join('');
+  const legend = breakdown.map(b=>
+    `<span style="display:inline-flex;align-items:center;gap:6px;margin:0 14px 6px 0;font-size:12px">
+       <span style="width:12px;height:12px;border-radius:3px;background:${colorOf(b.model)};display:inline-block;flex-shrink:0"></span>${b.model}</span>`
+  ).join('');
 
   const totalPallets = list.length;
   const rowsHtml = breakdown.map(b=>`<tr>
@@ -370,20 +420,21 @@ function recompute(){
     <div class="res-grid">
       <div class="stat"><div class="v big">${trucks}</div><div class="l">${truck.label}${trucks===1?'':'s'} needed</div></div>
       <div class="stat"><div class="v">${totalPallets}</div><div class="l">Pallets</div></div>
-      <div class="stat"><div class="v">${fmtFt(r.linearTotal)}<span style="font-size:14px;color:var(--muted)"> ft</span></div><div class="l">Linear feet used</div></div>
+      <div class="stat"><div class="v">${fmtFt(linearTotal)}<span style="font-size:14px;color:var(--muted)"> ft</span></div><div class="l">Linear feet used</div></div>
       <div class="stat"><div class="v">${util.toFixed(0)}<span style="font-size:14px;color:var(--muted)">%</span></div><div class="l">Avg fill across trucks</div></div>
     </div>
-    ${r.oversize?'<div class="banner">⚠ A pallet is longer than the selected truck — check the truck dimensions.</div>':''}
-    ${barsHtml}
+    ${oversize?'<div class="banner">⚠ A pallet is longer than the selected truck — check the truck dimensions.</div>':''}
+    <div style="margin:4px 0 12px">${legend}</div>
+    ${diagrams}
     <table>
       <thead><tr><th>Model</th><th class="num">Qty</th><th class="num">Pallets ea.</th><th class="num">Total pallets</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>
     <div class="note">
       <b>How this is figured:</b> ${truck.label} usable floor ≈ ${fmtFt(truck.len)} ft long × ${truck.width}" wide.
-      Pallets ≤ ${r.laneThreshold}" across pair up two side-by-side; wider booth pallets (52–54") block the full width.
+      Pallets ≤ ${laneThreshold}" across pair up two side-by-side; wider booth pallets (52–54") block the full width.
       Floor space only — <b>no stacking</b>. A pallet can't be split across two trucks, so the truck count rounds up at the pallet, not the foot.
-      This is a planning estimate; real loadout depends on how the driver builds the load.
+      The diagram is a to-scale top-down estimate of one optimal arrangement; real loadout depends on how the driver builds the load.
     </div>`;
 }
 

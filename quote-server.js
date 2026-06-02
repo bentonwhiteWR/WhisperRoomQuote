@@ -1404,6 +1404,19 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Shared top navbar — included by every internal dashboard so the nav is
+  // defined once. Served from disk; no re-deploy on nav tweaks.
+  if (pathname === '/assets/nav.js') {
+    try {
+      const buf = require('fs').readFileSync(require('path').join(__dirname, 'assets', 'nav.js'));
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(buf);
+    } catch(e) {
+      res.writeHead(404); res.end('nav.js missing');
+    }
+    return;
+  }
+
   // Shared Truckload calculator — included by orders-dashboard (subtab) and
   // quote-builder (popup). Served from disk; no re-deploy on UI tweaks.
   if (pathname === '/assets/truckload-calc.js') {

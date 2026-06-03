@@ -356,6 +356,16 @@ td.drillable:hover{color:var(--orange)}
   <!-- ════════ Google Search Console tab (v1.65.1) ════════ -->
   <div id="tabGsc" class="tab-panel" style="display:none">
 
+    <!-- GSC-only sync (bounded to the current date range — far faster than the
+         365-day Sync All, and lets you populate organic on its own). -->
+    <div class="status-bar" style="margin-bottom:16px">
+      <div class="status-text">
+        <div id="gscTabHeadline">Google Search Console (organic)</div>
+        <span class="muted" id="gscTabDetail">Press “Sync GSC” to pull organic data for the selected date range.</span>
+      </div>
+      <button class="sync-btn" id="syncGscBtn" onclick="runSyncGsc()">↻ Sync GSC</button>
+    </div>
+
     <!-- Organic KPI strip: GSC totals + channel-level HubSpot tie -->
     <div class="cards" id="gscCards" style="display:none">
       <div class="card"><div class="card-label" id="lblGscClicks">Organic Clicks (90d)</div><div class="card-value" id="gscClicks">—</div><div class="card-sub" id="gscClicksSub">—</div></div>
@@ -517,6 +527,10 @@ async function loadStatus() {
     } else {
       bits.push('HubSpot: ready, no data pulled yet');
     }
+    const gscSync = findSync('gsc');
+    if (gscSync && gscSync.last_synced_at) {
+      bits.push(`GSC: ${fmtInt(gscSync.rows_synced)} organic rows (${agoText(gscSync.last_synced_at)})${gscSync.error ? ' ⚠ ' + gscSync.error.slice(0, 80) : ''}`);
+    }
     bits.push('Press Sync All to refresh everything (Google Ads + HubSpot). Existing rows are upserted.');
     det.textContent = bits.join(' — ');
   } catch(e) {
@@ -551,6 +565,31 @@ async function runSync() {
     btn.textContent = '↻ Sync All';
     await loadStatus();
     await refreshActiveTab();
+  }
+}
+
+// v1.65.2 — GSC-only sync, bounded to the current date range (fast; avoids the
+// 365-day Sync All). Populates the organic tables, then reloads the GSC tab.
+async function runSyncGsc() {
+  const btn = document.getElementById('syncGscBtn');
+  btn.disabled = true;
+  btn.textContent = 'Syncing GSC…';
+  try {
+    const res  = await fetch('/api/marketing/sync', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report: 'gsc', daysBack: currentDaysBack }),
+    });
+    const data = await res.json();
+    if (!data.ok) alert('GSC sync failed: ' + (data.error || 'unknown error'));
+  } catch(e) {
+    alert('GSC sync error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '↻ Sync GSC';
+    await loadStatus();
+    await loadGscTab();
   }
 }
 

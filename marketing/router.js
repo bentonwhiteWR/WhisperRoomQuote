@@ -246,6 +246,25 @@ const STAGE_LABELS = {
 // Matched case-insensitively as a substring (ILIKE '%term%'). (v1.59.6)
 const BRAND_TERMS = ['whisper'];
 
+// Pre-sync disk guard (v1.65.2). A runaway GSC sync once filled the SHARED
+// Postgres volume (0.5GB → 98%) and took the whole app down. Before any sync
+// we check the DB size (pg_database_size) against a soft limit — env
+// PG_SOFT_LIMIT_MB, default 4500 (~90% of the current 5GB volume) — and refuse
+// the sync with a clear message instead of crashing the disk. Never blocks on
+// its own failure (returns ok:true) so a check error can't wedge syncing.
+async function _capacityCheck(db) {
+  if (!db) return { ok: true, usedMb: null, limitMb: null };
+  try {
+    const limitMb = parseInt(process.env.PG_SOFT_LIMIT_MB) || 4500;
+    const { rows } = await db.query('SELECT pg_database_size(current_database()) AS bytes');
+    const usedMb = Math.round(Number(rows[0].bytes) / 1048576);
+    return { ok: usedMb < limitMb, usedMb, limitMb };
+  } catch (e) {
+    console.warn('[marketing] capacity check failed (allowing sync):', e.message);
+    return { ok: true, usedMb: null, limitMb: null };
+  }
+}
+
 // Entry point. Returns true if the request was handled (caller stops
 // dispatching), false otherwise. ctx provides everything from
 // quote-server.js's request handler closure: { db, getSession, json,
@@ -331,6 +350,15 @@ async function handle(req, res, ctx) {
     // by ~4x. ON CONFLICT upserts make the longer pull idempotent.
     const gaDays   = daysBack != null ? daysBack : 365;
     const hsDays   = daysBack != null ? daysBack : 365;
+
+    // v1.65.2 — refuse the sync if the DB is already near the volume's soft
+    // limit, rather than letting a big pull fill the disk and crash the app.
+    const cap = await _capacityCheck(ctx.db);
+    if (!cap.ok) {
+      ctx.json({ ok: false, error: `Postgres is at ${cap.usedMb} MB of the ${cap.limitMb} MB soft limit — grow the volume or trim data (e.g. TRUNCATE marketing_gsc_queries, marketing_gsc_pages) before syncing.` }, 507);
+      return true;
+    }
+
     try {
       let result;
       if      (report === 'campaigns')        result = await etl.syncCampaigns({   db: ctx.db, daysBack: gaDays });
@@ -352,7 +380,7 @@ async function handle(req, res, ctx) {
         const a = await etl.syncCampaigns({       db: ctx.db, daysBack: gaDays });
         const b = await etl.syncKeywords({        db: ctx.db, daysBack: gaDays });
         const c = await etl.syncSearchTerms({     db: ctx.db, daysBack: gaDays });
-        const g = await gscEtl.syncGsc({          db: ctx.db, daysBack: gaDays });
+        const g = await gscEtl.syncGsc({          db: ctx.db, daysBack: Math.min(gaDays, 120) });
         const d = await hsEtl.syncHubSpotContacts({ db: ctx.db, daysBack: hsDays });
         const e = await hsEtl.syncHubSpotDeals({    db: ctx.db, daysBack: hsDays });
         result = { ok: a.ok && b.ok && c.ok && g.ok && d.ok && e.ok, parts: [a, b, c, g, d, e] };

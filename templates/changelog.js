@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.65.2', date:'June 3, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Search Console data now actually populates (fast).** Added a dedicated **“Sync GSC”** button on the Google Search Console tab that pulls organic data just for the selected date range — so you don’t have to wait on the full 365-day Sync All (where GSC ran dead-last). Also made the organic import **batched** (it was inserting row-by-row over 100k+ daily rows, which crawled) and added a GSC line to the status bar so you can see organic sync status + any errors. Sync All now pulls a lighter 120-day GSC window.'},
+        {t:'fix', d:'**Disk-capacity guard on all syncs.** A large organic pull had filled the shared Postgres volume and briefly took the app down. Every sync now checks the database size first and **refuses with a clear message if the DB is near the volume’s limit** — instead of filling the disk. (Volume was also grown 0.5 GB → 5 GB.) Tunable via the `PG_SOFT_LIMIT_MB` env var (default 4500 MB).'},
+      ]
+    },
+    {
       v:'1.65.1', date:'June 3, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Marketing dashboard is now tabbed: “Google Ad Spend” + new “Google Search Console”.** The existing paid-search view is unchanged (just lives under the first tab); the new tab pulls your **organic** Search Console data. Top section is the **Paid × Organic Overlap** — it flags terms you’re *paying* for that you already rank for organically (**Cannibalization** → worth testing pulling paid) vs. terms you pay for with no organic presence (**Organic gap** → paid is doing the work, e.g. competitor names). Plus an organic KPI strip (clicks / impressions / CTR / avg position, branded vs non-branded) tied to HubSpot organic leads + closed revenue, and Top Organic Queries / Pages tables. Shares the same date-range + attribution selectors as the Ad Spend tab.'},

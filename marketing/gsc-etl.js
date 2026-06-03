@@ -105,30 +105,37 @@ async function syncGsc({ db, daysBack = 90 }) {
     return { ok: false, report: 'gsc', rows: 0, error: msg };
   }
 
-  for (const r of queryRows) {
-    const [date, query] = r.keys;
-    await db.query(`
-      INSERT INTO marketing_gsc_queries (date, query, clicks, impressions, ctr, position, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW())
-      ON CONFLICT (date, query) DO UPDATE SET
-        clicks = EXCLUDED.clicks, impressions = EXCLUDED.impressions,
-        ctr = EXCLUDED.ctr, position = EXCLUDED.position, updated_at = NOW()
-    `, [date, query, r.clicks || 0, r.impressions || 0, r.ctr || 0, r.position || 0]);
-  }
-  for (const r of pageRows) {
-    const [date, page] = r.keys;
-    await db.query(`
-      INSERT INTO marketing_gsc_pages (date, page, clicks, impressions, ctr, position, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW())
-      ON CONFLICT (date, page) DO UPDATE SET
-        clicks = EXCLUDED.clicks, impressions = EXCLUDED.impressions,
-        ctr = EXCLUDED.ctr, position = EXCLUDED.position, updated_at = NOW()
-    `, [date, page, r.clicks || 0, r.impressions || 0, r.ctr || 0, r.position || 0]);
-  }
+  await _bulkUpsert(db, 'marketing_gsc_queries', 'query', queryRows);
+  await _bulkUpsert(db, 'marketing_gsc_pages',   'page',  pageRows);
 
   const total = queryRows.length + pageRows.length;
   await _recordSync(db, 'gsc', total, dateFrom, dateTo, null);
   return { ok: true, report: 'gsc', rows: total, queries: queryRows.length, pages: pageRows.length, date_from: dateFrom, date_to: dateTo };
+}
+
+// Chunked multi-row upsert (~500 rows/statement). GSC daily data can be
+// hundreds of thousands of rows; row-by-row awaited INSERTs would crawl and
+// risk timing out the sync. `table`/`keyCol` are controlled literals (not user
+// input), so interpolating them is safe.
+async function _bulkUpsert(db, table, keyCol, rows) {
+  const CHUNK = 500;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
+    const tuples = [], params = [];
+    chunk.forEach((r, j) => {
+      const b = j * 6;
+      tuples.push(`($${b+1}, $${b+2}, $${b+3}, $${b+4}, $${b+5}, $${b+6})`);
+      const [date, key] = r.keys;
+      params.push(date, key, r.clicks || 0, r.impressions || 0, r.ctr || 0, r.position || 0);
+    });
+    await db.query(
+      `INSERT INTO ${table} (date, ${keyCol}, clicks, impressions, ctr, position) VALUES ${tuples.join(', ')}
+       ON CONFLICT (date, ${keyCol}) DO UPDATE SET
+         clicks = EXCLUDED.clicks, impressions = EXCLUDED.impressions,
+         ctr = EXCLUDED.ctr, position = EXCLUDED.position, updated_at = NOW()`,
+      params
+    );
+  }
 }
 
 async function _recordSync(db, reportType, rows, dateFrom, dateTo, error) {

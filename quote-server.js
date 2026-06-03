@@ -2887,6 +2887,173 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── API: HubSpot Payouts — succeeded payments grouped by deposit ──
+  // Companion to /hubspot-fees, but answers "which bank deposit did this land
+  // in, and which payments made it up?". Pulls succeeded hs_payments whose
+  // hs_payout_date falls in the selected month, then groups them by payout
+  // (settlement) date — each group ties to one HubSpot → bank deposit.
+  //
+  // Payments not yet settled (null hs_payout_date) carry no deposit yet, so
+  // the payout-date range filter naturally excludes them; they still appear on
+  // the Fees tab (grouped by transaction date).
+  //
+  // NOTE: month boundaries are UTC midnight here (not Eastern-local like the
+  // Fees tab) because hs_payout_date is a DATE-type property stored at UTC
+  // midnight — local boundaries would shove a 1st-of-month payout into the
+  // prior month.
+  //
+  // Usage: GET /api/accounting/hubspot-payouts?month=YYYY-MM
+  // Defaults to the last full calendar month.
+  if (pathname === '/api/accounting/hubspot-payouts' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const monthParam = parsed.query.month;
+      const now = new Date();
+      let year, month;
+      if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
+        const [y, m] = monthParam.split('-').map(Number);
+        year = y; month = m - 1; // JS months are 0-indexed
+      } else {
+        year  = now.getFullYear();
+        month = now.getMonth() - 1;
+        if (month < 0) { month += 12; year -= 1; }
+      }
+      const start = Date.UTC(year, month,     1);
+      const end   = Date.UTC(year, month + 1, 1);
+      const monthLabel = new Date(Date.UTC(year, month, 1))
+        .toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+
+      const properties = [
+        'hs_createdate', 'hs_initial_amount', 'hs_fees_amount', 'hs_platform_fee',
+        'hs_net_amount', 'hs_refunds_amount', 'hs_latest_status',
+        'hs_processor_type', 'hs_payment_method', 'hs_payment_method_bank_or_issuer',
+        'hs_payment_source_name', 'hs_payout_date', 'hs_estimated_payout_date',
+        'hs_currency_code', 'hs_billing_bill_to_name', 'hs_customer_email',
+      ];
+      const allPayments = [];
+      let after = undefined;
+      let safety = 0;
+      while (safety++ < 50) {
+        const searchRes = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/payments/search',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+        }, {
+          filterGroups: [{ filters: [
+            { propertyName: 'hs_payout_date',    operator: 'GTE', value: String(start) },
+            { propertyName: 'hs_payout_date',    operator: 'LT',  value: String(end) },
+            { propertyName: 'hs_latest_status',  operator: 'EQ',  value: 'succeeded' },
+            { propertyName: 'hs_processor_type', operator: 'EQ',  value: 'hs_payments' },
+          ]}],
+          properties,
+          sorts: [{ propertyName: 'hs_payout_date', direction: 'ASCENDING' }],
+          limit: 100,
+          ...(after ? { after } : {}),
+        });
+        const results = searchRes.body?.results || [];
+        results.forEach(r => allPayments.push(r));
+        const nextAfter = searchRes.body?.paging?.next?.after;
+        if (!nextAfter || results.length === 0) break;
+        after = nextAfter;
+      }
+
+      const num = v => parseFloat(v || 0) || 0;
+      const r2  = n => Math.round(n * 100) / 100;
+      // HubSpot may return a date property as an epoch-ms string or a plain
+      // "YYYY-MM-DD" — normalize to an ISO string either way.
+      const toIso = v => {
+        if (!v) return null;
+        const s = String(v);
+        return /^\d+$/.test(s)
+          ? new Date(Number(s)).toISOString()
+          : new Date(s + 'T00:00:00Z').toISOString();
+      };
+
+      // Group by payout day (UTC). Map preserves insertion order; results are
+      // already payout-date-ascending from the search sort.
+      const groups = new Map();
+      let count = 0, gross = 0, processorFees = 0, platformFees = 0, net = 0, refunds = 0;
+      allPayments.forEach(p => {
+        const props     = p.properties || {};
+        const initial   = num(props.hs_initial_amount);
+        const processor = num(props.hs_fees_amount);
+        const platform  = num(props.hs_platform_fee);
+        const netAmt    = num(props.hs_net_amount);
+        const refundAmt = num(props.hs_refunds_amount);
+        const payoutIso = toIso(props.hs_payout_date);
+        const payoutKey = payoutIso ? payoutIso.slice(0, 10) : 'unknown';
+
+        count += 1; gross += initial; processorFees += processor;
+        platformFees += platform; net += netAmt; refunds += refundAmt;
+
+        const row = {
+          id:           p.id,
+          createdAt:    props.hs_createdate || null,
+          payoutDate:   payoutIso,
+          sourceName:   props.hs_payment_source_name || null, // e.g. WR-1195
+          customer:     props.hs_billing_bill_to_name || null,
+          email:        props.hs_customer_email || null,
+          method:       props.hs_payment_method || null,
+          methodBank:   props.hs_payment_method_bank_or_issuer || null,
+          gross:        initial,
+          processorFee: processor,
+          platformFee:  platform,
+          totalFee:     r2(processor + platform),
+          net:          netAmt,
+          refundAmount: refundAmt,
+        };
+        if (!groups.has(payoutKey)) {
+          groups.set(payoutKey, {
+            payoutKey,
+            payoutDate: payoutKey === 'unknown' ? null : payoutIso,
+            count: 0, gross: 0, processorFees: 0, platformFees: 0,
+            net: 0, refunds: 0, payments: [],
+          });
+        }
+        const g = groups.get(payoutKey);
+        g.count += 1; g.gross += initial; g.processorFees += processor;
+        g.platformFees += platform; g.net += netAmt; g.refunds += refundAmt;
+        g.payments.push(row);
+      });
+
+      const payouts = [...groups.values()].map(g => ({
+        payoutKey:     g.payoutKey,
+        payoutDate:    g.payoutDate,
+        count:         g.count,
+        gross:         r2(g.gross),
+        processorFees: r2(g.processorFees),
+        platformFees:  r2(g.platformFees),
+        totalFees:     r2(g.processorFees + g.platformFees),
+        net:           r2(g.net),
+        refunds:       r2(g.refunds),
+        payments:      g.payments.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))),
+      })).sort((a, b) => String(a.payoutKey).localeCompare(String(b.payoutKey)));
+
+      json({
+        month:      monthParam || `${year}-${String(month + 1).padStart(2,'0')}`,
+        monthLabel,
+        rangeStart: new Date(start).toISOString(),
+        rangeEnd:   new Date(end).toISOString(),
+        summary: {
+          payoutCount:   payouts.length,
+          count,
+          gross:         r2(gross),
+          processorFees: r2(processorFees),
+          platformFees:  r2(platformFees),
+          totalFees:     r2(processorFees + platformFees),
+          net:           r2(net),
+          refunds:       r2(refunds),
+        },
+        payouts,
+      });
+    } catch(e) {
+      console.error('[accounting/hubspot-payouts]', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── API: Search contacts ──
   if (pathname === '/api/contacts' && req.method === 'GET') {
     try {

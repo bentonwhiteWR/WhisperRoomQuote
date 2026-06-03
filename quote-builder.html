@@ -4084,8 +4084,29 @@ function showSuccessModal({ title, quoteNumber, message, viewUrl }) {
   const view = document.getElementById('successModalView');
   if (viewUrl) { view.href = viewUrl; view.style.display = 'inline-flex'; }
   else { view.style.display = 'none'; }
+  // Stash for the Copy Quote Link button + toggle it with the View link.
+  window._successQuoteUrl = viewUrl || '';
+  window._successQuoteNum = quoteNumber || '';
+  const copyBtn = document.getElementById('successModalCopy');
+  if (copyBtn) {
+    copyBtn.style.display = viewUrl ? 'inline-flex' : 'none';
+    copyBtn.textContent = '🔗 Copy Quote Link';
+  }
   m.classList.add('visible');
   m.setAttribute('aria-hidden', 'false');
+}
+
+// Copy the just-created quote as a clickable hyperlink — same label logic as
+// the Copy Link button: Quote Label → package → MDL → quote number.
+function copySuccessModalLink(btn) {
+  const url = window._successQuoteUrl;
+  if (!url) return;
+  const desc = ((document.getElementById('quoteLabel') || { value: '' }).value.trim()) || quoteBoothDesc();
+  const linkText = desc ? ('WhisperRoom Quote — ' + desc) : ('WhisperRoom Quote ' + (window._successQuoteNum || ''));
+  copyRichLink(url, linkText).then(() => {
+    if (btn) { btn.textContent = '✓ Copied!'; setTimeout(() => { btn.textContent = '🔗 Copy Quote Link'; }, 2200); }
+    showToast('Quote link copied!', 'info');
+  }).catch(() => { prompt('Copy this link:', url); });
 }
 function closeSuccessModal() {
   const m = document.getElementById('successModal');
@@ -5802,6 +5823,20 @@ function updateQuoteNumber() {
 }
 
 // ── Add-another-package ──────────────────────────────────────────
+// Auto-fill the Quote Label with the package name when a package (a non-MDL
+// named preset) is selected and the label is empty. Tracks the value we
+// auto-set so switching packages updates it, but a label the rep typed or
+// loaded is never overwritten.
+let _quoteLabelAutoValue = '';
+function maybeAutofillQuoteLabel(presetName) {
+  const el = document.getElementById('quoteLabel');
+  if (!el || !presetName || /^MDL\b/i.test(presetName)) return;  // single model → not a package
+  const cur = el.value.trim();
+  if (cur && cur !== _quoteLabelAutoValue) return;               // rep's own label — leave it
+  el.value = presetName;
+  _quoteLabelAutoValue = presetName;
+}
+
 function showAddPackageRow() {
   const row = document.getElementById('addPackageRow');
   const addSel = document.getElementById('addPackageSelect');
@@ -5819,6 +5854,7 @@ async function confirmAddPackage() {
     document.getElementById('addPackageStatus').textContent = 'No preset found for ' + presetName;
     return;
   }
+  maybeAutofillQuoteLabel(presetName);
   document.getElementById('addPackageStatus').textContent = 'Loading ' + skus.length + ' items...';
   addSel.disabled = true;
   const isPackage = PACKAGE_DISCOUNT_NAMES.includes(presetName);
@@ -5838,6 +5874,7 @@ async function onPresetSelect(presetName) {
     document.getElementById('presetStatus').textContent = 'No preset found for ' + presetName;
     return;
   }
+  maybeAutofillQuoteLabel(presetName);
 
   // Clear existing items and load preset
   lineItems = [];
@@ -6243,7 +6280,11 @@ function copyQuoteLink() {
   const tok = getShareToken();
   console.log('[copyLink] quoteNum:', quoteNum, '| _lastShareToken:', window._lastShareToken, '| _loadedShareToken:', window._loadedShareToken, '| tok:', tok);
   const url = location.origin + '/q/' + quoteNum + (tok ? '?t=' + tok : '');
-  copyRichLink(url, 'WhisperRoom Quote ' + quoteNum).then(() => {
+  // Link text: prefer the rep's Quote Label; else the booth/package on the
+  // quote (package name if it's a package, otherwise the MDL); else the #.
+  const desc = ((document.getElementById('quoteLabel') || { value: '' }).value.trim()) || quoteBoothDesc();
+  const linkText = desc ? ('WhisperRoom Quote — ' + desc) : ('WhisperRoom Quote ' + quoteNum);
+  copyRichLink(url, linkText).then(() => {
     showToast('Quote link copied!', 'info');
     const btn = document.getElementById('copyLinkBtn');
     if (btn) { const orig = btn.innerHTML; btn.innerHTML = '&#x2713; Copied!'; setTimeout(() => btn.innerHTML = orig, 2500); }
@@ -6268,6 +6309,18 @@ function copyRichLink(url, label) {
   return (navigator.clipboard && navigator.clipboard.writeText)
     ? navigator.clipboard.writeText(url)
     : Promise.reject(new Error('clipboard unavailable'));
+}
+
+// Booth/package descriptor for the copy-link text (used when no Quote Label).
+// Priority after the label: package name (a BOOTH_DATA key that isn't an MDL),
+// then the MDL line item.
+function quoteBoothDesc() {
+  const items = (typeof lineItems !== 'undefined' && Array.isArray(lineItems)) ? lineItems : [];
+  const pkg = items.find(i => i && i.name && typeof BOOTH_DATA !== 'undefined' && BOOTH_DATA[i.name] && !/^MDL\s/i.test(i.name));
+  if (pkg) return pkg.name;
+  const mdl = items.find(i => i && /^MDL\s/i.test(i.name || ''));
+  if (mdl) return mdl.name;
+  return '';
 }
 
 function activateLinkBtn() {
@@ -8681,6 +8734,7 @@ function selectDriveFolder(folderId, folderName) {
     <div class="success-modal-msg" id="successModalMsg">Your quote has been pushed to HubSpot.</div>
     <div class="success-modal-actions">
       <a id="successModalView" href="#" target="_blank" class="btn-primary" style="display:none">View Quote ↗</a>
+      <button id="successModalCopy" class="btn-secondary" onclick="copySuccessModalLink(this)" style="display:none">🔗 Copy Quote Link</button>
       <button class="btn-secondary" onclick="closeSuccessModal()">Close</button>
       <button class="btn-secondary" onclick="closeSuccessModal(); newQuote && newQuote()">Start New Quote</button>
     </div>

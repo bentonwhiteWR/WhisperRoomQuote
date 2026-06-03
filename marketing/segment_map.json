@@ -7,7 +7,8 @@
     "Voice Over",
     "Music / Recording",
     "Office / Privacy",
-    "Broadcast / Podcast"
+    "Broadcast / Podcast",
+    "Competitors"
   ],
   "rules": [
     { "segment": "Audiology",          "match_any": ["audiolog", "hearing", "telehealth", "therapy", "medical", "clinic", "exam", "speech"] },
@@ -25,9 +26,9 @@
     "**LP Branded - A": "Mixed",
     "**LP Branded - B": "Mixed",
     "**LP General (US/CAN) - Combined": "Mixed",
-    "**LP Testing (US/CAN) - Combined": "Mixed",
+    "**LP Testing (US/CAN) - Combined": "Audiology",
     "**LP Soundproof (US/CAN) - B": "Mixed",
-    "Competitors - Sound Booths": "Mixed",
+    "Competitors - Sound Booths": "Competitors",
     "2025 WR Active User Remarketing": "Mixed",
     "Site Re-Engagement - High Interaction": "Mixed",
     "Shopping | Core Booths | US": "Mixed",

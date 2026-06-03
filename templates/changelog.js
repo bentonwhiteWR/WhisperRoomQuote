@@ -51,6 +51,32 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.62.0', date:'June 3, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Quote Label auto-fills with the package name.** When you pick a package and the Quote Label is blank, it now fills in with that package’s name automatically (and updates if you switch packages). If you’ve typed your own label, it’s left alone. Individual MDL selections don’t auto-fill.'},
+        {t:'add', d:'**“Copy Quote Link” button on the quote-created popup.** The success window after pushing a quote now has a Copy Quote Link button right next to View Quote — copies the clean clickable hyperlink (Quote Label → package → MDL) ready to paste into a client email.'},
+      ]
+    },
+    {
+      v:'1.61.4', date:'June 3, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Copied quote links now use a descriptive label.** The copied hyperlink reads “WhisperRoom Quote — &lt;name&gt;” using, in priority: the Quote Label → the package name → the MDL number (falls back to the quote number if none). Cleaner and more recognizable when pasted into a client email. Works from both the Quote Builder and the Deal Hub.'},
+      ]
+    },
+    {
+      v:'1.61.3', date:'June 3, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Fixed the "Couldn\'t load records" error on some marketing drill-down popups** (the Search Terms **Deals** & **True ROAS** cells and the **Share of closed revenue** pills). The query was sorting by a column phrased slightly differently than it was selected, which Postgres rejects on a de-duplicated list. Now sorts correctly — those popups open as expected.'},
+      ]
+    },
+    {
+      v:'1.61.2', date:'June 3, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing dashboard — more click-through to the underlying HubSpot records.** The **Share of closed revenue** and **Ad-acquisition quality** pills are now clickable: each opens a popup listing the closed-won deals behind that segment / bucket, linked straight to HubSpot. In the **Search Terms** table, the **Leads**, **Deals**, and **True ROAS** cells are clickable too — Leads opens the attributed contacts, Deals the attributed deals, and True ROAS the closed-won deals behind that term’s revenue. Every popup uses the same attribution model + window as the number you clicked, so the counts reconcile.'},
+        {t:'ui',  d:'**Campaign segment cleanup.** “**LP Testing (US/CAN) - Combined” is now classified as **Audiology** (it drives audiology closes), a new **Competitors** segment was added (e.g. “Competitors - Sound Booths”), and campaigns that previously showed as **Unclassified** are now bundled into **Mixed**.'},
+      ]
+    },
+    {
       v:'1.61.1', date:'June 3, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Another round on the intermittent PDF “Cannot fork” failures.** Pointed Chromium at its real binary instead of the Debian wrapper script (which forks extra processes on every launch) and turned off Chromium’s crash reporter (the exact subprocess that was failing to start). Should cut down the “Drive … upload failed” errors. Underlying cause is the server running low on resources, so if it recurs, the box needs more memory.'},

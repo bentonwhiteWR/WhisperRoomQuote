@@ -196,7 +196,10 @@ function _classifyCampaign(name, map) {
   for (const frag of (map.mixed_signals || [])) {
     if (test(frag)) return { segment: 'Mixed', rule: `mixed:${frag}` };
   }
-  return { segment: 'Unclassified', rule: null };
+  // v1.61.2 — Gabe's call: campaigns that match no rule/signal fall into
+  // Mixed rather than a separate Unclassified bucket, so the share-of-revenue
+  // rollup + segment table bundle them with the other un-segmented spend.
+  return { segment: 'Mixed', rule: 'default' };
 }
 
 // ── Funnel: Quote stage (v1.51.2) ────────────────────────────────────
@@ -779,11 +782,30 @@ async function handle(req, res, ctx) {
   // modal's row count matches the number the user clicked. Capped at 500 rows
   // (no realistic window approaches that; the cap just protects the browser).
   // Contact records are HubSpot object type 0-1, deals 0-3.
+  //
+  // v1.61.2 adds five more types so the strips + search-term table are also
+  // drillable, each reusing the SAME join/window as the number it backs:
+  //   type=ad-quality&bucket=prospecting|branded|unknown → closed-won deals in
+  //        that ad-acquisition-quality bucket (mirrors /ad-quality, close-date
+  //        windowed).
+  //   type=segment-revenue&segment=<name> → closed-won deals whose attributed
+  //        campaign maps to that buyer segment (mirrors the share-of-revenue
+  //        rollup; close-date windowed; segment resolved in JS via the same
+  //        _classifyCampaign the table uses, then deduped by deal).
+  //   type=term-leads|term-deals|term-closed&term=<term> → the contacts / all
+  //        deals / closed-won deals behind a search term's Leads / Deals / True
+  //        ROAS cell. Mirrors /search-term-attribution: contact windowed by the
+  //        model date, deals NOT date-windowed (so term-closed reconciles with
+  //        the all-time-revenue basis of the True ROAS column).
   if (pathname === '/api/marketing/drill' && req.method === 'GET') {
     try {
       const days = _parseDays(req);
       const am   = _attrModel(req);
-      const type = (new URL(req.url, 'http://localhost').searchParams.get('type') || '').toLowerCase();
+      const url  = new URL(req.url, 'http://localhost');
+      const type = (url.searchParams.get('type') || '').toLowerCase();
+      const bucket  = (url.searchParams.get('bucket')  || '').toLowerCase();        // ad-quality drill
+      const segment =  url.searchParams.get('segment') || '';                       // share-of-revenue drill
+      const term    = (url.searchParams.get('term')    || '').trim().toLowerCase(); // search-term drills
       const rec  = `https://app.hubspot.com/contacts/${HS_PORTAL_ID}/record`;
       if (!ctx.db) { ctx.json({ rows: [], type }); return true; }
 
@@ -831,6 +853,145 @@ async function handle(req, res, ctx) {
            ORDER BY ${type === 'revenue' ? 'd.amount' : 'd.closed_at'} DESC
            LIMIT 500
         `, [days])).rows.map(r => ({ ...r, url: `${rec}/0-3/${r.id}` }));
+      } else if (type === 'ad-quality') {
+        // Mirrors /api/marketing/ad-quality's bucket classification exactly, so
+        // the drill count == the pill count. Brand fragments inline BRAND_TERMS
+        // (controlled config, not user input — safe).
+        const VALID = ['prospecting', 'branded', 'unknown'];
+        if (!VALID.includes(bucket)) { ctx.json({ rows: [], error: 'unknown bucket' }, 400); return true; }
+        const brandLike    = col => BRAND_TERMS.map(t => `COALESCE(${col}, '') ILIKE '%${t}%'`).join(' OR ');
+        const touchBranded = (tm, camp) => `((${brandLike(tm)}) OR COALESCE(${camp}, '') ILIKE '%brand%')`;
+        const prospect = (src, tm, camp) =>
+          `(${src} = 'PAID_SEARCH' AND (${camp} IS NOT NULL OR ${tm} IS NOT NULL) AND NOT ${touchBranded(tm, camp)})`;
+        const brandedPaid = (src, tm, camp) => `(${src} = 'PAID_SEARCH' AND ${touchBranded(tm, camp)})`;
+        const hasProspect =
+          `(${prospect('c.first_source', 'c.first_source_data_2', 'c.first_source_data_1')} ` +
+          `OR ${prospect('c.latest_source', 'c.latest_source_data_2', 'c.latest_source_data_1')})`;
+        const hasBranded =
+          `(${brandedPaid('c.first_source', 'c.first_source_data_2', 'c.first_source_data_1')} ` +
+          `OR ${brandedPaid('c.latest_source', 'c.latest_source_data_2', 'c.latest_source_data_1')})`;
+        rows = (await ctx.db.query(`
+          WITH classified AS (
+            SELECT d.deal_id, d.deal_name, d.amount, d.closed_at,
+                   CASE WHEN ${hasProspect} THEN 'prospecting'
+                        WHEN ${hasBranded}  THEN 'branded'
+                        ELSE 'unknown' END AS bucket
+              FROM marketing_hubspot_deals d
+              JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+               AND ${am.contactPaid}
+          )
+          SELECT deal_id AS id,
+                 COALESCE(NULLIF(deal_name, ''), 'Deal ' || deal_id) AS label,
+                 to_char(closed_at, 'Mon DD, YYYY')                  AS sublabel,
+                 amount::float                                       AS amount
+            FROM classified
+           WHERE bucket = $2
+           ORDER BY amount DESC NULLS LAST
+           LIMIT 500
+        `, [days, bucket])).rows.map(r => ({ ...r, url: `${rec}/0-3/${r.id}` }));
+      } else if (type === 'segment-revenue') {
+        // Mirrors the share-of-closed-revenue rollup: closed-won deals (close-
+        // date windowed) attributed to a campaign, classified to a buyer segment
+        // in JS via the SAME _classifyCampaign the table uses, then filtered to
+        // the requested segment and deduped by deal (a deal can match >1 campaign
+        // under the 'all' model).
+        if (!segment) { ctx.json({ rows: [], error: 'missing segment' }, 400); return true; }
+        const aliasHsNames = HUBSPOT_CAMPAIGN_ALIASES.map(a => a.hsName);
+        const aliasGaNames = HUBSPOT_CAMPAIGN_ALIASES.map(a => a.gaName);
+        const raw = (await ctx.db.query(`
+          WITH campaign_names AS (
+            SELECT DISTINCT campaign_id, campaign_name
+            FROM marketing_campaigns
+            WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $3
+              AND campaign_name IS NOT NULL
+          ),
+          aliases AS (
+            SELECT hs_name, ga_name
+            FROM unnest($1::text[], $2::text[]) AS t(hs_name, ga_name)
+          )
+          SELECT DISTINCT d.deal_id AS id,
+                 COALESCE(NULLIF(d.deal_name, ''), 'Deal ' || d.deal_id) AS label,
+                 to_char(d.closed_at, 'Mon DD, YYYY')                    AS sublabel,
+                 d.amount::float                                         AS amount,
+                 cn.campaign_name                                        AS campaign_name
+            FROM campaign_names cn
+            JOIN marketing_hubspot_contacts c ON (
+              ${am.campMatch}
+              AND ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $3
+            )
+            JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
+           WHERE d.is_closed_won AND d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $3
+           ORDER BY amount DESC NULLS LAST
+        `, [aliasHsNames, aliasGaNames, days])).rows;
+        const segMap = _loadSegmentMap();
+        const seen = new Set();
+        rows = [];
+        for (const r of raw) {
+          if (_classifyCampaign(r.campaign_name, segMap).segment !== segment) continue;
+          if (seen.has(r.id)) continue;
+          seen.add(r.id);
+          rows.push({ id: r.id, label: r.label, sublabel: r.sublabel, amount: r.amount, url: `${rec}/0-3/${r.id}` });
+        }
+      } else if (type === 'term-leads' || type === 'term-deals' || type === 'term-closed') {
+        // Search-term drills. A one-row `st` CTE feeds am.termMatch (which compares
+        // LOWER(TRIM(...)) = st.search_term); the contact is windowed by the model
+        // date and deals are NOT date-windowed — so term-closed sums the same
+        // all-time closed-won revenue as the search-term table's True ROAS column.
+        if (!term) { ctx.json({ rows: [], error: 'missing term' }, 400); return true; }
+        if (type === 'term-leads') {
+          rows = (await ctx.db.query(`
+            WITH st AS (SELECT $2::text AS search_term)
+            SELECT c.contact_id AS id,
+                   COALESCE(NULLIF(c.email, ''), 'Contact ' || c.contact_id) AS label,
+                   COALESCE(c.lifecycle_stage, '—')                          AS sublabel,
+                   NULL::float                                               AS amount
+              FROM st
+              JOIN marketing_hubspot_contacts c ON (
+                ${am.termMatch}
+                AND ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1
+              )
+             ORDER BY ${am.contactDate} DESC
+             LIMIT 500
+          `, [days, term])).rows.map(r => ({ ...r, url: `${rec}/0-1/${r.id}` }));
+        } else if (type === 'term-deals') {
+          rows = (await ctx.db.query(`
+            WITH st AS (SELECT $2::text AS search_term)
+            SELECT DISTINCT d.deal_id AS id,
+                   COALESCE(NULLIF(d.deal_name, ''), 'Deal ' || d.deal_id) AS label,
+                   d.dealstage                                             AS stage,
+                   d.amount::float                                         AS amount
+              FROM st
+              JOIN marketing_hubspot_contacts c ON (
+                ${am.termMatch}
+                AND ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1
+              )
+              JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
+             ORDER BY amount DESC NULLS LAST
+             LIMIT 500
+          `, [days, term])).rows.map(r => ({
+            id: r.id, label: r.label, amount: r.amount,
+            sublabel: STAGE_LABELS[r.stage] || r.stage,
+            url: `${rec}/0-3/${r.id}`,
+          }));
+        } else { // term-closed — the deals behind the term's True ROAS / Revenue
+          rows = (await ctx.db.query(`
+            WITH st AS (SELECT $2::text AS search_term)
+            SELECT DISTINCT d.deal_id AS id,
+                   COALESCE(NULLIF(d.deal_name, ''), 'Deal ' || d.deal_id) AS label,
+                   to_char(d.closed_at, 'Mon DD, YYYY')                    AS sublabel,
+                   d.amount::float                                         AS amount
+              FROM st
+              JOIN marketing_hubspot_contacts c ON (
+                ${am.termMatch}
+                AND ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1
+              )
+              JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
+             WHERE d.is_closed_won
+             ORDER BY amount DESC NULLS LAST
+             LIMIT 500
+          `, [days, term])).rows.map(r => ({ ...r, url: `${rec}/0-3/${r.id}` }));
+        }
       } else {
         ctx.json({ rows: [], error: 'unknown drill type' }, 400);
         return true;

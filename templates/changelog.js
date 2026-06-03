@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.61.3', date:'June 3, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Fixed the "Couldn\'t load records" error on some marketing drill-down popups** (the Search Terms **Deals** & **True ROAS** cells and the **Share of closed revenue** pills). The query was sorting by a column phrased slightly differently than it was selected, which Postgres rejects on a de-duplicated list. Now sorts correctly — those popups open as expected.'},
+      ]
+    },
+    {
       v:'1.61.2', date:'June 3, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Marketing dashboard — more click-through to the underlying HubSpot records.** The **Share of closed revenue** and **Ad-acquisition quality** pills are now clickable: each opens a popup listing the closed-won deals behind that segment / bucket, linked straight to HubSpot. In the **Search Terms** table, the **Leads**, **Deals**, and **True ROAS** cells are clickable too — Leads opens the attributed contacts, Deals the attributed deals, and True ROAS the closed-won deals behind that term’s revenue. Every popup uses the same attribution model + window as the number you clicked, so the counts reconcile.'},

@@ -922,7 +922,7 @@ async function handle(req, res, ctx) {
             )
             JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
            WHERE d.is_closed_won AND d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $3
-           ORDER BY d.amount DESC NULLS LAST
+           ORDER BY amount DESC NULLS LAST
         `, [aliasHsNames, aliasGaNames, days])).rows;
         const segMap = _loadSegmentMap();
         const seen = new Set();
@@ -967,7 +967,7 @@ async function handle(req, res, ctx) {
                 AND ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1
               )
               JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
-             ORDER BY d.amount DESC NULLS LAST
+             ORDER BY amount DESC NULLS LAST
              LIMIT 500
           `, [days, term])).rows.map(r => ({
             id: r.id, label: r.label, amount: r.amount,
@@ -988,7 +988,7 @@ async function handle(req, res, ctx) {
               )
               JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
              WHERE d.is_closed_won
-             ORDER BY d.amount DESC NULLS LAST
+             ORDER BY amount DESC NULLS LAST
              LIMIT 500
           `, [days, term])).rows.map(r => ({ ...r, url: `${rec}/0-3/${r.id}` }));
         }

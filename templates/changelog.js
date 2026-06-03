@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.65.1', date:'June 3, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing dashboard is now tabbed: “Google Ad Spend” + new “Google Search Console”.** The existing paid-search view is unchanged (just lives under the first tab); the new tab pulls your **organic** Search Console data. Top section is the **Paid × Organic Overlap** — it flags terms you’re *paying* for that you already rank for organically (**Cannibalization** → worth testing pulling paid) vs. terms you pay for with no organic presence (**Organic gap** → paid is doing the work, e.g. competitor names). Plus an organic KPI strip (clicks / impressions / CTR / avg position, branded vs non-branded) tied to HubSpot organic leads + closed revenue, and Top Organic Queries / Pages tables. Shares the same date-range + attribution selectors as the Ad Spend tab.'},
+        {t:'add', d:'**Search Console pulls through our own Google API connection** (new `marketing/gsc-etl.js` + `marketing_gsc_queries`/`marketing_gsc_pages` tables). Run it via **↻ Sync All** or a `gsc`-only sync. Note: organic *query→deal* attribution isn’t possible (Google withholds the organic search term), so organic revenue is tied to HubSpot at the **channel** level (ORGANIC_SEARCH), not per keyword.'},
+      ]
+    },
+    {
       v:'1.65.0', date:'June 3, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Accountant Payouts Portal — a password-gated public page at `/portal/payouts`.** Lets an outside accountant view the exact HubSpot Payouts data (payouts grouped by deposit date, expandable to member payments, summary KPIs, CSV) without a WhisperRoom login. Fully walled off from the rest of the app: its own `wr_acct_session` cookie + in-memory session, no nav to anything else. Password lives ONLY in the `ACCOUNTANT_PORTAL_PASSWORD` env var (nothing hardcoded) — **the portal is disabled (503) until that env var is set in Railway.** `noindex` on every route, HTTPS-only Secure cookie, constant-time password check, 8-attempts/min login rate-limit.'},

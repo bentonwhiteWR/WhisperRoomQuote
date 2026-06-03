@@ -57,6 +57,38 @@ CREATE TABLE IF NOT EXISTS marketing_search_terms (
 );
 CREATE INDEX IF NOT EXISTS idx_marketing_search_terms_date ON marketing_search_terms(date DESC);
 
+-- Google Search Console — daily ORGANIC search performance (v1.65.1).
+-- Pulled from the Search Analytics API for the whisperroom.com property.
+-- ctr is a 0-1 fraction, position is the average rank that day. Stored daily
+-- so the dashboard's ?days=N filter sub-windows it like the Google Ads tables;
+-- GET endpoints re-aggregate (clicks/impressions summed; ctr = clicks/impr;
+-- position = impression-weighted mean). NOTE: organic query data CANNOT be
+-- joined to HubSpot deals at the query level (Google withholds the organic
+-- query, "not provided") — the HubSpot tie is channel-level (ORGANIC_SEARCH).
+CREATE TABLE IF NOT EXISTS marketing_gsc_queries (
+  date        DATE NOT NULL,
+  query       TEXT NOT NULL,
+  clicks      BIGINT,
+  impressions BIGINT,
+  ctr         NUMERIC,
+  position    NUMERIC,
+  updated_at  TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (date, query)
+);
+CREATE INDEX IF NOT EXISTS idx_marketing_gsc_queries_date ON marketing_gsc_queries(date DESC);
+
+CREATE TABLE IF NOT EXISTS marketing_gsc_pages (
+  date        DATE NOT NULL,
+  page        TEXT NOT NULL,
+  clicks      BIGINT,
+  impressions BIGINT,
+  ctr         NUMERIC,
+  position    NUMERIC,
+  updated_at  TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (date, page)
+);
+CREATE INDEX IF NOT EXISTS idx_marketing_gsc_pages_date ON marketing_gsc_pages(date DESC);
+
 -- Sync runbook — tracks when each report type was last pulled, how
 -- many rows came back, and any error. Powers the "Last synced X
 -- minutes ago" UI on the dashboard.

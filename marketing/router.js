@@ -25,8 +25,9 @@
 
 const fs    = require('fs');
 const path  = require('path');
-const etl   = require('./google-ads-etl');
-const hsEtl = require('./hubspot-etl');
+const etl    = require('./google-ads-etl');
+const hsEtl  = require('./hubspot-etl');
+const gscEtl = require('./gsc-etl');
 
 // Empty array = open to everyone (allowlist disabled). Populate with
 // ownerIds to re-lock — e.g. ['36303670', '36320208'] for Benton + Gabe.
@@ -335,6 +336,7 @@ async function handle(req, res, ctx) {
       if      (report === 'campaigns')        result = await etl.syncCampaigns({   db: ctx.db, daysBack: gaDays });
       else if (report === 'keywords')         result = await etl.syncKeywords({    db: ctx.db, daysBack: gaDays });
       else if (report === 'search_terms')     result = await etl.syncSearchTerms({ db: ctx.db, daysBack: gaDays });
+      else if (report === 'gsc')              result = await gscEtl.syncGsc({      db: ctx.db, daysBack: gaDays });
       else if (report === 'hubspot_contacts') result = await hsEtl.syncHubSpotContacts({ db: ctx.db, daysBack: hsDays });
       else if (report === 'hubspot_deals')    result = await hsEtl.syncHubSpotDeals({    db: ctx.db, daysBack: hsDays });
       else if (report === 'hubspot_all') {
@@ -350,9 +352,10 @@ async function handle(req, res, ctx) {
         const a = await etl.syncCampaigns({       db: ctx.db, daysBack: gaDays });
         const b = await etl.syncKeywords({        db: ctx.db, daysBack: gaDays });
         const c = await etl.syncSearchTerms({     db: ctx.db, daysBack: gaDays });
+        const g = await gscEtl.syncGsc({          db: ctx.db, daysBack: gaDays });
         const d = await hsEtl.syncHubSpotContacts({ db: ctx.db, daysBack: hsDays });
         const e = await hsEtl.syncHubSpotDeals({    db: ctx.db, daysBack: hsDays });
-        result = { ok: a.ok && b.ok && c.ok && d.ok && e.ok, parts: [a, b, c, d, e] };
+        result = { ok: a.ok && b.ok && c.ok && g.ok && d.ok && e.ok, parts: [a, b, c, g, d, e] };
       }
       else {
         ctx.json({ ok: false, error: `Unknown report type: ${report}` }, 400);
@@ -1120,6 +1123,129 @@ async function handle(req, res, ctx) {
         mixed:        campaigns.filter(c => c.segment === 'Mixed'),
         campaigns,
       });
+    } catch(e) { ctx.json({ error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/gsc-queries ────────────────────────────────
+  // Organic queries aggregated over the window. ctr = clicks/impressions;
+  // position = impression-weighted mean of the daily average positions.
+  if (pathname === '/api/marketing/gsc-queries' && req.method === 'GET') {
+    try {
+      const days = _parseDays(req);
+      const rows = ctx.db ? (await ctx.db.query(`
+        SELECT query,
+               SUM(clicks)::bigint      AS clicks,
+               SUM(impressions)::bigint AS impressions,
+               CASE WHEN SUM(impressions) > 0 THEN SUM(clicks)::float / SUM(impressions) ELSE 0 END        AS ctr,
+               CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE 0 END AS position
+        FROM marketing_gsc_queries
+        WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
+        GROUP BY query
+        ORDER BY clicks DESC NULLS LAST
+        LIMIT 50000
+      `, [days])).rows : [];
+      ctx.json({ rows });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/gsc-pages ──────────────────────────────────
+  // Organic landing pages aggregated over the window (SEO/content view).
+  if (pathname === '/api/marketing/gsc-pages' && req.method === 'GET') {
+    try {
+      const days = _parseDays(req);
+      const rows = ctx.db ? (await ctx.db.query(`
+        SELECT page,
+               SUM(clicks)::bigint      AS clicks,
+               SUM(impressions)::bigint AS impressions,
+               CASE WHEN SUM(impressions) > 0 THEN SUM(clicks)::float / SUM(impressions) ELSE 0 END        AS ctr,
+               CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE 0 END AS position
+        FROM marketing_gsc_pages
+        WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
+        GROUP BY page
+        ORDER BY clicks DESC NULLS LAST
+        LIMIT 50000
+      `, [days])).rows : [];
+      ctx.json({ rows });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/gsc-overlap ────────────────────────────────
+  // The hero view: paid (marketing_search_terms) FULL-JOIN organic
+  // (marketing_gsc_queries) on the normalized term, so the client can tag
+  // each as branded-cannibalization (paying + strong organic), organic-gap
+  // (paying + ~no organic), or covered. Anchored on paid spend, but keeps
+  // high-click organic-only rows too. Position is impression-weighted.
+  if (pathname === '/api/marketing/gsc-overlap' && req.method === 'GET') {
+    try {
+      const days = _parseDays(req);
+      const rows = ctx.db ? (await ctx.db.query(`
+        WITH org AS (
+          SELECT LOWER(TRIM(query)) AS term,
+                 SUM(clicks)::bigint AS clicks,
+                 CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE NULL END AS position
+          FROM marketing_gsc_queries
+          WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
+          GROUP BY LOWER(TRIM(query))
+        ),
+        paid AS (
+          SELECT LOWER(TRIM(search_term)) AS term,
+                 (SUM(cost_micros)::float / 1000000) AS cost,
+                 SUM(clicks)::bigint AS clicks
+          FROM marketing_search_terms
+          WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1 AND search_term IS NOT NULL
+          GROUP BY LOWER(TRIM(search_term))
+        )
+        SELECT COALESCE(p.term, o.term)      AS term,
+               COALESCE(p.cost, 0)::float    AS paid_cost,
+               COALESCE(p.clicks, 0)::bigint AS paid_clicks,
+               COALESCE(o.clicks, 0)::bigint AS organic_clicks,
+               o.position                    AS organic_position
+        FROM paid p
+        FULL OUTER JOIN org o ON p.term = o.term
+        WHERE COALESCE(p.cost, 0) > 0 OR COALESCE(o.clicks, 0) >= 5
+        ORDER BY paid_cost DESC NULLS LAST, organic_clicks DESC
+        LIMIT 5000
+      `, [days])).rows : [];
+      ctx.json({ rows });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/gsc-summary ────────────────────────────────
+  // Organic KPI strip: GSC totals (clicks/impressions, branded split) +
+  // the channel-level HubSpot tie — leads/deals/revenue from contacts whose
+  // source is ORGANIC_SEARCH under the selected model. (Query-level organic
+  // → deal attribution is impossible; Google withholds the organic query.)
+  if (pathname === '/api/marketing/gsc-summary' && req.method === 'GET') {
+    try {
+      const days = _parseDays(req);
+      const am   = _attrModel(req);
+      const organicPred = am.model === 'last'
+        ? `c.latest_source = 'ORGANIC_SEARCH'`
+        : am.model === 'all'
+          ? `(c.first_source = 'ORGANIC_SEARCH' OR c.latest_source = 'ORGANIC_SEARCH')`
+          : `c.first_source = 'ORGANIC_SEARCH'`;
+      const r = ctx.db ? (await ctx.db.query(`
+        SELECT
+          (SELECT COUNT(*) FROM marketing_hubspot_contacts c
+             WHERE ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1 AND ${organicPred})                  AS leads,
+          (SELECT COUNT(*) FROM marketing_hubspot_deals d
+             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won AND ${organicPred})    AS deals_won,
+          (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
+             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won AND ${organicPred})    AS revenue_won,
+          (SELECT COALESCE(SUM(clicks), 0)::bigint      FROM marketing_gsc_queries
+             WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1)                                                  AS organic_clicks,
+          (SELECT COALESCE(SUM(impressions), 0)::bigint FROM marketing_gsc_queries
+             WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1)                                                  AS organic_impressions,
+          (SELECT COALESCE(SUM(clicks), 0)::bigint      FROM marketing_gsc_queries
+             WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1 AND query ILIKE '%whisper%')                      AS organic_branded_clicks
+      `, [days])).rows[0] : {};
+      ctx.json({ ...(r || {}), model: am.model });
     } catch(e) { ctx.json({ error: e.message }, 500); }
     return true;
   }

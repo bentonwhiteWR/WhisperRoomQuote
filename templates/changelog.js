@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.60.0', date:'June 3, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**New "Sales by State" report** under Accounting (new tab). Shows Closed Won + Shipped deals grouped by ship-to state for **2024 and 2025** side by side — deal count, net sales, and tax collected per state, with totals and a one-click **CSV export** for the accountant. Built from HubSpot deal data (where the ship-to state lives); cross-check against QuickBooks if you need booked-revenue figures.'},
+      ]
+    },
+    {
       v:'1.59.6', date:'June 2, 2026', tag:'feature',
       changes:[
         {t:'feature', d:'**Marketing dashboard: "ad-acquisition quality" strip on the paid funnel.** A new line under the funnel splits your closed-won deals into how customers actually found us through ads: **Prospecting touch** (a genuine non-branded search — real new-customer acquisition), **Branded-only** (they only ever searched for us by name), and **Unknown** (clicked an ad but no detail to tell). It answers “how much of our ad ROAS is winning new customers vs recapturing people who already know us?” Honest caveat shown on the strip: we only store each contact&rsquo;s first and last ad touch, so the prospecting count is a floor — the real number is at least that high.'},

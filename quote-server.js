@@ -679,6 +679,8 @@ async function pollHubspotPayments() {
 // in a given month, so a single shared cache cuts repeat loads to ~0ms.
 let _salesGoalCache = null;
 const SALES_GOAL_CACHE_MS = 5 * 60 * 1000;
+let _salesByStateCache = null;
+const SALES_BY_STATE_CACHE_MS = 15 * 60 * 1000;
 
 // ── Supplier-spend cache (in-memory, 24h, keyed by date range) ──
 // QB's ExpensesByVendorSummary is the same for everyone for a given
@@ -8222,6 +8224,120 @@ ${q.accepted ? `
     } catch (e) {
       console.error('[reports/sales-goal]', e.message);
       writelog('error', 'reports.sales-goal', e.message, { stack: e.stack });
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // Sales by state — Closed-Won + Shipped deals grouped by ship-to state for
+  // 2024 + 2025 (for Alex / accounting). Source is HubSpot deals because the
+  // ship-to state lives on the deal; QuickBooks invoices don't carry a
+  // queryable state. Per state/year: deal count, gross (deal amount), tax
+  // (total_tax_amount or back-calc from tax_rate, same as the Sales Goal
+  // report), and net (gross − tax). Cached 15 min.
+  if (pathname === '/api/reports/sales-by-state' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const force = parsed.query.force === '1';
+      if (!force && _salesByStateCache && (Date.now() - _salesByStateCache.computedAt) < SALES_BY_STATE_CACHE_MS) {
+        json({ ..._salesByStateCache.payload, cached: true });
+        return;
+      }
+      // Full calendar 2024 + 2025 (EST), by closedate.
+      const fromTs = new Date(2024, 0, 1, 0, 0, 0, 0).getTime().toString();
+      const toTs   = (new Date(2026, 0, 1, 0, 0, 0, 0).getTime() - 1).toString();
+
+      let allDeals = [], after = null;
+      do {
+        const r = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path: '/crm/v3/objects/deals/search',
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' },
+        }, {
+          limit: 200,
+          ...(after ? { after } : {}),
+          filterGroups: [{
+            filters: [
+              { propertyName: 'dealstage', operator: 'IN',  values: ['closedwon', '845719'] },
+              { propertyName: 'closedate', operator: 'GTE', value: fromTs },
+              { propertyName: 'closedate', operator: 'LTE', value: toTs },
+            ]
+          }],
+          properties: ['amount','closedate','dealstage','tax_rate','total_tax_amount','freight_cost','shipping_state'],
+          sorts: [{ propertyName: 'closedate', direction: 'DESCENDING' }],
+        });
+        allDeals.push(...(r.body?.results || []));
+        after = r.body?.paging?.next?.after || null;
+      } while (after);
+
+      const blank = () => ({ count: 0, gross: 0, tax: 0, net: 0 });
+      const byState = {};
+      const totals = { 2024: blank(), 2025: blank() };
+      let dealsCounted = 0;
+
+      for (const d of allDeals) {
+        const cdRaw = d.properties?.closedate;
+        if (!cdRaw) continue;
+        const msNum = Number(cdRaw);
+        const dt = (!isNaN(msNum) && msNum > 0) ? new Date(msNum) : new Date(cdRaw);
+        if (isNaN(dt.getTime())) continue;
+        const yr = parseInt(dt.toLocaleString('en-US', { timeZone: 'America/New_York', year: 'numeric' }), 10);
+        if (yr !== 2024 && yr !== 2025) continue;
+
+        const total = parseFloat(d.properties?.amount || 0) || 0;
+        if (total <= 0) continue;
+        const freight  = parseFloat(d.properties?.freight_cost || 0) || 0;
+        const taxRate  = parseFloat(d.properties?.tax_rate || 0) || 0;
+        const hsTaxRaw = d.properties?.total_tax_amount;
+        const hsTaxSet = (hsTaxRaw != null && hsTaxRaw !== '');
+        const hsTaxAmt = hsTaxSet ? parseFloat(hsTaxRaw) : NaN;
+        const stateAbbr = toStateAbbr(d.properties?.shipping_state || '') || 'Unknown';
+        let taxAmt = 0;
+        if (hsTaxSet && !isNaN(hsTaxAmt)) {
+          taxAmt = Math.max(0, hsTaxAmt);
+        } else if (taxRate > 0) {
+          const freightTaxable = !!(NEXUS_STATES[stateAbbr]?.taxFreight);
+          const rr = taxRate / 100;
+          if (freightTaxable) {
+            const preTaxBase = total / (1 + rr);
+            const productTax = Math.round((preTaxBase - freight) * rr * 100) / 100;
+            const freightTax = Math.round(freight * rr * 100) / 100;
+            taxAmt = Math.max(0, productTax + freightTax);
+          } else {
+            taxAmt = Math.round(Math.max(0, (total - freight) * rr / (1 + rr)) * 100) / 100;
+          }
+        }
+        const net = Math.max(0, total - taxAmt);
+
+        if (!byState[stateAbbr]) byState[stateAbbr] = { 2024: blank(), 2025: blank() };
+        for (const bucket of [byState[stateAbbr][yr], totals[yr]]) {
+          bucket.count++; bucket.gross += total; bucket.tax += taxAmt; bucket.net += net;
+        }
+        dealsCounted++;
+      }
+
+      const round = n => Math.round(n * 100) / 100;
+      const roundCell = c => ({ count: c.count, gross: round(c.gross), tax: round(c.tax), net: round(c.net) });
+      const states = Object.keys(byState).sort().map(st => ({
+        state: st,
+        y2024: roundCell(byState[st][2024]),
+        y2025: roundCell(byState[st][2025]),
+      }));
+
+      const payload = {
+        years: [2024, 2025],
+        states,
+        totals: { y2024: roundCell(totals[2024]), y2025: roundCell(totals[2025]) },
+        dealsCounted,
+        computedAt: Date.now(),
+        cached: false,
+      };
+      _salesByStateCache = { computedAt: Date.now(), payload };
+      json(payload);
+    } catch (e) {
+      console.error('[reports/sales-by-state]', e.message);
+      writelog('error', 'reports.sales-by-state', e.message, { stack: e.stack });
       json({ error: e.message }, 500);
     }
     return;

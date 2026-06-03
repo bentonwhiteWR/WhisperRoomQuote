@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.62.0', date:'June 3, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Quote Label auto-fills with the package name.** When you pick a package and the Quote Label is blank, it now fills in with that package’s name automatically (and updates if you switch packages). If you’ve typed your own label, it’s left alone. Individual MDL selections don’t auto-fill.'},
+        {t:'add', d:'**“Copy Quote Link” button on the quote-created popup.** The success window after pushing a quote now has a Copy Quote Link button right next to View Quote — copies the clean clickable hyperlink (Quote Label → package → MDL) ready to paste into a client email.'},
+      ]
+    },
+    {
       v:'1.61.4', date:'June 3, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Copied quote links now use a descriptive label.** The copied hyperlink reads “WhisperRoom Quote — &lt;name&gt;” using, in priority: the Quote Label → the package name → the MDL number (falls back to the quote number if none). Cleaner and more recognizable when pasted into a client email. Works from both the Quote Builder and the Deal Hub.'},

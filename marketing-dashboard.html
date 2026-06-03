@@ -124,6 +124,8 @@ th.sortable .sort-arrow{display:inline-block;margin-left:3px;font-size:9px;color
 .vs-note em{color:var(--text);font-style:normal;opacity:.85}
 /* Drill-down — clickable funnel/KPI numbers + the record-list modal they open */
 .drillable{cursor:pointer}
+td.drillable:hover{color:var(--orange)}
+.ad-quality .drillable:hover,.seg-rollup .drillable:hover{filter:brightness(1.18)}
 .card.drillable:hover{border-color:var(--orange)}
 .card.drillable .card-value{transition:color .12s}
 .card.drillable:hover .card-value{color:var(--orange)}
@@ -157,6 +159,7 @@ th.sortable .sort-arrow{display:inline-block;margin-left:3px;font-size:9px;color
 .seg-OfficePrivacy{background:rgba(245,158,11,.14);color:#fbbf24;border-color:rgba(245,158,11,.25)}
 .seg-BroadcastPodcast{background:rgba(20,184,166,.14);color:#2dd4bf;border-color:rgba(20,184,166,.25)}
 .seg-Mixed{background:rgba(148,163,184,.12);color:#94a3b8;border-color:rgba(148,163,184,.22)}
+.seg-Competitors{background:rgba(244,63,94,.14);color:#fb7185;border-color:rgba(244,63,94,.25)}
 .seg-Unclassified{background:rgba(148,163,184,.07);color:#64748b;border-color:rgba(148,163,184,.15)}
 
 /* Attribution coverage panel */
@@ -552,8 +555,12 @@ function toggleVsHubspot() {
 // listing the actual HubSpot records behind it, each linking to its record
 // page. Hits /api/marketing/drill with the SAME days+model as the cards, so
 // the modal's count agrees with the number the user clicked.
-// type ∈ contacts | quotes | closed | revenue.
-function openDrill(type, title) {
+// type ∈ contacts | quotes | closed | revenue | ad-quality | segment-revenue
+//        | term-leads | term-deals | term-closed.
+// `extra` (v1.61.2) carries the type-specific selector (bucket / segment / term)
+// and is appended to the query — URLSearchParams handles encoding, so a search
+// term with spaces/apostrophes is safe.
+function openDrill(type, title, extra) {
   const set = (id, html) => { document.getElementById(id).innerHTML = html; };
   document.getElementById('drillOverlay').classList.add('open');
   document.getElementById('drillTitle').textContent = title;
@@ -561,8 +568,9 @@ function openDrill(type, title) {
     `${MODEL_LABELS[currentModel] || 'First interaction'} attribution · last ${currentDaysBack} days`;
   set('drillBody', '<div class="drill-empty">Loading…</div>');
   document.getElementById('drillFoot').textContent = '';
-  fetch(`/api/marketing/drill?type=${encodeURIComponent(type)}&days=${currentDaysBack}&model=${currentModel}`,
-        { credentials: 'include' })
+  const qp = new URLSearchParams({ type, days: currentDaysBack, model: currentModel });
+  if (extra) for (const k in extra) { if (extra[k] != null && extra[k] !== '') qp.set(k, extra[k]); }
+  fetch(`/api/marketing/drill?${qp.toString()}`, { credentials: 'include' })
     .then(r => r.json())
     .then(d => {
       if (d.error) { set('drillBody', `<div class="drill-empty">Couldn't load records: ${escHtml(d.error)}</div>`); return; }
@@ -586,6 +594,23 @@ function openDrill(type, title) {
 }
 function closeDrill() { document.getElementById('drillOverlay').classList.remove('open'); }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrill(); });
+
+// v1.61.2 — drill from a search-term row's Leads / Deals / True ROAS cell.
+// Looks the term up by its rendered-list index (so the user-typed term never
+// has to be quoted into an inline handler) and opens the matching popup:
+//   term-leads  → the HubSpot contacts attributed to the term
+//   term-deals  → all HubSpot deals from those contacts
+//   term-closed → the closed-won deals behind the term's revenue / True ROAS
+function drillTerm(idx, kind) {
+  const r = (tableState.searchTerms.rendered || [])[idx];
+  if (!r) return;
+  const titles = {
+    'term-leads':  `Leads · "${r.term}"`,
+    'term-deals':  `Deals · "${r.term}"`,
+    'term-closed': `Closed-won deals · "${r.term}"`,
+  };
+  openDrill(kind, titles[kind] || r.term, { term: r.term });
+}
 
 // Sort handler. First click on a column sorts DESC (most common need —
 // "show me top by X"). Re-click on same column flips direction.
@@ -824,7 +849,7 @@ function renderSegRollup(list) {
   const bySeg = {};
   let totRev = 0, totSpend = 0;
   list.forEach(c => {
-    const seg = c.segment || 'Unclassified';
+    const seg = c.segment || 'Mixed';
     (bySeg[seg] = bySeg[seg] || { seg, rev: 0, spend: 0 });
     bySeg[seg].rev   += c.revWon || 0;
     bySeg[seg].spend += c.cost   || 0;
@@ -840,7 +865,12 @@ function renderSegRollup(list) {
     segs.map(s => {
       const v = useRev ? s.rev : s.spend;
       const p = tot ? Math.round(v / tot * 100) : 0;
-      return `${segTag(s.seg)}<span style="color:var(--muted);margin:0 12px 0 4px;font-family:var(--mono)">${p}%</span>`;
+      // Drillable only when we have closed-won revenue to show (the drill returns
+      // closed-won deals); segment names are controlled config, no quotes to escape.
+      const tag = useRev
+        ? `<span class="drillable" title="View ${s.seg} closed-won deals" onclick="openDrill('segment-revenue','Closed-won deals · ${s.seg}',{segment:'${s.seg}'})">${segTag(s.seg)}</span>`
+        : segTag(s.seg);
+      return `${tag}<span style="color:var(--muted);margin:0 12px 0 4px;font-family:var(--mono)">${p}%</span>`;
     }).join('') +
     `<span style="color:var(--muted);font-style:italic;margin-left:auto">${MODEL_LABELS[currentModel] || 'First interaction'} attribution</span>`;
 }
@@ -870,7 +900,7 @@ function renderAdQuality(aq) {
     `<span class="ad-quality-label" title="Of the ${totalDeals} paid-attributed closed-won deals, how many show a genuine non-branded ('prospecting') ad touch vs only branded searches. We store first + latest touch only, so 'prospecting' is a FLOOR — real ad acquisition is at least this high.">Ad-acquisition quality</span>` +
     order.filter(o => by[o.key].deals > 0).map(o => {
       const b = by[o.key];
-      return `<span class="aq-pill ${o.cls}">${o.label} <span class="aq-n">${fmtInt(b.deals)}</span>` +
+      return `<span class="aq-pill ${o.cls} drillable" title="View these deals" onclick="openDrill('ad-quality','${o.label} — closed-won deals',{bucket:'${o.key}'})">${o.label} <span class="aq-n">${fmtInt(b.deals)}</span>` +
              (b.revenue ? `<span class="aq-rev">· ${fmtUSD(b.revenue)}</span>` : '') + `</span>`;
     }).join('') +
     `<span class="aq-note">${by.prospecting.deals}/${totalDeals} deals show a real prospecting touch (floor)</span>`;
@@ -907,7 +937,7 @@ function renderCampaigns(rows, attrRows) {
     c.dealsWon   = a ? parseInt(a.deals_won)    || 0 : null;
     c.dealsTotal = a ? parseInt(a.deals_total)  || 0 : null;
     c.revWon     = a ? parseFloat(a.revenue_won)|| 0 : null;
-    c.segment    = a ? (a.segment || 'Unclassified') : 'Unclassified';
+    c.segment    = a ? (a.segment || 'Mixed') : 'Mixed';
     // v1.46.10 — pre-compute derived columns so sort works on them.
     c.cpc        = c.clicks      ? c.cost / c.clicks      : null;
     c.cpa        = c.conversions ? c.cost / c.conversions : null;
@@ -1058,6 +1088,9 @@ function renderSearchTerms(rows, attrRows) {
 
   const sorted = sortRows('searchTerms', Object.values(agg));
   const list = sorted.slice(0, 200);
+  // Cache the rendered rows so drillTerm() can look a term up by index instead
+  // of quoting the (user-typed) term into an inline onclick. (v1.61.2)
+  tableState.searchTerms.rendered = list;
   const moreNote = sorted.length > list.length ? ` <span style="color:var(--muted);font-size:11px;font-weight:500;text-transform:none;letter-spacing:0">(top ${list.length} of ${fmtInt(sorted.length)})</span>` : '';
   const t = 'searchTerms';
   body.innerHTML = `
@@ -1075,17 +1108,17 @@ function renderSearchTerms(rows, attrRows) {
         ${sortableTh(t, 'trueRoas',    'True ROAS', 'num attr-col')}
       </tr></thead>
       <tbody>
-        ${list.map(r => `<tr>
+        ${list.map((r, i) => `<tr>
           <td>${r.term.replace(/</g,'&lt;')}</td>
           <td class="num">${fmtUSD(r.cost)}</td>
           <td class="num">${fmtInt(r.clicks)}</td>
           <td class="num">${r.cpc != null ? fmtUSD(r.cpc) : '—'}</td>
           <td class="num">${fmtNum(r.conversions)}</td>
           <td class="num">${r.cpa != null ? fmtUSD(r.cpa) : '—'}</td>
-          <td class="num attr-col">${r.leads == null ? '—' : fmtInt(r.leads)}</td>
-          <td class="num attr-col">${r.dealsWon == null ? '—' : (r.dealsWon || (r.dealsTotal ? '0 / ' + fmtInt(r.dealsTotal) : '0'))}</td>
+          <td class="num attr-col${r.leads ? ' drillable' : ''}"${r.leads ? ` onclick="drillTerm(${i},'term-leads')"` : ''}>${r.leads == null ? '—' : fmtInt(r.leads)}</td>
+          <td class="num attr-col${(r.dealsWon || r.dealsTotal) ? ' drillable' : ''}"${(r.dealsWon || r.dealsTotal) ? ` onclick="drillTerm(${i},'term-deals')"` : ''}>${r.dealsWon == null ? '—' : (r.dealsWon || (r.dealsTotal ? '0 / ' + fmtInt(r.dealsTotal) : '0'))}</td>
           <td class="num attr-col">${r.revWon == null ? '—' : fmtUSD(r.revWon)}</td>
-          <td class="num attr-col">${roasPill(r.revWon, r.cost)}</td>
+          <td class="num attr-col${r.revWon ? ' drillable' : ''}"${r.revWon ? ` onclick="drillTerm(${i},'term-closed')"` : ''}>${roasPill(r.revWon, r.cost)}</td>
         </tr>`).join('')}
       </tbody>
     </table>`;

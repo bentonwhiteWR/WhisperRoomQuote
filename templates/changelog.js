@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.61.2', date:'June 3, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing dashboard — more click-through to the underlying HubSpot records.** The **Share of closed revenue** and **Ad-acquisition quality** pills are now clickable: each opens a popup listing the closed-won deals behind that segment / bucket, linked straight to HubSpot. In the **Search Terms** table, the **Leads**, **Deals**, and **True ROAS** cells are clickable too — Leads opens the attributed contacts, Deals the attributed deals, and True ROAS the closed-won deals behind that term’s revenue. Every popup uses the same attribution model + window as the number you clicked, so the counts reconcile.'},
+        {t:'ui',  d:'**Campaign segment cleanup.** “**LP Testing (US/CAN) - Combined” is now classified as **Audiology** (it drives audiology closes), a new **Competitors** segment was added (e.g. “Competitors - Sound Booths”), and campaigns that previously showed as **Unclassified** are now bundled into **Mixed**.'},
+      ]
+    },
+    {
       v:'1.61.1', date:'June 3, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Another round on the intermittent PDF “Cannot fork” failures.** Pointed Chromium at its real binary instead of the Debian wrapper script (which forks extra processes on every launch) and turned off Chromium’s crash reporter (the exact subprocess that was failing to start). Should cut down the “Drive … upload failed” errors. Underlying cause is the server running low on resources, so if it recurs, the box needs more memory.'},

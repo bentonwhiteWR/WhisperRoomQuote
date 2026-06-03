@@ -6243,15 +6243,31 @@ function copyQuoteLink() {
   const tok = getShareToken();
   console.log('[copyLink] quoteNum:', quoteNum, '| _lastShareToken:', window._lastShareToken, '| _loadedShareToken:', window._loadedShareToken, '| tok:', tok);
   const url = location.origin + '/q/' + quoteNum + (tok ? '?t=' + tok : '');
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(url).then(() => {
-      showToast('Link copied to clipboard!', 'info');
-      const btn = document.getElementById('copyLinkBtn');
-      if (btn) { const orig = btn.innerHTML; btn.innerHTML = '&#x2713; Copied!'; setTimeout(() => btn.innerHTML = orig, 2500); }
-    }).catch(() => { prompt('Copy this link:', url); });
-  } else {
-    prompt('Copy this link:', url);
+  copyRichLink(url, 'WhisperRoom Quote ' + quoteNum).then(() => {
+    showToast('Quote link copied!', 'info');
+    const btn = document.getElementById('copyLinkBtn');
+    if (btn) { const orig = btn.innerHTML; btn.innerHTML = '&#x2713; Copied!'; setTimeout(() => btn.innerHTML = orig, 2500); }
+  }).catch(() => { prompt('Copy this link:', url); });
+}
+
+// Copy a clickable hyperlink (rich text) so pasting into an email/doc shows a
+// tidy linked label ("WhisperRoom Quote W-…") instead of a raw URL. Writes both
+// text/html and text/plain; falls back to plain text where unsupported.
+function copyRichLink(url, label) {
+  const safe = String(label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const href = String(url).replace(/"/g,'&quot;');
+  const html = '<a href="' + href + '">' + safe + '</a>';
+  if (navigator.clipboard && window.ClipboardItem) {
+    try {
+      return navigator.clipboard.write([new ClipboardItem({
+        'text/html':  new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([url],  { type: 'text/plain' }),
+      })]);
+    } catch (e) { /* fall through to plain text */ }
   }
+  return (navigator.clipboard && navigator.clipboard.writeText)
+    ? navigator.clipboard.writeText(url)
+    : Promise.reject(new Error('clipboard unavailable'));
 }
 
 function activateLinkBtn() {

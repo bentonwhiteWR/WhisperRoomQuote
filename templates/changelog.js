@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.61.0', date:'June 3, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Sales by State now shows each state’s economic-nexus threshold.** New "State threshold" column lists what triggers a sales-tax obligation there (e.g. “$100k”, “$100k or 200 txns”, “$500k and 100 txns”, “No sales tax”) — so you can see at a glance where our sales are approaching a state’s threshold. Reference figures (~2025–2026); confirm with the accountant. Included in the CSV export too.'},
+        {t:'add', d:'**Copy Quote now copies a clean clickable link.** The 🔗 copy buttons in the Quote Builder and Deal Hub now put a formatted hyperlink on your clipboard (“WhisperRoom Quote W-…”) instead of a raw URL — paste it into an email and it shows as a tidy link instead of a long address.'},
+      ]
+    },
+    {
       v:'1.60.1', date:'June 3, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Sales by State report polish.** Full state names instead of abbreviations, dropped the "Unknown" row (excluded deals noted in a footnote), and added a **Nexus rule** column. Rows are now color-coded: **green** = collecting tax where we have nexus; **yellow** = needs a look (a nexus state showing $0 tax, or tax collected somewhere we have no nexus).'},

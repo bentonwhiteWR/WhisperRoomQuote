@@ -308,7 +308,7 @@ const SHOPIFY_QB_FALLBACK_ITEM_NAME = process.env.SHOPIFY_QB_FALLBACK_ITEM_NAME 
 // ── Nexus states (freight taxability per state) ───────────────────
 const states = require('./lib/states');
 const {
-  NEXUS_STATES, STATE_ABBR_MAP, STATE_FULL_NAME,
+  NEXUS_STATES, STATE_ABBR_MAP, STATE_FULL_NAME, nexusThresholdLabel,
   toStateAbbr, toStateFull, isCanadianProvince, zipToState,
 } = states;
 
@@ -8335,6 +8335,7 @@ ${q.accepted ? `
           name: STATE_FULL_NAME[st] || st,
           nexus: !!NEXUS_STATES[st],
           taxFreight: !!(NEXUS_STATES[st] && NEXUS_STATES[st].taxFreight),
+          threshold: nexusThresholdLabel(st),
           y2024: roundCell(byState[st][2024]),
           y2025: roundCell(byState[st][2025]),
         }));

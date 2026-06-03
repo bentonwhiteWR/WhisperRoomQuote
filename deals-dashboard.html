@@ -1255,8 +1255,28 @@ function renderTimeline(events) {
 function copyQuoteLink(quoteNumber, shareToken) {
   if (!shareToken) { showToast('No share token — push quote first', 'error'); return; }
   const url = `${location.origin}/q/${encodeURIComponent(quoteNumber)}?t=${shareToken}`;
-  navigator.clipboard?.writeText(url).then(() => showToast('Link copied!', 'success'))
+  copyRichLink(url, 'WhisperRoom Quote ' + quoteNumber)
+    .then(() => showToast('Quote link copied!', 'success'))
     .catch(() => { prompt('Copy link:', url); });
+}
+
+// Copy a clickable hyperlink (rich text) so pasting into an email/doc shows a
+// tidy linked label instead of a raw URL. Falls back to plain text.
+function copyRichLink(url, label) {
+  const safe = String(label).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const href = String(url).replace(/"/g,'&quot;');
+  const html = '<a href="' + href + '">' + safe + '</a>';
+  if (navigator.clipboard && window.ClipboardItem) {
+    try {
+      return navigator.clipboard.write([new ClipboardItem({
+        'text/html':  new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([url],  { type: 'text/plain' }),
+      })]);
+    } catch (e) { /* fall through to plain text */ }
+  }
+  return (navigator.clipboard && navigator.clipboard.writeText)
+    ? navigator.clipboard.writeText(url)
+    : Promise.reject(new Error('clipboard unavailable'));
 }
 
 function copyInvoiceLink(url) {

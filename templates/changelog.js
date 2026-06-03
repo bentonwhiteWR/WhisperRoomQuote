@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.63.0', date:'June 3, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**New “HubSpot Payouts” tab on Accounting.** Sits right next to HubSpot Fees. Pick a month and it lists every HubSpot payout (bank deposit) that settled that month, each one expandable to show the individual payments that made it up (invoice, customer, method, gross, fee, net). Summary cards up top: # payouts, # payments, gross collected, total HubSpot fees, net deposited, refunds. Expand/Collapse-all buttons + CSV export (per-payment rows with per-payout subtotals + grand total). Each payout group ties to one bank deposit so you can reconcile against the bank statement line-by-line.'},
+        {t:'add', d:'**`GET /api/accounting/hubspot-payouts?month=YYYY-MM`.** Pulls succeeded `hs_payments` whose `hs_payout_date` falls in the month (UTC boundaries — payout date is a date-type property) and groups them by settlement date. Payments not yet settled (null payout date) are excluded — they have no deposit yet and still show on the Fees tab.'},
+      ]
+    },
+    {
       v:'1.62.0', date:'June 3, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Quote Label auto-fills with the package name.** When you pick a package and the Quote Label is blank, it now fills in with that package’s name automatically (and updates if you switch packages). If you’ve typed your own label, it’s left alone. Individual MDL selections don’t auto-fill.'},

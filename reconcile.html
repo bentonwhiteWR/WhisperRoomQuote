@@ -143,6 +143,14 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
 .tab-btn { padding:10px 20px; font-size:12px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; border:none; background:none; color:var(--text2); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-2px; font-family:inherit; transition:.15s; }
 .tab-btn:hover { color:var(--text); }
 .tab-btn.active { color:var(--orange); border-bottom-color:var(--orange); }
+/* HubSpot Payouts — grouped rows */
+.payout-hdr { cursor:pointer; background:var(--surface2); border-top:2px solid var(--border); }
+.payout-hdr:hover { background:var(--surface3); }
+.payout-hdr td { font-weight:600; }
+.payout-hdr .caret { display:inline-block; width:12px; color:var(--orange); transition:transform .15s; }
+.payout-hdr.collapsed .caret { transform:rotate(-90deg); }
+.payout-pill { display:inline-block; margin-left:8px; font-size:10px; font-weight:700; color:var(--text2); background:var(--surface3); padding:1px 7px; border-radius:10px; }
+.payout-pmt td:first-child { padding-left:26px; color:var(--text2); }
 
 /* Mobile */
 @media (max-width:768px) {
@@ -188,6 +196,7 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
     <button class="tab-btn" data-tab="ar" onclick="switchTab('ar')">Accounts Receivable</button>
     <button class="tab-btn" data-tab="reconcile" onclick="switchTab('reconcile')">Reconcile</button>
     <button class="tab-btn" data-tab="hs-fees" onclick="switchTab('hs-fees')">HubSpot Fees</button>
+    <button class="tab-btn" data-tab="hs-payouts" onclick="switchTab('hs-payouts')">HubSpot Payouts</button>
     <button class="tab-btn" data-tab="vendor-bills" onclick="switchTab('vendor-bills')">Vendor Bills</button>
     <button class="tab-btn" data-tab="sales-by-state" onclick="switchTab('sales-by-state')">Sales by State</button>
   </div>
@@ -450,6 +459,56 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
       </div>
     </div>
   </div><!-- /tabHsFees -->
+
+  <!-- ── HubSpot Payouts tab ── -->
+  <div id="tabHsPayouts" style="display:none">
+    <div class="card">
+      <div class="card-title">HubSpot Payouts — Grouped by Deposit</div>
+      <div class="row" style="margin-bottom:10px">
+        <div>
+          <label>Month</label>
+          <input type="month" id="hsPayoutsMonth" style="min-width:160px">
+        </div>
+        <button class="btn btn-orange" id="hsPayoutsBtn" onclick="loadHsPayouts()">Load</button>
+        <button class="btn btn-ghost btn-sm" onclick="loadHsPayouts(true)" title="Re-fetch from HubSpot">↻ Refresh</button>
+        <button class="btn btn-ghost btn-sm" onclick="expandAllPayouts(true)" title="Expand all payouts">⊞ Expand</button>
+        <button class="btn btn-ghost btn-sm" onclick="expandAllPayouts(false)" title="Collapse all payouts">⊟ Collapse</button>
+        <button class="btn btn-ghost btn-sm" id="hsPayoutsCsvBtn" onclick="downloadHsPayoutsCsv()" disabled style="margin-left:auto">⤓ CSV</button>
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-top:-6px;margin-bottom:8px">Successful HubSpot Payments grouped by payout (deposit) date — <code>hs_payout_date</code>. Each group ties to one bank deposit. Payments not yet settled don't appear here until they're paid out.</div>
+      <div class="msg" id="hsPayoutsMsg"></div>
+
+      <!-- Summary KPIs -->
+      <div id="hsPayoutsSummaryWrap" style="display:none;margin-top:14px">
+        <div class="summary-grid">
+          <div class="summary-box"><div class="lbl">Payouts</div><div class="val" id="hsPoCount">—</div><div class="sublbl">bank deposits</div></div>
+          <div class="summary-box"><div class="lbl">Payments</div><div class="val" id="hsPoPayments">—</div></div>
+          <div class="summary-box"><div class="lbl">Gross Collected</div><div class="val" id="hsPoGross">—</div></div>
+          <div class="summary-box" style="border-color:rgba(238,98,22,.4);background:rgba(238,98,22,.06)"><div class="lbl">Total HubSpot Fees</div><div class="val" id="hsPoFees">—</div></div>
+          <div class="summary-box"><div class="lbl">Net Deposited</div><div class="val" id="hsPoNet">—</div><div class="sublbl">→ ties to bank</div></div>
+          <div class="summary-box"><div class="lbl">Refunds</div><div class="val" id="hsPoRefunds">—</div></div>
+        </div>
+      </div>
+
+      <!-- Grouped payout table -->
+      <div class="tbl-wrap" id="hsPayoutsTableWrap" style="display:none;margin-top:14px">
+        <table>
+          <thead>
+            <tr>
+              <th>Payout / Date</th>
+              <th>Invoice</th>
+              <th>Customer</th>
+              <th>Method</th>
+              <th style="text-align:right">Gross</th>
+              <th style="text-align:right">Total Fee</th>
+              <th style="text-align:right">Net</th>
+            </tr>
+          </thead>
+          <tbody id="hsPayoutsBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /tabHsPayouts -->
 
   <!-- ── Vendor Bills tab (Kim's invoice matching) ── -->
   <div id="tabVendorBills" style="display:none">
@@ -1454,6 +1513,7 @@ function switchTab(name) {
   document.getElementById('tabQbInvoices').style.display   = name === 'qb-invoices'   ? '' : 'none';
   document.getElementById('tabAr').style.display           = name === 'ar'            ? '' : 'none';
   document.getElementById('tabHsFees').style.display       = name === 'hs-fees'       ? '' : 'none';
+  document.getElementById('tabHsPayouts').style.display    = name === 'hs-payouts'    ? '' : 'none';
   document.getElementById('tabVendorBills').style.display  = name === 'vendor-bills'  ? '' : 'none';
   document.getElementById('tabSalesByState').style.display = name === 'sales-by-state' ? '' : 'none';
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
@@ -1471,6 +1531,16 @@ function switchTab(name) {
       inp.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}`;
     }
     loadHsFees();
+  }
+  if (name === 'hs-payouts'    && _hsPayoutsData == null) {
+    const inp = document.getElementById('hsPayoutsMonth');
+    if (inp && !inp.value) {
+      const d = new Date();
+      d.setDate(1);                  // first of current month
+      d.setMonth(d.getMonth() - 1);  // back one month
+      inp.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}`;
+    }
+    loadHsPayouts();
   }
 }
 
@@ -1673,6 +1743,152 @@ function downloadHsFeesCsv() {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `hubspot-fees-${data.month || 'unknown'}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); document.body.removeChild(a); }, 100);
+}
+
+// ── HubSpot Payouts tab ───────────────────────────────────────────
+// Same shape as the Fees tab, but the per-payment rows are nested under
+// expandable payout (deposit) groups. Source: /api/accounting/hubspot-payouts.
+let _hsPayoutsData = null;
+let _hsPayoutsLastMonth = null;
+
+async function loadHsPayouts(force) {
+  const monthEl = document.getElementById('hsPayoutsMonth');
+  const month   = monthEl?.value || '';
+  if (_hsPayoutsData && !force && month === _hsPayoutsLastMonth) {
+    renderHsPayouts();
+    return;
+  }
+  const msg    = document.getElementById('hsPayoutsMsg');
+  const btn    = document.getElementById('hsPayoutsBtn');
+  const csvBtn = document.getElementById('hsPayoutsCsvBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  if (msg) msg.textContent = '';
+  if (csvBtn) csvBtn.disabled = true;
+  try {
+    const url = '/api/accounting/hubspot-payouts' + (month ? `?month=${encodeURIComponent(month)}` : '');
+    const res = await fetch(url, { credentials: 'include' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    _hsPayoutsData = data;
+    _hsPayoutsLastMonth = month;
+    renderHsPayouts();
+  } catch(e) {
+    if (msg) {
+      msg.className = 'msg err';
+      msg.textContent = 'Error: ' + e.message;
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Load'; }
+  }
+}
+
+function renderHsPayouts() {
+  const data = _hsPayoutsData;
+  if (!data) return;
+  const fmt = n => '$' + parseFloat(n||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const s   = data.summary || {};
+  document.getElementById('hsPoCount').textContent    = s.payoutCount || 0;
+  document.getElementById('hsPoPayments').textContent = s.count || 0;
+  document.getElementById('hsPoGross').textContent    = fmt(s.gross);
+  document.getElementById('hsPoFees').textContent     = fmt(s.totalFees);
+  document.getElementById('hsPoNet').textContent      = fmt(s.net);
+  document.getElementById('hsPoRefunds').textContent  = fmt(s.refunds);
+  document.getElementById('hsPayoutsSummaryWrap').style.display = '';
+
+  const body = document.getElementById('hsPayoutsBody');
+  const wrap = document.getElementById('hsPayoutsTableWrap');
+  if (!body || !wrap) return;
+  const payouts = data.payouts || [];
+  if (!payouts.length) {
+    wrap.style.display = '';
+    body.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:18px">No HubSpot payouts in ${data.monthLabel || 'this period'}.</td></tr>`;
+  } else {
+    const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', timeZone:'UTC' }) : 'Unknown date';
+    const esc = str => String(str == null ? '' : str).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    body.innerHTML = payouts.map((p, i) => {
+      const header = `
+      <tr class="payout-hdr" onclick="togglePayout(${i})" id="poHdr${i}">
+        <td colspan="4"><span class="caret">▾</span> Payout — <b>${fmtDate(p.payoutDate)}</b><span class="payout-pill">${p.count} payment${p.count === 1 ? '' : 's'}</span></td>
+        <td style="text-align:right">${fmt(p.gross)}</td>
+        <td style="text-align:right;font-weight:700">${fmt(p.totalFees)}</td>
+        <td style="text-align:right;font-weight:700">${fmt(p.net)}</td>
+      </tr>`;
+      const members = (p.payments || []).map(r => {
+        const method = [r.method, r.methodBank].filter(Boolean).join(' · ') || '—';
+        return `
+      <tr class="payout-pmt po-grp-${i}">
+        <td>${fmtDate(r.createdAt)}</td>
+        <td>${r.sourceName ? `<span style="font-family:monospace;font-size:11px">${esc(r.sourceName)}</span>` : '—'}</td>
+        <td>${esc(r.customer || r.email || '—')}</td>
+        <td>${esc(method)}</td>
+        <td style="text-align:right">${fmt(r.gross)}</td>
+        <td style="text-align:right">${fmt(r.totalFee)}</td>
+        <td style="text-align:right">${fmt(r.net)}</td>
+      </tr>`;
+      }).join('');
+      return header + members;
+    }).join('');
+    wrap.style.display = '';
+  }
+  const csvBtn = document.getElementById('hsPayoutsCsvBtn');
+  if (csvBtn) csvBtn.disabled = !payouts.length;
+}
+
+function togglePayout(i) {
+  const hdr = document.getElementById('poHdr' + i);
+  if (!hdr) return;
+  const collapsed = hdr.classList.toggle('collapsed');
+  document.querySelectorAll('.po-grp-' + i).forEach(tr => {
+    tr.style.display = collapsed ? 'none' : '';
+  });
+}
+
+function expandAllPayouts(expand) {
+  const payouts = (_hsPayoutsData && _hsPayoutsData.payouts) || [];
+  payouts.forEach((_, i) => {
+    const hdr = document.getElementById('poHdr' + i);
+    if (!hdr) return;
+    hdr.classList.toggle('collapsed', !expand);
+    document.querySelectorAll('.po-grp-' + i).forEach(tr => {
+      tr.style.display = expand ? '' : 'none';
+    });
+  });
+}
+
+function downloadHsPayoutsCsv() {
+  const data = _hsPayoutsData;
+  if (!data || !data.payouts?.length) return;
+  const esc = v => {
+    const s = String(v == null ? '' : v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const headers = ['PayoutDate','TxnDate','Invoice','Customer','Email','Method','Bank/Issuer','Gross','ProcessorFee','PlatformFee','TotalFee','Net','Refund'];
+  const lines = [headers.join(',')];
+  data.payouts.forEach(p => {
+    const day = p.payoutDate ? p.payoutDate.slice(0,10) : 'unknown';
+    (p.payments || []).forEach(r => {
+      lines.push([
+        day, (r.createdAt || '').slice(0,10), r.sourceName || '', r.customer || '', r.email || '',
+        r.method || '', r.methodBank || '',
+        r.gross, r.processorFee, r.platformFee, r.totalFee, r.net, r.refundAmount,
+      ].map(esc).join(','));
+    });
+    // Per-payout subtotal row
+    lines.push([
+      `${day} SUBTOTAL`, '', '', '', '', '', '',
+      p.gross, p.processorFees, p.platformFees, p.totalFees, p.net, p.refunds,
+    ].map(esc).join(','));
+    lines.push('');
+  });
+  const s = data.summary || {};
+  lines.push(['TOTAL','','','','','','', s.gross, s.processorFees, s.platformFees, s.totalFees, s.net, s.refunds].map(esc).join(','));
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `hubspot-payouts-${data.month || 'unknown'}.csv`;
   document.body.appendChild(a);
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); document.body.removeChild(a); }, 100);

@@ -468,6 +468,210 @@ const LOGIN_HTML = fs.readFileSync(path.join(__dirname, 'login.html'), 'utf8');
 const HSO_BTN = `<a href="/auth/hubspot" class="hs-btn"><svg width="18" height="18" viewBox="0 0 512 512" fill="white"><path d="M267.4 211.6c-25.1 23.7-40.8 57-40.8 93.8 0 29.3 9.7 56.3 26 78L203.1 434c-4.4-1.6-9.1-2.5-14-2.5-21.9 0-39.7 17.8-39.7 39.7S167.2 511 189.1 511s39.7-17.8 39.7-39.7c0-4.9-.9-9.6-2.5-14l49.2-50.4c22 16.4 49.2 26.1 78.7 26.1 73.5 0 133.1-59.6 133.1-133.1 0-67.7-50.6-123.5-116.1-131.8v-65.2c13.4-6.8 22.6-20.7 22.6-36.7 0-22.8-18.5-41.3-41.3-41.3-22.8 0-41.3 18.5-41.3 41.3 0 16 9.2 29.9 22.6 36.7v65.7c-22.5 2.9-43.1 11.5-60.4 24.6zM354.2 439.8c-46.6 0-84.4-37.8-84.4-84.4s37.8-84.4 84.4-84.4 84.4 37.8 84.4 84.4-37.8 84.4-84.4 84.4z"/></svg> Sign in with HubSpot</a>`;
 const MAIN_HTML_PATH = path.join(__dirname, 'quote-builder.html');
 
+// ── Accountant read-only portal (HubSpot Payouts) ─────────────────
+// A password-gated PUBLIC page for the outside accountant, walled off from the
+// rest of the app: its own cookie (wr_acct_session) + in-memory session set,
+// reachable only at /portal/payouts and /api/portal/payouts. The password lives
+// ONLY in the ACCOUNTANT_PORTAL_PASSWORD env var — when it's unset the whole
+// portal is disabled (503). Nothing is hardcoded; nothing in git history.
+const ACCOUNTANT_PORTAL_PASSWORD = process.env.ACCOUNTANT_PORTAL_PASSWORD || '';
+const acctSessions = new Set();   // in-memory; accountant re-enters PW after a deploy
+function acctAuthed(req) {
+  const c = parseCookies(req);
+  return !!(c.wr_acct_session && acctSessions.has(c.wr_acct_session));
+}
+// Constant-time compare so a wrong password can't be inferred from response timing.
+function acctPwOk(supplied) {
+  if (!ACCOUNTANT_PORTAL_PASSWORD || !supplied) return false;
+  const a = Buffer.from(String(supplied));
+  const b = Buffer.from(ACCOUNTANT_PORTAL_PASSWORD);
+  if (a.length !== b.length) return false;
+  try { return crypto.timingSafeEqual(a, b); } catch(e) { return false; }
+}
+function portalShell(inner) {
+  return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
+    + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+    + '<meta name="robots" content="noindex, nofollow">'
+    + '<title>WhisperRoom — Payouts Portal</title>'
+    + '<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">'
+    + '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:\'DM Sans\',sans-serif;background:#0f0f0f;color:#e8e8e8;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}'
+    + '.card{background:#1a1a1a;border:1px solid #2e2e2e;border-radius:14px;padding:34px 32px;width:100%;max-width:380px;text-align:center}'
+    + '.logo{font-family:\'Syne\',sans-serif;font-weight:800;font-size:26px;margin-bottom:6px}.logo span{color:#ee6216}'
+    + '.sub{font-size:12px;color:#888;margin-bottom:24px;letter-spacing:.04em;text-transform:uppercase}'
+    + 'input{width:100%;padding:12px 14px;background:#222;border:1px solid #2e2e2e;border-radius:8px;color:#e8e8e8;font-size:14px;font-family:inherit;outline:none;margin-bottom:14px}'
+    + 'input:focus{border-color:rgba(238,98,22,.5)}'
+    + 'button{width:100%;padding:12px;background:#ee6216;border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}'
+    + 'button:hover{background:#d2570f}.err{color:#ef4444;font-size:12px;margin-bottom:14px}.muted{color:#666;font-size:11px;margin-top:18px}</style></head><body>'
+    + '<div class="card">' + inner + '</div></body></html>';
+}
+function portalLoginHtml(err) {
+  return portalShell(
+    '<div class="logo">Whisper<span>Room</span></div>'
+    + '<div class="sub">Payouts Portal</div>'
+    + (err ? '<div class="err">' + err + '</div>' : '')
+    + '<form method="POST" action="/portal/payouts/login" autocomplete="off">'
+    + '<input type="password" name="password" placeholder="Password" autofocus required>'
+    + '<button type="submit">View Payouts</button></form>'
+    + '<div class="muted">Authorized access only.</div>'
+  );
+}
+function portalDisabledHtml() {
+  return portalShell(
+    '<div class="logo">Whisper<span>Room</span></div>'
+    + '<div class="sub">Payouts Portal</div>'
+    + '<div class="err">This portal is not configured.</div>'
+    + '<div class="muted">Set ACCOUNTANT_PORTAL_PASSWORD to enable.</div>'
+  );
+}
+
+// Build the grouped-payouts payload (succeeded hs_payments grouped by deposit
+// date for a month). Shared by the internal /api/accounting/hubspot-payouts
+// route and the accountant portal's /api/portal/payouts so both stay identical.
+// See the internal route's comment block for the date-handling rationale.
+async function buildHubspotPayouts(monthParam) {
+  const now = new Date();
+  let year, month;
+  if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
+    const [y, m] = monthParam.split('-').map(Number);
+    year = y; month = m - 1;
+  } else {
+    year  = now.getFullYear();
+    month = now.getMonth() - 1;
+    if (month < 0) { month += 12; year -= 1; }
+  }
+  const start = Date.UTC(year, month,     1);
+  const end   = Date.UTC(year, month + 1, 1);
+  const monthLabel = new Date(Date.UTC(year, month, 1))
+    .toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+
+  const properties = [
+    'hs_createdate', 'hs_initial_amount', 'hs_fees_amount', 'hs_platform_fee',
+    'hs_net_amount', 'hs_refunds_amount', 'hs_latest_status',
+    'hs_processor_type', 'hs_payment_method', 'hs_payment_method_bank_or_issuer',
+    'hs_payment_source_name', 'hs_payout_date', 'hs_estimated_payout_date',
+    'hs_currency_code', 'hs_billing_bill_to_name', 'hs_customer_email',
+  ];
+  const allPayments = [];
+  let after = undefined;
+  let safety = 0;
+  while (safety++ < 50) {
+    const searchRes = await httpsRequest({
+      hostname: 'api.hubapi.com',
+      path: '/crm/v3/objects/payments/search',
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
+    }, {
+      filterGroups: [{ filters: [
+        { propertyName: 'hs_payout_date',    operator: 'GTE', value: String(start) },
+        { propertyName: 'hs_payout_date',    operator: 'LT',  value: String(end) },
+        { propertyName: 'hs_latest_status',  operator: 'EQ',  value: 'succeeded' },
+        { propertyName: 'hs_processor_type', operator: 'EQ',  value: 'hs_payments' },
+      ]}],
+      properties,
+      sorts: [{ propertyName: 'hs_payout_date', direction: 'ASCENDING' }],
+      limit: 100,
+      ...(after ? { after } : {}),
+    });
+    const results = searchRes.body?.results || [];
+    results.forEach(r => allPayments.push(r));
+    const nextAfter = searchRes.body?.paging?.next?.after;
+    if (!nextAfter || results.length === 0) break;
+    after = nextAfter;
+  }
+
+  const num = v => parseFloat(v || 0) || 0;
+  const r2  = n => Math.round(n * 100) / 100;
+  const toIso = v => {
+    if (v == null || v === '') return null;
+    const s = String(v).trim();
+    let d;
+    if (/^\d+$/.test(s))                 d = new Date(Number(s));
+    else if (/^\d{4}-\d{2}-\d{2}$/.test(s)) d = new Date(s + 'T00:00:00Z');
+    else                                 d = new Date(s);
+    if (isNaN(d.getTime())) {
+      console.warn('[portal/payouts] unparseable payout date:', JSON.stringify(v));
+      return null;
+    }
+    return d.toISOString();
+  };
+
+  const groups = new Map();
+  let count = 0, gross = 0, processorFees = 0, platformFees = 0, net = 0, refunds = 0;
+  allPayments.forEach(p => {
+    const props     = p.properties || {};
+    const initial   = num(props.hs_initial_amount);
+    const processor = num(props.hs_fees_amount);
+    const platform  = num(props.hs_platform_fee);
+    const netAmt    = num(props.hs_net_amount);
+    const refundAmt = num(props.hs_refunds_amount);
+    const payoutIso = toIso(props.hs_payout_date);
+    const payoutKey = payoutIso ? payoutIso.slice(0, 10) : 'unknown';
+
+    count += 1; gross += initial; processorFees += processor;
+    platformFees += platform; net += netAmt; refunds += refundAmt;
+
+    const row = {
+      id:           p.id,
+      createdAt:    props.hs_createdate || null,
+      payoutDate:   payoutIso,
+      sourceName:   props.hs_payment_source_name || null,
+      customer:     props.hs_billing_bill_to_name || null,
+      email:        props.hs_customer_email || null,
+      method:       props.hs_payment_method || null,
+      methodBank:   props.hs_payment_method_bank_or_issuer || null,
+      gross:        initial,
+      processorFee: processor,
+      platformFee:  platform,
+      totalFee:     r2(processor + platform),
+      net:          netAmt,
+      refundAmount: refundAmt,
+    };
+    if (!groups.has(payoutKey)) {
+      groups.set(payoutKey, {
+        payoutKey,
+        payoutDate: payoutKey === 'unknown' ? null : payoutIso,
+        count: 0, gross: 0, processorFees: 0, platformFees: 0,
+        net: 0, refunds: 0, payments: [],
+      });
+    }
+    const g = groups.get(payoutKey);
+    g.count += 1; g.gross += initial; g.processorFees += processor;
+    g.platformFees += platform; g.net += netAmt; g.refunds += refundAmt;
+    g.payments.push(row);
+  });
+
+  const payouts = [...groups.values()].map(g => ({
+    payoutKey:     g.payoutKey,
+    payoutDate:    g.payoutDate,
+    count:         g.count,
+    gross:         r2(g.gross),
+    processorFees: r2(g.processorFees),
+    platformFees:  r2(g.platformFees),
+    totalFees:     r2(g.processorFees + g.platformFees),
+    net:           r2(g.net),
+    refunds:       r2(g.refunds),
+    payments:      g.payments.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))),
+  })).sort((a, b) => String(a.payoutKey).localeCompare(String(b.payoutKey)));
+
+  return {
+    month:      monthParam || `${year}-${String(month + 1).padStart(2,'0')}`,
+    monthLabel,
+    rangeStart: new Date(start).toISOString(),
+    rangeEnd:   new Date(end).toISOString(),
+    summary: {
+      payoutCount:   payouts.length,
+      count,
+      gross:         r2(gross),
+      processorFees: r2(processorFees),
+      platformFees:  r2(platformFees),
+      totalFees:     r2(processorFees + platformFees),
+      net:           r2(net),
+      refunds:       r2(refunds),
+    },
+    payouts,
+  };
+}
+
 // ── HubSpot Commerce Payments sync ────────────────────────────────
 // Mirrors per-deal payment state into our `deal_payment_status` table so the
 // Deal Hub card chip + Process Order soft warning can read it cheaply (no
@@ -1356,7 +1560,7 @@ const server = http.createServer(async (req, res) => {
 
   // ── Auth gate ──
   // Public routes — no auth required but rate limited + token validated
-  const isPublicRoute = pathname.startsWith('/q/') || pathname.startsWith('/i/') || pathname.startsWith('/o/') || pathname.startsWith('/po/') || pathname.startsWith('/vpo/') || pathname === '/api/accept-quote' || pathname === '/api/update-specs' || pathname === '/api/stripe/webhook';
+  const isPublicRoute = pathname.startsWith('/q/') || pathname.startsWith('/i/') || pathname.startsWith('/o/') || pathname.startsWith('/po/') || pathname.startsWith('/vpo/') || pathname.startsWith('/portal/') || pathname.startsWith('/api/portal/') || pathname === '/api/accept-quote' || pathname === '/api/update-specs' || pathname === '/api/stripe/webhook';
   if (isPublicRoute) {
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
     if (!checkRateLimit(ip, 30, 60000)) {
@@ -2907,157 +3111,71 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/accounting/hubspot-payouts' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
-      const monthParam = parsed.query.month;
-      const now = new Date();
-      let year, month;
-      if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
-        const [y, m] = monthParam.split('-').map(Number);
-        year = y; month = m - 1; // JS months are 0-indexed
-      } else {
-        year  = now.getFullYear();
-        month = now.getMonth() - 1;
-        if (month < 0) { month += 12; year -= 1; }
-      }
-      const start = Date.UTC(year, month,     1);
-      const end   = Date.UTC(year, month + 1, 1);
-      const monthLabel = new Date(Date.UTC(year, month, 1))
-        .toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-
-      const properties = [
-        'hs_createdate', 'hs_initial_amount', 'hs_fees_amount', 'hs_platform_fee',
-        'hs_net_amount', 'hs_refunds_amount', 'hs_latest_status',
-        'hs_processor_type', 'hs_payment_method', 'hs_payment_method_bank_or_issuer',
-        'hs_payment_source_name', 'hs_payout_date', 'hs_estimated_payout_date',
-        'hs_currency_code', 'hs_billing_bill_to_name', 'hs_customer_email',
-      ];
-      const allPayments = [];
-      let after = undefined;
-      let safety = 0;
-      while (safety++ < 50) {
-        const searchRes = await httpsRequest({
-          hostname: 'api.hubapi.com',
-          path: '/crm/v3/objects/payments/search',
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${HS_TOKEN}`, 'Content-Type': 'application/json' }
-        }, {
-          filterGroups: [{ filters: [
-            { propertyName: 'hs_payout_date',    operator: 'GTE', value: String(start) },
-            { propertyName: 'hs_payout_date',    operator: 'LT',  value: String(end) },
-            { propertyName: 'hs_latest_status',  operator: 'EQ',  value: 'succeeded' },
-            { propertyName: 'hs_processor_type', operator: 'EQ',  value: 'hs_payments' },
-          ]}],
-          properties,
-          sorts: [{ propertyName: 'hs_payout_date', direction: 'ASCENDING' }],
-          limit: 100,
-          ...(after ? { after } : {}),
-        });
-        const results = searchRes.body?.results || [];
-        results.forEach(r => allPayments.push(r));
-        const nextAfter = searchRes.body?.paging?.next?.after;
-        if (!nextAfter || results.length === 0) break;
-        after = nextAfter;
-      }
-
-      const num = v => parseFloat(v || 0) || 0;
-      const r2  = n => Math.round(n * 100) / 100;
-      // HubSpot returns date/datetime properties inconsistently: an epoch-ms
-      // string, a plain "YYYY-MM-DD", or a full ISO timestamp. Normalize all
-      // three to an ISO string, and NEVER throw — an unparseable value returns
-      // null (groups under "unknown") rather than 500-ing the whole tab with
-      // "Invalid time value".
-      const toIso = v => {
-        if (v == null || v === '') return null;
-        const s = String(v).trim();
-        let d;
-        if (/^\d+$/.test(s))                 d = new Date(Number(s));        // epoch ms
-        else if (/^\d{4}-\d{2}-\d{2}$/.test(s)) d = new Date(s + 'T00:00:00Z'); // bare date
-        else                                 d = new Date(s);               // full ISO / datetime
-        if (isNaN(d.getTime())) {
-          console.warn('[accounting/hubspot-payouts] unparseable payout date:', JSON.stringify(v));
-          return null;
-        }
-        return d.toISOString();
-      };
-
-      // Group by payout day (UTC). Map preserves insertion order; results are
-      // already payout-date-ascending from the search sort.
-      const groups = new Map();
-      let count = 0, gross = 0, processorFees = 0, platformFees = 0, net = 0, refunds = 0;
-      allPayments.forEach(p => {
-        const props     = p.properties || {};
-        const initial   = num(props.hs_initial_amount);
-        const processor = num(props.hs_fees_amount);
-        const platform  = num(props.hs_platform_fee);
-        const netAmt    = num(props.hs_net_amount);
-        const refundAmt = num(props.hs_refunds_amount);
-        const payoutIso = toIso(props.hs_payout_date);
-        const payoutKey = payoutIso ? payoutIso.slice(0, 10) : 'unknown';
-
-        count += 1; gross += initial; processorFees += processor;
-        platformFees += platform; net += netAmt; refunds += refundAmt;
-
-        const row = {
-          id:           p.id,
-          createdAt:    props.hs_createdate || null,
-          payoutDate:   payoutIso,
-          sourceName:   props.hs_payment_source_name || null, // e.g. WR-1195
-          customer:     props.hs_billing_bill_to_name || null,
-          email:        props.hs_customer_email || null,
-          method:       props.hs_payment_method || null,
-          methodBank:   props.hs_payment_method_bank_or_issuer || null,
-          gross:        initial,
-          processorFee: processor,
-          platformFee:  platform,
-          totalFee:     r2(processor + platform),
-          net:          netAmt,
-          refundAmount: refundAmt,
-        };
-        if (!groups.has(payoutKey)) {
-          groups.set(payoutKey, {
-            payoutKey,
-            payoutDate: payoutKey === 'unknown' ? null : payoutIso,
-            count: 0, gross: 0, processorFees: 0, platformFees: 0,
-            net: 0, refunds: 0, payments: [],
-          });
-        }
-        const g = groups.get(payoutKey);
-        g.count += 1; g.gross += initial; g.processorFees += processor;
-        g.platformFees += platform; g.net += netAmt; g.refunds += refundAmt;
-        g.payments.push(row);
-      });
-
-      const payouts = [...groups.values()].map(g => ({
-        payoutKey:     g.payoutKey,
-        payoutDate:    g.payoutDate,
-        count:         g.count,
-        gross:         r2(g.gross),
-        processorFees: r2(g.processorFees),
-        platformFees:  r2(g.platformFees),
-        totalFees:     r2(g.processorFees + g.platformFees),
-        net:           r2(g.net),
-        refunds:       r2(g.refunds),
-        payments:      g.payments.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))),
-      })).sort((a, b) => String(a.payoutKey).localeCompare(String(b.payoutKey)));
-
-      json({
-        month:      monthParam || `${year}-${String(month + 1).padStart(2,'0')}`,
-        monthLabel,
-        rangeStart: new Date(start).toISOString(),
-        rangeEnd:   new Date(end).toISOString(),
-        summary: {
-          payoutCount:   payouts.length,
-          count,
-          gross:         r2(gross),
-          processorFees: r2(processorFees),
-          platformFees:  r2(platformFees),
-          totalFees:     r2(processorFees + platformFees),
-          net:           r2(net),
-          refunds:       r2(refunds),
-        },
-        payouts,
-      });
+      json(await buildHubspotPayouts(parsed.query.month));
     } catch(e) {
       console.error('[accounting/hubspot-payouts]', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── Accountant portal: password-gated, read-only HubSpot Payouts ──
+  // Public (in isPublicRoute) so the main auth gate lets it through; the portal
+  // enforces its OWN password cookie (wr_acct_session). noindex on every route.
+  if (pathname === '/portal/payouts' && req.method === 'GET') {
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    if (!ACCOUNTANT_PORTAL_PASSWORD) {
+      res.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(portalDisabledHtml()); return;
+    }
+    if (acctAuthed(req)) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(fs.readFileSync(path.join(__dirname, 'accountant-portal.html'), 'utf8')); return;
+    }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(portalLoginHtml('')); return;
+  }
+  if (pathname === '/portal/payouts/login' && req.method === 'POST') {
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    if (!ACCOUNTANT_PORTAL_PASSWORD) {
+      res.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(portalDisabledHtml()); return;
+    }
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+    if (!checkRateLimit('acctpw_' + ip, 8, 60000)) {
+      res.writeHead(429, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(portalLoginHtml('Too many attempts — wait a minute and try again.')); return;
+    }
+    const body = await readBody(req);
+    const pw = new URLSearchParams(body).get('password') || '';
+    if (acctPwOk(pw)) {
+      const token = generateToken();
+      acctSessions.add(token);
+      res.writeHead(302, {
+        'Set-Cookie': `wr_acct_session=${token}; HttpOnly; Path=/; SameSite=Lax; Secure; Max-Age=2592000`,
+        'Location': '/portal/payouts',
+      });
+      res.end(); return;
+    }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(portalLoginHtml('Incorrect password.')); return;
+  }
+  if (pathname === '/portal/payouts/logout') {
+    const c = parseCookies(req);
+    if (c.wr_acct_session) acctSessions.delete(c.wr_acct_session);
+    res.writeHead(302, {
+      'Set-Cookie': 'wr_acct_session=; HttpOnly; Path=/; Max-Age=0',
+      'Location': '/portal/payouts',
+    });
+    res.end(); return;
+  }
+  if (pathname === '/api/portal/payouts' && req.method === 'GET') {
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    if (!acctAuthed(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      json(await buildHubspotPayouts(parsed.query.month));
+    } catch(e) {
+      console.error('[portal/payouts]', e.message);
       json({ error: e.message }, 500);
     }
     return;

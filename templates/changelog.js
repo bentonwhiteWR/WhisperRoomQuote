@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.65.0', date:'June 3, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Accountant Payouts Portal — a password-gated public page at `/portal/payouts`.** Lets an outside accountant view the exact HubSpot Payouts data (payouts grouped by deposit date, expandable to member payments, summary KPIs, CSV) without a WhisperRoom login. Fully walled off from the rest of the app: its own `wr_acct_session` cookie + in-memory session, no nav to anything else. Password lives ONLY in the `ACCOUNTANT_PORTAL_PASSWORD` env var (nothing hardcoded) — **the portal is disabled (503) until that env var is set in Railway.** `noindex` on every route, HTTPS-only Secure cookie, constant-time password check, 8-attempts/min login rate-limit.'},
+        {t:'add', d:'**Shared `buildHubspotPayouts()` helper.** The payouts-building logic (succeeded `hs_payments` grouped by `hs_payout_date`) was extracted into one function so the internal `/api/accounting/hubspot-payouts` route and the portal’s `/api/portal/payouts` route return identical data from a single source.'},
+      ]
+    },
+    {
       v:'1.64.0', date:'June 3, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Sales by State now reports on the fiscal year (Nov 1 – Oct 31), not the calendar year.** The two columns are the two most recent complete fiscal years — **FY2024** (Nov ’23 – Oct ’24) and **FY2025** (Nov ’24 – Oct ’25), each labeled with its date range. Deals are bucketed by close date into the fiscal year they fall in (Nov/Dec roll into the next FY). CSV export and column headers follow the FY labels.'},

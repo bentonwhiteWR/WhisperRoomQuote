@@ -51,6 +51,31 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.61.0', date:'June 3, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Sales by State now shows each state’s economic-nexus threshold.** New "State threshold" column lists what triggers a sales-tax obligation there (e.g. “$100k”, “$100k or 200 txns”, “$500k and 100 txns”, “No sales tax”) — so you can see at a glance where our sales are approaching a state’s threshold. Reference figures (~2025–2026); confirm with the accountant. Included in the CSV export too.'},
+        {t:'add', d:'**Copy Quote now copies a clean clickable link.** The 🔗 copy buttons in the Quote Builder and Deal Hub now put a formatted hyperlink on your clipboard (“WhisperRoom Quote W-…”) instead of a raw URL — paste it into an email and it shows as a tidy link instead of a long address.'},
+      ]
+    },
+    {
+      v:'1.60.1', date:'June 3, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Sales by State report polish.** Full state names instead of abbreviations, dropped the "Unknown" row (excluded deals noted in a footnote), and added a **Nexus rule** column. Rows are now color-coded: **green** = collecting tax where we have nexus; **yellow** = needs a look (a nexus state showing $0 tax, or tax collected somewhere we have no nexus).'},
+      ]
+    },
+    {
+      v:'1.60.0', date:'June 3, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**New "Sales by State" report** under Accounting (new tab). Shows Closed Won + Shipped deals grouped by ship-to state for **2024 and 2025** side by side — deal count, net sales, and tax collected per state, with totals and a one-click **CSV export** for the accountant. Built from HubSpot deal data (where the ship-to state lives); cross-check against QuickBooks if you need booked-revenue figures.'},
+      ]
+    },
+    {
+      v:'1.59.6', date:'June 2, 2026', tag:'feature',
+      changes:[
+        {t:'feature', d:'**Marketing dashboard: "ad-acquisition quality" strip on the paid funnel.** A new line under the funnel splits your closed-won deals into how customers actually found us through ads: **Prospecting touch** (a genuine non-branded search — real new-customer acquisition), **Branded-only** (they only ever searched for us by name), and **Unknown** (clicked an ad but no detail to tell). It answers “how much of our ad ROAS is winning new customers vs recapturing people who already know us?” Honest caveat shown on the strip: we only store each contact&rsquo;s first and last ad touch, so the prospecting count is a floor — the real number is at least that high.'},
+      ]
+    },
+    {
       v:'1.59.5', date:'June 2, 2026', tag:'add',
       changes:[
         {t:'add', d:'**Ship calendar: "Track with carrier" button.** Click a shipment on the Shipping ship calendar and the detail popup now has a button that opens the carrier&rsquo;s own live tracking page (ABF, Old Dominion, FedEx, UPS, USPS) for that PRO/tracking number — no more copy-pasting into the carrier site.'},

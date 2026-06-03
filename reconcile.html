@@ -205,7 +205,7 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
   <div id="tabSalesByState" style="display:none">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
       <div>
-        <div style="font-size:15px;font-weight:800;color:var(--text)">Sales by State &mdash; 2024 &amp; 2025</div>
+        <div style="font-size:15px;font-weight:800;color:var(--text)">Sales by State &mdash; Fiscal Years (Nov&ndash;Oct)</div>
         <div style="font-size:11px;color:var(--text2);margin-top:3px;max-width:560px">Closed&nbsp;Won + Shipped deals grouped by ship&#8209;to state. Source: HubSpot deals. <b>Net Sales</b> = deal total minus tax; <b>Tax</b> = collected. Totals tie to the HubSpot deal data, not QB &mdash; cross&#8209;check against QuickBooks if booked revenue is needed.</div>
       </div>
       <div style="display:flex;gap:8px">
@@ -1554,7 +1554,7 @@ function sbsFmt$(n) {
 async function loadSalesByState(force) {
   const msg = document.getElementById('sbsMsg');
   const wrap = document.getElementById('sbsTableWrap');
-  msg.style.display = ''; msg.textContent = 'Loading… (pulling 2024–2025 deals from HubSpot)';
+  msg.style.display = ''; msg.textContent = 'Loading… (pulling fiscal-year deals from HubSpot)';
   wrap.style.display = 'none';
   try {
     const r = await fetch('/api/reports/sales-by-state' + (force ? '?force=1' : ''), { credentials: 'include' });
@@ -1586,10 +1586,14 @@ function renderSalesByState(d) {
       + `<td style="font-weight:600">${s.name}</td>`
       + `<td style="font-size:11px;color:var(--text2);white-space:nowrap">${sbsNexusLabel(s)}</td>`
       + `<td style="font-size:11px;color:var(--text2);white-space:nowrap">${s.threshold || '—'}</td>`
+      + `<td style="font-size:11px;color:var(--text2);max-width:170px">${s.incomeThreshold || '—'}</td>`
       + `${cell(s.y2024)}${cell(s.y2025)}</tr>`;
   }).join('');
   const t = d.totals;
-  const totalRow = `<tr style="border-top:2px solid var(--border);font-weight:800"><td>Total</td><td></td><td></td>${cell(t.y2024)}${cell(t.y2025)}</tr>`;
+  const totalRow = `<tr style="border-top:2px solid var(--border);font-weight:800"><td>Total</td><td></td><td></td><td></td>${cell(t.y2024)}${cell(t.y2025)}</tr>`;
+  // Fiscal-year column headers (label + date range), driven by the backend.
+  const fys = d.fiscalYears || [{ label:'FY', range:'' }, { label:'FY', range:'' }];
+  const yHead = fys.map(f => `<th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">${f.label}<div style="font-weight:400;font-size:9px;color:var(--muted);text-transform:none;letter-spacing:0">${f.range || ''}</div></th>`).join('');
   const legend = `<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:11px;color:var(--text2);margin-bottom:10px">
     <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(34,197,94,.55);margin-right:5px;vertical-align:middle"></span>Collecting tax where we have nexus</span>
     <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(245,158,11,.65);margin-right:5px;vertical-align:middle"></span>Review &mdash; nexus state with $0 tax, or tax collected without nexus</span>
@@ -1603,9 +1607,9 @@ function renderSalesByState(d) {
         <tr>
           <th rowspan="2" style="text-align:left">State</th>
           <th rowspan="2" style="text-align:left">Our nexus</th>
-          <th rowspan="2" style="text-align:left">State threshold</th>
-          <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">2024</th>
-          <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">2025</th>
+          <th rowspan="2" style="text-align:left">Sales-tax nexus</th>
+          <th rowspan="2" style="text-align:left">Income-tax nexus</th>
+          ${yHead}
         </tr>
         <tr>
           <th style="text-align:right">Deals</th><th style="text-align:right">Net Sales</th><th style="text-align:right">Tax</th>
@@ -1615,22 +1619,26 @@ function renderSalesByState(d) {
       <tbody>${rows}${totalRow}</tbody>
     </table>
     <div style="font-size:11px;color:var(--text2);margin-top:8px">${d.dealsCounted} deals counted${d.cached ? ' · cached' : ''}.</div>` + excl
-    + `<div style="font-size:11px;color:var(--text2);margin-top:4px">“State threshold” = the state’s economic-nexus trigger for a remote seller (sales, and/or transaction count). Reference only, ≈2025–2026 — confirm with the accountant before acting.</div>`;
+    + `<div style="font-size:11px;color:var(--text2);margin-top:4px">Figures are by <b>fiscal year</b> (Nov 1 – Oct 31), grouped by deal close date. <b>Sales-tax nexus</b> = the state’s sales-tax economic-nexus trigger for a remote seller (sales and/or transaction count). <b>Income-tax nexus</b> = the corporate income/franchise-tax economic-nexus trigger (factor-presence dollar amount where a state has one; otherwise “Physical presence” or “No corp income tax”). Both columns are reference only, ≈2025–2026, and income-tax nexus is especially state-specific — confirm with the accountant before acting.</div>`;
 }
 
 function exportSalesByStateCsv() {
   if (!_sbsData) return;
   const esc = v => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const hdr = ['State','Our Nexus','Freight Taxed','State Threshold','2024 Deals','2024 Net Sales','2024 Tax','2024 Gross','2025 Deals','2025 Net Sales','2025 Tax','2025 Gross'];
+  const fys = _sbsData.fiscalYears || [{ label:'FY1' }, { label:'FY2' }];
+  const [fa, fb] = [fys[0].label, fys[1].label];
+  const hdr = ['State','Our Nexus','Freight Taxed','Sales-Tax Nexus','Income-Tax Nexus',
+    `${fa} Deals`,`${fa} Net Sales`,`${fa} Tax`,`${fa} Gross`,
+    `${fb} Deals`,`${fb} Net Sales`,`${fb} Tax`,`${fb} Gross`];
   const lines = [hdr.join(',')];
-  const row = s => [esc(s.name), s.nexus ? 'Yes' : 'No', s.nexus ? (s.taxFreight ? 'Yes' : 'No') : '', esc(s.threshold || ''), s.y2024.count, s.y2024.net, s.y2024.tax, s.y2024.gross, s.y2025.count, s.y2025.net, s.y2025.tax, s.y2025.gross].join(',');
+  const row = s => [esc(s.name), s.nexus ? 'Yes' : 'No', s.nexus ? (s.taxFreight ? 'Yes' : 'No') : '', esc(s.threshold || ''), esc(s.incomeThreshold || ''), s.y2024.count, s.y2024.net, s.y2024.tax, s.y2024.gross, s.y2025.count, s.y2025.net, s.y2025.tax, s.y2025.gross].join(',');
   for (const s of _sbsData.states) lines.push(row(s));
   const t = _sbsData.totals;
-  lines.push(['Total','','','', t.y2024.count, t.y2024.net, t.y2024.tax, t.y2024.gross, t.y2025.count, t.y2025.net, t.y2025.tax, t.y2025.gross].join(','));
+  lines.push(['Total','','','','', t.y2024.count, t.y2024.net, t.y2024.tax, t.y2024.gross, t.y2025.count, t.y2025.net, t.y2025.tax, t.y2025.gross].join(','));
   const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'sales-by-state-2024-2025.csv';
+  a.download = `sales-by-state-${fa}-${fb}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(a.href);
 }

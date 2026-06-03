@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.64.0', date:'June 3, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Sales by State now reports on the fiscal year (Nov 1 – Oct 31), not the calendar year.** The two columns are the two most recent complete fiscal years — **FY2024** (Nov ’23 – Oct ’24) and **FY2025** (Nov ’24 – Oct ’25), each labeled with its date range. Deals are bucketed by close date into the fiscal year they fall in (Nov/Dec roll into the next FY). CSV export and column headers follow the FY labels.'},
+        {t:'add', d:'**New “Income-tax nexus” column on Sales by State.** Alongside the existing sales-tax nexus threshold, each state now shows its corporate income/franchise-tax economic-nexus trigger — a factor-presence dollar amount where the state has one (e.g. CA $757,070, NY $1.283M, $500k for CO/CT/MA/PA/TN/WV), “No corp income tax” for NV/OH/SD/TX/WA/WY, or “Physical presence” where there’s no bright-line. Reference only (~2025–26) — confirm with the accountant. Backed by a new `INCOME_NEXUS` map + `incomeNexusLabel()` in `lib/states.js`.'},
+      ]
+    },
+    {
       v:'1.63.1', date:'June 3, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**HubSpot Payouts tab "Invalid time value" fix.** The payout-date parser only understood epoch-ms and bare `YYYY-MM-DD`; HubSpot returns `hs_payout_date` as a full ISO timestamp, so the code appended `T00:00:00Z` onto an already-complete string → invalid date → `toISOString()` threw and the whole tab 500’d. Parser now handles epoch-ms, bare date, and full ISO, and returns null (groups under "unknown") instead of throwing. Client date formatter also guards against bad values.'},

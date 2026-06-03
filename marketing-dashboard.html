@@ -138,6 +138,13 @@ td.drillable:hover{color:var(--orange)}
 .ov-cov{background:rgba(148,163,184,.12);color:#94a3b8;border-color:rgba(148,163,184,.22)}
 .ov-org{background:rgba(59,130,246,.13);color:#6ba8ff;border-color:rgba(59,130,246,.25)}
 .ov-brand{background:rgba(245,158,11,.13);color:#f0b54e;border-color:rgba(245,158,11,.28)}
+.gsc-pager{display:flex;align-items:center;justify-content:center;gap:14px;padding:12px 0 2px;font-size:12px;color:var(--muted)}
+.gsc-pager button{background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer}
+.gsc-pager button:hover:not(:disabled){border-color:var(--orange);color:var(--orange)}
+.gsc-pager button:disabled{opacity:.4;cursor:default}
+.gsc-toolbar{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);margin:-6px 0 12px;cursor:pointer}
+.gsc-toolbar input{cursor:pointer}
+.gsc-toolbar code{background:var(--surface2);padding:1px 5px;border-radius:4px;font-size:11px}
 .card.drillable .card-value{transition:color .12s}
 .card.drillable:hover .card-value{color:var(--orange)}
 .funnel-stage.drillable:hover .funnel-stage-value{color:var(--orange)}
@@ -372,8 +379,8 @@ td.drillable:hover{color:var(--orange)}
       <div class="card"><div class="card-label" id="lblGscImpr">Impressions (90d)</div><div class="card-value" id="gscImpr">—</div><div class="card-sub">organic search</div></div>
       <div class="card"><div class="card-label">Avg CTR</div><div class="card-value" id="gscCtr">—</div><div class="card-sub">clicks ÷ impressions</div></div>
       <div class="card" title="Impression-weighted average organic position. Lower is better (1 = top of results)."><div class="card-label">Avg Position</div><div class="card-value" id="gscPos">—</div><div class="card-sub">lower = higher rank</div></div>
-      <div class="card" title="HubSpot contacts whose source is ORGANIC_SEARCH (channel-level — Google withholds the organic query, so organic leads can't be split by keyword), created in range under the selected model."><div class="card-label" id="lblGscLeads">Organic Leads (90d)</div><div class="card-value" id="gscLeads">—</div><div class="card-sub" id="gscLeadsSub">—</div></div>
-      <div class="card" title="Closed-won revenue from ORGANIC_SEARCH-sourced contacts, by close date in range, under the selected model."><div class="card-label" id="lblGscRev">Organic Closed Rev (90d)</div><div class="card-value" id="gscRev">—</div><div class="card-sub" id="gscRevSub">—</div></div>
+      <div class="card drillable" onclick="openDrill('organic-leads','Organic leads — HubSpot contacts')" title="HubSpot contacts whose source is ORGANIC_SEARCH (channel-level — Google withholds the organic query, so organic leads can't be split by keyword), created in range under the selected model. Click to list the contacts."><div class="card-label" id="lblGscLeads">Organic Leads (90d)</div><div class="card-value" id="gscLeads">—</div><div class="card-sub" id="gscLeadsSub">—</div></div>
+      <div class="card drillable" onclick="openDrill('organic-revenue','Organic closed-won deals')" title="Closed-won revenue from ORGANIC_SEARCH-sourced contacts, by close date in range, under the selected model. Click to list the deals."><div class="card-label" id="lblGscRev">Organic Closed Rev (90d)</div><div class="card-value" id="gscRev">—</div><div class="card-sub" id="gscRevSub">—</div></div>
     </div>
 
     <!-- Hero: paid × organic overlap -->
@@ -406,6 +413,7 @@ td.drillable:hover{color:var(--orange)}
         <div class="section-title">Organic Pages</div>
         <span class="section-meta" id="gscPagesMeta">—</span>
       </div>
+      <label class="gsc-toolbar"><input type="checkbox" onchange="toggleHideBlog(this.checked)"> Hide <code>/blog</code> pages (non-blog snapshot)</label>
       <div id="gscPagesBody"><div class="empty">No data yet.</div></div>
     </div>
   </div><!-- /tabGsc -->
@@ -625,6 +633,37 @@ const tableState = {
   campaigns:   { rawRows: [], attrRows: [], sortBy: 'cost', sortDir: 'desc' },
   keywords:    { rawRows: [], attrRows: [], sortBy: 'cost', sortDir: 'desc' },
   searchTerms: { rawRows: [], attrRows: [], sortBy: 'cost', sortDir: 'desc' },
+  // v1.65.3 — GSC tables: sortable + paginated. `rows` holds the full set;
+  // gscPaint() reads columns/rowFn/bodyId/metaId from here.
+  gscOverlap: {
+    rows: [], sortBy: 'paid_cost', sortDir: 'desc', page: 0,
+    bodyId: 'gscOverlapBody', metaId: 'gscOverlapMeta',
+    columns: [
+      { key: 'term', label: 'Term' }, { key: 'paid_cost', label: 'Paid $', num: 1 },
+      { key: 'paid_clicks', label: 'Paid clicks', num: 1 }, { key: 'organic_clicks', label: 'Organic clicks', num: 1 },
+      { key: 'organic_position', label: 'Organic pos', num: 1 }, { key: 'tag', label: 'Overlap' },
+    ],
+    rowFn: r => `<tr><td>${escHtml(r.term)}</td><td class="num">${r.paid_cost ? fmtUSD(r.paid_cost) : '—'}</td><td class="num">${fmtInt(r.paid_clicks)}</td><td class="num">${fmtInt(r.organic_clicks)}</td><td class="num">${r.organic_position != null ? r.organic_position.toFixed(1) : '—'}</td><td><span class="ov-tag ${r.cls}">${r.tag}</span></td></tr>`,
+  },
+  gscQueries: {
+    rows: [], sortBy: 'clicks', sortDir: 'desc', page: 0,
+    bodyId: 'gscQueriesBody', metaId: 'gscQueriesMeta',
+    columns: [
+      { key: 'query', label: 'Query' }, { key: 'clicks', label: 'Clicks', num: 1 },
+      { key: 'impressions', label: 'Impr.', num: 1 }, { key: 'ctr', label: 'CTR', num: 1 }, { key: 'position', label: 'Avg pos', num: 1 },
+    ],
+    rowFn: r => `<tr><td>${escHtml(r.query)}${/whisper/i.test(r.query) ? ' <span class="ov-tag ov-brand">brand</span>' : ''}</td><td class="num">${fmtInt(r.clicks)}</td><td class="num">${fmtInt(r.impressions)}</td><td class="num">${(r.ctr * 100).toFixed(1)}%</td><td class="num">${r.position.toFixed(1)}</td></tr>`,
+  },
+  gscPages: {
+    rows: [], sortBy: 'clicks', sortDir: 'desc', page: 0, hideBlog: false,
+    bodyId: 'gscPagesBody', metaId: 'gscPagesMeta',
+    columns: [
+      { key: 'page', label: 'Page' }, { key: 'clicks', label: 'Clicks', num: 1 },
+      { key: 'impressions', label: 'Impr.', num: 1 }, { key: 'ctr', label: 'CTR', num: 1 }, { key: 'position', label: 'Avg pos', num: 1 },
+      { key: 'leads', label: 'Leads', num: 1 }, { key: 'deals_won', label: 'Deals', num: 1 }, { key: 'revenue_won', label: 'Revenue', num: 1 },
+    ],
+    rowFn: r => { const u = r.page || '', short = u.replace(/^https?:\/\/(www\.)?whisperroom\.com/i, '') || '/'; return `<tr><td><a href="${escHtml(u)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(short)}</a></td><td class="num">${fmtInt(r.clicks)}</td><td class="num">${fmtInt(r.impressions)}</td><td class="num">${(r.ctr * 100).toFixed(1)}%</td><td class="num">${r.position.toFixed(1)}</td><td class="num">${fmtInt(r.leads)}</td><td class="num">${fmtInt(r.deals_won)}</td><td class="num">${r.revenue_won ? fmtUSD(r.revenue_won) : '—'}</td></tr>`; },
+  },
 };
 
 function changeDateRange(days) {
@@ -670,12 +709,14 @@ async function loadGscTab() {
     fetch('/api/marketing/gsc-summary' + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
     fetch('/api/marketing/gsc-overlap' + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     fetch('/api/marketing/gsc-queries' + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/gsc-pages'   + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/gsc-pages'   + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
   ]);
   renderGscCards(sum || {}, (qs && qs.rows) || []);
   renderGscOverlap((ov && ov.rows) || []);
   renderGscQueries((qs && qs.rows) || []);
   renderGscPages((pg && pg.rows) || []);
+  const det = document.getElementById('gscTabDetail');
+  if (det) det.textContent = `Showing organic data for the last ${currentDaysBack} days. Press “Sync GSC” to (re)pull this range — works for 14/30/90/180/365d.`;
 }
 
 function renderGscCards(s, qrows) {
@@ -703,52 +744,65 @@ function renderGscCards(s, qrows) {
   set('gscRevSub', `${fmtInt(+s.deals_won || 0)} closed-won deals`);
 }
 
+// v1.65.3 — GSC tables are sortable + paginated. Each render fn stashes its
+// full rows (+ derived fields) in tableState; gscPaint() sorts (sortRows),
+// optionally filters (Pages /blog), paginates (50/page), and draws sortable
+// headers + a pager. sortBy() re-paints on header click; gscPage() pages.
+const GSC_PAGE_SIZE = 50;
+function gscPaint(name) {
+  const st = tableState[name];
+  const bodyEl = document.getElementById(st.bodyId), metaEl = document.getElementById(st.metaId);
+  let rows = st.rows || [];
+  if (!rows.length) { bodyEl.innerHTML = '<div class="empty">No data yet. Press <strong>↻ Sync GSC</strong> to pull organic data.</div>'; if (metaEl) metaEl.textContent = ''; return; }
+  if (name === 'gscPages' && st.hideBlog) rows = rows.filter(r => !/\/blog/i.test(r.page || ''));
+  const sorted = sortRows(name, rows);
+  const total  = sorted.length;
+  const pages  = Math.max(1, Math.ceil(total / GSC_PAGE_SIZE));
+  st.page = Math.min(Math.max(st.page || 0, 0), pages - 1);
+  const start = st.page * GSC_PAGE_SIZE;
+  const slice = sorted.slice(start, start + GSC_PAGE_SIZE);
+  if (metaEl) metaEl.innerHTML = st.metaFn ? st.metaFn(total) : `${fmtInt(total)} rows`;
+  const thead = '<tr>' + st.columns.map(c => sortableTh(name, c.key, c.label, c.num ? 'num' : '')).join('') + '</tr>';
+  const pager = total > GSC_PAGE_SIZE ? `<div class="gsc-pager">
+      <button onclick="gscPage('${name}',-1)"${st.page === 0 ? ' disabled' : ''}>‹ Prev</button>
+      <span>${fmtInt(start + 1)}–${fmtInt(Math.min(start + GSC_PAGE_SIZE, total))} of ${fmtInt(total)}</span>
+      <button onclick="gscPage('${name}',1)"${st.page >= pages - 1 ? ' disabled' : ''}>Next ›</button>
+    </div>` : '';
+  bodyEl.innerHTML = `<table><thead>${thead}</thead><tbody>${slice.map(st.rowFn).join('')}</tbody></table>${pager}`;
+}
+function gscPage(name, delta) { tableState[name].page += delta; gscPaint(name); }
+function toggleHideBlog(on) { tableState.gscPages.hideBlog = on; tableState.gscPages.page = 0; gscPaint('gscPages'); }
+
 function renderGscOverlap(rows) {
-  const body = document.getElementById('gscOverlapBody');
-  const meta = document.getElementById('gscOverlapMeta');
-  if (!rows.length) { body.innerHTML = '<div class="empty">No data yet. Press <strong>↻ Sync All</strong> to pull Google Ads + Search Console.</div>'; meta.textContent = ''; return; }
   const isBrand = t => /whisper/i.test(t);
   let cannibBranded = 0;
-  const tagged = rows.map(r => {
+  const tagged = (rows || []).map(r => {
     const cost = +r.paid_cost || 0, pos = r.organic_position == null ? null : +r.organic_position;
     let tag, cls;
     if (cost > 0 && pos != null && pos <= 5) { tag = 'Cannibalization'; cls = 'ov-cannib'; if (isBrand(r.term)) cannibBranded += cost; }
     else if (cost > 0 && (pos == null || pos > 20)) { tag = 'Organic gap'; cls = 'ov-gap'; }
     else if (cost > 0) { tag = 'Covered'; cls = 'ov-cov'; }
     else { tag = 'Organic only'; cls = 'ov-org'; }
-    return { ...r, tag, cls, _cost: cost, _pos: pos };
+    return { term: r.term, paid_cost: cost, paid_clicks: +r.paid_clicks || 0, organic_clicks: +r.organic_clicks || 0, organic_position: pos, tag, cls };
   });
-  const list = tagged.slice(0, 200);
-  meta.innerHTML = `Branded cannibalization-risk spend: <strong style="color:var(--orange)">${fmtUSD(cannibBranded)}</strong> · ${fmtInt(rows.length)} terms`;
-  body.innerHTML = `<table><thead><tr>
-      <th>Term</th><th class="num">Paid $</th><th class="num">Paid clicks</th><th class="num">Organic clicks</th><th class="num">Organic pos</th><th>Overlap</th>
-    </tr></thead><tbody>` +
-    list.map(r => `<tr>
-      <td>${escHtml(r.term)}</td>
-      <td class="num">${r._cost ? fmtUSD(r._cost) : '—'}</td>
-      <td class="num">${fmtInt(r.paid_clicks)}</td>
-      <td class="num">${fmtInt(r.organic_clicks)}</td>
-      <td class="num">${r._pos != null ? r._pos.toFixed(1) : '—'}</td>
-      <td><span class="ov-tag ${r.cls}">${r.tag}</span></td>
-    </tr>`).join('') + '</tbody></table>';
+  const st = tableState.gscOverlap;
+  st.rows = tagged; st.page = 0;
+  st.metaFn = total => `Branded cannibalization-risk spend: <strong style="color:var(--orange)">${fmtUSD(cannibBranded)}</strong> · ${fmtInt(total)} terms`;
+  gscPaint('gscOverlap');
 }
-
 function renderGscQueries(rows) {
-  const body = document.getElementById('gscQueriesBody'), meta = document.getElementById('gscQueriesMeta');
-  if (!rows.length) { body.innerHTML = '<div class="empty">No data yet.</div>'; meta.textContent = ''; return; }
-  const list = rows.slice(0, 200);
-  meta.textContent = `${fmtInt(rows.length)} queries${rows.length > list.length ? ` (top ${list.length})` : ''}`;
-  body.innerHTML = `<table><thead><tr><th>Query</th><th class="num">Clicks</th><th class="num">Impr.</th><th class="num">CTR</th><th class="num">Avg pos</th></tr></thead><tbody>` +
-    list.map(r => `<tr><td>${escHtml(r.query)}${/whisper/i.test(r.query) ? ' <span class="ov-tag ov-brand">brand</span>' : ''}</td><td class="num">${fmtInt(r.clicks)}</td><td class="num">${fmtInt(r.impressions)}</td><td class="num">${((+r.ctr || 0) * 100).toFixed(1)}%</td><td class="num">${(+r.position || 0).toFixed(1)}</td></tr>`).join('') + '</tbody></table>';
+  const st = tableState.gscQueries;
+  st.rows = (rows || []).map(r => ({ query: r.query, clicks: +r.clicks || 0, impressions: +r.impressions || 0, ctr: +r.ctr || 0, position: +r.position || 0 }));
+  st.page = 0;
+  st.metaFn = total => `${fmtInt(total)} queries`;
+  gscPaint('gscQueries');
 }
-
 function renderGscPages(rows) {
-  const body = document.getElementById('gscPagesBody'), meta = document.getElementById('gscPagesMeta');
-  if (!rows.length) { body.innerHTML = '<div class="empty">No data yet.</div>'; meta.textContent = ''; return; }
-  const list = rows.slice(0, 200);
-  meta.textContent = `${fmtInt(rows.length)} pages${rows.length > list.length ? ` (top ${list.length})` : ''}`;
-  body.innerHTML = `<table><thead><tr><th>Page</th><th class="num">Clicks</th><th class="num">Impr.</th><th class="num">CTR</th><th class="num">Avg pos</th></tr></thead><tbody>` +
-    list.map(r => { const u = r.page || ''; const short = u.replace(/^https?:\/\/(www\.)?whisperroom\.com/i, '') || '/'; return `<tr><td><a href="${escHtml(u)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(short)}</a></td><td class="num">${fmtInt(r.clicks)}</td><td class="num">${fmtInt(r.impressions)}</td><td class="num">${((+r.ctr || 0) * 100).toFixed(1)}%</td><td class="num">${(+r.position || 0).toFixed(1)}</td></tr>`; }).join('') + '</tbody></table>';
+  const st = tableState.gscPages;
+  st.rows = (rows || []).map(r => ({ page: r.page, clicks: +r.clicks || 0, impressions: +r.impressions || 0, ctr: +r.ctr || 0, position: +r.position || 0, leads: +r.leads || 0, deals_won: +r.deals_won || 0, revenue_won: +r.revenue_won || 0 }));
+  st.page = 0;
+  st.metaFn = total => `${fmtInt(total)} pages${st.hideBlog ? ' · /blog hidden' : ''}`;
+  gscPaint('gscPages');
 }
 
 // v1.51.x — expand/collapse the "why this differs from HubSpot" notes.
@@ -833,6 +887,7 @@ function sortBy(tableName, column) {
   if (tableName === 'campaigns')   renderCampaigns(s.rawRows, s.attrRows);
   else if (tableName === 'keywords') renderKeywords(s.rawRows);
   else if (tableName === 'searchTerms') renderSearchTerms(s.rawRows, s.attrRows);
+  else if (tableName === 'gscOverlap' || tableName === 'gscQueries' || tableName === 'gscPages') { s.page = 0; gscPaint(tableName); }
 }
 
 // Apply current sort to a list of aggregated row objects. Nulls always

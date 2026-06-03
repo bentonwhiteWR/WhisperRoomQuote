@@ -119,6 +119,7 @@ CREATE TABLE IF NOT EXISTS marketing_hubspot_contacts (
   first_source_data_1       TEXT,         -- hs_analytics_source_data_1       (e.g. "google")
   first_source_data_2       TEXT,         -- hs_analytics_source_data_2       (often campaign name or gclid)
   first_converting_campaign TEXT,         -- hs_analytics_first_touch_converting_campaign
+  first_url                 TEXT,         -- hs_analytics_first_url (entry page — for organic page→revenue join)
   -- Latest-touch attribution
   latest_source             TEXT,         -- hs_latest_source
   latest_source_data_1      TEXT,         -- hs_latest_source_data_1
@@ -135,6 +136,9 @@ CREATE TABLE IF NOT EXISTS marketing_hubspot_contacts (
 CREATE INDEX IF NOT EXISTS idx_mkt_hs_contacts_gclid   ON marketing_hubspot_contacts(gclid) WHERE gclid IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_mkt_hs_contacts_email   ON marketing_hubspot_contacts(email);
 CREATE INDEX IF NOT EXISTS idx_mkt_hs_contacts_created ON marketing_hubspot_contacts(created_at);
+-- first_url added after initial deploy — CREATE IF NOT EXISTS won't add a column
+-- to an already-created table, so ALTER it in idempotently.
+ALTER TABLE marketing_hubspot_contacts ADD COLUMN IF NOT EXISTS first_url TEXT;
 
 -- HubSpot deals mirror — Sales Pipeline only (pipeline ID = 'default';
 -- Test + Ecommerce pipelines are excluded so marketing reporting stays

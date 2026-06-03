@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.65.3', date:'June 3, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Search Console tab: which content actually closes revenue.** The **Organic Pages** table now shows **Leads / Deals / Revenue** next to clicks — it ties each organic landing page to closed-won HubSpot revenue (by matching the contact’s first-touch page), so you can see which blog posts and pages drive real deals, not just traffic. (Best-effort URL match; organic revenue is still channel-level since Google withholds the query.)'},
+        {t:'add', d:'**Sortable, paginated GSC tables + a “Hide /blog” filter.** Every column in the **Paid × Organic Overlap**, **Organic Queries**, and **Organic Pages** tables is now click-to-sort, with Prev/Next paging through *all* terms/queries/pages (not just the top 200). The Organic Pages table has a **“Hide /blog” toggle** for a clean non-blog snapshot. Plus the **Organic Leads** and **Organic Closed Rev** cards are now clickable — they pop open the underlying HubSpot contacts / deals.'},
+        {t:'add', d:'**Sync GSC honors the selected date range** (14 / 30 / 90 / 180 / 365 days) — pick a range, hit Sync GSC, and it pulls exactly that window.'},
+      ]
+    },
+    {
       v:'1.65.2', date:'June 3, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Search Console data now actually populates (fast).** Added a dedicated **“Sync GSC”** button on the Google Search Console tab that pulls organic data just for the selected date range — so you don’t have to wait on the full 365-day Sync All (where GSC ran dead-last). Also made the organic import **batched** (it was inserting row-by-row over 100k+ daily rows, which crawled) and added a GSC line to the status bar so you can see organic sync status + any errors. Sync All now pulls a lighter 120-day GSC window.'},

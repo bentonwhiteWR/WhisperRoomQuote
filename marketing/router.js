@@ -837,6 +837,11 @@ async function handle(req, res, ctx) {
       const bucket  = (url.searchParams.get('bucket')  || '').toLowerCase();        // ad-quality drill
       const segment =  url.searchParams.get('segment') || '';                       // share-of-revenue drill
       const term    = (url.searchParams.get('term')    || '').trim().toLowerCase(); // search-term drills
+      const organicPred = am.model === 'last'                                       // organic drills
+        ? `c.latest_source = 'ORGANIC_SEARCH'`
+        : am.model === 'all'
+          ? `(c.first_source = 'ORGANIC_SEARCH' OR c.latest_source = 'ORGANIC_SEARCH')`
+          : `c.first_source = 'ORGANIC_SEARCH'`;
       const rec  = `https://app.hubspot.com/contacts/${HS_PORTAL_ID}/record`;
       if (!ctx.db) { ctx.json({ rows: [], type }); return true; }
 
@@ -1023,6 +1028,33 @@ async function handle(req, res, ctx) {
              LIMIT 500
           `, [days, term])).rows.map(r => ({ ...r, url: `${rec}/0-3/${r.id}` }));
         }
+      } else if (type === 'organic-leads') {
+        // Organic-source contacts (the Organic Leads card), created in window.
+        rows = (await ctx.db.query(`
+          SELECT c.contact_id AS id,
+                 COALESCE(NULLIF(c.email, ''), 'Contact ' || c.contact_id) AS label,
+                 COALESCE(c.lifecycle_stage, '—')                          AS sublabel,
+                 NULL::float                                               AS amount
+            FROM marketing_hubspot_contacts c
+           WHERE ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1
+             AND ${organicPred}
+           ORDER BY ${am.contactDate} DESC
+           LIMIT 500
+        `, [days])).rows.map(r => ({ ...r, url: `${rec}/0-1/${r.id}` }));
+      } else if (type === 'organic-closed' || type === 'organic-revenue') {
+        // Closed-won deals from organic-source contacts (the Organic Closed Rev card).
+        rows = (await ctx.db.query(`
+          SELECT d.deal_id AS id,
+                 COALESCE(NULLIF(d.deal_name, ''), 'Deal ' || d.deal_id) AS label,
+                 to_char(d.closed_at, 'Mon DD, YYYY')                    AS sublabel,
+                 d.amount::float                                         AS amount
+            FROM marketing_hubspot_deals d
+            JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+           WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+             AND ${organicPred}
+           ORDER BY ${type === 'organic-revenue' ? 'd.amount' : 'd.closed_at'} DESC NULLS LAST
+           LIMIT 500
+        `, [days])).rows.map(r => ({ ...r, url: `${rec}/0-3/${r.id}` }));
       } else {
         ctx.json({ rows: [], error: 'unknown drill type' }, 400);
         return true;
@@ -1179,23 +1211,56 @@ async function handle(req, res, ctx) {
   }
 
   // ── GET /api/marketing/gsc-pages ──────────────────────────────────
-  // Organic landing pages aggregated over the window (SEO/content view).
+  // Organic landing pages aggregated over the window (SEO/content view), now
+  // LEFT-JOINed to **which content closes revenue**: organic-source HubSpot
+  // contacts grouped by their first-touch URL (hs_analytics_first_url) →
+  // leads / closed-won deals / revenue, matched to GSC pages on a normalized
+  // path (scheme+host stripped, trailing slash trimmed). Best-effort match
+  // (HubSpot first_url vs GSC page formats differ slightly); pages with no
+  // matching organic contacts show 0. Model-aware (?model=).
   if (pathname === '/api/marketing/gsc-pages' && req.method === 'GET') {
     try {
       const days = _parseDays(req);
+      const am   = _attrModel(req);
+      const organicPred = am.model === 'last'
+        ? `c.latest_source = 'ORGANIC_SEARCH'`
+        : am.model === 'all'
+          ? `(c.first_source = 'ORGANIC_SEARCH' OR c.latest_source = 'ORGANIC_SEARCH')`
+          : `c.first_source = 'ORGANIC_SEARCH'`;
       const rows = ctx.db ? (await ctx.db.query(`
-        SELECT page,
-               SUM(clicks)::bigint      AS clicks,
-               SUM(impressions)::bigint AS impressions,
-               CASE WHEN SUM(impressions) > 0 THEN SUM(clicks)::float / SUM(impressions) ELSE 0 END        AS ctr,
-               CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE 0 END AS position
-        FROM marketing_gsc_pages
-        WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
-        GROUP BY page
-        ORDER BY clicks DESC NULLS LAST
+        WITH gp AS (
+          SELECT page,
+                 rtrim(regexp_replace(lower(page), '^(https?://)?([^/]*)', ''), '/') AS path,
+                 SUM(clicks)::bigint      AS clicks,
+                 SUM(impressions)::bigint AS impressions,
+                 CASE WHEN SUM(impressions) > 0 THEN SUM(clicks)::float / SUM(impressions) ELSE 0 END        AS ctr,
+                 CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE 0 END AS position
+          FROM marketing_gsc_pages
+          WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
+          GROUP BY page
+        ),
+        rev AS (
+          SELECT rtrim(regexp_replace(lower(c.first_url), '^(https?://)?([^/]*)', ''), '/') AS path,
+                 COUNT(DISTINCT c.contact_id)                                                                       AS leads,
+                 COUNT(DISTINCT CASE WHEN d.is_closed_won AND d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 THEN d.deal_id END) AS deals_won,
+                 COALESCE(SUM(CASE WHEN d.is_closed_won AND d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 THEN d.amount ELSE 0 END), 0)::float AS revenue_won
+          FROM marketing_hubspot_contacts c
+          LEFT JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
+          WHERE c.first_url IS NOT NULL
+            AND ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1
+            AND ${organicPred}
+          GROUP BY 1
+        )
+        SELECT gp.page, gp.clicks, gp.impressions, gp.ctr, gp.position,
+               COALESCE(rev.leads, 0)::int        AS leads,
+               COALESCE(rev.deals_won, 0)::int    AS deals_won,
+               COALESCE(rev.revenue_won, 0)::float AS revenue_won
+        FROM gp
+        LEFT JOIN rev ON gp.path = rev.path
+        ORDER BY gp.clicks DESC NULLS LAST
         LIMIT 50000
       `, [days])).rows : [];
-      ctx.json({ rows });
+      ctx.json({ rows, model: am.model });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
   }

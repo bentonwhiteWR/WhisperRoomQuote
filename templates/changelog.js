@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.63.1', date:'June 3, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**HubSpot Payouts tab "Invalid time value" fix.** The payout-date parser only understood epoch-ms and bare `YYYY-MM-DD`; HubSpot returns `hs_payout_date` as a full ISO timestamp, so the code appended `T00:00:00Z` onto an already-complete string → invalid date → `toISOString()` threw and the whole tab 500’d. Parser now handles epoch-ms, bare date, and full ISO, and returns null (groups under "unknown") instead of throwing. Client date formatter also guards against bad values.'},
+      ]
+    },
+    {
       v:'1.63.0', date:'June 3, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**New “HubSpot Payouts” tab on Accounting.** Sits right next to HubSpot Fees. Pick a month and it lists every HubSpot payout (bank deposit) that settled that month, each one expandable to show the individual payments that made it up (invoice, customer, method, gross, fee, net). Summary cards up top: # payouts, # payments, gross collected, total HubSpot fees, net deposited, refunds. Expand/Collapse-all buttons + CSV export (per-payment rows with per-payout subtotals + grand total). Each payout group ties to one bank deposit so you can reconcile against the bank statement line-by-line.'},

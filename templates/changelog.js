@@ -51,6 +51,20 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.59.5', date:'June 2, 2026', tag:'add',
+      changes:[
+        {t:'add', d:'**Ship calendar: "Track with carrier" button.** Click a shipment on the Shipping ship calendar and the detail popup now has a button that opens the carrier&rsquo;s own live tracking page (ABF, Old Dominion, FedEx, UPS, USPS) for that PRO/tracking number — no more copy-pasting into the carrier site.'},
+      ]
+    },
+    {
+      v:'1.59.4', date:'June 2, 2026', tag:'feature',
+      changes:[
+        {t:'feature', d:'**Marketing dashboard: click any number to see the records behind it.** The HubSpot Contacts and Closed Revenue cards, plus the Quotes / Closed / Revenue stages on the paid funnel, are now clickable — each opens a popup listing the actual contacts or deals that make up that number, every row linking straight to its HubSpot record. The list respects the same date range and attribution model as the card you clicked, so the count always matches.'},
+        {t:'feature', d:'**Funnel “maturity” bar.** A new bar under the funnel shows how much of the window&rsquo;s spend is old enough (past our ~29-day sales cycle) to have had a fair chance to close — so a recent window&rsquo;s ROAS reads as a floor that will rise, not a verdict.'},
+        {t:'feature', d:'**“Why these differ from HubSpot &rsaquo; Ads” explainer.** An expandable panel under the funnel spells out the six reasons our numbers won&rsquo;t exactly match HubSpot&rsquo;s Ads tool (close-date vs click-date, ROAS vs ROI, lifecycle-stage gap, gclid coverage, credit model, currency).'},
+      ]
+    },
+    {
       v:'1.59.3', date:'June 2, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Order email no longer breaks the CC line.** When you hit Email on an order, the CC list (saved addresses + your rep email) was joined with commas, which Outlook reads as one bad address. Now joined with semicolons so the CC recipients come through correctly.'},

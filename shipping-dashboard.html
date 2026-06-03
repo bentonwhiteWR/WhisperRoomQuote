@@ -645,6 +645,24 @@ function renderShipCalendar() {
   grid.innerHTML = dowHtml + cellsHtml;
 }
 
+// Build the carrier's live-tracking URL from a carrier + tracking number.
+// Mirrors the server's URL builder (quote-server.js) so the popup can deep-link
+// even for orders not in the shipping-list cache. Accepts codes (ABF/OD) or
+// full names (ABF Freight / Old Dominion).
+function carrierTrackUrl(carrier, tracking) {
+  if (!tracking) return '';
+  const t = encodeURIComponent(String(tracking).trim());
+  const c = String(carrier || '').toLowerCase();
+  if (c.includes('abf') || c.includes('arcbest'))            return 'https://view.arcb.com/nlo/tools/tracking/' + t;
+  if (c.includes('old dominion') || c === 'od' || c.includes('odfl'))
+                                                             return 'https://www.odfl.com/us/en/tools/trace-track-ltl-freight.html?pro=' + t;
+  if (c.includes('fedex'))                                   return 'https://www.fedex.com/fedextrack/?trknbr=' + t;
+  if (c.includes('ups'))                                     return 'https://www.ups.com/track?tracknum=' + t;
+  if (c.includes('usps'))                                    return 'https://tools.usps.com/go/TrackConfirmAction?tLabels=' + t;
+  // Unknown carrier — let Google route to the right page.
+  return 'https://www.google.com/search?q=' + encodeURIComponent('track ' + tracking);
+}
+
 // ── Shipment summary popup ──
 // Opens when a calendar tile is clicked. Pulls the order out of
 // _calOrders by quote_number, cross-references the shipment for
@@ -711,6 +729,13 @@ function openShipSummary(quoteNumber) {
   // Footer: link to the tracking tab + an "open in orders" jump-out
   const footerBits = [];
   if (tracking) {
+    // Deep-link to the carrier's own tracking page (prefer the server-built
+    // URL; fall back to building it from carrier + tracking).
+    const carrierUrl = (ship && ship.trackingUrl) ? ship.trackingUrl : carrierTrackUrl(carrierLbl, tracking);
+    if (carrierUrl) {
+      const carrierName = (carrierLbl && carrierLbl !== '—') ? carrierLbl : 'carrier';
+      footerBits.push(`<a href="${carrierUrl}" target="_blank" rel="noopener" title="Open ${esc(carrierName)}'s live tracking page">📦 Track with ${esc(carrierName)} ↗</a>`);
+    }
     footerBits.push(`<button onclick="switchShipTab('tracking');closeShipSummary();" title="Open the Tracking tab and filter to this shipment">Open in Tracking →</button>`);
   }
   footerBits.push(`<a href="/orders?q=${encodeURIComponent(quoteNumber)}" target="_blank" rel="noopener">View order ↗</a>`);

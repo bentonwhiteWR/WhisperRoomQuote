@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.61.4', date:'June 3, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Copied quote links now use a descriptive label.** The copied hyperlink reads “WhisperRoom Quote — &lt;name&gt;” using, in priority: the Quote Label → the package name → the MDL number (falls back to the quote number if none). Cleaner and more recognizable when pasted into a client email. Works from both the Quote Builder and the Deal Hub.'},
+      ]
+    },
+    {
       v:'1.61.3', date:'June 3, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Fixed the "Couldn\'t load records" error on some marketing drill-down popups** (the Search Terms **Deals** & **True ROAS** cells and the **Share of closed revenue** pills). The query was sorting by a column phrased slightly differently than it was selected, which Postgres rejects on a de-duplicated list. Now sorts correctly — those popups open as expected.'},

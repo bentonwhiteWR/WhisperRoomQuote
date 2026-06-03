@@ -6243,7 +6243,11 @@ function copyQuoteLink() {
   const tok = getShareToken();
   console.log('[copyLink] quoteNum:', quoteNum, '| _lastShareToken:', window._lastShareToken, '| _loadedShareToken:', window._loadedShareToken, '| tok:', tok);
   const url = location.origin + '/q/' + quoteNum + (tok ? '?t=' + tok : '');
-  copyRichLink(url, 'WhisperRoom Quote ' + quoteNum).then(() => {
+  // Link text: prefer the rep's Quote Label; else the booth/package on the
+  // quote (package name if it's a package, otherwise the MDL); else the #.
+  const desc = ((document.getElementById('quoteLabel') || { value: '' }).value.trim()) || quoteBoothDesc();
+  const linkText = desc ? ('WhisperRoom Quote — ' + desc) : ('WhisperRoom Quote ' + quoteNum);
+  copyRichLink(url, linkText).then(() => {
     showToast('Quote link copied!', 'info');
     const btn = document.getElementById('copyLinkBtn');
     if (btn) { const orig = btn.innerHTML; btn.innerHTML = '&#x2713; Copied!'; setTimeout(() => btn.innerHTML = orig, 2500); }
@@ -6268,6 +6272,18 @@ function copyRichLink(url, label) {
   return (navigator.clipboard && navigator.clipboard.writeText)
     ? navigator.clipboard.writeText(url)
     : Promise.reject(new Error('clipboard unavailable'));
+}
+
+// Booth/package descriptor for the copy-link text (used when no Quote Label).
+// Priority after the label: package name (a BOOTH_DATA key that isn't an MDL),
+// then the MDL line item.
+function quoteBoothDesc() {
+  const items = (typeof lineItems !== 'undefined' && Array.isArray(lineItems)) ? lineItems : [];
+  const pkg = items.find(i => i && i.name && typeof BOOTH_DATA !== 'undefined' && BOOTH_DATA[i.name] && !/^MDL\s/i.test(i.name));
+  if (pkg) return pkg.name;
+  const mdl = items.find(i => i && /^MDL\s/i.test(i.name || ''));
+  if (mdl) return mdl.name;
+  return '';
 }
 
 function activateLinkBtn() {

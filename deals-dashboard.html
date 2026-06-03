@@ -1000,7 +1000,7 @@ function renderHub(dealId,data) {
           <span class="row-date">${fmtDate(q.date)}</span>
           <div style="display:flex;gap:4px;margin-left:auto" onclick="event.stopPropagation()">
             ${qUrl?`<a href="${qUrl}" target="_blank" class="row-link" title="View quote">View Quote ↗</a>`:''}
-            ${qUrl?`<button onclick="copyQuoteLink('${q.quoteNumber}','${q.shareToken||''}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit" title="Copy link">🔗</button>`:''}
+            ${qUrl?`<button onclick="copyQuoteLink('${q.quoteNumber}','${q.shareToken||''}','${quoteLinkLabel(q).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" class="row-link" style="cursor:pointer;background:none;font-family:inherit" title="Copy link">🔗</button>`:''}
             <span style="font-size:10px;font-weight:700;color:${acc?'var(--green)':'var(--orange)'};padding:2px 4px">${acc?'✓ Load':'Load →'}</span>
           </div>
         </div>
@@ -1252,12 +1252,28 @@ function renderTimeline(events) {
   `).join('');
 }
 
-function copyQuoteLink(quoteNumber, shareToken) {
+function copyQuoteLink(quoteNumber, shareToken, label) {
   if (!shareToken) { showToast('No share token — push quote first', 'error'); return; }
   const url = `${location.origin}/q/${encodeURIComponent(quoteNumber)}?t=${shareToken}`;
-  copyRichLink(url, 'WhisperRoom Quote ' + quoteNumber)
+  const d = (label || '').trim();
+  const linkText = d ? ('WhisperRoom Quote — ' + d) : ('WhisperRoom Quote ' + quoteNumber);
+  copyRichLink(url, linkText)
     .then(() => showToast('Quote link copied!', 'success'))
     .catch(() => { prompt('Copy link:', url); });
+}
+
+// Link-text descriptor for a quote — priority: Quote Label → package name
+// (a non-MDL, non-accessory booth line) → MDL. (Deal Hub has no BOOTH_DATA,
+// so "package" is detected by elimination.)
+function quoteLinkLabel(q) {
+  if (q && q.quoteLabel) return q.quoteLabel;
+  const items = (q && Array.isArray(q.lineItems)) ? q.lineItems : [];
+  const ACC = /^(AP|ADA|WA|HX|SL|RM|EFP|BASS|VSS|EFS|WDO|MJP|STEP|EXPANSION|FREIGHT|SHIPPING|INSTALL|PICKUP)\b/i;
+  const pkg = items.find(i => i && i.name && !/^MDL\s/i.test(i.name) && !ACC.test(i.name));
+  if (pkg) return pkg.name;
+  if (q && q.firstMdl) return q.firstMdl;
+  const mdl = items.find(i => i && /^MDL\s/i.test(i.name || ''));
+  return mdl ? mdl.name : '';
 }
 
 // Copy a clickable hyperlink (rich text) so pasting into an email/doc shows a

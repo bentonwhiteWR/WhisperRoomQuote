@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.60.1', date:'June 3, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Sales by State report polish.** Full state names instead of abbreviations, dropped the "Unknown" row (excluded deals noted in a footnote), and added a **Nexus rule** column. Rows are now color-coded: **green** = collecting tax where we have nexus; **yellow** = needs a look (a nexus state showing $0 tax, or tax collected somewhere we have no nexus).'},
+      ]
+    },
+    {
       v:'1.60.0', date:'June 3, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**New "Sales by State" report** under Accounting (new tab). Shows Closed Won + Shipped deals grouped by ship-to state for **2024 and 2025** side by side — deal count, net sales, and tax collected per state, with totals and a one-click **CSV export** for the accountant. Built from HubSpot deal data (where the ship-to state lives); cross-check against QuickBooks if you need booked-revenue figures.'},

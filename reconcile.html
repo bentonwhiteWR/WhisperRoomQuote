@@ -1499,19 +1499,39 @@ async function loadSalesByState(force) {
   }
 }
 
+function sbsNexusLabel(s) {
+  return s.nexus ? ('Nexus · freight ' + (s.taxFreight ? 'taxed' : 'exempt')) : 'No nexus';
+}
+
 function renderSalesByState(d) {
   const cell = c => `<td style="text-align:right">${c.count}</td><td style="text-align:right">${sbsFmt$(c.net)}</td><td style="text-align:right">${sbsFmt$(c.tax)}</td>`;
-  const rows = d.states.map(s =>
-    `<tr><td style="font-weight:600">${s.state}</td>${cell(s.y2024)}${cell(s.y2025)}</tr>`
-  ).join('');
+  const rows = d.states.map(s => {
+    const collecting = (s.y2024.tax + s.y2025.tax) > 0.01;
+    // Green = collecting tax where we have nexus (good). Yellow = needs a look:
+    // nexus state with $0 tax, OR tax collected somewhere we have no nexus.
+    let bg = '', bord = 'transparent';
+    if (s.nexus && collecting)                              { bg = 'rgba(34,197,94,.10)';  bord = 'var(--green)'; }
+    else if ((s.nexus && !collecting) || (!s.nexus && collecting)) { bg = 'rgba(245,158,11,.12)'; bord = '#f59e0b'; }
+    return `<tr style="background:${bg};box-shadow:inset 3px 0 0 ${bord}">`
+      + `<td style="font-weight:600">${s.name}</td>`
+      + `<td style="font-size:11px;color:var(--text2);white-space:nowrap">${sbsNexusLabel(s)}</td>`
+      + `${cell(s.y2024)}${cell(s.y2025)}</tr>`;
+  }).join('');
   const t = d.totals;
-  const totalRow = `<tr style="border-top:2px solid var(--border);font-weight:800">
-    <td>Total</td>${cell(t.y2024)}${cell(t.y2025)}</tr>`;
-  document.getElementById('sbsTableWrap').innerHTML = `
+  const totalRow = `<tr style="border-top:2px solid var(--border);font-weight:800"><td>Total</td><td></td>${cell(t.y2024)}${cell(t.y2025)}</tr>`;
+  const legend = `<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:11px;color:var(--text2);margin-bottom:10px">
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(34,197,94,.55);margin-right:5px;vertical-align:middle"></span>Collecting tax where we have nexus</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(245,158,11,.65);margin-right:5px;vertical-align:middle"></span>Review &mdash; nexus state with $0 tax, or tax collected without nexus</span>
+  </div>`;
+  const excl = (d.excludedNoState && d.excludedNoState.count)
+    ? `<div style="font-size:11px;color:var(--text2);margin-top:6px">${d.excludedNoState.count} deal(s) with no ship-to state excluded (${sbsFmt$(d.excludedNoState.net)} net).</div>`
+    : '';
+  document.getElementById('sbsTableWrap').innerHTML = legend + `
     <table>
       <thead>
         <tr>
           <th rowspan="2" style="text-align:left">State</th>
+          <th rowspan="2" style="text-align:left">Nexus rule</th>
           <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">2024</th>
           <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">2025</th>
         </tr>
@@ -1522,16 +1542,18 @@ function renderSalesByState(d) {
       </thead>
       <tbody>${rows}${totalRow}</tbody>
     </table>
-    <div style="font-size:11px;color:var(--text2);margin-top:8px">${d.dealsCounted} deals counted${d.cached ? ' · cached' : ''}.</div>`;
+    <div style="font-size:11px;color:var(--text2);margin-top:8px">${d.dealsCounted} deals counted${d.cached ? ' · cached' : ''}.</div>` + excl;
 }
 
 function exportSalesByStateCsv() {
   if (!_sbsData) return;
-  const hdr = ['State','2024 Deals','2024 Net Sales','2024 Tax','2024 Gross','2025 Deals','2025 Net Sales','2025 Tax','2025 Gross'];
+  const esc = v => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const hdr = ['State','Nexus','Freight Taxed','2024 Deals','2024 Net Sales','2024 Tax','2024 Gross','2025 Deals','2025 Net Sales','2025 Tax','2025 Gross'];
   const lines = [hdr.join(',')];
-  const row = (st, a, b) => [st, a.count, a.net, a.tax, a.gross, b.count, b.net, b.tax, b.gross].join(',');
-  for (const s of _sbsData.states) lines.push(row(s.state, s.y2024, s.y2025));
-  lines.push(row('Total', _sbsData.totals.y2024, _sbsData.totals.y2025));
+  const row = s => [esc(s.name), s.nexus ? 'Yes' : 'No', s.nexus ? (s.taxFreight ? 'Yes' : 'No') : '', s.y2024.count, s.y2024.net, s.y2024.tax, s.y2024.gross, s.y2025.count, s.y2025.net, s.y2025.tax, s.y2025.gross].join(',');
+  for (const s of _sbsData.states) lines.push(row(s));
+  const t = _sbsData.totals;
+  lines.push(['Total','','', t.y2024.count, t.y2024.net, t.y2024.tax, t.y2024.gross, t.y2025.count, t.y2025.net, t.y2025.tax, t.y2025.gross].join(','));
   const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);

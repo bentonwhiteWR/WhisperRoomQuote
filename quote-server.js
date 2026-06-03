@@ -8275,6 +8275,7 @@ ${q.accepted ? `
       const byState = {};
       const totals = { 2024: blank(), 2025: blank() };
       let dealsCounted = 0;
+      const excluded = { count: 0, net: 0 };  // deals with no resolvable state
 
       for (const d of allDeals) {
         const cdRaw = d.properties?.closedate;
@@ -8310,26 +8311,40 @@ ${q.accepted ? `
         }
         const net = Math.max(0, total - taxAmt);
 
-        if (!byState[stateAbbr]) byState[stateAbbr] = { 2024: blank(), 2025: blank() };
-        for (const bucket of [byState[stateAbbr][yr], totals[yr]]) {
-          bucket.count++; bucket.gross += total; bucket.tax += taxAmt; bucket.net += net;
+        // Deals with no resolvable ship-to state are excluded from the table
+        // (tracked separately for a footnote so totals stay honest).
+        if (stateAbbr === 'Unknown') {
+          excluded.count++; excluded.net += net;
+        } else {
+          if (!byState[stateAbbr]) byState[stateAbbr] = { 2024: blank(), 2025: blank() };
+          for (const bucket of [byState[stateAbbr][yr], totals[yr]]) {
+            bucket.count++; bucket.gross += total; bucket.tax += taxAmt; bucket.net += net;
+          }
+          dealsCounted++;
         }
-        dealsCounted++;
       }
 
       const round = n => Math.round(n * 100) / 100;
       const roundCell = c => ({ count: c.count, gross: round(c.gross), tax: round(c.tax), net: round(c.net) });
-      const states = Object.keys(byState).sort().map(st => ({
-        state: st,
-        y2024: roundCell(byState[st][2024]),
-        y2025: roundCell(byState[st][2025]),
-      }));
+      // Sort by full state name. Attach the nexus rule so the UI can flag
+      // where we should be collecting tax.
+      const states = Object.keys(byState)
+        .sort((a, b) => (STATE_FULL_NAME[a] || a).localeCompare(STATE_FULL_NAME[b] || b))
+        .map(st => ({
+          state: st,
+          name: STATE_FULL_NAME[st] || st,
+          nexus: !!NEXUS_STATES[st],
+          taxFreight: !!(NEXUS_STATES[st] && NEXUS_STATES[st].taxFreight),
+          y2024: roundCell(byState[st][2024]),
+          y2025: roundCell(byState[st][2025]),
+        }));
 
       const payload = {
         years: [2024, 2025],
         states,
         totals: { y2024: roundCell(totals[2024]), y2025: roundCell(totals[2025]) },
         dealsCounted,
+        excludedNoState: { count: excluded.count, net: round(excluded.net) },
         computedAt: Date.now(),
         cached: false,
       };

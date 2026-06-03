@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.61.1', date:'June 3, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Another round on the intermittent PDF “Cannot fork” failures.** Pointed Chromium at its real binary instead of the Debian wrapper script (which forks extra processes on every launch) and turned off Chromium’s crash reporter (the exact subprocess that was failing to start). Should cut down the “Drive … upload failed” errors. Underlying cause is the server running low on resources, so if it recurs, the box needs more memory.'},
+      ]
+    },
+    {
       v:'1.61.0', date:'June 3, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Sales by State now shows each state’s economic-nexus threshold.** New "State threshold" column lists what triggers a sales-tax obligation there (e.g. “$100k”, “$100k or 200 txns”, “$500k and 100 txns”, “No sales tax”) — so you can see at a glance where our sales are approaching a state’s threshold. Reference figures (~2025–2026); confirm with the accountant. Included in the CSV export too.'},

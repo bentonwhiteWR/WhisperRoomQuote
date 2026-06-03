@@ -2960,14 +2960,23 @@ const server = http.createServer(async (req, res) => {
 
       const num = v => parseFloat(v || 0) || 0;
       const r2  = n => Math.round(n * 100) / 100;
-      // HubSpot may return a date property as an epoch-ms string or a plain
-      // "YYYY-MM-DD" — normalize to an ISO string either way.
+      // HubSpot returns date/datetime properties inconsistently: an epoch-ms
+      // string, a plain "YYYY-MM-DD", or a full ISO timestamp. Normalize all
+      // three to an ISO string, and NEVER throw — an unparseable value returns
+      // null (groups under "unknown") rather than 500-ing the whole tab with
+      // "Invalid time value".
       const toIso = v => {
-        if (!v) return null;
-        const s = String(v);
-        return /^\d+$/.test(s)
-          ? new Date(Number(s)).toISOString()
-          : new Date(s + 'T00:00:00Z').toISOString();
+        if (v == null || v === '') return null;
+        const s = String(v).trim();
+        let d;
+        if (/^\d+$/.test(s))                 d = new Date(Number(s));        // epoch ms
+        else if (/^\d{4}-\d{2}-\d{2}$/.test(s)) d = new Date(s + 'T00:00:00Z'); // bare date
+        else                                 d = new Date(s);               // full ISO / datetime
+        if (isNaN(d.getTime())) {
+          console.warn('[accounting/hubspot-payouts] unparseable payout date:', JSON.stringify(v));
+          return null;
+        }
+        return d.toISOString();
       };
 
       // Group by payout day (UTC). Map preserves insertion order; results are

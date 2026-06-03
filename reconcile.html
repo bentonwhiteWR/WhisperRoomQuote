@@ -1806,7 +1806,12 @@ function renderHsPayouts() {
     wrap.style.display = '';
     body.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:18px">No HubSpot payouts in ${data.monthLabel || 'this period'}.</td></tr>`;
   } else {
-    const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', timeZone:'UTC' }) : 'Unknown date';
+    const fmtDate = iso => {
+      if (!iso) return 'Unknown date';
+      const d = new Date(iso);
+      return isNaN(d.getTime()) ? 'Unknown date'
+        : d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric', timeZone:'UTC' });
+    };
     const esc = str => String(str == null ? '' : str).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     body.innerHTML = payouts.map((p, i) => {
       const header = `

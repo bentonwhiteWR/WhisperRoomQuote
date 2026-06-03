@@ -308,7 +308,7 @@ const SHOPIFY_QB_FALLBACK_ITEM_NAME = process.env.SHOPIFY_QB_FALLBACK_ITEM_NAME 
 // ── Nexus states (freight taxability per state) ───────────────────
 const states = require('./lib/states');
 const {
-  NEXUS_STATES, STATE_ABBR_MAP, STATE_FULL_NAME, nexusThresholdLabel,
+  NEXUS_STATES, STATE_ABBR_MAP, STATE_FULL_NAME, nexusThresholdLabel, incomeNexusLabel,
   toStateAbbr, toStateFull, isCanadianProvince, zipToState,
 } = states;
 
@@ -8419,9 +8419,18 @@ ${q.accepted ? `
         json({ ..._salesByStateCache.payload, cached: true });
         return;
       }
-      // Full calendar 2024 + 2025 (EST), by closedate.
-      const fromTs = new Date(2024, 0, 1, 0, 0, 0, 0).getTime().toString();
-      const toTs   = (new Date(2026, 0, 1, 0, 0, 0, 0).getTime() - 1).toString();
+      // Two most recent COMPLETE fiscal years (EST), by closedate. Fiscal year
+      // starts Nov 1 and is labeled by the year it ENDS (Oct 31):
+      //   FY2024 = Nov 1, 2023 → Oct 31, 2024
+      //   FY2025 = Nov 1, 2024 → Oct 31, 2025
+      // Bump FY_PRIOR / FY_LATEST when a newer fiscal year completes.
+      const FY_PRIOR = 2024, FY_LATEST = 2025;
+      // Window: Nov 1 of (FY_PRIOR-1) → last ms of Oct 31 FY_LATEST (month idx 10 = Nov).
+      const fromTs = new Date(FY_PRIOR - 1, 10, 1, 0, 0, 0, 0).getTime().toString();
+      const toTs   = (new Date(FY_LATEST, 10, 1, 0, 0, 0, 0).getTime() - 1).toString();
+      // FY label/range helpers (end-year convention).
+      const fyLabel = endYr => `FY${endYr}`;
+      const fyRange = endYr => `Nov '${String(endYr - 1).slice(2)} – Oct '${String(endYr).slice(2)}`;
 
       let allDeals = [], after = null;
       do {
@@ -8449,7 +8458,7 @@ ${q.accepted ? `
 
       const blank = () => ({ count: 0, gross: 0, tax: 0, net: 0 });
       const byState = {};
-      const totals = { 2024: blank(), 2025: blank() };
+      const totals = { [FY_PRIOR]: blank(), [FY_LATEST]: blank() };
       let dealsCounted = 0;
       const excluded = { count: 0, net: 0 };  // deals with no resolvable state
 
@@ -8459,8 +8468,12 @@ ${q.accepted ? `
         const msNum = Number(cdRaw);
         const dt = (!isNaN(msNum) && msNum > 0) ? new Date(msNum) : new Date(cdRaw);
         if (isNaN(dt.getTime())) continue;
-        const yr = parseInt(dt.toLocaleString('en-US', { timeZone: 'America/New_York', year: 'numeric' }), 10);
-        if (yr !== 2024 && yr !== 2025) continue;
+        // Fiscal year = end-year label. Nov/Dec roll into the next year's FY.
+        const [moStr, yrStr] = dt.toLocaleString('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'numeric' }).split('/');
+        const moNum = parseInt(moStr, 10);
+        const yrNum = parseInt(yrStr, 10);
+        const fy = (moNum >= 11) ? yrNum + 1 : yrNum;   // Nov(11)/Dec(12) → next FY
+        if (fy !== FY_PRIOR && fy !== FY_LATEST) continue;
 
         const total = parseFloat(d.properties?.amount || 0) || 0;
         if (total <= 0) continue;
@@ -8492,8 +8505,8 @@ ${q.accepted ? `
         if (stateAbbr === 'Unknown') {
           excluded.count++; excluded.net += net;
         } else {
-          if (!byState[stateAbbr]) byState[stateAbbr] = { 2024: blank(), 2025: blank() };
-          for (const bucket of [byState[stateAbbr][yr], totals[yr]]) {
+          if (!byState[stateAbbr]) byState[stateAbbr] = { [FY_PRIOR]: blank(), [FY_LATEST]: blank() };
+          for (const bucket of [byState[stateAbbr][fy], totals[fy]]) {
             bucket.count++; bucket.gross += total; bucket.tax += taxAmt; bucket.net += net;
           }
           dealsCounted++;
@@ -8512,14 +8525,19 @@ ${q.accepted ? `
           nexus: !!NEXUS_STATES[st],
           taxFreight: !!(NEXUS_STATES[st] && NEXUS_STATES[st].taxFreight),
           threshold: nexusThresholdLabel(st),
-          y2024: roundCell(byState[st][2024]),
-          y2025: roundCell(byState[st][2025]),
+          incomeThreshold: incomeNexusLabel(st),
+          y2024: roundCell(byState[st][FY_PRIOR]),
+          y2025: roundCell(byState[st][FY_LATEST]),
         }));
 
       const payload = {
-        years: [2024, 2025],
+        years: [FY_PRIOR, FY_LATEST],
+        fiscalYears: [
+          { fy: FY_PRIOR,  label: fyLabel(FY_PRIOR),  range: fyRange(FY_PRIOR) },
+          { fy: FY_LATEST, label: fyLabel(FY_LATEST), range: fyRange(FY_LATEST) },
+        ],
         states,
-        totals: { y2024: roundCell(totals[2024]), y2025: roundCell(totals[2025]) },
+        totals: { y2024: roundCell(totals[FY_PRIOR]), y2025: roundCell(totals[FY_LATEST]) },
         dealsCounted,
         excludedNoState: { count: excluded.count, net: round(excluded.net) },
         computedAt: Date.now(),

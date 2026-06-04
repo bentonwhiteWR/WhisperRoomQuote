@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.65.4', date:'June 4, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Copy Quote Link / View Quote now always point at the right quote.** When you pushed one quote and then opened a *different* one for the same customer (without “Start New Quote”), the Copy Link button could stitch the previously-pushed quote number onto the currently-open quote’s share token — producing a link that was off by one (e.g. `…W-…02` with `…01`’s token) and didn’t work. The shareable link is now built from a single locked source (the saved quote’s number **and** its own token, always set together), never from the editable/predicted number field. If a quote hasn’t actually been pushed yet, the buttons say “Push to HubSpot first” instead of fabricating a link.'},
+      ]
+    },
+    {
       v:'1.65.3', date:'June 3, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Search Console tab: which content actually closes revenue.** The **Organic Pages** table now shows **Leads / Deals / Revenue** next to clicks — it ties each organic landing page to closed-won HubSpot revenue (by matching the contact’s first-touch page), so you can see which blog posts and pages drive real deals, not just traffic. (Best-effort URL match; organic revenue is still channel-level since Google withholds the query.)'},

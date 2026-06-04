@@ -6269,17 +6269,32 @@ function getShareToken() {
   return window._loadedShareToken || window._lastShareToken || '';
 }
 
+// Single source of truth for a shareable quote link. The number and the token
+// MUST come from the SAME saved quote. We derive both from the loaded/pushed
+// quote pair (_loadedQuoteNumber + _loadedShareToken), which is always set
+// together on push (createDeal success) and on load. We deliberately do NOT
+// fall back to the hidden/visible quote number — that field shows the PREDICTED
+// next number while editing, and _lastPushedQuoteNumber can be stale from an
+// earlier push after a different quote is opened. Mixing those produced links
+// like /q/<predicted #>?t=<other quote's token> (right token, number off by one).
+// Returns null when nothing has actually been saved yet.
+function lockedQuoteLink() {
+  const number = window._loadedQuoteNumber || '';
+  if (!number) return null;
+  const token = getShareToken();
+  return { number, token, url: location.origin + '/q/' + number + (token ? '?t=' + token : '') };
+}
+
 function copyQuoteLink() {
-  // Use the locked quote number from last successful push if available
-  // This prevents a mid-push updateQuoteNumber() call from corrupting the link
-  const quoteNum = window._lastPushedQuoteNumber || document.getElementById('quoteNumHidden').value;
-  if (!quoteNum) {
-    showToast('No quote number yet — select a rep first', 'error');
+  const link = lockedQuoteLink();
+  if (!link) {
+    showToast('Push this quote to HubSpot first to get a shareable link', 'error');
     return;
   }
-  const tok = getShareToken();
+  const quoteNum = link.number;
+  const tok = link.token;
   console.log('[copyLink] quoteNum:', quoteNum, '| _lastShareToken:', window._lastShareToken, '| _loadedShareToken:', window._loadedShareToken, '| tok:', tok);
-  const url = location.origin + '/q/' + quoteNum + (tok ? '?t=' + tok : '');
+  const url = link.url;
   // Link text: prefer the rep's Quote Label; else the booth/package on the
   // quote (package name if it's a package, otherwise the MDL); else the #.
   const desc = ((document.getElementById('quoteLabel') || { value: '' }).value.trim()) || quoteBoothDesc();
@@ -6347,10 +6362,11 @@ function activateLinkBtn() {
   }
 }
 
-// Check on load and whenever quote number changes
+// Check on load and whenever quote number changes. Gate on a SAVED quote
+// (_loadedQuoteNumber), not the hidden field — the hidden field carries the
+// predicted next number while editing, which must not enable the share buttons.
 function checkLinkBtnState() {
-  const quoteNum = document.getElementById('quoteNumHidden')?.value;
-  if (quoteNum) activateLinkBtn();
+  if (window._loadedQuoteNumber) activateLinkBtn();
 }
 
 async function deleteCurrentQuote() {
@@ -6378,24 +6394,22 @@ This removes it from the database. The HubSpot deal is not affected.`)) return;
 }
 
 function viewQuote() {
-  const quoteNum = window._lastPushedQuoteNumber || document.getElementById('quoteNumHidden').value;
-  if (!quoteNum) { showToast('Push the quote first', 'error'); return; }
-  const tok = getShareToken();
-  const url = location.origin + '/q/' + quoteNum + (tok ? '?t=' + tok : '');
-  window.open(url, '_blank');
+  const link = lockedQuoteLink();
+  if (!link) { showToast('Push this quote to HubSpot first', 'error'); return; }
+  window.open(link.url, '_blank');
 }
 
 function emailViaHubSpot() {
   const email = document.getElementById('email').value.trim();
   const firstName = document.getElementById('firstName').value.trim();
   const company = document.getElementById('company').value.trim();
-  const quoteNum = document.getElementById('quoteNumHidden').value || '';
+  // Coherent number+token from the saved quote — never the predicted/edited field.
+  const link = lockedQuoteLink();
+  const quoteNum = link ? link.number : '';
 
   if (!email) { alert('No email address on file.'); return; }
 
-  const quoteLink = quoteNum
-    ? location.origin + '/q/' + quoteNum + (getShareToken() ? '?t=' + getShareToken() : '')
-    : null;
+  const quoteLink = link ? link.url : null;
 
   const subject = encodeURIComponent(
     'WhisperRoom Quote' +

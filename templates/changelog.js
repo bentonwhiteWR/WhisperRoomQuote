@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.65.7', date:'June 4, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**WR PO System: bulk vendor importer (41 vendors, 224 catalog items).** Parsed Josh’s Excel purchase-order files into the vendor catalog — a one-time seed script (`scripts/seed-vendors-from-excel.js`) that adds the remaining suppliers/items alongside the original three. Internal supply-chain tooling; no change to the quote builder.'},
+      ]
+    },
+    {
       v:'1.65.6', date:'June 4, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Deal Hub: clicking a quote now loads it no matter where you click on the row.** Before, only the top-left strip (quote # / date) actually opened the quote — the dollar amount, the model/label, and the whole bottom row were dead zones, so clicks there did nothing and it felt like you had to hunt for the right spot. The click-blocking was only supposed to protect the small View / Copy / Invoice / Process buttons; it was accidentally covering whole rows. Now the entire card is clickable (including the “Load →” hint), and only those buttons are excluded.'},

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.65.12', date:'June 4, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Deal Hub payment chip refreshes every 5 minutes** (was 30). The ACH "funds available / clearing / deposited" chip reads a table our poller syncs from HubSpot payments — that sync now runs every 5 min, so a payment shows up much sooner. (Note: the payout *date* itself still comes from HubSpot and can lag the payment regardless.)'},
+      ]
+    },
+    {
       v:'1.65.11', date:'June 4, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**WR PO System: the purple Receive button no longer shows on a draft PO.** It now appears only once the PO is officially created (Create/Download PDF), matching the rest of the draft-vs-created behavior.'},

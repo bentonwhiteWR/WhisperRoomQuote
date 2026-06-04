@@ -14655,7 +14655,7 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
 '<div class="print-bar">' +
   (isAuth(req) ? '<button id="createPoBtn" style="background:#ee6216">' + (po.pdf_drive_file_id ? 'Update PO' : 'Create / Download PDF') + '</button>' : '') +
   (isAuth(req) && po.status === 'OPEN' ? '<button id="sendPoBtn" style="background:#16a34a">Send (Mailto)</button>' : '') +
-  (isAuth(req) ? '<button id="receivePoBtn" style="background:#a855f7">' + (po.status === 'RECEIVED' || po.status === 'CLOSED' ? 'Receipts' : 'Receive') + '</button>' : '') +
+  (isAuth(req) && po.status !== 'DRAFT' ? '<button id="receivePoBtn" style="background:#a855f7">' + (po.status === 'RECEIVED' || po.status === 'CLOSED' ? 'Receipts' : 'Receive') + '</button>' : '') +
   (isAuth(req) && (po.status === 'OPEN' || po.status === 'SENT' || po.status === 'PARTIAL') ? '<button id="cancelPoBtn" style="background:#444">Cancel PO</button>' : '') +
   (isAuth(req) && po.status === 'OPEN' ? '<button id="deletePoBtn" style="background:#dc2626">Delete</button>' : '') +
 '</div>' +

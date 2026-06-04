@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.65.11', date:'June 4, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**WR PO System: the purple Receive button no longer shows on a draft PO.** It now appears only once the PO is officially created (Create/Download PDF), matching the rest of the draft-vs-created behavior.'},
+      ]
+    },
+    {
       v:'1.65.10', date:'June 4, 2026', tag:'log',
       changes:[
         {t:'log', d:'**WR PO System: Knoxville Corrugated added to the vendor import (67 box items).** Josh cleaned up the Knoxcor spreadsheet, so it is now parsed in — two-line (wrapped) descriptions merged, BOTTOM/TOP box splits handled, and the VSS/IEP renames applied. Brings the bulk importer to 42 vendors / 291 items. Internal supply-chain tooling; no change to the quote builder.'},

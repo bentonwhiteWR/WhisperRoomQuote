@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.65.6', date:'June 4, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Deal Hub: clicking a quote now loads it no matter where you click on the row.** Before, only the top-left strip (quote # / date) actually opened the quote — the dollar amount, the model/label, and the whole bottom row were dead zones, so clicks there did nothing and it felt like you had to hunt for the right spot. The click-blocking was only supposed to protect the small View / Copy / Invoice / Process buttons; it was accidentally covering whole rows. Now the entire card is clickable (including the “Load →” hint), and only those buttons are excluded.'},
+      ]
+    },
+    {
       v:'1.65.5', date:'June 4, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Fixed the “New Quote keeps reloading the same customer” loop.** If a contact had an active deal (so the quote auto-linked to it), hitting **New Quote** could snap that same contact and deal right back in — and trying to switch customers got stuck bouncing through the “Quote Already in Progress” box. Cause: clearing the form kicked off a background look-up of the *old* contact’s deals that finished a beat later and re-linked the deal (which then re-filled the contact). New Quote now drops the old contact first and skips that look-up, and a stale look-up can no longer re-link a customer you’ve already moved on from.'},

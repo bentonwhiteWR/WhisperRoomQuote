@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.65.10', date:'June 4, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**WR PO System: Knoxville Corrugated added to the vendor import (67 box items).** Josh cleaned up the Knoxcor spreadsheet, so it is now parsed in — two-line (wrapped) descriptions merged, BOTTOM/TOP box splits handled, and the VSS/IEP renames applied. Brings the bulk importer to 42 vendors / 291 items. Internal supply-chain tooling; no change to the quote builder.'},
+      ]
+    },
+    {
       v:'1.65.9', date:'June 4, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**WR PO System: a PO is now only "officially created" when you press Create/Download PDF.** Picking a vendor under "+ New PO" now starts a hidden **draft** and opens the editor — it no longer shows up in the Vendor Hub list until you generate the PDF, which promotes it to OPEN. Abandon a draft (just close the tab) and nothing clutters the list.'},

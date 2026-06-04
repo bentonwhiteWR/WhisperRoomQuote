@@ -1,14 +1,15 @@
-// AUTO-GENERATED from Josh's Excel POs (ORDERING PURCHASE ORDERS) — 41 vendors,
-// 224 catalog items. Companion to seed-test-vendors.js (the original 3).
+// AUTO-GENERATED from Josh's Excel POs (ORDERING PURCHASE ORDERS) — 42 vendors,
+// 291 catalog items. Companion to seed-test-vendors.js (the original 3).
 //
 // Provenance / regeneration: parsed from the legacy .xls files with the Python
-// scripts kept in `C:\Users\bento\Documents\Claude\WR PO System\`
-// (parse_pos.py -> vendors.json, then gen_seed.py -> this file). Re-run those to
-// refresh after Josh updates the spreadsheets.
+// scripts in `C:\Users\bento\Documents\Claude\WR PO System\` — parse_pos.py
+// (generic) + parse_knoxcor.py (Knoxville Corrugated has a bespoke layout) ->
+// vendors.json / knoxcor.json, then gen_seed.py -> this file.
 //
 // EXCLUDED on purpose: Carpenter + Bertelkamp (already curated in
-// seed-test-vendors.js), and Knoxville Corrugated (374-row spec master — enter
-// manually). Foss = curated vendor + 3 new materials, hand-built below.
+// seed-test-vendors.js). Foss = curated vendor + 3 new materials. Knoxville
+// Corrugated is INCLUDED now (cleaned up + parsed: 67 box items, 2-line
+// descriptions merged column-wise, BOTTOM/TOP splits handled).
 // Caveats: mfg/part# mostly folded into description; a few vendors have blank/TBD
 // prices (Auralex lists none); Guardian descriptions carry some trailing noise.
 //
@@ -2932,6 +2933,629 @@
         "default_qty": 4000,
         "unit_price": 5.1,
         "price_updated_date": "2021-05-19"
+      }
+    ]
+  },
+  {
+    "name": "Knoxville Corrugated Box Co., Inc.",
+    "address_lines": [],
+    "phone": "1-865-523-6772",
+    "contacts": [
+      {
+        "name": "Dan Marcus"
+      }
+    ],
+    "send_to_emails": [
+      "Rachel.trendler@knoxvillebox.com",
+      "marcusdc@Welchpkg.com"
+    ],
+    "cc_emails": [],
+    "payment_terms": "",
+    "freight_terms": "",
+    "standard_notes": "Please send confirmation of order with updated prices.",
+    "catalog": [
+      {
+        "sku": "4242 FLCL",
+        "description": "43 1/4\" x 3\" x 43 1/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 7.72,
+        "price_updated_date": "2017-07-17"
+      },
+      {
+        "sku": "4260 FLCL",
+        "description": "61 1/4\" x 3\" x 43 1/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 14.37,
+        "price_updated_date": "2025-06-25"
+      },
+      {
+        "sku": "4848 FLCL",
+        "description": "49 1/4\" x 3\" x 49 1/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 14.44,
+        "price_updated_date": "2025-04-21"
+      },
+      {
+        "sku": "4872 FLCL",
+        "description": "73 1/4\" x 3\" x 49 1/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 200,
+        "unit_price": 16.1,
+        "price_updated_date": "2025-09-02"
+      },
+      {
+        "sku": "4284 FLCL",
+        "description": "85 1/4\" x 3\" x 43 1/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 8.48,
+        "price_updated_date": "2025-08-29"
+      },
+      {
+        "sku": "10242 FLCL BOTTOM",
+        "description": "BOTTOM — Design Style Tray",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 6.6414,
+        "price_updated_date": "2014-12-18"
+      },
+      {
+        "sku": "10242 FLCL TOP",
+        "description": "TOP — Design Style Tray",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 6.4756,
+        "price_updated_date": "2013-05-31"
+      },
+      {
+        "sku": "4242 IEPCP",
+        "description": "45 1/4\" x 3\" x 45 1/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 6.8723,
+        "price_updated_date": "2015-07-07"
+      },
+      {
+        "sku": "4260 IEPCP",
+        "description": "63 1/4\" x 3\" x 45 1/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 7.54,
+        "price_updated_date": "2021-08-10"
+      },
+      {
+        "sku": "4848 IEPCP",
+        "description": "51 1/4\" x 3\" x 51 1/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 11.99,
+        "price_updated_date": "2021-07-08"
+      },
+      {
+        "sku": "4872 IEPCP",
+        "description": "75 1/4\" x 3\" x 51 1/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 10.79,
+        "price_updated_date": "2021-08-30"
+      },
+      {
+        "sku": "4284 IEPCP",
+        "description": "87 1/4\" x 3\" x 45 1/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 9.8,
+        "price_updated_date": "2023-01-24"
+      },
+      {
+        "sku": "IEPWL35.5 (both halves)",
+        "description": "41\" x 4 3/4\" x 36 3/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 10.91,
+        "price_updated_date": "2025-06-05"
+      },
+      {
+        "sku": "VSS IEP 4848/72 FL BOTTOM",
+        "description": "BOTTOM — Design Style Tray",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 175,
+        "unit_price": 7.2,
+        "price_updated_date": "2025-07-07"
+      },
+      {
+        "sku": "VSS IEP 4848/72 FL TOP",
+        "description": "TOP — Design Style Tray",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 175,
+        "unit_price": 7.29,
+        "price_updated_date": "2025-07-07"
+      },
+      {
+        "sku": "IEPWL35.5 WDO 2636/42/48 TOP",
+        "description": "36 3/4\" x 2 1/2\" x 58 7/8\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 6.9567,
+        "price_updated_date": "2013-05-20"
+      },
+      {
+        "sku": "STD WL 49 EXT",
+        "description": "12 1/4\" x 4 1/2\" x 50 1/2\" — ECT 32 C F.O.L. ( tabs on 12 1/2\" ends ) — LOGO - (3\" from each end and parallel with 12 1/4\" tabs )",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 9.14,
+        "price_updated_date": "2025-04-21"
+      },
+      {
+        "sku": "IEP WL 44.5 EXT",
+        "description": "12 1/4\" x 4 1/2\" x 46\" — ECT 32 C F.O.L. ( tabs on 12 1/2\" ends ) — LOGO - (3\" from each end and parallel with 12 1/4\" tabs )",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 6.667,
+        "price_updated_date": "2025-06-06"
+      },
+      {
+        "sku": "STD WL 40 EXT",
+        "description": "12 1/4\" x 4 1/2\" x 41 1/2\" — ECT 32 C F.O.L. ( tabs on 12 1/2\" ends ) — LOGO - (3\" from each end and parallel with 12 1/4\" tabs )",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 7.67,
+        "price_updated_date": "2021-10-20"
+      },
+      {
+        "sku": "IEP WL 35.5 EXT",
+        "description": "12 1/4\" x 4 1/2\" x 37 1/2\" — ECT 32 C F.O.L. — LOGO - (3\" from each end and",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 5.58,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "CORRUGATED SHEET",
+        "description": "41 1/4\" x 82 1/4\" — Single wall sheet",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 200,
+        "unit_price": 2.74,
+        "price_updated_date": "2021-10-20"
+      },
+      {
+        "sku": "CORRUGATED SHEET (WA)",
+        "description": "50 1/4\" x 82 1/4\" — Single wall sheet",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 4.95,
+        "price_updated_date": "2025-06-05"
+      },
+      {
+        "sku": "CORRUGATED SHEET(LP)",
+        "description": "63\" x 63\" — Single wall sheet",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 50,
+        "unit_price": 7.12,
+        "price_updated_date": "2022-07-27"
+      },
+      {
+        "sku": "STD DRFRAM",
+        "description": "82 1/4\" x 3 1/8\" x 41 1/2\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 200,
+        "unit_price": 8.88,
+        "price_updated_date": "2021-07-08"
+      },
+      {
+        "sku": "WA STD DRFRAM",
+        "description": "82 1/4\" x 3 1/8\" x 50 1/2\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 50,
+        "unit_price": 10.93,
+        "price_updated_date": "2025-09-02"
+      },
+      {
+        "sku": "STDDOOR",
+        "description": "76 1/2\" x 3 1/8\" x 24 3/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 125,
+        "unit_price": 8.15,
+        "price_updated_date": "2021-10-20"
+      },
+      {
+        "sku": "IEPDOOR",
+        "description": "74 7/8\" x 2 1/2\" x 23 1/8\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 6.4505,
+        "price_updated_date": "2013-10-25"
+      },
+      {
+        "sku": "IEP JAMB",
+        "description": "80 3/4\" x 2 1/2\" x 36 3/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 8.1235,
+        "price_updated_date": "2014-02-11"
+      },
+      {
+        "sku": "WA IEP JAMB",
+        "description": "80 3/4\" x 2 1/2\" x 45 3/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 15.87,
+        "price_updated_date": "2021-10-20"
+      },
+      {
+        "sku": "IEPWL41.5 (both halves)",
+        "description": "42 3/4\" x 4 3/4\" x 41\" — ECT 32 C F.O.L. (tabs on 3\" ends) — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 14.12,
+        "price_updated_date": "2025-05-07"
+      },
+      {
+        "sku": "IEPWL41.5 WDO 2636/42/48 TOP",
+        "description": "42 3/4\" x 2 1/2\" x 58 7/8\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 10.57,
+        "price_updated_date": "2017-07-17"
+      },
+      {
+        "sku": "CORRUGATED SHEET (46 wall)",
+        "description": "47 1/4\" x 82 1/4\" — Single wall sheet",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 125,
+        "unit_price": 4.29,
+        "price_updated_date": "2025-05-07"
+      },
+      {
+        "sku": "WA STD DOOR (updated taller)",
+        "description": "76 1/2\" x 3 1/8\" x 35 3/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 12.031,
+        "price_updated_date": "2026-05-20"
+      },
+      {
+        "sku": "IEPDOOR 30",
+        "description": "74 7/8\" x 2 1/2\" x 29 1/8\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 7.21,
+        "price_updated_date": "2015-03-09"
+      },
+      {
+        "sku": "WA IEP DOOR (updated taller)",
+        "description": "75 1/8\" x 2 1/2\" x 34 1/8\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 9.473,
+        "price_updated_date": "2024-08-16"
+      },
+      {
+        "sku": "IEP JAMB 46",
+        "description": "80 3/4\" x 2 1/2\" x 42 3/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 14.63,
+        "price_updated_date": "2025-07-07"
+      },
+      {
+        "sku": "STDWL22",
+        "description": "82 1/4\" x 2 1/2\" x 23 1/2\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 200,
+        "unit_price": 16.46,
+        "price_updated_date": "2025-08-20"
+      },
+      {
+        "sku": "IEPSSMID (2)",
+        "description": "82 1/4\" x 2 1/2\" x 22 7/8\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 165,
+        "unit_price": 6.38,
+        "price_updated_date": "2025-07-07"
+      },
+      {
+        "sku": "STD WL 43",
+        "description": "82 1/4\" x 2 1/2\" x 44 1/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 12.88,
+        "price_updated_date": "2025-09-22"
+      },
+      {
+        "sku": "STD WL 28",
+        "description": "82 1/4\" x 2 1/2\" x 29 1/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 7.16,
+        "price_updated_date": "2023-01-24"
+      },
+      {
+        "sku": "STD WL 19",
+        "description": "82 1/4\" x 2 1/2\" x 20 1/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 12.57,
+        "price_updated_date": "2022-03-04"
+      },
+      {
+        "sku": "STD WL 7/16",
+        "description": "82 1/4\" x 2 1/2\" x 17 1/2\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 150,
+        "unit_price": 7.05,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "STD FL 4230",
+        "description": "43 1/4\" x 3\" x 31 1/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 150,
+        "unit_price": 6.74,
+        "price_updated_date": "2023-04-18"
+      },
+      {
+        "sku": "STD FL 6018",
+        "description": "61 1/4\" x 3\" x 19 1/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 150,
+        "unit_price": 6.76,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "STD FL 7224",
+        "description": "73 1/4\" x 3\" x 25 1/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 150,
+        "unit_price": 7.39,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "STD FL 9624",
+        "description": "97 1/4\" x 3\" x 25 1/4\" — ECT 32 C F.O.L (2-piece). — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 9.3,
+        "price_updated_date": "2025-09-22"
+      },
+      {
+        "sku": "STD FL 10218",
+        "description": "103 1/4\" x 3\" x 19 1/4\" — ECT 32 C F.O.L (2-piece). — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 6.22,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "STD FL SS 5",
+        "description": "61 1/4\" x 3\" x 7 3/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 250,
+        "unit_price": 7.82,
+        "price_updated_date": "2022-07-25"
+      },
+      {
+        "sku": "STD FL SS 6",
+        "description": "73 1/4\" x 3\" x 7 3/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 225,
+        "unit_price": 6.3,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "STD FL SS 7",
+        "description": "85 1/4\" x 3\" x 7 3/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 200,
+        "unit_price": 7.29,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "CP 6018",
+        "description": "63 1/4\" x 3\" x 20 1/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 150,
+        "unit_price": 4.4,
+        "price_updated_date": "2022-07-25"
+      },
+      {
+        "sku": "CP 7224",
+        "description": "75 1/4\" x 3\" x 26 1/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 9.93,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "CP 10218",
+        "description": "105 1/4\" x 3\" x 20 1/4\" — ECT 32 C F.O.L (2-piece). — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 6.26,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "IEP WL 26.5",
+        "description": "41\" x 4 3/4\" x 27 3/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 150,
+        "unit_price": 5.07,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "IEP WL 11.5",
+        "description": "41\" x 4 3/4\" x 12 3/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 225,
+        "unit_price": 3.19,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "IEP WL 38.5",
+        "description": "41\" x 4 3/4\" x 39 3/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 150,
+        "unit_price": 5.79,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "IEP WL 17.5",
+        "description": "41\" x 4 3/4\" x 18 3/4\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 175,
+        "unit_price": 4.11,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "IEP WL 35.5 WDO BOT",
+        "description": "36 3/4\" x 2 1/2\" x 23 1/8\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 200,
+        "unit_price": 3.61,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "IEP WL 41.5 WDO BOT",
+        "description": "42 3/4\" x 2 1/2\" x 23 1/8\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 175,
+        "unit_price": 4.11,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "STD FL SS 8 TOP",
+        "description": "97 5/8\" x 8 1/2\" x 3\" TOP — ECT 32 C (TRAY) — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 310,
+        "unit_price": 1.98,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "STD FL SS 8 BOTTOM",
+        "description": "97 1/4\" x 7 3/4\" x 3\" BOTTOM — ECT 32 C (TRAY) — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 310,
+        "unit_price": 1.87,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "STD FL SS 8.5 TOP",
+        "description": "103 5/8\" x 8 1/2\" x 3\" TOP — ECT 32 C (TRAY) — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 300,
+        "unit_price": 1.98,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "STD FL SS 8.5 BOTTOM",
+        "description": "103 1/4\" x 7 3/4\" x 3\" BOTTOM — ECT 32 C (TRAY) — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 300,
+        "unit_price": 1.95,
+        "price_updated_date": "2018-05-25"
+      },
+      {
+        "sku": "STDSSCNR (4) TALL",
+        "description": "92 1/4\" x 4 1/4\" x 19\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 9.7,
+        "price_updated_date": "2025-06-25"
+      },
+      {
+        "sku": "STDSSMID (2) TALL",
+        "description": "92 1/4\" x 2 1/2\" x 13 7/8\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 120,
+        "unit_price": 8.61,
+        "price_updated_date": "2025-06-25"
+      },
+      {
+        "sku": "DESK",
+        "description": "32\" x 4\" x 20\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 7.03,
+        "price_updated_date": "2026-02-17"
+      },
+      {
+        "sku": "DESK XL",
+        "description": "44\" x 4\" x 22\" — ECT 32 C F.O.L. — FRAGILE / LOGO / DO NOT STACK",
+        "mfg": "",
+        "mfg_part_no": "",
+        "default_qty": 100,
+        "unit_price": 8.12,
+        "price_updated_date": "2026-02-17"
       }
     ]
   }

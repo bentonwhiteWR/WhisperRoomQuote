@@ -677,9 +677,12 @@ function setFilter(s) {
 
 function renderPos() {
   const tbody = document.getElementById('poRows');
+  // DRAFT POs aren't "officially created" yet — they stay hidden here until
+  // promoted to OPEN via the Create/Download PDF button on /vpo/.
+  const visible = _pos.filter(p => p.status !== 'DRAFT');
   const filtered = _statusFilter === 'all'
-    ? _pos
-    : _pos.filter(p => p.status === _statusFilter);
+    ? visible
+    : visible.filter(p => p.status === _statusFilter);
 
   if (!filtered.length) {
     tbody.innerHTML =
@@ -716,7 +719,6 @@ function renderPos() {
           (p.status !== 'CANCELLED'
             ? '<button class="btn btn-sm" style="background:rgba(168,85,247,.12);color:#a855f7;border:1px solid rgba(168,85,247,.35)" onclick="openReceiveFromTable(\'' + encodeURIComponent(p.po_number) + '\')">' + (p.status === 'RECEIVED' || p.status === 'CLOSED' ? 'Receipts' : 'Receive') + '</button>'
             : '') +
-          '<button class="btn btn-red btn-sm" title="Delete PO" onclick="deletePoFromTable(\'' + encodeURIComponent(p.po_number) + '\')">&times;</button>' +
         '</div></td>' +
       '</tr>'
     );
@@ -788,23 +790,6 @@ async function sendFromTable(encodedPoNumber) {
   a.remove();
   showToast(po.status === 'OPEN' ? 'Draft opened. Attach the PDF before sending. (PO marked Sent.)' : 'Draft re-opened.', 'success');
   await loadPos();
-}
-
-async function deletePoFromTable(encodedPoNumber) {
-  const poNumber = decodeURIComponent(encodedPoNumber);
-  if (!confirm('Delete ' + poNumber + '?\n\nThis can\'t be undone.')) return;
-  try {
-    const r = await fetch('/api/vendor-pos/' + encodeURIComponent(poNumber), {
-      method: 'DELETE',
-      credentials: 'include',
-    });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error || 'Delete failed');
-    showToast('PO deleted', 'success');
-    await loadPos();
-  } catch (e) {
-    showToast('Error: ' + e.message, 'error');
-  }
 }
 
 // Open the Receive modal directly from a Vendor Hub row. Fetches the
@@ -989,7 +974,7 @@ async function createNewPoFromPicker() {
     // Open the doc page in a new tab so the listing stays put
     window.open('/vpo/' + encodeURIComponent(data.po.po_number) + '?t=' + data.po.share_token, '_blank');
     await loadPos();
-    showToast('PO created — ' + data.po.po_number, 'success');
+    showToast('Draft started — add items, then Create/Download PDF to finalize', 'success');
   } catch (e) {
     showToast('Error: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Create PO';
@@ -1473,7 +1458,7 @@ function renderVendors() {
     const contactNames = contactsArr.map(c => (c && c.name) ? c.name : (typeof c === 'string' ? c : '')).filter(Boolean);
     const catalog = Array.isArray(v.catalog) ? v.catalog : [];
     const archived = !!v.archived;
-    const contactsLine = contactNames.length ? contactNames.join(', ') : '<span style="color:var(--muted)">—</span>';
+    const contactsLine = contactNames.length ? contactNames.join(', ') : '';
     const emailsLine = sendToArr.length ? sendToArr.join(', ') : '<span style="color:var(--muted)">no send-to email set</span>';
     const updated = v.updated_at ? new Date(v.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 

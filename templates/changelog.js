@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.65.9', date:'June 4, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**WR PO System: a PO is now only "officially created" when you press Create/Download PDF.** Picking a vendor under "+ New PO" now starts a hidden **draft** and opens the editor — it no longer shows up in the Vendor Hub list until you generate the PDF, which promotes it to OPEN. Abandon a draft (just close the tab) and nothing clutters the list.'},
+        {t:'ui', d:'**Removed the delete (×) button from the PO table.** Delete a PO from the PO itself (the doc page) instead — keeps deletes deliberate.'},
+        {t:'ui', d:'**Vendors list: hide the "—" placeholder when a vendor has no contact name** (the cell is just left blank now).'},
+      ]
+    },
+    {
       v:'1.65.8', date:'June 4, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**WR PO System: Payment Terms is now a full-width field.** It was crammed into a 3-column row, making it a small click target next to the wider Freight Terms field. Payment Terms now gets its own full line (in both the PO editor and the Vendor editor) so you can click anywhere on it to edit.'},

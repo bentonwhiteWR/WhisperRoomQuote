@@ -6069,7 +6069,7 @@ function updatePushButtonText() {
   }
 }
 
-function unlinkDeal() {
+function unlinkDeal(skipSuggest = false) {
   linkedDeal = null;
   selectedDeal = null;
   window._userUnlinked = true; // user explicitly unlinked — suppress auto-link
@@ -6080,9 +6080,13 @@ function unlinkDeal() {
   updateRevisionBadge();
   updatePushButtonText();
 
-  // Re-show deal list (but won't auto-link since _userUnlinked is set)
+  // Re-show deal list (but won't auto-link since _userUnlinked is set).
+  // newQuote() passes skipSuggest=true: a full reset must NOT re-fetch the old
+  // contact's deals — that async suggest used to resolve after newQuote had
+  // cleared the contact and reset _userUnlinked, then auto-linked the deal and
+  // re-filled the contact, snapping the just-cleared customer right back in.
   const contactId = window._loadedContactId;
-  if (contactId) suggestDealsForContact(contactId);
+  if (contactId && !skipSuggest) suggestDealsForContact(contactId);
 }
 
 function openContactInHubSpot() {
@@ -6130,6 +6134,12 @@ async function suggestDealsForContact(contactId) {
         <div class="dsm">${stageLabel}${amount}${modified}</div>
       </div>`;
     }).join('');
+
+    // Bail if this suggest is stale — the loaded contact changed (or was
+    // cleared by New Quote) while this async fetch was in flight. Without this,
+    // a late-resolving suggest could auto-link a deal for a contact the rep has
+    // already moved on from.
+    if (window._loadedContactId !== contactId) return;
 
     // Only show if no deal is already linked
     if (!linkedDeal) {
@@ -6448,6 +6458,12 @@ function newQuote(skipConfirm = false) {
   window._loadedShareToken      = null;
   window._lastPushedQuoteNumber = null;
 
+  // Drop the loaded contact up front (before unlinkDeal) so no in-flight or
+  // about-to-fire deal-suggest can re-link the old deal / re-fill the old
+  // contact after this reset completes.
+  window._loadedContactId     = null;
+  window._lastPushedContactId = null;
+
   // Clear customer fields
   ['firstName','lastName','email','phone','company',
    'shipAddress','shipCity','shipState','shipZip',
@@ -6483,8 +6499,10 @@ function newQuote(skipConfirm = false) {
   setDiscType('pct');
   document.getElementById('discountValue').value = '0';
 
-  // Clear deal info
-  unlinkDeal();
+  // Clear deal info — skipSuggest=true so it doesn't re-fetch the old contact's
+  // deals and auto-link them back (that race caused the New Quote → old contact
+  // reappears loop).
+  unlinkDeal(true);
   document.getElementById('dealName').value = '';
   document.getElementById('dealSuggestions').style.display = 'none';
 

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.65.8', date:'June 4, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**WR PO System: Payment Terms is now a full-width field.** It was crammed into a 3-column row, making it a small click target next to the wider Freight Terms field. Payment Terms now gets its own full line (in both the PO editor and the Vendor editor) so you can click anywhere on it to edit.'},
+      ]
+    },
+    {
       v:'1.65.7', date:'June 4, 2026', tag:'log',
       changes:[
         {t:'log', d:'**WR PO System: bulk vendor importer (41 vendors, 224 catalog items).** Parsed Josh’s Excel purchase-order files into the vendor catalog — a one-time seed script (`scripts/seed-vendors-from-excel.js`) that adds the remaining suppliers/items alongside the original three. Internal supply-chain tooling; no change to the quote builder.'},

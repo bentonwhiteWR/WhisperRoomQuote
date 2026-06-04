@@ -972,10 +972,11 @@ function _normalizeVendorPoLines(raw) {
 }
 
 // Valid vendor-PO status transitions. CANCELLED is reachable from any
-// pre-RECEIVED state. POs start OPEN — no draft/approval gate, Josh
-// edits freely and hits Send when he's ready. Receive/Close
-// transitions are Phase 2 (v1.50+).
+// pre-RECEIVED state. POs start as DRAFT (invisible in the Vendor Hub list)
+// and are "officially created" (promoted to OPEN) when Josh hits Create/
+// Download PDF on /vpo/. Receive/Close transitions are Phase 2 (v1.50+).
 const _VENDOR_PO_TRANSITIONS = {
+  DRAFT:     ['OPEN', 'CANCELLED'],
   OPEN:      ['SENT', 'CANCELLED'],
   SENT:      ['PARTIAL', 'RECEIVED', 'CANCELLED'],
   PARTIAL:   ['PARTIAL', 'RECEIVED', 'CANCELLED'],
@@ -12498,7 +12499,7 @@ ${q.accepted ? `
         `INSERT INTO vendor_pos (
            po_number, vendor_id, vendor_snapshot, share_token, status,
            po_data, expected_date, created_by
-         ) VALUES ($1,$2,$3,$4,'OPEN',$5,$6,$7) RETURNING *`,
+         ) VALUES ($1,$2,$3,$4,'DRAFT',$5,$6,$7) RETURNING *`,
         [
           poNumber,
           vendorId,
@@ -12817,6 +12818,15 @@ ${q.accepted ? `
       if (!r.rows.length) { json({ error: 'PO not found' }, 404); return; }
       const result = await _regenerateVendorPoPdf(r.rows[0]);
       if (!result || !result.buf) { json({ error: 'PDF generation failed' }, 500); return; }
+      // Create/Download PDF is the "officially created" action — a brand-new
+      // DRAFT PO becomes OPEN (and thus visible in the Vendor Hub list) the
+      // first time its PDF is generated.
+      if (r.rows[0].status === 'DRAFT' && db) {
+        try {
+          await db.query(`UPDATE vendor_pos SET status='OPEN', updated_at=NOW() WHERE po_number=$1 AND status='DRAFT'`, [poNumber]);
+          writelog('info', 'vendor-po.created', `Vendor PO finalized (DRAFT→OPEN) via PDF: ${poNumber}`, { rep: String(getRepFromReq(req) || ''), meta: { poNumber } });
+        } catch(e) { console.warn('[vendor-po] draft promote failed:', e.message); }
+      }
       // Defensive: Node rejects non-ASCII in raw header values. Strip
       // anything outside printable ASCII before serializing.
       const headerFilename = result.filename.replace(/"/g, '').replace(/[^\x20-\x7E]/g, '-');
@@ -14645,7 +14655,7 @@ body{font-family:'DM Sans',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-f
 '<div class="print-bar">' +
   (isAuth(req) ? '<button id="createPoBtn" style="background:#ee6216">' + (po.pdf_drive_file_id ? 'Update PO' : 'Create / Download PDF') + '</button>' : '') +
   (isAuth(req) && po.status === 'OPEN' ? '<button id="sendPoBtn" style="background:#16a34a">Send (Mailto)</button>' : '') +
-  (isAuth(req) ? '<button id="receivePoBtn" style="background:#a855f7">' + (po.status === 'RECEIVED' || po.status === 'CLOSED' ? 'Receipts' : 'Receive') + '</button>' : '') +
+  (isAuth(req) && po.status !== 'DRAFT' ? '<button id="receivePoBtn" style="background:#a855f7">' + (po.status === 'RECEIVED' || po.status === 'CLOSED' ? 'Receipts' : 'Receive') + '</button>' : '') +
   (isAuth(req) && (po.status === 'OPEN' || po.status === 'SENT' || po.status === 'PARTIAL') ? '<button id="cancelPoBtn" style="background:#444">Cancel PO</button>' : '') +
   (isAuth(req) && po.status === 'OPEN' ? '<button id="deletePoBtn" style="background:#dc2626">Delete</button>' : '') +
 '</div>' +

@@ -51,6 +51,38 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.65.11', date:'June 4, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**WR PO System: the purple Receive button no longer shows on a draft PO.** It now appears only once the PO is officially created (Create/Download PDF), matching the rest of the draft-vs-created behavior.'},
+      ]
+    },
+    {
+      v:'1.65.10', date:'June 4, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**WR PO System: Knoxville Corrugated added to the vendor import (67 box items).** Josh cleaned up the Knoxcor spreadsheet, so it is now parsed in — two-line (wrapped) descriptions merged, BOTTOM/TOP box splits handled, and the VSS/IEP renames applied. Brings the bulk importer to 42 vendors / 291 items. Internal supply-chain tooling; no change to the quote builder.'},
+      ]
+    },
+    {
+      v:'1.65.9', date:'June 4, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**WR PO System: a PO is now only "officially created" when you press Create/Download PDF.** Picking a vendor under "+ New PO" now starts a hidden **draft** and opens the editor — it no longer shows up in the Vendor Hub list until you generate the PDF, which promotes it to OPEN. Abandon a draft (just close the tab) and nothing clutters the list.'},
+        {t:'ui', d:'**Removed the delete (×) button from the PO table.** Delete a PO from the PO itself (the doc page) instead — keeps deletes deliberate.'},
+        {t:'ui', d:'**Vendors list: hide the "—" placeholder when a vendor has no contact name** (the cell is just left blank now).'},
+      ]
+    },
+    {
+      v:'1.65.8', date:'June 4, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**WR PO System: Payment Terms is now a full-width field.** It was crammed into a 3-column row, making it a small click target next to the wider Freight Terms field. Payment Terms now gets its own full line (in both the PO editor and the Vendor editor) so you can click anywhere on it to edit.'},
+      ]
+    },
+    {
+      v:'1.65.7', date:'June 4, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**WR PO System: bulk vendor importer (41 vendors, 224 catalog items).** Parsed Josh’s Excel purchase-order files into the vendor catalog — a one-time seed script (`scripts/seed-vendors-from-excel.js`) that adds the remaining suppliers/items alongside the original three. Internal supply-chain tooling; no change to the quote builder.'},
+      ]
+    },
+    {
       v:'1.65.6', date:'June 4, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Deal Hub: clicking a quote now loads it no matter where you click on the row.** Before, only the top-left strip (quote # / date) actually opened the quote — the dollar amount, the model/label, and the whole bottom row were dead zones, so clicks there did nothing and it felt like you had to hunt for the right spot. The click-blocking was only supposed to protect the small View / Copy / Invoice / Process buttons; it was accidentally covering whole rows. Now the entire card is clickable (including the “Load →” hint), and only those buttons are excluded.'},

@@ -400,9 +400,10 @@ db_mod.init({
     await initTrackingCache();
     startTrackingPoller();
     // First payments sync runs after a short delay so we don't hammer
-    // HubSpot during startup. Then every 30 min thereafter.
+    // HubSpot during startup. Then every 5 min thereafter (each poll is ~1
+    // search call + an invoice→deal lookup per changed payment — cheap).
     setTimeout(() => { pollHubspotPayments(); }, 30 * 1000);
-    setInterval(pollHubspotPayments, 30 * 60 * 1000);
+    setInterval(pollHubspotPayments, 5 * 60 * 1000);
     // Overdue-ship-date sweep: every 6 hours, check supplier POs that
     // have passed their expected_ship_date without a tracking number
     // and notify Jill + Benton. De-duped via overdue_notified_at on
@@ -714,7 +715,7 @@ async function hsFindDealForInvoice(invoiceId) {
 // AND mints notifications for two cases the user cares about:
 //   pending/processing → succeeded  (ACH only) → "Funds available, ready to process"
 //   anything           → failed                → "🚨 Payment failed — investigate"
-// Notifications are debounced via the *_notified_at columns so the 30-min
+// Notifications are debounced via the *_notified_at columns so the 5-min
 // poller can't double-fire if it sees the same row twice in a row.
 async function upsertDealPaymentStatus(payment) {
   if (!db) return;

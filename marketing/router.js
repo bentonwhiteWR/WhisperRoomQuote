@@ -25,8 +25,9 @@
 
 const fs    = require('fs');
 const path  = require('path');
-const etl   = require('./google-ads-etl');
-const hsEtl = require('./hubspot-etl');
+const etl    = require('./google-ads-etl');
+const hsEtl  = require('./hubspot-etl');
+const gscEtl = require('./gsc-etl');
 
 // Empty array = open to everyone (allowlist disabled). Populate with
 // ownerIds to re-lock — e.g. ['36303670', '36320208'] for Benton + Gabe.
@@ -245,6 +246,25 @@ const STAGE_LABELS = {
 // Matched case-insensitively as a substring (ILIKE '%term%'). (v1.59.6)
 const BRAND_TERMS = ['whisper'];
 
+// Pre-sync disk guard (v1.65.2). A runaway GSC sync once filled the SHARED
+// Postgres volume (0.5GB → 98%) and took the whole app down. Before any sync
+// we check the DB size (pg_database_size) against a soft limit — env
+// PG_SOFT_LIMIT_MB, default 4500 (~90% of the current 5GB volume) — and refuse
+// the sync with a clear message instead of crashing the disk. Never blocks on
+// its own failure (returns ok:true) so a check error can't wedge syncing.
+async function _capacityCheck(db) {
+  if (!db) return { ok: true, usedMb: null, limitMb: null };
+  try {
+    const limitMb = parseInt(process.env.PG_SOFT_LIMIT_MB) || 4500;
+    const { rows } = await db.query('SELECT pg_database_size(current_database()) AS bytes');
+    const usedMb = Math.round(Number(rows[0].bytes) / 1048576);
+    return { ok: usedMb < limitMb, usedMb, limitMb };
+  } catch (e) {
+    console.warn('[marketing] capacity check failed (allowing sync):', e.message);
+    return { ok: true, usedMb: null, limitMb: null };
+  }
+}
+
 // Entry point. Returns true if the request was handled (caller stops
 // dispatching), false otherwise. ctx provides everything from
 // quote-server.js's request handler closure: { db, getSession, json,
@@ -330,11 +350,21 @@ async function handle(req, res, ctx) {
     // by ~4x. ON CONFLICT upserts make the longer pull idempotent.
     const gaDays   = daysBack != null ? daysBack : 365;
     const hsDays   = daysBack != null ? daysBack : 365;
+
+    // v1.65.2 — refuse the sync if the DB is already near the volume's soft
+    // limit, rather than letting a big pull fill the disk and crash the app.
+    const cap = await _capacityCheck(ctx.db);
+    if (!cap.ok) {
+      ctx.json({ ok: false, error: `Postgres is at ${cap.usedMb} MB of the ${cap.limitMb} MB soft limit — grow the volume or trim data (e.g. TRUNCATE marketing_gsc_queries, marketing_gsc_pages) before syncing.` }, 507);
+      return true;
+    }
+
     try {
       let result;
       if      (report === 'campaigns')        result = await etl.syncCampaigns({   db: ctx.db, daysBack: gaDays });
       else if (report === 'keywords')         result = await etl.syncKeywords({    db: ctx.db, daysBack: gaDays });
       else if (report === 'search_terms')     result = await etl.syncSearchTerms({ db: ctx.db, daysBack: gaDays });
+      else if (report === 'gsc')              result = await gscEtl.syncGsc({      db: ctx.db, daysBack: gaDays });
       else if (report === 'hubspot_contacts') result = await hsEtl.syncHubSpotContacts({ db: ctx.db, daysBack: hsDays });
       else if (report === 'hubspot_deals')    result = await hsEtl.syncHubSpotDeals({    db: ctx.db, daysBack: hsDays });
       else if (report === 'hubspot_all') {
@@ -350,9 +380,10 @@ async function handle(req, res, ctx) {
         const a = await etl.syncCampaigns({       db: ctx.db, daysBack: gaDays });
         const b = await etl.syncKeywords({        db: ctx.db, daysBack: gaDays });
         const c = await etl.syncSearchTerms({     db: ctx.db, daysBack: gaDays });
+        const g = await gscEtl.syncGsc({          db: ctx.db, daysBack: Math.min(gaDays, 120) });
         const d = await hsEtl.syncHubSpotContacts({ db: ctx.db, daysBack: hsDays });
         const e = await hsEtl.syncHubSpotDeals({    db: ctx.db, daysBack: hsDays });
-        result = { ok: a.ok && b.ok && c.ok && d.ok && e.ok, parts: [a, b, c, d, e] };
+        result = { ok: a.ok && b.ok && c.ok && g.ok && d.ok && e.ok, parts: [a, b, c, g, d, e] };
       }
       else {
         ctx.json({ ok: false, error: `Unknown report type: ${report}` }, 400);
@@ -806,6 +837,11 @@ async function handle(req, res, ctx) {
       const bucket  = (url.searchParams.get('bucket')  || '').toLowerCase();        // ad-quality drill
       const segment =  url.searchParams.get('segment') || '';                       // share-of-revenue drill
       const term    = (url.searchParams.get('term')    || '').trim().toLowerCase(); // search-term drills
+      const organicPred = am.model === 'last'                                       // organic drills
+        ? `c.latest_source = 'ORGANIC_SEARCH'`
+        : am.model === 'all'
+          ? `(c.first_source = 'ORGANIC_SEARCH' OR c.latest_source = 'ORGANIC_SEARCH')`
+          : `c.first_source = 'ORGANIC_SEARCH'`;
       const rec  = `https://app.hubspot.com/contacts/${HS_PORTAL_ID}/record`;
       if (!ctx.db) { ctx.json({ rows: [], type }); return true; }
 
@@ -992,6 +1028,33 @@ async function handle(req, res, ctx) {
              LIMIT 500
           `, [days, term])).rows.map(r => ({ ...r, url: `${rec}/0-3/${r.id}` }));
         }
+      } else if (type === 'organic-leads') {
+        // Organic-source contacts (the Organic Leads card), created in window.
+        rows = (await ctx.db.query(`
+          SELECT c.contact_id AS id,
+                 COALESCE(NULLIF(c.email, ''), 'Contact ' || c.contact_id) AS label,
+                 COALESCE(c.lifecycle_stage, '—')                          AS sublabel,
+                 NULL::float                                               AS amount
+            FROM marketing_hubspot_contacts c
+           WHERE ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1
+             AND ${organicPred}
+           ORDER BY ${am.contactDate} DESC
+           LIMIT 500
+        `, [days])).rows.map(r => ({ ...r, url: `${rec}/0-1/${r.id}` }));
+      } else if (type === 'organic-closed' || type === 'organic-revenue') {
+        // Closed-won deals from organic-source contacts (the Organic Closed Rev card).
+        rows = (await ctx.db.query(`
+          SELECT d.deal_id AS id,
+                 COALESCE(NULLIF(d.deal_name, ''), 'Deal ' || d.deal_id) AS label,
+                 to_char(d.closed_at, 'Mon DD, YYYY')                    AS sublabel,
+                 d.amount::float                                         AS amount
+            FROM marketing_hubspot_deals d
+            JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+           WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won
+             AND ${organicPred}
+           ORDER BY ${type === 'organic-revenue' ? 'd.amount' : 'd.closed_at'} DESC NULLS LAST
+           LIMIT 500
+        `, [days])).rows.map(r => ({ ...r, url: `${rec}/0-3/${r.id}` }));
       } else {
         ctx.json({ rows: [], error: 'unknown drill type' }, 400);
         return true;
@@ -1120,6 +1183,162 @@ async function handle(req, res, ctx) {
         mixed:        campaigns.filter(c => c.segment === 'Mixed'),
         campaigns,
       });
+    } catch(e) { ctx.json({ error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/gsc-queries ────────────────────────────────
+  // Organic queries aggregated over the window. ctr = clicks/impressions;
+  // position = impression-weighted mean of the daily average positions.
+  if (pathname === '/api/marketing/gsc-queries' && req.method === 'GET') {
+    try {
+      const days = _parseDays(req);
+      const rows = ctx.db ? (await ctx.db.query(`
+        SELECT query,
+               SUM(clicks)::bigint      AS clicks,
+               SUM(impressions)::bigint AS impressions,
+               CASE WHEN SUM(impressions) > 0 THEN SUM(clicks)::float / SUM(impressions) ELSE 0 END        AS ctr,
+               CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE 0 END AS position
+        FROM marketing_gsc_queries
+        WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
+        GROUP BY query
+        ORDER BY clicks DESC NULLS LAST
+        LIMIT 50000
+      `, [days])).rows : [];
+      ctx.json({ rows });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/gsc-pages ──────────────────────────────────
+  // Organic landing pages aggregated over the window (SEO/content view), now
+  // LEFT-JOINed to **which content closes revenue**: organic-source HubSpot
+  // contacts grouped by their first-touch URL (hs_analytics_first_url) →
+  // leads / closed-won deals / revenue, matched to GSC pages on a normalized
+  // path (scheme+host stripped, trailing slash trimmed). Best-effort match
+  // (HubSpot first_url vs GSC page formats differ slightly); pages with no
+  // matching organic contacts show 0. Model-aware (?model=).
+  if (pathname === '/api/marketing/gsc-pages' && req.method === 'GET') {
+    try {
+      const days = _parseDays(req);
+      const am   = _attrModel(req);
+      const organicPred = am.model === 'last'
+        ? `c.latest_source = 'ORGANIC_SEARCH'`
+        : am.model === 'all'
+          ? `(c.first_source = 'ORGANIC_SEARCH' OR c.latest_source = 'ORGANIC_SEARCH')`
+          : `c.first_source = 'ORGANIC_SEARCH'`;
+      const rows = ctx.db ? (await ctx.db.query(`
+        WITH gp AS (
+          SELECT page,
+                 rtrim(regexp_replace(lower(page), '^(https?://)?([^/]*)', ''), '/') AS path,
+                 SUM(clicks)::bigint      AS clicks,
+                 SUM(impressions)::bigint AS impressions,
+                 CASE WHEN SUM(impressions) > 0 THEN SUM(clicks)::float / SUM(impressions) ELSE 0 END        AS ctr,
+                 CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE 0 END AS position
+          FROM marketing_gsc_pages
+          WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
+          GROUP BY page
+        ),
+        rev AS (
+          SELECT rtrim(regexp_replace(lower(c.first_url), '^(https?://)?([^/]*)', ''), '/') AS path,
+                 COUNT(DISTINCT c.contact_id)                                                                       AS leads,
+                 COUNT(DISTINCT CASE WHEN d.is_closed_won AND d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 THEN d.deal_id END) AS deals_won,
+                 COALESCE(SUM(CASE WHEN d.is_closed_won AND d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 THEN d.amount ELSE 0 END), 0)::float AS revenue_won
+          FROM marketing_hubspot_contacts c
+          LEFT JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
+          WHERE c.first_url IS NOT NULL
+            AND ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1
+            AND ${organicPred}
+          GROUP BY 1
+        )
+        SELECT gp.page, gp.clicks, gp.impressions, gp.ctr, gp.position,
+               COALESCE(rev.leads, 0)::int        AS leads,
+               COALESCE(rev.deals_won, 0)::int    AS deals_won,
+               COALESCE(rev.revenue_won, 0)::float AS revenue_won
+        FROM gp
+        LEFT JOIN rev ON gp.path = rev.path
+        ORDER BY gp.clicks DESC NULLS LAST
+        LIMIT 50000
+      `, [days])).rows : [];
+      ctx.json({ rows, model: am.model });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/gsc-overlap ────────────────────────────────
+  // The hero view: paid (marketing_search_terms) FULL-JOIN organic
+  // (marketing_gsc_queries) on the normalized term, so the client can tag
+  // each as branded-cannibalization (paying + strong organic), organic-gap
+  // (paying + ~no organic), or covered. Anchored on paid spend, but keeps
+  // high-click organic-only rows too. Position is impression-weighted.
+  if (pathname === '/api/marketing/gsc-overlap' && req.method === 'GET') {
+    try {
+      const days = _parseDays(req);
+      const rows = ctx.db ? (await ctx.db.query(`
+        WITH org AS (
+          SELECT LOWER(TRIM(query)) AS term,
+                 SUM(clicks)::bigint AS clicks,
+                 CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE NULL END AS position
+          FROM marketing_gsc_queries
+          WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
+          GROUP BY LOWER(TRIM(query))
+        ),
+        paid AS (
+          SELECT LOWER(TRIM(search_term)) AS term,
+                 (SUM(cost_micros)::float / 1000000) AS cost,
+                 SUM(clicks)::bigint AS clicks
+          FROM marketing_search_terms
+          WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1 AND search_term IS NOT NULL
+          GROUP BY LOWER(TRIM(search_term))
+        )
+        SELECT COALESCE(p.term, o.term)      AS term,
+               COALESCE(p.cost, 0)::float    AS paid_cost,
+               COALESCE(p.clicks, 0)::bigint AS paid_clicks,
+               COALESCE(o.clicks, 0)::bigint AS organic_clicks,
+               o.position                    AS organic_position
+        FROM paid p
+        FULL OUTER JOIN org o ON p.term = o.term
+        WHERE COALESCE(p.cost, 0) > 0 OR COALESCE(o.clicks, 0) >= 5
+        ORDER BY paid_cost DESC NULLS LAST, organic_clicks DESC
+        LIMIT 5000
+      `, [days])).rows : [];
+      ctx.json({ rows });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/gsc-summary ────────────────────────────────
+  // Organic KPI strip: GSC totals (clicks/impressions, branded split) +
+  // the channel-level HubSpot tie — leads/deals/revenue from contacts whose
+  // source is ORGANIC_SEARCH under the selected model. (Query-level organic
+  // → deal attribution is impossible; Google withholds the organic query.)
+  if (pathname === '/api/marketing/gsc-summary' && req.method === 'GET') {
+    try {
+      const days = _parseDays(req);
+      const am   = _attrModel(req);
+      const organicPred = am.model === 'last'
+        ? `c.latest_source = 'ORGANIC_SEARCH'`
+        : am.model === 'all'
+          ? `(c.first_source = 'ORGANIC_SEARCH' OR c.latest_source = 'ORGANIC_SEARCH')`
+          : `c.first_source = 'ORGANIC_SEARCH'`;
+      const r = ctx.db ? (await ctx.db.query(`
+        SELECT
+          (SELECT COUNT(*) FROM marketing_hubspot_contacts c
+             WHERE ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1 AND ${organicPred})                  AS leads,
+          (SELECT COUNT(*) FROM marketing_hubspot_deals d
+             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won AND ${organicPred})    AS deals_won,
+          (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
+             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won AND ${organicPred})    AS revenue_won,
+          (SELECT COALESCE(SUM(clicks), 0)::bigint      FROM marketing_gsc_queries
+             WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1)                                                  AS organic_clicks,
+          (SELECT COALESCE(SUM(impressions), 0)::bigint FROM marketing_gsc_queries
+             WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1)                                                  AS organic_impressions,
+          (SELECT COALESCE(SUM(clicks), 0)::bigint      FROM marketing_gsc_queries
+             WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1 AND query ILIKE '%whisper%')                      AS organic_branded_clicks
+      `, [days])).rows[0] : {};
+      ctx.json({ ...(r || {}), model: am.model });
     } catch(e) { ctx.json({ error: e.message }, 500); }
     return true;
   }

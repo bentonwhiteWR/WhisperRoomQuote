@@ -51,6 +51,34 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.65.4', date:'June 4, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Copy Quote Link / View Quote now always point at the right quote.** When you pushed one quote and then opened a *different* one for the same customer (without “Start New Quote”), the Copy Link button could stitch the previously-pushed quote number onto the currently-open quote’s share token — producing a link that was off by one (e.g. `…W-…02` with `…01`’s token) and didn’t work. The shareable link is now built from a single locked source (the saved quote’s number **and** its own token, always set together), never from the editable/predicted number field. If a quote hasn’t actually been pushed yet, the buttons say “Push to HubSpot first” instead of fabricating a link.'},
+      ]
+    },
+    {
+      v:'1.65.3', date:'June 3, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Search Console tab: which content actually closes revenue.** The **Organic Pages** table now shows **Leads / Deals / Revenue** next to clicks — it ties each organic landing page to closed-won HubSpot revenue (by matching the contact’s first-touch page), so you can see which blog posts and pages drive real deals, not just traffic. (Best-effort URL match; organic revenue is still channel-level since Google withholds the query.)'},
+        {t:'add', d:'**Sortable, paginated GSC tables + a “Hide /blog” filter.** Every column in the **Paid × Organic Overlap**, **Organic Queries**, and **Organic Pages** tables is now click-to-sort, with Prev/Next paging through *all* terms/queries/pages (not just the top 200). The Organic Pages table has a **“Hide /blog” toggle** for a clean non-blog snapshot. Plus the **Organic Leads** and **Organic Closed Rev** cards are now clickable — they pop open the underlying HubSpot contacts / deals.'},
+        {t:'add', d:'**Sync GSC honors the selected date range** (14 / 30 / 90 / 180 / 365 days) — pick a range, hit Sync GSC, and it pulls exactly that window.'},
+      ]
+    },
+    {
+      v:'1.65.2', date:'June 3, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Search Console data now actually populates (fast).** Added a dedicated **“Sync GSC”** button on the Google Search Console tab that pulls organic data just for the selected date range — so you don’t have to wait on the full 365-day Sync All (where GSC ran dead-last). Also made the organic import **batched** (it was inserting row-by-row over 100k+ daily rows, which crawled) and added a GSC line to the status bar so you can see organic sync status + any errors. Sync All now pulls a lighter 120-day GSC window.'},
+        {t:'fix', d:'**Disk-capacity guard on all syncs.** A large organic pull had filled the shared Postgres volume and briefly took the app down. Every sync now checks the database size first and **refuses with a clear message if the DB is near the volume’s limit** — instead of filling the disk. (Volume was also grown 0.5 GB → 5 GB.) Tunable via the `PG_SOFT_LIMIT_MB` env var (default 4500 MB).'},
+      ]
+    },
+    {
+      v:'1.65.1', date:'June 3, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Marketing dashboard is now tabbed: “Google Ad Spend” + new “Google Search Console”.** The existing paid-search view is unchanged (just lives under the first tab); the new tab pulls your **organic** Search Console data. Top section is the **Paid × Organic Overlap** — it flags terms you’re *paying* for that you already rank for organically (**Cannibalization** → worth testing pulling paid) vs. terms you pay for with no organic presence (**Organic gap** → paid is doing the work, e.g. competitor names). Plus an organic KPI strip (clicks / impressions / CTR / avg position, branded vs non-branded) tied to HubSpot organic leads + closed revenue, and Top Organic Queries / Pages tables. Shares the same date-range + attribution selectors as the Ad Spend tab.'},
+        {t:'add', d:'**Search Console pulls through our own Google API connection** (new `marketing/gsc-etl.js` + `marketing_gsc_queries`/`marketing_gsc_pages` tables). Run it via **↻ Sync All** or a `gsc`-only sync. Note: organic *query→deal* attribution isn’t possible (Google withholds the organic search term), so organic revenue is tied to HubSpot at the **channel** level (ORGANIC_SEARCH), not per keyword.'},
+      ]
+    },
+    {
       v:'1.65.0', date:'June 3, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Accountant Payouts Portal — a password-gated public page at `/portal/payouts`.** Lets an outside accountant view the exact HubSpot Payouts data (payouts grouped by deposit date, expandable to member payments, summary KPIs, CSV) without a WhisperRoom login. Fully walled off from the rest of the app: its own `wr_acct_session` cookie + in-memory session, no nav to anything else. Password lives ONLY in the `ACCOUNTANT_PORTAL_PASSWORD` env var (nothing hardcoded) — **the portal is disabled (503) until that env var is set in Railway.** `noindex` on every route, HTTPS-only Secure cookie, constant-time password check, 8-attempts/min login rate-limit.'},

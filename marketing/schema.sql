@@ -57,6 +57,38 @@ CREATE TABLE IF NOT EXISTS marketing_search_terms (
 );
 CREATE INDEX IF NOT EXISTS idx_marketing_search_terms_date ON marketing_search_terms(date DESC);
 
+-- Google Search Console — daily ORGANIC search performance (v1.65.1).
+-- Pulled from the Search Analytics API for the whisperroom.com property.
+-- ctr is a 0-1 fraction, position is the average rank that day. Stored daily
+-- so the dashboard's ?days=N filter sub-windows it like the Google Ads tables;
+-- GET endpoints re-aggregate (clicks/impressions summed; ctr = clicks/impr;
+-- position = impression-weighted mean). NOTE: organic query data CANNOT be
+-- joined to HubSpot deals at the query level (Google withholds the organic
+-- query, "not provided") — the HubSpot tie is channel-level (ORGANIC_SEARCH).
+CREATE TABLE IF NOT EXISTS marketing_gsc_queries (
+  date        DATE NOT NULL,
+  query       TEXT NOT NULL,
+  clicks      BIGINT,
+  impressions BIGINT,
+  ctr         NUMERIC,
+  position    NUMERIC,
+  updated_at  TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (date, query)
+);
+CREATE INDEX IF NOT EXISTS idx_marketing_gsc_queries_date ON marketing_gsc_queries(date DESC);
+
+CREATE TABLE IF NOT EXISTS marketing_gsc_pages (
+  date        DATE NOT NULL,
+  page        TEXT NOT NULL,
+  clicks      BIGINT,
+  impressions BIGINT,
+  ctr         NUMERIC,
+  position    NUMERIC,
+  updated_at  TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (date, page)
+);
+CREATE INDEX IF NOT EXISTS idx_marketing_gsc_pages_date ON marketing_gsc_pages(date DESC);
+
 -- Sync runbook — tracks when each report type was last pulled, how
 -- many rows came back, and any error. Powers the "Last synced X
 -- minutes ago" UI on the dashboard.
@@ -87,6 +119,7 @@ CREATE TABLE IF NOT EXISTS marketing_hubspot_contacts (
   first_source_data_1       TEXT,         -- hs_analytics_source_data_1       (e.g. "google")
   first_source_data_2       TEXT,         -- hs_analytics_source_data_2       (often campaign name or gclid)
   first_converting_campaign TEXT,         -- hs_analytics_first_touch_converting_campaign
+  first_url                 TEXT,         -- hs_analytics_first_url (entry page — for organic page→revenue join)
   -- Latest-touch attribution
   latest_source             TEXT,         -- hs_latest_source
   latest_source_data_1      TEXT,         -- hs_latest_source_data_1
@@ -103,6 +136,9 @@ CREATE TABLE IF NOT EXISTS marketing_hubspot_contacts (
 CREATE INDEX IF NOT EXISTS idx_mkt_hs_contacts_gclid   ON marketing_hubspot_contacts(gclid) WHERE gclid IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_mkt_hs_contacts_email   ON marketing_hubspot_contacts(email);
 CREATE INDEX IF NOT EXISTS idx_mkt_hs_contacts_created ON marketing_hubspot_contacts(created_at);
+-- first_url added after initial deploy — CREATE IF NOT EXISTS won't add a column
+-- to an already-created table, so ALTER it in idempotently.
+ALTER TABLE marketing_hubspot_contacts ADD COLUMN IF NOT EXISTS first_url TEXT;
 
 -- HubSpot deals mirror — Sales Pipeline only (pipeline ID = 'default';
 -- Test + Ecommerce pipelines are excluded so marketing reporting stays

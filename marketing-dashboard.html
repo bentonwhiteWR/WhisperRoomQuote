@@ -127,6 +127,24 @@ th.sortable .sort-arrow{display:inline-block;margin-left:3px;font-size:9px;color
 td.drillable:hover{color:var(--orange)}
 .ad-quality .drillable:hover,.seg-rollup .drillable:hover{filter:brightness(1.18)}
 .card.drillable:hover{border-color:var(--orange)}
+/* v1.65.1 — marketing sub-tabs (Google Ad Spend | Google Search Console) + overlap tags */
+.mtab-bar{display:flex;gap:2px;border-bottom:1px solid var(--border);margin:18px 0 22px;flex-wrap:wrap}
+.mtab{background:none;border:none;color:var(--muted);font-size:12px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:10px 18px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.mtab:hover{color:var(--text)}
+.mtab.active{color:var(--orange);border-bottom-color:var(--orange)}
+.ov-tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;border:1px solid transparent}
+.ov-cannib{background:rgba(244,63,94,.14);color:#fb7185;border-color:rgba(244,63,94,.28)}
+.ov-gap{background:rgba(34,197,94,.13);color:#5fd98a;border-color:rgba(34,197,94,.28)}
+.ov-cov{background:rgba(148,163,184,.12);color:#94a3b8;border-color:rgba(148,163,184,.22)}
+.ov-org{background:rgba(59,130,246,.13);color:#6ba8ff;border-color:rgba(59,130,246,.25)}
+.ov-brand{background:rgba(245,158,11,.13);color:#f0b54e;border-color:rgba(245,158,11,.28)}
+.gsc-pager{display:flex;align-items:center;justify-content:center;gap:14px;padding:12px 0 2px;font-size:12px;color:var(--muted)}
+.gsc-pager button{background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer}
+.gsc-pager button:hover:not(:disabled){border-color:var(--orange);color:var(--orange)}
+.gsc-pager button:disabled{opacity:.4;cursor:default}
+.gsc-toolbar{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);margin:-6px 0 12px;cursor:pointer}
+.gsc-toolbar input{cursor:pointer}
+.gsc-toolbar code{background:var(--surface2);padding:1px 5px;border-radius:4px;font-size:11px}
 .card.drillable .card-value{transition:color .12s}
 .card.drillable:hover .card-value{color:var(--orange)}
 .funnel-stage.drillable:hover .funnel-stage-value{color:var(--orange)}
@@ -204,8 +222,8 @@ td.drillable:hover{color:var(--orange)}
 </div>
 
 <div class="main">
-  <h1>Marketing <span>Spend</span></h1>
-  <div class="subtitle">Google Ads pull-and-analyze. Press Sync to pull the last 365 days of data into Postgres; queries below run against the local table (no API hit per click).</div>
+  <h1>Marketing <span>Analytics</span></h1>
+  <div class="subtitle">Google Ads + Search Console, joined to HubSpot revenue. Press Sync to pull the latest data into Postgres; everything below runs against the local tables (no API hit per click).</div>
 
   <!-- Status bar — shows env readiness + last sync timestamps -->
   <div id="statusBar" class="status-bar">
@@ -240,6 +258,15 @@ td.drillable:hover{color:var(--orange)}
     <button class="model-pill"        data-model="all"   onclick="changeModel('all')">All ad interactions</button>
     <span class="date-range-hint" id="modelHint">First interaction = HubSpot's "First ad interaction" (strict first touch).</span>
   </div>
+
+  <!-- v1.65.1 — sub-tabs. Date range + attribution model + Sync are shared
+       chrome above; the two panels below swap. -->
+  <div class="mtab-bar">
+    <button class="mtab active" data-tab="ads" onclick="switchMarketingTab('ads')">Google Ad Spend</button>
+    <button class="mtab"        data-tab="gsc" onclick="switchMarketingTab('gsc')">Google Search Console</button>
+  </div>
+
+  <div id="tabAds" class="tab-panel">
 
   <!-- Attribution coverage panel — the trust thermometer (v1.46.1).
        Hidden until /api/marketing/attribution-coverage returns data. -->
@@ -331,6 +358,65 @@ td.drillable:hover{color:var(--orange)}
     </div>
     <div id="searchTermsBody"><div class="empty">No data yet.</div></div>
   </div>
+  </div><!-- /tabAds -->
+
+  <!-- ════════ Google Search Console tab (v1.65.1) ════════ -->
+  <div id="tabGsc" class="tab-panel" style="display:none">
+
+    <!-- GSC-only sync (bounded to the current date range — far faster than the
+         365-day Sync All, and lets you populate organic on its own). -->
+    <div class="status-bar" style="margin-bottom:16px">
+      <div class="status-text">
+        <div id="gscTabHeadline">Google Search Console (organic)</div>
+        <span class="muted" id="gscTabDetail">Press “Sync GSC” to pull organic data for the selected date range.</span>
+      </div>
+      <button class="sync-btn" id="syncGscBtn" onclick="runSyncGsc()">↻ Sync GSC</button>
+    </div>
+
+    <!-- Organic KPI strip: GSC totals + channel-level HubSpot tie -->
+    <div class="cards" id="gscCards" style="display:none">
+      <div class="card"><div class="card-label" id="lblGscClicks">Organic Clicks (90d)</div><div class="card-value" id="gscClicks">—</div><div class="card-sub" id="gscClicksSub">—</div></div>
+      <div class="card"><div class="card-label" id="lblGscImpr">Impressions (90d)</div><div class="card-value" id="gscImpr">—</div><div class="card-sub">organic search</div></div>
+      <div class="card"><div class="card-label">Avg CTR</div><div class="card-value" id="gscCtr">—</div><div class="card-sub">clicks ÷ impressions</div></div>
+      <div class="card" title="Impression-weighted average organic position. Lower is better (1 = top of results)."><div class="card-label">Avg Position</div><div class="card-value" id="gscPos">—</div><div class="card-sub">lower = higher rank</div></div>
+      <div class="card drillable" onclick="openDrill('organic-leads','Organic leads — HubSpot contacts')" title="HubSpot contacts whose source is ORGANIC_SEARCH (channel-level — Google withholds the organic query, so organic leads can't be split by keyword), created in range under the selected model. Click to list the contacts."><div class="card-label" id="lblGscLeads">Organic Leads (90d)</div><div class="card-value" id="gscLeads">—</div><div class="card-sub" id="gscLeadsSub">—</div></div>
+      <div class="card drillable" onclick="openDrill('organic-revenue','Organic closed-won deals')" title="Closed-won revenue from ORGANIC_SEARCH-sourced contacts, by close date in range, under the selected model. Click to list the deals."><div class="card-label" id="lblGscRev">Organic Closed Rev (90d)</div><div class="card-value" id="gscRev">—</div><div class="card-sub" id="gscRevSub">—</div></div>
+    </div>
+
+    <!-- Hero: paid × organic overlap -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">Paid × Organic Overlap</div>
+        <span class="section-meta" id="gscOverlapMeta">—</span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
+        Where paid search terms and organic queries collide.
+        <span class="ov-tag ov-cannib">Cannibalization</span> = paying for a term you already rank top-5 organically (candidate to test pulling paid).
+        <span class="ov-tag ov-gap">Organic gap</span> = paying with ~no organic presence (paid is essential here — e.g. competitor terms).
+        Query-level organic→deal attribution isn't possible (Google withholds organic queries); the revenue tie is channel-level in the cards above.
+      </div>
+      <div id="gscOverlapBody"><div class="empty">No data yet. Press <strong>↻ Sync All</strong> to pull Google Ads + Search Console.</div></div>
+    </div>
+
+    <!-- Organic queries -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">Organic Queries</div>
+        <span class="section-meta" id="gscQueriesMeta">—</span>
+      </div>
+      <div id="gscQueriesBody"><div class="empty">No data yet.</div></div>
+    </div>
+
+    <!-- Organic pages -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">Organic Pages</div>
+        <span class="section-meta" id="gscPagesMeta">—</span>
+      </div>
+      <label class="gsc-toolbar"><input type="checkbox" onchange="toggleHideBlog(this.checked)"> Hide <code>/blog</code> pages (non-blog snapshot)</label>
+      <div id="gscPagesBody"><div class="empty">No data yet.</div></div>
+    </div>
+  </div><!-- /tabGsc -->
 </div>
 
 <!-- Drill-down modal (v1.59.2) — lists the actual HubSpot records behind a
@@ -449,6 +535,10 @@ async function loadStatus() {
     } else {
       bits.push('HubSpot: ready, no data pulled yet');
     }
+    const gscSync = findSync('gsc');
+    if (gscSync && gscSync.last_synced_at) {
+      bits.push(`GSC: ${fmtInt(gscSync.rows_synced)} organic rows (${agoText(gscSync.last_synced_at)})${gscSync.error ? ' ⚠ ' + gscSync.error.slice(0, 80) : ''}`);
+    }
     bits.push('Press Sync All to refresh everything (Google Ads + HubSpot). Existing rows are upserted.');
     det.textContent = bits.join(' — ');
   } catch(e) {
@@ -482,7 +572,32 @@ async function runSync() {
     btn.disabled = false;
     btn.textContent = '↻ Sync All';
     await loadStatus();
-    await loadAllTables();
+    await refreshActiveTab();
+  }
+}
+
+// v1.65.2 — GSC-only sync, bounded to the current date range (fast; avoids the
+// 365-day Sync All). Populates the organic tables, then reloads the GSC tab.
+async function runSyncGsc() {
+  const btn = document.getElementById('syncGscBtn');
+  btn.disabled = true;
+  btn.textContent = 'Syncing GSC…';
+  try {
+    const res  = await fetch('/api/marketing/sync', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report: 'gsc', daysBack: currentDaysBack }),
+    });
+    const data = await res.json();
+    if (!data.ok) alert('GSC sync failed: ' + (data.error || 'unknown error'));
+  } catch(e) {
+    alert('GSC sync error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '↻ Sync GSC';
+    await loadStatus();
+    await loadGscTab();
   }
 }
 
@@ -518,6 +633,37 @@ const tableState = {
   campaigns:   { rawRows: [], attrRows: [], sortBy: 'cost', sortDir: 'desc' },
   keywords:    { rawRows: [], attrRows: [], sortBy: 'cost', sortDir: 'desc' },
   searchTerms: { rawRows: [], attrRows: [], sortBy: 'cost', sortDir: 'desc' },
+  // v1.65.3 — GSC tables: sortable + paginated. `rows` holds the full set;
+  // gscPaint() reads columns/rowFn/bodyId/metaId from here.
+  gscOverlap: {
+    rows: [], sortBy: 'paid_cost', sortDir: 'desc', page: 0,
+    bodyId: 'gscOverlapBody', metaId: 'gscOverlapMeta',
+    columns: [
+      { key: 'term', label: 'Term' }, { key: 'paid_cost', label: 'Paid $', num: 1 },
+      { key: 'paid_clicks', label: 'Paid clicks', num: 1 }, { key: 'organic_clicks', label: 'Organic clicks', num: 1 },
+      { key: 'organic_position', label: 'Organic pos', num: 1 }, { key: 'tag', label: 'Overlap' },
+    ],
+    rowFn: r => `<tr><td>${escHtml(r.term)}</td><td class="num">${r.paid_cost ? fmtUSD(r.paid_cost) : '—'}</td><td class="num">${fmtInt(r.paid_clicks)}</td><td class="num">${fmtInt(r.organic_clicks)}</td><td class="num">${r.organic_position != null ? r.organic_position.toFixed(1) : '—'}</td><td><span class="ov-tag ${r.cls}">${r.tag}</span></td></tr>`,
+  },
+  gscQueries: {
+    rows: [], sortBy: 'clicks', sortDir: 'desc', page: 0,
+    bodyId: 'gscQueriesBody', metaId: 'gscQueriesMeta',
+    columns: [
+      { key: 'query', label: 'Query' }, { key: 'clicks', label: 'Clicks', num: 1 },
+      { key: 'impressions', label: 'Impr.', num: 1 }, { key: 'ctr', label: 'CTR', num: 1 }, { key: 'position', label: 'Avg pos', num: 1 },
+    ],
+    rowFn: r => `<tr><td>${escHtml(r.query)}${/whisper/i.test(r.query) ? ' <span class="ov-tag ov-brand">brand</span>' : ''}</td><td class="num">${fmtInt(r.clicks)}</td><td class="num">${fmtInt(r.impressions)}</td><td class="num">${(r.ctr * 100).toFixed(1)}%</td><td class="num">${r.position.toFixed(1)}</td></tr>`,
+  },
+  gscPages: {
+    rows: [], sortBy: 'clicks', sortDir: 'desc', page: 0, hideBlog: false,
+    bodyId: 'gscPagesBody', metaId: 'gscPagesMeta',
+    columns: [
+      { key: 'page', label: 'Page' }, { key: 'clicks', label: 'Clicks', num: 1 },
+      { key: 'impressions', label: 'Impr.', num: 1 }, { key: 'ctr', label: 'CTR', num: 1 }, { key: 'position', label: 'Avg pos', num: 1 },
+      { key: 'leads', label: 'Leads', num: 1 }, { key: 'deals_won', label: 'Deals', num: 1 }, { key: 'revenue_won', label: 'Revenue', num: 1 },
+    ],
+    rowFn: r => { const u = r.page || '', short = u.replace(/^https?:\/\/(www\.)?whisperroom\.com/i, '') || '/'; return `<tr><td><a href="${escHtml(u)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(short)}</a></td><td class="num">${fmtInt(r.clicks)}</td><td class="num">${fmtInt(r.impressions)}</td><td class="num">${(r.ctr * 100).toFixed(1)}%</td><td class="num">${r.position.toFixed(1)}</td><td class="num">${fmtInt(r.leads)}</td><td class="num">${fmtInt(r.deals_won)}</td><td class="num">${r.revenue_won ? fmtUSD(r.revenue_won) : '—'}</td></tr>`; },
+  },
 };
 
 function changeDateRange(days) {
@@ -526,7 +672,7 @@ function changeDateRange(days) {
   document.querySelectorAll('.date-pill').forEach(el => {
     el.classList.toggle('active', parseInt(el.dataset.days) === days);
   });
-  loadAllTables();
+  refreshActiveTab();
 }
 
 // v1.50.8 — switch attribution model. Refetches the closed-loop endpoints
@@ -540,7 +686,123 @@ function changeModel(model) {
   });
   const hint = document.getElementById('modelHint');
   if (hint) hint.textContent = MODEL_HINTS[model] || '';
-  loadAllTables();
+  refreshActiveTab();
+}
+
+// ── v1.65.1 — sub-tab switching (Google Ad Spend | Google Search Console) ──
+let currentTab = 'ads';
+function switchMarketingTab(name) {
+  currentTab = name;
+  document.getElementById('tabAds').style.display = name === 'ads' ? '' : 'none';
+  document.getElementById('tabGsc').style.display = name === 'gsc' ? '' : 'none';
+  document.querySelectorAll('.mtab').forEach(el => el.classList.toggle('active', el.dataset.tab === name));
+  if (name === 'gsc') loadGscTab();
+}
+// Reload only the visible tab when the shared date range / model changes.
+function refreshActiveTab() { return currentTab === 'gsc' ? loadGscTab() : loadAllTables(); }
+
+// Pull + render the four GSC views for the current window + model.
+async function loadGscTab() {
+  const q  = `?days=${currentDaysBack}`;
+  const qm = `?days=${currentDaysBack}&model=${currentModel}`;
+  const [sum, ov, qs, pg] = await Promise.all([
+    fetch('/api/marketing/gsc-summary' + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
+    fetch('/api/marketing/gsc-overlap' + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/gsc-queries' + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/gsc-pages'   + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+  ]);
+  renderGscCards(sum || {}, (qs && qs.rows) || []);
+  renderGscOverlap((ov && ov.rows) || []);
+  renderGscQueries((qs && qs.rows) || []);
+  renderGscPages((pg && pg.rows) || []);
+  const det = document.getElementById('gscTabDetail');
+  if (det) det.textContent = `Showing organic data for the last ${currentDaysBack} days. Press “Sync GSC” to (re)pull this range — works for 14/30/90/180/365d.`;
+}
+
+function renderGscCards(s, qrows) {
+  const cards  = document.getElementById('gscCards');
+  const clicks = +s.organic_clicks || 0, impr = +s.organic_impressions || 0, branded = +s.organic_branded_clicks || 0;
+  const hasData = clicks || impr || (+s.leads || 0) || (+s.revenue_won || 0);
+  cards.style.display = hasData ? 'grid' : 'none';
+  if (!hasData) return;
+  const d = currentDaysBack, ml = MODEL_LABELS[currentModel] || 'First interaction';
+  let wpos = 0, wimp = 0;
+  (qrows || []).forEach(r => { const ip = +r.impressions || 0; wpos += (+r.position || 0) * ip; wimp += ip; });
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('lblGscClicks', `Organic Clicks (${d}d)`);
+  set('lblGscImpr',   `Impressions (${d}d)`);
+  set('lblGscLeads',  `Organic Leads (${d}d)`);
+  set('lblGscRev',    `Organic Closed Rev (${d}d)`);
+  set('gscClicks', fmtInt(clicks));
+  set('gscClicksSub', clicks ? `${Math.round(100 * branded / clicks)}% branded · ${Math.round(100 * (clicks - branded) / clicks)}% non-branded` : '—');
+  set('gscImpr', fmtInt(impr));
+  set('gscCtr', impr ? (100 * clicks / impr).toFixed(2) + '%' : '—');
+  set('gscPos', wimp ? (wpos / wimp).toFixed(1) : '—');
+  set('gscLeads', fmtInt(+s.leads || 0));
+  set('gscLeadsSub', `organic · ${ml}`);
+  set('gscRev', fmtUSD(+s.revenue_won || 0));
+  set('gscRevSub', `${fmtInt(+s.deals_won || 0)} closed-won deals`);
+}
+
+// v1.65.3 — GSC tables are sortable + paginated. Each render fn stashes its
+// full rows (+ derived fields) in tableState; gscPaint() sorts (sortRows),
+// optionally filters (Pages /blog), paginates (50/page), and draws sortable
+// headers + a pager. sortBy() re-paints on header click; gscPage() pages.
+const GSC_PAGE_SIZE = 50;
+function gscPaint(name) {
+  const st = tableState[name];
+  const bodyEl = document.getElementById(st.bodyId), metaEl = document.getElementById(st.metaId);
+  let rows = st.rows || [];
+  if (!rows.length) { bodyEl.innerHTML = '<div class="empty">No data yet. Press <strong>↻ Sync GSC</strong> to pull organic data.</div>'; if (metaEl) metaEl.textContent = ''; return; }
+  if (name === 'gscPages' && st.hideBlog) rows = rows.filter(r => !/\/blog/i.test(r.page || ''));
+  const sorted = sortRows(name, rows);
+  const total  = sorted.length;
+  const pages  = Math.max(1, Math.ceil(total / GSC_PAGE_SIZE));
+  st.page = Math.min(Math.max(st.page || 0, 0), pages - 1);
+  const start = st.page * GSC_PAGE_SIZE;
+  const slice = sorted.slice(start, start + GSC_PAGE_SIZE);
+  if (metaEl) metaEl.innerHTML = st.metaFn ? st.metaFn(total) : `${fmtInt(total)} rows`;
+  const thead = '<tr>' + st.columns.map(c => sortableTh(name, c.key, c.label, c.num ? 'num' : '')).join('') + '</tr>';
+  const pager = total > GSC_PAGE_SIZE ? `<div class="gsc-pager">
+      <button onclick="gscPage('${name}',-1)"${st.page === 0 ? ' disabled' : ''}>‹ Prev</button>
+      <span>${fmtInt(start + 1)}–${fmtInt(Math.min(start + GSC_PAGE_SIZE, total))} of ${fmtInt(total)}</span>
+      <button onclick="gscPage('${name}',1)"${st.page >= pages - 1 ? ' disabled' : ''}>Next ›</button>
+    </div>` : '';
+  bodyEl.innerHTML = `<table><thead>${thead}</thead><tbody>${slice.map(st.rowFn).join('')}</tbody></table>${pager}`;
+}
+function gscPage(name, delta) { tableState[name].page += delta; gscPaint(name); }
+function toggleHideBlog(on) { tableState.gscPages.hideBlog = on; tableState.gscPages.page = 0; gscPaint('gscPages'); }
+
+function renderGscOverlap(rows) {
+  const isBrand = t => /whisper/i.test(t);
+  let cannibBranded = 0;
+  const tagged = (rows || []).map(r => {
+    const cost = +r.paid_cost || 0, pos = r.organic_position == null ? null : +r.organic_position;
+    let tag, cls;
+    if (cost > 0 && pos != null && pos <= 5) { tag = 'Cannibalization'; cls = 'ov-cannib'; if (isBrand(r.term)) cannibBranded += cost; }
+    else if (cost > 0 && (pos == null || pos > 20)) { tag = 'Organic gap'; cls = 'ov-gap'; }
+    else if (cost > 0) { tag = 'Covered'; cls = 'ov-cov'; }
+    else { tag = 'Organic only'; cls = 'ov-org'; }
+    return { term: r.term, paid_cost: cost, paid_clicks: +r.paid_clicks || 0, organic_clicks: +r.organic_clicks || 0, organic_position: pos, tag, cls };
+  });
+  const st = tableState.gscOverlap;
+  st.rows = tagged; st.page = 0;
+  st.metaFn = total => `Branded cannibalization-risk spend: <strong style="color:var(--orange)">${fmtUSD(cannibBranded)}</strong> · ${fmtInt(total)} terms`;
+  gscPaint('gscOverlap');
+}
+function renderGscQueries(rows) {
+  const st = tableState.gscQueries;
+  st.rows = (rows || []).map(r => ({ query: r.query, clicks: +r.clicks || 0, impressions: +r.impressions || 0, ctr: +r.ctr || 0, position: +r.position || 0 }));
+  st.page = 0;
+  st.metaFn = total => `${fmtInt(total)} queries`;
+  gscPaint('gscQueries');
+}
+function renderGscPages(rows) {
+  const st = tableState.gscPages;
+  st.rows = (rows || []).map(r => ({ page: r.page, clicks: +r.clicks || 0, impressions: +r.impressions || 0, ctr: +r.ctr || 0, position: +r.position || 0, leads: +r.leads || 0, deals_won: +r.deals_won || 0, revenue_won: +r.revenue_won || 0 }));
+  st.page = 0;
+  st.metaFn = total => `${fmtInt(total)} pages${st.hideBlog ? ' · /blog hidden' : ''}`;
+  gscPaint('gscPages');
 }
 
 // v1.51.x — expand/collapse the "why this differs from HubSpot" notes.
@@ -625,6 +887,7 @@ function sortBy(tableName, column) {
   if (tableName === 'campaigns')   renderCampaigns(s.rawRows, s.attrRows);
   else if (tableName === 'keywords') renderKeywords(s.rawRows);
   else if (tableName === 'searchTerms') renderSearchTerms(s.rawRows, s.attrRows);
+  else if (tableName === 'gscOverlap' || tableName === 'gscQueries' || tableName === 'gscPages') { s.page = 0; gscPaint(tableName); }
 }
 
 // Apply current sort to a list of aggregated row objects. Nulls always

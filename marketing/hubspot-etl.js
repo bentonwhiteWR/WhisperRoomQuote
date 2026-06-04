@@ -41,6 +41,7 @@ const CONTACT_PROPS = [
   'hs_analytics_source_data_1',
   'hs_analytics_source_data_2',
   'hs_analytics_first_touch_converting_campaign',
+  'hs_analytics_first_url',
   'hs_latest_source',
   'hs_latest_source_data_1',
   'hs_latest_source_data_2',
@@ -262,8 +263,8 @@ async function _upsertContact(db, c) {
        first_source, first_source_data_1, first_source_data_2, first_converting_campaign,
        latest_source, latest_source_data_1, latest_source_data_2, latest_source_at,
        lifecycle_stage, lead_status,
-       created_at, last_modified_at, synced_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
+       created_at, last_modified_at, first_url, synced_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
     ON CONFLICT (contact_id) DO UPDATE SET
       email                     = EXCLUDED.email,
       gclid                     = EXCLUDED.gclid,
@@ -280,6 +281,7 @@ async function _upsertContact(db, c) {
       lead_status               = EXCLUDED.lead_status,
       created_at                = EXCLUDED.created_at,
       last_modified_at          = EXCLUDED.last_modified_at,
+      first_url                 = EXCLUDED.first_url,
       synced_at                 = NOW()
   `, [
     parseInt(c.id),
@@ -298,6 +300,7 @@ async function _upsertContact(db, c) {
     p.hs_lead_status || null,
     _parseHsDate(p.createdate),
     _parseHsDate(p.lastmodifieddate),
+    p.hs_analytics_first_url || null,
   ]);
 }
 

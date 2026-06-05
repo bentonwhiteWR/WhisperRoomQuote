@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.5', date:'June 5, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**Dev log: end-of-session writeup for June 5.** No app change — refreshed the internal DEVLOG (Current focus + full session recap of today: Packing List generator, /weights tooling, Duplicate/Add Pallet, QB Activity, Drive PDF fix, pallet reductions).'},
+      ]
+    },
+    {
       v:'1.72.4', date:'June 5, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Freight: lowered pallet counts on several large booths.** After re-checking real skid heights, these models now ship on fewer pallets &mdash; the short skid is consolidated onto a taller one: <b>MDL 10284, 96192, 102168, 102186</b> and their No-Vent (NV) twins. <b>MDL 102126</b> pallet 3 footprint was also corrected. Freight quotes, the Quote Weight box, the packing-list/weights tools, and order processing all reflect the new counts.'},

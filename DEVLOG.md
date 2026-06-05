@@ -6,7 +6,26 @@ Internal development notes. Last updated 2026-06-05.
 
 ---
 
-## Current focus (2026-06-04 — quote/PO fixes shipped to prod; **Packing List migration** scoped + base-data extraction underway)
+## Current focus (2026-06-05 EOD — Packing List generator live (Phase 1) + /weights pallet tooling + Add/Duplicate Quote; pallet-reduction pass underway)
+
+**Most recent shipped to PROD:** merge `75306dc` (2026-06-05) — Add Pallet to quotes + marketing ideal-page mapping. (Earlier today: `71ddd67` — /weights + Packing List generator + QB Activity + Drive PDF fix.) **Through v1.72.1 is on `main`.** **On `staging`, NOT promoted: v1.72.2–v1.72.4** (Gabe marketing 1.72.2/1.72.3 + the pallet-reduction batch 1.72.4).
+
+**State of play** (full detail in the 2026-06-05 session writeup below):
+- **Packing List generator — Phase 1 spine LIVE** (v1.69.0). Quote → rooms (each `MDL…` line = a booth, following lines = its features) → booth base BOM → `/pl/:quoteNumber` viewer ("View Packing List" button in builder). Booth BOM is exact (weights tie out); **optional features are detected but flagged, NOT yet substituted.**
+- **PL data foundation done & reconciled:** `lib/pl-data/` = `base-bom.json` (104) + `components-master.json` (1036 parts; **104/104 BOMs reconcile, 0 weight mismatch**) + `pallet-dims.json` (104). Source artifacts live in `WR PO System\PL Files\`.
+- **/weights** internal tool: net→gross vs HubSpot price book · Net/Pallet vs 1800-lb max · expandable per-pallet dimensions.
+- **Quote Builder adds:** silent weight sync on open (v1.66.2) · **Duplicate Quote** (v1.71.0) · **+ Add Pallet** (v1.72.0, default 90×47×40).
+- **Pallet-reduction pass underway** — Benton lists models; I apply the **−6″-skid consolidation** across `BOOTH_DATA` + `PALLETS_PER_MDL` + regenerate `pallet-dims.json`. v1.72.4 did 102168/102186/96192 (E/ENV) + 102168/102186 (S/SNV) + 10284 (+102126 footprint). Procedure saved in `project_pallet_count_reductions.md`.
+
+**NEXT:**
+1. **Promote v1.72.2–1.72.4 → main** when Benton is ready.
+2. **More pallet reductions** as Benton lists them (−6″ rule; E↔ENV / S↔SNV twins; 9696 is the one mismatch pair).
+3. **PL feature substitution rules** — EFS/VSS/MJP **confirmed** (`+F03×vents`, `+F02×vents`, `+F09`); DESK/SL/ADA/windows/hinge **deferred** until Benton adds more configurator logic (his call). When resumed: mine size-dependent codes from `ADAInfo`/`Window_Sales` sheets + base-BOM diffs. **Key finding: hinge is a real component swap** (`C113/C114 ↔ C115/C116`; ADA `Z30/Z32 ↔ Z31/Z33`), not just a header note.
+4. **/weights Δ → catalog:** push corrected gross weights into HubSpot/QB where Δ≠0 (manual; app has no catalog write path).
+
+---
+
+## Earlier focus (2026-06-04 — quote/PO fixes shipped to prod; **Packing List migration** scoped + base-data extraction underway)
 
 **Most recent shipped to PROD:** merge `37a2cfe` (2026-06-04). v1.65.4 → v1.65.12 are all on `main`.
 
@@ -369,6 +388,31 @@ Yesterday's progression (May 13):
 - **Parked architectural cleanup:** Extract `BOOTH_DATA` (and probably `BOOTH_PRESETS`) out of `quote-builder.html` into a shared `lib/booth-data.js` served as a static JS bundle, included by both `quote-builder.html` and `orders-dashboard.html` via `<script src>`. The v1.12.4 incident — two divergent copies silently drifting — is the kind of bug this prevents. Low priority but high ROI when next touching this area.
 
 **Tooling note:** As of 2026-05-08 the user is moving day-to-day editing from Claude Desktop to Cursor. Local clone lives at `C:\Users\bento\Documents\Claude\WhisperRoomQuote-staging`. Workflow stays the same (staging-only, explicit ask to promote to main).
+
+---
+
+## Session writeup — June 5, 2026 (v1.66.2 → v1.72.4 — Packing List generator + /weights tooling + Add/Duplicate Quote + QB Activity)
+
+Big multi-thread day. **Two prod promotes:** `71ddd67` (mid-day: /weights + PL generator + QB Activity + Drive PDF fix + weight corrections) and `75306dc` (Add Pallet + marketing). Through **v1.72.1 on `main`**; **v1.72.2–1.72.4 on staging** (Gabe marketing + the pallet batch) awaiting the next promote. Gabe shipped marketing GSC/SEO/Growth-Engine work in parallel all day, so nearly every push collided on the shared `package.json`/changelog/DEVLOG — handled by rebase + renumber each time (the package.json detangling in `project_gabe_scope` would end this).
+
+**Thread 1 — Weights data + /weights tool.**
+- v1.66.2: quote-open now **silently syncs line-item weights** to the catalog (price still prompts); refactored later into shared `runPriceCheck()`.
+- Built the hidden **`/weights`** reconciliation page (v1.67.0): per-MDL net (PL BOM) → pallets → gross (net + pallets×144) → HubSpot price-book weight → Δ. NV variants inherit pallet count (SNV→S/ENV→E) (v1.67.2). Refreshed with the **rounded re-pull** of all 104 base PLs (v1.67.3; `lib/model-weights.json`, all nets whole-integer). Added **Net/Pallet column** vs 1800-lb max with reduce hints (v1.69.2) and **click-to-expand per-pallet dimensions** (v1.70.1, from `BOOTH_DATA` → `lib/pl-data/pallet-dims.json`).
+- Fixed a **latent freight bug**: 102168/102186 were missing from `PALLETS_PER_MDL` (under-counted pallets in process-order) (v1.67.4). Refreshed corrected PLs as Benton fixed them (96192 NV, 102186 ENV, 102168 SNV/ENV).
+
+**Thread 2 — PL data foundation (Phase 0, complete & reconciled).** Re-extracted `base_bom.json` (rounded). **Built `components-master.json` from the workbook `Parts` sheet** (1036 parts — had to bypass `extract_pl.py`'s 500-row cap by reading the sheet directly). **Validation: 104/104 base BOMs fully resolve, 0 weight mismatches** — Σ(component lb×qty) reproduces every model's net. Slimmed into `lib/pl-data/base-bom.json` + `components-master.json`.
+
+**Thread 3 — PL generator Phase 1 spine (v1.69.0, LIVE).** `lib/packing-list.js` `generate(lineItems)` → rooms (MDL-boundary parse) → booth BOM → `GET /pl/:quoteNumber` + `packing-list.html` viewer (per-room tables, exact weights, hinge/foam header defaults, editable qty/add/remove, **optional features flagged not applied**). "View Packing List" button by Build Assembly Manual. **Started feature-rule derivation** from the 5 example PLs (their headers list the features!): **EFS→+F03×vents, VSS→+F02×vents, MJP→+F09 confirmed**; DESK/SL/ADA/windows deferred. **Findings:** hinge/foam header fields are mostly notes BUT **hinge is actually a component swap** (door/opening codes flip by hand); features scale with vent count / booth size; windows aren't always in the header.
+
+**Thread 4 — Quote Builder features.** **Duplicate Quote** (v1.71.0): search any past quote (customer/deal/#) → copy its line items in → re-verify prices; reuses `/api/history`, products-only. Moved its button into the Customer Info header (v1.71.1). **+ Add Pallet** (v1.72.0, default 90×47×40 in v1.72.1): manual pallets for loose components; centralized all pallet math into `getQuotePallets()` so extras flow into the freight quote (weight redistributes), weight box, intl request, snapshot, and order pallet count.
+
+**Thread 5 — QB Activity finder (v1.68.0).** New "QB Activity" tab on `/accounting`: search QuickBooks changes by date + type, deep-link to each record. **Verified QBO has NO public audit-log API** — can get what/when via `MetaData.LastUpdatedTime`/CDC but never "who" (saved `reference_qbo_no_audit_log_api`). (Gabe later enriched it to v1.70.0.)
+
+**Thread 6 — Drive PDF crash fix (v1.67.5).** Reps hit "Failed to launch the browser process … posix_spawn chrome_crashpad_handler: Resource temporarily unavailable" on Drive uploads. Root cause: the freight tracking poller launched a **second, uncoordinated Chromium** outside pdf.js's single-flight semaphore. Fix: shared `pdf.withBrowser()` — **only one Chromium app-wide now** (saved `project_single_chromium_rule`).
+
+**Thread 7 — Pallet-reduction pass (v1.72.4, in progress).** Benton is lowering pallet counts on large booths to cut LTL handling units. Rule: remove a skid, add its product height (**skid height − 6″**) onto a kept pallet; apply to both variant twins. Did 102168/102186/96192 (5→4), 102168 S/102186 S (3→2), 10284 (3→2, then rebalanced), 102126 footprint. Touches `BOOTH_DATA` + `PALLETS_PER_MDL` + regenerated `pallet-dims.json`. Procedure saved (`project_pallet_count_reductions`).
+
+**Open / next:** promote 1.72.2–1.72.4; more pallet reductions; resume PL feature rules (DESK/SL/ADA/windows/hinge) once Benton adds configurator logic; push /weights Δ corrections into the HubSpot catalog. `PACKING_LIST_SCOPE.md` still untracked.
 
 ---
 
@@ -831,6 +875,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.72.5  | 2026-06-05 | **DEVLOG: end-of-session writeup for 2026-06-05** (Current focus refreshed to EOD state + full June-5 session writeup). No runtime change. |
 | 1.72.4  | 2026-06-05 | **Pallet-count reductions (freight) — batch.** Edited `BOOTH_DATA` (quote-builder.html) + `PALLETS_PER_MDL` (quote-server.js) + regenerated `lib/pl-data/pallet-dims.json`. Rule: remove a skid, add its product height (skid height − 6″) onto a kept pallet; applied to both variant twins (E↔ENV, S↔SNV). **102168 E/ENV 5→4** (P3→P2=59), **102186 E/ENV 5→4** (P3→P2=59), **96192 E/ENV 5→4** (P3→P1=60), **102168 S/SNV 3→2** (P2=59), **102186 S/SNV 3→2** (P2=59), **10284 E/ENV 3→2** (P3 onto P2, then rebalanced 7″ P2→P1 ⇒ P1 90×47×47 / P2 108×47×68). **102126 E/ENV**: P3 footprint 108→90 (now 90×47×48), count unchanged (3). NV twins still mirror vented except 9696 (untouched). |
 | 1.72.1  | 2026-06-05 | **Add Pallet default dims → 90×47×40** (was 48×40×48) in `addManualPallet()`. |
 | 1.72.0  | 2026-06-05 | **Quote Builder: manual "+ Add Pallet".** New `manualPallets` global [{l,w,h}] + `+ Add Pallet` button in the Quote Weight box. Centralized all pallet math into `getQuotePallets()` (booth pallets from BOOTH_DATA + manual) — refactored the 4 spots that built pallets from BOOTH_DATA (weight box, ABF freight `allPallets`, intl summary, intl email) to use it, so manual pallets flow into the freight rate (weight redistributes across all skids), totals, and intl request. Persisted in snapshot (`manualPallets` added to both client push payloads, `saveQuoteToHistory`, server create-invoice destructure + `saveQuoteToDb` call); restored in `loadFromHistoryEntry`; cleared in newQuote/reset. process-order pallet count = booth pallets + `manualPallets.length` (from body, fallback quoteSnap). Default new pallet 48×40×48, editable/removable. |

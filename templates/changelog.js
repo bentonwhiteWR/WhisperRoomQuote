@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.71.1', date:'June 5, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Duplicate Quote button moved into the Customer Information header.** It now sits at the top-right of section 1 instead of up by + New Quote.'},
+      ]
+    },
+    {
       v:'1.71.0', date:'June 5, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Quote Builder: &ldquo;Duplicate Quote&rdquo; button.** Next to <b>+ New Quote</b>, hit <b>Duplicate Quote</b>, search any past quote by customer, deal name, or quote number, and pick it &mdash; its line items (product, price, description, qty, weight) copy straight into your current quote, and prices re-verify against the catalog just like opening a quote. Perfect for near-identical orders. (Customer &amp; freight stay as your current quote &mdash; it duplicates the products, not the whole quote, and asks before replacing items you have already added.)'},

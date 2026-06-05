@@ -51,6 +51,18 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.66.1', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Fix: the new "Rebind Quote" button did nothing when clicked.** It called a text-escaping helper that exists in the Quote Builder but not the Deal Hub, so the click handler errored out before the picker could open. Removed the unneeded call — Rebind Quote now opens as intended.'},
+      ]
+    },
+    {
+      v:'1.66.0', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Deal Hub: "Rebind Quote" admin tool.** When a quote gets made under the wrong deal, open the deal, hit **⇄ Rebind Quote** (in the admin button row), pick the quote, search the correct deal, and move it — the quote (and any order tied to it) re-attaches to the right deal and the destination deal opens so you can confirm. (Note: HubSpot line items pushed onto the original deal are not auto-moved; re-push from the Quote Builder if they need to follow.)'},
+      ]
+    },
+    {
       v:'1.65.12', date:'June 4, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Deal Hub payment chip refreshes every 5 minutes** (was 30). The ACH "funds available / clearing / deposited" chip reads a table our poller syncs from HubSpot payments — that sync now runs every 5 min, so a payment shows up much sooner. (Note: the payout *date* itself still comes from HubSpot and can lag the payment regardless.)'},

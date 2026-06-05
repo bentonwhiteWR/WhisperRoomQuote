@@ -1109,6 +1109,7 @@ function renderHub(dealId,data) {
         ${data.driveFolderName ? `<button onclick="copyFolderPath('${data.driveFolderName.replace(/'/g,"\\'")}')" title="Copy local folder path to clipboard" style="font-size:10px;color:var(--muted);padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">📋 Copy Path</button>` : ''}
         <button onclick="openRebindFolder('${dealId}')" title="Change the Google Drive folder linked to this deal" style="font-size:10px;color:#3b82f6;padding:4px 8px;border-radius:5px;border:1px solid rgba(59,130,246,.3);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">📁 Rebind Folder</button>
         <button onclick="openMergeDeal('${dealId}')" title="Merge this deal into another deal" style="font-size:10px;color:#ef4444;padding:4px 8px;border-radius:5px;border:1px solid rgba(239,68,68,.3);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">⤤ Merge Into</button>
+        <button onclick="openRebindQuote()" title="Move ONE of this deal's quotes to a different deal (e.g. a quote made under the wrong deal)" style="font-size:10px;color:#a855f7;padding:4px 8px;border-radius:5px;border:1px solid rgba(168,85,247,.3);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">⇄ Rebind Quote</button>
         <button onclick="openMergeLegacy('${dealId}')" title="Merge a legacy AllContacts folder into this deal" style="font-size:10px;color:var(--muted);padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">📁 Merge Legacy</button>
         <button onclick="openRenameDeal('${dealId}','${(deal.name||'').replace(/'/g,"\\'")}')" title="Rename this deal in HubSpot, Drive, and dashboard" style="font-size:10px;color:#f59e0b;padding:4px 8px;border-radius:5px;border:1px solid rgba(245,158,11,.3);background:none;cursor:pointer;font-family:inherit;flex-shrink:0">✏️ Rename</button>
       </div>
@@ -2089,7 +2090,120 @@ fetch('/api/version').then(r=>r.json()).then(d=>{
   </div>
 </div>
 
+<!-- REBIND QUOTE MODAL — move one quote to a different deal -->
+<div id="rebindQuoteModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:400;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--surface);border-radius:14px;padding:28px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+    <h2 style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px">⇄ Rebind Quote to Another Deal</h2>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Currently on: <span id="rebindQuoteDealName" style="color:#a855f7;font-weight:700"></span></div>
+
+    <!-- Step 1: pick which quote -->
+    <div id="rebindQuoteStep1">
+      <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px">Which quote to move?</label>
+      <div id="rebindQuoteList" style="max-height:240px;overflow-y:auto"></div>
+      <div style="margin-top:16px;text-align:right">
+        <button onclick="closeRebindQuote()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Step 2: pick the target deal -->
+    <div id="rebindQuoteStep2" style="display:none">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Moving <span id="rebindQuoteNum" style="color:var(--text);font-weight:700;font-family:var(--mono)"></span></div>
+      <label style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px">Search for the correct deal</label>
+      <div style="display:flex;gap:8px">
+        <input id="rebindQuoteSearch" type="text" placeholder="Company name or deal name..."
+          style="flex:1;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;font-family:inherit;outline:none"
+          oninput="rebindQuoteSearchDebounce()" />
+        <button onclick="runRebindQuoteSearch()" style="padding:9px 14px;background:var(--orange);color:white;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Search</button>
+      </div>
+      <div id="rebindQuoteResults" style="margin-top:10px;max-height:220px;overflow-y:auto"></div>
+      <div style="margin-top:14px;font-size:10px;color:var(--muted);line-height:1.5;padding:8px 10px;background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.15);border-radius:6px">
+        Moves the quote (and any order tied to it) to the chosen deal in the portal. Note: HubSpot line items that were pushed onto the original deal aren't moved automatically — re-push from the Quote Builder if they need to follow.
+      </div>
+      <div style="margin-top:14px;display:flex;justify-content:space-between">
+        <button onclick="rebindQuoteBack()" style="background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:12px;cursor:pointer;font-family:inherit">← Back</button>
+        <button onclick="closeRebindQuote()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
+// ── Rebind a single quote to another deal ────────────────────────
+let _rebindQuoteNum = null, _rebindQuoteSearchTimer = null;
+function openRebindQuote() {
+  const quotes = (window._lastHubData && window._lastHubData.quotes) || [];
+  if (!quotes.length) { showToast('No quotes on this deal to move', 'error'); return; }
+  const deal = allDeals.find(d => d.id === currentDealId) || {};
+  document.getElementById('rebindQuoteDealName').textContent = deal.name || currentDealId;
+  document.getElementById('rebindQuoteList').innerHTML = quotes.map(q => {
+    const qn = String(q.quoteNumber || '');
+    return `<div onclick="selectRebindQuote('${qn.replace(/'/g,"\\'")}')" style="padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;margin-bottom:5px;cursor:pointer;display:flex;align-items:center;gap:10px">
+      <span style="font-family:var(--mono);font-weight:700;color:var(--text)">${qn}</span>
+      <span style="font-size:12px;color:var(--muted)">${fmt(q.total)}</span>
+      <span style="margin-left:auto;font-size:10px;color:var(--orange);font-weight:700">Select →</span>
+    </div>`;
+  }).join('');
+  document.getElementById('rebindQuoteStep1').style.display = 'block';
+  document.getElementById('rebindQuoteStep2').style.display = 'none';
+  document.getElementById('rebindQuoteModal').style.display = 'flex';
+}
+function closeRebindQuote() { document.getElementById('rebindQuoteModal').style.display = 'none'; _rebindQuoteNum = null; }
+function rebindQuoteBack() {
+  document.getElementById('rebindQuoteStep2').style.display = 'none';
+  document.getElementById('rebindQuoteStep1').style.display = 'block';
+}
+function selectRebindQuote(qn) {
+  _rebindQuoteNum = qn;
+  document.getElementById('rebindQuoteNum').textContent = qn;
+  document.getElementById('rebindQuoteSearch').value = '';
+  document.getElementById('rebindQuoteResults').innerHTML = '';
+  document.getElementById('rebindQuoteStep1').style.display = 'none';
+  document.getElementById('rebindQuoteStep2').style.display = 'block';
+  setTimeout(() => document.getElementById('rebindQuoteSearch').focus(), 60);
+}
+function rebindQuoteSearchDebounce() { clearTimeout(_rebindQuoteSearchTimer); _rebindQuoteSearchTimer = setTimeout(runRebindQuoteSearch, 350); }
+async function runRebindQuoteSearch() {
+  const q = document.getElementById('rebindQuoteSearch').value.trim();
+  if (q.length < 2) return;
+  const el = document.getElementById('rebindQuoteResults');
+  el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px 0">Searching…</div>';
+  try {
+    const res = await fetch(`/api/deals/list?q=${encodeURIComponent(q)}&limit=20`, { credentials: 'include' });
+    const data = await res.json();
+    const deals = (data.deals || []).filter(d => d.id !== currentDealId);
+    if (!deals.length) { el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px 0">No deals found.</div>'; return; }
+    el.innerHTML = deals.map(d => `
+      <div onclick="confirmRebindQuote('${d.id}','${(d.name||'').replace(/'/g,"\\'")}')"
+        style="padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;margin-bottom:5px;cursor:pointer;display:flex;align-items:center;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.name||'—'}</div>
+          <div style="font-size:10px;color:var(--muted)">${STAGES[d.stage]||d.stage||'—'} · ${d.amount&&parseFloat(d.amount)>0?'$'+parseFloat(d.amount).toLocaleString():'No amount'}</div>
+        </div>
+        <span style="font-size:10px;color:#a855f7;font-weight:700;flex-shrink:0">Move here →</span>
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:#ef4444;padding:6px 0">Error: ${e.message}</div>`;
+  }
+}
+async function confirmRebindQuote(targetId, targetName) {
+  if (!_rebindQuoteNum || !targetId) return;
+  if (!confirm(`Move quote ${_rebindQuoteNum} to "${targetName}"?`)) return;
+  const movedNum = _rebindQuoteNum;
+  try {
+    const res = await fetch(`/api/quotes/${encodeURIComponent(movedNum)}/rebind`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify({ targetDealId: targetId, targetDealName: targetName })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    closeRebindQuote();
+    showToast(`✓ ${movedNum} moved to ${targetName}`, 'success');
+    setTimeout(() => openDeal(targetId), 300);   // open the destination deal so you can see it landed
+  } catch(e) {
+    showToast('Error: ' + e.message, 'error');
+  }
+}
+
 // ── Copy folder path to clipboard ────────────────────────────────
 function copyFolderPath(folderName) {
   const path = `G:\\Shared drives\\Server\\All Contacts\\${folderName}`;

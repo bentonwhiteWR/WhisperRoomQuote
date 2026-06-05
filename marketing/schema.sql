@@ -24,6 +24,12 @@ CREATE TABLE IF NOT EXISTS marketing_campaigns (
   PRIMARY KEY (campaign_id, date)
 );
 CREATE INDEX IF NOT EXISTS idx_marketing_campaigns_date ON marketing_campaigns(date DESC);
+-- Impression Share (v1.7x) — the RIGHT signal for budget vs rank decisions.
+-- search_impression_share = % of available impressions you got; budget/rank
+-- lost-IS attribute the gap to budget caps vs bid/Quality Score. 0-1 fractions.
+ALTER TABLE marketing_campaigns ADD COLUMN IF NOT EXISTS search_impression_share      NUMERIC;
+ALTER TABLE marketing_campaigns ADD COLUMN IF NOT EXISTS search_budget_lost_is         NUMERIC;
+ALTER TABLE marketing_campaigns ADD COLUMN IF NOT EXISTS search_rank_lost_is           NUMERIC;
 
 -- Daily keyword-level performance (search campaigns only)
 CREATE TABLE IF NOT EXISTS marketing_keywords (
@@ -41,6 +47,15 @@ CREATE TABLE IF NOT EXISTS marketing_keywords (
   PRIMARY KEY (campaign_id, ad_group_id, keyword_id, date)
 );
 CREATE INDEX IF NOT EXISTS idx_marketing_keywords_date ON marketing_keywords(date DESC);
+-- Quality Score (v1.7x) + its 3 components. QS is a CURRENT attribute (Google
+-- returns the same value per day), so the engines read the latest date's value.
+-- Components are buckets (BELOW_AVERAGE / AVERAGE / ABOVE_AVERAGE) telling you
+-- WHICH lever is the constraint: expected CTR → ad copy, ad relevance → keyword
+-- ↔ ad match, landing page → the page. Replaces our CTR-vs-conv guess.
+ALTER TABLE marketing_keywords ADD COLUMN IF NOT EXISTS quality_score    INTEGER;
+ALTER TABLE marketing_keywords ADD COLUMN IF NOT EXISTS qs_expected_ctr  TEXT;
+ALTER TABLE marketing_keywords ADD COLUMN IF NOT EXISTS qs_ad_relevance  TEXT;
+ALTER TABLE marketing_keywords ADD COLUMN IF NOT EXISTS qs_landing_page  TEXT;
 
 -- What people actually typed (vs. the keywords we bid on)
 CREATE TABLE IF NOT EXISTS marketing_search_terms (

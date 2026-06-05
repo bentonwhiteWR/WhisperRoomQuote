@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.2', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Google Ads data, deeper (back end).** The Ads sync now also pulls <strong>Quality Score</strong> and its three components (expected CTR, ad relevance, landing-page experience) per keyword, and <strong>Impression Share</strong> + lost-impression-share (budget vs. rank) per campaign. This is the data that lets the dashboard say <em>why</em> a campaign underperforms — bad ad copy vs. wrong landing page vs. needs more budget — instead of guessing. (Run a Sync to populate it; the upcoming Growth Engine update will surface it.)'},
+        {t:'add', d:'**AI ad-copy rewrites (back end).** New endpoint that uses Claude to rewrite a campaign’s ad copy, grounded in the actual search terms people convert on, in WhisperRoom voice (no “soundproof”, no em dashes, within Google’s character limits). The Growth Engine’s Google Ads Improvement Engine will call this so a high-spend/low-CTR campaign comes with real, ready-to-test headlines and descriptions.'},
+      ]
+    },
+    {
       v:'1.72.1', date:'June 5, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Add Pallet default size is now 90 × 47 × 40 in** (was 48 × 40 × 48) — matches a typical WhisperRoom skid, still editable per pallet.'},

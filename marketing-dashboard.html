@@ -187,6 +187,10 @@ td.drillable:hover{color:var(--orange)}
 .exec-item .exec-text{color:var(--text)}
 .exec-item .exec-text strong{font-weight:700}
 .exec-item .exec-text .exec-amt{color:var(--green);font-weight:700;font-family:var(--mono)}
+.gsc-mode-toggle{display:inline-flex;gap:3px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:3px}
+.gsc-mode-toggle button{background:none;color:var(--muted);border:none;border-radius:6px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
+.gsc-mode-toggle button:hover{color:var(--text)}
+.gsc-mode-toggle button.active{background:var(--orange);color:#fff}
 /* Action cards */
 .act-list{display:grid;gap:11px}
 .act-card{border:1px solid var(--border);border-left-width:3px;border-radius:9px;padding:13px 15px;background:var(--surface2)}
@@ -465,8 +469,12 @@ td.drillable:hover{color:var(--orange)}
     <div class="exec-summary" id="gscExecSummary" style="display:none">
       <div class="exec-head">
         <div class="exec-title"><span class="spark">⚡</span> What to do next</div>
-        <span class="exec-sub" id="gscExecSub">Your highest-revenue SEO moves right now</span>
+        <div class="gsc-mode-toggle" aria-label="Opportunity mode">
+          <button data-revmode="commercial" class="active" onclick="setGscRevMode('commercial')">🎯 Commercial Booth</button>
+          <button data-revmode="all" onclick="setGscRevMode('all')">All Organic</button>
+        </div>
       </div>
+      <div class="exec-sub" id="gscExecSub" style="margin-bottom:12px">Booth-selling opportunities, ranked</div>
       <div class="exec-list" id="gscExecList"></div>
     </div>
 
@@ -496,11 +504,18 @@ td.drillable:hover{color:var(--orange)}
     <div class="section">
       <div class="section-head">
         <div class="section-title">⚡ Revenue Opportunity Engine</div>
-        <span class="section-meta" id="gscRevOppMeta">—</span>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div class="gsc-mode-toggle" aria-label="Opportunity mode">
+            <button data-revmode="commercial" class="active" onclick="setGscRevMode('commercial')">🎯 Commercial Booth</button>
+            <button data-revmode="all" onclick="setGscRevMode('all')">All Organic</button>
+          </div>
+          <span class="section-meta" id="gscRevOppMeta">—</span>
+        </div>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
         Answers “if we improve one keyword’s ranking this month, which earns the most added revenue?” Ranks organic queries at <strong>position 4–15</strong> by a <strong>Revenue Opp.</strong> estimate = click upside to reach the top 3 × your organic revenue-per-click (from HubSpot closed-won) × how well the query converts (its Google Ads conversion rate) × how reachable the rank gain is.
-        <strong>Ads CVR</strong> is that same query’s paid conversion rate when we run it (<span style="color:var(--muted)">—</span> = no paid data, so the score falls back to the channel baseline). Per-query organic <em>leads / closed revenue</em> can’t be shown directly — Google withholds the organic search term — so the engine bridges it with the paid conversion signal plus channel-level organic $/click. Estimates, for prioritization.
+        <strong>🎯 Commercial Booth</strong> mode (default) re-ranks by booth-buying intent — the <strong>Intent</strong> column (0–100) scores each query on product/category terms (booth, soundproof, vocal, audiology, office…), buying terms (cost, price, quote, package…), paid presence, and product-page match — so booth-selling queries outrank high-traffic blog terms. <strong>All Organic</strong> keeps every opportunity for content/traffic research.
+        <strong>Ads CVR</strong> is that same query’s paid conversion rate when we run it (<span style="color:var(--muted)">—</span> = no paid data, score falls back to the channel baseline). Per-query organic <em>leads / closed revenue</em> can’t be shown directly — Google withholds the organic search term — so the engine bridges it with the paid signal plus channel-level organic $/click. Estimates, for prioritization.
       </div>
       <div id="gscRevOppBody"><div class="empty">No data yet. Press <strong>↻ Sync All</strong> to pull Google Ads + Search Console + HubSpot.</div></div>
     </div>
@@ -891,6 +906,7 @@ const tableState = {
       { key: 'query', label: 'Query' }, { key: 'position', label: 'Pos', num: 1 },
       { key: 'impressions', label: 'Impr.', num: 1 }, { key: 'clicks', label: 'Clicks', num: 1 },
       { key: 'ctr', label: 'CTR', num: 1 }, { key: 'p_cvr', label: 'Ads CVR', num: 1 },
+      { key: 'commercial_intent', label: 'Intent', num: 1 },
       { key: 'extra_clicks', label: 'Opp. clicks', num: 1 },
       { key: 'revenue_opportunity', label: 'Revenue Opp.', num: 1 }, { key: 'score', label: 'Score', num: 1 },
     ],
@@ -899,6 +915,9 @@ const tableState = {
       const cvr = (r.has_paid_signal && r.p_cvr != null)
         ? `${(r.p_cvr * 100).toFixed(1)}%`
         : `<span style="color:var(--muted)" title="No Google Ads data for this exact term — score uses the channel baseline conversion rate">—</span>`;
+      const intent = Math.round(r.commercial_intent || 0);
+      const intentColor = intent >= 60 ? '#5fd98a' : intent >= 30 ? '#f0b54e' : 'var(--muted)';
+      const intentCell = `<span style="display:inline-flex;align-items:center;gap:6px;justify-content:flex-end" title="Commercial booth-buying intent (0–100)"><span class="mini-bar" style="width:${Math.max(3, intent * 0.4)}px;background:${intentColor};opacity:1"></span>${intent}</span>`;
       const sc = Math.round(r.score || 0);
       const scoreCell = `<span style="display:inline-flex;align-items:center;gap:6px;justify-content:flex-end"><span class="mini-bar" style="width:${Math.max(3, sc * 0.5)}px"></span><strong>${sc}</strong></span>`;
       return `<tr><td>${escHtml(r.query)}${brand}</td>` +
@@ -907,6 +926,7 @@ const tableState = {
         `<td class="num">${fmtInt(r.clicks)}</td>` +
         `<td class="num">${(r.ctr * 100).toFixed(1)}%</td>` +
         `<td class="num">${cvr}</td>` +
+        `<td class="num">${intentCell}</td>` +
         `<td class="num">+${fmtInt(Math.round(r.extra_clicks))}</td>` +
         `<td class="num" style="color:var(--green);font-weight:700">$${fmtInt(Math.round(r.revenue_opportunity))}</td>` +
         `<td class="num">${scoreCell}</td></tr>`;
@@ -971,8 +991,13 @@ async function loadGscTab() {
   ]);
   renderGscChart((ts && ts.rows) || []);
   renderGscCards(sum || {}, (qs && qs.rows) || []);
-  renderGscRevOpp((ro && ro.rows) || []);
-  renderActionEngine((ro && ro.rows) || [], (pg && pg.rows) || [], (qs && qs.rows) || []);
+  // Enrich revenue-opportunity rows with commercial intent once, then render the
+  // table + Action Engine + Exec Summary through the active mode (Commercial Booth
+  // by default). The mode toggle re-renders from this cache with no refetch.
+  gscPagesCache   = (pg && pg.rows) || [];
+  gscQueriesCache = (qs && qs.rows) || [];
+  gscRevEnriched  = gscEnrichRev((ro && ro.rows) || [], gscPagesCache);
+  applyGscRevMode();
   renderGscOverlap((ov && ov.rows) || []);
   renderGscStriking((sd && sd.rows) || []);
   renderGscCtrOpp((co && co.rows) || []);
@@ -1126,9 +1151,75 @@ function renderGscMovers(rows, dim) {
   gscPaint('gscMovers');
 }
 
-// v1.67.x — Revenue Opportunity Engine. Derive a 0–100 score per row by
-// normalizing revenue_opportunity to the top opportunity in the set, so the
-// score column reads "relative to the best opportunity right now."
+// ── v1.67.x — Commercial Intent (the "Commercial Booth Opportunities" mode) ──
+// Scores each organic query 0–100 on booth-BUYING intent so booth-selling
+// queries outrank high-traffic blog terms. Term lists are Gabe-editable config.
+// WhisperRoom sells modular sound-isolation booths — "booth" is the core word.
+const GSC_BOOTH_CORE     = /\bbooths?\b/;
+const GSC_STRONG_PRODUCT = /\b(soundproof|sound proof|sound isolation|isolation booth)\b/;
+const GSC_BRAND_RX       = /\bwhisper\s?room\b/;
+const GSC_MEDICAL        = /\b(audiolog|audiometric|hearing test|hearing booth|sound booth)\b/;
+const GSC_USE_WORDS      = /\b(vocal|recording|record|podcast|drum|broadcast|practice|voice\s?over|voiceover|phone booth|office)\b/;
+const GSC_BUYING         = /\b(cost|price|pricing|for sale|sale|package|packages|quote|supplier|manufacturer|portable|buy|purchase|order|cheap|affordable|near me|how much|best)\b/;
+const GSC_INFORMATIONAL  = /\b(microphone|mic tips|music theory|ear training|record player|vinyl|turntable|stage presence|songwriting|lyrics|chords?|scales?|instagram|tiktok|content idea|how to sing|singing lesson|singing tips|warm ?up|vocal exercise|breathing|posture)\b/;
+const GSC_PRODUCT_PAGE   = /\/(products?|booths?|models?|mdl|shop|store|packages?|applications?|industries|audiology|recording|vocal|podcast|office|broadcast)\b/i;
+const GSC_COMMERCIAL_MIN = 25;   // intent threshold to qualify as a booth opportunity
+
+function gscCommercialIntent(query, row, pageMatch) {
+  const s = ' ' + String(query).toLowerCase() + ' ';
+  const booth = GSC_BOOTH_CORE.test(s), strong = GSC_STRONG_PRODUCT.test(s);
+  const brand = GSC_BRAND_RX.test(s), medical = GSC_MEDICAL.test(s);
+  const anchor = booth || strong || brand || medical;
+  let score = 0;
+  if (booth)   score += 40;
+  if (strong)  score += 28;
+  if (brand)   score += 24;
+  if (medical) score += 24;
+  if (GSC_USE_WORDS.test(s)) score += anchor ? 12 : 5;
+  if (GSC_BUYING.test(s))    score += 18;
+  if ((+row.p_clicks || 0) > 0) score += 12;                           // overlaps Google Ads search terms
+  if ((+row.p_conv || 0) > 0 || row.has_paid_signal) score += 13;      // has paid conversion signal
+  if (pageMatch && GSC_PRODUCT_PAGE.test(pageMatch.page || '')) score += 12; // maps to a product/category page
+  score = Math.min(100, score);
+  if (GSC_INFORMATIONAL.test(s) && !anchor) score = Math.min(score, 8); // clearly educational, no product anchor
+  return Math.round(score);
+}
+
+// Enrich the raw revenue-opportunity rows with commercial intent + a blended
+// commercial_opp (= revenue_opportunity × intent/100). Done once per load.
+function gscEnrichRev(roRows, pages) {
+  return (roRows || []).map(r => {
+    const match  = gscMatchPage(r.query, pages);
+    const intent = gscCommercialIntent(r.query, r, match);
+    const rev    = +r.revenue_opportunity || 0;
+    return Object.assign({}, r, { commercial_intent: intent, commercial_opp: rev * intent / 100 });
+  });
+}
+function gscModeRows(rows, mode) {
+  if (mode === 'commercial') {
+    return rows.filter(r => (r.commercial_intent || 0) >= GSC_COMMERCIAL_MIN)
+               .sort((a, b) => (b.commercial_opp || 0) - (a.commercial_opp || 0));
+  }
+  return rows.slice().sort((a, b) => (+b.revenue_opportunity || 0) - (+a.revenue_opportunity || 0));
+}
+
+// Mode state shared by the Revenue table, Executive Summary, and Action Engine.
+let gscRevMode = 'commercial';            // default per the business goal: sell booths
+let gscRevEnriched = [], gscPagesCache = [], gscQueriesCache = [];
+function updateGscModeToggle() {
+  document.querySelectorAll('[data-revmode]').forEach(b => b.classList.toggle('active', b.dataset.revmode === gscRevMode));
+}
+function applyGscRevMode() {
+  updateGscModeToggle();
+  const rows = gscModeRows(gscRevEnriched, gscRevMode);
+  renderGscRevOpp(rows);
+  renderActionEngine(rows, gscPagesCache, gscQueriesCache);
+}
+function setGscRevMode(mode) { if (mode === gscRevMode) return; gscRevMode = mode; applyGscRevMode(); }
+
+// v1.67.x — Revenue Opportunity Engine. `score` (0–100) is the per-row ranking
+// value normalized to the top of the set — revenue_opportunity in All mode, the
+// commercial-blended commercial_opp in Commercial Booth mode.
 function renderGscRevOpp(rows) {
   const st = tableState.gscRevOpp;
   const mapped = (rows || []).map(r => ({
@@ -1136,15 +1227,18 @@ function renderGscRevOpp(rows) {
     position: r.position == null ? null : +r.position,
     p_cvr: r.p_cvr == null ? null : +r.p_cvr, p_conv: +r.p_conv || 0, has_paid_signal: !!r.has_paid_signal,
     extra_clicks: +r.extra_clicks || 0, revenue_opportunity: +r.revenue_opportunity || 0,
+    commercial_intent: +r.commercial_intent || 0, commercial_opp: +r.commercial_opp || 0,
   }));
-  const max = mapped.reduce((m, r) => Math.max(m, r.revenue_opportunity), 0);
-  mapped.forEach(r => { r.score = max > 0 ? Math.round(100 * r.revenue_opportunity / max) : 0; });
-  st.rows = mapped; st.page = 0;
+  const rankBy = gscRevMode === 'commercial' ? 'commercial_opp' : 'revenue_opportunity';
+  const max = mapped.reduce((m, r) => Math.max(m, r[rankBy]), 0);
+  mapped.forEach(r => { r.score = max > 0 ? Math.round(100 * r[rankBy] / max) : 0; });
+  st.rows = mapped; st.page = 0; st.sortBy = 'score'; st.sortDir = 'desc';
   const totalOpp   = mapped.reduce((a, r) => a + r.revenue_opportunity, 0);
   const withSignal = mapped.filter(r => r.has_paid_signal).length;
+  const noun = gscRevMode === 'commercial' ? 'booth opportunities' : 'opportunities';
   st.metaFn = total => total
-    ? `${fmtInt(total)} opportunities · ~$${fmtInt(Math.round(totalOpp))} total upside · ${withSignal} with Ads conversion signal`
-    : 'no queries in the position 4–15 band';
+    ? `${fmtInt(total)} ${noun} · ~$${fmtInt(Math.round(totalOpp))} total upside · ${withSignal} with Ads conversion signal`
+    : (gscRevMode === 'commercial' ? 'no booth-intent queries in the 4–15 band — try All Organic' : 'no queries in the position 4–15 band');
   gscPaint('gscRevOpp');
 }
 
@@ -1184,7 +1278,7 @@ function gscMatchPage(query, pages) {
 }
 
 // Diagnose one Revenue-Opportunity row → a full action recommendation.
-function gscDiagnose(r, pages, maxImpact) {
+function gscDiagnose(r, pages, maxRank) {
   const q = r.query;
   const pos = +r.position || 0, impr = +r.impressions || 0, clicks = +r.clicks || 0, ctr = +r.ctr || 0;
   const expCtr = gscExpectedCtr(pos), ctrGap = expCtr - ctr;
@@ -1203,7 +1297,10 @@ function gscDiagnose(r, pages, maxImpact) {
   else type = 'ranking';
   const bottleneckLabel = { ctr: 'CTR Opportunity', ranking: 'Ranking Opportunity', 'content-gap': 'Content Gap' }[type];
 
-  const score = maxImpact > 0 ? Math.round(100 * impact / maxImpact) : 0;
+  // Rank by the active mode: commercial-blended in Commercial Booth mode, raw
+  // revenue opportunity in All mode — so priority matches the table's ordering.
+  const rankValue = gscRevMode === 'commercial' ? (+r.commercial_opp || 0) : impact;
+  const score = maxRank > 0 ? Math.round(100 * rankValue / maxRank) : 0;
   let priority = 'Low';
   if (score >= 55 || (score >= 30 && commercial)) priority = 'High';
   else if (score >= 22) priority = 'Medium';
@@ -1383,18 +1480,21 @@ function renderActionEngine(roRows, pageRows, queryRows) {
   const allPositive = (roRows || []).filter(r => (+r.revenue_opportunity || 0) > 0);
   if (!allPositive.length) { exec.style.display = 'none'; sec.style.display = 'none'; return; }
   const totalUpside = allPositive.reduce((a, r) => a + (+r.revenue_opportunity || 0), 0);
-  // Diagnose only the top ~40 by raw impact (bounds the page-matching cost);
-  // that's far more than the top 12 cards / top 5 summary we display.
-  const rows = allPositive.slice().sort((a, b) => (+b.revenue_opportunity || 0) - (+a.revenue_opportunity || 0)).slice(0, 40);
-  const maxImpact = +rows[0].revenue_opportunity || 0;
-  const diag = rows.map(r => gscDiagnose(r, pageRows, maxImpact))
-    .sort((a, b) => (GSC_PR_RANK[b.priority] - GSC_PR_RANK[a.priority]) || (b.impact - a.impact));
+  // Rank by the active mode (commercial-blended in Commercial Booth mode).
+  const rankVal = r => gscRevMode === 'commercial' ? (+r.commercial_opp || 0) : (+r.revenue_opportunity || 0);
+  // Diagnose only the top ~40 by that ranking (bounds the page-matching cost);
+  // far more than the top 12 cards / top 5 summary we display.
+  const rows = allPositive.slice().sort((a, b) => rankVal(b) - rankVal(a)).slice(0, 40);
+  const maxRank = rankVal(rows[0]) || 0;
+  const diag = rows.map(r => gscDiagnose(r, pageRows, maxRank))
+    .sort((a, b) => (GSC_PR_RANK[b.priority] - GSC_PR_RANK[a.priority]) || (b.score - a.score));
 
   const topExec = diag.slice(0, Math.min(5, diag.length));
   document.getElementById('gscExecList').innerHTML = topExec.map((d, i) =>
     `<div class="exec-item"><span class="exec-rank">${i + 1}</span><span class="exec-text">${d.execText}${d.commercial ? ' ⭐' : ''}</span></div>`).join('');
+  const modeNoun = gscRevMode === 'commercial' ? 'booth opportunities' : 'opportunities';
   document.getElementById('gscExecSub').textContent =
-    `Top ${topExec.length} of ${allPositive.length} opportunities · ~$${fmtInt(Math.round(totalUpside))} total upside in the position 4–15 band`;
+    `Top ${topExec.length} of ${allPositive.length} ${modeNoun} · ~$${fmtInt(Math.round(totalUpside))} total upside in the position 4–15 band`;
 
   const topCards = diag.slice(0, Math.min(12, diag.length));
   document.getElementById('gscActionBody').innerHTML = topCards.map(d => {

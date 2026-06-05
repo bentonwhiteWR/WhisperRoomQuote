@@ -2136,7 +2136,7 @@ function openRebindQuote() {
   const deal = allDeals.find(d => d.id === currentDealId) || {};
   document.getElementById('rebindQuoteDealName').textContent = deal.name || currentDealId;
   document.getElementById('rebindQuoteList').innerHTML = quotes.map(q => {
-    const qn = escapeHtml(q.quoteNumber);
+    const qn = String(q.quoteNumber || '');
     return `<div onclick="selectRebindQuote('${qn.replace(/'/g,"\\'")}')" style="padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;margin-bottom:5px;cursor:pointer;display:flex;align-items:center;gap:10px">
       <span style="font-family:var(--mono);font-weight:700;color:var(--text)">${qn}</span>
       <span style="font-size:12px;color:var(--muted)">${fmt(q.total)}</span>

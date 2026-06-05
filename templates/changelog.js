@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.67.10', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Weights: refreshed MDL 102168 ENV after its packing list was corrected** (net 4455 → 4303 lb).'},
+      ]
+    },
+    {
       v:'1.67.9', date:'June 5, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**“Commercial Booth Opportunities” mode for the SEO engine — focused on selling booths.** A new toggle (🎯 Commercial Booth / All Organic) on the Revenue Opportunity Engine, Executive Summary, and Action Engine. It scores every organic query for booth-buying intent (0-100) based on product/category terms (booth, soundproof, vocal, recording, podcast, audiology, audiometric, hearing test, office, drum, broadcast, isolation…), buying terms (cost, price, quote, package, for sale, supplier, portable…), whether you also run it in Google Ads, paid conversions, and whether it maps to a product/category page — and heavily downweights general blog topics (microphone tips, music theory, ear training, record players, etc.). That intent is blended into the ranking so booth-selling keywords outrank high-traffic blog terms.'},

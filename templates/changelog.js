@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.67.3', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**/weights: refreshed with the final rounded packing-list weights.** The net weights now come from the re-pulled base packing lists, where every component weight was rounded to the nearest pound — so all 104 model net weights are clean whole numbers. This is the real reconciliation data; the delta column against the HubSpot price book is now meaningful.'},
+      ]
+    },
+    {
       v:'1.67.2', date:'June 5, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**/weights: NV variants now show pallet counts.** SNV and ENV models had a blank pallet count (and therefore no gross weight) because they are not listed separately in the pallet map. They now inherit their vented base count (SNV uses the S count, ENV uses the E count), since they ship on the same pallets.'},

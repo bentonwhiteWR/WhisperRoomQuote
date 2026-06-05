@@ -1,424 +1,424 @@
 {
  "_meta": {
-  "_source": "base_bom.json (FirstRound extract, pre-final-rounding)",
-  "_extracted": "2026-06-04",
+  "_source": "base_bom.json (rounded re-pull \u2014 all component weights rounded to nearest lb)",
+  "_extracted": "2026-06-05",
   "_count": 104
  },
  "models": {
   "MDL 102102 E": {
-   "net": 3232.15,
+   "net": 3232.0,
    "comps": 60
   },
   "MDL 102102 ENV": {
-   "net": 3084.4,
+   "net": 3085.0,
    "comps": 54
   },
   "MDL 102102 S": {
-   "net": 1839.02,
+   "net": 1839.0,
    "comps": 36
   },
   "MDL 102102 SNV": {
-   "net": 1682.27,
+   "net": 1682.0,
    "comps": 30
   },
   "MDL 102126 E": {
-   "net": 3678.64,
+   "net": 3678.0,
    "comps": 64
   },
   "MDL 102126 ENV": {
-   "net": 3481.7,
+   "net": 3481.0,
    "comps": 56
   },
   "MDL 102126 S": {
-   "net": 2121.31,
+   "net": 2121.0,
    "comps": 40
   },
   "MDL 102126 SNV": {
-   "net": 1912.36,
+   "net": 1912.0,
    "comps": 32
   },
   "MDL 102144 E": {
-   "net": 4110.28,
+   "net": 4110.0,
    "comps": 75
   },
   "MDL 102144 ENV": {
-   "net": 3913.34,
+   "net": 3913.0,
    "comps": 67
   },
   "MDL 102144 S": {
-   "net": 2350.78,
+   "net": 2351.0,
    "comps": 45
   },
   "MDL 102144 SNV": {
-   "net": 2141.84,
+   "net": 2142.0,
    "comps": 37
   },
   "MDL 102168 E": {
-   "net": 4501.63,
+   "net": 4500.0,
    "comps": 77
   },
   "MDL 102168 ENV": {
-   "net": 4456.59,
+   "net": 4455.0,
    "comps": 71
   },
   "MDL 102168 S": {
-   "net": 2576.98,
+   "net": 2576.0,
    "comps": 47
   },
   "MDL 102168 SNV": {
-   "net": 2449.94,
+   "net": 2449.0,
    "comps": 40
   },
   "MDL 102186 E": {
-   "net": 4928.23,
+   "net": 4928.0,
    "comps": 87
   },
   "MDL 102186 ENV": {
-   "net": 4883.18,
+   "net": 4883.0,
    "comps": 81
   },
   "MDL 102186 S": {
-   "net": 2805.46,
+   "net": 2805.0,
    "comps": 52
   },
   "MDL 102186 SNV": {
-   "net": 2678.41,
+   "net": 2678.0,
    "comps": 45
   },
   "MDL 10284 E": {
-   "net": 2804.56,
+   "net": 2804.0,
    "comps": 50
   },
   "MDL 10284 ENV": {
-   "net": 2656.81,
+   "net": 2656.0,
    "comps": 44
   },
   "MDL 10284 S": {
-   "net": 1609.54,
+   "net": 1609.0,
    "comps": 31
   },
   "MDL 10284 SNV": {
-   "net": 1452.79,
+   "net": 1452.0,
    "comps": 25
   },
   "MDL 127 LP E": {
-   "net": 1201.61,
+   "net": 1202.0,
    "comps": 26
   },
   "MDL 127 LP ENV": {
-   "net": 1164.16,
+   "net": 1165.0,
    "comps": 24
   },
   "MDL 127 LP S": {
-   "net": 691.49,
+   "net": 691.0,
    "comps": 15
   },
   "MDL 127 LP SNV": {
-   "net": 654.04,
+   "net": 654.0,
    "comps": 13
   },
   "MDL 4230 E": {
-   "net": 886.73,
+   "net": 888.0,
    "comps": 21
   },
   "MDL 4230 ENV": {
-   "net": 837.27,
+   "net": 839.0,
    "comps": 19
   },
   "MDL 4230 S": {
-   "net": 530.55,
+   "net": 531.0,
    "comps": 13
   },
   "MDL 4230 SNV": {
-   "net": 478.09,
+   "net": 479.0,
    "comps": 11
   },
   "MDL 4242 E": {
-   "net": 1022.83,
+   "net": 1023.0,
    "comps": 21
   },
   "MDL 4242 ENV": {
-   "net": 973.37,
+   "net": 974.0,
    "comps": 19
   },
   "MDL 4242 S": {
-   "net": 603.05,
+   "net": 603.0,
    "comps": 13
   },
   "MDL 4242 SNV": {
-   "net": 550.59,
+   "net": 551.0,
    "comps": 11
   },
   "MDL 4260 E": {
-   "net": 1307.49,
+   "net": 1307.0,
    "comps": 26
   },
   "MDL 4260 ENV": {
-   "net": 1258.03,
+   "net": 1257.0,
    "comps": 24
   },
   "MDL 4260 S": {
-   "net": 743.31,
+   "net": 743.0,
    "comps": 15
   },
   "MDL 4260 SNV": {
-   "net": 690.85,
+   "net": 690.0,
    "comps": 13
   },
   "MDL 4284 E": {
-   "net": 1639.73,
+   "net": 1640.0,
    "comps": 30
   },
   "MDL 4284 ENV": {
-   "net": 1541.08,
+   "net": 1541.0,
    "comps": 26
   },
   "MDL 4284 S": {
-   "net": 954.59,
+   "net": 955.0,
    "comps": 19
   },
   "MDL 4284 SNV": {
-   "net": 849.95,
+   "net": 850.0,
    "comps": 15
   },
   "MDL 4848 E": {
-   "net": 1182.57,
+   "net": 1183.0,
    "comps": 21
   },
   "MDL 4848 ENV": {
-   "net": 1129.11,
+   "net": 1130.0,
    "comps": 19
   },
   "MDL 4848 S": {
-   "net": 691.29,
+   "net": 691.0,
    "comps": 13
   },
   "MDL 4848 SNV": {
-   "net": 636.83,
+   "net": 637.0,
    "comps": 11
   },
   "MDL 4872 E": {
-   "net": 1534.39,
+   "net": 1534.0,
    "comps": 27
   },
   "MDL 4872 ENV": {
-   "net": 1480.93,
+   "net": 1480.0,
    "comps": 25
   },
   "MDL 4872 S": {
-   "net": 875.81,
+   "net": 876.0,
    "comps": 16
   },
   "MDL 4872 SNV": {
-   "net": 821.35,
+   "net": 821.0,
    "comps": 14
   },
   "MDL 4896 E": {
-   "net": 1910.23,
+   "net": 1910.0,
    "comps": 30
   },
   "MDL 4896 ENV": {
-   "net": 1803.59,
+   "net": 1804.0,
    "comps": 26
   },
   "MDL 4896 S": {
-   "net": 1110.3,
+   "net": 1110.0,
    "comps": 19
   },
   "MDL 4896 SNV": {
-   "net": 1001.65,
+   "net": 1002.0,
    "comps": 15
   },
   "MDL 6060 E": {
-   "net": 1693.85,
+   "net": 1693.0,
    "comps": 38
   },
   "MDL 6060 ENV": {
-   "net": 1595.21,
+   "net": 1594.0,
    "comps": 34
   },
   "MDL 6060 S": {
-   "net": 974.01,
+   "net": 973.0,
    "comps": 23
   },
   "MDL 6060 SNV": {
-   "net": 869.36,
+   "net": 868.0,
    "comps": 19
   },
   "MDL 6084 E": {
-   "net": 1999.2,
+   "net": 1999.0,
    "comps": 39
   },
   "MDL 6084 ENV": {
-   "net": 1900.55,
+   "net": 1900.0,
    "comps": 35
   },
   "MDL 6084 S": {
-   "net": 1145.1,
+   "net": 1144.0,
    "comps": 24
   },
   "MDL 6084 SNV": {
-   "net": 1040.45,
+   "net": 1039.0,
    "comps": 20
   },
   "MDL 7272 E": {
-   "net": 2017.55,
+   "net": 2018.0,
    "comps": 40
   },
   "MDL 7272 ENV": {
-   "net": 1910.91,
+   "net": 1911.0,
    "comps": 36
   },
   "MDL 7272 S": {
-   "net": 1170.61,
+   "net": 1171.0,
    "comps": 25
   },
   "MDL 7272 SNV": {
-   "net": 1061.96,
+   "net": 1062.0,
    "comps": 21
   },
   "MDL 7296 E": {
-   "net": 2362.1,
+   "net": 2362.0,
    "comps": 41
   },
   "MDL 7296 ENV": {
-   "net": 2255.45,
+   "net": 2255.0,
    "comps": 37
   },
   "MDL 7296 S": {
-   "net": 1358.7,
+   "net": 1359.0,
    "comps": 26
   },
   "MDL 7296 SNV": {
-   "net": 1250.05,
+   "net": 1251.0,
    "comps": 22
   },
   "MDL 84102 E": {
-   "net": 2805.23,
+   "net": 2807.0,
    "comps": 54
   },
   "MDL 84102 ENV": {
-   "net": 2657.48,
+   "net": 2659.0,
    "comps": 48
   },
   "MDL 84102 S": {
-   "net": 1626.02,
+   "net": 1628.0,
    "comps": 34
   },
   "MDL 84102 SNV": {
-   "net": 1469.27,
+   "net": 1471.0,
    "comps": 28
   },
   "MDL 84126 E": {
-   "net": 3218.17,
+   "net": 3219.0,
    "comps": 58
   },
   "MDL 84126 ENV": {
-   "net": 3021.23,
+   "net": 3022.0,
    "comps": 50
   },
   "MDL 84126 S": {
-   "net": 1887.31,
+   "net": 1889.0,
    "comps": 38
   },
   "MDL 84126 SNV": {
-   "net": 1678.36,
+   "net": 1680.0,
    "comps": 30
   },
   "MDL 8484 E": {
-   "net": 2432.15,
+   "net": 2433.0,
    "comps": 44
   },
   "MDL 8484 ENV": {
-   "net": 2284.4,
+   "net": 2285.0,
    "comps": 38
   },
   "MDL 8484 S": {
-   "net": 1422.41,
+   "net": 1423.0,
    "comps": 29
   },
   "MDL 8484 SNV": {
-   "net": 1265.65,
+   "net": 1267.0,
    "comps": 23
   },
   "MDL 96120 E": {
-   "net": 3373.09,
+   "net": 3373.0,
    "comps": 56
   },
   "MDL 96120 ENV": {
-   "net": 3213.34,
+   "net": 3213.0,
    "comps": 50
   },
   "MDL 96120 S": {
-   "net": 1952.73,
+   "net": 1953.0,
    "comps": 35
   },
   "MDL 96120 SNV": {
-   "net": 1789.98,
+   "net": 1790.0,
    "comps": 29
   },
   "MDL 96144 E": {
-   "net": 3835.28,
+   "net": 3835.0,
    "comps": 60
   },
   "MDL 96144 ENV": {
-   "net": 3622.33,
+   "net": 3622.0,
    "comps": 52
   },
   "MDL 96144 S": {
-   "net": 2231.91,
+   "net": 2232.0,
    "comps": 38
   },
   "MDL 96144 SNV": {
-   "net": 2014.97,
+   "net": 2015.0,
    "comps": 30
   },
   "MDL 96168 E": {
-   "net": 4337.66,
+   "net": 4338.0,
    "comps": 72
   },
   "MDL 96168 ENV": {
-   "net": 4124.72,
+   "net": 4125.0,
    "comps": 64
   },
   "MDL 96168 S": {
-   "net": 2515.08,
+   "net": 2515.0,
    "comps": 45
   },
   "MDL 96168 SNV": {
-   "net": 2298.13,
+   "net": 2298.0,
    "comps": 37
   },
   "MDL 96192 E": {
-   "net": 4736.86,
+   "net": 4737.0,
    "comps": 72
   },
   "MDL 96192 ENV": {
-   "net": 4788.56,
+   "net": 4789.0,
    "comps": 67
   },
   "MDL 96192 S": {
-   "net": 2733.28,
+   "net": 2733.0,
    "comps": 45
   },
   "MDL 96192 SNV": {
-   "net": 2607.23,
+   "net": 2607.0,
    "comps": 38
   },
   "MDL 9696 E": {
-   "net": 2874.61,
+   "net": 2875.0,
    "comps": 45
   },
   "MDL 9696 ENV": {
-   "net": 2714.86,
+   "net": 2715.0,
    "comps": 39
   },
   "MDL 9696 S": {
-   "net": 1673.46,
+   "net": 1673.0,
    "comps": 29
   },
   "MDL 9696 SNV": {
-   "net": 1510.71,
+   "net": 1511.0,
    "comps": 23
   }
  }

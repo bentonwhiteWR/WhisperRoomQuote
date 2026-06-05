@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.71.0', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Quote Builder: &ldquo;Duplicate Quote&rdquo; button.** Next to <b>+ New Quote</b>, hit <b>Duplicate Quote</b>, search any past quote by customer, deal name, or quote number, and pick it &mdash; its line items (product, price, description, qty, weight) copy straight into your current quote, and prices re-verify against the catalog just like opening a quote. Perfect for near-identical orders. (Customer &amp; freight stay as your current quote &mdash; it duplicates the products, not the whole quote, and asks before replacing items you have already added.)'},
+      ]
+    },
+    {
       v:'1.70.2', date:'June 5, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**New “⚡ Growth Engine” tab — a marketing director in a dashboard.** Where the Ad Spend and Search Console tabs report on each channel, Growth Engine answers “if we could only work on 5 marketing actions this month, what should they be?” It fuses Google Ads, Search Console, and HubSpot revenue into one prioritized plan.'},

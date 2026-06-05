@@ -782,6 +782,7 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
   <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
     <a id="backToDealHubBtn" href="/deals" style="display:none;padding:5px 12px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.3);border-radius:6px;color:#22c55e;cursor:pointer;text-decoration:none;white-space:nowrap">← Deal Hub</a>
     <button onclick="newQuote()" style="padding:5px 12px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:rgba(238,98,22,.2);border:1px solid rgba(238,98,22,.4);border-radius:6px;color:#ee6216;cursor:pointer;font-family:inherit;white-space:nowrap">+ New Quote</button>
+    <button onclick="openDuplicateQuoteModal()" title="Copy the line items from an existing quote into this one" style="padding:5px 12px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:6px;color:rgba(255,255,255,.8);cursor:pointer;font-family:inherit;white-space:nowrap">&#x29C9; Duplicate Quote</button>
     <button onclick="toggleHistory()" class="history-btn"><span>&#x1F4CB;</span> History</button>
     <button onclick="togglePriceBook()" class="history-btn" style="background:rgba(238,98,22,.15);border-color:rgba(238,98,22,.3);color:#ee6216"><span>📋</span> Price Book</button>
     <button id="themeToggle" onclick="toggleTheme()" style="padding:5px 9px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#f0ede8;cursor:pointer;font-size:14px;line-height:1;transition:all .15s;">
@@ -1754,6 +1755,22 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
     <div class="modal-btns" style="margin-top:20px">
       <button class="modal-btn primary" onclick="addCustomItem()">Add to Quote</button>
       <button class="modal-btn secondary" onclick="document.getElementById('customModal').classList.add('hidden')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- DUPLICATE QUOTE MODAL -->
+<div class="modal-overlay hidden" id="dupQuoteModal" onclick="if(event.target===this)closeDuplicateQuoteModal()">
+  <div class="modal-box" style="max-width:560px;width:92%">
+    <div class="modal-title">&#x29C9; Duplicate a Quote</div>
+    <div class="modal-sub" style="margin-bottom:12px">Search by customer name, deal name, or quote number. Selecting one copies its line items into your current quote, then re-checks prices. (Customer &amp; freight stay as your current quote.)</div>
+    <input type="text" id="dupQuoteSearch" placeholder="Search customer, deal, or quote #…" oninput="dupQuoteSearchDebounce()" autocomplete="off"
+      style="width:100%;padding:10px 12px;font-size:14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;outline:none">
+    <div id="dupQuoteResults" style="margin-top:12px;max-height:340px;overflow-y:auto">
+      <div style="padding:18px;text-align:center;color:var(--muted);font-size:12px">Type at least 2 characters to search.</div>
+    </div>
+    <div class="modal-btns" style="margin-top:16px">
+      <button class="modal-btn secondary" onclick="closeDuplicateQuoteModal()">Cancel</button>
     </div>
   </div>
 </div>
@@ -5391,51 +5408,135 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   showExpiredQuoteBannerIfStale(q);
 
   // Check if any product prices have changed since this quote was saved
+  runPriceCheck();
+}
+
+// Verify the current lineItems against live catalog prices/weights.
+// WEIGHT syncs silently (doesn't change what's quoted); PRICE prompts (it does).
+// Shared by quote-load (loadFromHistoryEntry) and Duplicate Quote.
+function runPriceCheck() {
   const itemsWithIds = lineItems.filter(i => i.productId);
-  if (itemsWithIds.length > 0) {
-    fetch('/api/check-prices', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: itemsWithIds })
-    })
-    .then(r => r.json())
-    .then(data => {
-      const results = data.results || [];
+  if (itemsWithIds.length === 0) return;
+  fetch('/api/check-prices', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items: itemsWithIds })
+  })
+  .then(r => r.json())
+  .then(data => {
+    const results = data.results || [];
 
-      // WEIGHT: sync silently to the current catalog weight — no prompt. Weights
-      // changing doesn't affect what the rep is quoting (price), and keeping them
-      // current makes freight/order-processing accurate. Reps don't need to know.
-      let weightSynced = false;
-      results.forEach(r => {
-        if (r.weightChanged) {
-          const item = lineItems.find(i => String(i.productId) === String(r.productId));
-          if (item) { item.weight = r.currentWeight; weightSynced = true; }
-        }
-      });
-      if (weightSynced) { renderLineItems(); updateSummary(); }
-
-      // PRICE: still prompt — price IS what the rep is quoting, so they decide.
-      const changed = results.filter(r => r.changed);
-      if (changed.length === 0) return;
-
-      // Show price change modal
-      const lines = changed.map(c =>
-        `  ${c.name}: quoted $${c.quotedPrice.toFixed(2)} → current $${c.currentPrice.toFixed(2)}`
-      ).join('\n');
-
-      const msg = `${changed.length} item${changed.length > 1 ? 's have' : ' has'} a different price since this quote was saved:\n\n${lines}\n\nUpdate to current prices?`;
-
-      if (confirm(msg)) {
-        changed.forEach(c => {
-          const item = lineItems.find(i => String(i.productId) === String(c.productId));
-          if (item) item.price = c.currentPrice;
-        });
-        renderLineItems();
-        updateSummary();
+    // WEIGHT: sync silently to the current catalog weight — no prompt. Weights
+    // changing doesn't affect what the rep is quoting (price), and keeping them
+    // current makes freight/order-processing accurate. Reps don't need to know.
+    let weightSynced = false;
+    results.forEach(r => {
+      if (r.weightChanged) {
+        const item = lineItems.find(i => String(i.productId) === String(r.productId));
+        if (item) { item.weight = r.currentWeight; weightSynced = true; }
       }
-    })
-    .catch(() => {}); // silent fail — don't block on price check errors
+    });
+    if (weightSynced) { renderLineItems(); updateSummary(); }
+
+    // PRICE: still prompt — price IS what the rep is quoting, so they decide.
+    const changed = results.filter(r => r.changed);
+    if (changed.length === 0) return;
+
+    const lines = changed.map(c =>
+      `  ${c.name}: quoted $${c.quotedPrice.toFixed(2)} → current $${c.currentPrice.toFixed(2)}`
+    ).join('\n');
+
+    const msg = `${changed.length} item${changed.length > 1 ? 's have' : ' has'} a different price since this quote was saved:\n\n${lines}\n\nUpdate to current prices?`;
+
+    if (confirm(msg)) {
+      changed.forEach(c => {
+        const item = lineItems.find(i => String(i.productId) === String(c.productId));
+        if (item) item.price = c.currentPrice;
+      });
+      renderLineItems();
+      updateSummary();
+    }
+  })
+  .catch(() => {}); // silent fail — don't block on price check errors
+}
+
+// ── Duplicate Quote ──────────────────────────────────────────────
+// Find an existing quote (by customer / deal / quote #) and copy its line
+// items into the current quote, then re-verify prices. Customer + freight stay
+// as the current quote — this duplicates the PRODUCTS, not the whole quote.
+let _dupQuoteResults = [];
+let _dupQuoteTimer = null;
+
+function openDuplicateQuoteModal() {
+  const m = document.getElementById('dupQuoteModal');
+  m.classList.remove('hidden');
+  const inp = document.getElementById('dupQuoteSearch');
+  inp.value = '';
+  document.getElementById('dupQuoteResults').innerHTML =
+    '<div style="padding:18px;text-align:center;color:var(--muted);font-size:12px">Type at least 2 characters to search.</div>';
+  setTimeout(() => inp.focus(), 50);
+}
+function closeDuplicateQuoteModal() {
+  document.getElementById('dupQuoteModal').classList.add('hidden');
+}
+function dupQuoteSearchDebounce() {
+  clearTimeout(_dupQuoteTimer);
+  _dupQuoteTimer = setTimeout(runDupQuoteSearch, 250);
+}
+async function runDupQuoteSearch() {
+  const term = document.getElementById('dupQuoteSearch').value.trim();
+  const box = document.getElementById('dupQuoteResults');
+  if (term.length < 2) {
+    box.innerHTML = '<div style="padding:18px;text-align:center;color:var(--muted);font-size:12px">Type at least 2 characters to search.</div>';
+    return;
   }
+  box.innerHTML = '<div style="padding:18px;text-align:center;color:var(--muted);font-size:12px">Searching…</div>';
+  try {
+    const r = await fetch('/api/history?q=' + encodeURIComponent(term) + '&limit=25', { credentials: 'include' });
+    const d = await r.json();
+    _dupQuoteResults = (d.results || []).filter(q => Array.isArray(q.lineItems) && q.lineItems.length);
+    renderDupQuoteResults();
+  } catch (e) {
+    box.innerHTML = '<div style="padding:18px;text-align:center;color:#ef4444;font-size:12px">Search failed: ' + (e.message || 'error') + '</div>';
+  }
+}
+function renderDupQuoteResults() {
+  const box = document.getElementById('dupQuoteResults');
+  if (!_dupQuoteResults.length) {
+    box.innerHTML = '<div style="padding:18px;text-align:center;color:var(--muted);font-size:12px">No quotes with line items match.</div>';
+    return;
+  }
+  const fmt = n => '$' + parseFloat(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  box.innerHTML = _dupQuoteResults.map((q, i) => {
+    const who = [q.customer && q.customer.firstName, q.customer && q.customer.lastName].filter(Boolean).join(' ')
+      || (q.customer && q.customer.company) || q.company || '—';
+    const total = (q.total != null) ? q.total
+      : (q.lineItems || []).reduce((s, it) => s + (parseFloat(it.price) || 0) * (parseInt(it.qty) || 1), 0);
+    const n = (q.lineItems || []).length;
+    const date = q._createdAt ? new Date(q._createdAt).toLocaleDateString() : '';
+    return '<div onclick="selectDuplicateQuote(' + i + ')" style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;cursor:pointer;background:var(--surface2)" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">'
+      + '<div style="display:flex;justify-content:space-between;gap:10px">'
+      + '<div style="font-weight:700;font-size:13px;color:var(--text)">' + esc(q.quoteNumber || '(no #)') + '</div>'
+      + '<div style="font-size:12px;font-weight:700;color:var(--accent)">' + fmt(total) + '</div></div>'
+      + '<div style="font-size:12px;color:var(--text);margin-top:2px">' + esc(who) + (q.dealName ? ' · ' + esc(q.dealName) : '') + '</div>'
+      + '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + n + ' line item' + (n === 1 ? '' : 's') + (date ? ' · ' + date : '') + '</div>'
+      + '</div>';
+  }).join('');
+}
+function selectDuplicateQuote(idx) {
+  const q = _dupQuoteResults[idx];
+  if (!q || !Array.isArray(q.lineItems)) return;
+  if (lineItems.length > 0 &&
+      !confirm('Replace the current ' + lineItems.length + ' line item' + (lineItems.length === 1 ? '' : 's')
+        + ' with the ' + q.lineItems.length + ' from ' + (q.quoteNumber || 'this quote') + '?')) return;
+  lineItems = JSON.parse(JSON.stringify(q.lineItems));
+  renderLineItems();
+  updateSummary();
+  closeDuplicateQuoteModal();
+  showToast('Copied ' + lineItems.length + ' line item' + (lineItems.length === 1 ? '' : 's')
+    + ' from ' + (q.quoteNumber || 'quote') + ' — checking prices…', 'success');
+  runPriceCheck();
 }
 
 function toggleHistory() {

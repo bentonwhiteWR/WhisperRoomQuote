@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.71.3', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**“Why this page?” explanation on every Ideal Page recommendation.** Next to each ideal commercial page you’ll now see a small <strong>ⓘ Mapped / Matched / Category</strong> tag — hover it to see exactly how that page was chosen: an explicit commercial page mapping (your site architecture), a token/intent match against your commercial pages, or the /all-booths category fallback. When the correct page already ranks, it notes that Search Console confirms it. Makes the picks easy to trust and validate.'},
+        {t:'add', d:'**One source of truth for ideal pages.** The corrected Commercial Page Mapping now drives the Ideal Page everywhere — Revenue Opportunity Engine, Opportunity Action Engine, Target Page Analysis, and the Growth Engine all read the same mapping, so the dashboards can’t disagree on which page should rank for a keyword.'},
+      ]
+    },
+    {
       v:'1.71.2', date:'June 5, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Fixed the “ideal page” always defaulting to /products/drum-booth.** The Target Page Analysis (in Search Console, the Action Engine, and Growth Engine) was picking the ideal commercial page by keyword overlap — but the word “booth” appears in nearly every product URL, so every booth query tied and the tie broke to the highest-traffic booth page (drum-booth). It now uses a **Commercial Page Mapping** of intent → the correct page from your site architecture: recording → /application/recording, podcast → /application/broadcasting, audiology → /application/audiology, voice over → /application/voice-over, office → /products/office-booth, drum → /products/drum-booth, and generic soundproof/sound booth → /all-booths. (The mapping is easy to edit if a page moves.)'},

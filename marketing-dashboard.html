@@ -221,6 +221,8 @@ td.drillable:hover{color:var(--orange)}
 .act-bottleneck.bn-missing-page{background:rgba(34,197,94,.13);color:#5fd98a;border-color:rgba(34,197,94,.28)}
 .act-pages{font-size:11.5px;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:6px 10px;background:var(--surface);border-radius:6px;line-height:1.5}
 .act-pages .ea-len{font-size:9px;font-weight:800;letter-spacing:.05em}
+.ideal-why{font-size:9px;font-weight:700;color:var(--muted);cursor:help;border-bottom:1px dotted var(--muted);white-space:nowrap}
+.ideal-why:hover{color:var(--orange)}
 /* v1.69.x — Growth Engine: kanban + opportunity model */
 .kanban{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
 @media(max-width:900px){.kanban{grid-template-columns:repeat(2,1fr)}}
@@ -1049,7 +1051,7 @@ const tableState = {
       const intentCell = `<span style="display:inline-flex;align-items:center;gap:6px;justify-content:flex-end" title="Commercial booth-buying intent (0–100)"><span class="mini-bar" style="width:${Math.max(3, intent * 0.4)}px;background:${intentColor};opacity:1"></span>${intent}</span>`;
       const sc = Math.round(r.score || 0);
       const scoreCell = `<span style="display:inline-flex;align-items:center;gap:6px;justify-content:flex-end"><span class="mini-bar" style="width:${Math.max(3, sc * 0.5)}px"></span><strong>${sc}</strong></span>`;
-      const pageCell = gscRankingPageCell(r.actual_page, r.match_status);
+      const pageCell = gscRankingPageCell(r.actual_page, r._matchInfo);
       return `<tr><td>${escHtml(r.query)}${brand}</td>` +
         `<td>${pageCell}</td>` +
         `<td class="num">${r.position == null ? '—' : r.position.toFixed(1)}</td>` +
@@ -1079,10 +1081,12 @@ function gscPageKindChip(url) {
   const c = m[gscPageKind(url)]; if (!c) return '';
   return `<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:9px;color:${c[1]};background:${c[2]};margin-left:6px;white-space:nowrap">${c[0]}</span>`;
 }
-function gscRankingPageCell(url, matchStatus) {
+function gscRankingPageCell(url, matchInfo) {
   if (!url) return '<span style="color:var(--muted)" title="No Search Console query→page data yet — run Sync GSC">—</span>';
   const short = gscPageShort(url);
-  return `<a href="${escHtml(url)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(short.length > 34 ? short.slice(0, 32) + '…' : short)}</a>${gscPageKindChip(url)}${matchStatus ? ' ' + gscMatchChip(matchStatus) : ''}`;
+  const mi = matchInfo || {};
+  const verdict = mi.status ? ' ' + gscMatchChip(mi.status) + gscIdealWhyChip(mi.source, mi.status) : '';
+  return `<a href="${escHtml(url)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(short.length > 34 ? short.slice(0, 32) + '…' : short)}</a>${gscPageKindChip(url)}${verdict}`;
 }
 // Target-page match verdict chip: is the right commercial page ranking?
 function gscMatchChip(status) {
@@ -1090,10 +1094,11 @@ function gscMatchChip(status) {
   const c = m[status] || m.unknown;
   return `<span style="font-size:9px;font-weight:700;padding:1px 7px;border-radius:9px;color:${c[1]};background:${c[2]};white-space:nowrap">${c[0]}</span>`;
 }
-// Target-page match status for the table — uses the Commercial Page Mapping Layer.
-function gscMatchStatus(actualPage, query) {
+// Target-page match info for the table — uses the Commercial Page Mapping Layer
+// (the single source of truth). Returns the verdict + which source picked the ideal.
+function gscMatchInfo(actualPage, query) {
   const ideal = gscIdealCommercialPage(query, gscPagesCache);
-  return gscPageMatchStatus(actualPage, ideal ? ideal.path : null);
+  return { status: gscPageMatchStatus(actualPage, ideal ? ideal.path : null), source: ideal ? ideal.source : null, idealPath: ideal ? ideal.path : null };
 }
 
 function changeDateRange(days) {
@@ -1390,7 +1395,7 @@ function gscResolvePagePath(path, pages) {
 function gscIdealCommercialPage(query, pages) {
   const s = ' ' + String(query).toLowerCase() + ' ';
   for (const rule of GSC_PAGE_MAP) {
-    if (rule.rx.test(s)) { const r = gscResolvePagePath(rule.ideal, pages); return { page: r.url, path: rule.ideal, fromMap: true, exists: r.exists }; }
+    if (rule.rx.test(s)) { const r = gscResolvePagePath(rule.ideal, pages); return { page: r.url, path: rule.ideal, fromMap: true, exists: r.exists, source: 'map' }; }
   }
   const qt = new Set(gscTokens(query).filter(t => !GSC_PAGE_STOPWORDS.has(t)));
   if (qt.size) {
@@ -1400,9 +1405,9 @@ function gscIdealCommercialPage(query, pages) {
       let overlap = 0; gscTokens(gscPageShort(p.page)).forEach(t => { if (!GSC_PAGE_STOPWORDS.has(t) && qt.has(t)) overlap++; });
       if (overlap > bestScore || (overlap === bestScore && overlap > 0 && best && (+p.clicks || 0) > (+best.clicks || 0))) { bestScore = overlap; best = p; }
     });
-    if (bestScore >= 1) return { page: best.page, path: gscPageShort(best.page), fromMap: false, exists: true };
+    if (bestScore >= 1) return { page: best.page, path: gscPageShort(best.page), fromMap: false, exists: true, source: 'overlap' };
   }
-  if (/\bbooth/.test(s)) { const r = gscResolvePagePath('/all-booths', pages); return { page: r.url, path: '/all-booths', fromMap: true, exists: r.exists }; }
+  if (/\bbooth/.test(s)) { const r = gscResolvePagePath('/all-booths', pages); return { page: r.url, path: '/all-booths', fromMap: true, exists: r.exists, source: 'fallback' }; }
   return null;
 }
 // Shared match-status logic: is the ideal commercial page what actually ranks?
@@ -1411,6 +1416,19 @@ function gscPageMatchStatus(actualPage, idealPath) {
   if (idealPath && gscPageShortPath(gscPageShort(actualPage)) === gscPageShortPath(idealPath)) return 'correct';
   if (idealPath) return 'wrong';
   return gscPageClass(actualPage) === 'commercial' ? 'correct' : 'missing';
+}
+// "Why this page?" — explains where the Ideal Page recommendation came from, so
+// the picks are auditable. Single source: gscIdealCommercialPage's `source`.
+function gscIdealWhyChip(source, matchStatus) {
+  const map = {
+    map:      ['Mapped',   'Explicit commercial page mapping (your site architecture).'],
+    overlap:  ['Matched',  'Token / intent match against your commercial pages (no explicit mapping).'],
+    fallback: ['Category', 'Category fallback — no specific page mapped, so the /all-booths category page.'],
+  };
+  const m = map[source]; if (!m) return '';
+  let why = m[1];
+  if (matchStatus === 'correct') why += ' Confirmed by Search Console — this page already ranks for the query.';
+  return ` <span class="ideal-why" title="Why this page? ${why}">ⓘ ${m[0]}</span>`;
 }
 
 // ── WhisperRoom CTR benchmark + page-authority stats ───────────────────
@@ -1531,7 +1549,7 @@ function renderGscRevOpp(rows) {
     p_cvr: r.p_cvr == null ? null : +r.p_cvr, p_conv: +r.p_conv || 0, has_paid_signal: !!r.has_paid_signal,
     extra_clicks: +r.extra_clicks || 0, revenue_opportunity: +r.revenue_opportunity || 0,
     commercial_intent: +r.commercial_intent || 0, commercial_opp: +r.commercial_opp || 0,
-    actual_page: r.actual_page || null, match_status: gscMatchStatus(r.actual_page || null, r.query),
+    actual_page: r.actual_page || null, _matchInfo: gscMatchInfo(r.actual_page || null, r.query),
   }));
   const rankBy = gscRevMode === 'commercial' ? 'commercial_opp' : 'revenue_opportunity';
   const max = mapped.reduce((m, r) => Math.max(m, r[rankBy]), 0);
@@ -1605,6 +1623,7 @@ function gscDiagnose(r, pages, maxRank) {
   const ideal = gscIdealCommercialPage(q, pages);
   let idealPage = ideal ? ideal.page : null;
   let idealShort = ideal ? ideal.path : null;
+  const idealSource = ideal ? ideal.source : null;
   const matchStatus = gscPageMatchStatus(actualPage, ideal ? ideal.path : null);
   // If the ranking page IS the ideal (correct) but the mapping returned nothing,
   // treat the ranking commercial page as the ideal so the UI shows a destination.
@@ -1689,7 +1708,7 @@ function gscDiagnose(r, pages, maxRank) {
   return { query: q, type, bottleneckLabel, position: pos, impressions: impr, ctr, impact,
     commercial, priority, score, confidence: conf, confLabel, reasoning, action, execText,
     actualPage, actualPageShort: actualShort, actualPageClass: actualClass, pageMetrics,
-    idealPage, idealPageShort: idealShort, matchStatus, benchCtr,
+    idealPage, idealPageShort: idealShort, idealSource, matchStatus, benchCtr,
     targetPage, targetPageShort: targetShort, pageShort: targetShort || actualShort,
     pCvr: r.p_cvr == null ? null : +r.p_cvr, pConv: +r.p_conv || 0, cvrMult };
 }
@@ -1833,7 +1852,7 @@ function gscBuildAssist(d, allQueries, pages) {
     const blog = d.actualPageClass === 'blog';
     blocks.push(`<div class="ea-block"><div class="ea-label">Target page analysis</div><div class="ea-brief">` +
       `Ranking now: <code>${escHtml(d.actualPageShort || '?')}</code> ${gscPageKindChip(d.actualPage)} — ${blog ? 'a blog post, not a sales page' : 'too generic for this term'}<br>` +
-      `Ideal page: <code>${escHtml(d.idealPageShort || '?')}</code> ${gscPageKindChip(d.idealPage)} — should rank for “${escHtml(d.query)}”</div></div>`);
+      `Ideal page: <code>${escHtml(d.idealPageShort || '?')}</code> ${gscPageKindChip(d.idealPage)}${gscIdealWhyChip(d.idealSource, d.matchStatus)} — should rank for “${escHtml(d.query)}”</div></div>`);
     const linkPages = gscRelatedPages(d.query, pages, d.idealPageShort, 4).filter(p => p.short !== d.actualPageShort);
     const linkItems = [`<li><strong>From the ranking page:</strong> <a class="ea-link" href="${escHtml(d.actualPage || '#')}" target="_blank" rel="noopener">${escHtml(d.actualPageShort || 'current page')}</a> → <a class="ea-link" href="${escHtml(d.idealPage || '#')}" target="_blank" rel="noopener">${escHtml(d.idealPageShort || 'ideal page')}</a>, anchor “${escHtml(d.query)}”</li>`]
       .concat(linkPages.map(p => `<li>Also link from <a class="ea-link" href="${escHtml(p.url)}" target="_blank" rel="noopener">${escHtml(p.short)}</a> <span class="ea-len">${fmtInt(p.clicks)} clicks</span></li>`));
@@ -1899,7 +1918,7 @@ function renderActionEngine(roRows, pageRows, queryRows) {
     const ideal = d.type === 'missing-page'
       ? '<span style="color:#5fd98a;font-weight:600">build a new commercial page</span>'
       : (d.idealPageShort
-        ? `<a href="${escHtml(d.idealPage)}" target="_blank" rel="noopener" class="ea-link">${escHtml(d.idealPageShort)}</a>${gscPageKindChip(d.idealPage)}`
+        ? `<a href="${escHtml(d.idealPage)}" target="_blank" rel="noopener" class="ea-link">${escHtml(d.idealPageShort)}</a>${gscPageKindChip(d.idealPage)}${gscIdealWhyChip(d.idealSource, d.matchStatus)}`
         : '<span style="color:var(--muted)">—</span>');
     const pageStrategy = `<div class="act-pages"><span class="ea-len">RANKS NOW</span> ${ap}${pairMeta} <span style="color:var(--muted)">→</span> <span class="ea-len">IDEAL</span> ${ideal} ${gscMatchChip(d.matchStatus)}</div>`;
     return `<div class="act-card bn-${d.type}">
@@ -1985,7 +2004,7 @@ function gscToGrowthOpp(d, r) {
     provenValue: hasPaid, commercial: d.commercial, action: d.action, reasoning: d.reasoning,
     currentPerf: `#${d.position.toFixed(1)} · ${(d.ctr * 100).toFixed(1)}% CTR · ${fmtInt(d.impressions)} impr`,
     actualPage: d.actualPage, actualPageShort: d.actualPageShort, actualPageClass: d.actualPageClass,
-    idealPage: d.idealPage, idealPageShort: d.idealPageShort, matchStatus: d.matchStatus };
+    idealPage: d.idealPage, idealPageShort: d.idealPageShort, idealSource: d.idealSource, matchStatus: d.matchStatus };
 }
 
 // Paid analysis: aggregate Google Ads campaigns, join HubSpot revenue, classify
@@ -2149,7 +2168,7 @@ function renderGrowthTpa(all) {
   const head = `<tr><th>Keyword</th><th>Current ranking page</th><th>Ideal commercial page</th><th>Match</th></tr>`;
   const body = rows.map(o => {
     const cur = o.actualPageShort ? `<a href="${escHtml(o.actualPage)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(o.actualPageShort)}</a>${gscPageKindChip(o.actualPage)}` : '<span style="color:var(--muted)">unknown — Sync GSC</span>';
-    const ideal = o.matchStatus === 'missing' ? '<span style="color:#fbbf24">none — build one</span>' : (o.idealPageShort ? `<a href="${escHtml(o.idealPage)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(o.idealPageShort)}</a>${gscPageKindChip(o.idealPage)}` : '—');
+    const ideal = o.matchStatus === 'missing' ? '<span style="color:#fbbf24">none — build one</span>' : (o.idealPageShort ? `<a href="${escHtml(o.idealPage)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(o.idealPageShort)}</a>${gscPageKindChip(o.idealPage)}${gscIdealWhyChip(o.idealSource, o.matchStatus)}` : '—');
     return `<tr><td>${escHtml(o.topic)}</td><td>${cur}</td><td>${ideal}</td><td>${gscMatchChip(o.matchStatus)}</td></tr>`;
   }).join('');
   el.innerHTML = `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;

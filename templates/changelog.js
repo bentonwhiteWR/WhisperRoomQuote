@@ -51,6 +51,15 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.3', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Google Ads Improvement Engine is now brand- and impression-share-aware.** The Budget Reallocation board used to tell you to <em>increase</em> any high-ROAS campaign — including branded ones. But branded paid clicks mostly re-buy demand your organic listings already win for free, so that ROAS overstates the real lift. Branded winners now land in a new <strong>▽ Test Pull-Back</strong> column (test trimming bids and watch total paid+organic revenue), and <strong>▲ Increase</strong> is reserved for non-branded campaigns that genuinely lose impressions to budget (high budget-lost impression share) at a strong return. Each card now shows its impression share and a one-line reason for the call.'},
+        {t:'add', d:'**Attribution-gap campaigns are flagged, not punished.** Ecommerce / Shopify / remarketing campaigns that convert outside HubSpot used to look like “$0 revenue → cut it.” They now go to a separate <strong>⌕ Investigate</strong> column so you verify in Google Ads / Shopify before pulling spend.'},
+        {t:'add', d:'**Ad diagnoses now use real Quality Score, not guesses.** Each campaign’s keyword Quality Scores roll up to pinpoint the actual weak link — below-average <em>expected CTR</em> → Ad Copy Opportunity, low <em>ad relevance</em> → restructure the ad group, low <em>landing-page experience</em> → Landing Page Opportunity — instead of inferring it from CTR vs. conversion rate.'},
+        {t:'add', d:'**One-click AI ad rewrites.** Ad Copy opportunities now have a <strong>✨ Generate AI rewrites</strong> button that calls Claude (back end from v1.72.2), seeded with that campaign’s weakest-scoring search terms, and returns ready-to-test headlines and descriptions in WhisperRoom voice. Local quick-drafts still show instantly as a fallback.'},
+      ]
+    },
+    {
       v:'1.72.2', date:'June 5, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Google Ads data, deeper (back end).** The Ads sync now also pulls <strong>Quality Score</strong> and its three components (expected CTR, ad relevance, landing-page experience) per keyword, and <strong>Impression Share</strong> + lost-impression-share (budget vs. rank) per campaign. This is the data that lets the dashboard say <em>why</em> a campaign underperforms — bad ad copy vs. wrong landing page vs. needs more budget — instead of guessing. (Run a Sync to populate it; the upcoming Growth Engine update will surface it.)'},

@@ -251,11 +251,21 @@ td.drillable:hover{color:var(--orange)}
 .gw-pri.monitor{background:rgba(245,158,11,.16);color:#fbbf24}
 .gw-pri.ignore{background:rgba(148,163,184,.12);color:#94a3b8}
 .gw-score{display:inline-flex;align-items:center;gap:6px;justify-content:flex-end}
+.kanban-budget{grid-template-columns:repeat(6,1fr)}
+@media(max-width:1100px){.kanban-budget{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:700px){.kanban-budget{grid-template-columns:repeat(2,1fr)}}
 .kanban-budget .bud-col-head{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;padding-bottom:7px;border-bottom:1px solid var(--border)}
 .kanban-budget .kb-increase .bud-col-head{color:#5fd98a}
+.kanban-budget .kb-test .bud-col-head{color:#c08cff}
 .kanban-budget .kb-maintain .bud-col-head{color:#6ba8ff}
 .kanban-budget .kb-reduce .bud-col-head{color:#fbbf24}
 .kanban-budget .kb-pause .bud-col-head{color:#f87171}
+.kanban-budget .kb-investigate .bud-col-head{color:#94a3b8}
+.kb-why{font-size:10px;color:var(--muted);line-height:1.4;margin-top:5px;padding-top:5px;border-top:1px dashed var(--border)}
+.ea-ai-btn{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#fff;background:linear-gradient(90deg,#7c3aed,#2563eb);border:none;border-radius:6px;padding:5px 11px;cursor:pointer;margin-bottom:8px}
+.ea-ai-btn:hover{filter:brightness(1.1)}
+.ea-ai-btn:disabled{opacity:.6;cursor:default}
+.ai-rewrite-box{margin-bottom:6px}
 .act-validated{font-size:10px;font-weight:700;color:#5fd98a}
 .act-impact{margin-left:auto;font-size:14px;font-weight:800;font-family:var(--mono);color:var(--green)}
 .act-meta{font-size:11px;color:var(--muted);font-family:var(--mono);margin-bottom:7px}
@@ -867,28 +877,38 @@ async function loadStatus() {
   }
 }
 
+// v1.7x — read a /sync response robustly. A long sync can exceed Railway's edge
+// timeout and return the plain text "upstream error" (not JSON) while the ETL
+// keeps running server-side — so a JSON.parse failure here is "still running,"
+// not a real failure. Surface that as a calm message instead of a scary error.
+async function _handleSyncResult(res, label) {
+  let text = ''; try { text = await res.text(); } catch {}
+  let data = null; try { data = JSON.parse(text); } catch {}
+  if (!data) {
+    if (res.status >= 500 || /upstream|timed?\s*out|gateway/i.test(text)) {
+      alert(`${label} is taking a while — it's still running in the background. Give it a minute, then refresh the page.`);
+    } else {
+      alert(`${label} error: ${(text || '').slice(0, 140) || ('HTTP ' + res.status)}`);
+    }
+    return;
+  }
+  if (!data.ok) alert(`${label} failed: ${data.error || 'one part of the sync errored — check the status bar below'}`);
+  else alert(`${label} complete.`);
+}
+
 async function runSync() {
   const btn = document.getElementById('syncBtn');
   btn.disabled = true;
   btn.textContent = 'Syncing…';
   try {
-    const res  = await fetch('/api/marketing/sync', {
-      method: 'POST',
-      credentials: 'include',
+    const res = await fetch('/api/marketing/sync', {
+      method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      // No daysBack — both ETL families default to 365d (v1.46.12). Was
-      // Google Ads 90d / HubSpot 365d; the asymmetry caused the dashboard's
-      // 365d view to divide 365d revenue by 90d spend, inflating ROAS ~4x.
-      body: JSON.stringify({ report: 'all' }),
+      body: JSON.stringify({ report: 'all' }),   // 365d default for both families (v1.46.12)
     });
-    const data = await res.json();
-    if (!data.ok) {
-      alert('Sync failed: ' + (data.error || 'unknown error'));
-    } else {
-      alert('Sync complete.');
-    }
+    await _handleSyncResult(res, 'Sync');
   } catch(e) {
-    alert('Sync error: ' + e.message);
+    alert(`Sync started — the request dropped (likely a long-running sync), but it may still be finishing in the background. Refresh in a minute.`);
   } finally {
     btn.disabled = false;
     btn.textContent = '↻ Sync All';
@@ -904,16 +924,14 @@ async function runSyncGsc() {
   btn.disabled = true;
   btn.textContent = 'Syncing GSC…';
   try {
-    const res  = await fetch('/api/marketing/sync', {
-      method: 'POST',
-      credentials: 'include',
+    const res = await fetch('/api/marketing/sync', {
+      method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ report: 'gsc', daysBack: currentDaysBack }),
     });
-    const data = await res.json();
-    if (!data.ok) alert('GSC sync failed: ' + (data.error || 'unknown error'));
+    await _handleSyncResult(res, 'GSC sync');
   } catch(e) {
-    alert('GSC sync error: ' + e.message);
+    alert('GSC sync started — the request dropped but may still be finishing. Refresh in a minute.');
   } finally {
     btn.disabled = false;
     btn.textContent = '↻ Sync GSC';
@@ -1580,7 +1598,7 @@ function gscExpectedCtr(pos) {
   if (pos < 7.5) return 0.035; if (pos < 8.5) return 0.030; if (pos < 9.5) return 0.026;
   return 0.022;
 }
-function gscPageShort(url) { return String(url || '').replace(/^https?:\/\/(www\.)?whisperroom\.com/i, '') || '/'; }
+function gscPageShort(url) { return String(url || '').replace(/^https?:\/\/(www\.|shop\.)?whisperroom\.com/i, '') || '/'; }
 function gscTokens(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9\s/_-]/g, ' ').split(/[\s/_-]+/)
     .filter(t => t.length > 2 && !GSC_STOPWORDS.has(t));
@@ -1949,18 +1967,19 @@ function renderActionEngine(roRows, pageRows, queryRows) {
 async function loadGrowthTab() {
   const q  = `?days=${currentDaysBack}`;
   const qm = `?days=${currentDaysBack}&model=${currentModel}`;
-  const [ro, pg, qs, camp, attr] = await Promise.all([
+  const [ro, pg, qs, camp, attr, kw] = await Promise.all([
     fetch('/api/marketing/gsc-revenue-opportunity' + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     fetch('/api/marketing/gsc-pages' + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     fetch('/api/marketing/gsc-queries' + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     fetch('/api/marketing/campaigns' + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     fetch('/api/marketing/campaign-attribution' + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/keywords' + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
   ]);
   const pages = (pg && pg.rows) || [], queries = (qs && qs.rows) || [];
   gscBuildCtrBenchmark(queries);
   gscBuildPageStats(pages);
   const seoEnriched = gscEnrichRev((ro && ro.rows) || [], pages);
-  const model = gscBuildGrowthModel(seoEnriched, pages, (camp && camp.rows) || [], (attr && attr.rows) || []);
+  const model = gscBuildGrowthModel(seoEnriched, pages, (camp && camp.rows) || [], (attr && attr.rows) || [], (kw && kw.rows) || []);
   renderGrowthKanban(model.all);
   renderGrowthExec(model.all);
   renderGrowthQueue(model.all);
@@ -1973,7 +1992,7 @@ async function loadGrowthTab() {
 
 // Build the unified opportunity model: SEO (diagnosed) + informational (ignore) +
 // Paid (campaign analysis), each scored + bucketed.
-function gscBuildGrowthModel(seoEnriched, pages, campRows, attrRows) {
+function gscBuildGrowthModel(seoEnriched, pages, campRows, attrRows, kwRows) {
   const ranked = seoEnriched.slice().sort((a, b) => (+b.commercial_opp || 0) - (+a.commercial_opp || 0));
   const seoTop = ranked.filter(r => (+r.commercial_intent || 0) >= 25 || (+r.revenue_opportunity || 0) > 0).slice(0, 60);
   const maxRank = seoTop.length ? (+seoTop[0].commercial_opp || 0) : 0;
@@ -1985,7 +2004,7 @@ function gscBuildGrowthModel(seoEnriched, pages, campRows, attrRows) {
       topic: r.query, query: r.query, revenueOpp: 0, confidence: 30, commercialIntent: +r.commercial_intent || 0, provenValue: false,
       action: 'Informational query — low booth-buying intent. Keep for traffic/brand, not a revenue priority.',
       currentPerf: `${fmtInt(+r.impressions || 0)} impr · low intent`, matchStatus: 'unknown' }));
-  const paid = gscBuildPaidGrowth(campRows, attrRows);
+  const paid = gscBuildPaidGrowth(campRows, attrRows, kwRows);
   const all = seoOpps.concat(informational).concat(paid.opps);
   const maxRev = Math.max(1, ...all.map(o => Math.abs(o.revenueOpp || 0)));
   all.forEach(o => { o.growthScore = gscGrowthScore(o, maxRev); o.priority = gscGrowthBucket(o); });
@@ -2009,15 +2028,83 @@ function gscToGrowthOpp(d, r) {
 
 // Paid analysis: aggregate Google Ads campaigns, join HubSpot revenue, classify
 // into ad-copy / landing-page / budget opportunities + a budget-reallocation bucket.
-function gscBuildPaidGrowth(campRows, attrRows) {
+// Brand & attribution detection. Branded campaigns capture demand organic
+// search already wins for free, so high paid ROAS there overstates incremental
+// value — we flag those to test pulling back, not to scale.
+const GSC_BRAND_TOKENS = ['brand', 'whisperroom', 'whisper room', 'whisper-room', 'whisperoom'];
+function gscIsBrandedCampaign(name) {
+  const n = String(name || '').toLowerCase();
+  return GSC_BRAND_TOKENS.some(t => n.includes(t));
+}
+// Ecommerce / remarketing / shopping campaigns convert outside HubSpot CRM, so
+// "$0 attributed revenue" is an attribution gap, not proven waste.
+function gscIsAttributionGapCampaign(name) {
+  const n = String(name || '').toLowerCase();
+  return /shop|shopify|ecom|e-com|remarket|retarget|display|pmax|performance ?max|smart shopping|gmc|merchant/.test(n);
+}
+// Google QualityScoreBucket enum: 2 BELOW_AVERAGE, 3 AVERAGE, 4 ABOVE_AVERAGE
+// (also stored as the string names). Map either form → low / ok / high.
+function gscQsBucket(v) {
+  if (v == null) return null;
+  const s = String(v).toUpperCase().trim();
+  if (s === 'BELOW_AVERAGE' || s === '2') return 'low';
+  if (s === 'AVERAGE' || s === '3') return 'ok';
+  if (s === 'ABOVE_AVERAGE' || s === '4') return 'high';
+  return null;
+}
+function gscQsLabel(b) { return b === 'low' ? 'below average' : b === 'high' ? 'above average' : 'average'; }
+
+// Roll keyword-level Quality Score up to the campaign: impression-weighted avg
+// QS, the dominant weak component (drives ad-copy vs relevance vs landing-page
+// diagnosis), and the weakest keywords (seed terms for an AI ad rewrite).
+function gscKwRollupByCampaign(kwRows) {
+  const latest = {}, impByKw = {};
+  (kwRows || []).forEach(r => {
+    const k = r.keyword_id; if (k == null) return;
+    impByKw[k] = (impByKw[k] || 0) + (+r.impressions || 0);
+    if (!(k in latest)) latest[k] = r;            // rows arrive date DESC → first seen is most recent
+  });
+  const by = {};
+  Object.keys(latest).forEach(k => {
+    const r = latest[k], id = r.campaign_id; if (!id) return;
+    const a = by[id] || (by[id] = { qsSum: 0, qsW: 0, n: 0,
+      exp: { low: 0, ok: 0, high: 0 }, rel: { low: 0, ok: 0, high: 0 }, lp: { low: 0, ok: 0, high: 0 }, weak: [] });
+    const qs = +r.quality_score, w = (impByKw[k] || 0) + 1;
+    if (qs > 0) { a.qsSum += qs * w; a.qsW += w; a.n++; }
+    const e = gscQsBucket(r.qs_expected_ctr), rl = gscQsBucket(r.qs_ad_relevance), lpb = gscQsBucket(r.qs_landing_page);
+    if (e) a.exp[e]++; if (rl) a.rel[rl]++; if (lpb) a.lp[lpb]++;
+    if ((e === 'low' || rl === 'low') && r.keyword_text) a.weak.push({ t: r.keyword_text, imp: impByKw[k] || 0 });
+  });
+  const dom = b => b.low > b.high ? 'low' : b.high > b.low ? 'high' : 'ok';
+  const out = {};
+  Object.keys(by).forEach(id => {
+    const a = by[id];
+    if (!a.n) { out[id] = null; return; }
+    const lows = { expected_ctr: a.exp.low, ad_relevance: a.rel.low, landing_page: a.lp.low };
+    let weakest = null, max = 0;
+    Object.keys(lows).forEach(c => { if (lows[c] > max) { max = lows[c]; weakest = c; } });
+    if (max === 0) weakest = null;
+    out[id] = { avgQs: a.qsSum / a.qsW, weakest, exp: dom(a.exp), rel: dom(a.rel), lp: dom(a.lp),
+      weakTerms: a.weak.sort((x, y) => y.imp - x.imp).slice(0, 6).map(w => w.t) };
+  });
+  return out;
+}
+
+function gscBuildPaidGrowth(campRows, attrRows, kwRows) {
   const agg = {};
   (campRows || []).forEach(r => {
     const id = r.campaign_id; if (!id) return;
-    const a = agg[id] || (agg[id] = { id, name: r.campaign_name, impressions: 0, clicks: 0, cost: 0, conversions: 0, conv_value: 0 });
+    const a = agg[id] || (agg[id] = { id, name: r.campaign_name, impressions: 0, clicks: 0, cost: 0, conversions: 0, conv_value: 0,
+      _isImp: 0, _isShare: 0, _budLost: 0, _rankLost: 0 });
     a.name = r.campaign_name || a.name;
-    a.impressions += +r.impressions || 0; a.clicks += +r.clicks || 0; a.cost += +r.cost_usd || 0;
+    const imp = +r.impressions || 0;
+    a.impressions += imp; a.clicks += +r.clicks || 0; a.cost += +r.cost_usd || 0;
     a.conversions += +r.conversions || 0; a.conv_value += +r.conversion_value || 0;
+    if (r.search_impression_share != null) { a._isImp += imp; a._isShare += (+r.search_impression_share) * imp; }
+    if (r.search_budget_lost_is != null) a._budLost += (+r.search_budget_lost_is) * imp;
+    if (r.search_rank_lost_is != null) a._rankLost += (+r.search_rank_lost_is) * imp;
   });
+  const kwByCamp = gscKwRollupByCampaign(kwRows);
   const attrByName = {};
   (attrRows || []).forEach(a => { attrByName[String(a.campaign_name || '').toLowerCase().trim()] = a; });
   const campaigns = Object.values(agg).map(c => {
@@ -2026,35 +2113,83 @@ function gscBuildPaidGrowth(campRows, attrRows) {
     const cvr = c.clicks ? c.conversions / c.clicks : 0;
     const revenue = +at.revenue_won || 0, leads = +at.leads || 0, deals = +at.deals_won || 0;
     const roas = c.cost > 0 ? revenue / c.cost : (revenue > 0 ? Infinity : 0);
-    return Object.assign(c, { ctr, cvr, revenue, leads, deals, roas, segment: at.segment });
+    const impShare = c._isImp ? c._isShare / c._isImp : null;
+    const budLost = c._isImp ? c._budLost / c._isImp : null;
+    const rankLost = c._isImp ? c._rankLost / c._isImp : null;
+    return Object.assign(c, { ctr, cvr, revenue, leads, deals, roas, segment: at.segment,
+      impShare, budLost, rankLost, qs: kwByCamp[c.id] || null, branded: gscIsBrandedCampaign(c.name) });
   }).filter(c => c.cost > 0 || c.impressions > 50);
   const medCtr = gscMedian(campaigns.map(c => c.ctr).filter(x => x > 0));
   const totalSpend = campaigns.reduce((s, c) => s + c.cost, 0);
-  const opps = [], budget = { increase: [], maintain: [], reduce: [], pause: [] };
+  const opps = [], budget = { increase: [], test: [], maintain: [], reduce: [], pause: [], investigate: [] };
   campaigns.forEach(c => {
-    const spendShare = totalSpend ? c.cost / totalSpend : 0;
     const highSpend = c.cost >= Math.max(100, totalSpend * 0.05);
-    const lowCtr = medCtr > 0 && c.ctr < medCtr * 0.7;
-    const lowCvr = c.clicks >= 20 && c.cvr < 0.01;
     const goodRoas = c.roas >= 2 && c.revenue > 0;
     const poorRoas = c.cost >= 150 && c.revenue > 0 && c.roas < 1;
-    const noRevHighSpend = c.cost >= 300 && c.revenue <= 0 && c.conversions < 1;
-    if (goodRoas) budget.increase.push(c);
-    else if (noRevHighSpend) budget.pause.push(c);
-    else if (poorRoas) budget.reduce.push(c);
-    else budget.maintain.push(c);
-    if (highSpend && lowCtr) opps.push(gscPaidOpp(c, 'Ad Copy Opportunity', 'CTR Gap',
-      `Ad copy isn't earning clicks: ${(c.ctr * 100).toFixed(1)}% CTR on $${fmtInt(Math.round(c.cost))} spend (below the ${(medCtr * 100).toFixed(1)}% account median). Rewrite the ads to lift click-through.`,
-      c.cost * 0.15, true, { adCopy: true }));
-    else if (highSpend && lowCvr) opps.push(gscPaidOpp(c, 'Landing Page Opportunity', 'Paid Search Gap',
-      `Clicks are healthy (${(c.ctr * 100).toFixed(1)}% CTR) but they don't convert (${(c.cvr * 100).toFixed(1)}%). The problem is likely the landing page, not the ad — review the page this campaign sends to.`,
-      c.cost * 0.2, true));
-    else if (goodRoas && spendShare < 0.15) opps.push(gscPaidOpp(c, 'Budget Reallocation Opportunity', 'Budget Gap',
-      `Strong return (${c.roas === Infinity ? '∞' : c.roas.toFixed(1)}× ROAS on $${fmtInt(Math.round(c.cost))}) but modest spend — there's room to capture more. Raise budget / bids and watch ROAS hold.`,
-      c.revenue * 0.3, true, { budgetUp: true }));
-    else if (poorRoas || noRevHighSpend) opps.push(gscPaidOpp(c, 'Budget Reallocation Opportunity', 'Paid Search Gap',
-      `$${fmtInt(Math.round(c.cost))} spent with ${c.revenue > 0 ? `only $${fmtInt(Math.round(c.revenue))} revenue (${c.roas.toFixed(1)}× ROAS)` : 'no attributed revenue'}. Cut or restructure — those dollars are better spent on higher-return campaigns.`,
-      c.cost * 0.5, true, { savings: true }));
+    const noRev = c.cost >= 300 && c.revenue <= 0 && c.conversions < 1;
+    const budgetConstrained = c.budLost != null && c.budLost >= 0.10;   // losing ≥10% of impressions to budget
+    const attrGap = gscIsAttributionGapCampaign(c.name);
+    const roasTxt = c.roas === Infinity ? '∞' : c.roas.toFixed(1);
+
+    // ── Budget bucket — brand / cannibalization / impression-share aware ──
+    if (c.branded && goodRoas) {
+      c.bud = `Branded campaign — the ${roasTxt}× ROAS mostly re-buys demand organic already wins for free. Test trimming bids/budget and watch total paid+organic revenue, not paid ROAS alone.`;
+      budget.test.push(c);
+    } else if (noRev && attrGap) {
+      c.bud = `No HubSpot revenue, but this reads as an ecommerce / remarketing campaign whose conversions land outside CRM attribution. Verify in Google Ads / Shopify before cutting.`;
+      budget.investigate.push(c);
+    } else if (noRev) {
+      c.bud = `$${fmtInt(Math.round(c.cost))} spent, no attributed revenue or conversions. Pause or restructure.`;
+      budget.pause.push(c);
+    } else if (poorRoas) {
+      c.bud = `${roasTxt}× ROAS on $${fmtInt(Math.round(c.cost))} — below break-even. Cut or rework before scaling.`;
+      budget.reduce.push(c);
+    } else if (goodRoas && budgetConstrained) {
+      c.bud = `Strong ${roasTxt}× ROAS and losing ${(c.budLost * 100).toFixed(0)}% of impressions to budget — genuinely constrained. Raise budget and watch ROAS hold.`;
+      budget.increase.push(c);
+    } else if (goodRoas) {
+      c.bud = c.impShare != null
+        ? `Good ${roasTxt}× ROAS at ${(c.impShare * 100).toFixed(0)}% impression share, not budget-limited (only ${((c.budLost || 0) * 100).toFixed(0)}% lost to budget). Hold; lift bids only where rank-lost IS is high.`
+        : `Good ${roasTxt}× ROAS, not budget-limited. Hold spend.`;
+      budget.maintain.push(c);
+    } else {
+      c.bud = `Steady performer. Maintain and monitor.`;
+      budget.maintain.push(c);
+    }
+
+    // ── Opportunity cards — Quality-Score-diagnosed where data exists ──
+    const q = c.qs;
+    const ctrGap = medCtr > 0 && c.ctr < medCtr * 0.7;
+    const cvrGap = c.clicks >= 20 && c.cvr < 0.01;
+    if (highSpend && (q && q.weakest === 'expected_ctr' || (!q && ctrGap))) {
+      const diag = q ? `Google rates expected CTR ${gscQsLabel(q.exp)} (avg QS ${q.avgQs.toFixed(1)}) — the ads aren't earning clicks.`
+        : `${(c.ctr * 100).toFixed(1)}% CTR vs the ${(medCtr * 100).toFixed(1)}% account median — ad copy is under-performing.`;
+      opps.push(gscPaidOpp(c, 'Ad Copy Opportunity', 'Expected CTR Gap',
+        `${diag} Rewrite the responsive search ads — sharper headlines, benefit-led descriptions — to lift click-through.`,
+        c.cost * 0.15, true, { adCopy: true, terms: (q && q.weakTerms) || [] }));
+    } else if (highSpend && q && q.weakest === 'ad_relevance') {
+      opps.push(gscPaidOpp(c, 'Ad Relevance Opportunity', 'Ad Relevance Gap',
+        `Google rates ad relevance ${gscQsLabel(q.rel)} (avg QS ${q.avgQs.toFixed(1)}) — keywords and ad text have drifted apart. Split the ad group so each tight keyword theme gets its own ads, and mirror the keyword in the headlines.`,
+        c.cost * 0.15, true, { adCopy: true, terms: (q && q.weakTerms) || [] }));
+    } else if (highSpend && (q && q.weakest === 'landing_page' || cvrGap)) {
+      const diag = q && q.weakest === 'landing_page'
+        ? `Google rates the landing-page experience ${gscQsLabel(q.lp)} (avg QS ${q.avgQs.toFixed(1)}).`
+        : `Clicks are healthy (${(c.ctr * 100).toFixed(1)}% CTR) but only ${(c.cvr * 100).toFixed(1)}% convert.`;
+      opps.push(gscPaidOpp(c, 'Landing Page Opportunity', 'Landing Page Gap',
+        `${diag} The bottleneck is the page, not the ad — match the headline to the page promise, tighten the form, and keep a quote CTA above the fold.`,
+        c.cost * 0.2, true));
+    }
+
+    // ── Budget-reallocation cards mirror the bucket logic above ──
+    if (c.branded && goodRoas) {
+      opps.push(gscPaidOpp(c, 'Budget Reallocation Opportunity', 'Brand Cannibalization', c.bud, c.cost * 0.3, true, { savings: true, brandTest: true }));
+    } else if (goodRoas && budgetConstrained) {
+      opps.push(gscPaidOpp(c, 'Budget Reallocation Opportunity', 'Budget-Constrained', c.bud, c.revenue * 0.3, true, { budgetUp: true }));
+    } else if (poorRoas || (noRev && !attrGap)) {
+      opps.push(gscPaidOpp(c, 'Budget Reallocation Opportunity', poorRoas ? 'Low ROAS' : 'No Attributed Revenue', c.bud, c.cost * 0.5, true, { savings: true }));
+    } else if (noRev && attrGap) {
+      opps.push(gscPaidOpp(c, 'Attribution Gap', 'Attribution Gap', c.bud, 0, false, { investigate: true }));
+    }
   });
   return { opps, budget };
 }
@@ -2179,9 +2314,16 @@ function renderGrowthAds(all) {
   const paid = all.filter(o => o.kind === 'paid');
   const el = document.getElementById('growthAdsBody');
   if (!paid.length) { el.innerHTML = '<div class="empty">No paid campaigns with enough data, or Google Ads isn’t synced.</div>'; document.getElementById('growthAdsMeta').textContent = ''; return; }
-  el.innerHTML = paid.slice(0, 12).map(o => {
+  const shown = paid.slice(0, 12);
+  window.__growthAdOpps = shown;
+  el.innerHTML = shown.map((o, i) => {
     const adCopy = o.adCopy
-      ? `<div class="act-assist open" style="display:block">${gscSuggestBlock('Suggested headlines (≤30 chars)', gscAdHeadlines(o.topic), 30)}${gscSuggestBlock('Suggested descriptions (≤90 chars)', gscAdDescriptions(o.topic), 90)}<div class="ea-note">AI-assisted drafts in WhisperRoom voice. Review before publishing.</div></div>`
+      ? `<div class="act-assist open" style="display:block">` +
+          `<button class="ea-ai-btn" onclick="gscGenerateAdRewrite(this, ${i})">✨ Generate AI rewrites</button>` +
+          `<div class="ai-rewrite-box"></div>` +
+          gscSuggestBlock('Quick drafts (≤30 chars)', gscAdHeadlines(o.topic), 30) +
+          gscSuggestBlock('Quick drafts (≤90 chars)', gscAdDescriptions(o.topic), 90) +
+          `<div class="ea-note">Quick drafts are local heuristics. Click <strong>Generate AI rewrites</strong> for ads written in WhisperRoom voice from this campaign's weakest terms. Review before publishing.</div></div>`
       : '';
     return `<div class="act-card bn-${o.savings ? 'wrong-page' : 'ranking'}">
       <div class="act-card-head">
@@ -2200,18 +2342,53 @@ function renderGrowthAds(all) {
 function gscAdHeadlines(topic) { const t = gscTitleCase(topic); return [`${t} Booths`.slice(0, 30), `WhisperRoom ${t}`.slice(0, 30), 'Quiet, Built to Order', 'Get a Fast Quote']; }
 function gscAdDescriptions(topic) { const t = gscTitleCase(topic).toLowerCase(); return [`Modular sound isolation ${t} booths, made in the USA. Get a fast quote.`.slice(0, 90), `Configure your booth: pro isolation, fast shipping, US support.`.slice(0, 90)]; }
 
+// Ask the server (Claude) to rewrite this campaign's ads in WhisperRoom voice,
+// seeded with its weakest Quality-Score terms. Falls back gracefully when the
+// Anthropic key isn't configured (503) or the call fails.
+async function gscGenerateAdRewrite(btn, idx) {
+  const o = (window.__growthAdOpps || [])[idx]; if (!o) return;
+  const box = btn.closest('.act-card').querySelector('.ai-rewrite-box'); if (!box) return;
+  const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Generating…';
+  box.innerHTML = '';
+  try {
+    const res = await fetch('/api/marketing/ad-rewrite', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ campaign: o.topic, terms: o.terms || [],
+        current: { headlines: gscAdHeadlines(o.topic), descriptions: gscAdDescriptions(o.topic) } }),
+    });
+    const txt = await res.text();
+    let data = null; try { data = JSON.parse(txt); } catch (_) {}
+    if (!res.ok || !data || !(data.headlines || data.descriptions)) {
+      box.innerHTML = `<div class="ea-note" style="color:#f87171">${res.status === 503
+        ? 'AI rewrites aren’t configured on the server yet (no Anthropic key).'
+        : 'Couldn’t generate rewrites right now — try again in a moment.'}</div>`;
+      btn.disabled = false; btn.textContent = orig; return;
+    }
+    box.innerHTML =
+      gscSuggestBlock('AI headlines (≤30 chars)', data.headlines || [], 30) +
+      gscSuggestBlock('AI descriptions (≤90 chars)', data.descriptions || [], 90) +
+      (data.rationale ? `<div class="ea-note">${escHtml(data.rationale)}</div>` : '');
+    btn.style.display = 'none';
+  } catch (e) {
+    box.innerHTML = `<div class="ea-note" style="color:#f87171">Network error generating rewrites.</div>`;
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
 function renderGrowthBudget(budget) {
-  const cols = [['increase', '▲ Increase', 'kb-increase'], ['maintain', '◆ Maintain', 'kb-maintain'], ['reduce', '▼ Reduce', 'kb-reduce'], ['pause', '⏸ Pause / Test', 'kb-pause']];
+  const cols = [['increase', '▲ Increase', 'kb-increase'], ['test', '▽ Test Pull-Back', 'kb-test'], ['maintain', '◆ Maintain', 'kb-maintain'], ['reduce', '▼ Reduce', 'kb-reduce'], ['pause', '⏸ Pause', 'kb-pause'], ['investigate', '⌕ Investigate', 'kb-investigate']];
   const el = document.getElementById('growthBudgetBody');
   const any = cols.some(([k]) => (budget[k] || []).length);
   if (!any) { el.innerHTML = '<div class="empty">No paid campaigns with enough data, or Google Ads isn’t synced.</div>'; document.getElementById('growthBudgetMeta').textContent = ''; return; }
   el.innerHTML = cols.map(([k, label, cls]) => {
     const items = (budget[k] || []).slice().sort((a, b) => (b.revenue || 0) - (a.revenue || 0)).slice(0, 8);
-    const cards = items.length ? items.map(c => `<div class="kb-card"><div class="kb-card-top"><span class="kb-topic">${escHtml(c.name || '(campaign)')}</span><span class="kb-amt">${c.roas === Infinity ? '∞' : c.roas.toFixed(1)}×</span></div><div class="kb-meta">$${fmtInt(Math.round(c.cost))} spend · $${fmtInt(Math.round(c.revenue))} rev · ${c.deals} won</div></div>`).join('') : '<div class="kb-empty">none</div>';
+    const cards = items.length ? items.map(c => `<div class="kb-card"><div class="kb-card-top"><span class="kb-topic">${escHtml(c.name || '(campaign)')}</span><span class="kb-amt">${c.roas === Infinity ? '∞' : c.roas.toFixed(1)}×</span></div><div class="kb-meta">$${fmtInt(Math.round(c.cost))} spend · $${fmtInt(Math.round(c.revenue))} rev · ${c.deals} won${c.impShare != null ? ` · ${(c.impShare * 100).toFixed(0)}% IS` : ''}</div>${c.bud ? `<div class="kb-why">${escHtml(c.bud)}</div>` : ''}</div>`).join('') : '<div class="kb-empty">none</div>';
     return `<div class="kanban-col ${cls}"><div class="bud-col-head">${label} <span style="color:var(--muted)">(${(budget[k] || []).length})</span></div>${cards}</div>`;
   }).join('');
   const totalReduce = (budget.reduce || []).concat(budget.pause || []).reduce((s, c) => s + c.cost, 0);
-  document.getElementById('growthBudgetMeta').textContent = `~$${fmtInt(Math.round(totalReduce))} in reduce / pause candidates this window`;
+  const totalTest = (budget.test || []).reduce((s, c) => s + c.cost, 0);
+  document.getElementById('growthBudgetMeta').textContent =
+    `~$${fmtInt(Math.round(totalReduce))} in reduce / pause candidates` + (totalTest > 0 ? ` · ~$${fmtInt(Math.round(totalTest))} branded spend to test pulling back` : '') + ` this window`;
 }
 
 // ── v1.65.4 — native-Search-Console-style daily performance chart ──────

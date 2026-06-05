@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.0', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Quote Builder: add extra pallets to a quote.** When a quote has a booth plus a lot of loose components that need their own skid, hit <b>+ Add Pallet</b> in the Quote Weight box and set its L &times; W &times; H. Extra pallets flow into the pallet count, the ABF freight quote (total weight redistributes across all skids), and the International Shipping request &mdash; and they save with the quote and carry into order processing. Booth pallets are still auto-counted as before.'},
+      ]
+    },
+    {
       v:'1.71.3', date:'June 5, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**“Why this page?” explanation on every Ideal Page recommendation.** Next to each ideal commercial page you’ll now see a small <strong>ⓘ Mapped / Matched / Category</strong> tag — hover it to see exactly how that page was chosen: an explicit commercial page mapping (your site architecture), a token/intent match against your commercial pages, or the /all-booths category fallback. When the correct page already ranks, it notes that Search Console confirms it. Makes the picks easy to trust and validate.'},

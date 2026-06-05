@@ -1488,6 +1488,10 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
       Pallets: <span style="color:rgba(255,255,255,.85)" id="totalPallets">0</span>
     </div>
     <div id="palletDims" style="display:none;margin-top:6px"></div>
+    <div id="manualPalletList"></div>
+    <button onclick="addManualPallet()" title="Add an extra pallet for loose components that need their own skid" style="margin-top:8px;padding:5px 10px;background:rgba(238,98,22,.15);border:1px solid rgba(238,98,22,.4);border-radius:6px;color:#ee6216;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.03em">
+      + Add Pallet
+    </button>
     <button onclick="openIntlShipping()" style="margin-top:10px;width:100%;padding:7px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);border-radius:6px;color:rgba(255,255,255,.7);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase">
       🌐 International Shipping Request
     </button>
@@ -1986,6 +1990,10 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
 <script>
 // ── State ─────────────────────────────────────────────────────────
 let lineItems = [];
+// Manually-added pallets [{l,w,h}] — for quotes where loose accessories/components
+// need their own skid beyond the booth's automatic pallets. Flows into the weight
+// box, freight quote, and international request via getQuotePallets().
+let manualPallets = [];
 let discountType = 'pct'; // 'pct' or 'flat'
 let freightData = null;
 let taxData = null;
@@ -2548,21 +2556,11 @@ function updateLineItem(id, field, value) {
 }
 
 function openIntlShipping() {
-  // Build pallet summary from current line items
-  let totalWeight = 0, totalPallets = 0;
-  const palletList = [];
-
-  lineItems.forEach(item => {
-    totalWeight += (parseFloat(item.weight) || 0) * (parseInt(item.qty) || 1);
-    const bd = BOOTH_DATA[item.name];
-    if (bd) {
-      const qty = parseInt(item.qty) || 1;
-      for (let q = 0; q < qty; q++) {
-        bd.pallets.forEach(p => palletList.push({ l: p.l, w: p.w, h: p.h }));
-      }
-      totalPallets += bd.pallets.length * qty;
-    }
-  });
+  // Build pallet summary from current line items (booth + manual pallets)
+  let totalWeight = 0;
+  lineItems.forEach(item => { totalWeight += (parseFloat(item.weight) || 0) * (parseInt(item.qty) || 1); });
+  const palletList = getQuotePallets();
+  const totalPallets = palletList.length;
 
   const sub    = getSubtotal();
   const disc   = getDiscountAmount();
@@ -2603,20 +2601,11 @@ function sendIntlShippingEmail() {
   const country  = (document.getElementById('intlCountry').value || '').trim();
   const address  = (document.getElementById('intlAddress').value || '').trim();
 
-  // Re-calc everything
-  let totalWeight = 0, totalPallets = 0;
-  const palletList = [];
-  lineItems.forEach(item => {
-    totalWeight += (parseFloat(item.weight) || 0) * (parseInt(item.qty) || 1);
-    const bd = BOOTH_DATA[item.name];
-    if (bd) {
-      const qty = parseInt(item.qty) || 1;
-      for (let q = 0; q < qty; q++) {
-        bd.pallets.forEach(p => palletList.push({ l: p.l, w: p.w, h: p.h }));
-      }
-      totalPallets += bd.pallets.length * qty;
-    }
-  });
+  // Re-calc everything (booth + manual pallets)
+  let totalWeight = 0;
+  lineItems.forEach(item => { totalWeight += (parseFloat(item.weight) || 0) * (parseInt(item.qty) || 1); });
+  const palletList = getQuotePallets();
+  const totalPallets = palletList.length;
 
   const sub   = getSubtotal();
   const disc  = getDiscountAmount();
@@ -3247,6 +3236,51 @@ async function fetchWithRetry(url, options, { retries = 2, delays = [1000, 2500]
   throw lastErr || new Error('Request failed after retries');
 }
 
+// ── Pallets (single source) ──────────────────────────────────────
+// Booth pallets come from BOOTH_DATA (expanded by qty); manual pallets are
+// added by the rep for loose components. Everything that needs the quote's
+// pallet list (weight box, freight rate, intl request) uses getQuotePallets().
+function getBoothPallets() {
+  const out = [];
+  lineItems.forEach(item => {
+    const bd = BOOTH_DATA[item.name];
+    if (!bd || !bd.pallets || !bd.pallets.length) return;
+    const qty = parseInt(item.qty) || 1;
+    for (let q = 0; q < qty; q++) bd.pallets.forEach(p => out.push({ l: p.l, w: p.w, h: p.h, manual: false }));
+  });
+  return out;
+}
+function getQuotePallets() {
+  return getBoothPallets().concat(manualPallets.map(p => ({ l: p.l, w: p.w, h: p.h, manual: true })));
+}
+function addManualPallet() {
+  manualPallets.push({ l: 48, w: 40, h: 48 }); // standard skid default — rep edits
+  renderManualPallets();
+  updateSummary();
+}
+function setManualPallet(i, key, val) {
+  if (!manualPallets[i]) return;
+  manualPallets[i][key] = Math.max(0, parseFloat(val) || 0);
+  updateSummary();
+}
+function removeManualPallet(i) {
+  manualPallets.splice(i, 1);
+  renderManualPallets();
+  updateSummary();
+}
+function renderManualPallets() {
+  const el = document.getElementById('manualPalletList');
+  if (!el) return;
+  const inp = (i, k, v) => `<input type="number" min="0" value="${v}" oninput="setManualPallet(${i},'${k}',this.value)" style="width:40px;padding:2px 4px;font-size:11px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:4px;color:#fff;font-family:inherit;text-align:center">`;
+  el.innerHTML = manualPallets.map((p, i) =>
+    `<div style="display:flex;align-items:center;gap:4px;margin-top:5px;font-size:11px;color:rgba(255,255,255,.6)">`
+    + `<span style="color:#ee6216;font-weight:700">+ Extra</span>`
+    + inp(i, 'l', p.l) + `<span>×</span>` + inp(i, 'w', p.w) + `<span>×</span>` + inp(i, 'h', p.h) + `<span>in</span>`
+    + `<button onclick="removeManualPallet(${i})" title="Remove pallet" style="margin-left:auto;background:none;border:none;color:rgba(255,255,255,.4);cursor:pointer;font-size:14px;line-height:1;padding:0 4px">✕</button>`
+    + `</div>`
+  ).join('');
+}
+
 function updateSummary() {
   const sub = getSubtotal();
   const disc = getDiscountAmount();
@@ -3325,34 +3359,25 @@ function updateSummary() {
     renderTaxResult();
   }
 
-  // Weight — sum ALL line items (booth + accessories all ship together on the booth pallet)
-  // Pallet dims — from BOOTH_DATA only
-  let totalWeight = 0, totalPallets = 0;
-  const palletDims = [];
-  lineItems.forEach(item => {
-    totalWeight += (parseFloat(item.weight) || 0) * (parseInt(item.qty) || 1);
-    const bd = BOOTH_DATA[item.name];
-    if (bd) {
-      const qty = parseInt(item.qty) || 1;
-      for (let q = 0; q < qty; q++) {
-        bd.pallets.forEach(p => palletDims.push(`${p.l}"×${p.w}"×${p.h}"`));
-      }
-      totalPallets += bd.pallets.length * qty;
-    }
-  });
+  // Weight — sum ALL line items. Pallets — booth pallets + manual pallets (shared source).
+  let totalWeight = 0;
+  lineItems.forEach(item => { totalWeight += (parseFloat(item.weight) || 0) * (parseInt(item.qty) || 1); });
+  const quotePallets = getQuotePallets();
+  const totalPallets = quotePallets.length;
   document.getElementById('totalWeight').textContent = totalWeight > 0 ? `${Math.round(totalWeight).toLocaleString()} lbs` : '—';
   document.getElementById('totalPallets').textContent = totalPallets > 0 ? totalPallets : '—';
   const dimsEl = document.getElementById('palletDims');
   if (dimsEl) {
-    if (palletDims.length > 0) {
+    if (quotePallets.length > 0) {
       dimsEl.style.display = 'block';
-      dimsEl.innerHTML = palletDims.map((d,i) =>
-        `<div style="font-size:11px;color:rgba(255,255,255,.6);margin-top:2px">Pallet ${i+1}: <span style="color:rgba(255,255,255,.85)">${d}</span></div>`
+      dimsEl.innerHTML = quotePallets.map((p,i) =>
+        `<div style="font-size:11px;color:rgba(255,255,255,.6);margin-top:2px">Pallet ${i+1}: <span style="color:rgba(255,255,255,.85)">${p.l}"×${p.w}"×${p.h}"</span>${p.manual?' <span style="color:#ee6216">(extra)</span>':''}</div>`
       ).join('');
     } else {
       dimsEl.style.display = 'none';
     }
   }
+  renderManualPallets();
   // Keep revision badge in sync whenever totals change
   updatePushButtonText();
 }
@@ -3489,7 +3514,7 @@ async function getFreight() {
     return;
   }
 
-  // Build pallet list — dims from BOOTH_DATA, total weight from ALL line items
+  // Build pallet list — booth pallets + manual pallets; total weight from ALL line items
   let allPallets = [];
   let totalWeight = 0;
 
@@ -3498,15 +3523,8 @@ async function getFreight() {
     totalWeight += (parseFloat(item.weight) || 0) * (parseInt(item.qty) || 1);
   });
 
-  // Build pallets from booth items only, but distribute total weight across them
-  let boothPallets = [];
-  lineItems.forEach(item => {
-    const bd = BOOTH_DATA[item.name];
-    if (!bd || bd.pallets.length === 0) return;
-    for (let q = 0; q < (parseInt(item.qty) || 1); q++) {
-      bd.pallets.forEach(pl => boothPallets.push({ ...pl }));
-    }
-  });
+  // Booth pallets + any manually-added pallets; distribute total weight across them
+  let boothPallets = getQuotePallets();
 
   if (boothPallets.length > 0 && totalWeight > 0) {
     const perPallet = Math.floor(totalWeight / boothPallets.length);
@@ -4001,6 +4019,7 @@ async function createDeal() {
         revision: existingRevision + 1, total,
         customer: { firstName: document.getElementById('firstName').value.trim(), lastName: document.getElementById('lastName').value.trim(), email: customerEmail, phone: document.getElementById('phone').value.trim(), company: document.getElementById('company').value.trim(), address: document.getElementById('shipAddress').value.trim(), city: document.getElementById('shipCity').value.trim(), state: document.getElementById('shipState').value.trim().toUpperCase(), zip: document.getElementById('shipZip').value.trim().replace(/\s+/g,''), country: (document.getElementById('shipCountry') || {value:''}).value.trim() || '' },
         lineItems: JSON.parse(JSON.stringify(lineItems)),
+        manualPallets: JSON.parse(JSON.stringify(manualPallets)),
         discount: { type: discountType, value: parseFloat(document.getElementById('discountValue').value) || 0 },
         freight: freightData ? {...freightData} : null,
         pickupFee: pickupFee || null,
@@ -5180,6 +5199,7 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
   const resultBox = document.getElementById('resultBox');
   if (resultBox) { resultBox.className = 'result-box'; resultBox.innerHTML = ''; }
   lineItems = q.lineItems ? JSON.parse(JSON.stringify(q.lineItems)) : [];
+  manualPallets = Array.isArray(q.manualPallets) ? JSON.parse(JSON.stringify(q.manualPallets)) : [];
   renderLineItems();
 
   if (q.discount) {
@@ -5997,6 +6017,7 @@ async function onPresetSelect(presetName) {
 
   // Clear existing items and load preset
   lineItems = [];
+  manualPallets = []; renderManualPallets();
   renderLineItems();
 
   document.getElementById('presetStatus').textContent = 'Loading ' + skus.length + ' items...';
@@ -6593,6 +6614,7 @@ function newQuote(skipConfirm = false) {
 
   // Clear line items
   lineItems = [];
+  manualPallets = []; renderManualPallets();
   renderLineItems();
 
   // Clear freight & tax
@@ -8280,6 +8302,7 @@ async function confirmProcessOrder() {
       dealId,
       quoteNumber,
       lineItems,
+      manualPallets,
       freight: freightData,
       tax: taxData,
       install: installData,
@@ -8590,6 +8613,7 @@ async function confirmCreateInvoice() {
     dealId,
     quoteNumber,
     lineItems,
+    manualPallets,
     freight: freightData,
     tax: taxData,
     install: installData,

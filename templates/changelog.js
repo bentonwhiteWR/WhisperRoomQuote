@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.67.7', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Weights: refreshed MDL 102186 ENV after its packing list was corrected** (net 4883 → 4731 lb).'},
+      ]
+    },
+    {
       v:'1.67.6', date:'June 5, 2026', tag:'feature',
       changes:[
         {t:'fix', d:'**Search Console totals now match Google.** The GSC tab’s headline Clicks / Impressions / CTR / Avg Position cards and the Organic Performance chart were summing the per-query data, which Google trims (it hides rare “anonymized” searches), so our totals read far below Search Console’s own “Total clicks.” We now pull the un-trimmed daily totals straight from Google for those headline numbers, so they line up with what you see in Search Console. The branded split is labeled “of named queries,” since that can only be measured on the searches Google shows us.'},

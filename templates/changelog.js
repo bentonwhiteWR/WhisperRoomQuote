@@ -51,6 +51,15 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.67.1', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Search Console tab: a daily performance chart, just like Google’s.** New <strong>Organic Performance</strong> graph at the top of the GSC tab plots Clicks, Impressions, CTR, and Avg Position over time (click any metric to toggle it, hover any day for exact numbers). Same dual-axis look you get inside Search Console, sitting right next to your closed-revenue data.'},
+        {t:'add', d:'**Striking Distance report: the queries you’re about to rank for.** Surfaces searches where you sit at average position 10-20 (page 2) with real impressions. These are the closest to breaking onto page 1, so pushing the page behind one of them up a few spots is the highest-return organic move.'},
+        {t:'add', d:'**CTR Opportunity report: pages worth a title rewrite.** Flags page-1 pages whose click-through rate trails what’s normal for their rank (e.g. sitting at #3 but getting clicked like a #8). Each row shows the estimated extra clicks if CTR rose to par, so you can prioritize which titles and descriptions to rewrite.'},
+        {t:'add', d:'**Movers report: what changed vs last period.** Compares this window to the one right before it and ranks the biggest organic-click gainers and losers, by query or by page. A quick read on what’s trending up and what slipped.'},
+      ]
+    },
+    {
       v:'1.67.0', date:'June 5, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Internal: hidden /weights reconciliation page.** A back-end tool (admin URL, no nav link) that lists every MDL with its net weight from the packing-list bill-of-materials, pallet count, pallet weight, computed gross, and the current HubSpot price-book weight side by side — with the delta flagged. Used to keep the price-book shipping weights honest against the real PL data.'},

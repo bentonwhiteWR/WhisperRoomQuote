@@ -1343,6 +1343,162 @@ async function handle(req, res, ctx) {
     return true;
   }
 
+  // ── GET /api/marketing/gsc-timeseries ─────────────────────────────
+  // Daily organic clicks / impressions / ctr / position for the window —
+  // powers the native-GSC-style performance chart at the top of the tab.
+  // Same source as the KPI cards (marketing_gsc_queries) so the chart's
+  // totals reconcile with the cards. Position is impression-weighted per day;
+  // days with zero impressions return position NULL (the line breaks there).
+  if (pathname === '/api/marketing/gsc-timeseries' && req.method === 'GET') {
+    try {
+      const days = _parseDays(req);
+      const rows = ctx.db ? (await ctx.db.query(`
+        SELECT to_char(date, 'YYYY-MM-DD')   AS date,
+               SUM(clicks)::bigint           AS clicks,
+               SUM(impressions)::bigint      AS impressions,
+               CASE WHEN SUM(impressions) > 0 THEN SUM(clicks)::float / SUM(impressions) ELSE 0 END            AS ctr,
+               CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE NULL END AS position
+        FROM marketing_gsc_queries
+        WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
+        GROUP BY date
+        ORDER BY date ASC
+      `, [days])).rows : [];
+      ctx.json({ rows });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/gsc-striking-distance ──────────────────────
+  // Queries ranking on page 2 (impression-weighted avg position 10–20) with
+  // real impression volume — the "almost ranking" list. Nudging the page
+  // behind one of these a few spots onto page 1 is the highest-ROI organic
+  // move. `?minImpr=` (default 20) trims long-tail noise.
+  if (pathname === '/api/marketing/gsc-striking-distance' && req.method === 'GET') {
+    try {
+      const days    = _parseDays(req);
+      const sp      = new URL(req.url, 'http://localhost').searchParams;
+      const minImpr = Math.max(0, parseInt(sp.get('minImpr')) || 20);
+      const rows = ctx.db ? (await ctx.db.query(`
+        SELECT query,
+               SUM(clicks)::bigint      AS clicks,
+               SUM(impressions)::bigint AS impressions,
+               CASE WHEN SUM(impressions) > 0 THEN SUM(clicks)::float / SUM(impressions) ELSE 0 END AS ctr,
+               SUM(position * impressions) / NULLIF(SUM(impressions), 0)                            AS position
+        FROM marketing_gsc_queries
+        WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
+        GROUP BY query
+        HAVING SUM(impressions) >= $2
+           AND SUM(position * impressions) / NULLIF(SUM(impressions), 0) >  10
+           AND SUM(position * impressions) / NULLIF(SUM(impressions), 0) <= 20
+        ORDER BY impressions DESC
+        LIMIT 50000
+      `, [days, minImpr])).rows : [];
+      ctx.json({ rows, minImpr });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/gsc-movers ─────────────────────────────────
+  // Period-over-period: current window vs the immediately-preceding equal
+  // window, per query (or ?dim=page). Surfaces the biggest organic-click
+  // gainers and losers — the daily granularity we store but otherwise
+  // aggregate flat. delta_clicks drives the default sort; pos_now/pos_prev
+  // let the client show whether rank improved (lower = better).
+  if (pathname === '/api/marketing/gsc-movers' && req.method === 'GET') {
+    try {
+      const days  = _parseDays(req);
+      const sp    = new URL(req.url, 'http://localhost').searchParams;
+      const dim   = sp.get('dim') === 'page' ? 'page' : 'query';
+      const table = dim === 'page' ? 'marketing_gsc_pages' : 'marketing_gsc_queries';
+      // dim/table are whitelisted literals (never raw request text) → safe to interpolate.
+      const rows = ctx.db ? (await ctx.db.query(`
+        WITH cur AS (
+          SELECT ${dim} AS k, SUM(clicks)::bigint AS clicks, SUM(impressions)::bigint AS impressions,
+                 SUM(position * impressions) / NULLIF(SUM(impressions), 0) AS position
+          FROM ${table}
+          WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
+          GROUP BY ${dim}
+        ),
+        prev AS (
+          SELECT ${dim} AS k, SUM(clicks)::bigint AS clicks, SUM(impressions)::bigint AS impressions,
+                 SUM(position * impressions) / NULLIF(SUM(impressions), 0) AS position
+          FROM ${table}
+          WHERE date >= CURRENT_DATE - INTERVAL '1 day' * ($1 * 2)
+            AND date <  CURRENT_DATE - INTERVAL '1 day' * $1
+          GROUP BY ${dim}
+        )
+        SELECT COALESCE(cur.k, prev.k)                                       AS key,
+               COALESCE(cur.clicks, 0)::bigint                               AS clicks_now,
+               COALESCE(prev.clicks, 0)::bigint                              AS clicks_prev,
+               (COALESCE(cur.clicks, 0) - COALESCE(prev.clicks, 0))::bigint  AS delta_clicks,
+               COALESCE(cur.impressions, 0)::bigint                          AS impr_now,
+               COALESCE(prev.impressions, 0)::bigint                         AS impr_prev,
+               cur.position                                                  AS pos_now,
+               prev.position                                                 AS pos_prev
+        FROM cur
+        FULL OUTER JOIN prev ON cur.k = prev.k
+        WHERE COALESCE(cur.clicks, 0) + COALESCE(prev.clicks, 0) >= 3
+        ORDER BY ABS(COALESCE(cur.clicks, 0) - COALESCE(prev.clicks, 0)) DESC
+        LIMIT 50000
+      `, [days])).rows : [];
+      ctx.json({ rows, dim });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/gsc-ctr-opportunity ────────────────────────
+  // Page-1 pages (or ?dim=query) whose actual CTR trails the expected CTR
+  // for their average position — title / meta-description rewrite candidates.
+  // exp_ctr is an industry-standard organic CTR-by-position curve (approx);
+  // missed_clicks = impressions × (expected − actual), the click upside if
+  // CTR rose to par. Only below-par page-1 rows with enough volume
+  // (`?minImpr=`, default 30).
+  if (pathname === '/api/marketing/gsc-ctr-opportunity' && req.method === 'GET') {
+    try {
+      const days    = _parseDays(req);
+      const sp      = new URL(req.url, 'http://localhost').searchParams;
+      const dim     = sp.get('dim') === 'query' ? 'query' : 'page';
+      const table   = dim === 'query' ? 'marketing_gsc_queries' : 'marketing_gsc_pages';
+      const minImpr = Math.max(0, parseInt(sp.get('minImpr')) || 30);
+      const rows = ctx.db ? (await ctx.db.query(`
+        SELECT key, clicks, impressions, ctr, position, exp_ctr,
+               (exp_ctr - ctr)                AS gap,
+               (impressions * (exp_ctr - ctr)) AS missed_clicks
+        FROM (
+          SELECT k AS key, clicks, impressions, ctr, position,
+                 CASE
+                   WHEN position < 1.5 THEN 0.280
+                   WHEN position < 2.5 THEN 0.150
+                   WHEN position < 3.5 THEN 0.100
+                   WHEN position < 4.5 THEN 0.075
+                   WHEN position < 5.5 THEN 0.058
+                   WHEN position < 6.5 THEN 0.045
+                   WHEN position < 7.5 THEN 0.035
+                   WHEN position < 8.5 THEN 0.030
+                   WHEN position < 9.5 THEN 0.026
+                   ELSE 0.022
+                 END AS exp_ctr
+          FROM (
+            SELECT ${dim} AS k,
+                   SUM(clicks)::bigint      AS clicks,
+                   SUM(impressions)::bigint AS impressions,
+                   CASE WHEN SUM(impressions) > 0 THEN SUM(clicks)::float / SUM(impressions) ELSE 0 END AS ctr,
+                   SUM(position * impressions) / NULLIF(SUM(impressions), 0)                            AS position
+            FROM ${table}
+            WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
+            GROUP BY ${dim}
+            HAVING SUM(impressions) >= $2
+          ) agg
+        ) z
+        WHERE position IS NOT NULL AND position <= 10.5 AND (exp_ctr - ctr) > 0.005
+        ORDER BY missed_clicks DESC
+        LIMIT 50000
+      `, [days, minImpr])).rows : [];
+      ctx.json({ rows, dim, minImpr });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
   return false;
 }
 

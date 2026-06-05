@@ -145,6 +145,35 @@ td.drillable:hover{color:var(--orange)}
 .gsc-toolbar{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);margin:-6px 0 12px;cursor:pointer}
 .gsc-toolbar input{cursor:pointer}
 .gsc-toolbar code{background:var(--surface2);padding:1px 5px;border-radius:4px;font-size:11px}
+/* v1.65.4 — native-Search-Console-style organic performance chart */
+.gsc-chart{position:relative;margin-top:4px}
+.gsc-chart svg{width:100%;height:auto;display:block;overflow:visible}
+.gsc-legend{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.gsc-leg{display:flex;align-items:center;gap:9px;padding:8px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);cursor:pointer;transition:border-color .15s;min-width:140px}
+.gsc-leg:hover{border-color:var(--muted)}
+.gsc-leg .leg-dot{width:11px;height:11px;border-radius:3px;background:var(--muted);flex-shrink:0}
+.gsc-leg .leg-meta{display:flex;flex-direction:column;line-height:1.2}
+.gsc-leg .leg-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.gsc-leg .leg-val{font-size:16px;font-weight:800;font-family:var(--mono);color:var(--text)}
+.gsc-leg.off{opacity:.62}
+.gsc-leg.off .leg-val{color:var(--muted)}
+.gsc-chart-tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:8px 11px;font-size:11px;box-shadow:0 8px 24px rgba(0,0,0,.45);z-index:5;display:none;white-space:nowrap}
+.gsc-chart-tip .tip-date{font-weight:800;margin-bottom:5px}
+.gsc-chart-tip .tip-row{display:flex;align-items:center;gap:7px;font-family:var(--mono);margin-top:2px}
+.gsc-chart-tip .tip-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.gsc-axis text{font-size:11px;font-family:var(--mono)}
+.gsc-grid line{stroke:var(--border);opacity:.5}
+.gsc-guide{stroke:var(--muted)}
+.gsc-dot{stroke:var(--surface)}
+.gsc-empty-chart{padding:30px;text-align:center;color:var(--muted);font-style:italic;font-size:12px}
+/* Movers period-over-period deltas + dimension toggle */
+.delta-up{color:var(--green);font-weight:700}
+.delta-down{color:var(--red);font-weight:700}
+.delta-flat{color:var(--muted)}
+.gsc-dim-toggle{display:inline-flex;gap:4px}
+.gsc-dim-toggle button{background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}
+.gsc-dim-toggle button:hover{color:var(--text)}
+.gsc-dim-toggle button.active{background:var(--orange);color:#fff;border-color:var(--orange)}
 .card.drillable .card-value{transition:color .12s}
 .card.drillable:hover .card-value{color:var(--orange)}
 .funnel-stage.drillable:hover .funnel-stage-value{color:var(--orange)}
@@ -383,6 +412,18 @@ td.drillable:hover{color:var(--orange)}
       <div class="card drillable" onclick="openDrill('organic-revenue','Organic closed-won deals')" title="Closed-won revenue from ORGANIC_SEARCH-sourced contacts, by close date in range, under the selected model. Click to list the deals."><div class="card-label" id="lblGscRev">Organic Closed Rev (90d)</div><div class="card-value" id="gscRev">—</div><div class="card-sub" id="gscRevSub">—</div></div>
     </div>
 
+    <!-- v1.65.4 — native-Search-Console-style daily performance chart. The
+         four legend chips toggle series on/off; up to two render with their
+         own axis (left = first active, right = second). Hover for per-day. -->
+    <div class="section" id="gscChartSection" style="display:none">
+      <div class="section-head">
+        <div class="section-title">Organic Performance</div>
+        <span class="section-meta">daily · click a metric to toggle</span>
+      </div>
+      <div class="gsc-legend" id="gscLegend"></div>
+      <div class="gsc-chart" id="gscChartWrap"></div>
+    </div>
+
     <!-- Hero: paid × organic overlap -->
     <div class="section">
       <div class="section-head">
@@ -396,6 +437,48 @@ td.drillable:hover{color:var(--orange)}
         Query-level organic→deal attribution isn't possible (Google withholds organic queries); the revenue tie is channel-level in the cards above.
       </div>
       <div id="gscOverlapBody"><div class="empty">No data yet. Press <strong>↻ Sync All</strong> to pull Google Ads + Search Console.</div></div>
+    </div>
+
+    <!-- v1.65.4 — Striking distance: page-2 queries closest to ranking -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">Striking Distance — page-2 opportunities</div>
+        <span class="section-meta" id="gscStrikingMeta">—</span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
+        Queries you already rank for at <strong>avg position 10–20</strong> (page 2) with real impressions. These are the closest to breaking onto page 1 — nudging the page behind one of them up a few spots is the highest-ROI organic move. Sorted by impressions (biggest missed reach first).
+      </div>
+      <div id="gscStrikingBody"><div class="empty">No data yet.</div></div>
+    </div>
+
+    <!-- v1.65.4 — CTR opportunity: page-1 rows under expected CTR for rank -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">CTR Opportunity — title/meta rewrite candidates</div>
+        <span class="section-meta" id="gscCtrOppMeta">—</span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
+        Page-1 pages whose <strong>actual CTR trails the expected CTR for their rank</strong> (e.g. sitting at #3 but clicking like a #8). Prime title / meta-description rewrite targets. <strong>Missed clicks</strong> ≈ the extra organic clicks in this window if CTR rose to par for that position. Sorted by missed clicks. <em>Expected-CTR curve is an industry approximation.</em>
+      </div>
+      <div id="gscCtrOppBody"><div class="empty">No data yet.</div></div>
+    </div>
+
+    <!-- v1.65.4 — Movers: period-over-period gainers & losers -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">Movers — vs previous period</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="gsc-dim-toggle" id="gscMoversDimToggle">
+            <button class="active" data-dim="query" onclick="setMoversDim('query')">Queries</button>
+            <button data-dim="page" onclick="setMoversDim('page')">Pages</button>
+          </div>
+          <span class="section-meta" id="gscMoversMeta">—</span>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
+        Biggest organic-click changes between the current window and the <strong>immediately preceding equal window</strong>. <span class="delta-up">▲ green</span> = gaining, <span class="delta-down">▼ red</span> = losing. A rising rank (position getting smaller) usually drives a gain.
+      </div>
+      <div id="gscMoversBody"><div class="empty">No data yet.</div></div>
     </div>
 
     <!-- Organic queries -->
@@ -664,6 +747,48 @@ const tableState = {
     ],
     rowFn: r => { const u = r.page || '', short = u.replace(/^https?:\/\/(www\.)?whisperroom\.com/i, '') || '/'; return `<tr><td><a href="${escHtml(u)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(short)}</a></td><td class="num">${fmtInt(r.clicks)}</td><td class="num">${fmtInt(r.impressions)}</td><td class="num">${(r.ctr * 100).toFixed(1)}%</td><td class="num">${r.position.toFixed(1)}</td><td class="num">${fmtInt(r.leads)}</td><td class="num">${fmtInt(r.deals_won)}</td><td class="num">${r.revenue_won ? fmtUSD(r.revenue_won) : '—'}</td></tr>`; },
   },
+  // v1.65.4 — page-2 queries (avg position 10–20) with impressions.
+  gscStriking: {
+    rows: [], sortBy: 'impressions', sortDir: 'desc', page: 0,
+    bodyId: 'gscStrikingBody', metaId: 'gscStrikingMeta',
+    columns: [
+      { key: 'query', label: 'Query' }, { key: 'impressions', label: 'Impr.', num: 1 },
+      { key: 'clicks', label: 'Clicks', num: 1 }, { key: 'ctr', label: 'CTR', num: 1 }, { key: 'position', label: 'Avg pos', num: 1 },
+    ],
+    rowFn: r => `<tr><td>${escHtml(r.query)}${/whisper/i.test(r.query) ? ' <span class="ov-tag ov-brand">brand</span>' : ''}</td><td class="num">${fmtInt(r.impressions)}</td><td class="num">${fmtInt(r.clicks)}</td><td class="num">${(r.ctr * 100).toFixed(1)}%</td><td class="num">${r.position == null ? '—' : r.position.toFixed(1)}</td></tr>`,
+  },
+  // v1.65.4 — page-1 rows below expected CTR for their rank. `dim` is fixed
+  // to 'page' in the UI (title/meta rewrite targets are pages).
+  gscCtrOpp: {
+    rows: [], sortBy: 'missed_clicks', sortDir: 'desc', page: 0, dim: 'page',
+    bodyId: 'gscCtrOppBody', metaId: 'gscCtrOppMeta',
+    columns: [
+      { key: 'key', label: 'Page' }, { key: 'impressions', label: 'Impr.', num: 1 },
+      { key: 'position', label: 'Avg pos', num: 1 }, { key: 'ctr', label: 'CTR', num: 1 },
+      { key: 'exp_ctr', label: 'Exp. CTR', num: 1 }, { key: 'missed_clicks', label: 'Missed clicks', num: 1 },
+    ],
+    rowFn: r => { const u = String(r.key || ''), short = u.replace(/^https?:\/\/(www\.)?whisperroom\.com/i, '') || '/'; return `<tr><td><a href="${escHtml(u)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(short)}</a></td><td class="num">${fmtInt(r.impressions)}</td><td class="num">${r.position == null ? '—' : r.position.toFixed(1)}</td><td class="num">${(r.ctr * 100).toFixed(1)}%</td><td class="num">${(r.exp_ctr * 100).toFixed(1)}%</td><td class="num" style="color:var(--green);font-weight:700">+${fmtInt(Math.round(r.missed_clicks))}</td></tr>`; },
+  },
+  // v1.65.4 — period-over-period movers. `dim` ∈ query|page (toggle).
+  gscMovers: {
+    rows: [], sortBy: 'delta_clicks', sortDir: 'desc', page: 0, dim: 'query',
+    bodyId: 'gscMoversBody', metaId: 'gscMoversMeta',
+    columns: [
+      { key: 'key', label: 'Query' }, { key: 'clicks_now', label: 'Clicks (now)', num: 1 },
+      { key: 'clicks_prev', label: 'Clicks (prev)', num: 1 }, { key: 'delta_clicks', label: 'Δ Clicks', num: 1 },
+      { key: 'pos_now', label: 'Pos (now)', num: 1 }, { key: 'pos_prev', label: 'Pos (prev)', num: 1 },
+    ],
+    rowFn: r => {
+      const isPage = tableState.gscMovers.dim === 'page';
+      const u = String(r.key || ''), short = isPage ? (u.replace(/^https?:\/\/(www\.)?whisperroom\.com/i, '') || '/') : u;
+      const cell = isPage ? `<a href="${escHtml(u)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(short)}</a>` : escHtml(short);
+      const d = +r.delta_clicks || 0;
+      const dCls = d > 0 ? 'delta-up' : (d < 0 ? 'delta-down' : 'delta-flat');
+      const dTxt = d > 0 ? `▲ +${fmtInt(d)}` : (d < 0 ? `▼ −${fmtInt(-d)}` : '0');
+      const posCell = p => p == null ? '—' : (+p).toFixed(1);
+      return `<tr><td>${cell}</td><td class="num">${fmtInt(r.clicks_now)}</td><td class="num">${fmtInt(r.clicks_prev)}</td><td class="num ${dCls}">${dTxt}</td><td class="num">${posCell(r.pos_now)}</td><td class="num">${posCell(r.pos_prev)}</td></tr>`;
+    },
+  },
 };
 
 function changeDateRange(days) {
@@ -701,22 +826,47 @@ function switchMarketingTab(name) {
 // Reload only the visible tab when the shared date range / model changes.
 function refreshActiveTab() { return currentTab === 'gsc' ? loadGscTab() : loadAllTables(); }
 
-// Pull + render the four GSC views for the current window + model.
+// v1.65.4 — Movers dimension (query | page). Drives ?dim= on gsc-movers.
+let gscMoversDim = 'query';
+
+// Pull + render every GSC view for the current window + model: the daily
+// performance chart, KPI strip, paid×organic overlap, the three insight
+// tables (striking distance / CTR opportunity / movers), and raw queries/pages.
 async function loadGscTab() {
   const q  = `?days=${currentDaysBack}`;
   const qm = `?days=${currentDaysBack}&model=${currentModel}`;
-  const [sum, ov, qs, pg] = await Promise.all([
-    fetch('/api/marketing/gsc-summary' + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
-    fetch('/api/marketing/gsc-overlap' + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/gsc-queries' + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
-    fetch('/api/marketing/gsc-pages'   + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+  const [sum, ov, qs, pg, ts, sd, mv, co] = await Promise.all([
+    fetch('/api/marketing/gsc-summary'           + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
+    fetch('/api/marketing/gsc-overlap'           + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/gsc-queries'           + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/gsc-pages'             + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/gsc-timeseries'        + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/gsc-striking-distance' + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch(`/api/marketing/gsc-movers?days=${currentDaysBack}&dim=${gscMoversDim}`, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/gsc-ctr-opportunity'   + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
   ]);
+  renderGscChart((ts && ts.rows) || []);
   renderGscCards(sum || {}, (qs && qs.rows) || []);
   renderGscOverlap((ov && ov.rows) || []);
+  renderGscStriking((sd && sd.rows) || []);
+  renderGscCtrOpp((co && co.rows) || []);
+  renderGscMovers((mv && mv.rows) || [], (mv && mv.dim) || gscMoversDim);
   renderGscQueries((qs && qs.rows) || []);
   renderGscPages((pg && pg.rows) || []);
   const det = document.getElementById('gscTabDetail');
   if (det) det.textContent = `Showing organic data for the last ${currentDaysBack} days. Press “Sync GSC” to (re)pull this range — works for 14/30/90/180/365d.`;
+}
+
+// v1.65.4 — switch Movers between query- and page-level. Refetches only the
+// movers endpoint (the rest of the tab is unaffected by this toggle).
+function setMoversDim(dim) {
+  if (dim === gscMoversDim) return;
+  gscMoversDim = dim;
+  document.querySelectorAll('#gscMoversDimToggle button').forEach(b => b.classList.toggle('active', b.dataset.dim === dim));
+  fetch(`/api/marketing/gsc-movers?days=${currentDaysBack}&dim=${dim}`, { credentials: 'include' })
+    .then(r => r.json())
+    .then(d => renderGscMovers((d && d.rows) || [], (d && d.dim) || dim))
+    .catch(() => {});
 }
 
 function renderGscCards(s, qrows) {
@@ -805,6 +955,185 @@ function renderGscPages(rows) {
   gscPaint('gscPages');
 }
 
+// ── v1.65.4 — insight tables (striking distance / CTR opportunity / movers) ──
+function renderGscStriking(rows) {
+  const st = tableState.gscStriking;
+  st.rows = (rows || []).map(r => ({
+    query: r.query, clicks: +r.clicks || 0, impressions: +r.impressions || 0,
+    ctr: +r.ctr || 0, position: r.position == null ? null : +r.position,
+  }));
+  st.page = 0;
+  st.metaFn = total => total ? `${fmtInt(total)} page-2 queries` : 'none in range';
+  gscPaint('gscStriking');
+}
+function renderGscCtrOpp(rows) {
+  const st = tableState.gscCtrOpp;
+  st.rows = (rows || []).map(r => ({
+    key: r.key, clicks: +r.clicks || 0, impressions: +r.impressions || 0, ctr: +r.ctr || 0,
+    position: r.position == null ? null : +r.position, exp_ctr: +r.exp_ctr || 0,
+    gap: +r.gap || 0, missed_clicks: +r.missed_clicks || 0,
+  }));
+  st.page = 0;
+  const totMissed = st.rows.reduce((a, r) => a + r.missed_clicks, 0);
+  st.metaFn = total => total ? `${fmtInt(total)} pages · ~${fmtInt(Math.round(totMissed))} clicks of upside` : 'none below par';
+  gscPaint('gscCtrOpp');
+}
+function renderGscMovers(rows, dim) {
+  const st = tableState.gscMovers;
+  st.dim = dim || 'query';
+  st.columns[0].label = st.dim === 'page' ? 'Page' : 'Query';
+  st.rows = (rows || []).map(r => ({
+    key: r.key, clicks_now: +r.clicks_now || 0, clicks_prev: +r.clicks_prev || 0,
+    delta_clicks: +r.delta_clicks || 0,
+    pos_now: r.pos_now == null ? null : +r.pos_now, pos_prev: r.pos_prev == null ? null : +r.pos_prev,
+  }));
+  st.page = 0;
+  const up = st.rows.filter(r => r.delta_clicks > 0).length, down = st.rows.filter(r => r.delta_clicks < 0).length;
+  st.metaFn = total => `${fmtInt(total)} ${st.dim === 'page' ? 'pages' : 'queries'} · ${up} ▲ / ${down} ▼`;
+  gscPaint('gscMovers');
+}
+
+// ── v1.65.4 — native-Search-Console-style daily performance chart ──────
+// Hand-rolled SVG (no chart lib, matching the repo's zero-dependency style).
+// Up to four series; the two active ones render with their own axis (left =
+// first, right = second). Position is inverted (a better/lower rank sits
+// higher on the chart). Hover maps the cursor to the nearest day via the
+// SVG's screen CTM and shows a per-day tooltip.
+const GSC_SERIES = [
+  { key: 'clicks',      label: 'Clicks',      color: '#3b82f6', fmt: v => fmtInt(Math.round(v)) },
+  { key: 'impressions', label: 'Impressions', color: '#a855f7', fmt: v => fmtInt(Math.round(v)) },
+  { key: 'ctr',         label: 'Avg CTR',     color: '#22c55e', fmt: v => (v * 100).toFixed(1) + '%' },
+  { key: 'position',    label: 'Avg Pos',     color: '#ee6216', fmt: v => v == null ? '—' : v.toFixed(1), invert: true },
+];
+let gscChartSeries = { clicks: true, impressions: true, ctr: false, position: false };
+let gscChartData = [];
+
+function renderGscChart(daily) {
+  gscChartData = (daily || []).map(d => ({
+    date: d.date, clicks: +d.clicks || 0, impressions: +d.impressions || 0,
+    ctr: +d.ctr || 0, position: d.position == null ? null : +d.position,
+  }));
+  const sec = document.getElementById('gscChartSection');
+  if (!gscChartData.length) { sec.style.display = 'none'; return; }
+  sec.style.display = '';
+  buildGscLegend();
+  drawGscChart();
+}
+
+function buildGscLegend() {
+  const t = gscChartData.reduce((a, d) => { a.clicks += d.clicks; a.impressions += d.impressions; return a; }, { clicks: 0, impressions: 0 });
+  let wpos = 0, wimp = 0;
+  gscChartData.forEach(d => { if (d.position != null) { wpos += d.position * d.impressions; wimp += d.impressions; } });
+  const vals = { clicks: t.clicks, impressions: t.impressions, ctr: t.impressions ? t.clicks / t.impressions : 0, position: wimp ? wpos / wimp : null };
+  document.getElementById('gscLegend').innerHTML = GSC_SERIES.map(s => {
+    const on = gscChartSeries[s.key];
+    return `<div class="gsc-leg ${on ? 'on' : 'off'}" onclick="toggleGscSeries('${s.key}')" style="${on ? `border-color:${s.color}` : ''}">
+      <span class="leg-dot" style="${on ? `background:${s.color}` : ''}"></span>
+      <span class="leg-meta"><span class="leg-label">${s.label}</span><span class="leg-val">${s.fmt(vals[s.key])}</span></span>
+    </div>`;
+  }).join('');
+}
+
+function toggleGscSeries(key) {
+  const onCount = GSC_SERIES.filter(s => gscChartSeries[s.key]).length;
+  if (gscChartSeries[key] && onCount <= 1) return;      // keep at least one series on
+  gscChartSeries[key] = !gscChartSeries[key];
+  buildGscLegend();
+  drawGscChart();
+}
+
+function drawGscChart() {
+  const wrap = document.getElementById('gscChartWrap');
+  const data = gscChartData, n = data.length;
+  const active = GSC_SERIES.filter(s => gscChartSeries[s.key]);
+  if (!n || !active.length) { wrap.innerHTML = '<div class="gsc-empty-chart">Select a metric above.</div>'; return; }
+  const W = 1000, H = 320, padL = 54, padR = 54, padT = 14, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB, TICKS = 4;
+  const xAt = i => n === 1 ? padL + plotW / 2 : padL + (i / (n - 1)) * plotW;
+  const xs = data.map((_, i) => xAt(i));
+
+  // Per-series scale. Counts/CTR baseline at 0; position gets a padded range.
+  const scales = {};
+  active.forEach(s => {
+    const vals = data.map(d => d[s.key]).filter(v => v != null);
+    let mn = vals.length ? Math.min(...vals) : 0, mx = vals.length ? Math.max(...vals) : 1;
+    if (!s.invert) mn = Math.min(0, mn);
+    if (mn === mx) mx = mn + (mn === 0 ? 1 : Math.abs(mn) * 0.1);
+    if (s.invert) { const p = (mx - mn) * 0.1 || 0.5; mn = Math.max(0, mn - p); mx = mx + p; }
+    scales[s.key] = { mn, mx };
+  });
+  const yAt = (s, v) => { const sc = scales[s.key], range = (sc.mx - sc.mn) || 1;
+    const frac = s.invert ? (sc.mx - v) / range : (v - sc.mn) / range;
+    return padT + (1 - frac) * plotH; };
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Organic performance over time">`;
+  // Horizontal gridlines (aligned to the left-axis ticks).
+  svg += '<g class="gsc-grid">';
+  for (let t = 0; t <= TICKS; t++) { const y = (padT + (t / TICKS) * plotH).toFixed(1); svg += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}"/>`; }
+  svg += '</g>';
+  // Axes — left = first active series, right = second (if any).
+  const axisTicks = (s, side) => {
+    let o = ''; const sc = scales[s.key];
+    for (let t = 0; t <= TICKS; t++) {
+      const yfrac = 1 - (t / TICKS);
+      const val = s.invert ? (sc.mx - yfrac * (sc.mx - sc.mn)) : (sc.mn + yfrac * (sc.mx - sc.mn));
+      const y = (padT + (t / TICKS) * plotH + 4).toFixed(1);
+      const x = side === 'left' ? padL - 8 : W - padR + 8;
+      o += `<text x="${x}" y="${y}" text-anchor="${side === 'left' ? 'end' : 'start'}" fill="${s.color}">${s.fmt(val)}</text>`;
+    }
+    return o;
+  };
+  svg += '<g class="gsc-axis">' + axisTicks(active[0], 'left') + (active[1] ? axisTicks(active[1], 'right') : '');
+  const step = Math.max(1, Math.ceil(n / 9));
+  for (let i = 0; i < n; i += step) {
+    const dt = data[i].date, md = dt ? `${parseInt(dt.slice(5, 7))}/${parseInt(dt.slice(8, 10))}` : '';
+    svg += `<text x="${xs[i].toFixed(1)}" y="${H - padB + 18}" text-anchor="middle" fill="var(--muted)">${md}</text>`;
+  }
+  svg += '</g>';
+  // Series lines (skip null days; non-scaling stroke keeps 2px after CSS scale).
+  active.forEach(s => {
+    const pts = data.map((d, i) => d[s.key] == null ? null : `${xs[i].toFixed(1)},${yAt(s, d[s.key]).toFixed(1)}`).filter(Boolean).join(' ');
+    svg += `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
+  });
+  // Hover guide + per-series markers + an invisible capture rect.
+  svg += `<line id="gscGuide" class="gsc-guide" x1="0" y1="${padT}" x2="0" y2="${padT + plotH}" stroke-width="1" stroke-dasharray="3 3" style="display:none" vector-effect="non-scaling-stroke"/>`;
+  active.forEach(s => { svg += `<circle id="gscDot-${s.key}" class="gsc-dot" r="3.5" fill="${s.color}" stroke-width="1.5" style="display:none"/>`; });
+  svg += `<rect id="gscOverlay" x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="transparent" style="cursor:crosshair"/>`;
+  svg += '</svg>';
+  wrap.innerHTML = svg + '<div class="gsc-chart-tip" id="gscChartTip"></div>';
+
+  // Bind hover. Map cursor → viewBox via the SVG's screen CTM, then to the
+  // nearest day index.
+  const svgEl = wrap.querySelector('svg'), pt = svgEl.createSVGPoint();
+  const guide = wrap.querySelector('#gscGuide'), tip = wrap.querySelector('#gscChartTip');
+  const dots = {}; active.forEach(s => dots[s.key] = wrap.querySelector('#gscDot-' + s.key));
+  const ov = wrap.querySelector('#gscOverlay');
+  ov.addEventListener('mousemove', e => {
+    const ctm = svgEl.getScreenCTM(); if (!ctm) return;
+    pt.x = e.clientX; pt.y = e.clientY;
+    const loc = pt.matrixTransform(ctm.inverse());
+    let idx = n === 1 ? 0 : Math.round((loc.x - padL) / (plotW || 1) * (n - 1));
+    idx = Math.max(0, Math.min(n - 1, idx));
+    const x = xs[idx];
+    guide.style.display = ''; guide.setAttribute('x1', x); guide.setAttribute('x2', x);
+    active.forEach(s => { const v = data[idx][s.key], dot = dots[s.key];
+      if (v == null) { dot.style.display = 'none'; return; }
+      dot.style.display = ''; dot.setAttribute('cx', x); dot.setAttribute('cy', yAt(s, v).toFixed(1)); });
+    const rowsH = active.map(s => { const v = data[idx][s.key];
+      return `<div class="tip-row"><span class="tip-dot" style="background:${s.color}"></span>${s.label}: ${v == null ? '—' : s.fmt(v)}</div>`; }).join('');
+    tip.innerHTML = `<div class="tip-date">${data[idx].date}</div>${rowsH}`;
+    tip.style.display = 'block';
+    const wr = wrap.getBoundingClientRect(), tw = tip.offsetWidth;
+    let lx = e.clientX - wr.left + 14;
+    if (lx + tw > wr.width) lx = e.clientX - wr.left - tw - 14;
+    tip.style.left = Math.max(0, lx) + 'px'; tip.style.top = '8px';
+  });
+  ov.addEventListener('mouseleave', () => {
+    guide.style.display = 'none'; tip.style.display = 'none';
+    Object.values(dots).forEach(d => d.style.display = 'none');
+  });
+}
+
 // v1.51.x — expand/collapse the "why this differs from HubSpot" notes.
 function toggleVsHubspot() {
   const body = document.getElementById('vsHsBody');
@@ -887,7 +1216,7 @@ function sortBy(tableName, column) {
   if (tableName === 'campaigns')   renderCampaigns(s.rawRows, s.attrRows);
   else if (tableName === 'keywords') renderKeywords(s.rawRows);
   else if (tableName === 'searchTerms') renderSearchTerms(s.rawRows, s.attrRows);
-  else if (tableName === 'gscOverlap' || tableName === 'gscQueries' || tableName === 'gscPages') { s.page = 0; gscPaint(tableName); }
+  else if (tableName.startsWith('gsc')) { s.page = 0; gscPaint(tableName); }
 }
 
 // Apply current sort to a list of aggregated row objects. Nulls always

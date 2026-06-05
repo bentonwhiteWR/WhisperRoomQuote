@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.71.2', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Fixed the “ideal page” always defaulting to /products/drum-booth.** The Target Page Analysis (in Search Console, the Action Engine, and Growth Engine) was picking the ideal commercial page by keyword overlap — but the word “booth” appears in nearly every product URL, so every booth query tied and the tie broke to the highest-traffic booth page (drum-booth). It now uses a **Commercial Page Mapping** of intent → the correct page from your site architecture: recording → /application/recording, podcast → /application/broadcasting, audiology → /application/audiology, voice over → /application/voice-over, office → /products/office-booth, drum → /products/drum-booth, and generic soundproof/sound booth → /all-booths. (The mapping is easy to edit if a page moves.)'},
+        {t:'add', d:'**Page-type aware.** Pages are now tagged by type — Product, Application, Category, Package, Blog, Home — so you can see at a glance what kind of page is ranking vs. what should. And when the correct commercial page is already ranking, it’s marked ✓ Right page and diagnosed for CTR / Ranking / Content / Authority instead of being mislabeled a wrong-page problem.'},
+      ]
+    },
+    {
       v:'1.71.1', date:'June 5, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Duplicate Quote button moved into the Customer Information header.** It now sits at the top-right of section 1 instead of up by + New Quote.'},

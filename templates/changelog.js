@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.67.4', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Freight: the two largest models now count pallets correctly.** MDL 102168 and MDL 102186 (S/E/SNV/ENV) were missing from the pallet-count table the order-processing freight step uses, so an order with one of those booths under-counted pallets. Added them (102168 and 102186 each ship on 3 pallets standard / 5 enhanced, matching the quote-builder pallet data). Also fills in their gross weights on the internal weights page.'},
+        {t:'fix', d:'**Weights: refreshed MDL 96192 SNV and ENV after their packing lists were corrected.**'},
+      ]
+    },
+    {
       v:'1.67.3', date:'June 5, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**/weights: refreshed with the final rounded packing-list weights.** The net weights now come from the re-pulled base packing lists, where every component weight was rounded to the nearest pound — so all 104 model net weights are clean whole numbers. This is the real reconciliation data; the delta column against the HubSpot price book is now meaningful.'},

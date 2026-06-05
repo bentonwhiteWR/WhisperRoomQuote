@@ -189,6 +189,7 @@ const PALLETS_PER_MDL = {
   'MDL 96144 E':3,'MDL 96144 S':2,'MDL 96168 E':4,'MDL 96168 S':2,
   'MDL 96192 E':5,'MDL 96192 S':3,'MDL 102102 E':3,'MDL 102102 S':2,
   'MDL 102126 E':3,'MDL 102126 S':2,'MDL 102144 E':4,'MDL 102144 S':2,
+  'MDL 102168 E':5,'MDL 102168 S':3,'MDL 102186 E':5,'MDL 102186 S':3,
 };
 const PALLET_WEIGHT_LB = 144; // shipping weight added per pallet (skid + packaging)
 

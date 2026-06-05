@@ -199,6 +199,10 @@ td.drillable:hover{color:var(--orange)}
 .act-card.bn-content-gap{border-left-color:#a855f7}
 .act-card.bn-blog-handoff{border-left-color:#a855f7}
 .act-card.bn-landing-page{border-left-color:#5fd98a}
+.act-card.bn-content{border-left-color:#a855f7}
+.act-card.bn-authority{border-left-color:#2dd4bf}
+.act-card.bn-wrong-page{border-left-color:#f0a060}
+.act-card.bn-missing-page{border-left-color:#5fd98a}
 .act-card-head{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:7px}
 .act-query{font-size:14px;font-weight:700;color:var(--text)}
 .act-priority{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;border-radius:4px}
@@ -211,6 +215,10 @@ td.drillable:hover{color:var(--orange)}
 .act-bottleneck.bn-content-gap{background:rgba(168,85,247,.14);color:#c08cff;border-color:rgba(168,85,247,.25)}
 .act-bottleneck.bn-blog-handoff{background:rgba(168,85,247,.14);color:#c08cff;border-color:rgba(168,85,247,.25)}
 .act-bottleneck.bn-landing-page{background:rgba(34,197,94,.13);color:#5fd98a;border-color:rgba(34,197,94,.28)}
+.act-bottleneck.bn-content{background:rgba(168,85,247,.14);color:#c08cff;border-color:rgba(168,85,247,.25)}
+.act-bottleneck.bn-authority{background:rgba(45,212,191,.14);color:#2dd4bf;border-color:rgba(45,212,191,.28)}
+.act-bottleneck.bn-wrong-page{background:rgba(238,98,22,.13);color:#f0a060;border-color:rgba(238,98,22,.28)}
+.act-bottleneck.bn-missing-page{background:rgba(34,197,94,.13);color:#5fd98a;border-color:rgba(34,197,94,.28)}
 .act-pages{font-size:11.5px;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:6px 10px;background:var(--surface);border-radius:6px;line-height:1.5}
 .act-pages .ea-len{font-size:9px;font-weight:800;letter-spacing:.05em}
 .act-validated{font-size:10px;font-weight:700;color:#5fd98a}
@@ -533,7 +541,7 @@ td.drillable:hover{color:var(--orange)}
         <span class="section-meta" id="gscActionMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 14px;line-height:1.6">
-        For each top opportunity: the <strong>primary bottleneck</strong> (is it ranking, click-through, or a missing page?), the <strong>recommended action</strong>, why, the estimated revenue impact, and a confidence read. <span style="color:#5fd98a">⭐ Commercially validated</span> = the paid version of that search converts well above your account average, so the upside is proven. Page matches are best-effort (Google withholds the organic→page link), so verify the page before acting.
+        For each opportunity it first asks <strong>“is the right page ranking?”</strong> (RANKS NOW → IDEAL, with a <span style="color:#5fd98a">✓ Right page</span> / <span style="color:#f87171">✗ Wrong page</span> / <span style="color:#fbbf24">⊘ No page</span> verdict from real GSC query→page data), then diagnoses the actual constraint — <strong>CTR</strong> (vs your own booth-keyword CTR benchmark, not a generic curve), <strong>Ranking</strong>, <strong>Content</strong> (strong page, thin coverage), <strong>Authority</strong> (relevant page, out-muscled), <strong>Landing Page</strong> (wrong page ranking), or <strong>Missing Page</strong> — and gives the matching action, priority, revenue impact, and confidence. <span style="color:#5fd98a">⭐ Commercially validated</span> = the paid version converts above your account average. Content / Authority are inferred from page-strength signals, so treat them as leads to verify.
       </div>
       <div class="act-list" id="gscActionBody"><div class="empty">No data yet.</div></div>
     </div>
@@ -927,7 +935,7 @@ const tableState = {
       const intentCell = `<span style="display:inline-flex;align-items:center;gap:6px;justify-content:flex-end" title="Commercial booth-buying intent (0–100)"><span class="mini-bar" style="width:${Math.max(3, intent * 0.4)}px;background:${intentColor};opacity:1"></span>${intent}</span>`;
       const sc = Math.round(r.score || 0);
       const scoreCell = `<span style="display:inline-flex;align-items:center;gap:6px;justify-content:flex-end"><span class="mini-bar" style="width:${Math.max(3, sc * 0.5)}px"></span><strong>${sc}</strong></span>`;
-      const pageCell = gscRankingPageCell(r.actual_page);
+      const pageCell = gscRankingPageCell(r.actual_page, r.match_status);
       return `<tr><td>${escHtml(r.query)}${brand}</td>` +
         `<td>${pageCell}</td>` +
         `<td class="num">${r.position == null ? '—' : r.position.toFixed(1)}</td>` +
@@ -951,10 +959,27 @@ function gscPageClassChip(cls) {
   const c = m[cls]; if (!c) return '';
   return `<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:9px;color:${c[1]};background:${c[2]};margin-left:6px;white-space:nowrap">${c[0]}</span>`;
 }
-function gscRankingPageCell(url) {
+function gscRankingPageCell(url, matchStatus) {
   if (!url) return '<span style="color:var(--muted)" title="No Search Console query→page data yet — run Sync GSC">—</span>';
   const short = gscPageShort(url);
-  return `<a href="${escHtml(url)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(short.length > 38 ? short.slice(0, 36) + '…' : short)}</a>${gscPageClassChip(gscPageClass(url))}`;
+  return `<a href="${escHtml(url)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(short.length > 34 ? short.slice(0, 32) + '…' : short)}</a>${gscPageClassChip(gscPageClass(url))}${matchStatus ? ' ' + gscMatchChip(matchStatus) : ''}`;
+}
+// Target-page match verdict chip: is the right commercial page ranking?
+function gscMatchChip(status) {
+  const m = { correct: ['✓ Right page', '#5fd98a', 'rgba(34,197,94,.14)'], wrong: ['✗ Wrong page', '#f87171', 'rgba(239,68,68,.14)'], missing: ['⊘ No page', '#fbbf24', 'rgba(245,158,11,.14)'], unknown: ['—', '#94a3b8', 'rgba(148,163,184,.12)'] };
+  const c = m[status] || m.unknown;
+  return `<span style="font-size:9px;font-weight:700;padding:1px 7px;border-radius:9px;color:${c[1]};background:${c[2]};white-space:nowrap">${c[0]}</span>`;
+}
+// Compute target-page match status for the table (current ranking page vs the
+// ideal commercial page for the query). Mirrors gscDiagnose's logic.
+function gscMatchStatus(actualPage, query) {
+  const ideal = gscMatchCommercialPage(query, gscPagesCache, null);
+  const idealUrl = ideal ? ideal.page : null;
+  if (!actualPage) return 'unknown';
+  if (idealUrl && actualPage === idealUrl) return 'correct';
+  if (idealUrl && actualPage !== idealUrl) return 'wrong';
+  if (!idealUrl && gscPageClass(actualPage) === 'commercial') return 'correct';
+  return 'missing';
 }
 
 function changeDateRange(days) {
@@ -1019,6 +1044,11 @@ async function loadGscTab() {
   // by default). The mode toggle re-renders from this cache with no refetch.
   gscPagesCache   = (pg && pg.rows) || [];
   gscQueriesCache = (qs && qs.rows) || [];
+  // Build the WhisperRoom CTR benchmark (from all commercial queries) + page-
+  // authority stats BEFORE enriching, so the opportunity recompute + diagnosis
+  // use our own baselines, not a generic curve.
+  gscBuildCtrBenchmark(gscQueriesCache);
+  gscBuildPageStats(gscPagesCache);
   gscRevEnriched  = gscEnrichRev((ro && ro.rows) || [], gscPagesCache);
   applyGscRevMode();
   renderGscOverlap((ov && ov.rows) || []);
@@ -1214,6 +1244,52 @@ function gscMatchCommercialPage(query, pages, excludeUrl) {
   return bestScore >= 1 ? best : null;
 }
 
+// ── WhisperRoom CTR benchmark + page-authority stats ───────────────────
+// Modern SERPs (AI Overviews, shopping, Reddit, video) crush organic CTR, so a
+// generic "≈4–5% at #6" curve over-flags CTR problems. Instead we benchmark
+// each keyword against WhisperRoom's OWN commercial-booth CTR by position.
+let gscCtrBenchmark = null;       // { posBucket: {median, n} } from our commercial queries
+let gscTop3Ctr = 0;               // our median CTR across positions 1–3 (realistic "top-3" target)
+let gscPageClicksMap = null;      // { url: total organic clicks } from gsc-pages
+let gscCommercialPageMedian = 0;  // median total clicks among commercial pages (authority floor)
+function gscTextCommercial(query) {  // text-only commercial check (gsc-query rows lack paid/page signals)
+  const s = ' ' + String(query).toLowerCase() + ' ';
+  return GSC_BOOTH_CORE.test(s) || GSC_STRONG_PRODUCT.test(s) || GSC_BRAND_RX.test(s) || GSC_MEDICAL.test(s);
+}
+function gscMedian(arr) { if (!arr.length) return 0; const a = arr.slice().sort((x, y) => x - y); const m = Math.floor(a.length / 2); return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; }
+function gscBuildCtrBenchmark(queries) {
+  const buckets = {};
+  (queries || []).forEach(r => {
+    const pos = +r.position || 0, ctr = +r.ctr || 0, impr = +r.impressions || 0;
+    if (pos <= 0 || pos > 20 || impr < 20) return;     // ignore tiny-impression noise
+    if (!gscTextCommercial(r.query)) return;            // commercial booth keywords only
+    const k = Math.max(1, Math.round(pos));
+    (buckets[k] = buckets[k] || []).push(ctr);
+  });
+  const bench = {};
+  Object.keys(buckets).forEach(k => { if (buckets[k].length >= 4) bench[k] = { median: gscMedian(buckets[k]), n: buckets[k].length }; });
+  gscCtrBenchmark = bench;
+  const top3 = []; [1, 2, 3].forEach(k => { if (buckets[k]) top3.push(...buckets[k]); });
+  gscTop3Ctr = top3.length >= 4 ? gscMedian(top3) : 0;
+}
+function gscBenchmarkCtr(pos) {
+  if (gscCtrBenchmark) {
+    const k = Math.max(1, Math.min(20, Math.round(pos)));
+    for (const kk of [k, k - 1, k + 1, k - 2, k + 2]) if (gscCtrBenchmark[kk]) return gscCtrBenchmark[kk].median;
+  }
+  return gscExpectedCtr(pos);   // fall back to the generic curve when our sample is sparse
+}
+function gscBuildPageStats(pages) {
+  const map = {}, commClicks = [];
+  (pages || []).forEach(p => { const c = +p.clicks || 0; map[p.page] = c; if (gscPageClass(p.page) === 'commercial') commClicks.push(c); });
+  gscPageClicksMap = map; gscCommercialPageMedian = gscMedian(commClicks);
+}
+function gscPageIsAuthoritative(url) {   // true=strong / false=weak / null=unknown
+  if (!url || !gscPageClicksMap) return null;
+  const c = gscPageClicksMap[url]; if (c == null) return null;
+  return c > 0 && c >= gscCommercialPageMedian;
+}
+
 function gscCommercialIntent(query, row) {
   const s = ' ' + String(query).toLowerCase() + ' ';
   const booth = GSC_BOOTH_CORE.test(s), strong = GSC_STRONG_PRODUCT.test(s);
@@ -1234,13 +1310,23 @@ function gscCommercialIntent(query, row) {
   return Math.round(score);
 }
 
-// Enrich the raw revenue-opportunity rows with commercial intent + a blended
-// commercial_opp (= revenue_opportunity × intent/100). Done once per load.
+// Enrich the raw revenue-opportunity rows: (1) recompute the opportunity using
+// WhisperRoom's OWN realistic top-3 CTR target instead of the backend's generic
+// 0.11 (so the $ isn't inflated by an industry curve our SERPs don't hit), then
+// (2) attach commercial intent + the blended commercial_opp. Reuses the backend
+// rev_per_click / cvr_mult / reach already returned per row.
 function gscEnrichRev(roRows, pages) {
+  const target = (gscTop3Ctr && gscTop3Ctr > 0) ? gscTop3Ctr : 0.05;   // realistic "reach the top 3" CTR
   return (roRows || []).map(r => {
+    const impr = +r.impressions || 0, ctr = +r.ctr || 0;
+    const revPerClick = +r.rev_per_click || 0, cvrMult = +r.cvr_mult || 1, reach = +r.reach || 1;
+    const extra = Math.max(0, impr * (target - ctr));
+    const realOpp = extra * revPerClick * cvrMult * reach;
     const intent = gscCommercialIntent(r.query, r);
-    const rev    = +r.revenue_opportunity || 0;
-    return Object.assign({}, r, { commercial_intent: intent, commercial_opp: rev * intent / 100 });
+    return Object.assign({}, r, {
+      extra_clicks: extra, revenue_opportunity: realOpp,
+      commercial_intent: intent, commercial_opp: realOpp * intent / 100,
+    });
   });
 }
 function gscModeRows(rows, mode) {
@@ -1276,7 +1362,7 @@ function renderGscRevOpp(rows) {
     p_cvr: r.p_cvr == null ? null : +r.p_cvr, p_conv: +r.p_conv || 0, has_paid_signal: !!r.has_paid_signal,
     extra_clicks: +r.extra_clicks || 0, revenue_opportunity: +r.revenue_opportunity || 0,
     commercial_intent: +r.commercial_intent || 0, commercial_opp: +r.commercial_opp || 0,
-    actual_page: r.actual_page || null,
+    actual_page: r.actual_page || null, match_status: gscMatchStatus(r.actual_page || null, r.query),
   }));
   const rankBy = gscRevMode === 'commercial' ? 'commercial_opp' : 'revenue_opportunity';
   const max = mapped.reduce((m, r) => Math.max(m, r[rankBy]), 0);
@@ -1326,41 +1412,56 @@ function gscMatchPage(query, pages) {
   return bestScore >= 1 ? { page: best.page, clicks: +best.clicks || 0 } : null;
 }
 
-// Diagnose one Revenue-Opportunity row → a full action recommendation, driven by
-// the REAL page Google ranks (GSC query×page) rather than keyword guessing:
-//   • commercial page ranks  → optimize it (CTR or Ranking bottleneck)
-//   • blog/other ranks + a commercial page exists → Blog→Commercial hand-off
-//   • no commercial page anywhere → Landing Page Opportunity
+// Diagnose one Revenue-Opportunity row → the ACTUAL constraint, in priority
+// order. First answers "is the right page ranking?" (Target Page Analysis),
+// then "what's the bottleneck?" benchmarked against WhisperRoom's OWN CTR:
+//   Missing Page → Landing Page (wrong page) → CTR → Ranking → Content → Authority
 function gscDiagnose(r, pages, maxRank) {
   const q = r.query, Q = escHtml(q);
   const pos = +r.position || 0, impr = +r.impressions || 0, clicks = +r.clicks || 0, ctr = +r.ctr || 0;
-  const expCtr = gscExpectedCtr(pos), ctrGap = expCtr - ctr;
   const cvrMult = +r.cvr_mult || 1, hasPaid = !!r.has_paid_signal;
   const commercial = hasPaid && cvrMult >= 1.3;
   const impact = +r.revenue_opportunity || 0;
   const pctS = x => (x * 100).toFixed(1) + '%';
+  const benchCtr = gscBenchmarkCtr(pos);             // WhisperRoom median CTR at this position
 
-  // Real ranking page (from GSC query×page) + that pair's metrics.
+  // Real ranking page (GSC query×page) + that pair's metrics.
   const actualPage = r.actual_page || null;
   const actualClass = gscPageClass(actualPage);
   const actualShort = actualPage ? gscPageShort(actualPage) : null;
   const pageMetrics = { clicks: +r.page_clicks || 0, impr: +r.page_impr || 0, ctr: +r.page_ctr || 0, position: r.page_position == null ? null : +r.page_position };
-  // Best commercial page that SHOULD own this query (suggestion, not what ranks).
-  const commCand = gscMatchCommercialPage(q, pages, actualClass === 'commercial' ? null : actualPage);
-  const ctrIssue = pos <= 10 && ctrGap > Math.max(0.015, expCtr * 0.35);
 
-  let type, scenario, targetPage;
-  if (actualClass === 'commercial') {                 // the right page already ranks → optimize it
-    scenario = 'optimize-commercial'; targetPage = actualPage;
-    type = ctrIssue ? 'ctr' : 'ranking';
-  } else if (commCand) {
-    if (actualPage) { scenario = 'blog-handoff'; type = 'blog-handoff'; targetPage = commCand.page; }
-    else { scenario = 'optimize-commercial'; targetPage = commCand.page; type = ctrIssue ? 'ctr' : 'ranking'; }
-  } else {                                            // no commercial page exists → build one
-    scenario = 'landing-page'; type = 'landing-page'; targetPage = null;
+  // Target Page Analysis: ideal commercial page (best match, not excluding the
+  // actual) vs what actually ranks → match status.
+  const ideal = gscMatchCommercialPage(q, pages, null);
+  let idealPage = ideal ? ideal.page : null;
+  let idealShort = idealPage ? gscPageShort(idealPage) : null;
+  let matchStatus;            // correct | wrong | missing | unknown
+  if (!actualPage) matchStatus = 'unknown';
+  else if (idealPage && actualPage === idealPage) matchStatus = 'correct';
+  else if (idealPage && actualPage !== idealPage) matchStatus = 'wrong';
+  else if (!idealPage && actualClass === 'commercial') { matchStatus = 'correct'; idealPage = actualPage; idealShort = actualShort; }
+  else matchStatus = 'missing';
+
+  // Bottleneck — page strategy first, then performance vs the WhisperRoom benchmark.
+  const ctrBelow = benchCtr > 0 && ctr < benchCtr * 0.6;   // materially under our own norm
+  let type;
+  if (matchStatus === 'missing') type = 'missing-page';
+  else if (matchStatus === 'wrong') type = 'wrong-page';
+  else if (matchStatus === 'unknown') type = (pos <= 8 && ctrBelow) ? 'ctr' : 'ranking';
+  else { // the right page ranks → why isn't it winning?
+    if (pos <= 8 && ctrBelow) type = 'ctr';
+    else if (pos <= 5) type = 'ranking';                   // already near the top, CTR ok → small push
+    else {                                                 // weak position, CTR ok → content vs authority
+      const strong = gscPageIsAuthoritative(actualPage);
+      type = strong === true ? 'content' : strong === false ? 'authority' : 'ranking';
+    }
   }
+  const bottleneckLabel = { ctr: 'CTR Opportunity', ranking: 'Ranking Opportunity', content: 'Content Opportunity', authority: 'Authority Opportunity', 'wrong-page': 'Landing Page Opportunity', 'missing-page': 'Missing Page Opportunity' }[type];
+
+  // The page to act on: ideal for wrong-page, nothing for missing, else the ranking page.
+  const targetPage = type === 'missing-page' ? null : (type === 'wrong-page' ? idealPage : actualPage);
   const targetShort = targetPage ? gscPageShort(targetPage) : null;
-  const bottleneckLabel = { ctr: 'CTR Opportunity', ranking: 'Ranking Opportunity', 'blog-handoff': 'Blog → Commercial', 'landing-page': 'Landing Page Opportunity' }[type];
 
   const rankValue = gscRevMode === 'commercial' ? (+r.commercial_opp || 0) : impact;
   const score = maxRank > 0 ? Math.round(100 * rankValue / maxRank) : 0;
@@ -1371,9 +1472,10 @@ function gscDiagnose(r, pages, maxRank) {
   let conf = 50;
   if (hasPaid) conf += 25;
   if (impr >= 200) conf += 10;
-  if (actualPage) conf += 12;                          // we know the real ranking page
+  if (actualPage) conf += 12;
   if (clicks < 5) conf -= 15;
   if (impr < 50) conf -= 10;
+  if (type === 'content' || type === 'authority') conf -= 8;   // inferred from page-strength proxies
   conf = Math.max(15, Math.min(95, conf));
   const confLabel = conf >= 70 ? 'High' : conf >= 45 ? 'Medium' : 'Low';
 
@@ -1382,31 +1484,45 @@ function gscDiagnose(r, pages, maxRank) {
     : (hasPaid ? '' : ' (No paid data for this term, so the value uses your channel-average organic conversion.)');
   const tgtRef = targetShort ? `<code>${escHtml(targetShort)}</code>` : 'a commercial page';
   const actRef = actualShort ? `<code>${escHtml(actualShort)}</code>` : 'the ranking page';
+  const idlRef = idealShort ? `<code>${escHtml(idealShort)}</code>` : 'a commercial page';
 
   let reasoning, action;
   if (type === 'ctr') {
-    reasoning = `Google ranks your commercial page ${actRef} for “${Q}” at #${pos.toFixed(0)} with ${fmtInt(impr)} impressions, but its ${pctS(ctr)} click-through trails the ~${pctS(expCtr)} typical there. The right page ranks — the click is leaking.${commercialNote}`;
-    action = `Rewrite the title tag and meta description on ${tgtRef} to match “${Q}” with a stronger hook, and add structured data (Product / Review / FAQ) for rich results.`;
+    reasoning = `The right page ranks — ${actRef} sits at #${pos.toFixed(0)} for “${Q}” — but its ${pctS(ctr)} click-through is well under your own booth-keyword median of ${pctS(benchCtr)} at that position. The constraint is the click, not the ranking.`;
+    action = `Rewrite the title tag + meta description on ${tgtRef} to match “${Q}” with a stronger hook, and add structured data (Product / Review / FAQ) for rich results.`;
   } else if (type === 'ranking') {
-    reasoning = `Your commercial page ${actRef} ranks #${pos.toFixed(0)} for “${Q}” with ${fmtInt(impr)} impressions. The right page ranks — it just needs to climb into the top 3.${commercialNote}`;
-    action = `Strengthen ${tgtRef} for “${Q}”: expand on-page content and depth, tighten targeting (title / H1 / body), add internal links from your strongest pages, and pursue a few relevant backlinks.`;
-  } else if (type === 'blog-handoff') {
-    reasoning = `“${Q}” is a booth-buying search, but the page Google ranks is ${actRef} (a ${actualClass} page), not a sales page. Your commercial page ${tgtRef} is the better destination — but it isn’t ranking for this term yet.${commercialNote}`;
-    action = `Don’t rewrite the blog — it isn’t your sales page. Instead: (1) strengthen ${tgtRef} for “${Q}” (on-page targeting + depth), (2) add internal links from ${actRef} to ${tgtRef} with “${Q}”-rich anchor text, and (3) build a few backlinks to ${tgtRef} so it can overtake the blog.`;
-  } else { // landing-page
-    reasoning = `“${Q}” pulls ${fmtInt(impr)} impressions at #${pos.toFixed(0)}${actualShort ? `, but the page ranking is ${actRef} (a ${actualClass} page)` : ''}, and no commercial page on the site targets it. Nothing purpose-built is there to convert this demand.${commercialNote}`;
-    action = `Create a dedicated commercial landing page for “${Q}” (a product, application, or package page), then internally link to it from related products and posts. Purpose-built content out-ranks a generic / blog page for the term.`;
+    reasoning = `${actRef} ranks #${pos.toFixed(0)} for “${Q}” with a click-through in line with your benchmark (${pctS(benchCtr)}). The right page ranks and the click is fine — the constraint is the position.${commercialNote}`;
+    action = `Push ${tgtRef} into the top 3 for “${Q}”: tighten on-page targeting (title / H1 / body), add internal links from your strongest pages, and pursue a few relevant backlinks.`;
+  } else if (type === 'content') {
+    reasoning = `${actRef} ranks #${pos.toFixed(0)} for “${Q}” and is an authoritative page overall (above your median page traffic), yet it can’t crack the top — that pattern points to thin topical coverage of this query, not a links problem.`;
+    action = `Deepen ${tgtRef} for “${Q}”: add a dedicated section, cover the related sub-topics and questions below, and add an FAQ, so it reads as the definitive answer for the term.`;
+  } else if (type === 'authority') {
+    reasoning = `${actRef} ranks #${pos.toFixed(0)} for “${Q}” and is on-topic, but it’s a thinner page than your median commercial page — competitors likely out-muscle it on authority. The constraint looks like links, not content.`;
+    action = `Build authority to ${tgtRef}: add internal links from your strongest pages, secure a few quality backlinks, and link to it from related products. The page is relevant — it needs more weight behind it.`;
+  } else if (type === 'wrong-page') {
+    const blog = actualClass === 'blog';
+    reasoning = `The wrong page is ranking: Google shows ${actRef} (a ${actualClass} page) for “${Q}”, not your ideal commercial page ${idlRef}. Fixing which page ranks comes before optimizing it.${commercialNote}`;
+    action = blog
+      ? `Don’t rewrite the blog — it isn’t your sales page. (1) Strengthen ${idlRef} for “${Q}”, (2) add internal links from ${actRef} to ${idlRef} with “${Q}”-rich anchor text, (3) build a few backlinks to ${idlRef} so it overtakes the blog.`
+      : `A too-generic page is ranking. (1) Strengthen ${idlRef} so it targets “${Q}” specifically, (2) add internal links to ${idlRef} from ${actRef} and related pages, (3) make ${idlRef} the clear destination for this term.`;
+  } else { // missing-page
+    reasoning = `“${Q}” pulls ${fmtInt(impr)} impressions at #${pos.toFixed(0)}${actualShort ? `, but a ${actualClass} page (${actRef}) is what ranks` : ''} — and no commercial page on the site targets it. Nothing purpose-built is there to convert this demand.${commercialNote}`;
+    action = `Create a dedicated commercial page for “${Q}” (a product, application, or package page), then internally link to it from related products and posts.`;
   }
 
+  const upTxt = `<span class="exec-amt">~$${fmtInt(Math.round(impact))}</span> upside`;
   let execText;
-  if (type === 'ctr') execText = `<strong>“${Q}”</strong> ranks #${pos.toFixed(0)} on ${actualShort ? escHtml(actualShort) : 'a commercial page'} but barely gets clicked. Rewrite its title + meta — <span class="exec-amt">~$${fmtInt(Math.round(impact))}</span> upside.`;
-  else if (type === 'ranking') execText = `<strong>“${Q}”</strong> sits at #${pos.toFixed(0)} on your commercial page${commercial ? ' and converts above average' : ''}. Push it to the top 3 — <span class="exec-amt">~$${fmtInt(Math.round(impact))}</span> upside.`;
-  else if (type === 'blog-handoff') execText = `<strong>“${Q}”</strong> is ranked by a ${actualClass} page, not your sales page. Strengthen ${targetShort ? escHtml(targetShort) : 'the commercial page'} + link to it from the blog — <span class="exec-amt">~$${fmtInt(Math.round(impact))}</span> upside.`;
-  else execText = `<strong>“${Q}”</strong> has real demand at #${pos.toFixed(0)} but no commercial page. Build a dedicated landing page — <span class="exec-amt">~$${fmtInt(Math.round(impact))}</span> upside.`;
+  if (type === 'ctr') execText = `<strong>“${Q}”</strong> ranks #${pos.toFixed(0)} on the right page but clicks below your booth benchmark. Rewrite its title + meta — ${upTxt}.`;
+  else if (type === 'ranking') execText = `<strong>“${Q}”</strong> sits at #${pos.toFixed(0)} on the right page${commercial ? ' and converts above average' : ''}. Push it to the top 3 — ${upTxt}.`;
+  else if (type === 'content') execText = `<strong>“${Q}”</strong> ranks on a strong page but stalls — it needs deeper coverage of the topic. Expand the page — ${upTxt}.`;
+  else if (type === 'authority') execText = `<strong>“${Q}”</strong> ranks on-topic but the page is out-muscled. Build links/authority to it — ${upTxt}.`;
+  else if (type === 'wrong-page') execText = `<strong>“${Q}”</strong> is ranked by a ${actualClass} page, not ${idealShort ? escHtml(idealShort) : 'your sales page'}. Get the right page ranking — ${upTxt}.`;
+  else execText = `<strong>“${Q}”</strong> has real demand but no commercial page. Build a dedicated landing page — ${upTxt}.`;
 
-  return { query: q, type, scenario, bottleneckLabel, position: pos, impressions: impr, ctr, impact,
+  return { query: q, type, bottleneckLabel, position: pos, impressions: impr, ctr, impact,
     commercial, priority, score, confidence: conf, confLabel, reasoning, action, execText,
     actualPage, actualPageShort: actualShort, actualPageClass: actualClass, pageMetrics,
+    idealPage, idealPageShort: idealShort, matchStatus, benchCtr,
     targetPage, targetPageShort: targetShort, pageShort: targetShort || actualShort,
     pCvr: r.p_cvr == null ? null : +r.p_cvr, pConv: +r.p_conv || 0, cvrMult };
 }
@@ -1506,41 +1622,61 @@ function gscBuildAssist(d, allQueries, pages) {
     : '';
 
   if (d.type === 'ctr') {
-    const tgt = gscExpectedCtr(d.position);
+    const tgt = gscBenchmarkCtr(d.position);   // WhisperRoom benchmark, not a generic curve
     const lift = Math.max(0, Math.round(d.impressions * Math.max(0, tgt - d.ctr)));
-    blocks.push(`<div class="ea-block"><div class="ea-label">Current vs expected CTR${d.actualPageShort ? ` — <code>${escHtml(d.actualPageShort)}</code>` : ''}</div>` +
-      `<div class="ea-ctr-compare"><span class="ea-ctr-now">${(d.ctr * 100).toFixed(1)}% now</span> → <span class="ea-ctr-target">~${(tgt * 100).toFixed(1)}% expected at #${d.position.toFixed(0)}</span> · closing the gap ≈ <strong>+${fmtInt(lift)}</strong> clicks/window</div></div>`);
+    blocks.push(`<div class="ea-block"><div class="ea-label">Current vs your benchmark CTR${d.actualPageShort ? ` — <code>${escHtml(d.actualPageShort)}</code>` : ''}</div>` +
+      `<div class="ea-ctr-compare"><span class="ea-ctr-now">${(d.ctr * 100).toFixed(1)}% now</span> → <span class="ea-ctr-target">~${(tgt * 100).toFixed(1)}% your booth median at #${d.position.toFixed(0)}</span> · closing the gap ≈ <strong>+${fmtInt(lift)}</strong> clicks/window</div></div>`);
     blocks.push(gscSuggestBlock('Title tag ideas (target ≤60 chars)', gscTitleSuggestions(d.query), 60));
     blocks.push(gscSuggestBlock('Meta description ideas (target ≤155 chars)', gscMetaSuggestions(d.query), 155));
   } else if (d.type === 'ranking') {
     const linkPages = gscRelatedPages(d.query, pages, d.targetPageShort, 6);
-    blocks.push(`<div class="ea-block"><div class="ea-label">Internal links → ${d.targetPageShort ? `<code>${escHtml(d.targetPageShort)}</code>` : 'the target page'}</div>` +
+    blocks.push(`<div class="ea-block"><div class="ea-label">Push to top 3 — internal links → ${d.targetPageShort ? `<code>${escHtml(d.targetPageShort)}</code>` : 'the target page'}</div>` +
       (linkPages.length
         ? `<ul class="ea-list">${linkPages.map(p => `<li>Add a contextual link from <a class="ea-link" href="${escHtml(p.url)}" target="_blank" rel="noopener">${escHtml(p.short)}</a> <span class="ea-len">${fmtInt(p.clicks)} clicks</span></li>`).join('')}</ul>`
         : '<div class="ea-note">No clearly-related pages found in your organic data — link from your main category / product pages instead.</div>') + '</div>');
-    if (secondary.length || questions.length) {
-      const missing = secondary.slice(0, 4).map(r => r.query).concat(questions.slice(0, 3).map(r => r.query));
-      blocks.push(`<div class="ea-block"><div class="ea-label">Content sections that may be missing</div><ul class="ea-list">${missing.map(s => `<li>Cover “${escHtml(s)}”</li>`).join('')}</ul></div>`);
-    }
     blocks.push(`<div class="ea-block"><div class="ea-label">On-page checklist</div><ul class="ea-list">` +
       `<li>Put “${escHtml(d.query)}” in the title, H1, and first 100 words</li>` +
-      `<li>Expand depth to cover the sub-topics above</li>` +
-      `<li>Add an FAQ block answering the real questions above</li>` +
+      `<li>Add internal links with “${escHtml(d.query)}”-rich anchor text</li>` +
       `<li>Pursue 2-3 relevant backlinks to the page</li></ul></div>`);
-  } else if (d.type === 'blog-handoff') {
-    blocks.push(`<div class="ea-block"><div class="ea-label">Authority hand-off</div><div class="ea-brief">` +
-      `Ranking now: <code>${escHtml(d.actualPageShort || '?')}</code> ${gscPageClassChip(d.actualPageClass)} — not a sales page<br>` +
-      `Better destination: <code>${escHtml(d.targetPageShort || '?')}</code> ${gscPageClassChip('commercial')} — your commercial page</div></div>`);
-    const linkPages = gscRelatedPages(d.query, pages, d.targetPageShort, 4).filter(p => p.short !== d.actualPageShort);
-    const linkItems = [`<li><strong>From the ranking page:</strong> <a class="ea-link" href="${escHtml(d.actualPage || '#')}" target="_blank" rel="noopener">${escHtml(d.actualPageShort || 'blog post')}</a> → <a class="ea-link" href="${escHtml(d.targetPage || '#')}" target="_blank" rel="noopener">${escHtml(d.targetPageShort || 'commercial page')}</a>, anchor “${escHtml(d.query)}”</li>`]
+  } else if (d.type === 'content') {
+    const subtopics = secondary.slice(0, 6).map(r => r.query).concat(questions.slice(0, 4).map(r => r.query));
+    blocks.push(`<div class="ea-block"><div class="ea-label">Deepen ${d.targetPageShort ? `<code>${escHtml(d.targetPageShort)}</code>` : 'the page'} — coverage gaps</div>` +
+      (subtopics.length
+        ? `<ul class="ea-list">${subtopics.map(s => `<li>Add a section covering “${escHtml(s)}”</li>`).join('')}</ul>`
+        : '<div class="ea-note">Expand the page with use-cases, specs, sizing, and an FAQ for this term.</div>') + '</div>');
+    if (questionsBlock) blocks.push(questionsBlock);
+    blocks.push(`<div class="ea-block"><div class="ea-label">Depth checklist</div><ul class="ea-list">` +
+      `<li>Lead with “${escHtml(d.query)}” in the H1 + intro, then go deep</li>` +
+      `<li>Add an FAQ block answering the real questions above</li>` +
+      `<li>Add specs, sizing, photos, and a clear quote CTA</li></ul></div>`);
+  } else if (d.type === 'authority') {
+    const linkPages = gscRelatedPages(d.query, pages, d.targetPageShort, 6);
+    const authClicks = (gscPageClicksMap && d.targetPage != null) ? gscPageClicksMap[d.targetPage] : null;
+    blocks.push(`<div class="ea-block"><div class="ea-label">Build authority → ${d.targetPageShort ? `<code>${escHtml(d.targetPageShort)}</code>` : 'the page'}</div><div class="ea-brief">` +
+      `This page is on-topic but lighter than your median commercial page${authClicks != null ? ` (it has ${fmtInt(authClicks)} organic clicks vs a ${fmtInt(Math.round(gscCommercialPageMedian))} median)` : ''}. The fix is weight, not words.</div></div>`);
+    blocks.push(`<div class="ea-block"><div class="ea-label">Internal links to add (from your strongest related pages)</div>` +
+      (linkPages.length
+        ? `<ul class="ea-list">${linkPages.map(p => `<li>Link from <a class="ea-link" href="${escHtml(p.url)}" target="_blank" rel="noopener">${escHtml(p.short)}</a> <span class="ea-len">${fmtInt(p.clicks)} clicks</span></li>`).join('')}</ul>`
+        : '<div class="ea-note">Link from your home, all-booths, and top product pages.</div>') + '</div>');
+    blocks.push(`<div class="ea-block"><div class="ea-label">Off-page checklist</div><ul class="ea-list">` +
+      `<li>Pursue 3-5 quality backlinks (directories, partners, press, supplier listings)</li>` +
+      `<li>Add the page to your main nav / footer if it isn’t already</li>` +
+      `<li>Earn a few mentions with “${escHtml(d.query)}”-relevant anchor text</li></ul></div>`);
+  } else if (d.type === 'wrong-page') {
+    const blog = d.actualPageClass === 'blog';
+    blocks.push(`<div class="ea-block"><div class="ea-label">Target page analysis</div><div class="ea-brief">` +
+      `Ranking now: <code>${escHtml(d.actualPageShort || '?')}</code> ${gscPageClassChip(d.actualPageClass)} — ${blog ? 'a blog post, not a sales page' : 'too generic for this term'}<br>` +
+      `Ideal page: <code>${escHtml(d.idealPageShort || '?')}</code> ${gscPageClassChip('commercial')} — should rank for “${escHtml(d.query)}”</div></div>`);
+    const linkPages = gscRelatedPages(d.query, pages, d.idealPageShort, 4).filter(p => p.short !== d.actualPageShort);
+    const linkItems = [`<li><strong>From the ranking page:</strong> <a class="ea-link" href="${escHtml(d.actualPage || '#')}" target="_blank" rel="noopener">${escHtml(d.actualPageShort || 'current page')}</a> → <a class="ea-link" href="${escHtml(d.idealPage || '#')}" target="_blank" rel="noopener">${escHtml(d.idealPageShort || 'ideal page')}</a>, anchor “${escHtml(d.query)}”</li>`]
       .concat(linkPages.map(p => `<li>Also link from <a class="ea-link" href="${escHtml(p.url)}" target="_blank" rel="noopener">${escHtml(p.short)}</a> <span class="ea-len">${fmtInt(p.clicks)} clicks</span></li>`));
-    blocks.push(`<div class="ea-block"><div class="ea-label">Internal links to add → the commercial page</div><ul class="ea-list">${linkItems.join('')}</ul></div>`);
-    blocks.push(`<div class="ea-block"><div class="ea-label">Strengthen ${d.targetPageShort ? `<code>${escHtml(d.targetPageShort)}</code>` : 'the commercial page'} for “${escHtml(d.query)}”</div><div class="ea-brief">` +
+    blocks.push(`<div class="ea-block"><div class="ea-label">Internal links to add → the ideal page</div><ul class="ea-list">${linkItems.join('')}</ul></div>`);
+    blocks.push(`<div class="ea-block"><div class="ea-label">Strengthen ${d.idealPageShort ? `<code>${escHtml(d.idealPageShort)}</code>` : 'the ideal page'} for “${escHtml(d.query)}”</div><div class="ea-brief">` +
       `<div><strong>On-page:</strong> put “${escHtml(d.query)}” in the title, H1, and intro</div>` +
       `<div><strong>Secondary keywords to cover:</strong> ${secChips}</div></div></div>`);
     if (questionsBlock) blocks.push(questionsBlock);
-    blocks.push('<div class="ea-note">Leave the blog’s title/meta as-is — it isn’t your sales page. The goal is to pass its searchers and authority to the commercial page.</div>');
-  } else { // landing-page
+    if (blog) blocks.push('<div class="ea-note">Leave the blog’s title/meta as-is — it isn’t your sales page. The goal is to pass its searchers and authority to the commercial page.</div>');
+  } else { // missing-page
     blocks.push(`<div class="ea-block"><div class="ea-label">New commercial page brief</div><div class="ea-brief">` +
       `<div><strong>Page type:</strong> ${gscPageType(d.query)}</div>` +
       `<div><strong>Suggested H1 / title:</strong> ${escHtml(gscTitleCase(d.query))} | WhisperRoom</div>` +
@@ -1585,19 +1721,20 @@ function renderActionEngine(roRows, pageRows, queryRows) {
   document.getElementById('gscActionBody').innerHTML = topCards.map(d => {
     const brandBadge = /whisper/i.test(d.query) ? ' <span class="ov-tag ov-brand">brand</span>' : '';
     const validated = d.commercial ? '<span class="act-validated">⭐ Commercially validated</span>' : '';
-    // Page strategy — the real ranking page (GSC) → recommended target page.
+    // Target Page Analysis — the real ranking page (GSC) vs the ideal commercial
+    // page, with a match-status verdict.
     const ap = d.actualPageShort
       ? `<a href="${escHtml(d.actualPage)}" target="_blank" rel="noopener" class="ea-link">${escHtml(d.actualPageShort)}</a>${gscPageClassChip(d.actualPageClass)}`
       : '<span style="color:var(--muted)">unknown — run Sync GSC</span>';
     const pm = d.pageMetrics;
     const pairMeta = (d.actualPageShort && pm && pm.position != null)
       ? ` <span class="ea-len">#${pm.position.toFixed(1)} · ${fmtInt(pm.clicks)} clk · ${(pm.ctr * 100).toFixed(1)}%</span>` : '';
-    const tgt = d.type === 'landing-page'
+    const ideal = d.type === 'missing-page'
       ? '<span style="color:#5fd98a;font-weight:600">build a new commercial page</span>'
-      : (d.targetPageShort
-        ? `<a href="${escHtml(d.targetPage)}" target="_blank" rel="noopener" class="ea-link">${escHtml(d.targetPageShort)}</a>${gscPageClassChip('commercial')}`
+      : (d.idealPageShort
+        ? `<a href="${escHtml(d.idealPage)}" target="_blank" rel="noopener" class="ea-link">${escHtml(d.idealPageShort)}</a>${gscPageClassChip('commercial')}`
         : '<span style="color:var(--muted)">—</span>');
-    const pageStrategy = `<div class="act-pages"><span class="ea-len">RANKS TODAY</span> ${ap}${pairMeta} <span style="color:var(--muted)">→</span> <span class="ea-len">TARGET</span> ${tgt}</div>`;
+    const pageStrategy = `<div class="act-pages"><span class="ea-len">RANKS NOW</span> ${ap}${pairMeta} <span style="color:var(--muted)">→</span> <span class="ea-len">IDEAL</span> ${ideal} ${gscMatchChip(d.matchStatus)}</div>`;
     return `<div class="act-card bn-${d.type}">
       <div class="act-card-head">
         <span class="act-priority ${d.priority.toLowerCase()}">${d.priority}</span>

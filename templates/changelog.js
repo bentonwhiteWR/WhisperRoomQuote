@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.69.1', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Smarter SEO diagnosis — stops defaulting to “rewrite title/meta.”** The Action Engine now figures out the <em>real</em> constraint for each keyword instead of assuming CTR. Six opportunity types: <strong>CTR</strong> (ranking is fine, clicks are weak), <strong>Ranking</strong> (clicks fine, position weak), <strong>Content</strong> (strong page, thin topical coverage), <strong>Authority</strong> (relevant page, out-muscled by competitors), <strong>Landing Page</strong> (the wrong page is ranking), and <strong>Missing Page</strong> (no commercial page exists) — each with its own tailored action.'},
+        {t:'add', d:'**CTR judged against WhisperRoom’s own benchmark, not a generic curve.** Modern results pages (AI Overviews, shopping, Reddit, video) mean a #6 ranking rarely gets the “textbook” 4-5% CTR. The dashboard now computes your <em>own</em> median CTR by position from your commercial booth keywords and flags CTR problems relative to that — so it stops over-flagging CTR. Revenue estimates were recalibrated to your real top-3 CTR too.'},
+        {t:'add', d:'**Target Page Analysis: “is the right page ranking?”** Every keyword now shows the real ranking page vs the ideal commercial page with a clear verdict — ✓ Right page, ✗ Wrong page, or ⊘ No commercial page — answered *before* recommending an action. So “recording booth” ranking on a blog post gets a “strengthen /application/recording + link from the blog” plan, not a blog title rewrite.'},
+      ]
+    },
+    {
       v:'1.69.0', date:'June 5, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing Lists: &ldquo;View Packing List&rdquo; button on the Quote Builder (next to Build Assembly Manual).** Generates the packing list for the saved quote in a new tab &mdash; one section per room. It reads your quote line items, treats each <b>MDL&hellip;</b> line as a booth and the lines under it as that booth&rsquo;s options, and builds the booth&rsquo;s full component list (codes, descriptions, quantities, weights, dimensions, pack codes) straight from the packing-list data &mdash; weights are exact. Each room defaults to <b>Left hinge / Gray foam</b> (change per room), and you can edit quantities, remove, or add component lines before printing. <b>In progress:</b> the optional-feature component swaps (windows, EFS, VSS, studio light, ADA, HX, etc.) are not auto-applied yet &mdash; those quote lines are listed under each room as a reminder to add their parts manually until the feature rules are finished. This is the first piece of the packing-list system replacing the old Excel/VBA workflow.'},

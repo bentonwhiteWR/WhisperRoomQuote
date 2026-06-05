@@ -51,6 +51,32 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.1', date:'June 5, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Add Pallet default size is now 90 × 47 × 40 in** (was 48 × 40 × 48) — matches a typical WhisperRoom skid, still editable per pallet.'},
+      ]
+    },
+    {
+      v:'1.72.0', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Quote Builder: add extra pallets to a quote.** When a quote has a booth plus a lot of loose components that need their own skid, hit <b>+ Add Pallet</b> in the Quote Weight box and set its L &times; W &times; H. Extra pallets flow into the pallet count, the ABF freight quote (total weight redistributes across all skids), and the International Shipping request &mdash; and they save with the quote and carry into order processing. Booth pallets are still auto-counted as before.'},
+      ]
+    },
+    {
+      v:'1.71.3', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**“Why this page?” explanation on every Ideal Page recommendation.** Next to each ideal commercial page you’ll now see a small <strong>ⓘ Mapped / Matched / Category</strong> tag — hover it to see exactly how that page was chosen: an explicit commercial page mapping (your site architecture), a token/intent match against your commercial pages, or the /all-booths category fallback. When the correct page already ranks, it notes that Search Console confirms it. Makes the picks easy to trust and validate.'},
+        {t:'add', d:'**One source of truth for ideal pages.** The corrected Commercial Page Mapping now drives the Ideal Page everywhere — Revenue Opportunity Engine, Opportunity Action Engine, Target Page Analysis, and the Growth Engine all read the same mapping, so the dashboards can’t disagree on which page should rank for a keyword.'},
+      ]
+    },
+    {
+      v:'1.71.2', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Fixed the “ideal page” always defaulting to /products/drum-booth.** The Target Page Analysis (in Search Console, the Action Engine, and Growth Engine) was picking the ideal commercial page by keyword overlap — but the word “booth” appears in nearly every product URL, so every booth query tied and the tie broke to the highest-traffic booth page (drum-booth). It now uses a **Commercial Page Mapping** of intent → the correct page from your site architecture: recording → /application/recording, podcast → /application/broadcasting, audiology → /application/audiology, voice over → /application/voice-over, office → /products/office-booth, drum → /products/drum-booth, and generic soundproof/sound booth → /all-booths. (The mapping is easy to edit if a page moves.)'},
+        {t:'add', d:'**Page-type aware.** Pages are now tagged by type — Product, Application, Category, Package, Blog, Home — so you can see at a glance what kind of page is ranking vs. what should. And when the correct commercial page is already ranking, it’s marked ✓ Right page and diagnosed for CTR / Ranking / Content / Authority instead of being mislabeled a wrong-page problem.'},
+      ]
+    },
+    {
       v:'1.71.1', date:'June 5, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Duplicate Quote button moved into the Customer Information header.** It now sits at the top-right of section 1 instead of up by + New Quote.'},

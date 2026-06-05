@@ -4797,7 +4797,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/create-deal' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, lineItems, freight, tax, discount, total, dealName, existingDealId, existingContactId, billing, loadedQuoteNumber, loadedQuoteTotal, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, forceNewFolder, newFolderName, notes, repFoamColor, repHingePreference, repApColor, repWaType, install, canadian, customsBroker } = body;
+      const { customer, lineItems, manualPallets, freight, tax, discount, total, dealName, existingDealId, existingContactId, billing, loadedQuoteNumber, loadedQuoteTotal, linkedDealId: bodyLinkedDealId, confirmContactOverride, quoteLabel, bindFolderId, forceNewFolder, newFolderName, notes, repFoamColor, repHingePreference, repApColor, repWaType, install, canadian, customsBroker } = body;
       let { quoteNumber } = body;
       // Normalize ownerId — historical client code used the string 'ecommerce'
       // as a sentinel, which then gets passed straight to HubSpot as
@@ -5335,7 +5335,7 @@ const server = http.createServer(async (req, res) => {
         await saveQuoteToDb({
           quoteNumber, dealId, contactId, dealName: finalDealName, ownerId, total,
           date: new Date().toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}),
-          customer, lineItems, discount, freight, tax,
+          customer, lineItems, manualPallets: manualPallets || [], discount, freight, tax,
           install: install || null,
           canadian:           !!canadian,
           customsBroker:      customsBroker || '',
@@ -15713,11 +15713,15 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       const orderUrl = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}?t=${orderToken}`;
       // Auto-compute pallet count from line items. PALLETS_PER_MDL is module-level
       // (shared with the /weights tool); source of truth is pallet COUNT per product name.
-      const computedPallets = (lineItems || []).reduce((sum, item) => {
+      const boothPalletCount = (lineItems || []).reduce((sum, item) => {
         const n = PALLETS_PER_MDL[item?.name];
         if (!n) return sum;
         return sum + n * (parseInt(item.qty) || 1);
       }, 0);
+      // Plus any manually-added pallets the rep set on the quote (loose components).
+      const manualPalletCount = Array.isArray(body.manualPallets) ? body.manualPallets.length
+        : (Array.isArray(quoteSnap.manualPallets) ? quoteSnap.manualPallets.length : 0);
+      const computedPallets = boothPalletCount + manualPalletCount;
 
       // Detect production-manager flags. Both have 1-month lead time; Gary (production
       // manager) needs to know. We prepend notes so they're durable on the order record

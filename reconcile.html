@@ -230,7 +230,7 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
 
     <div class="card" style="background:rgba(245,158,11,.08);border-color:var(--amber,#f59e0b)">
       <div style="font-size:11.5px;color:var(--text2);line-height:1.5">
-        <b style="color:var(--amber,#f59e0b)">Heads up:</b> QuickBooks does not expose the audit log&rsquo;s <b>&ldquo;who&rdquo;</b> through its API &mdash; that&rsquo;s UI&#8209;only. This finds <b>what</b> changed and <b>when</b> (by last&#8209;modified time) and links you to it, but cannot show which user made the change, and does not include deleted records. For the &ldquo;who,&rdquo; open the record and check QuickBooks&rsquo; own Audit History on that transaction.
+        <b style="color:var(--amber,#f59e0b)">Heads up:</b> QuickBooks doesn&rsquo;t expose the audit log&rsquo;s <b>&ldquo;who&rdquo;</b> through its API (UI&#8209;only), nor a separate entry for every individual edit. This shows <b>what</b> changed and <b>when</b> &mdash; created / edited / emailed / attachments added, plus deletes from the last ~30 days &mdash; and links straight to the record, but can&rsquo;t show which user made the change or the full per&#8209;edit history. For those, open the record and check QuickBooks&rsquo; own Audit History.
       </div>
     </div>
 
@@ -250,6 +250,10 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
       <div style="margin-top:12px">
         <label style="display:block;margin-bottom:6px">Record types</label>
         <div id="actEntityChips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+      </div>
+      <div style="margin-top:12px">
+        <label style="display:block;margin-bottom:6px">Event types</label>
+        <div id="actActionChips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
       </div>
     </div>
 
@@ -1600,6 +1604,13 @@ const _ACT_ENTITIES = [
 ];
 const _actSelected = new Set(_ACT_ENTITIES.filter(e => e[2]).map(e => e[0]));
 
+// Event-type (action) filter — mirrors the audit log's "Events" dropdown.
+const _ACT_ACTIONS = [
+  ['created','Created'], ['updated','Edited'], ['emailed','Emailed'],
+  ['attachment','Attachments'], ['deleted','Deleted'],
+];
+const _actActionsSel = new Set(_ACT_ACTIONS.map(a => a[0]));
+
 function actEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function actFmt$(n){ return n==null ? '' : '$' + (parseFloat(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function actFmtTime(iso){
@@ -1619,6 +1630,7 @@ function initActivityTab(){
   if (f && !f.value) f.value = iso(wk);
   if (t && !t.value) t.value = iso(today);
   renderActivityChips();
+  renderActionChips();
   loadActivity();
 }
 
@@ -1632,6 +1644,39 @@ function renderActivityChips(){
 function toggleActEntity(code){
   if (_actSelected.has(code)) _actSelected.delete(code); else _actSelected.add(code);
   renderActivityChips();
+}
+
+// Event-type chips filter the already-loaded rows client-side (no re-fetch).
+function renderActionChips(){
+  const wrap = document.getElementById('actActionChips');
+  if (!wrap) return;
+  wrap.innerHTML = _ACT_ACTIONS.map(([code,label]) => {
+    const on = _actActionsSel.has(code);
+    return `<button class="btn ${on?'btn-orange':'btn-ghost'}" style="padding:4px 11px;font-size:11px" onclick="toggleActAction('${code}')">${actEsc(label)}</button>`;
+  }).join('');
+}
+function toggleActAction(code){
+  if (_actActionsSel.has(code)) _actActionsSel.delete(code); else _actActionsSel.add(code);
+  renderActionChips();
+  renderActivity();
+}
+
+// Action pill (label + color) — matches QB's wording ("Edited", not "Updated").
+function actPill(a){
+  const m = {
+    created:    ['CREATED','var(--green,#22c55e)'],
+    updated:    ['EDITED','var(--text2)'],
+    emailed:    ['EMAILED','#3b82f6'],
+    attachment: ['ATTACHMENT','#a855f7'],
+    deleted:    ['DELETED','var(--red,#ef4444)'],
+  };
+  const [label,color] = m[a] || [String(a||'').toUpperCase(),'var(--text2)'];
+  return `<span style="font-size:10px;font-weight:700;color:${color}">${label}</span>`;
+}
+function actStatusBadge(s){
+  if (!s) return '';
+  const c = s==='Paid' ? 'var(--green,#22c55e)' : (s==='Overdue' ? 'var(--red,#ef4444)' : 'var(--amber,#f59e0b)');
+  return `<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${c}">${actEsc(s)}</div>`;
 }
 
 async function loadActivity(){
@@ -1660,40 +1705,47 @@ function renderActivity(){
   const msg = document.getElementById('actMsg');
   const wrap = document.getElementById('actTableWrap');
   const q = (document.getElementById('actSearch').value || '').trim().toLowerCase();
-  let rows = _actData.rows || [];
+  let rows = (_actData.rows || []).filter(r => _actActionsSel.has(r.action));
   if (q) {
     rows = rows.filter(r =>
       (r.name||'').toLowerCase().includes(q) ||
       (r.docNumber||'').toLowerCase().includes(q) ||
       (r.type||'').toLowerCase().includes(q) ||
       (r.action||'').toLowerCase().includes(q) ||
+      (r.status||'').toLowerCase().includes(q) ||
+      (r.memo||'').toLowerCase().includes(q) ||
       String(r.amount==null?'':r.amount).includes(q)
     );
   }
   const total = (_actData.rows||[]).length;
   const noteBits = [];
-  noteBits.push(`${rows.length}${q?(' of '+total):''} change${rows.length===1?'':'s'} · ${actEsc(_actData.from)} → ${actEsc(_actData.to)}`);
+  noteBits.push(`${rows.length}${rows.length!==total?(' of '+total):''} event${rows.length===1?'':'s'} · ${actEsc(_actData.from)} → ${actEsc(_actData.to)}`);
   if (_actData.capped && _actData.capped.length) noteBits.push(`<span style="color:var(--amber,#f59e0b)">capped at 5,000 for: ${actEsc(_actData.capped.join(', '))} (narrow the range)</span>`);
   if (_actData.errors && _actData.errors.length) noteBits.push(`<span style="color:var(--red,#ef4444)">errors: ${actEsc(_actData.errors.map(e=>e.entity).join(', '))}</span>`);
+  (_actData.notes||[]).forEach(n => noteBits.push(`<span style="color:var(--text2)">${actEsc(n)}</span>`));
 
   if (!rows.length){
-    msg.style.display=''; msg.innerHTML = 'No matching changes. ' + noteBits.join(' · ');
+    msg.style.display=''; msg.innerHTML = 'No matching events. ' + noteBits.join(' · ');
     wrap.style.display='none'; return;
   }
   msg.style.display='none';
   const body = rows.map(r => {
     const link = r.link ? `<a href="${actEsc(r.link)}" target="_blank" rel="noopener" class="btn btn-ghost" style="padding:2px 9px;font-size:11px">Open in QB ↗</a>` : '';
-    const actPill = r.action==='created'
-      ? '<span style="font-size:10px;font-weight:700;color:var(--green,#22c55e)">CREATED</span>'
-      : '<span style="font-size:10px;font-weight:700;color:var(--text2)">UPDATED</span>';
+    // Name + sub-hints: attached-to entity, linked txns, memo.
+    const sub = [];
+    if (r.attachedTo) sub.push('on ' + actEsc(r.attachedTo));
+    if (r.linked && r.linked.length) sub.push('→ ' + r.linked.map(l=>actEsc(l.type)).join(', '));
+    if (r.memo) sub.push(actEsc(r.memo));
+    const nameCell = `${actEsc(r.name)}${sub.length?`<div style="font-size:10px;color:var(--text2)">${sub.join(' · ')}</div>`:''}`;
+    const editedN = (r.action==='updated' && r.syncToken>0) ? `<div style="font-size:9px;color:var(--text2)">edited ${r.syncToken}&times;</div>` : '';
     return `<tr>
       <td style="white-space:nowrap">${actEsc(actFmtTime(r.lastUpdated))}</td>
       <td>${actEsc(r.type)}</td>
       <td>${actEsc(r.docNumber)}</td>
-      <td>${actEsc(r.name)}</td>
-      <td style="text-align:right;white-space:nowrap">${actFmt$(r.amount)}</td>
+      <td>${nameCell}</td>
+      <td style="text-align:right;white-space:nowrap">${actFmt$(r.amount)}${actStatusBadge(r.status)}</td>
       <td style="white-space:nowrap">${r.txnDate?actEsc(r.txnDate):''}</td>
-      <td>${actPill}</td>
+      <td>${actPill(r.action)}${editedN}</td>
       <td style="text-align:right">${link}</td>
     </tr>`;
   }).join('');

@@ -51,6 +51,14 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.70.0', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**QB Activity finder now reads much more like the QuickBooks audit log.** Each record shows richer detail pulled from data we already fetch: status (<b>Paid / Open / Overdue</b>), an <b>edited&nbsp;N&times;</b> indicator, linked transactions, and memos. The action label now matches QB&rsquo;s wording (&ldquo;<b>Edited</b>&rdquo; instead of &ldquo;Updated&rdquo;).'},
+        {t:'add', d:'**New event types surfaced: Emailed, Attachments, and Deletes.** &ldquo;<b>Emailed</b>&rdquo; rows appear when an invoice/estimate/receipt was sent in the range; &ldquo;<b>Attachment</b>&rdquo; rows come from QuickBooks&rsquo; Attachable records; and <b>deleted</b> records now show via Change Data Capture (last ~30 days only — a QBO limit). New <b>Event types</b> filter chips (Created / Edited / Emailed / Attachments / Deleted) sit alongside the record-type filter.'},
+        {t:'log', d:'**Still no &ldquo;who,&rdquo; and not per-edit history** — QuickBooks doesn&rsquo;t expose either through its API. Each record still shows as one row at its latest state (plus separate Emailed/Attachment/Deleted events), not a separate row for every individual edit. For the user and full history, open the record&rsquo;s Audit History in QBO.'},
+      ]
+    },
+    {
       v:'1.69.2', date:'June 5, 2026', tag:'fix',
       changes:[
         {t:'add', d:'**Internal /weights: new Net/Pallet column.** Shows net (BOM) weight &divide; pallet count for each model, measured against the 1,800 lb-per-pallet max. Color-coded &mdash; red over the max, amber when close, green with a &darr; hint when the weight alone would allow fewer pallets. New summary cards count models over the max and models that could potentially drop a pallet. (The hint is weight-only; pallet count is also limited by panel size/volume, so any reduction is a manual judgment call.)'},

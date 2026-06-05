@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.1', date:'June 5, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Add Pallet default size is now 90 × 47 × 40 in** (was 48 × 40 × 48) — matches a typical WhisperRoom skid, still editable per pallet.'},
+      ]
+    },
+    {
       v:'1.72.0', date:'June 5, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Quote Builder: add extra pallets to a quote.** When a quote has a booth plus a lot of loose components that need their own skid, hit <b>+ Add Pallet</b> in the Quote Weight box and set its L &times; W &times; H. Extra pallets flow into the pallet count, the ABF freight quote (total weight redistributes across all skids), and the International Shipping request &mdash; and they save with the quote and carry into order processing. Booth pallets are still auto-counted as before.'},

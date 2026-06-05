@@ -3254,7 +3254,7 @@ function getQuotePallets() {
   return getBoothPallets().concat(manualPallets.map(p => ({ l: p.l, w: p.w, h: p.h, manual: true })));
 }
 function addManualPallet() {
-  manualPallets.push({ l: 48, w: 40, h: 48 }); // standard skid default — rep edits
+  manualPallets.push({ l: 90, w: 47, h: 40 }); // standard WhisperRoom skid default — rep edits
   renderManualPallets();
   updateSummary();
 }

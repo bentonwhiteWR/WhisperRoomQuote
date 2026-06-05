@@ -174,6 +174,65 @@ td.drillable:hover{color:var(--orange)}
 .gsc-dim-toggle button{background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit}
 .gsc-dim-toggle button:hover{color:var(--text)}
 .gsc-dim-toggle button.active{background:var(--orange);color:#fff;border-color:var(--orange)}
+.mini-bar{display:inline-block;height:6px;border-radius:3px;background:var(--orange);vertical-align:middle;opacity:.6}
+/* v1.67.x — Executive Summary callout + Opportunity Action Engine cards */
+.exec-summary{background:linear-gradient(135deg,rgba(238,98,22,.10),rgba(238,98,22,.02));border:1px solid rgba(238,98,22,.4);border-radius:12px;padding:18px 20px;margin-bottom:20px}
+.exec-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.exec-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--text)}
+.exec-title .spark{color:var(--orange)}
+.exec-sub{font-size:11px;color:var(--muted)}
+.exec-list{display:grid;gap:9px}
+.exec-item{display:flex;gap:11px;align-items:flex-start;font-size:13px;line-height:1.5}
+.exec-item .exec-rank{flex-shrink:0;width:20px;height:20px;border-radius:50%;background:var(--orange);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;font-family:var(--mono);margin-top:1px}
+.exec-item .exec-text{color:var(--text)}
+.exec-item .exec-text strong{font-weight:700}
+.exec-item .exec-text .exec-amt{color:var(--green);font-weight:700;font-family:var(--mono)}
+/* Action cards */
+.act-list{display:grid;gap:11px}
+.act-card{border:1px solid var(--border);border-left-width:3px;border-radius:9px;padding:13px 15px;background:var(--surface2)}
+.act-card.bn-ctr{border-left-color:var(--blue)}
+.act-card.bn-ranking{border-left-color:var(--orange)}
+.act-card.bn-content-gap{border-left-color:#a855f7}
+.act-card-head{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:7px}
+.act-query{font-size:14px;font-weight:700;color:var(--text)}
+.act-priority{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;border-radius:4px}
+.act-priority.high{background:rgba(239,68,68,.16);color:#f87171}
+.act-priority.medium{background:rgba(245,158,11,.16);color:#fbbf24}
+.act-priority.low{background:rgba(148,163,184,.14);color:#94a3b8}
+.act-bottleneck{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;border:1px solid transparent}
+.bn-ctr .act-bottleneck,.act-bottleneck.bn-ctr{background:rgba(59,130,246,.14);color:#6ba8ff;border-color:rgba(59,130,246,.25)}
+.act-bottleneck.bn-ranking{background:rgba(238,98,22,.13);color:#f0a060;border-color:rgba(238,98,22,.28)}
+.act-bottleneck.bn-content-gap{background:rgba(168,85,247,.14);color:#c08cff;border-color:rgba(168,85,247,.25)}
+.act-validated{font-size:10px;font-weight:700;color:#5fd98a}
+.act-impact{margin-left:auto;font-size:14px;font-weight:800;font-family:var(--mono);color:var(--green)}
+.act-meta{font-size:11px;color:var(--muted);font-family:var(--mono);margin-bottom:7px}
+.act-reason{font-size:12.5px;color:var(--text);line-height:1.55;margin-bottom:6px;opacity:.92}
+.act-action{font-size:12.5px;color:var(--text);line-height:1.55}
+.act-action strong{color:var(--orange)}
+.conf-dot{display:inline-block;width:7px;height:7px;border-radius:50%;vertical-align:middle;margin-right:2px}
+.conf-High{background:var(--green)}.conf-Medium{background:var(--yellow)}.conf-Low{background:var(--muted)}
+/* v1.67.x — Execution Assistant (expandable "show the work" panel per action) */
+.act-assist-toggle{margin-top:10px;background:none;border:none;color:var(--orange);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;padding:0;letter-spacing:.02em}
+.act-assist{margin-top:11px;padding-top:12px;border-top:1px dashed var(--border);display:none}
+.act-assist.open{display:block}
+.ea-block{margin-bottom:13px}
+.ea-block:last-child{margin-bottom:0}
+.ea-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px}
+.ea-suggest{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:7px 10px;margin-bottom:6px;font-size:12.5px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.ea-suggest-text{flex:1;line-height:1.45}
+.ea-copy{flex-shrink:0;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--muted);font-size:10px;font-weight:700;padding:3px 8px;cursor:pointer;font-family:inherit}
+.ea-copy:hover{border-color:var(--orange);color:var(--orange)}
+.ea-len{font-size:10px;color:var(--muted);font-family:var(--mono)}
+.ea-len.over{color:var(--red)}
+.ea-chip{display:inline-block;background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:2px 9px;font-size:11px;color:var(--text);margin:0 4px 4px 0}
+.ea-chip .ea-chip-meta{color:var(--muted);font-size:10px;margin-left:4px;font-family:var(--mono)}
+.ea-list{margin:0;padding-left:18px;font-size:12.5px;line-height:1.6}
+.ea-list li{margin-bottom:2px}
+.ea-ctr-compare{font-size:12px;font-family:var(--mono);margin-bottom:2px}
+.ea-ctr-now{color:var(--red);font-weight:700}.ea-ctr-target{color:var(--green);font-weight:700}
+.ea-note{font-size:10.5px;color:var(--muted);font-style:italic;margin-top:6px;line-height:1.5}
+.ea-link{color:var(--text)}
+.ea-brief{font-size:12.5px;line-height:1.8}
 .card.drillable .card-value{transition:color .12s}
 .card.drillable:hover .card-value{color:var(--orange)}
 .funnel-stage.drillable:hover .funnel-stage-value{color:var(--orange)}
@@ -402,6 +461,15 @@ td.drillable:hover{color:var(--orange)}
       <button class="sync-btn" id="syncGscBtn" onclick="runSyncGsc()">↻ Sync GSC</button>
     </div>
 
+    <!-- v1.67.x — Executive Summary: the top SEO moves in plain English -->
+    <div class="exec-summary" id="gscExecSummary" style="display:none">
+      <div class="exec-head">
+        <div class="exec-title"><span class="spark">⚡</span> What to do next</div>
+        <span class="exec-sub" id="gscExecSub">Your highest-revenue SEO moves right now</span>
+      </div>
+      <div class="exec-list" id="gscExecList"></div>
+    </div>
+
     <!-- Organic KPI strip: GSC totals + channel-level HubSpot tie -->
     <div class="cards" id="gscCards" style="display:none">
       <div class="card"><div class="card-label" id="lblGscClicks">Organic Clicks (90d)</div><div class="card-value" id="gscClicks">—</div><div class="card-sub" id="gscClicksSub">—</div></div>
@@ -422,6 +490,31 @@ td.drillable:hover{color:var(--orange)}
       </div>
       <div class="gsc-legend" id="gscLegend"></div>
       <div class="gsc-chart" id="gscChartWrap"></div>
+    </div>
+
+    <!-- v1.67.x — Revenue Opportunity Engine (flagship: which keyword to improve next) -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">⚡ Revenue Opportunity Engine</div>
+        <span class="section-meta" id="gscRevOppMeta">—</span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
+        Answers “if we improve one keyword’s ranking this month, which earns the most added revenue?” Ranks organic queries at <strong>position 4–15</strong> by a <strong>Revenue Opp.</strong> estimate = click upside to reach the top 3 × your organic revenue-per-click (from HubSpot closed-won) × how well the query converts (its Google Ads conversion rate) × how reachable the rank gain is.
+        <strong>Ads CVR</strong> is that same query’s paid conversion rate when we run it (<span style="color:var(--muted)">—</span> = no paid data, so the score falls back to the channel baseline). Per-query organic <em>leads / closed revenue</em> can’t be shown directly — Google withholds the organic search term — so the engine bridges it with the paid conversion signal plus channel-level organic $/click. Estimates, for prioritization.
+      </div>
+      <div id="gscRevOppBody"><div class="empty">No data yet. Press <strong>↻ Sync All</strong> to pull Google Ads + Search Console + HubSpot.</div></div>
+    </div>
+
+    <!-- v1.67.x — Opportunity Action Engine: per-query bottleneck + recommended action -->
+    <div class="section" id="gscActionSection" style="display:none">
+      <div class="section-head">
+        <div class="section-title">Opportunity Action Engine</div>
+        <span class="section-meta" id="gscActionMeta">—</span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin:-2px 0 14px;line-height:1.6">
+        For each top opportunity: the <strong>primary bottleneck</strong> (is it ranking, click-through, or a missing page?), the <strong>recommended action</strong>, why, the estimated revenue impact, and a confidence read. <span style="color:#5fd98a">⭐ Commercially validated</span> = the paid version of that search converts well above your account average, so the upside is proven. Page matches are best-effort (Google withholds the organic→page link), so verify the page before acting.
+      </div>
+      <div class="act-list" id="gscActionBody"><div class="empty">No data yet.</div></div>
     </div>
 
     <!-- Hero: paid × organic overlap -->
@@ -789,6 +882,36 @@ const tableState = {
       return `<tr><td>${cell}</td><td class="num">${fmtInt(r.clicks_now)}</td><td class="num">${fmtInt(r.clicks_prev)}</td><td class="num ${dCls}">${dTxt}</td><td class="num">${posCell(r.pos_now)}</td><td class="num">${posCell(r.pos_prev)}</td></tr>`;
     },
   },
+  // v1.67.x — Revenue Opportunity Engine. `score` (0–100) is derived client-side
+  // in renderGscRevOpp (normalized to the top row's revenue_opportunity).
+  gscRevOpp: {
+    rows: [], sortBy: 'revenue_opportunity', sortDir: 'desc', page: 0,
+    bodyId: 'gscRevOppBody', metaId: 'gscRevOppMeta',
+    columns: [
+      { key: 'query', label: 'Query' }, { key: 'position', label: 'Pos', num: 1 },
+      { key: 'impressions', label: 'Impr.', num: 1 }, { key: 'clicks', label: 'Clicks', num: 1 },
+      { key: 'ctr', label: 'CTR', num: 1 }, { key: 'p_cvr', label: 'Ads CVR', num: 1 },
+      { key: 'extra_clicks', label: 'Opp. clicks', num: 1 },
+      { key: 'revenue_opportunity', label: 'Revenue Opp.', num: 1 }, { key: 'score', label: 'Score', num: 1 },
+    ],
+    rowFn: r => {
+      const brand = /whisper/i.test(r.query) ? ' <span class="ov-tag ov-brand">brand</span>' : '';
+      const cvr = (r.has_paid_signal && r.p_cvr != null)
+        ? `${(r.p_cvr * 100).toFixed(1)}%`
+        : `<span style="color:var(--muted)" title="No Google Ads data for this exact term — score uses the channel baseline conversion rate">—</span>`;
+      const sc = Math.round(r.score || 0);
+      const scoreCell = `<span style="display:inline-flex;align-items:center;gap:6px;justify-content:flex-end"><span class="mini-bar" style="width:${Math.max(3, sc * 0.5)}px"></span><strong>${sc}</strong></span>`;
+      return `<tr><td>${escHtml(r.query)}${brand}</td>` +
+        `<td class="num">${r.position == null ? '—' : r.position.toFixed(1)}</td>` +
+        `<td class="num">${fmtInt(r.impressions)}</td>` +
+        `<td class="num">${fmtInt(r.clicks)}</td>` +
+        `<td class="num">${(r.ctr * 100).toFixed(1)}%</td>` +
+        `<td class="num">${cvr}</td>` +
+        `<td class="num">+${fmtInt(Math.round(r.extra_clicks))}</td>` +
+        `<td class="num" style="color:var(--green);font-weight:700">$${fmtInt(Math.round(r.revenue_opportunity))}</td>` +
+        `<td class="num">${scoreCell}</td></tr>`;
+    },
+  },
 };
 
 function changeDateRange(days) {
@@ -835,7 +958,7 @@ let gscMoversDim = 'query';
 async function loadGscTab() {
   const q  = `?days=${currentDaysBack}`;
   const qm = `?days=${currentDaysBack}&model=${currentModel}`;
-  const [sum, ov, qs, pg, ts, sd, mv, co] = await Promise.all([
+  const [sum, ov, qs, pg, ts, sd, mv, co, ro] = await Promise.all([
     fetch('/api/marketing/gsc-summary'           + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({})),
     fetch('/api/marketing/gsc-overlap'           + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     fetch('/api/marketing/gsc-queries'           + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
@@ -844,9 +967,12 @@ async function loadGscTab() {
     fetch('/api/marketing/gsc-striking-distance' + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     fetch(`/api/marketing/gsc-movers?days=${currentDaysBack}&dim=${gscMoversDim}`, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     fetch('/api/marketing/gsc-ctr-opportunity'   + q,  { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/gsc-revenue-opportunity' + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
   ]);
   renderGscChart((ts && ts.rows) || []);
   renderGscCards(sum || {}, (qs && qs.rows) || []);
+  renderGscRevOpp((ro && ro.rows) || []);
+  renderActionEngine((ro && ro.rows) || [], (pg && pg.rows) || [], (qs && qs.rows) || []);
   renderGscOverlap((ov && ov.rows) || []);
   renderGscStriking((sd && sd.rows) || []);
   renderGscCtrOpp((co && co.rows) || []);
@@ -871,23 +997,30 @@ function setMoversDim(dim) {
 
 function renderGscCards(s, qrows) {
   const cards  = document.getElementById('gscCards');
-  const clicks = +s.organic_clicks || 0, impr = +s.organic_impressions || 0, branded = +s.organic_branded_clicks || 0;
+  // clicks/impr are the un-anonymized GSC-UI totals (marketing_gsc_daily).
+  const clicks = +s.organic_clicks || 0, impr = +s.organic_impressions || 0;
+  // Branded split can only be computed from the query table, which drops
+  // anonymized rows — so it's a share OF IDENTIFIED (named) queries, not of all.
+  const identified = +s.organic_identified_clicks || 0, branded = +s.organic_branded_clicks || 0;
   const hasData = clicks || impr || (+s.leads || 0) || (+s.revenue_won || 0);
   cards.style.display = hasData ? 'grid' : 'none';
   if (!hasData) return;
   const d = currentDaysBack, ml = MODEL_LABELS[currentModel] || 'First interaction';
-  let wpos = 0, wimp = 0;
-  (qrows || []).forEach(r => { const ip = +r.impressions || 0; wpos += (+r.position || 0) * ip; wimp += ip; });
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   set('lblGscClicks', `Organic Clicks (${d}d)`);
   set('lblGscImpr',   `Impressions (${d}d)`);
   set('lblGscLeads',  `Organic Leads (${d}d)`);
   set('lblGscRev',    `Organic Closed Rev (${d}d)`);
   set('gscClicks', fmtInt(clicks));
-  set('gscClicksSub', clicks ? `${Math.round(100 * branded / clicks)}% branded · ${Math.round(100 * (clicks - branded) / clicks)}% non-branded` : '—');
+  const brandPct = identified ? Math.round(100 * branded / identified) : 0;
+  set('gscClicksSub', identified ? `${brandPct}% branded · ${100 - brandPct}% non-branded (of named queries)` : '—');
   set('gscImpr', fmtInt(impr));
   set('gscCtr', impr ? (100 * clicks / impr).toFixed(2) + '%' : '—');
-  set('gscPos', wimp ? (wpos / wimp).toFixed(1) : '—');
+  // Prefer the server's daily-totals position; fall back to an impression-
+  // weighted mean of the visible query rows if the daily table isn't synced yet.
+  let pos = s.organic_position;
+  if (pos == null) { let wpos = 0, wimp = 0; (qrows || []).forEach(r => { const ip = +r.impressions || 0; wpos += (+r.position || 0) * ip; wimp += ip; }); pos = wimp ? wpos / wimp : null; }
+  set('gscPos', pos == null ? '—' : (+pos).toFixed(1));
   set('gscLeads', fmtInt(+s.leads || 0));
   set('gscLeadsSub', `organic · ${ml}`);
   set('gscRev', fmtUSD(+s.revenue_won || 0));
@@ -991,6 +1124,300 @@ function renderGscMovers(rows, dim) {
   const up = st.rows.filter(r => r.delta_clicks > 0).length, down = st.rows.filter(r => r.delta_clicks < 0).length;
   st.metaFn = total => `${fmtInt(total)} ${st.dim === 'page' ? 'pages' : 'queries'} · ${up} ▲ / ${down} ▼`;
   gscPaint('gscMovers');
+}
+
+// v1.67.x — Revenue Opportunity Engine. Derive a 0–100 score per row by
+// normalizing revenue_opportunity to the top opportunity in the set, so the
+// score column reads "relative to the best opportunity right now."
+function renderGscRevOpp(rows) {
+  const st = tableState.gscRevOpp;
+  const mapped = (rows || []).map(r => ({
+    query: r.query, clicks: +r.clicks || 0, impressions: +r.impressions || 0, ctr: +r.ctr || 0,
+    position: r.position == null ? null : +r.position,
+    p_cvr: r.p_cvr == null ? null : +r.p_cvr, p_conv: +r.p_conv || 0, has_paid_signal: !!r.has_paid_signal,
+    extra_clicks: +r.extra_clicks || 0, revenue_opportunity: +r.revenue_opportunity || 0,
+  }));
+  const max = mapped.reduce((m, r) => Math.max(m, r.revenue_opportunity), 0);
+  mapped.forEach(r => { r.score = max > 0 ? Math.round(100 * r.revenue_opportunity / max) : 0; });
+  st.rows = mapped; st.page = 0;
+  const totalOpp   = mapped.reduce((a, r) => a + r.revenue_opportunity, 0);
+  const withSignal = mapped.filter(r => r.has_paid_signal).length;
+  st.metaFn = total => total
+    ? `${fmtInt(total)} opportunities · ~$${fmtInt(Math.round(totalOpp))} total upside · ${withSignal} with Ads conversion signal`
+    : 'no queries in the position 4–15 band';
+  gscPaint('gscRevOpp');
+}
+
+// ── v1.67.x — Opportunity Action Engine ────────────────────────────────
+// Pure client-side derivation over the Revenue Opportunity rows (+ the GSC
+// pages list, for best-effort page matching). For each top query it diagnoses
+// ONE primary bottleneck and writes a recommended action, priority, confidence,
+// and reasoning — then surfaces the top few in a plain-English executive
+// summary. No backend: it's a presentation layer over data already fetched.
+const GSC_PR_RANK = { High: 3, Medium: 2, Low: 1 };
+const GSC_STOPWORDS = new Set(['the','a','an','to','of','for','and','or','in','on','with','best','vs','is','are','my','your','how','what','where','near','me','cost','price','buy']);
+// Expected organic CTR by position — mirrors the backend curve (gsc-ctr-opportunity).
+function gscExpectedCtr(pos) {
+  if (pos == null) return 0.03;
+  if (pos < 1.5) return 0.28; if (pos < 2.5) return 0.15; if (pos < 3.5) return 0.10;
+  if (pos < 4.5) return 0.075; if (pos < 5.5) return 0.058; if (pos < 6.5) return 0.045;
+  if (pos < 7.5) return 0.035; if (pos < 8.5) return 0.030; if (pos < 9.5) return 0.026;
+  return 0.022;
+}
+function gscPageShort(url) { return String(url || '').replace(/^https?:\/\/(www\.)?whisperroom\.com/i, '') || '/'; }
+function gscTokens(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9\s/_-]/g, ' ').split(/[\s/_-]+/)
+    .filter(t => t.length > 2 && !GSC_STOPWORDS.has(t));
+}
+// Best-effort query→page match: the page whose path shares the most query
+// tokens (root '/' never counts as a dedicated match). Returns null if none.
+function gscMatchPage(query, pages) {
+  const qt = gscTokens(query); if (!qt.length) return null;
+  let best = null, bestScore = 0;
+  (pages || []).forEach(p => {
+    const path = gscPageShort(p.page); if (!path || path === '/') return;
+    const pt = new Set(gscTokens(path));
+    let overlap = 0; qt.forEach(t => { if (pt.has(t)) overlap++; });
+    if (overlap > bestScore || (overlap === bestScore && overlap > 0 && best && (+p.clicks || 0) > (+best.clicks || 0))) { bestScore = overlap; best = p; }
+  });
+  return bestScore >= 1 ? { page: best.page, clicks: +best.clicks || 0 } : null;
+}
+
+// Diagnose one Revenue-Opportunity row → a full action recommendation.
+function gscDiagnose(r, pages, maxImpact) {
+  const q = r.query;
+  const pos = +r.position || 0, impr = +r.impressions || 0, clicks = +r.clicks || 0, ctr = +r.ctr || 0;
+  const expCtr = gscExpectedCtr(pos), ctrGap = expCtr - ctr;
+  const cvrMult = +r.cvr_mult || 1, hasPaid = !!r.has_paid_signal;
+  const commercial = hasPaid && cvrMult >= 1.3;
+  const brand = /whisper/i.test(q);
+  const m = gscMatchPage(q, pages);
+  const impact = +r.revenue_opportunity || 0;
+  const pageSh = m ? gscPageShort(m.page) : null;
+
+  // Primary bottleneck (one): content gap (non-brand, no page) → CTR (page-1,
+  // click-through well below par) → ranking (default for the 4–15 band).
+  let type;
+  if (!brand && !m) type = 'content-gap';
+  else if (pos <= 10 && ctrGap > Math.max(0.015, expCtr * 0.35)) type = 'ctr';
+  else type = 'ranking';
+  const bottleneckLabel = { ctr: 'CTR Opportunity', ranking: 'Ranking Opportunity', 'content-gap': 'Content Gap' }[type];
+
+  const score = maxImpact > 0 ? Math.round(100 * impact / maxImpact) : 0;
+  let priority = 'Low';
+  if (score >= 55 || (score >= 30 && commercial)) priority = 'High';
+  else if (score >= 22) priority = 'Medium';
+
+  let conf = 50;
+  if (hasPaid) conf += 25;
+  if (impr >= 200) conf += 10;
+  if (m) conf += 10;
+  if (clicks < 5) conf -= 15;
+  if (impr < 50) conf -= 10;
+  conf = Math.max(15, Math.min(95, conf));
+  const confLabel = conf >= 70 ? 'High' : conf >= 45 ? 'Medium' : 'Low';
+
+  const pctS = x => (x * 100).toFixed(1) + '%';
+  const commercialNote = commercial
+    ? ` The paid version of this search converts about ${cvrMult.toFixed(1)}× your account average, so the revenue is well supported.`
+    : (hasPaid ? '' : ' (No paid data for this term, so the value uses your channel-average organic conversion.)');
+  const pageRef = pageSh ? `<code>${escHtml(pageSh)}</code>` : 'the ranking page';
+  const Q = escHtml(q);
+
+  let reasoning, action;
+  if (type === 'ctr') {
+    reasoning = `Ranks #${pos.toFixed(0)} for “${Q}” with ${fmtInt(impr)} impressions, but its ${pctS(ctr)} click-through is well below the ~${pctS(expCtr)} typical at that spot. You already rank — the clicks are leaking at the search result.${commercialNote}`;
+    action = `Rewrite the title tag and meta description on ${pageRef} to match “${Q}” more directly with a stronger hook, and add structured data (Product / Review / FAQ) to win rich-result space.`;
+  } else if (type === 'content-gap') {
+    reasoning = `“${Q}” pulls ${fmtInt(impr)} impressions at #${pos.toFixed(0)}, but we couldn’t match a dedicated page for it — a generic page is likely ranking, which caps how high it climbs and how well it converts.${commercialNote}`;
+    action = `Create a dedicated page for “${Q}” — a focused product/landing page, a comparison page, or an FAQ/article — then internally link to it from related pages. Purpose-built content out-ranks a generic page for the term.`;
+  } else {
+    reasoning = `Ranks #${pos.toFixed(0)} for “${Q}” with ${fmtInt(impr)} impressions and a healthy ${pctS(ctr)} click-through. Rank is the limiter — reaching the top 3 would lift click-through from ${pctS(ctr)} toward ~11%.${commercialNote}`;
+    action = `Strengthen ${pageRef} for “${Q}”: expand the on-page content and depth, tighten on-page targeting (title / H1 / body), add internal links from your strongest pages, and pursue a few relevant backlinks.`;
+  }
+
+  let execText;
+  if (type === 'ctr') execText = `<strong>“${Q}”</strong> ranks #${pos.toFixed(0)} but barely gets clicked (${pctS(ctr)} vs ~${pctS(expCtr)} normal). Rewrite its title + meta — <span class="exec-amt">~$${fmtInt(Math.round(impact))}</span> upside.`;
+  else if (type === 'content-gap') execText = `<strong>“${Q}”</strong> pulls real traffic at #${pos.toFixed(0)} with no page built for it. Create a dedicated page — <span class="exec-amt">~$${fmtInt(Math.round(impact))}</span> upside.`;
+  else execText = `<strong>“${Q}”</strong> sits at #${pos.toFixed(0)} with strong volume${commercial ? ' and converts above average' : ''}. Push it toward the top 3 — <span class="exec-amt">~$${fmtInt(Math.round(impact))}</span> upside.`;
+
+  return { query: q, type, bottleneckLabel, position: pos, impressions: impr, ctr, impact,
+    commercial, priority, score, confidence: conf, confLabel, reasoning, action, pageShort: pageSh, execText,
+    pCvr: r.p_cvr == null ? null : +r.p_cvr, pConv: +r.p_conv || 0, cvrMult };
+}
+
+// ── v1.67.x — Execution Assistant ──────────────────────────────────────
+// For each action, generate the actual next step: copy drafts + a data-grounded
+// brief. "Grounded" = secondary keywords, questions, and internal-link source
+// pages come from the site's REAL Search Console queries/pages (not invented),
+// so they're trustworthy. Copy drafts (titles/metas) are on-brand templates
+// (no "soundproof", no em dashes) labeled as drafts to edit.
+const GSC_Q_WORDS = /\b(how|what|why|which|where|when|who|can|do|does|is|are|should|vs|versus|best|cheapest|near)\b/i;
+function gscTitleCase(s) { return String(s || '').replace(/\b\w/g, c => c.toUpperCase()); }
+function gscIsQuestion(q) { return /\?/.test(q) || GSC_Q_WORDS.test(q); }
+function gscRelatedQueries(query, allQueries, limit) {
+  const qt = new Set(gscTokens(query)); if (!qt.size) return [];
+  const self = String(query).toLowerCase().trim();
+  const out = [];
+  (allQueries || []).forEach(r => {
+    const cand = String(r.query || ''); if (cand.toLowerCase().trim() === self) return;
+    let overlap = 0; gscTokens(cand).forEach(t => { if (qt.has(t)) overlap++; });
+    if (overlap >= 1) out.push({ query: cand, impressions: +r.impressions || 0, overlap });
+  });
+  out.sort((a, b) => b.overlap - a.overlap || b.impressions - a.impressions);
+  return out.slice(0, limit || 14);
+}
+function gscRelatedPages(query, pages, excludeShort, limit) {
+  const qt = new Set(gscTokens(query)); if (!qt.size) return [];
+  const out = [];
+  (pages || []).forEach(p => {
+    const sh = gscPageShort(p.page); if (!sh || sh === '/' || sh === excludeShort) return;
+    let overlap = 0; gscTokens(sh).forEach(t => { if (qt.has(t)) overlap++; });
+    if (overlap >= 1) out.push({ short: sh, url: p.page, clicks: +p.clicks || 0, overlap });
+  });
+  out.sort((a, b) => b.overlap - a.overlap || b.clicks - a.clicks);
+  return out.slice(0, limit || 6);
+}
+function gscPageType(q) {
+  const s = String(q).toLowerCase();
+  if (/\b(vs|versus|compare|comparison|alternative)\b/.test(s)) return 'comparison page';
+  if (/\b(how|guide|tips|ideas|diy|setup)\b/.test(s)) return 'guide / article';
+  if (/\?|\b(what|why|which|faq)\b/.test(s)) return 'FAQ page';
+  if (/\b(price|cost|quote|buy|sale|cheap|order)\b/.test(s)) return 'product / landing page';
+  return 'dedicated landing page';
+}
+function gscTitleSuggestions(query) {
+  const t = gscTitleCase(query);
+  return [`${t} | WhisperRoom`, `${t}: Modular Sound Isolation Booths | WhisperRoom`, `${t} Built to Order in the USA | WhisperRoom`];
+}
+function gscMetaSuggestions(query) {
+  const t = gscTitleCase(query);
+  return [
+    `Explore ${query} from WhisperRoom. Modular sound isolation booths, built to order and made in the USA. Get a fast quote today.`,
+    `Looking for ${query}? WhisperRoom builds quiet, professional booths you can size to your space. See models, options, and pricing.`,
+    `${t} from WhisperRoom. Pro-grade sound isolation in modular sizes, with fast quotes and US-based support. Find your booth.`,
+  ];
+}
+function gscOutline(query, secondary, questions) {
+  const out = [`What is ${query}? (intro + definition)`];
+  if (secondary[0]) out.push(gscTitleCase(secondary[0].query));
+  out.push('Options, sizes, and configurations');
+  if (questions[0]) out.push(gscTitleCase(String(questions[0].query).replace(/\?$/, '')) + '?');
+  out.push('Pricing and how to get a quote');
+  out.push('FAQs');
+  return out;
+}
+function gscSuggestBlock(label, items, maxLen) {
+  return `<div class="ea-block"><div class="ea-label">${label}</div>${items.map(t => {
+    const over = t.length > maxLen;
+    return `<div class="ea-suggest"><span class="ea-suggest-text">${escHtml(t)}</span>` +
+      `<span style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">` +
+      `<button class="ea-copy" onclick="gscCopyAssist(this)">Copy</button>` +
+      `<span class="ea-len ${over ? 'over' : ''}">${t.length}</span></span></div>`;
+  }).join('')}</div>`;
+}
+function gscCopyAssist(btn) {
+  const el = btn.closest('.ea-suggest'); if (!el) return;
+  const txt = el.querySelector('.ea-suggest-text').innerText;
+  navigator.clipboard.writeText(txt).then(() => { btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = 'Copy'; }, 1200); }).catch(() => {});
+}
+function gscToggleAssist(btn) {
+  const panel = btn.nextElementSibling;
+  const open = panel.classList.toggle('open');
+  btn.textContent = open ? '▾ Hide the work' : '▸ Show the work';
+}
+// Build the Execution Assistant HTML for one diagnosed action.
+function gscBuildAssist(d, allQueries, pages) {
+  const related   = gscRelatedQueries(d.query, allQueries, 14);
+  const questions = related.filter(r => gscIsQuestion(r.query)).slice(0, 6);
+  const secondary = related.filter(r => !gscIsQuestion(r.query)).slice(0, 6);
+  const blocks = [];
+
+  if (d.type === 'ctr') {
+    const tgt = gscExpectedCtr(d.position);
+    const lift = Math.max(0, Math.round(d.impressions * Math.max(0, tgt - d.ctr)));
+    blocks.push(`<div class="ea-block"><div class="ea-label">Current vs expected CTR</div>` +
+      `<div class="ea-ctr-compare"><span class="ea-ctr-now">${(d.ctr * 100).toFixed(1)}% now</span> → <span class="ea-ctr-target">~${(tgt * 100).toFixed(1)}% expected at #${d.position.toFixed(0)}</span> · closing the gap ≈ <strong>+${fmtInt(lift)}</strong> clicks/window</div></div>`);
+    blocks.push(gscSuggestBlock('Title tag ideas (target ≤60 chars)', gscTitleSuggestions(d.query), 60));
+    blocks.push(gscSuggestBlock('Meta description ideas (target ≤155 chars)', gscMetaSuggestions(d.query), 155));
+  } else if (d.type === 'content-gap') {
+    const secHtml = secondary.length
+      ? secondary.map(r => `<span class="ea-chip">${escHtml(r.query)}<span class="ea-chip-meta">${fmtInt(r.impressions)}</span></span>`).join('')
+      : '<span style="color:var(--muted)">none found in your query data</span>';
+    blocks.push(`<div class="ea-block"><div class="ea-label">Content brief</div><div class="ea-brief">` +
+      `<div><strong>Page type:</strong> ${gscPageType(d.query)}</div>` +
+      `<div><strong>Suggested H1 / title:</strong> ${escHtml(gscTitleCase(d.query))} | WhisperRoom</div>` +
+      `<div><strong>Primary keyword:</strong> ${escHtml(d.query)}</div>` +
+      `<div><strong>Secondary keywords:</strong> ${secHtml}</div></div></div>`);
+    if (questions.length) blocks.push(`<div class="ea-block"><div class="ea-label">Questions to answer (real searches)</div><ul class="ea-list">${questions.map(r => `<li>${escHtml(r.query)} <span class="ea-len">${fmtInt(r.impressions)} impr</span></li>`).join('')}</ul></div>`);
+    blocks.push(`<div class="ea-block"><div class="ea-label">Suggested H2 outline</div><ul class="ea-list">${gscOutline(d.query, secondary, questions).map(h => `<li>${escHtml(h)}</li>`).join('')}</ul></div>`);
+  } else {
+    const linkPages = gscRelatedPages(d.query, pages, d.pageShort, 6);
+    blocks.push(`<div class="ea-block"><div class="ea-label">Internal links → ${d.pageShort ? `<code>${escHtml(d.pageShort)}</code>` : 'the target page'}</div>` +
+      (linkPages.length
+        ? `<ul class="ea-list">${linkPages.map(p => `<li>Add a contextual link from <a class="ea-link" href="${escHtml(p.url)}" target="_blank" rel="noopener">${escHtml(p.short)}</a> <span class="ea-len">${fmtInt(p.clicks)} clicks</span></li>`).join('')}</ul>`
+        : '<div class="ea-note">No clearly-related pages found in your organic data — link from your main category / product pages instead.</div>') + '</div>');
+    if (secondary.length || questions.length) {
+      const missing = secondary.slice(0, 4).map(r => r.query).concat(questions.slice(0, 3).map(r => r.query));
+      blocks.push(`<div class="ea-block"><div class="ea-label">Content sections that may be missing</div><ul class="ea-list">${missing.map(s => `<li>Cover “${escHtml(s)}”</li>`).join('')}</ul></div>`);
+    }
+    blocks.push(`<div class="ea-block"><div class="ea-label">On-page checklist</div><ul class="ea-list">` +
+      `<li>Put “${escHtml(d.query)}” in the title, H1, and first 100 words</li>` +
+      `<li>Expand depth to cover the sub-topics above</li>` +
+      `<li>Add an FAQ block answering the real questions above</li>` +
+      `<li>Pursue 2-3 relevant backlinks to the page</li></ul></div>`);
+  }
+
+  if (d.commercial) {
+    const avg = (d.pCvr && d.cvrMult) ? d.pCvr / d.cvrMult : null;
+    blocks.push(`<div class="ea-block"><div class="ea-label">⭐ Why this is high value (paid proof)</div>` +
+      `<div class="ea-brief">When you bid on this exact search in Google Ads it converts at <strong>${d.pCvr != null ? (d.pCvr * 100).toFixed(1) + '%' : '—'}</strong>${avg != null ? ` vs your account average of ${(avg * 100).toFixed(1)}%` : ''}, about <strong>${d.cvrMult.toFixed(1)}×</strong> better${d.pConv ? `, on ${fmtInt(Math.round(d.pConv))} tracked conversions` : ''}. That is real proof this search buys. Ranking it organically captures the same demand without paying per click.</div></div>`);
+  }
+
+  blocks.push('<div class="ea-note">AI-assisted drafts grounded in your Search Console data. Copy follows WhisperRoom voice (no “soundproof”, no em dashes). Review and edit before publishing.</div>');
+  return blocks.join('');
+}
+
+function renderActionEngine(roRows, pageRows, queryRows) {
+  const exec = document.getElementById('gscExecSummary'), sec = document.getElementById('gscActionSection');
+  const allPositive = (roRows || []).filter(r => (+r.revenue_opportunity || 0) > 0);
+  if (!allPositive.length) { exec.style.display = 'none'; sec.style.display = 'none'; return; }
+  const totalUpside = allPositive.reduce((a, r) => a + (+r.revenue_opportunity || 0), 0);
+  // Diagnose only the top ~40 by raw impact (bounds the page-matching cost);
+  // that's far more than the top 12 cards / top 5 summary we display.
+  const rows = allPositive.slice().sort((a, b) => (+b.revenue_opportunity || 0) - (+a.revenue_opportunity || 0)).slice(0, 40);
+  const maxImpact = +rows[0].revenue_opportunity || 0;
+  const diag = rows.map(r => gscDiagnose(r, pageRows, maxImpact))
+    .sort((a, b) => (GSC_PR_RANK[b.priority] - GSC_PR_RANK[a.priority]) || (b.impact - a.impact));
+
+  const topExec = diag.slice(0, Math.min(5, diag.length));
+  document.getElementById('gscExecList').innerHTML = topExec.map((d, i) =>
+    `<div class="exec-item"><span class="exec-rank">${i + 1}</span><span class="exec-text">${d.execText}${d.commercial ? ' ⭐' : ''}</span></div>`).join('');
+  document.getElementById('gscExecSub').textContent =
+    `Top ${topExec.length} of ${allPositive.length} opportunities · ~$${fmtInt(Math.round(totalUpside))} total upside in the position 4–15 band`;
+
+  const topCards = diag.slice(0, Math.min(12, diag.length));
+  document.getElementById('gscActionBody').innerHTML = topCards.map(d => {
+    const brandBadge = /whisper/i.test(d.query) ? ' <span class="ov-tag ov-brand">brand</span>' : '';
+    const validated = d.commercial ? '<span class="act-validated">⭐ Commercially validated</span>' : '';
+    const pageMeta = d.pageShort ? `Page: ${escHtml(d.pageShort)}` : 'No dedicated page found';
+    return `<div class="act-card bn-${d.type}">
+      <div class="act-card-head">
+        <span class="act-priority ${d.priority.toLowerCase()}">${d.priority}</span>
+        <span class="act-query">${escHtml(d.query)}${brandBadge}</span>
+        <span class="act-bottleneck bn-${d.type}">${d.bottleneckLabel}</span>
+        ${validated}
+        <span class="act-impact">~$${fmtInt(Math.round(d.impact))}</span>
+      </div>
+      <div class="act-meta">Pos ${d.position.toFixed(1)} · ${fmtInt(d.impressions)} impr · ${(d.ctr * 100).toFixed(1)}% CTR · <span class="conf-dot conf-${d.confLabel}"></span>Confidence ${d.confLabel} (${d.confidence}) · ${pageMeta}</div>
+      <div class="act-reason">${d.reasoning}</div>
+      <div class="act-action"><strong>Do:</strong> ${d.action}</div>
+      <button class="act-assist-toggle" onclick="gscToggleAssist(this)">▸ Show the work</button>
+      <div class="act-assist">${gscBuildAssist(d, queryRows, pageRows)}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('gscActionMeta').textContent = `${allPositive.length} diagnosed · showing top ${topCards.length}`;
+  exec.style.display = ''; sec.style.display = '';
 }
 
 // ── v1.65.4 — native-Search-Console-style daily performance chart ──────

@@ -51,6 +51,15 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.67.6', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'fix', d:'**Search Console totals now match Google.** The GSC tab’s headline Clicks / Impressions / CTR / Avg Position cards and the Organic Performance chart were summing the per-query data, which Google trims (it hides rare “anonymized” searches), so our totals read far below Search Console’s own “Total clicks.” We now pull the un-trimmed daily totals straight from Google for those headline numbers, so they line up with what you see in Search Console. The branded split is labeled “of named queries,” since that can only be measured on the searches Google shows us.'},
+        {t:'add', d:'**Revenue Opportunity Engine.** A ranked table that answers “if we improve one keyword’s ranking this month, which one earns the most added revenue?” It blends your Search Console rankings, the matching Google Ads conversion rate for each search term, and your HubSpot closed-won revenue into a single Revenue Opportunity dollar estimate and a 0-100 score, focused on queries ranking in positions 4-15.'},
+        {t:'add', d:'**Opportunity Action Engine + “What to do next” summary.** For each top keyword it diagnoses the single biggest bottleneck — Ranking, CTR, or Content Gap — and gives a recommended action, priority, estimated revenue impact, confidence, and reasoning. A plain-English executive summary at the top of the tab surfaces the top 3-5 moves and the total upside. Queries whose paid version converts above your account average are flagged ⭐ Commercially validated.'},
+        {t:'add', d:'**Execution Assistant: every recommendation comes with the actual work.** A “Show the work” panel on each action generates the next step — 3 title-tag + 3 meta-description drafts for CTR fixes (with character counts and one-click copy), a full content brief for content gaps (page type, H1, primary/secondary keywords, real questions to answer, H2 outline), internal-link source pages + a checklist for ranking fixes, and the supporting Google Ads proof for commercially-validated keywords. Secondary keywords, questions, and link sources are pulled from your real Search Console data; copy drafts follow WhisperRoom voice and are labeled drafts to review.'},
+      ]
+    },
+    {
       v:'1.67.5', date:'June 5, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Fix: PDF uploads to Drive failing ("Failed to launch the browser process").** The shipment-tracking poller was opening its own background browser without coordinating with the PDF generator, so when a rep saved a quote at the same time the tracking poller ran, the server tried to open two browsers at once and ran out of room — the PDF upload then failed to launch. All browser work now shares one slot and runs one-at-a-time, so quote/invoice/PO PDF uploads stop colliding with background tracking. (Tracking yields to your PDF, retrying on its next cycle.)'},

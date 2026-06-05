@@ -94,11 +94,17 @@ async function syncGsc({ db, daysBack = 90 }) {
   const dateTo   = _gDate(new Date());
   const dateFrom = _gDate(_daysAgo(daysBack));
 
-  let queryRows = [], pageRows = [];
+  let queryRows = [], pageRows = [], dailyRows = [];
   try {
     const token = await _accessToken();
     queryRows = await _searchAnalytics(token, dateFrom, dateTo, ['date', 'query']);
     pageRows  = await _searchAnalytics(token, dateFrom, dateTo, ['date', 'page']);
+    // Date-only totals (NO query/page dimension → not anonymized). These match
+    // the GSC UI "Total clicks/impressions". The query/page tables above drop
+    // anonymized long-tail rows, so summing them undercounts the true total
+    // (often 60-70% short on clicks). The KPI cards + performance chart read
+    // marketing_gsc_daily so the headline numbers reconcile with Search Console.
+    dailyRows = await _searchAnalytics(token, dateFrom, dateTo, ['date']);
   } catch (e) {
     const msg = e.message || String(e);
     await _recordSync(db, 'gsc', 0, dateFrom, dateTo, msg);
@@ -107,10 +113,11 @@ async function syncGsc({ db, daysBack = 90 }) {
 
   await _bulkUpsert(db, 'marketing_gsc_queries', 'query', queryRows);
   await _bulkUpsert(db, 'marketing_gsc_pages',   'page',  pageRows);
+  await _upsertDaily(db, dailyRows);
 
-  const total = queryRows.length + pageRows.length;
+  const total = queryRows.length + pageRows.length + dailyRows.length;
   await _recordSync(db, 'gsc', total, dateFrom, dateTo, null);
-  return { ok: true, report: 'gsc', rows: total, queries: queryRows.length, pages: pageRows.length, date_from: dateFrom, date_to: dateTo };
+  return { ok: true, report: 'gsc', rows: total, queries: queryRows.length, pages: pageRows.length, daily: dailyRows.length, date_from: dateFrom, date_to: dateTo };
 }
 
 // Chunked multi-row upsert (~500 rows/statement). GSC daily data can be
@@ -134,6 +141,25 @@ async function _bulkUpsert(db, table, keyCol, rows) {
          clicks = EXCLUDED.clicks, impressions = EXCLUDED.impressions,
          ctr = EXCLUDED.ctr, position = EXCLUDED.position, updated_at = NOW()`,
       params
+    );
+  }
+}
+
+// Date-only totals upsert (marketing_gsc_daily). Tiny table (≤1 row/day) so no
+// chunking needed. Keys = [date]; clicks/impressions/ctr/position are the true
+// daily totals straight from the API's date-dimension report (un-anonymized).
+async function _upsertDaily(db, rows) {
+  if (!db) return;
+  for (const r of rows) {
+    const date = r.keys && r.keys[0];
+    if (!date) continue;
+    await db.query(
+      `INSERT INTO marketing_gsc_daily (date, clicks, impressions, ctr, position)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (date) DO UPDATE SET
+         clicks = EXCLUDED.clicks, impressions = EXCLUDED.impressions,
+         ctr = EXCLUDED.ctr, position = EXCLUDED.position, updated_at = NOW()`,
+      [date, r.clicks || 0, r.impressions || 0, r.ctr || 0, r.position || 0]
     );
   }
 }

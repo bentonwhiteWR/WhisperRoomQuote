@@ -89,6 +89,22 @@ CREATE TABLE IF NOT EXISTS marketing_gsc_pages (
 );
 CREATE INDEX IF NOT EXISTS idx_marketing_gsc_pages_date ON marketing_gsc_pages(date DESC);
 
+-- Date-only organic totals. Pulled with dimension=['date'] (NO query/page
+-- breakdown), so Google does NOT anonymize/drop rows — these match the GSC UI
+-- "Total clicks / impressions / CTR / position" exactly. The query/page tables
+-- above omit anonymized long-tail rows and therefore undercount the true total
+-- (often 60-70% short on clicks); the KPI cards + Organic Performance chart read
+-- THIS table for accurate headline numbers, and the query/page tables only for
+-- per-term/-page breakdowns. One row per day → trivially small.
+CREATE TABLE IF NOT EXISTS marketing_gsc_daily (
+  date        DATE PRIMARY KEY,
+  clicks      BIGINT,
+  impressions BIGINT,
+  ctr         NUMERIC,
+  position    NUMERIC,
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Sync runbook — tracks when each report type was last pulled, how
 -- many rows came back, and any error. Powers the "Last synced X
 -- minutes ago" UI on the dashboard.

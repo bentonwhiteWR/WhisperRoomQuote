@@ -1308,10 +1308,13 @@ async function handle(req, res, ctx) {
   }
 
   // ── GET /api/marketing/gsc-summary ────────────────────────────────
-  // Organic KPI strip: GSC totals (clicks/impressions, branded split) +
-  // the channel-level HubSpot tie — leads/deals/revenue from contacts whose
-  // source is ORGANIC_SEARCH under the selected model. (Query-level organic
-  // → deal attribution is impossible; Google withholds the organic query.)
+  // Organic KPI strip. Headline totals (clicks/impressions/position) come from
+  // marketing_gsc_daily — the date-only report Google does NOT anonymize — so
+  // they match the GSC UI. The branded split can only come from the query table
+  // (it's the only source with query text), which DOES drop anonymized rows; so
+  // branded% is reported "of identified queries" and organic_identified_clicks
+  // is returned alongside so the client can show coverage. Plus the channel-
+  // level HubSpot tie (leads/deals/revenue from ORGANIC_SEARCH contacts).
   if (pathname === '/api/marketing/gsc-summary' && req.method === 'GET') {
     try {
       const days = _parseDays(req);
@@ -1321,48 +1324,80 @@ async function handle(req, res, ctx) {
         : am.model === 'all'
           ? `(c.first_source = 'ORGANIC_SEARCH' OR c.latest_source = 'ORGANIC_SEARCH')`
           : `c.first_source = 'ORGANIC_SEARCH'`;
-      const r = ctx.db ? (await ctx.db.query(`
-        SELECT
-          (SELECT COUNT(*) FROM marketing_hubspot_contacts c
-             WHERE ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1 AND ${organicPred})                  AS leads,
-          (SELECT COUNT(*) FROM marketing_hubspot_deals d
-             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won AND ${organicPred})    AS deals_won,
-          (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
-             JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
-             WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won AND ${organicPred})    AS revenue_won,
-          (SELECT COALESCE(SUM(clicks), 0)::bigint      FROM marketing_gsc_queries
-             WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1)                                                  AS organic_clicks,
-          (SELECT COALESCE(SUM(impressions), 0)::bigint FROM marketing_gsc_queries
-             WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1)                                                  AS organic_impressions,
-          (SELECT COALESCE(SUM(clicks), 0)::bigint      FROM marketing_gsc_queries
-             WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1 AND query ILIKE '%whisper%')                      AS organic_branded_clicks
-      `, [days])).rows[0] : {};
-      ctx.json({ ...(r || {}), model: am.model });
+      let out = { leads: 0, deals_won: 0, revenue_won: 0, organic_clicks: 0, organic_impressions: 0,
+                  organic_position: null, organic_identified_clicks: 0, organic_branded_clicks: 0,
+                  organic_totals_source: 'daily', model: am.model };
+      if (ctx.db) {
+        const hs = (await ctx.db.query(`
+          SELECT
+            (SELECT COUNT(*) FROM marketing_hubspot_contacts c
+               WHERE ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1 AND ${organicPred})               AS leads,
+            (SELECT COUNT(*) FROM marketing_hubspot_deals d
+               JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+               WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won AND ${organicPred}) AS deals_won,
+            (SELECT COALESCE(SUM(d.amount), 0)::float FROM marketing_hubspot_deals d
+               JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+               WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won AND ${organicPred}) AS revenue_won
+        `, [days])).rows[0] || {};
+        // Un-anonymized totals (match the GSC UI).
+        const daily = (await ctx.db.query(`
+          SELECT COALESCE(SUM(clicks), 0)::bigint      AS clicks,
+                 COALESCE(SUM(impressions), 0)::bigint AS impressions,
+                 CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE NULL END AS position
+          FROM marketing_gsc_daily WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
+        `, [days])).rows[0] || {};
+        // Query-dimension data — identified (named) clicks + branded subset.
+        const q = (await ctx.db.query(`
+          SELECT COALESCE(SUM(clicks), 0)::bigint      AS identified_clicks,
+                 COALESCE(SUM(impressions), 0)::bigint AS identified_impressions,
+                 COALESCE(SUM(clicks) FILTER (WHERE query ILIKE '%whisper%'), 0)::bigint AS branded_clicks,
+                 CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE NULL END AS q_position
+          FROM marketing_gsc_queries WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
+        `, [days])).rows[0] || {};
+        const hasDaily = (+daily.clicks > 0) || (+daily.impressions > 0);
+        out = {
+          leads: +hs.leads || 0, deals_won: +hs.deals_won || 0, revenue_won: +hs.revenue_won || 0,
+          organic_clicks:      hasDaily ? +daily.clicks      : +q.identified_clicks,
+          organic_impressions: hasDaily ? +daily.impressions : +q.identified_impressions,
+          organic_position:    hasDaily ? daily.position     : q.q_position,
+          organic_identified_clicks: +q.identified_clicks || 0,
+          organic_branded_clicks:    +q.branded_clicks || 0,
+          organic_totals_source: hasDaily ? 'daily' : 'queries',
+          model: am.model,
+        };
+      }
+      ctx.json(out);
     } catch(e) { ctx.json({ error: e.message }, 500); }
     return true;
   }
 
   // ── GET /api/marketing/gsc-timeseries ─────────────────────────────
-  // Daily organic clicks / impressions / ctr / position for the window —
-  // powers the native-GSC-style performance chart at the top of the tab.
-  // Same source as the KPI cards (marketing_gsc_queries) so the chart's
-  // totals reconcile with the cards. Position is impression-weighted per day;
-  // days with zero impressions return position NULL (the line breaks there).
+  // Daily organic clicks / impressions / ctr / position for the chart. Reads
+  // the un-anonymized date-only totals (marketing_gsc_daily) so the chart and
+  // KPI cards match the GSC UI. Falls back to the query-dimension rollup only
+  // when the daily table hasn't been synced yet (avoids a blank chart).
   if (pathname === '/api/marketing/gsc-timeseries' && req.method === 'GET') {
     try {
       const days = _parseDays(req);
-      const rows = ctx.db ? (await ctx.db.query(`
-        SELECT to_char(date, 'YYYY-MM-DD')   AS date,
-               SUM(clicks)::bigint           AS clicks,
-               SUM(impressions)::bigint      AS impressions,
-               CASE WHEN SUM(impressions) > 0 THEN SUM(clicks)::float / SUM(impressions) ELSE 0 END            AS ctr,
-               CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE NULL END AS position
-        FROM marketing_gsc_queries
+      let rows = ctx.db ? (await ctx.db.query(`
+        SELECT to_char(date, 'YYYY-MM-DD') AS date,
+               clicks::bigint AS clicks, impressions::bigint AS impressions,
+               ctr AS ctr, position AS position
+        FROM marketing_gsc_daily
         WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
-        GROUP BY date
         ORDER BY date ASC
       `, [days])).rows : [];
+      if (ctx.db && !rows.length) {
+        rows = (await ctx.db.query(`
+          SELECT to_char(date, 'YYYY-MM-DD') AS date, SUM(clicks)::bigint AS clicks,
+                 SUM(impressions)::bigint AS impressions,
+                 CASE WHEN SUM(impressions) > 0 THEN SUM(clicks)::float / SUM(impressions) ELSE 0 END            AS ctr,
+                 CASE WHEN SUM(impressions) > 0 THEN SUM(position * impressions) / SUM(impressions) ELSE NULL END AS position
+          FROM marketing_gsc_queries
+          WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
+          GROUP BY date ORDER BY date ASC
+        `, [days])).rows;
+      }
       ctx.json({ rows });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
@@ -1495,6 +1530,103 @@ async function handle(req, res, ctx) {
         LIMIT 50000
       `, [days, minImpr])).rows : [];
       ctx.json({ rows, dim, minImpr });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/gsc-revenue-opportunity ────────────────────
+  // The Revenue Opportunity Engine. Fuses three sources to rank organic
+  // queries by the *additional revenue* likely from improving their rank:
+  //   • GSC (marketing_gsc_queries) — current position / impressions / CTR.
+  //   • Google Ads (marketing_search_terms) — the SAME query's PAID conversion
+  //     rate, used as a per-query "how well does this intent monetize" signal
+  //     (organic query→deal can't be joined — Google withholds the organic
+  //     term — but the paid term IS the same string, so its CVR is a valid
+  //     proxy). Falls back to the channel baseline when a term has no paid data.
+  //   • HubSpot — channel-level organic closed revenue ÷ true organic clicks =
+  //     $/organic-click, the dollar value the score multiplies into.
+  //
+  // Score = click_upside × rev_per_click × cvr_multiplier × reachability, where
+  //   click_upside  = impressions × max(0, top3_CTR − current_CTR)   (volume + headroom)
+  //   cvr_multiplier= clamp(paid_CVR / avg_paid_CVR, 0.25, 4)         (intent quality)
+  //   reachability  = clamp((18 − position)/14, 0.25, 1)              (closer rank = likelier win)
+  // Filtered to positions 4–15 (the realistically-improvable band) with
+  // impressions ≥ ?minImpr (default 30). Model-aware (?model=) for the HubSpot
+  // organic revenue/leads constants. revenue_opportunity is a dollar estimate;
+  // the client also derives a 0–100 score (normalized to the top row).
+  if (pathname === '/api/marketing/gsc-revenue-opportunity' && req.method === 'GET') {
+    try {
+      const days    = _parseDays(req);
+      const am      = _attrModel(req);
+      const sp      = new URL(req.url, 'http://localhost').searchParams;
+      const minImpr = Math.max(0, parseInt(sp.get('minImpr')) || 30);
+      const organicPred = am.model === 'last'
+        ? `c.latest_source = 'ORGANIC_SEARCH'`
+        : am.model === 'all'
+          ? `(c.first_source = 'ORGANIC_SEARCH' OR c.latest_source = 'ORGANIC_SEARCH')`
+          : `c.first_source = 'ORGANIC_SEARCH'`;
+      const TARGET_CTR = 0.11;   // ~average CTR at positions 1–3
+      const result = ctx.db ? (await ctx.db.query(`
+        WITH consts AS (
+          SELECT
+            GREATEST(
+              (SELECT COALESCE(SUM(clicks),0) FROM marketing_gsc_daily   WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1),
+              (SELECT COALESCE(SUM(clicks),0) FROM marketing_gsc_queries WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1)
+            )::float AS organic_clicks,
+            (SELECT COALESCE(SUM(d.amount),0)::float FROM marketing_hubspot_deals d
+               JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+               WHERE d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1 AND d.is_closed_won AND ${organicPred}) AS organic_rev,
+            (SELECT COUNT(*) FROM marketing_hubspot_contacts c
+               WHERE ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1 AND ${organicPred})              AS organic_leads,
+            (SELECT COALESCE(SUM(conversions),0)::float FROM marketing_search_terms WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1) AS paid_conv_total,
+            (SELECT COALESCE(SUM(clicks),0)::float      FROM marketing_search_terms WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1) AS paid_clicks_total
+        ),
+        cz AS (
+          SELECT organic_clicks, organic_rev, organic_leads,
+                 CASE WHEN organic_clicks > 0 THEN organic_rev / organic_clicks ELSE 0 END AS rev_per_click,
+                 CASE WHEN paid_clicks_total > 0 THEN paid_conv_total / paid_clicks_total ELSE 0 END AS avg_paid_cvr
+          FROM consts
+        ),
+        org AS (
+          SELECT query,
+                 SUM(clicks)::bigint AS clicks, SUM(impressions)::bigint AS impressions,
+                 CASE WHEN SUM(impressions) > 0 THEN SUM(clicks)::float / SUM(impressions) ELSE 0 END AS ctr,
+                 SUM(position * impressions) / NULLIF(SUM(impressions),0) AS position
+          FROM marketing_gsc_queries
+          WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
+          GROUP BY query
+          HAVING SUM(impressions) >= $2
+             AND SUM(position * impressions) / NULLIF(SUM(impressions),0) >  4
+             AND SUM(position * impressions) / NULLIF(SUM(impressions),0) <= 15
+        ),
+        paid AS (
+          SELECT LOWER(TRIM(search_term)) AS term,
+                 SUM(clicks)::bigint AS p_clicks, SUM(conversions)::float AS p_conv,
+                 CASE WHEN SUM(clicks) > 0 THEN SUM(conversions)::float / SUM(clicks) ELSE NULL END AS p_cvr
+          FROM marketing_search_terms
+          WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1 AND search_term IS NOT NULL
+          GROUP BY LOWER(TRIM(search_term))
+        ),
+        scored AS (
+          SELECT o.query, o.clicks, o.impressions, o.ctr, o.position,
+                 p.p_clicks, p.p_conv, p.p_cvr,
+                 (p.p_clicks IS NOT NULL AND p.p_clicks >= 10) AS has_paid_signal,
+                 GREATEST(0, o.impressions * (${TARGET_CTR} - o.ctr))                       AS extra_clicks,
+                 cz.rev_per_click,
+                 CASE WHEN p.p_clicks >= 10 AND cz.avg_paid_cvr > 0 AND p.p_cvr IS NOT NULL
+                      THEN LEAST(4, GREATEST(0.25, p.p_cvr / cz.avg_paid_cvr)) ELSE 1 END   AS cvr_mult,
+                 LEAST(1, GREATEST(0.25, (18 - o.position) / 14.0))                          AS reach
+          FROM org o
+          CROSS JOIN cz
+          LEFT JOIN paid p ON p.term = LOWER(TRIM(o.query))
+        )
+        SELECT *,
+               (extra_clicks * rev_per_click * cvr_mult * reach) AS revenue_opportunity
+        FROM scored
+        ORDER BY revenue_opportunity DESC NULLS LAST
+        LIMIT 50000
+      `, [days, minImpr])).rows : [];
+      ctx.json({ rows: result, model: am.model, minImpr });
     } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
   }

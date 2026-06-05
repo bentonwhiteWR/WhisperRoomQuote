@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.68.0', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Accounting &rarr; new &ldquo;QB Activity&rdquo; tab: a fast finder for what changed in QuickBooks.** Pick a date range and the record types (invoices, payments, bills, expenses, credit memos, journal entries, deposits, customers, vendors, and more), then type to filter instantly by name, doc number, type, or amount. Every row links straight to that record in QuickBooks. Built because QuickBooks&rsquo; own audit-log search is painful. <b>Note:</b> QuickBooks does not expose the audit log&rsquo;s &ldquo;who&rdquo; through its API, so this shows <b>what</b> changed and <b>when</b> (and links you there), but not which user did it, and it does not include deleted records &mdash; open the record in QuickBooks for its per-transaction Audit History.'},
+      ]
+    },
+    {
       v:'1.67.11', date:'June 5, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**SEO engine now uses the REAL page Google ranks for each query — no more guessing.** We pull query→page data straight from Search Console, so the Revenue Opportunity table shows the actual <strong>Ranking Page</strong> for each keyword (with a Commercial / Blog / Other tag) plus that page’s clicks, impressions, CTR, and position. The Action Engine uses this to give much smarter advice.'},

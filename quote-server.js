@@ -3148,6 +3148,36 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── QB Activity finder ────────────────────────────────────────────
+  // A searchable "what changed when" view over QuickBooks — far better than
+  // QBO's own audit-log search for LOCATING records. NOTE: QBO does not expose
+  // the audit log (the "who") via API, so this shows what/when + a deep link,
+  // never who. Queries entities by MetaData.LastUpdatedTime in [from,to].
+  // GET /api/accounting/qb-activity?from=YYYY-MM-DD&to=YYYY-MM-DD&entities=Invoice,Bill,...
+  if (pathname === '/api/accounting/qb-activity' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+      const fromDate = /^\d{4}-\d{2}-\d{2}$/.test(parsed.query.from || '') ? parsed.query.from : weekAgo;
+      const toDate   = /^\d{4}-\d{2}-\d{2}$/.test(parsed.query.to   || '') ? parsed.query.to   : today;
+      // Inclusive day boundaries. QBO compares the ISO timestamp; UTC bounds are
+      // close enough for a finder (a few hours' edge slop at most).
+      const fromIso = `${fromDate}T00:00:00+00:00`;
+      const toIso   = `${toDate}T23:59:59+00:00`;
+      const allowed = new Set(qb.QB_ACTIVITY_ENTITIES);
+      const entities = String(parsed.query.entities || '')
+        .split(',').map(s => s.trim()).filter(e => allowed.has(e));
+      const result = await qb.fetchActivity({ fromIso, toIso, entities });
+      json({ from: fromDate, to: toDate, entities: entities.length ? entities : qb.QB_ACTIVITY_ENTITIES, ...result });
+    } catch(e) {
+      console.error('[accounting/qb-activity]', e.message);
+      // Surface the common "not connected" / "reconnect" cases cleanly
+      json({ error: e.message }, /not connected|reconnect|expired/i.test(e.message) ? 409 : 500);
+    }
+    return;
+  }
+
   // ── Accountant portal: password-gated, read-only HubSpot Payouts ──
   // Public (in isPublicRoute) so the main auth gate lets it through; the portal
   // enforces its OWN password cookie (wr_acct_session). noindex on every route.

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.67.8', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Weights: refreshed MDL 102168 SNV after its packing list was corrected** (net 2449 → 2367 lb).'},
+      ]
+    },
+    {
       v:'1.67.7', date:'June 5, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Weights: refreshed MDL 102186 ENV after its packing list was corrected** (net 4883 → 4731 lb).'},

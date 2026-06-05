@@ -192,6 +192,7 @@ const PALLETS_PER_MDL = {
   'MDL 102168 E':5,'MDL 102168 S':3,'MDL 102186 E':5,'MDL 102186 S':3,
 };
 const PALLET_WEIGHT_LB = 144; // shipping weight added per pallet (skid + packaging)
+const MAX_PALLET_LOAD_LB = 1800; // max product (net) weight we put on a single pallet
 
 // Resolve a HubSpot owner ID from an email. Tries the exact ?email= filter
 // first, then — because that filter misses owners whose record email differs
@@ -10750,6 +10751,13 @@ ${q.accepted ? `
         const hasPallets = Number.isFinite(pallets);
         const palletWt = hasPallets ? pallets * PALLET_WEIGHT_LB : null;
         const gross = hasPallets ? net + palletWt : null;
+        // Net product weight carried per pallet, vs the 1800-lb max. minByWeight
+        // is the fewest pallets that keeps each ≤ max (weight only — does NOT
+        // account for component volume/dimensions, so "could reduce" is a hint).
+        const netPerPallet = (hasPallets && pallets > 0) ? +(net / pallets).toFixed(1) : null;
+        const minPalletsByWeight = net > 0 ? Math.max(1, Math.ceil(net / MAX_PALLET_LOAD_LB)) : null;
+        const overMax = (netPerPallet != null) && netPerPallet > MAX_PALLET_LOAD_LB;
+        const couldReduce = hasPallets && minPalletsByWeight != null && minPalletsByWeight < pallets;
         const pb = pbByName[norm(name)] || null;
         const pbWeight = pb && Number.isFinite(pb.weight) ? pb.weight : null;
         const delta = (gross != null && pbWeight != null) ? +(gross - pbWeight).toFixed(2) : null;
@@ -10762,6 +10770,10 @@ ${q.accepted ? `
           comps: m.comps ?? null,
           net: +net.toFixed(2),
           pallets: hasPallets ? pallets : null,
+          netPerPallet,
+          minPalletsByWeight,
+          overMax,
+          couldReduce,
           palletWeight: palletWt,
           gross,
           pbWeight,
@@ -10775,6 +10787,7 @@ ${q.accepted ? `
       json({
         meta: mw._meta || {},
         palletWeightLb: PALLET_WEIGHT_LB,
+        maxPalletLoadLb: MAX_PALLET_LOAD_LB,
         pbError,
         count: rows.length,
         rows,

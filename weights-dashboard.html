@@ -129,6 +129,7 @@
             <th data-sort="comps">Items <span class="arrow"></span></th>
             <th data-sort="net">Net (BOM) <span class="arrow"></span></th>
             <th data-sort="pallets">Pallets <span class="arrow"></span></th>
+            <th data-sort="netPerPallet" title="Net (BOM) ÷ pallets — vs 1800 lb max">Net/Pallet <span class="arrow"></span></th>
             <th data-sort="palletWeight">Pallet wt <span class="arrow"></span></th>
             <th data-sort="gross">Gross <span class="arrow"></span></th>
             <th data-sort="pbWeight">Price book <span class="arrow"></span></th>
@@ -136,7 +137,7 @@
           </tr>
         </thead>
         <tbody id="tbody">
-          <tr><td colspan="9" class="loading">Loading weights…</td></tr>
+          <tr><td colspan="10" class="loading">Loading weights…</td></tr>
         </tbody>
       </table>
     </div>
@@ -146,6 +147,7 @@
   let DATA = [];
   let META = {};
   let PALLET_WT = 144;
+  let MAX_LOAD = 1800;
   let variantFilter = 'ALL';
   let mismatchOnly = false;
   let unmatchedOnly = false;
@@ -166,7 +168,7 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
   async function loadData(){
-    document.getElementById('tbody').innerHTML = '<tr><td colspan="9" class="loading">Loading weights…</td></tr>';
+    document.getElementById('tbody').innerHTML = '<tr><td colspan="10" class="loading">Loading weights…</td></tr>';
     try {
       const r = await fetch('/api/weights-table', { credentials: 'same-origin' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -174,11 +176,12 @@
       DATA = d.rows || [];
       META = d.meta || {};
       PALLET_WT = d.palletWeightLb || 144;
+      MAX_LOAD = d.maxPalletLoadLb || 1800;
       renderBanner(d);
       renderCards();
       render();
     } catch(e){
-      document.getElementById('tbody').innerHTML = '<tr><td colspan="9" class="empty">Failed to load: ' + esc(e.message) + '</td></tr>';
+      document.getElementById('tbody').innerHTML = '<tr><td colspan="10" class="empty">Failed to load: ' + esc(e.message) + '</td></tr>';
     }
   }
 
@@ -199,9 +202,12 @@
     const big = matched.filter(r => Math.abs(r.delta) >= 25);
     const unmatched = DATA.filter(r => !r.matched);
     const noPallet = DATA.filter(r => r.pallets == null);
+    const overMax = DATA.filter(r => r.overMax);
+    const couldReduce = DATA.filter(r => r.couldReduce);
     const cards = [
       { label: 'Models', value: DATA.length },
-      { label: 'Price-book matched', value: DATA.filter(r=>r.matched).length },
+      { label: 'Over ' + MAX_LOAD + '/pallet', value: overMax.length, alert: overMax.length>0 },
+      { label: 'Could drop a pallet', value: couldReduce.length },
       { label: 'No PB match', value: unmatched.length, alert: unmatched.length>0 },
       { label: 'Δ ≥ 25 lb', value: big.length, alert: big.length>0 },
       { label: 'No pallet count', value: noPallet.length, alert: noPallet.length>0 },
@@ -244,7 +250,7 @@
     });
 
     const tb = document.getElementById('tbody');
-    if (!rows.length){ tb.innerHTML = '<tr><td colspan="9" class="empty">No models match.</td></tr>'; return; }
+    if (!rows.length){ tb.innerHTML = '<tr><td colspan="10" class="empty">No models match.</td></tr>'; return; }
 
     tb.innerHTML = rows.map(r=>{
       const deltaCell = r.delta == null
@@ -253,12 +259,25 @@
             ? '<span class="delta-zero">0</span>'
             : '<span class="' + (r.delta>0?'delta-pos':'delta-neg') + '">' + (r.delta>0?'+':'') + fmt(r.delta) + '</span>');
       const cell = v => v == null ? '<span class="dash">—</span>' : fmt(v);
+      // Net per pallet vs the 1800-lb max: red if over, amber if close, green if
+      // weight allows dropping a pallet (↓N hint — volume still needs a check).
+      let nppCell;
+      if (r.netPerPallet == null) nppCell = '<span class="dash">—</span>';
+      else {
+        let col = '';
+        if (r.overMax) col = 'var(--red)';
+        else if (r.netPerPallet > MAX_LOAD * 0.85) col = 'var(--amber)';
+        else if (r.couldReduce) col = 'var(--green)';
+        const hint = r.couldReduce ? ' <span style="font-size:10px;color:var(--green)" title="Weight allows fewer pallets — verify volume/dimensions">↓' + r.minPalletsByWeight + '</span>' : '';
+        nppCell = '<span style="font-weight:700' + (col ? (';color:' + col) : '') + '">' + fmt(r.netPerPallet) + '</span>' + hint;
+      }
       return '<tr class="' + (r.matched ? '' : 'unmatched') + '">' +
         '<td class="l mdl-name">' + esc(r.name) + '</td>' +
         '<td class="l"><span class="vpill v-' + esc(r.variant) + '">' + esc(r.variant||'?') + '</span></td>' +
         '<td class="muted">' + (r.comps==null?'<span class="dash">—</span>':r.comps) + '</td>' +
         '<td>' + cell(r.net) + '</td>' +
         '<td>' + (r.pallets==null?'<span class="dash">—</span>':r.pallets) + '</td>' +
+        '<td>' + nppCell + '</td>' +
         '<td class="muted">' + cell(r.palletWeight) + '</td>' +
         '<td><strong>' + cell(r.gross) + '</strong></td>' +
         '<td>' + cell(r.pbWeight) + '</td>' +

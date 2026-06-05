@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.69.2', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'add', d:'**Internal /weights: new Net/Pallet column.** Shows net (BOM) weight &divide; pallet count for each model, measured against the 1,800 lb-per-pallet max. Color-coded &mdash; red over the max, amber when close, green with a &darr; hint when the weight alone would allow fewer pallets. New summary cards count models over the max and models that could potentially drop a pallet. (The hint is weight-only; pallet count is also limited by panel size/volume, so any reduction is a manual judgment call.)'},
+      ]
+    },
+    {
       v:'1.69.1', date:'June 5, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Smarter SEO diagnosis — stops defaulting to “rewrite title/meta.”** The Action Engine now figures out the <em>real</em> constraint for each keyword instead of assuming CTR. Six opportunity types: <strong>CTR</strong> (ranking is fine, clicks are weak), <strong>Ranking</strong> (clicks fine, position weak), <strong>Content</strong> (strong page, thin topical coverage), <strong>Authority</strong> (relevant page, out-muscled by competitors), <strong>Landing Page</strong> (the wrong page is ranking), and <strong>Missing Page</strong> (no commercial page exists) — each with its own tailored action.'},

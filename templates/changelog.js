@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.4', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Freight: lowered pallet counts on several large booths.** After re-checking real skid heights, these models now ship on fewer pallets &mdash; the short skid is consolidated onto a taller one: <b>MDL 10284, 96192, 102168, 102186</b> and their No-Vent (NV) twins. <b>MDL 102126</b> pallet 3 footprint was also corrected. Freight quotes, the Quote Weight box, the packing-list/weights tools, and order processing all reflect the new counts.'},
+      ]
+    },
+    {
       v:'1.72.3', date:'June 5, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Google Ads Improvement Engine is now brand- and impression-share-aware.** The Budget Reallocation board used to tell you to <em>increase</em> any high-ROAS campaign — including branded ones. But branded paid clicks mostly re-buy demand your organic listings already win for free, so that ROAS overstates the real lift. Branded winners now land in a new <strong>▽ Test Pull-Back</strong> column (test trimming bids and watch total paid+organic revenue), and <strong>▲ Increase</strong> is reserved for non-branded campaigns that genuinely lose impressions to budget (high budget-lost impression share) at a strong return. Each card now shows its impression share and a one-line reason for the call.'},

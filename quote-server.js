@@ -10721,6 +10721,11 @@ ${q.accepted ? `
       catch (e) { writelog('warn', 'weights.read', 'model-weights.json unreadable', { err: e.message }); }
       const models = mw.models || {};
 
+      // Per-pallet dimensions from BOOTH_DATA (the authoritative pallet breakdown).
+      let pdims = {};
+      try { pdims = (JSON.parse(fs.readFileSync(path.join(__dirname, 'lib', 'pl-data', 'pallet-dims.json'), 'utf8')).models) || {}; }
+      catch (e) { writelog('warn', 'weights.read', 'pallet-dims.json unreadable', { err: e.message }); }
+
       // HubSpot price-book weights, indexed by normalized name
       const norm = s => String(s || '').toUpperCase().replace(/\s+/g, ' ').trim();
       const pbByName = {};
@@ -10774,6 +10779,7 @@ ${q.accepted ? `
           minPalletsByWeight,
           overMax,
           couldReduce,
+          palletDims: pdims[name] || [],   // per-pallet L×W×H from BOOTH_DATA
           palletWeight: palletWt,
           gross,
           pbWeight,

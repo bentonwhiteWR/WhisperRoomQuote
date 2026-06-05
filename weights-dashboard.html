@@ -80,6 +80,13 @@
   .delta-zero { color: var(--green); }
   .unmatched td { background: rgba(239,68,68,.05); }
   .unmatched .mdl-name::after { content: ' ⚠'; color: var(--red); font-size: 11px; }
+  .caret { display:inline-block; width:11px; color: var(--muted); font-size: 10px; }
+  tr.detail > td { background: var(--surface2); padding: 14px 18px; }
+  .pgrid { display:flex; flex-wrap:wrap; gap:8px; }
+  .pchip { background: var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 12px; min-width:140px; }
+  .pchip .pn { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color: var(--orange); }
+  .pchip .pdim { font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; margin-top:2px; }
+  .pchip .pmeta { font-size:10px; color: var(--muted); margin-top:2px; }
 
   .empty { padding: 40px; text-align: center; color: var(--muted); font-size: 13px; }
   .loading { padding: 40px; text-align: center; color: var(--muted); }
@@ -271,8 +278,8 @@
         const hint = r.couldReduce ? ' <span style="font-size:10px;color:var(--green)" title="Weight allows fewer pallets — verify volume/dimensions">↓' + r.minPalletsByWeight + '</span>' : '';
         nppCell = '<span style="font-weight:700' + (col ? (';color:' + col) : '') + '">' + fmt(r.netPerPallet) + '</span>' + hint;
       }
-      return '<tr class="' + (r.matched ? '' : 'unmatched') + '">' +
-        '<td class="l mdl-name">' + esc(r.name) + '</td>' +
+      return '<tr class="mdlrow ' + (r.matched ? '' : 'unmatched') + '" style="cursor:pointer" onclick="toggleRow(this)">' +
+        '<td class="l mdl-name"><span class="caret">▸</span> ' + esc(r.name) + '</td>' +
         '<td class="l"><span class="vpill v-' + esc(r.variant) + '">' + esc(r.variant||'?') + '</span></td>' +
         '<td class="muted">' + (r.comps==null?'<span class="dash">—</span>':r.comps) + '</td>' +
         '<td>' + cell(r.net) + '</td>' +
@@ -282,8 +289,38 @@
         '<td><strong>' + cell(r.gross) + '</strong></td>' +
         '<td>' + cell(r.pbWeight) + '</td>' +
         '<td>' + deltaCell + '</td>' +
-      '</tr>';
+      '</tr>' +
+      '<tr class="detail" style="display:none"><td colspan="10">' + palletDetail(r) + '</td></tr>';
     }).join('');
+  }
+
+  function toggleRow(tr){
+    const d = tr.nextElementSibling;
+    if (!d || !d.classList.contains('detail')) return;
+    const open = d.style.display !== 'none';
+    d.style.display = open ? 'none' : '';
+    const c = tr.querySelector('.caret');
+    if (c) c.textContent = open ? '▸' : '▾';
+  }
+
+  function palletDetail(r){
+    const pd = r.palletDims || [];
+    if (!pd.length) return '<div style="color:var(--muted);font-size:12px">No pallet dimensions on file for this model.</div>';
+    const mismatch = (r.pallets != null && pd.length !== r.pallets)
+      ? '<div style="color:var(--amber);font-size:11px;margin-bottom:8px">⚠ Pallet count (' + r.pallets + ') differs from the ' + pd.length + ' pallet dimensions on file — may be out of sync.</div>'
+      : '';
+    const maxLong = Math.max.apply(null, pd.map(p => Math.max(p.l, p.w, p.h)));
+    const chips = pd.map((p, i) => {
+      const cuft = (p.l * p.w * p.h / 1728);
+      const longest = Math.max(p.l, p.w, p.h);
+      return '<div class="pchip"><div class="pn">Pallet ' + (i+1) + '</div>'
+        + '<div class="pdim">' + p.l + ' × ' + p.w + ' × ' + p.h + ' in</div>'
+        + '<div class="pmeta">' + cuft.toFixed(1) + ' ft³ · longest ' + longest + ' in</div></div>';
+    }).join('');
+    return mismatch
+      + '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">' + pd.length + ' skid' + (pd.length>1?'s':'')
+      + ' · longest component ' + maxLong + ' in — a pallet must be at least this long, which limits how few skids are possible.</div>'
+      + '<div class="pgrid">' + chips + '</div>';
   }
 
   loadData();

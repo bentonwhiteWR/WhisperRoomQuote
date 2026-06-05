@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.70.1', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'add', d:'**Internal /weights: click any model to see its pallet dimensions.** Click a row to expand it and view every pallet&rsquo;s L &times; W &times; H (with cubic feet and the longest dimension per skid). Makes it easy to judge whether a booth can really ship on fewer pallets &mdash; big wall panels need a long skid no matter how light the load is. Also flags when a model&rsquo;s pallet count differs from the dimensions on file.'},
+      ]
+    },
+    {
       v:'1.70.0', date:'June 5, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**QB Activity finder now reads much more like the QuickBooks audit log.** Each record shows richer detail pulled from data we already fetch: status (<b>Paid / Open / Overdue</b>), an <b>edited&nbsp;N&times;</b> indicator, linked transactions, and memos. The action label now matches QB&rsquo;s wording (&ldquo;<b>Edited</b>&rdquo; instead of &ldquo;Updated&rdquo;).'},

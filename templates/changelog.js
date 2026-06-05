@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.67.5', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Fix: PDF uploads to Drive failing ("Failed to launch the browser process").** The shipment-tracking poller was opening its own background browser without coordinating with the PDF generator, so when a rep saved a quote at the same time the tracking poller ran, the server tried to open two browsers at once and ran out of room — the PDF upload then failed to launch. All browser work now shares one slot and runs one-at-a-time, so quote/invoice/PO PDF uploads stop colliding with background tracking. (Tracking yields to your PDF, retrying on its next cycle.)'},
+      ]
+    },
+    {
       v:'1.67.4', date:'June 5, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Freight: the two largest models now count pallets correctly.** MDL 102168 and MDL 102186 (S/E/SNV/ENV) were missing from the pallet-count table the order-processing freight step uses, so an order with one of those booths under-counted pallets. Added them (102168 and 102186 each ship on 3 pallets standard / 5 enhanced, matching the quote-builder pallet data). Also fills in their gross weights on the internal weights page.'},

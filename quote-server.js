@@ -418,7 +418,7 @@ gdrive.init({ httpsRequest, getDb: () => db, writelog });
 assemblyManual.init({ gdrive });
 taxjar.init({ httpsRequest, NEXUS_STATES, toStateAbbr, zipToState });
 notify.init({ getDb: () => db });
-freight.init({ httpsRequest, getDb: () => db, writelog, puppeteer });
+freight.init({ httpsRequest, getDb: () => db, writelog, puppeteer, withBrowser: pdf.withBrowser });
 stripeLib.init({ httpsRequest, writelog, getDb: () => db });
 db_mod.init({
   getDb: () => db,

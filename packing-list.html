@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WhisperRoom — Packing List</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial Black,sans-serif' font-size='18' font-weight='900' fill='%23e8531a'>W</text></svg>">
+<style>
+  :root {
+    --bg:#0f0f0f; --surface:#1a1a1a; --surface2:#222; --border:#2a2a2a;
+    --orange:#ee6216; --orange-dim:rgba(238,98,22,.12);
+    --text:#e8e8e8; --muted:#888;
+    --green:#22c55e; --red:#ef4444; --blue:#3b82f6; --amber:#f59e0b; --purple:#a855f7;
+    --row-hover:rgba(255,255,255,.02);
+  }
+  :root.light {
+    --bg:#f5f5f5; --surface:#fff; --surface2:#f0f0f0; --border:#e0e0e0;
+    --orange:#d44f0c; --orange-dim:rgba(212,79,12,.1);
+    --text:#1a1a1a; --muted:#666;
+    --green:#16a34a; --red:#dc2626; --blue:#2563eb; --amber:#d97706; --purple:#7c3aed;
+    --row-hover:rgba(0,0,0,.02);
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; -webkit-font-smoothing:antialiased; }
+
+  .topbar { display:flex; align-items:center; justify-content:space-between; padding:0 20px; min-height:52px; background:#1a1a1a; border-bottom:1px solid rgba(255,255,255,.1); position:sticky; top:0; z-index:100; gap:8px; }
+  .topbar-logo { font-family:'Syne',sans-serif; font-size:20px; font-weight:800; color:#f0ede8; text-decoration:none; }
+  .topbar-logo span { color:#e8531a; }
+  .topbar-right { display:flex; gap:8px; align-items:center; }
+  .btn { padding:6px 12px; font-size:12px; font-weight:700; border-radius:7px; border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; font-family:inherit; }
+  .btn:hover { border-color:var(--orange); color:var(--orange); }
+  .btn-orange { background:var(--orange); border-color:var(--orange); color:#fff; }
+  .btn-orange:hover { color:#fff; opacity:.9; }
+  .btn-sm { padding:3px 8px; font-size:11px; }
+  .theme-btn { padding:5px 9px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:6px; color:#f0ede8; cursor:pointer; font-size:14px; }
+
+  .main { max-width:1200px; margin:0 auto; padding:22px 20px 60px; }
+  .head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-bottom:8px; }
+  .title { font-family:'Syne',sans-serif; font-size:23px; font-weight:800; }
+  .title span { color:var(--orange); }
+  .meta { font-size:12px; color:var(--muted); margin-top:5px; line-height:1.6; }
+  .meta b { color:var(--text); font-weight:700; }
+
+  .totals { display:flex; gap:10px; flex-wrap:wrap; margin:14px 0 22px; }
+  .stat { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 16px; }
+  .stat .l { font-size:10px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); }
+  .stat .v { font-family:'Syne',sans-serif; font-size:21px; font-weight:800; margin-top:2px; }
+
+  .room { background:var(--surface); border:1px solid var(--border); border-radius:13px; margin-bottom:20px; overflow:hidden; }
+  .room-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 18px; background:var(--surface2); border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .room-title { display:flex; align-items:center; gap:10px; }
+  .room-num { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:var(--orange); color:#fff; font-weight:800; font-size:13px; }
+  .room-name { font-family:'Syne',sans-serif; font-size:17px; font-weight:800; }
+  .room-sub { font-size:11px; color:var(--muted); }
+  .qty-badge { background:var(--orange-dim); color:var(--orange); border:1px solid var(--orange); border-radius:10px; padding:1px 9px; font-size:11px; font-weight:700; }
+  .vpill { display:inline-block; padding:1px 8px; border-radius:10px; font-size:10px; font-weight:700; }
+  .v-S{background:rgba(59,130,246,.15);color:var(--blue)} .v-E{background:rgba(168,85,247,.15);color:var(--purple)}
+  .v-SNV{background:rgba(34,197,94,.13);color:var(--green)} .v-ENV{background:rgba(245,158,11,.13);color:var(--amber)}
+
+  .room-cfg { display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  .cfg { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); }
+  .cfg select { padding:4px 8px; font-size:12px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; }
+
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  thead th { text-align:right; padding:9px 12px; font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--border); white-space:nowrap; }
+  thead th.l { text-align:left; }
+  tbody td { padding:7px 12px; text-align:right; border-bottom:1px solid var(--border); white-space:nowrap; font-variant-numeric:tabular-nums; }
+  tbody td.l { text-align:left; white-space:normal; }
+  tbody tr:hover { background:var(--row-hover); }
+  .code { font-weight:700; font-family:ui-monospace,Menlo,monospace; }
+  .qin { width:54px; padding:3px 6px; text-align:right; background:var(--surface2); border:1px solid var(--border); border-radius:5px; color:var(--text); font-family:inherit; font-size:12px; }
+  .unknown { color:var(--red); }
+  .rm-row { color:var(--muted); cursor:pointer; border:none; background:none; font-size:14px; padding:0 4px; }
+  .rm-row:hover { color:var(--red); }
+
+  .room-foot { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 18px; flex-wrap:wrap; }
+  .addrow { display:flex; gap:6px; align-items:center; }
+  .addrow input { padding:4px 8px; font-size:12px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; }
+  .net { font-size:13px; font-weight:700; }
+  .net b { font-family:'Syne',sans-serif; font-size:17px; color:var(--orange); }
+
+  .flags { margin:0 18px 14px; padding:10px 14px; background:rgba(245,158,11,.08); border:1px solid var(--amber); border-radius:9px; font-size:11.5px; color:var(--text); }
+  .flags .ft { display:inline-block; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:2px 8px; margin:3px 4px 0 0; font-size:11px; }
+  .notfound { margin:0 18px 14px; padding:12px 14px; background:rgba(239,68,68,.08); border:1px solid var(--red); border-radius:9px; font-size:12px; color:var(--red); }
+
+  .banner { font-size:11.5px; color:var(--muted); background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:9px 13px; margin-bottom:18px; line-height:1.5; }
+  .banner b { color:var(--amber); }
+  .loading,.empty { padding:46px; text-align:center; color:var(--muted); }
+
+  @media print {
+    .topbar,.no-print,.room-cfg select,.qin,.rm-row,.addrow,.theme-btn { }
+    .no-print { display:none !important; }
+    body { background:#fff; color:#000; }
+    .room,.stat,.banner { border-color:#ccc; box-shadow:none; }
+    .qin { border:none; background:none; }
+  }
+</style>
+</head>
+<body>
+  <div class="topbar no-print">
+    <a href="/deals" class="topbar-logo">Whisper<span>Room</span></a>
+    <div class="topbar-right">
+      <button class="btn" onclick="window.print()">🖨 Print</button>
+      <button class="btn" onclick="loadPL()">↻ Refresh</button>
+      <button class="theme-btn" onclick="toggleTheme()">◐</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="head">
+      <div>
+        <div class="title">Packing <span>List</span></div>
+        <div class="meta" id="meta">Loading…</div>
+      </div>
+      <div class="totals" id="totals"></div>
+    </div>
+
+    <div class="banner no-print">
+      <b>Heads up:</b> The booth and its full bill-of-materials are generated automatically (weights are exact). Each room defaults to <b style="color:var(--text)">Left hinge / Gray foam</b> — change per room as needed. Optional-feature lines from the quote are <b>flagged below each room</b> for now (their component swaps are still being built), so add those parts manually until rules land. Quantity edits / added rows here are for this printout — not saved back yet.
+    </div>
+
+    <div id="rooms"><div class="loading">Loading packing list…</div></div>
+  </div>
+
+<script>
+  let DATA = null;
+  let COMPONENTS = {};
+  const quoteNumber = decodeURIComponent((location.pathname.match(/\/pl\/(.+)$/) || [])[1] || '').replace(/\/+$/, '');
+
+  (function(){ if (localStorage.getItem('wr-theme')==='light') document.documentElement.classList.add('light'); })();
+  function toggleTheme(){ document.documentElement.classList.toggle('light'); localStorage.setItem('wr-theme', document.documentElement.classList.contains('light')?'light':'dark'); }
+
+  const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const lb = n => n==null ? '—' : Number(n).toLocaleString(undefined,{maximumFractionDigits:1});
+  const dim = (L,W,T) => [L,W,T].every(x=>x==null) ? '' : `${L??'?'}×${W??'?'}×${T??'?'}`;
+
+  async function loadPL(){
+    document.getElementById('rooms').innerHTML = '<div class="loading">Loading packing list…</div>';
+    try {
+      const r = await fetch('/api/packing-list/' + encodeURIComponent(quoteNumber), { credentials:'include' });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      DATA = d; COMPONENTS = d.components || {};
+      renderMeta(); render();
+    } catch(e){
+      document.getElementById('rooms').innerHTML = '<div class="empty">Failed to load: ' + esc(e.message) + '</div>';
+      document.getElementById('meta').textContent = '';
+    }
+  }
+
+  function renderMeta(){
+    const m = DATA.meta || {};
+    const bits = [`Quote <b>${esc(DATA.quoteNumber)}</b>`];
+    if (m.company)      bits.push(esc(m.company));
+    if (m.customerName) bits.push(esc(m.customerName));
+    if (m.dealName)     bits.push(esc(m.dealName));
+    if (m.createdAt)    bits.push(new Date(m.createdAt).toLocaleDateString());
+    document.getElementById('meta').innerHTML = bits.join(' &nbsp;·&nbsp; ');
+    recalcTotals();
+  }
+
+  function recalcTotals(){
+    let net = 0;
+    (DATA.rooms||[]).forEach(rm => { net += roomNet(rm) * (rm.qty||1); });
+    document.getElementById('totals').innerHTML =
+      `<div class="stat"><div class="l">Rooms</div><div class="v">${(DATA.rooms||[]).length}</div></div>`
+    + `<div class="stat"><div class="l">Total Net Weight</div><div class="v">${lb(Math.round(net))} lb</div></div>`;
+  }
+
+  function roomNet(rm){
+    return (rm.lines||[]).reduce((s,l)=> s + (l.totalLb||0), 0);
+  }
+
+  function render(){
+    const rooms = DATA.rooms || [];
+    if (!rooms.length){ document.getElementById('rooms').innerHTML = '<div class="empty">No booth (MDL) line items found on this quote.</div>'; return; }
+    const opts = DATA.options || { hinge:['Left','Right'], foam:['Gray'] };
+    document.getElementById('rooms').innerHTML = rooms.map((rm,ri)=>{
+      if (!rm.found){
+        return `<div class="room"><div class="room-head"><div class="room-title"><span class="room-num">${rm.index}</span>`
+          + `<div><div class="room-name">${esc(rm.boothName)}</div></div></div></div>`
+          + `<div class="notfound">No base packing list found for <b>${esc(rm.boothName)}</b>. If this is a package (not an MDL model) or a typo, it cannot be generated yet.</div>`
+          + flagsHtml(rm) + `</div>`;
+      }
+      const hingeSel = `<select onchange="setCfg(${ri},'hinge',this.value)">${opts.hinge.map(h=>`<option ${h===rm.header.hinge?'selected':''}>${esc(h)}</option>`).join('')}</select>`;
+      const foamSel  = `<select onchange="setCfg(${ri},'foam',this.value)">${opts.foam.map(f=>`<option ${f===rm.header.foam?'selected':''}>${esc(f)}</option>`).join('')}</select>`;
+      const body = (rm.lines||[]).map((l,li)=>`
+        <tr>
+          <td class="l code ${l.known?'':'unknown'}">${esc(l.code)}</td>
+          <td class="l">${esc(l.desc)}</td>
+          <td><input class="qin" type="number" min="0" value="${l.qty}" oninput="setQty(${ri},${li},this.value)"></td>
+          <td>${lb(l.eachLb)}</td>
+          <td>${lb(l.totalLb)}</td>
+          <td>${esc(dim(l.L,l.W,l.T))}</td>
+          <td class="l">${esc(l.pack||'')}</td>
+          <td><button class="rm-row no-print" title="Remove" onclick="rmRow(${ri},${li})">✕</button></td>
+        </tr>`).join('');
+      return `<div class="room">
+        <div class="room-head">
+          <div class="room-title">
+            <span class="room-num">${rm.index}</span>
+            <div>
+              <div class="room-name">${esc(rm.boothName)} ${rm.qty>1?`<span class="qty-badge">×${rm.qty}</span>`:''}</div>
+              <div class="room-sub">Size ${esc(rm.size)} · <span class="vpill v-${esc(rm.variant)}">${esc(rm.variant)}</span></div>
+            </div>
+          </div>
+          <div class="room-cfg">
+            <span class="cfg">Hinge ${hingeSel}</span>
+            <span class="cfg">Foam ${foamSel}</span>
+          </div>
+        </div>
+        <table>
+          <thead><tr>
+            <th class="l">Code</th><th class="l">Component</th><th>Qty</th>
+            <th>Each lb</th><th>Total lb</th><th>Dims (in)</th><th class="l">Pack</th><th class="no-print"></th>
+          </tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+        <div class="room-foot">
+          <div class="addrow no-print">
+            <input list="compCodes" placeholder="Add component code…" id="addcode-${ri}">
+            <button class="btn btn-sm" onclick="addRow(${ri})">+ Add</button>
+          </div>
+          <div class="net">Room net: <b id="net-${ri}">${lb(roomNet(rm))}</b> lb${rm.qty>1?` <span class="room-sub">(×${rm.qty} = ${lb(roomNet(rm)*rm.qty)} lb)</span>`:''}</div>
+        </div>
+        ${flagsHtml(rm)}
+      </div>`;
+    }).join('')
+    + `<datalist id="compCodes">${Object.keys(COMPONENTS).map(c=>`<option value="${esc(c)}">`).join('')}</datalist>`;
+  }
+
+  function flagsHtml(rm){
+    const f = rm.unmappedFeatures || [];
+    if (!f.length) return '';
+    return `<div class="flags"><b style="color:var(--amber)">⚠ Optional features from the quote — add their parts manually (rules pending):</b><br>`
+      + f.map(x=>`<span class="ft">${esc(x.name)}${x.qty>1?` ×${x.qty}`:''}</span>`).join('') + `</div>`;
+  }
+
+  function setCfg(ri, key, val){ DATA.rooms[ri].header[key] = val; }
+  function setQty(ri, li, val){
+    const q = Math.max(0, parseInt(val,10)||0);
+    const l = DATA.rooms[ri].lines[li];
+    l.qty = q;
+    l.totalLb = (l.eachLb==null) ? null : Math.round(l.eachLb*q*100)/100;
+    refreshRoomTotal(ri);
+  }
+  function rmRow(ri, li){ DATA.rooms[ri].lines.splice(li,1); render(); }
+  function addRow(ri){
+    const inp = document.getElementById('addcode-'+ri);
+    const code = (inp.value||'').trim().toUpperCase();
+    if (!code) return;
+    const c = COMPONENTS[code];
+    if (!c){ alert('Unknown component code: ' + code); return; }
+    DATA.rooms[ri].lines.push({ code, qty:1, desc:c.desc||'', pack:c.pack||'', eachLb:c.lb, totalLb:c.lb, L:c.L, W:c.W, T:c.T, known:true });
+    inp.value=''; render();
+  }
+  function refreshRoomTotal(ri){
+    const el = document.getElementById('net-'+ri);
+    if (el) el.textContent = lb(roomNet(DATA.rooms[ri]));
+    recalcTotals();
+  }
+
+  if (!quoteNumber){ document.getElementById('rooms').innerHTML = '<div class="empty">No quote number in the URL.</div>'; }
+  else loadPL();
+</script>
+</body>
+</html>

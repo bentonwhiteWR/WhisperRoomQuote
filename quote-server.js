@@ -245,6 +245,9 @@ const shopifyLib = require('./lib/shopify');
 const assemblyManual = require('./lib/assembly-manual');
 // assemblyManual.init({ gdrive }) called below after gdrive.init runs
 
+const packingList = require('./lib/packing-list');
+packingList.init();
+
 const stripeLib = require('./lib/stripe');
 // stripeLib.init(...) called below alongside the other httpsRequest-dependent libs
 
@@ -10656,6 +10659,54 @@ ${q.accepted ? `
     if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(fs.readFileSync(path.join(__dirname, 'weights-dashboard.html'), 'utf8'));
+    return;
+  }
+
+  // ── /pl/:quoteNumber — Packing List viewer (auth-only) ──
+  // Generated from the saved quote's line items: booth → BOM, multi-room.
+  if (pathname.startsWith('/pl/') && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(fs.readFileSync(path.join(__dirname, 'packing-list.html'), 'utf8'));
+    return;
+  }
+
+  // ── API: Packing List data for a saved quote ──
+  // GET /api/packing-list/:quoteNumber → rooms[] (booth BOM + flagged features)
+  if (pathname.startsWith('/api/packing-list/') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const quoteNumber = decodeURIComponent(pathname.replace('/api/packing-list/', '').replace(/\/+$/, ''));
+      if (!quoteNumber) { json({ error: 'Quote number required' }, 400); return; }
+      let snap = null, dealName = null, createdAt = null;
+      if (db) {
+        const r = await db.query(
+          'SELECT json_snapshot, deal_name, created_at FROM quotes WHERE quote_number = $1', [quoteNumber]);
+        if (r.rows[0]) { snap = r.rows[0].json_snapshot || null; dealName = r.rows[0].deal_name; createdAt = r.rows[0].created_at; }
+      }
+      if (!snap) { json({ error: 'Quote not found: ' + quoteNumber }, 404); return; }
+      const lineItems = snap.lineItems || [];
+      const opts = {
+        hinge: parsed.query.hinge && /^(Left|Right)$/i.test(parsed.query.hinge) ? parsed.query.hinge : undefined,
+        foam: parsed.query.foam || undefined,
+      };
+      const pl = packingList.generate(lineItems, opts);
+      const customer = snap.customer || {};
+      json({
+        quoteNumber,
+        meta: {
+          dealName: dealName || snap.dealName || '',
+          company: snap.company || customer.company || '',
+          customerName: [customer.firstName, customer.lastName].filter(Boolean).join(' ') || customer.name || '',
+          createdAt: createdAt || null,
+        },
+        ...pl,
+        components: packingList.componentDict(),
+      });
+    } catch (e) {
+      writelog('error', 'packing-list.api', 'failed to build packing list', { err: e.message });
+      json({ error: e.message }, 500);
+    }
     return;
   }
 

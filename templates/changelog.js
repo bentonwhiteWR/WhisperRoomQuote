@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.69.0', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing Lists: &ldquo;View Packing List&rdquo; button on the Quote Builder (next to Build Assembly Manual).** Generates the packing list for the saved quote in a new tab &mdash; one section per room. It reads your quote line items, treats each <b>MDL&hellip;</b> line as a booth and the lines under it as that booth&rsquo;s options, and builds the booth&rsquo;s full component list (codes, descriptions, quantities, weights, dimensions, pack codes) straight from the packing-list data &mdash; weights are exact. Each room defaults to <b>Left hinge / Gray foam</b> (change per room), and you can edit quantities, remove, or add component lines before printing. <b>In progress:</b> the optional-feature component swaps (windows, EFS, VSS, studio light, ADA, HX, etc.) are not auto-applied yet &mdash; those quote lines are listed under each room as a reminder to add their parts manually until the feature rules are finished. This is the first piece of the packing-list system replacing the old Excel/VBA workflow.'},
+      ]
+    },
+    {
       v:'1.68.0', date:'June 5, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Accounting &rarr; new &ldquo;QB Activity&rdquo; tab: a fast finder for what changed in QuickBooks.** Pick a date range and the record types (invoices, payments, bills, expenses, credit memos, journal entries, deposits, customers, vendors, and more), then type to filter instantly by name, doc number, type, or amount. Every row links straight to that record in QuickBooks. Built because QuickBooks&rsquo; own audit-log search is painful. <b>Note:</b> QuickBooks does not expose the audit log&rsquo;s &ldquo;who&rdquo; through its API, so this shows <b>what</b> changed and <b>when</b> (and links you there), but not which user did it, and it does not include deleted records &mdash; open the record in QuickBooks for its per-transaction Audit History.'},

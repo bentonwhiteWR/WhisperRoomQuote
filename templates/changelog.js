@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.67.2', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**/weights: NV variants now show pallet counts.** SNV and ENV models had a blank pallet count (and therefore no gross weight) because they are not listed separately in the pallet map. They now inherit their vented base count (SNV uses the S count, ENV uses the E count), since they ship on the same pallets.'},
+      ]
+    },
+    {
       v:'1.67.1', date:'June 5, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Search Console tab: a daily performance chart, just like Google’s.** New <strong>Organic Performance</strong> graph at the top of the GSC tab plots Clicks, Impressions, CTR, and Avg Position over time (click any metric to toggle it, hover any day for exact numbers). Same dual-axis look you get inside Search Console, sitting right next to your closed-revenue data.'},

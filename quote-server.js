@@ -10659,7 +10659,12 @@ ${q.accepted ? `
       const rows = Object.keys(models).sort().map(name => {
         const m = models[name] || {};
         const net = Number.isFinite(m.net) ? m.net : (parseFloat(m.net) || 0);
-        const pallets = PALLETS_PER_MDL[name];          // undefined for NV / unknowns
+        // NV variants ship on the same pallets as their vented base (SNV→S, ENV→E)
+        let pallets = PALLETS_PER_MDL[name];
+        if (pallets == null) {
+          const baseName = name.replace(/\bSNV$/, 'S').replace(/\bENV$/, 'E');
+          pallets = PALLETS_PER_MDL[baseName];
+        }
         const hasPallets = Number.isFinite(pallets);
         const palletWt = hasPallets ? pallets * PALLET_WEIGHT_LB : null;
         const gross = hasPallets ? net + palletWt : null;

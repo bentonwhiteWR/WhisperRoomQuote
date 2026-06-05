@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.67.11', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**SEO engine now uses the REAL page Google ranks for each query — no more guessing.** We pull query→page data straight from Search Console, so the Revenue Opportunity table shows the actual <strong>Ranking Page</strong> for each keyword (with a Commercial / Blog / Other tag) plus that page’s clicks, impressions, CTR, and position. The Action Engine uses this to give much smarter advice.'},
+        {t:'add', d:'**Page-strategy recommendations.** Each opportunity now reads the real ranking page and recommends the right move: if a <strong>commercial page already ranks</strong> → optimize it (title/meta or content + links). If a <strong>blog post ranks but a sales page exists</strong> → <em>don’t</em> rewrite the blog — strengthen the commercial page and add internal links from the blog to it (with the exact pages to link from). If <strong>no commercial page exists</strong> → flagged as a Landing Page Opportunity with a full brief to build one. Each card shows “Ranks today → Target” so you can see exactly which page to act on.'},
+      ]
+    },
+    {
       v:'1.67.10', date:'June 5, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Weights: refreshed MDL 102168 ENV after its packing list was corrected** (net 4455 → 4303 lb).'},

@@ -1615,10 +1615,24 @@ async function handle(req, res, ctx) {
                  cz.rev_per_click,
                  CASE WHEN p.p_clicks >= 10 AND cz.avg_paid_cvr > 0 AND p.p_cvr IS NOT NULL
                       THEN LEAST(4, GREATEST(0.25, p.p_cvr / cz.avg_paid_cvr)) ELSE 1 END   AS cvr_mult,
-                 LEAST(1, GREATEST(0.25, (18 - o.position) / 14.0))                          AS reach
+                 LEAST(1, GREATEST(0.25, (18 - o.position) / 14.0))                          AS reach,
+                 -- The real page Google ranks for this query (top by clicks), from
+                 -- the query×page snapshot. Replaces keyword-overlap guessing.
+                 rp.page         AS actual_page,
+                 rp.clicks       AS page_clicks,
+                 rp.impressions  AS page_impr,
+                 rp.ctr          AS page_ctr,
+                 rp.position     AS page_position
           FROM org o
           CROSS JOIN cz
           LEFT JOIN paid p ON p.term = LOWER(TRIM(o.query))
+          LEFT JOIN LATERAL (
+            SELECT qp.page, qp.clicks, qp.impressions, qp.ctr, qp.position
+            FROM marketing_gsc_query_pages qp
+            WHERE qp.query = o.query
+            ORDER BY qp.clicks DESC NULLS LAST, qp.impressions DESC NULLS LAST
+            LIMIT 1
+          ) rp ON TRUE
         )
         SELECT *,
                (extra_clicks * rev_per_click * cvr_mult * reach) AS revenue_opportunity

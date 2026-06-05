@@ -94,7 +94,7 @@ async function syncGsc({ db, daysBack = 90 }) {
   const dateTo   = _gDate(new Date());
   const dateFrom = _gDate(_daysAgo(daysBack));
 
-  let queryRows = [], pageRows = [], dailyRows = [];
+  let queryRows = [], pageRows = [], dailyRows = [], queryPageRows = [];
   try {
     const token = await _accessToken();
     queryRows = await _searchAnalytics(token, dateFrom, dateTo, ['date', 'query']);
@@ -105,6 +105,10 @@ async function syncGsc({ db, daysBack = 90 }) {
     // (often 60-70% short on clicks). The KPI cards + performance chart read
     // marketing_gsc_daily so the headline numbers reconcile with Search Console.
     dailyRows = await _searchAnalytics(token, dateFrom, dateTo, ['date']);
+    // Query × page (NO date) → which page Google actually ranks for each query.
+    // Powers the real "ranking page" in the Revenue/Action engines. No date
+    // dimension keeps it small (bounded by distinct pairs, not pairs × days).
+    queryPageRows = await _searchAnalytics(token, dateFrom, dateTo, ['query', 'page']);
   } catch (e) {
     const msg = e.message || String(e);
     await _recordSync(db, 'gsc', 0, dateFrom, dateTo, msg);
@@ -114,10 +118,11 @@ async function syncGsc({ db, daysBack = 90 }) {
   await _bulkUpsert(db, 'marketing_gsc_queries', 'query', queryRows);
   await _bulkUpsert(db, 'marketing_gsc_pages',   'page',  pageRows);
   await _upsertDaily(db, dailyRows);
+  await _upsertQueryPages(db, queryPageRows);
 
-  const total = queryRows.length + pageRows.length + dailyRows.length;
+  const total = queryRows.length + pageRows.length + dailyRows.length + queryPageRows.length;
   await _recordSync(db, 'gsc', total, dateFrom, dateTo, null);
-  return { ok: true, report: 'gsc', rows: total, queries: queryRows.length, pages: pageRows.length, daily: dailyRows.length, date_from: dateFrom, date_to: dateTo };
+  return { ok: true, report: 'gsc', rows: total, queries: queryRows.length, pages: pageRows.length, daily: dailyRows.length, query_pages: queryPageRows.length, date_from: dateFrom, date_to: dateTo };
 }
 
 // Chunked multi-row upsert (~500 rows/statement). GSC daily data can be
@@ -160,6 +165,30 @@ async function _upsertDaily(db, rows) {
          clicks = EXCLUDED.clicks, impressions = EXCLUDED.impressions,
          ctr = EXCLUDED.ctr, position = EXCLUDED.position, updated_at = NOW()`,
       [date, r.clicks || 0, r.impressions || 0, r.ctr || 0, r.position || 0]
+    );
+  }
+}
+
+// Query × page upsert (marketing_gsc_query_pages). Keys = [query, page].
+// Chunked like the daily-segmented tables — can be tens of thousands of pairs.
+async function _upsertQueryPages(db, rows) {
+  if (!db) return;
+  const CHUNK = 500;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
+    const tuples = [], params = [];
+    chunk.forEach((r, j) => {
+      const b = j * 6;
+      tuples.push(`($${b+1}, $${b+2}, $${b+3}, $${b+4}, $${b+5}, $${b+6})`);
+      const [query, page] = r.keys;
+      params.push(query, page, r.clicks || 0, r.impressions || 0, r.ctr || 0, r.position || 0);
+    });
+    await db.query(
+      `INSERT INTO marketing_gsc_query_pages (query, page, clicks, impressions, ctr, position) VALUES ${tuples.join(', ')}
+       ON CONFLICT (query, page) DO UPDATE SET
+         clicks = EXCLUDED.clicks, impressions = EXCLUDED.impressions,
+         ctr = EXCLUDED.ctr, position = EXCLUDED.position, updated_at = NOW()`,
+      params
     );
   }
 }

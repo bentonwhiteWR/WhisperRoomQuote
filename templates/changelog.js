@@ -51,6 +51,26 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.71.1', date:'June 5, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Duplicate Quote button moved into the Customer Information header.** It now sits at the top-right of section 1 instead of up by + New Quote.'},
+      ]
+    },
+    {
+      v:'1.71.0', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Quote Builder: &ldquo;Duplicate Quote&rdquo; button.** Next to <b>+ New Quote</b>, hit <b>Duplicate Quote</b>, search any past quote by customer, deal name, or quote number, and pick it &mdash; its line items (product, price, description, qty, weight) copy straight into your current quote, and prices re-verify against the catalog just like opening a quote. Perfect for near-identical orders. (Customer &amp; freight stay as your current quote &mdash; it duplicates the products, not the whole quote, and asks before replacing items you have already added.)'},
+      ]
+    },
+    {
+      v:'1.70.2', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**New “⚡ Growth Engine” tab — a marketing director in a dashboard.** Where the Ad Spend and Search Console tabs report on each channel, Growth Engine answers “if we could only work on 5 marketing actions this month, what should they be?” It fuses Google Ads, Search Console, and HubSpot revenue into one prioritized plan.'},
+        {t:'add', d:'**Growth Priorities board** auto-sorts every opportunity into 🎯 Do Now / ⏭ Next / 👀 Monitor / 🚫 Ignore (so blog/informational topics fall away and booth-buying opportunities rise). **“If you do 5 things this month” summary** with the total revenue upside + spend savings. **Opportunity Queue** ranks SEO + Paid opportunities by a unified Growth Score (revenue × commercial intent / paid quality × confidence × proven revenue) with the root-cause diagnosis for each.'},
+        {t:'add', d:'**Target Page Analysis, Google Ads Improvement Engine, and Budget Reallocation.** See whether the right page is ranking for each keyword; get per-campaign recommendations (rewrite ads on high-spend/low-CTR, check the landing page on high-CTR/low-conversion, scale strong-ROAS campaigns, cut wasted spend) with suggested ad headlines/descriptions; and a “where should the next $1,000 go” board grouping campaigns into Increase / Maintain / Reduce / Pause by return on ad spend.'},
+      ]
+    },
+    {
       v:'1.70.1', date:'June 5, 2026', tag:'fix',
       changes:[
         {t:'add', d:'**Internal /weights: click any model to see its pallet dimensions.** Click a row to expand it and view every pallet&rsquo;s L &times; W &times; H (with cubic feet and the longest dimension per skid). Makes it easy to judge whether a booth can really ship on fewer pallets &mdash; big wall panels need a long skid no matter how light the load is. Also flags when a model&rsquo;s pallet count differs from the dimensions on file.'},

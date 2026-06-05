@@ -221,6 +221,39 @@ td.drillable:hover{color:var(--orange)}
 .act-bottleneck.bn-missing-page{background:rgba(34,197,94,.13);color:#5fd98a;border-color:rgba(34,197,94,.28)}
 .act-pages{font-size:11.5px;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:6px 10px;background:var(--surface);border-radius:6px;line-height:1.5}
 .act-pages .ea-len{font-size:9px;font-weight:800;letter-spacing:.05em}
+/* v1.69.x — Growth Engine: kanban + opportunity model */
+.kanban{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:900px){.kanban{grid-template-columns:repeat(2,1fr)}}
+.kanban-col{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:10px;min-height:70px}
+.kanban-col-head{display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;margin-bottom:9px;padding-bottom:7px;border-bottom:1px solid var(--border)}
+.kanban-col-head .kb-count{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.kanban-col.kb-do-now .kanban-col-head{color:#f87171}
+.kanban-col.kb-next .kanban-col-head{color:#6ba8ff}
+.kanban-col.kb-monitor .kanban-col-head{color:#fbbf24}
+.kanban-col.kb-ignore .kanban-col-head{color:var(--muted)}
+.kb-card{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-bottom:7px}
+.kb-card:last-child{margin-bottom:0}
+.kb-card-top{display:flex;align-items:baseline;justify-content:space-between;gap:6px;margin-bottom:3px}
+.kb-topic{font-size:12.5px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kb-amt{font-size:11px;font-weight:700;font-family:var(--mono);color:var(--green);white-space:nowrap}
+.kb-amt.save{color:#fbbf24}
+.kb-meta{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.kb-empty{font-size:11px;color:var(--muted);font-style:italic;padding:6px 2px}
+.gw-chip{font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;white-space:nowrap}
+.gw-seo{background:rgba(34,197,94,.13);color:#5fd98a}
+.gw-paid{background:rgba(59,130,246,.14);color:#6ba8ff}
+.gw-both{background:rgba(168,85,247,.14);color:#c08cff}
+.gw-pri{font-size:9px;font-weight:800;text-transform:uppercase;padding:1px 6px;border-radius:4px;white-space:nowrap}
+.gw-pri.do-now{background:rgba(239,68,68,.16);color:#f87171}
+.gw-pri.next{background:rgba(59,130,246,.14);color:#6ba8ff}
+.gw-pri.monitor{background:rgba(245,158,11,.16);color:#fbbf24}
+.gw-pri.ignore{background:rgba(148,163,184,.12);color:#94a3b8}
+.gw-score{display:inline-flex;align-items:center;gap:6px;justify-content:flex-end}
+.kanban-budget .bud-col-head{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;padding-bottom:7px;border-bottom:1px solid var(--border)}
+.kanban-budget .kb-increase .bud-col-head{color:#5fd98a}
+.kanban-budget .kb-maintain .bud-col-head{color:#6ba8ff}
+.kanban-budget .kb-reduce .bud-col-head{color:#fbbf24}
+.kanban-budget .kb-pause .bud-col-head{color:#f87171}
 .act-validated{font-size:10px;font-weight:700;color:#5fd98a}
 .act-impact{margin-left:auto;font-size:14px;font-weight:800;font-family:var(--mono);color:var(--green)}
 .act-meta{font-size:11px;color:var(--muted);font-family:var(--mono);margin-bottom:7px}
@@ -368,9 +401,90 @@ td.drillable:hover{color:var(--orange)}
   <!-- v1.65.1 — sub-tabs. Date range + attribution model + Sync are shared
        chrome above; the two panels below swap. -->
   <div class="mtab-bar">
+    <button class="mtab"        data-tab="growth" onclick="switchMarketingTab('growth')">⚡ Growth Engine</button>
     <button class="mtab active" data-tab="ads" onclick="switchMarketingTab('ads')">Google Ad Spend</button>
     <button class="mtab"        data-tab="gsc" onclick="switchMarketingTab('gsc')">Google Search Console</button>
   </div>
+
+  <!-- ════════ Growth Engine tab (v1.69.x) — the decision dashboard ════════ -->
+  <div id="tabGrowth" class="tab-panel" style="display:none">
+    <div class="status-bar" style="margin-bottom:16px">
+      <div class="status-text">
+        <div id="growthHeadline">Growth Engine — your highest-impact marketing actions, right now</div>
+        <span class="muted" id="growthDetail">Combines Google Ads, Search Console, and HubSpot revenue into one prioritized plan. Press Sync All if data looks stale.</span>
+      </div>
+      <button class="sync-btn" id="growthSyncBtn" onclick="runSync()">↻ Sync All</button>
+    </div>
+
+    <!-- Section 1: Growth Priorities (Kanban) -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">① Growth Priorities</div>
+        <span class="section-meta" id="growthKanbanMeta">—</span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
+        Every opportunity auto-classified by what to do about it this week. Sorted within each column by Growth Score.
+      </div>
+      <div class="kanban" id="growthKanban"><div class="empty">No data yet. Press <strong>↻ Sync All</strong>.</div></div>
+    </div>
+
+    <!-- Section 2: Executive Summary -->
+    <div class="exec-summary" id="growthExec" style="display:none">
+      <div class="exec-head">
+        <div class="exec-title"><span class="spark">⚡</span> If you do 5 things this month</div>
+        <span class="exec-sub" id="growthExecSub">—</span>
+      </div>
+      <div class="exec-list" id="growthExecList"></div>
+    </div>
+
+    <!-- Section 3 + 4: Opportunity Queue (with root-cause diagnosis) -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">② Opportunity Queue</div>
+        <span class="section-meta" id="growthQueueMeta">—</span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
+        Every opportunity across SEO + Paid, ranked by <strong>Growth Score</strong> (what's most likely to sell more booths, not what gets the most traffic). The <strong>Diagnosis</strong> column is the root-cause bottleneck. <span class="ea-len">GROWTH SCORE</span> = revenue size × commercial intent / paid quality × confidence × proven revenue.
+      </div>
+      <div id="growthQueueBody"><div class="empty">No data yet.</div></div>
+    </div>
+
+    <!-- Section 5: Target Page Analysis -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">③ Target Page Analysis</div>
+        <span class="section-meta" id="growthTpaMeta">—</span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
+        For each commercial SEO opportunity: is the right page ranking? Real GSC query→page data vs the ideal commercial page.
+      </div>
+      <div id="growthTpaBody"><div class="empty">No data yet.</div></div>
+    </div>
+
+    <!-- Section 6: Google Ads Improvement Engine -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">④ Google Ads Improvement Engine</div>
+        <span class="section-meta" id="growthAdsMeta">—</span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
+        Per-campaign diagnosis from spend, CTR, conversion, and HubSpot revenue: ad-copy rewrites, landing-page checks, budget moves.
+      </div>
+      <div class="act-list" id="growthAdsBody"><div class="empty">No paid data yet.</div></div>
+    </div>
+
+    <!-- Section 8: Budget Reallocation -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">⑤ Budget Reallocation</div>
+        <span class="section-meta" id="growthBudgetMeta">—</span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
+        Where the next $1,000 should go, from return on ad spend (HubSpot closed revenue ÷ Google Ads cost per campaign).
+      </div>
+      <div class="kanban kanban-budget" id="growthBudgetBody"><div class="empty">No paid data yet.</div></div>
+    </div>
+  </div><!-- /tabGrowth -->
 
   <div id="tabAds" class="tab-panel">
 
@@ -1009,13 +1123,15 @@ function changeModel(model) {
 let currentTab = 'ads';
 function switchMarketingTab(name) {
   currentTab = name;
-  document.getElementById('tabAds').style.display = name === 'ads' ? '' : 'none';
-  document.getElementById('tabGsc').style.display = name === 'gsc' ? '' : 'none';
+  document.getElementById('tabAds').style.display    = name === 'ads' ? '' : 'none';
+  document.getElementById('tabGsc').style.display    = name === 'gsc' ? '' : 'none';
+  document.getElementById('tabGrowth').style.display = name === 'growth' ? '' : 'none';
   document.querySelectorAll('.mtab').forEach(el => el.classList.toggle('active', el.dataset.tab === name));
   if (name === 'gsc') loadGscTab();
+  else if (name === 'growth') loadGrowthTab();
 }
 // Reload only the visible tab when the shared date range / model changes.
-function refreshActiveTab() { return currentTab === 'gsc' ? loadGscTab() : loadAllTables(); }
+function refreshActiveTab() { return currentTab === 'gsc' ? loadGscTab() : currentTab === 'growth' ? loadGrowthTab() : loadAllTables(); }
 
 // v1.65.4 — Movers dimension (query | page). Drives ?dim= on gsc-movers.
 let gscMoversDim = 'query';
@@ -1753,6 +1869,279 @@ function renderActionEngine(roRows, pageRows, queryRows) {
   }).join('');
   document.getElementById('gscActionMeta').textContent = `${allPositive.length} diagnosed · showing top ${topCards.length}`;
   exec.style.display = ''; sec.style.display = '';
+}
+
+// ════════════════ v1.69.x — GROWTH ENGINE (the decision dashboard) ════════════════
+// A synthesis layer: it reuses the SEO opportunity engine (gscEnrichRev +
+// gscDiagnose) and adds Google Ads campaign analysis (vs HubSpot revenue), then
+// unifies everything into one prioritized framework — Kanban, exec summary,
+// queue, target-page analysis, ads engine, budget reallocation. No new backend.
+async function loadGrowthTab() {
+  const q  = `?days=${currentDaysBack}`;
+  const qm = `?days=${currentDaysBack}&model=${currentModel}`;
+  const [ro, pg, qs, camp, attr] = await Promise.all([
+    fetch('/api/marketing/gsc-revenue-opportunity' + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/gsc-pages' + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/gsc-queries' + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/campaigns' + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/campaign-attribution' + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+  ]);
+  const pages = (pg && pg.rows) || [], queries = (qs && qs.rows) || [];
+  gscBuildCtrBenchmark(queries);
+  gscBuildPageStats(pages);
+  const seoEnriched = gscEnrichRev((ro && ro.rows) || [], pages);
+  const model = gscBuildGrowthModel(seoEnriched, pages, (camp && camp.rows) || [], (attr && attr.rows) || []);
+  renderGrowthKanban(model.all);
+  renderGrowthExec(model.all);
+  renderGrowthQueue(model.all);
+  renderGrowthTpa(model.all);
+  renderGrowthAds(model.all);
+  renderGrowthBudget(model.budget);
+  document.getElementById('growthDetail').textContent =
+    `${model.all.length} opportunities across SEO + Paid · last ${currentDaysBack} days · ${MODEL_LABELS[currentModel] || 'First interaction'} attribution`;
+}
+
+// Build the unified opportunity model: SEO (diagnosed) + informational (ignore) +
+// Paid (campaign analysis), each scored + bucketed.
+function gscBuildGrowthModel(seoEnriched, pages, campRows, attrRows) {
+  const ranked = seoEnriched.slice().sort((a, b) => (+b.commercial_opp || 0) - (+a.commercial_opp || 0));
+  const seoTop = ranked.filter(r => (+r.commercial_intent || 0) >= 25 || (+r.revenue_opportunity || 0) > 0).slice(0, 60);
+  const maxRank = seoTop.length ? (+seoTop[0].commercial_opp || 0) : 0;
+  const seoOpps = seoTop.map(r => gscToGrowthOpp(gscDiagnose(r, pages, maxRank), r));
+  const informational = seoEnriched
+    .filter(r => (+r.commercial_intent || 0) < 15 && (+r.impressions || 0) >= 30)
+    .sort((a, b) => (+b.impressions || 0) - (+a.impressions || 0)).slice(0, 6)
+    .map(r => ({ kind: 'seo', informational: true, channel: 'SEO', type: 'Content Opportunity', rootCause: 'Informational',
+      topic: r.query, query: r.query, revenueOpp: 0, confidence: 30, commercialIntent: +r.commercial_intent || 0, provenValue: false,
+      action: 'Informational query — low booth-buying intent. Keep for traffic/brand, not a revenue priority.',
+      currentPerf: `${fmtInt(+r.impressions || 0)} impr · low intent`, matchStatus: 'unknown' }));
+  const paid = gscBuildPaidGrowth(campRows, attrRows);
+  const all = seoOpps.concat(informational).concat(paid.opps);
+  const maxRev = Math.max(1, ...all.map(o => Math.abs(o.revenueOpp || 0)));
+  all.forEach(o => { o.growthScore = gscGrowthScore(o, maxRev); o.priority = gscGrowthBucket(o); });
+  all.sort((a, b) => b.growthScore - a.growthScore);
+  return { all, budget: paid.budget };
+}
+
+function gscToGrowthOpp(d, r) {
+  const typeMap = { ctr: 'SEO Opportunity', ranking: 'SEO Opportunity', content: 'Content Opportunity', authority: 'Authority Opportunity', 'wrong-page': 'Wrong Page Ranking Opportunity', 'missing-page': 'Missing Page Opportunity' };
+  const rootMap = { ctr: 'CTR Gap', ranking: 'Ranking Gap', content: 'Content Gap', authority: 'Authority Gap', 'wrong-page': 'Wrong Page Ranking', 'missing-page': 'Missing Landing Page' };
+  let rootCause = rootMap[d.type];
+  if (d.type === 'ctr') { const generic = gscExpectedCtr(d.position); if (d.benchCtr > 0 && d.benchCtr < generic * 0.5) rootCause = 'SERP Compression'; }
+  const hasPaid = !!r.has_paid_signal || (+r.p_clicks || 0) > 0;
+  return { kind: 'seo', channel: hasPaid ? 'Both' : 'SEO', type: typeMap[d.type], rootCause, dtype: d.type,
+    topic: d.query, query: d.query, revenueOpp: d.impact, confidence: d.confidence, commercialIntent: +r.commercial_intent || 0,
+    provenValue: hasPaid, commercial: d.commercial, action: d.action, reasoning: d.reasoning,
+    currentPerf: `#${d.position.toFixed(1)} · ${(d.ctr * 100).toFixed(1)}% CTR · ${fmtInt(d.impressions)} impr`,
+    actualPage: d.actualPage, actualPageShort: d.actualPageShort, actualPageClass: d.actualPageClass,
+    idealPage: d.idealPage, idealPageShort: d.idealPageShort, matchStatus: d.matchStatus };
+}
+
+// Paid analysis: aggregate Google Ads campaigns, join HubSpot revenue, classify
+// into ad-copy / landing-page / budget opportunities + a budget-reallocation bucket.
+function gscBuildPaidGrowth(campRows, attrRows) {
+  const agg = {};
+  (campRows || []).forEach(r => {
+    const id = r.campaign_id; if (!id) return;
+    const a = agg[id] || (agg[id] = { id, name: r.campaign_name, impressions: 0, clicks: 0, cost: 0, conversions: 0, conv_value: 0 });
+    a.name = r.campaign_name || a.name;
+    a.impressions += +r.impressions || 0; a.clicks += +r.clicks || 0; a.cost += +r.cost_usd || 0;
+    a.conversions += +r.conversions || 0; a.conv_value += +r.conversion_value || 0;
+  });
+  const attrByName = {};
+  (attrRows || []).forEach(a => { attrByName[String(a.campaign_name || '').toLowerCase().trim()] = a; });
+  const campaigns = Object.values(agg).map(c => {
+    const at = attrByName[String(c.name || '').toLowerCase().trim()] || {};
+    const ctr = c.impressions ? c.clicks / c.impressions : 0;
+    const cvr = c.clicks ? c.conversions / c.clicks : 0;
+    const revenue = +at.revenue_won || 0, leads = +at.leads || 0, deals = +at.deals_won || 0;
+    const roas = c.cost > 0 ? revenue / c.cost : (revenue > 0 ? Infinity : 0);
+    return Object.assign(c, { ctr, cvr, revenue, leads, deals, roas, segment: at.segment });
+  }).filter(c => c.cost > 0 || c.impressions > 50);
+  const medCtr = gscMedian(campaigns.map(c => c.ctr).filter(x => x > 0));
+  const totalSpend = campaigns.reduce((s, c) => s + c.cost, 0);
+  const opps = [], budget = { increase: [], maintain: [], reduce: [], pause: [] };
+  campaigns.forEach(c => {
+    const spendShare = totalSpend ? c.cost / totalSpend : 0;
+    const highSpend = c.cost >= Math.max(100, totalSpend * 0.05);
+    const lowCtr = medCtr > 0 && c.ctr < medCtr * 0.7;
+    const lowCvr = c.clicks >= 20 && c.cvr < 0.01;
+    const goodRoas = c.roas >= 2 && c.revenue > 0;
+    const poorRoas = c.cost >= 150 && c.revenue > 0 && c.roas < 1;
+    const noRevHighSpend = c.cost >= 300 && c.revenue <= 0 && c.conversions < 1;
+    if (goodRoas) budget.increase.push(c);
+    else if (noRevHighSpend) budget.pause.push(c);
+    else if (poorRoas) budget.reduce.push(c);
+    else budget.maintain.push(c);
+    if (highSpend && lowCtr) opps.push(gscPaidOpp(c, 'Ad Copy Opportunity', 'CTR Gap',
+      `Ad copy isn't earning clicks: ${(c.ctr * 100).toFixed(1)}% CTR on $${fmtInt(Math.round(c.cost))} spend (below the ${(medCtr * 100).toFixed(1)}% account median). Rewrite the ads to lift click-through.`,
+      c.cost * 0.15, true, { adCopy: true }));
+    else if (highSpend && lowCvr) opps.push(gscPaidOpp(c, 'Landing Page Opportunity', 'Paid Search Gap',
+      `Clicks are healthy (${(c.ctr * 100).toFixed(1)}% CTR) but they don't convert (${(c.cvr * 100).toFixed(1)}%). The problem is likely the landing page, not the ad — review the page this campaign sends to.`,
+      c.cost * 0.2, true));
+    else if (goodRoas && spendShare < 0.15) opps.push(gscPaidOpp(c, 'Budget Reallocation Opportunity', 'Budget Gap',
+      `Strong return (${c.roas === Infinity ? '∞' : c.roas.toFixed(1)}× ROAS on $${fmtInt(Math.round(c.cost))}) but modest spend — there's room to capture more. Raise budget / bids and watch ROAS hold.`,
+      c.revenue * 0.3, true, { budgetUp: true }));
+    else if (poorRoas || noRevHighSpend) opps.push(gscPaidOpp(c, 'Budget Reallocation Opportunity', 'Paid Search Gap',
+      `$${fmtInt(Math.round(c.cost))} spent with ${c.revenue > 0 ? `only $${fmtInt(Math.round(c.revenue))} revenue (${c.roas.toFixed(1)}× ROAS)` : 'no attributed revenue'}. Cut or restructure — those dollars are better spent on higher-return campaigns.`,
+      c.cost * 0.5, true, { savings: true }));
+  });
+  return { opps, budget };
+}
+function gscPaidOpp(c, type, rootCause, reasoning, impact, proven, extra) {
+  return Object.assign({ kind: 'paid', channel: 'Paid', type, rootCause, topic: c.name || '(campaign)', campaign: c,
+    revenueOpp: impact, confidence: c.revenue > 0 ? 70 : 55, provenValue: proven, commercialIntent: 70,
+    action: reasoning, reasoning,
+    currentPerf: `$${fmtInt(Math.round(c.cost))} spend · ${(c.ctr * 100).toFixed(1)}% CTR · ${(c.cvr * 100).toFixed(1)}% conv · ${c.roas === Infinity ? '∞' : c.roas.toFixed(1)}× ROAS · $${fmtInt(Math.round(c.revenue))} rev`,
+    matchStatus: 'unknown' }, extra || {});
+}
+
+// Unified Growth Score — what's most likely to sell more booths, not what gets traffic.
+function gscGrowthScore(o, maxRev) {
+  const revNorm = Math.min(100, 100 * Math.abs(o.revenueOpp || 0) / maxRev);
+  const quality = o.kind === 'paid' ? Math.min(100, (o.campaign ? (o.campaign.roas === Infinity ? 4 : o.campaign.roas) : 2) * 25) : (o.commercialIntent || 0);
+  const proven = o.provenValue ? 100 : 45;
+  let s = 0.45 * revNorm + 0.25 * quality + 0.20 * (o.confidence || 0) + 0.10 * proven;
+  if (o.informational) s *= 0.3;
+  return Math.round(s);
+}
+function gscGrowthBucket(o) {
+  if (o.informational || (o.kind === 'seo' && (o.commercialIntent || 0) < 25)) return 'ignore';
+  if (o.savings) return Math.abs(o.revenueOpp || 0) >= 2000 ? 'do-now' : 'next';
+  const s = o.growthScore, c = o.confidence || 0;
+  if (s >= 58 && c >= 55) return 'do-now';
+  if (s >= 34) return 'next';
+  return 'monitor';
+}
+
+// ── Growth Engine renderers ────────────────────────────────────────────
+function gscChannelChip(ch) { const c = { SEO: 'gw-seo', Paid: 'gw-paid', Both: 'gw-both' }[ch] || 'gw-seo'; return `<span class="gw-chip ${c}">${ch}</span>`; }
+function gscPriLabel(p) { return { 'do-now': 'Do Now', next: 'Next', monitor: 'Monitor', ignore: 'Ignore' }[p] || p; }
+function gscGrowthHeadline(o) {
+  const t = gscTitleCase(o.topic);
+  if (o.kind === 'paid') {
+    if (o.savings) return `Reduce spend on ${t}`;
+    if (o.budgetUp) return `Scale ${t} (raise budget)`;
+    if (o.type === 'Ad Copy Opportunity') return `Rewrite ads for ${t}`;
+    if (o.type === 'Landing Page Opportunity') return `Fix the landing page for ${t}`;
+    return `Improve ${t}`;
+  }
+  switch (o.dtype) {
+    case 'ctr': return `Rewrite title/meta for “${o.topic}”`;
+    case 'ranking': return `Push “${o.topic}” into the top 3`;
+    case 'content': return `Deepen content for “${o.topic}”`;
+    case 'authority': return `Build authority for “${o.topic}”`;
+    case 'wrong-page': return `Get the right page ranking for “${o.topic}”`;
+    case 'missing-page': return `Create a “${o.topic}” landing page`;
+    default: return `Improve “${o.topic}”`;
+  }
+}
+function gscShortAction(o) { const t = String(o.action || '').replace(/<[^>]+>/g, ''); return t.length > 150 ? t.slice(0, 148) + '…' : t; }
+
+function renderGrowthKanban(all) {
+  const cols = [['do-now', '🎯 Do Now', 'kb-do-now'], ['next', '⏭ Next', 'kb-next'], ['monitor', '👀 Monitor', 'kb-monitor'], ['ignore', '🚫 Ignore', 'kb-ignore']];
+  document.getElementById('growthKanban').innerHTML = cols.map(([key, label, cls]) => {
+    const inCol = all.filter(o => o.priority === key);
+    const items = inCol.slice(0, 8);
+    const cards = items.length ? items.map(o => {
+      const amt = o.savings ? `<span class="kb-amt save">save ~$${fmtInt(Math.round(Math.abs(o.revenueOpp)))}</span>`
+        : (o.revenueOpp > 0 ? `<span class="kb-amt">~$${fmtInt(Math.round(o.revenueOpp))}</span>` : '');
+      return `<div class="kb-card"><div class="kb-card-top"><span class="kb-topic">${escHtml(o.topic)}</span>${amt}</div>` +
+        `<div class="kb-meta">${gscChannelChip(o.channel)} <span>${escHtml(o.rootCause)}</span> · GS ${o.growthScore}</div></div>`;
+    }).join('') : '<div class="kb-empty">none</div>';
+    return `<div class="kanban-col ${cls}"><div class="kanban-col-head"><span>${label}</span><span class="kb-count">${inCol.length}</span></div>${cards}</div>`;
+  }).join('');
+  document.getElementById('growthKanbanMeta').textContent = `${all.length} opportunities`;
+}
+
+function renderGrowthExec(all) {
+  const top = all.filter(o => o.priority !== 'ignore').slice(0, 5);
+  const exec = document.getElementById('growthExec');
+  if (!top.length) { exec.style.display = 'none'; return; }
+  exec.style.display = '';
+  const totalUp = all.filter(o => !o.savings && o.priority !== 'ignore').reduce((s, o) => s + (o.revenueOpp || 0), 0);
+  const totalSave = all.filter(o => o.savings).reduce((s, o) => s + Math.abs(o.revenueOpp || 0), 0);
+  document.getElementById('growthExecList').innerHTML = top.map((o, i) => {
+    const amt = o.savings ? `<span class="exec-amt" style="color:#fbbf24">~$${fmtInt(Math.round(Math.abs(o.revenueOpp)))} savings</span>`
+      : `<span class="exec-amt">~$${fmtInt(Math.round(o.revenueOpp || 0))}</span>`;
+    return `<div class="exec-item"><span class="exec-rank">${i + 1}</span><span class="exec-text"><strong>${escHtml(gscGrowthHeadline(o))}</strong> ${gscChannelChip(o.channel)} — ${amt} estimated impact. ${escHtml(gscShortAction(o))}</span></div>`;
+  }).join('');
+  document.getElementById('growthExecSub').textContent =
+    `~$${fmtInt(Math.round(totalUp))} revenue upside${totalSave > 0 ? ` + ~$${fmtInt(Math.round(totalSave))} spend savings` : ''} across your priorities`;
+}
+
+function renderGrowthQueue(all) {
+  const rows = all.filter(o => o.priority !== 'ignore').slice(0, 40);
+  const head = `<tr><th>Priority</th><th>Channel</th><th>Topic / Keyword</th><th>Type</th><th>Diagnosis</th><th>Current</th><th class="num">Revenue</th><th class="num">Conf</th><th class="num">Growth</th><th>Recommended action</th></tr>`;
+  const body = rows.map(o => {
+    const rev = o.savings ? `<span style="color:#fbbf24">save $${fmtInt(Math.round(Math.abs(o.revenueOpp)))}</span>`
+      : (o.revenueOpp > 0 ? `$${fmtInt(Math.round(o.revenueOpp))}` : '—');
+    return `<tr><td><span class="gw-pri ${o.priority}">${gscPriLabel(o.priority)}</span></td>` +
+      `<td>${gscChannelChip(o.channel)}</td>` +
+      `<td>${escHtml(o.topic)}</td>` +
+      `<td style="font-size:11px">${escHtml(o.type)}</td>` +
+      `<td style="font-size:11px;color:var(--muted)">${escHtml(o.rootCause)}</td>` +
+      `<td style="font-size:10.5px;color:var(--muted);font-family:var(--mono)">${escHtml(o.currentPerf || '')}</td>` +
+      `<td class="num">${rev}</td>` +
+      `<td class="num">${o.confidence}</td>` +
+      `<td class="num"><strong>${o.growthScore}</strong></td>` +
+      `<td style="font-size:11.5px;max-width:300px">${escHtml(gscGrowthHeadline(o))}</td></tr>`;
+  }).join('');
+  document.getElementById('growthQueueBody').innerHTML = `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;
+  document.getElementById('growthQueueMeta').textContent = `${rows.length} ranked (excludes Ignore)`;
+}
+
+function renderGrowthTpa(all) {
+  const rows = all.filter(o => o.kind === 'seo' && !o.informational).slice(0, 30);
+  const el = document.getElementById('growthTpaBody');
+  if (!rows.length) { el.innerHTML = '<div class="empty">No SEO opportunities yet — run Sync GSC.</div>'; document.getElementById('growthTpaMeta').textContent = ''; return; }
+  const head = `<tr><th>Keyword</th><th>Current ranking page</th><th>Ideal commercial page</th><th>Match</th></tr>`;
+  const body = rows.map(o => {
+    const cur = o.actualPageShort ? `<a href="${escHtml(o.actualPage)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(o.actualPageShort)}</a>${gscPageClassChip(o.actualPageClass)}` : '<span style="color:var(--muted)">unknown — Sync GSC</span>';
+    const ideal = o.matchStatus === 'missing' ? '<span style="color:#fbbf24">none — build one</span>' : (o.idealPageShort ? `<a href="${escHtml(o.idealPage)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(o.idealPageShort)}</a>` : '—');
+    return `<tr><td>${escHtml(o.topic)}</td><td>${cur}</td><td>${ideal}</td><td>${gscMatchChip(o.matchStatus)}</td></tr>`;
+  }).join('');
+  el.innerHTML = `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;
+  document.getElementById('growthTpaMeta').textContent = `${rows.length} commercial keywords`;
+}
+
+function renderGrowthAds(all) {
+  const paid = all.filter(o => o.kind === 'paid');
+  const el = document.getElementById('growthAdsBody');
+  if (!paid.length) { el.innerHTML = '<div class="empty">No paid campaigns with enough data, or Google Ads isn’t synced.</div>'; document.getElementById('growthAdsMeta').textContent = ''; return; }
+  el.innerHTML = paid.slice(0, 12).map(o => {
+    const adCopy = o.adCopy
+      ? `<div class="act-assist open" style="display:block">${gscSuggestBlock('Suggested headlines (≤30 chars)', gscAdHeadlines(o.topic), 30)}${gscSuggestBlock('Suggested descriptions (≤90 chars)', gscAdDescriptions(o.topic), 90)}<div class="ea-note">AI-assisted drafts in WhisperRoom voice. Review before publishing.</div></div>`
+      : '';
+    return `<div class="act-card bn-${o.savings ? 'wrong-page' : 'ranking'}">
+      <div class="act-card-head">
+        <span class="act-priority ${o.priority}">${gscPriLabel(o.priority)}</span>
+        <span class="act-query">${escHtml(o.topic)}</span>
+        <span class="act-bottleneck bn-ranking">${escHtml(o.type)}</span>
+        <span class="act-impact">${o.savings ? `save ~$${fmtInt(Math.round(Math.abs(o.revenueOpp)))}` : `~$${fmtInt(Math.round(o.revenueOpp))}`}</span>
+      </div>
+      <div class="act-meta">${escHtml(o.currentPerf)}</div>
+      <div class="act-reason">${escHtml(o.reasoning)}</div>
+      ${adCopy}
+    </div>`;
+  }).join('');
+  document.getElementById('growthAdsMeta').textContent = `${paid.length} campaign opportunities`;
+}
+function gscAdHeadlines(topic) { const t = gscTitleCase(topic); return [`${t} Booths`.slice(0, 30), `WhisperRoom ${t}`.slice(0, 30), 'Quiet, Built to Order', 'Get a Fast Quote']; }
+function gscAdDescriptions(topic) { const t = gscTitleCase(topic).toLowerCase(); return [`Modular sound isolation ${t} booths, made in the USA. Get a fast quote.`.slice(0, 90), `Configure your booth: pro isolation, fast shipping, US support.`.slice(0, 90)]; }
+
+function renderGrowthBudget(budget) {
+  const cols = [['increase', '▲ Increase', 'kb-increase'], ['maintain', '◆ Maintain', 'kb-maintain'], ['reduce', '▼ Reduce', 'kb-reduce'], ['pause', '⏸ Pause / Test', 'kb-pause']];
+  const el = document.getElementById('growthBudgetBody');
+  const any = cols.some(([k]) => (budget[k] || []).length);
+  if (!any) { el.innerHTML = '<div class="empty">No paid campaigns with enough data, or Google Ads isn’t synced.</div>'; document.getElementById('growthBudgetMeta').textContent = ''; return; }
+  el.innerHTML = cols.map(([k, label, cls]) => {
+    const items = (budget[k] || []).slice().sort((a, b) => (b.revenue || 0) - (a.revenue || 0)).slice(0, 8);
+    const cards = items.length ? items.map(c => `<div class="kb-card"><div class="kb-card-top"><span class="kb-topic">${escHtml(c.name || '(campaign)')}</span><span class="kb-amt">${c.roas === Infinity ? '∞' : c.roas.toFixed(1)}×</span></div><div class="kb-meta">$${fmtInt(Math.round(c.cost))} spend · $${fmtInt(Math.round(c.revenue))} rev · ${c.deals} won</div></div>`).join('') : '<div class="kb-empty">none</div>';
+    return `<div class="kanban-col ${cls}"><div class="bud-col-head">${label} <span style="color:var(--muted)">(${(budget[k] || []).length})</span></div>${cards}</div>`;
+  }).join('');
+  const totalReduce = (budget.reduce || []).concat(budget.pause || []).reduce((s, c) => s + c.cost, 0);
+  document.getElementById('growthBudgetMeta').textContent = `~$${fmtInt(Math.round(totalReduce))} in reduce / pause candidates this window`;
 }
 
 // ── v1.65.4 — native-Search-Console-style daily performance chart ──────

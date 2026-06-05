@@ -1472,6 +1472,9 @@ body:not(.dark) .success-modal-actions .btn-secondary { color: var(--text) !impo
     <button class="create-btn" id="assemblyManualBtn" onclick="openAssemblyManualModal()" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.8);margin-top:8px" title="Build a merged assembly manual PDF for the current booth selection">
       &#x1F6E0; Build Assembly Manual
     </button>
+    <button class="create-btn" id="packingListBtn" onclick="openPackingList()" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.8);margin-top:8px" title="Generate the packing list for this quote (booth BOM by room) in a new tab">
+      &#x1F4CB; View Packing List
+    </button>
 
   <div class="result-box" id="resultBox"></div>
 
@@ -5397,7 +5400,22 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
     })
     .then(r => r.json())
     .then(data => {
-      const changed = (data.results || []).filter(r => r.changed);
+      const results = data.results || [];
+
+      // WEIGHT: sync silently to the current catalog weight — no prompt. Weights
+      // changing doesn't affect what the rep is quoting (price), and keeping them
+      // current makes freight/order-processing accurate. Reps don't need to know.
+      let weightSynced = false;
+      results.forEach(r => {
+        if (r.weightChanged) {
+          const item = lineItems.find(i => String(i.productId) === String(r.productId));
+          if (item) { item.weight = r.currentWeight; weightSynced = true; }
+        }
+      });
+      if (weightSynced) { renderLineItems(); updateSummary(); }
+
+      // PRICE: still prompt — price IS what the rep is quoting, so they decide.
+      const changed = results.filter(r => r.changed);
       if (changed.length === 0) return;
 
       // Show price change modal
@@ -7845,6 +7863,19 @@ async function openAssemblyManualModal() {
 
 function closeAssemblyManualModal() {
   document.getElementById('amModal').style.display = 'none';
+}
+
+// ── Packing List ─────────────────────────────────────────────────
+// Opens the generated packing list for the CURRENT saved quote in a new tab.
+// The PL is built server-side from the quote's saved line items (booth → BOM,
+// one section per room), so the quote must be saved/pushed first.
+function openPackingList() {
+  const num = window._loadedQuoteNumber;
+  if (!num) {
+    alert('Save or push this quote first — the packing list is generated from the saved quote.');
+    return;
+  }
+  window.open('/pl/' + encodeURIComponent(num), '_blank');
 }
 
 async function submitAssemblyManual() {

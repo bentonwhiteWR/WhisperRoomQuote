@@ -166,6 +166,34 @@ const REPS = {
   '38900892':'Chet','38732186':'Jeromy'
 };
 
+// ── Pallet count per booth/model ──────────────────────────────────
+// Source of truth for pallet COUNT per product name (dimensions stay client-side
+// where freight is priced). Kept in sync with BOOTH_DATA in quote-builder.html.
+// Used by process-order (freight pallet auto-count) AND the /weights tool
+// (gross = net + pallets×144).
+const PALLETS_PER_MDL = {
+  'Voice Over Basic':1,'Voice Over Deluxe':1,'Audiology Basic':1,'Audiology Deluxe':1,
+  'Office Booth':1,'Work From Home Booth':1,'Drum Booth':3,'Audiology Basic Plus':1,
+  'Audiology Compact':1,'Audiology Ultra':2,'Audiology Premium':1,'Creator Basic':1,
+  'Creator Deluxe':2,'Practice Basic':1,'Practice Deluxe':2,'Recording Studio':2,
+  'Drum Studio':3,'Meeting Booth':1,'Maker Space':2,
+  'MDL 4230 E':1,'MDL 4230 S':1,'MDL 127 LP E':1,'MDL 127 LP S':1,
+  'MDL 4242 E':1,'MDL 4242 S':1,'MDL 4260 E':1,'MDL 4260 S':1,
+  'MDL 4284 E':2,'MDL 4284 S':1,'MDL 4848 E':1,'MDL 4848 S':1,
+  'MDL 4872 E':2,'MDL 4872 S':1,'MDL 4896 E':2,'MDL 4896 S':1,
+  'MDL 6060 E':2,'MDL 6060 S':1,'MDL 6084 E':2,'MDL 6084 S':1,
+  'MDL 7272 E':2,'MDL 7272 S':1,'MDL 7296 E':2,'MDL 7296 S':1,
+  'MDL 8484 E':3,'MDL 8484 S':2,'MDL 9696 E':3,'MDL 9696 S':2,
+  'MDL 10284 E':3,'MDL 10284 S':2,'MDL 84102 E':3,'MDL 84102 S':2,
+  'MDL 84126 E':3,'MDL 84126 S':2,'MDL 96120 E':3,'MDL 96120 S':2,
+  'MDL 96144 E':3,'MDL 96144 S':2,'MDL 96168 E':4,'MDL 96168 S':2,
+  'MDL 96192 E':5,'MDL 96192 S':3,'MDL 102102 E':3,'MDL 102102 S':2,
+  'MDL 102126 E':3,'MDL 102126 S':2,'MDL 102144 E':4,'MDL 102144 S':2,
+  'MDL 102168 E':5,'MDL 102168 S':3,'MDL 102186 E':5,'MDL 102186 S':3,
+};
+const PALLET_WEIGHT_LB = 144; // shipping weight added per pallet (skid + packaging)
+const MAX_PALLET_LOAD_LB = 1800; // max product (net) weight we put on a single pallet
+
 // Resolve a HubSpot owner ID from an email. Tries the exact ?email= filter
 // first, then — because that filter misses owners whose record email differs
 // in casing/whitespace — pages through ALL owners and matches case-insensitively.
@@ -217,6 +245,9 @@ const shopifyLib = require('./lib/shopify');
 
 const assemblyManual = require('./lib/assembly-manual');
 // assemblyManual.init({ gdrive }) called below after gdrive.init runs
+
+const packingList = require('./lib/packing-list');
+packingList.init();
 
 const stripeLib = require('./lib/stripe');
 // stripeLib.init(...) called below alongside the other httpsRequest-dependent libs
@@ -391,7 +422,7 @@ gdrive.init({ httpsRequest, getDb: () => db, writelog });
 assemblyManual.init({ gdrive });
 taxjar.init({ httpsRequest, NEXUS_STATES, toStateAbbr, zipToState });
 notify.init({ getDb: () => db });
-freight.init({ httpsRequest, getDb: () => db, writelog, puppeteer });
+freight.init({ httpsRequest, getDb: () => db, writelog, puppeteer, withBrowser: pdf.withBrowser });
 stripeLib.init({ httpsRequest, writelog, getDb: () => db });
 db_mod.init({
   getDb: () => db,
@@ -3117,6 +3148,36 @@ const server = http.createServer(async (req, res) => {
     } catch(e) {
       console.error('[accounting/hubspot-payouts]', e.message);
       json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── QB Activity finder ────────────────────────────────────────────
+  // A searchable "what changed when" view over QuickBooks — far better than
+  // QBO's own audit-log search for LOCATING records. NOTE: QBO does not expose
+  // the audit log (the "who") via API, so this shows what/when + a deep link,
+  // never who. Queries entities by MetaData.LastUpdatedTime in [from,to].
+  // GET /api/accounting/qb-activity?from=YYYY-MM-DD&to=YYYY-MM-DD&entities=Invoice,Bill,...
+  if (pathname === '/api/accounting/qb-activity' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+      const fromDate = /^\d{4}-\d{2}-\d{2}$/.test(parsed.query.from || '') ? parsed.query.from : weekAgo;
+      const toDate   = /^\d{4}-\d{2}-\d{2}$/.test(parsed.query.to   || '') ? parsed.query.to   : today;
+      // Inclusive day boundaries. QBO compares the ISO timestamp; UTC bounds are
+      // close enough for a finder (a few hours' edge slop at most).
+      const fromIso = `${fromDate}T00:00:00+00:00`;
+      const toIso   = `${toDate}T23:59:59+00:00`;
+      const allowed = new Set(qb.QB_ACTIVITY_ENTITIES);
+      const entities = String(parsed.query.entities || '')
+        .split(',').map(s => s.trim()).filter(e => allowed.has(e));
+      const result = await qb.fetchActivity({ fromIso, toIso, entities });
+      json({ from: fromDate, to: toDate, entities: entities.length ? entities : qb.QB_ACTIVITY_ENTITIES, ...result });
+    } catch(e) {
+      console.error('[accounting/qb-activity]', e.message);
+      // Surface the common "not connected" / "reconnect" cases cleanly
+      json({ error: e.message }, /not connected|reconnect|expired/i.test(e.message) ? 409 : 500);
     }
     return;
   }
@@ -6476,18 +6537,24 @@ ${q.accepted ? `
         try {
           const res = await httpsRequest({
             hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/products/${item.productId}?properties=name,price`,
+            path: `/crm/v3/objects/products/${item.productId}?properties=name,price,weight`,
             method: 'GET',
             headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
           });
           const current = parseFloat(res.body?.properties?.price || 0);
           const quoted  = parseFloat(item.price || 0);
+          const currentWeight = parseFloat(res.body?.properties?.weight || 0);
+          const quotedWeight  = parseFloat(item.weight || 0);
           return {
             productId: item.productId,
             name: item.name,
             quotedPrice: quoted,
             currentPrice: current,
-            changed: Math.abs(current - quoted) > 0.01
+            changed: Math.abs(current - quoted) > 0.01,
+            // Weight is synced SILENTLY on the client (no prompt) — surfaced here too.
+            quotedWeight,
+            currentWeight,
+            weightChanged: Math.abs(currentWeight - quotedWeight) > 0.01
           };
         } catch(e) {
           return { productId: item.productId, name: item.name, error: true };
@@ -10584,6 +10651,157 @@ ${q.accepted ? `
     if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(fs.readFileSync(path.join(__dirname, 'vendor-pos-dashboard.html'), 'utf8'));
+    return;
+  }
+
+  // ── /weights — hidden MDL weight reconciliation tool (auth-only, no nav link) ──
+  // Reference + QB reconciliation: per-MDL net (from PL BOM) vs gross vs HubSpot price book.
+  if (pathname === '/weights' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(fs.readFileSync(path.join(__dirname, 'weights-dashboard.html'), 'utf8'));
+    return;
+  }
+
+  // ── /pl/:quoteNumber — Packing List viewer (auth-only) ──
+  // Generated from the saved quote's line items: booth → BOM, multi-room.
+  if (pathname.startsWith('/pl/') && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(fs.readFileSync(path.join(__dirname, 'packing-list.html'), 'utf8'));
+    return;
+  }
+
+  // ── API: Packing List data for a saved quote ──
+  // GET /api/packing-list/:quoteNumber → rooms[] (booth BOM + flagged features)
+  if (pathname.startsWith('/api/packing-list/') && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const quoteNumber = decodeURIComponent(pathname.replace('/api/packing-list/', '').replace(/\/+$/, ''));
+      if (!quoteNumber) { json({ error: 'Quote number required' }, 400); return; }
+      let snap = null, dealName = null, createdAt = null;
+      if (db) {
+        const r = await db.query(
+          'SELECT json_snapshot, deal_name, created_at FROM quotes WHERE quote_number = $1', [quoteNumber]);
+        if (r.rows[0]) { snap = r.rows[0].json_snapshot || null; dealName = r.rows[0].deal_name; createdAt = r.rows[0].created_at; }
+      }
+      if (!snap) { json({ error: 'Quote not found: ' + quoteNumber }, 404); return; }
+      const lineItems = snap.lineItems || [];
+      const opts = {
+        hinge: parsed.query.hinge && /^(Left|Right)$/i.test(parsed.query.hinge) ? parsed.query.hinge : undefined,
+        foam: parsed.query.foam || undefined,
+      };
+      const pl = packingList.generate(lineItems, opts);
+      const customer = snap.customer || {};
+      json({
+        quoteNumber,
+        meta: {
+          dealName: dealName || snap.dealName || '',
+          company: snap.company || customer.company || '',
+          customerName: [customer.firstName, customer.lastName].filter(Boolean).join(' ') || customer.name || '',
+          createdAt: createdAt || null,
+        },
+        ...pl,
+        components: packingList.componentDict(),
+      });
+    } catch (e) {
+      writelog('error', 'packing-list.api', 'failed to build packing list', { err: e.message });
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: /weights data — net (PL BOM) vs gross vs HubSpot price book ──
+  if (pathname === '/api/weights-table' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      // PL BOM net weights (committed snapshot, refreshed when base PLs re-extracted)
+      let mw = { _meta: {}, models: {} };
+      try { mw = JSON.parse(fs.readFileSync(path.join(__dirname, 'lib', 'model-weights.json'), 'utf8')); }
+      catch (e) { writelog('warn', 'weights.read', 'model-weights.json unreadable', { err: e.message }); }
+      const models = mw.models || {};
+
+      // Per-pallet dimensions from BOOTH_DATA (the authoritative pallet breakdown).
+      let pdims = {};
+      try { pdims = (JSON.parse(fs.readFileSync(path.join(__dirname, 'lib', 'pl-data', 'pallet-dims.json'), 'utf8')).models) || {}; }
+      catch (e) { writelog('warn', 'weights.read', 'pallet-dims.json unreadable', { err: e.message }); }
+
+      // HubSpot price-book weights, indexed by normalized name
+      const norm = s => String(s || '').toUpperCase().replace(/\s+/g, ' ').trim();
+      const pbByName = {};
+      let pbError = null;
+      try {
+        const products = await getProductsCached();
+        (products || []).forEach(p => {
+          const nm = norm(p?.properties?.name);
+          if (!nm) return;
+          const w = parseFloat(p?.properties?.weight);
+          pbByName[nm] = {
+            weight: Number.isFinite(w) ? w : null,
+            price: parseFloat(p?.properties?.price) || null,
+            id: p?.id || null,
+          };
+        });
+      } catch (e) { pbError = e.message; }
+
+      const rows = Object.keys(models).sort().map(name => {
+        const m = models[name] || {};
+        const net = Number.isFinite(m.net) ? m.net : (parseFloat(m.net) || 0);
+        // NV variants ship on the same pallets as their vented base (SNV→S, ENV→E)
+        let pallets = PALLETS_PER_MDL[name];
+        if (pallets == null) {
+          const baseName = name.replace(/\bSNV$/, 'S').replace(/\bENV$/, 'E');
+          pallets = PALLETS_PER_MDL[baseName];
+        }
+        const hasPallets = Number.isFinite(pallets);
+        const palletWt = hasPallets ? pallets * PALLET_WEIGHT_LB : null;
+        const gross = hasPallets ? net + palletWt : null;
+        // Net product weight carried per pallet, vs the 1800-lb max. minByWeight
+        // is the fewest pallets that keeps each ≤ max (weight only — does NOT
+        // account for component volume/dimensions, so "could reduce" is a hint).
+        const netPerPallet = (hasPallets && pallets > 0) ? +(net / pallets).toFixed(1) : null;
+        const minPalletsByWeight = net > 0 ? Math.max(1, Math.ceil(net / MAX_PALLET_LOAD_LB)) : null;
+        const overMax = (netPerPallet != null) && netPerPallet > MAX_PALLET_LOAD_LB;
+        const couldReduce = hasPallets && minPalletsByWeight != null && minPalletsByWeight < pallets;
+        const pb = pbByName[norm(name)] || null;
+        const pbWeight = pb && Number.isFinite(pb.weight) ? pb.weight : null;
+        const delta = (gross != null && pbWeight != null) ? +(gross - pbWeight).toFixed(2) : null;
+        // size/variant parsed from name e.g. "MDL 102102 ENV" -> size 102102, variant ENV
+        const mm = /^MDL\s+(.+?)\s+(S|E|SNV|ENV)$/i.exec(name);
+        return {
+          name,
+          size: m.size || (mm ? mm[1] : ''),
+          variant: m.variant || (mm ? mm[2].toUpperCase() : ''),
+          comps: m.comps ?? null,
+          net: +net.toFixed(2),
+          pallets: hasPallets ? pallets : null,
+          netPerPallet,
+          minPalletsByWeight,
+          overMax,
+          couldReduce,
+          palletDims: pdims[name] || [],   // per-pallet L×W×H from BOOTH_DATA
+          palletWeight: palletWt,
+          gross,
+          pbWeight,
+          pbId: pb?.id || null,
+          pbPrice: pb?.price ?? null,
+          delta,
+          matched: !!pb,
+        };
+      });
+
+      json({
+        meta: mw._meta || {},
+        palletWeightLb: PALLET_WEIGHT_LB,
+        maxPalletLoadLb: MAX_PALLET_LOAD_LB,
+        pbError,
+        count: rows.length,
+        rows,
+      });
+    } catch (e) {
+      writelog('error', 'weights.table', 'failed to build weights table', { err: e.message });
+      json({ error: e.message }, 500);
+    }
     return;
   }
 
@@ -15493,27 +15711,8 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       const orderToken = quoteRow?.share_token || '';
       const quoteSnap  = quoteRow?.json_snapshot || {};
       const orderUrl = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}?t=${orderToken}`;
-      // Auto-compute pallet count from line items (kept in sync with BOOTH_DATA in quote-builder.html).
-      // Source of truth is pallet COUNT per product name; dimensions stay client-side where freight is priced.
-      const PALLETS_PER_MDL = {
-        'Voice Over Basic':1,'Voice Over Deluxe':1,'Audiology Basic':1,'Audiology Deluxe':1,
-        'Office Booth':1,'Work From Home Booth':1,'Drum Booth':3,'Audiology Basic Plus':1,
-        'Audiology Compact':1,'Audiology Ultra':2,'Audiology Premium':1,'Creator Basic':1,
-        'Creator Deluxe':2,'Practice Basic':1,'Practice Deluxe':2,'Recording Studio':2,
-        'Drum Studio':3,'Meeting Booth':1,'Maker Space':2,
-        'MDL 4230 E':1,'MDL 4230 S':1,'MDL 127 LP E':1,'MDL 127 LP S':1,
-        'MDL 4242 E':1,'MDL 4242 S':1,'MDL 4260 E':1,'MDL 4260 S':1,
-        'MDL 4284 E':2,'MDL 4284 S':1,'MDL 4848 E':1,'MDL 4848 S':1,
-        'MDL 4872 E':2,'MDL 4872 S':1,'MDL 4896 E':2,'MDL 4896 S':1,
-        'MDL 6060 E':2,'MDL 6060 S':1,'MDL 6084 E':2,'MDL 6084 S':1,
-        'MDL 7272 E':2,'MDL 7272 S':1,'MDL 7296 E':2,'MDL 7296 S':1,
-        'MDL 8484 E':3,'MDL 8484 S':2,'MDL 9696 E':3,'MDL 9696 S':2,
-        'MDL 10284 E':3,'MDL 10284 S':2,'MDL 84102 E':3,'MDL 84102 S':2,
-        'MDL 84126 E':3,'MDL 84126 S':2,'MDL 96120 E':3,'MDL 96120 S':2,
-        'MDL 96144 E':3,'MDL 96144 S':2,'MDL 96168 E':4,'MDL 96168 S':2,
-        'MDL 96192 E':5,'MDL 96192 S':3,'MDL 102102 E':3,'MDL 102102 S':2,
-        'MDL 102126 E':3,'MDL 102126 S':2,'MDL 102144 E':4,'MDL 102144 S':2,
-      };
+      // Auto-compute pallet count from line items. PALLETS_PER_MDL is module-level
+      // (shared with the /weights tool); source of truth is pallet COUNT per product name.
       const computedPallets = (lineItems || []).reduce((sum, item) => {
         const n = PALLETS_PER_MDL[item?.name];
         if (!n) return sum;

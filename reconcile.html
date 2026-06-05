@@ -199,6 +199,7 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
     <button class="tab-btn" data-tab="hs-payouts" onclick="switchTab('hs-payouts')">HubSpot Payouts</button>
     <button class="tab-btn" data-tab="vendor-bills" onclick="switchTab('vendor-bills')">Vendor Bills</button>
     <button class="tab-btn" data-tab="sales-by-state" onclick="switchTab('sales-by-state')">Sales by State</button>
+    <button class="tab-btn" data-tab="qb-activity" onclick="switchTab('qb-activity')">QB Activity</button>
   </div>
 
   <!-- ── Sales by State tab ── -->
@@ -215,6 +216,49 @@ th.col-qb.first, td.col-qb.first { min-width:140px; word-break:normal; overflow-
     </div>
     <div id="sbsMsg" style="color:var(--text2);font-size:13px;padding:10px 0">Loading&hellip;</div>
     <div id="sbsTableWrap" style="display:none;overflow-x:auto"></div>
+  </div>
+
+  <!-- ── QB Activity tab ── -->
+  <div id="tabActivity" style="display:none">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-size:15px;font-weight:800;color:var(--text)">QuickBooks Activity Finder</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:3px;max-width:640px">Find what changed in QuickBooks and when, with a one-click link straight to the record. Pick a date range, choose which record types, then type to filter instantly.</div>
+      </div>
+      <button class="btn btn-ghost" onclick="loadActivity()">&#8635; Refresh</button>
+    </div>
+
+    <div class="card" style="background:rgba(245,158,11,.08);border-color:var(--amber,#f59e0b)">
+      <div style="font-size:11.5px;color:var(--text2);line-height:1.5">
+        <b style="color:var(--amber,#f59e0b)">Heads up:</b> QuickBooks doesn&rsquo;t expose the audit log&rsquo;s <b>&ldquo;who&rdquo;</b> through its API (UI&#8209;only), nor a separate entry for every individual edit. This shows <b>what</b> changed and <b>when</b> &mdash; created / edited / emailed / attachments added, plus deletes from the last ~30 days &mdash; and links straight to the record, but can&rsquo;t show which user made the change or the full per&#8209;edit history. For those, open the record and check QuickBooks&rsquo; own Audit History.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="align-items:flex-end">
+        <div>
+          <label>From</label>
+          <input type="date" id="actFrom">
+        </div>
+        <div>
+          <label>To</label>
+          <input type="date" id="actTo">
+        </div>
+        <button class="btn btn-orange" onclick="loadActivity()">Find</button>
+        <input type="text" id="actSearch" placeholder="Type to filter: name, doc #, type, amount…" oninput="renderActivity()" style="margin-left:auto;min-width:280px;flex:1">
+      </div>
+      <div style="margin-top:12px">
+        <label style="display:block;margin-bottom:6px">Record types</label>
+        <div id="actEntityChips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+      </div>
+      <div style="margin-top:12px">
+        <label style="display:block;margin-bottom:6px">Event types</label>
+        <div id="actActionChips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+      </div>
+    </div>
+
+    <div id="actMsg" style="color:var(--text2);font-size:13px;padding:10px 0">Pick a range and hit <b>Find</b>.</div>
+    <div id="actTableWrap" style="display:none;overflow-x:auto"></div>
   </div>
 
   <!-- ── Reconcile tab ── -->
@@ -1516,7 +1560,9 @@ function switchTab(name) {
   document.getElementById('tabHsPayouts').style.display    = name === 'hs-payouts'    ? '' : 'none';
   document.getElementById('tabVendorBills').style.display  = name === 'vendor-bills'  ? '' : 'none';
   document.getElementById('tabSalesByState').style.display = name === 'sales-by-state' ? '' : 'none';
+  document.getElementById('tabActivity').style.display     = name === 'qb-activity'    ? '' : 'none';
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  if (name === 'qb-activity'   && _actInit === false) initActivityTab();
   if (name === 'sales-by-state' && _sbsData == null) loadSalesByState();
   if (name === 'qb-invoices'   && _qbInvoices == null) loadQbInvoices();
   if (name === 'ar'            && _arInvoices == null) loadAr();
@@ -1542,6 +1588,177 @@ function switchTab(name) {
     }
     loadHsPayouts();
   }
+}
+
+// ── QB Activity tab ───────────────────────────────────────────────
+let _actInit = false;          // entity chips/dates initialized?
+let _actData = null;           // last loaded { rows, counts, capped, errors, from, to }
+const _ACT_ENTITIES = [
+  // [code, label, default-on]
+  ['Invoice','Invoices',true],['Payment','Payments',true],['CreditMemo','Credit Memos',true],
+  ['RefundReceipt','Refunds',true],['SalesReceipt','Sales Receipts',false],['Estimate','Estimates',false],
+  ['Bill','Bills',true],['BillPayment','Bill Payments',true],['VendorCredit','Vendor Credits',true],
+  ['Purchase','Expenses/Checks',true],['JournalEntry','Journal Entries',true],
+  ['Deposit','Deposits',true],['Transfer','Transfers',false],
+  ['Customer','Customers',false],['Vendor','Vendors',false],
+];
+const _actSelected = new Set(_ACT_ENTITIES.filter(e => e[2]).map(e => e[0]));
+
+// Event-type (action) filter — mirrors the audit log's "Events" dropdown.
+const _ACT_ACTIONS = [
+  ['created','Created'], ['updated','Edited'], ['emailed','Emailed'],
+  ['attachment','Attachments'], ['deleted','Deleted'],
+];
+const _actActionsSel = new Set(_ACT_ACTIONS.map(a => a[0]));
+
+function actEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function actFmt$(n){ return n==null ? '' : '$' + (parseFloat(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function actFmtTime(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return actEsc(iso);
+  return d.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'});
+}
+
+function initActivityTab(){
+  _actInit = true;
+  // Default range: last 7 days
+  const today = new Date();
+  const wk = new Date(Date.now() - 7*86400000);
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const f = document.getElementById('actFrom'), t = document.getElementById('actTo');
+  if (f && !f.value) f.value = iso(wk);
+  if (t && !t.value) t.value = iso(today);
+  renderActivityChips();
+  renderActionChips();
+  loadActivity();
+}
+
+function renderActivityChips(){
+  const wrap = document.getElementById('actEntityChips');
+  wrap.innerHTML = _ACT_ENTITIES.map(([code,label]) => {
+    const on = _actSelected.has(code);
+    return `<button class="btn ${on?'btn-orange':'btn-ghost'}" style="padding:4px 11px;font-size:11px" onclick="toggleActEntity('${code}')">${actEsc(label)}</button>`;
+  }).join('');
+}
+function toggleActEntity(code){
+  if (_actSelected.has(code)) _actSelected.delete(code); else _actSelected.add(code);
+  renderActivityChips();
+}
+
+// Event-type chips filter the already-loaded rows client-side (no re-fetch).
+function renderActionChips(){
+  const wrap = document.getElementById('actActionChips');
+  if (!wrap) return;
+  wrap.innerHTML = _ACT_ACTIONS.map(([code,label]) => {
+    const on = _actActionsSel.has(code);
+    return `<button class="btn ${on?'btn-orange':'btn-ghost'}" style="padding:4px 11px;font-size:11px" onclick="toggleActAction('${code}')">${actEsc(label)}</button>`;
+  }).join('');
+}
+function toggleActAction(code){
+  if (_actActionsSel.has(code)) _actActionsSel.delete(code); else _actActionsSel.add(code);
+  renderActionChips();
+  renderActivity();
+}
+
+// Action pill (label + color) — matches QB's wording ("Edited", not "Updated").
+function actPill(a){
+  const m = {
+    created:    ['CREATED','var(--green,#22c55e)'],
+    updated:    ['EDITED','var(--text2)'],
+    emailed:    ['EMAILED','#3b82f6'],
+    attachment: ['ATTACHMENT','#a855f7'],
+    deleted:    ['DELETED','var(--red,#ef4444)'],
+  };
+  const [label,color] = m[a] || [String(a||'').toUpperCase(),'var(--text2)'];
+  return `<span style="font-size:10px;font-weight:700;color:${color}">${label}</span>`;
+}
+function actStatusBadge(s){
+  if (!s) return '';
+  const c = s==='Paid' ? 'var(--green,#22c55e)' : (s==='Overdue' ? 'var(--red,#ef4444)' : 'var(--amber,#f59e0b)');
+  return `<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${c}">${actEsc(s)}</div>`;
+}
+
+async function loadActivity(){
+  const msg = document.getElementById('actMsg');
+  const wrap = document.getElementById('actTableWrap');
+  const from = document.getElementById('actFrom').value;
+  const to   = document.getElementById('actTo').value;
+  if (!from || !to){ msg.style.display=''; msg.textContent='Pick a From and To date.'; wrap.style.display='none'; return; }
+  if (!_actSelected.size){ msg.style.display=''; msg.textContent='Select at least one record type.'; wrap.style.display='none'; return; }
+  msg.style.display=''; msg.textContent='Querying QuickBooks…'; wrap.style.display='none';
+  try {
+    const params = new URLSearchParams({ from, to, entities: [..._actSelected].join(',') });
+    const r = await fetch('/api/accounting/qb-activity?' + params.toString(), { credentials:'include' });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    _actData = d;
+    renderActivity();
+  } catch(e){
+    msg.style.display=''; msg.textContent = 'Error: ' + e.message;
+    wrap.style.display='none';
+  }
+}
+
+function renderActivity(){
+  if (!_actData) return;
+  const msg = document.getElementById('actMsg');
+  const wrap = document.getElementById('actTableWrap');
+  const q = (document.getElementById('actSearch').value || '').trim().toLowerCase();
+  let rows = (_actData.rows || []).filter(r => _actActionsSel.has(r.action));
+  if (q) {
+    rows = rows.filter(r =>
+      (r.name||'').toLowerCase().includes(q) ||
+      (r.docNumber||'').toLowerCase().includes(q) ||
+      (r.type||'').toLowerCase().includes(q) ||
+      (r.action||'').toLowerCase().includes(q) ||
+      (r.status||'').toLowerCase().includes(q) ||
+      (r.memo||'').toLowerCase().includes(q) ||
+      String(r.amount==null?'':r.amount).includes(q)
+    );
+  }
+  const total = (_actData.rows||[]).length;
+  const noteBits = [];
+  noteBits.push(`${rows.length}${rows.length!==total?(' of '+total):''} event${rows.length===1?'':'s'} · ${actEsc(_actData.from)} → ${actEsc(_actData.to)}`);
+  if (_actData.capped && _actData.capped.length) noteBits.push(`<span style="color:var(--amber,#f59e0b)">capped at 5,000 for: ${actEsc(_actData.capped.join(', '))} (narrow the range)</span>`);
+  if (_actData.errors && _actData.errors.length) noteBits.push(`<span style="color:var(--red,#ef4444)">errors: ${actEsc(_actData.errors.map(e=>e.entity).join(', '))}</span>`);
+  (_actData.notes||[]).forEach(n => noteBits.push(`<span style="color:var(--text2)">${actEsc(n)}</span>`));
+
+  if (!rows.length){
+    msg.style.display=''; msg.innerHTML = 'No matching events. ' + noteBits.join(' · ');
+    wrap.style.display='none'; return;
+  }
+  msg.style.display='none';
+  const body = rows.map(r => {
+    const link = r.link ? `<a href="${actEsc(r.link)}" target="_blank" rel="noopener" class="btn btn-ghost" style="padding:2px 9px;font-size:11px">Open in QB ↗</a>` : '';
+    // Name + sub-hints: attached-to entity, linked txns, memo.
+    const sub = [];
+    if (r.attachedTo) sub.push('on ' + actEsc(r.attachedTo));
+    if (r.linked && r.linked.length) sub.push('→ ' + r.linked.map(l=>actEsc(l.type)).join(', '));
+    if (r.memo) sub.push(actEsc(r.memo));
+    const nameCell = `${actEsc(r.name)}${sub.length?`<div style="font-size:10px;color:var(--text2)">${sub.join(' · ')}</div>`:''}`;
+    const editedN = (r.action==='updated' && r.syncToken>0) ? `<div style="font-size:9px;color:var(--text2)">edited ${r.syncToken}&times;</div>` : '';
+    return `<tr>
+      <td style="white-space:nowrap">${actEsc(actFmtTime(r.lastUpdated))}</td>
+      <td>${actEsc(r.type)}</td>
+      <td>${actEsc(r.docNumber)}</td>
+      <td>${nameCell}</td>
+      <td style="text-align:right;white-space:nowrap">${actFmt$(r.amount)}${actStatusBadge(r.status)}</td>
+      <td style="white-space:nowrap">${r.txnDate?actEsc(r.txnDate):''}</td>
+      <td>${actPill(r.action)}${editedN}</td>
+      <td style="text-align:right">${link}</td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML = `
+    <div style="font-size:11px;color:var(--text2);padding:6px 2px">${noteBits.join(' · ')}</div>
+    <table>
+      <thead><tr>
+        <th>Last Modified</th><th>Type</th><th>Doc #</th><th>Name</th>
+        <th style="text-align:right">Amount</th><th>Txn Date</th><th>Action</th><th></th>
+      </tr></thead>
+      <tbody>${body}</tbody>
+    </table>`;
+  wrap.style.display='';
 }
 
 // ── Sales by State tab ────────────────────────────────────────────

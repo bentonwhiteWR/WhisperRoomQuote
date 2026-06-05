@@ -51,6 +51,133 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.70.1', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'add', d:'**Internal /weights: click any model to see its pallet dimensions.** Click a row to expand it and view every pallet&rsquo;s L &times; W &times; H (with cubic feet and the longest dimension per skid). Makes it easy to judge whether a booth can really ship on fewer pallets &mdash; big wall panels need a long skid no matter how light the load is. Also flags when a model&rsquo;s pallet count differs from the dimensions on file.'},
+      ]
+    },
+    {
+      v:'1.70.0', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**QB Activity finder now reads much more like the QuickBooks audit log.** Each record shows richer detail pulled from data we already fetch: status (<b>Paid / Open / Overdue</b>), an <b>edited&nbsp;N&times;</b> indicator, linked transactions, and memos. The action label now matches QB&rsquo;s wording (&ldquo;<b>Edited</b>&rdquo; instead of &ldquo;Updated&rdquo;).'},
+        {t:'add', d:'**New event types surfaced: Emailed, Attachments, and Deletes.** &ldquo;<b>Emailed</b>&rdquo; rows appear when an invoice/estimate/receipt was sent in the range; &ldquo;<b>Attachment</b>&rdquo; rows come from QuickBooks&rsquo; Attachable records; and <b>deleted</b> records now show via Change Data Capture (last ~30 days only — a QBO limit). New <b>Event types</b> filter chips (Created / Edited / Emailed / Attachments / Deleted) sit alongside the record-type filter.'},
+        {t:'log', d:'**Still no &ldquo;who,&rdquo; and not per-edit history** — QuickBooks doesn&rsquo;t expose either through its API. Each record still shows as one row at its latest state (plus separate Emailed/Attachment/Deleted events), not a separate row for every individual edit. For the user and full history, open the record&rsquo;s Audit History in QBO.'},
+      ]
+    },
+    {
+      v:'1.69.2', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'add', d:'**Internal /weights: new Net/Pallet column.** Shows net (BOM) weight &divide; pallet count for each model, measured against the 1,800 lb-per-pallet max. Color-coded &mdash; red over the max, amber when close, green with a &darr; hint when the weight alone would allow fewer pallets. New summary cards count models over the max and models that could potentially drop a pallet. (The hint is weight-only; pallet count is also limited by panel size/volume, so any reduction is a manual judgment call.)'},
+      ]
+    },
+    {
+      v:'1.69.1', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Smarter SEO diagnosis — stops defaulting to “rewrite title/meta.”** The Action Engine now figures out the <em>real</em> constraint for each keyword instead of assuming CTR. Six opportunity types: <strong>CTR</strong> (ranking is fine, clicks are weak), <strong>Ranking</strong> (clicks fine, position weak), <strong>Content</strong> (strong page, thin topical coverage), <strong>Authority</strong> (relevant page, out-muscled by competitors), <strong>Landing Page</strong> (the wrong page is ranking), and <strong>Missing Page</strong> (no commercial page exists) — each with its own tailored action.'},
+        {t:'add', d:'**CTR judged against WhisperRoom’s own benchmark, not a generic curve.** Modern results pages (AI Overviews, shopping, Reddit, video) mean a #6 ranking rarely gets the “textbook” 4-5% CTR. The dashboard now computes your <em>own</em> median CTR by position from your commercial booth keywords and flags CTR problems relative to that — so it stops over-flagging CTR. Revenue estimates were recalibrated to your real top-3 CTR too.'},
+        {t:'add', d:'**Target Page Analysis: “is the right page ranking?”** Every keyword now shows the real ranking page vs the ideal commercial page with a clear verdict — ✓ Right page, ✗ Wrong page, or ⊘ No commercial page — answered *before* recommending an action. So “recording booth” ranking on a blog post gets a “strengthen /application/recording + link from the blog” plan, not a blog title rewrite.'},
+      ]
+    },
+    {
+      v:'1.69.0', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing Lists: &ldquo;View Packing List&rdquo; button on the Quote Builder (next to Build Assembly Manual).** Generates the packing list for the saved quote in a new tab &mdash; one section per room. It reads your quote line items, treats each <b>MDL&hellip;</b> line as a booth and the lines under it as that booth&rsquo;s options, and builds the booth&rsquo;s full component list (codes, descriptions, quantities, weights, dimensions, pack codes) straight from the packing-list data &mdash; weights are exact. Each room defaults to <b>Left hinge / Gray foam</b> (change per room), and you can edit quantities, remove, or add component lines before printing. <b>In progress:</b> the optional-feature component swaps (windows, EFS, VSS, studio light, ADA, HX, etc.) are not auto-applied yet &mdash; those quote lines are listed under each room as a reminder to add their parts manually until the feature rules are finished. This is the first piece of the packing-list system replacing the old Excel/VBA workflow.'},
+      ]
+    },
+    {
+      v:'1.68.0', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Accounting &rarr; new &ldquo;QB Activity&rdquo; tab: a fast finder for what changed in QuickBooks.** Pick a date range and the record types (invoices, payments, bills, expenses, credit memos, journal entries, deposits, customers, vendors, and more), then type to filter instantly by name, doc number, type, or amount. Every row links straight to that record in QuickBooks. Built because QuickBooks&rsquo; own audit-log search is painful. <b>Note:</b> QuickBooks does not expose the audit log&rsquo;s &ldquo;who&rdquo; through its API, so this shows <b>what</b> changed and <b>when</b> (and links you there), but not which user did it, and it does not include deleted records &mdash; open the record in QuickBooks for its per-transaction Audit History.'},
+      ]
+    },
+    {
+      v:'1.67.11', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**SEO engine now uses the REAL page Google ranks for each query — no more guessing.** We pull query→page data straight from Search Console, so the Revenue Opportunity table shows the actual <strong>Ranking Page</strong> for each keyword (with a Commercial / Blog / Other tag) plus that page’s clicks, impressions, CTR, and position. The Action Engine uses this to give much smarter advice.'},
+        {t:'add', d:'**Page-strategy recommendations.** Each opportunity now reads the real ranking page and recommends the right move: if a <strong>commercial page already ranks</strong> → optimize it (title/meta or content + links). If a <strong>blog post ranks but a sales page exists</strong> → <em>don’t</em> rewrite the blog — strengthen the commercial page and add internal links from the blog to it (with the exact pages to link from). If <strong>no commercial page exists</strong> → flagged as a Landing Page Opportunity with a full brief to build one. Each card shows “Ranks today → Target” so you can see exactly which page to act on.'},
+      ]
+    },
+    {
+      v:'1.67.10', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Weights: refreshed MDL 102168 ENV after its packing list was corrected** (net 4455 → 4303 lb).'},
+      ]
+    },
+    {
+      v:'1.67.9', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**“Commercial Booth Opportunities” mode for the SEO engine — focused on selling booths.** A new toggle (🎯 Commercial Booth / All Organic) on the Revenue Opportunity Engine, Executive Summary, and Action Engine. It scores every organic query for booth-buying intent (0-100) based on product/category terms (booth, soundproof, vocal, recording, podcast, audiology, audiometric, hearing test, office, drum, broadcast, isolation…), buying terms (cost, price, quote, package, for sale, supplier, portable…), whether you also run it in Google Ads, paid conversions, and whether it maps to a product/category page — and heavily downweights general blog topics (microphone tips, music theory, ear training, record players, etc.). That intent is blended into the ranking so booth-selling keywords outrank high-traffic blog terms.'},
+        {t:'add', d:'**Commercial Booth is the default**, so the top recommendations now answer “what should we do next to sell more booths?” instead of being dominated by informational blog traffic. A new <strong>Intent</strong> column shows each query’s 0-100 booth-buying score. <strong>All Organic</strong> stays one click away for content and traffic research.'},
+      ]
+    },
+    {
+      v:'1.67.8', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Weights: refreshed MDL 102168 SNV after its packing list was corrected** (net 2449 → 2367 lb).'},
+      ]
+    },
+    {
+      v:'1.67.7', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Weights: refreshed MDL 102186 ENV after its packing list was corrected** (net 4883 → 4731 lb).'},
+      ]
+    },
+    {
+      v:'1.67.6', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'fix', d:'**Search Console totals now match Google.** The GSC tab’s headline Clicks / Impressions / CTR / Avg Position cards and the Organic Performance chart were summing the per-query data, which Google trims (it hides rare “anonymized” searches), so our totals read far below Search Console’s own “Total clicks.” We now pull the un-trimmed daily totals straight from Google for those headline numbers, so they line up with what you see in Search Console. The branded split is labeled “of named queries,” since that can only be measured on the searches Google shows us.'},
+        {t:'add', d:'**Revenue Opportunity Engine.** A ranked table that answers “if we improve one keyword’s ranking this month, which one earns the most added revenue?” It blends your Search Console rankings, the matching Google Ads conversion rate for each search term, and your HubSpot closed-won revenue into a single Revenue Opportunity dollar estimate and a 0-100 score, focused on queries ranking in positions 4-15.'},
+        {t:'add', d:'**Opportunity Action Engine + “What to do next” summary.** For each top keyword it diagnoses the single biggest bottleneck — Ranking, CTR, or Content Gap — and gives a recommended action, priority, estimated revenue impact, confidence, and reasoning. A plain-English executive summary at the top of the tab surfaces the top 3-5 moves and the total upside. Queries whose paid version converts above your account average are flagged ⭐ Commercially validated.'},
+        {t:'add', d:'**Execution Assistant: every recommendation comes with the actual work.** A “Show the work” panel on each action generates the next step — 3 title-tag + 3 meta-description drafts for CTR fixes (with character counts and one-click copy), a full content brief for content gaps (page type, H1, primary/secondary keywords, real questions to answer, H2 outline), internal-link source pages + a checklist for ranking fixes, and the supporting Google Ads proof for commercially-validated keywords. Secondary keywords, questions, and link sources are pulled from your real Search Console data; copy drafts follow WhisperRoom voice and are labeled drafts to review.'},
+      ]
+    },
+    {
+      v:'1.67.5', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Fix: PDF uploads to Drive failing ("Failed to launch the browser process").** The shipment-tracking poller was opening its own background browser without coordinating with the PDF generator, so when a rep saved a quote at the same time the tracking poller ran, the server tried to open two browsers at once and ran out of room — the PDF upload then failed to launch. All browser work now shares one slot and runs one-at-a-time, so quote/invoice/PO PDF uploads stop colliding with background tracking. (Tracking yields to your PDF, retrying on its next cycle.)'},
+      ]
+    },
+    {
+      v:'1.67.4', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Freight: the two largest models now count pallets correctly.** MDL 102168 and MDL 102186 (S/E/SNV/ENV) were missing from the pallet-count table the order-processing freight step uses, so an order with one of those booths under-counted pallets. Added them (102168 and 102186 each ship on 3 pallets standard / 5 enhanced, matching the quote-builder pallet data). Also fills in their gross weights on the internal weights page.'},
+        {t:'fix', d:'**Weights: refreshed MDL 96192 SNV and ENV after their packing lists were corrected.**'},
+      ]
+    },
+    {
+      v:'1.67.3', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**/weights: refreshed with the final rounded packing-list weights.** The net weights now come from the re-pulled base packing lists, where every component weight was rounded to the nearest pound — so all 104 model net weights are clean whole numbers. This is the real reconciliation data; the delta column against the HubSpot price book is now meaningful.'},
+      ]
+    },
+    {
+      v:'1.67.2', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**/weights: NV variants now show pallet counts.** SNV and ENV models had a blank pallet count (and therefore no gross weight) because they are not listed separately in the pallet map. They now inherit their vented base count (SNV uses the S count, ENV uses the E count), since they ship on the same pallets.'},
+      ]
+    },
+    {
+      v:'1.67.1', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Search Console tab: a daily performance chart, just like Google’s.** New <strong>Organic Performance</strong> graph at the top of the GSC tab plots Clicks, Impressions, CTR, and Avg Position over time (click any metric to toggle it, hover any day for exact numbers). Same dual-axis look you get inside Search Console, sitting right next to your closed-revenue data.'},
+        {t:'add', d:'**Striking Distance report: the queries you’re about to rank for.** Surfaces searches where you sit at average position 10-20 (page 2) with real impressions. These are the closest to breaking onto page 1, so pushing the page behind one of them up a few spots is the highest-return organic move.'},
+        {t:'add', d:'**CTR Opportunity report: pages worth a title rewrite.** Flags page-1 pages whose click-through rate trails what’s normal for their rank (e.g. sitting at #3 but getting clicked like a #8). Each row shows the estimated extra clicks if CTR rose to par, so you can prioritize which titles and descriptions to rewrite.'},
+        {t:'add', d:'**Movers report: what changed vs last period.** Compares this window to the one right before it and ranks the biggest organic-click gainers and losers, by query or by page. A quick read on what’s trending up and what slipped.'},
+      ]
+    },
+    {
+      v:'1.67.0', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Internal: hidden /weights reconciliation page.** A back-end tool (admin URL, no nav link) that lists every MDL with its net weight from the packing-list bill-of-materials, pallet count, pallet weight, computed gross, and the current HubSpot price-book weight side by side — with the delta flagged. Used to keep the price-book shipping weights honest against the real PL data.'},
+      ]
+    },
+    {
+      v:'1.66.2', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Opening a quote now silently refreshes line-item weights to the current catalog.** Prices still prompt ("update to current?") since price is what you are quoting — but weights just sync quietly in the background (no popup), so when an order gets processed the shipping weight is accurate. Saves a click and keeps freight numbers right.'},
+      ]
+    },
+    {
       v:'1.66.1', date:'June 5, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Fix: the new "Rebind Quote" button did nothing when clicked.** It called a text-escaping helper that exists in the Quote Builder but not the Deal Hub, so the click handler errored out before the picker could open. Removed the unneeded call — Rebind Quote now opens as intended.'},

@@ -6476,18 +6476,24 @@ ${q.accepted ? `
         try {
           const res = await httpsRequest({
             hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/products/${item.productId}?properties=name,price`,
+            path: `/crm/v3/objects/products/${item.productId}?properties=name,price,weight`,
             method: 'GET',
             headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
           });
           const current = parseFloat(res.body?.properties?.price || 0);
           const quoted  = parseFloat(item.price || 0);
+          const currentWeight = parseFloat(res.body?.properties?.weight || 0);
+          const quotedWeight  = parseFloat(item.weight || 0);
           return {
             productId: item.productId,
             name: item.name,
             quotedPrice: quoted,
             currentPrice: current,
-            changed: Math.abs(current - quoted) > 0.01
+            changed: Math.abs(current - quoted) > 0.01,
+            // Weight is synced SILENTLY on the client (no prompt) — surfaced here too.
+            quotedWeight,
+            currentWeight,
+            weightChanged: Math.abs(currentWeight - quotedWeight) > 0.01
           };
         } catch(e) {
           return { productId: item.productId, name: item.name, error: true };

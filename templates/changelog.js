@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.66.2', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Opening a quote now silently refreshes line-item weights to the current catalog.** Prices still prompt ("update to current?") since price is what you are quoting — but weights just sync quietly in the background (no popup), so when an order gets processed the shipping weight is accurate. Saves a click and keeps freight numbers right.'},
+      ]
+    },
+    {
       v:'1.66.1', date:'June 5, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Fix: the new "Rebind Quote" button did nothing when clicked.** It called a text-escaping helper that exists in the Quote Builder but not the Deal Hub, so the click handler errored out before the picker could open. Removed the unneeded call — Rebind Quote now opens as intended.'},

@@ -5397,7 +5397,22 @@ function loadFromHistoryEntry(idOrIdx, skipClose = false) {
     })
     .then(r => r.json())
     .then(data => {
-      const changed = (data.results || []).filter(r => r.changed);
+      const results = data.results || [];
+
+      // WEIGHT: sync silently to the current catalog weight — no prompt. Weights
+      // changing doesn't affect what the rep is quoting (price), and keeping them
+      // current makes freight/order-processing accurate. Reps don't need to know.
+      let weightSynced = false;
+      results.forEach(r => {
+        if (r.weightChanged) {
+          const item = lineItems.find(i => String(i.productId) === String(r.productId));
+          if (item) { item.weight = r.currentWeight; weightSynced = true; }
+        }
+      });
+      if (weightSynced) { renderLineItems(); updateSummary(); }
+
+      // PRICE: still prompt — price IS what the rep is quoting, so they decide.
+      const changed = results.filter(r => r.changed);
       if (changed.length === 0) return;
 
       // Show price change modal

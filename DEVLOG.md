@@ -1,6 +1,6 @@
 # WhisperRoom Quote Builder — Dev Log
 
-Internal development notes. Last updated 2026-06-04.
+Internal development notes. Last updated 2026-06-05.
 
 > **Read this first when starting a session.** The "Current focus" section below is the fastest way to know where we left off. Below that: session writeups, the audit (outstanding work), and the changelog table.
 
@@ -39,6 +39,14 @@ Replacing the ~18MB `PackingList.xlsm` (Excel/VBA: 43 sheets, ~112K chars VBA, C
 **In flight now:** Benton running `BatchGenerateBasePLs` (VBA harness in `WR PO System\PL Files\BatchGenerateBasePLs.vba`) to emit all 104 base PLs into a `Base PLs\` folder. Diffing **S↔E** (Enhancement/inner-shell delta) and **S↔SNV** (No-Vent rule) from that output auto-derives those two structural rules. Extraction support: `WR PO System\PL Files\extract_pl.py` → `_extract\` (VBA + sheet TSVs).
 
 **Next:** when the 104-PDF batch finishes → **Phase 0**: extract base BOMs + substitution rules + constraint matrix from `StandardModels`/`Parts`/`ADAInfo`; verify against both oracles.
+
+### Weights cleanup + tooling (2026-06-05)
+- **Weight oracle (first run):** 44/52 S/E base BOMs matched golden `ModelWeights` within rounding; ~8 largest drifted 24–54 lb — golden-vs-current drift + hundredth-pound "funky" hardware/ceiling weights. PDF extraction verified complete.
+- **Cleanup (Benton):** rounded **every** component weight to the nearest pound in `PackingList.xlsm` (incl. stray ceilings). **Re-pulling all 104 base PLs** (rerun the optimized `BatchGenerateBasePLs`) → re-extract → fresh rounded `base_bom.json`.
+- **MDL weight model:** BOM = single source of truth. Per-MDL **net** = Σ rounded components; **gross** = net + pallets×**144** (confirm 144 vs 140) via `PALLETS_PER_MDL`. Push gross to HubSpot/QB price book; reconcile new-gross vs current-QB.
+- **Open dev tasks (Benton, 2026-06-05):**
+  1. **Auto-update line-item weights on quote open** — quote-load currently checks prices and *prompts* to update; weights should update **silently** (no prompt; reps don't need to know) for smoother order processing. Price prompt unchanged; only weight goes auto.
+  2. **Hidden "Weights" management page** — per-MDL reference: PL weight (net BOM) · pallet count + pallet weight · price-book (QB) weight · gross/delta. Doubles as the QB-reconciliation tool + reference for the other PL features.
 
 ### Still pending (non-PL)
 - Contact-guard ("Quote Already in Progress") modal wording/timing UX pass — paused mid-discussion (v1.65.5 fixed the worst symptom, the reload loop).
@@ -808,6 +816,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.66.2  | 2026-06-05 | **Quote open: silent line-item weight sync (price still prompts).** `/api/check-prices` now also fetches `weight` and returns `quotedWeight`/`currentWeight`/`weightChanged` (quote-server.js ~6479). Quote-load handler (quote-builder.html ~5399) applies any `weightChanged` to `lineItems[].weight` **silently** (no confirm) + re-renders; price keeps its confirm prompt. Persistence = same model as the price flow (in-memory on open; saved on next push). Makes processed-order shipping weight accurate without bugging reps. |
 | 1.66.1  | 2026-06-05 | **Fix: Rebind Quote button did nothing.** `openRebindQuote()` called `escapeHtml()` — defined in quote-builder.html but NOT deals-dashboard.html — so the handler threw `ReferenceError` before opening the modal (silent; passed node --check since it's a runtime undefined-ref, not a syntax error). Replaced with `String(q.quoteNumber||'')` (quote #s are safe text; file uses them raw elsewhere). Lesson: verify helper fns exist in the target file, not just syntax. |
 | 1.66.0  | 2026-06-05 | **Deal Hub: "Rebind Quote" admin tool.** Move a single quote that was made under the wrong deal to the correct one. New `POST /api/quotes/:quoteNumber/rebind {targetDealId}` (quote-server.js, after delete-quote ~13350): validates target deal via HubSpot dealname GET, `UPDATE quotes SET deal_id/deal_name (+ re-point gdrive_folder_id to target's folder if any)` + `UPDATE orders SET deal_id` for that quote_number; writelog `quote.rebind`. Mirrors merge-deal's DB re-association but scoped to one quote — does NOT move HubSpot line items off the original deal (re-push to move those). UI: `⇄ Rebind Quote` button in the deal admin row + 2-step modal (pick quote from `_lastHubData.quotes` → search target deal, reuses `/api/deals/list`); on success opens the destination deal. deals-dashboard.html. |
 | 1.65.12 | 2026-06-04 | **Deal Hub payments poll 30min → 5min.** `pollHubspotPayments` interval (quote-server.js ~405) dropped to `5*60*1000` so the ACH funds-available/clearing/deposited card chip (read from `deal_payment_status`, synced from HubSpot commerce_payments) surfaces a new payment within ~5min instead of ~30. Cost is trivial (each poll = 1 lastmodified-filtered search + 1 invoice→deal lookup per changed payment; payments rarely change). Caveat: `hs_estimated_payout_date` is computed by HubSpot and can still lag the payment regardless of our cadence. |

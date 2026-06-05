@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.67.0', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Internal: hidden /weights reconciliation page.** A back-end tool (admin URL, no nav link) that lists every MDL with its net weight from the packing-list bill-of-materials, pallet count, pallet weight, computed gross, and the current HubSpot price-book weight side by side — with the delta flagged. Used to keep the price-book shipping weights honest against the real PL data.'},
+      ]
+    },
+    {
       v:'1.66.2', date:'June 5, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Opening a quote now silently refreshes line-item weights to the current catalog.** Prices still prompt ("update to current?") since price is what you are quoting — but weights just sync quietly in the background (no popup), so when an order gets processed the shipping weight is accurate. Saves a click and keeps freight numbers right.'},

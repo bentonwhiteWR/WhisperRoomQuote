@@ -166,6 +166,32 @@ const REPS = {
   '38900892':'Chet','38732186':'Jeromy'
 };
 
+// ── Pallet count per booth/model ──────────────────────────────────
+// Source of truth for pallet COUNT per product name (dimensions stay client-side
+// where freight is priced). Kept in sync with BOOTH_DATA in quote-builder.html.
+// Used by process-order (freight pallet auto-count) AND the /weights tool
+// (gross = net + pallets×144).
+const PALLETS_PER_MDL = {
+  'Voice Over Basic':1,'Voice Over Deluxe':1,'Audiology Basic':1,'Audiology Deluxe':1,
+  'Office Booth':1,'Work From Home Booth':1,'Drum Booth':3,'Audiology Basic Plus':1,
+  'Audiology Compact':1,'Audiology Ultra':2,'Audiology Premium':1,'Creator Basic':1,
+  'Creator Deluxe':2,'Practice Basic':1,'Practice Deluxe':2,'Recording Studio':2,
+  'Drum Studio':3,'Meeting Booth':1,'Maker Space':2,
+  'MDL 4230 E':1,'MDL 4230 S':1,'MDL 127 LP E':1,'MDL 127 LP S':1,
+  'MDL 4242 E':1,'MDL 4242 S':1,'MDL 4260 E':1,'MDL 4260 S':1,
+  'MDL 4284 E':2,'MDL 4284 S':1,'MDL 4848 E':1,'MDL 4848 S':1,
+  'MDL 4872 E':2,'MDL 4872 S':1,'MDL 4896 E':2,'MDL 4896 S':1,
+  'MDL 6060 E':2,'MDL 6060 S':1,'MDL 6084 E':2,'MDL 6084 S':1,
+  'MDL 7272 E':2,'MDL 7272 S':1,'MDL 7296 E':2,'MDL 7296 S':1,
+  'MDL 8484 E':3,'MDL 8484 S':2,'MDL 9696 E':3,'MDL 9696 S':2,
+  'MDL 10284 E':3,'MDL 10284 S':2,'MDL 84102 E':3,'MDL 84102 S':2,
+  'MDL 84126 E':3,'MDL 84126 S':2,'MDL 96120 E':3,'MDL 96120 S':2,
+  'MDL 96144 E':3,'MDL 96144 S':2,'MDL 96168 E':4,'MDL 96168 S':2,
+  'MDL 96192 E':5,'MDL 96192 S':3,'MDL 102102 E':3,'MDL 102102 S':2,
+  'MDL 102126 E':3,'MDL 102126 S':2,'MDL 102144 E':4,'MDL 102144 S':2,
+};
+const PALLET_WEIGHT_LB = 144; // shipping weight added per pallet (skid + packaging)
+
 // Resolve a HubSpot owner ID from an email. Tries the exact ?email= filter
 // first, then — because that filter misses owners whose record email differs
 // in casing/whitespace — pages through ALL owners and matches case-insensitively.
@@ -10593,6 +10619,86 @@ ${q.accepted ? `
     return;
   }
 
+  // ── /weights — hidden MDL weight reconciliation tool (auth-only, no nav link) ──
+  // Reference + QB reconciliation: per-MDL net (from PL BOM) vs gross vs HubSpot price book.
+  if (pathname === '/weights' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(fs.readFileSync(path.join(__dirname, 'weights-dashboard.html'), 'utf8'));
+    return;
+  }
+
+  // ── API: /weights data — net (PL BOM) vs gross vs HubSpot price book ──
+  if (pathname === '/api/weights-table' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      // PL BOM net weights (committed snapshot, refreshed when base PLs re-extracted)
+      let mw = { _meta: {}, models: {} };
+      try { mw = JSON.parse(fs.readFileSync(path.join(__dirname, 'lib', 'model-weights.json'), 'utf8')); }
+      catch (e) { writelog('warn', 'weights.read', 'model-weights.json unreadable', { err: e.message }); }
+      const models = mw.models || {};
+
+      // HubSpot price-book weights, indexed by normalized name
+      const norm = s => String(s || '').toUpperCase().replace(/\s+/g, ' ').trim();
+      const pbByName = {};
+      let pbError = null;
+      try {
+        const products = await getProductsCached();
+        (products || []).forEach(p => {
+          const nm = norm(p?.properties?.name);
+          if (!nm) return;
+          const w = parseFloat(p?.properties?.weight);
+          pbByName[nm] = {
+            weight: Number.isFinite(w) ? w : null,
+            price: parseFloat(p?.properties?.price) || null,
+            id: p?.id || null,
+          };
+        });
+      } catch (e) { pbError = e.message; }
+
+      const rows = Object.keys(models).sort().map(name => {
+        const m = models[name] || {};
+        const net = Number.isFinite(m.net) ? m.net : (parseFloat(m.net) || 0);
+        const pallets = PALLETS_PER_MDL[name];          // undefined for NV / unknowns
+        const hasPallets = Number.isFinite(pallets);
+        const palletWt = hasPallets ? pallets * PALLET_WEIGHT_LB : null;
+        const gross = hasPallets ? net + palletWt : null;
+        const pb = pbByName[norm(name)] || null;
+        const pbWeight = pb && Number.isFinite(pb.weight) ? pb.weight : null;
+        const delta = (gross != null && pbWeight != null) ? +(gross - pbWeight).toFixed(2) : null;
+        // size/variant parsed from name e.g. "MDL 102102 ENV" -> size 102102, variant ENV
+        const mm = /^MDL\s+(.+?)\s+(S|E|SNV|ENV)$/i.exec(name);
+        return {
+          name,
+          size: m.size || (mm ? mm[1] : ''),
+          variant: m.variant || (mm ? mm[2].toUpperCase() : ''),
+          comps: m.comps ?? null,
+          net: +net.toFixed(2),
+          pallets: hasPallets ? pallets : null,
+          palletWeight: palletWt,
+          gross,
+          pbWeight,
+          pbId: pb?.id || null,
+          pbPrice: pb?.price ?? null,
+          delta,
+          matched: !!pb,
+        };
+      });
+
+      json({
+        meta: mw._meta || {},
+        palletWeightLb: PALLET_WEIGHT_LB,
+        pbError,
+        count: rows.length,
+        rows,
+      });
+    } catch (e) {
+      writelog('error', 'weights.table', 'failed to build weights table', { err: e.message });
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
     // ── API: Logs ────────────────────────────────────────────────────
   if (pathname === '/api/logs' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
@@ -15499,27 +15605,8 @@ window.addEventListener('afterprint',  () => { document.getElementById('action-b
       const orderToken = quoteRow?.share_token || '';
       const quoteSnap  = quoteRow?.json_snapshot || {};
       const orderUrl = `${PUBLIC_BASE_URL}/o/${encodeURIComponent(quoteNumber)}?t=${orderToken}`;
-      // Auto-compute pallet count from line items (kept in sync with BOOTH_DATA in quote-builder.html).
-      // Source of truth is pallet COUNT per product name; dimensions stay client-side where freight is priced.
-      const PALLETS_PER_MDL = {
-        'Voice Over Basic':1,'Voice Over Deluxe':1,'Audiology Basic':1,'Audiology Deluxe':1,
-        'Office Booth':1,'Work From Home Booth':1,'Drum Booth':3,'Audiology Basic Plus':1,
-        'Audiology Compact':1,'Audiology Ultra':2,'Audiology Premium':1,'Creator Basic':1,
-        'Creator Deluxe':2,'Practice Basic':1,'Practice Deluxe':2,'Recording Studio':2,
-        'Drum Studio':3,'Meeting Booth':1,'Maker Space':2,
-        'MDL 4230 E':1,'MDL 4230 S':1,'MDL 127 LP E':1,'MDL 127 LP S':1,
-        'MDL 4242 E':1,'MDL 4242 S':1,'MDL 4260 E':1,'MDL 4260 S':1,
-        'MDL 4284 E':2,'MDL 4284 S':1,'MDL 4848 E':1,'MDL 4848 S':1,
-        'MDL 4872 E':2,'MDL 4872 S':1,'MDL 4896 E':2,'MDL 4896 S':1,
-        'MDL 6060 E':2,'MDL 6060 S':1,'MDL 6084 E':2,'MDL 6084 S':1,
-        'MDL 7272 E':2,'MDL 7272 S':1,'MDL 7296 E':2,'MDL 7296 S':1,
-        'MDL 8484 E':3,'MDL 8484 S':2,'MDL 9696 E':3,'MDL 9696 S':2,
-        'MDL 10284 E':3,'MDL 10284 S':2,'MDL 84102 E':3,'MDL 84102 S':2,
-        'MDL 84126 E':3,'MDL 84126 S':2,'MDL 96120 E':3,'MDL 96120 S':2,
-        'MDL 96144 E':3,'MDL 96144 S':2,'MDL 96168 E':4,'MDL 96168 S':2,
-        'MDL 96192 E':5,'MDL 96192 S':3,'MDL 102102 E':3,'MDL 102102 S':2,
-        'MDL 102126 E':3,'MDL 102126 S':2,'MDL 102144 E':4,'MDL 102144 S':2,
-      };
+      // Auto-compute pallet count from line items. PALLETS_PER_MDL is module-level
+      // (shared with the /weights tool); source of truth is pallet COUNT per product name.
       const computedPallets = (lineItems || []).reduce((sum, item) => {
         const n = PALLETS_PER_MDL[item?.name];
         if (!n) return sum;

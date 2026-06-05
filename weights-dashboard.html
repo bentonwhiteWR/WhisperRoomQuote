@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WhisperRoom — Weights</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial Black,sans-serif' font-size='18' font-weight='900' fill='%23e8531a'>W</text></svg>">
+<style>
+  :root {
+    --bg: #0f0f0f; --surface: #1a1a1a; --surface2: #222; --border: #2a2a2a;
+    --orange: #ee6216; --orange-dim: rgba(238,98,22,.12);
+    --text: #e8e8e8; --muted: #888;
+    --green: #22c55e; --red: #ef4444; --blue: #3b82f6; --amber: #f59e0b; --purple: #a855f7;
+    --row-hover: rgba(255,255,255,.02);
+  }
+  :root.light {
+    --bg: #f5f5f5; --surface: #ffffff; --surface2: #f0f0f0; --border: #e0e0e0;
+    --orange: #d44f0c; --orange-dim: rgba(212,79,12,.1);
+    --text: #1a1a1a; --muted: #666;
+    --green: #16a34a; --red: #dc2626; --blue: #2563eb; --amber: #d97706; --purple: #7c3aed;
+    --row-hover: rgba(0,0,0,.02);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 0 20px; min-height: 52px; background: #1a1a1a; border-bottom: 1px solid rgba(255,255,255,.1); position: sticky; top: 0; z-index: 100; gap: 8px; }
+  .topbar-logo { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; white-space: nowrap; color: #f0ede8; flex-shrink: 0; text-decoration: none; }
+  .topbar-logo span { color: #e8531a; }
+  .topbar-right { display: flex; gap: 8px; align-items: center; }
+  .nav-link { padding: 5px 10px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; border-radius: 6px; color: rgba(255,255,255,.55); text-decoration: none; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); }
+  .nav-link:hover { background: rgba(255,255,255,.12); color: rgba(255,255,255,.9); }
+  .theme-btn { padding: 5px 9px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 6px; color: #f0ede8; cursor: pointer; font-size: 14px; }
+  .theme-btn:hover { background: rgba(255,255,255,.14); }
+
+  .main { max-width: 1500px; margin: 0 auto; padding: 24px 20px; }
+  .page-header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px; gap: 12px; flex-wrap: wrap; }
+  .page-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; }
+  .page-title span { color: var(--orange); }
+  .page-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  .banner { font-size: 11px; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin: 14px 0 18px; }
+  .banner.warn { border-color: var(--amber); color: var(--amber); background: rgba(245,158,11,.08); }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .card-label { font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+  .card-value { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; margin-top: 4px; }
+  .card-value.alert { color: var(--red); }
+
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; }
+  .filter-btn { padding: 4px 11px; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; font-family: inherit; }
+  .filter-btn:hover { border-color: var(--orange); color: var(--orange); }
+  .filter-btn.active { background: var(--orange-dim); border-color: var(--orange); color: var(--orange); }
+  .search-input { padding: 6px 12px; font-size: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; color: var(--text); font-family: inherit; outline: none; min-width: 200px; }
+  .search-input:focus { border-color: var(--orange); }
+
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { text-align: right; padding: 11px 14px; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; white-space: nowrap; background: var(--surface2); }
+  thead th:first-child, thead th.l { text-align: left; }
+  thead th:hover { color: var(--orange); }
+  thead th .arrow { opacity: .4; font-size: 9px; }
+  tbody td { padding: 9px 14px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  tbody td:first-child, tbody td.l { text-align: left; }
+  tbody tr:hover { background: var(--row-hover); }
+  tbody tr:last-child td { border-bottom: none; }
+  .mdl-name { font-weight: 700; }
+  .vpill { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 9px; font-weight: 700; letter-spacing: .04em; }
+  .v-S { background: rgba(59,130,246,.15); color: var(--blue); }
+  .v-E { background: rgba(168,85,247,.15); color: var(--purple); }
+  .v-SNV { background: rgba(34,197,94,.13); color: var(--green); }
+  .v-ENV { background: rgba(245,158,11,.13); color: var(--amber); }
+  .muted { color: var(--muted); }
+  .dash { color: var(--muted); opacity: .5; }
+  .delta-pos { color: var(--red); font-weight: 700; }
+  .delta-neg { color: var(--blue); font-weight: 700; }
+  .delta-zero { color: var(--green); }
+  .unmatched td { background: rgba(239,68,68,.05); }
+  .unmatched .mdl-name::after { content: ' ⚠'; color: var(--red); font-size: 11px; }
+
+  .empty { padding: 40px; text-align: center; color: var(--muted); font-size: 13px; }
+  .loading { padding: 40px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="/deals" class="topbar-logo">Whisper<span>Room</span></a>
+    <div class="topbar-right">
+      <a href="/deals" class="nav-link">← Deal Hub</a>
+      <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">◐</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="page-header">
+      <div>
+        <div class="page-title">MDL <span>Weights</span></div>
+        <div class="page-sub">Net (PL bill-of-materials) → gross (+ pallets) vs HubSpot price-book weight. Reconciliation tool.</div>
+      </div>
+      <button class="filter-btn" onclick="loadData()">↻ Refresh</button>
+    </div>
+
+    <div class="banner" id="srcBanner">Loading…</div>
+
+    <div class="cards" id="cards"></div>
+
+    <div class="toolbar">
+      <div class="filters" id="variantFilters">
+        <button class="filter-btn active" data-v="ALL">All</button>
+        <button class="filter-btn" data-v="S">S</button>
+        <button class="filter-btn" data-v="E">E</button>
+        <button class="filter-btn" data-v="SNV">SNV</button>
+        <button class="filter-btn" data-v="ENV">ENV</button>
+      </div>
+      <button class="filter-btn" id="mismatchBtn" onclick="toggleMismatch()">Mismatches only</button>
+      <button class="filter-btn" id="unmatchedBtn" onclick="toggleUnmatched()">No price-book match</button>
+      <input class="search-input" id="search" placeholder="Search model / size…" oninput="render()">
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="l" data-sort="name">Model <span class="arrow"></span></th>
+            <th class="l" data-sort="variant">Var <span class="arrow"></span></th>
+            <th data-sort="comps">Items <span class="arrow"></span></th>
+            <th data-sort="net">Net (BOM) <span class="arrow"></span></th>
+            <th data-sort="pallets">Pallets <span class="arrow"></span></th>
+            <th data-sort="palletWeight">Pallet wt <span class="arrow"></span></th>
+            <th data-sort="gross">Gross <span class="arrow"></span></th>
+            <th data-sort="pbWeight">Price book <span class="arrow"></span></th>
+            <th data-sort="delta">Δ (gross−PB) <span class="arrow"></span></th>
+          </tr>
+        </thead>
+        <tbody id="tbody">
+          <tr><td colspan="9" class="loading">Loading weights…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+  let DATA = [];
+  let META = {};
+  let PALLET_WT = 144;
+  let variantFilter = 'ALL';
+  let mismatchOnly = false;
+  let unmatchedOnly = false;
+  let sortKey = 'name';
+  let sortDir = 1;
+
+  // Theme (match the other dashboards' localStorage key)
+  (function initTheme(){
+    const t = localStorage.getItem('wr-theme');
+    if (t === 'light') document.documentElement.classList.add('light');
+  })();
+  function toggleTheme(){
+    document.documentElement.classList.toggle('light');
+    localStorage.setItem('wr-theme', document.documentElement.classList.contains('light') ? 'light' : 'dark');
+  }
+
+  const fmt = n => (n == null || isNaN(n)) ? null : Number(n).toLocaleString(undefined, {maximumFractionDigits: 1});
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  async function loadData(){
+    document.getElementById('tbody').innerHTML = '<tr><td colspan="9" class="loading">Loading weights…</td></tr>';
+    try {
+      const r = await fetch('/api/weights-table', { credentials: 'same-origin' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      DATA = d.rows || [];
+      META = d.meta || {};
+      PALLET_WT = d.palletWeightLb || 144;
+      renderBanner(d);
+      renderCards();
+      render();
+    } catch(e){
+      document.getElementById('tbody').innerHTML = '<tr><td colspan="9" class="empty">Failed to load: ' + esc(e.message) + '</td></tr>';
+    }
+  }
+
+  function renderBanner(d){
+    const b = document.getElementById('srcBanner');
+    const parts = [];
+    if (META._source) parts.push('PL net source: ' + esc(META._source));
+    if (META._extracted) parts.push('extracted ' + esc(META._extracted));
+    parts.push(esc(DATA.length) + ' models');
+    parts.push('pallet wt ' + PALLET_WT + ' lb');
+    if (d.pbError){ b.className = 'banner warn'; parts.push('⚠ price book unavailable: ' + esc(d.pbError)); }
+    else b.className = 'banner';
+    b.innerHTML = parts.join(' &nbsp;·&nbsp; ');
+  }
+
+  function renderCards(){
+    const matched = DATA.filter(r => r.matched && r.delta != null);
+    const big = matched.filter(r => Math.abs(r.delta) >= 25);
+    const unmatched = DATA.filter(r => !r.matched);
+    const noPallet = DATA.filter(r => r.pallets == null);
+    const cards = [
+      { label: 'Models', value: DATA.length },
+      { label: 'Price-book matched', value: DATA.filter(r=>r.matched).length },
+      { label: 'No PB match', value: unmatched.length, alert: unmatched.length>0 },
+      { label: 'Δ ≥ 25 lb', value: big.length, alert: big.length>0 },
+      { label: 'No pallet count', value: noPallet.length, alert: noPallet.length>0 },
+    ];
+    document.getElementById('cards').innerHTML = cards.map(c =>
+      '<div class="card"><div class="card-label">' + c.label + '</div>' +
+      '<div class="card-value' + (c.alert ? ' alert' : '') + '">' + c.value + '</div></div>'
+    ).join('');
+  }
+
+  function setVariant(v){ variantFilter = v; document.querySelectorAll('#variantFilters .filter-btn').forEach(b=>b.classList.toggle('active', b.dataset.v===v)); render(); }
+  document.getElementById('variantFilters').addEventListener('click', e=>{ if(e.target.dataset.v) setVariant(e.target.dataset.v); });
+  function toggleMismatch(){ mismatchOnly = !mismatchOnly; document.getElementById('mismatchBtn').classList.toggle('active', mismatchOnly); render(); }
+  function toggleUnmatched(){ unmatchedOnly = !unmatchedOnly; document.getElementById('unmatchedBtn').classList.toggle('active', unmatchedOnly); render(); }
+
+  document.querySelectorAll('thead th[data-sort]').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const k = th.dataset.sort;
+      if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = 1; }
+      document.querySelectorAll('thead th .arrow').forEach(a=>a.textContent='');
+      th.querySelector('.arrow').textContent = sortDir>0 ? '▲' : '▼';
+      render();
+    });
+  });
+
+  function render(){
+    const q = document.getElementById('search').value.trim().toLowerCase();
+    let rows = DATA.filter(r=>{
+      if (variantFilter !== 'ALL' && r.variant !== variantFilter) return false;
+      if (mismatchOnly && !(r.delta != null && Math.abs(r.delta) >= 25)) return false;
+      if (unmatchedOnly && r.matched) return false;
+      if (q && !(r.name.toLowerCase().includes(q) || String(r.size).toLowerCase().includes(q))) return false;
+      return true;
+    });
+    rows.sort((a,b)=>{
+      let av = a[sortKey], bv = b[sortKey];
+      if (sortKey === 'name' || sortKey === 'variant'){ av = String(av||''); bv = String(bv||''); return av.localeCompare(bv) * sortDir; }
+      av = (av==null) ? -Infinity : av; bv = (bv==null) ? -Infinity : bv;
+      return (av - bv) * sortDir;
+    });
+
+    const tb = document.getElementById('tbody');
+    if (!rows.length){ tb.innerHTML = '<tr><td colspan="9" class="empty">No models match.</td></tr>'; return; }
+
+    tb.innerHTML = rows.map(r=>{
+      const deltaCell = r.delta == null
+        ? '<span class="dash">—</span>'
+        : (r.delta === 0
+            ? '<span class="delta-zero">0</span>'
+            : '<span class="' + (r.delta>0?'delta-pos':'delta-neg') + '">' + (r.delta>0?'+':'') + fmt(r.delta) + '</span>');
+      const cell = v => v == null ? '<span class="dash">—</span>' : fmt(v);
+      return '<tr class="' + (r.matched ? '' : 'unmatched') + '">' +
+        '<td class="l mdl-name">' + esc(r.name) + '</td>' +
+        '<td class="l"><span class="vpill v-' + esc(r.variant) + '">' + esc(r.variant||'?') + '</span></td>' +
+        '<td class="muted">' + (r.comps==null?'<span class="dash">—</span>':r.comps) + '</td>' +
+        '<td>' + cell(r.net) + '</td>' +
+        '<td>' + (r.pallets==null?'<span class="dash">—</span>':r.pallets) + '</td>' +
+        '<td class="muted">' + cell(r.palletWeight) + '</td>' +
+        '<td><strong>' + cell(r.gross) + '</strong></td>' +
+        '<td>' + cell(r.pbWeight) + '</td>' +
+        '<td>' + deltaCell + '</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  loadData();
+</script>
+</body>
+</html>

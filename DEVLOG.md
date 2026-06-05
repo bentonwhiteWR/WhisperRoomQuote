@@ -1,12 +1,51 @@
 # WhisperRoom Quote Builder — Dev Log
 
-Internal development notes. Last updated 2026-05-28.
+Internal development notes. Last updated 2026-06-04.
 
 > **Read this first when starting a session.** The "Current focus" section below is the fastest way to know where we left off. Below that: session writeups, the audit (outstanding work), and the changelog table.
 
 ---
 
-## Current focus (2026-05-29 EOD — WR PO System Phases 1–3 done end-to-end; Phase 4 (QB Bills API auto-create) deferred until Kim asks)
+## Current focus (2026-06-04 — quote/PO fixes shipped to prod; **Packing List migration** scoped + base-data extraction underway)
+
+**Most recent shipped to PROD:** merge `37a2cfe` (2026-06-04). v1.65.4 → v1.65.12 are all on `main`.
+
+**Shipped today (all promoted):**
+- **v1.65.4** — Copy Quote Link / View Quote off-by-one fix. Link number+token now come from one locked saved-quote source (`lockedQuoteLink()`), never the editable/predicted field — fixes Sarah's "same token, # off by one, invalid" link.
+- **v1.65.5** — "New Quote re-loads the previous contact/deal" endless loop fixed (async deal-suggest race; `unlinkDeal(skipSuggest)` + stale-suggest guard in `suggestDealsForContact`).
+- **v1.65.6** — Deal Hub: whole quote-row clickable (stopPropagation scoped to just the action buttons).
+- **v1.65.7 / v1.65.10** — WR PO System bulk vendor import → `scripts/seed-vendors-from-excel.js` (**42 vendors / 291 items**, incl. Knoxville Corrugated). Parser/generator (Python/xlrd) live in `C:\Users\bento\Documents\Claude\WR PO System\` (`parse_pos.py`, `parse_knoxcor.py`, `gen_seed.py`).
+- **v1.65.8** — WR PO: Payment Terms full-width field.
+- **v1.65.9** — WR PO: **DRAFT-on-create** (a PO is "officially created" only on Create/Download PDF; drafts hidden from Vendor Hub) + removed table delete (×) + hid the "—" contact placeholder.
+- **v1.65.11** — WR PO: hide the Receive button on DRAFT POs.
+- **v1.65.12** — Deal Hub payments poll 30min → 5min (`pollHubspotPayments`), so ACH funds chips surface faster.
+
+**Action for Benton:** run `import-knoxcor.js` (or the full `seed-vendors-from-excel.js`) on the live `/vendors` page when ready; paste the console tally.
+
+### Packing List migration — NEW major initiative (scoped 2026-06-04)
+Replacing the ~18MB `PackingList.xlsm` (Excel/VBA: 43 sheets, ~112K chars VBA, CSV-synced to a pCloud `Z:\` share) with a web module here: **packing-list generator + inventory + shipping/allocation + (future) barcode pack-verification.** Full scope in **`PACKING_LIST_SCOPE.md`** (repo root); project memory `project_packing_list_migration.md`.
+
+**Architecture decided with Benton:**
+- **Generate FROM the deal/order** (pre-fill model+features, rep confirms, manual overrides kept). Auto weight-check vs the quote's weight.
+- **Generator = base BOM + ordered substitution ops** (REPLACE/ADD/REMOVE), code-level + feature-gated; combos as multi-condition rules. Replaces the per-cell `=IF()` matrix + `Calculations!AB` override hack with one inspectable pipeline.
+- **Taxonomy:** ~26 sizes × {S, E, SNV, ENV} = **104 base BOMs.** E = S + inner IEP shell; NV = S/E minus ventilation (swap `…VNT` walls → NV, drop Vent Set + fan unit). S/E = most of sales.
+- **Constraint layer** (separate from swaps; drives configurator gray-out + generator guard): NV → no vent add-ons (RM/VSS/EFS/HEPA); ADA only on a handful of models (extract from `Sheet1!AM2:AO100`); WA needs ≥60" in one dimension; RM has a min size. Mine the full matrix from the workbook → Benton confirms.
+- **Inventory/shipping** → Postgres, transactional (kills the CSV last-writer-wins drift); allocation reserves, ship deducts atomically, audit log. **No pricing** (quote-side only). Fishbowl `Export1` is dead. Single on-hand per component.
+- **Barcode** = future phase, designed-for: existing component labels just get a barcode of the component code; prototype camera-first on a phone (no scanner needed).
+- **Reuse** the vendor-PO pattern: `/pl/:num?t=token` page → Puppeteer PDF → dual Drive drop (order + client folder) → share link; new `/packing` dashboard.
+
+**Two verification oracles:** (1) the workbook's golden weights (regenerate every model, compare summed weight); (2) Benton's real example PLs (5 in `WR PO System\PL Files\PL Examples\`).
+
+**In flight now:** Benton running `BatchGenerateBasePLs` (VBA harness in `WR PO System\PL Files\BatchGenerateBasePLs.vba`) to emit all 104 base PLs into a `Base PLs\` folder. Diffing **S↔E** (Enhancement/inner-shell delta) and **S↔SNV** (No-Vent rule) from that output auto-derives those two structural rules. Extraction support: `WR PO System\PL Files\extract_pl.py` → `_extract\` (VBA + sheet TSVs).
+
+**Next:** when the 104-PDF batch finishes → **Phase 0**: extract base BOMs + substitution rules + constraint matrix from `StandardModels`/`Parts`/`ADAInfo`; verify against both oracles.
+
+### Still pending (non-PL)
+- Contact-guard ("Quote Already in Progress") modal wording/timing UX pass — paused mid-discussion (v1.65.5 fixed the worst symptom, the reload loop).
+
+---
+
+## Earlier focus (2026-05-29 EOD — WR PO System Phases 1–3 done end-to-end; Phase 4 (QB Bills API auto-create) deferred until Kim asks)
 
 **Done for today** — session wrapped after v1.51.5.
 
@@ -769,6 +808,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.66.0  | 2026-06-05 | **Deal Hub: "Rebind Quote" admin tool.** Move a single quote that was made under the wrong deal to the correct one. New `POST /api/quotes/:quoteNumber/rebind {targetDealId}` (quote-server.js, after delete-quote ~13350): validates target deal via HubSpot dealname GET, `UPDATE quotes SET deal_id/deal_name (+ re-point gdrive_folder_id to target's folder if any)` + `UPDATE orders SET deal_id` for that quote_number; writelog `quote.rebind`. Mirrors merge-deal's DB re-association but scoped to one quote — does NOT move HubSpot line items off the original deal (re-push to move those). UI: `⇄ Rebind Quote` button in the deal admin row + 2-step modal (pick quote from `_lastHubData.quotes` → search target deal, reuses `/api/deals/list`); on success opens the destination deal. deals-dashboard.html. |
 | 1.65.12 | 2026-06-04 | **Deal Hub payments poll 30min → 5min.** `pollHubspotPayments` interval (quote-server.js ~405) dropped to `5*60*1000` so the ACH funds-available/clearing/deposited card chip (read from `deal_payment_status`, synced from HubSpot commerce_payments) surfaces a new payment within ~5min instead of ~30. Cost is trivial (each poll = 1 lastmodified-filtered search + 1 invoice→deal lookup per changed payment; payments rarely change). Caveat: `hs_estimated_payout_date` is computed by HubSpot and can still lag the payment regardless of our cadence. |
 | 1.65.11 | 2026-06-04 | **WR PO System: hide the Receive button on DRAFT POs.** `/vpo/` doc page showed the purple `#receivePoBtn` for any authed user regardless of status — gated it on `po.status !== 'DRAFT'` so it only appears once the PO is officially created (post Create/Download PDF). quote-server.js ~14658. |
 | 1.65.10 | 2026-06-04 | **WR PO System: Knoxville Corrugated imported (was excluded — Josh cleaned up the sheet).** New `parse_knoxcor.py` (bespoke: vendor block col D, table cols A=name/D=dims/F=type/H=labels/I=qty/J=price/L=effdate; ignores K total + M old-price). Rules per Josh: continuation rows (no box name) merged **column-wise** into the item above (tab note → board type, "parallel…" → labels); `IEPWL41.5 (both halves)` gets `(tabs on 3" ends)` appended to its board type (line he accidentally deleted); dropped `10242 FLCL` parent (keep BOTTOM/TOP), removed `IEP 18/24/42 FL / HARDWARE`, dropped standalone `VSS` and renamed the two below → `VSS IEP 4848/72 FL BOTTOM/TOP`; formula-legend row skipped. 67 box items, all priced. `gen_seed.py` now appends knoxcor.json → seed-vendors-from-excel.js is **42 vendors / 291 items**; also emits `import-knoxcor.js` (Knoxcor-only, safe to paste without touching the other 41). |

@@ -13348,6 +13348,76 @@ ${q.accepted ? `
     return;
   }
 
+  // ── API: Rebind a single quote to a different deal ──────────────────
+  // For when a quote was made under the wrong deal. Moves just that quote (and
+  // any order tied to it) to the target deal in the portal — mirrors the
+  // merge-deal DB re-association but scoped to one quote_number. NOTE: HubSpot
+  // line items pushed onto the ORIGINAL deal are not moved (that deal stays);
+  // re-push from the Quote Builder if the HubSpot line items must follow.
+  if (pathname.startsWith('/api/quotes/') && pathname.endsWith('/rebind') && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    const quoteNumber = decodeURIComponent(pathname.replace('/api/quotes/', '').replace('/rebind', '').trim());
+    if (!quoteNumber) { json({ error: 'Quote number required' }, 400); return; }
+    try {
+      if (!db) { json({ error: 'No database' }, 500); return; }
+      let body = {};
+      try { body = JSON.parse(await readBody(req) || '{}'); } catch(e) {}
+      const targetDealId = String(body.targetDealId || '').trim();
+      if (!targetDealId) { json({ error: 'targetDealId required' }, 400); return; }
+
+      const cur = await db.query('SELECT deal_id, deal_name FROM quotes WHERE quote_number = $1', [quoteNumber]);
+      if (!cur.rows.length) { json({ error: 'Quote not found' }, 404); return; }
+      const oldDealId = cur.rows[0].deal_id;
+      if (String(oldDealId || '') === targetDealId) { json({ error: 'Quote is already on that deal' }, 400); return; }
+
+      // Validate the target deal exists in HubSpot + get its current name.
+      let targetName = null;
+      try {
+        const r = await httpsRequest({
+          hostname: 'api.hubapi.com',
+          path:     `/crm/v3/objects/deals/${targetDealId}?properties=dealname`,
+          method:   'GET',
+          headers:  { 'Authorization': `Bearer ${HS_TOKEN}` }
+        });
+        if (r.status === 404) { json({ error: 'Target deal not found in HubSpot' }, 404); return; }
+        targetName = r.body?.properties?.dealname || null;
+      } catch(e) { /* non-fatal — fall back to the name the client passed */ }
+      targetName = targetName || String(body.targetDealName || '').trim() || cur.rows[0].deal_name || null;
+
+      // Re-point the Drive folder to the target deal's existing folder (if any)
+      // so future PDFs land in the right place. Existing files are not moved.
+      const tf = await db.query(
+        `SELECT gdrive_folder_id FROM quotes WHERE deal_id = $1 AND gdrive_folder_id IS NOT NULL LIMIT 1`,
+        [targetDealId]
+      );
+      const targetFolder = tf.rows[0]?.gdrive_folder_id || null;
+
+      if (targetFolder) {
+        await db.query(
+          'UPDATE quotes SET deal_id = $1, deal_name = $2, gdrive_folder_id = $4 WHERE quote_number = $3',
+          [targetDealId, targetName, quoteNumber, targetFolder]
+        );
+      } else {
+        await db.query(
+          'UPDATE quotes SET deal_id = $1, deal_name = $2 WHERE quote_number = $3',
+          [targetDealId, targetName, quoteNumber]
+        );
+      }
+      await db.query('UPDATE orders SET deal_id = $1 WHERE quote_number = $2', [targetDealId, quoteNumber]);
+
+      writelog('info', 'quote.rebind', `Quote ${quoteNumber} rebound to deal ${targetDealId} (${targetName || '—'})`, {
+        rep: String(getRepFromReq(req) || ''), quoteNum: quoteNumber, dealId: String(targetDealId), dealName: targetName || null,
+        meta: { from: oldDealId || null, to: targetDealId }
+      });
+      console.log(`[rebind] quote ${quoteNumber}: ${oldDealId || '(none)'} → ${targetDealId}`);
+      json({ success: true, quoteNumber, from: oldDealId || null, to: targetDealId, targetName });
+    } catch(e) {
+      console.error('[rebind quote] error:', e.message);
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
   // ── API: Delete Deal (all quotes + orders for a deal, + HubSpot deal) ──
   if (pathname.startsWith('/api/deals/') && pathname.endsWith('/merge') && req.method === 'POST') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

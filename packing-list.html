@@ -155,9 +155,46 @@
     };
   }
 
+  // Internal accessories that appear as quote line items but should NOT
+  // surface in the PL title (they're hardware/upgrades the customer doesn't
+  // think of as "features" — HEPA, AP, CP, EFP, cable upgrades, etc.).
+  const FEATURE_DROP = /^(HEPA|HX|AP|CP|EFP|DWC|LT\s*CR|MJP\s*(?:ADPT|EXT)|.*CBL\s*UPG|AUDI\s*BL|RM\s+\d|IEP|WA\s|EFI|VENT\s*SET|REMOTE|STEP|FOAM)/i;
+
+  // Map verbose quote names to the short tokens the printed PL shows.
+  // Order matters: first match wins. Functions receive the regex match.
+  const FEATURE_RULES = [
+    { rx: /^OFFICE\s*DESK\b/i,                                      label: 'DESK' },
+    { rx: /^WDO\s+(?:(\d+)["”']?\s+)?(\d{4})\b.*$/i,                label: m => 'WDO ' + (m[1] ? m[1] + '" ' : '') + m[2] },
+    { rx: /^ADA\b/i,                                                label: 'ADA' },
+    { rx: /^EFS\b/i,                                                label: 'EFS' },
+    { rx: /^VSS\b/i,                                                label: 'VSS' },
+    { rx: /^MJP$/i,                                                 label: 'MJP' },
+    { rx: /^RFU\b/i,                                                label: 'RFU' },
+    { rx: /^SL\b/i,                                                 label: 'SL' },
+    { rx: /^BASS\s*TRAPS\b/i,                                       label: 'BASS TRAPS' },
+  ];
+
+  function normalizeFeature(name) {
+    const s = String(name||'').trim();
+    if (!s) return null;
+    if (FEATURE_DROP.test(s)) return null;
+    for (const r of FEATURE_RULES) {
+      const m = r.rx.exec(s);
+      if (m) return typeof r.label === 'function' ? r.label(m) : r.label;
+    }
+    return s.toUpperCase();
+  }
+
   function mdlLine(rm){
     const parts = [rm.boothName];
-    (rm.unmappedFeatures||[]).forEach(f => { if (f && f.name) parts.push(f.name); });
+    const seen = new Set();
+    (rm.unmappedFeatures||[]).forEach(f => {
+      if (!f || !f.name) return;
+      const tok = normalizeFeature(f.name);
+      if (!tok || seen.has(tok)) return;
+      seen.add(tok);
+      parts.push(tok);
+    });
     return parts.map(esc).join(' <span class="sep">/</span> ');
   }
 

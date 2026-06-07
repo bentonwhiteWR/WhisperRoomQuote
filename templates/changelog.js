@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.8', date:'June 7, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Packing List MDL line abbreviates feature names** to match the printed PL. Quote line items like <code>EFS 4872</code>, <code>VSS 4872</code>, <code>WDO 3236 S</code>, <code>Office Desk S</code>, <code>ADA 7272 S</code> now render as <code>EFS / VSS / WDO 3236 / DESK / ADA</code> in the booth title. Internal hardware/upgrades (HEPA, HX, AP, CP, EFP, cable upgrades, vent set, foam, etc.) are hidden from the title — they still appear in the BOM rows below. Duplicates are deduped.'},
+      ]
+    },
+    {
       v:'1.72.7', date:'June 7, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Packing List layout now closely mirrors the real printed PL.** Each booth is its own one-page PL: centered WhisperRoom logo with <b>SOUND ISOLATION ENCLOSURES</b> tagline, editable date top-right, and a deal reference top-left. Below that, the <b>MDL line</b> (booth + its options, e.g. <code>MDL 4872 S / ADA / EFS / VSS / MJP / WDO 3236 / DESK</code>) and the <b>Totals box</b> (Cubic Feet / Pounds / Cubic Meters / Kilograms) on the left, with a big <b>PACKING LIST</b> title and an editable <b>S/N</b> field on the right. The "Heads up" banner is gone. Multi-room quotes paginate one booth per page. S/N and date persist in browser per-quote.'},

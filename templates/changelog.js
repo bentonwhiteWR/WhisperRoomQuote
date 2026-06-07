@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.11', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: WDO (window) substitution.** A <code>WDO 3236 S</code> line on the quote now <b>swaps one standard wall component</b> in the booth\\'s BOM for the matching window-wall variant (e.g. on MDL 4872 S: C101 STDWL46 → C104 STDWL46 WDO3236). Defaults to the booth\\'s primary (longest) STDWL{N} wall; explicit overrides like <code>WDO 43" 2636 S</code> use the named wall size. Multiple windows (or qty &gt; 1) swap one wall each. If the booth has no matching standard wall to swap (e.g. ADA already replaced it), the WDO line stays in the unmapped-features flag for manual adjustment instead of silently adding extras.'},
+      ]
+    },
+    {
       v:'1.72.10', date:'June 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing List: MJP and DESK substitution rules.** <code>MJP</code> on a quote now injects an <b>F09 (MULTI JACK PANEL)</b> row on the PL. <code>Office Desk S</code> → <b>S02 (OFFICE DESK SMALL)</b>; <code>Office Desk L</code> → <b>S03 (OFFICE DESK LARGE)</b>. MJP follows a "constant 1 per quote line" rule (unlike VSS/EFS which scale with vent count). Companion hardware (<code>MJP ADPT</code>, <code>MJP EXT</code>) is intentionally NOT treated as MJP and still flags in the unmapped-features list. Quote-line qty multiplies through (e.g. MJP qty 3 → three F09 rows). Internally, the rule registry was refactored to an extensible predicate-based form so the remaining features (windows, ADA, hinge) can plug in cleanly.'},

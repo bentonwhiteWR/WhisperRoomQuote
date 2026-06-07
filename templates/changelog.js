@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.19', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: Bass Traps substitution.** A <code>BASS TRAPS</code> line on a quote adds one <b>E16 (BASS TRAP 2 W/ VELCRO, 5 lb)</b> row to the PL — each E16 pack contains 2 traps. Quote-line qty multiplies through, so Practice / Recording presets that bump BASS TRAPS to qty 3 produce 3 E16 rows (6 traps), and Drum presets at qty 4 produce 4 (8 traps). Singular "BASS TRAP" also matches; <code>BASS TRAP 2</code>-style SKU strings do not (left unmapped).'},
+      ]
+    },
+    {
       v:'1.72.18', date:'June 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing List: RFU substitution (additive).** An explicit <code>RFU</code> line on a quote now adds one extra <b>F14 (REMOTE FAN UNIT, 5 lb)</b> row to the PL — on top of whatever the base BOM already includes (most booths ship with one by default). Useful for replacement RFUs ordered for existing booths or doubling up. Exact match only.'},

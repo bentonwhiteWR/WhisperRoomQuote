@@ -12,6 +12,44 @@
     "_swap_handling": "Narrow slots accept both the std + WA-shrunken family (e.g. STDWL22 OR STDWL19) so the WA Door substitution can flip one narrow without falling out of the wall pool. Same goes for the door slot: STDWL46 OR WA STDDRFRM. The SVG renders each placed panel at its real interior width via panelInteriorWidth()."
   },
   "layouts": {
+    "MDL 4242 S": {
+      "label": "Single-Wall Sound Booth - 3.5' x 3.5'",
+      "exterior": { "w": 44, "h": 44 },
+      "wallThickness": 2,
+      "walls": {
+        "N": { "label": "Back",  "longSide": false, "slots": [
+          { "id": "N-wide", "size": 40, "families": ["STDWL40"],                "prefers": ["VNT", "CBL"] }
+        ]},
+        "S": { "label": "Front", "longSide": false, "slots": [
+          { "id": "S-wide", "size": 40, "families": ["STDWL40", "WA STDDRFRM"], "prefers": ["DRFRM"] }
+        ]},
+        "E": { "label": "Right", "longSide": false, "slots": [
+          { "id": "E-wide", "size": 40, "families": ["STDWL40"],                "prefers": ["SOLID"] }
+        ]},
+        "W": { "label": "Left",  "longSide": false, "slots": [
+          { "id": "W-wide", "size": 40, "families": ["STDWL40"],                "prefers": ["SOLID"] }
+        ]}
+      }
+    },
+    "MDL 4848 S": {
+      "label": "Single-Wall Sound Booth - 4' x 4'",
+      "exterior": { "w": 50, "h": 50 },
+      "wallThickness": 2,
+      "walls": {
+        "N": { "label": "Back",  "longSide": false, "slots": [
+          { "id": "N-wide", "size": 46, "families": ["STDWL46"],                "prefers": ["VNT", "CBL"] }
+        ]},
+        "S": { "label": "Front", "longSide": false, "slots": [
+          { "id": "S-wide", "size": 46, "families": ["STDWL46", "WA STDDRFRM"], "prefers": ["DRFRM"] }
+        ]},
+        "E": { "label": "Right", "longSide": false, "slots": [
+          { "id": "E-wide", "size": 46, "families": ["STDWL46"],                "prefers": ["SOLID"] }
+        ]},
+        "W": { "label": "Left",  "longSide": false, "slots": [
+          { "id": "W-wide", "size": 46, "families": ["STDWL46"],                "prefers": ["SOLID"] }
+        ]}
+      }
+    },
     "MDL 4872 S": {
       "label": "Single-Wall Sound Booth - 4' x 6'",
       "exterior": { "w": 74, "h": 50 },

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.33', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Top-Down Layout: +2 booths.** MDL 4242 S (3.5′×3.5′ square, 4×40″ walls) and MDL 4848 S (4′×4′ square, 4×46″ walls) added to <code>lib/pl-data/booth-layouts.json</code>. Their E variants pick up the same layout via the variant fallback (4242 E → 4242 S, etc.). Rectangular booths (4260, 4872 already done, 7272, etc.) need a per-MDL digitization pass against the spec sheets — those slot grids are non-trivial and going one at a time tomorrow alongside the CP-generated PLs.'},
+      ]
+    },
+    {
       v:'1.72.32', date:'June 7, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Top-Down Layout: narrow slot now flips 22″ → 19″ when WA Door is on.** Layout slots used to pin to a single wall family (e.g. <code>STDWL22</code>), so when WA swapped one C111 → C112 (STDWL19) the placer\'s regex didn\'t match and C112 fell out of the wall pool. Slots now carry a <code>families</code> array — N-narrow and S-narrow accept both <code>STDWL22</code> and <code>STDWL19</code>; S-wide accepts both <code>STDWL46</code> and <code>WA STDDRFRM</code>. The SVG renders at the placed panel\'s real width via <code>panelInteriorWidth()</code>, so the narrow slot visually shrinks from 22″ to 19″ when WA fires.'},

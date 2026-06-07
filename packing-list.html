@@ -10,53 +10,43 @@
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-font-smoothing:antialiased;padding:32px 16px}
-  .page{background:#fff;max-width:980px;margin:0 auto;padding:44px 50px;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.08)}
 
-  /* Header — matches Vendor PO */
-  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:18px;border-bottom:2px solid #ee6216}
-  .logo-wrap{display:flex;flex-direction:column;gap:6px}
-  .logo-img{height:40px;display:block}
-  .logo-sub{font-size:11px;color:#888;font-weight:500}
-  .pl-title{text-align:right}
-  .pl-label{font-size:24px;font-weight:800;color:#1a1a1a;letter-spacing:-.4px}
-  .pl-quote{font-size:14px;font-weight:700;color:#ee6216;margin-top:3px;font-family:ui-monospace,monospace;letter-spacing:.04em}
-  .pl-date{font-size:12px;color:#888;margin-top:2px}
+  /* Each PL block = one printable page (one booth) */
+  .pl-page{background:#fff;max-width:980px;margin:0 auto 28px;padding:36px 44px 30px;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.08);position:relative}
 
-  /* Customer / project block — PO "parties" style */
-  .parties{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-bottom:24px}
-  .party{background:#fafafa;border:1px solid #eee;border-radius:8px;padding:14px 16px}
-  .party-label{font-size:9px;font-weight:800;letter-spacing:.12em;color:#aaa;text-transform:uppercase;margin-bottom:6px}
-  .party-name{font-size:14px;font-weight:700;color:#1a1a1a;margin-bottom:3px}
-  .party-line{font-size:12px;color:#555;line-height:1.5}
+  /* Header row: deal ref (L) | centered logo + tagline | date (R) */
+  .pl-top{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;margin-bottom:18px;gap:14px}
+  .pl-top-left{font-size:12px;font-weight:700;color:#888;letter-spacing:.04em;text-transform:uppercase}
+  .pl-top-center{display:flex;flex-direction:column;align-items:center;gap:2px}
+  .pl-top-center img{height:38px;display:block}
+  .pl-tagline{font-size:9px;font-weight:800;letter-spacing:.28em;color:#1a1a1a;text-transform:uppercase}
+  .pl-top-right{text-align:right;font-size:14px;font-weight:700;color:#1a1a1a;font-variant-numeric:tabular-nums}
+  .pl-date input{font:inherit;color:inherit;border:1px solid transparent;border-radius:4px;padding:2px 4px;background:transparent;text-align:right;width:130px}
+  .pl-date input:hover,.pl-date input:focus{border-color:#ddd;outline:none}
 
-  /* Totals row */
-  .totals-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px}
-  .stat{flex:1;min-width:140px;background:#fff8f2;border:1px solid #f5dec4;border-radius:7px;padding:10px 14px}
-  .stat .l{font-size:9px;font-weight:800;letter-spacing:.1em;color:#ee6216;text-transform:uppercase;margin-bottom:3px}
-  .stat .v{font-size:18px;font-weight:800;color:#1a1a1a;font-variant-numeric:tabular-nums}
+  /* Middle: MDL+totals left, big PACKING LIST + S/N right */
+  .pl-mid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:16px;align-items:start}
+  .mdl-line{font-size:14px;font-weight:800;color:#1a1a1a;letter-spacing:.01em;margin-bottom:10px;line-height:1.4}
+  .mdl-line .sep{color:#ee6216;margin:0 4px;font-weight:700}
+  .totals-grid{display:grid;grid-template-columns:auto auto;gap:3px 12px;font-size:12px;color:#1a1a1a}
+  .totals-grid .l{font-weight:700;color:#444}
+  .totals-grid .v{font-weight:700;font-variant-numeric:tabular-nums;text-align:right;color:#1a1a1a}
 
-  /* Banner */
-  .banner{font-size:11.5px;color:#5a3a18;background:#fff8f2;border:1px solid #f5dec4;border-radius:8px;padding:10px 14px;margin-bottom:20px;line-height:1.5}
-  .banner b{color:#b45309}
+  .pl-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  .pl-title{font-size:38px;font-weight:800;color:#1a1a1a;letter-spacing:-.5px;line-height:1;text-align:right}
+  .pl-title span{color:#ee6216}
+  .sn-row{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:800;color:#1a1a1a;letter-spacing:.04em}
+  .sn-row .sn-label{color:#ee6216}
+  .sn-input{font:inherit;font-weight:800;color:#1a1a1a;border:1px solid transparent;border-bottom:1px solid #ddd;border-radius:0;padding:2px 6px;background:transparent;min-width:170px;text-align:left;letter-spacing:.04em}
+  .sn-input:hover,.sn-input:focus{border-bottom-color:#ee6216;outline:none}
 
-  /* Room card */
-  .room{border:1px solid #eee;border-radius:9px;overflow:hidden;margin-bottom:22px;background:#fff}
-  .room-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 16px;background:#fafafa;border-bottom:1px solid #eee;flex-wrap:wrap}
-  .room-title{display:flex;align-items:center;gap:10px}
-  .room-num{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:#ee6216;color:#fff;font-weight:800;font-size:12px}
-  .room-name{font-size:15px;font-weight:800;color:#1a1a1a}
-  .room-sub{font-size:11px;color:#888}
-  .qty-badge{background:rgba(238,98,22,.12);color:#ee6216;border:1px solid #ee6216;border-radius:10px;padding:1px 8px;font-size:10px;font-weight:800;letter-spacing:.04em}
-  .vpill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-left:4px}
-  .v-S{background:rgba(59,130,246,.15);color:#2563eb}
-  .v-E{background:rgba(168,85,247,.15);color:#7c3aed}
-  .v-SNV{background:rgba(34,197,94,.15);color:#16a34a}
-  .v-ENV{background:rgba(245,158,11,.15);color:#d97706}
-  .room-cfg{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  /* Compact cfg strip (no-print) */
+  .room-cfg{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:0 0 12px;padding:7px 12px;background:#fafafa;border:1px dashed #eee;border-radius:7px}
   .cfg{display:flex;align-items:center;gap:5px;font-size:11px;color:#666;font-weight:600}
   .cfg select{padding:3px 7px;font-size:11px;background:#fff;border:1px solid #ddd;border-radius:5px;color:#1a1a1a;font-family:inherit}
+  .cfg-label{font-size:10px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.08em;margin-right:auto}
 
-  /* PL table — printed-PL look */
+  /* PL table */
   table.pl{width:100%;border-collapse:collapse;font-size:11px}
   table.pl thead tr.group th{background:#1a1a1a;color:#fff;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:6px 5px;text-align:center;border-right:1px solid #2a2a2a}
   table.pl thead tr.group th:last-child{border-right:none}
@@ -71,48 +61,42 @@
   table.pl tbody tr:hover td{background:#fafafa}
   table.pl tbody tr.alt td{background:#fcfbf9}
   table.pl tbody tr.alt:hover td{background:#fafafa}
-  td.idx{color:#888;font-weight:700;width:30px}
+  td.idx{color:#888;font-weight:700;width:28px}
   td.unknown{color:#dc2626}
   .rm-row{color:#bbb;cursor:pointer;border:none;background:none;font-size:14px;padding:0 4px;line-height:1}
   .rm-row:hover{color:#dc2626}
 
-  /* Add-row footer */
-  .room-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 16px;flex-wrap:wrap;border-top:1px solid #f0f0f0;background:#fafafa}
+  /* Add-row footer (no-print) */
+  .room-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0 0;flex-wrap:wrap}
   .addrow{display:flex;gap:6px;align-items:center}
   .addrow input{padding:4px 8px;font-size:11px;background:#fff;border:1px solid #ddd;border-radius:5px;color:#1a1a1a;font-family:inherit;min-width:160px}
   .add-btn{padding:5px 11px;background:rgba(238,98,22,.1);color:#ee6216;border:1px solid rgba(238,98,22,.35);border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase}
   .add-btn:hover{background:rgba(238,98,22,.18)}
-  .net{font-size:12px;font-weight:700;color:#1a1a1a}
-  .net b{font-size:14px;color:#ee6216;font-variant-numeric:tabular-nums}
+
+  /* Page footer */
+  .pl-foot{margin-top:14px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#888}
+  .pl-foot .pn{font-weight:700;color:#1a1a1a}
 
   /* Flags / not found */
-  .flags{margin:0 16px 14px;padding:9px 13px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.4);border-radius:7px;font-size:11px;color:#5a3a18;line-height:1.5}
+  .flags{margin:14px 0 0;padding:9px 13px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.4);border-radius:7px;font-size:11px;color:#5a3a18;line-height:1.5}
   .flags b{color:#b45309}
   .flags .ft{display:inline-block;background:#fff;border:1px solid #eee;border-radius:5px;padding:2px 7px;margin:3px 4px 0 0;font-size:11px;color:#444}
-  .notfound{margin:0 16px 14px;padding:10px 13px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:7px;font-size:11.5px;color:#b91c1c}
+  .notfound{margin:14px 0 0;padding:10px 13px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:7px;font-size:11.5px;color:#b91c1c}
 
-  /* Footer signoff */
-  .signoff{margin-top:30px;padding-top:18px;border-top:1px solid #e5e5e5;font-size:11px;color:#666;line-height:1.7}
-  .signoff strong{color:#1a1a1a}
-
-  /* Print bar */
+  /* Print bar / back link */
   .print-bar{position:fixed;top:14px;right:14px;display:flex;gap:8px;z-index:10}
-  .print-bar button,.print-bar a{padding:8px 14px;background:#1a1a1a;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;font-family:inherit;text-decoration:none;display:inline-block}
+  .print-bar button{padding:8px 14px;background:#1a1a1a;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;font-family:inherit}
   .print-bar button:hover{background:#333}
-  .back-link{position:fixed;top:14px;left:14px;padding:8px 14px;background:#1a1a1a;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;text-decoration:none;font-family:inherit;z-index:10}
+  .back-link{position:fixed;top:14px;left:14px;padding:8px 14px;background:#1a1a1a;color:#fff;border-radius:7px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;text-decoration:none;font-family:inherit;z-index:10}
   .back-link:hover{background:#333;color:#fff}
-
   .loading,.empty{padding:46px;text-align:center;color:#888;font-size:13px}
 
   @media print {
     body{background:#fff;padding:0}
-    .page{box-shadow:none;border-radius:0;max-width:100%;padding:24px 32px}
+    .pl-page{box-shadow:none;border-radius:0;max-width:100%;padding:24px 32px;margin:0;page-break-after:always}
+    .pl-page:last-child{page-break-after:auto}
     .print-bar,.back-link,.no-print{display:none !important}
-    .room-cfg{display:none}
-    .room-foot{display:none}
-    .banner{display:none}
-    .room{border-color:#ccc}
-    .stat{border-color:#ccc;background:#fff}
+    .room-cfg,.room-foot{display:none}
     table.pl thead tr.group th{background:#1a1a1a !important;color:#fff !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     table.pl thead tr.units th{background:#262626 !important;color:#cfcfcf !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     table.pl tbody tr.alt td{background:#fcfbf9 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -126,34 +110,7 @@
     <button onclick="window.print()" style="background:#ee6216">&#128424; Print</button>
   </div>
 
-  <div class="page">
-    <div class="header">
-      <div class="logo-wrap">
-        <img src="/assets/whisperroom-logo.svg" alt="WhisperRoom" class="logo-img">
-        <div class="logo-sub">322 Nancy Lynn Lane Suite 14, Knoxville, TN 37919</div>
-        <div class="logo-sub">800-200-8168 &middot; whisperroom.com</div>
-      </div>
-      <div class="pl-title">
-        <div class="pl-label">PACKING LIST</div>
-        <div class="pl-quote" id="quoteNo">—</div>
-        <div class="pl-date" id="quoteDate">—</div>
-      </div>
-    </div>
-
-    <div class="parties" id="parties"></div>
-
-    <div class="totals-row" id="totals"></div>
-
-    <div class="banner no-print" id="banner">
-      <b>Heads up:</b> The booth and its full bill-of-materials are generated automatically (weights are exact). Each room defaults to <b style="color:#1a1a1a">Left hinge / Gray foam</b> — change per room as needed. Optional-feature lines from the quote are <b>flagged below each room</b> for now (their component swaps are still being built), so add those parts manually until rules land.
-    </div>
-
-    <div id="rooms"><div class="loading">Loading packing list…</div></div>
-
-    <div class="signoff no-print" id="signoff" style="display:none">
-      <strong>WhisperRoom, Inc.</strong> &middot; Packing list generated <span id="genTime"></span>
-    </div>
-  </div>
+  <div id="rooms"><div class="pl-page"><div class="loading">Loading packing list…</div></div></div>
 
 <script>
   let DATA = null;
@@ -162,79 +119,89 @@
 
   const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const fmtN = (n, d=2) => n==null ? '—' : Number(n).toLocaleString(undefined,{minimumFractionDigits:d, maximumFractionDigits:d});
-  const fmtN1 = n => fmtN(n, 2);
   const inToM = inches => (inches==null) ? null : Math.round(inches * 0.0254 * 100) / 100;
   const lbToKg = lb => (lb==null) ? null : Math.round(lb * 0.453592 * 100) / 100;
+  const cuFtPerItem = (L, W, T) => (L==null||W==null||T==null) ? 0 : (L * W * T) / 1728;
+  const cuFtToCuM = cf => Math.round(cf * 0.0283168 * 100) / 100;
+  const todayShort = () => {
+    const d = new Date();
+    return (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
+  };
 
   async function loadPL(){
-    document.getElementById('rooms').innerHTML = '<div class="loading">Loading packing list…</div>';
+    document.getElementById('rooms').innerHTML = '<div class="pl-page"><div class="loading">Loading packing list…</div></div>';
     try {
       const r = await fetch('/api/packing-list/' + encodeURIComponent(quoteNumber), { credentials:'include' });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
       DATA = d; COMPONENTS = d.components || {};
-      renderHeader(); render();
-      document.getElementById('signoff').style.display = '';
-      document.getElementById('genTime').textContent = new Date().toLocaleString();
+      render();
     } catch(e){
-      document.getElementById('rooms').innerHTML = '<div class="empty">Failed to load: ' + esc(e.message) + '</div>';
+      document.getElementById('rooms').innerHTML = '<div class="pl-page"><div class="empty">Failed to load: ' + esc(e.message) + '</div></div>';
     }
   }
 
-  function renderHeader(){
-    const m = DATA.meta || {};
-    document.getElementById('quoteNo').textContent = DATA.quoteNumber || '—';
-    document.getElementById('quoteDate').textContent = m.createdAt
-      ? new Date(m.createdAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})
-      : '—';
-
-    // Customer + project blocks (PO-style)
-    const custLines = [];
-    if (m.company) custLines.push('<div class="party-name">' + esc(m.company) + '</div>');
-    if (m.customerName) custLines.push('<div class="party-line">' + esc(m.customerName) + '</div>');
-    if (!custLines.length) custLines.push('<div class="party-name">—</div>');
-
-    const projLines = [];
-    if (m.dealName) projLines.push('<div class="party-name">' + esc(m.dealName) + '</div>');
-    projLines.push('<div class="party-line">Quote ' + esc(DATA.quoteNumber || '') + '</div>');
-
-    document.getElementById('parties').innerHTML =
-      '<div class="party"><div class="party-label">Customer</div>' + custLines.join('') + '</div>' +
-      '<div class="party"><div class="party-label">Project</div>' + projLines.join('') + '</div>';
-
-    recalcTotals();
-  }
-
-  function recalcTotals(){
-    let net = 0, items = 0;
-    (DATA.rooms||[]).forEach(rm => {
-      const rn = roomNet(rm);
-      const ri = (rm.lines||[]).length;
-      net += rn * (rm.qty||1);
-      items += ri * (rm.qty||1);
+  function roomTotals(rm){
+    let lb = 0, cf = 0;
+    (rm.lines||[]).forEach(l => {
+      if (l.eachLb!=null) lb += l.eachLb;
+      cf += cuFtPerItem(l.L, l.W, l.T);
     });
-    document.getElementById('totals').innerHTML =
-        '<div class="stat"><div class="l">Rooms</div><div class="v">' + (DATA.rooms||[]).length + '</div></div>'
-      + '<div class="stat"><div class="l">Items</div><div class="v">' + items + '</div></div>'
-      + '<div class="stat"><div class="l">Total Net Weight</div><div class="v">' + Math.round(net).toLocaleString() + ' lb</div></div>'
-      + '<div class="stat"><div class="l">Total Net (kg)</div><div class="v">' + (lbToKg(Math.round(net))?.toLocaleString() ?? '—') + ' kg</div></div>';
+    return {
+      lb: Math.round(lb * 100) / 100,
+      kg: lbToKg(lb),
+      cf: Math.round(cf * 100) / 100,
+      cm: cuFtToCuM(cf),
+    };
   }
 
-  function roomNet(rm){
-    return (rm.lines||[]).reduce((s,l)=> s + (l.eachLb||0), 0);
+  function mdlLine(rm){
+    const parts = [rm.boothName];
+    (rm.unmappedFeatures||[]).forEach(f => { if (f && f.name) parts.push(f.name); });
+    return parts.map(esc).join(' <span class="sep">/</span> ');
   }
+
+  function dealRef(){
+    const m = DATA.meta || {};
+    return (m.dealName || m.company || '') + (DATA.quoteNumber ? ' · ' + DATA.quoteNumber : '');
+  }
+
+  function snKey(ri){ return 'wr-pl-sn:' + (DATA.quoteNumber||'') + ':' + ri; }
+  function dateKey(){ return 'wr-pl-date:' + (DATA.quoteNumber||''); }
 
   function render(){
     const rooms = DATA.rooms || [];
-    if (!rooms.length){ document.getElementById('rooms').innerHTML = '<div class="empty">No booth (MDL) line items found on this quote.</div>'; return; }
+    if (!rooms.length){ document.getElementById('rooms').innerHTML = '<div class="pl-page"><div class="empty">No booth (MDL) line items found on this quote.</div></div>'; return; }
     const opts = DATA.options || { hinge:['Left','Right'], foam:['Gray'] };
+    const totalPages = rooms.length;
+    const savedDate = localStorage.getItem(dateKey()) || todayShort();
+
     document.getElementById('rooms').innerHTML = rooms.map((rm,ri)=>{
+      const dateInput = '<span class="pl-date"><input type="text" id="pl-date-' + ri + '" value="' + esc(savedDate) + '" oninput="saveDate(this.value)"></span>';
+      const headerTop =
+        '<div class="pl-top">'
+          + '<div class="pl-top-left">' + esc(dealRef()) + '</div>'
+          + '<div class="pl-top-center">'
+            + '<img src="/assets/whisperroom-logo.svg" alt="WhisperRoom">'
+            + '<div class="pl-tagline">Sound Isolation Enclosures</div>'
+          + '</div>'
+          + '<div class="pl-top-right">' + dateInput + '</div>'
+        + '</div>';
+
       if (!rm.found){
-        return '<div class="room"><div class="room-head"><div class="room-title"><span class="room-num">' + rm.index + '</span>'
-          + '<div><div class="room-name">' + esc(rm.boothName) + '</div></div></div></div>'
+        return '<div class="pl-page">' + headerTop
+          + '<div class="pl-mid">'
+            + '<div><div class="mdl-line">' + esc(rm.boothName) + '</div></div>'
+            + '<div class="pl-right"><div class="pl-title">PACKING <span>LIST</span></div></div>'
+          + '</div>'
           + '<div class="notfound">No base packing list found for <b>' + esc(rm.boothName) + '</b>. If this is a package (not an MDL model) or a typo, it cannot be generated yet.</div>'
-          + flagsHtml(rm) + '</div>';
+          + flagsHtml(rm)
+          + pageFoot(ri+1, totalPages)
+        + '</div>';
       }
+
+      const t = roomTotals(rm);
+      const savedSn = localStorage.getItem(snKey(ri)) || '';
       const hingeSel = '<select onchange="setCfg(' + ri + ',\'hinge\',this.value)">'
         + opts.hinge.map(h=>'<option ' + (h===rm.header.hinge?'selected':'') + '>' + esc(h) + '</option>').join('') + '</select>';
       const foamSel  = '<select onchange="setCfg(' + ri + ',\'foam\',this.value)">'
@@ -258,22 +225,32 @@
           + '<td class="pack l">' + esc(l.pack||'') + '</td>'
           + '<td class="desc l">' + esc(l.desc) + '</td>'
           + '<td class="no-print"><button class="rm-row" title="Remove" onclick="rmRow(' + ri + ',' + li + ')">&times;</button></td>'
-          + '</tr>';
+        + '</tr>';
       }).join('');
 
-      return '<div class="room">'
-        + '<div class="room-head">'
-          + '<div class="room-title">'
-            + '<span class="room-num">' + rm.index + '</span>'
-            + '<div>'
-              + '<div class="room-name">' + esc(rm.boothName) + (rm.qty>1?' <span class="qty-badge">&times;' + rm.qty + '</span>':'') + '</div>'
-              + '<div class="room-sub">Size ' + esc(rm.size||'—') + ' <span class="vpill v-' + esc(rm.variant) + '">' + esc(rm.variant) + '</span></div>'
+      return '<div class="pl-page">'
+        + headerTop
+        + '<div class="pl-mid">'
+          + '<div>'
+            + '<div class="mdl-line">' + mdlLine(rm) + (rm.qty>1?' <span style="color:#ee6216">(&times;' + rm.qty + ')</span>':'') + '</div>'
+            + '<div class="totals-grid">'
+              + '<div class="l">Total Size (Cubic Feet):</div><div class="v">' + fmtN(t.cf,2) + '</div>'
+              + '<div class="l">Total Weight (Pounds):</div><div class="v">' + fmtN(t.lb,2) + '</div>'
+              + '<div class="l">Total Size (Cubic Meters):</div><div class="v">' + fmtN(t.cm,2) + '</div>'
+              + '<div class="l">Total Weight (Kilograms):</div><div class="v">' + fmtN(t.kg,2) + '</div>'
             + '</div>'
           + '</div>'
-          + '<div class="room-cfg no-print">'
-            + '<span class="cfg">Hinge ' + hingeSel + '</span>'
-            + '<span class="cfg">Foam ' + foamSel + '</span>'
+          + '<div class="pl-right">'
+            + '<div class="pl-title">PACKING <span>LIST</span></div>'
+            + '<div class="sn-row"><span class="sn-label">S/N</span>'
+              + '<input class="sn-input" type="text" value="' + esc(savedSn) + '" placeholder="enter serial #" oninput="saveSn(' + ri + ',this.value)">'
+            + '</div>'
           + '</div>'
+        + '</div>'
+        + '<div class="room-cfg no-print">'
+          + '<span class="cfg-label">Config</span>'
+          + '<span class="cfg">Hinge ' + hingeSel + '</span>'
+          + '<span class="cfg">Foam ' + foamSel + '</span>'
         + '</div>'
         + '<table class="pl">'
           + '<thead>'
@@ -302,12 +279,16 @@
             + '<input list="compCodes" placeholder="Add component code…" id="addcode-' + ri + '">'
             + '<button class="add-btn" onclick="addRow(' + ri + ')">+ Add</button>'
           + '</div>'
-          + '<div class="net">Room net: <b id="net-' + ri + '">' + Math.round(roomNet(rm)).toLocaleString() + '</b> lb' + (rm.qty>1?' <span class="room-sub">(&times;' + rm.qty + ' = ' + Math.round(roomNet(rm)*rm.qty).toLocaleString() + ' lb)</span>':'') + '</div>'
         + '</div>'
         + flagsHtml(rm)
+        + pageFoot(ri+1, totalPages)
       + '</div>';
     }).join('')
     + '<datalist id="compCodes">' + Object.keys(COMPONENTS).map(c=>'<option value="' + esc(c) + '">').join('') + '</datalist>';
+  }
+
+  function pageFoot(n, total){
+    return '<div class="pl-foot"><div></div><div class="pn">' + n + ' of ' + total + '</div></div>';
   }
 
   function flagsHtml(rm){
@@ -318,7 +299,9 @@
   }
 
   function setCfg(ri, key, val){ DATA.rooms[ri].header[key] = val; }
-  function rmRow(ri, li){ DATA.rooms[ri].lines.splice(li,1); render(); recalcTotals(); }
+  function saveSn(ri, val){ try { localStorage.setItem(snKey(ri), val); } catch(e){} }
+  function saveDate(val){ try { localStorage.setItem(dateKey(), val); } catch(e){} }
+  function rmRow(ri, li){ DATA.rooms[ri].lines.splice(li,1); render(); }
   function addRow(ri){
     const inp = document.getElementById('addcode-'+ri);
     const code = (inp.value||'').trim().toUpperCase();
@@ -326,10 +309,10 @@
     const c = COMPONENTS[code];
     if (!c){ alert('Unknown component code: ' + code); return; }
     DATA.rooms[ri].lines.push({ code, desc:c.desc||'', pack:c.pack||'', eachLb:c.lb, L:c.L, W:c.W, T:c.T, known:true });
-    inp.value=''; render(); recalcTotals();
+    inp.value=''; render();
   }
 
-  if (!quoteNumber){ document.getElementById('rooms').innerHTML = '<div class="empty">No quote number in the URL.</div>'; }
+  if (!quoteNumber){ document.getElementById('rooms').innerHTML = '<div class="pl-page"><div class="empty">No quote number in the URL.</div></div>'; }
   else loadPL();
 </script>
 </body>

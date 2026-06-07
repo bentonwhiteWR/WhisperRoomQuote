@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.7', date:'June 7, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Packing List layout now closely mirrors the real printed PL.** Each booth is its own one-page PL: centered WhisperRoom logo with <b>SOUND ISOLATION ENCLOSURES</b> tagline, editable date top-right, and a deal reference top-left. Below that, the <b>MDL line</b> (booth + its options, e.g. <code>MDL 4872 S / ADA / EFS / VSS / MJP / WDO 3236 / DESK</code>) and the <b>Totals box</b> (Cubic Feet / Pounds / Cubic Meters / Kilograms) on the left, with a big <b>PACKING LIST</b> title and an editable <b>S/N</b> field on the right. The "Heads up" banner is gone. Multi-room quotes paginate one booth per page. S/N and date persist in browser per-quote.'},
+      ]
+    },
+    {
       v:'1.72.6', date:'June 7, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Packing List redesigned to match the printed PL layout.** The viewer now mirrors the shop-floor PL: real WhisperRoom logo + address header, Customer / Project info block, and a per-room table with grouped <b>Length / Width / Thickness / Weight</b> columns (Inches + Mtrs, Pounds + Kilograms), then <b>Code · Part # · Package Contents</b>. The <b>Quantity column is gone</b> — each physical item is its own row, so a BOM entry of qty 4 prints as four rows. Overall feel matches the Vendor PO / Quote docs (white card, orange accent).'},

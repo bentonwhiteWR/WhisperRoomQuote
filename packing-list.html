@@ -2,126 +2,157 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>WhisperRoom — Packing List</title>
+<link rel="icon" href="/assets/favicon.avif">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial Black,sans-serif' font-size='18' font-weight='900' fill='%23e8531a'>W</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg:#0f0f0f; --surface:#1a1a1a; --surface2:#222; --border:#2a2a2a;
-    --orange:#ee6216; --orange-dim:rgba(238,98,22,.12);
-    --text:#e8e8e8; --muted:#888;
-    --green:#22c55e; --red:#ef4444; --blue:#3b82f6; --amber:#f59e0b; --purple:#a855f7;
-    --row-hover:rgba(255,255,255,.02);
-  }
-  :root.light {
-    --bg:#f5f5f5; --surface:#fff; --surface2:#f0f0f0; --border:#e0e0e0;
-    --orange:#d44f0c; --orange-dim:rgba(212,79,12,.1);
-    --text:#1a1a1a; --muted:#666;
-    --green:#16a34a; --red:#dc2626; --blue:#2563eb; --amber:#d97706; --purple:#7c3aed;
-    --row-hover:rgba(0,0,0,.02);
-  }
-  * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; -webkit-font-smoothing:antialiased; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-font-smoothing:antialiased;padding:32px 16px}
+  .page{background:#fff;max-width:980px;margin:0 auto;padding:44px 50px;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.08)}
 
-  .topbar { display:flex; align-items:center; justify-content:space-between; padding:0 20px; min-height:52px; background:#1a1a1a; border-bottom:1px solid rgba(255,255,255,.1); position:sticky; top:0; z-index:100; gap:8px; }
-  .topbar-logo { font-family:'Syne',sans-serif; font-size:20px; font-weight:800; color:#f0ede8; text-decoration:none; }
-  .topbar-logo span { color:#e8531a; }
-  .topbar-right { display:flex; gap:8px; align-items:center; }
-  .btn { padding:6px 12px; font-size:12px; font-weight:700; border-radius:7px; border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; font-family:inherit; }
-  .btn:hover { border-color:var(--orange); color:var(--orange); }
-  .btn-orange { background:var(--orange); border-color:var(--orange); color:#fff; }
-  .btn-orange:hover { color:#fff; opacity:.9; }
-  .btn-sm { padding:3px 8px; font-size:11px; }
-  .theme-btn { padding:5px 9px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:6px; color:#f0ede8; cursor:pointer; font-size:14px; }
+  /* Header — matches Vendor PO */
+  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:18px;border-bottom:2px solid #ee6216}
+  .logo-wrap{display:flex;flex-direction:column;gap:6px}
+  .logo-img{height:40px;display:block}
+  .logo-sub{font-size:11px;color:#888;font-weight:500}
+  .pl-title{text-align:right}
+  .pl-label{font-size:24px;font-weight:800;color:#1a1a1a;letter-spacing:-.4px}
+  .pl-quote{font-size:14px;font-weight:700;color:#ee6216;margin-top:3px;font-family:ui-monospace,monospace;letter-spacing:.04em}
+  .pl-date{font-size:12px;color:#888;margin-top:2px}
 
-  .main { max-width:1200px; margin:0 auto; padding:22px 20px 60px; }
-  .head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-bottom:8px; }
-  .title { font-family:'Syne',sans-serif; font-size:23px; font-weight:800; }
-  .title span { color:var(--orange); }
-  .meta { font-size:12px; color:var(--muted); margin-top:5px; line-height:1.6; }
-  .meta b { color:var(--text); font-weight:700; }
+  /* Customer / project block — PO "parties" style */
+  .parties{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-bottom:24px}
+  .party{background:#fafafa;border:1px solid #eee;border-radius:8px;padding:14px 16px}
+  .party-label{font-size:9px;font-weight:800;letter-spacing:.12em;color:#aaa;text-transform:uppercase;margin-bottom:6px}
+  .party-name{font-size:14px;font-weight:700;color:#1a1a1a;margin-bottom:3px}
+  .party-line{font-size:12px;color:#555;line-height:1.5}
 
-  .totals { display:flex; gap:10px; flex-wrap:wrap; margin:14px 0 22px; }
-  .stat { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 16px; }
-  .stat .l { font-size:10px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); }
-  .stat .v { font-family:'Syne',sans-serif; font-size:21px; font-weight:800; margin-top:2px; }
+  /* Totals row */
+  .totals-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px}
+  .stat{flex:1;min-width:140px;background:#fff8f2;border:1px solid #f5dec4;border-radius:7px;padding:10px 14px}
+  .stat .l{font-size:9px;font-weight:800;letter-spacing:.1em;color:#ee6216;text-transform:uppercase;margin-bottom:3px}
+  .stat .v{font-size:18px;font-weight:800;color:#1a1a1a;font-variant-numeric:tabular-nums}
 
-  .room { background:var(--surface); border:1px solid var(--border); border-radius:13px; margin-bottom:20px; overflow:hidden; }
-  .room-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 18px; background:var(--surface2); border-bottom:1px solid var(--border); flex-wrap:wrap; }
-  .room-title { display:flex; align-items:center; gap:10px; }
-  .room-num { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:var(--orange); color:#fff; font-weight:800; font-size:13px; }
-  .room-name { font-family:'Syne',sans-serif; font-size:17px; font-weight:800; }
-  .room-sub { font-size:11px; color:var(--muted); }
-  .qty-badge { background:var(--orange-dim); color:var(--orange); border:1px solid var(--orange); border-radius:10px; padding:1px 9px; font-size:11px; font-weight:700; }
-  .vpill { display:inline-block; padding:1px 8px; border-radius:10px; font-size:10px; font-weight:700; }
-  .v-S{background:rgba(59,130,246,.15);color:var(--blue)} .v-E{background:rgba(168,85,247,.15);color:var(--purple)}
-  .v-SNV{background:rgba(34,197,94,.13);color:var(--green)} .v-ENV{background:rgba(245,158,11,.13);color:var(--amber)}
+  /* Banner */
+  .banner{font-size:11.5px;color:#5a3a18;background:#fff8f2;border:1px solid #f5dec4;border-radius:8px;padding:10px 14px;margin-bottom:20px;line-height:1.5}
+  .banner b{color:#b45309}
 
-  .room-cfg { display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
-  .cfg { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); }
-  .cfg select { padding:4px 8px; font-size:12px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; }
+  /* Room card */
+  .room{border:1px solid #eee;border-radius:9px;overflow:hidden;margin-bottom:22px;background:#fff}
+  .room-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 16px;background:#fafafa;border-bottom:1px solid #eee;flex-wrap:wrap}
+  .room-title{display:flex;align-items:center;gap:10px}
+  .room-num{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:#ee6216;color:#fff;font-weight:800;font-size:12px}
+  .room-name{font-size:15px;font-weight:800;color:#1a1a1a}
+  .room-sub{font-size:11px;color:#888}
+  .qty-badge{background:rgba(238,98,22,.12);color:#ee6216;border:1px solid #ee6216;border-radius:10px;padding:1px 8px;font-size:10px;font-weight:800;letter-spacing:.04em}
+  .vpill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-left:4px}
+  .v-S{background:rgba(59,130,246,.15);color:#2563eb}
+  .v-E{background:rgba(168,85,247,.15);color:#7c3aed}
+  .v-SNV{background:rgba(34,197,94,.15);color:#16a34a}
+  .v-ENV{background:rgba(245,158,11,.15);color:#d97706}
+  .room-cfg{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .cfg{display:flex;align-items:center;gap:5px;font-size:11px;color:#666;font-weight:600}
+  .cfg select{padding:3px 7px;font-size:11px;background:#fff;border:1px solid #ddd;border-radius:5px;color:#1a1a1a;font-family:inherit}
 
-  table { width:100%; border-collapse:collapse; font-size:12.5px; }
-  thead th { text-align:right; padding:9px 12px; font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--border); white-space:nowrap; }
-  thead th.l { text-align:left; }
-  tbody td { padding:7px 12px; text-align:right; border-bottom:1px solid var(--border); white-space:nowrap; font-variant-numeric:tabular-nums; }
-  tbody td.l { text-align:left; white-space:normal; }
-  tbody tr:hover { background:var(--row-hover); }
-  .code { font-weight:700; font-family:ui-monospace,Menlo,monospace; }
-  .qin { width:54px; padding:3px 6px; text-align:right; background:var(--surface2); border:1px solid var(--border); border-radius:5px; color:var(--text); font-family:inherit; font-size:12px; }
-  .unknown { color:var(--red); }
-  .rm-row { color:var(--muted); cursor:pointer; border:none; background:none; font-size:14px; padding:0 4px; }
-  .rm-row:hover { color:var(--red); }
+  /* PL table — printed-PL look */
+  table.pl{width:100%;border-collapse:collapse;font-size:11px}
+  table.pl thead tr.group th{background:#1a1a1a;color:#fff;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:6px 5px;text-align:center;border-right:1px solid #2a2a2a}
+  table.pl thead tr.group th:last-child{border-right:none}
+  table.pl thead tr.units th{background:#262626;color:#cfcfcf;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:4px 5px;text-align:center;border-right:1px solid #333}
+  table.pl thead tr.units th.l{text-align:left;padding-left:9px}
+  table.pl thead tr.units th:last-child{border-right:none}
+  table.pl tbody td{padding:5px 5px;border-bottom:1px solid #f0f0f0;font-variant-numeric:tabular-nums;text-align:center}
+  table.pl tbody td.l{text-align:left;padding-left:9px}
+  table.pl tbody td.code{font-family:ui-monospace,Menlo,monospace;font-weight:700;color:#1a1a1a}
+  table.pl tbody td.pack{font-family:ui-monospace,Menlo,monospace;color:#444}
+  table.pl tbody td.desc{color:#333;font-weight:500}
+  table.pl tbody tr:hover td{background:#fafafa}
+  table.pl tbody tr.alt td{background:#fcfbf9}
+  table.pl tbody tr.alt:hover td{background:#fafafa}
+  td.idx{color:#888;font-weight:700;width:30px}
+  td.unknown{color:#dc2626}
+  .rm-row{color:#bbb;cursor:pointer;border:none;background:none;font-size:14px;padding:0 4px;line-height:1}
+  .rm-row:hover{color:#dc2626}
 
-  .room-foot { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 18px; flex-wrap:wrap; }
-  .addrow { display:flex; gap:6px; align-items:center; }
-  .addrow input { padding:4px 8px; font-size:12px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; }
-  .net { font-size:13px; font-weight:700; }
-  .net b { font-family:'Syne',sans-serif; font-size:17px; color:var(--orange); }
+  /* Add-row footer */
+  .room-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 16px;flex-wrap:wrap;border-top:1px solid #f0f0f0;background:#fafafa}
+  .addrow{display:flex;gap:6px;align-items:center}
+  .addrow input{padding:4px 8px;font-size:11px;background:#fff;border:1px solid #ddd;border-radius:5px;color:#1a1a1a;font-family:inherit;min-width:160px}
+  .add-btn{padding:5px 11px;background:rgba(238,98,22,.1);color:#ee6216;border:1px solid rgba(238,98,22,.35);border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase}
+  .add-btn:hover{background:rgba(238,98,22,.18)}
+  .net{font-size:12px;font-weight:700;color:#1a1a1a}
+  .net b{font-size:14px;color:#ee6216;font-variant-numeric:tabular-nums}
 
-  .flags { margin:0 18px 14px; padding:10px 14px; background:rgba(245,158,11,.08); border:1px solid var(--amber); border-radius:9px; font-size:11.5px; color:var(--text); }
-  .flags .ft { display:inline-block; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:2px 8px; margin:3px 4px 0 0; font-size:11px; }
-  .notfound { margin:0 18px 14px; padding:12px 14px; background:rgba(239,68,68,.08); border:1px solid var(--red); border-radius:9px; font-size:12px; color:var(--red); }
+  /* Flags / not found */
+  .flags{margin:0 16px 14px;padding:9px 13px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.4);border-radius:7px;font-size:11px;color:#5a3a18;line-height:1.5}
+  .flags b{color:#b45309}
+  .flags .ft{display:inline-block;background:#fff;border:1px solid #eee;border-radius:5px;padding:2px 7px;margin:3px 4px 0 0;font-size:11px;color:#444}
+  .notfound{margin:0 16px 14px;padding:10px 13px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:7px;font-size:11.5px;color:#b91c1c}
 
-  .banner { font-size:11.5px; color:var(--muted); background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:9px 13px; margin-bottom:18px; line-height:1.5; }
-  .banner b { color:var(--amber); }
-  .loading,.empty { padding:46px; text-align:center; color:var(--muted); }
+  /* Footer signoff */
+  .signoff{margin-top:30px;padding-top:18px;border-top:1px solid #e5e5e5;font-size:11px;color:#666;line-height:1.7}
+  .signoff strong{color:#1a1a1a}
+
+  /* Print bar */
+  .print-bar{position:fixed;top:14px;right:14px;display:flex;gap:8px;z-index:10}
+  .print-bar button,.print-bar a{padding:8px 14px;background:#1a1a1a;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;font-family:inherit;text-decoration:none;display:inline-block}
+  .print-bar button:hover{background:#333}
+  .back-link{position:fixed;top:14px;left:14px;padding:8px 14px;background:#1a1a1a;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;text-decoration:none;font-family:inherit;z-index:10}
+  .back-link:hover{background:#333;color:#fff}
+
+  .loading,.empty{padding:46px;text-align:center;color:#888;font-size:13px}
 
   @media print {
-    .topbar,.no-print,.room-cfg select,.qin,.rm-row,.addrow,.theme-btn { }
-    .no-print { display:none !important; }
-    body { background:#fff; color:#000; }
-    .room,.stat,.banner { border-color:#ccc; box-shadow:none; }
-    .qin { border:none; background:none; }
+    body{background:#fff;padding:0}
+    .page{box-shadow:none;border-radius:0;max-width:100%;padding:24px 32px}
+    .print-bar,.back-link,.no-print{display:none !important}
+    .room-cfg{display:none}
+    .room-foot{display:none}
+    .banner{display:none}
+    .room{border-color:#ccc}
+    .stat{border-color:#ccc;background:#fff}
+    table.pl thead tr.group th{background:#1a1a1a !important;color:#fff !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    table.pl thead tr.units th{background:#262626 !important;color:#cfcfcf !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    table.pl tbody tr.alt td{background:#fcfbf9 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   }
 </style>
 </head>
 <body>
-  <div class="topbar no-print">
-    <a href="/deals" class="topbar-logo">Whisper<span>Room</span></a>
-    <div class="topbar-right">
-      <button class="btn" onclick="window.print()">🖨 Print</button>
-      <button class="btn" onclick="loadPL()">↻ Refresh</button>
-      <button class="theme-btn" onclick="toggleTheme()">◐</button>
-    </div>
+  <a class="back-link no-print" href="/deals">&larr; Deals</a>
+  <div class="print-bar no-print">
+    <button onclick="loadPL()">&#8635; Refresh</button>
+    <button onclick="window.print()" style="background:#ee6216">&#128424; Print</button>
   </div>
 
-  <div class="main">
-    <div class="head">
-      <div>
-        <div class="title">Packing <span>List</span></div>
-        <div class="meta" id="meta">Loading…</div>
+  <div class="page">
+    <div class="header">
+      <div class="logo-wrap">
+        <img src="/assets/whisperroom-logo.svg" alt="WhisperRoom" class="logo-img">
+        <div class="logo-sub">322 Nancy Lynn Lane Suite 14, Knoxville, TN 37919</div>
+        <div class="logo-sub">800-200-8168 &middot; whisperroom.com</div>
       </div>
-      <div class="totals" id="totals"></div>
+      <div class="pl-title">
+        <div class="pl-label">PACKING LIST</div>
+        <div class="pl-quote" id="quoteNo">—</div>
+        <div class="pl-date" id="quoteDate">—</div>
+      </div>
     </div>
 
-    <div class="banner no-print">
-      <b>Heads up:</b> The booth and its full bill-of-materials are generated automatically (weights are exact). Each room defaults to <b style="color:var(--text)">Left hinge / Gray foam</b> — change per room as needed. Optional-feature lines from the quote are <b>flagged below each room</b> for now (their component swaps are still being built), so add those parts manually until rules land. Quantity edits / added rows here are for this printout — not saved back yet.
+    <div class="parties" id="parties"></div>
+
+    <div class="totals-row" id="totals"></div>
+
+    <div class="banner no-print" id="banner">
+      <b>Heads up:</b> The booth and its full bill-of-materials are generated automatically (weights are exact). Each room defaults to <b style="color:#1a1a1a">Left hinge / Gray foam</b> — change per room as needed. Optional-feature lines from the quote are <b>flagged below each room</b> for now (their component swaps are still being built), so add those parts manually until rules land.
     </div>
 
     <div id="rooms"><div class="loading">Loading packing list…</div></div>
+
+    <div class="signoff no-print" id="signoff" style="display:none">
+      <strong>WhisperRoom, Inc.</strong> &middot; Packing list generated <span id="genTime"></span>
+    </div>
   </div>
 
 <script>
@@ -129,12 +160,11 @@
   let COMPONENTS = {};
   const quoteNumber = decodeURIComponent((location.pathname.match(/\/pl\/(.+)$/) || [])[1] || '').replace(/\/+$/, '');
 
-  (function(){ if (localStorage.getItem('wr-theme')==='light') document.documentElement.classList.add('light'); })();
-  function toggleTheme(){ document.documentElement.classList.toggle('light'); localStorage.setItem('wr-theme', document.documentElement.classList.contains('light')?'light':'dark'); }
-
   const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  const lb = n => n==null ? '—' : Number(n).toLocaleString(undefined,{maximumFractionDigits:1});
-  const dim = (L,W,T) => [L,W,T].every(x=>x==null) ? '' : `${L??'?'}×${W??'?'}×${T??'?'}`;
+  const fmtN = (n, d=2) => n==null ? '—' : Number(n).toLocaleString(undefined,{minimumFractionDigits:d, maximumFractionDigits:d});
+  const fmtN1 = n => fmtN(n, 2);
+  const inToM = inches => (inches==null) ? null : Math.round(inches * 0.0254 * 100) / 100;
+  const lbToKg = lb => (lb==null) ? null : Math.round(lb * 0.453592 * 100) / 100;
 
   async function loadPL(){
     document.getElementById('rooms').innerHTML = '<div class="loading">Loading packing list…</div>';
@@ -143,34 +173,55 @@
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
       DATA = d; COMPONENTS = d.components || {};
-      renderMeta(); render();
+      renderHeader(); render();
+      document.getElementById('signoff').style.display = '';
+      document.getElementById('genTime').textContent = new Date().toLocaleString();
     } catch(e){
       document.getElementById('rooms').innerHTML = '<div class="empty">Failed to load: ' + esc(e.message) + '</div>';
-      document.getElementById('meta').textContent = '';
     }
   }
 
-  function renderMeta(){
+  function renderHeader(){
     const m = DATA.meta || {};
-    const bits = [`Quote <b>${esc(DATA.quoteNumber)}</b>`];
-    if (m.company)      bits.push(esc(m.company));
-    if (m.customerName) bits.push(esc(m.customerName));
-    if (m.dealName)     bits.push(esc(m.dealName));
-    if (m.createdAt)    bits.push(new Date(m.createdAt).toLocaleDateString());
-    document.getElementById('meta').innerHTML = bits.join(' &nbsp;·&nbsp; ');
+    document.getElementById('quoteNo').textContent = DATA.quoteNumber || '—';
+    document.getElementById('quoteDate').textContent = m.createdAt
+      ? new Date(m.createdAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})
+      : '—';
+
+    // Customer + project blocks (PO-style)
+    const custLines = [];
+    if (m.company) custLines.push('<div class="party-name">' + esc(m.company) + '</div>');
+    if (m.customerName) custLines.push('<div class="party-line">' + esc(m.customerName) + '</div>');
+    if (!custLines.length) custLines.push('<div class="party-name">—</div>');
+
+    const projLines = [];
+    if (m.dealName) projLines.push('<div class="party-name">' + esc(m.dealName) + '</div>');
+    projLines.push('<div class="party-line">Quote ' + esc(DATA.quoteNumber || '') + '</div>');
+
+    document.getElementById('parties').innerHTML =
+      '<div class="party"><div class="party-label">Customer</div>' + custLines.join('') + '</div>' +
+      '<div class="party"><div class="party-label">Project</div>' + projLines.join('') + '</div>';
+
     recalcTotals();
   }
 
   function recalcTotals(){
-    let net = 0;
-    (DATA.rooms||[]).forEach(rm => { net += roomNet(rm) * (rm.qty||1); });
+    let net = 0, items = 0;
+    (DATA.rooms||[]).forEach(rm => {
+      const rn = roomNet(rm);
+      const ri = (rm.lines||[]).length;
+      net += rn * (rm.qty||1);
+      items += ri * (rm.qty||1);
+    });
     document.getElementById('totals').innerHTML =
-      `<div class="stat"><div class="l">Rooms</div><div class="v">${(DATA.rooms||[]).length}</div></div>`
-    + `<div class="stat"><div class="l">Total Net Weight</div><div class="v">${lb(Math.round(net))} lb</div></div>`;
+        '<div class="stat"><div class="l">Rooms</div><div class="v">' + (DATA.rooms||[]).length + '</div></div>'
+      + '<div class="stat"><div class="l">Items</div><div class="v">' + items + '</div></div>'
+      + '<div class="stat"><div class="l">Total Net Weight</div><div class="v">' + Math.round(net).toLocaleString() + ' lb</div></div>'
+      + '<div class="stat"><div class="l">Total Net (kg)</div><div class="v">' + (lbToKg(Math.round(net))?.toLocaleString() ?? '—') + ' kg</div></div>';
   }
 
   function roomNet(rm){
-    return (rm.lines||[]).reduce((s,l)=> s + (l.totalLb||0), 0);
+    return (rm.lines||[]).reduce((s,l)=> s + (l.eachLb||0), 0);
   }
 
   function render(){
@@ -179,87 +230,103 @@
     const opts = DATA.options || { hinge:['Left','Right'], foam:['Gray'] };
     document.getElementById('rooms').innerHTML = rooms.map((rm,ri)=>{
       if (!rm.found){
-        return `<div class="room"><div class="room-head"><div class="room-title"><span class="room-num">${rm.index}</span>`
-          + `<div><div class="room-name">${esc(rm.boothName)}</div></div></div></div>`
-          + `<div class="notfound">No base packing list found for <b>${esc(rm.boothName)}</b>. If this is a package (not an MDL model) or a typo, it cannot be generated yet.</div>`
-          + flagsHtml(rm) + `</div>`;
+        return '<div class="room"><div class="room-head"><div class="room-title"><span class="room-num">' + rm.index + '</span>'
+          + '<div><div class="room-name">' + esc(rm.boothName) + '</div></div></div></div>'
+          + '<div class="notfound">No base packing list found for <b>' + esc(rm.boothName) + '</b>. If this is a package (not an MDL model) or a typo, it cannot be generated yet.</div>'
+          + flagsHtml(rm) + '</div>';
       }
-      const hingeSel = `<select onchange="setCfg(${ri},'hinge',this.value)">${opts.hinge.map(h=>`<option ${h===rm.header.hinge?'selected':''}>${esc(h)}</option>`).join('')}</select>`;
-      const foamSel  = `<select onchange="setCfg(${ri},'foam',this.value)">${opts.foam.map(f=>`<option ${f===rm.header.foam?'selected':''}>${esc(f)}</option>`).join('')}</select>`;
-      const body = (rm.lines||[]).map((l,li)=>`
-        <tr>
-          <td class="l code ${l.known?'':'unknown'}">${esc(l.code)}</td>
-          <td class="l">${esc(l.desc)}</td>
-          <td><input class="qin" type="number" min="0" value="${l.qty}" oninput="setQty(${ri},${li},this.value)"></td>
-          <td>${lb(l.eachLb)}</td>
-          <td>${lb(l.totalLb)}</td>
-          <td>${esc(dim(l.L,l.W,l.T))}</td>
-          <td class="l">${esc(l.pack||'')}</td>
-          <td><button class="rm-row no-print" title="Remove" onclick="rmRow(${ri},${li})">✕</button></td>
-        </tr>`).join('');
-      return `<div class="room">
-        <div class="room-head">
-          <div class="room-title">
-            <span class="room-num">${rm.index}</span>
-            <div>
-              <div class="room-name">${esc(rm.boothName)} ${rm.qty>1?`<span class="qty-badge">×${rm.qty}</span>`:''}</div>
-              <div class="room-sub">Size ${esc(rm.size)} · <span class="vpill v-${esc(rm.variant)}">${esc(rm.variant)}</span></div>
-            </div>
-          </div>
-          <div class="room-cfg">
-            <span class="cfg">Hinge ${hingeSel}</span>
-            <span class="cfg">Foam ${foamSel}</span>
-          </div>
-        </div>
-        <table>
-          <thead><tr>
-            <th class="l">Code</th><th class="l">Component</th><th>Qty</th>
-            <th>Each lb</th><th>Total lb</th><th>Dims (in)</th><th class="l">Pack</th><th class="no-print"></th>
-          </tr></thead>
-          <tbody>${body}</tbody>
-        </table>
-        <div class="room-foot">
-          <div class="addrow no-print">
-            <input list="compCodes" placeholder="Add component code…" id="addcode-${ri}">
-            <button class="btn btn-sm" onclick="addRow(${ri})">+ Add</button>
-          </div>
-          <div class="net">Room net: <b id="net-${ri}">${lb(roomNet(rm))}</b> lb${rm.qty>1?` <span class="room-sub">(×${rm.qty} = ${lb(roomNet(rm)*rm.qty)} lb)</span>`:''}</div>
-        </div>
-        ${flagsHtml(rm)}
-      </div>`;
+      const hingeSel = '<select onchange="setCfg(' + ri + ',\'hinge\',this.value)">'
+        + opts.hinge.map(h=>'<option ' + (h===rm.header.hinge?'selected':'') + '>' + esc(h) + '</option>').join('') + '</select>';
+      const foamSel  = '<select onchange="setCfg(' + ri + ',\'foam\',this.value)">'
+        + opts.foam.map(f=>'<option ' + (f===rm.header.foam?'selected':'') + '>' + esc(f) + '</option>').join('') + '</select>';
+
+      const body = (rm.lines||[]).map((l,li)=>{
+        const lM = inToM(l.L), wM = inToM(l.W), tM = inToM(l.T);
+        const kg = lbToKg(l.eachLb);
+        const alt = li % 2 === 1 ? ' class="alt"' : '';
+        return '<tr' + alt + '>'
+          + '<td class="idx">' + (li+1) + '</td>'
+          + '<td>' + (l.L==null?'—':fmtN(l.L,2)) + '</td>'
+          + '<td>' + (lM==null?'—':fmtN(lM,2)) + '</td>'
+          + '<td>' + (l.W==null?'—':fmtN(l.W,2)) + '</td>'
+          + '<td>' + (wM==null?'—':fmtN(wM,2)) + '</td>'
+          + '<td>' + (l.T==null?'—':fmtN(l.T,2)) + '</td>'
+          + '<td>' + (tM==null?'—':fmtN(tM,2)) + '</td>'
+          + '<td>' + (l.eachLb==null?'—':fmtN(l.eachLb,2)) + '</td>'
+          + '<td>' + (kg==null?'—':fmtN(kg,2)) + '</td>'
+          + '<td class="code ' + (l.known?'':'unknown') + '">' + esc(l.code) + '</td>'
+          + '<td class="pack l">' + esc(l.pack||'') + '</td>'
+          + '<td class="desc l">' + esc(l.desc) + '</td>'
+          + '<td class="no-print"><button class="rm-row" title="Remove" onclick="rmRow(' + ri + ',' + li + ')">&times;</button></td>'
+          + '</tr>';
+      }).join('');
+
+      return '<div class="room">'
+        + '<div class="room-head">'
+          + '<div class="room-title">'
+            + '<span class="room-num">' + rm.index + '</span>'
+            + '<div>'
+              + '<div class="room-name">' + esc(rm.boothName) + (rm.qty>1?' <span class="qty-badge">&times;' + rm.qty + '</span>':'') + '</div>'
+              + '<div class="room-sub">Size ' + esc(rm.size||'—') + ' <span class="vpill v-' + esc(rm.variant) + '">' + esc(rm.variant) + '</span></div>'
+            + '</div>'
+          + '</div>'
+          + '<div class="room-cfg no-print">'
+            + '<span class="cfg">Hinge ' + hingeSel + '</span>'
+            + '<span class="cfg">Foam ' + foamSel + '</span>'
+          + '</div>'
+        + '</div>'
+        + '<table class="pl">'
+          + '<thead>'
+            + '<tr class="group">'
+              + '<th rowspan="2">#</th>'
+              + '<th colspan="2">Length</th>'
+              + '<th colspan="2">Width</th>'
+              + '<th colspan="2">Thickness</th>'
+              + '<th colspan="2">Weight</th>'
+              + '<th rowspan="2">Code</th>'
+              + '<th rowspan="2" class="l">Part #</th>'
+              + '<th rowspan="2" class="l">Package Contents</th>'
+              + '<th rowspan="2" class="no-print"></th>'
+            + '</tr>'
+            + '<tr class="units">'
+              + '<th>Inches</th><th>Mtrs</th>'
+              + '<th>Inches</th><th>Mtrs</th>'
+              + '<th>Inches</th><th>Mtrs</th>'
+              + '<th>Pounds</th><th>Kilograms</th>'
+            + '</tr>'
+          + '</thead>'
+          + '<tbody>' + body + '</tbody>'
+        + '</table>'
+        + '<div class="room-foot no-print">'
+          + '<div class="addrow">'
+            + '<input list="compCodes" placeholder="Add component code…" id="addcode-' + ri + '">'
+            + '<button class="add-btn" onclick="addRow(' + ri + ')">+ Add</button>'
+          + '</div>'
+          + '<div class="net">Room net: <b id="net-' + ri + '">' + Math.round(roomNet(rm)).toLocaleString() + '</b> lb' + (rm.qty>1?' <span class="room-sub">(&times;' + rm.qty + ' = ' + Math.round(roomNet(rm)*rm.qty).toLocaleString() + ' lb)</span>':'') + '</div>'
+        + '</div>'
+        + flagsHtml(rm)
+      + '</div>';
     }).join('')
-    + `<datalist id="compCodes">${Object.keys(COMPONENTS).map(c=>`<option value="${esc(c)}">`).join('')}</datalist>`;
+    + '<datalist id="compCodes">' + Object.keys(COMPONENTS).map(c=>'<option value="' + esc(c) + '">').join('') + '</datalist>';
   }
 
   function flagsHtml(rm){
     const f = rm.unmappedFeatures || [];
     if (!f.length) return '';
-    return `<div class="flags"><b style="color:var(--amber)">⚠ Optional features from the quote — add their parts manually (rules pending):</b><br>`
-      + f.map(x=>`<span class="ft">${esc(x.name)}${x.qty>1?` ×${x.qty}`:''}</span>`).join('') + `</div>`;
+    return '<div class="flags no-print"><b>&#9888; Optional features from the quote — add their parts manually (rules pending):</b><br>'
+      + f.map(x=>'<span class="ft">' + esc(x.name) + (x.qty>1?' &times;' + x.qty:'') + '</span>').join('') + '</div>';
   }
 
   function setCfg(ri, key, val){ DATA.rooms[ri].header[key] = val; }
-  function setQty(ri, li, val){
-    const q = Math.max(0, parseInt(val,10)||0);
-    const l = DATA.rooms[ri].lines[li];
-    l.qty = q;
-    l.totalLb = (l.eachLb==null) ? null : Math.round(l.eachLb*q*100)/100;
-    refreshRoomTotal(ri);
-  }
-  function rmRow(ri, li){ DATA.rooms[ri].lines.splice(li,1); render(); }
+  function rmRow(ri, li){ DATA.rooms[ri].lines.splice(li,1); render(); recalcTotals(); }
   function addRow(ri){
     const inp = document.getElementById('addcode-'+ri);
     const code = (inp.value||'').trim().toUpperCase();
     if (!code) return;
     const c = COMPONENTS[code];
     if (!c){ alert('Unknown component code: ' + code); return; }
-    DATA.rooms[ri].lines.push({ code, qty:1, desc:c.desc||'', pack:c.pack||'', eachLb:c.lb, totalLb:c.lb, L:c.L, W:c.W, T:c.T, known:true });
-    inp.value=''; render();
-  }
-  function refreshRoomTotal(ri){
-    const el = document.getElementById('net-'+ri);
-    if (el) el.textContent = lb(roomNet(DATA.rooms[ri]));
-    recalcTotals();
+    DATA.rooms[ri].lines.push({ code, desc:c.desc||'', pack:c.pack||'', eachLb:c.lb, L:c.L, W:c.W, T:c.T, known:true });
+    inp.value=''; render(); recalcTotals();
   }
 
   if (!quoteNumber){ document.getElementById('rooms').innerHTML = '<div class="empty">No quote number in the URL.</div>'; }

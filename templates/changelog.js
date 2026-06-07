@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.6', date:'June 7, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Packing List redesigned to match the printed PL layout.** The viewer now mirrors the shop-floor PL: real WhisperRoom logo + address header, Customer / Project info block, and a per-room table with grouped <b>Length / Width / Thickness / Weight</b> columns (Inches + Mtrs, Pounds + Kilograms), then <b>Code · Part # · Package Contents</b>. The <b>Quantity column is gone</b> — each physical item is its own row, so a BOM entry of qty 4 prints as four rows. Overall feel matches the Vendor PO / Quote docs (white card, orange accent).'},
+      ]
+    },
+    {
       v:'1.72.5', date:'June 5, 2026', tag:'log',
       changes:[
         {t:'log', d:'**Dev log: end-of-session writeup for June 5.** No app change — refreshed the internal DEVLOG (Current focus + full session recap of today: Packing List generator, /weights tooling, Duplicate/Add Pallet, QB Activity, Drive PDF fix, pallet reductions).'},

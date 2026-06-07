@@ -66,6 +66,20 @@
   .rm-row{color:#bbb;cursor:pointer;border:none;background:none;font-size:14px;padding:0 4px;line-height:1}
   .rm-row:hover{color:#dc2626}
 
+  /* Tab bar — switches between PL table and top-down layout */
+  .pl-tabs{display:flex;gap:2px;margin-bottom:12px;border-bottom:1px solid #e6e6e6}
+  .pl-tab{padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:#fafafa;border:1px solid #e6e6e6;border-bottom:none;border-radius:7px 7px 0 0;color:#888;cursor:pointer;font-family:inherit;margin-bottom:-1px}
+  .pl-tab:hover{color:#1a1a1a;background:#fff}
+  .pl-tab.active{color:#1a1a1a;background:#fff;border-bottom:1px solid #fff;box-shadow:0 -2px 0 #ee6216 inset}
+  .tab-panel{display:none}
+  .tab-panel.active{display:block}
+
+  /* Layout view */
+  .layout-wrap{padding:12px 0 0}
+  .layout-empty{padding:60px 24px;text-align:center;color:#888;font-size:13px;background:#fafafa;border:1px dashed #ddd;border-radius:8px}
+  .layout-legend{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:12px;font-size:11px;color:#555}
+  .layout-legend .sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:middle;border:1px solid rgba(0,0,0,.2)}
+
   /* Add-row footer (no-print) */
   .room-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0 0;flex-wrap:wrap}
   .addrow{display:flex;gap:6px;align-items:center}
@@ -96,7 +110,10 @@
     .pl-page{box-shadow:none;border-radius:0;max-width:100%;padding:24px 32px;margin:0;page-break-after:always}
     .pl-page:last-child{page-break-after:auto}
     .print-bar,.back-link,.no-print{display:none !important}
-    .room-cfg,.room-foot{display:none}
+    .room-cfg,.room-foot,.pl-tabs{display:none}
+    /* On print, force PL tab visible no matter which tab is selected */
+    .tab-panel[data-tab="pl"]{display:block !important}
+    .tab-panel[data-tab="layout"]{display:none !important}
     table.pl thead tr.group th{background:#1a1a1a !important;color:#fff !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     table.pl thead tr.units th{background:#262626 !important;color:#cfcfcf !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     table.pl tbody tr.alt td{background:#fcfbf9 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -127,6 +144,238 @@
     const d = new Date();
     return (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
   };
+
+  // ── Top-down booth layouts ─────────────────────────────────────
+  // Hardcoded for the mock — MDL 4872 S only. Every other model falls
+  // through to the "not yet defined" placeholder.
+  //
+  // Slot semantics:
+  //   - `size`     — the wall panel width in inches (matches STDWL{size})
+  //   - `family`   — STDWL{N} string used to filter the BOM pool
+  //   - `prefers`  — ordered list of preferred kinds (VNT/DRFRM/WDO/CBL/SOLID).
+  //                  The placer tries each in order before falling back.
+  //
+  // Wall sides: N = back (vent), S = front (door), E = right, W = left.
+  // (Matches the orientation shown on the 2023 spec sheets.)
+  const BOOTH_LAYOUTS = {
+    'MDL 4872 S': {
+      label: 'Single-Wall Sound Booth · 4′ × 6′',
+      exterior: { w: 74, h: 50 },
+      wallThickness: 2,
+      walls: {
+        N: { label: 'Back', longSide: true,
+             slots: [
+               { id: 'N-wide',   size: 46, family: 'STDWL46', prefers: ['VNT', 'CBL'] },
+               { id: 'N-narrow', size: 22, family: 'STDWL22', prefers: ['SOLID'] }
+             ] },
+        S: { label: 'Front', longSide: true,
+             slots: [
+               { id: 'S-wide',   size: 46, family: 'STDWL46', prefers: ['DRFRM'] },
+               { id: 'S-narrow', size: 22, family: 'STDWL22', prefers: ['SOLID'] }
+             ] },
+        E: { label: 'Right', longSide: false,
+             slots: [ { id: 'E-wide', size: 46, family: 'STDWL46', prefers: ['SOLID'] } ] },
+        W: { label: 'Left', longSide: false,
+             slots: [ { id: 'W-wide', size: 46, family: 'STDWL46', prefers: ['SOLID'] } ] }
+      }
+    }
+  };
+
+  function classifyWall(pack) {
+    pack = String(pack || '');
+    if (/DRFRM/i.test(pack)) return 'DRFRM';
+    if (/WDO/i.test(pack))   return 'WDO';
+    if (/CBL/i.test(pack))   return 'CBL';
+    if (/VNT/i.test(pack))   return 'VNT';
+    return 'SOLID';
+  }
+
+  // Greedy auto-placement: walk slots N → S → E → W, for each pick the best
+  // matching wall line from the BOM pool. Preference order: matches the slot's
+  // `prefers` list, then falls back to any SOLID of the same family, then any.
+  // Each line is used at most once.
+  function placeBom(layout, lines) {
+    const pool = (lines || [])
+      .filter(l => /^STDWL\d+/.test(String(l.pack || '')))
+      .map(l => ({ line: l, used: false }));
+    const placement = {};
+    for (const side of ['N', 'S', 'E', 'W']) {
+      const wall = layout.walls[side];
+      if (!wall) continue;
+      for (const slot of wall.slots) {
+        const familyRe = new RegExp('^STDWL' + slot.size + '(\\s|$)');
+        const sameFamily = pool.filter(p => !p.used && familyRe.test(p.line.pack));
+        let chosen = null;
+        for (const pref of (slot.prefers || [])) {
+          chosen = sameFamily.find(p => classifyWall(p.line.pack) === pref);
+          if (chosen) break;
+        }
+        if (!chosen) chosen = sameFamily.find(p => classifyWall(p.line.pack) === 'SOLID');
+        if (!chosen) chosen = sameFamily[0];
+        if (chosen) { chosen.used = true; placement[slot.id] = chosen.line; }
+      }
+    }
+    // Any leftover wall lines didn't fit a slot — return them so the UI can flag.
+    const leftover = pool.filter(p => !p.used).map(p => p.line);
+    return { placement, leftover };
+  }
+
+  const WALL_COLORS = {
+    SOLID: { fill: '#3a3a3a', text: '#fff', label: 'Solid' },
+    VNT:   { fill: '#2563eb', text: '#fff', label: 'Vent'  },
+    CBL:   { fill: '#16a34a', text: '#fff', label: 'Cable' },
+    DRFRM: { fill: '#ee6216', text: '#fff', label: 'Door'  },
+    WDO:   { fill: '#7c3aed', text: '#fff', label: 'Window' },
+    EMPTY: { fill: '#e5e5e5', text: '#888', label: 'Empty' }
+  };
+
+  function renderLayoutSvg(layout, placement) {
+    const PX = 8; // px per inch
+    const margin = 70;
+    const W = layout.exterior.w * PX;
+    const H = layout.exterior.h * PX;
+    const t = layout.wallThickness * PX;
+    const totalW = W + margin * 2;
+    const totalH = H + margin * 2;
+    const x0 = margin, y0 = margin;
+
+    let svg = '<svg viewBox="0 0 ' + totalW + ' ' + totalH + '" '
+            + 'style="width:100%;max-width:780px;display:block;margin:0 auto;font-family:\'DM Sans\',sans-serif">';
+
+    // Exterior shell
+    svg += '<rect x="' + x0 + '" y="' + y0 + '" width="' + W + '" height="' + H + '" '
+         + 'fill="#fafafa" stroke="#222" stroke-width="2"/>';
+    // Interior
+    svg += '<rect x="' + (x0 + t) + '" y="' + (y0 + t) + '" '
+         + 'width="' + (W - 2 * t) + '" height="' + (H - 2 * t) + '" '
+         + 'fill="#fff" stroke="#bbb" stroke-width="1"/>';
+
+    // Horizontal walls (N + S) — slots laid out along x inside the interior length
+    function drawHorizontalWall(side, baseY, labelAbove) {
+      const wall = layout.walls[side];
+      if (!wall) return;
+      let offset = 0;
+      wall.slots.forEach(slot => {
+        const slotW = slot.size * PX;
+        const x = x0 + t + offset;
+        const placed = placement[slot.id];
+        const kind = placed ? classifyWall(placed.pack) : 'EMPTY';
+        const col = WALL_COLORS[kind] || WALL_COLORS.EMPTY;
+        svg += '<rect x="' + x + '" y="' + baseY + '" width="' + slotW + '" height="' + t + '" '
+             + 'fill="' + col.fill + '" stroke="#222" stroke-width="1"/>';
+        const cx = x + slotW / 2;
+        if (placed) {
+          const codeY = labelAbove ? (baseY - 18) : (baseY + t + 16);
+          const packY = labelAbove ? (baseY - 6)  : (baseY + t + 28);
+          svg += '<text x="' + cx + '" y="' + codeY + '" text-anchor="middle" '
+               + 'font-size="11" font-weight="800" fill="#1a1a1a">' + esc(placed.code) + '</text>';
+          svg += '<text x="' + cx + '" y="' + packY + '" text-anchor="middle" '
+               + 'font-size="9" fill="#666">' + esc(placed.pack || '') + '</text>';
+        } else {
+          const y = labelAbove ? (baseY - 8) : (baseY + t + 18);
+          svg += '<text x="' + cx + '" y="' + y + '" text-anchor="middle" '
+               + 'font-size="10" fill="#bbb" font-style="italic">(empty)</text>';
+        }
+        // Slot size label (inside the slot)
+        svg += '<text x="' + cx + '" y="' + (baseY + t / 2 + 3) + '" text-anchor="middle" '
+             + 'font-size="9" font-weight="700" fill="' + col.text + '">' + slot.size + '″</text>';
+        offset += slotW;
+      });
+    }
+
+    // Vertical walls (E + W) — slots laid out along y inside the interior height
+    function drawVerticalWall(side, baseX, labelLeft) {
+      const wall = layout.walls[side];
+      if (!wall) return;
+      let offset = 0;
+      wall.slots.forEach(slot => {
+        const slotH = slot.size * PX;
+        const y = y0 + t + offset;
+        const placed = placement[slot.id];
+        const kind = placed ? classifyWall(placed.pack) : 'EMPTY';
+        const col = WALL_COLORS[kind] || WALL_COLORS.EMPTY;
+        svg += '<rect x="' + baseX + '" y="' + y + '" width="' + t + '" height="' + slotH + '" '
+             + 'fill="' + col.fill + '" stroke="#222" stroke-width="1"/>';
+        const cy = y + slotH / 2;
+        if (placed) {
+          const codeX = labelLeft ? (baseX - 12) : (baseX + t + 12);
+          const anchor = labelLeft ? 'end' : 'start';
+          svg += '<text x="' + codeX + '" y="' + (cy - 2) + '" text-anchor="' + anchor + '" '
+               + 'font-size="11" font-weight="800" fill="#1a1a1a">' + esc(placed.code) + '</text>';
+          svg += '<text x="' + codeX + '" y="' + (cy + 12) + '" text-anchor="' + anchor + '" '
+               + 'font-size="9" fill="#666">' + esc(placed.pack || '') + '</text>';
+        }
+        // Slot size label
+        svg += '<text x="' + (baseX + t / 2) + '" y="' + (cy + 3) + '" text-anchor="middle" '
+             + 'font-size="9" font-weight="700" fill="' + col.text + '">' + slot.size + '″</text>';
+        offset += slotH;
+      });
+    }
+
+    drawHorizontalWall('N', y0, true);
+    drawHorizontalWall('S', y0 + H - t, false);
+    drawVerticalWall('W', x0, true);
+    drawVerticalWall('E', x0 + W - t, false);
+
+    // Side-direction labels
+    svg += '<text x="' + (x0 + W / 2) + '" y="' + (y0 - 42) + '" text-anchor="middle" '
+         + 'font-size="10" font-weight="800" letter-spacing="0.12em" fill="#999">BACK · VENT</text>';
+    svg += '<text x="' + (x0 + W / 2) + '" y="' + (y0 + H + 56) + '" text-anchor="middle" '
+         + 'font-size="10" font-weight="800" letter-spacing="0.12em" fill="#999">FRONT · DOOR</text>';
+
+    // Interior dim caption
+    const intW = layout.exterior.w - 2 * layout.wallThickness;
+    const intH = layout.exterior.h - 2 * layout.wallThickness;
+    svg += '<text x="' + (x0 + W / 2) + '" y="' + (y0 + H / 2 - 4) + '" text-anchor="middle" '
+         + 'font-size="13" font-weight="700" fill="#bbb">Interior</text>';
+    svg += '<text x="' + (x0 + W / 2) + '" y="' + (y0 + H / 2 + 14) + '" text-anchor="middle" '
+         + 'font-size="11" fill="#bbb">' + intW + '″ × ' + intH + '″</text>';
+
+    svg += '</svg>';
+    return svg;
+  }
+
+  function renderLegend() {
+    const items = ['SOLID','VNT','CBL','DRFRM','WDO'].map(k => {
+      const col = WALL_COLORS[k];
+      return '<span><span class="sw" style="background:' + col.fill + '"></span>' + col.label + '</span>';
+    }).join('');
+    return '<div class="layout-legend">' + items + '</div>';
+  }
+
+  function renderLayoutTab(rm) {
+    const layout = BOOTH_LAYOUTS[rm.boothName];
+    if (!layout) {
+      return '<div class="layout-wrap"><div class="layout-empty">'
+        + 'Top-down layout not yet defined for <b>' + esc(rm.boothName) + '</b>.<br><br>'
+        + 'The mock currently covers <b>MDL 4872 S</b> only. As we add more layouts, they\'ll appear here automatically.'
+        + '</div></div>';
+    }
+    const { placement, leftover } = placeBom(layout, rm.lines);
+    let html = '<div class="layout-wrap">'
+      + '<div style="text-align:center;font-size:12px;color:#666;margin-bottom:6px">'
+      +   esc(rm.boothName) + ' · ' + esc(layout.label)
+      + '</div>'
+      + renderLayoutSvg(layout, placement)
+      + renderLegend();
+    if (leftover.length) {
+      html += '<div class="layout-empty" style="margin-top:14px;text-align:left;color:#5a3a18;background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.4)">'
+        + '<b>⚠ Couldn’t place ' + leftover.length + ' wall component'
+        + (leftover.length === 1 ? '' : 's') + ':</b> '
+        + leftover.map(l => esc(l.code) + ' (' + esc(l.pack || '') + ')').join(', ')
+        + '. This usually means the BOM has more walls than the layout has slots, or the wall sizes don\'t match any slot in this mock.'
+        + '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function switchTab(roomEl, tabName) {
+    const parent = roomEl.closest('.pl-page');
+    if (!parent) return;
+    parent.querySelectorAll('.pl-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tabName));
+    parent.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.tab === tabName));
+  }
 
   async function loadPL(){
     document.getElementById('rooms').innerHTML = '<div class="pl-page"><div class="loading">Loading packing list…</div></div>';
@@ -289,6 +538,11 @@
           + '<span class="cfg">Hinge ' + hingeSel + '</span>'
           + '<span class="cfg">Foam ' + foamSel + '</span>'
         + '</div>'
+        + '<div class="pl-tabs no-print">'
+          + '<button class="pl-tab active" data-tab="pl"     onclick="switchTab(this,\'pl\')">📦 Packing List</button>'
+          + '<button class="pl-tab"        data-tab="layout" onclick="switchTab(this,\'layout\')">🏗 Top-Down Layout</button>'
+        + '</div>'
+        + '<div class="tab-panel active" data-tab="pl">'
         + '<table class="pl">'
           + '<thead>'
             + '<tr class="group">'
@@ -317,6 +571,8 @@
             + '<button class="add-btn" onclick="addRow(' + ri + ')">+ Add</button>'
           + '</div>'
         + '</div>'
+        + '</div>'    // /tab-panel data-tab=pl
+        + '<div class="tab-panel" data-tab="layout">' + renderLayoutTab(rm) + '</div>'
         + flagsHtml(rm)
         + pageFoot(ri+1, totalPages)
       + '</div>';

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.25', date:'June 7, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Packing List: Top-Down Layout tab (mock, MDL 4872 S only).** Each PL block now has two tabs: 📦 Packing List (the existing table) and 🏗 Top-Down Layout. The Layout tab renders the booth as an SVG floor plan with each wall slot color-coded by component kind (Solid / Vent / Cable / Door / Window). Wall components from the BOM are auto-placed into slots by family (STDWL46 / STDWL22) + preference (vent → back wall, door frame → front wall, solid → sides). Unplaced wall components surface in a warning under the diagram. Other MDLs show a "Layout not yet defined" placeholder until we hand-author their slot grids. Printing forces the PL tab regardless of which is selected.'},
+      ]
+    },
+    {
       v:'1.72.24', date:'June 7, 2026', tag:'log',
       changes:[
         {t:'log', d:'**Dev log: end-of-session writeup for June 7.** No app change — refreshed the internal DEVLOG with today\'s 18-version session: PL viewer redesign, 11 substitution rules (VSS/EFS/MJP/DESK/WDO/WA Door/STEP/RFU/Bass Traps/Ramp/RM), config-driven hinge + foam swaps, and the pre-commit syntax-check hook (which already caught a real bug on its first commit). Tomorrow: verify against Benton\'s CP-generated PLs and unblock ADA / Studio Light / HX.'},

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.29', date:'June 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**WA Door narrow-wall swap: 40″-wall case backed out pending verification.** Benton clarified the adjacent panel on 40″-wall booths "loses 9″" (door grows 40→49), but every 40″-wall booth in the data carries STDWL16 (C10) as its narrow — 16−9 = 7 has no matching wall code, and 40+16 ≠ 49+19. Reverting the speculative 16→19 / 11.5→14.5 swap until a CP-generated PL confirms whether the 16″ wall is removed entirely, the booth physically extends, or another wall absorbs the delta. 46″-wall booths still get the correct 22→19 + 17.5→14.5 swap (geometry conserves cleanly).'},
+      ]
+    },
+    {
       v:'1.72.28', date:'June 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**WA Door: narrow-wall shrink swap, plus layout shows real widths.** The WA doorframe is 49″ (vs. the std 46″/40″), so one of the adjacent narrow walls now flips to absorb the difference: on 46″-wall booths <code>C111 STDWL22 → C112 STDWL19</code> (3″ shrink); on 40″-wall booths <code>C10 STDWL16 → C112 STDWL19</code>. Inner shell on E/ENV follows: <code>K112 IEPWL17.5 → K113 IEPWL14.5</code> (46″) or <code>K09 IEPWL11.5 → K113 IEPWL14.5</code> (40″). Top-Down Layout now reads each placed panel\'s real interior width — Z03/Z04 render as 49″ and C112 as 19″ in the SVG, where before they showed at the slot nominal (46″ / 22″). 40″-wall geometry is wired per the current spec note ("16″ → 19″") and will be re-verified against tomorrow\'s generated PLs.'},

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.21', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'ui', d:'**Packing List: RAMP rule now matches bare <code>RAMP</code> too,** not just <code>WA RAMP</code>. Both feed the same 3-box ramp kit (Z62 + Z63 + Z64). ADA will cascade through this rule when that lands. <code>RAMP SYS</code> still stays unmapped.'},
+      ]
+    },
+    {
       v:'1.72.20', date:'June 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing List: WA RAMP (3-box ramp system).** A <code>WA RAMP</code> line on a quote now adds the three-box ramp kit to the PL: <b>Z62</b> (RAMP WITH ADAPTER, 32 lb) + <b>Z63</b> (2 MIDDLE RAMPS, 42 lb) + <b>Z64</b> (3 LOWER RAMPS, 37 lb). Quote-line qty multiplies all three through. Matches rows 26–28 of the ENT &amp; Allergy reference PL. Bare <code>RAMP</code> and <code>RAMP SYS</code> stay unmapped pending tomorrow\'s verification.'},

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.9', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: VSS and EFS feature substitution.** The PL generator now turns <code>VSS &lt;size&gt;</code> and <code>EFS &lt;size&gt;</code> quote line items into the actual <b>F02 (Ventilation Silencing System)</b> and <b>F03 (Exterior Fan Silencer)</b> component rows on the PL — one per vent set in the booth (F01 qty). Bare <code>VSS</code> / <code>EFS</code> with no size suffix counts as exactly one. Feature qty &gt; 1 on the quote multiplies through. Matched features no longer appear in the orange "optional features" flag box.'},
+      ]
+    },
+    {
       v:'1.72.8', date:'June 7, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Packing List MDL line abbreviates feature names** to match the printed PL. Quote line items like <code>EFS 4872</code>, <code>VSS 4872</code>, <code>WDO 3236 S</code>, <code>Office Desk S</code>, <code>ADA 7272 S</code> now render as <code>EFS / VSS / WDO 3236 / DESK / ADA</code> in the booth title. Internal hardware/upgrades (HEPA, HX, AP, CP, EFP, cable upgrades, vent set, foam, etc.) are hidden from the title — they still appear in the BOM rows below. Duplicates are deduped.'},

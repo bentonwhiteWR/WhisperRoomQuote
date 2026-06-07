@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.10', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: MJP and DESK substitution rules.** <code>MJP</code> on a quote now injects an <b>F09 (MULTI JACK PANEL)</b> row on the PL. <code>Office Desk S</code> → <b>S02 (OFFICE DESK SMALL)</b>; <code>Office Desk L</code> → <b>S03 (OFFICE DESK LARGE)</b>. MJP follows a "constant 1 per quote line" rule (unlike VSS/EFS which scale with vent count). Companion hardware (<code>MJP ADPT</code>, <code>MJP EXT</code>) is intentionally NOT treated as MJP and still flags in the unmapped-features list. Quote-line qty multiplies through (e.g. MJP qty 3 → three F09 rows). Internally, the rule registry was refactored to an extensible predicate-based form so the remaining features (windows, ADA, hinge) can plug in cleanly.'},
+      ]
+    },
+    {
       v:'1.72.9', date:'June 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing List: VSS and EFS feature substitution.** The PL generator now turns <code>VSS &lt;size&gt;</code> and <code>EFS &lt;size&gt;</code> quote line items into the actual <b>F02 (Ventilation Silencing System)</b> and <b>F03 (Exterior Fan Silencer)</b> component rows on the PL — one per vent set in the booth (F01 qty). Bare <code>VSS</code> / <code>EFS</code> with no size suffix counts as exactly one. Feature qty &gt; 1 on the quote multiplies through. Matched features no longer appear in the orange "optional features" flag box.'},

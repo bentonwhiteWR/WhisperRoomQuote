@@ -478,7 +478,6 @@
   function render(){
     const rooms = DATA.rooms || [];
     if (!rooms.length){ document.getElementById('rooms').innerHTML = '<div class="pl-page"><div class="empty">No booth (MDL) line items found on this quote.</div></div>'; return; }
-    const opts = DATA.options || { hinge:['Left','Right'], foam:['Gray'] };
     const totalPages = rooms.length;
     const savedDate = localStorage.getItem(dateKey()) || todayShort();
 
@@ -508,10 +507,6 @@
 
       const t = roomTotals(rm);
       const savedSn = localStorage.getItem(snKey(ri)) || '';
-      const hingeSel = '<select onchange="setCfg(' + ri + ',\'hinge\',this.value)">'
-        + opts.hinge.map(h=>'<option ' + (h===rm.header.hinge?'selected':'') + '>' + esc(h) + '</option>').join('') + '</select>';
-      const foamSel  = '<select onchange="setCfg(' + ri + ',\'foam\',this.value)">'
-        + opts.foam.map(f=>'<option ' + (f===rm.header.foam?'selected':'') + '>' + esc(f) + '</option>').join('') + '</select>';
 
       const body = (rm.lines||[]).map((l,li)=>{
         const lM = inToM(l.L), wM = inToM(l.W), tM = inToM(l.T);
@@ -552,11 +547,6 @@
               + '<input class="sn-input" type="text" value="' + esc(savedSn) + '" placeholder="enter serial #" oninput="saveSn(' + ri + ',this.value)">'
             + '</div>'
           + '</div>'
-        + '</div>'
-        + '<div class="room-cfg no-print">'
-          + '<span class="cfg-label">Config</span>'
-          + '<span class="cfg">Hinge ' + hingeSel + '</span>'
-          + '<span class="cfg">Foam ' + foamSel + '</span>'
         + '</div>'
         + '<div class="pl-tabs no-print">'
           + '<button class="pl-tab active" data-tab="pl"     onclick="switchTab(this,\'pl\')">📦 Packing List</button>'
@@ -611,7 +601,6 @@
       + f.map(x=>'<span class="ft">' + esc(x.name) + (x.qty>1?' &times;' + x.qty:'') + '</span>').join('') + '</div>';
   }
 
-  function setCfg(ri, key, val){ DATA.rooms[ri].header[key] = val; }
   function saveSn(ri, val){ try { localStorage.setItem(snKey(ri), val); } catch(e){} }
   function saveDate(val){ try { localStorage.setItem(dateKey(), val); } catch(e){} }
   function rmRow(ri, li){ DATA.rooms[ri].lines.splice(li,1); render(); }

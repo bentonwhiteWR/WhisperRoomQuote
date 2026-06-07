@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.31', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List now reads the quote\'s hinge + foam.** The customer\'s accepted hinge/foam preference (or the rep\'s preference if not yet accepted) flows straight from the saved quote into the PL — no more URL-param dance or "Gray default" surprise on a quote that explicitly picked Blue. Customer-accepted wins, then rep preference, then <code>?hinge=</code>/<code>?foam=</code> for testing. Hinge stored as "Left Hand"/"Right Hand" on the quote, normalized to "Left"/"Right" for the swap rules. Also dropped the now-redundant <b>Config</b> row from the PL viewer — those selectors only updated the label client-side and didn\'t actually re-fetch.'},
+      ]
+    },
+    {
       v:'1.72.30', date:'June 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**WA Door on 40″-wall booths: C10 → Z02 (the STDWL7 / WL16 bundle).** One <code>C10 STDWL16</code> narrow now swaps to one <code>Z02 STDWL7 / WL16</code> — a single pack that ships a 7″ wall + a 16″ wall together (45 lb). Geometry: 40+16 = 49+7 = 56″. The 7″ piece becomes the new narrow on the WA-door side; the 16″ in the same box keeps the booth\'s inventory of 16″ walls unchanged. No inner-shell change on 40″ E/ENV booths (no IEP bundle equivalent exists). Layout SVG now also reports the Z02 slot as 7″.'},

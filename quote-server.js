@@ -10693,9 +10693,25 @@ ${q.accepted ? `
       }
       if (!snap) { json({ error: 'Quote not found: ' + quoteNumber }, 404); return; }
       const lineItems = snap.lineItems || [];
+      // Hinge / foam preferences carry forward from the quote: customer-
+      // accepted values win, then rep preference, then the URL query param
+      // (kept as an override for testing), then the DEFAULTS in lib/packing-
+      // list.js. Quote stores "Left Hand"/"Right Hand"/"Undecided"; the PL
+      // generator expects bare "Left"/"Right".
+      const normalizeHinge = s => {
+        const v = String(s || '').trim();
+        if (/^left/i.test(v))  return 'Left';
+        if (/^right/i.test(v)) return 'Right';
+        return undefined;
+      };
+      const normalizeFoam = s => {
+        const v = String(s || '').trim();
+        return ['Gray','Blue','Purple','Orange','Burgundy'].includes(v) ? v : undefined;
+      };
+      const queryHinge = parsed.query.hinge && /^(Left|Right)$/i.test(parsed.query.hinge) ? parsed.query.hinge : undefined;
       const opts = {
-        hinge: parsed.query.hinge && /^(Left|Right)$/i.test(parsed.query.hinge) ? parsed.query.hinge : undefined,
-        foam: parsed.query.foam || undefined,
+        hinge: queryHinge || normalizeHinge(snap.acceptedHinge) || normalizeHinge(snap.repHingePreference),
+        foam:  parsed.query.foam || normalizeFoam(snap.acceptedFoam) || normalizeFoam(snap.repFoamColor),
       };
       const pl = packingList.generate(lineItems, opts);
       const customer = snap.customer || {};

@@ -1,12 +1,54 @@
 # WhisperRoom Quote Builder — Dev Log
 
-Internal development notes. Last updated 2026-06-05.
+Internal development notes. Last updated 2026-06-07.
 
 > **Read this first when starting a session.** The "Current focus" section below is the fastest way to know where we left off. Below that: session writeups, the audit (outstanding work), and the changelog table.
 
 ---
 
-## Current focus (2026-06-05 EOD — Packing List generator live (Phase 1) + /weights pallet tooling + Add/Duplicate Quote; pallet-reduction pass underway)
+## Current focus (2026-06-07 EOD — Packing List **Phase 2** in flight: layout redesign + 11 substitution rules + hinge/foam swaps + pre-commit hook. Waiting on Benton's CP-generated PLs to verify and unblock ADA / Studio Light / HX.)
+
+**Most recent shipped to STAGING:** `b9161ef` (v1.72.23) — PL feature subs: RM (Roof Mount Ventilation). Tonight pushed **v1.72.6 → v1.72.23** in a single session (18 versions). **NONE OF THIS IS ON MAIN** — staging only.
+
+**State of play:**
+- **PL viewer redesigned** to match the real printed PL: centered WR logo + "Sound Isolation Enclosures" tagline, editable date, deal-ref header, MDL line w/ feature normalizer (`EFS / VSS / WDO 3236 / DESK / ADA`), Totals box (Cubic Feet / Pounds / Cubic Meters / Kilograms), big **PACKING LIST** title + editable **S/N** input (`localStorage`-persisted per-quote), per-booth one-page layout (page-break on print). Each PL row = ONE physical item (BOM qty=N expands to N rows). Columns: `# | L (in/m) | W (in/m) | T (in/m) | Weight (lb/kg) | Code | Part # | Package Contents`. (v1.72.6 / 1.72.7).
+- **Feature substitution rules live** (`lib/packing-list.js` `FEATURE_SUBS` array + `applyFeatureSubs` w/ `ctx`-passing + `resolve()` callback for swap-style rules):
+  - **VSS / EFS** — sized → per vent set (booth's F01 qty), bare → 1 (1.72.9)
+  - **MJP** — constant +F09 (excl. ADPT/EXT) (1.72.10)
+  - **DESK** — `Office Desk S` → S02, `Office Desk L` → S03 (1.72.10)
+  - **WDO** — swap std wall for window wall + inner-shell K-family on E/ENV (TOP+BOT for big windows, SINGLE for smallest in each family) (1.72.11 / 1.72.12)
+  - **WA Door** — swap STD door/frame for Z03–Z06 + Z25 (40"-wall) or Z120 (46"-wall) adapter + inner shell on E/ENV (handles both M01/L01 and K114/K116 inner-door families) (1.72.15)
+  - **STEP** — +S01 (1.72.17)
+  - **RFU** — +F14 additive (1.72.18)
+  - **Bass Traps** — +E16 (BASS TRAP 2 W/ VELCRO, confirmed over ATP14) (1.72.19)
+  - **RAMP / WA RAMP** — multi-component: Z62 + Z63 + Z64 (3-box ramp kit). ADA will cascade through this (1.72.20 / 1.72.21).
+  - **RM (Roof Mount)** — full BOM rewrite: every ceiling → `... RM` variant (`RM_CEILING_MAP`), every plain `VNT` wall → `CBL` (`CBL_WALL_MAP`). Both shells on E/ENV (1.72.23).
+- **Config-driven swaps** (post-feature-subs in `generate()`):
+  - **Foam color** — Gray default, plus Purple/Orange/Burgundy/Blue. `FOAM_BY_SIZE_COLOR` built at init by parsing `FOAM{N} [PUR/OR/BUR/BL]` packs. `FOAM_OPTIONS` corrected (old list had bogus Beige/Black, missed Purple/Orange) (1.72.22).
+  - **Hinge swap** — when `Left`, flips 9 verified R↔L pairs (C113↔C115, C114↔C116, C14↔C15, C07↔C08, C16↔C17, M01↔M02, K114↔K115, L02↔L03, L04↔L05). Runs AFTER feature subs so WA already-L doesn't double-flip (1.72.16).
+- **MDL title normalizer** in `packing-list.html` — strips booth size/variant from quote feature names (`EFS 4872` → `EFS`); keeps window size on `WDO 3236 S` → `WDO 3236`; maps `Office Desk S/L` → `DESK`; drops internal hardware (HEPA/HX/AP/CP/EFP/etc.) from the MDL title. Dedupes. Customer-facing tokens only.
+- **/assets/whisperroom-logo.svg endpoint** added — `quote-server.js` serves the existing `assets/whisperroom-logo.svg.b64` decoded.
+
+**Pre-commit hook (1.72.14):** `scripts/check-syntax.js` runs `node --check` on every staged JS file + `require`+invoke smoke-test on `templates/changelog.js` and `lib/packing-list.js` (the two files that crash the server at startup if they fail to load). Tracked at `scripts/git-hooks/pre-commit` w/ one-shot installer `scripts/install-hooks.sh`. Birthed by v1.72.11's prod crash: an over-escaped `\\\\'s` apostrophe in a changelog entry threw `SyntaxError: Unexpected identifier 's'` at server startup; both staging and prod crash-looped for ~30 min before v1.72.13 hotfix. The hook would have caught it pre-push, and **earned its keep on the very next commit (v1.72.16) — caught me repeating the exact same mistake** while writing the hinge-swap changelog entry. `/bump` slash command and CLAUDE.md updated to document the workflow + the apostrophe gotcha.
+
+**NEXT (waiting on Benton):**
+1. **Benton generates real PLs with CP** for cross-section of MDLs (S/E, 40"/46" walls, with/without WA, ADA combos). Side-by-side diff with our generator output. Expect fixes to cluster around (a) Studio Light by-MDL sizing (SL 29 vs SL 52, qty per booth), (b) ADA full-package cascade (WA + Ramp + EFI Z40–Z47 + ADA door swap Z30/Z32↔Z31/Z33), (c) HX height extension (uses the deferred Z20–Z24 WA-IEP variants).
+2. **Top-down booth layout view** — see "Open ideas" below.
+3. **Deferred rules still pending:** Studio Light (SL), ADA, HX, AP/EFP/HEPA/CP/DWC/LT CR/AUDI BL/RM-family, MJP ADPT/EXT, and `RAMP SYS` (unverified — different SKU?).
+
+**Open verification items on already-shipped rules:**
+- RM on SNV/ENV — do `VNT NV` walls also flip to CBL? (Skipped for now; no `CBL NV` exists.)
+- STDWL16 / IEPWL11.5 with RM — no `CBL` variant; lines stay VNT. Real data gap or intentional?
+- WDO `43"` cases on 7296 — quote uses `WDO 43" 2636 S` but BOM has no `STDWL43`; stays unmapped (likely ADA-modified config — verify with example).
+- Default hinge is `'Left'` in `DEFAULTS` but base BOM is R-default. Is L actually the production default, or should DEFAULTS flip?
+- Per-room hinge/foam selectors in `packing-list.html` only update labels; server-side options come from `?hinge=`/`?foam=` query params. Per-room override needs either client-side mirror of the swap maps or re-fetch on selector change.
+
+**Open ideas (Benton, 2026-06-07):**
+- **Top-down booth layout view** — render each MDL as a floor plan (à la the 2023 spec sheets, e.g. `Z:\Sales1\Sales\SPEC SHEET - TOP DOWN 2023\MDL-4872-S.pdf`), with each wall slot labeled with the component code currently assigned. Lets a rep visually verify "the window is on the back wall, the door+vent on the front" and click to swap (move window to a different wall, etc.). Component dimensions are already in `components-master.json` (L×W×T per code). Slot geometry per-MDL would need a new layout data file (or compute from booth size + BOM count by side). Phase 1: read-only render. Phase 2: drag-to-reassign with PL regen. Phase 3: anomaly detection (BOM has 2 vent walls but only 1 slot fits, etc.).
+
+---
+
+## Earlier focus (2026-06-05 EOD — Packing List generator live (Phase 1) + /weights pallet tooling + Add/Duplicate Quote; pallet-reduction pass underway)
 
 **Most recent shipped to PROD:** merge `75306dc` (2026-06-05) — Add Pallet to quotes + marketing ideal-page mapping. (Earlier today: `71ddd67` — /weights + Packing List generator + QB Activity + Drive PDF fix.) **Through v1.72.1 is on `main`.** **On `staging`, NOT promoted: v1.72.2–v1.72.4** (Gabe marketing 1.72.2/1.72.3 + the pallet-reduction batch 1.72.4).
 
@@ -875,6 +917,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.72.24 | 2026-06-07 | **DEVLOG: end-of-session writeup for 2026-06-07.** Current focus refreshed to today's EOD state (PL Phase 2 in flight: viewer redesign + 11 sub rules + hinge/foam swaps + pre-commit hook); next is Benton's CP-generated PLs to unblock ADA/SL/HX; new top-down booth-layout view idea captured. No runtime change. |
 | 1.72.23 | 2026-06-07 | **PL feature subs: RM (Roof Mount Ventilation).** New `buildRmMaps()` at init builds two lookup tables from `components-master.json`: `RM_CEILING_MAP` (any CL pack → its `... RM` or `... SIDE RM` variant — covers both STD A-codes and IEP I-codes) and `CBL_WALL_MAP` (`STDWL{N} VNT` / `IEPWL{N} VNT` → matching CBL of same size). RM rule (test `/^RM(\\s+\\d\|\\s*$)/i`) fires resolver that iterates `ctx.bomComponents`, swaps each matched ceiling/VNT-wall line. Qty-invariant (`_lineQty` ignored — booth either has roof mount or not). Verified: 4260 S → A03+C06 swap to A31+C19; 4260 E → +I03→I27, K07→K14; 4872 E → A06→A34, C102→C117, I06→I30, K102→K117. Sizes without a CBL counterpart (STDWL16, IEPWL11.5) stay VNT — data gap. VNT NV variants intentionally untouched (no CBL NV exists; await SNV/ENV+RM verification). Regex doesn't match REMOTE or RM SYS. |
 | 1.72.22 | 2026-06-07 | **PL: foam color is a BOM swap.** `lib/packing-list.js` gets `FOAM_BY_SIZE_COLOR` (built at init from pack-name regex `^FOAM(\\d+)(?:\\s+(PUR\|OR\|BUR\|BL))?$`) and `FOAM_SUFFIX_TO_COLOR` lookup. New post-feature-subs step in `generate()` (sits between feature subs and hinge swap): if `opts.foam !== 'Gray'`, rewrite each base-BOM foam line (E01 FOAM2 / E02 FOAM3 / E03 FOAM4) to the matching color+size code (Purple=E04/E05/E06, Orange=E07/E08/E09, Burgundy=E10/E11/E12, Blue=E13/E14/E15). Weight / dims identical across colors so `netLb` math is a no-op (kept for defensive future). `FOAM_OPTIONS` corrected to the 5 real colors — old list had Beige/Black (don't exist in data) and was missing Purple/Orange. Stale comment that said "foam is NOT a BOM component" updated. Verified across FOAM2 (4242 E) and FOAM4 (4872 S) for every color + Gray no-op + unknown-color no-op. |
 | 1.72.21 | 2026-06-07 | **PL: ramp rule generalized.** Regex now `/^(WA\\s+)?RAMP\\s*$/i` — bare `RAMP` and `WA RAMP` both fire the same Z62+Z63+Z64 emit. Rule renamed `WA RAMP` → `RAMP`. Confirmed by Benton that Z07/Z08 (Type-A/B ramps) and Z39 (single-piece ADA RAMP) are retired — ignore. Future ADA rule will cascade to the same emit (ADA implies ramp). |

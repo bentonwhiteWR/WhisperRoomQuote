@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.24', date:'June 7, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**Dev log: end-of-session writeup for June 7.** No app change — refreshed the internal DEVLOG with today\'s 18-version session: PL viewer redesign, 11 substitution rules (VSS/EFS/MJP/DESK/WDO/WA Door/STEP/RFU/Bass Traps/Ramp/RM), config-driven hinge + foam swaps, and the pre-commit syntax-check hook (which already caught a real bug on its first commit). Tomorrow: verify against Benton\'s CP-generated PLs and unblock ADA / Studio Light / HX.'},
+      ]
+    },
+    {
       v:'1.72.23', date:'June 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing List: RM (Roof Mount Ventilation) substitution.** A <code>RM</code> or <code>RM 4260 E</code>-style quote line now rewrites the booth\'s BOM: every ceiling component swaps to its <code>... RM</code> variant (e.g. A06 STD4872CL → A34 STD4872CL RM), and every plain VNT wall swaps to the matching CBL wall of the same size (e.g. C102 STDWL46 VNT → C117 STDWL46 CBL). On E / ENV booths the inner shell follows the same swap — I06 → I30 (IEP ceiling), K102 → K117 (IEP wall). Wall sizes without a CBL counterpart (STDWL16, IEPWL11.5) silently stay VNT — data gap, not a bug. VNT NV variants are intentionally NOT swapped (no CBL NV exists; defer SNV/ENV+RM until Benton confirms).'},

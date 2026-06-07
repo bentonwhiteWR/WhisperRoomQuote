@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.12', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**WDO rule now handles double-shell (E / ENV) booths.** When a window is on an E-variant booth, the PL also swaps the matching inner IEPWL{N} wall (inner size = outer − 4.5: STDWL40 ↔ IEPWL35.5, STDWL46 ↔ IEPWL41.5, STDWL43 ↔ IEPWL38.5). The smallest WDO in each family (e.g. WDO 2630 on 35.5, WDO 3230 on 41.5) uses a single-piece bundle (K02 / K103). Larger WDOs ship as TOP + BOT (e.g. WDO 2648 → K05 top + K06 bottom). S / SNV (single-shell) booths are unchanged. Two-window quotes generate two BOT components.'},
+      ]
+    },
+    {
       v:'1.72.11', date:'June 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing List: WDO (window) substitution.** A <code>WDO 3236 S</code> line on the quote now <b>swaps one standard wall component</b> in the booth\\'s BOM for the matching window-wall variant (e.g. on MDL 4872 S: C101 STDWL46 → C104 STDWL46 WDO3236). Defaults to the booth\\'s primary (longest) STDWL{N} wall; explicit overrides like <code>WDO 43" 2636 S</code> use the named wall size. Multiple windows (or qty &gt; 1) swap one wall each. If the booth has no matching standard wall to swap (e.g. ADA already replaced it), the WDO line stays in the unmapped-features flag for manual adjustment instead of silently adding extras.'},

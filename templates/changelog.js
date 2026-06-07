@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.18', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: RFU substitution (additive).** An explicit <code>RFU</code> line on a quote now adds one extra <b>F14 (REMOTE FAN UNIT, 5 lb)</b> row to the PL — on top of whatever the base BOM already includes (most booths ship with one by default). Useful for replacement RFUs ordered for existing booths or doubling up. Exact match only.'},
+      ]
+    },
+    {
       v:'1.72.17', date:'June 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing List: STEP substitution.** A <code>STEP</code> line on a quote now adds one <b>S01 (EXTERIOR STEP, 30 lb)</b> row to the PL. Exact-match only — bare "STEP" with no suffix; anything else stays in the unmapped flag.'},

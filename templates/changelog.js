@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.20', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: WA RAMP (3-box ramp system).** A <code>WA RAMP</code> line on a quote now adds the three-box ramp kit to the PL: <b>Z62</b> (RAMP WITH ADAPTER, 32 lb) + <b>Z63</b> (2 MIDDLE RAMPS, 42 lb) + <b>Z64</b> (3 LOWER RAMPS, 37 lb). Quote-line qty multiplies all three through. Matches rows 26–28 of the ENT &amp; Allergy reference PL. Bare <code>RAMP</code> and <code>RAMP SYS</code> stay unmapped pending tomorrow\'s verification.'},
+      ]
+    },
+    {
       v:'1.72.19', date:'June 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing List: Bass Traps substitution.** A <code>BASS TRAPS</code> line on a quote adds one <b>E16 (BASS TRAP 2 W/ VELCRO, 5 lb)</b> row to the PL — each E16 pack contains 2 traps. Quote-line qty multiplies through, so Practice / Recording presets that bump BASS TRAPS to qty 3 produce 3 E16 rows (6 traps), and Drum presets at qty 4 produce 4 (8 traps). Singular "BASS TRAP" also matches; <code>BASS TRAP 2</code>-style SKU strings do not (left unmapped).'},

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.15', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: WA Door (Wide Access) substitution.** Quote lines like <code>WA UPG STD 40</code> / <code>STD 46</code> / <code>ENH 40</code> / <code>ENH 46</code> (and bare <code>WA UPG</code>) now swap the standard door + doorframe in the BOM for the WA equivalents: <b>Z03/Z04</b> (R/L door frame) + <b>Z05/Z06</b> (R/L door), plus a wall-size-specific adapter — <b>Z25</b> for 40" walls or <b>Z120</b> for 46" walls. L/R picked from the room hinge selector. On ENH booths (E / ENV), also swaps the inner-shell door + jamb (<b>Z10/Z11</b> + <b>Z09</b>) and adds <b>Z19</b> (WAJMBAD/IEPSSMID). Correctly handles both inner-door families: small-wall booths (M01/L01) and 46"-wall booths (K114/K116). 43" wall booths leave the line in the unmapped flag (no WA exists for that wall size).'},
+      ]
+    },
+    {
       v:'1.72.14', date:'June 7, 2026', tag:'log',
       changes:[
         {t:'log', d:'**Pre-commit syntax check added.** New `scripts/check-syntax.js` runs `node --check` on every staged `.js` file and smoke-tests `templates/changelog.js` and `lib/packing-list.js` (require + invoke). Wired as `.git/hooks/pre-commit` (and tracked under `scripts/git-hooks/` so a fresh clone can install via `scripts/install-hooks.sh`). Would have caught the v1.72.11 deploy crash before push. `/bump` now runs the check before reporting back, and `CLAUDE.md` documents the workflow.'},

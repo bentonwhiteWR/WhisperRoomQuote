@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.34', date:'June 7, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**Dev log: closeout of the June 7 session (28 versions).** No app change — refreshed the internal DEVLOG to reflect the full final state: PL Phase 2 complete (viewer redesign, 13 feature-sub rules, hinge + foam swaps wired from the quote, Top-Down Layout tab with 3 booths seeded, pre-commit hook, 40" WA narrow swap via the Z02 bundle). Tomorrow: CP-generated PLs to unblock ADA / Studio Light / HX, plus the remaining 22 booth layouts.'},
+      ]
+    },
+    {
       v:'1.72.33', date:'June 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Top-Down Layout: +2 booths.** MDL 4242 S (3.5′×3.5′ square, 4×40″ walls) and MDL 4848 S (4′×4′ square, 4×46″ walls) added to <code>lib/pl-data/booth-layouts.json</code>. Their E variants pick up the same layout via the variant fallback (4242 E → 4242 S, etc.). Rectangular booths (4260, 4872 already done, 7272, etc.) need a per-MDL digitization pass against the spec sheets — those slot grids are non-trivial and going one at a time tomorrow alongside the CP-generated PLs.'},

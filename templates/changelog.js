@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.16', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: hinge swap now actually swaps components.** Base BOMs ship right-default. When the room hinge is Left, the PL now flips: <code>C113↔C115</code> (STD door 30), <code>C114↔C116</code> (STDWL46 DRFRM), <code>C14↔C15</code> (STD door 24), <code>C07↔C08</code> (STDWL40 DRFRM), <code>C16↔C17</code> (generic door). On E / ENV booths the inner shell flips too: <code>M01↔M02</code> (small-wall IEPDOOR), <code>K114↔K115</code> (46"-wall IEPDOOR), and inswing variants <code>L02↔L03</code> / <code>L04↔L05</code>. Bare jambs (L01, K116) are non-handed and stay put. Runs <i>after</i> WA Door so WA components — which already pick their own L/R from hinge — don\'t get double-flipped. Net weight unchanged (L/R pairs have identical weights).'},
+      ]
+    },
+    {
       v:'1.72.15', date:'June 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing List: WA Door (Wide Access) substitution.** Quote lines like <code>WA UPG STD 40</code> / <code>STD 46</code> / <code>ENH 40</code> / <code>ENH 46</code> (and bare <code>WA UPG</code>) now swap the standard door + doorframe in the BOM for the WA equivalents: <b>Z03/Z04</b> (R/L door frame) + <b>Z05/Z06</b> (R/L door), plus a wall-size-specific adapter — <b>Z25</b> for 40" walls or <b>Z120</b> for 46" walls. L/R picked from the room hinge selector. On ENH booths (E / ENV), also swaps the inner-shell door + jamb (<b>Z10/Z11</b> + <b>Z09</b>) and adds <b>Z19</b> (WAJMBAD/IEPSSMID). Correctly handles both inner-door families: small-wall booths (M01/L01) and 46"-wall booths (K114/K116). 43" wall booths leave the line in the unmapped flag (no WA exists for that wall size).'},

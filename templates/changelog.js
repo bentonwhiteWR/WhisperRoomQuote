@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.32', date:'June 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Top-Down Layout: narrow slot now flips 22″ → 19″ when WA Door is on.** Layout slots used to pin to a single wall family (e.g. <code>STDWL22</code>), so when WA swapped one C111 → C112 (STDWL19) the placer\'s regex didn\'t match and C112 fell out of the wall pool. Slots now carry a <code>families</code> array — N-narrow and S-narrow accept both <code>STDWL22</code> and <code>STDWL19</code>; S-wide accepts both <code>STDWL46</code> and <code>WA STDDRFRM</code>. The SVG renders at the placed panel\'s real width via <code>panelInteriorWidth()</code>, so the narrow slot visually shrinks from 22″ to 19″ when WA fires.'},
+      ]
+    },
+    {
       v:'1.72.31', date:'June 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing List now reads the quote\'s hinge + foam.** The customer\'s accepted hinge/foam preference (or the rep\'s preference if not yet accepted) flows straight from the saved quote into the PL — no more URL-param dance or "Gray default" surprise on a quote that explicitly picked Blue. Customer-accepted wins, then rep preference, then <code>?hinge=</code>/<code>?foam=</code> for testing. Hinge stored as "Left Hand"/"Right Hand" on the quote, normalized to "Left"/"Right" for the swap rules. Also dropped the now-redundant <b>Config</b> row from the PL viewer — those selectors only updated the label client-side and didn\'t actually re-fetch.'},

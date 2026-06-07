@@ -202,10 +202,23 @@
     return /^STDWL\d+/i.test(pack) || /^WA\s+STDDRFRM/i.test(pack);
   }
 
-  // Greedy auto-placement: walk slots N → S → E → W, for each pick the best
-  // matching wall line from the BOM pool. Preference order: matches the slot's
-  // `prefers` list (size-matched first, then size-agnostic WA fallback for
-  // DRFRM), then any SOLID of the same family, then any. One line per slot.
+  // Build a regex matching any of the slot's accepted family prefixes (e.g.
+  // ["STDWL22","STDWL19"] → /^(STDWL22|STDWL19)(\s|$)/i). Each family is
+  // prefix-matched against the pack name; the next char must be whitespace
+  // or end-of-string so STDWL16 doesn't accidentally match STDWL164.
+  function slotFamilyRegex(slot) {
+    // Backward-compat: accept a single `family` string if `families` missing.
+    const families = slot.families || (slot.family ? [slot.family] : ['STDWL' + slot.size]);
+    const escaped = families.map(f => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    return new RegExp('^(?:' + escaped.join('|') + ')(?:\\s|$)', 'i');
+  }
+
+  // Greedy auto-placement: walk slots N → S → E → W; for each, pick the best
+  // matching wall line from the BOM pool. A slot's `families` list controls
+  // which pack prefixes it accepts (e.g. the narrow slot accepts both STDWL22
+  // AND STDWL19 so the WA shrink doesn't fall out). Preference order: a pack
+  // that classifies as the slot's first `prefers` kind wins, then second, etc.;
+  // fallbacks are SOLID-within-family, then any-within-family. One line/slot.
   function placeBom(layout, lines) {
     const pool = (lines || [])
       .filter(l => isWallPanel(l.pack))
@@ -215,17 +228,11 @@
       const wall = layout.walls[side];
       if (!wall) continue;
       for (const slot of wall.slots) {
-        const familyRe = new RegExp('^STDWL' + slot.size + '(\\s|$)');
+        const familyRe = slotFamilyRegex(slot);
         let chosen = null;
         for (const pref of (slot.prefers || [])) {
-          // Size-matched STD pack first.
           chosen = pool.find(p => !p.used && familyRe.test(p.line.pack) && classifyWall(p.line.pack) === pref);
           if (chosen) break;
-          // For DRFRM, accept the size-agnostic WA STDDRFRM as a fallback.
-          if (pref === 'DRFRM') {
-            chosen = pool.find(p => !p.used && /^WA\s+STDDRFRM/i.test(p.line.pack));
-            if (chosen) break;
-          }
         }
         if (!chosen) chosen = pool.find(p => !p.used && familyRe.test(p.line.pack) && classifyWall(p.line.pack) === 'SOLID');
         if (!chosen) chosen = pool.find(p => !p.used && familyRe.test(p.line.pack));

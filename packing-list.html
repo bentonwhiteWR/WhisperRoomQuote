@@ -167,13 +167,16 @@
     return 'SOLID';
   }
 
-  // Effective interior width of a wall panel, in inches. STDWL{N} packs encode
-  // it directly. WA STDDRFRM is 49" (wider than the std 46" / 40" doorframes
-  // by 3" / 9" respectively — pair this with the C111/C10 → C112 shrink in
-  // the WA substitution rule). Null means "unknown, fall back to slot nominal".
+  // Effective interior width of a wall panel, in inches, for the slot it
+  // occupies. STDWL{N} packs encode it directly. WA STDDRFRM is 49". Z02
+  // ships TWO walls in one pack (a 7" + a 16") — when it occupies the narrow
+  // slot in a 40"-wall WA Door booth, the 7" piece is what sits in that
+  // slot; the 16" piece ships in the same box but installs on the opposite
+  // long side. Null means "unknown, fall back to slot nominal".
   function panelInteriorWidth(pack) {
     pack = String(pack || '');
-    if (/^WA\s+STDDRFRM/i.test(pack)) return 49;
+    if (/^WA\s+STDDRFRM/i.test(pack))    return 49;
+    if (/^STDWL\s*7\s*\/\s*WL?16/i.test(pack)) return 7;   // Z02 bundle in the 7" slot
     const m = pack.match(/^STDWL(\d+)/i);
     return m ? parseInt(m[1], 10) : null;
   }

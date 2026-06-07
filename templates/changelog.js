@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.30', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**WA Door on 40″-wall booths: C10 → Z02 (the STDWL7 / WL16 bundle).** One <code>C10 STDWL16</code> narrow now swaps to one <code>Z02 STDWL7 / WL16</code> — a single pack that ships a 7″ wall + a 16″ wall together (45 lb). Geometry: 40+16 = 49+7 = 56″. The 7″ piece becomes the new narrow on the WA-door side; the 16″ in the same box keeps the booth\'s inventory of 16″ walls unchanged. No inner-shell change on 40″ E/ENV booths (no IEP bundle equivalent exists). Layout SVG now also reports the Z02 slot as 7″.'},
+      ]
+    },
+    {
       v:'1.72.29', date:'June 7, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**WA Door narrow-wall swap: 40″-wall case backed out pending verification.** Benton clarified the adjacent panel on 40″-wall booths "loses 9″" (door grows 40→49), but every 40″-wall booth in the data carries STDWL16 (C10) as its narrow — 16−9 = 7 has no matching wall code, and 40+16 ≠ 49+19. Reverting the speculative 16→19 / 11.5→14.5 swap until a CP-generated PL confirms whether the 16″ wall is removed entirely, the booth physically extends, or another wall absorbs the delta. 46″-wall booths still get the correct 22→19 + 17.5→14.5 swap (geometry conserves cleanly).'},

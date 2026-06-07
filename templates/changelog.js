@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.28', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**WA Door: narrow-wall shrink swap, plus layout shows real widths.** The WA doorframe is 49″ (vs. the std 46″/40″), so one of the adjacent narrow walls now flips to absorb the difference: on 46″-wall booths <code>C111 STDWL22 → C112 STDWL19</code> (3″ shrink); on 40″-wall booths <code>C10 STDWL16 → C112 STDWL19</code>. Inner shell on E/ENV follows: <code>K112 IEPWL17.5 → K113 IEPWL14.5</code> (46″) or <code>K09 IEPWL11.5 → K113 IEPWL14.5</code> (40″). Top-Down Layout now reads each placed panel\'s real interior width — Z03/Z04 render as 49″ and C112 as 19″ in the SVG, where before they showed at the slot nominal (46″ / 22″). 40″-wall geometry is wired per the current spec note ("16″ → 19″") and will be re-verified against tomorrow\'s generated PLs.'},
+      ]
+    },
+    {
       v:'1.72.27', date:'June 7, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Top-Down Layout: WA Door now fills the door slot.** The WA doorframe codes (Z03 / Z04 — pack `WA STDDRFRM R/L`) and the WDO window wall (C104 etc.) used to be excluded from the layout\'s wall pool because the placer only matched <code>STDWL{N}</code>-prefixed packs. The pool filter now also accepts <code>WA STDDRFRM</code> (treated as size-agnostic DRFRM since the Z25 / Z120 adapter handles wall-size compatibility), and explicitly excludes the swinging door panels (C113 / C115 / C14 / C15 / C16 / C17 / Z05 / Z06 — they hang inside the doorframe slot, not as their own panel). Result: WA-equipped booths now show the WA doorframe (orange) on the front-wall slot exactly like the STD version did.'},

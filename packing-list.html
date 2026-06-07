@@ -167,6 +167,24 @@
     return 'SOLID';
   }
 
+  // Effective interior width of a wall panel, in inches. STDWL{N} packs encode
+  // it directly. WA STDDRFRM is 49" (wider than the std 46" / 40" doorframes
+  // by 3" / 9" respectively — pair this with the C111/C10 → C112 shrink in
+  // the WA substitution rule). Null means "unknown, fall back to slot nominal".
+  function panelInteriorWidth(pack) {
+    pack = String(pack || '');
+    if (/^WA\s+STDDRFRM/i.test(pack)) return 49;
+    const m = pack.match(/^STDWL(\d+)/i);
+    return m ? parseInt(m[1], 10) : null;
+  }
+  function effectiveSlotSize(slot, placedLine) {
+    if (placedLine) {
+      const w = panelInteriorWidth(placedLine.pack);
+      if (w != null) return w;
+    }
+    return slot.size;
+  }
+
   // Is this BOM line an outer-shell wall panel that occupies a slot in the
   // top-down layout? STDWL{N} family covers stock walls + STD doors/vents/
   // windows/cable variants. WA STDDRFRM (Z03/Z04) is a size-agnostic WA
@@ -252,9 +270,10 @@
       if (!wall) return;
       let offset = 0;
       wall.slots.forEach(slot => {
-        const slotW = slot.size * PX;
-        const x = x0 + t + offset;
         const placed = placement[slot.id];
+        const slotSizeIn = effectiveSlotSize(slot, placed);
+        const slotW = slotSizeIn * PX;
+        const x = x0 + t + offset;
         const kind = placed ? classifyWall(placed.pack) : 'EMPTY';
         const col = WALL_COLORS[kind] || WALL_COLORS.EMPTY;
         svg += '<rect x="' + x + '" y="' + baseY + '" width="' + slotW + '" height="' + t + '" '
@@ -272,9 +291,10 @@
           svg += '<text x="' + cx + '" y="' + y + '" text-anchor="middle" '
                + 'font-size="10" fill="#bbb" font-style="italic">(empty)</text>';
         }
-        // Slot size label (inside the slot)
+        // Slot size label (inside the slot) — shows the actual width, which
+        // may differ from the slot nominal when a WA-flavored panel was placed.
         svg += '<text x="' + cx + '" y="' + (baseY + t / 2 + 3) + '" text-anchor="middle" '
-             + 'font-size="9" font-weight="700" fill="' + col.text + '">' + slot.size + '″</text>';
+             + 'font-size="9" font-weight="700" fill="' + col.text + '">' + slotSizeIn + '″</text>';
         offset += slotW;
       });
     }
@@ -285,9 +305,10 @@
       if (!wall) return;
       let offset = 0;
       wall.slots.forEach(slot => {
-        const slotH = slot.size * PX;
-        const y = y0 + t + offset;
         const placed = placement[slot.id];
+        const slotSizeIn = effectiveSlotSize(slot, placed);
+        const slotH = slotSizeIn * PX;
+        const y = y0 + t + offset;
         const kind = placed ? classifyWall(placed.pack) : 'EMPTY';
         const col = WALL_COLORS[kind] || WALL_COLORS.EMPTY;
         svg += '<rect x="' + baseX + '" y="' + y + '" width="' + t + '" height="' + slotH + '" '
@@ -303,7 +324,7 @@
         }
         // Slot size label
         svg += '<text x="' + (baseX + t / 2) + '" y="' + (cy + 3) + '" text-anchor="middle" '
-             + 'font-size="9" font-weight="700" fill="' + col.text + '">' + slot.size + '″</text>';
+             + 'font-size="9" font-weight="700" fill="' + col.text + '">' + slotSizeIn + '″</text>';
         offset += slotH;
       });
     }

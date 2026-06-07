@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.22', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: foam color is now a real component swap.** Picking a non-Gray foam in the PL header rewrites the booth\'s foam row (E01 / E02 / E03 in the base BOM) to the matching colored variant — Purple (PUR: E04 / E05 / E06), Orange (OR: E07 / E08 / E09), Burgundy (BUR: E10 / E11 / E12), or Blue (BL: E13 / E14 / E15). Foam dropdown options corrected to the five real colors (Gray, Purple, Orange, Burgundy, Blue) — old list had Beige / Black which aren\'t real and was missing Purple / Orange.'},
+      ]
+    },
+    {
       v:'1.72.21', date:'June 7, 2026', tag:'feature',
       changes:[
         {t:'ui', d:'**Packing List: RAMP rule now matches bare <code>RAMP</code> too,** not just <code>WA RAMP</code>. Both feed the same 3-box ramp kit (Z62 + Z63 + Z64). ADA will cascade through this rule when that lands. <code>RAMP SYS</code> still stays unmapped.'},

@@ -43,9 +43,14 @@ If arguments are missing or unclear, ask the user to clarify before doing anythi
    | <new version>  | <YYYY-MM-DD> | <summary> |
    ```
 
-6. **Stage all three files** and report back:
+6. **Run the syntax check** before reporting back:
+   - `node scripts/check-syntax.js` — this is what `.git/hooks/pre-commit` runs.
+   - If it fails (especially on `templates/changelog.js`), it's almost always an over-escaped char in the summary string you just inserted. Fix the escape and re-run the check.
+   - **Why this matters:** `templates/changelog.js` is `require`'d at server startup. A SyntaxError here crash-loops the Railway deploy (this happened in v1.72.11; see DEVLOG row for v1.72.13). The pre-commit hook will catch it, but you should catch it earlier so you don't waste a `git commit` attempt.
+
+7. **Stage all three files** and report back:
    - Show the diff of the three edits in summary form.
-   - Tell the user: "Bumped to v<X>. Three files staged. Commit when ready, or run `git diff --staged` to review."
+   - Tell the user: "Bumped to v<X>. Three files staged, syntax check passed. Commit when ready, or run `git diff --staged` to review."
    - **Do NOT auto-commit.** The user wants to bundle this with the actual code change.
 
 ## Guardrails
@@ -53,3 +58,4 @@ If arguments are missing or unclear, ask the user to clarify before doing anythi
 - If the user is in the middle of unrelated changes (working tree has unstaged code edits), proceed but warn them in the final report.
 - If `package.json` version looks corrupted or doesn't match `\d+\.\d+\.\d+`, STOP and ask the user.
 - If the entry-array opening line in `templates/changelog.js` has moved, find it via Grep for `${[` near the top of the renderChangelog function before inserting.
+- **Watch the apostrophes.** Inside the single-quoted `d:'...'` string, write `booth\'s` (one backslash). Writing `\\'s` (two backslashes) is the bug that took down v1.72.11.

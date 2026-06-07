@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.14', date:'June 7, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**Pre-commit syntax check added.** New `scripts/check-syntax.js` runs `node --check` on every staged `.js` file and smoke-tests `templates/changelog.js` and `lib/packing-list.js` (require + invoke). Wired as `.git/hooks/pre-commit` (and tracked under `scripts/git-hooks/` so a fresh clone can install via `scripts/install-hooks.sh`). Would have caught the v1.72.11 deploy crash before push. `/bump` now runs the check before reporting back, and `CLAUDE.md` documents the workflow.'},
+      ]
+    },
+    {
       v:'1.72.13', date:'June 7, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Hotfix: deployment crash.** The v1.72.11 / 1.72.12 changelog entries had an over-escaped apostrophe inside a single-quoted JS string, which Node parsed as an early string terminator and threw <code>SyntaxError: Unexpected identifier</code> at startup. Both staging and prod containers had been crash-looping since 1.72.11. Apostrophe re-escaped correctly. Restarts cleanly.'},

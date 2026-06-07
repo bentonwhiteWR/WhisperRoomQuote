@@ -1,0 +1,5 @@
+#!/bin/sh
+# Pre-commit syntax/smoke check.
+# Install via: scripts/install-hooks.sh   (or copy this file to .git/hooks/pre-commit)
+
+exec node scripts/check-syntax.js

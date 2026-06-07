@@ -13,6 +13,10 @@ WhisperRoom Quote Builder — internal Node.js sales tool. Single-server (`quote
 - `/bump <patch|minor> "<summary>"` — bumps `package.json`, adds `templates/changelog.js` entry, adds DEVLOG row. Stages but doesn't commit, so it bundles cleanly with the actual code change.
 - `/promote [optional summary]` — staging→main merge dance with confirmation. Use only when the user explicitly asks to ship to prod.
 
+## Pre-commit syntax check
+
+`.git/hooks/pre-commit` runs `node scripts/check-syntax.js`. It runs `node --check` on every staged `.js` file, plus a require+invoke smoke test on `templates/changelog.js` and `lib/packing-list.js` (those are loaded at startup, so a broken require crashes Railway). **This exists because v1.72.11 shipped with an over-escaped apostrophe in a changelog entry and crash-looped both staging and prod for a full deploy cycle.** On a fresh clone, run `scripts/install-hooks.sh` to install the hook.
+
 ## Workflow (non-negotiable)
 
 - All work happens on `staging`. **Never commit to `main` or push it without explicit user approval.**

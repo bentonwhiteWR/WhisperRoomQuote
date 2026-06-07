@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.23', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: RM (Roof Mount Ventilation) substitution.** A <code>RM</code> or <code>RM 4260 E</code>-style quote line now rewrites the booth\'s BOM: every ceiling component swaps to its <code>... RM</code> variant (e.g. A06 STD4872CL → A34 STD4872CL RM), and every plain VNT wall swaps to the matching CBL wall of the same size (e.g. C102 STDWL46 VNT → C117 STDWL46 CBL). On E / ENV booths the inner shell follows the same swap — I06 → I30 (IEP ceiling), K102 → K117 (IEP wall). Wall sizes without a CBL counterpart (STDWL16, IEPWL11.5) silently stay VNT — data gap, not a bug. VNT NV variants are intentionally NOT swapped (no CBL NV exists; defer SNV/ENV+RM until Benton confirms).'},
+      ]
+    },
+    {
       v:'1.72.22', date:'June 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing List: foam color is now a real component swap.** Picking a non-Gray foam in the PL header rewrites the booth\'s foam row (E01 / E02 / E03 in the base BOM) to the matching colored variant — Purple (PUR: E04 / E05 / E06), Orange (OR: E07 / E08 / E09), Burgundy (BUR: E10 / E11 / E12), or Blue (BL: E13 / E14 / E15). Foam dropdown options corrected to the five real colors (Gray, Purple, Orange, Burgundy, Blue) — old list had Beige / Black which aren\'t real and was missing Purple / Orange.'},

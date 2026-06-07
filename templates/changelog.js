@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.27', date:'June 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Top-Down Layout: WA Door now fills the door slot.** The WA doorframe codes (Z03 / Z04 — pack `WA STDDRFRM R/L`) and the WDO window wall (C104 etc.) used to be excluded from the layout\'s wall pool because the placer only matched <code>STDWL{N}</code>-prefixed packs. The pool filter now also accepts <code>WA STDDRFRM</code> (treated as size-agnostic DRFRM since the Z25 / Z120 adapter handles wall-size compatibility), and explicitly excludes the swinging door panels (C113 / C115 / C14 / C15 / C16 / C17 / Z05 / Z06 — they hang inside the doorframe slot, not as their own panel). Result: WA-equipped booths now show the WA doorframe (orange) on the front-wall slot exactly like the STD version did.'},
+      ]
+    },
+    {
       v:'1.72.26', date:'June 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Booth layouts moved to a data file.** Top-down booth layouts (previously hardcoded in <code>packing-list.html</code>) now live in <code>lib/pl-data/booth-layouts.json</code> alongside the BOM data. The PL API response ships only the layouts referenced by the current quote\'s rooms, so the wire payload stays small as more layouts are added. <b>S / E / SNV / ENV variants of the same booth size share one layout</b> — the lookup falls back to the base "MDL XXXX S" entry when the exact variant isn\'t defined. To add a layout, add an entry under <code>layouts</code> in the JSON file; the schema is documented inline in <code>_meta._schema</code>.'},

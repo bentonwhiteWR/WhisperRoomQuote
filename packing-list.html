@@ -159,20 +159,35 @@
 
   function classifyWall(pack) {
     pack = String(pack || '');
-    if (/DRFRM/i.test(pack)) return 'DRFRM';
-    if (/WDO/i.test(pack))   return 'WDO';
-    if (/CBL/i.test(pack))   return 'CBL';
-    if (/VNT/i.test(pack))   return 'VNT';
+    if (/^WA\s+STDDRFRM/i.test(pack)) return 'DRFRM';   // WA doorframe variant
+    if (/DRFRM/i.test(pack))          return 'DRFRM';
+    if (/WDO/i.test(pack))            return 'WDO';
+    if (/CBL/i.test(pack))            return 'CBL';
+    if (/VNT/i.test(pack))            return 'VNT';
     return 'SOLID';
+  }
+
+  // Is this BOM line an outer-shell wall panel that occupies a slot in the
+  // top-down layout? STDWL{N} family covers stock walls + STD doors/vents/
+  // windows/cable variants. WA STDDRFRM (Z03/Z04) is a size-agnostic WA
+  // doorframe that fits any DRFRM slot — the Z25/Z120 adapter handles wall-
+  // size compatibility separately, so we accept it as a wall panel regardless
+  // of size. The door panel itself (C113/C115/Z05/Z06) is NOT a wall — it
+  // hangs inside the doorframe slot, so we exclude it.
+  function isWallPanel(pack) {
+    pack = String(pack || '');
+    if (/STD\s+DOOR/i.test(pack))     return false;   // C113/C115/C14/C15/C16/C17 (the swinging panel)
+    if (/^WA\s+STDDOOR/i.test(pack))  return false;   // Z05/Z06 (WA swinging panel)
+    return /^STDWL\d+/i.test(pack) || /^WA\s+STDDRFRM/i.test(pack);
   }
 
   // Greedy auto-placement: walk slots N → S → E → W, for each pick the best
   // matching wall line from the BOM pool. Preference order: matches the slot's
-  // `prefers` list, then falls back to any SOLID of the same family, then any.
-  // Each line is used at most once.
+  // `prefers` list (size-matched first, then size-agnostic WA fallback for
+  // DRFRM), then any SOLID of the same family, then any. One line per slot.
   function placeBom(layout, lines) {
     const pool = (lines || [])
-      .filter(l => /^STDWL\d+/.test(String(l.pack || '')))
+      .filter(l => isWallPanel(l.pack))
       .map(l => ({ line: l, used: false }));
     const placement = {};
     for (const side of ['N', 'S', 'E', 'W']) {
@@ -180,14 +195,19 @@
       if (!wall) continue;
       for (const slot of wall.slots) {
         const familyRe = new RegExp('^STDWL' + slot.size + '(\\s|$)');
-        const sameFamily = pool.filter(p => !p.used && familyRe.test(p.line.pack));
         let chosen = null;
         for (const pref of (slot.prefers || [])) {
-          chosen = sameFamily.find(p => classifyWall(p.line.pack) === pref);
+          // Size-matched STD pack first.
+          chosen = pool.find(p => !p.used && familyRe.test(p.line.pack) && classifyWall(p.line.pack) === pref);
           if (chosen) break;
+          // For DRFRM, accept the size-agnostic WA STDDRFRM as a fallback.
+          if (pref === 'DRFRM') {
+            chosen = pool.find(p => !p.used && /^WA\s+STDDRFRM/i.test(p.line.pack));
+            if (chosen) break;
+          }
         }
-        if (!chosen) chosen = sameFamily.find(p => classifyWall(p.line.pack) === 'SOLID');
-        if (!chosen) chosen = sameFamily[0];
+        if (!chosen) chosen = pool.find(p => !p.used && familyRe.test(p.line.pack) && classifyWall(p.line.pack) === 'SOLID');
+        if (!chosen) chosen = pool.find(p => !p.used && familyRe.test(p.line.pack));
         if (chosen) { chosen.used = true; placement[slot.id] = chosen.line; }
       }
     }

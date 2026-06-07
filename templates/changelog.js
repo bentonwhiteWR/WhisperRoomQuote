@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.26', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Booth layouts moved to a data file.** Top-down booth layouts (previously hardcoded in <code>packing-list.html</code>) now live in <code>lib/pl-data/booth-layouts.json</code> alongside the BOM data. The PL API response ships only the layouts referenced by the current quote\'s rooms, so the wire payload stays small as more layouts are added. <b>S / E / SNV / ENV variants of the same booth size share one layout</b> — the lookup falls back to the base "MDL XXXX S" entry when the exact variant isn\'t defined. To add a layout, add an entry under <code>layouts</code> in the JSON file; the schema is documented inline in <code>_meta._schema</code>.'},
+      ]
+    },
+    {
       v:'1.72.25', date:'June 7, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Packing List: Top-Down Layout tab (mock, MDL 4872 S only).** Each PL block now has two tabs: 📦 Packing List (the existing table) and 🏗 Top-Down Layout. The Layout tab renders the booth as an SVG floor plan with each wall slot color-coded by component kind (Solid / Vent / Cable / Door / Window). Wall components from the BOM are auto-placed into slots by family (STDWL46 / STDWL22) + preference (vent → back wall, door frame → front wall, solid → sides). Unplaced wall components surface in a warning under the diagram. Other MDLs show a "Layout not yet defined" placeholder until we hand-author their slot grids. Printing forces the PL tab regardless of which is selected.'},

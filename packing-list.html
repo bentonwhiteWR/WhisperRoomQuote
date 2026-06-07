@@ -146,40 +146,16 @@
   };
 
   // ── Top-down booth layouts ─────────────────────────────────────
-  // Hardcoded for the mock — MDL 4872 S only. Every other model falls
-  // through to the "not yet defined" placeholder.
+  // Layouts live in lib/pl-data/booth-layouts.json and ship with the PL
+  // API response under DATA.layouts (only the layouts referenced by this
+  // quote's rooms are sent). Variant fallback (4872 E → 4872 S layout) is
+  // handled server-side; the frontend just looks up by full booth name.
   //
-  // Slot semantics:
-  //   - `size`     — the wall panel width in inches (matches STDWL{size})
-  //   - `family`   — STDWL{N} string used to filter the BOM pool
-  //   - `prefers`  — ordered list of preferred kinds (VNT/DRFRM/WDO/CBL/SOLID).
-  //                  The placer tries each in order before falling back.
-  //
+  // Slot semantics (mirrored from the JSON schema):
+  //   - `size`     — wall panel width in inches (matches STDWL{size})
+  //   - `family`   — STDWL{N} family string used to filter the BOM pool
+  //   - `prefers`  — ordered list of preferred kinds (VNT/DRFRM/WDO/CBL/SOLID)
   // Wall sides: N = back (vent), S = front (door), E = right, W = left.
-  // (Matches the orientation shown on the 2023 spec sheets.)
-  const BOOTH_LAYOUTS = {
-    'MDL 4872 S': {
-      label: 'Single-Wall Sound Booth · 4′ × 6′',
-      exterior: { w: 74, h: 50 },
-      wallThickness: 2,
-      walls: {
-        N: { label: 'Back', longSide: true,
-             slots: [
-               { id: 'N-wide',   size: 46, family: 'STDWL46', prefers: ['VNT', 'CBL'] },
-               { id: 'N-narrow', size: 22, family: 'STDWL22', prefers: ['SOLID'] }
-             ] },
-        S: { label: 'Front', longSide: true,
-             slots: [
-               { id: 'S-wide',   size: 46, family: 'STDWL46', prefers: ['DRFRM'] },
-               { id: 'S-narrow', size: 22, family: 'STDWL22', prefers: ['SOLID'] }
-             ] },
-        E: { label: 'Right', longSide: false,
-             slots: [ { id: 'E-wide', size: 46, family: 'STDWL46', prefers: ['SOLID'] } ] },
-        W: { label: 'Left', longSide: false,
-             slots: [ { id: 'W-wide', size: 46, family: 'STDWL46', prefers: ['SOLID'] } ] }
-      }
-    }
-  };
 
   function classifyWall(pack) {
     pack = String(pack || '');
@@ -344,11 +320,11 @@
   }
 
   function renderLayoutTab(rm) {
-    const layout = BOOTH_LAYOUTS[rm.boothName];
+    const layout = (DATA && DATA.layouts) ? DATA.layouts[rm.boothName] : null;
     if (!layout) {
       return '<div class="layout-wrap"><div class="layout-empty">'
         + 'Top-down layout not yet defined for <b>' + esc(rm.boothName) + '</b>.<br><br>'
-        + 'The mock currently covers <b>MDL 4872 S</b> only. As we add more layouts, they\'ll appear here automatically.'
+        + 'Add the layout to <code>lib/pl-data/booth-layouts.json</code> and it will appear here automatically (S / E / SNV / ENV variants share one layout via fallback).'
         + '</div></div>';
     }
     const { placement, leftover } = placeBom(layout, rm.lines);

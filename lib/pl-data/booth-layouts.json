@@ -1,0 +1,52 @@
+{
+  "_meta": {
+    "_source": "Manually digitized from the 2023 top-down spec sheets (Z:\\Sales1\\Sales\\SPEC SHEET - TOP DOWN 2023\\). One layout per booth shell shape.",
+    "_schema": {
+      "exterior": "Outer shell dimensions in inches (w = long axis, h = short axis). Matches the spec-sheet top-down view.",
+      "wallThickness": "Panel + foam thickness in inches.",
+      "walls": "Keyed by compass side: N = back, S = front (door side), E = right, W = left.",
+      "walls.<side>.slots": "Ordered list of wall-panel slots running along the interior. Each slot has: id (unique), size (inches, matches STDWL{N}/IEPWL{N}), family (STDWL{N} family string used to match BOM lines), prefers (ordered list of slot-kind preferences for auto-placement — VNT, CBL, DRFRM, WDO, SOLID).",
+      "walls.<side>.longSide": "true for the two long walls of a rectangular booth (where panels are split N-wide + N-narrow style)."
+    },
+    "_lookup": "Lookup by full MDL name (e.g. 'MDL 4872 S'). Variant fallback (e.g. 'MDL 4872 E' → 'MDL 4872 S' layout) is handled in lib/packing-list.js boothLayout()."
+  },
+  "layouts": {
+    "MDL 4872 S": {
+      "label": "Single-Wall Sound Booth - 4' x 6'",
+      "exterior": { "w": 74, "h": 50 },
+      "wallThickness": 2,
+      "walls": {
+        "N": {
+          "label": "Back",
+          "longSide": true,
+          "slots": [
+            { "id": "N-wide",   "size": 46, "family": "STDWL46", "prefers": ["VNT", "CBL"] },
+            { "id": "N-narrow", "size": 22, "family": "STDWL22", "prefers": ["SOLID"] }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "longSide": true,
+          "slots": [
+            { "id": "S-wide",   "size": 46, "family": "STDWL46", "prefers": ["DRFRM"] },
+            { "id": "S-narrow", "size": 22, "family": "STDWL22", "prefers": ["SOLID"] }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "longSide": false,
+          "slots": [
+            { "id": "E-wide", "size": 46, "family": "STDWL46", "prefers": ["SOLID"] }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "longSide": false,
+          "slots": [
+            { "id": "W-wide", "size": 46, "family": "STDWL46", "prefers": ["SOLID"] }
+          ]
+        }
+      }
+    }
+  }
+}

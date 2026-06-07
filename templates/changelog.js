@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.17', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: STEP substitution.** A <code>STEP</code> line on a quote now adds one <b>S01 (EXTERIOR STEP, 30 lb)</b> row to the PL. Exact-match only — bare "STEP" with no suffix; anything else stays in the unmapped flag.'},
+      ]
+    },
+    {
       v:'1.72.16', date:'June 7, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing List: hinge swap now actually swaps components.** Base BOMs ship right-default. When the room hinge is Left, the PL now flips: <code>C113↔C115</code> (STD door 30), <code>C114↔C116</code> (STDWL46 DRFRM), <code>C14↔C15</code> (STD door 24), <code>C07↔C08</code> (STDWL40 DRFRM), <code>C16↔C17</code> (generic door). On E / ENV booths the inner shell flips too: <code>M01↔M02</code> (small-wall IEPDOOR), <code>K114↔K115</code> (46"-wall IEPDOOR), and inswing variants <code>L02↔L03</code> / <code>L04↔L05</code>. Bare jambs (L01, K116) are non-handed and stay put. Runs <i>after</i> WA Door so WA components — which already pick their own L/R from hinge — don\'t get double-flipped. Net weight unchanged (L/R pairs have identical weights).'},

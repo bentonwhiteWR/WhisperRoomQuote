@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.75.0', date:'June 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List in the Orders drawer + box / hardware carryover.** The order drawer on <code>/orders</code> now has a <b>📦 Packing List</b> link at the top that opens the PL viewer in a new tab. <b>Box Count</b> and <b>Hardware Box #</b> auto-fill from the packing list when blank: box count = the total number of PL rows across all booths (each row is one numbered box) × booth qty; hardware box # = the row number of the booth hardware kit in the first booth PL. The generator now returns <code>totals.boxCount</code> + <code>totals.hardwareBox</code> (and per-room <code>boxCount</code>). Auto-fill only seeds empty fields, so a manual or saved value is never overwritten. Next: two-way S/N sync between the PL viewer and the order serial-numbers field.'},
+      ]
+    },
+    {
       v:'1.74.0', date:'June 8, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing List generator: ADA package rule.** ADA on a quote (72 & 96 series) now resolves to the full package instead of being flagged. Swaps the standard door/frame for the ADA door set (<b>Z30</b> frame + <b>Z32</b> door + <b>Z38</b> adaptor; inner shell Z34/Z35 on E booths), shrinks the adjacent wall per the WA Type (4646: 46→43 / 41.5→38.5; 4622: 22→19 / 17.5→14.5), adds the 3-box ramp (Z62/Z63/Z64), and the <b>elevated floor</b> — corner + center + side inserts sized to the footprint, plus the model-specific perimeter strips that ship only on the standard (non-enhanced) booth. Per-model sets were derived from 14 ADA reference PLs and verified to reconstruct every one exactly (components + weight). WA Type follows the workbook default (7296 = 4622); NV variants map to S / E. L-hinge ADA door is a follow-up.'},

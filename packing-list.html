@@ -648,9 +648,15 @@
     return parts.map(esc).join(' <span class="sep">/</span> ');
   }
 
+  // Returns escaped HTML (company on line 1, quote number on line 2). Caller
+  // inserts it raw — do NOT wrap in esc() again.
   function dealRef(){
     const m = DATA.meta || {};
-    return (m.dealName || m.company || '') + (DATA.quoteNumber ? ' · ' + DATA.quoteNumber : '');
+    const parts = [];
+    const company = esc(m.dealName || m.company || '');
+    if (company) parts.push(company);
+    if (DATA.quoteNumber) parts.push(esc(DATA.quoteNumber));
+    return parts.join('<br>');
   }
 
   function snKey(ri){ return 'wr-pl-sn:' + (DATA.quoteNumber||'') + ':' + ri; }
@@ -666,7 +672,7 @@
       const dateInput = '<span class="pl-date"><input type="text" id="pl-date-' + ri + '" value="' + esc(savedDate) + '" oninput="saveDate(this.value)"></span>';
       const headerTop =
         '<div class="pl-top">'
-          + '<div class="pl-top-left">' + esc(dealRef()) + '</div>'
+          + '<div class="pl-top-left">' + dealRef() + '</div>'
           + '<div class="pl-top-center">'
             + '<img src="/assets/whisperroom-logo.svg" alt="WhisperRoom">'
             + '<div class="pl-tagline">Sound Isolation Enclosures</div>'

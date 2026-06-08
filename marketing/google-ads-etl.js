@@ -95,6 +95,10 @@ async function syncCampaigns({ db, daysBack = 90 }) {
         'metrics.impressions', 'metrics.clicks',
         'metrics.cost_micros', 'metrics.conversions',
         'metrics.conversions_value',
+        // Impression Share — drives correct budget-vs-rank recommendations.
+        'metrics.search_impression_share',
+        'metrics.search_budget_lost_impression_share',
+        'metrics.search_rank_lost_impression_share',
       ],
       segments: ['segments.date'],
       from_date: dateFrom,
@@ -112,23 +116,31 @@ async function syncCampaigns({ db, daysBack = 90 }) {
   // Upsert each campaign/date row. The (campaign_id, date) composite PK
   // makes re-running the same range overwrite instead of duplicating.
   for (const r of rows) {
+    const m = r.metrics || {};
     await db.query(`
       INSERT INTO marketing_campaigns
-        (campaign_id, campaign_name, status, date, impressions, clicks, cost_micros, conversions, conversion_value, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        (campaign_id, campaign_name, status, date, impressions, clicks, cost_micros, conversions, conversion_value,
+         search_impression_share, search_budget_lost_is, search_rank_lost_is, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
       ON CONFLICT (campaign_id, date) DO UPDATE SET
-        campaign_name    = EXCLUDED.campaign_name,
-        status           = EXCLUDED.status,
-        impressions      = EXCLUDED.impressions,
-        clicks           = EXCLUDED.clicks,
-        cost_micros      = EXCLUDED.cost_micros,
-        conversions      = EXCLUDED.conversions,
-        conversion_value = EXCLUDED.conversion_value,
-        updated_at       = NOW()
+        campaign_name           = EXCLUDED.campaign_name,
+        status                  = EXCLUDED.status,
+        impressions             = EXCLUDED.impressions,
+        clicks                  = EXCLUDED.clicks,
+        cost_micros             = EXCLUDED.cost_micros,
+        conversions             = EXCLUDED.conversions,
+        conversion_value        = EXCLUDED.conversion_value,
+        search_impression_share = EXCLUDED.search_impression_share,
+        search_budget_lost_is   = EXCLUDED.search_budget_lost_is,
+        search_rank_lost_is     = EXCLUDED.search_rank_lost_is,
+        updated_at              = NOW()
     `, [
       r.campaign.id, r.campaign.name, r.campaign.status,
-      r.segments.date, r.metrics.impressions, r.metrics.clicks,
-      r.metrics.cost_micros, r.metrics.conversions, r.metrics.conversions_value,
+      r.segments.date, m.impressions, m.clicks,
+      m.cost_micros, m.conversions, m.conversions_value,
+      m.search_impression_share != null ? m.search_impression_share : null,
+      m.search_budget_lost_impression_share != null ? m.search_budget_lost_impression_share : null,
+      m.search_rank_lost_impression_share != null ? m.search_rank_lost_impression_share : null,
     ]);
   }
 
@@ -157,6 +169,11 @@ async function syncKeywords({ db, daysBack = 90 }) {
         'ad_group_criterion.criterion_id',
         'ad_group_criterion.keyword.text',
         'ad_group_criterion.keyword.match_type',
+        // Quality Score + its 3 component buckets — tells us the actual lever.
+        'ad_group_criterion.quality_info.quality_score',
+        'ad_group_criterion.quality_info.search_predicted_ctr',
+        'ad_group_criterion.quality_info.creative_quality_score',
+        'ad_group_criterion.quality_info.post_click_quality_score',
       ],
       metrics: [
         'metrics.impressions', 'metrics.clicks',
@@ -173,23 +190,34 @@ async function syncKeywords({ db, daysBack = 90 }) {
   }
 
   for (const r of rows) {
+    const m  = r.metrics || {};
+    const qi = (r.ad_group_criterion && r.ad_group_criterion.quality_info) || {};
+    // Component buckets come back as enum (string name or number, depending on
+    // the lib build) — store as text and let the dashboard map to labels.
+    const asText = v => (v == null ? null : String(v));
     await db.query(`
       INSERT INTO marketing_keywords
-        (campaign_id, ad_group_id, keyword_id, keyword_text, match_type, date, impressions, clicks, cost_micros, conversions, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+        (campaign_id, ad_group_id, keyword_id, keyword_text, match_type, date, impressions, clicks, cost_micros, conversions,
+         quality_score, qs_expected_ctr, qs_ad_relevance, qs_landing_page, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
       ON CONFLICT (campaign_id, ad_group_id, keyword_id, date) DO UPDATE SET
-        keyword_text = EXCLUDED.keyword_text,
-        match_type   = EXCLUDED.match_type,
-        impressions  = EXCLUDED.impressions,
-        clicks       = EXCLUDED.clicks,
-        cost_micros  = EXCLUDED.cost_micros,
-        conversions  = EXCLUDED.conversions,
-        updated_at   = NOW()
+        keyword_text    = EXCLUDED.keyword_text,
+        match_type      = EXCLUDED.match_type,
+        impressions     = EXCLUDED.impressions,
+        clicks          = EXCLUDED.clicks,
+        cost_micros     = EXCLUDED.cost_micros,
+        conversions     = EXCLUDED.conversions,
+        quality_score   = EXCLUDED.quality_score,
+        qs_expected_ctr = EXCLUDED.qs_expected_ctr,
+        qs_ad_relevance = EXCLUDED.qs_ad_relevance,
+        qs_landing_page = EXCLUDED.qs_landing_page,
+        updated_at      = NOW()
     `, [
       r.campaign.id, r.ad_group.id, r.ad_group_criterion.criterion_id,
       r.ad_group_criterion.keyword.text, r.ad_group_criterion.keyword.match_type,
-      r.segments.date, r.metrics.impressions, r.metrics.clicks,
-      r.metrics.cost_micros, r.metrics.conversions,
+      r.segments.date, m.impressions, m.clicks, m.cost_micros, m.conversions,
+      qi.quality_score != null ? qi.quality_score : null,
+      asText(qi.search_predicted_ctr), asText(qi.creative_quality_score), asText(qi.post_click_quality_score),
     ]);
   }
 

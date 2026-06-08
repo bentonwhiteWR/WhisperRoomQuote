@@ -2,250 +2,763 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>WhisperRoom — Packing List</title>
+<link rel="icon" href="/assets/favicon.avif">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial Black,sans-serif' font-size='18' font-weight='900' fill='%23e8531a'>W</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg:#0f0f0f; --surface:#1a1a1a; --surface2:#222; --border:#2a2a2a;
-    --orange:#ee6216; --orange-dim:rgba(238,98,22,.12);
-    --text:#e8e8e8; --muted:#888;
-    --green:#22c55e; --red:#ef4444; --blue:#3b82f6; --amber:#f59e0b; --purple:#a855f7;
-    --row-hover:rgba(255,255,255,.02);
-  }
-  :root.light {
-    --bg:#f5f5f5; --surface:#fff; --surface2:#f0f0f0; --border:#e0e0e0;
-    --orange:#d44f0c; --orange-dim:rgba(212,79,12,.1);
-    --text:#1a1a1a; --muted:#666;
-    --green:#16a34a; --red:#dc2626; --blue:#2563eb; --amber:#d97706; --purple:#7c3aed;
-    --row-hover:rgba(0,0,0,.02);
-  }
-  * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; -webkit-font-smoothing:antialiased; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f8f8;color:#1a1a1a;-webkit-font-smoothing:antialiased;padding:32px 16px}
 
-  .topbar { display:flex; align-items:center; justify-content:space-between; padding:0 20px; min-height:52px; background:#1a1a1a; border-bottom:1px solid rgba(255,255,255,.1); position:sticky; top:0; z-index:100; gap:8px; }
-  .topbar-logo { font-family:'Syne',sans-serif; font-size:20px; font-weight:800; color:#f0ede8; text-decoration:none; }
-  .topbar-logo span { color:#e8531a; }
-  .topbar-right { display:flex; gap:8px; align-items:center; }
-  .btn { padding:6px 12px; font-size:12px; font-weight:700; border-radius:7px; border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; font-family:inherit; }
-  .btn:hover { border-color:var(--orange); color:var(--orange); }
-  .btn-orange { background:var(--orange); border-color:var(--orange); color:#fff; }
-  .btn-orange:hover { color:#fff; opacity:.9; }
-  .btn-sm { padding:3px 8px; font-size:11px; }
-  .theme-btn { padding:5px 9px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:6px; color:#f0ede8; cursor:pointer; font-size:14px; }
+  /* Each PL block = one printable page (one booth) */
+  .pl-page{background:#fff;max-width:980px;margin:0 auto 28px;padding:36px 44px 30px;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.08);position:relative}
 
-  .main { max-width:1200px; margin:0 auto; padding:22px 20px 60px; }
-  .head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-bottom:8px; }
-  .title { font-family:'Syne',sans-serif; font-size:23px; font-weight:800; }
-  .title span { color:var(--orange); }
-  .meta { font-size:12px; color:var(--muted); margin-top:5px; line-height:1.6; }
-  .meta b { color:var(--text); font-weight:700; }
+  /* Header row: deal ref (L) | centered logo + tagline | date (R) */
+  .pl-top{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;margin-bottom:18px;gap:14px}
+  .pl-top-left{font-size:12px;font-weight:700;color:#888;letter-spacing:.04em;text-transform:uppercase}
+  .pl-top-center{display:flex;flex-direction:column;align-items:center;gap:2px}
+  .pl-top-center img{height:38px;display:block}
+  .pl-tagline{font-size:9px;font-weight:800;letter-spacing:.28em;color:#1a1a1a;text-transform:uppercase}
+  .pl-top-right{text-align:right;font-size:14px;font-weight:700;color:#1a1a1a;font-variant-numeric:tabular-nums}
+  .pl-date input{font:inherit;color:inherit;border:1px solid transparent;border-radius:4px;padding:2px 4px;background:transparent;text-align:right;width:130px}
+  .pl-date input:hover,.pl-date input:focus{border-color:#ddd;outline:none}
 
-  .totals { display:flex; gap:10px; flex-wrap:wrap; margin:14px 0 22px; }
-  .stat { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:10px 16px; }
-  .stat .l { font-size:10px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); }
-  .stat .v { font-family:'Syne',sans-serif; font-size:21px; font-weight:800; margin-top:2px; }
+  /* Middle: MDL+totals left, big PACKING LIST + S/N right */
+  .pl-mid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:16px;align-items:start}
+  .mdl-line{font-size:14px;font-weight:800;color:#1a1a1a;letter-spacing:.01em;margin-bottom:10px;line-height:1.4}
+  .mdl-line .sep{color:#ee6216;margin:0 4px;font-weight:700}
+  .totals-grid{display:grid;grid-template-columns:auto auto;gap:3px 12px;font-size:12px;color:#1a1a1a}
+  .totals-grid .l{font-weight:700;color:#444}
+  .totals-grid .v{font-weight:700;font-variant-numeric:tabular-nums;text-align:right;color:#1a1a1a}
 
-  .room { background:var(--surface); border:1px solid var(--border); border-radius:13px; margin-bottom:20px; overflow:hidden; }
-  .room-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 18px; background:var(--surface2); border-bottom:1px solid var(--border); flex-wrap:wrap; }
-  .room-title { display:flex; align-items:center; gap:10px; }
-  .room-num { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:var(--orange); color:#fff; font-weight:800; font-size:13px; }
-  .room-name { font-family:'Syne',sans-serif; font-size:17px; font-weight:800; }
-  .room-sub { font-size:11px; color:var(--muted); }
-  .qty-badge { background:var(--orange-dim); color:var(--orange); border:1px solid var(--orange); border-radius:10px; padding:1px 9px; font-size:11px; font-weight:700; }
-  .vpill { display:inline-block; padding:1px 8px; border-radius:10px; font-size:10px; font-weight:700; }
-  .v-S{background:rgba(59,130,246,.15);color:var(--blue)} .v-E{background:rgba(168,85,247,.15);color:var(--purple)}
-  .v-SNV{background:rgba(34,197,94,.13);color:var(--green)} .v-ENV{background:rgba(245,158,11,.13);color:var(--amber)}
+  .pl-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  .pl-title{font-size:38px;font-weight:800;color:#1a1a1a;letter-spacing:-.5px;line-height:1;text-align:right}
+  .pl-title span{color:#ee6216}
+  .sn-row{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:800;color:#1a1a1a;letter-spacing:.04em}
+  .sn-row .sn-label{color:#ee6216}
+  .sn-input{font:inherit;font-weight:800;color:#1a1a1a;border:1px solid transparent;border-bottom:1px solid #ddd;border-radius:0;padding:2px 6px;background:transparent;min-width:170px;text-align:left;letter-spacing:.04em}
+  .sn-input:hover,.sn-input:focus{border-bottom-color:#ee6216;outline:none}
 
-  .room-cfg { display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
-  .cfg { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); }
-  .cfg select { padding:4px 8px; font-size:12px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; }
+  /* Compact cfg strip (no-print) */
+  .room-cfg{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:0 0 12px;padding:7px 12px;background:#fafafa;border:1px dashed #eee;border-radius:7px}
+  .cfg{display:flex;align-items:center;gap:5px;font-size:11px;color:#666;font-weight:600}
+  .cfg select{padding:3px 7px;font-size:11px;background:#fff;border:1px solid #ddd;border-radius:5px;color:#1a1a1a;font-family:inherit}
+  .cfg-label{font-size:10px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.08em;margin-right:auto}
 
-  table { width:100%; border-collapse:collapse; font-size:12.5px; }
-  thead th { text-align:right; padding:9px 12px; font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--border); white-space:nowrap; }
-  thead th.l { text-align:left; }
-  tbody td { padding:7px 12px; text-align:right; border-bottom:1px solid var(--border); white-space:nowrap; font-variant-numeric:tabular-nums; }
-  tbody td.l { text-align:left; white-space:normal; }
-  tbody tr:hover { background:var(--row-hover); }
-  .code { font-weight:700; font-family:ui-monospace,Menlo,monospace; }
-  .qin { width:54px; padding:3px 6px; text-align:right; background:var(--surface2); border:1px solid var(--border); border-radius:5px; color:var(--text); font-family:inherit; font-size:12px; }
-  .unknown { color:var(--red); }
-  .rm-row { color:var(--muted); cursor:pointer; border:none; background:none; font-size:14px; padding:0 4px; }
-  .rm-row:hover { color:var(--red); }
+  /* PL table */
+  table.pl{width:100%;border-collapse:collapse;font-size:11px}
+  table.pl thead tr.group th{background:#1a1a1a;color:#fff;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:6px 5px;text-align:center;border-right:1px solid #2a2a2a}
+  table.pl thead tr.group th:last-child{border-right:none}
+  table.pl thead tr.units th{background:#262626;color:#cfcfcf;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:4px 5px;text-align:center;border-right:1px solid #333}
+  table.pl thead tr.units th.l{text-align:left;padding-left:9px}
+  table.pl thead tr.units th:last-child{border-right:none}
+  table.pl tbody td{padding:5px 5px;border-bottom:1px solid #f0f0f0;font-variant-numeric:tabular-nums;text-align:center}
+  table.pl tbody td.l{text-align:left;padding-left:9px}
+  table.pl tbody td.code{font-family:ui-monospace,Menlo,monospace;font-weight:700;color:#1a1a1a}
+  table.pl tbody td.pack{font-family:ui-monospace,Menlo,monospace;color:#444}
+  table.pl tbody td.desc{color:#333;font-weight:500}
+  table.pl tbody tr:hover td{background:#fafafa}
+  table.pl tbody tr.alt td{background:#fcfbf9}
+  table.pl tbody tr.alt:hover td{background:#fafafa}
+  td.idx{color:#888;font-weight:700;width:28px}
+  td.unknown{color:#dc2626}
+  .rm-row{color:#bbb;cursor:pointer;border:none;background:none;font-size:14px;padding:0 4px;line-height:1}
+  .rm-row:hover{color:#dc2626}
 
-  .room-foot { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 18px; flex-wrap:wrap; }
-  .addrow { display:flex; gap:6px; align-items:center; }
-  .addrow input { padding:4px 8px; font-size:12px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; }
-  .net { font-size:13px; font-weight:700; }
-  .net b { font-family:'Syne',sans-serif; font-size:17px; color:var(--orange); }
+  /* Tab bar — switches between PL table and top-down layout */
+  .pl-tabs{display:flex;gap:2px;margin-bottom:12px;border-bottom:1px solid #e6e6e6}
+  .pl-tab{padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:#fafafa;border:1px solid #e6e6e6;border-bottom:none;border-radius:7px 7px 0 0;color:#888;cursor:pointer;font-family:inherit;margin-bottom:-1px}
+  .pl-tab:hover{color:#1a1a1a;background:#fff}
+  .pl-tab.active{color:#1a1a1a;background:#fff;border-bottom:1px solid #fff;box-shadow:0 -2px 0 #ee6216 inset}
+  .tab-panel{display:none}
+  .tab-panel.active{display:block}
 
-  .flags { margin:0 18px 14px; padding:10px 14px; background:rgba(245,158,11,.08); border:1px solid var(--amber); border-radius:9px; font-size:11.5px; color:var(--text); }
-  .flags .ft { display:inline-block; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:2px 8px; margin:3px 4px 0 0; font-size:11px; }
-  .notfound { margin:0 18px 14px; padding:12px 14px; background:rgba(239,68,68,.08); border:1px solid var(--red); border-radius:9px; font-size:12px; color:var(--red); }
+  /* Layout view */
+  .layout-wrap{padding:12px 0 0}
+  .layout-empty{padding:60px 24px;text-align:center;color:#888;font-size:13px;background:#fafafa;border:1px dashed #ddd;border-radius:8px}
+  .layout-legend{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:12px;font-size:11px;color:#555}
+  .layout-legend .sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:middle;border:1px solid rgba(0,0,0,.2)}
 
-  .banner { font-size:11.5px; color:var(--muted); background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:9px 13px; margin-bottom:18px; line-height:1.5; }
-  .banner b { color:var(--amber); }
-  .loading,.empty { padding:46px; text-align:center; color:var(--muted); }
+  /* Add-row footer (no-print) */
+  .room-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0 0;flex-wrap:wrap}
+  .addrow{display:flex;gap:6px;align-items:center}
+  .addrow input{padding:4px 8px;font-size:11px;background:#fff;border:1px solid #ddd;border-radius:5px;color:#1a1a1a;font-family:inherit;min-width:160px}
+  .add-btn{padding:5px 11px;background:rgba(238,98,22,.1);color:#ee6216;border:1px solid rgba(238,98,22,.35);border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase}
+  .add-btn:hover{background:rgba(238,98,22,.18)}
+
+  /* Page footer */
+  .pl-foot{margin-top:14px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#888}
+  .pl-foot .pn{font-weight:700;color:#1a1a1a}
+
+  /* Flags / not found */
+  .flags{margin:14px 0 0;padding:9px 13px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.4);border-radius:7px;font-size:11px;color:#5a3a18;line-height:1.5}
+  .flags b{color:#b45309}
+  .flags .ft{display:inline-block;background:#fff;border:1px solid #eee;border-radius:5px;padding:2px 7px;margin:3px 4px 0 0;font-size:11px;color:#444}
+  .notfound{margin:14px 0 0;padding:10px 13px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:7px;font-size:11.5px;color:#b91c1c}
+
+  /* Print bar / back link */
+  .print-bar{position:fixed;top:14px;right:14px;display:flex;gap:8px;z-index:10}
+  .print-bar button{padding:8px 14px;background:#1a1a1a;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;font-family:inherit}
+  .print-bar button:hover{background:#333}
+  .back-link{position:fixed;top:14px;left:14px;padding:8px 14px;background:#1a1a1a;color:#fff;border-radius:7px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;text-decoration:none;font-family:inherit;z-index:10}
+  .back-link:hover{background:#333;color:#fff}
+  .loading,.empty{padding:46px;text-align:center;color:#888;font-size:13px}
 
   @media print {
-    .topbar,.no-print,.room-cfg select,.qin,.rm-row,.addrow,.theme-btn { }
-    .no-print { display:none !important; }
-    body { background:#fff; color:#000; }
-    .room,.stat,.banner { border-color:#ccc; box-shadow:none; }
-    .qin { border:none; background:none; }
+    body{background:#fff;padding:0}
+    .pl-page{box-shadow:none;border-radius:0;max-width:100%;padding:24px 32px;margin:0;page-break-after:always}
+    .pl-page:last-child{page-break-after:auto}
+    .print-bar,.back-link,.no-print{display:none !important}
+    .room-cfg,.room-foot,.pl-tabs{display:none}
+    /* On print, force PL tab visible no matter which tab is selected */
+    .tab-panel[data-tab="pl"]{display:block !important}
+    .tab-panel[data-tab="layout"]{display:none !important}
+    table.pl thead tr.group th{background:#1a1a1a !important;color:#fff !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    table.pl thead tr.units th{background:#262626 !important;color:#cfcfcf !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    table.pl tbody tr.alt td{background:#fcfbf9 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   }
 </style>
 </head>
 <body>
-  <div class="topbar no-print">
-    <a href="/deals" class="topbar-logo">Whisper<span>Room</span></a>
-    <div class="topbar-right">
-      <button class="btn" onclick="window.print()">🖨 Print</button>
-      <button class="btn" onclick="loadPL()">↻ Refresh</button>
-      <button class="theme-btn" onclick="toggleTheme()">◐</button>
-    </div>
+  <a class="back-link no-print" href="/deals">&larr; Deals</a>
+  <div class="print-bar no-print">
+    <button onclick="loadPL()">&#8635; Refresh</button>
+    <button onclick="window.print()" style="background:#ee6216">&#128424; Print</button>
   </div>
 
-  <div class="main">
-    <div class="head">
-      <div>
-        <div class="title">Packing <span>List</span></div>
-        <div class="meta" id="meta">Loading…</div>
-      </div>
-      <div class="totals" id="totals"></div>
-    </div>
-
-    <div class="banner no-print">
-      <b>Heads up:</b> The booth and its full bill-of-materials are generated automatically (weights are exact). Each room defaults to <b style="color:var(--text)">Left hinge / Gray foam</b> — change per room as needed. Optional-feature lines from the quote are <b>flagged below each room</b> for now (their component swaps are still being built), so add those parts manually until rules land. Quantity edits / added rows here are for this printout — not saved back yet.
-    </div>
-
-    <div id="rooms"><div class="loading">Loading packing list…</div></div>
-  </div>
+  <div id="rooms"><div class="pl-page"><div class="loading">Loading packing list…</div></div></div>
 
 <script>
   let DATA = null;
   let COMPONENTS = {};
   const quoteNumber = decodeURIComponent((location.pathname.match(/\/pl\/(.+)$/) || [])[1] || '').replace(/\/+$/, '');
 
-  (function(){ if (localStorage.getItem('wr-theme')==='light') document.documentElement.classList.add('light'); })();
-  function toggleTheme(){ document.documentElement.classList.toggle('light'); localStorage.setItem('wr-theme', document.documentElement.classList.contains('light')?'light':'dark'); }
-
   const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  const lb = n => n==null ? '—' : Number(n).toLocaleString(undefined,{maximumFractionDigits:1});
-  const dim = (L,W,T) => [L,W,T].every(x=>x==null) ? '' : `${L??'?'}×${W??'?'}×${T??'?'}`;
+  const fmtN = (n, d=2) => n==null ? '—' : Number(n).toLocaleString(undefined,{minimumFractionDigits:d, maximumFractionDigits:d});
+  const inToM = inches => (inches==null) ? null : Math.round(inches * 0.0254 * 100) / 100;
+  const lbToKg = lb => (lb==null) ? null : Math.round(lb * 0.453592 * 100) / 100;
+  const cuFtPerItem = (L, W, T) => (L==null||W==null||T==null) ? 0 : (L * W * T) / 1728;
+  const cuFtToCuM = cf => Math.round(cf * 0.0283168 * 100) / 100;
+  const todayShort = () => {
+    const d = new Date();
+    return (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear();
+  };
+
+  // ── Top-down booth layouts ─────────────────────────────────────
+  // Layouts live in lib/pl-data/booth-layouts.json and ship with the PL
+  // API response under DATA.layouts (only the layouts referenced by this
+  // quote's rooms are sent). Variant fallback (4872 E → 4872 S layout) is
+  // handled server-side; the frontend just looks up by full booth name.
+  //
+  // Slot semantics (mirrored from the JSON schema):
+  //   - `size`     — wall panel width in inches (matches STDWL{size})
+  //   - `family`   — STDWL{N} family string used to filter the BOM pool
+  //   - `prefers`  — ordered list of preferred kinds (VNT/DRFRM/WDO/CBL/SOLID)
+  // Wall sides: N = back (vent), S = front (door), E = right, W = left.
+
+  function classifyWall(pack) {
+    pack = String(pack || '');
+    if (/^WA\s+STDDRFRM/i.test(pack)) return 'DRFRM';   // WA doorframe variant
+    if (/DRFRM/i.test(pack))          return 'DRFRM';
+    if (/WDO/i.test(pack))            return 'WDO';
+    if (/CBL/i.test(pack))            return 'CBL';
+    if (/VNT/i.test(pack))            return 'VNT';
+    return 'SOLID';
+  }
+
+  // Effective interior width of a wall panel, in inches, for the slot it
+  // occupies. STDWL{N} packs encode it directly. WA STDDRFRM is 49". Z02
+  // ships TWO walls in one pack (a 7" + a 16") — when it occupies the narrow
+  // slot in a 40"-wall WA Door booth, the 7" piece is what sits in that
+  // slot; the 16" piece ships in the same box but installs on the opposite
+  // long side. Null means "unknown, fall back to slot nominal".
+  function panelInteriorWidth(pack) {
+    pack = String(pack || '');
+    if (/^WA\s+STDDRFRM/i.test(pack))    return 49;
+    if (/^STDWL\s*7\s*\/\s*WL?16/i.test(pack)) return 7;   // Z02 bundle in the 7" slot
+    const m = pack.match(/^STDWL(\d+)/i);
+    return m ? parseInt(m[1], 10) : null;
+  }
+  function effectiveSlotSize(slot, placedLine) {
+    if (placedLine) {
+      const w = panelInteriorWidth(placedLine.pack);
+      if (w != null) return w;
+    }
+    return slot.size;
+  }
+
+  // Is this BOM line an outer-shell wall panel that occupies a slot in the
+  // top-down layout? STDWL{N} family covers stock walls + STD doors/vents/
+  // windows/cable variants. WA STDDRFRM (Z03/Z04) is a size-agnostic WA
+  // doorframe that fits any DRFRM slot — the Z25/Z120 adapter handles wall-
+  // size compatibility separately, so we accept it as a wall panel regardless
+  // of size. The door panel itself (C113/C115/Z05/Z06) is NOT a wall — it
+  // hangs inside the doorframe slot, so we exclude it.
+  function isWallPanel(pack) {
+    pack = String(pack || '');
+    if (/STD\s+DOOR/i.test(pack))     return false;   // C113/C115/C14/C15/C16/C17 (the swinging panel)
+    if (/^WA\s+STDDOOR/i.test(pack))  return false;   // Z05/Z06 (WA swinging panel)
+    return /^STDWL\d+/i.test(pack) || /^WA\s+STDDRFRM/i.test(pack);
+  }
+
+  // Build a regex matching any of the slot's accepted family prefixes (e.g.
+  // ["STDWL22","STDWL19"] → /^(STDWL22|STDWL19)(\s|$)/i). Each family is
+  // prefix-matched against the pack name; the next char must be whitespace
+  // or end-of-string so STDWL16 doesn't accidentally match STDWL164.
+  function slotFamilyRegex(slot) {
+    // Backward-compat: accept a single `family` string if `families` missing.
+    const families = slot.families || (slot.family ? [slot.family] : ['STDWL' + slot.size]);
+    const escaped = families.map(f => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    return new RegExp('^(?:' + escaped.join('|') + ')(?:\\s|$)', 'i');
+  }
+
+  // Greedy auto-placement: walk slots N → S → E → W; for each, pick the best
+  // matching wall line from the BOM pool. A slot's `families` list controls
+  // which pack prefixes it accepts (e.g. the narrow slot accepts both STDWL22
+  // AND STDWL19 so the WA shrink doesn't fall out). Preference order: a pack
+  // that classifies as the slot's first `prefers` kind wins, then second, etc.;
+  // fallbacks are SOLID-within-family, then any-within-family. One line/slot.
+  function placeBom(layout, lines) {
+    const pool = (lines || [])
+      .filter(l => isWallPanel(l.pack))
+      .map(l => ({ line: l, used: false }));
+    const placement = {};
+    for (const side of ['N', 'S', 'E', 'W']) {
+      const wall = layout.walls[side];
+      if (!wall) continue;
+      for (const slot of wall.slots) {
+        const familyRe = slotFamilyRegex(slot);
+        let chosen = null;
+        for (const pref of (slot.prefers || [])) {
+          chosen = pool.find(p => !p.used && familyRe.test(p.line.pack) && classifyWall(p.line.pack) === pref);
+          if (chosen) break;
+        }
+        if (!chosen) chosen = pool.find(p => !p.used && familyRe.test(p.line.pack) && classifyWall(p.line.pack) === 'SOLID');
+        if (!chosen) chosen = pool.find(p => !p.used && familyRe.test(p.line.pack));
+        if (chosen) { chosen.used = true; placement[slot.id] = chosen.line; }
+      }
+    }
+    // Any leftover wall lines didn't fit a slot — return them so the UI can flag.
+    const leftover = pool.filter(p => !p.used).map(p => p.line);
+    return { placement, leftover };
+  }
+
+  // WhisperRoom-styled palette: all panels are the same booth-dark gray so the
+  // result reads like the real product (the spec-sheet diagrams are nearly all
+  // dark with subtle differentiation). Door is the one bright accent (WR
+  // orange). Vent/cable/window each get a small inline icon glyph so a glance
+  // tells you the type without bright color noise.
+  const WALL_COLORS = {
+    SOLID: { fill: '#1f1f1f', stroke: '#000',     text: '#ddd', label: 'Solid'  },
+    VNT:   { fill: '#1f1f1f', stroke: '#000',     text: '#ddd', label: 'Vent'   },
+    CBL:   { fill: '#1f1f1f', stroke: '#000',     text: '#ddd', label: 'Cable'  },
+    DRFRM: { fill: '#ee6216', stroke: '#a3460e',  text: '#fff', label: 'Door'   },
+    WDO:   { fill: '#1f1f1f', stroke: '#000',     text: '#ddd', label: 'Window' },
+    EMPTY: { fill: '#e5e5e5', stroke: '#bbb',     text: '#888', label: 'Empty'  }
+  };
+
+  function renderLayoutSvg(layout, placement) {
+    const PX = 8; // px per inch
+    const margin = 80;
+    const W = layout.exterior.w * PX;
+    const H = layout.exterior.h * PX;
+    const t = layout.wallThickness * PX;
+    const totalW = W + margin * 2;
+    const totalH = H + margin * 2;
+    const x0 = margin, y0 = margin;
+
+    let svg = '<svg viewBox="0 0 ' + totalW + ' ' + totalH + '" '
+            + 'style="width:100%;max-width:820px;display:block;margin:0 auto;font-family:\'DM Sans\',sans-serif">';
+
+    // Reusable definitions: a subtle drop shadow + a foam-floor pattern for
+    // the interior, mirroring the spec-sheet aesthetic (dark booth on a light
+    // background, with a textured floor visible inside the walls).
+    svg += '<defs>'
+         + '<filter id="boothShadow" x="-10%" y="-10%" width="120%" height="120%">'
+         +   '<feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.18"/>'
+         + '</filter>'
+         + '<pattern id="foamPattern" x="0" y="0" width="6" height="6" patternUnits="userSpaceOnUse">'
+         +   '<rect width="6" height="6" fill="#2a2a2a"/>'
+         +   '<circle cx="3" cy="3" r="0.6" fill="#1a1a1a"/>'
+         + '</pattern>'
+         + '<linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">'
+         +   '<stop offset="0%" stop-color="#f0f0f0"/>'
+         +   '<stop offset="100%" stop-color="#fafafa"/>'
+         + '</linearGradient>'
+         + '</defs>';
+
+    // Background wash (subtle gradient, like the spec-sheet renders)
+    svg += '<rect x="0" y="0" width="' + totalW + '" height="' + totalH + '" fill="url(#bgGrad)"/>';
+
+    // Exterior shell — dark booth on a soft shadow
+    svg += '<rect x="' + x0 + '" y="' + y0 + '" width="' + W + '" height="' + H + '" '
+         + 'fill="#0f0f0f" stroke="#000" stroke-width="1.5" rx="2" '
+         + 'filter="url(#boothShadow)"/>';
+    // Interior — foam-patterned floor inside the walls
+    svg += '<rect x="' + (x0 + t) + '" y="' + (y0 + t) + '" '
+         + 'width="' + (W - 2 * t) + '" height="' + (H - 2 * t) + '" '
+         + 'fill="url(#foamPattern)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>';
+
+    // Small overlay glyphs that mark slot type at a glance. Drawn ON TOP of
+    // the dark panel fill. Icons sit at the SLOT EDGES (not the center) so
+    // they don't block the size label that's rendered at the slot midpoint.
+    function slotOverlay(kind, x, y, w, h, orientation) {
+      const cx = x + w / 2, cy = y + h / 2;
+      let out = '';
+      if (kind === 'VNT') {
+        // Two square intake/exhaust ducts at the slot ends — they read as
+        // "vent assembly here" without crowding the centered size label.
+        const sq = Math.min(w, h) * 0.4;
+        const pad = Math.min(w, h) * 0.35;
+        if (orientation === 'h') {
+          out += '<rect x="' + (x + pad - sq/2) + '" y="' + (cy - sq/2) + '" width="' + sq + '" height="' + sq + '" fill="#0a0a0a" stroke="#555" stroke-width="0.5"/>';
+          out += '<rect x="' + (x + w - pad - sq/2) + '" y="' + (cy - sq/2) + '" width="' + sq + '" height="' + sq + '" fill="#0a0a0a" stroke="#555" stroke-width="0.5"/>';
+        } else {
+          out += '<rect x="' + (cx - sq/2) + '" y="' + (y + pad - sq/2) + '" width="' + sq + '" height="' + sq + '" fill="#0a0a0a" stroke="#555" stroke-width="0.5"/>';
+          out += '<rect x="' + (cx - sq/2) + '" y="' + (y + h - pad - sq/2) + '" width="' + sq + '" height="' + sq + '" fill="#0a0a0a" stroke="#555" stroke-width="0.5"/>';
+        }
+      } else if (kind === 'CBL') {
+        // Two cable-passage holes at the slot ends
+        const r = Math.min(w, h) * 0.16;
+        const pad = Math.min(w, h) * 0.35;
+        if (orientation === 'h') {
+          out += '<circle cx="' + (x + pad) + '" cy="' + cy + '" r="' + r + '" fill="#0a0a0a"/>';
+          out += '<circle cx="' + (x + w - pad) + '" cy="' + cy + '" r="' + r + '" fill="#0a0a0a"/>';
+        } else {
+          out += '<circle cx="' + cx + '" cy="' + (y + pad) + '" r="' + r + '" fill="#0a0a0a"/>';
+          out += '<circle cx="' + cx + '" cy="' + (y + h - pad) + '" r="' + r + '" fill="#0a0a0a"/>';
+        }
+      } else if (kind === 'WDO') {
+        // Lighter rectangular "glass" inset within the panel
+        const m = Math.min(w, h) * 0.25;
+        out += '<rect x="' + (x + m) + '" y="' + (y + h * 0.18) + '" '
+             + 'width="' + (w - m * 2) + '" height="' + (h * 0.64) + '" '
+             + 'fill="#9ec4e6" stroke="#5b87a8" stroke-width="0.6" opacity="0.85" rx="1"/>';
+      }
+      return out;
+    }
+
+    // Door swing arc — drawn on the interior side of whichever slot holds a
+    // DRFRM panel. A 90° arc whose radius is the door opening width (~30″
+    // on STDWL46 booths, ~24″ on STDWL40). Indicates "door opens INTO the
+    // booth" visually — Benton can tell at a glance if the swing geometry
+    // makes sense in the host room.
+    function doorSwingArc(slotX, slotY, slotW, slotH, side, hinge) {
+      // Door swings open into the booth (interior). Hinge is left/right of
+      // the doorframe slot.
+      const doorRadius = Math.min(slotW, slotH) * 0.62;
+      // For S wall (front, baseY = bottom): arc opens upward into booth
+      // For N wall (back): arc opens downward into booth
+      // For E (right): arc opens leftward
+      // For W (left): arc opens rightward
+      let hingeX, hingeY, x1, y1, x2, y2, sweep;
+      if (side === 'S') {
+        hingeX = (hinge === 'L') ? slotX + slotW * 0.15 : slotX + slotW * 0.85;
+        hingeY = slotY;  // top of the slot = inside edge
+        x1 = hinge === 'L' ? hingeX + doorRadius : hingeX - doorRadius;
+        y1 = hingeY;
+        x2 = hingeX;
+        y2 = hingeY - doorRadius;
+        sweep = hinge === 'L' ? 0 : 1;
+      } else if (side === 'N') {
+        hingeX = (hinge === 'L') ? slotX + slotW * 0.85 : slotX + slotW * 0.15;
+        hingeY = slotY + slotH;
+        x1 = hinge === 'L' ? hingeX - doorRadius : hingeX + doorRadius;
+        y1 = hingeY;
+        x2 = hingeX;
+        y2 = hingeY + doorRadius;
+        sweep = hinge === 'L' ? 0 : 1;
+      } else {
+        return ''; // E/W swing not drawn for the mock
+      }
+      return '<path d="M ' + x1 + ' ' + y1 + ' A ' + doorRadius + ' ' + doorRadius + ' 0 0 ' + sweep + ' ' + x2 + ' ' + y2 + '" '
+           + 'fill="none" stroke="rgba(238,98,22,0.55)" stroke-width="1.2" stroke-dasharray="3,3"/>';
+    }
+
+    // Horizontal walls (N + S) — slots laid out along x inside the interior length
+    function drawHorizontalWall(side, baseY, labelAbove) {
+      const wall = layout.walls[side];
+      if (!wall) return;
+      let offset = 0;
+      const doorArcs = [];
+      wall.slots.forEach(slot => {
+        const placed = placement[slot.id];
+        const slotSizeIn = effectiveSlotSize(slot, placed);
+        const slotW = slotSizeIn * PX;
+        const x = x0 + t + offset;
+        const kind = placed ? classifyWall(placed.pack) : 'EMPTY';
+        const col = WALL_COLORS[kind] || WALL_COLORS.EMPTY;
+        // Panel rectangle
+        svg += '<rect x="' + x + '" y="' + baseY + '" width="' + slotW + '" height="' + t + '" '
+             + 'fill="' + col.fill + '" stroke="' + col.stroke + '" stroke-width="0.8"/>';
+        // Inner highlight stroke for depth
+        svg += '<rect x="' + (x + 1) + '" y="' + (baseY + 1) + '" width="' + (slotW - 2) + '" height="' + (t - 2) + '" '
+             + 'fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>';
+        // Type glyph (drawn at slot ends so the size label stays clear)
+        svg += slotOverlay(kind, x, baseY, slotW, t, 'h');
+        const cx = x + slotW / 2;
+        // VNT on the N wall has the duct protrusion drawn ABOVE the wall
+        // (~16 px tall), so push that slot's labels higher to clear them.
+        const isVentOnN = (side === 'N' && kind === 'VNT');
+        if (placed) {
+          const codeY = labelAbove ? (baseY - (isVentOnN ? 40 : 18)) : (baseY + t + 16);
+          const packY = labelAbove ? (baseY - (isVentOnN ? 26 : 6))  : (baseY + t + 28);
+          svg += '<text x="' + cx + '" y="' + codeY + '" text-anchor="middle" '
+               + 'font-size="11" font-weight="800" fill="#1a1a1a" letter-spacing="0.02em">' + esc(placed.code) + '</text>';
+          svg += '<text x="' + cx + '" y="' + packY + '" text-anchor="middle" '
+               + 'font-size="9" fill="#666">' + esc(placed.pack || '') + '</text>';
+        } else {
+          const y = labelAbove ? (baseY - 8) : (baseY + t + 18);
+          svg += '<text x="' + cx + '" y="' + y + '" text-anchor="middle" '
+               + 'font-size="10" fill="#bbb" font-style="italic">(empty)</text>';
+        }
+        // Door swing — queued so it draws AFTER the wall fills but on top
+        // of the interior (gets appended after the wall loop).
+        if (kind === 'DRFRM') {
+          // L/R inferred from the code: STDDRFRM R / L; WA STDDRFRM R / L
+          const hingeSide = /\sL\b/i.test(placed.pack || '') ? 'L' : 'R';
+          doorArcs.push(doorSwingArc(x, baseY, slotW, t, side, hingeSide));
+        }
+        offset += slotW;
+      });
+      // Door arcs drawn AFTER all slots so they overlay onto the interior
+      // (and aren't clipped by the next slot's draw)
+      doorArcs.forEach(a => svg += a);
+    }
+
+    // Vertical walls (E + W) — slots laid out along y inside the interior height
+    function drawVerticalWall(side, baseX, labelLeft) {
+      const wall = layout.walls[side];
+      if (!wall) return;
+      let offset = 0;
+      wall.slots.forEach(slot => {
+        const placed = placement[slot.id];
+        const slotSizeIn = effectiveSlotSize(slot, placed);
+        const slotH = slotSizeIn * PX;
+        const y = y0 + t + offset;
+        const kind = placed ? classifyWall(placed.pack) : 'EMPTY';
+        const col = WALL_COLORS[kind] || WALL_COLORS.EMPTY;
+        svg += '<rect x="' + baseX + '" y="' + y + '" width="' + t + '" height="' + slotH + '" '
+             + 'fill="' + col.fill + '" stroke="' + col.stroke + '" stroke-width="0.8"/>';
+        svg += '<rect x="' + (baseX + 1) + '" y="' + (y + 1) + '" width="' + (t - 2) + '" height="' + (slotH - 2) + '" '
+             + 'fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>';
+        svg += slotOverlay(kind, baseX, y, t, slotH, 'v');
+        const cy = y + slotH / 2;
+        if (placed) {
+          const codeX = labelLeft ? (baseX - 12) : (baseX + t + 12);
+          const anchor = labelLeft ? 'end' : 'start';
+          svg += '<text x="' + codeX + '" y="' + (cy - 2) + '" text-anchor="' + anchor + '" '
+               + 'font-size="11" font-weight="800" fill="#1a1a1a" letter-spacing="0.02em">' + esc(placed.code) + '</text>';
+          svg += '<text x="' + codeX + '" y="' + (cy + 12) + '" text-anchor="' + anchor + '" '
+               + 'font-size="9" fill="#666">' + esc(placed.pack || '') + '</text>';
+        }
+        offset += slotH;
+      });
+    }
+
+    drawHorizontalWall('N', y0, true);
+    drawHorizontalWall('S', y0 + H - t, false);
+    drawVerticalWall('W', x0, true);
+    drawVerticalWall('E', x0 + W - t, false);
+
+    // Vent-system assembly protrudes outside the wall that holds the VNT slot
+    // (matches the spec-sheet's ventilation duct diagram). Walk N's slots;
+    // the first VNT-classified one gets a pair of square duct boxes drawn
+    // above it. Sized + spread so the code/pack labels fit between them.
+    (function ventProtrusion() {
+      const nWall = layout.walls.N;
+      if (!nWall) return;
+      let offset = 0;
+      for (const slot of nWall.slots) {
+        const placed = placement[slot.id];
+        const sizeIn = effectiveSlotSize(slot, placed);
+        const slotW = sizeIn * PX;
+        if (placed && classifyWall(placed.pack) === 'VNT') {
+          const cx = x0 + t + offset + slotW / 2;
+          const yBase = y0;
+          const sq = 14;          // square side
+          const halfGap = 24;     // half the gap between inner edges → labels fit between
+          // Left duct
+          svg += '<rect x="' + (cx - halfGap - sq) + '" y="' + (yBase - sq) + '" '
+               + 'width="' + sq + '" height="' + sq + '" '
+               + 'fill="#1a1a1a" stroke="#000" stroke-width="0.8" rx="1"/>';
+          // Right duct
+          svg += '<rect x="' + (cx + halfGap) + '" y="' + (yBase - sq) + '" '
+               + 'width="' + sq + '" height="' + sq + '" '
+               + 'fill="#1a1a1a" stroke="#000" stroke-width="0.8" rx="1"/>';
+          return;
+        }
+        offset += slotW;
+      }
+    })();
+
+    // Side-direction labels
+    svg += '<text x="' + (x0 + W / 2) + '" y="' + (y0 - 52) + '" text-anchor="middle" '
+         + 'font-size="10" font-weight="800" letter-spacing="0.14em" fill="#888">BACK · VENT</text>';
+    svg += '<text x="' + (x0 + W / 2) + '" y="' + (y0 + H + 58) + '" text-anchor="middle" '
+         + 'font-size="10" font-weight="800" letter-spacing="0.14em" fill="#888">FRONT · DOOR</text>';
+
+    // Interior dim caption — light text over the dark foam floor
+    const intW = layout.exterior.w - 2 * layout.wallThickness;
+    const intH = layout.exterior.h - 2 * layout.wallThickness;
+    svg += '<text x="' + (x0 + W / 2) + '" y="' + (y0 + H / 2 - 4) + '" text-anchor="middle" '
+         + 'font-size="13" font-weight="700" fill="rgba(255,255,255,0.5)" letter-spacing="0.05em">INTERIOR</text>';
+    svg += '<text x="' + (x0 + W / 2) + '" y="' + (y0 + H / 2 + 14) + '" text-anchor="middle" '
+         + 'font-size="11" fill="rgba(255,255,255,0.4)">' + intW + '″ × ' + intH + '″</text>';
+
+    svg += '</svg>';
+    return svg;
+  }
+
+  function renderLegend() {
+    const items = ['SOLID','VNT','CBL','DRFRM','WDO'].map(k => {
+      const col = WALL_COLORS[k];
+      return '<span><span class="sw" style="background:' + col.fill + '"></span>' + col.label + '</span>';
+    }).join('');
+    return '<div class="layout-legend">' + items + '</div>';
+  }
+
+  function renderLayoutTab(rm) {
+    const layout = (DATA && DATA.layouts) ? DATA.layouts[rm.boothName] : null;
+    if (!layout) {
+      return '<div class="layout-wrap"><div class="layout-empty">'
+        + 'Top-down layout not yet defined for <b>' + esc(rm.boothName) + '</b>.<br><br>'
+        + 'Add the layout to <code>lib/pl-data/booth-layouts.json</code> and it will appear here automatically (S / E / SNV / ENV variants share one layout via fallback).'
+        + '</div></div>';
+    }
+    const { placement, leftover } = placeBom(layout, rm.lines);
+    let html = '<div class="layout-wrap">'
+      + '<div style="text-align:center;font-size:12px;color:#666;margin-bottom:6px">'
+      +   esc(rm.boothName) + ' · ' + esc(layout.label)
+      + '</div>'
+      + renderLayoutSvg(layout, placement)
+      + renderLegend();
+    if (leftover.length) {
+      html += '<div class="layout-empty" style="margin-top:14px;text-align:left;color:#5a3a18;background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.4)">'
+        + '<b>⚠ Couldn’t place ' + leftover.length + ' wall component'
+        + (leftover.length === 1 ? '' : 's') + ':</b> '
+        + leftover.map(l => esc(l.code) + ' (' + esc(l.pack || '') + ')').join(', ')
+        + '. This usually means the BOM has more walls than the layout has slots, or the wall sizes don\'t match any slot in this mock.'
+        + '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function switchTab(roomEl, tabName) {
+    const parent = roomEl.closest('.pl-page');
+    if (!parent) return;
+    parent.querySelectorAll('.pl-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tabName));
+    parent.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.tab === tabName));
+  }
 
   async function loadPL(){
-    document.getElementById('rooms').innerHTML = '<div class="loading">Loading packing list…</div>';
+    document.getElementById('rooms').innerHTML = '<div class="pl-page"><div class="loading">Loading packing list…</div></div>';
     try {
       const r = await fetch('/api/packing-list/' + encodeURIComponent(quoteNumber), { credentials:'include' });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
       DATA = d; COMPONENTS = d.components || {};
-      renderMeta(); render();
+      render();
     } catch(e){
-      document.getElementById('rooms').innerHTML = '<div class="empty">Failed to load: ' + esc(e.message) + '</div>';
-      document.getElementById('meta').textContent = '';
+      document.getElementById('rooms').innerHTML = '<div class="pl-page"><div class="empty">Failed to load: ' + esc(e.message) + '</div></div>';
     }
   }
 
-  function renderMeta(){
+  function roomTotals(rm){
+    let lb = 0, cf = 0;
+    (rm.lines||[]).forEach(l => {
+      if (l.eachLb!=null) lb += l.eachLb;
+      cf += cuFtPerItem(l.L, l.W, l.T);
+    });
+    return {
+      lb: Math.round(lb * 100) / 100,
+      kg: lbToKg(lb),
+      cf: Math.round(cf * 100) / 100,
+      cm: cuFtToCuM(cf),
+    };
+  }
+
+  // Internal accessories that appear as quote line items but should NOT
+  // surface in the PL title (they're hardware/upgrades the customer doesn't
+  // think of as "features" — HEPA, AP, CP, EFP, cable upgrades, etc.).
+  const FEATURE_DROP = /^(HEPA|HX|AP|CP|EFP|DWC|LT\s*CR|MJP\s*(?:ADPT|EXT)|.*CBL\s*UPG|AUDI\s*BL|RM\s+\d|IEP|WA\s|EFI|VENT\s*SET|REMOTE|STEP|FOAM)/i;
+
+  // Map verbose quote names to the short tokens the printed PL shows.
+  // Order matters: first match wins. Functions receive the regex match.
+  const FEATURE_RULES = [
+    { rx: /^OFFICE\s*DESK\b/i,                                      label: 'DESK' },
+    { rx: /^WDO\s+(?:(\d+)["”']?\s+)?(\d{4})\b.*$/i,                label: m => 'WDO ' + (m[1] ? m[1] + '" ' : '') + m[2] },
+    { rx: /^ADA\b/i,                                                label: 'ADA' },
+    { rx: /^EFS\b/i,                                                label: 'EFS' },
+    { rx: /^VSS\b/i,                                                label: 'VSS' },
+    { rx: /^MJP$/i,                                                 label: 'MJP' },
+    { rx: /^RFU\b/i,                                                label: 'RFU' },
+    { rx: /^SL\b/i,                                                 label: 'SL' },
+    { rx: /^BASS\s*TRAPS\b/i,                                       label: 'BASS TRAPS' },
+  ];
+
+  function normalizeFeature(name) {
+    const s = String(name||'').trim();
+    if (!s) return null;
+    if (FEATURE_DROP.test(s)) return null;
+    for (const r of FEATURE_RULES) {
+      const m = r.rx.exec(s);
+      if (m) return typeof r.label === 'function' ? r.label(m) : r.label;
+    }
+    return s.toUpperCase();
+  }
+
+  function mdlLine(rm){
+    const parts = [rm.boothName];
+    const seen = new Set();
+    (rm.unmappedFeatures||[]).forEach(f => {
+      if (!f || !f.name) return;
+      const tok = normalizeFeature(f.name);
+      if (!tok || seen.has(tok)) return;
+      seen.add(tok);
+      parts.push(tok);
+    });
+    return parts.map(esc).join(' <span class="sep">/</span> ');
+  }
+
+  function dealRef(){
     const m = DATA.meta || {};
-    const bits = [`Quote <b>${esc(DATA.quoteNumber)}</b>`];
-    if (m.company)      bits.push(esc(m.company));
-    if (m.customerName) bits.push(esc(m.customerName));
-    if (m.dealName)     bits.push(esc(m.dealName));
-    if (m.createdAt)    bits.push(new Date(m.createdAt).toLocaleDateString());
-    document.getElementById('meta').innerHTML = bits.join(' &nbsp;·&nbsp; ');
-    recalcTotals();
+    return (m.dealName || m.company || '') + (DATA.quoteNumber ? ' · ' + DATA.quoteNumber : '');
   }
 
-  function recalcTotals(){
-    let net = 0;
-    (DATA.rooms||[]).forEach(rm => { net += roomNet(rm) * (rm.qty||1); });
-    document.getElementById('totals').innerHTML =
-      `<div class="stat"><div class="l">Rooms</div><div class="v">${(DATA.rooms||[]).length}</div></div>`
-    + `<div class="stat"><div class="l">Total Net Weight</div><div class="v">${lb(Math.round(net))} lb</div></div>`;
-  }
-
-  function roomNet(rm){
-    return (rm.lines||[]).reduce((s,l)=> s + (l.totalLb||0), 0);
-  }
+  function snKey(ri){ return 'wr-pl-sn:' + (DATA.quoteNumber||'') + ':' + ri; }
+  function dateKey(){ return 'wr-pl-date:' + (DATA.quoteNumber||''); }
 
   function render(){
     const rooms = DATA.rooms || [];
-    if (!rooms.length){ document.getElementById('rooms').innerHTML = '<div class="empty">No booth (MDL) line items found on this quote.</div>'; return; }
-    const opts = DATA.options || { hinge:['Left','Right'], foam:['Gray'] };
+    if (!rooms.length){ document.getElementById('rooms').innerHTML = '<div class="pl-page"><div class="empty">No booth (MDL) line items found on this quote.</div></div>'; return; }
+    const totalPages = rooms.length;
+    const savedDate = localStorage.getItem(dateKey()) || todayShort();
+
     document.getElementById('rooms').innerHTML = rooms.map((rm,ri)=>{
+      const dateInput = '<span class="pl-date"><input type="text" id="pl-date-' + ri + '" value="' + esc(savedDate) + '" oninput="saveDate(this.value)"></span>';
+      const headerTop =
+        '<div class="pl-top">'
+          + '<div class="pl-top-left">' + esc(dealRef()) + '</div>'
+          + '<div class="pl-top-center">'
+            + '<img src="/assets/whisperroom-logo.svg" alt="WhisperRoom">'
+            + '<div class="pl-tagline">Sound Isolation Enclosures</div>'
+          + '</div>'
+          + '<div class="pl-top-right">' + dateInput + '</div>'
+        + '</div>';
+
       if (!rm.found){
-        return `<div class="room"><div class="room-head"><div class="room-title"><span class="room-num">${rm.index}</span>`
-          + `<div><div class="room-name">${esc(rm.boothName)}</div></div></div></div>`
-          + `<div class="notfound">No base packing list found for <b>${esc(rm.boothName)}</b>. If this is a package (not an MDL model) or a typo, it cannot be generated yet.</div>`
-          + flagsHtml(rm) + `</div>`;
+        return '<div class="pl-page">' + headerTop
+          + '<div class="pl-mid">'
+            + '<div><div class="mdl-line">' + esc(rm.boothName) + '</div></div>'
+            + '<div class="pl-right"><div class="pl-title">PACKING <span>LIST</span></div></div>'
+          + '</div>'
+          + '<div class="notfound">No base packing list found for <b>' + esc(rm.boothName) + '</b>. If this is a package (not an MDL model) or a typo, it cannot be generated yet.</div>'
+          + flagsHtml(rm)
+          + pageFoot(ri+1, totalPages)
+        + '</div>';
       }
-      const hingeSel = `<select onchange="setCfg(${ri},'hinge',this.value)">${opts.hinge.map(h=>`<option ${h===rm.header.hinge?'selected':''}>${esc(h)}</option>`).join('')}</select>`;
-      const foamSel  = `<select onchange="setCfg(${ri},'foam',this.value)">${opts.foam.map(f=>`<option ${f===rm.header.foam?'selected':''}>${esc(f)}</option>`).join('')}</select>`;
-      const body = (rm.lines||[]).map((l,li)=>`
-        <tr>
-          <td class="l code ${l.known?'':'unknown'}">${esc(l.code)}</td>
-          <td class="l">${esc(l.desc)}</td>
-          <td><input class="qin" type="number" min="0" value="${l.qty}" oninput="setQty(${ri},${li},this.value)"></td>
-          <td>${lb(l.eachLb)}</td>
-          <td>${lb(l.totalLb)}</td>
-          <td>${esc(dim(l.L,l.W,l.T))}</td>
-          <td class="l">${esc(l.pack||'')}</td>
-          <td><button class="rm-row no-print" title="Remove" onclick="rmRow(${ri},${li})">✕</button></td>
-        </tr>`).join('');
-      return `<div class="room">
-        <div class="room-head">
-          <div class="room-title">
-            <span class="room-num">${rm.index}</span>
-            <div>
-              <div class="room-name">${esc(rm.boothName)} ${rm.qty>1?`<span class="qty-badge">×${rm.qty}</span>`:''}</div>
-              <div class="room-sub">Size ${esc(rm.size)} · <span class="vpill v-${esc(rm.variant)}">${esc(rm.variant)}</span></div>
-            </div>
-          </div>
-          <div class="room-cfg">
-            <span class="cfg">Hinge ${hingeSel}</span>
-            <span class="cfg">Foam ${foamSel}</span>
-          </div>
-        </div>
-        <table>
-          <thead><tr>
-            <th class="l">Code</th><th class="l">Component</th><th>Qty</th>
-            <th>Each lb</th><th>Total lb</th><th>Dims (in)</th><th class="l">Pack</th><th class="no-print"></th>
-          </tr></thead>
-          <tbody>${body}</tbody>
-        </table>
-        <div class="room-foot">
-          <div class="addrow no-print">
-            <input list="compCodes" placeholder="Add component code…" id="addcode-${ri}">
-            <button class="btn btn-sm" onclick="addRow(${ri})">+ Add</button>
-          </div>
-          <div class="net">Room net: <b id="net-${ri}">${lb(roomNet(rm))}</b> lb${rm.qty>1?` <span class="room-sub">(×${rm.qty} = ${lb(roomNet(rm)*rm.qty)} lb)</span>`:''}</div>
-        </div>
-        ${flagsHtml(rm)}
-      </div>`;
+
+      const t = roomTotals(rm);
+      const savedSn = localStorage.getItem(snKey(ri)) || '';
+
+      const body = (rm.lines||[]).map((l,li)=>{
+        const lM = inToM(l.L), wM = inToM(l.W), tM = inToM(l.T);
+        const kg = lbToKg(l.eachLb);
+        const alt = li % 2 === 1 ? ' class="alt"' : '';
+        return '<tr' + alt + '>'
+          + '<td class="idx">' + (li+1) + '</td>'
+          + '<td>' + (l.L==null?'—':fmtN(l.L,2)) + '</td>'
+          + '<td>' + (lM==null?'—':fmtN(lM,2)) + '</td>'
+          + '<td>' + (l.W==null?'—':fmtN(l.W,2)) + '</td>'
+          + '<td>' + (wM==null?'—':fmtN(wM,2)) + '</td>'
+          + '<td>' + (l.T==null?'—':fmtN(l.T,2)) + '</td>'
+          + '<td>' + (tM==null?'—':fmtN(tM,2)) + '</td>'
+          + '<td>' + (l.eachLb==null?'—':fmtN(l.eachLb,2)) + '</td>'
+          + '<td>' + (kg==null?'—':fmtN(kg,2)) + '</td>'
+          + '<td class="code ' + (l.known?'':'unknown') + '">' + esc(l.code) + '</td>'
+          + '<td class="pack l">' + esc(l.pack||'') + '</td>'
+          + '<td class="desc l">' + esc(l.desc) + '</td>'
+          + '<td class="no-print"><button class="rm-row" title="Remove" onclick="rmRow(' + ri + ',' + li + ')">&times;</button></td>'
+        + '</tr>';
+      }).join('');
+
+      return '<div class="pl-page">'
+        + headerTop
+        + '<div class="pl-mid">'
+          + '<div>'
+            + '<div class="mdl-line">' + mdlLine(rm) + (rm.qty>1?' <span style="color:#ee6216">(&times;' + rm.qty + ')</span>':'') + '</div>'
+            + '<div class="totals-grid">'
+              + '<div class="l">Total Size (Cubic Feet):</div><div class="v">' + fmtN(t.cf,2) + '</div>'
+              + '<div class="l">Total Weight (Pounds):</div><div class="v">' + fmtN(t.lb,2) + '</div>'
+              + '<div class="l">Total Size (Cubic Meters):</div><div class="v">' + fmtN(t.cm,2) + '</div>'
+              + '<div class="l">Total Weight (Kilograms):</div><div class="v">' + fmtN(t.kg,2) + '</div>'
+            + '</div>'
+          + '</div>'
+          + '<div class="pl-right">'
+            + '<div class="pl-title">PACKING <span>LIST</span></div>'
+            + '<div class="sn-row"><span class="sn-label">S/N</span>'
+              + '<input class="sn-input" type="text" value="' + esc(savedSn) + '" placeholder="enter serial #" oninput="saveSn(' + ri + ',this.value)">'
+            + '</div>'
+          + '</div>'
+        + '</div>'
+        + '<div class="pl-tabs no-print">'
+          + '<button class="pl-tab active" data-tab="pl"     onclick="switchTab(this,\'pl\')">📦 Packing List</button>'
+          + '<button class="pl-tab"        data-tab="layout" onclick="switchTab(this,\'layout\')">🏗 Top-Down Layout</button>'
+        + '</div>'
+        + '<div class="tab-panel active" data-tab="pl">'
+        + '<table class="pl">'
+          + '<thead>'
+            + '<tr class="group">'
+              + '<th rowspan="2">#</th>'
+              + '<th colspan="2">Length</th>'
+              + '<th colspan="2">Width</th>'
+              + '<th colspan="2">Thickness</th>'
+              + '<th colspan="2">Weight</th>'
+              + '<th rowspan="2">Code</th>'
+              + '<th rowspan="2" class="l">Part #</th>'
+              + '<th rowspan="2" class="l">Package Contents</th>'
+              + '<th rowspan="2" class="no-print"></th>'
+            + '</tr>'
+            + '<tr class="units">'
+              + '<th>Inches</th><th>Mtrs</th>'
+              + '<th>Inches</th><th>Mtrs</th>'
+              + '<th>Inches</th><th>Mtrs</th>'
+              + '<th>Pounds</th><th>Kilograms</th>'
+            + '</tr>'
+          + '</thead>'
+          + '<tbody>' + body + '</tbody>'
+        + '</table>'
+        + '<div class="room-foot no-print">'
+          + '<div class="addrow">'
+            + '<input list="compCodes" placeholder="Add component code…" id="addcode-' + ri + '">'
+            + '<button class="add-btn" onclick="addRow(' + ri + ')">+ Add</button>'
+          + '</div>'
+        + '</div>'
+        + '</div>'    // /tab-panel data-tab=pl
+        + '<div class="tab-panel" data-tab="layout">' + renderLayoutTab(rm) + '</div>'
+        + flagsHtml(rm)
+        + pageFoot(ri+1, totalPages)
+      + '</div>';
     }).join('')
-    + `<datalist id="compCodes">${Object.keys(COMPONENTS).map(c=>`<option value="${esc(c)}">`).join('')}</datalist>`;
+    + '<datalist id="compCodes">' + Object.keys(COMPONENTS).map(c=>'<option value="' + esc(c) + '">').join('') + '</datalist>';
+  }
+
+  function pageFoot(n, total){
+    return '<div class="pl-foot"><div></div><div class="pn">' + n + ' of ' + total + '</div></div>';
   }
 
   function flagsHtml(rm){
     const f = rm.unmappedFeatures || [];
     if (!f.length) return '';
-    return `<div class="flags"><b style="color:var(--amber)">⚠ Optional features from the quote — add their parts manually (rules pending):</b><br>`
-      + f.map(x=>`<span class="ft">${esc(x.name)}${x.qty>1?` ×${x.qty}`:''}</span>`).join('') + `</div>`;
+    return '<div class="flags no-print"><b>&#9888; Optional features from the quote — add their parts manually (rules pending):</b><br>'
+      + f.map(x=>'<span class="ft">' + esc(x.name) + (x.qty>1?' &times;' + x.qty:'') + '</span>').join('') + '</div>';
   }
 
-  function setCfg(ri, key, val){ DATA.rooms[ri].header[key] = val; }
-  function setQty(ri, li, val){
-    const q = Math.max(0, parseInt(val,10)||0);
-    const l = DATA.rooms[ri].lines[li];
-    l.qty = q;
-    l.totalLb = (l.eachLb==null) ? null : Math.round(l.eachLb*q*100)/100;
-    refreshRoomTotal(ri);
-  }
+  function saveSn(ri, val){ try { localStorage.setItem(snKey(ri), val); } catch(e){} }
+  function saveDate(val){ try { localStorage.setItem(dateKey(), val); } catch(e){} }
   function rmRow(ri, li){ DATA.rooms[ri].lines.splice(li,1); render(); }
   function addRow(ri){
     const inp = document.getElementById('addcode-'+ri);
@@ -253,16 +766,11 @@
     if (!code) return;
     const c = COMPONENTS[code];
     if (!c){ alert('Unknown component code: ' + code); return; }
-    DATA.rooms[ri].lines.push({ code, qty:1, desc:c.desc||'', pack:c.pack||'', eachLb:c.lb, totalLb:c.lb, L:c.L, W:c.W, T:c.T, known:true });
+    DATA.rooms[ri].lines.push({ code, desc:c.desc||'', pack:c.pack||'', eachLb:c.lb, L:c.L, W:c.W, T:c.T, known:true });
     inp.value=''; render();
   }
-  function refreshRoomTotal(ri){
-    const el = document.getElementById('net-'+ri);
-    if (el) el.textContent = lb(roomNet(DATA.rooms[ri]));
-    recalcTotals();
-  }
 
-  if (!quoteNumber){ document.getElementById('rooms').innerHTML = '<div class="empty">No quote number in the URL.</div>'; }
+  if (!quoteNumber){ document.getElementById('rooms').innerHTML = '<div class="pl-page"><div class="empty">No quote number in the URL.</div></div>'; }
   else loadPL();
 </script>
 </body>

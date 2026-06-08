@@ -25,6 +25,7 @@
 
 const fs    = require('fs');
 const path  = require('path');
+const https = require('https');
 const etl    = require('./google-ads-etl');
 const hsEtl  = require('./hubspot-etl');
 const gscEtl = require('./gsc-etl');
@@ -410,7 +411,8 @@ async function handle(req, res, ctx) {
         SELECT campaign_id, campaign_name, status, date,
                impressions, clicks,
                (cost_micros::float / 1000000) AS cost_usd,
-               conversions, conversion_value
+               conversions, conversion_value,
+               search_impression_share, search_budget_lost_is, search_rank_lost_is
         FROM marketing_campaigns
         WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
         ORDER BY date DESC, cost_micros DESC NULLS LAST
@@ -429,7 +431,8 @@ async function handle(req, res, ctx) {
         SELECT campaign_id, ad_group_id, keyword_id, keyword_text, match_type, date,
                impressions, clicks,
                (cost_micros::float / 1000000) AS cost_usd,
-               conversions
+               conversions,
+               quality_score, qs_expected_ctr, qs_ad_relevance, qs_landing_page
         FROM marketing_keywords
         WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
         ORDER BY date DESC, cost_micros DESC NULLS LAST
@@ -1645,7 +1648,105 @@ async function handle(req, res, ctx) {
     return true;
   }
 
+  // ── POST /api/marketing/ad-rewrite ────────────────────────────────
+  // Rewrites a Google Ads responsive search ad for a campaign with Claude,
+  // grounded in the campaign's real high-converting search terms + (optional)
+  // current ad copy. WhisperRoom brand voice. Uses ANTHROPIC_API_KEY (Railway).
+  if (pathname === '/api/marketing/ad-rewrite' && req.method === 'POST') {
+    try {
+      const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+      if (!key) { ctx.json({ ok: false, error: 'Ad rewrites need ANTHROPIC_API_KEY set in Railway.' }, 503); return true; }
+      let body = {};
+      try {
+        const chunks = [];
+        await new Promise((res, rej) => { req.on('data', c => chunks.push(c)); req.on('end', res); req.on('error', rej); });
+        body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
+      } catch {}
+      const campaign = String(body.campaign || body.topic || '').slice(0, 120);
+      const terms    = Array.isArray(body.terms) ? body.terms.slice(0, 15).map(t => String(t).slice(0, 80)) : [];
+      const cur      = body.current || {};
+      const curHeads = Array.isArray(cur.headlines)    ? cur.headlines.slice(0, 15).map(h => String(h).slice(0, 60))    : [];
+      const curDescs = Array.isArray(cur.descriptions) ? cur.descriptions.slice(0, 4).map(d => String(d).slice(0, 120)) : [];
+      const userMsg =
+        `Campaign: ${campaign || '(unnamed booth campaign)'}\n` +
+        (terms.length    ? `\nHigh-volume / converting search terms people actually typed:\n${terms.map(t => '- ' + t).join('\n')}\n` : '') +
+        (curHeads.length ? `\nCurrent headlines (improve on these, don't repeat them):\n${curHeads.map(h => '- ' + h).join('\n')}\n` : '') +
+        (curDescs.length ? `\nCurrent descriptions:\n${curDescs.map(d => '- ' + d).join('\n')}\n` : '') +
+        `\nWrite 8 fresh headlines (each 30 characters or fewer) and 4 descriptions (each 90 characters or fewer), plus a one-sentence rationale.`;
+      const payload = JSON.stringify({
+        model: AD_REWRITE_MODEL,
+        max_tokens: 1500,
+        system: [{ type: 'text', text: AD_REWRITE_SYSTEM, cache_control: { type: 'ephemeral' } }],
+        messages: [{ role: 'user', content: userMsg }],
+        output_config: { format: { type: 'json_schema', schema: {
+          type: 'object',
+          properties: {
+            headlines:    { type: 'array', items: { type: 'string' } },
+            descriptions: { type: 'array', items: { type: 'string' } },
+            rationale:    { type: 'string' },
+          },
+          required: ['headlines', 'descriptions', 'rationale'],
+          additionalProperties: false,
+        } } },
+      });
+      const out = await _anthropicMessages(key, payload);
+      if (!out.ok) { ctx.json({ ok: false, error: out.error }, out.status || 502); return true; }
+      let parsed;
+      try {
+        const txt = (out.json.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+        parsed = JSON.parse(txt);
+      } catch { ctx.json({ ok: false, error: 'Could not parse the model output as JSON.' }, 502); return true; }
+      ctx.json({ ok: true, headlines: parsed.headlines || [], descriptions: parsed.descriptions || [], rationale: parsed.rationale || '' });
+    } catch(e) { ctx.json({ ok: false, error: e.message }, 500); }
+    return true;
+  }
+
   return false;
+}
+
+// ── Claude ad-copy generation (v1.7x) ──────────────────────────────────
+// claude-opus-4-8 per the project's model default. Raw HTTPS to match the
+// marketing module's no-SDK pattern. System prompt is static (cached).
+const AD_REWRITE_MODEL = 'claude-opus-4-8';
+const AD_REWRITE_SYSTEM = [
+  'You are a senior Google Ads copywriter for WhisperRoom, a US manufacturer of modular sound-isolation booths (recording, vocal, podcast, audiology, office, broadcast, drum).',
+  'Write responsive-search-ad assets that earn clicks and qualified booth inquiries.',
+  'Hard rules:',
+  '- Never use the word "soundproof". Say "sound isolation" or "sound-isolating".',
+  '- Never use em dashes.',
+  '- Headlines are 30 characters or fewer. Descriptions are 90 characters or fewer. Count characters and stay under the limit.',
+  '- Lead with the searcher\'s intent and a concrete benefit: made in the USA, modular sizes, pro-grade isolation, fast quote, configurable, built to order.',
+  '- Vary the angles across assets (product, use-case, proof, offer, call to action). No clichés, no filler, no fake urgency.',
+  '- Output only ad copy in the requested JSON. No commentary outside the rationale field.',
+].join('\n');
+
+function _anthropicMessages(key, payloadStr) {
+  return new Promise((resolve) => {
+    const r = https.request({
+      hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'Content-Length': Buffer.byteLength(payloadStr),
+      },
+      timeout: 30000,
+    }, res => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        const raw = Buffer.concat(chunks).toString();
+        let j; try { j = JSON.parse(raw); } catch { j = {}; }
+        if (res.statusCode >= 400) {
+          const m = (j.error && j.error.message) || raw.slice(0, 200);
+          resolve({ ok: false, status: res.statusCode, error: `Claude ${res.statusCode}: ${m}` });
+        } else resolve({ ok: true, json: j });
+      });
+    });
+    r.on('error', e => resolve({ ok: false, status: 502, error: 'Claude request failed: ' + e.message }));
+    r.on('timeout', () => { r.destroy(); resolve({ ok: false, status: 504, error: 'Claude request timed out.' }); });
+    r.write(payloadStr); r.end();
+  });
 }
 
 module.exports = { handle, MARKETING_ALLOWLIST };

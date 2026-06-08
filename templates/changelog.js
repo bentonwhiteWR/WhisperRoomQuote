@@ -51,6 +51,226 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.37', date:'June 7, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Top-Down Layout: vent visuals readable, ducts square + spread.** Outside vent protrusion is now two <b>square 14×14</b> duct boxes with a 48 px gap between them — the slot\'s code + pack labels fit cleanly in between instead of disappearing behind the ducts. VNT slot labels also move up to <code>y0 − 40 / y0 − 26</code> when on the back wall, so they clear the duct height entirely. Inside-panel slot glyphs (VNT squares, CBL passage holes) now sit at the SLOT ENDS instead of the center, leaving the size label clearly visible. Removed the stray orange dot above the right duct (was over the label area).'},
+      ]
+    },
+    {
+      v:'1.72.36', date:'June 7, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Top-Down Layout: WhisperRoom-styled visuals.** Panels now read like the real product instead of color-coded blocks: all walls are booth-dark, the door is the one orange accent (WR brand), vent slots get an intake/exhaust duct icon, cable slots get small passage holes, window slots show a lighter glass inset. The actual <b>ventilation system protrudes outside the back wall</b> as a small assembly w/ an orange RFU dot (mirrors the spec-sheet diagrams). DRFRM slots get a <b>door swing arc</b> drawn into the interior so the rep can sanity-check L/R hinge at a glance. Interior gets a subtle foam-pattern floor. Whole SVG sits on a soft gradient with a drop shadow, like the 2023 spec sheets.'},
+      ]
+    },
+    {
+      v:'1.72.35', date:'June 7, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**Dev log: weight-reconciliation oracle captured.** Benton noted the sum of all PL weights across booths should equal the quote weight. Today there\'s no multi-booth grand total on the PL, and PL=net vs quote=gross (off by pallets × 144). Tomorrow: add a multi-booth grand total + a Gross line using PALLETS_PER_MDL.'},
+      ]
+    },
+    {
+      v:'1.72.34', date:'June 7, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**Dev log: closeout of the June 7 session (28 versions).** No app change — refreshed the internal DEVLOG to reflect the full final state: PL Phase 2 complete (viewer redesign, 13 feature-sub rules, hinge + foam swaps wired from the quote, Top-Down Layout tab with 3 booths seeded, pre-commit hook, 40" WA narrow swap via the Z02 bundle). Tomorrow: CP-generated PLs to unblock ADA / Studio Light / HX, plus the remaining 22 booth layouts.'},
+      ]
+    },
+    {
+      v:'1.72.33', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Top-Down Layout: +2 booths.** MDL 4242 S (3.5′×3.5′ square, 4×40″ walls) and MDL 4848 S (4′×4′ square, 4×46″ walls) added to <code>lib/pl-data/booth-layouts.json</code>. Their E variants pick up the same layout via the variant fallback (4242 E → 4242 S, etc.). Rectangular booths (4260, 4872 already done, 7272, etc.) need a per-MDL digitization pass against the spec sheets — those slot grids are non-trivial and going one at a time tomorrow alongside the CP-generated PLs.'},
+      ]
+    },
+    {
+      v:'1.72.32', date:'June 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Top-Down Layout: narrow slot now flips 22″ → 19″ when WA Door is on.** Layout slots used to pin to a single wall family (e.g. <code>STDWL22</code>), so when WA swapped one C111 → C112 (STDWL19) the placer\'s regex didn\'t match and C112 fell out of the wall pool. Slots now carry a <code>families</code> array — N-narrow and S-narrow accept both <code>STDWL22</code> and <code>STDWL19</code>; S-wide accepts both <code>STDWL46</code> and <code>WA STDDRFRM</code>. The SVG renders at the placed panel\'s real width via <code>panelInteriorWidth()</code>, so the narrow slot visually shrinks from 22″ to 19″ when WA fires.'},
+      ]
+    },
+    {
+      v:'1.72.31', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List now reads the quote\'s hinge + foam.** The customer\'s accepted hinge/foam preference (or the rep\'s preference if not yet accepted) flows straight from the saved quote into the PL — no more URL-param dance or "Gray default" surprise on a quote that explicitly picked Blue. Customer-accepted wins, then rep preference, then <code>?hinge=</code>/<code>?foam=</code> for testing. Hinge stored as "Left Hand"/"Right Hand" on the quote, normalized to "Left"/"Right" for the swap rules. Also dropped the now-redundant <b>Config</b> row from the PL viewer — those selectors only updated the label client-side and didn\'t actually re-fetch.'},
+      ]
+    },
+    {
+      v:'1.72.30', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**WA Door on 40″-wall booths: C10 → Z02 (the STDWL7 / WL16 bundle).** One <code>C10 STDWL16</code> narrow now swaps to one <code>Z02 STDWL7 / WL16</code> — a single pack that ships a 7″ wall + a 16″ wall together (45 lb). Geometry: 40+16 = 49+7 = 56″. The 7″ piece becomes the new narrow on the WA-door side; the 16″ in the same box keeps the booth\'s inventory of 16″ walls unchanged. No inner-shell change on 40″ E/ENV booths (no IEP bundle equivalent exists). Layout SVG now also reports the Z02 slot as 7″.'},
+      ]
+    },
+    {
+      v:'1.72.29', date:'June 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**WA Door narrow-wall swap: 40″-wall case backed out pending verification.** Benton clarified the adjacent panel on 40″-wall booths "loses 9″" (door grows 40→49), but every 40″-wall booth in the data carries STDWL16 (C10) as its narrow — 16−9 = 7 has no matching wall code, and 40+16 ≠ 49+19. Reverting the speculative 16→19 / 11.5→14.5 swap until a CP-generated PL confirms whether the 16″ wall is removed entirely, the booth physically extends, or another wall absorbs the delta. 46″-wall booths still get the correct 22→19 + 17.5→14.5 swap (geometry conserves cleanly).'},
+      ]
+    },
+    {
+      v:'1.72.28', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**WA Door: narrow-wall shrink swap, plus layout shows real widths.** The WA doorframe is 49″ (vs. the std 46″/40″), so one of the adjacent narrow walls now flips to absorb the difference: on 46″-wall booths <code>C111 STDWL22 → C112 STDWL19</code> (3″ shrink); on 40″-wall booths <code>C10 STDWL16 → C112 STDWL19</code>. Inner shell on E/ENV follows: <code>K112 IEPWL17.5 → K113 IEPWL14.5</code> (46″) or <code>K09 IEPWL11.5 → K113 IEPWL14.5</code> (40″). Top-Down Layout now reads each placed panel\'s real interior width — Z03/Z04 render as 49″ and C112 as 19″ in the SVG, where before they showed at the slot nominal (46″ / 22″). 40″-wall geometry is wired per the current spec note ("16″ → 19″") and will be re-verified against tomorrow\'s generated PLs.'},
+      ]
+    },
+    {
+      v:'1.72.27', date:'June 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Top-Down Layout: WA Door now fills the door slot.** The WA doorframe codes (Z03 / Z04 — pack `WA STDDRFRM R/L`) and the WDO window wall (C104 etc.) used to be excluded from the layout\'s wall pool because the placer only matched <code>STDWL{N}</code>-prefixed packs. The pool filter now also accepts <code>WA STDDRFRM</code> (treated as size-agnostic DRFRM since the Z25 / Z120 adapter handles wall-size compatibility), and explicitly excludes the swinging door panels (C113 / C115 / C14 / C15 / C16 / C17 / Z05 / Z06 — they hang inside the doorframe slot, not as their own panel). Result: WA-equipped booths now show the WA doorframe (orange) on the front-wall slot exactly like the STD version did.'},
+      ]
+    },
+    {
+      v:'1.72.26', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Booth layouts moved to a data file.** Top-down booth layouts (previously hardcoded in <code>packing-list.html</code>) now live in <code>lib/pl-data/booth-layouts.json</code> alongside the BOM data. The PL API response ships only the layouts referenced by the current quote\'s rooms, so the wire payload stays small as more layouts are added. <b>S / E / SNV / ENV variants of the same booth size share one layout</b> — the lookup falls back to the base "MDL XXXX S" entry when the exact variant isn\'t defined. To add a layout, add an entry under <code>layouts</code> in the JSON file; the schema is documented inline in <code>_meta._schema</code>.'},
+      ]
+    },
+    {
+      v:'1.72.25', date:'June 7, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Packing List: Top-Down Layout tab (mock, MDL 4872 S only).** Each PL block now has two tabs: 📦 Packing List (the existing table) and 🏗 Top-Down Layout. The Layout tab renders the booth as an SVG floor plan with each wall slot color-coded by component kind (Solid / Vent / Cable / Door / Window). Wall components from the BOM are auto-placed into slots by family (STDWL46 / STDWL22) + preference (vent → back wall, door frame → front wall, solid → sides). Unplaced wall components surface in a warning under the diagram. Other MDLs show a "Layout not yet defined" placeholder until we hand-author their slot grids. Printing forces the PL tab regardless of which is selected.'},
+      ]
+    },
+    {
+      v:'1.72.24', date:'June 7, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**Dev log: end-of-session writeup for June 7.** No app change — refreshed the internal DEVLOG with today\'s 18-version session: PL viewer redesign, 11 substitution rules (VSS/EFS/MJP/DESK/WDO/WA Door/STEP/RFU/Bass Traps/Ramp/RM), config-driven hinge + foam swaps, and the pre-commit syntax-check hook (which already caught a real bug on its first commit). Tomorrow: verify against Benton\'s CP-generated PLs and unblock ADA / Studio Light / HX.'},
+      ]
+    },
+    {
+      v:'1.72.23', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: RM (Roof Mount Ventilation) substitution.** A <code>RM</code> or <code>RM 4260 E</code>-style quote line now rewrites the booth\'s BOM: every ceiling component swaps to its <code>... RM</code> variant (e.g. A06 STD4872CL → A34 STD4872CL RM), and every plain VNT wall swaps to the matching CBL wall of the same size (e.g. C102 STDWL46 VNT → C117 STDWL46 CBL). On E / ENV booths the inner shell follows the same swap — I06 → I30 (IEP ceiling), K102 → K117 (IEP wall). Wall sizes without a CBL counterpart (STDWL16, IEPWL11.5) silently stay VNT — data gap, not a bug. VNT NV variants are intentionally NOT swapped (no CBL NV exists; defer SNV/ENV+RM until Benton confirms).'},
+      ]
+    },
+    {
+      v:'1.72.22', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: foam color is now a real component swap.** Picking a non-Gray foam in the PL header rewrites the booth\'s foam row (E01 / E02 / E03 in the base BOM) to the matching colored variant — Purple (PUR: E04 / E05 / E06), Orange (OR: E07 / E08 / E09), Burgundy (BUR: E10 / E11 / E12), or Blue (BL: E13 / E14 / E15). Foam dropdown options corrected to the five real colors (Gray, Purple, Orange, Burgundy, Blue) — old list had Beige / Black which aren\'t real and was missing Purple / Orange.'},
+      ]
+    },
+    {
+      v:'1.72.21', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'ui', d:'**Packing List: RAMP rule now matches bare <code>RAMP</code> too,** not just <code>WA RAMP</code>. Both feed the same 3-box ramp kit (Z62 + Z63 + Z64). ADA will cascade through this rule when that lands. <code>RAMP SYS</code> still stays unmapped.'},
+      ]
+    },
+    {
+      v:'1.72.20', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: WA RAMP (3-box ramp system).** A <code>WA RAMP</code> line on a quote now adds the three-box ramp kit to the PL: <b>Z62</b> (RAMP WITH ADAPTER, 32 lb) + <b>Z63</b> (2 MIDDLE RAMPS, 42 lb) + <b>Z64</b> (3 LOWER RAMPS, 37 lb). Quote-line qty multiplies all three through. Matches rows 26–28 of the ENT &amp; Allergy reference PL. Bare <code>RAMP</code> and <code>RAMP SYS</code> stay unmapped pending tomorrow\'s verification.'},
+      ]
+    },
+    {
+      v:'1.72.19', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: Bass Traps substitution.** A <code>BASS TRAPS</code> line on a quote adds one <b>E16 (BASS TRAP 2 W/ VELCRO, 5 lb)</b> row to the PL — each E16 pack contains 2 traps. Quote-line qty multiplies through, so Practice / Recording presets that bump BASS TRAPS to qty 3 produce 3 E16 rows (6 traps), and Drum presets at qty 4 produce 4 (8 traps). Singular "BASS TRAP" also matches; <code>BASS TRAP 2</code>-style SKU strings do not (left unmapped).'},
+      ]
+    },
+    {
+      v:'1.72.18', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: RFU substitution (additive).** An explicit <code>RFU</code> line on a quote now adds one extra <b>F14 (REMOTE FAN UNIT, 5 lb)</b> row to the PL — on top of whatever the base BOM already includes (most booths ship with one by default). Useful for replacement RFUs ordered for existing booths or doubling up. Exact match only.'},
+      ]
+    },
+    {
+      v:'1.72.17', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: STEP substitution.** A <code>STEP</code> line on a quote now adds one <b>S01 (EXTERIOR STEP, 30 lb)</b> row to the PL. Exact-match only — bare "STEP" with no suffix; anything else stays in the unmapped flag.'},
+      ]
+    },
+    {
+      v:'1.72.16', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: hinge swap now actually swaps components.** Base BOMs ship right-default. When the room hinge is Left, the PL now flips: <code>C113↔C115</code> (STD door 30), <code>C114↔C116</code> (STDWL46 DRFRM), <code>C14↔C15</code> (STD door 24), <code>C07↔C08</code> (STDWL40 DRFRM), <code>C16↔C17</code> (generic door). On E / ENV booths the inner shell flips too: <code>M01↔M02</code> (small-wall IEPDOOR), <code>K114↔K115</code> (46"-wall IEPDOOR), and inswing variants <code>L02↔L03</code> / <code>L04↔L05</code>. Bare jambs (L01, K116) are non-handed and stay put. Runs <i>after</i> WA Door so WA components — which already pick their own L/R from hinge — don\'t get double-flipped. Net weight unchanged (L/R pairs have identical weights).'},
+      ]
+    },
+    {
+      v:'1.72.15', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: WA Door (Wide Access) substitution.** Quote lines like <code>WA UPG STD 40</code> / <code>STD 46</code> / <code>ENH 40</code> / <code>ENH 46</code> (and bare <code>WA UPG</code>) now swap the standard door + doorframe in the BOM for the WA equivalents: <b>Z03/Z04</b> (R/L door frame) + <b>Z05/Z06</b> (R/L door), plus a wall-size-specific adapter — <b>Z25</b> for 40" walls or <b>Z120</b> for 46" walls. L/R picked from the room hinge selector. On ENH booths (E / ENV), also swaps the inner-shell door + jamb (<b>Z10/Z11</b> + <b>Z09</b>) and adds <b>Z19</b> (WAJMBAD/IEPSSMID). Correctly handles both inner-door families: small-wall booths (M01/L01) and 46"-wall booths (K114/K116). 43" wall booths leave the line in the unmapped flag (no WA exists for that wall size).'},
+      ]
+    },
+    {
+      v:'1.72.14', date:'June 7, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**Pre-commit syntax check added.** New `scripts/check-syntax.js` runs `node --check` on every staged `.js` file and smoke-tests `templates/changelog.js` and `lib/packing-list.js` (require + invoke). Wired as `.git/hooks/pre-commit` (and tracked under `scripts/git-hooks/` so a fresh clone can install via `scripts/install-hooks.sh`). Would have caught the v1.72.11 deploy crash before push. `/bump` now runs the check before reporting back, and `CLAUDE.md` documents the workflow.'},
+      ]
+    },
+    {
+      v:'1.72.13', date:'June 7, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Hotfix: deployment crash.** The v1.72.11 / 1.72.12 changelog entries had an over-escaped apostrophe inside a single-quoted JS string, which Node parsed as an early string terminator and threw <code>SyntaxError: Unexpected identifier</code> at startup. Both staging and prod containers had been crash-looping since 1.72.11. Apostrophe re-escaped correctly. Restarts cleanly.'},
+      ]
+    },
+    {
+      v:'1.72.12', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**WDO rule now handles double-shell (E / ENV) booths.** When a window is on an E-variant booth, the PL also swaps the matching inner IEPWL{N} wall (inner size = outer − 4.5: STDWL40 ↔ IEPWL35.5, STDWL46 ↔ IEPWL41.5, STDWL43 ↔ IEPWL38.5). The smallest WDO in each family (e.g. WDO 2630 on 35.5, WDO 3230 on 41.5) uses a single-piece bundle (K02 / K103). Larger WDOs ship as TOP + BOT (e.g. WDO 2648 → K05 top + K06 bottom). S / SNV (single-shell) booths are unchanged. Two-window quotes generate two BOT components.'},
+      ]
+    },
+    {
+      v:'1.72.11', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: WDO (window) substitution.** A <code>WDO 3236 S</code> line on the quote now <b>swaps one standard wall component</b> in the booth\'s BOM for the matching window-wall variant (e.g. on MDL 4872 S: C101 STDWL46 → C104 STDWL46 WDO3236). Defaults to the booth\'s primary (longest) STDWL{N} wall; explicit overrides like <code>WDO 43" 2636 S</code> use the named wall size. Multiple windows (or qty &gt; 1) swap one wall each. If the booth has no matching standard wall to swap (e.g. ADA already replaced it), the WDO line stays in the unmapped-features flag for manual adjustment instead of silently adding extras.'},
+      ]
+    },
+    {
+      v:'1.72.10', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: MJP and DESK substitution rules.** <code>MJP</code> on a quote now injects an <b>F09 (MULTI JACK PANEL)</b> row on the PL. <code>Office Desk S</code> → <b>S02 (OFFICE DESK SMALL)</b>; <code>Office Desk L</code> → <b>S03 (OFFICE DESK LARGE)</b>. MJP follows a "constant 1 per quote line" rule (unlike VSS/EFS which scale with vent count). Companion hardware (<code>MJP ADPT</code>, <code>MJP EXT</code>) is intentionally NOT treated as MJP and still flags in the unmapped-features list. Quote-line qty multiplies through (e.g. MJP qty 3 → three F09 rows). Internally, the rule registry was refactored to an extensible predicate-based form so the remaining features (windows, ADA, hinge) can plug in cleanly.'},
+      ]
+    },
+    {
+      v:'1.72.9', date:'June 7, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List: VSS and EFS feature substitution.** The PL generator now turns <code>VSS &lt;size&gt;</code> and <code>EFS &lt;size&gt;</code> quote line items into the actual <b>F02 (Ventilation Silencing System)</b> and <b>F03 (Exterior Fan Silencer)</b> component rows on the PL — one per vent set in the booth (F01 qty). Bare <code>VSS</code> / <code>EFS</code> with no size suffix counts as exactly one. Feature qty &gt; 1 on the quote multiplies through. Matched features no longer appear in the orange "optional features" flag box.'},
+      ]
+    },
+    {
+      v:'1.72.8', date:'June 7, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Packing List MDL line abbreviates feature names** to match the printed PL. Quote line items like <code>EFS 4872</code>, <code>VSS 4872</code>, <code>WDO 3236 S</code>, <code>Office Desk S</code>, <code>ADA 7272 S</code> now render as <code>EFS / VSS / WDO 3236 / DESK / ADA</code> in the booth title. Internal hardware/upgrades (HEPA, HX, AP, CP, EFP, cable upgrades, vent set, foam, etc.) are hidden from the title — they still appear in the BOM rows below. Duplicates are deduped.'},
+      ]
+    },
+    {
+      v:'1.72.7', date:'June 7, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Packing List layout now closely mirrors the real printed PL.** Each booth is its own one-page PL: centered WhisperRoom logo with <b>SOUND ISOLATION ENCLOSURES</b> tagline, editable date top-right, and a deal reference top-left. Below that, the <b>MDL line</b> (booth + its options, e.g. <code>MDL 4872 S / ADA / EFS / VSS / MJP / WDO 3236 / DESK</code>) and the <b>Totals box</b> (Cubic Feet / Pounds / Cubic Meters / Kilograms) on the left, with a big <b>PACKING LIST</b> title and an editable <b>S/N</b> field on the right. The "Heads up" banner is gone. Multi-room quotes paginate one booth per page. S/N and date persist in browser per-quote.'},
+      ]
+    },
+    {
+      v:'1.72.6', date:'June 7, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Packing List redesigned to match the printed PL layout.** The viewer now mirrors the shop-floor PL: real WhisperRoom logo + address header, Customer / Project info block, and a per-room table with grouped <b>Length / Width / Thickness / Weight</b> columns (Inches + Mtrs, Pounds + Kilograms), then <b>Code · Part # · Package Contents</b>. The <b>Quantity column is gone</b> — each physical item is its own row, so a BOM entry of qty 4 prints as four rows. Overall feel matches the Vendor PO / Quote docs (white card, orange accent).'},
+      ]
+    },
+    {
+      v:'1.72.5', date:'June 5, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**Dev log: end-of-session writeup for June 5.** No app change — refreshed the internal DEVLOG (Current focus + full session recap of today: Packing List generator, /weights tooling, Duplicate/Add Pallet, QB Activity, Drive PDF fix, pallet reductions).'},
+      ]
+    },
+    {
+      v:'1.72.4', date:'June 5, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Freight: lowered pallet counts on several large booths.** After re-checking real skid heights, these models now ship on fewer pallets &mdash; the short skid is consolidated onto a taller one: <b>MDL 10284, 96192, 102168, 102186</b> and their No-Vent (NV) twins. <b>MDL 102126</b> pallet 3 footprint was also corrected. Freight quotes, the Quote Weight box, the packing-list/weights tools, and order processing all reflect the new counts.'},
+      ]
+    },
+    {
+      v:'1.72.3', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Google Ads Improvement Engine is now brand- and impression-share-aware.** The Budget Reallocation board used to tell you to <em>increase</em> any high-ROAS campaign — including branded ones. But branded paid clicks mostly re-buy demand your organic listings already win for free, so that ROAS overstates the real lift. Branded winners now land in a new <strong>▽ Test Pull-Back</strong> column (test trimming bids and watch total paid+organic revenue), and <strong>▲ Increase</strong> is reserved for non-branded campaigns that genuinely lose impressions to budget (high budget-lost impression share) at a strong return. Each card now shows its impression share and a one-line reason for the call.'},
+        {t:'add', d:'**Attribution-gap campaigns are flagged, not punished.** Ecommerce / Shopify / remarketing campaigns that convert outside HubSpot used to look like “$0 revenue → cut it.” They now go to a separate <strong>⌕ Investigate</strong> column so you verify in Google Ads / Shopify before pulling spend.'},
+        {t:'add', d:'**Ad diagnoses now use real Quality Score, not guesses.** Each campaign’s keyword Quality Scores roll up to pinpoint the actual weak link — below-average <em>expected CTR</em> → Ad Copy Opportunity, low <em>ad relevance</em> → restructure the ad group, low <em>landing-page experience</em> → Landing Page Opportunity — instead of inferring it from CTR vs. conversion rate.'},
+        {t:'add', d:'**One-click AI ad rewrites.** Ad Copy opportunities now have a <strong>✨ Generate AI rewrites</strong> button that calls Claude (back end from v1.72.2), seeded with that campaign’s weakest-scoring search terms, and returns ready-to-test headlines and descriptions in WhisperRoom voice. Local quick-drafts still show instantly as a fallback.'},
+      ]
+    },
+    {
+      v:'1.72.2', date:'June 5, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Google Ads data, deeper (back end).** The Ads sync now also pulls <strong>Quality Score</strong> and its three components (expected CTR, ad relevance, landing-page experience) per keyword, and <strong>Impression Share</strong> + lost-impression-share (budget vs. rank) per campaign. This is the data that lets the dashboard say <em>why</em> a campaign underperforms — bad ad copy vs. wrong landing page vs. needs more budget — instead of guessing. (Run a Sync to populate it; the upcoming Growth Engine update will surface it.)'},
+        {t:'add', d:'**AI ad-copy rewrites (back end).** New endpoint that uses Claude to rewrite a campaign’s ad copy, grounded in the actual search terms people convert on, in WhisperRoom voice (no “soundproof”, no em dashes, within Google’s character limits). The Growth Engine’s Google Ads Improvement Engine will call this so a high-spend/low-CTR campaign comes with real, ready-to-test headlines and descriptions.'},
+      ]
+    },
+    {
       v:'1.72.1', date:'June 5, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Add Pallet default size is now 90 × 47 × 40 in** (was 48 × 40 × 48) — matches a typical WhisperRoom skid, still editable per pallet.'},

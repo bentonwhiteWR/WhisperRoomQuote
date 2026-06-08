@@ -1,0 +1,91 @@
+{
+  "_meta": {
+    "_source": "Manually digitized from the 2023 top-down spec sheets (Z:\\Sales1\\Sales\\SPEC SHEET - TOP DOWN 2023\\). One layout per booth shell shape.",
+    "_schema": {
+      "exterior": "Outer shell dimensions in inches (w = long axis, h = short axis). Matches the spec-sheet top-down view.",
+      "wallThickness": "Panel + foam thickness in inches.",
+      "walls": "Keyed by compass side: N = back, S = front (door side), E = right, W = left.",
+      "walls.<side>.slots": "Ordered list of wall-panel slots running along the interior. Each slot has: id (unique), size (nominal/empty-state inches), families (LIST of acceptable wall-pack prefixes, e.g. ['STDWL46','WA STDDRFRM']; first matching wall in the BOM pool wins), prefers (ordered list of slot-kind preferences for auto-placement — VNT, CBL, DRFRM, WDO, SOLID).",
+      "walls.<side>.longSide": "true for the two long walls of a rectangular booth (where panels are split wide + narrow style)."
+    },
+    "_lookup": "Lookup by full MDL name (e.g. 'MDL 4872 S'). Variant fallback (e.g. 'MDL 4872 E' → 'MDL 4872 S' layout) is handled in lib/packing-list.js boothLayout().",
+    "_swap_handling": "Narrow slots accept both the std + WA-shrunken family (e.g. STDWL22 OR STDWL19) so the WA Door substitution can flip one narrow without falling out of the wall pool. Same goes for the door slot: STDWL46 OR WA STDDRFRM. The SVG renders each placed panel at its real interior width via panelInteriorWidth()."
+  },
+  "layouts": {
+    "MDL 4242 S": {
+      "label": "Single-Wall Sound Booth - 3.5' x 3.5'",
+      "exterior": { "w": 44, "h": 44 },
+      "wallThickness": 2,
+      "walls": {
+        "N": { "label": "Back",  "longSide": false, "slots": [
+          { "id": "N-wide", "size": 40, "families": ["STDWL40"],                "prefers": ["VNT", "CBL"] }
+        ]},
+        "S": { "label": "Front", "longSide": false, "slots": [
+          { "id": "S-wide", "size": 40, "families": ["STDWL40", "WA STDDRFRM"], "prefers": ["DRFRM"] }
+        ]},
+        "E": { "label": "Right", "longSide": false, "slots": [
+          { "id": "E-wide", "size": 40, "families": ["STDWL40"],                "prefers": ["SOLID"] }
+        ]},
+        "W": { "label": "Left",  "longSide": false, "slots": [
+          { "id": "W-wide", "size": 40, "families": ["STDWL40"],                "prefers": ["SOLID"] }
+        ]}
+      }
+    },
+    "MDL 4848 S": {
+      "label": "Single-Wall Sound Booth - 4' x 4'",
+      "exterior": { "w": 50, "h": 50 },
+      "wallThickness": 2,
+      "walls": {
+        "N": { "label": "Back",  "longSide": false, "slots": [
+          { "id": "N-wide", "size": 46, "families": ["STDWL46"],                "prefers": ["VNT", "CBL"] }
+        ]},
+        "S": { "label": "Front", "longSide": false, "slots": [
+          { "id": "S-wide", "size": 46, "families": ["STDWL46", "WA STDDRFRM"], "prefers": ["DRFRM"] }
+        ]},
+        "E": { "label": "Right", "longSide": false, "slots": [
+          { "id": "E-wide", "size": 46, "families": ["STDWL46"],                "prefers": ["SOLID"] }
+        ]},
+        "W": { "label": "Left",  "longSide": false, "slots": [
+          { "id": "W-wide", "size": 46, "families": ["STDWL46"],                "prefers": ["SOLID"] }
+        ]}
+      }
+    },
+    "MDL 4872 S": {
+      "label": "Single-Wall Sound Booth - 4' x 6'",
+      "exterior": { "w": 74, "h": 50 },
+      "wallThickness": 2,
+      "walls": {
+        "N": {
+          "label": "Back",
+          "longSide": true,
+          "slots": [
+            { "id": "N-wide",   "size": 46, "families": ["STDWL46"],                   "prefers": ["VNT", "CBL"] },
+            { "id": "N-narrow", "size": 22, "families": ["STDWL22", "STDWL19"],        "prefers": ["SOLID"] }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "longSide": true,
+          "slots": [
+            { "id": "S-wide",   "size": 46, "families": ["STDWL46", "WA STDDRFRM"],    "prefers": ["DRFRM"] },
+            { "id": "S-narrow", "size": 22, "families": ["STDWL22", "STDWL19"],        "prefers": ["SOLID"] }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "longSide": false,
+          "slots": [
+            { "id": "E-wide", "size": 46, "families": ["STDWL46"], "prefers": ["SOLID"] }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "longSide": false,
+          "slots": [
+            { "id": "W-wide", "size": 46, "families": ["STDWL46"], "prefers": ["SOLID"] }
+          ]
+        }
+      }
+    }
+  }
+}

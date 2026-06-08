@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.81.2', date:'June 8, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**31" windows: the 4040 WA Type now makes the 31" wall.** Completing the previous fix — a 40"-wall booth (42 / 60 / 84 / 102 series) with WA Type <b>4040</b> now shrinks its door-adjacent 40" wall to 31" (C01→Z01, and the IEP inner 35.5"→26.5"), the same way 4646 makes the 43" wall. So <b>WDO 31" 1648</b> (E/S) finally has a 31" wall to substitute — it swaps it for the window wall, outer + IEP inner. The 4016 default (16"→7") is unchanged.'},
+      ]
+    },
+    {
       v:'1.81.1', date:'June 8, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**43" / 31" windows now substitute their wall.** A WDO line with an explicit wall size (<b>WDO 43" 2636 / 2648</b>, <b>WDO 31" 1648</b>) targets a wall that ADA/WA creates in the same build (the 43" wall comes from ADA 4646), so it is NOT in the base BOM — and the window was being left unmapped. Two fixes: a feature removal now cancels a pending addition of the same code (so one feature can swap a wall another feature added), and an explicit-wall WDO proceeds even when the wall is feature-created. The 43" window now swaps both the outer wall (C109→C128) and the IEP inner shell. (Heads-up: the 31" door-adjacent wall is not yet generated on the 40" booths, so WDO 31" currently adds its window wall without a 31" solid to remove — see DEVLOG.)'},

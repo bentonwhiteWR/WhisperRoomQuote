@@ -10719,9 +10719,13 @@ ${q.accepted ? `
         return ['Gray','Blue','Purple','Orange','Burgundy'].includes(v) ? v : undefined;
       };
       const queryHinge = parsed.query.hinge && /^(Left|Right)$/i.test(parsed.query.hinge) ? parsed.query.hinge : undefined;
+      // ADA WA Type comes from the quote's repWaType (4016/4040/4622/4646); picks
+      // the WA-Type variant for dual-option ADA booths. ?wa= is a test override.
+      const validWa = w => /^(4016|4040|4622|4646)$/.test(String(w || '').trim()) ? String(w).trim() : undefined;
       const opts = {
         hinge: queryHinge || normalizeHinge(snap.acceptedHinge) || normalizeHinge(snap.repHingePreference),
         foam:  parsed.query.foam || normalizeFoam(snap.acceptedFoam) || normalizeFoam(snap.repFoamColor),
+        adaWaType: validWa(parsed.query.wa) || validWa(snap.repWaType),
       };
       const pl = packingList.generate(lineItems, opts);
       const customer = snap.customer || {};

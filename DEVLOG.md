@@ -6,9 +6,9 @@ Internal development notes. Last updated 2026-06-07.
 
 ---
 
-## Current focus (2026-06-08 — Whole PL module built out: HX/CP/SL/ADA rules, Orders-drawer PL link/box/hardware, Shipping Label Generator (box/pallet, per-booth, color-coded), qty-N→N-PLs, and two-way S/N sync — all shipped. Remaining: **ADA adjacent-WA wall** fix (#6); label-stock **first-print alignment tune**; small `hardware_box` parseInt→0 bug.)
+## Current focus (2026-06-08 — Whole PL module built out & feature-complete: HX/CP/SL/ADA rules (ADA now **WA-Type aware**), Audimute panels, Orders-drawer PL link/box/hardware, Shipping Label Generator, qty-N→N-PLs, two-way S/N sync, inline PL editing. Remaining: label-stock **first-print alignment tune**; small `hardware_box` parseInt→0 bug.)
 
-**Most recent shipped to STAGING:** v1.78.0 — two-way Serial Number sync (PL ↔ Orders drawer). **MAIN is at v1.76.2** (`3943066`); v1.77.0 + v1.78.0 staging-only pending Benton's test.
+**Most recent shipped to STAGING:** v1.81.0 — WA-Type-aware ADA (dual-option booths 7296/96120/96168). **MAIN is at v1.76.2** (`3943066`); v1.77.0–v1.81.0 staging-only pending Benton's test.
 
 **Just-shipped, awaiting test/tune:**
 - **Label generator (v1.76.0)** — print view at `/pl/:quote/labels`. Needs a first-print pass on the real pre-printed stock to confirm A4 vs Letter, the top logo-whitespace height, and perforation alignment (geometry started from the `.docm`). Scope + open items in `LABEL_GENERATOR_SCOPE.md` §9.
@@ -940,6 +940,7 @@ Source of truth for in-app changelog is `templates/changelog.js`. This table is 
 
 | Version | Date       | Summary |
 |---------|------------|---------|
+| 1.81.0  | 2026-06-08 | **ADA WA-Type aware (dual-option booths).** `ada_wa_variants[model][4646\|4622]` added; the ADA rule picks the variant from `ctx.adaWaType` (from the quote `repWaType` via the PL API, validated 4016/4040/4622/4646; `?wa=` test override), falling to `ada_by_model` default (7296=4622, 96120/96168=4646). Dual booths: 7296/96120/96168 S+E; the 4646↔4622 delta is ONLY the door-adjacent wall (C101/C109 ↔ C111/C112, inner K101/K110 ↔ K112/K113). Re-derived from a fresh 20-PL `PLsADA` batch (`build_ada_wa.py`, diffed vs base-bom). **Gotcha:** the re-run dropped the inner ADA door on `MDL 7272 E` only — auto-fell-back to the first-batch `ada_diff.json` delta (verified). Oracle: 20/20 WA-type + 52/52 + 14/14. |
 | 1.80.0  | 2026-06-08 | **PL viewer: inline edit + code-sort + print polish.** Table cells (L/W/T in, lb, code, part#, contents) are `contenteditable` → `editCell()` writes back to the line (desc/pack = data-only no re-render; dims/weight re-render totals+metric; code re-sorts). `addRow` + code-edit call `sortLines()` (numeric `localeCompare`). Print: logo 38→54px; unit headers Inches/Mtrs/Pounds/Kilograms → In/M/lb/KG; numeric cells `white-space:nowrap` + `td.desc{width:99%}` so Package Contents gets the slack; totals col-gap 12→6px + `justify-content:start`. |
 | 1.79.0  | 2026-06-08 | **PL: Audimute panel feature rule.** `^AUDI (BL\|GR) [23]` → E18 (BL 2) / E19 (BL 3) / E20 (GR 2) / E21 (GR 3); additive, one pack per line × qty (2/3 = panel count baked into the pack). Standalone AUDI panels only, not the AP package. 1:1 map (pack names match the quote lines); not oracle-gated but feature/ADA oracles still 52/52 + 14/14. |
 | 1.78.1  | 2026-06-08 | **Label color → highlights the count row; default none.** Replaced the bottom `.cband` bar with a background highlight on the `Box/Pallet N of M` count line (inline-block chip, `padding`+`border-radius`). `labelColor` defaults to '' now (no color; the 'none' swatch is active) instead of auto-assigning by room index. |

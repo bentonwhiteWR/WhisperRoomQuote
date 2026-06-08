@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.81.0', date:'June 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**ADA now honors the WA Type on dual-option booths.** ADA on <b>7296 / 96120 / 96168</b> (S & E) pulls the correct wide-access variant — <b>4646 vs 4622</b> — from the quote WA Type (repWaType) instead of always using the default. The two variants differ only by the door-adjacent wall (4646 shrinks a 46in wall to 43in; 4622 a 22in wall to 19in; the enhanced shell shifts its inner wall to match). Single-option booths (7272 = 4622; 9696 / 96144 / 96192 = 4646) and the no-WA-Type case use the default. Derived from a fresh 20-PL batch and verified to reconstruct all 20 model × WA-type combos exactly.'},
+      ]
+    },
+    {
       v:'1.80.0', date:'June 8, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing List viewer: inline editing, code-sorting, and print polish.** You can now <b>edit any field directly in the PL</b> — description, weight, dimensions, code, or part # — by clicking the cell and typing (weight/dim edits recompute the metric columns + totals; editing a code re-sorts that row). <b>Added components now drop into code order</b> (A01 first … Z64 last) instead of at the bottom. Print layout tightened: the WhisperRoom logo is bigger, the Width / Thickness / Weight columns are narrower (units shortened to In / M / lb / KG) to give <b>Package Contents</b> more room, and the totals values sit closer to their labels.'},

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.82.5', date:'June 8, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Packing List header: quote number on its own line.** The top-left header now shows the company / deal name on the first line and the quote number on a second line beneath it (was one line with a middot between them).'},
+      ]
+    },
+    {
       v:'1.82.3', date:'June 8, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Wide-access (WA) door on the Packing List now pulls the correct ADA door parts.** The wide-access door <em>is</em> the ADA door, but the PL was still emitting the retired WA-only door components (the Z03–Z11 range). It now pulls the ADA door parts across the board — ADA door frame, ADA door w/ window, ADA frame adaptor, and (on enhanced booths) the ADA IEP door + jamb — so a WA upgrade on a 46" booth now produces the exact same door set as a full ADA booth.'},

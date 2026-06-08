@@ -51,6 +51,18 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.82.1', date:'June 8, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Weight check tuned + AP excluded + back link → Orders.** Three PL tweaks: (1) the weight check now compares the <b>palletless</b> quote weight (the catalog pulls 144 lb/pallet) against the PL net, so pallets no longer skew the delta; (2) <b>AP</b> (acoustic package — dropshipped by Audimute) is no longer flagged as an "add manually" feature and its weight is excluded from the check, since it never ships on the booth PL; (3) the top-left back link on the PL now says <b>Orders</b> and returns to the orders page (was Deals).'},
+      ]
+    },
+    {
+      v:'1.82.0', date:'June 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Weight check on the Packing List.** A banner at the top of the PL cross-checks the <b>quote</b> total weight (the catalog / price-book weights — an independent source) against the <b>PL</b> summed weight (Σ BOM components — the same number the per-booth totals boxes show). It reads green with <b>Δ 0</b> when they reconcile (all the base models do now), and amber with the gap when they do not — flagging how many <b>unmapped features</b> are priced on the quote but not yet in the PL weight, which both explains the delta and points at what is missing. Screen-only (does not print). The PL API now also returns quoteWeight + a gross total (net + pallets).'},
+      ]
+    },
+    {
       v:'1.81.3', date:'June 8, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Standalone WA Door now honors the WA Type too.** Picking the WA Type at the bottom of the quote now drives the standalone WA Door (not just ADA): a 46" booth set to <b>4646</b> shrinks its door-adjacent 46" wall to 43" (C101→C109) instead of always doing 4622. When no WA Type is set it defaults sensibly — 4622/4016 only if the booth actually carries the narrow 22"/16" wall, otherwise the 4646/4040 pair variant (so a 4646-only booth like 9696 defaults to 4646, not 4622).'},

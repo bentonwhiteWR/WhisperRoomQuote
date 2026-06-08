@@ -244,18 +244,23 @@
     return { placement, leftover };
   }
 
+  // WhisperRoom-styled palette: all panels are the same booth-dark gray so the
+  // result reads like the real product (the spec-sheet diagrams are nearly all
+  // dark with subtle differentiation). Door is the one bright accent (WR
+  // orange). Vent/cable/window each get a small inline icon glyph so a glance
+  // tells you the type without bright color noise.
   const WALL_COLORS = {
-    SOLID: { fill: '#3a3a3a', text: '#fff', label: 'Solid' },
-    VNT:   { fill: '#2563eb', text: '#fff', label: 'Vent'  },
-    CBL:   { fill: '#16a34a', text: '#fff', label: 'Cable' },
-    DRFRM: { fill: '#ee6216', text: '#fff', label: 'Door'  },
-    WDO:   { fill: '#7c3aed', text: '#fff', label: 'Window' },
-    EMPTY: { fill: '#e5e5e5', text: '#888', label: 'Empty' }
+    SOLID: { fill: '#1f1f1f', stroke: '#000',     text: '#ddd', label: 'Solid'  },
+    VNT:   { fill: '#1f1f1f', stroke: '#000',     text: '#ddd', label: 'Vent'   },
+    CBL:   { fill: '#1f1f1f', stroke: '#000',     text: '#ddd', label: 'Cable'  },
+    DRFRM: { fill: '#ee6216', stroke: '#a3460e',  text: '#fff', label: 'Door'   },
+    WDO:   { fill: '#1f1f1f', stroke: '#000',     text: '#ddd', label: 'Window' },
+    EMPTY: { fill: '#e5e5e5', stroke: '#bbb',     text: '#888', label: 'Empty'  }
   };
 
   function renderLayoutSvg(layout, placement) {
     const PX = 8; // px per inch
-    const margin = 70;
+    const margin = 80;
     const W = layout.exterior.w * PX;
     const H = layout.exterior.h * PX;
     const t = layout.wallThickness * PX;
@@ -264,21 +269,109 @@
     const x0 = margin, y0 = margin;
 
     let svg = '<svg viewBox="0 0 ' + totalW + ' ' + totalH + '" '
-            + 'style="width:100%;max-width:780px;display:block;margin:0 auto;font-family:\'DM Sans\',sans-serif">';
+            + 'style="width:100%;max-width:820px;display:block;margin:0 auto;font-family:\'DM Sans\',sans-serif">';
 
-    // Exterior shell
+    // Reusable definitions: a subtle drop shadow + a foam-floor pattern for
+    // the interior, mirroring the spec-sheet aesthetic (dark booth on a light
+    // background, with a textured floor visible inside the walls).
+    svg += '<defs>'
+         + '<filter id="boothShadow" x="-10%" y="-10%" width="120%" height="120%">'
+         +   '<feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.18"/>'
+         + '</filter>'
+         + '<pattern id="foamPattern" x="0" y="0" width="6" height="6" patternUnits="userSpaceOnUse">'
+         +   '<rect width="6" height="6" fill="#2a2a2a"/>'
+         +   '<circle cx="3" cy="3" r="0.6" fill="#1a1a1a"/>'
+         + '</pattern>'
+         + '<linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">'
+         +   '<stop offset="0%" stop-color="#f0f0f0"/>'
+         +   '<stop offset="100%" stop-color="#fafafa"/>'
+         + '</linearGradient>'
+         + '</defs>';
+
+    // Background wash (subtle gradient, like the spec-sheet renders)
+    svg += '<rect x="0" y="0" width="' + totalW + '" height="' + totalH + '" fill="url(#bgGrad)"/>';
+
+    // Exterior shell — dark booth on a soft shadow
     svg += '<rect x="' + x0 + '" y="' + y0 + '" width="' + W + '" height="' + H + '" '
-         + 'fill="#fafafa" stroke="#222" stroke-width="2"/>';
-    // Interior
+         + 'fill="#0f0f0f" stroke="#000" stroke-width="1.5" rx="2" '
+         + 'filter="url(#boothShadow)"/>';
+    // Interior — foam-patterned floor inside the walls
     svg += '<rect x="' + (x0 + t) + '" y="' + (y0 + t) + '" '
          + 'width="' + (W - 2 * t) + '" height="' + (H - 2 * t) + '" '
-         + 'fill="#fff" stroke="#bbb" stroke-width="1"/>';
+         + 'fill="url(#foamPattern)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>';
+
+    // Small overlay glyphs that mark slot type at a glance. Drawn ON TOP of
+    // the dark panel fill. For horizontal walls (orientation='h'), the icons
+    // sit inside the wall thickness; for vertical walls, same idea rotated.
+    function slotOverlay(kind, x, y, w, h, orientation) {
+      const cx = x + w / 2, cy = y + h / 2;
+      let out = '';
+      if (kind === 'VNT') {
+        // Two small circles: intake + exhaust ducts (the vent assembly)
+        const r = Math.min(w, h) * 0.18;
+        const ox = orientation === 'h' ? r * 1.4 : 0;
+        const oy = orientation === 'h' ? 0 : r * 1.4;
+        out += '<circle cx="' + (cx - ox) + '" cy="' + (cy - oy) + '" r="' + r + '" fill="#0a0a0a" stroke="#444" stroke-width="0.8"/>';
+        out += '<circle cx="' + (cx + ox) + '" cy="' + (cy + oy) + '" r="' + r + '" fill="#0a0a0a" stroke="#444" stroke-width="0.8"/>';
+      } else if (kind === 'CBL') {
+        // Two tiny cable holes
+        const r = Math.min(w, h) * 0.12;
+        const off = orientation === 'h' ? w * 0.18 : h * 0.18;
+        out += '<circle cx="' + (orientation === 'h' ? cx - off : cx) + '" cy="' + (orientation === 'h' ? cy : cy - off) + '" r="' + r + '" fill="#0a0a0a"/>';
+        out += '<circle cx="' + (orientation === 'h' ? cx + off : cx) + '" cy="' + (orientation === 'h' ? cy : cy + off) + '" r="' + r + '" fill="#0a0a0a"/>';
+      } else if (kind === 'WDO') {
+        // Lighter rectangular "glass" inset within the panel
+        const m = Math.min(w, h) * 0.25;
+        out += '<rect x="' + (x + m) + '" y="' + (y + h * 0.18) + '" '
+             + 'width="' + (w - m * 2) + '" height="' + (h * 0.64) + '" '
+             + 'fill="#9ec4e6" stroke="#5b87a8" stroke-width="0.6" opacity="0.85" rx="1"/>';
+      }
+      return out;
+    }
+
+    // Door swing arc — drawn on the interior side of whichever slot holds a
+    // DRFRM panel. A 90° arc whose radius is the door opening width (~30″
+    // on STDWL46 booths, ~24″ on STDWL40). Indicates "door opens INTO the
+    // booth" visually — Benton can tell at a glance if the swing geometry
+    // makes sense in the host room.
+    function doorSwingArc(slotX, slotY, slotW, slotH, side, hinge) {
+      // Door swings open into the booth (interior). Hinge is left/right of
+      // the doorframe slot.
+      const doorRadius = Math.min(slotW, slotH) * 0.62;
+      // For S wall (front, baseY = bottom): arc opens upward into booth
+      // For N wall (back): arc opens downward into booth
+      // For E (right): arc opens leftward
+      // For W (left): arc opens rightward
+      let hingeX, hingeY, x1, y1, x2, y2, sweep;
+      if (side === 'S') {
+        hingeX = (hinge === 'L') ? slotX + slotW * 0.15 : slotX + slotW * 0.85;
+        hingeY = slotY;  // top of the slot = inside edge
+        x1 = hinge === 'L' ? hingeX + doorRadius : hingeX - doorRadius;
+        y1 = hingeY;
+        x2 = hingeX;
+        y2 = hingeY - doorRadius;
+        sweep = hinge === 'L' ? 0 : 1;
+      } else if (side === 'N') {
+        hingeX = (hinge === 'L') ? slotX + slotW * 0.85 : slotX + slotW * 0.15;
+        hingeY = slotY + slotH;
+        x1 = hinge === 'L' ? hingeX - doorRadius : hingeX + doorRadius;
+        y1 = hingeY;
+        x2 = hingeX;
+        y2 = hingeY + doorRadius;
+        sweep = hinge === 'L' ? 0 : 1;
+      } else {
+        return ''; // E/W swing not drawn for the mock
+      }
+      return '<path d="M ' + x1 + ' ' + y1 + ' A ' + doorRadius + ' ' + doorRadius + ' 0 0 ' + sweep + ' ' + x2 + ' ' + y2 + '" '
+           + 'fill="none" stroke="rgba(238,98,22,0.55)" stroke-width="1.2" stroke-dasharray="3,3"/>';
+    }
 
     // Horizontal walls (N + S) — slots laid out along x inside the interior length
     function drawHorizontalWall(side, baseY, labelAbove) {
       const wall = layout.walls[side];
       if (!wall) return;
       let offset = 0;
+      const doorArcs = [];
       wall.slots.forEach(slot => {
         const placed = placement[slot.id];
         const slotSizeIn = effectiveSlotSize(slot, placed);
@@ -286,14 +379,21 @@
         const x = x0 + t + offset;
         const kind = placed ? classifyWall(placed.pack) : 'EMPTY';
         const col = WALL_COLORS[kind] || WALL_COLORS.EMPTY;
+        // Panel rectangle
         svg += '<rect x="' + x + '" y="' + baseY + '" width="' + slotW + '" height="' + t + '" '
-             + 'fill="' + col.fill + '" stroke="#222" stroke-width="1"/>';
+             + 'fill="' + col.fill + '" stroke="' + col.stroke + '" stroke-width="0.8"/>';
+        // Inner highlight stroke for depth
+        svg += '<rect x="' + (x + 1) + '" y="' + (baseY + 1) + '" width="' + (slotW - 2) + '" height="' + (t - 2) + '" '
+             + 'fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>';
+        // Type glyph
+        svg += slotOverlay(kind, x, baseY, slotW, t, 'h');
         const cx = x + slotW / 2;
+        // Code + pack labels outside the panel
         if (placed) {
           const codeY = labelAbove ? (baseY - 18) : (baseY + t + 16);
           const packY = labelAbove ? (baseY - 6)  : (baseY + t + 28);
           svg += '<text x="' + cx + '" y="' + codeY + '" text-anchor="middle" '
-               + 'font-size="11" font-weight="800" fill="#1a1a1a">' + esc(placed.code) + '</text>';
+               + 'font-size="11" font-weight="800" fill="#1a1a1a" letter-spacing="0.02em">' + esc(placed.code) + '</text>';
           svg += '<text x="' + cx + '" y="' + packY + '" text-anchor="middle" '
                + 'font-size="9" fill="#666">' + esc(placed.pack || '') + '</text>';
         } else {
@@ -301,12 +401,18 @@
           svg += '<text x="' + cx + '" y="' + y + '" text-anchor="middle" '
                + 'font-size="10" fill="#bbb" font-style="italic">(empty)</text>';
         }
-        // Slot size label (inside the slot) — shows the actual width, which
-        // may differ from the slot nominal when a WA-flavored panel was placed.
-        svg += '<text x="' + cx + '" y="' + (baseY + t / 2 + 3) + '" text-anchor="middle" '
-             + 'font-size="9" font-weight="700" fill="' + col.text + '">' + slotSizeIn + '″</text>';
+        // Door swing — queued so it draws AFTER the wall fills but on top
+        // of the interior (gets appended after the wall loop).
+        if (kind === 'DRFRM') {
+          // L/R inferred from the code: STDDRFRM R / L; WA STDDRFRM R / L
+          const hingeSide = /\sL\b/i.test(placed.pack || '') ? 'L' : 'R';
+          doorArcs.push(doorSwingArc(x, baseY, slotW, t, side, hingeSide));
+        }
         offset += slotW;
       });
+      // Door arcs drawn AFTER all slots so they overlay onto the interior
+      // (and aren't clipped by the next slot's draw)
+      doorArcs.forEach(a => svg += a);
     }
 
     // Vertical walls (E + W) — slots laid out along y inside the interior height
@@ -322,19 +428,19 @@
         const kind = placed ? classifyWall(placed.pack) : 'EMPTY';
         const col = WALL_COLORS[kind] || WALL_COLORS.EMPTY;
         svg += '<rect x="' + baseX + '" y="' + y + '" width="' + t + '" height="' + slotH + '" '
-             + 'fill="' + col.fill + '" stroke="#222" stroke-width="1"/>';
+             + 'fill="' + col.fill + '" stroke="' + col.stroke + '" stroke-width="0.8"/>';
+        svg += '<rect x="' + (baseX + 1) + '" y="' + (y + 1) + '" width="' + (t - 2) + '" height="' + (slotH - 2) + '" '
+             + 'fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>';
+        svg += slotOverlay(kind, baseX, y, t, slotH, 'v');
         const cy = y + slotH / 2;
         if (placed) {
           const codeX = labelLeft ? (baseX - 12) : (baseX + t + 12);
           const anchor = labelLeft ? 'end' : 'start';
           svg += '<text x="' + codeX + '" y="' + (cy - 2) + '" text-anchor="' + anchor + '" '
-               + 'font-size="11" font-weight="800" fill="#1a1a1a">' + esc(placed.code) + '</text>';
+               + 'font-size="11" font-weight="800" fill="#1a1a1a" letter-spacing="0.02em">' + esc(placed.code) + '</text>';
           svg += '<text x="' + codeX + '" y="' + (cy + 12) + '" text-anchor="' + anchor + '" '
                + 'font-size="9" fill="#666">' + esc(placed.pack || '') + '</text>';
         }
-        // Slot size label
-        svg += '<text x="' + (baseX + t / 2) + '" y="' + (cy + 3) + '" text-anchor="middle" '
-             + 'font-size="9" font-weight="700" fill="' + col.text + '">' + slotSizeIn + '″</text>';
         offset += slotH;
       });
     }
@@ -344,19 +450,47 @@
     drawVerticalWall('W', x0, true);
     drawVerticalWall('E', x0 + W - t, false);
 
-    // Side-direction labels
-    svg += '<text x="' + (x0 + W / 2) + '" y="' + (y0 - 42) + '" text-anchor="middle" '
-         + 'font-size="10" font-weight="800" letter-spacing="0.12em" fill="#999">BACK · VENT</text>';
-    svg += '<text x="' + (x0 + W / 2) + '" y="' + (y0 + H + 56) + '" text-anchor="middle" '
-         + 'font-size="10" font-weight="800" letter-spacing="0.12em" fill="#999">FRONT · DOOR</text>';
+    // Vent-system assembly protrudes outside the wall that holds the VNT slot
+    // (matches the spec-sheet's ventilation duct + RFU diagram). Walk N's
+    // slots; the first VNT-classified one gets the duct + RFU drawn above it.
+    (function ventProtrusion() {
+      const nWall = layout.walls.N;
+      if (!nWall) return;
+      let offset = 0;
+      for (const slot of nWall.slots) {
+        const placed = placement[slot.id];
+        const sizeIn = effectiveSlotSize(slot, placed);
+        const slotW = sizeIn * PX;
+        if (placed && classifyWall(placed.pack) === 'VNT') {
+          const cx = x0 + t + offset + slotW / 2;
+          const yBase = y0;
+          const ductW = 14, ductH = 28, gap = 10;
+          svg += '<rect x="' + (cx - ductW - gap / 2) + '" y="' + (yBase - ductH) + '" '
+               + 'width="' + ductW + '" height="' + ductH + '" '
+               + 'fill="#1a1a1a" stroke="#000" stroke-width="0.8" rx="1"/>';
+          svg += '<rect x="' + (cx + gap / 2) + '" y="' + (yBase - ductH) + '" '
+               + 'width="' + ductW + '" height="' + ductH + '" '
+               + 'fill="#1a1a1a" stroke="#000" stroke-width="0.8" rx="1"/>';
+          svg += '<circle cx="' + (cx + gap / 2 + ductW / 2) + '" cy="' + (yBase - ductH - 4) + '" r="3" fill="#ee6216"/>';
+          return;
+        }
+        offset += slotW;
+      }
+    })();
 
-    // Interior dim caption
+    // Side-direction labels
+    svg += '<text x="' + (x0 + W / 2) + '" y="' + (y0 - 52) + '" text-anchor="middle" '
+         + 'font-size="10" font-weight="800" letter-spacing="0.14em" fill="#888">BACK · VENT</text>';
+    svg += '<text x="' + (x0 + W / 2) + '" y="' + (y0 + H + 58) + '" text-anchor="middle" '
+         + 'font-size="10" font-weight="800" letter-spacing="0.14em" fill="#888">FRONT · DOOR</text>';
+
+    // Interior dim caption — light text over the dark foam floor
     const intW = layout.exterior.w - 2 * layout.wallThickness;
     const intH = layout.exterior.h - 2 * layout.wallThickness;
     svg += '<text x="' + (x0 + W / 2) + '" y="' + (y0 + H / 2 - 4) + '" text-anchor="middle" '
-         + 'font-size="13" font-weight="700" fill="#bbb">Interior</text>';
+         + 'font-size="13" font-weight="700" fill="rgba(255,255,255,0.5)" letter-spacing="0.05em">INTERIOR</text>';
     svg += '<text x="' + (x0 + W / 2) + '" y="' + (y0 + H / 2 + 14) + '" text-anchor="middle" '
-         + 'font-size="11" fill="#bbb">' + intW + '″ × ' + intH + '″</text>';
+         + 'font-size="11" fill="rgba(255,255,255,0.4)">' + intW + '″ × ' + intH + '″</text>';
 
     svg += '</svg>';
     return svg;

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.36', date:'June 7, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Top-Down Layout: WhisperRoom-styled visuals.** Panels now read like the real product instead of color-coded blocks: all walls are booth-dark, the door is the one orange accent (WR brand), vent slots get an intake/exhaust duct icon, cable slots get small passage holes, window slots show a lighter glass inset. The actual <b>ventilation system protrudes outside the back wall</b> as a small assembly w/ an orange RFU dot (mirrors the spec-sheet diagrams). DRFRM slots get a <b>door swing arc</b> drawn into the interior so the rep can sanity-check L/R hinge at a glance. Interior gets a subtle foam-pattern floor. Whole SVG sits on a soft gradient with a drop shadow, like the 2023 spec sheets.'},
+      ]
+    },
+    {
       v:'1.72.35', date:'June 7, 2026', tag:'log',
       changes:[
         {t:'log', d:'**Dev log: weight-reconciliation oracle captured.** Benton noted the sum of all PL weights across booths should equal the quote weight. Today there\'s no multi-booth grand total on the PL, and PL=net vs quote=gross (off by pallets × 144). Tomorrow: add a multi-booth grand total + a Gross line using PALLETS_PER_MDL.'},

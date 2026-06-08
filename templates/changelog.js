@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.73.0', date:'June 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List generator: HX / CP / SL feature rules.** Quotes with Height Extension, Caster Plate, or Studio Lights now resolve to the right components instead of being flagged unmapped. <b>HX</b> swaps every seam seal to its Tall (T) variant, swaps the booth hardware kit to its W/HX variant, and adds the wall-height extension boxes (2 per box, sized to the walls); <b>CP</b> adds the model caster-plate panels + casters; <b>SL</b> replaces the regular lights with the sized studio lights (29 / 52). Per-model sets were derived from 52 reference PLs and verified to reconstruct every one exactly — components and weight. Works across S / E / SNV / ENV.'},
+      ]
+    },
+    {
       v:'1.72.37', date:'June 7, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Top-Down Layout: vent visuals readable, ducts square + spread.** Outside vent protrusion is now two <b>square 14×14</b> duct boxes with a 48 px gap between them — the slot\'s code + pack labels fit cleanly in between instead of disappearing behind the ducts. VNT slot labels also move up to <code>y0 − 40 / y0 − 26</code> when on the back wall, so they clear the duct height entirely. Inside-panel slot glyphs (VNT squares, CBL passage holes) now sit at the SLOT ENDS instead of the center, leaving the size label clearly visible. Removed the stray orange dot above the right duct (was over the label area).'},

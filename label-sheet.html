@@ -47,11 +47,11 @@
   .label .logo-space{height:1.25in;flex:0 0 auto}        /* clears the PRE-PRINTED WR logo on box stock */
   .label .addr{flex:1 1 auto;font-size:11.5px;font-weight:600;line-height:1.3;white-space:pre-line;color:#111}
   .label .count{flex:0 0 auto;font-size:11px;font-weight:800;letter-spacing:.03em;padding-bottom:.13in;color:#111}
-  /* Pallet half-sheets: no logo reserve, big address + count. */
-  .sheet.pallet .label{padding:.45in .55in}
+  /* Pallet half-sheets: no logo reserve, big address + count, centered both axes. */
+  .sheet.pallet .label{padding:.4in .55in;justify-content:center;align-items:center;text-align:center}
   .sheet.pallet .label .logo-space{display:none}
-  .sheet.pallet .label .addr{font-size:25px;line-height:1.4}
-  .sheet.pallet .label .count{font-size:18px;padding-bottom:0;margin-top:.3in}
+  .sheet.pallet .label .addr{flex:0 0 auto;font-size:25px;line-height:1.4}
+  .sheet.pallet .label .count{font-size:18px;padding-bottom:0;margin-top:.14in}
 
   .loading{padding:60px;text-align:center;color:#888}
 

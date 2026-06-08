@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.76.2', date:'June 8, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Pallet labels centered + tighter count line.** The pallet half-sheet content (address + <b>Pallet N of M</b>) is now centered both horizontally and vertically on the label. The <b>Pallet N of M</b> line sits closer to the address — a small separating gap is kept — at the same font size as before.'},
+      ]
+    },
+    {
       v:'1.76.1', date:'June 8, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Label geometry set to the real Avery stock (2.5"×4").** Box labels are now 4"w × 2.5"h cells (8-up, 2×4) defaulting to <b>US Letter</b>, with <b>1.25"</b> top clearance for the pre-printed WR logo. Pallet half-sheets drop the logo reserve entirely and use a larger address + count font (that stock has no pre-printed logo). Still needs a first-print confirm against the physical sheets.'},

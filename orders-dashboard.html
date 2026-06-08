@@ -362,6 +362,10 @@
     </div>
   </div>
 
+  <div class="drawer-section" style="border-bottom:none;padding-bottom:6px">
+    <a id="packingListBtn" href="#" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:var(--orange);text-decoration:none;padding:9px 15px;border:1px solid rgba(238,98,22,.35);border-radius:7px;background:rgba(238,98,22,.07)">📦 Packing List ↗</a>
+  </div>
+
   <div class="drawer-section">
     <div class="drawer-section-title">Contact Information</div>
     <div class="field-group">
@@ -1903,6 +1907,24 @@ function filterOrders() {
 }
 
 // ── Edit Drawer ───────────────────────────────────────────────────
+// Seed Box Count + Hardware Box # from the packing list when they're still blank.
+// Box Count = total PL rows across all booths (× qty); Hardware Box # = the row #
+// of the hardware kit in the first booth's PL. Only fills empty fields so a manual
+// value or a saved shipment value is never clobbered.
+async function autofillFromPackingList(quoteNumber) {
+  try {
+    const res = await fetch('/api/packing-list/' + encodeURIComponent(quoteNumber), { credentials: 'include' });
+    if (!res.ok) return;
+    const pl = await res.json();
+    if (quoteNumber !== currentQuoteNumber) return;   // drawer moved on while we fetched
+    const t = (pl && pl.totals) || {};
+    const boxes = document.getElementById('editBoxes');
+    const hbox  = document.getElementById('editHardwareBox');
+    if (boxes && !String(boxes.value || '').trim() && Number.isFinite(t.boxCount)) boxes.value = t.boxCount;
+    if (hbox && !String(hbox.value || '').trim() && t.hardwareBox != null) hbox.value = 'Box ' + t.hardwareBox;
+  } catch (e) { /* non-fatal — leave fields as-is */ }
+}
+
 function openDrawer(quoteNumber) {
   const order = allOrders.find(o => o.quote_number === quoteNumber);
   if (!order) return;
@@ -2091,6 +2113,10 @@ function openDrawer(quoteNumber) {
   const orderUrl = `${location.origin}/o/${encodeURIComponent(quoteNumber)}${order.share_token ? '?t=' + order.share_token : ''}`;
   console.log('View Order URL:', orderUrl, 'token:', order.share_token);
   document.getElementById('viewOrderBtn').href = orderUrl;
+
+  const plBtn = document.getElementById('packingListBtn');
+  if (plBtn) plBtn.href = `${location.origin}/pl/${encodeURIComponent(quoteNumber)}`;
+  autofillFromPackingList(quoteNumber);
 
   document.getElementById('editDrawer').classList.add('open');
   document.getElementById('drawerOverlay').classList.add('open');

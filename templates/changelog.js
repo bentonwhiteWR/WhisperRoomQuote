@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.74.0', date:'June 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List generator: ADA package rule.** ADA on a quote (72 & 96 series) now resolves to the full package instead of being flagged. Swaps the standard door/frame for the ADA door set (<b>Z30</b> frame + <b>Z32</b> door + <b>Z38</b> adaptor; inner shell Z34/Z35 on E booths), shrinks the adjacent wall per the WA Type (4646: 46→43 / 41.5→38.5; 4622: 22→19 / 17.5→14.5), adds the 3-box ramp (Z62/Z63/Z64), and the <b>elevated floor</b> — corner + center + side inserts sized to the footprint, plus the model-specific perimeter strips that ship only on the standard (non-enhanced) booth. Per-model sets were derived from 14 ADA reference PLs and verified to reconstruct every one exactly (components + weight). WA Type follows the workbook default (7296 = 4622); NV variants map to S / E. L-hinge ADA door is a follow-up.'},
+      ]
+    },
+    {
       v:'1.73.0', date:'June 8, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing List generator: HX / CP / SL feature rules.** Quotes with Height Extension, Caster Plate, or Studio Lights now resolve to the right components instead of being flagged unmapped. <b>HX</b> swaps every seam seal to its Tall (T) variant, swaps the booth hardware kit to its W/HX variant, and adds the wall-height extension boxes (2 per box, sized to the walls); <b>CP</b> adds the model caster-plate panels + casters; <b>SL</b> replaces the regular lights with the sized studio lights (29 / 52). Per-model sets were derived from 52 reference PLs and verified to reconstruct every one exactly — components and weight. Works across S / E / SNV / ENV.'},

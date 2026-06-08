@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.35', date:'June 7, 2026', tag:'log',
+      changes:[
+        {t:'log', d:'**Dev log: weight-reconciliation oracle captured.** Benton noted the sum of all PL weights across booths should equal the quote weight. Today there\'s no multi-booth grand total on the PL, and PL=net vs quote=gross (off by pallets × 144). Tomorrow: add a multi-booth grand total + a Gross line using PALLETS_PER_MDL.'},
+      ]
+    },
+    {
       v:'1.72.34', date:'June 7, 2026', tag:'log',
       changes:[
         {t:'log', d:'**Dev log: closeout of the June 7 session (28 versions).** No app change — refreshed the internal DEVLOG to reflect the full final state: PL Phase 2 complete (viewer redesign, 13 feature-sub rules, hinge + foam swaps wired from the quote, Top-Down Layout tab with 3 booths seeded, pre-commit hook, 40" WA narrow swap via the Z02 bundle). Tomorrow: CP-generated PLs to unblock ADA / Studio Light / HX, plus the remaining 22 booth layouts.'},

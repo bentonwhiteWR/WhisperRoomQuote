@@ -10669,6 +10669,16 @@ ${q.accepted ? `
     return;
   }
 
+  // ── /pl/:quoteNumber/labels — shipping label print view (auth-only) ──
+  // Box / pallet labels for the saved quote; the page self-fetches /api/packing-list.
+  // Checked BEFORE the /pl/ viewer route below (which would otherwise swallow it).
+  if (/^\/pl\/.+\/labels$/.test(pathname) && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(fs.readFileSync(path.join(__dirname, 'label-sheet.html'), 'utf8'));
+    return;
+  }
+
   // ── /pl/:quoteNumber — Packing List viewer (auth-only) ──
   // Generated from the saved quote's line items: booth → BOM, multi-room.
   if (pathname.startsWith('/pl/') && req.method === 'GET') {
@@ -10715,6 +10725,23 @@ ${q.accepted ? `
       };
       const pl = packingList.generate(lineItems, opts);
       const customer = snap.customer || {};
+      // Pallet count for the label generator: Σ PALLETS_PER_MDL[booth] × room qty
+      // (NV variants inherit their S/E count, same as the /weights tool).
+      const palletForBooth = (name, model) => {
+        const at = k => (k && PALLETS_PER_MDL[k] != null) ? PALLETS_PER_MDL[k] : null;
+        const nv = s => String(s || '').replace(/\bSNV$/, 'S').replace(/\bENV$/, 'E');
+        const p = at(name) ?? at(model) ?? at(nv(name)) ?? at(nv(model));
+        return p || 0;
+      };
+      const palletCount = (pl.rooms || []).reduce((s, r) => s + palletForBooth(r.boothName, r.matchedModel) * (r.qty || 1), 0);
+      // Ship-to for the label generator (full address; the PL viewer only needs name/company).
+      const shipTo = {
+        company:   snap.company || customer.company || '',
+        firstName: customer.firstName || '', lastName: customer.lastName || '',
+        address:   customer.address || '',  city:  customer.city || '',
+        state:     customer.state || '',    zip:   customer.zip || '',
+        country:   customer.country || '',  phone: customer.phone || '',
+      };
       json({
         quoteNumber,
         meta: {
@@ -10724,6 +10751,8 @@ ${q.accepted ? `
           createdAt: createdAt || null,
         },
         ...pl,
+        shipTo,
+        palletCount,
         components: packingList.componentDict(),
       });
     } catch (e) {

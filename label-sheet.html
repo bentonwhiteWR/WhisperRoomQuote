@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shipping Labels — WhisperRoom</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ---- Screen chrome (hidden on print) ---- */
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f0f0;color:#1a1a1a;-webkit-font-smoothing:antialiased}
+  .controls{position:sticky;top:0;z-index:20;background:#1a1a1a;color:#fff;padding:14px 18px;display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;box-shadow:0 2px 12px rgba(0,0,0,.18)}
+  .controls .grp{display:flex;flex-direction:column;gap:4px}
+  .controls label{font-size:9px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#bbb}
+  .controls textarea,.controls input,.controls select{font-family:inherit;font-size:13px;border:1px solid #3a3a3a;border-radius:6px;padding:6px 9px;background:#262626;color:#fff}
+  .controls textarea{width:240px;height:96px;resize:vertical;line-height:1.4}
+  .controls input[type=number]{width:78px}
+  .controls .go{margin-left:auto;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+  .controls .go button{padding:10px 20px;background:#ee6216;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;font-family:inherit}
+  .controls .go button:hover{background:#d4540c}
+  .controls .back{font-size:11px;color:#bbb;text-decoration:none;font-weight:600}
+  .controls .back:hover{color:#fff}
+  .note{font-size:10.5px;color:#f2b07a;max-width:230px;line-height:1.4}
+  .typetabs{display:flex;gap:6px}
+  .typetab{padding:6px 12px;font-size:11px;font-weight:700;border:1px solid #3a3a3a;border-radius:6px;background:#262626;color:#bbb;cursor:pointer;text-transform:uppercase;letter-spacing:.04em;text-decoration:none}
+  .typetab.active{background:#ee6216;color:#fff;border-color:#ee6216}
+  .sheets{padding:26px 0 60px}
+  .meta{max-width:8.27in;margin:0 auto 14px;font-size:12px;color:#666}
+
+  /* ---- The label sheets (also the print surface) ---- */
+  .sheet{background:#fff;margin:0 auto 22px;box-shadow:0 4px 22px rgba(0,0,0,.12)}
+  body.paper-a4 .sheet{width:8.27in;min-height:11.69in}
+  body.paper-letter .sheet{width:8.5in;min-height:11in}
+  .sheet .grid{display:grid;width:100%}
+  /* Box: 8-up, 2 cols × 4 rows. Avery 4"w × 2.5"h address labels (2×4=8", 4×2.5=10"). */
+  .sheet.box .grid{grid-template-columns:4in 4in;column-gap:0;grid-auto-rows:2.5in}
+  body.paper-letter .sheet.box{padding:.5in .25in 0 .25in}   /* 0.25 side margins, 0.5 top on Letter */
+  body.paper-a4 .sheet.box{padding:.84in .135in 0 .135in}
+  /* Pallet: 2-up half-sheet, full width × half height. NO pre-printed logo — bigger font. */
+  .sheet.pallet{padding:0}
+  .sheet.pallet .grid{grid-template-columns:1fr}
+  body.paper-letter .sheet.pallet .grid{grid-auto-rows:5.5in}
+  body.paper-a4 .sheet.pallet .grid{grid-auto-rows:5.845in}
+
+  .label{display:flex;flex-direction:column;overflow:hidden;padding:0 .22in}
+  .label.blank{background:transparent}
+  .label .logo-space{height:1.25in;flex:0 0 auto}        /* clears the PRE-PRINTED WR logo on box stock */
+  .label .addr{flex:1 1 auto;font-size:11.5px;font-weight:600;line-height:1.3;white-space:pre-line;color:#111}
+  .label .count{flex:0 0 auto;font-size:11px;font-weight:800;letter-spacing:.03em;padding-bottom:.13in;color:#111}
+  /* Pallet half-sheets: no logo reserve, big address + count. */
+  .sheet.pallet .label{padding:.45in .55in}
+  .sheet.pallet .label .logo-space{display:none}
+  .sheet.pallet .label .addr{font-size:25px;line-height:1.4}
+  .sheet.pallet .label .count{font-size:18px;padding-bottom:0;margin-top:.3in}
+
+  .loading{padding:60px;text-align:center;color:#888}
+
+  @media print {
+    .controls,.meta{display:none !important}
+    body{background:#fff}
+    .sheets{padding:0}
+    .sheet{box-shadow:none;margin:0;page-break-after:always}
+    .sheet:last-child{page-break-after:auto}
+  }
+</style>
+<style id="pageStyle">@page{size:Letter;margin:0}</style>
+</head>
+<body class="paper-letter">
+  <div class="controls no-print">
+    <a class="back" id="backLink" href="#">&larr; Packing List</a>
+    <div class="typetabs">
+      <a class="typetab" id="tabBox" href="#">📦 Box</a>
+      <a class="typetab" id="tabPallet" href="#">🟫 Pallet</a>
+    </div>
+    <div class="grp">
+      <label>Ship To</label>
+      <textarea id="addr" oninput="render()"></textarea>
+    </div>
+    <div class="grp">
+      <label id="countLabel">Box Count</label>
+      <input type="number" id="count" min="0" value="0" oninput="render()">
+    </div>
+    <div class="grp">
+      <label>Start Label</label>
+      <input type="number" id="start" min="1" value="1" oninput="render()">
+    </div>
+    <div class="grp">
+      <label>Paper</label>
+      <select id="paper" onchange="setPaper()">
+        <option value="Letter">US Letter</option>
+        <option value="A4">A4</option>
+      </select>
+    </div>
+    <div class="go">
+      <button onclick="window.print()">🖨 Print</button>
+      <div class="note">Print at <b>100% scale</b>, margins <b>None</b> — not "Fit to page" — so it lands on the pre-printed stock.</div>
+    </div>
+  </div>
+
+  <div class="sheets" id="sheets"><div class="loading">Loading…</div></div>
+
+<script>
+  const m = location.pathname.match(/^\/pl\/(.+)\/labels$/);
+  const quoteNumber = decodeURIComponent(m ? m[1] : '').replace(/\/+$/, '');
+  const params = new URLSearchParams(location.search);
+  let type = params.get('type') === 'pallet' ? 'pallet' : 'box';
+  let DATA = null;
+
+  const perPage = () => type === 'box' ? 8 : 2;
+  const maxStart = () => type === 'box' ? 8 : 2;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  function formatShipTo(s) {
+    s = s || {};
+    const name = [s.firstName, s.lastName].filter(Boolean).join(' ');
+    const cityLine = [s.city, [s.state, s.zip].filter(Boolean).join(' ').trim()].filter(Boolean).join(', ');
+    const country = s.country && !/^(usa|u\.?s\.?a?\.?|united states)$/i.test(String(s.country).trim()) ? s.country : '';
+    return [s.company, name, s.address, cityLine, country, s.phone].filter(Boolean).join('\n');
+  }
+
+  function syncType() {
+    document.getElementById('tabBox').classList.toggle('active', type === 'box');
+    document.getElementById('tabPallet').classList.toggle('active', type === 'pallet');
+    document.getElementById('countLabel').textContent = type === 'box' ? 'Box Count' : 'Pallet Count';
+    document.title = (type === 'box' ? 'Box' : 'Pallet') + ' Labels — ' + quoteNumber;
+    const startEl = document.getElementById('start');
+    startEl.max = maxStart();
+    if (parseInt(startEl.value, 10) > maxStart()) startEl.value = 1;
+  }
+
+  function setType(t) {
+    type = t;
+    history.replaceState(null, '', location.pathname + '?type=' + t);
+    syncType();
+    if (DATA) document.getElementById('count').value = (t === 'box' ? (DATA.totals && DATA.totals.boxCount) : DATA.palletCount) || 0;
+    render();
+  }
+
+  function setPaper() {
+    const sz = document.getElementById('paper').value;
+    document.getElementById('pageStyle').textContent = '@page{size:' + sz + ';margin:0}';
+    document.body.className = 'paper-' + sz.toLowerCase();
+  }
+
+  function render() {
+    if (!DATA) return;
+    const M = Math.max(0, parseInt(document.getElementById('count').value, 10) || 0);
+    let start = parseInt(document.getElementById('start').value, 10) || 1;
+    start = Math.min(maxStart(), Math.max(1, start));
+    const skip = start - 1;
+    const addrHtml = esc(document.getElementById('addr').value).replace(/\n/g, '<br>');
+    const word = type === 'box' ? 'Box' : 'Pallet';
+    const per = perPage();
+    const pages = Math.max(1, Math.ceil((skip + M) / per));
+    let html = '', slot = 0;
+    for (let p = 0; p < pages; p++) {
+      html += '<div class="sheet ' + type + '"><div class="grid">';
+      for (let i = 0; i < per; i++) {
+        const filledIdx = slot - skip;
+        if (slot >= skip && filledIdx < M) {
+          html += '<div class="label"><div class="logo-space"></div><div class="addr">' + addrHtml +
+                  '</div><div class="count">' + word + ' ' + (filledIdx + 1) + ' of ' + M + '</div></div>';
+        } else {
+          html += '<div class="label blank"></div>';
+        }
+        slot++;
+      }
+      html += '</div></div>';
+    }
+    document.getElementById('sheets').innerHTML = html;
+  }
+
+  async function load() {
+    try {
+      const res = await fetch('/api/packing-list/' + encodeURIComponent(quoteNumber), { credentials: 'include' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      DATA = await res.json();
+      document.getElementById('addr').value = formatShipTo(DATA.shipTo);
+      document.getElementById('count').value = (type === 'box' ? (DATA.totals && DATA.totals.boxCount) : DATA.palletCount) || 0;
+      const meta = DATA.meta || {};
+      document.getElementById('backLink').href = '/pl/' + encodeURIComponent(quoteNumber);
+      render();
+    } catch (e) {
+      document.getElementById('sheets').innerHTML = '<div class="loading">Could not load packing list for ' + esc(quoteNumber) + ' (' + esc(e.message) + ')</div>';
+    }
+  }
+
+  document.getElementById('tabBox').addEventListener('click', e => { e.preventDefault(); setType('box'); });
+  document.getElementById('tabPallet').addEventListener('click', e => { e.preventDefault(); setType('pallet'); });
+  syncType();
+  load();
+</script>
+</body>
+</html>

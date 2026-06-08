@@ -124,6 +124,8 @@
   <a class="back-link no-print" href="/deals">&larr; Deals</a>
   <div class="print-bar no-print">
     <button onclick="loadPL()">&#8635; Refresh</button>
+    <button onclick="openLabels('box')" title="Print box shipping labels">&#127991; Box Labels</button>
+    <button onclick="openLabels('pallet')" title="Print pallet shipping labels">&#127991; Pallet Labels</button>
     <button onclick="window.print()" style="background:#ee6216">&#128424; Print</button>
   </div>
 
@@ -133,6 +135,11 @@
   let DATA = null;
   let COMPONENTS = {};
   const quoteNumber = decodeURIComponent((location.pathname.match(/\/pl\/(.+)$/) || [])[1] || '').replace(/\/+$/, '');
+
+  // Open the shipping-label print view (box or pallet) for this quote in a new tab.
+  function openLabels(t) {
+    window.open('/pl/' + encodeURIComponent(quoteNumber) + '/labels?type=' + t, '_blank', 'noopener');
+  }
 
   const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const fmtN = (n, d=2) => n==null ? '—' : Number(n).toLocaleString(undefined,{minimumFractionDigits:d, maximumFractionDigits:d});

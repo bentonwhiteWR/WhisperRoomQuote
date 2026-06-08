@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.76.1', date:'June 8, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Label geometry set to the real Avery stock (2.5"×4").** Box labels are now 4"w × 2.5"h cells (8-up, 2×4) defaulting to <b>US Letter</b>, with <b>1.25"</b> top clearance for the pre-printed WR logo. Pallet half-sheets drop the logo reserve entirely and use a larger address + count font (that stock has no pre-printed logo). Still needs a first-print confirm against the physical sheets.'},
+      ]
+    },
+    {
       v:'1.76.0', date:'June 8, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Shipping Label Generator on the Packing List page.** Two new buttons on the PL viewer — 🏷 <b>Box Labels</b> and <b>Pallet Labels</b> — open a print view (<code>/pl/:quote/labels</code>) that replaces the Word/VBA label macro. Ship-to address pre-fills from the deal, box count pre-fills to the PL row count (each row = one box), pallet count from the per-model pallet map — all overridable. <b>Start Label</b> begins the run on the first unused slot of a partially-used sheet (box 1–8 / pallet 1–2). Box = 8-up (2×4), pallet = 2-up half-sheet, each stamped <b>Box/Pallet N of M</b> with blank top space for the pre-printed WR logo. Direct browser print (no Puppeteer); A4 / Letter toggle; on-screen reminder to print at 100% scale, margins None. The PL API now also returns shipTo + palletCount. NOTE: alignment vs the real pre-printed stock still needs a first-print tune (A4 vs Letter, top-whitespace height).'},

@@ -32,20 +32,26 @@
   body.paper-a4 .sheet{width:8.27in;min-height:11.69in}
   body.paper-letter .sheet{width:8.5in;min-height:11in}
   .sheet .grid{display:grid;width:100%}
-  /* Box: 8-up, 2 cols × 4 rows. Geometry from "8 Shipping Labels WR.docm". */
-  .sheet.box{padding:.51in .18in 0 .18in}
-  .sheet.box .grid{grid-template-columns:3.9in 3.9in;column-gap:.16in;grid-auto-rows:2.8in}
-  /* Pallet: 2-up half-sheet, 1 col × 2 rows. New design (no source file). */
-  .sheet.pallet{padding:.51in .18in 0 .18in}
-  .sheet.pallet .grid{grid-template-columns:1fr;grid-auto-rows:5.5in}
+  /* Box: 8-up, 2 cols × 4 rows. Avery 4"w × 2.5"h address labels (2×4=8", 4×2.5=10"). */
+  .sheet.box .grid{grid-template-columns:4in 4in;column-gap:0;grid-auto-rows:2.5in}
+  body.paper-letter .sheet.box{padding:.5in .25in 0 .25in}   /* 0.25 side margins, 0.5 top on Letter */
+  body.paper-a4 .sheet.box{padding:.84in .135in 0 .135in}
+  /* Pallet: 2-up half-sheet, full width × half height. NO pre-printed logo — bigger font. */
+  .sheet.pallet{padding:0}
+  .sheet.pallet .grid{grid-template-columns:1fr}
+  body.paper-letter .sheet.pallet .grid{grid-auto-rows:5.5in}
+  body.paper-a4 .sheet.pallet .grid{grid-auto-rows:5.845in}
 
   .label{display:flex;flex-direction:column;overflow:hidden;padding:0 .22in}
   .label.blank{background:transparent}
-  .label .logo-space{height:1in;flex:0 0 auto}          /* reserves room for the PRE-PRINTED WR logo */
-  .label .addr{flex:1 1 auto;font-size:13.5px;font-weight:600;line-height:1.45;white-space:pre-line;color:#111}
-  .sheet.pallet .label .addr{font-size:17px}
-  .label .count{flex:0 0 auto;font-size:12px;font-weight:800;letter-spacing:.03em;padding-bottom:.16in;color:#111}
-  .sheet.pallet .label .count{font-size:15px}
+  .label .logo-space{height:1.25in;flex:0 0 auto}        /* clears the PRE-PRINTED WR logo on box stock */
+  .label .addr{flex:1 1 auto;font-size:11.5px;font-weight:600;line-height:1.3;white-space:pre-line;color:#111}
+  .label .count{flex:0 0 auto;font-size:11px;font-weight:800;letter-spacing:.03em;padding-bottom:.13in;color:#111}
+  /* Pallet half-sheets: no logo reserve, big address + count. */
+  .sheet.pallet .label{padding:.45in .55in}
+  .sheet.pallet .label .logo-space{display:none}
+  .sheet.pallet .label .addr{font-size:25px;line-height:1.4}
+  .sheet.pallet .label .count{font-size:18px;padding-bottom:0;margin-top:.3in}
 
   .loading{padding:60px;text-align:center;color:#888}
 
@@ -57,9 +63,9 @@
     .sheet:last-child{page-break-after:auto}
   }
 </style>
-<style id="pageStyle">@page{size:A4;margin:0}</style>
+<style id="pageStyle">@page{size:Letter;margin:0}</style>
 </head>
-<body class="paper-a4">
+<body class="paper-letter">
   <div class="controls no-print">
     <a class="back" id="backLink" href="#">&larr; Packing List</a>
     <div class="typetabs">
@@ -81,8 +87,8 @@
     <div class="grp">
       <label>Paper</label>
       <select id="paper" onchange="setPaper()">
-        <option value="A4">A4</option>
         <option value="Letter">US Letter</option>
+        <option value="A4">A4</option>
       </select>
     </div>
     <div class="go">

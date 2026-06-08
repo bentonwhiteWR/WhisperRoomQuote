@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.76.0', date:'June 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Shipping Label Generator on the Packing List page.** Two new buttons on the PL viewer — 🏷 <b>Box Labels</b> and <b>Pallet Labels</b> — open a print view (<code>/pl/:quote/labels</code>) that replaces the Word/VBA label macro. Ship-to address pre-fills from the deal, box count pre-fills to the PL row count (each row = one box), pallet count from the per-model pallet map — all overridable. <b>Start Label</b> begins the run on the first unused slot of a partially-used sheet (box 1–8 / pallet 1–2). Box = 8-up (2×4), pallet = 2-up half-sheet, each stamped <b>Box/Pallet N of M</b> with blank top space for the pre-printed WR logo. Direct browser print (no Puppeteer); A4 / Letter toggle; on-screen reminder to print at 100% scale, margins None. The PL API now also returns shipTo + palletCount. NOTE: alignment vs the real pre-printed stock still needs a first-print tune (A4 vs Letter, top-whitespace height).'},
+      ]
+    },
+    {
       v:'1.75.0', date:'June 8, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing List in the Orders drawer + box / hardware carryover.** The order drawer on <code>/orders</code> now has a <b>📦 Packing List</b> link at the top that opens the PL viewer in a new tab. <b>Box Count</b> and <b>Hardware Box #</b> auto-fill from the packing list when blank: box count = the total number of PL rows across all booths (each row is one numbered box) × booth qty; hardware box # = the row number of the booth hardware kit in the first booth PL. The generator now returns <code>totals.boxCount</code> + <code>totals.hardwareBox</code> (and per-room <code>boxCount</code>). Auto-fill only seeds empty fields, so a manual or saved value is never overwritten. Next: two-way S/N sync between the PL viewer and the order serial-numbers field.'},

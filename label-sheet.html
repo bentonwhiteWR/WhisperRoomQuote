@@ -51,14 +51,12 @@
   .label.blank{background:transparent}
   .label .logo-space{height:1.05in;flex:0 0 auto}        /* clears the PRE-PRINTED WR logo on box stock (~1 line higher than 1.25) */
   .label .addr{flex:1 1 auto;font-size:11.5px;font-weight:600;line-height:1.3;white-space:pre-line;color:#111}
-  .label .count{flex:0 0 auto;font-size:11px;font-weight:800;letter-spacing:.03em;padding-bottom:.26in;color:#111}
-  .label .cband{position:absolute;left:0;right:0;bottom:0;height:.18in}    /* per-booth highlighter color bar */
+  .label .count{flex:0 0 auto;align-self:flex-start;display:inline-block;font-size:11px;font-weight:800;letter-spacing:.03em;padding:1px 5px;margin-bottom:.12in;color:#111;border-radius:2px}   /* per-booth color highlights THIS row */
   /* Pallet half-sheets: no logo reserve, big address + count, centered both axes. */
   .sheet.pallet .label{padding:.4in .55in;justify-content:center;align-items:center;text-align:center}
   .sheet.pallet .label .logo-space{display:none}
   .sheet.pallet .label .addr{flex:0 0 auto;font-size:28px;line-height:1.4}
-  .sheet.pallet .label .count{font-size:18px;padding-bottom:0;margin-top:.14in}
-  .sheet.pallet .label .cband{height:.32in}
+  .sheet.pallet .label .count{font-size:18px;align-self:center;padding:2px 8px;margin:.14in 0 0}
 
   .loading{padding:60px;text-align:center;color:#888}
 
@@ -123,7 +121,7 @@
   // the client can match components to the right booth. Defaults to the booth's
   // color by room index; overridable via the swatches.
   const COLORS = ['#ffe14d','#9be15d','#ff9ec4','#ffb04d','#5ec8ff','#c79bff','#7fe0d0','#ff8a7a'];
-  let labelColor = roomIdx != null ? COLORS[roomIdx % COLORS.length] : COLORS[0];
+  let labelColor = '';   // no color by default — pick a swatch to highlight this booth's count row
 
   const perPage = () => type === 'box' ? 8 : 2;
   const maxStart = () => type === 'box' ? 8 : 2;
@@ -205,9 +203,8 @@
         const filledIdx = slot - skip;
         if (slot >= skip && filledIdx < M) {
           html += '<div class="label"><div class="logo-space"></div><div class="addr">' + addrHtml +
-                  '</div><div class="count">' + word + ' ' + (filledIdx + 1) + ' of ' + M + '</div>' +
-                  (labelColor ? '<div class="cband" style="background:' + labelColor + '"></div>' : '') +
-                  '</div>';
+                  '</div><div class="count"' + (labelColor ? ' style="background:' + labelColor + '"' : '') + '>' +
+                  word + ' ' + (filledIdx + 1) + ' of ' + M + '</div></div>';
         } else {
           html += '<div class="label blank"></div>';
         }

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.78.1', date:'June 8, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Label color now highlights the count row.** The per-booth highlighter color now colors the <b>Box/Pallet N of M</b> line itself (as a highlighted chip) instead of a separate bottom band. <b>Default is no color</b> — pick a swatch to color a given booth.'},
+      ]
+    },
+    {
       v:'1.78.0', date:'June 8, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Two-way Serial Number sync (Packing List ↔ Orders drawer).** The S/N field on each packing-list booth now reads from and writes to the order serial-numbers field instead of browser-local storage. Each booth maps to one line (booth 1 → line 1, booth 2 → line 2, …); editing a serial in the PL <b>auto-saves</b> (debounced) to <code>order_data.serialNumber</code> through the same path as the drawer Save Changes, mirroring to the HubSpot deal description. The Orders-drawer Serial Numbers box and the PL now stay in sync both directions, and a status line shows Saving / Saved. (Serials persist once the quote is an actual order.)'},

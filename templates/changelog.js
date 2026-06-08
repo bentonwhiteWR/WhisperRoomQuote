@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.78.0', date:'June 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Two-way Serial Number sync (Packing List ↔ Orders drawer).** The S/N field on each packing-list booth now reads from and writes to the order serial-numbers field instead of browser-local storage. Each booth maps to one line (booth 1 → line 1, booth 2 → line 2, …); editing a serial in the PL <b>auto-saves</b> (debounced) to <code>order_data.serialNumber</code> through the same path as the drawer Save Changes, mirroring to the HubSpot deal description. The Orders-drawer Serial Numbers box and the PL now stay in sync both directions, and a status line shows Saving / Saved. (Serials persist once the quote is an actual order.)'},
+      ]
+    },
+    {
       v:'1.77.0', date:'June 8, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing List per-booth split + per-booth labels + label tweaks.** A booth line with <b>quantity N now generates N separate packing lists</b> (one per physical booth — each its own page, S/N, and label set) instead of one ×N page; fixes multi-quantity orders like 5× the same model. The 🏷 Box / Pallet Label buttons now sit <b>on each PL page</b> and generate labels for that booth only (no longer summed across the whole order); the count shown is per booth. New <b>per-booth highlighter color</b> on the labels — a color band, auto-assigned per booth and pickable via swatches — so the client can match components to the right booth. Box labels nudged up ~1 line (1.05in clearance); pallet address font bumped to 28px. The PL API now returns per-room boxCount + palletCount.'},

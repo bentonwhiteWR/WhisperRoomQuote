@@ -10743,6 +10743,14 @@ ${q.accepted ? `
         state:     customer.state || '',    zip:   customer.zip || '',
         country:   customer.country || '',  phone: customer.phone || '',
       };
+      // Serial numbers live on the order (order_data.serialNumber) — return them so
+      // the PL viewer can seed per-booth S/N (booth ri ↔ line ri) and stay two-way
+      // with the Orders drawer. Empty for a quote that isn't an order yet.
+      let serialNumber = '';
+      try {
+        const or = await db.query('SELECT order_data FROM orders WHERE quote_number = $1', [quoteNumber]);
+        if (or.rows[0] && or.rows[0].order_data) serialNumber = or.rows[0].order_data.serialNumber || '';
+      } catch (e) { /* no order row yet */ }
       json({
         quoteNumber,
         meta: {
@@ -10754,6 +10762,7 @@ ${q.accepted ? `
         ...pl,
         shipTo,
         palletCount,
+        serialNumber,
         components: packingList.componentDict(),
       });
     } catch (e) {

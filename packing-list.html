@@ -123,6 +123,7 @@
 <body>
   <a class="back-link no-print" href="/deals">&larr; Deals</a>
   <div class="print-bar no-print">
+    <span id="snStatus" style="font-size:11px;font-weight:700;align-self:center;color:#888"></span>
     <button onclick="loadPL()">&#8635; Refresh</button>
     <button onclick="window.print()" style="background:#ee6216">&#128424; Print</button>
   </div>
@@ -132,6 +133,8 @@
 <script>
   let DATA = null;
   let COMPONENTS = {};
+  let serialLines = [];   // order_data.serialNumber split by line; booth ri ↔ line ri (two-way w/ Orders drawer)
+  let _snTimer = null;
   const quoteNumber = decodeURIComponent((location.pathname.match(/\/pl\/(.+)$/) || [])[1] || '').replace(/\/+$/, '');
 
   // Open the shipping-label print view for a SINGLE booth (room index) in a new tab.
@@ -567,6 +570,7 @@
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
       DATA = d; COMPONENTS = d.components || {};
+      serialLines = String(DATA.serialNumber || '').split('\n');   // seed per-booth S/N from the order
       render();
     } catch(e){
       document.getElementById('rooms').innerHTML = '<div class="pl-page"><div class="empty">Failed to load: ' + esc(e.message) + '</div></div>';
@@ -669,7 +673,7 @@
       }
 
       const t = roomTotals(rm);
-      const savedSn = localStorage.getItem(snKey(ri)) || '';
+      const savedSn = serialLines[ri] || '';   // booth ri ↔ line ri of order_data.serialNumber
 
       const body = (rm.lines||[]).map((l,li)=>{
         const lM = inToM(l.L), wM = inToM(l.W), tM = inToM(l.T);
@@ -768,7 +772,31 @@
       + f.map(x=>'<span class="ft">' + esc(x.name) + (x.qty>1?' &times;' + x.qty:'') + '</span>').join('') + '</div>';
   }
 
-  function saveSn(ri, val){ try { localStorage.setItem(snKey(ri), val); } catch(e){} }
+  // S/N two-way sync: each booth's serial maps to line `ri` of the order's
+  // serialNumber field. Debounced save reuses PATCH /api/orders (the SAME path
+  // as the Orders-drawer "Save Changes"), so it persists to order_data.serialNumber
+  // and mirrors to the HubSpot deal description. Reads back on next load.
+  function saveSn(ri, val){
+    serialLines[ri] = val;
+    clearTimeout(_snTimer);
+    setSnStatus('saving');
+    _snTimer = setTimeout(flushSn, 800);
+  }
+  async function flushSn(){
+    try {
+      const res = await fetch('/api/orders/' + encodeURIComponent(quoteNumber), {
+        method:'PATCH', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ serialNumber: serialLines.join('\n') })
+      });
+      setSnStatus(res.ok ? 'saved' : 'error');
+    } catch(e){ setSnStatus('error'); }
+  }
+  function setSnStatus(s){
+    const el = document.getElementById('snStatus');
+    if (!el) return;
+    el.textContent = s==='saving' ? 'Saving S/N…' : s==='saved' ? 'S/N saved ✓' : 'S/N not saved (order only)';
+    el.style.color = s==='error' ? '#b91c1c' : s==='saved' ? '#16a34a' : '#888';
+  }
   function saveDate(val){ try { localStorage.setItem(dateKey(), val); } catch(e){} }
   function rmRow(ri, li){ DATA.rooms[ri].lines.splice(li,1); render(); }
   function addRow(ri){

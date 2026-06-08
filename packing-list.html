@@ -301,24 +301,34 @@
          + 'fill="url(#foamPattern)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>';
 
     // Small overlay glyphs that mark slot type at a glance. Drawn ON TOP of
-    // the dark panel fill. For horizontal walls (orientation='h'), the icons
-    // sit inside the wall thickness; for vertical walls, same idea rotated.
+    // the dark panel fill. Icons sit at the SLOT EDGES (not the center) so
+    // they don't block the size label that's rendered at the slot midpoint.
     function slotOverlay(kind, x, y, w, h, orientation) {
       const cx = x + w / 2, cy = y + h / 2;
       let out = '';
       if (kind === 'VNT') {
-        // Two small circles: intake + exhaust ducts (the vent assembly)
-        const r = Math.min(w, h) * 0.18;
-        const ox = orientation === 'h' ? r * 1.4 : 0;
-        const oy = orientation === 'h' ? 0 : r * 1.4;
-        out += '<circle cx="' + (cx - ox) + '" cy="' + (cy - oy) + '" r="' + r + '" fill="#0a0a0a" stroke="#444" stroke-width="0.8"/>';
-        out += '<circle cx="' + (cx + ox) + '" cy="' + (cy + oy) + '" r="' + r + '" fill="#0a0a0a" stroke="#444" stroke-width="0.8"/>';
+        // Two square intake/exhaust ducts at the slot ends — they read as
+        // "vent assembly here" without crowding the centered size label.
+        const sq = Math.min(w, h) * 0.4;
+        const pad = Math.min(w, h) * 0.35;
+        if (orientation === 'h') {
+          out += '<rect x="' + (x + pad - sq/2) + '" y="' + (cy - sq/2) + '" width="' + sq + '" height="' + sq + '" fill="#0a0a0a" stroke="#555" stroke-width="0.5"/>';
+          out += '<rect x="' + (x + w - pad - sq/2) + '" y="' + (cy - sq/2) + '" width="' + sq + '" height="' + sq + '" fill="#0a0a0a" stroke="#555" stroke-width="0.5"/>';
+        } else {
+          out += '<rect x="' + (cx - sq/2) + '" y="' + (y + pad - sq/2) + '" width="' + sq + '" height="' + sq + '" fill="#0a0a0a" stroke="#555" stroke-width="0.5"/>';
+          out += '<rect x="' + (cx - sq/2) + '" y="' + (y + h - pad - sq/2) + '" width="' + sq + '" height="' + sq + '" fill="#0a0a0a" stroke="#555" stroke-width="0.5"/>';
+        }
       } else if (kind === 'CBL') {
-        // Two tiny cable holes
-        const r = Math.min(w, h) * 0.12;
-        const off = orientation === 'h' ? w * 0.18 : h * 0.18;
-        out += '<circle cx="' + (orientation === 'h' ? cx - off : cx) + '" cy="' + (orientation === 'h' ? cy : cy - off) + '" r="' + r + '" fill="#0a0a0a"/>';
-        out += '<circle cx="' + (orientation === 'h' ? cx + off : cx) + '" cy="' + (orientation === 'h' ? cy : cy + off) + '" r="' + r + '" fill="#0a0a0a"/>';
+        // Two cable-passage holes at the slot ends
+        const r = Math.min(w, h) * 0.16;
+        const pad = Math.min(w, h) * 0.35;
+        if (orientation === 'h') {
+          out += '<circle cx="' + (x + pad) + '" cy="' + cy + '" r="' + r + '" fill="#0a0a0a"/>';
+          out += '<circle cx="' + (x + w - pad) + '" cy="' + cy + '" r="' + r + '" fill="#0a0a0a"/>';
+        } else {
+          out += '<circle cx="' + cx + '" cy="' + (y + pad) + '" r="' + r + '" fill="#0a0a0a"/>';
+          out += '<circle cx="' + cx + '" cy="' + (y + h - pad) + '" r="' + r + '" fill="#0a0a0a"/>';
+        }
       } else if (kind === 'WDO') {
         // Lighter rectangular "glass" inset within the panel
         const m = Math.min(w, h) * 0.25;
@@ -385,13 +395,15 @@
         // Inner highlight stroke for depth
         svg += '<rect x="' + (x + 1) + '" y="' + (baseY + 1) + '" width="' + (slotW - 2) + '" height="' + (t - 2) + '" '
              + 'fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>';
-        // Type glyph
+        // Type glyph (drawn at slot ends so the size label stays clear)
         svg += slotOverlay(kind, x, baseY, slotW, t, 'h');
         const cx = x + slotW / 2;
-        // Code + pack labels outside the panel
+        // VNT on the N wall has the duct protrusion drawn ABOVE the wall
+        // (~16 px tall), so push that slot's labels higher to clear them.
+        const isVentOnN = (side === 'N' && kind === 'VNT');
         if (placed) {
-          const codeY = labelAbove ? (baseY - 18) : (baseY + t + 16);
-          const packY = labelAbove ? (baseY - 6)  : (baseY + t + 28);
+          const codeY = labelAbove ? (baseY - (isVentOnN ? 40 : 18)) : (baseY + t + 16);
+          const packY = labelAbove ? (baseY - (isVentOnN ? 26 : 6))  : (baseY + t + 28);
           svg += '<text x="' + cx + '" y="' + codeY + '" text-anchor="middle" '
                + 'font-size="11" font-weight="800" fill="#1a1a1a" letter-spacing="0.02em">' + esc(placed.code) + '</text>';
           svg += '<text x="' + cx + '" y="' + packY + '" text-anchor="middle" '
@@ -451,8 +463,9 @@
     drawVerticalWall('E', x0 + W - t, false);
 
     // Vent-system assembly protrudes outside the wall that holds the VNT slot
-    // (matches the spec-sheet's ventilation duct + RFU diagram). Walk N's
-    // slots; the first VNT-classified one gets the duct + RFU drawn above it.
+    // (matches the spec-sheet's ventilation duct diagram). Walk N's slots;
+    // the first VNT-classified one gets a pair of square duct boxes drawn
+    // above it. Sized + spread so the code/pack labels fit between them.
     (function ventProtrusion() {
       const nWall = layout.walls.N;
       if (!nWall) return;
@@ -464,14 +477,16 @@
         if (placed && classifyWall(placed.pack) === 'VNT') {
           const cx = x0 + t + offset + slotW / 2;
           const yBase = y0;
-          const ductW = 14, ductH = 28, gap = 10;
-          svg += '<rect x="' + (cx - ductW - gap / 2) + '" y="' + (yBase - ductH) + '" '
-               + 'width="' + ductW + '" height="' + ductH + '" '
+          const sq = 14;          // square side
+          const halfGap = 24;     // half the gap between inner edges → labels fit between
+          // Left duct
+          svg += '<rect x="' + (cx - halfGap - sq) + '" y="' + (yBase - sq) + '" '
+               + 'width="' + sq + '" height="' + sq + '" '
                + 'fill="#1a1a1a" stroke="#000" stroke-width="0.8" rx="1"/>';
-          svg += '<rect x="' + (cx + gap / 2) + '" y="' + (yBase - ductH) + '" '
-               + 'width="' + ductW + '" height="' + ductH + '" '
+          // Right duct
+          svg += '<rect x="' + (cx + halfGap) + '" y="' + (yBase - sq) + '" '
+               + 'width="' + sq + '" height="' + sq + '" '
                + 'fill="#1a1a1a" stroke="#000" stroke-width="0.8" rx="1"/>';
-          svg += '<circle cx="' + (cx + gap / 2 + ductW / 2) + '" cy="' + (yBase - ductH - 4) + '" r="3" fill="#ee6216"/>';
           return;
         }
         offset += slotW;

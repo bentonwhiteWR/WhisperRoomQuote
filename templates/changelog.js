@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.72.37', date:'June 7, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Top-Down Layout: vent visuals readable, ducts square + spread.** Outside vent protrusion is now two <b>square 14×14</b> duct boxes with a 48 px gap between them — the slot\'s code + pack labels fit cleanly in between instead of disappearing behind the ducts. VNT slot labels also move up to <code>y0 − 40 / y0 − 26</code> when on the back wall, so they clear the duct height entirely. Inside-panel slot glyphs (VNT squares, CBL passage holes) now sit at the SLOT ENDS instead of the center, leaving the size label clearly visible. Removed the stray orange dot above the right duct (was over the label area).'},
+      ]
+    },
+    {
       v:'1.72.36', date:'June 7, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Top-Down Layout: WhisperRoom-styled visuals.** Panels now read like the real product instead of color-coded blocks: all walls are booth-dark, the door is the one orange accent (WR brand), vent slots get an intake/exhaust duct icon, cable slots get small passage holes, window slots show a lighter glass inset. The actual <b>ventilation system protrudes outside the back wall</b> as a small assembly w/ an orange RFU dot (mirrors the spec-sheet diagrams). DRFRM slots get a <b>door swing arc</b> drawn into the interior so the rep can sanity-check L/R hinge at a glance. Interior gets a subtle foam-pattern floor. Whole SVG sits on a soft gradient with a drop shadow, like the 2023 spec sheets.'},

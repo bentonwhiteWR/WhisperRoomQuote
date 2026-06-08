@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.77.0', date:'June 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List per-booth split + per-booth labels + label tweaks.** A booth line with <b>quantity N now generates N separate packing lists</b> (one per physical booth — each its own page, S/N, and label set) instead of one ×N page; fixes multi-quantity orders like 5× the same model. The 🏷 Box / Pallet Label buttons now sit <b>on each PL page</b> and generate labels for that booth only (no longer summed across the whole order); the count shown is per booth. New <b>per-booth highlighter color</b> on the labels — a color band, auto-assigned per booth and pickable via swatches — so the client can match components to the right booth. Box labels nudged up ~1 line (1.05in clearance); pallet address font bumped to 28px. The PL API now returns per-room boxCount + palletCount.'},
+      ]
+    },
+    {
       v:'1.76.2', date:'June 8, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Pallet labels centered + tighter count line.** The pallet half-sheet content (address + <b>Pallet N of M</b>) is now centered both horizontally and vertically on the label. The <b>Pallet N of M</b> line sits closer to the address — a small separating gap is kept — at the same font size as before.'},

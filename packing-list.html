@@ -124,8 +124,6 @@
   <a class="back-link no-print" href="/deals">&larr; Deals</a>
   <div class="print-bar no-print">
     <button onclick="loadPL()">&#8635; Refresh</button>
-    <button onclick="openLabels('box')" title="Print box shipping labels">&#127991; Box Labels</button>
-    <button onclick="openLabels('pallet')" title="Print pallet shipping labels">&#127991; Pallet Labels</button>
     <button onclick="window.print()" style="background:#ee6216">&#128424; Print</button>
   </div>
 
@@ -136,9 +134,11 @@
   let COMPONENTS = {};
   const quoteNumber = decodeURIComponent((location.pathname.match(/\/pl\/(.+)$/) || [])[1] || '').replace(/\/+$/, '');
 
-  // Open the shipping-label print view (box or pallet) for this quote in a new tab.
-  function openLabels(t) {
-    window.open('/pl/' + encodeURIComponent(quoteNumber) + '/labels?type=' + t, '_blank', 'noopener');
+  // Open the shipping-label print view for a SINGLE booth (room index) in a new tab.
+  function openLabels(t, room) {
+    let url = '/pl/' + encodeURIComponent(quoteNumber) + '/labels?type=' + t;
+    if (room != null) url += '&room=' + room;
+    window.open(url, '_blank', 'noopener');
   }
 
   const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -696,7 +696,7 @@
         + headerTop
         + '<div class="pl-mid">'
           + '<div>'
-            + '<div class="mdl-line">' + mdlLine(rm) + (rm.qty>1?' <span style="color:#ee6216">(&times;' + rm.qty + ')</span>':'') + '</div>'
+            + '<div class="mdl-line">' + mdlLine(rm) + (rm.unit?' <span style="color:#ee6216">(Booth ' + rm.unit.n + ' of ' + rm.unit.of + ')</span>':'') + '</div>'
             + '<div class="totals-grid">'
               + '<div class="l">Total Size (Cubic Feet):</div><div class="v">' + fmtN(t.cf,2) + '</div>'
               + '<div class="l">Total Weight (Pounds):</div><div class="v">' + fmtN(t.lb,2) + '</div>'
@@ -714,6 +714,10 @@
         + '<div class="pl-tabs no-print">'
           + '<button class="pl-tab active" data-tab="pl"     onclick="switchTab(this,\'pl\')">📦 Packing List</button>'
           + '<button class="pl-tab"        data-tab="layout" onclick="switchTab(this,\'layout\')">🏗 Top-Down Layout</button>'
+        + '</div>'
+        + '<div class="no-print" style="display:flex;gap:8px;margin:0 0 12px">'
+          + '<button class="add-btn" onclick="openLabels(\'box\',' + ri + ')">🏷 Box Labels (' + (rm.boxCount||0) + ')</button>'
+          + '<button class="add-btn" onclick="openLabels(\'pallet\',' + ri + ')">🏷 Pallet Labels</button>'
         + '</div>'
         + '<div class="tab-panel active" data-tab="pl">'
         + '<table class="pl">'

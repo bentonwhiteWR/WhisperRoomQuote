@@ -10733,7 +10733,8 @@ ${q.accepted ? `
         const p = at(name) ?? at(model) ?? at(nv(name)) ?? at(nv(model));
         return p || 0;
       };
-      const palletCount = (pl.rooms || []).reduce((s, r) => s + palletForBooth(r.boothName, r.matchedModel) * (r.qty || 1), 0);
+      (pl.rooms || []).forEach(r => { r.palletCount = palletForBooth(r.boothName, r.matchedModel) * (r.qty || 1); });
+      const palletCount = (pl.rooms || []).reduce((s, r) => s + (r.palletCount || 0), 0);
       // Ship-to for the label generator (full address; the PL viewer only needs name/company).
       const shipTo = {
         company:   snap.company || customer.company || '',

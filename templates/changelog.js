@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.83.0', date:'June 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Package Weight Audit on the /weights tool.** A new "Package Audit" tab runs the LIVE Packing-List generator for every booth model AND every catalog feature (HX / CP / SL / ADA / WA / AUDI / RAMP / …), then reconciles the generated bill-of-materials weight against the HubSpot price-book weight — the delta should read ~0. Each model checks its BOM net against the catalog (minus pallets); each feature checks the weight it ADDS (its net delta on a host booth) against the feature catalog weight. One sortable table + summary cards surface every mismatch, every unmapped feature (priced on the quote but not placed in the PL), every catalog SKU missing a weight, and the dropship (AP) items. It is the all-packages version of the per-PL weight banner — a one-click check that all booth and feature weights still reconcile.'},
+      ]
+    },
+    {
       v:'1.82.5', date:'June 8, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Packing List header: quote number on its own line.** The top-left header now shows the company / deal name on the first line and the quote number on a second line beneath it (was one line with a middot between them).'},

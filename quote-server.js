@@ -10885,6 +10885,151 @@ ${q.accepted ? `
     return;
   }
 
+  // ── API: /weights Package Audit — run the LIVE PL generator for every booth
+  //    model AND every catalog feature, and reconcile the generated BOM weight
+  //    against the HubSpot price book. Surfaces every Δ + unmapped/unhosted feature.
+  //    Model row:   actual = generate([model]).netLb ; expected = pbWeight − pallets×144
+  //    Feature row: actual = net(host+feat) − net(host) ; expected = feature pbWeight
+  //    (mirrors the per-quote PL banner, which strips only the booth's pallets and
+  //    counts each feature's full catalog weight as a net delta).
+  if (pathname === '/api/weights-audit' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const OK_TOL = 2;  // |Δ| ≤ 2 lb reads as reconciled (matches the PL banner's green)
+      const norm = s => String(s || '').toUpperCase().replace(/\s+/g, ' ').trim();
+
+      // 1. HubSpot price book → { normName: {name, weight, price, id} }
+      const pbByName = {}; let pbError = null;
+      try {
+        const products = await getProductsCached();
+        (products || []).forEach(p => {
+          const raw = p?.properties?.name; const nm = norm(raw);
+          if (!nm) return;
+          const w = parseFloat(p?.properties?.weight);
+          pbByName[nm] = { name: raw, weight: Number.isFinite(w) ? w : null, price: parseFloat(p?.properties?.price) || null, id: p?.id || null };
+        });
+      } catch (e) { pbError = e.message; }
+
+      // 2. The generator's model universe (base BOM keys) + feature matchers
+      let baseModels = {};
+      try { baseModels = (JSON.parse(fs.readFileSync(path.join(__dirname, 'lib', 'pl-data', 'base-bom.json'), 'utf8')).models) || {}; }
+      catch (e) { json({ error: 'base-bom.json unreadable: ' + e.message }, 500); return; }
+      const modelKeys = Object.keys(baseModels);
+      const modelNormSet = new Set(modelKeys.map(norm));
+      const modelByNorm = {}; modelKeys.forEach(k => { modelByNorm[norm(k)] = k; });
+      const FSUBS = packingList.FEATURE_SUBS || [];
+      const matchesFeature = nm => FSUBS.some(r => { try { return r.test && r.test(nm); } catch (e) { return false; } });
+
+      const palletsFor = mk => {
+        let p = PALLETS_PER_MDL[mk];
+        if (p == null) p = PALLETS_PER_MDL[mk.replace(/\bSNV$/, 'S').replace(/\bENV$/, 'E')];
+        return Number.isFinite(p) ? p : null;
+      };
+
+      // memoized PL net (+ unmapped feature names) for a synthetic quote
+      const netCache = {};
+      const plNet = (items, cacheKey) => {
+        if (cacheKey && netCache[cacheKey] !== undefined) return netCache[cacheKey];
+        let out;
+        try {
+          const pl = packingList.generate(items, { hinge: 'Right', foam: 'Gray' });
+          const unmapped = [];
+          (pl.rooms || []).forEach(r => (r.unmappedFeatures || []).forEach(f => { if (f && f.name) unmapped.push(norm(f.name)); }));
+          out = { net: (pl.totals && Number.isFinite(pl.totals.netLb)) ? pl.totals.netLb : null, unmapped };
+        } catch (e) { out = { net: null, unmapped: [], err: e.message }; }
+        if (cacheKey) netCache[cacheKey] = out;
+        return out;
+      };
+
+      const rows = [];
+
+      // 3. MODEL audit — every base-BOM model
+      for (const mk of modelKeys) {
+        const pb = pbByName[norm(mk)];
+        const pallets = palletsFor(mk);
+        const palletWt = pallets != null ? pallets * PALLET_WEIGHT_LB : 0;
+        const g = plNet([{ name: mk, qty: 1 }], 'M:' + mk);
+        const actual = g.net != null ? +g.net.toFixed(2) : null;
+        const pbWeight = pb && Number.isFinite(pb.weight) ? pb.weight : null;
+        const expected = pbWeight != null ? +(pbWeight - palletWt).toFixed(2) : null;
+        const delta = (actual != null && expected != null) ? +(actual - expected).toFixed(2) : null;
+        const mm = /^MDL\s+(.+?)\s+(S|E|SNV|ENV)$/i.exec(mk);
+        let status;
+        if (g.err) status = 'error';
+        else if (pbWeight == null) status = 'no-pb';
+        else status = Math.abs(delta) <= OK_TOL ? 'ok' : 'mismatch';
+        rows.push({ kind: 'model', name: mk, host: null, variant: mm ? mm[2].toUpperCase() : '',
+          pbWeight, expected, actual, delta, pallets, status, note: g.err || null });
+      }
+
+      // 4. FEATURE audit — every catalog product that matches a generator feature
+      //    rule, paired to a host model parsed from its name (size-less features
+      //    like RAMP use a representative E booth so the inner-shell path runs).
+      const genericHost = modelKeys.find(k => /^MDL\s+7272\s+E$/i.test(k)) || modelKeys.find(k => /\sE$/.test(k)) || modelKeys[0];
+      const hostFor = nm => {
+        const sizeM = /(\d{3,6})/.exec(nm);
+        if (!sizeM) return { host: genericHost, assumed: 'generic host' };
+        const size = sizeM[1];
+        const tail = nm.slice(sizeM.index + size.length);
+        const vM = /\b(SNV|ENV|S|E)\b/i.exec(tail);
+        const variants = vM ? [vM[1].toUpperCase()] : ['S', 'E'];
+        for (const v of variants) {
+          const cand = norm('MDL ' + size + ' ' + v);
+          if (modelByNorm[cand]) return { host: modelByNorm[cand], assumed: vM ? null : 'host S assumed' };
+        }
+        return { host: null, assumed: null };
+      };
+
+      let otherSkus = 0;
+      for (const k of Object.keys(pbByName)) {
+        const pb = pbByName[k]; const nm = pb.name; const nn = norm(nm);
+        if (modelNormSet.has(nn)) continue;            // audited above as a model
+        if (/^MDL\b/i.test(nm)) {                      // looks like a model the generator can't build
+          rows.push({ kind: 'model', name: nm, host: null, variant: '', pbWeight: pb.weight, expected: null, actual: null, delta: null, pallets: null, status: 'no-generator', note: 'MDL not in base BOM' });
+          continue;
+        }
+        if (!matchesFeature(nm)) { otherSkus++; continue; }   // not a booth model/feature — out of scope
+        const isDropship = /^AP\b/i.test(nm);
+        const { host, assumed } = hostFor(nm);
+        const pbWeight = Number.isFinite(pb.weight) ? pb.weight : null;
+        if (!host) {
+          rows.push({ kind: 'feature', name: nm, host: null, variant: '', pbWeight, expected: pbWeight, actual: null, delta: null, pallets: null, status: isDropship ? 'dropship' : 'no-host', note: isDropship ? 'AP dropship — not on booth PL' : 'no host model parsed' });
+          continue;
+        }
+        const base = plNet([{ name: host, qty: 1 }], 'M:' + host);
+        const withF = plNet([{ name: host, qty: 1 }, { name: nm, qty: 1 }], null);
+        const actual = (base.net != null && withF.net != null) ? +(withF.net - base.net).toFixed(2) : null;
+        const wasUnmapped = withF.unmapped.includes(nn);
+        const delta = (actual != null && pbWeight != null) ? +(actual - pbWeight).toFixed(2) : null;
+        let status;
+        if (isDropship) status = 'dropship';
+        else if (base.err || withF.err) status = 'error';
+        else if (wasUnmapped) status = 'unmapped';
+        else if (pbWeight == null) status = 'no-pb';
+        else status = Math.abs(delta) <= OK_TOL ? 'ok' : 'mismatch';
+        rows.push({ kind: 'feature', name: nm, host, variant: '', pbWeight, expected: pbWeight, actual, delta, pallets: null, status, note: assumed || base.err || withF.err || null });
+      }
+
+      const by = s => rows.filter(r => r.status === s).length;
+      json({
+        pbError, okTol: OK_TOL, palletWeightLb: PALLET_WEIGHT_LB, otherSkus,
+        counts: {
+          total: rows.length,
+          models: rows.filter(r => r.kind === 'model').length,
+          features: rows.filter(r => r.kind === 'feature').length,
+          ok: by('ok'), mismatch: by('mismatch'), unmapped: by('unmapped'),
+          noPb: by('no-pb'), noHost: by('no-host'), noGenerator: by('no-generator'),
+          dropship: by('dropship'), error: by('error'),
+        },
+        rows,
+      });
+    } catch (e) {
+      writelog('error', 'weights.audit', 'failed to build weights audit', { err: e.message });
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
     // ── API: Logs ────────────────────────────────────────────────────
   if (pathname === '/api/logs' && req.method === 'GET') {
     if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }

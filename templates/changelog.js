@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.82.3', date:'June 8, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Wide-access (WA) door on the Packing List now pulls the correct ADA door parts.** The wide-access door <em>is</em> the ADA door, but the PL was still emitting the retired WA-only door components (the Z03–Z11 range). It now pulls the ADA door parts across the board — ADA door frame, ADA door w/ window, ADA frame adaptor, and (on enhanced booths) the ADA IEP door + jamb — so a WA upgrade on a 46" booth now produces the exact same door set as a full ADA booth.'},
+        {t:'fix', d:'**Z19 seam-seal now added only on the 4016 WA Type.** The combined <code>Z19</code> jamb-adapter / mid-wall seam seal was being added to every enhanced WA door (including 4040 and the 46" types); it now fires only on <b>4016</b> (40" enhanced), where the inner 11.5" wall and one mid-wall seam seal merge into it — so the PL also drops one <code>K09</code> + one <code>O01</code> there. 4040, 4646, and 4622 no longer carry a stray Z19.'},
+      ]
+    },
+    {
       v:'1.82.1', date:'June 8, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Weight check tuned + AP excluded + back link → Orders.** Three PL tweaks: (1) the weight check now compares the <b>palletless</b> quote weight (the catalog pulls 144 lb/pallet) against the PL net, so pallets no longer skew the delta; (2) <b>AP</b> (acoustic package — dropshipped by Audimute) is no longer flagged as an "add manually" feature and its weight is excluded from the check, since it never ships on the booth PL; (3) the top-left back link on the PL now says <b>Orders</b> and returns to the orders page (was Deals).'},

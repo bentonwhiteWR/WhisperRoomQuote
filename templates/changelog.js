@@ -51,6 +51,42 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.81.0', date:'June 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**ADA now honors the WA Type on dual-option booths.** ADA on <b>7296 / 96120 / 96168</b> (S & E) pulls the correct wide-access variant — <b>4646 vs 4622</b> — from the quote WA Type (repWaType) instead of always using the default. The two variants differ only by the door-adjacent wall (4646 shrinks a 46in wall to 43in; 4622 a 22in wall to 19in; the enhanced shell shifts its inner wall to match). Single-option booths (7272 = 4622; 9696 / 96144 / 96192 = 4646) and the no-WA-Type case use the default. Derived from a fresh 20-PL batch and verified to reconstruct all 20 model × WA-type combos exactly.'},
+      ]
+    },
+    {
+      v:'1.80.0', date:'June 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List viewer: inline editing, code-sorting, and print polish.** You can now <b>edit any field directly in the PL</b> — description, weight, dimensions, code, or part # — by clicking the cell and typing (weight/dim edits recompute the metric columns + totals; editing a code re-sorts that row). <b>Added components now drop into code order</b> (A01 first … Z64 last) instead of at the bottom. Print layout tightened: the WhisperRoom logo is bigger, the Width / Thickness / Weight columns are narrower (units shortened to In / M / lb / KG) to give <b>Package Contents</b> more room, and the totals values sit closer to their labels.'},
+      ]
+    },
+    {
+      v:'1.79.0', date:'June 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Audimute panels on the Packing List.** Quote lines <b>AUDI BL 2 / BL 3 / GR 2 / GR 3</b> now pull the matching Audimute panel pack into the PL (E18 / E19 / E20 / E21), one pack per line × qty — the 2/3 is the panel count already baked into the pack. Standalone panels only, not the AP acoustic-treatment package.'},
+      ]
+    },
+    {
+      v:'1.78.1', date:'June 8, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Label color now highlights the count row.** The per-booth highlighter color now colors the <b>Box/Pallet N of M</b> line itself (as a highlighted chip) instead of a separate bottom band. <b>Default is no color</b> — pick a swatch to color a given booth.'},
+      ]
+    },
+    {
+      v:'1.78.0', date:'June 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Two-way Serial Number sync (Packing List ↔ Orders drawer).** The S/N field on each packing-list booth now reads from and writes to the order serial-numbers field instead of browser-local storage. Each booth maps to one line (booth 1 → line 1, booth 2 → line 2, …); editing a serial in the PL <b>auto-saves</b> (debounced) to <code>order_data.serialNumber</code> through the same path as the drawer Save Changes, mirroring to the HubSpot deal description. The Orders-drawer Serial Numbers box and the PL now stay in sync both directions, and a status line shows Saving / Saved. (Serials persist once the quote is an actual order.)'},
+      ]
+    },
+    {
+      v:'1.77.0', date:'June 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List per-booth split + per-booth labels + label tweaks.** A booth line with <b>quantity N now generates N separate packing lists</b> (one per physical booth — each its own page, S/N, and label set) instead of one ×N page; fixes multi-quantity orders like 5× the same model. The 🏷 Box / Pallet Label buttons now sit <b>on each PL page</b> and generate labels for that booth only (no longer summed across the whole order); the count shown is per booth. New <b>per-booth highlighter color</b> on the labels — a color band, auto-assigned per booth and pickable via swatches — so the client can match components to the right booth. Box labels nudged up ~1 line (1.05in clearance); pallet address font bumped to 28px. The PL API now returns per-room boxCount + palletCount.'},
+      ]
+    },
+    {
       v:'1.76.2', date:'June 8, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Pallet labels centered + tighter count line.** The pallet half-sheet content (address + <b>Pallet N of M</b>) is now centered both horizontally and vertically on the label. The <b>Pallet N of M</b> line sits closer to the address — a small separating gap is kept — at the same font size as before.'},

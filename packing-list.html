@@ -18,7 +18,7 @@
   .pl-top{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;margin-bottom:18px;gap:14px}
   .pl-top-left{font-size:12px;font-weight:700;color:#888;letter-spacing:.04em;text-transform:uppercase}
   .pl-top-center{display:flex;flex-direction:column;align-items:center;gap:2px}
-  .pl-top-center img{height:38px;display:block}
+  .pl-top-center img{height:54px;display:block}
   .pl-tagline{font-size:9px;font-weight:800;letter-spacing:.28em;color:#1a1a1a;text-transform:uppercase}
   .pl-top-right{text-align:right;font-size:14px;font-weight:700;color:#1a1a1a;font-variant-numeric:tabular-nums}
   .pl-date input{font:inherit;color:inherit;border:1px solid transparent;border-radius:4px;padding:2px 4px;background:transparent;text-align:right;width:130px}
@@ -28,7 +28,7 @@
   .pl-mid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:16px;align-items:start}
   .mdl-line{font-size:14px;font-weight:800;color:#1a1a1a;letter-spacing:.01em;margin-bottom:10px;line-height:1.4}
   .mdl-line .sep{color:#ee6216;margin:0 4px;font-weight:700}
-  .totals-grid{display:grid;grid-template-columns:auto auto;gap:3px 12px;font-size:12px;color:#1a1a1a}
+  .totals-grid{display:grid;grid-template-columns:auto auto;gap:3px 6px;font-size:12px;color:#1a1a1a;justify-content:start}
   .totals-grid .l{font-weight:700;color:#444}
   .totals-grid .v{font-weight:700;font-variant-numeric:tabular-nums;text-align:right;color:#1a1a1a}
 
@@ -65,6 +65,15 @@
   td.unknown{color:#dc2626}
   .rm-row{color:#bbb;cursor:pointer;border:none;background:none;font-size:14px;padding:0 4px;line-height:1}
   .rm-row:hover{color:#dc2626}
+  /* Tighten numeric columns (nowrap) so Package Contents gets the slack */
+  table.pl tbody td{white-space:nowrap;padding-left:4px;padding-right:4px}
+  table.pl td.l{padding-left:9px}
+  table.pl td.desc{white-space:normal;width:99%}
+  /* Inline-editable cells (override desc / weight / dims / code) */
+  table.pl td.edit{cursor:text}
+  table.pl td.edit:hover{background:#fff7ed;box-shadow:inset 0 0 0 1px #f3d4b3}
+  table.pl td.edit:focus{background:#fff;box-shadow:inset 0 0 0 2px #ee6216;outline:none}
+  @media print{ table.pl td.edit{box-shadow:none;background:transparent} }
 
   /* Tab bar — switches between PL table and top-down layout */
   .pl-tabs{display:flex;gap:2px;margin-bottom:12px;border-bottom:1px solid #e6e6e6}
@@ -123,9 +132,8 @@
 <body>
   <a class="back-link no-print" href="/deals">&larr; Deals</a>
   <div class="print-bar no-print">
+    <span id="snStatus" style="font-size:11px;font-weight:700;align-self:center;color:#888"></span>
     <button onclick="loadPL()">&#8635; Refresh</button>
-    <button onclick="openLabels('box')" title="Print box shipping labels">&#127991; Box Labels</button>
-    <button onclick="openLabels('pallet')" title="Print pallet shipping labels">&#127991; Pallet Labels</button>
     <button onclick="window.print()" style="background:#ee6216">&#128424; Print</button>
   </div>
 
@@ -134,11 +142,15 @@
 <script>
   let DATA = null;
   let COMPONENTS = {};
+  let serialLines = [];   // order_data.serialNumber split by line; booth ri ↔ line ri (two-way w/ Orders drawer)
+  let _snTimer = null;
   const quoteNumber = decodeURIComponent((location.pathname.match(/\/pl\/(.+)$/) || [])[1] || '').replace(/\/+$/, '');
 
-  // Open the shipping-label print view (box or pallet) for this quote in a new tab.
-  function openLabels(t) {
-    window.open('/pl/' + encodeURIComponent(quoteNumber) + '/labels?type=' + t, '_blank', 'noopener');
+  // Open the shipping-label print view for a SINGLE booth (room index) in a new tab.
+  function openLabels(t, room) {
+    let url = '/pl/' + encodeURIComponent(quoteNumber) + '/labels?type=' + t;
+    if (room != null) url += '&room=' + room;
+    window.open(url, '_blank', 'noopener');
   }
 
   const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -567,6 +579,7 @@
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
       DATA = d; COMPONENTS = d.components || {};
+      serialLines = String(DATA.serialNumber || '').split('\n');   // seed per-booth S/N from the order
       render();
     } catch(e){
       document.getElementById('rooms').innerHTML = '<div class="pl-page"><div class="empty">Failed to load: ' + esc(e.message) + '</div></div>';
@@ -669,25 +682,28 @@
       }
 
       const t = roomTotals(rm);
-      const savedSn = localStorage.getItem(snKey(ri)) || '';
+      const savedSn = serialLines[ri] || '';   // booth ri ↔ line ri of order_data.serialNumber
 
       const body = (rm.lines||[]).map((l,li)=>{
         const lM = inToM(l.L), wM = inToM(l.W), tM = inToM(l.T);
         const kg = lbToKg(l.eachLb);
         const alt = li % 2 === 1 ? ' class="alt"' : '';
+        // Editable cells: dims (in), weight (lb), code, part#, contents. Metric +
+        // kg cells stay derived. onblur writes back to the line via editCell().
+        const ed = (f,cls) => '<td class="edit ' + (cls||'') + '" contenteditable="true" spellcheck="false" onblur="editCell(' + ri + ',' + li + ',\'' + f + '\',this.textContent)">';
         return '<tr' + alt + '>'
           + '<td class="idx">' + (li+1) + '</td>'
-          + '<td>' + (l.L==null?'—':fmtN(l.L,2)) + '</td>'
+          + ed('L') + (l.L==null?'—':fmtN(l.L,2)) + '</td>'
           + '<td>' + (lM==null?'—':fmtN(lM,2)) + '</td>'
-          + '<td>' + (l.W==null?'—':fmtN(l.W,2)) + '</td>'
+          + ed('W') + (l.W==null?'—':fmtN(l.W,2)) + '</td>'
           + '<td>' + (wM==null?'—':fmtN(wM,2)) + '</td>'
-          + '<td>' + (l.T==null?'—':fmtN(l.T,2)) + '</td>'
+          + ed('T') + (l.T==null?'—':fmtN(l.T,2)) + '</td>'
           + '<td>' + (tM==null?'—':fmtN(tM,2)) + '</td>'
-          + '<td>' + (l.eachLb==null?'—':fmtN(l.eachLb,2)) + '</td>'
+          + ed('eachLb') + (l.eachLb==null?'—':fmtN(l.eachLb,2)) + '</td>'
           + '<td>' + (kg==null?'—':fmtN(kg,2)) + '</td>'
-          + '<td class="code ' + (l.known?'':'unknown') + '">' + esc(l.code) + '</td>'
-          + '<td class="pack l">' + esc(l.pack||'') + '</td>'
-          + '<td class="desc l">' + esc(l.desc) + '</td>'
+          + ed('code', 'code ' + (l.known?'':'unknown')) + esc(l.code) + '</td>'
+          + ed('pack', 'pack l') + esc(l.pack||'') + '</td>'
+          + ed('desc', 'desc l') + esc(l.desc) + '</td>'
           + '<td class="no-print"><button class="rm-row" title="Remove" onclick="rmRow(' + ri + ',' + li + ')">&times;</button></td>'
         + '</tr>';
       }).join('');
@@ -696,7 +712,7 @@
         + headerTop
         + '<div class="pl-mid">'
           + '<div>'
-            + '<div class="mdl-line">' + mdlLine(rm) + (rm.qty>1?' <span style="color:#ee6216">(&times;' + rm.qty + ')</span>':'') + '</div>'
+            + '<div class="mdl-line">' + mdlLine(rm) + (rm.unit?' <span style="color:#ee6216">(Booth ' + rm.unit.n + ' of ' + rm.unit.of + ')</span>':'') + '</div>'
             + '<div class="totals-grid">'
               + '<div class="l">Total Size (Cubic Feet):</div><div class="v">' + fmtN(t.cf,2) + '</div>'
               + '<div class="l">Total Weight (Pounds):</div><div class="v">' + fmtN(t.lb,2) + '</div>'
@@ -715,6 +731,10 @@
           + '<button class="pl-tab active" data-tab="pl"     onclick="switchTab(this,\'pl\')">📦 Packing List</button>'
           + '<button class="pl-tab"        data-tab="layout" onclick="switchTab(this,\'layout\')">🏗 Top-Down Layout</button>'
         + '</div>'
+        + '<div class="no-print" style="display:flex;gap:8px;margin:0 0 12px">'
+          + '<button class="add-btn" onclick="openLabels(\'box\',' + ri + ')">🏷 Box Labels (' + (rm.boxCount||0) + ')</button>'
+          + '<button class="add-btn" onclick="openLabels(\'pallet\',' + ri + ')">🏷 Pallet Labels</button>'
+        + '</div>'
         + '<div class="tab-panel active" data-tab="pl">'
         + '<table class="pl">'
           + '<thead>'
@@ -730,10 +750,10 @@
               + '<th rowspan="2" class="no-print"></th>'
             + '</tr>'
             + '<tr class="units">'
-              + '<th>Inches</th><th>Mtrs</th>'
-              + '<th>Inches</th><th>Mtrs</th>'
-              + '<th>Inches</th><th>Mtrs</th>'
-              + '<th>Pounds</th><th>Kilograms</th>'
+              + '<th>In</th><th>M</th>'
+              + '<th>In</th><th>M</th>'
+              + '<th>In</th><th>M</th>'
+              + '<th>lb</th><th>KG</th>'
             + '</tr>'
           + '</thead>'
           + '<tbody>' + body + '</tbody>'
@@ -764,9 +784,55 @@
       + f.map(x=>'<span class="ft">' + esc(x.name) + (x.qty>1?' &times;' + x.qty:'') + '</span>').join('') + '</div>';
   }
 
-  function saveSn(ri, val){ try { localStorage.setItem(snKey(ri), val); } catch(e){} }
+  // S/N two-way sync: each booth's serial maps to line `ri` of the order's
+  // serialNumber field. Debounced save reuses PATCH /api/orders (the SAME path
+  // as the Orders-drawer "Save Changes"), so it persists to order_data.serialNumber
+  // and mirrors to the HubSpot deal description. Reads back on next load.
+  function saveSn(ri, val){
+    serialLines[ri] = val;
+    clearTimeout(_snTimer);
+    setSnStatus('saving');
+    _snTimer = setTimeout(flushSn, 800);
+  }
+  async function flushSn(){
+    try {
+      const res = await fetch('/api/orders/' + encodeURIComponent(quoteNumber), {
+        method:'PATCH', credentials:'include', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ serialNumber: serialLines.join('\n') })
+      });
+      setSnStatus(res.ok ? 'saved' : 'error');
+    } catch(e){ setSnStatus('error'); }
+  }
+  function setSnStatus(s){
+    const el = document.getElementById('snStatus');
+    if (!el) return;
+    el.textContent = s==='saving' ? 'Saving S/N…' : s==='saved' ? 'S/N saved ✓' : 'S/N not saved (order only)';
+    el.style.color = s==='error' ? '#b91c1c' : s==='saved' ? '#16a34a' : '#888';
+  }
   function saveDate(val){ try { localStorage.setItem(dateKey(), val); } catch(e){} }
   function rmRow(ri, li){ DATA.rooms[ri].lines.splice(li,1); render(); }
+  // Keep a booth's rows sorted by code (A01 first … Z64 last, numeric-aware).
+  function sortLines(ri){
+    (DATA.rooms[ri].lines||[]).sort((a,b)=>String(a.code).localeCompare(String(b.code), undefined, {numeric:true}));
+  }
+  // Inline edit of a PL row field. desc/pack just update data (smooth — keeps the
+  // focus flow); dims/weight re-render so the metric + totals recompute; editing
+  // the code re-sorts the booth and re-renders.
+  function editCell(ri, li, field, raw){
+    const line = DATA.rooms[ri] && DATA.rooms[ri].lines[li];
+    if (!line) return;
+    const v = String(raw==null?'':raw).trim();
+    if (field==='desc' || field==='pack'){ line[field] = v; return; }
+    if (field==='L'||field==='W'||field==='T'||field==='eachLb'){
+      const n = parseFloat(v.replace(/[^0-9.\-]/g,''));
+      line[field] = (v===''||v==='—'||isNaN(n)) ? null : n;
+    } else if (field==='code'){
+      line.code = v.toUpperCase();
+      line.known = !!COMPONENTS[line.code];
+      sortLines(ri);
+    }
+    render();
+  }
   function addRow(ri){
     const inp = document.getElementById('addcode-'+ri);
     const code = (inp.value||'').trim().toUpperCase();
@@ -774,6 +840,7 @@
     const c = COMPONENTS[code];
     if (!c){ alert('Unknown component code: ' + code); return; }
     DATA.rooms[ri].lines.push({ code, desc:c.desc||'', pack:c.pack||'', eachLb:c.lb, L:c.L, W:c.W, T:c.T, known:true });
+    sortLines(ri);   // drop the new row into code order, not at the bottom
     inp.value=''; render();
   }
 

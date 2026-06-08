@@ -10719,9 +10719,13 @@ ${q.accepted ? `
         return ['Gray','Blue','Purple','Orange','Burgundy'].includes(v) ? v : undefined;
       };
       const queryHinge = parsed.query.hinge && /^(Left|Right)$/i.test(parsed.query.hinge) ? parsed.query.hinge : undefined;
+      // ADA WA Type comes from the quote's repWaType (4016/4040/4622/4646); picks
+      // the WA-Type variant for dual-option ADA booths. ?wa= is a test override.
+      const validWa = w => /^(4016|4040|4622|4646)$/.test(String(w || '').trim()) ? String(w).trim() : undefined;
       const opts = {
         hinge: queryHinge || normalizeHinge(snap.acceptedHinge) || normalizeHinge(snap.repHingePreference),
         foam:  parsed.query.foam || normalizeFoam(snap.acceptedFoam) || normalizeFoam(snap.repFoamColor),
+        adaWaType: validWa(parsed.query.wa) || validWa(snap.repWaType),
       };
       const pl = packingList.generate(lineItems, opts);
       const customer = snap.customer || {};
@@ -10733,7 +10737,8 @@ ${q.accepted ? `
         const p = at(name) ?? at(model) ?? at(nv(name)) ?? at(nv(model));
         return p || 0;
       };
-      const palletCount = (pl.rooms || []).reduce((s, r) => s + palletForBooth(r.boothName, r.matchedModel) * (r.qty || 1), 0);
+      (pl.rooms || []).forEach(r => { r.palletCount = palletForBooth(r.boothName, r.matchedModel) * (r.qty || 1); });
+      const palletCount = (pl.rooms || []).reduce((s, r) => s + (r.palletCount || 0), 0);
       // Ship-to for the label generator (full address; the PL viewer only needs name/company).
       const shipTo = {
         company:   snap.company || customer.company || '',
@@ -10742,6 +10747,14 @@ ${q.accepted ? `
         state:     customer.state || '',    zip:   customer.zip || '',
         country:   customer.country || '',  phone: customer.phone || '',
       };
+      // Serial numbers live on the order (order_data.serialNumber) — return them so
+      // the PL viewer can seed per-booth S/N (booth ri ↔ line ri) and stay two-way
+      // with the Orders drawer. Empty for a quote that isn't an order yet.
+      let serialNumber = '';
+      try {
+        const or = await db.query('SELECT order_data FROM orders WHERE quote_number = $1', [quoteNumber]);
+        if (or.rows[0] && or.rows[0].order_data) serialNumber = or.rows[0].order_data.serialNumber || '';
+      } catch (e) { /* no order row yet */ }
       json({
         quoteNumber,
         meta: {
@@ -10753,6 +10766,7 @@ ${q.accepted ? `
         ...pl,
         shipTo,
         palletCount,
+        serialNumber,
         components: packingList.componentDict(),
       });
     } catch (e) {

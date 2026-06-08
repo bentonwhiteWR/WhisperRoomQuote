@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.81.3', date:'June 8, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Standalone WA Door now honors the WA Type too.** Picking the WA Type at the bottom of the quote now drives the standalone WA Door (not just ADA): a 46" booth set to <b>4646</b> shrinks its door-adjacent 46" wall to 43" (C101→C109) instead of always doing 4622. When no WA Type is set it defaults sensibly — 4622/4016 only if the booth actually carries the narrow 22"/16" wall, otherwise the 4646/4040 pair variant (so a 4646-only booth like 9696 defaults to 4646, not 4622).'},
+      ]
+    },
+    {
       v:'1.81.2', date:'June 8, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**31" windows: the 4040 WA Type now makes the 31" wall.** Completing the previous fix — a 40"-wall booth (42 / 60 / 84 / 102 series) with WA Type <b>4040</b> now shrinks its door-adjacent 40" wall to 31" (C01→Z01, and the IEP inner 35.5"→26.5"), the same way 4646 makes the 43" wall. So <b>WDO 31" 1648</b> (E/S) finally has a 31" wall to substitute — it swaps it for the window wall, outer + IEP inner. The 4016 default (16"→7") is unchanged.'},

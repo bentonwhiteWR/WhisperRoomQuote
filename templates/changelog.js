@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.79.0', date:'June 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Audimute panels on the Packing List.** Quote lines <b>AUDI BL 2 / BL 3 / GR 2 / GR 3</b> now pull the matching Audimute panel pack into the PL (E18 / E19 / E20 / E21), one pack per line × qty — the 2/3 is the panel count already baked into the pack. Standalone panels only, not the AP acoustic-treatment package.'},
+      ]
+    },
+    {
       v:'1.78.1', date:'June 8, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Label color now highlights the count row.** The per-booth highlighter color now colors the <b>Box/Pallet N of M</b> line itself (as a highlighted chip) instead of a separate bottom band. <b>Default is no color</b> — pick a swatch to color a given booth.'},

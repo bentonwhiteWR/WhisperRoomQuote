@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.80.0', date:'June 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing List viewer: inline editing, code-sorting, and print polish.** You can now <b>edit any field directly in the PL</b> — description, weight, dimensions, code, or part # — by clicking the cell and typing (weight/dim edits recompute the metric columns + totals; editing a code re-sorts that row). <b>Added components now drop into code order</b> (A01 first … Z64 last) instead of at the bottom. Print layout tightened: the WhisperRoom logo is bigger, the Width / Thickness / Weight columns are narrower (units shortened to In / M / lb / KG) to give <b>Package Contents</b> more room, and the totals values sit closer to their labels.'},
+      ]
+    },
+    {
       v:'1.79.0', date:'June 8, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Audimute panels on the Packing List.** Quote lines <b>AUDI BL 2 / BL 3 / GR 2 / GR 3</b> now pull the matching Audimute panel pack into the PL (E18 / E19 / E20 / E21), one pack per line × qty — the 2/3 is the panel count already baked into the pack. Standalone panels only, not the AP acoustic-treatment package.'},

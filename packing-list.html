@@ -18,7 +18,7 @@
   .pl-top{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;margin-bottom:18px;gap:14px}
   .pl-top-left{font-size:12px;font-weight:700;color:#888;letter-spacing:.04em;text-transform:uppercase}
   .pl-top-center{display:flex;flex-direction:column;align-items:center;gap:2px}
-  .pl-top-center img{height:38px;display:block}
+  .pl-top-center img{height:54px;display:block}
   .pl-tagline{font-size:9px;font-weight:800;letter-spacing:.28em;color:#1a1a1a;text-transform:uppercase}
   .pl-top-right{text-align:right;font-size:14px;font-weight:700;color:#1a1a1a;font-variant-numeric:tabular-nums}
   .pl-date input{font:inherit;color:inherit;border:1px solid transparent;border-radius:4px;padding:2px 4px;background:transparent;text-align:right;width:130px}
@@ -28,7 +28,7 @@
   .pl-mid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:16px;align-items:start}
   .mdl-line{font-size:14px;font-weight:800;color:#1a1a1a;letter-spacing:.01em;margin-bottom:10px;line-height:1.4}
   .mdl-line .sep{color:#ee6216;margin:0 4px;font-weight:700}
-  .totals-grid{display:grid;grid-template-columns:auto auto;gap:3px 12px;font-size:12px;color:#1a1a1a}
+  .totals-grid{display:grid;grid-template-columns:auto auto;gap:3px 6px;font-size:12px;color:#1a1a1a;justify-content:start}
   .totals-grid .l{font-weight:700;color:#444}
   .totals-grid .v{font-weight:700;font-variant-numeric:tabular-nums;text-align:right;color:#1a1a1a}
 
@@ -65,6 +65,15 @@
   td.unknown{color:#dc2626}
   .rm-row{color:#bbb;cursor:pointer;border:none;background:none;font-size:14px;padding:0 4px;line-height:1}
   .rm-row:hover{color:#dc2626}
+  /* Tighten numeric columns (nowrap) so Package Contents gets the slack */
+  table.pl tbody td{white-space:nowrap;padding-left:4px;padding-right:4px}
+  table.pl td.l{padding-left:9px}
+  table.pl td.desc{white-space:normal;width:99%}
+  /* Inline-editable cells (override desc / weight / dims / code) */
+  table.pl td.edit{cursor:text}
+  table.pl td.edit:hover{background:#fff7ed;box-shadow:inset 0 0 0 1px #f3d4b3}
+  table.pl td.edit:focus{background:#fff;box-shadow:inset 0 0 0 2px #ee6216;outline:none}
+  @media print{ table.pl td.edit{box-shadow:none;background:transparent} }
 
   /* Tab bar — switches between PL table and top-down layout */
   .pl-tabs{display:flex;gap:2px;margin-bottom:12px;border-bottom:1px solid #e6e6e6}
@@ -679,19 +688,22 @@
         const lM = inToM(l.L), wM = inToM(l.W), tM = inToM(l.T);
         const kg = lbToKg(l.eachLb);
         const alt = li % 2 === 1 ? ' class="alt"' : '';
+        // Editable cells: dims (in), weight (lb), code, part#, contents. Metric +
+        // kg cells stay derived. onblur writes back to the line via editCell().
+        const ed = (f,cls) => '<td class="edit ' + (cls||'') + '" contenteditable="true" spellcheck="false" onblur="editCell(' + ri + ',' + li + ',\'' + f + '\',this.textContent)">';
         return '<tr' + alt + '>'
           + '<td class="idx">' + (li+1) + '</td>'
-          + '<td>' + (l.L==null?'—':fmtN(l.L,2)) + '</td>'
+          + ed('L') + (l.L==null?'—':fmtN(l.L,2)) + '</td>'
           + '<td>' + (lM==null?'—':fmtN(lM,2)) + '</td>'
-          + '<td>' + (l.W==null?'—':fmtN(l.W,2)) + '</td>'
+          + ed('W') + (l.W==null?'—':fmtN(l.W,2)) + '</td>'
           + '<td>' + (wM==null?'—':fmtN(wM,2)) + '</td>'
-          + '<td>' + (l.T==null?'—':fmtN(l.T,2)) + '</td>'
+          + ed('T') + (l.T==null?'—':fmtN(l.T,2)) + '</td>'
           + '<td>' + (tM==null?'—':fmtN(tM,2)) + '</td>'
-          + '<td>' + (l.eachLb==null?'—':fmtN(l.eachLb,2)) + '</td>'
+          + ed('eachLb') + (l.eachLb==null?'—':fmtN(l.eachLb,2)) + '</td>'
           + '<td>' + (kg==null?'—':fmtN(kg,2)) + '</td>'
-          + '<td class="code ' + (l.known?'':'unknown') + '">' + esc(l.code) + '</td>'
-          + '<td class="pack l">' + esc(l.pack||'') + '</td>'
-          + '<td class="desc l">' + esc(l.desc) + '</td>'
+          + ed('code', 'code ' + (l.known?'':'unknown')) + esc(l.code) + '</td>'
+          + ed('pack', 'pack l') + esc(l.pack||'') + '</td>'
+          + ed('desc', 'desc l') + esc(l.desc) + '</td>'
           + '<td class="no-print"><button class="rm-row" title="Remove" onclick="rmRow(' + ri + ',' + li + ')">&times;</button></td>'
         + '</tr>';
       }).join('');
@@ -738,10 +750,10 @@
               + '<th rowspan="2" class="no-print"></th>'
             + '</tr>'
             + '<tr class="units">'
-              + '<th>Inches</th><th>Mtrs</th>'
-              + '<th>Inches</th><th>Mtrs</th>'
-              + '<th>Inches</th><th>Mtrs</th>'
-              + '<th>Pounds</th><th>Kilograms</th>'
+              + '<th>In</th><th>M</th>'
+              + '<th>In</th><th>M</th>'
+              + '<th>In</th><th>M</th>'
+              + '<th>lb</th><th>KG</th>'
             + '</tr>'
           + '</thead>'
           + '<tbody>' + body + '</tbody>'
@@ -799,6 +811,28 @@
   }
   function saveDate(val){ try { localStorage.setItem(dateKey(), val); } catch(e){} }
   function rmRow(ri, li){ DATA.rooms[ri].lines.splice(li,1); render(); }
+  // Keep a booth's rows sorted by code (A01 first … Z64 last, numeric-aware).
+  function sortLines(ri){
+    (DATA.rooms[ri].lines||[]).sort((a,b)=>String(a.code).localeCompare(String(b.code), undefined, {numeric:true}));
+  }
+  // Inline edit of a PL row field. desc/pack just update data (smooth — keeps the
+  // focus flow); dims/weight re-render so the metric + totals recompute; editing
+  // the code re-sorts the booth and re-renders.
+  function editCell(ri, li, field, raw){
+    const line = DATA.rooms[ri] && DATA.rooms[ri].lines[li];
+    if (!line) return;
+    const v = String(raw==null?'':raw).trim();
+    if (field==='desc' || field==='pack'){ line[field] = v; return; }
+    if (field==='L'||field==='W'||field==='T'||field==='eachLb'){
+      const n = parseFloat(v.replace(/[^0-9.\-]/g,''));
+      line[field] = (v===''||v==='—'||isNaN(n)) ? null : n;
+    } else if (field==='code'){
+      line.code = v.toUpperCase();
+      line.known = !!COMPONENTS[line.code];
+      sortLines(ri);
+    }
+    render();
+  }
   function addRow(ri){
     const inp = document.getElementById('addcode-'+ri);
     const code = (inp.value||'').trim().toUpperCase();
@@ -806,6 +840,7 @@
     const c = COMPONENTS[code];
     if (!c){ alert('Unknown component code: ' + code); return; }
     DATA.rooms[ri].lines.push({ code, desc:c.desc||'', pack:c.pack||'', eachLb:c.lb, L:c.L, W:c.W, T:c.T, known:true });
+    sortLines(ri);   // drop the new row into code order, not at the bottom
     inp.value=''; render();
   }
 

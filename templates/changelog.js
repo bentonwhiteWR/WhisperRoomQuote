@@ -51,6 +51,24 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.81.3', date:'June 8, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Standalone WA Door now honors the WA Type too.** Picking the WA Type at the bottom of the quote now drives the standalone WA Door (not just ADA): a 46" booth set to <b>4646</b> shrinks its door-adjacent 46" wall to 43" (C101→C109) instead of always doing 4622. When no WA Type is set it defaults sensibly — 4622/4016 only if the booth actually carries the narrow 22"/16" wall, otherwise the 4646/4040 pair variant (so a 4646-only booth like 9696 defaults to 4646, not 4622).'},
+      ]
+    },
+    {
+      v:'1.81.2', date:'June 8, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**31" windows: the 4040 WA Type now makes the 31" wall.** Completing the previous fix — a 40"-wall booth (42 / 60 / 84 / 102 series) with WA Type <b>4040</b> now shrinks its door-adjacent 40" wall to 31" (C01→Z01, and the IEP inner 35.5"→26.5"), the same way 4646 makes the 43" wall. So <b>WDO 31" 1648</b> (E/S) finally has a 31" wall to substitute — it swaps it for the window wall, outer + IEP inner. The 4016 default (16"→7") is unchanged.'},
+      ]
+    },
+    {
+      v:'1.81.1', date:'June 8, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**43" / 31" windows now substitute their wall.** A WDO line with an explicit wall size (<b>WDO 43" 2636 / 2648</b>, <b>WDO 31" 1648</b>) targets a wall that ADA/WA creates in the same build (the 43" wall comes from ADA 4646), so it is NOT in the base BOM — and the window was being left unmapped. Two fixes: a feature removal now cancels a pending addition of the same code (so one feature can swap a wall another feature added), and an explicit-wall WDO proceeds even when the wall is feature-created. The 43" window now swaps both the outer wall (C109→C128) and the IEP inner shell. (Heads-up: the 31" door-adjacent wall is not yet generated on the 40" booths, so WDO 31" currently adds its window wall without a 31" solid to remove — see DEVLOG.)'},
+      ]
+    },
+    {
       v:'1.81.0', date:'June 8, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**ADA now honors the WA Type on dual-option booths.** ADA on <b>7296 / 96120 / 96168</b> (S & E) pulls the correct wide-access variant — <b>4646 vs 4622</b> — from the quote WA Type (repWaType) instead of always using the default. The two variants differ only by the door-adjacent wall (4646 shrinks a 46in wall to 43in; 4622 a 22in wall to 19in; the enhanced shell shifts its inner wall to match). Single-option booths (7272 = 4622; 9696 / 96144 / 96192 = 4646) and the no-WA-Type case use the default. Derived from a fresh 20-PL batch and verified to reconstruct all 20 model × WA-type combos exactly.'},

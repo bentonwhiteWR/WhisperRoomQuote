@@ -10759,8 +10759,14 @@ ${q.accepted ? `
       // INDEPENDENT source) vs the PL's GROSS (summed BOM net + pallets × 144).
       // They reconcile for the base models now; a gap points at an unmapped or
       // missing feature, or a BOM/catalog error.
+      // Quote weight from the catalog — EXCLUDING AP (dropshipped by Audimute,
+      // never on the booth PL, so its weight must not count against the PL).
+      const isDropship = it => /^AP\b/i.test(String((it && (it.name || it.productName || it.title || it.product)) || '').trim());
       const quoteWeight = Math.round((lineItems || []).reduce((s, it) =>
-        s + (parseFloat(it.weight) || 0) * Math.max(1, parseInt(it.qty, 10) || 1), 0) * 100) / 100;
+        isDropship(it) ? s : s + (parseFloat(it.weight) || 0) * Math.max(1, parseInt(it.qty, 10) || 1), 0) * 100) / 100;
+      // The catalog/quote weight is GROSS — it pulls 144 lb per pallet. Strip that
+      // out so the check compares the PALLETLESS quote weight to the PL net.
+      const quoteWeightNet = Math.round((quoteWeight - palletCount * PALLET_WEIGHT_LB) * 100) / 100;
       if (pl.totals) pl.totals.grossLb = Math.round(((pl.totals.netLb || 0) + palletCount * PALLET_WEIGHT_LB) * 100) / 100;
       json({
         quoteNumber,
@@ -10774,6 +10780,7 @@ ${q.accepted ? `
         shipTo,
         palletCount,
         quoteWeight,
+        quoteWeightNet,
         serialNumber,
         components: packingList.componentDict(),
       });

@@ -113,6 +113,11 @@
   .back-link{position:fixed;top:14px;left:14px;padding:8px 14px;background:#1a1a1a;color:#fff;border-radius:7px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;text-decoration:none;font-family:inherit;z-index:10}
   .back-link:hover{background:#333;color:#fff}
   .loading,.empty{padding:46px;text-align:center;color:#888;font-size:13px}
+  /* Weight cross-check banner (quote catalog weight vs PL summed weight) */
+  .weight-check{max-width:980px;margin:0 auto 18px;padding:10px 16px;border-radius:9px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap;line-height:1.5}
+  .weight-check.ok{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.4);color:#15803d}
+  .weight-check.warn{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.55);color:#92580a}
+  .weight-check b{font-weight:800;white-space:nowrap}
 
   @media print {
     body{background:#fff;padding:0}
@@ -657,7 +662,7 @@
     const totalPages = rooms.length;
     const savedDate = localStorage.getItem(dateKey()) || todayShort();
 
-    document.getElementById('rooms').innerHTML = rooms.map((rm,ri)=>{
+    document.getElementById('rooms').innerHTML = weightCheckHtml() + rooms.map((rm,ri)=>{
       const dateInput = '<span class="pl-date"><input type="text" id="pl-date-' + ri + '" value="' + esc(savedDate) + '" oninput="saveDate(this.value)"></span>';
       const headerTop =
         '<div class="pl-top">'
@@ -775,6 +780,27 @@
 
   function pageFoot(n, total){
     return '<div class="pl-foot"><div></div><div class="pn">' + n + ' of ' + total + '</div></div>';
+  }
+
+  // Weight cross-check: the quote's total weight (catalog / price-book — an
+  // independent source) vs the PL's summed weight (Σ BOM components, net — the
+  // same number the per-booth totals boxes show). They reconcile for the base
+  // models now; a gap points at an unmapped/missing feature or a bad component.
+  function weightCheckHtml(){
+    const q  = Math.round(DATA.quoteWeight || 0);
+    if (!q) return '';                                  // no catalog weight to check against
+    const pl = Math.round((DATA.totals && DATA.totals.netLb) || 0);
+    const d  = pl - q;
+    const unmapped = (DATA.rooms||[]).reduce((s,r)=>s + ((r.unmappedFeatures||[]).length), 0);
+    const ok = Math.abs(d) <= 2 && unmapped === 0;
+    const note = unmapped
+      ? ' · <span style="font-weight:700">' + unmapped + ' unmapped feature' + (unmapped>1?'s':'') + '</span> not in PL weight'
+      : '';
+    return '<div class="weight-check no-print ' + (ok ? 'ok' : 'warn') + '">'
+      + '<b>' + (ok ? '✓' : '⚠') + ' Weight check</b> Quote ' + q.toLocaleString() + ' lb'
+      + ' &middot; Packing List ' + pl.toLocaleString() + ' lb'
+      + ' &middot; &Delta; ' + (d>0?'+':'') + d.toLocaleString() + ' lb' + note
+      + '</div>';
   }
 
   function flagsHtml(rm){

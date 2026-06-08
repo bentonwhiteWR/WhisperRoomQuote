@@ -10755,6 +10755,13 @@ ${q.accepted ? `
         const or = await db.query('SELECT order_data FROM orders WHERE quote_number = $1', [quoteNumber]);
         if (or.rows[0] && or.rows[0].order_data) serialNumber = or.rows[0].order_data.serialNumber || '';
       } catch (e) { /* no order row yet */ }
+      // Weight cross-check: the quote's total weight (catalog / price-book — an
+      // INDEPENDENT source) vs the PL's GROSS (summed BOM net + pallets × 144).
+      // They reconcile for the base models now; a gap points at an unmapped or
+      // missing feature, or a BOM/catalog error.
+      const quoteWeight = Math.round((lineItems || []).reduce((s, it) =>
+        s + (parseFloat(it.weight) || 0) * Math.max(1, parseInt(it.qty, 10) || 1), 0) * 100) / 100;
+      if (pl.totals) pl.totals.grossLb = Math.round(((pl.totals.netLb || 0) + palletCount * PALLET_WEIGHT_LB) * 100) / 100;
       json({
         quoteNumber,
         meta: {
@@ -10766,6 +10773,7 @@ ${q.accepted ? `
         ...pl,
         shipTo,
         palletCount,
+        quoteWeight,
         serialNumber,
         components: packingList.componentDict(),
       });

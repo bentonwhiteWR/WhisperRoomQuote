@@ -51,7 +51,7 @@ module.exports = function renderChangelog() {
 
   ${[
     {
-      v:'1.84.27', date:'June 9, 2026', tag:'ui',
+      v:'1.84.28', date:'June 9, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Top-Down Layout: seam seals are now clearly visible.** The mid-wall plinth seals (at every panel-to-panel joint) and the chamfered corner L-brackets were drawn too small and in a dark speckle that vanished against the carpet — they now scale with the wall thickness, match the spec-sheet profile proportions, and carry a light halo so they pop. Joints are also placed per-wall from each wall panel layout instead of mirroring the back wall onto the front, and the stray floor-spanning seam line is gone.'},
       ]

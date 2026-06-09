@@ -98,8 +98,11 @@
   .ld-svg .ld-panel *{pointer-events:auto}
   .ld-panel:hover .ld-wall{filter:brightness(1.5)}
   .ld-panel.ld-target .ld-wall{stroke:#ee6216;stroke-width:2.4}
-  .ld-panel.ld-grabbing{opacity:.45}
+  .ld-panel.ld-grabbing .ld-wall{filter:brightness(1.7);stroke:#ee6216;stroke-width:2}
   body.ld-dragging{cursor:grabbing;user-select:none;-webkit-user-select:none}
+  .ld-ghost{position:fixed;z-index:9999;pointer-events:none;display:flex;align-items:center;gap:7px;padding:5px 10px;background:#1a1a1a;color:#fff;border:1px solid #555;border-radius:8px;font-size:11px;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.35)}
+  .ld-ghost.ok{border-color:#ee6216}
+  .ld-ghost .c{color:#ee6216;font-family:ui-monospace,Menlo,monospace}
   @media print{ .ld-hint{display:none} }
 
   /* Add-row footer (no-print) */
@@ -316,9 +319,22 @@
     const interior = layout.interior || { w: ext.w - 2 * layout.wallThickness, h: ext.h - 2 * layout.wallThickness };
     const PX = Math.max(3, Math.min(600 / ext.w, 470 / ext.h, 11));
     const W = ext.w * PX, H = ext.h * PX, t = layout.wallThickness * PX;
-    const VOUT = 26;                       // vent-duct protrusion (px symbol)
-    const DOORR = layout.door ? 96 : 0;    // door swing reserve (px); actual gap is to-scale, capped
-    const mTop = 80, mBottom = 40 + DOORR, mLeft = 66, mRight = 66;
+    const VOUT = 28;        // vent protrusion estimate (px) for margin sizing
+    const DOORR = 92;       // max door-swing radius (px symbol)
+    // Which walls currently hold a door / vent — computed from the LIVE placement
+    // (not hard-coded to S/N), so a dragged door or vent draws its swing/ducts on
+    // whatever wall it now sits on, and the margins expand to fit.
+    const sideHasDoor = { N: false, S: false, E: false, W: false };
+    const sideHasVent = { N: false, S: false, E: false, W: false };
+    for (const sd of ['N', 'S', 'E', 'W']) for (const slot of ((layout.walls[sd] || { slots: [] }).slots)) {
+      const ln = assign[slot.id]; if (!ln) continue;
+      const k = classifyWall(ln.pack);
+      if (k === 'DRFRM') sideHasDoor[sd] = true;
+      else if (k === 'VNT' && layout.hasVent !== false) sideHasVent[sd] = true;
+    }
+    const extra = sd => sideHasDoor[sd] ? DOORR + 10 : (sideHasVent[sd] ? VOUT + 18 : 0);
+    const BASE = 50;
+    const mTop = BASE + extra('N'), mBottom = BASE + extra('S'), mLeft = BASE + extra('W'), mRight = BASE + extra('E');
     const x0 = mLeft, y0 = mTop;
     const totalW = W + mLeft + mRight, totalH = H + mTop + mBottom;
   
@@ -354,77 +370,115 @@
       for (let i = 0; i < wW.length - 1; i++) { o += wW[i].size; const y = fy0 + (o / nomW) * spanH; s += `<line x1="${fx0}" y1="${y}" x2="${fx1}" y2="${y}" stroke="#000" stroke-opacity="0.12" stroke-width="1"/>`; }
     })();
   
-    // ── seam-seal strip along a wall's interior face ────────────────
-    // Solid sawtooth teeth pointing into the booth (nx,ny = inward normal),
-    // matching the spec sheet's seam-seal hatching. Filled so they read clearly
-    // against the carpet floor.
-    function seam(ax, ay, bx, by, nx, ny) {
+    // ── seam seals (per the spec sheet) ─────────────────────────────
+    // Three parts: (1) a dark sawtooth comb along each interior wall face, (2) a
+    // corner piece at each of the 4 interior corners, (3) a "T" piece at every
+    // joint where two panels butt on the same wall (stem points into the booth).
+    const SEAL_FILL = '#1b1c21', SEAL_EDGE = '#5a5e66';
+    function seamComb(ax, ay, bx, by, nx, ny) {
       const len = Math.hypot(bx - ax, by - ay);
       if (len < 4) return '';
       const ux = (bx - ax) / len, uy = (by - ay) / len;
-      const teeth = Math.max(3, Math.round(len / 8));
-      const tw = len / teeth, dep = Math.min(7, Math.max(4.5, t * 0.7));
+      const teeth = Math.max(3, Math.round(len / 7));
+      const tw = len / teeth, dep = Math.min(6.5, Math.max(4, t * 0.6));
       let g = '';
       for (let i = 0; i < teeth; i++) {
-        const sx = ax + ux * tw * i,       sy = ay + uy * tw * i;
+        const sx = ax + ux * tw * i,         sy = ay + uy * tw * i;
         const mx = ax + ux * tw * (i + 0.5), my = ay + uy * tw * (i + 0.5);
-        const ex = ax + ux * tw * (i + 1), ey = ay + uy * tw * (i + 1);
-        g += `<path d="M ${sx} ${sy} L ${mx + nx * dep} ${my + ny * dep} L ${ex} ${ey} Z" fill="#cfd4da" stroke="#aeb4bc" stroke-width="0.4" stroke-linejoin="round"/>`;
+        const ex = ax + ux * tw * (i + 1),   ey = ay + uy * tw * (i + 1);
+        g += `<path d="M ${sx} ${sy} L ${mx + nx * dep} ${my + ny * dep} L ${ex} ${ey} Z" fill="${SEAL_FILL}" stroke="${SEAL_EDGE}" stroke-width="0.5" stroke-linejoin="round"/>`;
+      }
+      return g;
+    }
+    function cornerSeal(cx, cy) {
+      const sz = Math.min(10, Math.max(6, t * 0.85));
+      return `<rect x="${cx - sz / 2}" y="${cy - sz / 2}" width="${sz}" height="${sz}" rx="1.5" fill="${SEAL_FILL}" stroke="${SEAL_EDGE}" stroke-width="0.6"/>`;
+    }
+    function teeSeal(jx, jy, nx, ny) {     // jx,jy on the interior face; nx,ny inward
+      const stem = Math.min(15, Math.max(9, t * 1.2)), bar = 10, tx = -ny, ty = nx;
+      const ex = jx + nx * stem, ey = jy + ny * stem;
+      return `<line x1="${jx - tx * bar / 2}" y1="${jy - ty * bar / 2}" x2="${jx + tx * bar / 2}" y2="${jy + ty * bar / 2}" stroke="${SEAL_FILL}" stroke-width="3" stroke-linecap="round"/>`
+           + `<line x1="${jx}" y1="${jy}" x2="${ex}" y2="${ey}" stroke="${SEAL_FILL}" stroke-width="3" stroke-linecap="round"/>`;
+    }
+    function seamPieces() {
+      let g = '';
+      g += seamComb(x0 + t, y0 + t, x0 + W - t, y0 + t, 0, 1);          // N face
+      g += seamComb(x0 + t, y0 + H - t, x0 + W - t, y0 + H - t, 0, -1); // S
+      g += seamComb(x0 + t, y0 + t, x0 + t, y0 + H - t, 1, 0);          // W
+      g += seamComb(x0 + W - t, y0 + t, x0 + W - t, y0 + H - t, -1, 0); // E
+      g += cornerSeal(x0 + t, y0 + t) + cornerSeal(x0 + W - t, y0 + t)
+         + cornerSeal(x0 + t, y0 + H - t) + cornerSeal(x0 + W - t, y0 + H - t);
+      const spanW = W - 2 * t, spanH = H - 2 * t;
+      for (const side of ['N', 'S', 'E', 'W']) {
+        const slots = layout.walls[side].slots;
+        const nom = slots.reduce((a, sl) => a + sl.size, 0) || 1;
+        let o = 0;
+        for (let i = 0; i < slots.length - 1; i++) {
+          o += slots[i].size;
+          if (side === 'N')      g += teeSeal(x0 + t + (o / nom) * spanW, y0 + t, 0, 1);
+          else if (side === 'S') g += teeSeal(x0 + t + (o / nom) * spanW, y0 + H - t, 0, -1);
+          else if (side === 'W') g += teeSeal(x0 + t, y0 + t + (o / nom) * spanH, 1, 0);
+          else                   g += teeSeal(x0 + W - t, y0 + t + (o / nom) * spanH, -1, 0);
+        }
       }
       return g;
     }
   
-    // ── vent assembly protruding outside the N wall ─────────────────
-    // TWO units per vent panel (per the spec sheet): a horizontal cylindrical
-    // silencer on the left + a square fan box (with a circular fan) on the right.
-    function ventDuct(cx) {
-      const top = y0 - VOUT;
-      const box = VOUT * 0.84;                 // fan-box side
-      const cylW = VOUT * 1.0, cylH = VOUT * 0.62;
-      const gap = 3;
-      const totalW = cylW + gap + box;
-      const x = cx - totalW / 2;               // left edge of the pair
-      const cylY = y0 - cylH - (VOUT - cylH) / 2;
-      const boxY = y0 - box;
+    // Outer-edge midpoint + outward/along unit vectors for a panel on `side`.
+    function edgeGeom(side, px, py, pw, ph) {
+      if (side === 'N') return { omx: px + pw / 2, omy: py,      ox: 0, oy: -1, ax: 1, ay: 0, horiz: true };
+      if (side === 'S') return { omx: px + pw / 2, omy: py + ph, ox: 0, oy: 1,  ax: 1, ay: 0, horiz: true };
+      if (side === 'W') return { omx: px,          omy: py + ph / 2, ox: -1, oy: 0, ax: 0, ay: 1, horiz: false };
+      return            { omx: px + pw, omy: py + ph / 2, ox: 1, oy: 0, ax: 0, ay: 1, horiz: false };
+    }
+  
+    // ── vent assembly: TWO square boxes (one plain, one with a fan), spread
+    // along the wall, protruding OUTWARD from whatever wall holds the vent ──
+    function ventDuct(side, px, py, pw, ph) {
+      const B = 15, G = 11, PL = 4;
+      const { omx, omy, ox, oy, ax, ay, horiz } = edgeGeom(side, px, py, pw, ph);
+      const off = B / 2 + G / 2;
       let g = '';
-      // mounting plate across both units
-      g += `<rect x="${x - 2}" y="${y0 - 3}" width="${totalW + 4}" height="5" rx="1.5" fill="#3a3b42"/>`;
-      // 1) cylindrical silencer (horizontal capsule) on the left
-      g += `<rect x="${x}" y="${cylY}" width="${cylW}" height="${cylH}" rx="${cylH / 2}" fill="#4c4f57" stroke="#2b2d33" stroke-width="1"/>`;
-      g += `<rect x="${x + 2}" y="${cylY + 2}" width="${cylW - 4}" height="2" rx="1" fill="#62666f"/>`;
-      // 2) square fan box on the right, with a fan circle
-      const bx = x + cylW + gap;
-      g += `<rect x="${bx}" y="${boxY}" width="${box}" height="${box}" rx="2" fill="#33353c" stroke="#1c1d21" stroke-width="1"/>`;
-      g += `<circle cx="${bx + box / 2}" cy="${boxY + box / 2}" r="${box * 0.34}" fill="#22242a" stroke="#54585f" stroke-width="0.8"/>`;
-      g += `<circle cx="${bx + box / 2}" cy="${boxY + box / 2}" r="${box * 0.12}" fill="#62666f"/>`;
+      // mounting plate hugging the wall edge under both boxes
+      const plate = G + 2 * B + 4;
+      if (horiz) g += `<rect x="${omx - plate / 2}" y="${oy < 0 ? omy - PL : omy}" width="${plate}" height="${PL}" rx="1.5" fill="#3a3b42"/>`;
+      else       g += `<rect x="${ox < 0 ? omx - PL : omx}" y="${omy - plate / 2}" width="${PL}" height="${plate}" rx="1.5" fill="#3a3b42"/>`;
+      for (const k of [-1, 1]) {
+        const ccx = omx + ax * k * off, ccy = omy + ay * k * off;
+        const rx = horiz ? (ccx - B / 2) : (ox < 0 ? omx - B : omx);
+        const ry = horiz ? (oy < 0 ? omy - B : omy) : (ccy - B / 2);
+        g += `<rect x="${rx}" y="${ry}" width="${B}" height="${B}" rx="2" fill="#34363d" stroke="#1b1c20" stroke-width="1"/>`;
+        if (k === 1) {   // fan box
+          g += `<circle cx="${rx + B / 2}" cy="${ry + B / 2}" r="${B * 0.32}" fill="#22242a" stroke="#54585f" stroke-width="0.8"/>`;
+          g += `<circle cx="${rx + B / 2}" cy="${ry + B / 2}" r="${B * 0.11}" fill="#62666f"/>`;
+        } else {         // plain box (no hole) — same square, just an inset panel line
+          g += `<rect x="${rx + 3}" y="${ry + 3}" width="${B - 6}" height="${B - 6}" rx="1" fill="none" stroke="#4a4d55" stroke-width="0.8"/>`;
+        }
+      }
       return g;
     }
   
-    // ── door opening + outward swing on the S wall ──────────────────
-    // The opening is drawn to scale (door-swing inches), capped so the swing
-    // arc doesn't blow out the bottom margin.
-    function doorSwing(cx, panelW, swingIn) {
-      const r = Math.min(swingIn * PX, panelW * 0.94, DOORR);  // opening width = door width, to scale
-      const hingeX = cx - r / 2, hingeY = y0 + H - t / 2;      // hinge on the wall
-      const openX = hingeX, openY = hingeY + r;                // leaf swung fully open (outward/down)
-      const arcEndX = hingeX + r, arcEndY = hingeY;            // closed position along wall
+    // ── door: opening + outward swing on whatever wall holds it ─────
+    function doorSwing(side, px, py, pw, ph, swingIn) {
+      const { omx, omy, ox, oy, ax, ay, horiz } = edgeGeom(side, px, py, pw, ph);
+      const r = Math.min(swingIn * PX, (horiz ? pw : ph) * 0.94, DOORR);
+      const hx = omx - ax * r / 2, hy = omy - ay * r / 2;          // hinge
+      const cX = omx + ax * r / 2, cY = omy + ay * r / 2;          // closed edge along wall
+      const oX = hx + ox * r, oY = hy + oy * r;                    // leaf swung open (outward)
+      const sweep = ((cX - hx) * (oY - hy) - (cY - hy) * (oX - hx)) > 0 ? 1 : 0;
       let g = '';
-      // gap in the wall (the opening)
-      g += `<rect x="${hingeX}" y="${y0 + H - t}" width="${r}" height="${t}" fill="#15161a"/>`;
-      // jamb posts at each side of the opening
-      g += `<rect x="${hingeX - 1.5}" y="${y0 + H - t}" width="2.5" height="${t}" fill="#0d0e10"/>`;
-      g += `<rect x="${hingeX + r - 1}" y="${y0 + H - t}" width="2.5" height="${t}" fill="#0d0e10"/>`;
-      // swing arc (opens OUTWARD)
-      g += `<path d="M ${arcEndX} ${arcEndY} A ${r} ${r} 0 0 1 ${openX} ${openY}" fill="rgba(238,98,22,0.10)" stroke="rgba(238,98,22,0.55)" stroke-width="1.3" stroke-dasharray="5,3"/>`;
-      // door leaf (shown open)
-      g += `<line x1="${hingeX}" y1="${hingeY}" x2="${openX}" y2="${openY}" stroke="#ee6216" stroke-width="3.5" stroke-linecap="round"/>`;
-      g += `<circle cx="${hingeX}" cy="${hingeY}" r="3" fill="#ee6216"/>`;
+      // opening cut in the wall band
+      if (horiz) g += `<rect x="${omx - r / 2}" y="${py}" width="${r}" height="${ph}" fill="#15161a"/>`;
+      else       g += `<rect x="${px}" y="${omy - r / 2}" width="${pw}" height="${r}" fill="#15161a"/>`;
+      g += `<path d="M ${cX} ${cY} A ${r} ${r} 0 0 ${sweep} ${oX} ${oY}" fill="rgba(238,98,22,0.10)" stroke="rgba(238,98,22,0.55)" stroke-width="1.3" stroke-dasharray="5,3"/>`;
+      g += `<line x1="${hx}" y1="${hy}" x2="${oX}" y2="${oY}" stroke="#ee6216" stroke-width="3.5" stroke-linecap="round"/>`;
+      g += `<circle cx="${hx}" cy="${hy}" r="3" fill="#ee6216"/>`;
       return g;
     }
   
     // ── draw one wall side's panels ─────────────────────────────────
-    const vents = [];   // {cx} for vent ducts, drawn after walls
-    let door = null;    // {cx, swing}
+    const vents = [];   // {side,px,py,pw,ph} — drawn after walls
+    let door = null;    // {side,px,py,pw,ph,swing}
   
     function drawWall(side) {
       const wall = layout.walls[side]; if (!wall) return '';
@@ -471,11 +525,9 @@
           else       g += `<rect x="${px + pw * 0.28}" y="${py + ph * 0.2}" width="${pw * 0.44}" height="${ph * 0.6}" fill="#9ec4e6" opacity="0.8" rx="1"/>`;
         }
         g += `</g>`;
-        // collect vent / door for later overlay
-        const cx = horiz ? (px + pw / 2) : null;
-        const cyc = horiz ? null : (py + ph / 2);
-        if (kind === 'VNT' && side === 'N' && layout.hasVent !== false) vents.push({ cx: px + pw / 2 });
-        if (kind === 'DRFRM' && side === 'S') door = { cx: px + pw / 2, pw, swing: (layout.door && layout.door.swing) || 30 };
+        // collect vent / door for later overlay — on WHATEVER wall they sit
+        if (kind === 'VNT' && layout.hasVent !== false) vents.push({ side, px, py, pw, ph });
+        if (kind === 'DRFRM') door = { side, px, py, pw, ph, swing: (layout.door && layout.door.swing) || 30 };
         // panel label (type + code) just inside the wall on the floor
         g += panelLabel(side, px, py, pw, ph, kind, line);
         off += len;
@@ -515,27 +567,24 @@
       s += `<rect x="${cx}" y="${cy}" width="${t}" height="${t}" fill="#191a1e" stroke="#000" stroke-width="0.8"/>`;
     }
   
-    // seam seals on the four interior faces
-    s += seam(x0 + t, y0 + t, x0 + W - t, y0 + t, 0, 1);             // N (face points down)
-    s += seam(x0 + t, y0 + H - t, x0 + W - t, y0 + H - t, 0, -1);    // S (up)
-    s += seam(x0 + t, y0 + t, x0 + t, y0 + H - t, 1, 0);            // W (right)
-    s += seam(x0 + W - t, y0 + t, x0 + W - t, y0 + H - t, -1, 0);    // E (left)
+    // seam seals: comb on each interior face + corner pieces + T pieces at joints
+    s += seamPieces();
   
-    // vent ducts + door overlays
-    vents.forEach(v => s += ventDuct(v.cx));
-    if (door) s += doorSwing(door.cx, door.pw, door.swing);
+    // vent ducts + door overlays (follow whatever wall currently holds them)
+    vents.forEach(v => s += ventDuct(v.side, v.px, v.py, v.pw, v.ph));
+    if (door) s += doorSwing(door.side, door.px, door.py, door.pw, door.ph, door.swing);
   
     // ── dimension lines (exterior) ──────────────────────────────────
     function tick(x, y, vert) {
       return vert ? `<line x1="${x - 4}" y1="${y}" x2="${x + 4}" y2="${y}" stroke="#9097a0" stroke-width="1"/>`
                   : `<line x1="${x}" y1="${y - 4}" x2="${x}" y2="${y + 4}" stroke="#9097a0" stroke-width="1"/>`;
     }
-    const dimY = y0 + H + DOORR + 24;
+    const dimY = y0 + H + extra('S') + 24;
     s += `<line x1="${x0}" y1="${dimY}" x2="${x0 + W}" y2="${dimY}" stroke="#9097a0" stroke-width="1"/>`;
     s += tick(x0, dimY, false) + tick(x0 + W, dimY, false);
     s += `<rect x="${x0 + W / 2 - 24}" y="${dimY - 9}" width="48" height="16" rx="3" fill="url(#ldBg)"/>`;
     s += `<text x="${x0 + W / 2}" y="${dimY + 3}" text-anchor="middle" font-size="11" font-weight="700" fill="#4a4f57">${ext.w}″</text>`;
-    const dimX = x0 - 30;
+    const dimX = x0 - extra('W') - 24;
     s += `<line x1="${dimX}" y1="${y0}" x2="${dimX}" y2="${y0 + H}" stroke="#9097a0" stroke-width="1"/>`;
     s += tick(dimX, y0, true) + tick(dimX, y0 + H, true);
     s += `<rect x="${dimX - 8}" y="${y0 + H / 2 - 9}" width="16" height="18" fill="url(#ldBg)"/>`;
@@ -548,13 +597,9 @@
     s += `<text x="${ccx}" y="${ccy - 1}" text-anchor="middle" font-size="9.5" font-weight="700" letter-spacing="0.08em" fill="#8a8f97">INTERIOR</text>`;
     s += `<text x="${ccx}" y="${ccy + 10}" text-anchor="middle" font-size="11" font-weight="800" fill="#2a2d33">${interior.w}″ × ${interior.h}″</text>`;
   
-    // ── side captions ───────────────────────────────────────────────
-    if (layout.hasVent !== false && vents.length) {
-      s += `<text x="${x0 + W / 2}" y="${y0 - VOUT - 8}" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="0.12em" fill="#9097a0">BACK · VENTILATION</text>`;
-    } else {
-      s += `<text x="${x0 + W / 2}" y="${y0 - 12}" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="0.12em" fill="#9097a0">BACK</text>`;
-    }
-    s += `<text x="${x0 + W / 2}" y="${dimY + 22}" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="0.12em" fill="#9097a0">FRONT · DOOR</text>`;
+    // ── orientation captions (booth orientation is fixed; components can move) ─
+    s += `<text x="${x0 + W / 2}" y="${y0 - extra('N') - 8}" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="0.12em" fill="#9097a0">BACK</text>`;
+    s += `<text x="${x0 + W / 2}" y="${dimY + 22}" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="0.12em" fill="#9097a0">FRONT</text>`;
   
     s += `</svg>`;
     return s;
@@ -604,6 +649,27 @@
     return html + '</div>';
   }
 
+  // floating "ghost" chip that follows the cursor so it's obvious you're dragging
+  let _ldGhost = null;
+  function ldShowGhost(line, e) {
+    const kind = line ? classifyWall(line.pack) : 'EMPTY';
+    const meta = KIND_META[kind] || KIND_META.EMPTY;
+    const g = document.createElement('div');
+    g.className = 'ld-ghost';
+    g.innerHTML = '<span>' + esc(meta.label || 'Panel') + '</span>'
+      + (line && line.code ? '<span class="c">' + esc(line.code) + '</span>' : '');
+    document.body.appendChild(g);
+    _ldGhost = g;
+    ldMoveGhost(e);
+  }
+  function ldMoveGhost(e) {
+    if (!_ldGhost) return;
+    const pt = (e.touches && e.touches[0]) || e;
+    _ldGhost.style.left = (pt.clientX + 14) + 'px';
+    _ldGhost.style.top = (pt.clientY + 12) + 'px';
+  }
+  function ldHideGhost() { if (_ldGhost) { _ldGhost.remove(); _ldGhost = null; } }
+
   function ldDown(e) {
     const g = e.target.closest && e.target.closest('.ld-panel');
     if (!g) return;
@@ -611,15 +677,24 @@
     _ldDrag = { ri, from: g.getAttribute('data-slot'), g };
     g.classList.add('ld-grabbing');
     document.body.classList.add('ld-dragging');
+    const line = LAYOUT_STATE[ri] && LAYOUT_STATE[ri].assign[_ldDrag.from];
+    ldShowGhost(line || null, e);
     e.preventDefault();
   }
   function ldMove(e) {
     if (!_ldDrag) return;
+    ldMoveGhost(e);
     const pt = (e.touches && e.touches[0]) || e;
     const el = document.elementFromPoint(pt.clientX, pt.clientY);
     const tgt = el && el.closest && el.closest('.ld-panel');
     document.querySelectorAll('.ld-panel.ld-target').forEach(n => n.classList.remove('ld-target'));
-    if (tgt && tgt !== _ldDrag.g && ldRoomOf(tgt) === _ldDrag.ri) tgt.classList.add('ld-target');
+    if (tgt && tgt !== _ldDrag.g && ldRoomOf(tgt) === _ldDrag.ri) {
+      tgt.classList.add('ld-target');
+      if (_ldGhost) _ldGhost.classList.add('ok');
+    } else if (_ldGhost) {
+      _ldGhost.classList.remove('ok');
+    }
+    e.preventDefault();
   }
   function ldUp(e) {
     if (!_ldDrag) return;
@@ -631,6 +706,7 @@
     }
     document.querySelectorAll('.ld-panel.ld-target').forEach(n => n.classList.remove('ld-target'));
     document.body.classList.remove('ld-dragging');
+    ldHideGhost();
     _ldDrag = null;
   }
   function ldSwap(ri, a, b) {

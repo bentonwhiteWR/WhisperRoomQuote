@@ -10696,18 +10696,23 @@ ${q.accepted ? `
       const quoteNumber = decodeURIComponent(pathname.replace('/api/packing-list/', '').replace(/\/+$/, ''));
       if (!quoteNumber) { json({ error: 'Quote number required' }, 400); return; }
       let snap = null, dealName = null, createdAt = null;
+      let orderData = {};
       if (db) {
         const r = await db.query(
           'SELECT json_snapshot, deal_name, created_at FROM quotes WHERE quote_number = $1', [quoteNumber]);
         if (r.rows[0]) { snap = r.rows[0].json_snapshot || null; dealName = r.rows[0].deal_name; createdAt = r.rows[0].created_at; }
+        // Once a quote becomes an order, its order_data holds the LIVE foam /
+        // hinge / WA-type the rep set in the Orders drawer (PATCH /api/orders/:q).
+        // Those are the current truth and win over the quote snapshot for the PL.
+        const o = await db.query('SELECT order_data FROM orders WHERE quote_number = $1', [quoteNumber]);
+        if (o.rows[0]) orderData = o.rows[0].order_data || {};
       }
       if (!snap) { json({ error: 'Quote not found: ' + quoteNumber }, 404); return; }
       const lineItems = snap.lineItems || [];
-      // Hinge / foam preferences carry forward from the quote: customer-
-      // accepted values win, then rep preference, then the URL query param
-      // (kept as an override for testing), then the DEFAULTS in lib/packing-
-      // list.js. Quote stores "Left Hand"/"Right Hand"/"Undecided"; the PL
-      // generator expects bare "Left"/"Right".
+      // Hinge / foam / WA-type precedence: URL query (test override) → the
+      // ORDER's live value (Orders drawer) → the customer-accepted quote value →
+      // the rep preference → the DEFAULTS in lib/packing-list.js. Quote stores
+      // "Left Hand"/"Right Hand"/"Undecided"; the generator expects "Left"/"Right".
       const normalizeHinge = s => {
         const v = String(s || '').trim();
         if (/^left/i.test(v))  return 'Left';
@@ -10723,9 +10728,9 @@ ${q.accepted ? `
       // the WA-Type variant for dual-option ADA booths. ?wa= is a test override.
       const validWa = w => /^(4016|4040|4622|4646)$/.test(String(w || '').trim()) ? String(w).trim() : undefined;
       const opts = {
-        hinge: queryHinge || normalizeHinge(snap.acceptedHinge) || normalizeHinge(snap.repHingePreference),
-        foam:  parsed.query.foam || normalizeFoam(snap.acceptedFoam) || normalizeFoam(snap.repFoamColor),
-        adaWaType: validWa(parsed.query.wa) || validWa(snap.repWaType),
+        hinge: queryHinge || normalizeHinge(orderData.hingePreference) || normalizeHinge(snap.acceptedHinge) || normalizeHinge(snap.repHingePreference),
+        foam:  parsed.query.foam || normalizeFoam(orderData.foamColor) || normalizeFoam(snap.acceptedFoam) || normalizeFoam(snap.repFoamColor),
+        adaWaType: validWa(parsed.query.wa) || validWa(orderData.waType) || validWa(snap.repWaType),
       };
       const pl = packingList.generate(lineItems, opts);
       const customer = snap.customer || {};

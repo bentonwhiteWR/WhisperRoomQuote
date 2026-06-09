@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.12', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Packing list now reflects the foam color set on the order.** If a quote has become an order, the foam color, hinge, and WA-type set in the Orders drawer now drive the packing list — previously the PL only read the original quote, so changing the foam on the order didn\'t update the PL. The order\'s value wins; if none is set, it falls back to the accepted quote value.'},
+      ]
+    },
+    {
       v:'1.84.10', date:'June 9, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Roof Mount on Standard booths now adds the ceiling support beam.** A Standard (S) booth doesn\'t normally include the IEP support beam that double-wall (E) booths have, but under Roof Mount the ceiling has to carry the roof-mount load — so the packing list now adds it: one U101 beam per ceiling brace on 96-series booths, and one U01 beam per ceiling brace on 102-series booths. Corrects the weight on those RM orders (e.g. a 96120 S with RM adds 2 beams).'},

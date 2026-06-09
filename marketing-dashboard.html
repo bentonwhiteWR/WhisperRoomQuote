@@ -365,6 +365,8 @@ td.drillable:hover{color:var(--orange)}
 /* v1.84.1 — attribution reconciliation (remainder) row in table footers */
 tfoot .recon-row td{background:rgba(148,163,184,.07);border-top:2px solid var(--border);color:var(--muted);font-style:italic;padding-top:10px}
 tfoot .recon-row td.num{font-family:var(--mono);font-style:normal}
+tfoot .recon-row td.drillable{cursor:pointer}
+tfoot .recon-row td.drillable:hover{color:var(--orange)}
 .recon-sub{display:block;font-style:normal;font-size:10px;color:var(--muted);opacity:.85;margin-top:2px;letter-spacing:.02em}
 </style>
   <script src="/assets/nav.js" defer></script>
@@ -3087,7 +3089,10 @@ function renderAdQuality(aq) {
 // headline. resolved* = what the table attributed; headline = deals_won_selected
 // / revenue_selected from the same model-windowed coverage object that drives the
 // funnel, so resolved + remainder == headline exactly.
-function gscReconFoot(resolvedDeals, resolvedRev, leftColspan, rightColspan, label) {
+// v1.84.6 — `drillType` makes the remainder cells click-through to the actual
+// unattributed deals (paid closed-won deals matching no current campaign/term).
+// 'paid-unattributed' (campaigns) / 'paid-unattributed-term' (search terms).
+function gscReconFoot(resolvedDeals, resolvedRev, leftColspan, rightColspan, label, drillType) {
   const headDeals = parseInt(currentCoverage.deals_won_selected)   || 0;
   const headRev   = parseFloat(currentCoverage.revenue_selected)   || 0;
   const remDeals  = headDeals - resolvedDeals;
@@ -3095,12 +3100,19 @@ function gscReconFoot(resolvedDeals, resolvedRev, leftColspan, rightColspan, lab
   // Only render when the headline genuinely exceeds the resolved sum. (Tiny
   // negatives can occur if a deal double-matches two campaigns; treat as zero.)
   if (remDeals <= 0 && remRev <= 0.5) return '';
+  const isTerm = label.includes('term');
   const right = rightColspan ? `<td colspan="${rightColspan}"></td>` : '';
+  // The deals + revenue cells open the drill popup listing the unattributed
+  // deals, each linking to its HubSpot record. Click guarded to when there's a
+  // remainder to show. Title doubles as the popup heading.
+  const drill = drillType
+    ? ` drillable" onclick="openDrill('${drillType}','Unattributed paid deals · no resolvable ${isTerm ? 'search term' : 'campaign'}')"`
+    : '"';
   return `<tfoot>
-    <tr class="recon-row" title="Paid-sourced closed-won deals whose HubSpot first-touch field holds a renamed or discontinued campaign, or a legacy tracking ID, so they can't be tied to a current ${label.includes('term') ? 'search term' : 'campaign'} row.">
-      <td colspan="${leftColspan}">${label}<span class="recon-sub">paid-sourced, no resolvable current ${label.includes('term') ? 'search term' : 'campaign'}</span></td>
-      <td class="num">${remDeals > 0 ? fmtInt(remDeals) : '—'}</td>
-      <td class="num">${remRev > 0.5 ? fmtUSD(remRev) : '—'}</td>
+    <tr class="recon-row" title="Paid-sourced closed-won deals whose HubSpot first-touch field holds a renamed or discontinued campaign, or a legacy tracking ID, so they can't be tied to a current ${isTerm ? 'search term' : 'campaign'} row.${drillType ? ' Click to list them.' : ''}">
+      <td colspan="${leftColspan}">${label}<span class="recon-sub">paid-sourced, no resolvable current ${isTerm ? 'search term' : 'campaign'}${drillType ? ' · click the count to list them' : ''}</span></td>
+      <td class="num${remDeals > 0 ? drill : '"'}>${remDeals > 0 ? fmtInt(remDeals) : '—'}</td>
+      <td class="num${remRev > 0.5 ? drill : '"'}>${remRev > 0.5 ? fmtUSD(remRev) : '—'}</td>
       ${right}
     </tr>
   </tfoot>`;
@@ -3156,7 +3168,7 @@ function renderCampaigns(rows, attrRows) {
   // v1.84.1 — reconcile resolved attribution to the headline paid funnel.
   const resolvedDeals = list.reduce((s, c) => s + (c.dealsWon || 0), 0);
   const resolvedRev   = list.reduce((s, c) => s + (c.revWon   || 0), 0);
-  const reconFoot = gscReconFoot(resolvedDeals, resolvedRev, 12, 3, 'Unattributed to a specific campaign');
+  const reconFoot = gscReconFoot(resolvedDeals, resolvedRev, 12, 3, 'Unattributed to a specific campaign', 'paid-unattributed');
   body.innerHTML = `
     <table>
       <thead><tr>
@@ -3305,7 +3317,7 @@ function renderSearchTerms(rows, attrRows) {
   // term below the display cap still counts as resolved (not double-counted).
   const resolvedDeals = sorted.reduce((s, r) => s + (r.dealsWon || 0), 0);
   const resolvedRev   = sorted.reduce((s, r) => s + (r.revWon   || 0), 0);
-  const reconFoot = gscReconFoot(resolvedDeals, resolvedRev, 7, 1, 'Unattributed to a specific search term');
+  const reconFoot = gscReconFoot(resolvedDeals, resolvedRev, 7, 1, 'Unattributed to a specific search term', 'paid-unattributed-term');
   body.innerHTML = `
     <table>
       <thead><tr>

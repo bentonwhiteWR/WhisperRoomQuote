@@ -1014,6 +1014,74 @@ async function handle(req, res, ctx) {
            ORDER BY amount DESC NULLS LAST
            LIMIT 500
         `, [aliasHsNames, aliasGaNames, days, campaign])).rows.map(r => ({ ...r, url: `${rec}/0-3/${r.id}` }));
+      } else if (type === 'paid-unattributed') {
+        // The Campaigns table's "Unattributed to a specific campaign" remainder
+        // row (v1.84.6). Paid closed-won deals (closed in window) whose contact
+        // matches NO current campaign via campMatch — i.e. the headline
+        // deals_won_selected set minus the per-campaign resolved set. Uses the
+        // SAME is_closed_won + closed_at window as the headline, and the SAME
+        // campMatch + contact-date window as campaign-attribution, so the popup's
+        // count == the number in the remainder row.
+        const aliasHsNames = HUBSPOT_CAMPAIGN_ALIASES.map(a => a.hsName);
+        const aliasGaNames = HUBSPOT_CAMPAIGN_ALIASES.map(a => a.gaName);
+        rows = (await ctx.db.query(`
+          WITH campaign_names AS (
+            SELECT DISTINCT campaign_id, campaign_name
+            FROM marketing_campaigns
+            WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $3
+              AND campaign_name IS NOT NULL
+          ),
+          aliases AS (
+            SELECT hs_name, ga_name
+            FROM unnest($1::text[], $2::text[]) AS t(hs_name, ga_name)
+          )
+          SELECT DISTINCT d.deal_id AS id,
+                 COALESCE(NULLIF(d.deal_name, ''), 'Deal ' || d.deal_id) AS label,
+                 to_char(d.closed_at, 'Mon DD, YYYY')                    AS sublabel,
+                 d.amount::float                                         AS amount
+            FROM marketing_hubspot_deals d
+            JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+           WHERE d.is_closed_won
+             AND d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $3
+             AND ${am.contactPaid}
+             AND NOT EXISTS (
+               SELECT 1 FROM campaign_names cn
+                WHERE ${am.campMatch}
+                  AND ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $3
+             )
+           ORDER BY amount DESC NULLS LAST
+           LIMIT 500
+        `, [aliasHsNames, aliasGaNames, days])).rows.map(r => ({ ...r, url: `${rec}/0-3/${r.id}` }));
+      } else if (type === 'paid-unattributed-term') {
+        // The Search-Terms table's "Unattributed to a specific search term"
+        // remainder row (v1.84.6). Paid closed-won deals (closed in window) whose
+        // contact's first_source_data_2 matches NO synced search term. Mirrors
+        // search-term-attribution's term set + termMatch + contact-date window.
+        rows = (await ctx.db.query(`
+          WITH search_terms AS (
+            SELECT DISTINCT LOWER(TRIM(search_term)) AS search_term
+            FROM marketing_search_terms
+            WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $1
+              AND search_term IS NOT NULL
+              AND TRIM(search_term) <> ''
+          )
+          SELECT DISTINCT d.deal_id AS id,
+                 COALESCE(NULLIF(d.deal_name, ''), 'Deal ' || d.deal_id) AS label,
+                 to_char(d.closed_at, 'Mon DD, YYYY')                    AS sublabel,
+                 d.amount::float                                         AS amount
+            FROM marketing_hubspot_deals d
+            JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+           WHERE d.is_closed_won
+             AND d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $1
+             AND ${am.contactPaid}
+             AND NOT EXISTS (
+               SELECT 1 FROM search_terms st
+                WHERE ${am.termMatch}
+                  AND ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $1
+             )
+           ORDER BY amount DESC NULLS LAST
+           LIMIT 500
+        `, [days])).rows.map(r => ({ ...r, url: `${rec}/0-3/${r.id}` }));
       } else if (type === 'term-leads' || type === 'term-deals' || type === 'term-closed') {
         // Search-term drills. A one-row `st` CTE feeds am.termMatch (which compares
         // LOWER(TRIM(...)) = st.search_term); the contact is windowed by the model

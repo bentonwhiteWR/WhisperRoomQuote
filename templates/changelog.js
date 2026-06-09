@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.1', date:'June 9, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Top-Down Layout polish.** Each ventilation panel now shows its TWO units (cylindrical silencer + fan box), matching the spec sheets. The door opening is drawn larger and to scale. Seam-seals are now bold filled teeth so they read clearly on every interior wall face. Drag-to-rearrange is fixed — wall panels now have a larger invisible grab area so the thin walls are easy to pick up and drop on another to swap.'},
+      ]
+    },
+    {
       v:'1.84.0', date:'June 9, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Top-Down Layout — full redesign + every model digitized.** The booth layout tab is rebuilt to match the printed spec sheets: real paneled walls with corner posts, sawtooth seam-seals along the interior faces, ventilation ducts that protrude from the back wall, an outward-opening door, a modular floor grid, and labeled exterior + interior dimension lines. All 26 booth sizes are now digitized from the spec-sheet top-down views (previously only 3), so the layout shows for nearly every quote. Double-wall (E) booths render their true thicker walls / smaller interior, and no-vent (NV) booths correctly drop the vents.'},

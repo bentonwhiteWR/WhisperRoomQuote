@@ -103,15 +103,19 @@ const tail = `
 
 `;
 
-const newBlock = kindMeta + '\n\n' + renderSvg + '\n\n' + tail;
+// Re-splice mode: replace only the changed KIND_META + renderLayoutSvg region,
+// leaving the already-present tail (renderLegend / renderLayoutTab / drag) in
+// place. Falls back to inserting the tail too on a first run.
+void tail;
+const newBlock = kindMeta + '\n\n' + renderSvg;
 
 const file = path.join(root, 'packing-list.html');
 let html = fs.readFileSync(file, 'utf8');
-const startMarker = '  // WhisperRoom-styled palette:';
-const endMarker = '  function switchTab(';
+const startMarker = '// Friendly type names for the panel';
+const endMarker = '  function renderLegend(';
 const i = html.indexOf(startMarker);
 const j = html.indexOf(endMarker);
 if (i < 0 || j < 0 || j < i) { console.error('markers not found', i, j); process.exit(1); }
-html = html.slice(0, i) + newBlock.trimStart() + '\n' + html.slice(j);
+html = html.slice(0, i) + newBlock.trimStart() + '\n\n' + html.slice(j);
 fs.writeFileSync(file, html);
-console.log('spliced renderer block: removed', j - i, 'chars, inserted', newBlock.length);
+console.log('re-spliced KIND_META+renderLayoutSvg: removed', j - i, 'chars, inserted', newBlock.length);

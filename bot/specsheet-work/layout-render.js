@@ -95,9 +95,9 @@ function renderLayoutSvg(layout, assign) {
   const interior = layout.interior || { w: ext.w - 2 * layout.wallThickness, h: ext.h - 2 * layout.wallThickness };
   const PX = Math.max(3, Math.min(600 / ext.w, 470 / ext.h, 11));
   const W = ext.w * PX, H = ext.h * PX, t = layout.wallThickness * PX;
-  const VOUT = 24;                       // vent-duct protrusion (px symbol)
-  const DOORR = layout.door ? 58 : 0;    // door swing radius (px symbol, not to scale)
-  const mTop = 76, mBottom = 52 + DOORR, mLeft = 64, mRight = 64;
+  const VOUT = 26;                       // vent-duct protrusion (px symbol)
+  const DOORR = layout.door ? 96 : 0;    // door swing reserve (px); actual gap is to-scale, capped
+  const mTop = 80, mBottom = 40 + DOORR, mLeft = 66, mRight = 66;
   const x0 = mLeft, y0 = mTop;
   const totalW = W + mLeft + mRight, totalH = H + mTop + mBottom;
 
@@ -133,52 +133,71 @@ function renderLayoutSvg(layout, assign) {
     for (let i = 0; i < wW.length - 1; i++) { o += wW[i].size; const y = fy0 + (o / nomW) * spanH; s += `<line x1="${fx0}" y1="${y}" x2="${fx1}" y2="${y}" stroke="#000" stroke-opacity="0.12" stroke-width="1"/>`; }
   })();
 
-  // ── sawtooth seam-seal strip along a wall's interior face ────────
+  // ── seam-seal strip along a wall's interior face ────────────────
+  // Solid sawtooth teeth pointing into the booth (nx,ny = inward normal),
+  // matching the spec sheet's seam-seal hatching. Filled so they read clearly
+  // against the carpet floor.
   function seam(ax, ay, bx, by, nx, ny) {
     const len = Math.hypot(bx - ax, by - ay);
     if (len < 4) return '';
     const ux = (bx - ax) / len, uy = (by - ay) / len;
-    const teeth = Math.max(2, Math.round(len / 9));
-    const tw = len / teeth, dep = Math.min(5.5, Math.max(3.5, t * 0.55));
-    let d = `M ${ax} ${ay}`;
+    const teeth = Math.max(3, Math.round(len / 8));
+    const tw = len / teeth, dep = Math.min(7, Math.max(4.5, t * 0.7));
+    let g = '';
     for (let i = 0; i < teeth; i++) {
+      const sx = ax + ux * tw * i,       sy = ay + uy * tw * i;
       const mx = ax + ux * tw * (i + 0.5), my = ay + uy * tw * (i + 0.5);
       const ex = ax + ux * tw * (i + 1), ey = ay + uy * tw * (i + 1);
-      d += ` L ${mx + nx * dep} ${my + ny * dep} L ${ex} ${ey}`;
+      g += `<path d="M ${sx} ${sy} L ${mx + nx * dep} ${my + ny * dep} L ${ex} ${ey} Z" fill="#cfd4da" stroke="#aeb4bc" stroke-width="0.4" stroke-linejoin="round"/>`;
     }
-    return `<path d="${d}" fill="none" stroke="#d7dce2" stroke-width="1.3" stroke-opacity="0.95" stroke-linejoin="round"/>`;
-  }
-
-  // ── vent duct assembly protruding outside the N wall ────────────
-  function ventDuct(cx) {
-    const bw = Math.min(34, VOUT * 1.5);     // duct body length (across the wall)
-    const top = y0 - VOUT;
-    let g = '';
-    // mounting plate on the wall
-    g += `<rect x="${cx - bw / 2 - 2}" y="${y0 - 3}" width="${bw + 4}" height="5" rx="1.5" fill="#3a3b42"/>`;
-    // silencer body (rounded duct)
-    g += `<rect x="${cx - bw / 2}" y="${top}" width="${bw}" height="${VOUT}" rx="${Math.min(6, VOUT / 3)}" fill="#494c54" stroke="#2b2d33" stroke-width="1"/>`;
-    g += `<rect x="${cx - bw / 2 + 2}" y="${top + 2}" width="${bw - 4}" height="2.5" rx="1" fill="#5d616a"/>`;
-    // fan housing (circle) at the outer end
-    g += `<circle cx="${cx}" cy="${top + VOUT * 0.34}" r="${Math.min(bw * 0.28, VOUT * 0.3)}" fill="#2f3138" stroke="#1c1d21" stroke-width="1"/>`;
-    g += `<circle cx="${cx}" cy="${top + VOUT * 0.34}" r="${Math.min(bw * 0.12, VOUT * 0.13)}" fill="#5d616a"/>`;
     return g;
   }
 
-  // ── door leaf + outward swing arc on the S wall ─────────────────
-  function doorSwing(cx, panelW) {
-    const r = Math.min(DOORR, panelW * 0.82);             // door symbol radius (not to scale)
-    const hingeX = cx - r / 2, hingeY = y0 + H - t / 2;   // hinge on the wall
-    const openX = hingeX, openY = hingeY + r;             // leaf swung fully open (outward/down)
-    const arcEndX = hingeX + r, arcEndY = hingeY;         // closed position along wall
+  // ── vent assembly protruding outside the N wall ─────────────────
+  // TWO units per vent panel (per the spec sheet): a horizontal cylindrical
+  // silencer on the left + a square fan box (with a circular fan) on the right.
+  function ventDuct(cx) {
+    const top = y0 - VOUT;
+    const box = VOUT * 0.84;                 // fan-box side
+    const cylW = VOUT * 1.0, cylH = VOUT * 0.62;
+    const gap = 3;
+    const totalW = cylW + gap + box;
+    const x = cx - totalW / 2;               // left edge of the pair
+    const cylY = y0 - cylH - (VOUT - cylH) / 2;
+    const boxY = y0 - box;
+    let g = '';
+    // mounting plate across both units
+    g += `<rect x="${x - 2}" y="${y0 - 3}" width="${totalW + 4}" height="5" rx="1.5" fill="#3a3b42"/>`;
+    // 1) cylindrical silencer (horizontal capsule) on the left
+    g += `<rect x="${x}" y="${cylY}" width="${cylW}" height="${cylH}" rx="${cylH / 2}" fill="#4c4f57" stroke="#2b2d33" stroke-width="1"/>`;
+    g += `<rect x="${x + 2}" y="${cylY + 2}" width="${cylW - 4}" height="2" rx="1" fill="#62666f"/>`;
+    // 2) square fan box on the right, with a fan circle
+    const bx = x + cylW + gap;
+    g += `<rect x="${bx}" y="${boxY}" width="${box}" height="${box}" rx="2" fill="#33353c" stroke="#1c1d21" stroke-width="1"/>`;
+    g += `<circle cx="${bx + box / 2}" cy="${boxY + box / 2}" r="${box * 0.34}" fill="#22242a" stroke="#54585f" stroke-width="0.8"/>`;
+    g += `<circle cx="${bx + box / 2}" cy="${boxY + box / 2}" r="${box * 0.12}" fill="#62666f"/>`;
+    return g;
+  }
+
+  // ── door opening + outward swing on the S wall ──────────────────
+  // The opening is drawn to scale (door-swing inches), capped so the swing
+  // arc doesn't blow out the bottom margin.
+  function doorSwing(cx, panelW, swingIn) {
+    const r = Math.min(swingIn * PX, panelW * 0.94, DOORR);  // opening width = door width, to scale
+    const hingeX = cx - r / 2, hingeY = y0 + H - t / 2;      // hinge on the wall
+    const openX = hingeX, openY = hingeY + r;                // leaf swung fully open (outward/down)
+    const arcEndX = hingeX + r, arcEndY = hingeY;            // closed position along wall
     let g = '';
     // gap in the wall (the opening)
-    g += `<rect x="${hingeX}" y="${y0 + H - t}" width="${r}" height="${t}" fill="#1b1c20"/>`;
+    g += `<rect x="${hingeX}" y="${y0 + H - t}" width="${r}" height="${t}" fill="#15161a"/>`;
+    // jamb posts at each side of the opening
+    g += `<rect x="${hingeX - 1.5}" y="${y0 + H - t}" width="2.5" height="${t}" fill="#0d0e10"/>`;
+    g += `<rect x="${hingeX + r - 1}" y="${y0 + H - t}" width="2.5" height="${t}" fill="#0d0e10"/>`;
     // swing arc (opens OUTWARD)
-    g += `<path d="M ${arcEndX} ${arcEndY} A ${r} ${r} 0 0 1 ${openX} ${openY}" fill="rgba(238,98,22,0.08)" stroke="rgba(238,98,22,0.5)" stroke-width="1.2" stroke-dasharray="4,3"/>`;
+    g += `<path d="M ${arcEndX} ${arcEndY} A ${r} ${r} 0 0 1 ${openX} ${openY}" fill="rgba(238,98,22,0.10)" stroke="rgba(238,98,22,0.55)" stroke-width="1.3" stroke-dasharray="5,3"/>`;
     // door leaf (shown open)
-    g += `<line x1="${hingeX}" y1="${hingeY}" x2="${openX}" y2="${openY}" stroke="#ee6216" stroke-width="3" stroke-linecap="round"/>`;
-    g += `<circle cx="${hingeX}" cy="${hingeY}" r="2.6" fill="#ee6216"/>`;
+    g += `<line x1="${hingeX}" y1="${hingeY}" x2="${openX}" y2="${openY}" stroke="#ee6216" stroke-width="3.5" stroke-linecap="round"/>`;
+    g += `<circle cx="${hingeX}" cy="${hingeY}" r="3" fill="#ee6216"/>`;
     return g;
   }
 
@@ -206,7 +225,16 @@ function renderLayoutSvg(layout, assign) {
       else { px = x0 + W - t; py = y0 + t + off; pw = t; ph = len; }
       const grad = horiz ? 'url(#ldWallH)' : 'url(#ldWallV)';
       g += `<g class="ld-panel" data-slot="${esc(slot.id)}">`;
-      g += `<rect x="${px}" y="${py}" width="${pw}" height="${ph}" fill="${grad}" stroke="#15161a" stroke-width="0.8"/>`;
+      // invisible hit-pad: extends the grab target ~15px into the interior so
+      // the thin wall bands are easy to drag. Drawn first (under the visuals).
+      const HP = 15;
+      let hx = px, hy = py, hw = pw, hh = ph;
+      if (side === 'N')      { hh = ph + HP; }
+      else if (side === 'S') { hy = py - HP; hh = ph + HP; }
+      else if (side === 'W') { hw = pw + HP; }
+      else                   { hx = px - HP; hw = pw + HP; }
+      g += `<rect class="ld-hit" x="${hx}" y="${hy}" width="${hw}" height="${hh}" fill="#000" fill-opacity="0" style="pointer-events:all"/>`;
+      g += `<rect class="ld-wall" x="${px}" y="${py}" width="${pw}" height="${ph}" fill="${grad}" stroke="#15161a" stroke-width="0.8"/>`;
       // interior bevel highlight
       g += `<rect x="${px + 0.6}" y="${py + 0.6}" width="${pw - 1.2}" height="${ph - 1.2}" fill="none" stroke="#4a4c55" stroke-opacity="0.5" stroke-width="0.6"/>`;
       // kind accent line on the interior edge
@@ -226,7 +254,7 @@ function renderLayoutSvg(layout, assign) {
       const cx = horiz ? (px + pw / 2) : null;
       const cyc = horiz ? null : (py + ph / 2);
       if (kind === 'VNT' && side === 'N' && layout.hasVent !== false) vents.push({ cx: px + pw / 2 });
-      if (kind === 'DRFRM' && side === 'S') door = { cx: px + pw / 2, pw };
+      if (kind === 'DRFRM' && side === 'S') door = { cx: px + pw / 2, pw, swing: (layout.door && layout.door.swing) || 30 };
       // panel label (type + code) just inside the wall on the floor
       g += panelLabel(side, px, py, pw, ph, kind, line);
       off += len;
@@ -274,7 +302,7 @@ function renderLayoutSvg(layout, assign) {
 
   // vent ducts + door overlays
   vents.forEach(v => s += ventDuct(v.cx));
-  if (door) s += doorSwing(door.cx, door.pw);
+  if (door) s += doorSwing(door.cx, door.pw, door.swing);
 
   // ── dimension lines (exterior) ──────────────────────────────────
   function tick(x, y, vert) {

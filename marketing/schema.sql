@@ -240,6 +240,7 @@ CREATE TABLE IF NOT EXISTS marketing_serp_snapshots (
   our_rank_abs       NUMERIC,        -- our ABSOLUTE position (rank_absolute — counts ads/AIO/features above)
   our_url            TEXT,
   top_results        JSONB,          -- [{rank, rankAbs, domain, url, title}] top organic results
+  paid_results       JSONB,          -- [{domain, url, title, unit}] advertisers (text/shopping ads) on the term
   ai_overview        BOOLEAN DEFAULT FALSE,
   ai_overview_cited  BOOLEAN DEFAULT FALSE,   -- is whisperroom.com a cited source in the AI Overview?
   ai_overview_refs   JSONB,          -- [{domain, url, title}] sources the AI Overview cites
@@ -248,7 +249,8 @@ CREATE TABLE IF NOT EXISTS marketing_serp_snapshots (
   PRIMARY KEY (keyword, location_code, checked_on)
 );
 -- Added after the table first shipped — idempotent so the already-deployed
--- staging table picks up the absolute-rank column on next boot.
+-- staging table picks up the new columns on next boot.
 ALTER TABLE marketing_serp_snapshots ADD COLUMN IF NOT EXISTS our_rank_abs NUMERIC;
+ALTER TABLE marketing_serp_snapshots ADD COLUMN IF NOT EXISTS paid_results JSONB;  -- [{domain,url,title,unit}] advertisers on the term
 CREATE INDEX IF NOT EXISTS idx_mkt_serp_keyword ON marketing_serp_snapshots(keyword);
 CREATE INDEX IF NOT EXISTS idx_mkt_serp_checked ON marketing_serp_snapshots(checked_on);

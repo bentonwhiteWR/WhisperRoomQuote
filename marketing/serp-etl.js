@@ -154,10 +154,16 @@ function _parseResult(keyword, result) {
   const organic = items
     .filter(it => it.type === 'organic')
     .map(it => ({
-      rank:   it.rank_absolute || it.rank_group || null,
-      domain: (it.domain || _domain(it.url) || '').toLowerCase(),
-      url:    it.url || '',
-      title:  it.title || '',
+      // Keep BOTH: rank (organic position among organic results — what "#3"
+      // means to a user) and rankAbs (position among ALL SERP elements incl.
+      // ads + AI Overview + featured snippet + PAA + video). The gap between
+      // them = how much stuff sits above us on the page (a CTR-suppression
+      // signal we'll use in the recommendation logic).
+      rank:    it.rank_group != null ? it.rank_group : it.rank_absolute,
+      rankAbs: it.rank_absolute != null ? it.rank_absolute : it.rank_group,
+      domain:  (it.domain || _domain(it.url) || '').toLowerCase(),
+      url:     it.url || '',
+      title:   it.title || '',
     }))
     .filter(it => it.rank != null)
     .sort((a, b) => a.rank - b.rank);
@@ -184,9 +190,10 @@ function _parseResult(keyword, result) {
 
   return {
     keyword,
-    our_rank:          ours ? ours.rank : null,
+    our_rank:          ours ? ours.rank : null,      // organic position
+    our_rank_abs:      ours ? ours.rankAbs : null,   // position among ALL SERP elements
     our_url:           ours ? ours.url : null,
-    top_results:       organic.slice(0, 10),
+    top_results:       organic.slice(0, 10),          // each carries rank + rankAbs
     ai_overview:       !!aiEl,
     ai_overview_cited: aiRefs.some(r => r.domain.includes(OUR_DOMAIN)),
     ai_overview_refs:  aiRefs.slice(0, 12),
@@ -197,11 +204,12 @@ function _parseResult(keyword, result) {
 async function _upsert(db, row) {
   await db.query(`
     INSERT INTO marketing_serp_snapshots
-      (keyword, location_code, checked_on, our_rank, our_url, top_results,
+      (keyword, location_code, checked_on, our_rank, our_rank_abs, our_url, top_results,
        ai_overview, ai_overview_cited, ai_overview_refs, serp_features, fetched_at)
-    VALUES ($1, $2, CURRENT_DATE, $3, $4, $5::jsonb, $6, $7, $8::jsonb, $9::jsonb, NOW())
+    VALUES ($1, $2, CURRENT_DATE, $3, $4, $5, $6::jsonb, $7, $8, $9::jsonb, $10::jsonb, NOW())
     ON CONFLICT (keyword, location_code, checked_on) DO UPDATE SET
       our_rank          = EXCLUDED.our_rank,
+      our_rank_abs      = EXCLUDED.our_rank_abs,
       our_url           = EXCLUDED.our_url,
       top_results       = EXCLUDED.top_results,
       ai_overview       = EXCLUDED.ai_overview,
@@ -210,7 +218,7 @@ async function _upsert(db, row) {
       serp_features     = EXCLUDED.serp_features,
       fetched_at        = NOW()
   `, [
-    row.keyword, LOCATION_CODE, row.our_rank, row.our_url,
+    row.keyword, LOCATION_CODE, row.our_rank, row.our_rank_abs, row.our_url,
     JSON.stringify(row.top_results), row.ai_overview, row.ai_overview_cited,
     JSON.stringify(row.ai_overview_refs), JSON.stringify(row.serp_features),
   ]);

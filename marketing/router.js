@@ -419,7 +419,7 @@ async function handle(req, res, ctx) {
       if (!ctx.db) { ctx.json({ rows: [], configured: serpEtl.envReady() }); return true; }
       const rows = (await ctx.db.query(`
         WITH latest AS (
-          SELECT DISTINCT ON (keyword) keyword, checked_on, our_rank, our_url,
+          SELECT DISTINCT ON (keyword) keyword, checked_on, our_rank, our_rank_abs, our_url,
                  top_results, ai_overview, ai_overview_cited, ai_overview_refs, serp_features
           FROM marketing_serp_snapshots
           ORDER BY keyword, checked_on DESC

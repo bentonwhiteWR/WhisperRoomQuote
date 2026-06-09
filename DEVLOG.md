@@ -1,17 +1,26 @@
 # WhisperRoom Quote Builder — Dev Log
 
-Internal development notes. Last updated 2026-06-07.
+Internal development notes. Last updated 2026-06-09.
 
 > **Read this first when starting a session.** The "Current focus" section below is the fastest way to know where we left off. Below that: session writeups, the audit (outstanding work), and the changelog table.
 
 ---
 
-## Current focus (2026-06-08 — Whole PL module built out & feature-complete: HX/CP/SL/ADA rules (ADA now **WA-Type aware**), Audimute panels, Orders-drawer PL link/box/hardware, Shipping Label Generator, qty-N→N-PLs, two-way S/N sync, inline PL editing. Remaining: label-stock **first-print alignment tune**; small `hardware_box` parseInt→0 bug.)
+## Current focus (2026-06-09 — Top-Down Layout redesign + PL BOM accuracy pass + a production price-book incident, all shipped to MAIN through v1.84.22; v1.84.24–1.84.26 on staging.)
 
-**Most recent shipped to STAGING:** v1.81.0 — WA-Type-aware ADA (dual-option booths 7296/96120/96168). **MAIN is at v1.76.2** (`3943066`); v1.77.0–v1.81.0 staging-only pending Benton's test.
+**Most recent shipped to STAGING:** v1.84.26 (per-booth Door-jamb toggle). **MAIN is at v1.84.22** (`e078c45`) plus this push; everything below merged via "Merge staging" commits. Gabe pushing marketing/SEO-Intel in parallel the whole session (1.84.6/.9/.11/.16/.17/.19/.21/.23/.25) — all rebased + coexisting.
 
-**Just-shipped, awaiting test/tune:**
-- **Label generator (v1.76.0)** — print view at `/pl/:quote/labels`. Needs a first-print pass on the real pre-printed stock to confirm A4 vs Letter, the top logo-whitespace height, and perforation alignment (geometry started from the `.docm`). Scope + open items in `LABEL_GENERATOR_SCOPE.md` §9.
+### Session 2026-06-09 — what shipped
+- **Top-Down Layout — full rebuild (v1.84.0 → 1.84.20).** All 26 booth sizes digitized from the spec-sheet page-3 top-down views (was 3) via a parallel subagent pass; harness in `bot/specsheet-work/` (`render.py`, `gen-layouts.js`, `layout-render.js`, `splice.js`, `preview.js`, `mktest.js`). `booth-layouts.json` re-keyed by SIZE with per-variant `{wallThickness, interior}` + `module` + `door`; `boothLayout()` resolves S/E/SNV/ENV. Renderer (in `packing-list.html`, source-of-truth `layout-render.js`, kept in sync by `splice.js`): paneled walls, **drag-to-rearrange with a size constraint** (can't drop a 46″ in a 22″ slot) + drag ghost, side-aware vent ducts + outward door that follow a dragged panel to any wall, exterior+interior dim lines. Vents scale with the wall (big on 46″). **Seam seals** = subtle foam-comb lining + bold connectors: `midSeal()` plinth (base + centered tab) at panel joints, `cornerSeal()` chamfered L at corners (modeled off Benton's diagram). 127-LP pentagon still unsupported.
+- **PL BOM accuracy:** RM adds **EFS per vent set** (1.84.5) + **ceiling support beam** (U101/U01 per D101/D12) on Standard booths (1.84.10). **Multi-booth accessory split** — qty-N booth line divides accessory qtys by N (1.84.8, fixed 12-bass-traps-on-every-booth). PL reads **foam/hinge/WA-type off the order**, not just the quote (1.84.12). **HX + WA/ADA EXT-wall re-size** (1.84.24) per the spec chart (`hx_wa_ext_swap` in feature-rules.json, keyed by WA Type), incl. the 4016 **tall jamb adapter Z19→Z20/Z21** (1.84.25) + a **per-booth Door-jamb toggle** on the PL (1.84.26).
+- **Weights tool:** new **Studio Lights tab** (`/api/weights-sl`) — per size: vent sets, SL composition, summed SL weight vs the `SL <size>` SKU; first col = SL SKU for VLOOKUP (1.84.15/.18). **WA UPG host fix** in the Package Audit (1.84.14) — 40″→6084, 46″→7296, STD/ENH→S/E.
+- **🔥 Price-book incident (1.84.22).** Benton's CSV product re-import changed HubSpot product **record IDs**; saved quotes store the old `productId`, so loading them showed wild "price changed" prompts. Fix: `/api/check-prices` matches by **name** now, not the stored ID. Restart/cache was NOT the cause — the data IDs moved. **Follow-ups:** re-run that import matched on Record ID; optional one-time migration to re-map old quotes' `productId`s by name.
+- **Misc:** Shipping-labels page favicon (1.84.13).
+
+**Open / next:**
+- **127-LP pentagon** layout (top-down still shows "not defined" for the 2 corner booths).
+- **Promote 1.84.24–1.84.26 to main** after Benton tests the HX+WA/ADA + jamb toggle.
+- Benton: "a couple of things will clear up after [HX+WA/ADA] is added" — chase those.
 
 **Active PL feature work (2026-06-08):**
 - **HX / CP / SL — DONE (v1.73.0).** Rules in `lib/packing-list.js` + new `lib/pl-data/feature-rules.json`, derived from the 52 HX+CP+SL reference PLs (`WR PO System/PL Files/PLsFeatures`, diffed vs Base PLs) and verified end-to-end (`generate()` reconstructs all 52 exactly, components + weight). NV variants map SNV→S / ENV→E; HX hardware swap built generically from `HDWR <model>` packs (all four variants). The reusable diff/oracle harness lives in `WR PO System/PL Files/` (`feature_diff.py`, `build_feature_rules.py`, `verify_generator.js`).

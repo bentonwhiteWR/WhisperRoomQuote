@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.22', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Fixed bogus "price has changed" prompts when loading saved quotes.** The check now matches each line item to the current product by NAME instead of the record ID stored on the quote. A catalog re-import (CSV) can change HubSpot record IDs, which left saved quotes pointing at the wrong product and showing wildly wrong "current" prices. Names are stable, so the comparison is now accurate; a price that can\'t be resolved no longer triggers a prompt.'},
+      ]
+    },
+    {
       v:'1.84.20', date:'June 9, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Top-Down Layout: bigger vent boxes + corrected seam seals.** Vent boxes now scale with the wall panel, so they\'re much larger on 46″-wall booths. The seam seals are redrawn to match the spec profiles — the mid-wall seal is a flat base with a centered raised tab (plinth), and the corner seal is a filled L-bracket with a chamfered outer corner — instead of the previous thin lines.'},

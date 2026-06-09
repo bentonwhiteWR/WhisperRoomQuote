@@ -6534,33 +6534,52 @@ ${q.accepted ? `
       const { items } = JSON.parse(await readBody(req));
       if (!items || !items.length) { json({ results: [] }); return; }
 
-      // Only check items that have a productId
       const toCheck = items.filter(i => i.productId);
       if (!toCheck.length) { json({ results: [] }); return; }
 
-      // Fetch current prices in parallel
+      // Match each saved line item to the CURRENT product BY NAME, not by the
+      // record ID stored on the quote. A saved quote keeps the productId from
+      // when it was created; if the catalog's record IDs change (e.g. a CSV
+      // re-import that recreates products), that saved ID goes stale and an
+      // ID-based lookup returns a *different* product → bogus, wildly-wrong
+      // "price changed" prompts. Product names are stable and are exactly how a
+      // live quote prices items, so name is the reliable key. Fall back to the
+      // saved record ID only when the name isn't in the catalog.
+      const norm = s => String(s || '').toUpperCase().replace(/\s+/g, ' ').trim();
+      const byName = {};
+      try {
+        const products = await getProductsCached();
+        (products || []).forEach(p => { const n = norm(p?.properties?.name); if (n && byName[n] === undefined) byName[n] = p; });
+      } catch (e) { /* fall through to per-item ID lookup below */ }
+
       const checks = await Promise.all(toCheck.map(async item => {
         try {
-          const res = await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/products/${item.productId}?properties=name,price,weight`,
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-          });
-          const current = parseFloat(res.body?.properties?.price || 0);
+          let props = byName[norm(item.name)] && byName[norm(item.name)].properties;
+          if (!props) {                                   // name miss → fall back to the saved ID
+            const res = await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/products/${item.productId}?properties=name,price,weight`,
+              method: 'GET',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+            });
+            props = res.body && res.body.properties;
+          }
+          const current = parseFloat((props && props.price) || 0);
           const quoted  = parseFloat(item.price || 0);
-          const currentWeight = parseFloat(res.body?.properties?.weight || 0);
+          const currentWeight = parseFloat((props && props.weight) || 0);
           const quotedWeight  = parseFloat(item.weight || 0);
           return {
             productId: item.productId,
             name: item.name,
             quotedPrice: quoted,
             currentPrice: current,
-            changed: Math.abs(current - quoted) > 0.01,
+            // Only flag a real change when we actually found the product (current>0);
+            // a 0 means "couldn't resolve" — don't scare the rep with a $0 prompt.
+            changed: current > 0 && Math.abs(current - quoted) > 0.01,
             // Weight is synced SILENTLY on the client (no prompt) — surfaced here too.
             quotedWeight,
             currentWeight,
-            weightChanged: Math.abs(currentWeight - quotedWeight) > 0.01
+            weightChanged: currentWeight > 0 && Math.abs(currentWeight - quotedWeight) > 0.01
           };
         } catch(e) {
           return { productId: item.productId, name: item.name, error: true };

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.10', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Roof Mount on Standard booths now adds the ceiling support beam.** A Standard (S) booth doesn\'t normally include the IEP support beam that double-wall (E) booths have, but under Roof Mount the ceiling has to carry the roof-mount load — so the packing list now adds it: one U101 beam per ceiling brace on 96-series booths, and one U01 beam per ceiling brace on 102-series booths. Corrects the weight on those RM orders (e.g. a 96120 S with RM adds 2 beams).'},
+      ]
+    },
+    {
       v:'1.84.8', date:'June 9, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Packing list splits shared accessories across booths.** On a multi-booth order (one MDL line with a quantity), accessory quantities are the order total for the group, so they\'re now divided evenly across the booths. Before, an order of 4 rooms with 12 bass traps put all 12 on every booth (48 total); now each booth\'s packing list correctly shows 3. Single-booth orders are unchanged.'},

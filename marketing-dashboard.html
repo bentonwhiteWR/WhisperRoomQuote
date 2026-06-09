@@ -2772,6 +2772,16 @@ function drillTerm(idx, kind) {
   openDrill(kind, titles[kind] || r.term, { term: r.term });
 }
 
+// v1.84.2 — drill from a campaign row's Closed cell to its closed-won HubSpot
+// deals. Looks the campaign up by its rendered-list index (same pattern as
+// drillTerm, so the campaign name never has to be quoted into an inline
+// handler) and opens the popup keyed by campaign name.
+function drillCampaign(idx, kind) {
+  const r = (tableState.campaigns.rendered || [])[idx];
+  if (!r || !r.name) return;
+  openDrill(kind, `Closed-won deals · ${r.name}`, { campaign: r.name });
+}
+
 // Sort handler. First click on a column sorts DESC (most common need —
 // "show me top by X"). Re-click on same column flips direction.
 function sortBy(tableName, column) {
@@ -3139,6 +3149,9 @@ function renderCampaigns(rows, attrRows) {
 
   const list = sortRows('campaigns', Object.values(agg));
   renderSegRollup(list);  // share-of-revenue-by-segment strip under the funnel
+  // v1.84.2 — cache rendered rows so drillCampaign() can look a campaign up by
+  // index (mirrors searchTerms.rendered), avoiding quoting the name into onclick.
+  tableState.campaigns.rendered = list;
   const t = 'campaigns';
   // v1.84.1 — reconcile resolved attribution to the headline paid funnel.
   const resolvedDeals = list.reduce((s, c) => s + (c.dealsWon || 0), 0);
@@ -3166,7 +3179,7 @@ function renderCampaigns(rows, attrRows) {
         ${sortableTh(t, 'trueRoas',    'True ROAS', 'num attr-col')}
       </tr></thead>
       <tbody>
-        ${list.map(r => `<tr>
+        ${list.map((r, i) => `<tr>
           <td>${(r.name || '—').replace(/</g,'&lt;')}</td>
           <td>${(r.status || '—').toLowerCase()}</td>
           <td class="num">${fmtUSD(r.cost)}</td>
@@ -3179,7 +3192,7 @@ function renderCampaigns(rows, attrRows) {
           <td class="attr-start attr-col">${segTag(r.segment)}</td>
           <td class="num attr-col">${r.leads == null ? '—' : fmtInt(r.leads)}</td>
           <td class="num attr-col">${r.quotes == null ? '—' : fmtInt(r.quotes)}</td>
-          <td class="num attr-col">${r.dealsWon == null ? '—' : fmtInt(r.dealsWon)}</td>
+          <td class="num attr-col${r.dealsWon ? ' drillable' : ''}"${r.dealsWon ? ` onclick="drillCampaign(${i},'campaign-closed')"` : ''}>${r.dealsWon == null ? '—' : fmtInt(r.dealsWon)}</td>
           <td class="num attr-col">${r.revWon == null ? '—' : fmtUSD(r.revWon)}</td>
           <td class="num attr-col">${r.cpq != null ? fmtUSD(r.cpq) : '—'}</td>
           <td class="num attr-col">${r.cac != null ? fmtUSD(r.cac) : '—'}</td>

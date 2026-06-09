@@ -979,6 +979,41 @@ async function handle(req, res, ctx) {
           seen.add(r.id);
           rows.push({ id: r.id, label: r.label, sublabel: r.sublabel, amount: r.amount, url: `${rec}/0-3/${r.id}` });
         }
+      } else if (type === 'campaign-closed') {
+        // Closed-won deals attributed to ONE campaign — the per-campaign table's
+        // "Closed" column drill. Mirrors segment-revenue's campMatch + alias JOIN
+        // but pins campaign_names to the requested campaign_name, so the popup's
+        // deal set + count match the cell exactly (same is_closed_won + closed_at
+        // and contact-date windows as campaign-attribution's deals_won).
+        const campaign = url.searchParams.get('campaign') || '';
+        if (!campaign) { ctx.json({ rows: [], error: 'missing campaign' }, 400); return true; }
+        const aliasHsNames = HUBSPOT_CAMPAIGN_ALIASES.map(a => a.hsName);
+        const aliasGaNames = HUBSPOT_CAMPAIGN_ALIASES.map(a => a.gaName);
+        rows = (await ctx.db.query(`
+          WITH campaign_names AS (
+            SELECT DISTINCT campaign_id, campaign_name
+            FROM marketing_campaigns
+            WHERE date >= CURRENT_DATE - INTERVAL '1 day' * $3
+              AND campaign_name = $4
+          ),
+          aliases AS (
+            SELECT hs_name, ga_name
+            FROM unnest($1::text[], $2::text[]) AS t(hs_name, ga_name)
+          )
+          SELECT DISTINCT d.deal_id AS id,
+                 COALESCE(NULLIF(d.deal_name, ''), 'Deal ' || d.deal_id) AS label,
+                 to_char(d.closed_at, 'Mon DD, YYYY')                    AS sublabel,
+                 d.amount::float                                         AS amount
+            FROM campaign_names cn
+            JOIN marketing_hubspot_contacts c ON (
+              ${am.campMatch}
+              AND ${am.contactDate} >= CURRENT_DATE - INTERVAL '1 day' * $3
+            )
+            JOIN marketing_hubspot_deals d ON d.primary_contact_id = c.contact_id
+           WHERE d.is_closed_won AND d.closed_at >= CURRENT_DATE - INTERVAL '1 day' * $3
+           ORDER BY amount DESC NULLS LAST
+           LIMIT 500
+        `, [aliasHsNames, aliasGaNames, days, campaign])).rows.map(r => ({ ...r, url: `${rec}/0-3/${r.id}` }));
       } else if (type === 'term-leads' || type === 'term-deals' || type === 'term-closed') {
         // Search-term drills. A one-row `st` CTE feeds am.termMatch (which compares
         // LOWER(TRIM(...)) = st.search_term); the contact is windowed by the model

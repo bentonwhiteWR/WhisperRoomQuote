@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.18', date:'June 9, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Studio Lights tab: first column now shows the SL SKU** (e.g. "SL 9696") instead of the booth model, so the table can be copied and VLOOKUP-ed straight against the price-book SKU names.'},
+      ]
+    },
+    {
       v:'1.84.15', date:'June 9, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**New "Studio Lights" tab on the /weights tool.** Lists every booth size with its number of vent sets (= the number of standard lights it ships with), the studio-light swap it gets (e.g. "4× SL 52"), and the summed weight of those studio lights (SL 29 = 7 lb, SL 52 = 12 lb) — the accurate weight of the SL upgrade — plus the net change vs the standard lights it replaces and a check against the price-book "SL …" SKU.'},

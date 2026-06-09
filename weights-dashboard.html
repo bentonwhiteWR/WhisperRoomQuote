@@ -235,7 +235,7 @@
       <table>
         <thead>
           <tr>
-            <th class="l" data-ssort="size">Model <span class="arrow"></span></th>
+            <th class="l" data-ssort="size">SL SKU <span class="arrow"></span></th>
             <th data-ssort="ventSets" title="# of vent sets = # of standard lights the booth ships with">Vent sets <span class="arrow"></span></th>
             <th class="l" data-ssort="slCount" title="Which studio lights this booth gets">Studio lights <span class="arrow"></span></th>
             <th data-ssort="slWeight" title="Summed weight of the studio lights — the accurate SL upgrade weight">SL weight <span class="arrow"></span></th>
@@ -613,7 +613,7 @@
     const q = document.getElementById('slSearch').value.trim().toLowerCase();
     let rows = SL_ROWS.filter(r=>{
       if (slMismatchOnly && r.status!=='mismatch') return false;
-      if (q && !String(r.model).toLowerCase().includes(q)) return false;
+      if (q && !(String(r.pbName).toLowerCase().includes(q) || String(r.model).toLowerCase().includes(q))) return false;
       return true;
     });
     rows.sort((a,b)=>{
@@ -632,7 +632,7 @@
         : (Math.abs(d)<0.05 ? '<span class="delta-zero">0</span>'
            : '<span class="' + (d>0?'delta-pos':'delta-neg') + '">' + (d>0?'+':'') + fmt(d) + '</span>');
       return '<tr>' +
-        '<td class="l mdl-name">' + esc(r.model) + '</td>' +
+        '<td class="l mdl-name">' + esc(r.pbName) + '</td>' +
         '<td>' + r.ventSets + '</td>' +
         '<td class="l">' + esc(r.desc) + '</td>' +
         '<td><strong>' + cell(r.slWeight) + '</strong></td>' +

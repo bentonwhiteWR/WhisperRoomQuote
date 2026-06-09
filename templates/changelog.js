@@ -51,7 +51,7 @@ module.exports = function renderChangelog() {
 
   ${[
     {
-      v:'1.84.1', date:'June 9, 2026', tag:'ui',
+      v:'1.84.3', date:'June 9, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Top-Down Layout polish.** Each ventilation panel now shows its TWO units (cylindrical silencer + fan box), matching the spec sheets. The door opening is drawn larger and to scale. Seam-seals are now bold filled teeth so they read clearly on every interior wall face. Drag-to-rearrange is fixed — wall panels now have a larger invisible grab area so the thin walls are easy to pick up and drop on another to swap.'},
       ]

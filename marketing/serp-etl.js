@@ -26,7 +26,7 @@ const MAX_SERP_KEYWORDS   = parseInt(process.env.SERP_MAX_KEYWORDS || '250', 10)
 const SERP_DEPTH          = parseInt(process.env.SERP_DEPTH || '20', 10);   // top-N organic to capture
 const LOAD_AI_OVERVIEW    = process.env.SERP_LOAD_AI_OVERVIEW !== 'false';   // default on
 const CACHE_DAYS          = parseInt(process.env.SERP_CACHE_DAYS || '7', 10); // skip kws fetched within N days
-const BATCH               = 20;  // tasks per live POST
+const CONCURRENCY         = 8;   // parallel live requests (ONE keyword each — see syncSerp)
 
 // Hand-seeded commercial head terms + competitor brands. These always get
 // tracked even if they're not yet in GSC/Ads data. Editable.
@@ -231,36 +231,49 @@ async function syncSerp({ db, force = false } = {}) {
     return { ok: true, report: 'serp', rows: 0, note: 'All tracked keywords are fresh (within cache window). Use force to refresh.' };
   }
 
-  let upserted = 0, errors = 0;
-  try {
-    for (let i = 0; i < keywords.length; i += BATCH) {
-      const batch = keywords.slice(i, i + BATCH);
-      const tasks = batch.map(keyword => ({
-        keyword,
-        location_code: LOCATION_CODE,
-        language_code: LANGUAGE_CODE,
-        device: 'desktop',
-        os: 'windows',
-        depth: SERP_DEPTH,
-        ...(LOAD_AI_OVERVIEW ? { load_async_ai_overview: true } : {}),
-      }));
-      const resp = await _post('/v3/serp/google/organic/live/advanced', JSON.stringify(tasks));
-      for (const task of (resp.tasks || [])) {
-        const kw = task.data && task.data.keyword;
-        if (task.status_code !== 20000 || !task.result || !task.result[0]) { errors++; continue; }
-        try {
-          await _upsert(db, _parseResult(kw, task.result[0]));
-          upserted++;
-        } catch (e) { errors++; }
+  // ONE keyword per request. DataForSEO's live endpoint only returns the FIRST
+  // task synchronously when handed an array, so a 20-task array silently yielded
+  // a single row (v1.84.16 bug). We POST one task each and parallelize with a
+  // small concurrency cap so 250 keywords finish in seconds, not minutes. Cost
+  // is per-SERP either way, so single-task requests cost the same. (v1.84.17)
+  let upserted = 0, errors = 0, firstError = null;
+  const fetchOne = async (keyword) => {
+    const body = JSON.stringify([{
+      keyword,
+      location_code: LOCATION_CODE,
+      language_code: LANGUAGE_CODE,
+      device: 'desktop',
+      os: 'windows',
+      depth: SERP_DEPTH,
+      ...(LOAD_AI_OVERVIEW ? { load_async_ai_overview: true } : {}),
+    }]);
+    const resp = await _post('/v3/serp/google/organic/live/advanced', body);
+    const t = (resp.tasks || [])[0];
+    if (!t || t.status_code !== 20000 || !t.result || !t.result[0]) {
+      throw new Error(t ? `task ${t.status_code}: ${t.status_message || 'no result'}` : 'no task returned');
+    }
+    return _parseResult(keyword, t.result[0]);  // pass the known keyword, not the echoed one
+  };
+
+  for (let i = 0; i < keywords.length; i += CONCURRENCY) {
+    const chunk = keywords.slice(i, i + CONCURRENCY);
+    const settled = await Promise.allSettled(chunk.map(fetchOne));
+    for (const s of settled) {
+      if (s.status === 'fulfilled') {
+        try { await _upsert(db, s.value); upserted++; }
+        catch (e) { errors++; if (!firstError) firstError = 'upsert: ' + e.message; }
+      } else {
+        errors++; if (!firstError) firstError = (s.reason && s.reason.message) || String(s.reason);
       }
     }
-  } catch (e) {
-    const msg = e.message || String(e);
-    await _recordSync(db, 'serp', upserted, msg);
-    return { ok: false, report: 'serp', rows: upserted, error: msg };
   }
 
-  await _recordSync(db, 'serp', upserted, errors ? `${errors} keyword(s) failed to parse` : null);
+  // All failed → surface it as an error (likely bad creds or quota).
+  if (upserted === 0 && errors > 0) {
+    await _recordSync(db, 'serp', 0, firstError || 'all keywords failed');
+    return { ok: false, report: 'serp', rows: 0, errors, error: firstError || 'all keywords failed' };
+  }
+  await _recordSync(db, 'serp', upserted, errors ? `${errors} failed${firstError ? ': ' + firstError : ''}` : null);
   return { ok: true, report: 'serp', rows: upserted, errors, checked: keywords.length };
 }
 

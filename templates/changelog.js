@@ -51,6 +51,61 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.12', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Packing list now reflects the foam color set on the order.** If a quote has become an order, the foam color, hinge, and WA-type set in the Orders drawer now drive the packing list — previously the PL only read the original quote, so changing the foam on the order didn\'t update the PL. The order\'s value wins; if none is set, it falls back to the accepted quote value.'},
+      ]
+    },
+    {
+      v:'1.84.10', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Roof Mount on Standard booths now adds the ceiling support beam.** A Standard (S) booth doesn\'t normally include the IEP support beam that double-wall (E) booths have, but under Roof Mount the ceiling has to carry the roof-mount load — so the packing list now adds it: one U101 beam per ceiling brace on 96-series booths, and one U01 beam per ceiling brace on 102-series booths. Corrects the weight on those RM orders (e.g. a 96120 S with RM adds 2 beams).'},
+      ]
+    },
+    {
+      v:'1.84.8', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Packing list splits shared accessories across booths.** On a multi-booth order (one MDL line with a quantity), accessory quantities are the order total for the group, so they\'re now divided evenly across the booths. Before, an order of 4 rooms with 12 bass traps put all 12 on every booth (48 total); now each booth\'s packing list correctly shows 3. Single-booth orders are unchanged.'},
+      ]
+    },
+    {
+      v:'1.84.7', date:'June 9, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Top-Down Layout — drag size limit + accurate seam seals.** Panels can now only be dropped on a slot of the same size — you can\'t move a 46" panel where a 22" panel goes (an incompatible drop highlights red and won\'t swap). And the seam seals are redrawn to match the spec: the wall sawtooth is now a subtle acoustic-foam lining, while the actual seals are bold connectors — a corner piece (L-bracket) at each of the four corners and a "T" piece (an I-beam: the seam line with a bar where it meets each wall) at every joint where two panels butt together.'},
+      ]
+    },
+    {
+      v:'1.84.5', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Roof Mount now includes EFS on the packing list.** When RM (Roof Mount) is selected, the BOM now adds one EFS (exhaust-fan silencer, 25 lb) per vent set — an EFS ships with each vent set under Roof Mount to prevent noise transfer into the booth. This was missing before, which made RM orders read light; e.g. a 3-vent-set booth now correctly adds 75 lb. NV booths (no vent sets) add none.'},
+      ]
+    },
+    {
+      v:'1.84.4', date:'June 9, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Top-Down Layout — vents, seam-seals & drag, round 2.** Ventilation panels now show two spread-out boxes (a plain box + a fan box). Seam-seals are redrawn to match the spec exactly: a dark sawtooth comb on every interior wall face, a corner piece at each of the four corners, and a "T" piece at every joint where two panels butt. Vents and the door now follow a panel wherever it is dragged — drag the door to a side wall and its swing re-orients to open outward from that wall; same for vent boxes. And dragging now shows a floating label of the panel you\'re moving, highlights the panel and the drop target, so it\'s clear what\'s happening.'},
+      ]
+    },
+    {
+      v:'1.84.3', date:'June 9, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Top-Down Layout polish.** Each ventilation panel now shows its TWO units (cylindrical silencer + fan box), matching the spec sheets. The door opening is drawn larger and to scale. Seam-seals are now bold filled teeth so they read clearly on every interior wall face. Drag-to-rearrange is fixed — wall panels now have a larger invisible grab area so the thin walls are easy to pick up and drop on another to swap.'},
+      ]
+    },
+    {
+      v:'1.84.0', date:'June 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Top-Down Layout — full redesign + every model digitized.** The booth layout tab is rebuilt to match the printed spec sheets: real paneled walls with corner posts, sawtooth seam-seals along the interior faces, ventilation ducts that protrude from the back wall, an outward-opening door, a modular floor grid, and labeled exterior + interior dimension lines. All 26 booth sizes are now digitized from the spec-sheet top-down views (previously only 3), so the layout shows for nearly every quote. Double-wall (E) booths render their true thicker walls / smaller interior, and no-vent (NV) booths correctly drop the vents.'},
+        {t:'add', d:'**Drag-and-drop panel rearranging.** Grab any wall panel and drop it on another to swap them (e.g. move the door or a vent to a different wall) — the layout re-renders live. Built for reps and customers to visualize a booth configuration.'},
+      ]
+    },
+    {
+      v:'1.83.0', date:'June 8, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Package Weight Audit on the /weights tool.** A new "Package Audit" tab runs the LIVE Packing-List generator for every booth model AND every catalog feature (HX / CP / SL / ADA / WA / AUDI / RAMP / …), then reconciles the generated bill-of-materials weight against the HubSpot price-book weight — the delta should read ~0. Each model checks its BOM net against the catalog (minus pallets); each feature checks the weight it ADDS (its net delta on a host booth) against the feature catalog weight. One sortable table + summary cards surface every mismatch, every unmapped feature (priced on the quote but not placed in the PL), every catalog SKU missing a weight, and the dropship (AP) items. It is the all-packages version of the per-PL weight banner — a one-click check that all booth and feature weights still reconcile.'},
+      ]
+    },
+    {
       v:'1.82.5', date:'June 8, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Packing List header: quote number on its own line.** The top-left header now shows the company / deal name on the first line and the quote number on a second line beneath it (was one line with a middot between them).'},

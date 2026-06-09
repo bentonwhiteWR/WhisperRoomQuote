@@ -90,6 +90,18 @@
 
   .empty { padding: 40px; text-align: center; color: var(--muted); font-size: 13px; }
   .loading { padding: 40px; text-align: center; color: var(--muted); }
+
+  .tabs { display:flex; gap:4px; margin-bottom:18px; border-bottom:1px solid var(--border); }
+  .tab-btn { padding:9px 16px; font-size:12px; font-weight:700; letter-spacing:.04em; background:none; border:none; border-bottom:2px solid transparent; color:var(--muted); cursor:pointer; font-family:inherit; margin-bottom:-1px; }
+  .tab-btn:hover { color:var(--text); }
+  .tab-btn.active { color:var(--orange); border-bottom-color:var(--orange); }
+  .schip { display:inline-block; padding:2px 9px; border-radius:11px; font-size:10px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; }
+  .s-ok { background:rgba(34,197,94,.15); color:var(--green); }
+  .s-mismatch { background:rgba(239,68,68,.15); color:var(--red); }
+  .s-unmapped { background:rgba(245,158,11,.15); color:var(--amber); }
+  .s-no-pb, .s-no-host, .s-no-generator { background:rgba(136,136,136,.16); color:var(--muted); }
+  .s-dropship { background:rgba(59,130,246,.13); color:var(--blue); }
+  .s-error { background:rgba(168,85,247,.15); color:var(--purple); }
 </style>
 </head>
 <body>
@@ -102,6 +114,12 @@
   </div>
 
   <div class="main">
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="models" onclick="switchTab('models')">Models</button>
+      <button class="tab-btn" data-tab="audit" onclick="switchTab('audit')">Package Audit</button>
+    </div>
+
+   <div id="view-models">
     <div class="page-header">
       <div>
         <div class="page-title">MDL <span>Weights</span></div>
@@ -148,6 +166,51 @@
         </tbody>
       </table>
     </div>
+   </div><!-- /view-models -->
+
+   <div id="view-audit" style="display:none">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Package <span>Audit</span></div>
+        <div class="page-sub">Runs the live PL generator for every booth model and every catalog feature, then reconciles the generated BOM weight against the HubSpot price book. Δ should be ~0.</div>
+      </div>
+      <button class="filter-btn" onclick="loadAudit(true)">↻ Re-run</button>
+    </div>
+
+    <div class="banner" id="auditBanner">Open this tab to run the audit.</div>
+
+    <div class="cards" id="auditCards"></div>
+
+    <div class="toolbar">
+      <div class="filters" id="auditKindFilters">
+        <button class="filter-btn active" data-k="ALL">All</button>
+        <button class="filter-btn" data-k="model">Models</button>
+        <button class="filter-btn" data-k="feature">Features</button>
+      </div>
+      <button class="filter-btn" id="auditProblemBtn" onclick="toggleAuditProblems()">Problems only</button>
+      <input class="search-input" id="auditSearch" placeholder="Search package / host…" oninput="renderAudit()">
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="l" data-asort="name">Package <span class="arrow"></span></th>
+            <th class="l" data-asort="kind">Kind <span class="arrow"></span></th>
+            <th class="l" data-asort="host">Host model <span class="arrow"></span></th>
+            <th data-asort="pbWeight" title="HubSpot price-book weight (lb)">Catalog <span class="arrow"></span></th>
+            <th data-asort="expected" title="Net the catalog implies — model: PB − pallets×144; feature: PB">Expected net <span class="arrow"></span></th>
+            <th data-asort="actual" title="PL generator — model: BOM net; feature: net delta vs host">PL net <span class="arrow"></span></th>
+            <th data-asort="delta">Δ <span class="arrow"></span></th>
+            <th class="l" data-asort="status">Status <span class="arrow"></span></th>
+          </tr>
+        </thead>
+        <tbody id="auditBody">
+          <tr><td colspan="8" class="empty">Click ↻ Re-run to generate every package and check its weight.</td></tr>
+        </tbody>
+      </table>
+    </div>
+   </div><!-- /view-audit -->
   </div>
 
 <script>
@@ -321,6 +384,124 @@
       + '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">' + pd.length + ' skid' + (pd.length>1?'s':'')
       + ' · longest component ' + maxLong + ' in — a pallet must be at least this long, which limits how few skids are possible.</div>'
       + '<div class="pgrid">' + chips + '</div>';
+  }
+
+  // ── Package Audit tab ───────────────────────────────────────────────
+  let AUDIT = [];
+  let auditLoaded = false;
+  let auditKind = 'ALL';
+  let auditProblemsOnly = false;
+  let auditSortKey = 'status';
+  let auditSortDir = 1;
+  const STATUS_LABEL = { ok:'OK', mismatch:'Mismatch', unmapped:'Unmapped', 'no-pb':'No PB wt', 'no-host':'No host', 'no-generator':'Not in gen', dropship:'Dropship', error:'Error' };
+  const PROBLEM = new Set(['mismatch','unmapped','no-host','error']);
+
+  function switchTab(t){
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===t));
+    document.getElementById('view-models').style.display = t==='models' ? '' : 'none';
+    document.getElementById('view-audit').style.display = t==='audit' ? '' : 'none';
+    if (t==='audit' && !auditLoaded) loadAudit();
+  }
+
+  async function loadAudit(force){
+    if (auditLoaded && !force) return;
+    document.getElementById('auditBody').innerHTML = '<tr><td colspan="8" class="loading">Running the generator across every package… (a few seconds)</td></tr>';
+    document.getElementById('auditBanner').textContent = 'Running…';
+    try {
+      const r = await fetch('/api/weights-audit', { credentials: 'same-origin' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      AUDIT = d.rows || [];
+      auditLoaded = true;
+      renderAuditBanner(d);
+      renderAuditCards(d);
+      renderAudit();
+    } catch(e){
+      document.getElementById('auditBody').innerHTML = '<tr><td colspan="8" class="empty">Failed: ' + esc(e.message) + '</td></tr>';
+      document.getElementById('auditBanner').textContent = 'Failed to load.';
+    }
+  }
+
+  function renderAuditBanner(d){
+    const b = document.getElementById('auditBanner');
+    const c = d.counts || {};
+    const parts = [
+      (c.total||0) + ' packages (' + (c.models||0) + ' models, ' + (c.features||0) + ' features)',
+      'tolerance ±' + (d.okTol!=null?d.okTol:2) + ' lb',
+    ];
+    if (d.otherSkus) parts.push(esc(d.otherSkus) + ' other catalog SKUs skipped (not booth models/features)');
+    if (d.pbError){ b.className = 'banner warn'; parts.push('⚠ price book unavailable: ' + esc(d.pbError)); }
+    else b.className = 'banner';
+    b.innerHTML = parts.join(' &nbsp;·&nbsp; ');
+  }
+
+  function renderAuditCards(d){
+    const c = d.counts || {};
+    const cards = [
+      { label: 'Reconciled', value: c.ok||0 },
+      { label: 'Mismatch', value: c.mismatch||0, alert: (c.mismatch||0)>0 },
+      { label: 'Unmapped feat.', value: c.unmapped||0, alert: (c.unmapped||0)>0 },
+      { label: 'No host model', value: c.noHost||0, alert: (c.noHost||0)>0 },
+      { label: 'No PB weight', value: c.noPb||0 },
+      { label: 'Dropship (AP)', value: c.dropship||0 },
+    ];
+    document.getElementById('auditCards').innerHTML = cards.map(x =>
+      '<div class="card"><div class="card-label">' + x.label + '</div>' +
+      '<div class="card-value' + (x.alert?' alert':'') + '">' + x.value + '</div></div>').join('');
+  }
+
+  document.getElementById('auditKindFilters').addEventListener('click', e=>{
+    if(!e.target.dataset.k) return;
+    auditKind = e.target.dataset.k;
+    document.querySelectorAll('#auditKindFilters .filter-btn').forEach(b=>b.classList.toggle('active', b.dataset.k===auditKind));
+    renderAudit();
+  });
+  function toggleAuditProblems(){ auditProblemsOnly = !auditProblemsOnly; document.getElementById('auditProblemBtn').classList.toggle('active', auditProblemsOnly); renderAudit(); }
+  document.querySelectorAll('thead th[data-asort]').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const k = th.dataset.asort;
+      if (auditSortKey === k) auditSortDir *= -1; else { auditSortKey = k; auditSortDir = 1; }
+      document.querySelectorAll('thead th[data-asort] .arrow').forEach(a=>a.textContent='');
+      th.querySelector('.arrow').textContent = auditSortDir>0 ? '▲' : '▼';
+      renderAudit();
+    });
+  });
+
+  function renderAudit(){
+    const q = document.getElementById('auditSearch').value.trim().toLowerCase();
+    let rows = AUDIT.filter(r=>{
+      if (auditKind !== 'ALL' && r.kind !== auditKind) return false;
+      if (auditProblemsOnly && !PROBLEM.has(r.status)) return false;
+      if (q && !(String(r.name).toLowerCase().includes(q) || String(r.host||'').toLowerCase().includes(q))) return false;
+      return true;
+    });
+    rows.sort((a,b)=>{
+      let av = a[auditSortKey], bv = b[auditSortKey];
+      if (['name','kind','host','status'].includes(auditSortKey)) return String(av||'').localeCompare(String(bv||'')) * auditSortDir;
+      av = (av==null) ? -Infinity : av; bv = (bv==null) ? -Infinity : bv;
+      return (av - bv) * auditSortDir;
+    });
+    const tb = document.getElementById('auditBody');
+    if (!rows.length){ tb.innerHTML = '<tr><td colspan="8" class="empty">No packages match.</td></tr>'; return; }
+    const cell = v => v==null ? '<span class="dash">—</span>' : fmt(v);
+    tb.innerHTML = rows.map(r=>{
+      const d = r.delta;
+      const deltaCell = d==null ? '<span class="dash">—</span>'
+        : (Math.abs(d) < 0.05 ? '<span class="delta-zero">0</span>'
+           : '<span class="' + (d>0?'delta-pos':'delta-neg') + '">' + (d>0?'+':'') + fmt(d) + '</span>');
+      const lbl = STATUS_LABEL[r.status] || r.status;
+      return '<tr>' +
+        '<td class="l mdl-name">' + esc(r.name) + (r.note ? ' <span class="muted" style="font-weight:400;font-size:11px">(' + esc(r.note) + ')</span>' : '') + '</td>' +
+        '<td class="l muted">' + esc(r.kind) + '</td>' +
+        '<td class="l muted">' + (r.host ? esc(r.host) : '<span class="dash">—</span>') + '</td>' +
+        '<td>' + cell(r.pbWeight) + '</td>' +
+        '<td>' + cell(r.expected) + '</td>' +
+        '<td><strong>' + cell(r.actual) + '</strong></td>' +
+        '<td>' + deltaCell + '</td>' +
+        '<td class="l"><span class="schip s-' + esc(r.status) + '">' + esc(lbl) + '</span></td>' +
+      '</tr>';
+    }).join('');
   }
 
   loadData();

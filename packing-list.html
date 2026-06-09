@@ -86,8 +86,27 @@
   /* Layout view */
   .layout-wrap{padding:12px 0 0}
   .layout-empty{padding:60px 24px;text-align:center;color:#888;font-size:13px;background:#fafafa;border:1px dashed #ddd;border-radius:8px}
-  .layout-legend{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:12px;font-size:11px;color:#555}
-  .layout-legend .sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:middle;border:1px solid rgba(0,0,0,.2)}
+  .layout-title{text-align:center;font-size:12px;color:#555;margin-bottom:8px;font-weight:600}
+  .layout-title .layout-sub{color:#ee6216;font-weight:700;font-size:10px;border:1px solid rgba(238,98,22,.4);border-radius:4px;padding:1px 5px;margin-left:5px;letter-spacing:.04em}
+  .layout-legend{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:12px;font-size:11px;color:#555;align-items:center}
+  .layout-legend .ld-sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:middle;border:1px solid rgba(0,0,0,.25)}
+  .layout-legend .ld-hint{color:#ee6216;font-weight:600}
+  /* Drag-to-rearrange: only panels take pointer events; decorations are inert
+     so elementFromPoint always resolves the panel under the cursor. */
+  .ld-svg *{pointer-events:none}
+  .ld-svg .ld-panel{pointer-events:auto;cursor:grab}
+  .ld-svg .ld-panel *{pointer-events:auto}
+  .ld-panel:hover .ld-wall{filter:brightness(1.5)}
+  .ld-panel.ld-target .ld-wall{stroke:#ee6216;stroke-width:2.4}
+  .ld-panel.ld-bad .ld-wall{stroke:#dc2626;stroke-width:2.4;stroke-dasharray:4 3}
+  .ld-panel.ld-grabbing .ld-wall{filter:brightness(1.7);stroke:#ee6216;stroke-width:2}
+  body.ld-dragging{cursor:grabbing;user-select:none;-webkit-user-select:none}
+  .ld-ghost{position:fixed;z-index:9999;pointer-events:none;display:flex;align-items:center;gap:7px;padding:5px 10px;background:#1a1a1a;color:#fff;border:1px solid #555;border-radius:8px;font-size:11px;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.35)}
+  .ld-ghost.ok{border-color:#ee6216}
+  .ld-ghost.bad{border-color:#dc2626}
+  .ld-ghost.bad::after{content:'✕ wrong size';color:#f87171;font-weight:600;margin-left:2px}
+  .ld-ghost .c{color:#ee6216;font-family:ui-monospace,Menlo,monospace}
+  @media print{ .ld-hint{display:none} }
 
   /* Add-row footer (no-print) */
   .room-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0 0;flex-wrap:wrap}
@@ -243,332 +262,478 @@
   // AND STDWL19 so the WA shrink doesn't fall out). Preference order: a pack
   // that classifies as the slot's first `prefers` kind wins, then second, etc.;
   // fallbacks are SOLID-within-family, then any-within-family. One line/slot.
+  // Placement: kind-preference + closest-width, two passes. Pass 1 fills the
+  // special slots (vent/door/window) with a BOM panel of the matching kind;
+  // pass 2 fills the rest by closest width. NV booths (no vent pack) leave the
+  // vent slots for pass 2 to fill with a solid — exactly right for SNV/ENV.
   function placeBom(layout, lines) {
-    const pool = (lines || [])
-      .filter(l => isWallPanel(l.pack))
-      .map(l => ({ line: l, used: false }));
+    const pool = (lines || []).filter(l => isWallPanel(l.pack)).map(l => ({
+      line: l, used: false, kind: classifyWall(l.pack), w: panelInteriorWidth(l.pack),
+    }));
     const placement = {};
-    for (const side of ['N', 'S', 'E', 'W']) {
-      const wall = layout.walls[side];
-      if (!wall) continue;
+    const pick = (pred, size) => {
+      let best = null, bd = Infinity;
+      for (const p of pool) {
+        if (!pred(p)) continue;
+        const w = (p.w == null ? size : p.w);
+        const d = Math.abs(w - size);
+        if (d < bd) { bd = d; best = p; }
+      }
+      return best;
+    };
+    const sides = ['N', 'S', 'E', 'W'];
+    for (const side of sides) {                       // pass 1 — special kinds
+      const wall = layout.walls[side]; if (!wall) continue;
       for (const slot of wall.slots) {
-        const familyRe = slotFamilyRegex(slot);
-        let chosen = null;
-        for (const pref of (slot.prefers || [])) {
-          chosen = pool.find(p => !p.used && familyRe.test(p.line.pack) && classifyWall(p.line.pack) === pref);
-          if (chosen) break;
-        }
-        if (!chosen) chosen = pool.find(p => !p.used && familyRe.test(p.line.pack) && classifyWall(p.line.pack) === 'SOLID');
-        if (!chosen) chosen = pool.find(p => !p.used && familyRe.test(p.line.pack));
-        if (chosen) { chosen.used = true; placement[slot.id] = chosen.line; }
+        const want = (slot.prefers && slot.prefers[0]) || 'SOLID';
+        if (want === 'SOLID') continue;
+        const c = pick(p => !p.used && p.kind === want, slot.size);
+        if (c) { c.used = true; placement[slot.id] = c.line; }
       }
     }
-    // Any leftover wall lines didn't fit a slot — return them so the UI can flag.
+    for (const side of sides) {                       // pass 2 — closest width
+      const wall = layout.walls[side]; if (!wall) continue;
+      for (const slot of wall.slots) {
+        if (placement[slot.id]) continue;
+        const want = (slot.prefers && slot.prefers[0]) || 'SOLID';
+        const c = pick(p => !p.used && p.kind === want, slot.size)
+               || pick(p => !p.used && p.kind === 'SOLID', slot.size)
+               || pick(p => !p.used, slot.size);
+        if (c) { c.used = true; placement[slot.id] = c.line; }
+      }
+    }
     const leftover = pool.filter(p => !p.used).map(p => p.line);
     return { placement, leftover };
   }
 
-  // WhisperRoom-styled palette: all panels are the same booth-dark gray so the
-  // result reads like the real product (the spec-sheet diagrams are nearly all
-  // dark with subtle differentiation). Door is the one bright accent (WR
-  // orange). Vent/cable/window each get a small inline icon glyph so a glance
-  // tells you the type without bright color noise.
-  const WALL_COLORS = {
-    SOLID: { fill: '#1f1f1f', stroke: '#000',     text: '#ddd', label: 'Solid'  },
-    VNT:   { fill: '#1f1f1f', stroke: '#000',     text: '#ddd', label: 'Vent'   },
-    CBL:   { fill: '#1f1f1f', stroke: '#000',     text: '#ddd', label: 'Cable'  },
-    DRFRM: { fill: '#ee6216', stroke: '#a3460e',  text: '#fff', label: 'Door'   },
-    WDO:   { fill: '#1f1f1f', stroke: '#000',     text: '#ddd', label: 'Window' },
-    EMPTY: { fill: '#e5e5e5', stroke: '#bbb',     text: '#888', label: 'Empty'  }
+// Friendly type names for the panel + legend.
+  const KIND_META = {
+    SOLID: { label: 'Wall',        accent: null },
+    VNT:   { label: 'Ventilation', accent: '#6aa9d6' },
+    CBL:   { label: 'Cable',       accent: '#6aa9d6' },
+    DRFRM: { label: 'Door',        accent: '#ee6216' },
+    WDO:   { label: 'Window',      accent: '#9ec4e6' },
+    EMPTY: { label: '',            accent: null },
   };
 
-  function renderLayoutSvg(layout, placement) {
-    const PX = 8; // px per inch
-    const margin = 80;
-    const W = layout.exterior.w * PX;
-    const H = layout.exterior.h * PX;
-    const t = layout.wallThickness * PX;
-    const totalW = W + margin * 2;
-    const totalH = H + margin * 2;
-    const x0 = margin, y0 = margin;
-
-    let svg = '<svg viewBox="0 0 ' + totalW + ' ' + totalH + '" '
-            + 'style="width:100%;max-width:820px;display:block;margin:0 auto;font-family:\'DM Sans\',sans-serif">';
-
-    // Reusable definitions: a subtle drop shadow + a foam-floor pattern for
-    // the interior, mirroring the spec-sheet aesthetic (dark booth on a light
-    // background, with a textured floor visible inside the walls).
-    svg += '<defs>'
-         + '<filter id="boothShadow" x="-10%" y="-10%" width="120%" height="120%">'
-         +   '<feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity="0.18"/>'
-         + '</filter>'
-         + '<pattern id="foamPattern" x="0" y="0" width="6" height="6" patternUnits="userSpaceOnUse">'
-         +   '<rect width="6" height="6" fill="#2a2a2a"/>'
-         +   '<circle cx="3" cy="3" r="0.6" fill="#1a1a1a"/>'
-         + '</pattern>'
-         + '<linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">'
-         +   '<stop offset="0%" stop-color="#f0f0f0"/>'
-         +   '<stop offset="100%" stop-color="#fafafa"/>'
-         + '</linearGradient>'
-         + '</defs>';
-
-    // Background wash (subtle gradient, like the spec-sheet renders)
-    svg += '<rect x="0" y="0" width="' + totalW + '" height="' + totalH + '" fill="url(#bgGrad)"/>';
-
-    // Exterior shell — dark booth on a soft shadow
-    svg += '<rect x="' + x0 + '" y="' + y0 + '" width="' + W + '" height="' + H + '" '
-         + 'fill="#0f0f0f" stroke="#000" stroke-width="1.5" rx="2" '
-         + 'filter="url(#boothShadow)"/>';
-    // Interior — foam-patterned floor inside the walls
-    svg += '<rect x="' + (x0 + t) + '" y="' + (y0 + t) + '" '
-         + 'width="' + (W - 2 * t) + '" height="' + (H - 2 * t) + '" '
-         + 'fill="url(#foamPattern)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>';
-
-    // Small overlay glyphs that mark slot type at a glance. Drawn ON TOP of
-    // the dark panel fill. Icons sit at the SLOT EDGES (not the center) so
-    // they don't block the size label that's rendered at the slot midpoint.
-    function slotOverlay(kind, x, y, w, h, orientation) {
-      const cx = x + w / 2, cy = y + h / 2;
-      let out = '';
-      if (kind === 'VNT') {
-        // Two square intake/exhaust ducts at the slot ends — they read as
-        // "vent assembly here" without crowding the centered size label.
-        const sq = Math.min(w, h) * 0.4;
-        const pad = Math.min(w, h) * 0.35;
-        if (orientation === 'h') {
-          out += '<rect x="' + (x + pad - sq/2) + '" y="' + (cy - sq/2) + '" width="' + sq + '" height="' + sq + '" fill="#0a0a0a" stroke="#555" stroke-width="0.5"/>';
-          out += '<rect x="' + (x + w - pad - sq/2) + '" y="' + (cy - sq/2) + '" width="' + sq + '" height="' + sq + '" fill="#0a0a0a" stroke="#555" stroke-width="0.5"/>';
-        } else {
-          out += '<rect x="' + (cx - sq/2) + '" y="' + (y + pad - sq/2) + '" width="' + sq + '" height="' + sq + '" fill="#0a0a0a" stroke="#555" stroke-width="0.5"/>';
-          out += '<rect x="' + (cx - sq/2) + '" y="' + (y + h - pad - sq/2) + '" width="' + sq + '" height="' + sq + '" fill="#0a0a0a" stroke="#555" stroke-width="0.5"/>';
+  // ── The renderer ──────────────────────────────────────────────────
+  function renderLayoutSvg(layout, assign) {
+    const ext = layout.exterior;
+    const interior = layout.interior || { w: ext.w - 2 * layout.wallThickness, h: ext.h - 2 * layout.wallThickness };
+    const PX = Math.max(3, Math.min(600 / ext.w, 470 / ext.h, 11));
+    const W = ext.w * PX, H = ext.h * PX, t = layout.wallThickness * PX;
+    const VOUT = 28;        // vent protrusion estimate (px) for margin sizing
+    const DOORR = 92;       // max door-swing radius (px symbol)
+    // Which walls currently hold a door / vent — computed from the LIVE placement
+    // (not hard-coded to S/N), so a dragged door or vent draws its swing/ducts on
+    // whatever wall it now sits on, and the margins expand to fit.
+    const sideHasDoor = { N: false, S: false, E: false, W: false };
+    const sideHasVent = { N: false, S: false, E: false, W: false };
+    for (const sd of ['N', 'S', 'E', 'W']) for (const slot of ((layout.walls[sd] || { slots: [] }).slots)) {
+      const ln = assign[slot.id]; if (!ln) continue;
+      const k = classifyWall(ln.pack);
+      if (k === 'DRFRM') sideHasDoor[sd] = true;
+      else if (k === 'VNT' && layout.hasVent !== false) sideHasVent[sd] = true;
+    }
+    const extra = sd => sideHasDoor[sd] ? DOORR + 10 : (sideHasVent[sd] ? VOUT + 18 : 0);
+    const BASE = 50;
+    const mTop = BASE + extra('N'), mBottom = BASE + extra('S'), mLeft = BASE + extra('W'), mRight = BASE + extra('E');
+    const x0 = mLeft, y0 = mTop;
+    const totalW = W + mLeft + mRight, totalH = H + mTop + mBottom;
+  
+    let s = `<svg class="ld-svg" viewBox="0 0 ${totalW} ${totalH}" preserveAspectRatio="xMidYMid meet" `
+          + `style="width:100%;max-width:760px;display:block;margin:0 auto;font-family:'DM Sans',sans-serif;touch-action:none">`;
+  
+    // defs — gradients, shadow, carpet
+    s += `<defs>`
+      + `<linearGradient id="ldBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef0f3"/><stop offset="1" stop-color="#f8f9fa"/></linearGradient>`
+      + `<linearGradient id="ldWallH" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#23242a"/><stop offset="0.5" stop-color="#34353d"/><stop offset="1" stop-color="#23242a"/></linearGradient>`
+      + `<linearGradient id="ldWallV" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#23242a"/><stop offset="0.5" stop-color="#34353d"/><stop offset="1" stop-color="#23242a"/></linearGradient>`
+      + `<pattern id="ldCarpet" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="#6d6d6b"/><rect width="7" height="1" fill="#656563"/><rect width="1" height="7" fill="#757573"/></pattern>`
+      + `<filter id="ldShadow" x="-15%" y="-15%" width="130%" height="135%"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#5a5f66" flood-opacity="0.35"/></filter>`
+      + `</defs>`;
+  
+    s += `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="url(#ldBg)"/>`;
+  
+    // Booth shell shadow + carpet floor
+    s += `<rect x="${x0}" y="${y0}" width="${W}" height="${H}" rx="2" fill="#2a2b30" filter="url(#ldShadow)"/>`;
+    s += `<rect x="${x0 + t}" y="${y0 + t}" width="${W - 2 * t}" height="${H - 2 * t}" fill="url(#ldCarpet)"/>`;
+    s += `<rect x="${x0 + t}" y="${y0 + t}" width="${W - 2 * t}" height="${H - 2 * t}" fill="none" stroke="#000" stroke-opacity="0.25" stroke-width="1"/>`;
+  
+    // ── foam lining + seam seals ────────────────────────────────────
+    // Foam lining = a fine, subtle sawtooth along each interior wall face (the
+    // acoustic wedge — NOT a seal). Seam seals are the bold connectors:
+    //   • panel-joint seal: an I-beam — the seam line running wall-to-wall with a
+    //     bar cap where it meets each wall (the "T" you see in the spec); and
+    //   • corner seal: an L-bracket hugging each of the four interior corners.
+    const FOAM = '#2c2d33';
+    const SEAL = '#0d0e11';
+    function foamComb(ax, ay, bx, by, nx, ny) {
+      const len = Math.hypot(bx - ax, by - ay); if (len < 4) return '';
+      const ux = (bx - ax) / len, uy = (by - ay) / len;
+      const teeth = Math.max(4, Math.round(len / 5));
+      const tw = len / teeth, dep = Math.min(4, Math.max(2.5, t * 0.4));
+      let g = '';
+      for (let i = 0; i < teeth; i++) {
+        const sx = ax + ux * tw * i,         sy = ay + uy * tw * i;
+        const mx = ax + ux * tw * (i + 0.5), my = ay + uy * tw * (i + 0.5);
+        const ex = ax + ux * tw * (i + 1),   ey = ay + uy * tw * (i + 1);
+        g += `<path d="M ${sx} ${sy} L ${mx + nx * dep} ${my + ny * dep} L ${ex} ${ey} Z" fill="${FOAM}"/>`;
+      }
+      return g;
+    }
+    // bar cap = short thick bar parallel to the wall at the interior face (jx,jy);
+    // nx,ny = inward normal. This is the visible end of a seam seal.
+    function barCap(jx, jy, nx, ny) {
+      const half = 8, thick = 5, tx = -ny, ty = nx;
+      const ix = jx + nx * thick * 0.45, iy = jy + ny * thick * 0.45;
+      return `<line x1="${ix - tx * half}" y1="${iy - ty * half}" x2="${ix + tx * half}" y2="${iy + ty * half}" stroke="${SEAL}" stroke-width="${thick}" stroke-linecap="round"/>`;
+    }
+    // L-bracket hugging an interior corner; sx,sy = inward signs along each wall.
+    function cornerL(cx, cy, sx, sy) {
+      const a = 13, th = 5;
+      return `<line x1="${cx}" y1="${cy}" x2="${cx + sx * a}" y2="${cy}" stroke="${SEAL}" stroke-width="${th}" stroke-linecap="round"/>`
+           + `<line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy + sy * a}" stroke="${SEAL}" stroke-width="${th}" stroke-linecap="round"/>`;
+    }
+    function seamPieces() {
+      const fx0 = x0 + t, fy0 = y0 + t, fx1 = x0 + W - t, fy1 = y0 + H - t;
+      const spanW = W - 2 * t, spanH = H - 2 * t;
+      let g = '';
+      // foam lining on the four interior faces
+      g += foamComb(fx0, fy0, fx1, fy0, 0, 1) + foamComb(fx0, fy1, fx1, fy1, 0, -1)
+         + foamComb(fx0, fy0, fx0, fy1, 1, 0) + foamComb(fx1, fy0, fx1, fy1, -1, 0);
+      // panel-joint seals — vertical seams (N boundaries) span N↔S; horizontal (W) span W↔E
+      const nN = layout.walls.N.slots, nomN = nN.reduce((a, sl) => a + sl.size, 0) || 1;
+      let o = 0;
+      for (let i = 0; i < nN.length - 1; i++) {
+        o += nN[i].size; const x = fx0 + (o / nomN) * spanW;
+        g += `<line x1="${x}" y1="${fy0}" x2="${x}" y2="${fy1}" stroke="${SEAL}" stroke-width="1.4" stroke-opacity="0.5"/>`;
+        g += barCap(x, fy0, 0, 1) + barCap(x, fy1, 0, -1);
+      }
+      const wW = layout.walls.W.slots, nomW = wW.reduce((a, sl) => a + sl.size, 0) || 1;
+      o = 0;
+      for (let i = 0; i < wW.length - 1; i++) {
+        o += wW[i].size; const y = fy0 + (o / nomW) * spanH;
+        g += `<line x1="${fx0}" y1="${y}" x2="${fx1}" y2="${y}" stroke="${SEAL}" stroke-width="1.4" stroke-opacity="0.5"/>`;
+        g += barCap(fx0, y, 1, 0) + barCap(fx1, y, -1, 0);
+      }
+      // corner seals (L-brackets) — drawn after so they sit on top
+      g += cornerL(fx0, fy0, 1, 1) + cornerL(fx1, fy0, -1, 1) + cornerL(fx0, fy1, 1, -1) + cornerL(fx1, fy1, -1, -1);
+      return g;
+    }
+  
+    // Outer-edge midpoint + outward/along unit vectors for a panel on `side`.
+    function edgeGeom(side, px, py, pw, ph) {
+      if (side === 'N') return { omx: px + pw / 2, omy: py,      ox: 0, oy: -1, ax: 1, ay: 0, horiz: true };
+      if (side === 'S') return { omx: px + pw / 2, omy: py + ph, ox: 0, oy: 1,  ax: 1, ay: 0, horiz: true };
+      if (side === 'W') return { omx: px,          omy: py + ph / 2, ox: -1, oy: 0, ax: 0, ay: 1, horiz: false };
+      return            { omx: px + pw, omy: py + ph / 2, ox: 1, oy: 0, ax: 0, ay: 1, horiz: false };
+    }
+  
+    // ── vent assembly: TWO square boxes (one plain, one with a fan), spread
+    // along the wall, protruding OUTWARD from whatever wall holds the vent ──
+    function ventDuct(side, px, py, pw, ph) {
+      const B = 15, G = 11, PL = 4;
+      const { omx, omy, ox, oy, ax, ay, horiz } = edgeGeom(side, px, py, pw, ph);
+      const off = B / 2 + G / 2;
+      let g = '';
+      // mounting plate hugging the wall edge under both boxes
+      const plate = G + 2 * B + 4;
+      if (horiz) g += `<rect x="${omx - plate / 2}" y="${oy < 0 ? omy - PL : omy}" width="${plate}" height="${PL}" rx="1.5" fill="#3a3b42"/>`;
+      else       g += `<rect x="${ox < 0 ? omx - PL : omx}" y="${omy - plate / 2}" width="${PL}" height="${plate}" rx="1.5" fill="#3a3b42"/>`;
+      for (const k of [-1, 1]) {
+        const ccx = omx + ax * k * off, ccy = omy + ay * k * off;
+        const rx = horiz ? (ccx - B / 2) : (ox < 0 ? omx - B : omx);
+        const ry = horiz ? (oy < 0 ? omy - B : omy) : (ccy - B / 2);
+        g += `<rect x="${rx}" y="${ry}" width="${B}" height="${B}" rx="2" fill="#34363d" stroke="#1b1c20" stroke-width="1"/>`;
+        if (k === 1) {   // fan box
+          g += `<circle cx="${rx + B / 2}" cy="${ry + B / 2}" r="${B * 0.32}" fill="#22242a" stroke="#54585f" stroke-width="0.8"/>`;
+          g += `<circle cx="${rx + B / 2}" cy="${ry + B / 2}" r="${B * 0.11}" fill="#62666f"/>`;
+        } else {         // plain box (no hole) — same square, just an inset panel line
+          g += `<rect x="${rx + 3}" y="${ry + 3}" width="${B - 6}" height="${B - 6}" rx="1" fill="none" stroke="#4a4d55" stroke-width="0.8"/>`;
         }
-      } else if (kind === 'CBL') {
-        // Two cable-passage holes at the slot ends
-        const r = Math.min(w, h) * 0.16;
-        const pad = Math.min(w, h) * 0.35;
-        if (orientation === 'h') {
-          out += '<circle cx="' + (x + pad) + '" cy="' + cy + '" r="' + r + '" fill="#0a0a0a"/>';
-          out += '<circle cx="' + (x + w - pad) + '" cy="' + cy + '" r="' + r + '" fill="#0a0a0a"/>';
-        } else {
-          out += '<circle cx="' + cx + '" cy="' + (y + pad) + '" r="' + r + '" fill="#0a0a0a"/>';
-          out += '<circle cx="' + cx + '" cy="' + (y + h - pad) + '" r="' + r + '" fill="#0a0a0a"/>';
+      }
+      return g;
+    }
+  
+    // ── door: opening + outward swing on whatever wall holds it ─────
+    function doorSwing(side, px, py, pw, ph, swingIn) {
+      const { omx, omy, ox, oy, ax, ay, horiz } = edgeGeom(side, px, py, pw, ph);
+      const r = Math.min(swingIn * PX, (horiz ? pw : ph) * 0.94, DOORR);
+      const hx = omx - ax * r / 2, hy = omy - ay * r / 2;          // hinge
+      const cX = omx + ax * r / 2, cY = omy + ay * r / 2;          // closed edge along wall
+      const oX = hx + ox * r, oY = hy + oy * r;                    // leaf swung open (outward)
+      const sweep = ((cX - hx) * (oY - hy) - (cY - hy) * (oX - hx)) > 0 ? 1 : 0;
+      let g = '';
+      // opening cut in the wall band
+      if (horiz) g += `<rect x="${omx - r / 2}" y="${py}" width="${r}" height="${ph}" fill="#15161a"/>`;
+      else       g += `<rect x="${px}" y="${omy - r / 2}" width="${pw}" height="${r}" fill="#15161a"/>`;
+      g += `<path d="M ${cX} ${cY} A ${r} ${r} 0 0 ${sweep} ${oX} ${oY}" fill="rgba(238,98,22,0.10)" stroke="rgba(238,98,22,0.55)" stroke-width="1.3" stroke-dasharray="5,3"/>`;
+      g += `<line x1="${hx}" y1="${hy}" x2="${oX}" y2="${oY}" stroke="#ee6216" stroke-width="3.5" stroke-linecap="round"/>`;
+      g += `<circle cx="${hx}" cy="${hy}" r="3" fill="#ee6216"/>`;
+      return g;
+    }
+  
+    // ── draw one wall side's panels ─────────────────────────────────
+    const vents = [];   // {side,px,py,pw,ph} — drawn after walls
+    let door = null;    // {side,px,py,pw,ph,swing}
+  
+    function drawWall(side) {
+      const wall = layout.walls[side]; if (!wall) return '';
+      const horiz = (side === 'N' || side === 'S');
+      const span = horiz ? (W - 2 * t) : (H - 2 * t);
+      const nominal = wall.slots.reduce((a, sl) => a + sl.size, 0) || 1;
+      const scale = span / nominal;
+      let off = 0, g = '';
+      for (const slot of wall.slots) {
+        const line = assign[slot.id];
+        const kind = line ? classifyWall(line.pack) : 'EMPTY';
+        const meta = KIND_META[kind] || KIND_META.EMPTY;
+        const len = slot.size * scale;
+        // panel rect geometry per side
+        let px, py, pw, ph;
+        if (side === 'N') { px = x0 + t + off; py = y0;             pw = len; ph = t; }
+        else if (side === 'S') { px = x0 + t + off; py = y0 + H - t; pw = len; ph = t; }
+        else if (side === 'W') { px = x0;          py = y0 + t + off; pw = t; ph = len; }
+        else { px = x0 + W - t; py = y0 + t + off; pw = t; ph = len; }
+        const grad = horiz ? 'url(#ldWallH)' : 'url(#ldWallV)';
+        g += `<g class="ld-panel" data-slot="${esc(slot.id)}">`;
+        // invisible hit-pad: extends the grab target ~15px into the interior so
+        // the thin wall bands are easy to drag. Drawn first (under the visuals).
+        const HP = 15;
+        let hx = px, hy = py, hw = pw, hh = ph;
+        if (side === 'N')      { hh = ph + HP; }
+        else if (side === 'S') { hy = py - HP; hh = ph + HP; }
+        else if (side === 'W') { hw = pw + HP; }
+        else                   { hx = px - HP; hw = pw + HP; }
+        g += `<rect class="ld-hit" x="${hx}" y="${hy}" width="${hw}" height="${hh}" fill="#000" fill-opacity="0" style="pointer-events:all"/>`;
+        g += `<rect class="ld-wall" x="${px}" y="${py}" width="${pw}" height="${ph}" fill="${grad}" stroke="#15161a" stroke-width="0.8"/>`;
+        // interior bevel highlight
+        g += `<rect x="${px + 0.6}" y="${py + 0.6}" width="${pw - 1.2}" height="${ph - 1.2}" fill="none" stroke="#4a4c55" stroke-opacity="0.5" stroke-width="0.6"/>`;
+        // kind accent line on the interior edge
+        if (meta.accent) {
+          if (side === 'N') g += `<rect x="${px + 1}" y="${py + ph - 2}" width="${pw - 2}" height="1.6" fill="${meta.accent}" opacity="0.8"/>`;
+          else if (side === 'S') g += `<rect x="${px + 1}" y="${py + 0.4}" width="${pw - 2}" height="1.6" fill="${meta.accent}" opacity="0.8"/>`;
+          else if (side === 'W') g += `<rect x="${px + pw - 2}" y="${py + 1}" width="1.6" height="${ph - 2}" fill="${meta.accent}" opacity="0.8"/>`;
+          else g += `<rect x="${px + 0.4}" y="${py + 1}" width="1.6" height="${ph - 2}" fill="${meta.accent}" opacity="0.8"/>`;
         }
-      } else if (kind === 'WDO') {
-        // Lighter rectangular "glass" inset within the panel
-        const m = Math.min(w, h) * 0.25;
-        out += '<rect x="' + (x + m) + '" y="' + (y + h * 0.18) + '" '
-             + 'width="' + (w - m * 2) + '" height="' + (h * 0.64) + '" '
-             + 'fill="#9ec4e6" stroke="#5b87a8" stroke-width="0.6" opacity="0.85" rx="1"/>';
+        // window glass inset
+        if (kind === 'WDO') {
+          if (horiz) g += `<rect x="${px + pw * 0.2}" y="${py + ph * 0.28}" width="${pw * 0.6}" height="${ph * 0.44}" fill="#9ec4e6" opacity="0.8" rx="1"/>`;
+          else       g += `<rect x="${px + pw * 0.28}" y="${py + ph * 0.2}" width="${pw * 0.44}" height="${ph * 0.6}" fill="#9ec4e6" opacity="0.8" rx="1"/>`;
+        }
+        g += `</g>`;
+        // collect vent / door for later overlay — on WHATEVER wall they sit
+        if (kind === 'VNT' && layout.hasVent !== false) vents.push({ side, px, py, pw, ph });
+        if (kind === 'DRFRM') door = { side, px, py, pw, ph, swing: (layout.door && layout.door.swing) || 30 };
+        // panel label (type + code) just inside the wall on the floor
+        g += panelLabel(side, px, py, pw, ph, kind, line);
+        off += len;
+      }
+      return g;
+    }
+  
+    function panelLabel(side, px, py, pw, ph, kind, line) {
+      const meta = KIND_META[kind] || KIND_META.EMPTY;
+      const horiz = (side === 'N' || side === 'S');
+      const big = horiz ? pw : ph;
+      if (big < 22) return '';   // too small to label
+      let lx, ly, anchor = 'middle', rot = 0;
+      const pad = 13;
+      if (side === 'N') { lx = px + pw / 2; ly = py + t + pad; }
+      else if (side === 'S') { lx = px + pw / 2; ly = py - 7; }
+      else if (side === 'W') { lx = px + t + 7; ly = py + ph / 2; anchor = 'start'; rot = 0; }
+      else { lx = px - 7; ly = py + ph / 2; anchor = 'end'; }
+      const typ = kind === 'EMPTY' ? '(empty)' : meta.label;
+      const col = kind === 'EMPTY' ? '#aab' : '#eef';
+      let out = `<text x="${lx}" y="${ly}" text-anchor="${anchor}" font-size="9.5" font-weight="700" fill="${col}" opacity="0.92" style="pointer-events:none">${esc(typ)}</text>`;
+      if (line && line.code) {
+        const cy2 = (side === 'S') ? ly - 10 : ly + 11;
+        out += `<text x="${lx}" y="${cy2}" text-anchor="${anchor}" font-size="8" fill="#cfd3da" opacity="0.7" style="pointer-events:none">${esc(line.code)}</text>`;
       }
       return out;
     }
-
-    // Door swing arc — drawn on the interior side of whichever slot holds a
-    // DRFRM panel. A 90° arc whose radius is the door opening width (~30″
-    // on STDWL46 booths, ~24″ on STDWL40). Indicates "door opens INTO the
-    // booth" visually — Benton can tell at a glance if the swing geometry
-    // makes sense in the host room.
-    function doorSwingArc(slotX, slotY, slotW, slotH, side, hinge) {
-      // Door swings open into the booth (interior). Hinge is left/right of
-      // the doorframe slot.
-      const doorRadius = Math.min(slotW, slotH) * 0.62;
-      // For S wall (front, baseY = bottom): arc opens upward into booth
-      // For N wall (back): arc opens downward into booth
-      // For E (right): arc opens leftward
-      // For W (left): arc opens rightward
-      let hingeX, hingeY, x1, y1, x2, y2, sweep;
-      if (side === 'S') {
-        hingeX = (hinge === 'L') ? slotX + slotW * 0.15 : slotX + slotW * 0.85;
-        hingeY = slotY;  // top of the slot = inside edge
-        x1 = hinge === 'L' ? hingeX + doorRadius : hingeX - doorRadius;
-        y1 = hingeY;
-        x2 = hingeX;
-        y2 = hingeY - doorRadius;
-        sweep = hinge === 'L' ? 0 : 1;
-      } else if (side === 'N') {
-        hingeX = (hinge === 'L') ? slotX + slotW * 0.85 : slotX + slotW * 0.15;
-        hingeY = slotY + slotH;
-        x1 = hinge === 'L' ? hingeX - doorRadius : hingeX + doorRadius;
-        y1 = hingeY;
-        x2 = hingeX;
-        y2 = hingeY + doorRadius;
-        sweep = hinge === 'L' ? 0 : 1;
-      } else {
-        return ''; // E/W swing not drawn for the mock
-      }
-      return '<path d="M ' + x1 + ' ' + y1 + ' A ' + doorRadius + ' ' + doorRadius + ' 0 0 ' + sweep + ' ' + x2 + ' ' + y2 + '" '
-           + 'fill="none" stroke="rgba(238,98,22,0.55)" stroke-width="1.2" stroke-dasharray="3,3"/>';
+  
+    // walls
+    s += drawWall('N');
+    s += drawWall('S');
+    s += drawWall('E');
+    s += drawWall('W');
+  
+    // corner posts (on top of wall ends)
+    for (const [cx, cy] of [[x0, y0], [x0 + W - t, y0], [x0, y0 + H - t], [x0 + W - t, y0 + H - t]]) {
+      s += `<rect x="${cx}" y="${cy}" width="${t}" height="${t}" fill="#191a1e" stroke="#000" stroke-width="0.8"/>`;
     }
-
-    // Horizontal walls (N + S) — slots laid out along x inside the interior length
-    function drawHorizontalWall(side, baseY, labelAbove) {
-      const wall = layout.walls[side];
-      if (!wall) return;
-      let offset = 0;
-      const doorArcs = [];
-      wall.slots.forEach(slot => {
-        const placed = placement[slot.id];
-        const slotSizeIn = effectiveSlotSize(slot, placed);
-        const slotW = slotSizeIn * PX;
-        const x = x0 + t + offset;
-        const kind = placed ? classifyWall(placed.pack) : 'EMPTY';
-        const col = WALL_COLORS[kind] || WALL_COLORS.EMPTY;
-        // Panel rectangle
-        svg += '<rect x="' + x + '" y="' + baseY + '" width="' + slotW + '" height="' + t + '" '
-             + 'fill="' + col.fill + '" stroke="' + col.stroke + '" stroke-width="0.8"/>';
-        // Inner highlight stroke for depth
-        svg += '<rect x="' + (x + 1) + '" y="' + (baseY + 1) + '" width="' + (slotW - 2) + '" height="' + (t - 2) + '" '
-             + 'fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>';
-        // Type glyph (drawn at slot ends so the size label stays clear)
-        svg += slotOverlay(kind, x, baseY, slotW, t, 'h');
-        const cx = x + slotW / 2;
-        // VNT on the N wall has the duct protrusion drawn ABOVE the wall
-        // (~16 px tall), so push that slot's labels higher to clear them.
-        const isVentOnN = (side === 'N' && kind === 'VNT');
-        if (placed) {
-          const codeY = labelAbove ? (baseY - (isVentOnN ? 40 : 18)) : (baseY + t + 16);
-          const packY = labelAbove ? (baseY - (isVentOnN ? 26 : 6))  : (baseY + t + 28);
-          svg += '<text x="' + cx + '" y="' + codeY + '" text-anchor="middle" '
-               + 'font-size="11" font-weight="800" fill="#1a1a1a" letter-spacing="0.02em">' + esc(placed.code) + '</text>';
-          svg += '<text x="' + cx + '" y="' + packY + '" text-anchor="middle" '
-               + 'font-size="9" fill="#666">' + esc(placed.pack || '') + '</text>';
-        } else {
-          const y = labelAbove ? (baseY - 8) : (baseY + t + 18);
-          svg += '<text x="' + cx + '" y="' + y + '" text-anchor="middle" '
-               + 'font-size="10" fill="#bbb" font-style="italic">(empty)</text>';
-        }
-        // Door swing — queued so it draws AFTER the wall fills but on top
-        // of the interior (gets appended after the wall loop).
-        if (kind === 'DRFRM') {
-          // L/R inferred from the code: STDDRFRM R / L; WA STDDRFRM R / L
-          const hingeSide = /\sL\b/i.test(placed.pack || '') ? 'L' : 'R';
-          doorArcs.push(doorSwingArc(x, baseY, slotW, t, side, hingeSide));
-        }
-        offset += slotW;
-      });
-      // Door arcs drawn AFTER all slots so they overlay onto the interior
-      // (and aren't clipped by the next slot's draw)
-      doorArcs.forEach(a => svg += a);
+  
+    // seam seals: comb on each interior face + corner pieces + T pieces at joints
+    s += seamPieces();
+  
+    // vent ducts + door overlays (follow whatever wall currently holds them)
+    vents.forEach(v => s += ventDuct(v.side, v.px, v.py, v.pw, v.ph));
+    if (door) s += doorSwing(door.side, door.px, door.py, door.pw, door.ph, door.swing);
+  
+    // ── dimension lines (exterior) ──────────────────────────────────
+    function tick(x, y, vert) {
+      return vert ? `<line x1="${x - 4}" y1="${y}" x2="${x + 4}" y2="${y}" stroke="#9097a0" stroke-width="1"/>`
+                  : `<line x1="${x}" y1="${y - 4}" x2="${x}" y2="${y + 4}" stroke="#9097a0" stroke-width="1"/>`;
     }
-
-    // Vertical walls (E + W) — slots laid out along y inside the interior height
-    function drawVerticalWall(side, baseX, labelLeft) {
-      const wall = layout.walls[side];
-      if (!wall) return;
-      let offset = 0;
-      wall.slots.forEach(slot => {
-        const placed = placement[slot.id];
-        const slotSizeIn = effectiveSlotSize(slot, placed);
-        const slotH = slotSizeIn * PX;
-        const y = y0 + t + offset;
-        const kind = placed ? classifyWall(placed.pack) : 'EMPTY';
-        const col = WALL_COLORS[kind] || WALL_COLORS.EMPTY;
-        svg += '<rect x="' + baseX + '" y="' + y + '" width="' + t + '" height="' + slotH + '" '
-             + 'fill="' + col.fill + '" stroke="' + col.stroke + '" stroke-width="0.8"/>';
-        svg += '<rect x="' + (baseX + 1) + '" y="' + (y + 1) + '" width="' + (t - 2) + '" height="' + (slotH - 2) + '" '
-             + 'fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>';
-        svg += slotOverlay(kind, baseX, y, t, slotH, 'v');
-        const cy = y + slotH / 2;
-        if (placed) {
-          const codeX = labelLeft ? (baseX - 12) : (baseX + t + 12);
-          const anchor = labelLeft ? 'end' : 'start';
-          svg += '<text x="' + codeX + '" y="' + (cy - 2) + '" text-anchor="' + anchor + '" '
-               + 'font-size="11" font-weight="800" fill="#1a1a1a" letter-spacing="0.02em">' + esc(placed.code) + '</text>';
-          svg += '<text x="' + codeX + '" y="' + (cy + 12) + '" text-anchor="' + anchor + '" '
-               + 'font-size="9" fill="#666">' + esc(placed.pack || '') + '</text>';
-        }
-        offset += slotH;
-      });
-    }
-
-    drawHorizontalWall('N', y0, true);
-    drawHorizontalWall('S', y0 + H - t, false);
-    drawVerticalWall('W', x0, true);
-    drawVerticalWall('E', x0 + W - t, false);
-
-    // Vent-system assembly protrudes outside the wall that holds the VNT slot
-    // (matches the spec-sheet's ventilation duct diagram). Walk N's slots;
-    // the first VNT-classified one gets a pair of square duct boxes drawn
-    // above it. Sized + spread so the code/pack labels fit between them.
-    (function ventProtrusion() {
-      const nWall = layout.walls.N;
-      if (!nWall) return;
-      let offset = 0;
-      for (const slot of nWall.slots) {
-        const placed = placement[slot.id];
-        const sizeIn = effectiveSlotSize(slot, placed);
-        const slotW = sizeIn * PX;
-        if (placed && classifyWall(placed.pack) === 'VNT') {
-          const cx = x0 + t + offset + slotW / 2;
-          const yBase = y0;
-          const sq = 14;          // square side
-          const halfGap = 24;     // half the gap between inner edges → labels fit between
-          // Left duct
-          svg += '<rect x="' + (cx - halfGap - sq) + '" y="' + (yBase - sq) + '" '
-               + 'width="' + sq + '" height="' + sq + '" '
-               + 'fill="#1a1a1a" stroke="#000" stroke-width="0.8" rx="1"/>';
-          // Right duct
-          svg += '<rect x="' + (cx + halfGap) + '" y="' + (yBase - sq) + '" '
-               + 'width="' + sq + '" height="' + sq + '" '
-               + 'fill="#1a1a1a" stroke="#000" stroke-width="0.8" rx="1"/>';
-          return;
-        }
-        offset += slotW;
-      }
-    })();
-
-    // Side-direction labels
-    svg += '<text x="' + (x0 + W / 2) + '" y="' + (y0 - 52) + '" text-anchor="middle" '
-         + 'font-size="10" font-weight="800" letter-spacing="0.14em" fill="#888">BACK · VENT</text>';
-    svg += '<text x="' + (x0 + W / 2) + '" y="' + (y0 + H + 58) + '" text-anchor="middle" '
-         + 'font-size="10" font-weight="800" letter-spacing="0.14em" fill="#888">FRONT · DOOR</text>';
-
-    // Interior dim caption — light text over the dark foam floor
-    const intW = layout.exterior.w - 2 * layout.wallThickness;
-    const intH = layout.exterior.h - 2 * layout.wallThickness;
-    svg += '<text x="' + (x0 + W / 2) + '" y="' + (y0 + H / 2 - 4) + '" text-anchor="middle" '
-         + 'font-size="13" font-weight="700" fill="rgba(255,255,255,0.5)" letter-spacing="0.05em">INTERIOR</text>';
-    svg += '<text x="' + (x0 + W / 2) + '" y="' + (y0 + H / 2 + 14) + '" text-anchor="middle" '
-         + 'font-size="11" fill="rgba(255,255,255,0.4)">' + intW + '″ × ' + intH + '″</text>';
-
-    svg += '</svg>';
-    return svg;
+    const dimY = y0 + H + extra('S') + 24;
+    s += `<line x1="${x0}" y1="${dimY}" x2="${x0 + W}" y2="${dimY}" stroke="#9097a0" stroke-width="1"/>`;
+    s += tick(x0, dimY, false) + tick(x0 + W, dimY, false);
+    s += `<rect x="${x0 + W / 2 - 24}" y="${dimY - 9}" width="48" height="16" rx="3" fill="url(#ldBg)"/>`;
+    s += `<text x="${x0 + W / 2}" y="${dimY + 3}" text-anchor="middle" font-size="11" font-weight="700" fill="#4a4f57">${ext.w}″</text>`;
+    const dimX = x0 - extra('W') - 24;
+    s += `<line x1="${dimX}" y1="${y0}" x2="${dimX}" y2="${y0 + H}" stroke="#9097a0" stroke-width="1"/>`;
+    s += tick(dimX, y0, true) + tick(dimX, y0 + H, true);
+    s += `<rect x="${dimX - 8}" y="${y0 + H / 2 - 9}" width="16" height="18" fill="url(#ldBg)"/>`;
+    s += `<text x="${dimX}" y="${y0 + H / 2}" text-anchor="middle" font-size="11" font-weight="700" fill="#4a4f57" transform="rotate(-90 ${dimX} ${y0 + H / 2})">${ext.h}″</text>`;
+  
+    // ── interior callout (centered pill) ────────────────────────────
+    const cw = 150, chh = 26;
+    const ccx = x0 + W / 2, ccy = y0 + H / 2;
+    s += `<rect x="${ccx - cw / 2}" y="${ccy - chh / 2}" width="${cw}" height="${chh}" rx="13" fill="rgba(255,255,255,0.92)" stroke="#cfd3da" stroke-width="1"/>`;
+    s += `<text x="${ccx}" y="${ccy - 1}" text-anchor="middle" font-size="9.5" font-weight="700" letter-spacing="0.08em" fill="#8a8f97">INTERIOR</text>`;
+    s += `<text x="${ccx}" y="${ccy + 10}" text-anchor="middle" font-size="11" font-weight="800" fill="#2a2d33">${interior.w}″ × ${interior.h}″</text>`;
+  
+    // ── orientation captions (booth orientation is fixed; components can move) ─
+    s += `<text x="${x0 + W / 2}" y="${y0 - extra('N') - 8}" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="0.12em" fill="#9097a0">BACK</text>`;
+    s += `<text x="${x0 + W / 2}" y="${dimY + 22}" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="0.12em" fill="#9097a0">FRONT</text>`;
+  
+    s += `</svg>`;
+    return s;
   }
 
   function renderLegend() {
-    const items = ['SOLID','VNT','CBL','DRFRM','WDO'].map(k => {
-      const col = WALL_COLORS[k];
-      return '<span><span class="sw" style="background:' + col.fill + '"></span>' + col.label + '</span>';
-    }).join('');
-    return '<div class="layout-legend">' + items + '</div>';
+    const sw = { DRFRM:'#ee6216', WDO:'#9ec4e6', VNT:'#34353d', SOLID:'#34353d' };
+    const items = ['SOLID','VNT','DRFRM','WDO'].map(k =>
+      '<span><span class="ld-sw" style="background:' + sw[k] + '"></span>' + KIND_META[k].label + '</span>'
+    ).join('');
+    return '<div class="layout-legend">' + items + ' <span class="ld-hint">↔ drag a panel onto another to swap</span></div>';
   }
 
-  function renderLayoutTab(rm) {
-    const layout = (DATA && DATA.layouts) ? DATA.layouts[rm.boothName] : null;
-    if (!layout) {
-      return '<div class="layout-wrap"><div class="layout-empty">'
-        + 'Top-down layout not yet defined for <b>' + esc(rm.boothName) + '</b>.<br><br>'
-        + 'Add the layout to <code>lib/pl-data/booth-layouts.json</code> and it will appear here automatically (S / E / SNV / ENV variants share one layout via fallback).'
-        + '</div></div>';
+  // ── Drag-to-rearrange: per-room placement state + pointer handlers ──
+  // LAYOUT_STATE holds each room's current slot→line assignment so a customer
+  // can drag panels around (e.g. move the door to a different wall) and see it
+  // re-render live. Reset on every full render(); swaps mutate it in place.
+  const LAYOUT_STATE = {};
+  let _ldDrag = null;
+  const ldRoomOf = el => { const w = el && el.closest && el.closest('[data-layout-room]'); return w ? +w.getAttribute('data-layout-room') : null; };
+  // Slot's nominal width (in) for the drag size constraint.
+  function ldSlotSize(ri, slotId) {
+    const st = LAYOUT_STATE[ri]; if (!st) return null;
+    for (const side of ['N', 'S', 'E', 'W'])
+      for (const slot of st.layout.walls[side].slots)
+        if (slot.id === slotId) return slot.size;
+    return null;
+  }
+  // A panel only fits a slot of (near-)equal width — you can't drop a 46" panel
+  // where a 22" sits. ±3" covers module rounding (46/47/47.5) but blocks
+  // full↔narrow swaps.
+  function ldCompatible(ri, a, b) {
+    const sa = ldSlotSize(ri, a), sb = ldSlotSize(ri, b);
+    return sa != null && sb != null && Math.abs(sa - sb) <= 3;
+  }
+
+  function renderLayoutTab(rm, ri) {
+    let st = LAYOUT_STATE[ri];
+    if (!st || st.rm !== rm) {
+      const layout = (DATA && DATA.layouts) ? DATA.layouts[rm.boothName] : null;
+      if (!layout) {
+        return '<div class="layout-wrap" data-layout-room="' + ri + '"><div class="layout-empty">'
+          + 'Top-down layout not yet defined for <b>' + esc(rm.boothName) + '</b>.'
+          + '</div></div>';
+      }
+      const placed = placeBom(layout, rm.lines).placement;
+      st = LAYOUT_STATE[ri] = { rm, layout, assign: placed };
     }
-    const { placement, leftover } = placeBom(layout, rm.lines);
-    let html = '<div class="layout-wrap">'
-      + '<div style="text-align:center;font-size:12px;color:#666;margin-bottom:6px">'
-      +   esc(rm.boothName) + ' · ' + esc(layout.label)
-      + '</div>'
-      + renderLayoutSvg(layout, placement)
+    const layout = st.layout;
+    const placedSet = new Set(Object.values(st.assign).filter(Boolean));
+    const leftover = (rm.lines || []).filter(l => isWallPanel(l.pack) && !placedSet.has(l));
+    let html = '<div class="layout-wrap" data-layout-room="' + ri + '">'
+      + '<div class="layout-title">' + esc(rm.boothName) + ' · ' + esc(layout.label || '')
+      +   ' <span class="layout-sub">' + esc(layout.variant || 'S') + '</span></div>'
+      + renderLayoutSvg(layout, st.assign)
       + renderLegend();
     if (leftover.length) {
-      html += '<div class="layout-empty" style="margin-top:14px;text-align:left;color:#5a3a18;background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.4)">'
-        + '<b>⚠ Couldn’t place ' + leftover.length + ' wall component'
-        + (leftover.length === 1 ? '' : 's') + ':</b> '
-        + leftover.map(l => esc(l.code) + ' (' + esc(l.pack || '') + ')').join(', ')
-        + '. This usually means the BOM has more walls than the layout has slots, or the wall sizes don\'t match any slot in this mock.'
-        + '</div>';
+      html += '<div class="layout-empty" style="margin-top:12px;text-align:left;color:#5a3a18;background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.4)">'
+        + '<b>⚠ ' + leftover.length + ' wall component' + (leftover.length === 1 ? '' : 's') + ' not placed:</b> '
+        + leftover.map(l => esc(l.code) + ' (' + esc(l.pack || '') + ')').join(', ') + '.</div>';
     }
-    html += '</div>';
-    return html;
+    return html + '</div>';
   }
+
+  // floating "ghost" chip that follows the cursor so it's obvious you're dragging
+  let _ldGhost = null;
+  function ldShowGhost(line, e) {
+    const kind = line ? classifyWall(line.pack) : 'EMPTY';
+    const meta = KIND_META[kind] || KIND_META.EMPTY;
+    const g = document.createElement('div');
+    g.className = 'ld-ghost';
+    g.innerHTML = '<span>' + esc(meta.label || 'Panel') + '</span>'
+      + (line && line.code ? '<span class="c">' + esc(line.code) + '</span>' : '');
+    document.body.appendChild(g);
+    _ldGhost = g;
+    ldMoveGhost(e);
+  }
+  function ldMoveGhost(e) {
+    if (!_ldGhost) return;
+    const pt = (e.touches && e.touches[0]) || e;
+    _ldGhost.style.left = (pt.clientX + 14) + 'px';
+    _ldGhost.style.top = (pt.clientY + 12) + 'px';
+  }
+  function ldHideGhost() { if (_ldGhost) { _ldGhost.remove(); _ldGhost = null; } }
+
+  function ldDown(e) {
+    const g = e.target.closest && e.target.closest('.ld-panel');
+    if (!g) return;
+    const ri = ldRoomOf(g); if (ri == null) return;
+    _ldDrag = { ri, from: g.getAttribute('data-slot'), g };
+    g.classList.add('ld-grabbing');
+    document.body.classList.add('ld-dragging');
+    const line = LAYOUT_STATE[ri] && LAYOUT_STATE[ri].assign[_ldDrag.from];
+    ldShowGhost(line || null, e);
+    e.preventDefault();
+  }
+  function ldMove(e) {
+    if (!_ldDrag) return;
+    ldMoveGhost(e);
+    const pt = (e.touches && e.touches[0]) || e;
+    const el = document.elementFromPoint(pt.clientX, pt.clientY);
+    const tgt = el && el.closest && el.closest('.ld-panel');
+    document.querySelectorAll('.ld-panel.ld-target,.ld-panel.ld-bad').forEach(n => n.classList.remove('ld-target', 'ld-bad'));
+    const onTarget = tgt && tgt !== _ldDrag.g && ldRoomOf(tgt) === _ldDrag.ri;
+    const fits = onTarget && ldCompatible(_ldDrag.ri, _ldDrag.from, tgt.getAttribute('data-slot'));
+    if (onTarget) tgt.classList.add(fits ? 'ld-target' : 'ld-bad');
+    if (_ldGhost) _ldGhost.classList.toggle('ok', !!fits);
+    if (_ldGhost) _ldGhost.classList.toggle('bad', !!onTarget && !fits);
+    e.preventDefault();
+  }
+  function ldUp(e) {
+    if (!_ldDrag) return;
+    const pt = (e.changedTouches && e.changedTouches[0]) || e;
+    const el = document.elementFromPoint(pt.clientX, pt.clientY);
+    const tgt = el && el.closest && el.closest('.ld-panel');
+    if (tgt && tgt !== _ldDrag.g && ldRoomOf(tgt) === _ldDrag.ri
+        && ldCompatible(_ldDrag.ri, _ldDrag.from, tgt.getAttribute('data-slot'))) {
+      ldSwap(_ldDrag.ri, _ldDrag.from, tgt.getAttribute('data-slot'));
+    }
+    document.querySelectorAll('.ld-panel.ld-target,.ld-panel.ld-bad').forEach(n => n.classList.remove('ld-target', 'ld-bad'));
+    document.body.classList.remove('ld-dragging');
+    ldHideGhost();
+    _ldDrag = null;
+  }
+  function ldSwap(ri, a, b) {
+    const st = LAYOUT_STATE[ri]; if (!st || a === b) return;
+    const A = st.assign[a] || null, B = st.assign[b] || null;
+    if (B == null) delete st.assign[a]; else st.assign[a] = B;
+    if (A == null) delete st.assign[b]; else st.assign[b] = A;
+    const wrap = document.querySelector('[data-layout-room="' + ri + '"]');
+    if (wrap) wrap.outerHTML = renderLayoutTab(st.rm, ri);
+  }
+  document.addEventListener('pointerdown', ldDown);
+  document.addEventListener('pointermove', ldMove);
+  document.addEventListener('pointerup', ldUp);
+
 
   function switchTab(roomEl, tabName) {
     const parent = roomEl.closest('.pl-page');
@@ -665,6 +830,7 @@
   function render(){
     const rooms = DATA.rooms || [];
     if (!rooms.length){ document.getElementById('rooms').innerHTML = '<div class="pl-page"><div class="empty">No booth (MDL) line items found on this quote.</div></div>'; return; }
+    for (const k in LAYOUT_STATE) delete LAYOUT_STATE[k];   // re-place layouts from current BOM each full render
     const totalPages = rooms.length;
     const savedDate = localStorage.getItem(dateKey()) || todayShort();
 
@@ -776,7 +942,7 @@
           + '</div>'
         + '</div>'
         + '</div>'    // /tab-panel data-tab=pl
-        + '<div class="tab-panel" data-tab="layout">' + renderLayoutTab(rm) + '</div>'
+        + '<div class="tab-panel" data-tab="layout">' + renderLayoutTab(rm, ri) + '</div>'
         + flagsHtml(rm)
         + pageFoot(ri+1, totalPages)
       + '</div>';

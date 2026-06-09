@@ -270,7 +270,14 @@ td.drillable:hover{color:var(--orange)}
 .mine-tbl th{text-align:left;font-size:10px;color:var(--muted);font-weight:600;padding:3px 6px;border-bottom:1px solid var(--border)}
 .mine-tbl td{padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top}
 .mine-tbl td.num,.mine-tbl th.num{text-align:right;font-family:var(--mono)}
-.mine-more{font-size:10px;color:var(--muted);margin-top:6px}
+.mine-more{font-size:10px;color:var(--muted);margin-top:6px;cursor:pointer;user-select:none}
+.mine-more:hover{color:var(--orange)}
+/* v1.84.9 — expandable mining panels: rows past the top 15 hide until expanded */
+.mine-tbl tr.mine-extra{display:none}
+.mine-tbl.mine-expanded tr.mine-extra{display:table-row}
+/* v1.84.9 — hover-description marker (ⓘ) on section / table / panel titles */
+.tip-i{display:inline-block;margin-left:5px;font-size:10px;color:var(--muted);cursor:help;opacity:.5;font-weight:400;vertical-align:middle}
+.tip-i:hover{opacity:1;color:var(--orange)}
 .mine-tag{display:inline-block;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:4px;white-space:nowrap}
 .tag-comp{background:rgba(239,68,68,.16);color:#ef4444}
 .tag-off{background:rgba(251,146,60,.16);color:#fb923c}
@@ -362,6 +369,12 @@ td.drillable:hover{color:var(--orange)}
 .coverage-bar-fill.good{background:var(--green)}
 .coverage-bar-fill.mid {background:var(--yellow)}
 .coverage-bar-fill.bad {background:var(--red)}
+/* v1.84.1 — attribution reconciliation (remainder) row in table footers */
+tfoot .recon-row td{background:rgba(148,163,184,.07);border-top:2px solid var(--border);color:var(--muted);font-style:italic;padding-top:10px}
+tfoot .recon-row td.num{font-family:var(--mono);font-style:normal}
+tfoot .recon-row td.drillable{cursor:pointer}
+tfoot .recon-row td.drillable:hover{color:var(--orange)}
+.recon-sub{display:block;font-style:normal;font-size:10px;color:var(--muted);opacity:.85;margin-top:2px;letter-spacing:.02em}
 </style>
   <script src="/assets/nav.js" defer></script>
 </head>
@@ -445,7 +458,7 @@ td.drillable:hover{color:var(--orange)}
     <!-- Section 1: Growth Priorities (Kanban) -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">① Growth Priorities</div>
+        <div class="section-title">① Growth Priorities<span class="tip-i" title="Data: Google Ads + Google Search Console + HubSpot, fused client-side. Every paid and SEO opportunity is scored (revenue potential × intent × confidence) and bucketed Do-Now / Next / Monitor / Ignore.">ⓘ</span></div>
         <span class="section-meta" id="growthKanbanMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -466,7 +479,7 @@ td.drillable:hover{color:var(--orange)}
     <!-- Section 3 + 4: Opportunity Queue (with root-cause diagnosis) -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">② Opportunity Queue</div>
+        <div class="section-title">② Opportunity Queue<span class="tip-i" title="Data: GSC queries/pages + Google Ads campaigns + HubSpot attribution. Every opportunity ranked by Growth Score; the Diagnosis column is the single root-cause bottleneck for each.">ⓘ</span></div>
         <span class="section-meta" id="growthQueueMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -478,7 +491,7 @@ td.drillable:hover{color:var(--orange)}
     <!-- Section 5: Target Page Analysis -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">③ Target Page Analysis</div>
+        <div class="section-title">③ Target Page Analysis<span class="tip-i" title="Data: Google Search Console query→page rankings vs the ideal commercial page (GSC_PAGE_MAP). Flags when the wrong page ranks, or no commercial page ranks at all, for each query.">ⓘ</span></div>
         <span class="section-meta" id="growthTpaMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -490,7 +503,7 @@ td.drillable:hover{color:var(--orange)}
     <!-- Section 6: Google Ads Improvement Engine -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">④ Google Ads Improvement Engine</div>
+        <div class="section-title">④ Google Ads Improvement Engine<span class="tip-i" title="Data: Google Ads campaigns + keywords (Quality Score components, Impression Share) + HubSpot revenue. Drives the per-campaign ad-copy / landing-page / budget cards. Quality Score + Impression Share only populate on a fresh Sync All.">ⓘ</span></div>
         <span class="section-meta" id="growthAdsMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -502,7 +515,7 @@ td.drillable:hover{color:var(--orange)}
     <!-- Section 8: Budget Reallocation -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">⑤ Budget Reallocation</div>
+        <div class="section-title">⑤ Budget Reallocation<span class="tip-i" title="Data: Google Ads spend + HubSpot closed-won revenue (True ROAS) + Impression Share. Sorts campaigns into Increase / Test Pull-Back / Maintain / Reduce / Pause / Investigate. Branded high-ROAS campaigns get Test Pull-Back, not Increase (organic captures that demand free).">ⓘ</span></div>
         <span class="section-meta" id="growthBudgetMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -514,7 +527,7 @@ td.drillable:hover{color:var(--orange)}
     <!-- Section 7: Search-Term Mining (Deploy 3) -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">⑥ Search-Term Mining</div>
+        <div class="section-title">⑥ Search-Term Mining<span class="tip-i" title="The actual phrases that triggered your Google Ads (marketing_search_terms), cross-referenced with your bid keywords, HubSpot closed-won revenue, and Google Search Console organic rankings. Four review queues. Refreshed on Sync All.">ⓘ</span></div>
         <span class="section-meta" id="growthMiningMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -530,7 +543,7 @@ td.drillable:hover{color:var(--orange)}
        Hidden until /api/marketing/attribution-coverage returns data. -->
   <div class="coverage" id="coveragePanel" style="display:none">
     <div class="coverage-head">
-      <span class="coverage-title" id="coverageTitle">Attribution coverage (last 90 days)</span>
+      <span class="coverage-title" id="coverageTitle">Attribution coverage (last 90 days)</span><span class="tip-i" title="What share of your closed-won deals, revenue, and new contacts can be tied to a marketing source. Low numbers usually mean lots of organic/direct traffic, not broken tracking. Source: HubSpot deals + contacts (first/latest source, gclid).">ⓘ</span>
       <span class="coverage-detail" id="coverageDetail"></span>
     </div>
     <div class="coverage-grid">
@@ -556,10 +569,10 @@ td.drillable:hover{color:var(--orange)}
        updated dynamically with the current day range, so "(90d)" in the
        static HTML is just the initial state. -->
   <div class="cards" id="summaryCards" style="display:none">
-    <div class="card"><div class="card-label" id="lblSpend">Total Spend (90d)</div><div class="card-value" id="kpiSpend">—</div><div class="card-sub">Across all campaigns</div></div>
-    <div class="card"><div class="card-label" id="lblClicks">Clicks (90d)</div><div class="card-value" id="kpiClicks">—</div><div class="card-sub" id="kpiCpc">— avg CPC</div></div>
+    <div class="card" title="Total Google Ads cost across all campaigns in the selected window. Source: Google Ads."><div class="card-label" id="lblSpend">Total Spend (90d)</div><div class="card-value" id="kpiSpend">—</div><div class="card-sub">Across all campaigns</div></div>
+    <div class="card" title="Total Google Ads clicks across all campaigns in the window; sub-label is the average cost per click. Source: Google Ads."><div class="card-label" id="lblClicks">Clicks (90d)</div><div class="card-value" id="kpiClicks">—</div><div class="card-sub" id="kpiCpc">— avg CPC</div></div>
     <div class="card" title="Google Ads conversion EVENTS (form fills, calls, etc.) as reported by Google's own tracking — NOT unique people. One contact can fire several, and counts can be fractional under data-driven attribution. For the people-level number, see HubSpot Contacts."><div class="card-label" id="lblConv">Google Conversions (90d)</div><div class="card-value" id="kpiConv">—</div><div class="card-sub" id="kpiCpa">— avg CPA</div></div>
-    <div class="card"><div class="card-label" id="lblValue">GA4 Conv. Value (90d)</div><div class="card-value" id="kpiValue">—</div><div class="card-sub" id="kpiRoas">— GA4 ROAS</div></div>
+    <div class="card" title="Conversion value reported by Google Analytics 4 (GA4's own modeled value), and GA4 ROAS = value ÷ spend. This is GA4's figure, NOT HubSpot closed-won revenue (see Closed Revenue / True ROAS for that). Source: Google Ads / GA4."><div class="card-label" id="lblValue">GA4 Conv. Value (90d)</div><div class="card-value" id="kpiValue">—</div><div class="card-sub" id="kpiRoas">— GA4 ROAS</div></div>
     <div class="card drillable" onclick="openDrill('revenue','Closed-won revenue — paid-attributed deals')" title="Closed-won deal revenue for deals that CLOSED in the selected window (by closedate), attributed to paid under the selected model. Full deal amount per ad-touched deal (single-touch full-credit) — the same way HubSpot's Ads tool credits, NOT a fractional multi-touch split. Click to list the deals."><div class="card-label" id="lblClosedRev">Closed Revenue (90d)</div><div class="card-value" id="kpiClosedRev">—</div><div class="card-sub" id="kpiDealCount">— deals</div></div>
     <div class="card drillable" onclick="openDrill('contacts','HubSpot contacts attributed to paid')" title="Unique HubSpot contacts we can tie to paid search via STORED signals — a captured Google gclid, or a paid-search first/latest analytics source — created in range. This is a provable floor: HubSpot's Ads tool counts MORE ad interactions (clicks that never stored a gclid), so 'all' here (~gclid count) reads lower than the Ads page's 'All ad interactions'. The First-interaction model lines up with HubSpot's 'First ad interaction'. Click to list the contacts."><div class="card-label" id="lblHsContacts">HubSpot Contacts (first-touch paid)</div><div class="card-value" id="kpiHsContacts">—</div><div class="card-sub" id="kpiHsContactsSub">attributed to paid</div></div>
     <div class="card" title="Closed-won revenue (deals that closed in the window, by closedate) ÷ total paid-search spend, for contacts attributed under the selected model. Switch models with the Attribution selector above."><div class="card-label" id="lblTrueRoas">True ROAS (First interaction)</div><div class="card-value" id="kpiTrueRoas">—</div><div class="card-sub" id="kpiTrueRoasSub">closed rev ÷ spend</div></div>
@@ -570,7 +583,7 @@ td.drillable:hover{color:var(--orange)}
        active attribution model + date range (driven from renderSummary). -->
   <div class="funnel-wrap" id="funnelWrap" style="display:none">
     <div class="funnel-head">
-      <div class="coverage-title" id="funnelTitle">Paid funnel (last 90 days)</div>
+      <div class="coverage-title" id="funnelTitle">Paid funnel (last 90 days)</div><span class="tip-i" title="Spend → Quotes → Closed → Revenue for paid-search-attributed deals under the selected attribution model. Quotes by quote date; closes and revenue by close date. The top Closed/Revenue is the headline the Campaigns and Search-Terms tables reconcile to. Source: Google Ads spend + HubSpot deals.">ⓘ</span>
       <span class="coverage-detail" id="funnelModelNote">—</span>
     </div>
     <div class="funnel" id="funnelStages"></div>
@@ -593,7 +606,7 @@ td.drillable:hover{color:var(--orange)}
   <!-- Section titles include the current date range (set dynamically). -->
   <div class="section">
     <div class="section-head">
-      <div class="section-title" id="campaignsTitle">Campaigns (last 90 days)</div>
+      <div class="section-title" id="campaignsTitle">Campaigns (last 90 days)</div><span class="tip-i" title="Every Google Ads campaign — spend/clicks/conversions from Google Ads, joined to leads/quotes/closed/revenue from HubSpot by campaign name (case- and alias-normalized). True ROAS = HubSpot closed-won revenue ÷ Google Ads spend. The 'Closed' cell and the Unattributed footer row click through to the deals.">ⓘ</span>
       <span class="section-meta" id="campaignsMeta">—</span>
     </div>
     <div id="campaignsBody">
@@ -603,7 +616,7 @@ td.drillable:hover{color:var(--orange)}
 
   <div class="section">
     <div class="section-head">
-      <div class="section-title" id="keywordsTitle">Keywords (last 90 days)</div>
+      <div class="section-title" id="keywordsTitle">Keywords (last 90 days)</div><span class="tip-i" title="Your bid keywords with spend, clicks, and conversions from Google Ads. No revenue column — conversion value is only tracked at the campaign level. Shows the top 200 by the active sort. Source: Google Ads.">ⓘ</span>
       <span class="section-meta" id="keywordsMeta">—</span>
     </div>
     <div id="keywordsBody"><div class="empty">No data yet.</div></div>
@@ -611,7 +624,7 @@ td.drillable:hover{color:var(--orange)}
 
   <div class="section">
     <div class="section-head">
-      <div class="section-title" id="searchTermsTitle">Search Terms (last 90 days)</div>
+      <div class="section-title" id="searchTermsTitle">Search Terms (last 90 days)</div><span class="tip-i" title="The actual phrases people typed (Google Ads search terms), joined to HubSpot leads/deals/revenue by the term stored on the contact's first-touch field. Deals = closed-won count; clicking it lists the full pipeline. Top 200 by the active sort. The Unattributed footer row clicks through to deals with no term match.">ⓘ</span>
       <span class="section-meta" id="searchTermsMeta">—</span>
     </div>
     <div id="searchTermsBody"><div class="empty">No data yet.</div></div>
@@ -646,9 +659,9 @@ td.drillable:hover{color:var(--orange)}
 
     <!-- Organic KPI strip: GSC totals + channel-level HubSpot tie -->
     <div class="cards" id="gscCards" style="display:none">
-      <div class="card"><div class="card-label" id="lblGscClicks">Organic Clicks (90d)</div><div class="card-value" id="gscClicks">—</div><div class="card-sub" id="gscClicksSub">—</div></div>
-      <div class="card"><div class="card-label" id="lblGscImpr">Impressions (90d)</div><div class="card-value" id="gscImpr">—</div><div class="card-sub">organic search</div></div>
-      <div class="card"><div class="card-label">Avg CTR</div><div class="card-value" id="gscCtr">—</div><div class="card-sub">clicks ÷ impressions</div></div>
+      <div class="card" title="Total organic (non-paid) clicks from Google Search Console in the window. Source: Google Search Console."><div class="card-label" id="lblGscClicks">Organic Clicks (90d)</div><div class="card-value" id="gscClicks">—</div><div class="card-sub" id="gscClicksSub">—</div></div>
+      <div class="card" title="Total organic impressions — how many times your pages appeared in Google results — in the window. Source: Google Search Console."><div class="card-label" id="lblGscImpr">Impressions (90d)</div><div class="card-value" id="gscImpr">—</div><div class="card-sub">organic search</div></div>
+      <div class="card" title="Organic clicks ÷ impressions for the window. Source: Google Search Console."><div class="card-label">Avg CTR</div><div class="card-value" id="gscCtr">—</div><div class="card-sub">clicks ÷ impressions</div></div>
       <div class="card" title="Impression-weighted average organic position. Lower is better (1 = top of results)."><div class="card-label">Avg Position</div><div class="card-value" id="gscPos">—</div><div class="card-sub">lower = higher rank</div></div>
       <div class="card drillable" onclick="openDrill('organic-leads','Organic leads — HubSpot contacts')" title="HubSpot contacts whose source is ORGANIC_SEARCH (channel-level — Google withholds the organic query, so organic leads can't be split by keyword), created in range under the selected model. Click to list the contacts."><div class="card-label" id="lblGscLeads">Organic Leads (90d)</div><div class="card-value" id="gscLeads">—</div><div class="card-sub" id="gscLeadsSub">—</div></div>
       <div class="card drillable" onclick="openDrill('organic-revenue','Organic closed-won deals')" title="Closed-won revenue from ORGANIC_SEARCH-sourced contacts, by close date in range, under the selected model. Click to list the deals."><div class="card-label" id="lblGscRev">Organic Closed Rev (90d)</div><div class="card-value" id="gscRev">—</div><div class="card-sub" id="gscRevSub">—</div></div>
@@ -659,7 +672,7 @@ td.drillable:hover{color:var(--orange)}
          own axis (left = first active, right = second). Hover for per-day. -->
     <div class="section" id="gscChartSection" style="display:none">
       <div class="section-head">
-        <div class="section-title">Organic Performance</div>
+        <div class="section-title">Organic Performance<span class="tip-i" title="Your organic Google Search Console totals — clicks, impressions, CTR, average position — charted daily for the window. Toggle metrics with the legend chips. Source: Google Search Console.">ⓘ</span></div>
         <span class="section-meta">daily · click a metric to toggle</span>
       </div>
       <div class="gsc-legend" id="gscLegend"></div>
@@ -669,7 +682,7 @@ td.drillable:hover{color:var(--orange)}
     <!-- v1.67.x — Revenue Opportunity Engine (flagship: which keyword to improve next) -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">⚡ Revenue Opportunity Engine</div>
+        <div class="section-title">⚡ Revenue Opportunity Engine<span class="tip-i" title="Data: GSC organic queries + a revenue-per-click model from HubSpot closed-won + the query's Google Ads conversion rate. Ranks position 4–15 organic queries by the modeled added revenue from improving their rank. Estimates, for prioritization.">ⓘ</span></div>
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <div class="gsc-mode-toggle" aria-label="Opportunity mode">
             <button data-revmode="commercial" class="active" onclick="setGscRevMode('commercial')">🎯 Commercial Booth</button>
@@ -689,7 +702,7 @@ td.drillable:hover{color:var(--orange)}
     <!-- v1.67.x — Opportunity Action Engine: per-query bottleneck + recommended action -->
     <div class="section" id="gscActionSection" style="display:none">
       <div class="section-head">
-        <div class="section-title">Opportunity Action Engine</div>
+        <div class="section-title">Opportunity Action Engine<span class="tip-i" title="Data: GSC query→page rankings + your WhisperRoom CTR benchmark + page-strength signals. Turns each revenue opportunity into a specific action (CTR / Ranking / Content / Authority / Landing Page / Missing Page). Content & Authority are inferred — treat as leads to verify.">ⓘ</span></div>
         <span class="section-meta" id="gscActionMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 14px;line-height:1.6">
@@ -701,7 +714,7 @@ td.drillable:hover{color:var(--orange)}
     <!-- Hero: paid × organic overlap -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">Paid × Organic Overlap</div>
+        <div class="section-title">Paid × Organic Overlap<span class="tip-i" title="Data: Google Ads search terms + GSC organic rankings. Flags terms you pay for AND rank organically (Cannibalization — candidate to pull paid back) vs paid terms with little organic presence (Organic gap — paid is essential there).">ⓘ</span></div>
         <span class="section-meta" id="gscOverlapMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -716,7 +729,7 @@ td.drillable:hover{color:var(--orange)}
     <!-- v1.65.4 — Striking distance: page-2 queries closest to ranking -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">Striking Distance — page-2 opportunities</div>
+        <div class="section-title">Striking Distance — page-2 opportunities<span class="tip-i" title="Data: Google Search Console. Queries you already rank for at average position 10–20 (page 2) with real impressions — the closest to breaking onto page 1. Sorted by impressions (biggest missed reach first).">ⓘ</span></div>
         <span class="section-meta" id="gscStrikingMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -728,7 +741,7 @@ td.drillable:hover{color:var(--orange)}
     <!-- v1.65.4 — CTR opportunity: page-1 rows under expected CTR for rank -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">CTR Opportunity — title/meta rewrite candidates</div>
+        <div class="section-title">CTR Opportunity — title/meta rewrite candidates<span class="tip-i" title="Data: GSC + an expected-CTR-by-rank curve. Page-1 pages clicking below par for their position (e.g. sitting at #3 but clicking like a #8) — prime title/meta rewrite targets. Sorted by missed clicks. The expected-CTR curve is an industry approximation.">ⓘ</span></div>
         <span class="section-meta" id="gscCtrOppMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -740,7 +753,7 @@ td.drillable:hover{color:var(--orange)}
     <!-- v1.65.4 — Movers: period-over-period gainers & losers -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">Movers — vs previous period</div>
+        <div class="section-title">Movers — vs previous period<span class="tip-i" title="Data: Google Search Console, current window vs the immediately preceding equal window. The biggest organic-click gainers (▲) and losers (▼). Toggle Queries vs Pages. A rising rank usually drives a gain.">ⓘ</span></div>
         <div style="display:flex;align-items:center;gap:12px">
           <div class="gsc-dim-toggle" id="gscMoversDimToggle">
             <button class="active" data-dim="query" onclick="setMoversDim('query')">Queries</button>
@@ -758,7 +771,7 @@ td.drillable:hover{color:var(--orange)}
     <!-- Organic queries -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">Organic Queries</div>
+        <div class="section-title">Organic Queries<span class="tip-i" title="Raw organic query table — clicks, impressions, CTR, position. Source: Google Search Console. Google withholds which organic query drove a HubSpot lead, so there's no per-query revenue here (the revenue tie is channel-level in the cards above).">ⓘ</span></div>
         <span class="section-meta" id="gscQueriesMeta">—</span>
       </div>
       <div id="gscQueriesBody"><div class="empty">No data yet.</div></div>
@@ -767,7 +780,7 @@ td.drillable:hover{color:var(--orange)}
     <!-- Organic pages -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">Organic Pages</div>
+        <div class="section-title">Organic Pages<span class="tip-i" title="Raw organic landing-page table — clicks, impressions, CTR, position per page. Source: Google Search Console. Use the checkbox to hide /blog pages for a commercial-only snapshot.">ⓘ</span></div>
         <span class="section-meta" id="gscPagesMeta">—</span>
       </div>
       <label class="gsc-toolbar"><input type="checkbox" onchange="toggleHideBlog(this.checked)"> Hide <code>/blog</code> pages (non-blog snapshot)</label>
@@ -974,6 +987,11 @@ let currentDaysBack = 90;
 // v1.50.8 — selected attribution model. Drives ?model= on the closed-loop
 // endpoints. 'first' matches the prior hardcoded first-touch behavior.
 let currentModel = 'first';
+// v1.84.1 — cache the latest attribution-coverage object so the Campaigns and
+// Search-Terms renders (which only receive rows/attrRows, and re-run on every
+// column sort) can reconcile their resolved totals against the headline funnel
+// numbers (deals_won_selected / revenue_selected) and render the remainder row.
+let currentCoverage = {};
 // v1.51.x — WhisperRoom's average close cycle. Spend younger than this hasn't
 // had a full cycle to convert, so it's "immature" for ROAS judgment.
 const AVG_CYCLE_DAYS = 29;
@@ -2526,28 +2544,42 @@ function renderGrowthBudget(budget) {
     `~$${fmtInt(Math.round(totalReduce))} in reduce / pause candidates` + (totalTest > 0 ? ` · ~$${fmtInt(Math.round(totalTest))} branded spend to test pulling back` : '') + ` this window`;
 }
 
+// v1.84.9 — render a hoverable "ⓘ" marker after a title. `text` shows in the
+// native tooltip box on hover (what the section is + where the data comes from).
+function tipI(text) {
+  return ` <span class="tip-i" title="${String(text).replace(/"/g, '&quot;')}">ⓘ</span>`;
+}
+
+// v1.84.9 — toggle a mining panel between its top-15 view and all rows. The
+// "+N more" note is the click target; rows past the cap carry .mine-extra.
+function toggleMine(noteEl) {
+  const tbl = noteEl.closest('.mine-panel').querySelector('.mine-tbl');
+  if (!tbl) return;
+  const open = tbl.classList.toggle('mine-expanded');
+  const n = parseInt(noteEl.dataset.n) || 0;
+  noteEl.textContent = open ? '− show fewer (top 15)' : `+ ${fmtInt(n - 15)} more — show all ${fmtInt(n)}`;
+}
+
 function renderGrowthMining(m) {
   const el = document.getElementById('growthMiningBody'), meta = document.getElementById('growthMiningMeta');
   if (!m || !m.termCount) { el.innerHTML = '<div class="empty">No search-term data yet. Press <strong>↻ Sync All</strong>.</div>'; meta.textContent = ''; return; }
   const CAP = 15;
-  const cap = arr => ({ rows: arr.slice(0, CAP), more: Math.max(0, arr.length - CAP) });
-  const moreNote = more => more ? `<div class="mine-more">+ ${fmtInt(more)} more below the top ${CAP} (sorted by spend/revenue)</div>` : '';
+  // v1.84.9 — render ALL rows; rows past the cap carry .mine-extra (hidden until
+  // the "+N more" note is clicked). rc() tags those rows; moreNote() is the toggle.
+  const rc = i => i >= CAP ? ' class="mine-extra"' : '';
+  const moreNote = n => n > CAP ? `<div class="mine-more" onclick="toggleMine(this)" data-n="${n}">+ ${fmtInt(n - CAP)} more — show all ${fmtInt(n)}</div>` : '';
 
-  const neg = cap(m.negatives);
-  const negPanel = `<div class="mine-panel"><div class="mine-head">🚫 Add as negatives<span class="mine-sub">${fmtInt(m.negatives.length)} terms · ~$${fmtInt(Math.round(m.wasted))} spend with 0 conversions &amp; $0 revenue</span></div>` +
-    (m.negatives.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Spend</th><th class="num">Clicks</th><th>Why</th></tr></thead><tbody>${neg.rows.map(r => `<tr><td>${escHtml(r.term)}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">${fmtInt(r.clicks)}</td><td><span class="mine-tag ${r.reason === 'Competitor brand' ? 'tag-comp' : r.reason === 'Off-product / DIY / info' ? 'tag-off' : 'tag-zero'}">${escHtml(r.reason)}</span></td></tr>`).join('')}</tbody></table>${moreNote(neg.more)}` : '<div class="kb-empty">none over the $' + ST_MIN_SPEND + ' spend threshold</div>') + '</div>';
+  const negPanel = `<div class="mine-panel"><div class="mine-head">🚫 Add as negatives${tipI('Search terms that spent $' + ST_MIN_SPEND + '+ with 0 conversions and $0 HubSpot revenue, and are not your brand. Candidates to add as negative keywords so you stop paying for them. Source: Google Ads search terms + HubSpot closed-won revenue.')}<span class="mine-sub">${fmtInt(m.negatives.length)} terms · ~$${fmtInt(Math.round(m.wasted))} spend with 0 conversions &amp; $0 revenue</span></div>` +
+    (m.negatives.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Spend</th><th class="num">Clicks</th><th>Why</th></tr></thead><tbody>${m.negatives.map((r, i) => `<tr${rc(i)}><td>${escHtml(r.term)}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">${fmtInt(r.clicks)}</td><td><span class="mine-tag ${r.reason === 'Competitor brand' ? 'tag-comp' : r.reason === 'Off-product / DIY / info' ? 'tag-off' : 'tag-zero'}">${escHtml(r.reason)}</span></td></tr>`).join('')}</tbody></table>${moreNote(m.negatives.length)}` : '<div class="kb-empty">none over the $' + ST_MIN_SPEND + ' spend threshold</div>') + '</div>';
 
-  const harv = cap(m.harvest);
-  const harvPanel = `<div class="mine-panel"><div class="mine-head">🌱 Harvest as keywords<span class="mine-sub">${fmtInt(m.harvest.length)} converting terms you don't bid on yet</span></div>` +
-    (m.harvest.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Spend</th><th class="num">Conv.</th><th class="num">Revenue</th></tr></thead><tbody>${harv.rows.map(r => `<tr><td>${escHtml(r.term)}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">${fmtNum(r.conversions)}</td><td class="num">${r.revWon > 0 ? fmtUSD(r.revWon) : '—'}</td></tr>`).join('')}</tbody></table>${moreNote(harv.more)}` : '<div class="kb-empty">none — converting terms are already keywords</div>') + '</div>';
+  const harvPanel = `<div class="mine-panel"><div class="mine-head">🌱 Harvest as keywords${tipI('Search terms that converted or produced HubSpot revenue but are not yet one of your bid keywords. Candidates to add as keywords. Source: Google Ads search terms + HubSpot revenue, minus your current keyword list.')}<span class="mine-sub">${fmtInt(m.harvest.length)} converting terms you don't bid on yet</span></div>` +
+    (m.harvest.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Spend</th><th class="num">Conv.</th><th class="num">Revenue</th></tr></thead><tbody>${m.harvest.map((r, i) => `<tr${rc(i)}><td>${escHtml(r.term)}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">${fmtNum(r.conversions)}</td><td class="num">${r.revWon > 0 ? fmtUSD(r.revWon) : '—'}</td></tr>`).join('')}</tbody></table>${moreNote(m.harvest.length)}` : '<div class="kb-empty">none — converting terms are already keywords</div>') + '</div>';
 
-  const cann = cap(m.cannibalization);
-  const cannPanel = `<div class="mine-panel"><div class="mine-head">♺ Already win organically<span class="mine-sub">${fmtInt(m.cannibalization.length)} terms · ~$${fmtInt(Math.round(m.cannSpend))} paid spend where we rank top-3 free</span></div>` +
-    (m.cannibalization.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Paid spend</th><th class="num">Org. pos</th><th class="num">Rev.</th></tr></thead><tbody>${cann.rows.map(r => `<tr><td>${escHtml(r.term)}${r.branded ? ' <span class="mine-tag tag-brand">brand</span>' : ''}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">#${r.orgPos.toFixed(1)}</td><td class="num">${r.revWon > 0 ? fmtUSD(r.revWon) : '—'}</td></tr>`).join('')}</tbody></table>${moreNote(cann.more)}` : '<div class="kb-empty">no paid terms with a top-3 organic rank (Sync GSC populates this)</div>') + '</div>';
+  const cannPanel = `<div class="mine-panel"><div class="mine-head">♺ Already win organically${tipI('Paid search terms where you already rank in the top ' + ST_CANN_MAXPOS + ' organically (free). Paid clicks here may be redundant with your organic listing. Source: Google Ads search terms + Google Search Console organic rankings.')}<span class="mine-sub">${fmtInt(m.cannibalization.length)} terms · ~$${fmtInt(Math.round(m.cannSpend))} paid spend where we rank top-3 free</span></div>` +
+    (m.cannibalization.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Paid spend</th><th class="num">Org. pos</th><th class="num">Rev.</th></tr></thead><tbody>${m.cannibalization.map((r, i) => `<tr${rc(i)}><td>${escHtml(r.term)}${r.branded ? ' <span class="mine-tag tag-brand">brand</span>' : ''}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">#${r.orgPos.toFixed(1)}</td><td class="num">${r.revWon > 0 ? fmtUSD(r.revWon) : '—'}</td></tr>`).join('')}</tbody></table>${moreNote(m.cannibalization.length)}` : '<div class="kb-empty">no paid terms with a top-3 organic rank (Sync GSC populates this)</div>') + '</div>';
 
-  const mt = cap(m.matchType);
-  const mtPanel = `<div class="mine-panel"><div class="mine-head">🎯 Tighten match types<span class="mine-sub">${fmtInt(m.matchType.length)} Phrase/Broad keywords spending inefficiently</span></div>` +
-    (m.matchType.length ? `<table class="mine-tbl"><thead><tr><th>Keyword</th><th>Match</th><th class="num">Spend</th><th class="num">CPA</th></tr></thead><tbody>${mt.rows.map(r => `<tr><td>${escHtml(r.text)}</td><td><span class="mine-tag ${r.label === 'Broad' ? 'tag-off' : 'tag-zero'}">${r.label}</span></td><td class="num">${fmtUSD(r.cost)}</td><td class="num">${r.cpa != null ? fmtUSD(r.cpa) : 'no conv'}</td></tr>`).join('')}</tbody></table>${moreNote(mt.more)}` : '<div class="kb-empty">no loose match types over the $' + ST_MIN_SPEND + ' threshold</div>') + '</div>';
+  const mtPanel = `<div class="mine-panel"><div class="mine-head">🎯 Tighten match types${tipI('Phrase/Broad-match keywords that spent $' + ST_MIN_SPEND + '+ with no conversions or a cost-per-sale over $' + ST_MT_CPA_MAX + '. Candidates to tighten toward exact match. Source: Google Ads keywords.')}<span class="mine-sub">${fmtInt(m.matchType.length)} Phrase/Broad keywords spending inefficiently</span></div>` +
+    (m.matchType.length ? `<table class="mine-tbl"><thead><tr><th>Keyword</th><th>Match</th><th class="num">Spend</th><th class="num">CPA</th></tr></thead><tbody>${m.matchType.map((r, i) => `<tr${rc(i)}><td>${escHtml(r.text)}</td><td><span class="mine-tag ${r.label === 'Broad' ? 'tag-off' : 'tag-zero'}">${r.label}</span></td><td class="num">${fmtUSD(r.cost)}</td><td class="num">${r.cpa != null ? fmtUSD(r.cpa) : 'no conv'}</td></tr>`).join('')}</tbody></table>${moreNote(m.matchType.length)}` : '<div class="kb-empty">no loose match types over the $' + ST_MIN_SPEND + ' threshold</div>') + '</div>';
 
   el.innerHTML = `<div class="mine-grid">${negPanel}${harvPanel}${cannPanel}${mtPanel}</div>`;
   meta.textContent = `${fmtInt(m.negatives.length)} negatives · ${fmtInt(m.harvest.length)} harvest · ${fmtInt(m.cannibalization.length)} cannibalized · ${fmtInt(m.matchType.length)} match-type`;
@@ -2763,6 +2795,16 @@ function drillTerm(idx, kind) {
   openDrill(kind, titles[kind] || r.term, { term: r.term });
 }
 
+// v1.84.2 — drill from a campaign row's Closed cell to its closed-won HubSpot
+// deals. Looks the campaign up by its rendered-list index (same pattern as
+// drillTerm, so the campaign name never has to be quoted into an inline
+// handler) and opens the popup keyed by campaign name.
+function drillCampaign(idx, kind) {
+  const r = (tableState.campaigns.rendered || [])[idx];
+  if (!r || !r.name) return;
+  openDrill(kind, `Closed-won deals · ${r.name}`, { campaign: r.name });
+}
+
 // Sort handler. First click on a column sorts DESC (most common need —
 // "show me top by X"). Re-click on same column flips direction.
 function sortBy(tableName, column) {
@@ -2825,6 +2867,7 @@ async function loadAllTables() {
   tableState.keywords.rawRows    = kw.rows     || [];
   tableState.searchTerms.rawRows = st.rows     || [];
   tableState.searchTerms.attrRows= stAttr.rows || [];
+  currentCoverage = cov || {};  // v1.84.1 — feed the table reconciliation rows
   renderCoverage(cov || {});
   renderCampaigns(tableState.campaigns.rawRows, tableState.campaigns.attrRows);
   renderKeywords(tableState.keywords.rawRows);
@@ -3058,6 +3101,44 @@ function renderAdQuality(aq) {
     `<span class="aq-note">${by.prospecting.deals}/${totalDeals} deals show a real prospecting touch (floor)</span>`;
 }
 
+// v1.84.1 — attribution reconciliation footer. The top Paid-Funnel card counts
+// every paid-attributed closed-won deal (gate = first_source PAID_SEARCH), but
+// the Campaigns/Search-Terms tables can only show a deal once its first-touch
+// field resolves to a current campaign/term. The difference is real (renamed or
+// discontinued campaigns, legacy tracking IDs), not a bug — so we surface it as
+// an explicit remainder row instead of letting the parts silently undershoot the
+// headline. resolved* = what the table attributed; headline = deals_won_selected
+// / revenue_selected from the same model-windowed coverage object that drives the
+// funnel, so resolved + remainder == headline exactly.
+// v1.84.6 — `drillType` makes the remainder cells click-through to the actual
+// unattributed deals (paid closed-won deals matching no current campaign/term).
+// 'paid-unattributed' (campaigns) / 'paid-unattributed-term' (search terms).
+function gscReconFoot(resolvedDeals, resolvedRev, leftColspan, rightColspan, label, drillType) {
+  const headDeals = parseInt(currentCoverage.deals_won_selected)   || 0;
+  const headRev   = parseFloat(currentCoverage.revenue_selected)   || 0;
+  const remDeals  = headDeals - resolvedDeals;
+  const remRev    = headRev   - resolvedRev;
+  // Only render when the headline genuinely exceeds the resolved sum. (Tiny
+  // negatives can occur if a deal double-matches two campaigns; treat as zero.)
+  if (remDeals <= 0 && remRev <= 0.5) return '';
+  const isTerm = label.includes('term');
+  const right = rightColspan ? `<td colspan="${rightColspan}"></td>` : '';
+  // The deals + revenue cells open the drill popup listing the unattributed
+  // deals, each linking to its HubSpot record. Click guarded to when there's a
+  // remainder to show. Title doubles as the popup heading.
+  const drill = drillType
+    ? ` drillable" onclick="openDrill('${drillType}','Unattributed paid deals · no resolvable ${isTerm ? 'search term' : 'campaign'}')"`
+    : '"';
+  return `<tfoot>
+    <tr class="recon-row" title="Paid-sourced closed-won deals whose HubSpot first-touch field holds a renamed or discontinued campaign, or a legacy tracking ID, so they can't be tied to a current ${isTerm ? 'search term' : 'campaign'} row.${drillType ? ' Click to list them.' : ''}">
+      <td colspan="${leftColspan}">${label}<span class="recon-sub">paid-sourced, no resolvable current ${isTerm ? 'search term' : 'campaign'}${drillType ? ' · click the count to list them' : ''}</span></td>
+      <td class="num${remDeals > 0 ? drill : '"'}>${remDeals > 0 ? fmtInt(remDeals) : '—'}</td>
+      <td class="num${remRev > 0.5 ? drill : '"'}>${remRev > 0.5 ? fmtUSD(remRev) : '—'}</td>
+      ${right}
+    </tr>
+  </tfoot>`;
+}
+
 function renderCampaigns(rows, attrRows) {
   document.getElementById('campaignsTitle').textContent = `Campaigns (last ${currentDaysBack} days)`;
   document.getElementById('campaignsMeta').textContent = rows.length ? `${fmtInt(rows.length)} rows` : '';
@@ -3101,7 +3182,14 @@ function renderCampaigns(rows, attrRows) {
 
   const list = sortRows('campaigns', Object.values(agg));
   renderSegRollup(list);  // share-of-revenue-by-segment strip under the funnel
+  // v1.84.2 — cache rendered rows so drillCampaign() can look a campaign up by
+  // index (mirrors searchTerms.rendered), avoiding quoting the name into onclick.
+  tableState.campaigns.rendered = list;
   const t = 'campaigns';
+  // v1.84.1 — reconcile resolved attribution to the headline paid funnel.
+  const resolvedDeals = list.reduce((s, c) => s + (c.dealsWon || 0), 0);
+  const resolvedRev   = list.reduce((s, c) => s + (c.revWon   || 0), 0);
+  const reconFoot = gscReconFoot(resolvedDeals, resolvedRev, 12, 3, 'Unattributed to a specific campaign', 'paid-unattributed');
   body.innerHTML = `
     <table>
       <thead><tr>
@@ -3124,7 +3212,7 @@ function renderCampaigns(rows, attrRows) {
         ${sortableTh(t, 'trueRoas',    'True ROAS', 'num attr-col')}
       </tr></thead>
       <tbody>
-        ${list.map(r => `<tr>
+        ${list.map((r, i) => `<tr>
           <td>${(r.name || '—').replace(/</g,'&lt;')}</td>
           <td>${(r.status || '—').toLowerCase()}</td>
           <td class="num">${fmtUSD(r.cost)}</td>
@@ -3137,13 +3225,13 @@ function renderCampaigns(rows, attrRows) {
           <td class="attr-start attr-col">${segTag(r.segment)}</td>
           <td class="num attr-col">${r.leads == null ? '—' : fmtInt(r.leads)}</td>
           <td class="num attr-col">${r.quotes == null ? '—' : fmtInt(r.quotes)}</td>
-          <td class="num attr-col">${r.dealsWon == null ? '—' : fmtInt(r.dealsWon)}</td>
+          <td class="num attr-col${r.dealsWon ? ' drillable' : ''}"${r.dealsWon ? ` onclick="drillCampaign(${i},'campaign-closed')"` : ''}>${r.dealsWon == null ? '—' : fmtInt(r.dealsWon)}</td>
           <td class="num attr-col">${r.revWon == null ? '—' : fmtUSD(r.revWon)}</td>
           <td class="num attr-col">${r.cpq != null ? fmtUSD(r.cpq) : '—'}</td>
           <td class="num attr-col">${r.cac != null ? fmtUSD(r.cac) : '—'}</td>
           <td class="num attr-col">${roasPill(r.revWon, r.cost)}</td>
         </tr>`).join('')}
-      </tbody>
+      </tbody>${reconFoot}
     </table>`;
 }
 
@@ -3245,6 +3333,12 @@ function renderSearchTerms(rows, attrRows) {
   tableState.searchTerms.rendered = list;
   const moreNote = sorted.length > list.length ? ` <span style="color:var(--muted);font-size:11px;font-weight:500;text-transform:none;letter-spacing:0">(top ${list.length} of ${fmtInt(sorted.length)})</span>` : '';
   const t = 'searchTerms';
+  // v1.84.1 — reconcile resolved attribution to the headline paid funnel. Sum
+  // over the full `sorted` set, not the capped top-200 `list`, so a converting
+  // term below the display cap still counts as resolved (not double-counted).
+  const resolvedDeals = sorted.reduce((s, r) => s + (r.dealsWon || 0), 0);
+  const resolvedRev   = sorted.reduce((s, r) => s + (r.revWon   || 0), 0);
+  const reconFoot = gscReconFoot(resolvedDeals, resolvedRev, 7, 1, 'Unattributed to a specific search term', 'paid-unattributed-term');
   body.innerHTML = `
     <table>
       <thead><tr>
@@ -3272,7 +3366,7 @@ function renderSearchTerms(rows, attrRows) {
           <td class="num attr-col">${r.revWon == null ? '—' : fmtUSD(r.revWon)}</td>
           <td class="num attr-col${r.revWon ? ' drillable' : ''}"${r.revWon ? ` onclick="drillTerm(${i},'term-closed')"` : ''}>${roasPill(r.revWon, r.cost)}</td>
         </tr>`).join('')}
-      </tbody>
+      </tbody>${reconFoot}
     </table>`;
 }
 

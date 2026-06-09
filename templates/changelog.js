@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.31', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Top-Down Layout: WA/ADA doors no longer vanish.** Quotes whose door upgrade swaps in an ADA-style door frame (ADA STDDRFRM, plus FR fire-rated wall variants) were not recognized as wall panels, so the layout drew the booth with no door at all. All exterior door-frame packs now classify and place into the door slot; inner-shell frames and jamb adapters are correctly excluded.'},
+        {t:'ui', d:'**Top-Down Layout matches the spec-sheet view.** Reviewed against the MDL spec-sheet page-3 top-down diagrams: seam seals now mount on the OUTSIDE of the walls — the plinth seal sits on the exterior face at each panel joint with its tab pointing outward, and the corner L-brackets wrap the four exterior corners. The door is drawn as the spec shows it: a closed light door leaf on the outer face at its real width (e.g. 30-inch leaf in a 46-inch frame) with hinge dots and a handle, plus a subtle dashed outward-swing arc.'},
+      ]
+    },
+    {
       v:'1.84.29', date:'June 9, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Build guard: pre-commit check now validates staged JSON files.** A version bump saved package.json with a UTF-8 byte-order mark, which the strict JSON parser inside the puppeteer installer rejects — Railway builds failed at npm install until a hotfix. The pre-commit syntax check now strict-parses every staged .json file and explicitly rejects a BOM, so this class of break cannot reach a deploy again.'},

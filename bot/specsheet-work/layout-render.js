@@ -20,16 +20,19 @@ function classifyWall(pack) {
 }
 function panelInteriorWidth(pack) {
   pack = String(pack || '');
-  if (/^WA\s+STDDRFRM/i.test(pack))           return 49;
+  if (/^(FR\s+)?(WA\s+|ADA\s+)?STDDRFRM/i.test(pack)) return 49;
   if (/^STDWL\s*7\s*\/\s*WL?16/i.test(pack))  return 7;
-  const m = pack.match(/^STDWL(\d+)/i);
+  const m = pack.match(/^(?:FR\s+)?STDWL(\d+)/i);
   return m ? parseInt(m[1], 10) : null;
 }
 function isWallPanel(pack) {
   pack = String(pack || '');
-  if (/STD\s+DOOR/i.test(pack))    return false;
-  if (/^WA\s+STDDOOR/i.test(pack)) return false;
-  return /^STDWL\d+/i.test(pack) || /^WA\s+STDDRFRM/i.test(pack);
+  if (/STD\s*DOOR/i.test(pack))            return false;   // door leaf — lives inside the frame wall
+  if (/\bIN\s+(STD)?DRFRM/i.test(pack))    return false;   // inner-shell door frames (IEP IN / ADA IN)
+  if (/DRFRM\s+ADAPT/i.test(pack))         return false;   // jamb adapters — hardware, not a wall
+  // exterior door-frame walls: STDWL46 DRFRM R, WA STDDRFRM R, ADA STDDRFRM L, FR …
+  if (/^(FR\s+)?(WA\s+|ADA\s+)?STDDRFRM/i.test(pack)) return true;
+  return /^(FR\s+)?STDWL\d+/i.test(pack);
 }
 
 // ── Placement: kind-preference + closest-width, two passes ────────
@@ -192,11 +195,12 @@ function renderLayoutSvg(layout, assign) {
     const fx0 = x0 + t, fy0 = y0 + t, fx1 = x0 + W - t, fy1 = y0 + H - t;
     const spanW = W - 2 * t, spanH = H - 2 * t;
     let g = '';
-    // foam lining on the four interior faces
+    // foam lining on the four interior faces (the sawtooth in the spec views)
     g += foamComb(fx0, fy0, fx1, fy0, 0, 1) + foamComb(fx0, fy1, fx1, fy1, 0, -1)
        + foamComb(fx0, fy0, fx0, fy1, 1, 0) + foamComb(fx1, fy0, fx1, fy1, -1, 0);
     // panel-joint seals — one per adjacency on EACH wall, placed from that
-    // wall's own slot widths (no N→S / W→E mirroring assumption).
+    // wall's own slot widths, mounted on the EXTERIOR face with the tab
+    // protruding outward (matches the spec-sheet top-down views).
     for (const side of ['N', 'S', 'E', 'W']) {
       const wall = layout.walls[side]; if (!wall || wall.slots.length < 2) continue;
       const nom = wall.slots.reduce((a, sl) => a + sl.size, 0) || 1;
@@ -207,17 +211,19 @@ function renderLayoutSvg(layout, assign) {
         const f = o / nom;
         if (horiz) {
           const x = fx0 + f * spanW;
-          g += midSeal(x, side === 'N' ? fy0 : fy1, 0, side === 'N' ? 1 : -1);
+          g += midSeal(x, side === 'N' ? y0 : y0 + H, 0, side === 'N' ? -1 : 1);
         } else {
           const y = fy0 + f * spanH;
-          g += midSeal(side === 'W' ? fx0 : fx1, y, side === 'W' ? 1 : -1, 0);
+          g += midSeal(side === 'W' ? x0 : x0 + W, y, side === 'W' ? -1 : 1, 0);
         }
       }
     }
-    // corner seals (chamfered L-brackets) — drawn last so they sit on top.
-    // (ax,ay)/(bx,by) point away from each corner along its two walls.
-    g += cornerSeal(fx0, fy0, 1, 0, 0, 1) + cornerSeal(fx1, fy0, -1, 0, 0, 1)
-       + cornerSeal(fx0, fy1, 1, 0, 0, -1) + cornerSeal(fx1, fy1, -1, 0, 0, -1);
+    // corner seals — chamfered L-brackets WRAPPING each exterior corner (the
+    // spec view shows them proud of both outer faces). Anchor is the outer
+    // corner pushed outward by `o`; legs run inward along both walls.
+    const o2 = SG * 0.35;
+    g += cornerSeal(x0 - o2,     y0 - o2,     1, 0, 0, 1) + cornerSeal(x0 + W + o2, y0 - o2,     -1, 0, 0, 1)
+       + cornerSeal(x0 - o2,     y0 + H + o2, 1, 0, 0, -1) + cornerSeal(x0 + W + o2, y0 + H + o2, -1, 0, 0, -1);
     return g;
   }
 
@@ -257,21 +263,38 @@ function renderLayoutSvg(layout, assign) {
     return g;
   }
 
-  // ── door: opening + outward swing on whatever wall holds it ─────
+  // ── door: closed light leaf on the OUTER face (hinge dots + handle, like
+  // the spec top-down) + a subtle dashed outward-swing arc ─────────
   function doorSwing(side, px, py, pw, ph, swingIn) {
     const { omx, omy, ox, oy, ax, ay, horiz } = edgeGeom(side, px, py, pw, ph);
-    const r = Math.min(swingIn * PX, (horiz ? pw : ph) * 0.94, DOORR);
-    const hx = omx - ax * r / 2, hy = omy - ay * r / 2;          // hinge
-    const cX = omx + ax * r / 2, cY = omy + ay * r / 2;          // closed edge along wall
-    const oX = hx + ox * r, oY = hy + oy * r;                    // leaf swung open (outward)
-    const sweep = ((cX - hx) * (oY - hy) - (cY - hy) * (oX - hx)) > 0 ? 1 : 0;
+    // leaf = the actual door width (swingIn inches, e.g. 30″ in a 46″ frame);
+    // the dashed arc sweeps only until it protrudes DOORR px (≈ the spec's
+    // partial-swing arc), so big doors don't blow out the margins.
+    const leafW = Math.min(swingIn * PX, (horiz ? pw : ph) * 0.94);
+    const hx = omx - ax * leafW / 2, hy = omy - ay * leafW / 2;  // hinge end
+    const cX = omx + ax * leafW / 2, cY = omy + ay * leafW / 2;  // handle end
+    const th = Math.asin(Math.min(1, DOORR / leafW));            // shown swing angle
+    const eX = hx + leafW * (ax * Math.cos(th) + ox * Math.sin(th));
+    const eY = hy + leafW * (ay * Math.cos(th) + oy * Math.sin(th));
+    const sweep = ((cX - hx) * (eY - hy) - (cY - hy) * (eX - hx)) > 0 ? 1 : 0;
+    const DL = Math.max(5, t * 0.4);                             // leaf thickness (px)
     let g = '';
-    // opening cut in the wall band
-    if (horiz) g += `<rect x="${omx - r / 2}" y="${py}" width="${r}" height="${ph}" fill="#15161a"/>`;
-    else       g += `<rect x="${px}" y="${omy - r / 2}" width="${pw}" height="${r}" fill="#15161a"/>`;
-    g += `<path d="M ${cX} ${cY} A ${r} ${r} 0 0 ${sweep} ${oX} ${oY}" fill="rgba(238,98,22,0.10)" stroke="rgba(238,98,22,0.55)" stroke-width="1.3" stroke-dasharray="5,3"/>`;
-    g += `<line x1="${hx}" y1="${hy}" x2="${oX}" y2="${oY}" stroke="#ee6216" stroke-width="3.5" stroke-linecap="round"/>`;
-    g += `<circle cx="${hx}" cy="${hy}" r="3" fill="#ee6216"/>`;
+    // swing arc, dashed + subtle (door opens outward)
+    g += `<path d="M ${cX} ${cY} A ${leafW} ${leafW} 0 0 ${sweep} ${eX} ${eY}" fill="none" stroke="rgba(238,98,22,0.5)" stroke-width="1.2" stroke-dasharray="5,3"/>`;
+    // closed door leaf hugging the outer face
+    const lx = horiz ? omx - leafW / 2 : (ox < 0 ? omx - DL : omx);
+    const ly = horiz ? (oy < 0 ? omy - DL : omy) : omy - leafW / 2;
+    const lw = horiz ? leafW : DL, lh = horiz ? DL : leafW;
+    g += `<rect x="${lx}" y="${ly}" width="${lw}" height="${lh}" rx="1" fill="#e9eaee" stroke="#1b1c20" stroke-width="1"/>`;
+    // hinge dot pairs near the hinge end, handle nub at the closing end
+    for (const f of [0.08, 0.22]) {
+      const d1x = hx + ax * leafW * f + ox * DL * 0.32, d1y = hy + ay * leafW * f + oy * DL * 0.32;
+      const d2x = hx + ax * leafW * f + ox * DL * 0.68, d2y = hy + ay * leafW * f + oy * DL * 0.68;
+      g += `<circle cx="${d1x}" cy="${d1y}" r="1.3" fill="#26272c"/><circle cx="${d2x}" cy="${d2y}" r="1.3" fill="#26272c"/>`;
+    }
+    const hbx = cX - ax * leafW * 0.06, hby = cY - ay * leafW * 0.06;   // handle base on the leaf
+    g += `<line x1="${hbx + ox * DL * 0.5}" y1="${hby + oy * DL * 0.5}" x2="${hbx + ox * (DL + 5)}" y2="${hby + oy * (DL + 5)}" stroke="#26272c" stroke-width="2" stroke-linecap="round"/>`;
+    g += `<line x1="${hbx + ox * (DL + 5)}" y1="${hby + oy * (DL + 5)}" x2="${hbx + ox * (DL + 5) - ax * 7}" y2="${hby + oy * (DL + 5) - ay * 7}" stroke="#26272c" stroke-width="2" stroke-linecap="round"/>`;
     return g;
   }
 

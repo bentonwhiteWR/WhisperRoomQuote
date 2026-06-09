@@ -10972,6 +10972,19 @@ ${q.accepted ? `
       //    like RAMP use a representative E booth so the inner-shell path runs).
       const genericHost = modelKeys.find(k => /^MDL\s+7272\s+E$/i.test(k)) || modelKeys.find(k => /\sE$/.test(k)) || modelKeys[0];
       const hostFor = nm => {
+        // WA UPG STD/ENH 40/46 — the trailing number is the WALL size (40"/46"),
+        // NOT a model size, so the generic size parser below misses it. Pick a
+        // representative booth that actually uses that wall size in the matching
+        // shell: STD = single-wall (S), ENH = double-wall (E); 40" → MDL 6084,
+        // 46" → MDL 7296. This drives the right WA door/wall component swap so
+        // the audited weight delta reflects the real configuration.
+        const waM = /^WA\s+UPG\s+(STD|ENH)\s+(40|46)\b/i.exec(nm.trim());
+        if (waM) {
+          const variant = /ENH/i.test(waM[1]) ? 'E' : 'S';
+          const size = waM[2] === '46' ? '7296' : '6084';
+          const cand = norm('MDL ' + size + ' ' + variant);
+          if (modelByNorm[cand]) return { host: modelByNorm[cand], assumed: 'WA wall-size host (' + size + ' ' + variant + ')' };
+        }
         const sizeM = /(\d{3,6})/.exec(nm);
         if (!sizeM) return { host: genericHost, assumed: 'generic host' };
         const size = sizeM[1];

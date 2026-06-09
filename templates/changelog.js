@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.14', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Package Weight Audit: WA UPG features now use the right host booth.** The audit was pairing every WA Door upgrade with the generic 7272 E because the "40"/"46" in the name is a wall size, not a model size. Each WA UPG is now checked against a booth that actually uses that wall in the matching shell — STD 40 → 6084 S, ENH 40 → 6084 E, STD 46 → 7296 S, ENH 46 → 7296 E — so the weight delta reflects the real door/wall component swap.'},
+      ]
+    },
+    {
       v:'1.84.13', date:'June 9, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Shipping Labels page now has a favicon** (a 🏷️ tag icon) so the print tab is easy to spot among open tabs.'},

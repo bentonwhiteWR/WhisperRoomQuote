@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.5', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Roof Mount now includes EFS on the packing list.** When RM (Roof Mount) is selected, the BOM now adds one EFS (exhaust-fan silencer, 25 lb) per vent set — an EFS ships with each vent set under Roof Mount to prevent noise transfer into the booth. This was missing before, which made RM orders read light; e.g. a 3-vent-set booth now correctly adds 75 lb. NV booths (no vent sets) add none.'},
+      ]
+    },
+    {
       v:'1.84.4', date:'June 9, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Top-Down Layout — vents, seam-seals & drag, round 2.** Ventilation panels now show two spread-out boxes (a plain box + a fan box). Seam-seals are redrawn to match the spec exactly: a dark sawtooth comb on every interior wall face, a corner piece at each of the four corners, and a "T" piece at every joint where two panels butt. Vents and the door now follow a panel wherever it is dragged — drag the door to a side wall and its swing re-orients to open outward from that wall; same for vent boxes. And dragging now shows a floating label of the panel you\'re moving, highlights the panel and the drop target, so it\'s clear what\'s happening.'},

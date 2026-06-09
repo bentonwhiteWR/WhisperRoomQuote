@@ -28,15 +28,29 @@ const LOAD_AI_OVERVIEW    = process.env.SERP_LOAD_AI_OVERVIEW !== 'false';   // 
 const CACHE_DAYS          = parseInt(process.env.SERP_CACHE_DAYS || '7', 10); // skip kws fetched within N days
 const CONCURRENCY         = 8;   // parallel live requests (ONE keyword each — see syncSerp)
 
-// Hand-seeded commercial head terms + competitor brands. These always get
-// tracked even if they're not yet in GSC/Ads data. Editable.
+// Hand-seeded keywords we always track regardless of what's in GSC/Ads data.
+// Focused on CORE + contested commercial booth terms we can realistically rank
+// and fight for — NOT competitor brand names (we'll never rank for "studiobricks",
+// and competitors still surface as top_results on every term below). Editable.
 const SEED_KEYWORDS = [
+  // Brand — confirm we own it (#1).
+  'whisperroom', 'whisperroom booth',
+  // Core head commercial terms.
   'vocal booth', 'soundproof booth', 'recording booth', 'isolation booth',
-  'audiology booth', 'audiometric booth', 'sound booth', 'voice over booth',
-  'podcast booth', 'office phone booth', 'sound isolation booth', 'whisperroom',
-  'vocal booth for sale', 'soundproof booth for sale', 'recording studio booth',
-  // competitor brands — to see where they outrank us
-  'studiobricks', 'isovox', 'vocalbooth', 'wenger booth', 'sound booth manufacturers',
+  'sound isolation booth', 'sound booth', 'audiology booth', 'audiometric booth',
+  'voice over booth', 'podcast booth', 'office phone booth', 'recording studio booth',
+  'vocal isolation booth', 'soundproof room', 'soundproof booth office',
+  // Use-case / application.
+  'vocal recording booth', 'home recording booth', 'music practice room',
+  'drum booth', 'broadcast booth', 'telehealth booth', 'hearing test booth',
+  'audiology sound booth', 'podcast recording booth', 'soundproof podcast booth',
+  'soundproof office pod', 'soundproof phone booth', 'office privacy booth',
+  // Buying / commercial intent.
+  'vocal booth for sale', 'soundproof booth for sale', 'recording booth for sale',
+  'isolation booth for sale', 'portable vocal booth', 'modular sound booth',
+  'professional recording booth', 'prefab recording booth', 'vocal booth price',
+  'soundproof booth cost', 'sound booth for sale', 'modular soundproof booth',
+  'professional vocal booth', 'soundproof recording studio', 'sound booth manufacturers',
 ];
 
 const REQUIRED_ENV = ['DATAFORSEO_LOGIN', 'DATAFORSEO_PASSWORD'];

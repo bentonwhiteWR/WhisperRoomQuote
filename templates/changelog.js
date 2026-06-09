@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.20', date:'June 9, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Top-Down Layout: bigger vent boxes + corrected seam seals.** Vent boxes now scale with the wall panel, so they\'re much larger on 46″-wall booths. The seam seals are redrawn to match the spec profiles — the mid-wall seal is a flat base with a centered raised tab (plinth), and the corner seal is a filled L-bracket with a chamfered outer corner — instead of the previous thin lines.'},
+      ]
+    },
+    {
       v:'1.84.18', date:'June 9, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Studio Lights tab: first column now shows the SL SKU** (e.g. "SL 9696") instead of the booth model, so the table can be copied and VLOOKUP-ed straight against the price-book SKU names.'},

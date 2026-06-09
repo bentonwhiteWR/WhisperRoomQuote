@@ -322,7 +322,7 @@
     const interior = layout.interior || { w: ext.w - 2 * layout.wallThickness, h: ext.h - 2 * layout.wallThickness };
     const PX = Math.max(3, Math.min(600 / ext.w, 470 / ext.h, 11));
     const W = ext.w * PX, H = ext.h * PX, t = layout.wallThickness * PX;
-    const VOUT = 28;        // vent protrusion estimate (px) for margin sizing
+    const VOUT = 52;        // vent protrusion estimate (px) for margin sizing (boxes scale with panel)
     const DOORR = 92;       // max door-swing radius (px symbol)
     // Which walls currently hold a door / vent — computed from the LIVE placement
     // (not hard-coded to S/N), so a dragged door or vent draws its swing/ducts on
@@ -350,6 +350,7 @@
       + `<linearGradient id="ldWallH" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#23242a"/><stop offset="0.5" stop-color="#34353d"/><stop offset="1" stop-color="#23242a"/></linearGradient>`
       + `<linearGradient id="ldWallV" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#23242a"/><stop offset="0.5" stop-color="#34353d"/><stop offset="1" stop-color="#23242a"/></linearGradient>`
       + `<pattern id="ldCarpet" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="#6d6d6b"/><rect width="7" height="1" fill="#656563"/><rect width="1" height="7" fill="#757573"/></pattern>`
+      + `<pattern id="ldSeal" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="4" height="4" fill="#484a52"/><circle cx="1" cy="1.5" r="0.6" fill="#32343a"/><circle cx="3" cy="3" r="0.6" fill="#5e616a"/><circle cx="3" cy="0.6" r="0.4" fill="#2c2e33"/></pattern>`
       + `<filter id="ldShadow" x="-15%" y="-15%" width="130%" height="135%"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#5a5f66" flood-opacity="0.35"/></filter>`
       + `</defs>`;
   
@@ -382,18 +383,31 @@
       }
       return g;
     }
-    // bar cap = short thick bar parallel to the wall at the interior face (jx,jy);
-    // nx,ny = inward normal. This is the visible end of a seam seal.
-    function barCap(jx, jy, nx, ny) {
-      const half = 8, thick = 5, tx = -ny, ty = nx;
-      const ix = jx + nx * thick * 0.45, iy = jy + ny * thick * 0.45;
-      return `<line x1="${ix - tx * half}" y1="${iy - ty * half}" x2="${ix + tx * half}" y2="${iy + ty * half}" stroke="${SEAL}" stroke-width="${thick}" stroke-linecap="round"/>`;
+    const SEAL_STROKE = '#23242a';
+    // mid-wall seam seal (plinth): a flat base bar along the wall at the joint
+    // (jx,jy on the interior face; nx,ny inward) with a centered tab protruding
+    // into the booth — the profile from the spec diagram (left).
+    function midSeal(jx, jy, nx, ny) {
+      const tx = -ny, ty = nx;                 // tangent = along the wall
+      const baseHalf = 11, baseDepth = 5, tabHalf = 5, tabExtra = 10;
+      const P = (a, n) => (jx + tx * a + nx * n) + ',' + (jy + ty * a + ny * n);
+      const pts = [
+        P(-baseHalf, 0), P(-baseHalf, baseDepth), P(-tabHalf, baseDepth),
+        P(-tabHalf, baseDepth + tabExtra), P(tabHalf, baseDepth + tabExtra), P(tabHalf, baseDepth),
+        P(baseHalf, baseDepth), P(baseHalf, 0),
+      ].join(' ');
+      return `<polygon points="${pts}" fill="url(#ldSeal)" stroke="${SEAL_STROKE}" stroke-width="0.8" stroke-linejoin="round"/>`;
     }
-    // L-bracket hugging an interior corner; sx,sy = inward signs along each wall.
-    function cornerL(cx, cy, sx, sy) {
-      const a = 13, th = 5;
-      return `<line x1="${cx}" y1="${cy}" x2="${cx + sx * a}" y2="${cy}" stroke="${SEAL}" stroke-width="${th}" stroke-linecap="round"/>`
-           + `<line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy + sy * a}" stroke="${SEAL}" stroke-width="${th}" stroke-linecap="round"/>`;
+    // corner seam seal: a filled L-bracket hugging an interior corner, with a
+    // chamfered outer corner — the profile from the spec diagram (right).
+    // (ax,ay)/(bx,by) = the two along-wall unit directions away from the corner.
+    function cornerSeal(cx, cy, ax, ay, bx, by) {
+      const L = 16, Tk = 6, ch = 4;
+      const P = (a, b) => (cx + a * ax + b * bx) + ',' + (cy + a * ay + b * by);
+      const pts = [
+        P(ch, 0), P(L, 0), P(L, Tk), P(Tk, Tk), P(Tk, L), P(0, L), P(0, ch),
+      ].join(' ');   // chamfer = the implicit edge from (0,ch) back to (ch,0)
+      return `<polygon points="${pts}" fill="url(#ldSeal)" stroke="${SEAL_STROKE}" stroke-width="0.8" stroke-linejoin="round"/>`;
     }
     function seamPieces() {
       const fx0 = x0 + t, fy0 = y0 + t, fx1 = x0 + W - t, fy1 = y0 + H - t;
@@ -408,17 +422,19 @@
       for (let i = 0; i < nN.length - 1; i++) {
         o += nN[i].size; const x = fx0 + (o / nomN) * spanW;
         g += `<line x1="${x}" y1="${fy0}" x2="${x}" y2="${fy1}" stroke="${SEAL}" stroke-width="1.4" stroke-opacity="0.5"/>`;
-        g += barCap(x, fy0, 0, 1) + barCap(x, fy1, 0, -1);
+        g += midSeal(x, fy0, 0, 1) + midSeal(x, fy1, 0, -1);
       }
       const wW = layout.walls.W.slots, nomW = wW.reduce((a, sl) => a + sl.size, 0) || 1;
       o = 0;
       for (let i = 0; i < wW.length - 1; i++) {
         o += wW[i].size; const y = fy0 + (o / nomW) * spanH;
         g += `<line x1="${fx0}" y1="${y}" x2="${fx1}" y2="${y}" stroke="${SEAL}" stroke-width="1.4" stroke-opacity="0.5"/>`;
-        g += barCap(fx0, y, 1, 0) + barCap(fx1, y, -1, 0);
+        g += midSeal(fx0, y, 1, 0) + midSeal(fx1, y, -1, 0);
       }
-      // corner seals (L-brackets) — drawn after so they sit on top
-      g += cornerL(fx0, fy0, 1, 1) + cornerL(fx1, fy0, -1, 1) + cornerL(fx0, fy1, 1, -1) + cornerL(fx1, fy1, -1, -1);
+      // corner seals (chamfered L-brackets) — drawn last so they sit on top.
+      // (ax,ay)/(bx,by) point away from each corner along its two walls.
+      g += cornerSeal(fx0, fy0, 1, 0, 0, 1) + cornerSeal(fx1, fy0, -1, 0, 0, 1)
+         + cornerSeal(fx0, fy1, 1, 0, 0, -1) + cornerSeal(fx1, fy1, -1, 0, 0, -1);
       return g;
     }
   
@@ -433,12 +449,14 @@
     // ── vent assembly: TWO square boxes (one plain, one with a fan), spread
     // along the wall, protruding OUTWARD from whatever wall holds the vent ──
     function ventDuct(side, px, py, pw, ph) {
-      const B = 15, G = 11, PL = 4;
       const { omx, omy, ox, oy, ax, ay, horiz } = edgeGeom(side, px, py, pw, ph);
+      const panelLen = horiz ? pw : ph;
+      const B = Math.max(18, Math.min(panelLen * 0.30, 44));   // box scales with the wall panel (46" walls → big)
+      const G = Math.max(7, B * 0.4), PL = 4;
       const off = B / 2 + G / 2;
       let g = '';
       // mounting plate hugging the wall edge under both boxes
-      const plate = G + 2 * B + 4;
+      const plate = G + 2 * B + 6;
       if (horiz) g += `<rect x="${omx - plate / 2}" y="${oy < 0 ? omy - PL : omy}" width="${plate}" height="${PL}" rx="1.5" fill="#3a3b42"/>`;
       else       g += `<rect x="${ox < 0 ? omx - PL : omx}" y="${omy - plate / 2}" width="${PL}" height="${plate}" rx="1.5" fill="#3a3b42"/>`;
       for (const k of [-1, 1]) {
@@ -447,10 +465,10 @@
         const ry = horiz ? (oy < 0 ? omy - B : omy) : (ccy - B / 2);
         g += `<rect x="${rx}" y="${ry}" width="${B}" height="${B}" rx="2" fill="#34363d" stroke="#1b1c20" stroke-width="1"/>`;
         if (k === 1) {   // fan box
-          g += `<circle cx="${rx + B / 2}" cy="${ry + B / 2}" r="${B * 0.32}" fill="#22242a" stroke="#54585f" stroke-width="0.8"/>`;
+          g += `<circle cx="${rx + B / 2}" cy="${ry + B / 2}" r="${B * 0.32}" fill="#22242a" stroke="#54585f" stroke-width="0.9"/>`;
           g += `<circle cx="${rx + B / 2}" cy="${ry + B / 2}" r="${B * 0.11}" fill="#62666f"/>`;
         } else {         // plain box (no hole) — same square, just an inset panel line
-          g += `<rect x="${rx + 3}" y="${ry + 3}" width="${B - 6}" height="${B - 6}" rx="1" fill="none" stroke="#4a4d55" stroke-width="0.8"/>`;
+          g += `<rect x="${rx + B * 0.2}" y="${ry + B * 0.2}" width="${B * 0.6}" height="${B * 0.6}" rx="1" fill="none" stroke="#4a4d55" stroke-width="0.9"/>`;
         }
       }
       return g;

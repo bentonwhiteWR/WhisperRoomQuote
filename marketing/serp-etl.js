@@ -26,7 +26,7 @@ const MAX_SERP_KEYWORDS   = parseInt(process.env.SERP_MAX_KEYWORDS || '250', 10)
 const SERP_DEPTH          = parseInt(process.env.SERP_DEPTH || '20', 10);   // top-N organic to capture
 const LOAD_AI_OVERVIEW    = process.env.SERP_LOAD_AI_OVERVIEW !== 'false';   // default on
 const CACHE_DAYS          = parseInt(process.env.SERP_CACHE_DAYS || '7', 10); // skip kws fetched within N days
-const CONCURRENCY         = 8;   // parallel live requests (ONE keyword each — see syncSerp)
+const CONCURRENCY         = 12;  // parallel live requests (ONE keyword each — see syncSerp)
 
 // Hand-seeded keywords we always track regardless of what's in GSC/Ads data.
 // Focused on CORE + contested commercial booth terms we can realistically rank
@@ -111,6 +111,12 @@ async function _buildKeywordList(db) {
   SEED_KEYWORDS.forEach(add);
 
   if (db) {
+    // Source limits scale with the cap so SERP_MAX_KEYWORDS actually controls how
+    // wide we cast. Pull generously from each source; the final slice enforces
+    // the cap. (Paid converting terms first, then commercial organic queries.)
+    const paidLimit = Math.max(150, Math.round(MAX_SERP_KEYWORDS * 0.6));
+    const gscLimit  = Math.max(200, MAX_SERP_KEYWORDS);
+
     // Converting paid search terms (proven commercial intent), last 180d.
     try {
       const r = await db.query(`
@@ -120,27 +126,27 @@ async function _buildKeywordList(db) {
         GROUP BY LOWER(TRIM(search_term))
         HAVING SUM(conversions) >= 1
         ORDER BY conv DESC
-        LIMIT 120
-      `);
+        LIMIT $1
+      `, [paidLimit]);
       r.rows.forEach(row => add(row.term));
     } catch (e) { /* table may be empty pre-sync */ }
 
-    // Booth-intent organic queries we already rank for at an improvable
-    // position (4-20), by impressions. The regex is a coarse commercial gate.
+    // Commercial organic queries. For a WIDER net we no longer restrict to the
+    // 4-20 "improvable" band — we want everything booth-commercial we have any
+    // visibility on (incl. terms we already rank #1 for defense, and weak/page-2
+    // terms for opportunity). The commercial regex keeps out informational junk;
+    // impressions ≥ 20 keeps out noise. Ordered by impressions, capped to gscLimit.
     try {
       const r = await db.query(`
-        SELECT query,
-               SUM(impressions)::bigint AS imp,
-               SUM(position * impressions) / NULLIF(SUM(impressions),0) AS pos
+        SELECT query
         FROM marketing_gsc_queries
         WHERE date >= CURRENT_DATE - INTERVAL '180 days' AND query IS NOT NULL
         GROUP BY query
-        HAVING SUM(impressions) >= 50
-           AND SUM(position * impressions) / NULLIF(SUM(impressions),0) BETWEEN 4 AND 20
-           AND query ~* '(booth|soundproof|sound proof|isolation|vocal|audiolog|audiometric|recording|podcast|voice ?over|sound room|sound booth)'
-        ORDER BY imp DESC
-        LIMIT 150
-      `);
+        HAVING SUM(impressions) >= 20
+           AND query ~* '(booth|soundproof|sound proof|isolation|vocal|audiolog|audiometric|recording|podcast|voice ?over|sound room|sound booth|practice room|office pod|phone booth|drum)'
+        ORDER BY SUM(impressions) DESC
+        LIMIT $1
+      `, [gscLimit]);
       r.rows.forEach(row => add(row.query));
     } catch (e) { /* table may be empty pre-sync */ }
   }
@@ -206,6 +212,20 @@ function _parseResult(keyword, result) {
   });
   const paidResults = Array.from(paidMap.values()).slice(0, 10);
 
+  // People-Also-Ask questions — a content roadmap (the questions buyers ask that
+  // we can answer to win PAA boxes + featured snippets). Free: already in items.
+  const paaEl = items.find(it => it.type === 'people_also_ask');
+  const paaQuestions = paaEl
+    ? (paaEl.items || []).map(q => q.title || q.question || '').filter(Boolean).slice(0, 8)
+    : [];
+
+  // Featured snippet (position-zero) owner — who Google quotes. If it's not us,
+  // it's a capture target; if it is us, defend it.
+  const fsEl = items.find(it => it.type === 'featured_snippet');
+  const featuredSnippet = fsEl
+    ? { domain: (fsEl.domain || _domain(fsEl.url) || '').toLowerCase(), url: fsEl.url || '', title: fsEl.title || '' }
+    : null;
+
   return {
     keyword,
     our_rank:          ours ? ours.rank : null,      // organic position
@@ -213,6 +233,8 @@ function _parseResult(keyword, result) {
     our_url:           ours ? ours.url : null,
     top_results:       organic.slice(0, 10),          // each carries rank + rankAbs
     paid_results:      paidResults,                    // advertisers running on this term
+    paa_questions:     paaQuestions,                   // People-Also-Ask questions (content roadmap)
+    featured_snippet:  featuredSnippet,                // position-zero owner (capture target / defend)
     ai_overview:       !!aiEl,
     ai_overview_cited: aiRefs.some(r => r.domain.includes(OUR_DOMAIN)),
     ai_overview_refs:  aiRefs.slice(0, 12),
@@ -224,25 +246,71 @@ async function _upsert(db, row) {
   await db.query(`
     INSERT INTO marketing_serp_snapshots
       (keyword, location_code, checked_on, our_rank, our_rank_abs, our_url, top_results,
-       paid_results, ai_overview, ai_overview_cited, ai_overview_refs, serp_features, fetched_at)
-    VALUES ($1, $2, CURRENT_DATE, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10::jsonb, $11::jsonb, NOW())
+       paid_results, paa_questions, featured_snippet, search_volume, keyword_difficulty, cpc,
+       ai_overview, ai_overview_cited, ai_overview_refs, serp_features, fetched_at)
+    VALUES ($1, $2, CURRENT_DATE, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, NOW())
     ON CONFLICT (keyword, location_code, checked_on) DO UPDATE SET
-      our_rank          = EXCLUDED.our_rank,
-      our_rank_abs      = EXCLUDED.our_rank_abs,
-      our_url           = EXCLUDED.our_url,
-      top_results       = EXCLUDED.top_results,
-      paid_results      = EXCLUDED.paid_results,
-      ai_overview       = EXCLUDED.ai_overview,
-      ai_overview_cited = EXCLUDED.ai_overview_cited,
-      ai_overview_refs  = EXCLUDED.ai_overview_refs,
-      serp_features     = EXCLUDED.serp_features,
-      fetched_at        = NOW()
+      our_rank           = EXCLUDED.our_rank,
+      our_rank_abs       = EXCLUDED.our_rank_abs,
+      our_url            = EXCLUDED.our_url,
+      top_results        = EXCLUDED.top_results,
+      paid_results       = EXCLUDED.paid_results,
+      paa_questions      = EXCLUDED.paa_questions,
+      featured_snippet   = EXCLUDED.featured_snippet,
+      search_volume      = EXCLUDED.search_volume,
+      keyword_difficulty = EXCLUDED.keyword_difficulty,
+      cpc                = EXCLUDED.cpc,
+      ai_overview        = EXCLUDED.ai_overview,
+      ai_overview_cited  = EXCLUDED.ai_overview_cited,
+      ai_overview_refs   = EXCLUDED.ai_overview_refs,
+      serp_features      = EXCLUDED.serp_features,
+      fetched_at         = NOW()
   `, [
     row.keyword, LOCATION_CODE, row.our_rank, row.our_rank_abs, row.our_url,
     JSON.stringify(row.top_results), JSON.stringify(row.paid_results),
+    JSON.stringify(row.paa_questions || []), JSON.stringify(row.featured_snippet || null),
+    row.search_volume, row.keyword_difficulty, row.cpc,
     row.ai_overview, row.ai_overview_cited,
     JSON.stringify(row.ai_overview_refs), JSON.stringify(row.serp_features),
   ]);
+}
+
+// Search volume + CPC for a batch of keywords (Keywords Data: Google Ads).
+// One task per ≤1000 keywords (~$0.05/task). Returns { keyword: {volume, cpc} }.
+// Non-fatal: any failure just leaves those keywords without volume.
+async function _fetchVolumes(keywords) {
+  const out = {};
+  for (let i = 0; i < keywords.length; i += 1000) {
+    const chunk = keywords.slice(i, i + 1000);
+    try {
+      const resp = await _post('/v3/keywords_data/google_ads/search_volume/live',
+        JSON.stringify([{ keywords: chunk, location_code: LOCATION_CODE, language_code: LANGUAGE_CODE }]));
+      const rows = (resp.tasks && resp.tasks[0] && resp.tasks[0].result) || [];
+      rows.forEach(it => {
+        if (it && it.keyword) out[String(it.keyword).toLowerCase()] = {
+          volume: it.search_volume != null ? it.search_volume : null,
+          cpc:    it.cpc != null ? it.cpc : null,
+        };
+      });
+    } catch (e) { /* non-fatal */ }
+  }
+  return out;
+}
+
+// Keyword difficulty 0-100 for a batch (DataForSEO Labs bulk_keyword_difficulty).
+// Returns { keyword: difficulty }. Non-fatal.
+async function _fetchDifficulty(keywords) {
+  const out = {};
+  for (let i = 0; i < keywords.length; i += 1000) {
+    const chunk = keywords.slice(i, i + 1000);
+    try {
+      const resp = await _post('/v3/dataforseo_labs/google/bulk_keyword_difficulty/live',
+        JSON.stringify([{ keywords: chunk, location_code: LOCATION_CODE, language_code: LANGUAGE_CODE }]));
+      const items = (resp.tasks && resp.tasks[0] && resp.tasks[0].result && resp.tasks[0].result[0] && resp.tasks[0].result[0].items) || [];
+      items.forEach(it => { if (it && it.keyword) out[String(it.keyword).toLowerCase()] = it.keyword_difficulty != null ? it.keyword_difficulty : null; });
+    } catch (e) { /* non-fatal */ }
+  }
+  return out;
 }
 
 // ── syncSerp ────────────────────────────────────────────────────────────
@@ -274,6 +342,11 @@ async function syncSerp({ db, force = false } = {}) {
     return { ok: true, report: 'serp', rows: 0, note: 'All tracked keywords are fresh (within cache window). Use force to refresh.' };
   }
 
+  // Volume + CPC + difficulty for the keywords we're about to sync — batch calls
+  // (cheap), merged onto each snapshot so the rank tracker becomes prioritizable
+  // (prize × winnability), not just a scoreboard.
+  const [volMap, kdMap] = await Promise.all([_fetchVolumes(keywords), _fetchDifficulty(keywords)]);
+
   // ONE keyword per request. DataForSEO's live endpoint only returns the FIRST
   // task synchronously when handed an array, so a 20-task array silently yielded
   // a single row (v1.84.16 bug). We POST one task each and parallelize with a
@@ -303,7 +376,12 @@ async function syncSerp({ db, force = false } = {}) {
     const settled = await Promise.allSettled(chunk.map(fetchOne));
     for (const s of settled) {
       if (s.status === 'fulfilled') {
-        try { await _upsert(db, s.value); upserted++; }
+        const row = s.value;
+        const v = volMap[row.keyword] || {};
+        row.search_volume = v.volume != null ? v.volume : null;
+        row.cpc = v.cpc != null ? v.cpc : null;
+        row.keyword_difficulty = kdMap[row.keyword] != null ? kdMap[row.keyword] : null;
+        try { await _upsert(db, row); upserted++; }
         catch (e) { errors++; if (!firstError) firstError = 'upsert: ' + e.message; }
       } else {
         errors++; if (!firstError) firstError = (s.reason && s.reason.message) || String(s.reason);

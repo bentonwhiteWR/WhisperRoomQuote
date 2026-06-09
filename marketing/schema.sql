@@ -241,6 +241,11 @@ CREATE TABLE IF NOT EXISTS marketing_serp_snapshots (
   our_url            TEXT,
   top_results        JSONB,          -- [{rank, rankAbs, domain, url, title}] top organic results
   paid_results       JSONB,          -- [{domain, url, title, unit}] advertisers (text/shopping ads) on the term
+  paa_questions      JSONB,          -- ["question", ...] People-Also-Ask questions (content roadmap)
+  featured_snippet   JSONB,          -- {domain, url, title} position-zero owner, or null
+  search_volume      INTEGER,        -- monthly Google search volume (Keywords Data)
+  keyword_difficulty NUMERIC,        -- 0-100 ranking difficulty (DataForSEO Labs)
+  cpc                NUMERIC,        -- avg cost-per-click (Keywords Data)
   ai_overview        BOOLEAN DEFAULT FALSE,
   ai_overview_cited  BOOLEAN DEFAULT FALSE,   -- is whisperroom.com a cited source in the AI Overview?
   ai_overview_refs   JSONB,          -- [{domain, url, title}] sources the AI Overview cites
@@ -252,5 +257,10 @@ CREATE TABLE IF NOT EXISTS marketing_serp_snapshots (
 -- staging table picks up the new columns on next boot.
 ALTER TABLE marketing_serp_snapshots ADD COLUMN IF NOT EXISTS our_rank_abs NUMERIC;
 ALTER TABLE marketing_serp_snapshots ADD COLUMN IF NOT EXISTS paid_results JSONB;  -- [{domain,url,title,unit}] advertisers on the term
+ALTER TABLE marketing_serp_snapshots ADD COLUMN IF NOT EXISTS paa_questions JSONB;
+ALTER TABLE marketing_serp_snapshots ADD COLUMN IF NOT EXISTS featured_snippet JSONB;
+ALTER TABLE marketing_serp_snapshots ADD COLUMN IF NOT EXISTS search_volume INTEGER;
+ALTER TABLE marketing_serp_snapshots ADD COLUMN IF NOT EXISTS keyword_difficulty NUMERIC;
+ALTER TABLE marketing_serp_snapshots ADD COLUMN IF NOT EXISTS cpc NUMERIC;
 CREATE INDEX IF NOT EXISTS idx_mkt_serp_keyword ON marketing_serp_snapshots(keyword);
 CREATE INDEX IF NOT EXISTS idx_mkt_serp_checked ON marketing_serp_snapshots(checked_on);

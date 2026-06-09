@@ -278,6 +278,10 @@ td.drillable:hover{color:var(--orange)}
 /* v1.84.9 — hover-description marker (ⓘ) on section / table / panel titles */
 .tip-i{display:inline-block;margin-left:5px;font-size:10px;color:var(--muted);cursor:help;opacity:.5;font-weight:400;vertical-align:middle}
 .tip-i:hover{opacity:1;color:var(--orange)}
+/* v1.84.x — People-Also-Ask content roadmap grid (SEO Intel) */
+.paa-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px}
+.paa-q{display:block;font-size:11px;color:var(--text);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 9px;text-decoration:none;line-height:1.4}
+.paa-q:hover{border-color:var(--orange)}
 .mine-tag{display:inline-block;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:4px;white-space:nowrap}
 .tag-comp{background:rgba(239,68,68,.16);color:#ef4444}
 .tag-off{background:rgba(251,146,60,.16);color:#fb923c}
@@ -1063,6 +1067,8 @@ function renderSeo(d) {
   const notRanking = rows.filter(r => r.our_rank == null).length;
   const aiCount = rows.filter(r => r.ai_overview).length;
   const aiCited = rows.filter(r => r.ai_overview && r.ai_overview_cited).length;
+  const fsPresent = rows.filter(r => r.featured_snippet).length;
+  const fsOwned = rows.filter(r => r.featured_snippet && (r.featured_snippet.domain || '').includes('whisperroom')).length;
 
   // Competitor leaderboard: domains that outrank us (or sit top-3 when we don't rank).
   const compCount = {};
@@ -1090,6 +1096,7 @@ function renderSeo(d) {
     ${chip('Buried', buried, 'Rank top-5 organically but pushed to absolute #6+ by ads / AI Overview / features above. Strong organic position being suppressed — defend-with-ads or get-cited candidates.')}
     ${chip('AI Overview', aiCount, 'Keywords where Google shows an AI Overview (which can suppress organic clicks).')}
     ${chip('Cited in AI', aiCited, 'Of those, how many cite whisperroom.com as a source.')}
+    ${chip('Featured snippet', `${fsOwned}/${fsPresent}`, 'Of the keywords showing a featured snippet (position zero), how many WhisperRoom owns. The rest are capture targets — answer the question better + add schema.')}
   </div>`;
 
   const compStrip = topComps.length
@@ -1152,14 +1159,23 @@ function renderSeo(d) {
     }).join(' · ');
     return `<span title="Advertisers running paid/shopping ads on this term (bold = a competitor that also outranks you organically).">${shown}${ads.length > 3 ? ` <span style="color:var(--muted)">+${ads.length-3}</span>` : ''}</span>`;
   };
+  const volCell = r => r.search_volume != null ? fmtInt(r.search_volume) : '<span style="color:var(--muted)">—</span>';
+  const kdCell = r => {
+    if (r.keyword_difficulty == null) return '<span style="color:var(--muted)">—</span>';
+    const kd = Math.round(r.keyword_difficulty);
+    const color = kd >= 60 ? 'var(--red)' : kd >= 30 ? 'var(--yellow)' : 'var(--green)';
+    return `<span style="color:${color}" title="Keyword difficulty 0-100 — lower is easier to rank. Source: DataForSEO Labs.">${kd}</span>`;
+  };
 
   const table = `<div class="section">
     <div class="section-head"><div class="section-title">Rank tracker<span class="tip-i" title="Your live organic position per commercial keyword (not ranking = not in the captured results), movement vs the previous sync, the top-3 competitors on that SERP, and the AI Overview status. Source: DataForSEO Google Organic SERP.">ⓘ</span></div><span class="section-meta">${tracked} keywords</span></div>
     <table><thead><tr>
-      <th>Keyword</th><th class="num">Organic<span class="tip-i" title="Your ORGANIC position (rank_group) — the real SEO rank. Pulled logged-out from a neutral US location, so it can read lower than your personalized, logged-in browser; that neutral number is what a new customer sees.">ⓘ</span></th><th class="num">Absolute<span class="tip-i" title="Your position among EVERYTHING on the page — ads + AI Overview + featured snippet + shopping + organic. The gap from Organic = how much is stacked above you (color: orange = 3+, red = 5+). That gap is the visibility/CTR drag and a defend-with-ads signal.">ⓘ</span></th><th class="num">Move</th><th>Top competitors</th><th>Ads above<span class="tip-i" title="Advertisers (text + shopping ads) running on this term, from the live SERP. Bold = a competitor that also outranks you organically. A competitor ad above your organic #1 is the textbook defend-with-ads case.">ⓘ</span></th><th>AI Overview</th>
+      <th>Keyword</th><th class="num">Vol<span class="tip-i" title="Estimated monthly Google search volume (US). Source: DataForSEO Keywords Data / Google Ads. The size of the prize.">ⓘ</span></th><th class="num">KD<span class="tip-i" title="Keyword difficulty 0-100 — how hard it is to rank (lower = easier). Green &lt;30, yellow 30-59, red 60+. Source: DataForSEO Labs. The winnability.">ⓘ</span></th><th class="num">Organic<span class="tip-i" title="Your ORGANIC position (rank_group) — the real SEO rank. Pulled logged-out from a neutral US location, so it can read lower than your personalized, logged-in browser; that neutral number is what a new customer sees.">ⓘ</span></th><th class="num">Absolute<span class="tip-i" title="Your position among EVERYTHING on the page — ads + AI Overview + featured snippet + shopping + organic. The gap from Organic = how much is stacked above you (color: orange = 3+, red = 5+). That gap is the visibility/CTR drag and a defend-with-ads signal.">ⓘ</span></th><th class="num">Move</th><th>Top competitors</th><th>Ads above<span class="tip-i" title="Advertisers (text + shopping ads) running on this term, from the live SERP. Bold = a competitor that also outranks you organically. A competitor ad above your organic #1 is the textbook defend-with-ads case.">ⓘ</span></th><th>AI Overview</th>
     </tr></thead><tbody>
       ${rows.map(r => `<tr>
         <td><a href="${googleUrl(r.keyword)}" target="_blank" rel="noopener" title="Open the de-personalized US Google results for &quot;${escHtml(r.keyword)}&quot; (pws=0&gl=us, new tab) — closest to what this tool sees. Right-click → incognito for the cleanest view + the AI Overview." style="color:var(--text)">${escHtml(r.keyword)}</a> <span style="color:var(--muted);font-size:10px">↗</span></td>
+        <td class="num">${volCell(r)}</td>
+        <td class="num">${kdCell(r)}</td>
         <td class="num">${orgCell(r)}</td>
         <td class="num">${absCell(r)}</td>
         <td class="num">${movement(r)}</td>
@@ -1219,7 +1235,17 @@ function renderSeo(d) {
       <tbody>${[...defends, ...pullbacks].map(recRow).join('')}</tbody></table>
   </div>` : '';
 
-  body.innerHTML = stats + compStrip + table + defense;
+  // ── Content roadmap: People-Also-Ask questions across all tracked terms ──
+  const paaCount = {};
+  rows.forEach(r => (r.paa_questions || []).forEach(q => { const k = String(q).trim(); if (k) paaCount[k] = (paaCount[k] || 0) + 1; }));
+  const paaTop = Object.entries(paaCount).sort((a, b) => b[1] - a[1]).slice(0, 30);
+  const paa = paaTop.length ? `<div class="section">
+    <div class="section-head"><div class="section-title">Content questions to answer (PAA)<span class="tip-i" title="The People-Also-Ask questions Google shows across your tracked terms. Answer these well (FAQ blocks, articles, schema) to win PAA boxes + featured snippets — and because they're literally what buyers are asking. Click a question to see its live results. Sorted by how many of your terms surface it.">ⓘ</span></div><span class="section-meta">${Object.keys(paaCount).length} unique</span></div>
+    <div style="font-size:11px;color:var(--muted);margin:-2px 0 10px;line-height:1.6">Real questions buyers ask, mined from the live SERPs. A content roadmap — answer them to capture PAA + featured-snippet real estate.</div>
+    <div class="paa-grid">${paaTop.map(([q, n]) => `<a href="${googleUrl(q)}" target="_blank" rel="noopener" class="paa-q">${escHtml(q)}${n > 1 ? ` <span style="color:var(--muted)">×${n}</span>` : ''}</a>`).join('')}</div>
+  </div>` : '';
+
+  body.innerHTML = stats + compStrip + table + defense + paa;
 }
 
 // ── State (v1.46.10) ────────────────────────────────────────────────

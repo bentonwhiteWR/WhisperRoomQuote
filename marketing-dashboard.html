@@ -262,6 +262,20 @@ td.drillable:hover{color:var(--orange)}
 .kanban-budget .kb-pause .bud-col-head{color:#f87171}
 .kanban-budget .kb-investigate .bud-col-head{color:#94a3b8}
 .kb-why{font-size:10px;color:var(--muted);line-height:1.4;margin-top:5px;padding-top:5px;border-top:1px dashed var(--border)}
+.mine-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
+.mine-panel{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:12px}
+.mine-head{font-size:12.5px;font-weight:700;margin-bottom:8px}
+.mine-sub{display:block;font-size:10.5px;font-weight:500;color:var(--muted);margin-top:2px}
+.mine-tbl{width:100%;border-collapse:collapse;font-size:11px}
+.mine-tbl th{text-align:left;font-size:10px;color:var(--muted);font-weight:600;padding:3px 6px;border-bottom:1px solid var(--border)}
+.mine-tbl td{padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top}
+.mine-tbl td.num,.mine-tbl th.num{text-align:right;font-family:var(--mono)}
+.mine-more{font-size:10px;color:var(--muted);margin-top:6px}
+.mine-tag{display:inline-block;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:4px;white-space:nowrap}
+.tag-comp{background:rgba(239,68,68,.16);color:#ef4444}
+.tag-off{background:rgba(251,146,60,.16);color:#fb923c}
+.tag-zero{background:rgba(148,163,184,.16);color:var(--muted)}
+.tag-brand{background:rgba(124,58,237,.16);color:#a78bfa}
 .ea-ai-btn{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#fff;background:linear-gradient(90deg,#7c3aed,#2563eb);border:none;border-radius:6px;padding:5px 11px;cursor:pointer;margin-bottom:8px}
 .ea-ai-btn:hover{filter:brightness(1.1)}
 .ea-ai-btn:disabled{opacity:.6;cursor:default}
@@ -348,6 +362,10 @@ td.drillable:hover{color:var(--orange)}
 .coverage-bar-fill.good{background:var(--green)}
 .coverage-bar-fill.mid {background:var(--yellow)}
 .coverage-bar-fill.bad {background:var(--red)}
+/* v1.84.1 — attribution reconciliation (remainder) row in table footers */
+tfoot .recon-row td{background:rgba(148,163,184,.07);border-top:2px solid var(--border);color:var(--muted);font-style:italic;padding-top:10px}
+tfoot .recon-row td.num{font-family:var(--mono);font-style:normal}
+.recon-sub{display:block;font-style:normal;font-size:10px;color:var(--muted);opacity:.85;margin-top:2px;letter-spacing:.02em}
 </style>
   <script src="/assets/nav.js" defer></script>
 </head>
@@ -443,7 +461,7 @@ td.drillable:hover{color:var(--orange)}
     <!-- Section 2: Executive Summary -->
     <div class="exec-summary" id="growthExec" style="display:none">
       <div class="exec-head">
-        <div class="exec-title"><span class="spark">⚡</span> If you do 5 things this month</div>
+        <div class="exec-title"><span class="spark">⚡</span> Your top 5 moves right now</div>
         <span class="exec-sub" id="growthExecSub">—</span>
       </div>
       <div class="exec-list" id="growthExecList"></div>
@@ -495,6 +513,18 @@ td.drillable:hover{color:var(--orange)}
         Where the next $1,000 should go, from return on ad spend (HubSpot closed revenue ÷ Google Ads cost per campaign).
       </div>
       <div class="kanban kanban-budget" id="growthBudgetBody"><div class="empty">No paid data yet.</div></div>
+    </div>
+
+    <!-- Section 7: Search-Term Mining (Deploy 3) -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">⑥ Search-Term Mining</div>
+        <span class="section-meta" id="growthMiningMeta">—</span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
+        From the actual search terms that triggered your ads, cross-referenced with your keywords, HubSpot revenue, and organic rankings: negative-keyword candidates, converting terms worth adding, paid spend you already win organically, and loose match types to tighten. Review before acting — $0 attributed revenue can be a real miss or an attribution gap.
+      </div>
+      <div id="growthMiningBody"><div class="empty">No search-term data yet. Press <strong>↻ Sync All</strong>.</div></div>
     </div>
   </div><!-- /tabGrowth -->
 
@@ -948,6 +978,11 @@ let currentDaysBack = 90;
 // v1.50.8 — selected attribution model. Drives ?model= on the closed-loop
 // endpoints. 'first' matches the prior hardcoded first-touch behavior.
 let currentModel = 'first';
+// v1.84.1 — cache the latest attribution-coverage object so the Campaigns and
+// Search-Terms renders (which only receive rows/attrRows, and re-run on every
+// column sort) can reconcile their resolved totals against the headline funnel
+// numbers (deals_won_selected / revenue_selected) and render the remainder row.
+let currentCoverage = {};
 // v1.51.x — WhisperRoom's average close cycle. Spend younger than this hasn't
 // had a full cycle to convert, so it's "immature" for ROAS judgment.
 const AVG_CYCLE_DAYS = 29;
@@ -1967,13 +2002,15 @@ function renderActionEngine(roRows, pageRows, queryRows) {
 async function loadGrowthTab() {
   const q  = `?days=${currentDaysBack}`;
   const qm = `?days=${currentDaysBack}&model=${currentModel}`;
-  const [ro, pg, qs, camp, attr, kw] = await Promise.all([
+  const [ro, pg, qs, camp, attr, kw, st, stAttr] = await Promise.all([
     fetch('/api/marketing/gsc-revenue-opportunity' + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     fetch('/api/marketing/gsc-pages' + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     fetch('/api/marketing/gsc-queries' + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     fetch('/api/marketing/campaigns' + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     fetch('/api/marketing/campaign-attribution' + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     fetch('/api/marketing/keywords' + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/search-terms' + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    fetch('/api/marketing/search-term-attribution' + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
   ]);
   const pages = (pg && pg.rows) || [], queries = (qs && qs.rows) || [];
   gscBuildCtrBenchmark(queries);
@@ -1986,6 +2023,7 @@ async function loadGrowthTab() {
   renderGrowthTpa(model.all);
   renderGrowthAds(model.all);
   renderGrowthBudget(model.budget);
+  renderGrowthMining(gscBuildSearchTermMining((st && st.rows) || [], (stAttr && stAttr.rows) || [], (kw && kw.rows) || [], queries));
   document.getElementById('growthDetail').textContent =
     `${model.all.length} opportunities across SEO + Paid · last ${currentDaysBack} days · ${MODEL_LABELS[currentModel] || 'First interaction'} attribution`;
 }
@@ -2006,7 +2044,11 @@ function gscBuildGrowthModel(seoEnriched, pages, campRows, attrRows, kwRows) {
       currentPerf: `${fmtInt(+r.impressions || 0)} impr · low intent`, matchStatus: 'unknown' }));
   const paid = gscBuildPaidGrowth(campRows, attrRows, kwRows);
   const all = seoOpps.concat(informational).concat(paid.opps);
-  const maxRev = Math.max(1, ...all.map(o => Math.abs(o.revenueOpp || 0)));
+  // Normalize revenue only across opportunities that will actually rank (mirror
+  // the Ignore gate in gscGrowthBucket). Without this, a high-volume informational
+  // query's inflated upside sets maxRev and squashes every real Growth Score.
+  const scoreable = all.filter(o => !o.informational && !(o.kind === 'seo' && (o.commercialIntent || 0) < 25));
+  const maxRev = Math.max(1, ...scoreable.map(o => Math.abs(o.revenueOpp || 0)));
   all.forEach(o => { o.growthScore = gscGrowthScore(o, maxRev); o.priority = gscGrowthBucket(o); });
   all.sort((a, b) => b.growthScore - a.growthScore);
   return { all, budget: paid.budget };
@@ -2126,19 +2168,25 @@ function gscBuildPaidGrowth(campRows, attrRows, kwRows) {
     const highSpend = c.cost >= Math.max(100, totalSpend * 0.05);
     const goodRoas = c.roas >= 2 && c.revenue > 0;
     const poorRoas = c.cost >= 150 && c.revenue > 0 && c.roas < 1;
-    const noRev = c.cost >= 300 && c.revenue <= 0 && c.conversions < 1;
+    const noCrmRev = c.cost >= 300 && c.revenue <= 0;          // spent real money, $0 HubSpot closed revenue
+    const hasGoogleConv = (c.conversions || 0) >= 1;           // Google tracked conversions for it
     const budgetConstrained = c.budLost != null && c.budLost >= 0.10;   // losing ≥10% of impressions to budget
     const attrGap = gscIsAttributionGapCampaign(c.name);
     const roasTxt = c.roas === Infinity ? '∞' : c.roas.toFixed(1);
 
     // ── Budget bucket — brand / cannibalization / impression-share aware ──
+    // $0 CRM revenue with Google conversions (or an ecom/remarketing name) is an
+    // ATTRIBUTION GAP, not a steady performer — conversions aren't tying back to
+    // HubSpot. Only a $0-revenue campaign with no conversions at all is a pause.
     if (c.branded && goodRoas) {
       c.bud = `Branded campaign — the ${roasTxt}× ROAS mostly re-buys demand organic already wins for free. Test trimming bids/budget and watch total paid+organic revenue, not paid ROAS alone.`;
       budget.test.push(c);
-    } else if (noRev && attrGap) {
-      c.bud = `No HubSpot revenue, but this reads as an ecommerce / remarketing campaign whose conversions land outside CRM attribution. Verify in Google Ads / Shopify before cutting.`;
+    } else if (noCrmRev && (attrGap || hasGoogleConv)) {
+      c.bud = attrGap
+        ? `No HubSpot revenue, but this reads as an ecommerce / remarketing campaign whose conversions land outside CRM attribution. Verify in Google Ads / Shopify before cutting.`
+        : `$${fmtInt(Math.round(c.cost))} spent with ${fmtInt(Math.round(c.conversions))} Google conversion${c.conversions >= 2 ? 's' : ''} but $0 HubSpot revenue — conversions aren't tying back to CRM. Check attribution / lead quality before judging spend.`;
       budget.investigate.push(c);
-    } else if (noRev) {
+    } else if (noCrmRev) {
       c.bud = `$${fmtInt(Math.round(c.cost))} spent, no attributed revenue or conversions. Pause or restructure.`;
       budget.pause.push(c);
     } else if (poorRoas) {
@@ -2185,14 +2233,108 @@ function gscBuildPaidGrowth(campRows, attrRows, kwRows) {
       opps.push(gscPaidOpp(c, 'Budget Reallocation Opportunity', 'Brand Cannibalization', c.bud, c.cost * 0.3, true, { savings: true, brandTest: true }));
     } else if (goodRoas && budgetConstrained) {
       opps.push(gscPaidOpp(c, 'Budget Reallocation Opportunity', 'Budget-Constrained', c.bud, c.revenue * 0.3, true, { budgetUp: true }));
-    } else if (poorRoas || (noRev && !attrGap)) {
-      opps.push(gscPaidOpp(c, 'Budget Reallocation Opportunity', poorRoas ? 'Low ROAS' : 'No Attributed Revenue', c.bud, c.cost * 0.5, true, { savings: true }));
-    } else if (noRev && attrGap) {
+    } else if (noCrmRev && (attrGap || hasGoogleConv)) {
       opps.push(gscPaidOpp(c, 'Attribution Gap', 'Attribution Gap', c.bud, 0, false, { investigate: true }));
+    } else if (poorRoas || noCrmRev) {
+      opps.push(gscPaidOpp(c, 'Budget Reallocation Opportunity', poorRoas ? 'Low ROAS' : 'No Attributed Revenue', c.bud, c.cost * 0.5, true, { savings: true }));
     }
   });
   return { opps, budget };
 }
+
+// ── Search-Term Mining (Deploy 3) ───────────────────────────────────────
+// Mines the actual search terms that triggered ads (marketing_search_terms +
+// search-term-attribution for HubSpot revenue) against the keywords we bid on
+// (marketing_keywords, with match_type) and our organic rankings (GSC queries):
+//   1. Negatives  — real spend, zero conversions AND zero revenue, not branded.
+//   2. Harvest    — converting / revenue terms we don't yet bid on as a keyword.
+//   3. Cannibaliz.— paid spend on terms we already rank top-3 organically.
+//   4. Match-type — Phrase/Broad keywords burning spend with weak efficiency.
+// All thresholds are Gabe-editable. $0 attributed revenue ≠ proven waste here
+// either (same attribution-gap caveat as the budget board) — these are review
+// queues, not auto-actions.
+const GSC_COMPETITOR_TOKENS = ['studiobrick', 'studio brick', 'wenger', 'isovox', 'vocalboothtogo', 'vocal booth to go', 'voxbx', 'snap studio', 'snapstudio', 'eckel', 'zenspace', 'demvox', 'silver series', 'vevor', 'isobooth', 'iso booth'];
+const GSC_NEGATIVE_TOKENS = ['diy', 'build a', 'building a', 'how to', 'how much', 'plans', 'blueprint', 'foam', 'acoustic panel', 'blanket', 'curtain', 'shield', 'cage', ' rent', 'rental', 'for rent', 'used ', 'second hand', 'free', 'cheap', 'homemade'];
+const ST_MIN_SPEND   = 40;     // ignore trivially small spend (per 90-day window)
+const ST_HARVEST_MIN = 1;      // conversions to count as a harvest candidate
+const ST_CANN_MAXPOS = 3.5;    // organic position at/under which we "already rank"
+const ST_MT_CPA_MAX  = 250;    // Phrase/Broad CPA above this (or $0 conv) = tighten
+
+function gscTermBranded(t) { const s = ' ' + t + ' '; return GSC_BRAND_TOKENS.some(b => s.includes(b)); }
+function gscTermCompetitor(t) { return GSC_COMPETITOR_TOKENS.some(b => t.includes(b)); }
+function gscTermNegReason(t) {
+  if (gscTermCompetitor(t)) return 'Competitor brand';
+  if (GSC_NEGATIVE_TOKENS.some(b => (' ' + t + ' ').includes(b))) return 'Off-product / DIY / info';
+  return 'Spend, no conversions';
+}
+function gscMatchLabel(m) { const s = String(m).toUpperCase().trim(); if (s === '2' || s === 'EXACT') return 'Exact'; if (s === '3' || s === 'PHRASE') return 'Phrase'; if (s === '4' || s === 'BROAD' || s === 'BROAD_MATCH') return 'Broad'; return 'Match ' + m; }
+
+function gscBuildSearchTermMining(stRows, stAttrRows, kwRows, queries) {
+  // Aggregate search terms by normalized term, then merge HubSpot revenue.
+  const agg = {};
+  (stRows || []).forEach(r => {
+    const k = (r.search_term || '').trim().toLowerCase(); if (!k) return;
+    const a = agg[k] || (agg[k] = { term: k, clicks: 0, cost: 0, conversions: 0 });
+    a.clicks += parseInt(r.clicks) || 0; a.cost += parseFloat(r.cost_usd) || 0; a.conversions += parseFloat(r.conversions) || 0;
+  });
+  const attrByTerm = {};
+  (stAttrRows || []).forEach(a => { if (a.search_term) attrByTerm[String(a.search_term).trim().toLowerCase()] = a; });
+  const terms = Object.values(agg).map(r => {
+    const a = attrByTerm[r.term];
+    r.revWon = a ? parseFloat(a.revenue_won) || 0 : 0;
+    r.dealsWon = a ? parseInt(a.deals_won) || 0 : 0;
+    r.branded = gscTermBranded(r.term);
+    r.cpa = r.conversions ? r.cost / r.conversions : null;
+    return r;
+  });
+
+  // Keywords we already bid on (normalized text) + per-keyword rollup for match type.
+  const kwSet = new Set(), kwByText = {};
+  (kwRows || []).forEach(r => {
+    const t = (r.keyword_text || '').trim().toLowerCase(); if (!t) return;
+    kwSet.add(t);
+    const k = kwByText[t] || (kwByText[t] = { text: t, match: r.match_type, cost: 0, conversions: 0 });
+    k.cost += parseFloat(r.cost_usd) || 0; k.conversions += parseFloat(r.conversions) || 0;
+  });
+
+  // Best organic position per query (normalized) for cannibalization.
+  const orgByQuery = {};
+  (queries || []).forEach(q => {
+    const t = (q.query || '').trim().toLowerCase(); if (!t) return;
+    const pos = q.position == null ? null : +q.position;
+    const prev = orgByQuery[t];
+    if (!prev || (pos != null && pos < (prev.pos == null ? Infinity : prev.pos))) orgByQuery[t] = { pos, clicks: +q.clicks || 0 };
+  });
+
+  const negatives = terms
+    .filter(r => r.cost >= ST_MIN_SPEND && r.conversions === 0 && r.revWon === 0 && !r.branded)
+    .map(r => ({ term: r.term, spend: r.cost, clicks: r.clicks, reason: gscTermNegReason(r.term) }))
+    .sort((a, b) => b.spend - a.spend);
+
+  const harvest = terms
+    .filter(r => !r.branded && !kwSet.has(r.term) && (r.revWon > 0 || r.conversions >= ST_HARVEST_MIN))
+    .map(r => ({ term: r.term, spend: r.cost, conversions: r.conversions, revWon: r.revWon, dealsWon: r.dealsWon, cpa: r.cpa }))
+    .sort((a, b) => (b.revWon - a.revWon) || (b.conversions - a.conversions));
+
+  const cannibalization = terms
+    .filter(r => r.cost >= ST_MIN_SPEND)
+    .map(r => { const o = orgByQuery[r.term]; return (o && o.pos != null && o.pos <= ST_CANN_MAXPOS) ? { term: r.term, spend: r.cost, revWon: r.revWon, orgPos: o.pos, branded: r.branded } : null; })
+    .filter(Boolean)
+    .sort((a, b) => b.spend - a.spend);
+
+  const matchType = Object.values(kwByText)
+    .map(k => ({ text: k.text, label: gscMatchLabel(k.match), cost: k.cost, conversions: k.conversions, cpa: k.conversions ? k.cost / k.conversions : null }))
+    .filter(k => (k.label === 'Phrase' || k.label === 'Broad') && k.cost >= ST_MIN_SPEND && (k.conversions === 0 || (k.cpa != null && k.cpa > ST_MT_CPA_MAX)))
+    .sort((a, b) => b.cost - a.cost);
+
+  return {
+    negatives, harvest, cannibalization, matchType,
+    wasted: negatives.reduce((s, n) => s + n.spend, 0),
+    cannSpend: cannibalization.reduce((s, c) => s + c.spend, 0),
+    termCount: terms.length,
+  };
+}
+
 function gscPaidOpp(c, type, rootCause, reasoning, impact, proven, extra) {
   return Object.assign({ kind: 'paid', channel: 'Paid', type, rootCause, topic: c.name || '(campaign)', campaign: c,
     revenueOpp: impact, confidence: c.revenue > 0 ? 70 : 55, provenValue: proven, commercialIntent: 70,
@@ -2264,15 +2406,17 @@ function renderGrowthExec(all) {
   const exec = document.getElementById('growthExec');
   if (!top.length) { exec.style.display = 'none'; return; }
   exec.style.display = '';
-  const totalUp = all.filter(o => !o.savings && o.priority !== 'ignore').reduce((s, o) => s + (o.revenueOpp || 0), 0);
-  const totalSave = all.filter(o => o.savings).reduce((s, o) => s + Math.abs(o.revenueOpp || 0), 0);
+  const top5Up = top.filter(o => !o.savings).reduce((s, o) => s + (o.revenueOpp || 0), 0);
+  const ranked = all.filter(o => o.priority !== 'ignore');
+  const pipelineUp = ranked.filter(o => !o.savings).reduce((s, o) => s + (o.revenueOpp || 0), 0);
+  const totalSave = ranked.filter(o => o.savings).reduce((s, o) => s + Math.abs(o.revenueOpp || 0), 0);
   document.getElementById('growthExecList').innerHTML = top.map((o, i) => {
     const amt = o.savings ? `<span class="exec-amt" style="color:#fbbf24">~$${fmtInt(Math.round(Math.abs(o.revenueOpp)))} savings</span>`
       : `<span class="exec-amt">~$${fmtInt(Math.round(o.revenueOpp || 0))}</span>`;
     return `<div class="exec-item"><span class="exec-rank">${i + 1}</span><span class="exec-text"><strong>${escHtml(gscGrowthHeadline(o))}</strong> ${gscChannelChip(o.channel)} — ${amt} estimated impact. ${escHtml(gscShortAction(o))}</span></div>`;
   }).join('');
   document.getElementById('growthExecSub').textContent =
-    `~$${fmtInt(Math.round(totalUp))} revenue upside${totalSave > 0 ? ` + ~$${fmtInt(Math.round(totalSave))} spend savings` : ''} across your priorities`;
+    `These 5: ~$${fmtInt(Math.round(top5Up))} modeled upside · full ranked list (${ranked.length}): ~$${fmtInt(Math.round(pipelineUp))} upside${totalSave > 0 ? ` + ~$${fmtInt(Math.round(totalSave))} spend savings` : ''}`;
 }
 
 function renderGrowthQueue(all) {
@@ -2389,6 +2533,33 @@ function renderGrowthBudget(budget) {
   const totalTest = (budget.test || []).reduce((s, c) => s + c.cost, 0);
   document.getElementById('growthBudgetMeta').textContent =
     `~$${fmtInt(Math.round(totalReduce))} in reduce / pause candidates` + (totalTest > 0 ? ` · ~$${fmtInt(Math.round(totalTest))} branded spend to test pulling back` : '') + ` this window`;
+}
+
+function renderGrowthMining(m) {
+  const el = document.getElementById('growthMiningBody'), meta = document.getElementById('growthMiningMeta');
+  if (!m || !m.termCount) { el.innerHTML = '<div class="empty">No search-term data yet. Press <strong>↻ Sync All</strong>.</div>'; meta.textContent = ''; return; }
+  const CAP = 15;
+  const cap = arr => ({ rows: arr.slice(0, CAP), more: Math.max(0, arr.length - CAP) });
+  const moreNote = more => more ? `<div class="mine-more">+ ${fmtInt(more)} more below the top ${CAP} (sorted by spend/revenue)</div>` : '';
+
+  const neg = cap(m.negatives);
+  const negPanel = `<div class="mine-panel"><div class="mine-head">🚫 Add as negatives<span class="mine-sub">${fmtInt(m.negatives.length)} terms · ~$${fmtInt(Math.round(m.wasted))} spend with 0 conversions &amp; $0 revenue</span></div>` +
+    (m.negatives.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Spend</th><th class="num">Clicks</th><th>Why</th></tr></thead><tbody>${neg.rows.map(r => `<tr><td>${escHtml(r.term)}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">${fmtInt(r.clicks)}</td><td><span class="mine-tag ${r.reason === 'Competitor brand' ? 'tag-comp' : r.reason === 'Off-product / DIY / info' ? 'tag-off' : 'tag-zero'}">${escHtml(r.reason)}</span></td></tr>`).join('')}</tbody></table>${moreNote(neg.more)}` : '<div class="kb-empty">none over the $' + ST_MIN_SPEND + ' spend threshold</div>') + '</div>';
+
+  const harv = cap(m.harvest);
+  const harvPanel = `<div class="mine-panel"><div class="mine-head">🌱 Harvest as keywords<span class="mine-sub">${fmtInt(m.harvest.length)} converting terms you don't bid on yet</span></div>` +
+    (m.harvest.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Spend</th><th class="num">Conv.</th><th class="num">Revenue</th></tr></thead><tbody>${harv.rows.map(r => `<tr><td>${escHtml(r.term)}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">${fmtNum(r.conversions)}</td><td class="num">${r.revWon > 0 ? fmtUSD(r.revWon) : '—'}</td></tr>`).join('')}</tbody></table>${moreNote(harv.more)}` : '<div class="kb-empty">none — converting terms are already keywords</div>') + '</div>';
+
+  const cann = cap(m.cannibalization);
+  const cannPanel = `<div class="mine-panel"><div class="mine-head">♺ Already win organically<span class="mine-sub">${fmtInt(m.cannibalization.length)} terms · ~$${fmtInt(Math.round(m.cannSpend))} paid spend where we rank top-3 free</span></div>` +
+    (m.cannibalization.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Paid spend</th><th class="num">Org. pos</th><th class="num">Rev.</th></tr></thead><tbody>${cann.rows.map(r => `<tr><td>${escHtml(r.term)}${r.branded ? ' <span class="mine-tag tag-brand">brand</span>' : ''}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">#${r.orgPos.toFixed(1)}</td><td class="num">${r.revWon > 0 ? fmtUSD(r.revWon) : '—'}</td></tr>`).join('')}</tbody></table>${moreNote(cann.more)}` : '<div class="kb-empty">no paid terms with a top-3 organic rank (Sync GSC populates this)</div>') + '</div>';
+
+  const mt = cap(m.matchType);
+  const mtPanel = `<div class="mine-panel"><div class="mine-head">🎯 Tighten match types<span class="mine-sub">${fmtInt(m.matchType.length)} Phrase/Broad keywords spending inefficiently</span></div>` +
+    (m.matchType.length ? `<table class="mine-tbl"><thead><tr><th>Keyword</th><th>Match</th><th class="num">Spend</th><th class="num">CPA</th></tr></thead><tbody>${mt.rows.map(r => `<tr><td>${escHtml(r.text)}</td><td><span class="mine-tag ${r.label === 'Broad' ? 'tag-off' : 'tag-zero'}">${r.label}</span></td><td class="num">${fmtUSD(r.cost)}</td><td class="num">${r.cpa != null ? fmtUSD(r.cpa) : 'no conv'}</td></tr>`).join('')}</tbody></table>${moreNote(mt.more)}` : '<div class="kb-empty">no loose match types over the $' + ST_MIN_SPEND + ' threshold</div>') + '</div>';
+
+  el.innerHTML = `<div class="mine-grid">${negPanel}${harvPanel}${cannPanel}${mtPanel}</div>`;
+  meta.textContent = `${fmtInt(m.negatives.length)} negatives · ${fmtInt(m.harvest.length)} harvest · ${fmtInt(m.cannibalization.length)} cannibalized · ${fmtInt(m.matchType.length)} match-type`;
 }
 
 // ── v1.65.4 — native-Search-Console-style daily performance chart ──────
@@ -2663,6 +2834,7 @@ async function loadAllTables() {
   tableState.keywords.rawRows    = kw.rows     || [];
   tableState.searchTerms.rawRows = st.rows     || [];
   tableState.searchTerms.attrRows= stAttr.rows || [];
+  currentCoverage = cov || {};  // v1.84.1 — feed the table reconciliation rows
   renderCoverage(cov || {});
   renderCampaigns(tableState.campaigns.rawRows, tableState.campaigns.attrRows);
   renderKeywords(tableState.keywords.rawRows);
@@ -2896,6 +3068,34 @@ function renderAdQuality(aq) {
     `<span class="aq-note">${by.prospecting.deals}/${totalDeals} deals show a real prospecting touch (floor)</span>`;
 }
 
+// v1.84.1 — attribution reconciliation footer. The top Paid-Funnel card counts
+// every paid-attributed closed-won deal (gate = first_source PAID_SEARCH), but
+// the Campaigns/Search-Terms tables can only show a deal once its first-touch
+// field resolves to a current campaign/term. The difference is real (renamed or
+// discontinued campaigns, legacy tracking IDs), not a bug — so we surface it as
+// an explicit remainder row instead of letting the parts silently undershoot the
+// headline. resolved* = what the table attributed; headline = deals_won_selected
+// / revenue_selected from the same model-windowed coverage object that drives the
+// funnel, so resolved + remainder == headline exactly.
+function gscReconFoot(resolvedDeals, resolvedRev, leftColspan, rightColspan, label) {
+  const headDeals = parseInt(currentCoverage.deals_won_selected)   || 0;
+  const headRev   = parseFloat(currentCoverage.revenue_selected)   || 0;
+  const remDeals  = headDeals - resolvedDeals;
+  const remRev    = headRev   - resolvedRev;
+  // Only render when the headline genuinely exceeds the resolved sum. (Tiny
+  // negatives can occur if a deal double-matches two campaigns; treat as zero.)
+  if (remDeals <= 0 && remRev <= 0.5) return '';
+  const right = rightColspan ? `<td colspan="${rightColspan}"></td>` : '';
+  return `<tfoot>
+    <tr class="recon-row" title="Paid-sourced closed-won deals whose HubSpot first-touch field holds a renamed or discontinued campaign, or a legacy tracking ID, so they can't be tied to a current ${label.includes('term') ? 'search term' : 'campaign'} row.">
+      <td colspan="${leftColspan}">${label}<span class="recon-sub">paid-sourced, no resolvable current ${label.includes('term') ? 'search term' : 'campaign'}</span></td>
+      <td class="num">${remDeals > 0 ? fmtInt(remDeals) : '—'}</td>
+      <td class="num">${remRev > 0.5 ? fmtUSD(remRev) : '—'}</td>
+      ${right}
+    </tr>
+  </tfoot>`;
+}
+
 function renderCampaigns(rows, attrRows) {
   document.getElementById('campaignsTitle').textContent = `Campaigns (last ${currentDaysBack} days)`;
   document.getElementById('campaignsMeta').textContent = rows.length ? `${fmtInt(rows.length)} rows` : '';
@@ -2940,6 +3140,10 @@ function renderCampaigns(rows, attrRows) {
   const list = sortRows('campaigns', Object.values(agg));
   renderSegRollup(list);  // share-of-revenue-by-segment strip under the funnel
   const t = 'campaigns';
+  // v1.84.1 — reconcile resolved attribution to the headline paid funnel.
+  const resolvedDeals = list.reduce((s, c) => s + (c.dealsWon || 0), 0);
+  const resolvedRev   = list.reduce((s, c) => s + (c.revWon   || 0), 0);
+  const reconFoot = gscReconFoot(resolvedDeals, resolvedRev, 12, 3, 'Unattributed to a specific campaign');
   body.innerHTML = `
     <table>
       <thead><tr>
@@ -2981,7 +3185,7 @@ function renderCampaigns(rows, attrRows) {
           <td class="num attr-col">${r.cac != null ? fmtUSD(r.cac) : '—'}</td>
           <td class="num attr-col">${roasPill(r.revWon, r.cost)}</td>
         </tr>`).join('')}
-      </tbody>
+      </tbody>${reconFoot}
     </table>`;
 }
 
@@ -3083,6 +3287,12 @@ function renderSearchTerms(rows, attrRows) {
   tableState.searchTerms.rendered = list;
   const moreNote = sorted.length > list.length ? ` <span style="color:var(--muted);font-size:11px;font-weight:500;text-transform:none;letter-spacing:0">(top ${list.length} of ${fmtInt(sorted.length)})</span>` : '';
   const t = 'searchTerms';
+  // v1.84.1 — reconcile resolved attribution to the headline paid funnel. Sum
+  // over the full `sorted` set, not the capped top-200 `list`, so a converting
+  // term below the display cap still counts as resolved (not double-counted).
+  const resolvedDeals = sorted.reduce((s, r) => s + (r.dealsWon || 0), 0);
+  const resolvedRev   = sorted.reduce((s, r) => s + (r.revWon   || 0), 0);
+  const reconFoot = gscReconFoot(resolvedDeals, resolvedRev, 7, 1, 'Unattributed to a specific search term');
   body.innerHTML = `
     <table>
       <thead><tr>
@@ -3110,7 +3320,7 @@ function renderSearchTerms(rows, attrRows) {
           <td class="num attr-col">${r.revWon == null ? '—' : fmtUSD(r.revWon)}</td>
           <td class="num attr-col${r.revWon ? ' drillable' : ''}"${r.revWon ? ` onclick="drillTerm(${i},'term-closed')"` : ''}>${roasPill(r.revWon, r.cost)}</td>
         </tr>`).join('')}
-      </tbody>
+      </tbody>${reconFoot}
     </table>`;
 }
 

@@ -55,6 +55,13 @@ const HS_PORTAL_ID = '5764220';
 const HUBSPOT_CAMPAIGN_ALIASES = [
   { hsName: '**lp general (us/can) - b', gaName: '**LP General (US/CAN) - Combined' },
   { hsName: '**lp testing (us/can) - a', gaName: '**LP Testing (US/CAN) - Combined' },
+  // v1.84.1 — Gabe-confirmed historical renames (2026-06-09 source-data2 diag).
+  // These paid contacts carry old campaign names with no current Google Ads
+  // match; redirecting them recovers their deals out of the "Unattributed"
+  // reconciliation row and into the live parent campaign.
+  { hsName: '**lp portable general (us/can) - a',     gaName: '**LP General (US/CAN) - Combined' },
+  { hsName: 'display remarketing - search remarketing', gaName: '2025 WR Active User Remarketing' },
+  { hsName: 'zoom booth - search remarketing',          gaName: '2025 WR Active User Remarketing' },
 ];
 
 // v1.46.10 — parse ?days=N from the request URL. Used by every data

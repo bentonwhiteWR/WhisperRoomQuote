@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.7', date:'June 9, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Top-Down Layout — drag size limit + accurate seam seals.** Panels can now only be dropped on a slot of the same size — you can\'t move a 46" panel where a 22" panel goes (an incompatible drop highlights red and won\'t swap). And the seam seals are redrawn to match the spec: the wall sawtooth is now a subtle acoustic-foam lining, while the actual seals are bold connectors — a corner piece (L-bracket) at each of the four corners and a "T" piece (an I-beam: the seam line with a bar where it meets each wall) at every joint where two panels butt together.'},
+      ]
+    },
+    {
       v:'1.84.5', date:'June 9, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Roof Mount now includes EFS on the packing list.** When RM (Roof Mount) is selected, the BOM now adds one EFS (exhaust-fan silencer, 25 lb) per vent set — an EFS ships with each vent set under Roof Mount to prevent noise transfer into the booth. This was missing before, which made RM orders read light; e.g. a 3-vent-set booth now correctly adds 75 lb. NV booths (no vent sets) add none.'},

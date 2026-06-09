@@ -133,70 +133,65 @@ function renderLayoutSvg(layout, assign) {
   s += `<rect x="${x0 + t}" y="${y0 + t}" width="${W - 2 * t}" height="${H - 2 * t}" fill="url(#ldCarpet)"/>`;
   s += `<rect x="${x0 + t}" y="${y0 + t}" width="${W - 2 * t}" height="${H - 2 * t}" fill="none" stroke="#000" stroke-opacity="0.25" stroke-width="1"/>`;
 
-  // modular floor seams — faint grid lines at the wall-panel boundaries, so the
-  // floor reads as the panelized booth it is (mirrors the spec-sheet diagram).
-  (function floorSeams() {
-    const fx0 = x0 + t, fy0 = y0 + t, fx1 = x0 + W - t, fy1 = y0 + H - t;
-    const spanW = W - 2 * t, spanH = H - 2 * t;
-    const nN = layout.walls.N.slots, nomN = nN.reduce((a, sl) => a + sl.size, 0) || 1;
-    let o = 0;
-    for (let i = 0; i < nN.length - 1; i++) { o += nN[i].size; const x = fx0 + (o / nomN) * spanW; s += `<line x1="${x}" y1="${fy0}" x2="${x}" y2="${fy1}" stroke="#000" stroke-opacity="0.12" stroke-width="1"/>`; }
-    const wW = layout.walls.W.slots, nomW = wW.reduce((a, sl) => a + sl.size, 0) || 1;
-    o = 0;
-    for (let i = 0; i < wW.length - 1; i++) { o += wW[i].size; const y = fy0 + (o / nomW) * spanH; s += `<line x1="${fx0}" y1="${y}" x2="${fx1}" y2="${y}" stroke="#000" stroke-opacity="0.12" stroke-width="1"/>`; }
-  })();
-
-  // ── seam seals (per the spec sheet) ─────────────────────────────
-  // Three parts: (1) a dark sawtooth comb along each interior wall face, (2) a
-  // corner piece at each of the 4 interior corners, (3) a "T" piece at every
-  // joint where two panels butt on the same wall (stem points into the booth).
-  const SEAL_FILL = '#1b1c21', SEAL_EDGE = '#5a5e66';
-  function seamComb(ax, ay, bx, by, nx, ny) {
-    const len = Math.hypot(bx - ax, by - ay);
-    if (len < 4) return '';
+  // ── foam lining + seam seals ────────────────────────────────────
+  // Foam lining = a fine, subtle sawtooth along each interior wall face (the
+  // acoustic wedge — NOT a seal). Seam seals are the bold connectors:
+  //   • panel-joint seal: an I-beam — the seam line running wall-to-wall with a
+  //     bar cap where it meets each wall (the "T" you see in the spec); and
+  //   • corner seal: an L-bracket hugging each of the four interior corners.
+  const FOAM = '#2c2d33';
+  const SEAL = '#0d0e11';
+  function foamComb(ax, ay, bx, by, nx, ny) {
+    const len = Math.hypot(bx - ax, by - ay); if (len < 4) return '';
     const ux = (bx - ax) / len, uy = (by - ay) / len;
-    const teeth = Math.max(3, Math.round(len / 7));
-    const tw = len / teeth, dep = Math.min(6.5, Math.max(4, t * 0.6));
+    const teeth = Math.max(4, Math.round(len / 5));
+    const tw = len / teeth, dep = Math.min(4, Math.max(2.5, t * 0.4));
     let g = '';
     for (let i = 0; i < teeth; i++) {
       const sx = ax + ux * tw * i,         sy = ay + uy * tw * i;
       const mx = ax + ux * tw * (i + 0.5), my = ay + uy * tw * (i + 0.5);
       const ex = ax + ux * tw * (i + 1),   ey = ay + uy * tw * (i + 1);
-      g += `<path d="M ${sx} ${sy} L ${mx + nx * dep} ${my + ny * dep} L ${ex} ${ey} Z" fill="${SEAL_FILL}" stroke="${SEAL_EDGE}" stroke-width="0.5" stroke-linejoin="round"/>`;
+      g += `<path d="M ${sx} ${sy} L ${mx + nx * dep} ${my + ny * dep} L ${ex} ${ey} Z" fill="${FOAM}"/>`;
     }
     return g;
   }
-  function cornerSeal(cx, cy) {
-    const sz = Math.min(10, Math.max(6, t * 0.85));
-    return `<rect x="${cx - sz / 2}" y="${cy - sz / 2}" width="${sz}" height="${sz}" rx="1.5" fill="${SEAL_FILL}" stroke="${SEAL_EDGE}" stroke-width="0.6"/>`;
+  // bar cap = short thick bar parallel to the wall at the interior face (jx,jy);
+  // nx,ny = inward normal. This is the visible end of a seam seal.
+  function barCap(jx, jy, nx, ny) {
+    const half = 8, thick = 5, tx = -ny, ty = nx;
+    const ix = jx + nx * thick * 0.45, iy = jy + ny * thick * 0.45;
+    return `<line x1="${ix - tx * half}" y1="${iy - ty * half}" x2="${ix + tx * half}" y2="${iy + ty * half}" stroke="${SEAL}" stroke-width="${thick}" stroke-linecap="round"/>`;
   }
-  function teeSeal(jx, jy, nx, ny) {     // jx,jy on the interior face; nx,ny inward
-    const stem = Math.min(15, Math.max(9, t * 1.2)), bar = 10, tx = -ny, ty = nx;
-    const ex = jx + nx * stem, ey = jy + ny * stem;
-    return `<line x1="${jx - tx * bar / 2}" y1="${jy - ty * bar / 2}" x2="${jx + tx * bar / 2}" y2="${jy + ty * bar / 2}" stroke="${SEAL_FILL}" stroke-width="3" stroke-linecap="round"/>`
-         + `<line x1="${jx}" y1="${jy}" x2="${ex}" y2="${ey}" stroke="${SEAL_FILL}" stroke-width="3" stroke-linecap="round"/>`;
+  // L-bracket hugging an interior corner; sx,sy = inward signs along each wall.
+  function cornerL(cx, cy, sx, sy) {
+    const a = 13, th = 5;
+    return `<line x1="${cx}" y1="${cy}" x2="${cx + sx * a}" y2="${cy}" stroke="${SEAL}" stroke-width="${th}" stroke-linecap="round"/>`
+         + `<line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy + sy * a}" stroke="${SEAL}" stroke-width="${th}" stroke-linecap="round"/>`;
   }
   function seamPieces() {
-    let g = '';
-    g += seamComb(x0 + t, y0 + t, x0 + W - t, y0 + t, 0, 1);          // N face
-    g += seamComb(x0 + t, y0 + H - t, x0 + W - t, y0 + H - t, 0, -1); // S
-    g += seamComb(x0 + t, y0 + t, x0 + t, y0 + H - t, 1, 0);          // W
-    g += seamComb(x0 + W - t, y0 + t, x0 + W - t, y0 + H - t, -1, 0); // E
-    g += cornerSeal(x0 + t, y0 + t) + cornerSeal(x0 + W - t, y0 + t)
-       + cornerSeal(x0 + t, y0 + H - t) + cornerSeal(x0 + W - t, y0 + H - t);
+    const fx0 = x0 + t, fy0 = y0 + t, fx1 = x0 + W - t, fy1 = y0 + H - t;
     const spanW = W - 2 * t, spanH = H - 2 * t;
-    for (const side of ['N', 'S', 'E', 'W']) {
-      const slots = layout.walls[side].slots;
-      const nom = slots.reduce((a, sl) => a + sl.size, 0) || 1;
-      let o = 0;
-      for (let i = 0; i < slots.length - 1; i++) {
-        o += slots[i].size;
-        if (side === 'N')      g += teeSeal(x0 + t + (o / nom) * spanW, y0 + t, 0, 1);
-        else if (side === 'S') g += teeSeal(x0 + t + (o / nom) * spanW, y0 + H - t, 0, -1);
-        else if (side === 'W') g += teeSeal(x0 + t, y0 + t + (o / nom) * spanH, 1, 0);
-        else                   g += teeSeal(x0 + W - t, y0 + t + (o / nom) * spanH, -1, 0);
-      }
+    let g = '';
+    // foam lining on the four interior faces
+    g += foamComb(fx0, fy0, fx1, fy0, 0, 1) + foamComb(fx0, fy1, fx1, fy1, 0, -1)
+       + foamComb(fx0, fy0, fx0, fy1, 1, 0) + foamComb(fx1, fy0, fx1, fy1, -1, 0);
+    // panel-joint seals — vertical seams (N boundaries) span N↔S; horizontal (W) span W↔E
+    const nN = layout.walls.N.slots, nomN = nN.reduce((a, sl) => a + sl.size, 0) || 1;
+    let o = 0;
+    for (let i = 0; i < nN.length - 1; i++) {
+      o += nN[i].size; const x = fx0 + (o / nomN) * spanW;
+      g += `<line x1="${x}" y1="${fy0}" x2="${x}" y2="${fy1}" stroke="${SEAL}" stroke-width="1.4" stroke-opacity="0.5"/>`;
+      g += barCap(x, fy0, 0, 1) + barCap(x, fy1, 0, -1);
     }
+    const wW = layout.walls.W.slots, nomW = wW.reduce((a, sl) => a + sl.size, 0) || 1;
+    o = 0;
+    for (let i = 0; i < wW.length - 1; i++) {
+      o += wW[i].size; const y = fy0 + (o / nomW) * spanH;
+      g += `<line x1="${fx0}" y1="${y}" x2="${fx1}" y2="${y}" stroke="${SEAL}" stroke-width="1.4" stroke-opacity="0.5"/>`;
+      g += barCap(fx0, y, 1, 0) + barCap(fx1, y, -1, 0);
+    }
+    // corner seals (L-brackets) — drawn after so they sit on top
+    g += cornerL(fx0, fy0, 1, 1) + cornerL(fx1, fy0, -1, 1) + cornerL(fx0, fy1, 1, -1) + cornerL(fx1, fy1, -1, -1);
     return g;
   }
 

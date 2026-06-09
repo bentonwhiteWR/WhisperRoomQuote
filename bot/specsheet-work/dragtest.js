@@ -22,16 +22,18 @@ function synth(layout) {
   return lines;
 }
 
-const name = 'MDL 9696 S';
+const name = 'MDL 4872 S';   // has 46" + 24" slots → can test the size constraint
 const layout = pl.boothLayout(name);
 const DATA = {
   quoteNumber: 'TEST-001', meta: { dealName: 'Acme' },
   rooms: [{ boothName: name, found: true, lines: synth(layout), unmappedFeatures: [], flags: [], boxCount: 0 }],
   layouts: { [name]: layout }, components: {}, totals: { netLb: 0 }, quoteWeight: 0,
 };
-const scriptInner = fs.readFileSync(path.join(root, 'packing-list.html'), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
+const pageHtml = fs.readFileSync(path.join(root, 'packing-list.html'), 'utf8');
+const scriptInner = pageHtml.match(/<script>([\s\S]*?)<\/script>/)[1];
+const styleInner = pageHtml.match(/<style>([\s\S]*?)<\/style>/)[1];   // include the page CSS (pointer-events rules!)
 
-const test = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>
+const test = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${styleInner}</style></head><body>
 <div id="out" style="position:fixed;top:0;left:0;right:0;background:#111;color:#0f0;font:14px monospace;padding:8px;z-index:9999;white-space:pre-wrap"></div>
 <span id="snStatus"></span><div id="rooms"></div>
 <script>window.__log=[]; window.onerror=function(m,s,l,c){window.__log.push('ERR '+m+' @'+l+':'+c);};</script>
@@ -45,28 +47,22 @@ function go(){
     render();
     document.querySelectorAll('.tab-panel[data-tab=layout]').forEach(p=>p.classList.add('active'));
     log.push('panels in DOM: '+document.querySelectorAll('.ld-panel').length);
-    const st = LAYOUT_STATE[0];
-    const slots = Object.keys(st.assign);
-    log.push('assign slots: '+slots.join(','));
-    const A = document.querySelector('.ld-panel[data-slot="'+slots[0]+'"]');
-    const B = document.querySelector('.ld-panel[data-slot="'+slots[1]+'"]');
-    if(!A||!B){ log.push('MISSING panel A/B'); return done(); }
-    const ra=A.getBoundingClientRect(), rb=B.getBoundingClientRect();
-    log.push('A '+slots[0]+' rect '+Math.round(ra.x)+','+Math.round(ra.y)+' '+Math.round(ra.width)+'x'+Math.round(ra.height));
-    log.push('B '+slots[1]+' rect '+Math.round(rb.x)+','+Math.round(rb.y)+' '+Math.round(rb.width)+'x'+Math.round(rb.height));
-    // what does elementFromPoint see at A center?
-    const ax=ra.x+ra.width/2, ay=ra.y+ra.height/2, bx=rb.x+rb.width/2, by=rb.y+rb.height/2;
-    const efpA = document.elementFromPoint(ax,ay);
-    log.push('elementFromPoint(A center): '+(efpA?efpA.tagName+'.'+(efpA.getAttribute&&efpA.getAttribute('class')):'null')+' closest .ld-panel: '+(efpA&&efpA.closest&&efpA.closest('.ld-panel')?'YES':'no'));
-    const before = st.assign[slots[0]] && st.assign[slots[0]].code;
-    const beforeB = st.assign[slots[1]] && st.assign[slots[1]].code;
-    P('pointerdown',efpA||A,ax,ay);
-    log.push('_ldDrag after down: '+(typeof _ldDrag!=='undefined' && _ldDrag ? JSON.stringify({ri:_ldDrag.ri,from:_ldDrag.from}) : 'null'));
-    P('pointermove',document.elementFromPoint(bx,by)||B,bx,by);
-    P('pointerup',document.elementFromPoint(bx,by)||B,bx,by);
-    const afterA = (LAYOUT_STATE[0].assign[slots[0]]||{}).code;
-    const afterB = (LAYOUT_STATE[0].assign[slots[1]]||{}).code;
-    log.push('before A='+before+' B='+beforeB+' | after A='+afterA+' B='+afterB+' | SWAPPED='+(before!==afterA));
+    log.push('sizes: N0='+ldSlotSize(0,'N0')+' N1='+ldSlotSize(0,'N1')+' S0='+ldSlotSize(0,'S0'));
+    log.push('compat N0<->N1 (46 vs 24): '+ldCompatible(0,'N0','N1')+'   N0<->S0 (46 vs 46): '+ldCompatible(0,'N0','S0'));
+    function center(slot){ const el=document.querySelector('.ld-panel[data-slot="'+slot+'"]'); const r=el.getBoundingClientRect(); return {x:r.x+r.width/2, y:r.y+r.height/2}; }
+    function slotAt(p){ const e=document.elementFromPoint(p.x,p.y); const pn=e&&e.closest&&e.closest('.ld-panel'); return pn?pn.getAttribute('data-slot'):(e?e.tagName:'null'); }
+    function drag(a,b){
+      const pa=center(a), pb=center(b);
+      const before=(LAYOUT_STATE[0].assign[a]||{}).code;
+      log.push('   pa='+Math.round(pa.x)+','+Math.round(pa.y)+' ->'+slotAt(pa)+'  pb='+Math.round(pb.x)+','+Math.round(pb.y)+' ->'+slotAt(pb));
+      P('pointerdown',document.elementFromPoint(pa.x,pa.y),pa.x,pa.y);
+      P('pointermove',document.elementFromPoint(pb.x,pb.y),pb.x,pb.y);
+      P('pointerup',document.elementFromPoint(pb.x,pb.y),pb.x,pb.y);
+      const after=(LAYOUT_STATE[0].assign[a]||{}).code;
+      return before!==after;
+    }
+    log.push('drag N0->N1 (incompatible) SWAPPED='+drag('N0','N1')+'  (expect false)');
+    log.push('drag N0->S0 (compatible)   SWAPPED='+drag('N0','S0')+'  (expect true)');
   }catch(e){ log.push('THROW '+e.message); }
   done();
 }

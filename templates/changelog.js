@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.27', date:'June 9, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Top-Down Layout: seam seals are now clearly visible.** The mid-wall plinth seals (at every panel-to-panel joint) and the chamfered corner L-brackets were drawn too small and in a dark speckle that vanished against the carpet — they now scale with the wall thickness, match the spec-sheet profile proportions, and carry a light halo so they pop. Joints are also placed per-wall from each wall panel layout instead of mirroring the back wall onto the front, and the stray floor-spanning seam line is gone.'},
+      ]
+    },
+    {
       v:'1.84.26', date:'June 9, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing list: per-booth "Door jamb" toggle for 4016 booths.** On a 4016 HX + Wide-Access/ADA booth, a Right/Left switch now appears on that booth\'s packing list to set which side of the door the tall jamb adapter goes (Z20 = Right, Z21 = Left). Defaults to Right; flipping it swaps the part and saves to the order (per booth), so the printed PL stays correct. Same weight either way, so it only affects which part the floor pulls — confirm the door side with the client.'},

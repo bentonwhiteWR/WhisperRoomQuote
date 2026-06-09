@@ -123,7 +123,7 @@ function renderLayoutSvg(layout, assign) {
     + `<linearGradient id="ldWallH" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#23242a"/><stop offset="0.5" stop-color="#34353d"/><stop offset="1" stop-color="#23242a"/></linearGradient>`
     + `<linearGradient id="ldWallV" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#23242a"/><stop offset="0.5" stop-color="#34353d"/><stop offset="1" stop-color="#23242a"/></linearGradient>`
     + `<pattern id="ldCarpet" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="#6d6d6b"/><rect width="7" height="1" fill="#656563"/><rect width="1" height="7" fill="#757573"/></pattern>`
-    + `<pattern id="ldSeal" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="4" height="4" fill="#484a52"/><circle cx="1" cy="1.5" r="0.6" fill="#32343a"/><circle cx="3" cy="3" r="0.6" fill="#5e616a"/><circle cx="3" cy="0.6" r="0.4" fill="#2c2e33"/></pattern>`
+    + `<pattern id="ldSeal" width="5" height="5" patternUnits="userSpaceOnUse"><rect width="5" height="5" fill="#54575f"/><circle cx="1.2" cy="1.8" r="0.8" fill="#33353b"/><circle cx="3.7" cy="3.7" r="0.8" fill="#7d818b"/><circle cx="3.6" cy="0.9" r="0.6" fill="#2a2c31"/><circle cx="0.8" cy="4.2" r="0.5" fill="#8a8e98"/></pattern>`
     + `<filter id="ldShadow" x="-15%" y="-15%" width="130%" height="135%"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#5a5f66" flood-opacity="0.35"/></filter>`
     + `</defs>`;
 
@@ -156,31 +156,37 @@ function renderLayoutSvg(layout, assign) {
     }
     return g;
   }
-  const SEAL_STROKE = '#23242a';
+  const SEAL_STROKE = '#0d0e11';
+  const SEAL_HALO = 'rgba(238,239,242,0.85)';   // light halo so the dark speckle pops off the carpet
+  // glyph scale follows the wall-band thickness so seals stay legible on big booths
+  const SG = Math.max(10, Math.min(t, 20));
+  const sealPoly = pts => `<polygon points="${pts}" stroke="${SEAL_HALO}" stroke-width="4.5" stroke-linejoin="round" fill="none"/>`
+    + `<polygon points="${pts}" fill="url(#ldSeal)" stroke="${SEAL_STROKE}" stroke-width="1.2" stroke-linejoin="round"/>`;
   // mid-wall seam seal (plinth): a flat base bar along the wall at the joint
   // (jx,jy on the interior face; nx,ny inward) with a centered tab protruding
-  // into the booth — the profile from the spec diagram (left).
+  // into the booth — the profile from the spec diagram (left). Base ≈ 4× the
+  // tab width, tab ≈ as deep as the base, matching the spec proportions.
   function midSeal(jx, jy, nx, ny) {
     const tx = -ny, ty = nx;                 // tangent = along the wall
-    const baseHalf = 11, baseDepth = 5, tabHalf = 5, tabExtra = 10;
+    const baseHalf = SG * 1.5, baseDepth = SG * 0.45, tabHalf = SG * 0.38, tabExtra = SG * 0.5;
     const P = (a, n) => (jx + tx * a + nx * n) + ',' + (jy + ty * a + ny * n);
     const pts = [
       P(-baseHalf, 0), P(-baseHalf, baseDepth), P(-tabHalf, baseDepth),
       P(-tabHalf, baseDepth + tabExtra), P(tabHalf, baseDepth + tabExtra), P(tabHalf, baseDepth),
       P(baseHalf, baseDepth), P(baseHalf, 0),
     ].join(' ');
-    return `<polygon points="${pts}" fill="url(#ldSeal)" stroke="${SEAL_STROKE}" stroke-width="0.8" stroke-linejoin="round"/>`;
+    return sealPoly(pts);
   }
   // corner seam seal: a filled L-bracket hugging an interior corner, with a
   // chamfered outer corner — the profile from the spec diagram (right).
   // (ax,ay)/(bx,by) = the two along-wall unit directions away from the corner.
   function cornerSeal(cx, cy, ax, ay, bx, by) {
-    const L = 16, Tk = 6, ch = 4;
+    const L = SG * 1.7, Tk = SG * 0.55, ch = Tk * 0.6;
     const P = (a, b) => (cx + a * ax + b * bx) + ',' + (cy + a * ay + b * by);
     const pts = [
       P(ch, 0), P(L, 0), P(L, Tk), P(Tk, Tk), P(Tk, L), P(0, L), P(0, ch),
     ].join(' ');   // chamfer = the implicit edge from (0,ch) back to (ch,0)
-    return `<polygon points="${pts}" fill="url(#ldSeal)" stroke="${SEAL_STROKE}" stroke-width="0.8" stroke-linejoin="round"/>`;
+    return sealPoly(pts);
   }
   function seamPieces() {
     const fx0 = x0 + t, fy0 = y0 + t, fx1 = x0 + W - t, fy1 = y0 + H - t;
@@ -189,20 +195,24 @@ function renderLayoutSvg(layout, assign) {
     // foam lining on the four interior faces
     g += foamComb(fx0, fy0, fx1, fy0, 0, 1) + foamComb(fx0, fy1, fx1, fy1, 0, -1)
        + foamComb(fx0, fy0, fx0, fy1, 1, 0) + foamComb(fx1, fy0, fx1, fy1, -1, 0);
-    // panel-joint seals — vertical seams (N boundaries) span N↔S; horizontal (W) span W↔E
-    const nN = layout.walls.N.slots, nomN = nN.reduce((a, sl) => a + sl.size, 0) || 1;
-    let o = 0;
-    for (let i = 0; i < nN.length - 1; i++) {
-      o += nN[i].size; const x = fx0 + (o / nomN) * spanW;
-      g += `<line x1="${x}" y1="${fy0}" x2="${x}" y2="${fy1}" stroke="${SEAL}" stroke-width="1.4" stroke-opacity="0.5"/>`;
-      g += midSeal(x, fy0, 0, 1) + midSeal(x, fy1, 0, -1);
-    }
-    const wW = layout.walls.W.slots, nomW = wW.reduce((a, sl) => a + sl.size, 0) || 1;
-    o = 0;
-    for (let i = 0; i < wW.length - 1; i++) {
-      o += wW[i].size; const y = fy0 + (o / nomW) * spanH;
-      g += `<line x1="${fx0}" y1="${y}" x2="${fx1}" y2="${y}" stroke="${SEAL}" stroke-width="1.4" stroke-opacity="0.5"/>`;
-      g += midSeal(fx0, y, 1, 0) + midSeal(fx1, y, -1, 0);
+    // panel-joint seals — one per adjacency on EACH wall, placed from that
+    // wall's own slot widths (no N→S / W→E mirroring assumption).
+    for (const side of ['N', 'S', 'E', 'W']) {
+      const wall = layout.walls[side]; if (!wall || wall.slots.length < 2) continue;
+      const nom = wall.slots.reduce((a, sl) => a + sl.size, 0) || 1;
+      const horiz = (side === 'N' || side === 'S');
+      let o = 0;
+      for (let i = 0; i < wall.slots.length - 1; i++) {
+        o += wall.slots[i].size;
+        const f = o / nom;
+        if (horiz) {
+          const x = fx0 + f * spanW;
+          g += midSeal(x, side === 'N' ? fy0 : fy1, 0, side === 'N' ? 1 : -1);
+        } else {
+          const y = fy0 + f * spanH;
+          g += midSeal(side === 'W' ? fx0 : fx1, y, side === 'W' ? 1 : -1, 0);
+        }
+      }
     }
     // corner seals (chamfered L-brackets) — drawn last so they sit on top.
     // (ax,ay)/(bx,by) point away from each corner along its two walls.

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.8', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Packing list splits shared accessories across booths.** On a multi-booth order (one MDL line with a quantity), accessory quantities are the order total for the group, so they\'re now divided evenly across the booths. Before, an order of 4 rooms with 12 bass traps put all 12 on every booth (48 total); now each booth\'s packing list correctly shows 3. Single-booth orders are unchanged.'},
+      ]
+    },
+    {
       v:'1.84.7', date:'June 9, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Top-Down Layout — drag size limit + accurate seam seals.** Panels can now only be dropped on a slot of the same size — you can\'t move a 46" panel where a 22" panel goes (an incompatible drop highlights red and won\'t swap). And the seam seals are redrawn to match the spec: the wall sawtooth is now a subtle acoustic-foam lining, while the actual seals are bold connectors — a corner piece (L-bracket) at each of the four corners and a "T" piece (an I-beam: the seam line with a bar where it meets each wall) at every joint where two panels butt together.'},

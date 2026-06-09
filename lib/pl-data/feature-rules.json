@@ -1619,6 +1619,12 @@
         {
           "remove": "K10",
           "add": "Z16"
+        },
+        {
+          "remove": "Z19",
+          "add": "Z20",
+          "_toggle": "jambSide",
+          "_alt": "Z21"
         }
       ]
     },

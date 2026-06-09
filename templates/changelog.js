@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.25', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**HX + Wide-Access/ADA on a 4016 booth now adds the tall jamb adapter.** Completes the 4016 swap: the inner jamb-adapter box (Z19) becomes its Height-Extension version — Z20 (Tall/Right of door) by default, or Z21 (Tall/Left). The two weigh the same, so the door side is a placement detail you confirm with the client; a one-tap toggle on the packing list to flip Right/Left is coming next.'},
+      ]
+    },
+    {
       v:'1.84.24', date:'June 9, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Packing list: HX + Wide-Access/ADA now swaps the door-side height-extension walls.** When a booth has HX (height extension) together with a WA upgrade or ADA, the extension walls at the door are now re-sized to the correct WA-door extension parts for the booth\'s WA Type (4016/4040/4622/4646), per the spec chart — standard parts on every booth, plus the inner-shell (IEP) parts on double-wall (E) booths. This fills a combo that was previously left as-is, correcting those packing lists and their weights.'},

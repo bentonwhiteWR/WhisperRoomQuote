@@ -1,88 +1,3070 @@
 {
   "_meta": {
-    "_source": "Manually digitized from the 2023 top-down spec sheets (Z:\\Sales1\\Sales\\SPEC SHEET - TOP DOWN 2023\\). One layout per booth shell shape.",
+    "_source": "Digitized from the 52 MDL spec-sheet top-down views (SpecSheets/, page 3), 2026-06-09.",
     "_schema": {
-      "exterior": "Outer shell dimensions in inches (w = long axis, h = short axis). Matches the spec-sheet top-down view.",
-      "wallThickness": "Panel + foam thickness in inches.",
-      "walls": "Keyed by compass side: N = back, S = front (door side), E = right, W = left.",
-      "walls.<side>.slots": "Ordered list of wall-panel slots running along the interior. Each slot has: id (unique), size (nominal/empty-state inches), families (LIST of acceptable wall-pack prefixes, e.g. ['STDWL46','WA STDDRFRM']; first matching wall in the BOM pool wins), prefers (ordered list of slot-kind preferences for auto-placement — VNT, CBL, DRFRM, WDO, SOLID).",
-      "walls.<side>.longSide": "true for the two long walls of a rectangular booth (where panels are split wide + narrow style)."
-    },
-    "_lookup": "Lookup by full MDL name (e.g. 'MDL 4872 S'). Variant fallback (e.g. 'MDL 4872 E' → 'MDL 4872 S' layout) is handled in lib/packing-list.js boothLayout().",
-    "_swap_handling": "Narrow slots accept both the std + WA-shrunken family (e.g. STDWL22 OR STDWL19) so the WA Door substitution can flip one narrow without falling out of the wall pool. Same goes for the door slot: STDWL46 OR WA STDDRFRM. The SVG renders each placed panel at its real interior width via panelInteriorWidth()."
+      "keyed_by": "Size only (e.g. \"MDL 4872\"). boothLayout() in lib/packing-list.js resolves the S/E/SNV/ENV variant and attaches the resolved wallThickness + interior.",
+      "module": "Wall panel module width: 40 or 46 inches. All wall panels of a module are interchangeable (per spec sheet).",
+      "exterior": "Outer shell footprint in inches (same for S and E). w = horizontal (long axis as drawn), h = vertical.",
+      "variants": "S (single-wall) and E (double-wall) each carry their own wallThickness + interior dims. SNV→S, ENV→E.",
+      "door": "wall = which side holds the door (S = front). swing = door-leaf opening width in inches; the door opens OUTWARD.",
+      "walls": "Keyed N(back/vent) S(front/door) E(right) W(left). Each slot: id, size(in, sums to that wall interior span), kind(SOLID/VNT/DRFRM/WDO), prefers(placement preference)."
+    }
   },
   "layouts": {
-    "MDL 4242 S": {
-      "label": "Single-Wall Sound Booth - 3.5' x 3.5'",
-      "exterior": { "w": 44, "h": 44 },
-      "wallThickness": 2,
-      "walls": {
-        "N": { "label": "Back",  "longSide": false, "slots": [
-          { "id": "N-wide", "size": 40, "families": ["STDWL40"],                "prefers": ["VNT", "CBL"] }
-        ]},
-        "S": { "label": "Front", "longSide": false, "slots": [
-          { "id": "S-wide", "size": 40, "families": ["STDWL40", "WA STDDRFRM"], "prefers": ["DRFRM"] }
-        ]},
-        "E": { "label": "Right", "longSide": false, "slots": [
-          { "id": "E-wide", "size": 40, "families": ["STDWL40"],                "prefers": ["SOLID"] }
-        ]},
-        "W": { "label": "Left",  "longSide": false, "slots": [
-          { "id": "W-wide", "size": 40, "families": ["STDWL40"],                "prefers": ["SOLID"] }
-        ]}
-      }
-    },
-    "MDL 4848 S": {
-      "label": "Single-Wall Sound Booth - 4' x 4'",
-      "exterior": { "w": 50, "h": 50 },
-      "wallThickness": 2,
-      "walls": {
-        "N": { "label": "Back",  "longSide": false, "slots": [
-          { "id": "N-wide", "size": 46, "families": ["STDWL46"],                "prefers": ["VNT", "CBL"] }
-        ]},
-        "S": { "label": "Front", "longSide": false, "slots": [
-          { "id": "S-wide", "size": 46, "families": ["STDWL46", "WA STDDRFRM"], "prefers": ["DRFRM"] }
-        ]},
-        "E": { "label": "Right", "longSide": false, "slots": [
-          { "id": "E-wide", "size": 46, "families": ["STDWL46"],                "prefers": ["SOLID"] }
-        ]},
-        "W": { "label": "Left",  "longSide": false, "slots": [
-          { "id": "W-wide", "size": 46, "families": ["STDWL46"],                "prefers": ["SOLID"] }
-        ]}
-      }
-    },
-    "MDL 4872 S": {
-      "label": "Single-Wall Sound Booth - 4' x 6'",
-      "exterior": { "w": 74, "h": 50 },
-      "wallThickness": 2,
+    "MDL 4230": {
+      "label": "Sound Booth · 3.5'×2.5'",
+      "module": 40,
+      "exterior": {
+        "w": 44,
+        "h": 32
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 40,
+            "h": 28
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 35.5,
+            "h": 23.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 24
+      },
       "walls": {
         "N": {
           "label": "Back",
-          "longSide": true,
           "slots": [
-            { "id": "N-wide",   "size": 46, "families": ["STDWL46"],                   "prefers": ["VNT", "CBL"] },
-            { "id": "N-narrow", "size": 22, "families": ["STDWL22", "STDWL19"],        "prefers": ["SOLID"] }
+            {
+              "id": "N0",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            }
           ]
         },
         "S": {
           "label": "Front",
-          "longSide": true,
           "slots": [
-            { "id": "S-wide",   "size": 46, "families": ["STDWL46", "WA STDDRFRM"],    "prefers": ["DRFRM"] },
-            { "id": "S-narrow", "size": 22, "families": ["STDWL22", "STDWL19"],        "prefers": ["SOLID"] }
+            {
+              "id": "S0",
+              "size": 40,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            }
           ]
         },
         "E": {
           "label": "Right",
-          "longSide": false,
           "slots": [
-            { "id": "E-wide", "size": 46, "families": ["STDWL46"], "prefers": ["SOLID"] }
+            {
+              "id": "E0",
+              "size": 28,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
           ]
         },
         "W": {
           "label": "Left",
-          "longSide": false,
           "slots": [
-            { "id": "W-wide", "size": 46, "families": ["STDWL46"], "prefers": ["SOLID"] }
+            {
+              "id": "W0",
+              "size": 28,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 4242": {
+      "label": "Sound Booth · 3.5'×3.5'",
+      "module": 40,
+      "exterior": {
+        "w": 44,
+        "h": 44
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 40,
+            "h": 40
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 35.5,
+            "h": 35.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 24
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 40,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 4260": {
+      "label": "Sound Booth · 3.5'×5'",
+      "module": 40,
+      "exterior": {
+        "w": 62,
+        "h": 44
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 58,
+            "h": 40
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 53.5,
+            "h": 35.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 24
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 18,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 40,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 18,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 4284": {
+      "label": "Sound Booth · 3.5'×7'",
+      "module": 40,
+      "exterior": {
+        "w": 86,
+        "h": 44
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 82,
+            "h": 40
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 77.5,
+            "h": 35.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 24
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 41,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 41,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 41,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 41,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 4848": {
+      "label": "Sound Booth · 4'×4'",
+      "module": 46,
+      "exterior": {
+        "w": 50,
+        "h": 50
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 46,
+            "h": 46
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 41.5,
+            "h": 41.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 30
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 46,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 46,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 46,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 46,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 4872": {
+      "label": "Sound Booth · 4'×6'",
+      "module": 46,
+      "exterior": {
+        "w": 74,
+        "h": 50
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 70,
+            "h": 46
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 65.5,
+            "h": 41.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 30
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 46,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 24,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 46,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 24,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 46,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 46,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 4896": {
+      "label": "Sound Booth · 4'×8'",
+      "module": 46,
+      "exterior": {
+        "w": 98,
+        "h": 50
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 94,
+            "h": 46
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 89.5,
+            "h": 41.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 30
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 46,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 48,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 46,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 48,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 46,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 46,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 6060": {
+      "label": "Sound Booth · 5'×5'",
+      "module": 40,
+      "exterior": {
+        "w": 62,
+        "h": 62
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 58,
+            "h": 58
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 53.5,
+            "h": 53.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 24
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 18,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 40,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 18,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E1",
+              "size": 18,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W1",
+              "size": 18,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 6084": {
+      "label": "Sound Booth · 5'×7'",
+      "module": 40,
+      "exterior": {
+        "w": 86,
+        "h": 62
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 82,
+            "h": 58
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 77.5,
+            "h": 53.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 24
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 42,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 40,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 42,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E1",
+              "size": 18,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W1",
+              "size": 18,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 7272": {
+      "label": "Sound Booth · 6'×6'",
+      "module": 46,
+      "exterior": {
+        "w": 74,
+        "h": 74
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 70,
+            "h": 70
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 65.5,
+            "h": 65.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 30
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 46,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 24,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 46,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 24,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 46,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E1",
+              "size": 24,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 46,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W1",
+              "size": 24,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 7296": {
+      "label": "Sound Booth · 6'×8'",
+      "module": 46,
+      "exterior": {
+        "w": 98,
+        "h": 74
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 94,
+            "h": 70
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 89.5,
+            "h": 65.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 30
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 46,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 48,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 46,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 48,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 46,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E1",
+              "size": 24,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 46,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W1",
+              "size": 24,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 8484": {
+      "label": "Sound Booth · 7'×7'",
+      "module": 40,
+      "exterior": {
+        "w": 86,
+        "h": 86
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 82,
+            "h": 82
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 77.5,
+            "h": 77.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 24
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 42,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 40,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 42,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E1",
+              "size": 42,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W1",
+              "size": 42,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 9696": {
+      "label": "Sound Booth · 8'×8'",
+      "module": 46,
+      "exterior": {
+        "w": 98,
+        "h": 98
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 94,
+            "h": 94
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 89.5,
+            "h": 89.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 30
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 47,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 47,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 47,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E1",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W1",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 10284": {
+      "label": "Sound Booth · 8.5'×7'",
+      "module": 40,
+      "exterior": {
+        "w": 86,
+        "h": 104
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 82,
+            "h": 100
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 77.5,
+            "h": 95.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 24
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 41,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 41,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 41,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 41,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E1",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E2",
+              "size": 20,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W1",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W2",
+              "size": 20,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 84102": {
+      "label": "Sound Booth · 7'×8.5'",
+      "module": 40,
+      "exterior": {
+        "w": 104,
+        "h": 86
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 100,
+            "h": 82
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 95.5,
+            "h": 77.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 24
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N2",
+              "size": 20,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 40,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S2",
+              "size": 20,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E1",
+              "size": 42,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W1",
+              "size": 42,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 84126": {
+      "label": "Sound Booth · 7'×10.5'",
+      "module": 40,
+      "exterior": {
+        "w": 128,
+        "h": 86
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 124,
+            "h": 82
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 119.5,
+            "h": 77.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 24
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N2",
+              "size": 44,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 40,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S2",
+              "size": 44,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E1",
+              "size": 42,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W1",
+              "size": 42,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 96120": {
+      "label": "Sound Booth · 8'×10'",
+      "module": 46,
+      "exterior": {
+        "w": 122,
+        "h": 98
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 118,
+            "h": 94
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 113.5,
+            "h": 89.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 30
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 46,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 46,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N2",
+              "size": 26,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 46,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 46,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "S2",
+              "size": 26,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E1",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W1",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 96144": {
+      "label": "Sound Booth · 8'×12'",
+      "module": 46,
+      "exterior": {
+        "w": 146,
+        "h": 98
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 142,
+            "h": 94
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 137.5,
+            "h": 89.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 30
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 47.5,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 47,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N2",
+              "size": 47.5,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 47.5,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "S2",
+              "size": 47.5,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E1",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W1",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 96168": {
+      "label": "Sound Booth · 8'×14'",
+      "module": 46,
+      "exterior": {
+        "w": 170,
+        "h": 98
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 166,
+            "h": 94
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 161.5,
+            "h": 89.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 30
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 46,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 46,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N2",
+              "size": 46,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "N3",
+              "size": 28,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 46,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 46,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "S2",
+              "size": 46,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "S3",
+              "size": 28,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E1",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W1",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 96192": {
+      "label": "Sound Booth · 8'×16'",
+      "module": 46,
+      "exterior": {
+        "w": 194,
+        "h": 98
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 190,
+            "h": 94
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 185.5,
+            "h": 89.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 30
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 47.5,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 47.5,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N2",
+              "size": 47.5,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N3",
+              "size": 47.5,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 47.5,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 47.5,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "S2",
+              "size": 47.5,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "S3",
+              "size": 47.5,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E1",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W1",
+              "size": 47,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 102102": {
+      "label": "Sound Booth · 8.5'×8.5'",
+      "module": 40,
+      "exterior": {
+        "w": 104,
+        "h": 104
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 100,
+            "h": 100
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 95.5,
+            "h": 95.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 24
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N2",
+              "size": 20,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 40,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "S2",
+              "size": 20,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E1",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E2",
+              "size": 20,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W1",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W2",
+              "size": 20,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 102126": {
+      "label": "Sound Booth · 8.5'×10.5'",
+      "module": 40,
+      "exterior": {
+        "w": 128,
+        "h": 104
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 124,
+            "h": 100
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 119.5,
+            "h": 95.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 24
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N2",
+              "size": 44,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 40,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "S2",
+              "size": 44,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E1",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E2",
+              "size": 20,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W1",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W2",
+              "size": 20,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 102144": {
+      "label": "Sound Booth · 8.5'×12'",
+      "module": 40,
+      "exterior": {
+        "w": 146,
+        "h": 104
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 142,
+            "h": 100
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 137.5,
+            "h": 95.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 24
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N2",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N3",
+              "size": 22,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 40,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "S2",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "S3",
+              "size": 22,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E1",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E2",
+              "size": 20,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W1",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W2",
+              "size": 20,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 102168": {
+      "label": "Sound Booth · 8.5'×14'",
+      "module": 40,
+      "exterior": {
+        "w": 170,
+        "h": 104
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 166,
+            "h": 100
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 161.5,
+            "h": 95.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 24
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N2",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N3",
+              "size": 46,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 40,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "S2",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "S3",
+              "size": 46,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E1",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E2",
+              "size": 20,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W1",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W2",
+              "size": 20,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "MDL 102186": {
+      "label": "Sound Booth · 8.5'×15.5'",
+      "module": 40,
+      "exterior": {
+        "w": 188,
+        "h": 104
+      },
+      "variants": {
+        "S": {
+          "wallThickness": 2,
+          "interior": {
+            "w": 184,
+            "h": 100
+          }
+        },
+        "E": {
+          "wallThickness": 4.25,
+          "interior": {
+            "w": 179.5,
+            "h": 95.5
+          }
+        }
+      },
+      "door": {
+        "wall": "S",
+        "swing": 24
+      },
+      "walls": {
+        "N": {
+          "label": "Back",
+          "slots": [
+            {
+              "id": "N0",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N1",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N2",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N3",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
+              ]
+            },
+            {
+              "id": "N4",
+              "size": 24,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "S": {
+          "label": "Front",
+          "slots": [
+            {
+              "id": "S0",
+              "size": 40,
+              "kind": "DRFRM",
+              "prefers": [
+                "DRFRM"
+              ]
+            },
+            {
+              "id": "S1",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "S2",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "S3",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "S4",
+              "size": 24,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "E": {
+          "label": "Right",
+          "slots": [
+            {
+              "id": "E0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E1",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "E2",
+              "size": 20,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
+          ]
+        },
+        "W": {
+          "label": "Left",
+          "slots": [
+            {
+              "id": "W0",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W1",
+              "size": 40,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            },
+            {
+              "id": "W2",
+              "size": 20,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
+              ]
+            }
           ]
         }
       }

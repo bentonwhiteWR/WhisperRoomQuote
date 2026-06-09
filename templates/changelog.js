@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.0', date:'June 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Top-Down Layout — full redesign + every model digitized.** The booth layout tab is rebuilt to match the printed spec sheets: real paneled walls with corner posts, sawtooth seam-seals along the interior faces, ventilation ducts that protrude from the back wall, an outward-opening door, a modular floor grid, and labeled exterior + interior dimension lines. All 26 booth sizes are now digitized from the spec-sheet top-down views (previously only 3), so the layout shows for nearly every quote. Double-wall (E) booths render their true thicker walls / smaller interior, and no-vent (NV) booths correctly drop the vents.'},
+        {t:'add', d:'**Drag-and-drop panel rearranging.** Grab any wall panel and drop it on another to swap them (e.g. move the door or a vent to a different wall) — the layout re-renders live. Built for reps and customers to visualize a booth configuration.'},
+      ]
+    },
+    {
       v:'1.83.0', date:'June 8, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Package Weight Audit on the /weights tool.** A new "Package Audit" tab runs the LIVE Packing-List generator for every booth model AND every catalog feature (HX / CP / SL / ADA / WA / AUDI / RAMP / …), then reconciles the generated bill-of-materials weight against the HubSpot price-book weight — the delta should read ~0. Each model checks its BOM net against the catalog (minus pallets); each feature checks the weight it ADDS (its net delta on a host booth) against the feature catalog weight. One sortable table + summary cards surface every mismatch, every unmapped feature (priced on the quote but not placed in the PL), every catalog SKU missing a weight, and the dropship (AP) items. It is the all-packages version of the per-PL weight banner — a one-click check that all booth and feature weights still reconcile.'},

@@ -1,0 +1,10 @@
+# Generated render/preview/test artifacts
+*.png
+preview.html
+test.html
+renders/
+renders_hi/
+out_*/
+chrome-err.txt
+*.bak.html
+_script*.js

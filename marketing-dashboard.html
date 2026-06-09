@@ -458,7 +458,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <!-- Section 1: Growth Priorities (Kanban) -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">① Growth Priorities</div>
+        <div class="section-title">① Growth Priorities<span class="tip-i" title="Data: Google Ads + Google Search Console + HubSpot, fused client-side. Every paid and SEO opportunity is scored (revenue potential × intent × confidence) and bucketed Do-Now / Next / Monitor / Ignore.">ⓘ</span></div>
         <span class="section-meta" id="growthKanbanMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -479,7 +479,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <!-- Section 3 + 4: Opportunity Queue (with root-cause diagnosis) -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">② Opportunity Queue</div>
+        <div class="section-title">② Opportunity Queue<span class="tip-i" title="Data: GSC queries/pages + Google Ads campaigns + HubSpot attribution. Every opportunity ranked by Growth Score; the Diagnosis column is the single root-cause bottleneck for each.">ⓘ</span></div>
         <span class="section-meta" id="growthQueueMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -491,7 +491,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <!-- Section 5: Target Page Analysis -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">③ Target Page Analysis</div>
+        <div class="section-title">③ Target Page Analysis<span class="tip-i" title="Data: Google Search Console query→page rankings vs the ideal commercial page (GSC_PAGE_MAP). Flags when the wrong page ranks, or no commercial page ranks at all, for each query.">ⓘ</span></div>
         <span class="section-meta" id="growthTpaMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -503,7 +503,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <!-- Section 6: Google Ads Improvement Engine -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">④ Google Ads Improvement Engine</div>
+        <div class="section-title">④ Google Ads Improvement Engine<span class="tip-i" title="Data: Google Ads campaigns + keywords (Quality Score components, Impression Share) + HubSpot revenue. Drives the per-campaign ad-copy / landing-page / budget cards. Quality Score + Impression Share only populate on a fresh Sync All.">ⓘ</span></div>
         <span class="section-meta" id="growthAdsMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -515,7 +515,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <!-- Section 8: Budget Reallocation -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">⑤ Budget Reallocation</div>
+        <div class="section-title">⑤ Budget Reallocation<span class="tip-i" title="Data: Google Ads spend + HubSpot closed-won revenue (True ROAS) + Impression Share. Sorts campaigns into Increase / Test Pull-Back / Maintain / Reduce / Pause / Investigate. Branded high-ROAS campaigns get Test Pull-Back, not Increase (organic captures that demand free).">ⓘ</span></div>
         <span class="section-meta" id="growthBudgetMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -543,7 +543,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
        Hidden until /api/marketing/attribution-coverage returns data. -->
   <div class="coverage" id="coveragePanel" style="display:none">
     <div class="coverage-head">
-      <span class="coverage-title" id="coverageTitle">Attribution coverage (last 90 days)</span>
+      <span class="coverage-title" id="coverageTitle">Attribution coverage (last 90 days)</span><span class="tip-i" title="What share of your closed-won deals, revenue, and new contacts can be tied to a marketing source. Low numbers usually mean lots of organic/direct traffic, not broken tracking. Source: HubSpot deals + contacts (first/latest source, gclid).">ⓘ</span>
       <span class="coverage-detail" id="coverageDetail"></span>
     </div>
     <div class="coverage-grid">
@@ -569,10 +569,10 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
        updated dynamically with the current day range, so "(90d)" in the
        static HTML is just the initial state. -->
   <div class="cards" id="summaryCards" style="display:none">
-    <div class="card"><div class="card-label" id="lblSpend">Total Spend (90d)</div><div class="card-value" id="kpiSpend">—</div><div class="card-sub">Across all campaigns</div></div>
-    <div class="card"><div class="card-label" id="lblClicks">Clicks (90d)</div><div class="card-value" id="kpiClicks">—</div><div class="card-sub" id="kpiCpc">— avg CPC</div></div>
+    <div class="card" title="Total Google Ads cost across all campaigns in the selected window. Source: Google Ads."><div class="card-label" id="lblSpend">Total Spend (90d)</div><div class="card-value" id="kpiSpend">—</div><div class="card-sub">Across all campaigns</div></div>
+    <div class="card" title="Total Google Ads clicks across all campaigns in the window; sub-label is the average cost per click. Source: Google Ads."><div class="card-label" id="lblClicks">Clicks (90d)</div><div class="card-value" id="kpiClicks">—</div><div class="card-sub" id="kpiCpc">— avg CPC</div></div>
     <div class="card" title="Google Ads conversion EVENTS (form fills, calls, etc.) as reported by Google's own tracking — NOT unique people. One contact can fire several, and counts can be fractional under data-driven attribution. For the people-level number, see HubSpot Contacts."><div class="card-label" id="lblConv">Google Conversions (90d)</div><div class="card-value" id="kpiConv">—</div><div class="card-sub" id="kpiCpa">— avg CPA</div></div>
-    <div class="card"><div class="card-label" id="lblValue">GA4 Conv. Value (90d)</div><div class="card-value" id="kpiValue">—</div><div class="card-sub" id="kpiRoas">— GA4 ROAS</div></div>
+    <div class="card" title="Conversion value reported by Google Analytics 4 (GA4's own modeled value), and GA4 ROAS = value ÷ spend. This is GA4's figure, NOT HubSpot closed-won revenue (see Closed Revenue / True ROAS for that). Source: Google Ads / GA4."><div class="card-label" id="lblValue">GA4 Conv. Value (90d)</div><div class="card-value" id="kpiValue">—</div><div class="card-sub" id="kpiRoas">— GA4 ROAS</div></div>
     <div class="card drillable" onclick="openDrill('revenue','Closed-won revenue — paid-attributed deals')" title="Closed-won deal revenue for deals that CLOSED in the selected window (by closedate), attributed to paid under the selected model. Full deal amount per ad-touched deal (single-touch full-credit) — the same way HubSpot's Ads tool credits, NOT a fractional multi-touch split. Click to list the deals."><div class="card-label" id="lblClosedRev">Closed Revenue (90d)</div><div class="card-value" id="kpiClosedRev">—</div><div class="card-sub" id="kpiDealCount">— deals</div></div>
     <div class="card drillable" onclick="openDrill('contacts','HubSpot contacts attributed to paid')" title="Unique HubSpot contacts we can tie to paid search via STORED signals — a captured Google gclid, or a paid-search first/latest analytics source — created in range. This is a provable floor: HubSpot's Ads tool counts MORE ad interactions (clicks that never stored a gclid), so 'all' here (~gclid count) reads lower than the Ads page's 'All ad interactions'. The First-interaction model lines up with HubSpot's 'First ad interaction'. Click to list the contacts."><div class="card-label" id="lblHsContacts">HubSpot Contacts (first-touch paid)</div><div class="card-value" id="kpiHsContacts">—</div><div class="card-sub" id="kpiHsContactsSub">attributed to paid</div></div>
     <div class="card" title="Closed-won revenue (deals that closed in the window, by closedate) ÷ total paid-search spend, for contacts attributed under the selected model. Switch models with the Attribution selector above."><div class="card-label" id="lblTrueRoas">True ROAS (First interaction)</div><div class="card-value" id="kpiTrueRoas">—</div><div class="card-sub" id="kpiTrueRoasSub">closed rev ÷ spend</div></div>
@@ -583,7 +583,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
        active attribution model + date range (driven from renderSummary). -->
   <div class="funnel-wrap" id="funnelWrap" style="display:none">
     <div class="funnel-head">
-      <div class="coverage-title" id="funnelTitle">Paid funnel (last 90 days)</div>
+      <div class="coverage-title" id="funnelTitle">Paid funnel (last 90 days)</div><span class="tip-i" title="Spend → Quotes → Closed → Revenue for paid-search-attributed deals under the selected attribution model. Quotes by quote date; closes and revenue by close date. The top Closed/Revenue is the headline the Campaigns and Search-Terms tables reconcile to. Source: Google Ads spend + HubSpot deals.">ⓘ</span>
       <span class="coverage-detail" id="funnelModelNote">—</span>
     </div>
     <div class="funnel" id="funnelStages"></div>
@@ -606,7 +606,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
   <!-- Section titles include the current date range (set dynamically). -->
   <div class="section">
     <div class="section-head">
-      <div class="section-title" id="campaignsTitle">Campaigns (last 90 days)</div>
+      <div class="section-title" id="campaignsTitle">Campaigns (last 90 days)</div><span class="tip-i" title="Every Google Ads campaign — spend/clicks/conversions from Google Ads, joined to leads/quotes/closed/revenue from HubSpot by campaign name (case- and alias-normalized). True ROAS = HubSpot closed-won revenue ÷ Google Ads spend. The 'Closed' cell and the Unattributed footer row click through to the deals.">ⓘ</span>
       <span class="section-meta" id="campaignsMeta">—</span>
     </div>
     <div id="campaignsBody">
@@ -616,7 +616,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
 
   <div class="section">
     <div class="section-head">
-      <div class="section-title" id="keywordsTitle">Keywords (last 90 days)</div>
+      <div class="section-title" id="keywordsTitle">Keywords (last 90 days)</div><span class="tip-i" title="Your bid keywords with spend, clicks, and conversions from Google Ads. No revenue column — conversion value is only tracked at the campaign level. Shows the top 200 by the active sort. Source: Google Ads.">ⓘ</span>
       <span class="section-meta" id="keywordsMeta">—</span>
     </div>
     <div id="keywordsBody"><div class="empty">No data yet.</div></div>
@@ -624,7 +624,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
 
   <div class="section">
     <div class="section-head">
-      <div class="section-title" id="searchTermsTitle">Search Terms (last 90 days)</div>
+      <div class="section-title" id="searchTermsTitle">Search Terms (last 90 days)</div><span class="tip-i" title="The actual phrases people typed (Google Ads search terms), joined to HubSpot leads/deals/revenue by the term stored on the contact's first-touch field. Deals = closed-won count; clicking it lists the full pipeline. Top 200 by the active sort. The Unattributed footer row clicks through to deals with no term match.">ⓘ</span>
       <span class="section-meta" id="searchTermsMeta">—</span>
     </div>
     <div id="searchTermsBody"><div class="empty">No data yet.</div></div>
@@ -659,9 +659,9 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
 
     <!-- Organic KPI strip: GSC totals + channel-level HubSpot tie -->
     <div class="cards" id="gscCards" style="display:none">
-      <div class="card"><div class="card-label" id="lblGscClicks">Organic Clicks (90d)</div><div class="card-value" id="gscClicks">—</div><div class="card-sub" id="gscClicksSub">—</div></div>
-      <div class="card"><div class="card-label" id="lblGscImpr">Impressions (90d)</div><div class="card-value" id="gscImpr">—</div><div class="card-sub">organic search</div></div>
-      <div class="card"><div class="card-label">Avg CTR</div><div class="card-value" id="gscCtr">—</div><div class="card-sub">clicks ÷ impressions</div></div>
+      <div class="card" title="Total organic (non-paid) clicks from Google Search Console in the window. Source: Google Search Console."><div class="card-label" id="lblGscClicks">Organic Clicks (90d)</div><div class="card-value" id="gscClicks">—</div><div class="card-sub" id="gscClicksSub">—</div></div>
+      <div class="card" title="Total organic impressions — how many times your pages appeared in Google results — in the window. Source: Google Search Console."><div class="card-label" id="lblGscImpr">Impressions (90d)</div><div class="card-value" id="gscImpr">—</div><div class="card-sub">organic search</div></div>
+      <div class="card" title="Organic clicks ÷ impressions for the window. Source: Google Search Console."><div class="card-label">Avg CTR</div><div class="card-value" id="gscCtr">—</div><div class="card-sub">clicks ÷ impressions</div></div>
       <div class="card" title="Impression-weighted average organic position. Lower is better (1 = top of results)."><div class="card-label">Avg Position</div><div class="card-value" id="gscPos">—</div><div class="card-sub">lower = higher rank</div></div>
       <div class="card drillable" onclick="openDrill('organic-leads','Organic leads — HubSpot contacts')" title="HubSpot contacts whose source is ORGANIC_SEARCH (channel-level — Google withholds the organic query, so organic leads can't be split by keyword), created in range under the selected model. Click to list the contacts."><div class="card-label" id="lblGscLeads">Organic Leads (90d)</div><div class="card-value" id="gscLeads">—</div><div class="card-sub" id="gscLeadsSub">—</div></div>
       <div class="card drillable" onclick="openDrill('organic-revenue','Organic closed-won deals')" title="Closed-won revenue from ORGANIC_SEARCH-sourced contacts, by close date in range, under the selected model. Click to list the deals."><div class="card-label" id="lblGscRev">Organic Closed Rev (90d)</div><div class="card-value" id="gscRev">—</div><div class="card-sub" id="gscRevSub">—</div></div>
@@ -672,7 +672,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
          own axis (left = first active, right = second). Hover for per-day. -->
     <div class="section" id="gscChartSection" style="display:none">
       <div class="section-head">
-        <div class="section-title">Organic Performance</div>
+        <div class="section-title">Organic Performance<span class="tip-i" title="Your organic Google Search Console totals — clicks, impressions, CTR, average position — charted daily for the window. Toggle metrics with the legend chips. Source: Google Search Console.">ⓘ</span></div>
         <span class="section-meta">daily · click a metric to toggle</span>
       </div>
       <div class="gsc-legend" id="gscLegend"></div>
@@ -682,7 +682,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <!-- v1.67.x — Revenue Opportunity Engine (flagship: which keyword to improve next) -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">⚡ Revenue Opportunity Engine</div>
+        <div class="section-title">⚡ Revenue Opportunity Engine<span class="tip-i" title="Data: GSC organic queries + a revenue-per-click model from HubSpot closed-won + the query's Google Ads conversion rate. Ranks position 4–15 organic queries by the modeled added revenue from improving their rank. Estimates, for prioritization.">ⓘ</span></div>
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <div class="gsc-mode-toggle" aria-label="Opportunity mode">
             <button data-revmode="commercial" class="active" onclick="setGscRevMode('commercial')">🎯 Commercial Booth</button>
@@ -702,7 +702,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <!-- v1.67.x — Opportunity Action Engine: per-query bottleneck + recommended action -->
     <div class="section" id="gscActionSection" style="display:none">
       <div class="section-head">
-        <div class="section-title">Opportunity Action Engine</div>
+        <div class="section-title">Opportunity Action Engine<span class="tip-i" title="Data: GSC query→page rankings + your WhisperRoom CTR benchmark + page-strength signals. Turns each revenue opportunity into a specific action (CTR / Ranking / Content / Authority / Landing Page / Missing Page). Content & Authority are inferred — treat as leads to verify.">ⓘ</span></div>
         <span class="section-meta" id="gscActionMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 14px;line-height:1.6">
@@ -714,7 +714,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <!-- Hero: paid × organic overlap -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">Paid × Organic Overlap</div>
+        <div class="section-title">Paid × Organic Overlap<span class="tip-i" title="Data: Google Ads search terms + GSC organic rankings. Flags terms you pay for AND rank organically (Cannibalization — candidate to pull paid back) vs paid terms with little organic presence (Organic gap — paid is essential there).">ⓘ</span></div>
         <span class="section-meta" id="gscOverlapMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -729,7 +729,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <!-- v1.65.4 — Striking distance: page-2 queries closest to ranking -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">Striking Distance — page-2 opportunities</div>
+        <div class="section-title">Striking Distance — page-2 opportunities<span class="tip-i" title="Data: Google Search Console. Queries you already rank for at average position 10–20 (page 2) with real impressions — the closest to breaking onto page 1. Sorted by impressions (biggest missed reach first).">ⓘ</span></div>
         <span class="section-meta" id="gscStrikingMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -741,7 +741,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <!-- v1.65.4 — CTR opportunity: page-1 rows under expected CTR for rank -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">CTR Opportunity — title/meta rewrite candidates</div>
+        <div class="section-title">CTR Opportunity — title/meta rewrite candidates<span class="tip-i" title="Data: GSC + an expected-CTR-by-rank curve. Page-1 pages clicking below par for their position (e.g. sitting at #3 but clicking like a #8) — prime title/meta rewrite targets. Sorted by missed clicks. The expected-CTR curve is an industry approximation.">ⓘ</span></div>
         <span class="section-meta" id="gscCtrOppMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -753,7 +753,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <!-- v1.65.4 — Movers: period-over-period gainers & losers -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">Movers — vs previous period</div>
+        <div class="section-title">Movers — vs previous period<span class="tip-i" title="Data: Google Search Console, current window vs the immediately preceding equal window. The biggest organic-click gainers (▲) and losers (▼). Toggle Queries vs Pages. A rising rank usually drives a gain.">ⓘ</span></div>
         <div style="display:flex;align-items:center;gap:12px">
           <div class="gsc-dim-toggle" id="gscMoversDimToggle">
             <button class="active" data-dim="query" onclick="setMoversDim('query')">Queries</button>
@@ -771,7 +771,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <!-- Organic queries -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">Organic Queries</div>
+        <div class="section-title">Organic Queries<span class="tip-i" title="Raw organic query table — clicks, impressions, CTR, position. Source: Google Search Console. Google withholds which organic query drove a HubSpot lead, so there's no per-query revenue here (the revenue tie is channel-level in the cards above).">ⓘ</span></div>
         <span class="section-meta" id="gscQueriesMeta">—</span>
       </div>
       <div id="gscQueriesBody"><div class="empty">No data yet.</div></div>
@@ -780,7 +780,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <!-- Organic pages -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">Organic Pages</div>
+        <div class="section-title">Organic Pages<span class="tip-i" title="Raw organic landing-page table — clicks, impressions, CTR, position per page. Source: Google Search Console. Use the checkbox to hide /blog pages for a commercial-only snapshot.">ⓘ</span></div>
         <span class="section-meta" id="gscPagesMeta">—</span>
       </div>
       <label class="gsc-toolbar"><input type="checkbox" onchange="toggleHideBlog(this.checked)"> Hide <code>/blog</code> pages (non-blog snapshot)</label>

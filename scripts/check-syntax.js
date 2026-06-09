@@ -12,6 +12,10 @@
 //      not just parsed — e.g. inner-string escapes that fool --check).
 //   4. If `lib/packing-list.js` is staged, ALSO require + init + generate()
 //      with an empty list — catches broken exports / missing data files.
+//   5. Strict-parse staged .json files AND reject a UTF-8 BOM — PowerShell's
+//      `Set-Content -Encoding utf8` writes one, `require()` tolerates it, but
+//      puppeteer's installer (parse-json) does not → Railway build failure
+//      (bit us on the v1.84.28 package.json bump).
 //
 // Exit 0 → commit proceeds. Exit non-zero → git pre-commit hook aborts.
 
@@ -63,16 +67,34 @@ function smokeTest(file) {
   }
 }
 
+function checkJson(file) {
+  try {
+    const buf = require('fs').readFileSync(path.resolve(process.cwd(), file));
+    if (buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) {
+      return 'file starts with a UTF-8 BOM — strict JSON parsers (e.g. puppeteer’s installer) reject it and the Railway build fails. Re-save without BOM.';
+    }
+    JSON.parse(buf.toString('utf8'));
+    return null;
+  } catch (e) {
+    return e.message;
+  }
+}
+
 const files = stagedFiles();
 const jsFiles = files.filter(f => /\.js$/.test(f) && !f.startsWith('node_modules/'));
+const jsonFiles = files.filter(f => /\.json$/.test(f) && !f.startsWith('node_modules/'));
 const failures = [];
 
-if (!jsFiles.length) {
-  console.log(dim('[check-syntax] no staged .js files — skipping'));
+if (!jsFiles.length && !jsonFiles.length) {
+  console.log(dim('[check-syntax] no staged .js/.json files — skipping'));
   process.exit(0);
 }
 
-console.log(dim('[check-syntax] checking ' + jsFiles.length + ' staged JS file(s)…'));
+console.log(dim('[check-syntax] checking ' + jsFiles.length + ' staged JS + ' + jsonFiles.length + ' JSON file(s)…'));
+for (const f of jsonFiles) {
+  const jsonErr = checkJson(f);
+  if (jsonErr) failures.push({ file: f, kind: 'json', err: jsonErr });
+}
 for (const f of jsFiles) {
   const syntaxErr = checkSyntax(f);
   if (syntaxErr) {
@@ -91,7 +113,7 @@ if (failures.length) {
   console.error(red('✗ pre-commit check FAILED (' + failures.length + ' issue' + (failures.length === 1 ? '' : 's') + '):'));
   for (const f of failures) {
     console.error('');
-    console.error(red(f.kind === 'syntax' ? '  Syntax error in ' : '  Load error in ') + f.file);
+    console.error(red(f.kind === 'syntax' ? '  Syntax error in ' : f.kind === 'json' ? '  Invalid JSON in ' : '  Load error in ') + f.file);
     console.error(f.err.split('\n').map(l => '    ' + l).join('\n'));
   }
   console.error('');

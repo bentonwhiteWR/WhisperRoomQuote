@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.29', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Build guard: pre-commit check now validates staged JSON files.** A version bump saved package.json with a UTF-8 byte-order mark, which the strict JSON parser inside the puppeteer installer rejects — Railway builds failed at npm install until a hotfix. The pre-commit syntax check now strict-parses every staged .json file and explicitly rejects a BOM, so this class of break cannot reach a deploy again.'},
+      ]
+    },
+    {
       v:'1.84.28', date:'June 9, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Top-Down Layout: seam seals are now clearly visible.** The mid-wall plinth seals (at every panel-to-panel joint) and the chamfered corner L-brackets were drawn too small and in a dark speckle that vanished against the carpet — they now scale with the wall thickness, match the spec-sheet profile proportions, and carry a light halo so they pop. Joints are also placed per-wall from each wall panel layout instead of mirroring the back wall onto the front, and the stray floor-spanning seam line is gone.'},

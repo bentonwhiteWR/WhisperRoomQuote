@@ -114,6 +114,11 @@
   .addrow input{padding:4px 8px;font-size:11px;background:#fff;border:1px solid #ddd;border-radius:5px;color:#1a1a1a;font-family:inherit;min-width:160px}
   .add-btn{padding:5px 11px;background:rgba(238,98,22,.1);color:#ee6216;border:1px solid rgba(238,98,22,.35);border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.04em;text-transform:uppercase}
   .add-btn:hover{background:rgba(238,98,22,.18)}
+  /* 4016 jamb-adapter door-side toggle (no-print) */
+  .jamb-toggle{display:inline-flex;align-items:center;gap:6px;margin-left:auto;background:#fafafa;border:1px solid #eee;border-radius:7px;padding:3px 7px}
+  .jamb-label{font-size:10px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:.06em}
+  .jamb-btn{padding:4px 11px;font-size:11px;font-weight:700;border:1px solid #ddd;background:#fff;color:#888;border-radius:5px;cursor:pointer;font-family:inherit}
+  .jamb-btn.active{background:#ee6216;border-color:#ee6216;color:#fff}
 
   /* Page footer */
   .pl-foot{margin-top:14px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#888}
@@ -168,6 +173,7 @@
   let COMPONENTS = {};
   let serialLines = [];   // order_data.serialNumber split by line; booth ri ↔ line ri (two-way w/ Orders drawer)
   let _snTimer = null;
+  let jambSides = [];     // per-booth 4016 jamb-adapter side: 'R' = Z20 (T/R, default), 'L' = Z21 (T/L)
   const quoteNumber = decodeURIComponent((location.pathname.match(/\/pl\/(.+)$/) || [])[1] || '').replace(/\/+$/, '');
 
   // Open the shipping-label print view for a SINGLE booth (room index) in a new tab.
@@ -768,6 +774,7 @@
       if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
       DATA = d; COMPONENTS = d.components || {};
       serialLines = String(DATA.serialNumber || '').split('\n');   // seed per-booth S/N from the order
+      jambSides = Array.isArray(DATA.jambSide) ? DATA.jambSide.slice() : [];   // seed per-booth jamb side
       render();
     } catch(e){
       document.getElementById('rooms').innerHTML = '<div class="pl-page"><div class="empty">Failed to load: ' + esc(e.message) + '</div></div>';
@@ -876,6 +883,7 @@
         + '</div>';
       }
 
+      const jambSide = applyJamb(ri);           // null if this booth has no jamb adapter (Z20/Z21)
       const t = roomTotals(rm);
       const savedSn = serialLines[ri] || '';   // booth ri ↔ line ri of order_data.serialNumber
 
@@ -929,6 +937,7 @@
         + '<div class="no-print" style="display:flex;gap:8px;margin:0 0 12px">'
           + '<button class="add-btn" onclick="openLabels(\'box\',' + ri + ')">🏷 Box Labels (' + (rm.boxCount||0) + ')</button>'
           + '<button class="add-btn" onclick="openLabels(\'pallet\',' + ri + ')">🏷 Pallet Labels</button>'
+          + (jambSide ? jambToggleHtml(ri, jambSide) : '')
         + '</div>'
         + '<div class="tab-panel active" data-tab="pl">'
         + '<table class="pl">'
@@ -1026,6 +1035,43 @@
     el.textContent = s==='saving' ? 'Saving S/N…' : s==='saved' ? 'S/N saved ✓' : 'S/N not saved (order only)';
     el.style.color = s==='error' ? '#b91c1c' : s==='saved' ? '#16a34a' : '#888';
   }
+  // ── 4016 jamb-adapter door-side toggle ─────────────────────────────
+  // A 4016 HX + WA/ADA booth carries one tall jamb-adapter box: Z20 (T/R) or
+  // Z21 (T/L), depending which side of the door it goes. The two weigh the same
+  // (108 lb), so flipping changes only the part number the floor picks — the rep
+  // confirms placement with the client. Default Right (Z20); saved per booth to
+  // order_data.jambSide (array, booth ri ↔ index), like the S/N.
+  function applyJamb(ri){
+    const rm = DATA.rooms[ri]; if (!rm || !rm.lines) return null;
+    const li = rm.lines.findIndex(l => l.code === 'Z20' || l.code === 'Z21');
+    if (li < 0) return null;                       // not a jamb booth
+    const want = (jambSides[ri] === 'L') ? 'L' : 'R';
+    const wantCode = want === 'L' ? 'Z21' : 'Z20';
+    const line = rm.lines[li];
+    if (line.code !== wantCode) {                  // swap the line to the chosen side
+      const c = (COMPONENTS && COMPONENTS[wantCode]) || {};
+      line.code = wantCode;
+      if (c.pack != null) line.pack = c.pack;
+      if (c.desc != null) line.desc = c.desc;
+      if (c.lb   != null) line.eachLb = c.lb;       // Z20/Z21 same weight — totals unchanged
+      if (c.L != null) line.L = c.L; if (c.W != null) line.W = c.W; if (c.T != null) line.T = c.T;
+    }
+    return want;
+  }
+  function jambToggleHtml(ri, side){
+    const btn = (s, lbl) => '<button class="jamb-btn' + (side === s ? ' active' : '') + '" onclick="setJamb(' + ri + ',\'' + s + '\')">' + lbl + '</button>';
+    return '<div class="jamb-toggle" title="Which side of the door the WA jamb adapter goes (Z20 = Right, Z21 = Left). Same weight either way — confirm placement with the client.">'
+      + '<span class="jamb-label">Door jamb</span>' + btn('R', 'Right') + btn('L', 'Left') + '</div>';
+  }
+  function setJamb(ri, side){
+    jambSides[ri] = side;
+    render();
+    fetch('/api/orders/' + encodeURIComponent(quoteNumber), {
+      method:'PATCH', credentials:'include', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ jambSide: jambSides })
+    }).catch(()=>{});
+  }
+
   function saveDate(val){ try { localStorage.setItem(dateKey(), val); } catch(e){} }
   function rmRow(ri, li){ DATA.rooms[ri].lines.splice(li,1); render(); }
   // Keep a booth's rows sorted by code (A01 first … Z64 last, numeric-aware).

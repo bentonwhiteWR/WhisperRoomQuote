@@ -51,6 +51,24 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.26', date:'June 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing list: per-booth "Door jamb" toggle for 4016 booths.** On a 4016 HX + Wide-Access/ADA booth, a Right/Left switch now appears on that booth\'s packing list to set which side of the door the tall jamb adapter goes (Z20 = Right, Z21 = Left). Defaults to Right; flipping it swaps the part and saves to the order (per booth), so the printed PL stays correct. Same weight either way, so it only affects which part the floor pulls — confirm the door side with the client.'},
+      ]
+    },
+    {
+      v:'1.84.25', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**HX + Wide-Access/ADA on a 4016 booth now adds the tall jamb adapter.** Completes the 4016 swap: the inner jamb-adapter box (Z19) becomes its Height-Extension version — Z20 (Tall/Right of door) by default, or Z21 (Tall/Left). The two weigh the same, so the door side is a placement detail you confirm with the client; a one-tap toggle on the packing list to flip Right/Left is coming next.'},
+      ]
+    },
+    {
+      v:'1.84.24', date:'June 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing list: HX + Wide-Access/ADA now swaps the door-side height-extension walls.** When a booth has HX (height extension) together with a WA upgrade or ADA, the extension walls at the door are now re-sized to the correct WA-door extension parts for the booth\'s WA Type (4016/4040/4622/4646), per the spec chart — standard parts on every booth, plus the inner-shell (IEP) parts on double-wall (E) booths. This fills a combo that was previously left as-is, correcting those packing lists and their weights.'},
+      ]
+    },
+    {
       v:'1.84.22', date:'June 9, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Fixed bogus "price has changed" prompts when loading saved quotes.** The check now matches each line item to the current product by NAME instead of the record ID stored on the quote. A catalog re-import (CSV) can change HubSpot record IDs, which left saved quotes pointing at the wrong product and showing wildly wrong "current" prices. Names are stable, so the comparison is now accurate; a price that can\'t be resolved no longer triggers a prompt.'},

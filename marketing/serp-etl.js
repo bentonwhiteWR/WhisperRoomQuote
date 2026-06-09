@@ -188,12 +188,31 @@ function _parseResult(keyword, result) {
   const serpFeatures = {};
   featureTypes.forEach(t => { if (t !== 'organic') serpFeatures[t] = true; });
 
+  // Paid / shopping units above us — WHO is advertising on this term. The gap
+  // between our organic rank and absolute rank is partly THESE. Knowing the
+  // advertiser domains powers the "Defend vs Pull-Back" call: a competitor ad
+  // above our organic #1 is a defend signal; nobody bidding = don't waste spend.
+  const PAID_TYPES = ['paid', 'shopping', 'commercial_units', 'popular_products', 'google_shopping'];
+  const paidMap = new Map();
+  items.forEach(it => {
+    const ty = it.type || '';
+    if (!PAID_TYPES.some(t => ty.includes(t))) return;
+    const push = (dom, url, title) => {
+      const d = (dom || _domain(url) || '').toLowerCase();
+      if (d && !paidMap.has(d)) paidMap.set(d, { domain: d, url: url || '', title: title || '', unit: ty });
+    };
+    if (it.domain || it.url) push(it.domain, it.url, it.title);
+    (it.items || []).forEach(p => push(p.domain || p.seller, p.url, p.title)); // nested shopping products
+  });
+  const paidResults = Array.from(paidMap.values()).slice(0, 10);
+
   return {
     keyword,
     our_rank:          ours ? ours.rank : null,      // organic position
     our_rank_abs:      ours ? ours.rankAbs : null,   // position among ALL SERP elements
     our_url:           ours ? ours.url : null,
     top_results:       organic.slice(0, 10),          // each carries rank + rankAbs
+    paid_results:      paidResults,                    // advertisers running on this term
     ai_overview:       !!aiEl,
     ai_overview_cited: aiRefs.some(r => r.domain.includes(OUR_DOMAIN)),
     ai_overview_refs:  aiRefs.slice(0, 12),
@@ -205,13 +224,14 @@ async function _upsert(db, row) {
   await db.query(`
     INSERT INTO marketing_serp_snapshots
       (keyword, location_code, checked_on, our_rank, our_rank_abs, our_url, top_results,
-       ai_overview, ai_overview_cited, ai_overview_refs, serp_features, fetched_at)
-    VALUES ($1, $2, CURRENT_DATE, $3, $4, $5, $6::jsonb, $7, $8, $9::jsonb, $10::jsonb, NOW())
+       paid_results, ai_overview, ai_overview_cited, ai_overview_refs, serp_features, fetched_at)
+    VALUES ($1, $2, CURRENT_DATE, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10::jsonb, $11::jsonb, NOW())
     ON CONFLICT (keyword, location_code, checked_on) DO UPDATE SET
       our_rank          = EXCLUDED.our_rank,
       our_rank_abs      = EXCLUDED.our_rank_abs,
       our_url           = EXCLUDED.our_url,
       top_results       = EXCLUDED.top_results,
+      paid_results      = EXCLUDED.paid_results,
       ai_overview       = EXCLUDED.ai_overview,
       ai_overview_cited = EXCLUDED.ai_overview_cited,
       ai_overview_refs  = EXCLUDED.ai_overview_refs,
@@ -219,7 +239,8 @@ async function _upsert(db, row) {
       fetched_at        = NOW()
   `, [
     row.keyword, LOCATION_CODE, row.our_rank, row.our_rank_abs, row.our_url,
-    JSON.stringify(row.top_results), row.ai_overview, row.ai_overview_cited,
+    JSON.stringify(row.top_results), JSON.stringify(row.paid_results),
+    row.ai_overview, row.ai_overview_cited,
     JSON.stringify(row.ai_overview_refs), JSON.stringify(row.serp_features),
   ]);
 }

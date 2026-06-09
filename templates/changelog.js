@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.13', date:'June 9, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Shipping Labels page now has a favicon** (a 🏷️ tag icon) so the print tab is easy to spot among open tabs.'},
+      ]
+    },
+    {
       v:'1.84.12', date:'June 9, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Packing list now reflects the foam color set on the order.** If a quote has become an order, the foam color, hinge, and WA-type set in the Orders drawer now drive the packing list — previously the PL only read the original quote, so changing the foam on the order didn\'t update the PL. The order\'s value wins; if none is set, it falls back to the accepted quote value.'},

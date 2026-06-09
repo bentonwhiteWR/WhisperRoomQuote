@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.26', date:'June 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing list: per-booth "Door jamb" toggle for 4016 booths.** On a 4016 HX + Wide-Access/ADA booth, a Right/Left switch now appears on that booth\'s packing list to set which side of the door the tall jamb adapter goes (Z20 = Right, Z21 = Left). Defaults to Right; flipping it swaps the part and saves to the order (per booth), so the printed PL stays correct. Same weight either way, so it only affects which part the floor pulls — confirm the door side with the client.'},
+      ]
+    },
+    {
       v:'1.84.25', date:'June 9, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**HX + Wide-Access/ADA on a 4016 booth now adds the tall jamb adapter.** Completes the 4016 swap: the inner jamb-adapter box (Z19) becomes its Height-Extension version — Z20 (Tall/Right of door) by default, or Z21 (Tall/Left). The two weigh the same, so the door side is a placement detail you confirm with the client; a one-tap toggle on the packing list to flip Right/Left is coming next.'},

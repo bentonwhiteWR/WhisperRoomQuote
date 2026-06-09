@@ -10775,9 +10775,13 @@ ${q.accepted ? `
       // the PL viewer can seed per-booth S/N (booth ri ↔ line ri) and stay two-way
       // with the Orders drawer. Empty for a quote that isn't an order yet.
       let serialNumber = '';
+      let jambSide = [];   // per-booth 4016 jamb-adapter side ('R' Z20 / 'L' Z21)
       try {
         const or = await db.query('SELECT order_data FROM orders WHERE quote_number = $1', [quoteNumber]);
-        if (or.rows[0] && or.rows[0].order_data) serialNumber = or.rows[0].order_data.serialNumber || '';
+        if (or.rows[0] && or.rows[0].order_data) {
+          serialNumber = or.rows[0].order_data.serialNumber || '';
+          jambSide = Array.isArray(or.rows[0].order_data.jambSide) ? or.rows[0].order_data.jambSide : [];
+        }
       } catch (e) { /* no order row yet */ }
       // Weight cross-check: the quote's total weight (catalog / price-book — an
       // INDEPENDENT source) vs the PL's GROSS (summed BOM net + pallets × 144).
@@ -10806,6 +10810,7 @@ ${q.accepted ? `
         quoteWeight,
         quoteWeightNet,
         serialNumber,
+        jambSide,
         components: packingList.componentDict(),
       });
     } catch (e) {
@@ -14233,7 +14238,7 @@ ${q.accepted ? `
     const quoteNumber = decodeURIComponent(pathname.replace('/api/orders/', '').trim());
     try {
       const body = JSON.parse(await readBody(req));
-      const { customer, foamColor, hingePreference, apColor, waType, productionNotes, deliveryNotes, shipped, changes, repName, freightCost, freightRef, shipEmailTo, shipEmailCc, markShipped, serialNumber, shipmentFields } = body;
+      const { customer, foamColor, hingePreference, apColor, waType, productionNotes, deliveryNotes, shipped, changes, repName, freightCost, freightRef, shipEmailTo, shipEmailCc, markShipped, serialNumber, jambSide, shipmentFields } = body;
 
       if (!db) { json({ error: 'No database' }, 500); return; }
 
@@ -14446,6 +14451,7 @@ ${q.accepted ? `
         apColor:          apColor          !== undefined ? apColor          : currentOrderData.apColor,
         waType:           waType           !== undefined ? waType           : currentOrderData.waType,
         serialNumber:     serialNumber     !== undefined ? serialNumber     : currentOrderData.serialNumber,
+        jambSide:         jambSide         !== undefined ? jambSide         : currentOrderData.jambSide,
         productionNotes:  productionNotes  !== undefined ? productionNotes  : currentOrderData.productionNotes,
         deliveryNotes:    deliveryNotes    !== undefined ? deliveryNotes    : currentOrderData.deliveryNotes,
         shipped:          mergedShipped,

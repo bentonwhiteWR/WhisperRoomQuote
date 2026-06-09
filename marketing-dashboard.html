@@ -1170,7 +1170,56 @@ function renderSeo(d) {
     </tbody></table>
   </div>`;
 
-  body.innerHTML = stats + compStrip + table;
+  // ── Paid Defense: Defend vs Pull-Back ────────────────────────────────
+  // Turns the SERP signals into a paid-strategy call. A domain counts as a
+  // "competitor" unless it's a marketplace / social / forum / reference / edu
+  // /gov site (those aren't booth sellers we compete with for the sale).
+  const NON_COMPETITOR = ['amazon','ebay','walmart','etsy','reddit','youtube','instagram','facebook','pinterest','twitter','x.com','tiktok','wikipedia','quora','medium','linkedin','yelp','google','github','kickstarter','indiegogo','vimeo','soundcloud','spotify','homedepot','lowes','target','aliexpress','alibaba'];
+  const isCompetitor = dom => {
+    const d = (dom || '').toLowerCase();
+    if (!d || d.includes('whisperroom')) return false;
+    if (/\.(edu|gov)(\/|$)/.test(d) || d.includes('lib.')) return false;
+    return !NON_COMPETITOR.some(n => d.includes(n));
+  };
+  const serpRec = r => {
+    if (r.our_rank == null) return null;  // not ranking = an SEO problem, not a paid-defense call
+    if (/\b(how to|diy|build|tips|guide|ideas|what is|review)\b/i.test(r.keyword) || /soundproof(ing)? a room/i.test(r.keyword)) return null; // informational
+    const compAds = (r.paid_results || []).filter(a => isCompetitor(a.domain));
+    const gap = r.our_rank_abs != null ? r.our_rank_abs - r.our_rank : 0;
+    const buried   = r.our_rank <= 5 && gap >= 3;
+    const aiThreat = r.ai_overview && !r.ai_overview_cited;
+    const strong   = r.our_rank <= 3;
+    if (compAds.length || buried || aiThreat) {
+      const why = [];
+      if (compAds.length) why.push(`${compAds.slice(0,2).map(a => _serpDomainShort(a.domain)).join(', ')} ${compAds.length > 1 ? 'are' : 'is'} advertising above you`);
+      if (buried)   why.push(`rank #${r.our_rank} organically but buried at abs #${r.our_rank_abs} (${gap} above)`);
+      if (aiThreat) why.push('AI Overview present and you are not cited');
+      return { kind: 'defend', r, why: why.join('; '), priority: compAds.length ? 3 : buried ? 2 : 1 };
+    }
+    if (strong && gap < 3) {
+      return { kind: 'pullback', r, why: `you rank #${r.our_rank} organically with a clean SERP (nothing stacked above) — paid clicks here are likely redundant`, priority: 0 };
+    }
+    return null;
+  };
+  const recs = rows.map(serpRec).filter(Boolean);
+  const defends   = recs.filter(x => x.kind === 'defend').sort((a, b) => b.priority - a.priority || a.r.our_rank - b.r.our_rank);
+  const pullbacks = recs.filter(x => x.kind === 'pullback').sort((a, b) => a.r.our_rank - b.r.our_rank);
+  const recBadge = k => k === 'defend'
+    ? '<span class="mine-tag" style="background:rgba(248,113,113,.16);color:#f87171">▲ Defend</span>'
+    : '<span class="mine-tag" style="background:rgba(95,217,138,.16);color:#5fd98a">▽ Pull back</span>';
+  const recRow = x => `<tr>
+    <td><a href="${googleUrl(x.r.keyword)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(x.r.keyword)}</a></td>
+    <td class="num">#${x.r.our_rank}</td>
+    <td>${recBadge(x.kind)}</td>
+    <td style="color:var(--muted);font-size:11px">${escHtml(x.why)}</td>
+  </tr>`;
+  const defense = (defends.length || pullbacks.length) ? `<div class="section">
+    <div class="section-head"><div class="section-title">Paid Defense — Defend vs Pull-Back<span class="tip-i" title="A paid-strategy call from the live SERP. DEFEND = your organic visibility is suppressed (a competitor is advertising above you, you're buried below ads/features, or an AI Overview doesn't cite you) on a commercial term — paid keeps you visible. PULL BACK = you rank top-3 with a clean SERP, so paid clicks are likely redundant with free organic. NOTE: this is the SERP side only — it doesn't yet know your actual ad spend or True ROAS (that's the Growth Engine / Phase 1.x), so 'pull back' assumes you're currently bidding the term.">ⓘ</span></div><span class="section-meta">${defends.length} defend · ${pullbacks.length} pull-back</span></div>
+    <table><thead><tr><th>Keyword</th><th class="num">Organic</th><th>Call</th><th>Why</th></tr></thead>
+      <tbody>${[...defends, ...pullbacks].map(recRow).join('')}</tbody></table>
+  </div>` : '';
+
+  body.innerHTML = stats + compStrip + table + defense;
 }
 
 // ── State (v1.46.10) ────────────────────────────────────────────────

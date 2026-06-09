@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.24', date:'June 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Packing list: HX + Wide-Access/ADA now swaps the door-side height-extension walls.** When a booth has HX (height extension) together with a WA upgrade or ADA, the extension walls at the door are now re-sized to the correct WA-door extension parts for the booth\'s WA Type (4016/4040/4622/4646), per the spec chart — standard parts on every booth, plus the inner-shell (IEP) parts on double-wall (E) booths. This fills a combo that was previously left as-is, correcting those packing lists and their weights.'},
+      ]
+    },
+    {
       v:'1.84.22', date:'June 9, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Fixed bogus "price has changed" prompts when loading saved quotes.** The check now matches each line item to the current product by NAME instead of the record ID stored on the quote. A catalog re-import (CSV) can change HubSpot record IDs, which left saved quotes pointing at the wrong product and showing wildly wrong "current" prices. Names are stable, so the comparison is now accurate; a price that can\'t be resolved no longer triggers a prompt.'},

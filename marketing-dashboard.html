@@ -270,7 +270,14 @@ td.drillable:hover{color:var(--orange)}
 .mine-tbl th{text-align:left;font-size:10px;color:var(--muted);font-weight:600;padding:3px 6px;border-bottom:1px solid var(--border)}
 .mine-tbl td{padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top}
 .mine-tbl td.num,.mine-tbl th.num{text-align:right;font-family:var(--mono)}
-.mine-more{font-size:10px;color:var(--muted);margin-top:6px}
+.mine-more{font-size:10px;color:var(--muted);margin-top:6px;cursor:pointer;user-select:none}
+.mine-more:hover{color:var(--orange)}
+/* v1.84.9 — expandable mining panels: rows past the top 15 hide until expanded */
+.mine-tbl tr.mine-extra{display:none}
+.mine-tbl.mine-expanded tr.mine-extra{display:table-row}
+/* v1.84.9 — hover-description marker (ⓘ) on section / table / panel titles */
+.tip-i{display:inline-block;margin-left:5px;font-size:10px;color:var(--muted);cursor:help;opacity:.5;font-weight:400;vertical-align:middle}
+.tip-i:hover{opacity:1;color:var(--orange)}
 .mine-tag{display:inline-block;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:4px;white-space:nowrap}
 .tag-comp{background:rgba(239,68,68,.16);color:#ef4444}
 .tag-off{background:rgba(251,146,60,.16);color:#fb923c}
@@ -520,7 +527,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <!-- Section 7: Search-Term Mining (Deploy 3) -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">⑥ Search-Term Mining</div>
+        <div class="section-title">⑥ Search-Term Mining<span class="tip-i" title="The actual phrases that triggered your Google Ads (marketing_search_terms), cross-referenced with your bid keywords, HubSpot closed-won revenue, and Google Search Console organic rankings. Four review queues. Refreshed on Sync All.">ⓘ</span></div>
         <span class="section-meta" id="growthMiningMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -2537,28 +2544,42 @@ function renderGrowthBudget(budget) {
     `~$${fmtInt(Math.round(totalReduce))} in reduce / pause candidates` + (totalTest > 0 ? ` · ~$${fmtInt(Math.round(totalTest))} branded spend to test pulling back` : '') + ` this window`;
 }
 
+// v1.84.9 — render a hoverable "ⓘ" marker after a title. `text` shows in the
+// native tooltip box on hover (what the section is + where the data comes from).
+function tipI(text) {
+  return ` <span class="tip-i" title="${String(text).replace(/"/g, '&quot;')}">ⓘ</span>`;
+}
+
+// v1.84.9 — toggle a mining panel between its top-15 view and all rows. The
+// "+N more" note is the click target; rows past the cap carry .mine-extra.
+function toggleMine(noteEl) {
+  const tbl = noteEl.closest('.mine-panel').querySelector('.mine-tbl');
+  if (!tbl) return;
+  const open = tbl.classList.toggle('mine-expanded');
+  const n = parseInt(noteEl.dataset.n) || 0;
+  noteEl.textContent = open ? '− show fewer (top 15)' : `+ ${fmtInt(n - 15)} more — show all ${fmtInt(n)}`;
+}
+
 function renderGrowthMining(m) {
   const el = document.getElementById('growthMiningBody'), meta = document.getElementById('growthMiningMeta');
   if (!m || !m.termCount) { el.innerHTML = '<div class="empty">No search-term data yet. Press <strong>↻ Sync All</strong>.</div>'; meta.textContent = ''; return; }
   const CAP = 15;
-  const cap = arr => ({ rows: arr.slice(0, CAP), more: Math.max(0, arr.length - CAP) });
-  const moreNote = more => more ? `<div class="mine-more">+ ${fmtInt(more)} more below the top ${CAP} (sorted by spend/revenue)</div>` : '';
+  // v1.84.9 — render ALL rows; rows past the cap carry .mine-extra (hidden until
+  // the "+N more" note is clicked). rc() tags those rows; moreNote() is the toggle.
+  const rc = i => i >= CAP ? ' class="mine-extra"' : '';
+  const moreNote = n => n > CAP ? `<div class="mine-more" onclick="toggleMine(this)" data-n="${n}">+ ${fmtInt(n - CAP)} more — show all ${fmtInt(n)}</div>` : '';
 
-  const neg = cap(m.negatives);
-  const negPanel = `<div class="mine-panel"><div class="mine-head">🚫 Add as negatives<span class="mine-sub">${fmtInt(m.negatives.length)} terms · ~$${fmtInt(Math.round(m.wasted))} spend with 0 conversions &amp; $0 revenue</span></div>` +
-    (m.negatives.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Spend</th><th class="num">Clicks</th><th>Why</th></tr></thead><tbody>${neg.rows.map(r => `<tr><td>${escHtml(r.term)}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">${fmtInt(r.clicks)}</td><td><span class="mine-tag ${r.reason === 'Competitor brand' ? 'tag-comp' : r.reason === 'Off-product / DIY / info' ? 'tag-off' : 'tag-zero'}">${escHtml(r.reason)}</span></td></tr>`).join('')}</tbody></table>${moreNote(neg.more)}` : '<div class="kb-empty">none over the $' + ST_MIN_SPEND + ' spend threshold</div>') + '</div>';
+  const negPanel = `<div class="mine-panel"><div class="mine-head">🚫 Add as negatives${tipI('Search terms that spent $' + ST_MIN_SPEND + '+ with 0 conversions and $0 HubSpot revenue, and are not your brand. Candidates to add as negative keywords so you stop paying for them. Source: Google Ads search terms + HubSpot closed-won revenue.')}<span class="mine-sub">${fmtInt(m.negatives.length)} terms · ~$${fmtInt(Math.round(m.wasted))} spend with 0 conversions &amp; $0 revenue</span></div>` +
+    (m.negatives.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Spend</th><th class="num">Clicks</th><th>Why</th></tr></thead><tbody>${m.negatives.map((r, i) => `<tr${rc(i)}><td>${escHtml(r.term)}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">${fmtInt(r.clicks)}</td><td><span class="mine-tag ${r.reason === 'Competitor brand' ? 'tag-comp' : r.reason === 'Off-product / DIY / info' ? 'tag-off' : 'tag-zero'}">${escHtml(r.reason)}</span></td></tr>`).join('')}</tbody></table>${moreNote(m.negatives.length)}` : '<div class="kb-empty">none over the $' + ST_MIN_SPEND + ' spend threshold</div>') + '</div>';
 
-  const harv = cap(m.harvest);
-  const harvPanel = `<div class="mine-panel"><div class="mine-head">🌱 Harvest as keywords<span class="mine-sub">${fmtInt(m.harvest.length)} converting terms you don't bid on yet</span></div>` +
-    (m.harvest.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Spend</th><th class="num">Conv.</th><th class="num">Revenue</th></tr></thead><tbody>${harv.rows.map(r => `<tr><td>${escHtml(r.term)}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">${fmtNum(r.conversions)}</td><td class="num">${r.revWon > 0 ? fmtUSD(r.revWon) : '—'}</td></tr>`).join('')}</tbody></table>${moreNote(harv.more)}` : '<div class="kb-empty">none — converting terms are already keywords</div>') + '</div>';
+  const harvPanel = `<div class="mine-panel"><div class="mine-head">🌱 Harvest as keywords${tipI('Search terms that converted or produced HubSpot revenue but are not yet one of your bid keywords. Candidates to add as keywords. Source: Google Ads search terms + HubSpot revenue, minus your current keyword list.')}<span class="mine-sub">${fmtInt(m.harvest.length)} converting terms you don't bid on yet</span></div>` +
+    (m.harvest.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Spend</th><th class="num">Conv.</th><th class="num">Revenue</th></tr></thead><tbody>${m.harvest.map((r, i) => `<tr${rc(i)}><td>${escHtml(r.term)}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">${fmtNum(r.conversions)}</td><td class="num">${r.revWon > 0 ? fmtUSD(r.revWon) : '—'}</td></tr>`).join('')}</tbody></table>${moreNote(m.harvest.length)}` : '<div class="kb-empty">none — converting terms are already keywords</div>') + '</div>';
 
-  const cann = cap(m.cannibalization);
-  const cannPanel = `<div class="mine-panel"><div class="mine-head">♺ Already win organically<span class="mine-sub">${fmtInt(m.cannibalization.length)} terms · ~$${fmtInt(Math.round(m.cannSpend))} paid spend where we rank top-3 free</span></div>` +
-    (m.cannibalization.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Paid spend</th><th class="num">Org. pos</th><th class="num">Rev.</th></tr></thead><tbody>${cann.rows.map(r => `<tr><td>${escHtml(r.term)}${r.branded ? ' <span class="mine-tag tag-brand">brand</span>' : ''}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">#${r.orgPos.toFixed(1)}</td><td class="num">${r.revWon > 0 ? fmtUSD(r.revWon) : '—'}</td></tr>`).join('')}</tbody></table>${moreNote(cann.more)}` : '<div class="kb-empty">no paid terms with a top-3 organic rank (Sync GSC populates this)</div>') + '</div>';
+  const cannPanel = `<div class="mine-panel"><div class="mine-head">♺ Already win organically${tipI('Paid search terms where you already rank in the top ' + ST_CANN_MAXPOS + ' organically (free). Paid clicks here may be redundant with your organic listing. Source: Google Ads search terms + Google Search Console organic rankings.')}<span class="mine-sub">${fmtInt(m.cannibalization.length)} terms · ~$${fmtInt(Math.round(m.cannSpend))} paid spend where we rank top-3 free</span></div>` +
+    (m.cannibalization.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Paid spend</th><th class="num">Org. pos</th><th class="num">Rev.</th></tr></thead><tbody>${m.cannibalization.map((r, i) => `<tr${rc(i)}><td>${escHtml(r.term)}${r.branded ? ' <span class="mine-tag tag-brand">brand</span>' : ''}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">#${r.orgPos.toFixed(1)}</td><td class="num">${r.revWon > 0 ? fmtUSD(r.revWon) : '—'}</td></tr>`).join('')}</tbody></table>${moreNote(m.cannibalization.length)}` : '<div class="kb-empty">no paid terms with a top-3 organic rank (Sync GSC populates this)</div>') + '</div>';
 
-  const mt = cap(m.matchType);
-  const mtPanel = `<div class="mine-panel"><div class="mine-head">🎯 Tighten match types<span class="mine-sub">${fmtInt(m.matchType.length)} Phrase/Broad keywords spending inefficiently</span></div>` +
-    (m.matchType.length ? `<table class="mine-tbl"><thead><tr><th>Keyword</th><th>Match</th><th class="num">Spend</th><th class="num">CPA</th></tr></thead><tbody>${mt.rows.map(r => `<tr><td>${escHtml(r.text)}</td><td><span class="mine-tag ${r.label === 'Broad' ? 'tag-off' : 'tag-zero'}">${r.label}</span></td><td class="num">${fmtUSD(r.cost)}</td><td class="num">${r.cpa != null ? fmtUSD(r.cpa) : 'no conv'}</td></tr>`).join('')}</tbody></table>${moreNote(mt.more)}` : '<div class="kb-empty">no loose match types over the $' + ST_MIN_SPEND + ' threshold</div>') + '</div>';
+  const mtPanel = `<div class="mine-panel"><div class="mine-head">🎯 Tighten match types${tipI('Phrase/Broad-match keywords that spent $' + ST_MIN_SPEND + '+ with no conversions or a cost-per-sale over $' + ST_MT_CPA_MAX + '. Candidates to tighten toward exact match. Source: Google Ads keywords.')}<span class="mine-sub">${fmtInt(m.matchType.length)} Phrase/Broad keywords spending inefficiently</span></div>` +
+    (m.matchType.length ? `<table class="mine-tbl"><thead><tr><th>Keyword</th><th>Match</th><th class="num">Spend</th><th class="num">CPA</th></tr></thead><tbody>${m.matchType.map((r, i) => `<tr${rc(i)}><td>${escHtml(r.text)}</td><td><span class="mine-tag ${r.label === 'Broad' ? 'tag-off' : 'tag-zero'}">${r.label}</span></td><td class="num">${fmtUSD(r.cost)}</td><td class="num">${r.cpa != null ? fmtUSD(r.cpa) : 'no conv'}</td></tr>`).join('')}</tbody></table>${moreNote(m.matchType.length)}` : '<div class="kb-empty">no loose match types over the $' + ST_MIN_SPEND + ' threshold</div>') + '</div>';
 
   el.innerHTML = `<div class="mine-grid">${negPanel}${harvPanel}${cannPanel}${mtPanel}</div>`;
   meta.textContent = `${fmtInt(m.negatives.length)} negatives · ${fmtInt(m.harvest.length)} harvest · ${fmtInt(m.cannibalization.length)} cannibalized · ${fmtInt(m.matchType.length)} match-type`;

@@ -17,7 +17,7 @@ const renderSvg = indent(mod.slice(rsStart, meStart).trim());
 
 const tail = `
   function renderLegend() {
-    const sw = { DRFRM:'#ee6216', WDO:'#9ec4e6', VNT:'#34353d', SOLID:'#34353d' };
+    const sw = { DRFRM:'#ee6216', WDO:'#9ec4e6', VNT:'#54575f', SOLID:'#54575f' };
     const items = ['SOLID','VNT','DRFRM','WDO'].map(k =>
       '<span><span class="ld-sw" style="background:' + sw[k] + '"></span>' + KIND_META[k].label + '</span>'
     ).join('');

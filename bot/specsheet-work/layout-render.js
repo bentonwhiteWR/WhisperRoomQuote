@@ -123,8 +123,6 @@ function renderLayoutSvg(layout, assign) {
   // defs — gradients, shadow, carpet
   s += `<defs>`
     + `<linearGradient id="ldBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef0f3"/><stop offset="1" stop-color="#f8f9fa"/></linearGradient>`
-    + `<linearGradient id="ldWallH" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#23242a"/><stop offset="0.5" stop-color="#34353d"/><stop offset="1" stop-color="#23242a"/></linearGradient>`
-    + `<linearGradient id="ldWallV" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#23242a"/><stop offset="0.5" stop-color="#34353d"/><stop offset="1" stop-color="#23242a"/></linearGradient>`
     + `<pattern id="ldCarpet" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="#6d6d6b"/><rect width="7" height="1" fill="#656563"/><rect width="1" height="7" fill="#757573"/></pattern>`
     + `<pattern id="ldSeal" width="5" height="5" patternUnits="userSpaceOnUse"><rect width="5" height="5" fill="#54575f"/><circle cx="1.2" cy="1.8" r="0.8" fill="#33353b"/><circle cx="3.7" cy="3.7" r="0.8" fill="#7d818b"/><circle cx="3.6" cy="0.9" r="0.6" fill="#2a2c31"/><circle cx="0.8" cy="4.2" r="0.5" fill="#8a8e98"/></pattern>`
     + `<filter id="ldShadow" x="-15%" y="-15%" width="130%" height="135%"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#5a5f66" flood-opacity="0.35"/></filter>`
@@ -320,7 +318,6 @@ function renderLayoutSvg(layout, assign) {
       else if (side === 'S') { px = x0 + t + off; py = y0 + H - t; pw = len; ph = t; }
       else if (side === 'W') { px = x0;          py = y0 + t + off; pw = t; ph = len; }
       else { px = x0 + W - t; py = y0 + t + off; pw = t; ph = len; }
-      const grad = horiz ? 'url(#ldWallH)' : 'url(#ldWallV)';
       g += `<g class="ld-panel" data-slot="${esc(slot.id)}">`;
       // invisible hit-pad: extends the grab target ~15px into the interior so
       // the thin wall bands are easy to drag. Drawn first (under the visuals).
@@ -331,7 +328,9 @@ function renderLayoutSvg(layout, assign) {
       else if (side === 'W') { hw = pw + HP; }
       else                   { hx = px - HP; hw = pw + HP; }
       g += `<rect class="ld-hit" x="${hx}" y="${hy}" width="${hw}" height="${hh}" fill="#000" fill-opacity="0" style="pointer-events:all"/>`;
-      g += `<rect class="ld-wall" x="${px}" y="${py}" width="${pw}" height="${ph}" fill="${grad}" stroke="#15161a" stroke-width="0.8"/>`;
+      // Wall panels are the SAME carpet as the seam seals (one material on
+      // the real product — the spec-sheet top-downs draw them identically).
+      g += `<rect class="ld-wall" x="${px}" y="${py}" width="${pw}" height="${ph}" fill="url(#ldSeal)" stroke="#15161a" stroke-width="0.8"/>`;
       // interior bevel highlight
       g += `<rect x="${px + 0.6}" y="${py + 0.6}" width="${pw - 1.2}" height="${ph - 1.2}" fill="none" stroke="#4a4c55" stroke-opacity="0.5" stroke-width="0.6"/>`;
       // kind accent line on the interior edge
@@ -350,14 +349,14 @@ function renderLayoutSvg(layout, assign) {
       // collect vent / door for later overlay — on WHATEVER wall they sit
       if (kind === 'VNT' && layout.hasVent !== false) vents.push({ side, px, py, pw, ph });
       if (kind === 'DRFRM') door = { side, px, py, pw, ph, swing: (layout.door && layout.door.swing) || 30 };
-      // panel label (type + code) just inside the wall on the floor
-      g += panelLabel(side, px, py, pw, ph, kind, line);
+      // panel label (width + type + code) just inside the wall on the floor
+      g += panelLabel(side, px, py, pw, ph, kind, line, slot);
       off += len;
     }
     return g;
   }
 
-  function panelLabel(side, px, py, pw, ph, kind, line) {
+  function panelLabel(side, px, py, pw, ph, kind, line, slot) {
     const meta = KIND_META[kind] || KIND_META.EMPTY;
     const horiz = (side === 'N' || side === 'S');
     const big = horiz ? pw : ph;
@@ -368,7 +367,10 @@ function renderLayoutSvg(layout, assign) {
     else if (side === 'S') { lx = px + pw / 2; ly = py - 7; }
     else if (side === 'W') { lx = px + t + 7; ly = py + ph / 2; anchor = 'start'; rot = 0; }
     else { lx = px - 7; ly = py + ph / 2; anchor = 'end'; }
-    const typ = kind === 'EMPTY' ? '(empty)' : meta.label;
+    // Lead with the panel width, like the spec sheets' "46\" Wall Panel"
+    // callouts — the placed pack's real width when known, slot nominal else.
+    const wIn = line ? (panelInteriorWidth(line.pack) != null ? panelInteriorWidth(line.pack) : slot.size) : slot.size;
+    const typ = kind === 'EMPTY' ? '(empty)' : (wIn + '″ ' + meta.label);
     const col = kind === 'EMPTY' ? '#aab' : '#eef';
     let out = `<text x="${lx}" y="${ly}" text-anchor="${anchor}" font-size="9.5" font-weight="700" fill="${col}" opacity="0.92" style="pointer-events:none">${esc(typ)}</text>`;
     if (line && line.code) {
@@ -384,9 +386,9 @@ function renderLayoutSvg(layout, assign) {
   s += drawWall('E');
   s += drawWall('W');
 
-  // corner posts (on top of wall ends)
+  // corner posts (on top of wall ends) — same seal carpet as the walls
   for (const [cx, cy] of [[x0, y0], [x0 + W - t, y0], [x0, y0 + H - t], [x0 + W - t, y0 + H - t]]) {
-    s += `<rect x="${cx}" y="${cy}" width="${t}" height="${t}" fill="#191a1e" stroke="#000" stroke-width="0.8"/>`;
+    s += `<rect x="${cx}" y="${cy}" width="${t}" height="${t}" fill="url(#ldSeal)" stroke="#000" stroke-width="0.8"/>`;
   }
 
   // seam seals: comb on each interior face + corner pieces + T pieces at joints
@@ -417,7 +419,9 @@ function renderLayoutSvg(layout, assign) {
   const ccx = x0 + W / 2, ccy = y0 + H / 2;
   s += `<rect x="${ccx - cw / 2}" y="${ccy - chh / 2}" width="${cw}" height="${chh}" rx="13" fill="rgba(255,255,255,0.92)" stroke="#cfd3da" stroke-width="1"/>`;
   s += `<text x="${ccx}" y="${ccy - 1}" text-anchor="middle" font-size="9.5" font-weight="700" letter-spacing="0.08em" fill="#8a8f97">INTERIOR</text>`;
-  s += `<text x="${ccx}" y="${ccy + 10}" text-anchor="middle" font-size="11" font-weight="800" fill="#2a2d33">${interior.w}″ × ${interior.h}″</text>`;
+  // short axis first — matches the spec sheets ("46″ x 70″") and the model
+  // naming convention (4872 = 48″ × 72″)
+  s += `<text x="${ccx}" y="${ccy + 10}" text-anchor="middle" font-size="11" font-weight="800" fill="#2a2d33">${interior.h}″ × ${interior.w}″</text>`;
 
   // ── orientation captions (booth orientation is fixed; components can move) ─
   s += `<text x="${x0 + W / 2}" y="${y0 - extra('N') - 8}" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="0.12em" fill="#9097a0">BACK</text>`;

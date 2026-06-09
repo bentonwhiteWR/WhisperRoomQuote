@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.32', date:'June 9, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Top-Down Layout: walls are the same carpet as the seam seals.** The wall bands previously used a near-black gradient while the seam seals used the gray speckled-carpet texture — on the real booth (and the spec-sheet top-downs) every panel and seal is one material. Walls and corner posts now share the seal carpet, so the whole shell reads as one carpeted product and the seals read as the connectors they are. Legend swatches follow.'},
+        {t:'ui', d:'**Panel labels lead with their width.** Each panel now reads like the spec-sheet callouts — "46&Prime; Ventilation", "22&Prime; Wall", "46&Prime; Door" — using the placed pack&apos;s real width (a WA door shows 49&Prime;), so the wall composition is readable at a glance. Interior pill flips to short-axis-first ("46&Prime; × 70&Prime;"), matching the spec sheets and the model naming (4872 = 48&Prime; × 72&Prime;).'},
+      ]
+    },
+    {
       v:'1.84.31', date:'June 9, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Top-Down Layout: WA/ADA doors no longer vanish.** Quotes whose door upgrade swaps in an ADA-style door frame (ADA STDDRFRM, plus FR fire-rated wall variants) were not recognized as wall panels, so the layout drew the booth with no door at all. All exterior door-frame packs now classify and place into the door slot; inner-shell frames and jamb adapters are correctly excluded.'},

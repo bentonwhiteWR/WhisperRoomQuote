@@ -6534,33 +6534,52 @@ ${q.accepted ? `
       const { items } = JSON.parse(await readBody(req));
       if (!items || !items.length) { json({ results: [] }); return; }
 
-      // Only check items that have a productId
       const toCheck = items.filter(i => i.productId);
       if (!toCheck.length) { json({ results: [] }); return; }
 
-      // Fetch current prices in parallel
+      // Match each saved line item to the CURRENT product BY NAME, not by the
+      // record ID stored on the quote. A saved quote keeps the productId from
+      // when it was created; if the catalog's record IDs change (e.g. a CSV
+      // re-import that recreates products), that saved ID goes stale and an
+      // ID-based lookup returns a *different* product → bogus, wildly-wrong
+      // "price changed" prompts. Product names are stable and are exactly how a
+      // live quote prices items, so name is the reliable key. Fall back to the
+      // saved record ID only when the name isn't in the catalog.
+      const norm = s => String(s || '').toUpperCase().replace(/\s+/g, ' ').trim();
+      const byName = {};
+      try {
+        const products = await getProductsCached();
+        (products || []).forEach(p => { const n = norm(p?.properties?.name); if (n && byName[n] === undefined) byName[n] = p; });
+      } catch (e) { /* fall through to per-item ID lookup below */ }
+
       const checks = await Promise.all(toCheck.map(async item => {
         try {
-          const res = await httpsRequest({
-            hostname: 'api.hubapi.com',
-            path: `/crm/v3/objects/products/${item.productId}?properties=name,price,weight`,
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
-          });
-          const current = parseFloat(res.body?.properties?.price || 0);
+          let props = byName[norm(item.name)] && byName[norm(item.name)].properties;
+          if (!props) {                                   // name miss → fall back to the saved ID
+            const res = await httpsRequest({
+              hostname: 'api.hubapi.com',
+              path: `/crm/v3/objects/products/${item.productId}?properties=name,price,weight`,
+              method: 'GET',
+              headers: { 'Authorization': `Bearer ${HS_TOKEN}` }
+            });
+            props = res.body && res.body.properties;
+          }
+          const current = parseFloat((props && props.price) || 0);
           const quoted  = parseFloat(item.price || 0);
-          const currentWeight = parseFloat(res.body?.properties?.weight || 0);
+          const currentWeight = parseFloat((props && props.weight) || 0);
           const quotedWeight  = parseFloat(item.weight || 0);
           return {
             productId: item.productId,
             name: item.name,
             quotedPrice: quoted,
             currentPrice: current,
-            changed: Math.abs(current - quoted) > 0.01,
+            // Only flag a real change when we actually found the product (current>0);
+            // a 0 means "couldn't resolve" — don't scare the rep with a $0 prompt.
+            changed: current > 0 && Math.abs(current - quoted) > 0.01,
             // Weight is synced SILENTLY on the client (no prompt) — surfaced here too.
             quotedWeight,
             currentWeight,
-            weightChanged: Math.abs(currentWeight - quotedWeight) > 0.01
+            weightChanged: currentWeight > 0 && Math.abs(currentWeight - quotedWeight) > 0.01
           };
         } catch(e) {
           return { productId: item.productId, name: item.name, error: true };
@@ -10972,6 +10991,19 @@ ${q.accepted ? `
       //    like RAMP use a representative E booth so the inner-shell path runs).
       const genericHost = modelKeys.find(k => /^MDL\s+7272\s+E$/i.test(k)) || modelKeys.find(k => /\sE$/.test(k)) || modelKeys[0];
       const hostFor = nm => {
+        // WA UPG STD/ENH 40/46 — the trailing number is the WALL size (40"/46"),
+        // NOT a model size, so the generic size parser below misses it. Pick a
+        // representative booth that actually uses that wall size in the matching
+        // shell: STD = single-wall (S), ENH = double-wall (E); 40" → MDL 6084,
+        // 46" → MDL 7296. This drives the right WA door/wall component swap so
+        // the audited weight delta reflects the real configuration.
+        const waM = /^WA\s+UPG\s+(STD|ENH)\s+(40|46)\b/i.exec(nm.trim());
+        if (waM) {
+          const variant = /ENH/i.test(waM[1]) ? 'E' : 'S';
+          const size = waM[2] === '46' ? '7296' : '6084';
+          const cand = norm('MDL ' + size + ' ' + variant);
+          if (modelByNorm[cand]) return { host: modelByNorm[cand], assumed: 'WA wall-size host (' + size + ' ' + variant + ')' };
+        }
         const sizeM = /(\d{3,6})/.exec(nm);
         if (!sizeM) return { host: genericHost, assumed: 'generic host' };
         const size = sizeM[1];
@@ -11030,6 +11062,69 @@ ${q.accepted ? `
       });
     } catch (e) {
       writelog('error', 'weights.audit', 'failed to build weights audit', { err: e.message });
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Studio Lights worksheet ─────────────────────────────────
+  // Per booth size: its # of vent sets (= # of standard lights it ships with),
+  // the studio-light swap it gets (SL 29 = T07 / SL 52 = T08, from sl_by_model),
+  // and the summed weight of those studio lights — the accurate weight of the
+  // SL upgrade — checked against the price-book "SL <size>" SKU.
+  if (pathname === '/api/weights-sl' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const OK_TOL = 2;
+      const norm = s => String(s || '').toUpperCase().replace(/\s+/g, ' ').trim();
+      let baseModels = {}, slByModel = {}, comps = {};
+      try {
+        baseModels = (JSON.parse(fs.readFileSync(path.join(__dirname, 'lib', 'pl-data', 'base-bom.json'), 'utf8')).models) || {};
+        slByModel  = JSON.parse(fs.readFileSync(path.join(__dirname, 'lib', 'pl-data', 'feature-rules.json'), 'utf8')).sl_by_model || {};
+        const cm   = JSON.parse(fs.readFileSync(path.join(__dirname, 'lib', 'pl-data', 'components-master.json'), 'utf8'));
+        comps = cm.components || cm;
+      } catch (e) { json({ error: 'data file unreadable: ' + e.message }, 500); return; }
+      const W = code => { const c = comps[code]; const w = c && parseFloat(c.lb); return Number.isFinite(w) ? w : 0; };
+      const wStd = W('T01'), w29 = W('T07'), w52 = W('T08');   // standard light / SL 29 / SL 52
+
+      const pbByName = {}; let pbError = null;
+      try {
+        const products = await getProductsCached();
+        (products || []).forEach(p => { const nm = norm(p?.properties?.name); if (!nm) return; const w = parseFloat(p?.properties?.weight); pbByName[nm] = Number.isFinite(w) ? w : null; });
+      } catch (e) { pbError = e.message; }
+
+      const rows = []; const seen = new Set();
+      for (const key of Object.keys(slByModel)) {
+        const m = /^MDL\s+(.+?)\s+(S|E)$/i.exec(key);
+        if (!m) continue;
+        const size = m[1].trim();
+        if (seen.has(size)) continue;        // S & E share the SL swap — one row per size
+        seen.add(size);
+        const bom = baseModels['MDL ' + size + ' S']?.components || baseModels[key]?.components || {};
+        const ventSets = bom.F01 || 0;
+        const stdLights = bom.T01 || 0;
+        const rec = slByModel[key] || { add: {}, remove: {} };
+        const sl29 = (rec.add && rec.add.T07) || 0;
+        const sl52 = (rec.add && rec.add.T08) || 0;
+        const stdRemoved = (rec.remove && rec.remove.T01) || 0;
+        const slWeight = +(sl29 * w29 + sl52 * w52).toFixed(2);          // gross weight of the studio lights
+        const netUpgrade = +(slWeight - stdRemoved * wStd).toFixed(2);   // change vs the standard lights it replaces
+        const desc = [sl29 ? sl29 + '× SL 29' : '', sl52 ? sl52 + '× SL 52' : ''].filter(Boolean).join(' + ') || '—';
+        const pbWeight = pbByName[norm('SL ' + size)];
+        const has = pbWeight !== undefined && pbWeight !== null;
+        const delta = has ? +(slWeight - pbWeight).toFixed(2) : null;
+        const status = !has ? 'no-pb' : (Math.abs(delta) <= OK_TOL ? 'ok' : 'mismatch');
+        rows.push({ size, model: 'MDL ' + size, ventSets, stdLights, sl29, sl52, slCount: sl29 + sl52,
+          desc, slWeight, stdRemoved, netUpgrade, pbName: 'SL ' + size, pbWeight: has ? pbWeight : null, delta, status });
+      }
+      rows.sort((a, b) => a.size.localeCompare(b.size, undefined, { numeric: true }));
+      json({
+        okTol: OK_TOL, pbError, weights: { std: wStd, sl29: w29, sl52: w52 },
+        counts: { sizes: rows.length, ok: rows.filter(r => r.status === 'ok').length, mismatch: rows.filter(r => r.status === 'mismatch').length, noPb: rows.filter(r => r.status === 'no-pb').length },
+        rows,
+      });
+    } catch (e) {
+      writelog('error', 'weights.sl', 'failed to build SL worksheet', { err: e.message });
       json({ error: e.message }, 500);
     }
     return;

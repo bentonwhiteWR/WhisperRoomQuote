@@ -443,6 +443,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <button class="mtab"        data-tab="growth" onclick="switchMarketingTab('growth')">⚡ Growth Engine</button>
     <button class="mtab active" data-tab="ads" onclick="switchMarketingTab('ads')">Google Ad Spend</button>
     <button class="mtab"        data-tab="gsc" onclick="switchMarketingTab('gsc')">Google Search Console</button>
+    <button class="mtab"        data-tab="seo" onclick="switchMarketingTab('seo')">🔎 SEO Intel</button>
   </div>
 
   <!-- ════════ Growth Engine tab (v1.69.x) — the decision dashboard ════════ -->
@@ -787,6 +788,21 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
       <div id="gscPagesBody"><div class="empty">No data yet.</div></div>
     </div>
   </div><!-- /tabGsc -->
+
+  <!-- ════════ SEO Intel tab (v1.84.16) — DataForSEO live SERP intelligence ════════ -->
+  <div id="tabSeo" class="tab-panel" style="display:none">
+    <div class="section-head" style="margin-bottom:8px">
+      <div>
+        <div class="section-title" style="font-size:15px">🔎 SEO Intel<span class="tip-i" title="Live Google SERP intelligence from DataForSEO — the data Google Search Console structurally can't show: who actually ranks 1–N for your commercial keywords, your true current position, and whether an AI Overview is present and cites WhisperRoom. Refreshed on demand via Sync SERP (pay-per-call, cached 7 days/keyword).">ⓘ</span></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px" id="seoSubtitle">Competitor ranks · your true position · AI Overview monitor</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <a onclick="runSyncSerp(true)" style="font-size:10px;color:var(--muted);cursor:pointer;user-select:none" title="Re-pull every tracked keyword now, ignoring the 7-day cache. Costs a full run (~$1-2). Use after a logic change or to refresh ranks on demand.">force refresh</a>
+        <button class="sync-btn" id="serpSyncBtn" onclick="runSyncSerp(false)">↻ Sync SERP</button>
+      </div>
+    </div>
+    <div id="seoBody"><div class="empty">Loading…</div></div>
+  </div><!-- /tabSeo -->
 </div>
 
 <!-- Drill-down modal (v1.59.2) — lists the actual HubSpot records behind a
@@ -977,6 +993,158 @@ async function runSyncGsc() {
     await loadStatus();
     await loadGscTab();
   }
+}
+
+// ── SEO Intel tab (DataForSEO live SERP) ──────────────────────────────
+// Pay-per-call, so this is an explicit Sync SERP (NOT part of Sync All). The
+// backend builds the keyword list from our own revenue data + caches 7 days.
+async function runSyncSerp(force) {
+  const btn = document.getElementById('serpSyncBtn');
+  if (force && !confirm('Force-refresh every tracked keyword now, ignoring the 7-day cache? This costs a full run (~$1-2).')) return;
+  btn.disabled = true; btn.textContent = force ? 'Force syncing…' : 'Syncing SERP…';
+  try {
+    const res = await fetch('/api/marketing/sync', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report: 'serp', force: !!force }),
+    });
+    await _handleSyncResult(res, 'SERP sync');
+  } catch(e) {
+    alert('SERP sync started — the request dropped but may still be finishing. Refresh in a minute.');
+  } finally {
+    btn.disabled = false; btn.textContent = '↻ Sync SERP';
+    await loadSeoTab();
+  }
+}
+
+async function loadSeoTab() {
+  const body = document.getElementById('seoBody');
+  try {
+    const d = await fetch('/api/marketing/serp-snapshots', { credentials: 'include' }).then(r => r.json());
+    renderSeo(d || {});
+  } catch(e) {
+    body.innerHTML = `<div class="empty">Couldn't load SERP data: ${escHtml(e.message || 'error')}</div>`;
+  }
+}
+
+function _serpDomainShort(dom) { return (dom || '').replace(/^www\./, ''); }
+
+function renderSeo(d) {
+  const body = document.getElementById('seoBody');
+  const sub  = document.getElementById('seoSubtitle');
+
+  // Not configured → setup guidance instead of an empty table.
+  if (!d.configured) {
+    sub.textContent = 'Not connected yet';
+    body.innerHTML = `<div class="section"><div class="section-title">Connect DataForSEO</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.7;margin-top:8px">
+        This tab pulls the live Google SERP from DataForSEO. To turn it on:
+        <ol style="margin:8px 0 0 18px;padding:0">
+          <li>Create a <a href="https://dataforseo.com" target="_blank" rel="noopener" style="color:var(--orange)">DataForSEO</a> account and add a little credit (~$50 lasts months at our volume).</li>
+          <li>Add these to Railway env vars: <code>${(d.missing && d.missing.length ? d.missing : ['DATAFORSEO_LOGIN','DATAFORSEO_PASSWORD']).join('</code>, <code>')}</code></li>
+          <li>Come back and press <strong>↻ Sync SERP</strong>.</li>
+        </ol>
+        Tracks up to <strong>${d.trackedCap || 250}</strong> of your commercial keywords, cached 7 days each to keep spend tiny.
+      </div></div>`;
+    return;
+  }
+
+  const rows = d.rows || [];
+  if (!rows.length) {
+    sub.textContent = 'Connected · no data yet';
+    body.innerHTML = `<div class="empty">Connected to DataForSEO. Press <strong>↻ Sync SERP</strong> to pull live ranks for your commercial keywords.</div>`;
+    return;
+  }
+
+  // Headline stats.
+  const tracked = rows.length;
+  const top3  = rows.filter(r => r.our_rank != null && r.our_rank <= 3).length;
+  const top10 = rows.filter(r => r.our_rank != null && r.our_rank <= 10).length;
+  const notRanking = rows.filter(r => r.our_rank == null).length;
+  const aiCount = rows.filter(r => r.ai_overview).length;
+  const aiCited = rows.filter(r => r.ai_overview && r.ai_overview_cited).length;
+
+  // Competitor leaderboard: domains that outrank us (or sit top-3 when we don't rank).
+  const compCount = {};
+  rows.forEach(r => {
+    (r.top_results || []).forEach(t => {
+      if (!t.domain || t.domain.includes('whisperroom')) return;
+      const outranks = r.our_rank == null ? t.rank <= 3 : t.rank < r.our_rank;
+      if (outranks) compCount[t.domain] = (compCount[t.domain] || 0) + 1;
+    });
+  });
+  const topComps = Object.entries(compCount).sort((a,b) => b[1]-a[1]).slice(0,5);
+
+  sub.textContent = `${tracked} keywords tracked · synced ${d.sync && d.sync.last_synced_at ? new Date(d.sync.last_synced_at).toLocaleDateString() : '—'}`;
+
+  const chip = (label, val, tip) => `<div class="card" title="${escHtml(tip||'')}"><div class="card-label">${label}</div><div class="card-value">${val}</div></div>`;
+  const stats = `<div class="cards" style="margin-bottom:14px">
+    ${chip('Keywords tracked', tracked, 'Commercial keywords with a live SERP snapshot.')}
+    ${chip('Top 3', top3, 'Keywords where whisperroom.com ranks in the top 3 organically.')}
+    ${chip('Top 10', top10, 'Keywords where we rank on page 1 (top 10).')}
+    ${chip('Not ranking', notRanking, 'Keywords where we are not in the captured results — biggest opportunities / threats.')}
+    ${chip('AI Overview', aiCount, 'Keywords where Google shows an AI Overview (which can suppress organic clicks).')}
+    ${chip('Cited in AI', aiCited, 'Of those, how many cite whisperroom.com as a source.')}
+  </div>`;
+
+  const compStrip = topComps.length
+    ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Outranking you most: ${topComps.map(([dom,n]) => `<strong style="color:var(--text)">${escHtml(_serpDomainShort(dom))}</strong> (${n})`).join(' · ')}</div>`
+    : '';
+
+  // Rank tracker table.
+  const movement = r => {
+    if (r.our_rank == null) return '<span class="roas-na">—</span>';
+    if (r.prev_rank == null) return '<span style="color:var(--muted)">new</span>';
+    const delta = r.prev_rank - r.our_rank;  // positive = improved (rank got smaller)
+    if (delta > 0) return `<span class="delta-up">▲ ${delta}</span>`;
+    if (delta < 0) return `<span class="delta-down">▼ ${-delta}</span>`;
+    return '<span style="color:var(--muted)">–</span>';
+  };
+  const aiBadge = r => {
+    if (!r.ai_overview) return '<span style="color:var(--muted)">—</span>';
+    const refs = (r.ai_overview_refs || []).map(x => _serpDomainShort(x.domain)).filter(Boolean);
+    const tip = refs.length ? 'AI Overview cites: ' + refs.join(', ') : 'AI Overview present (no captured sources)';
+    return r.ai_overview_cited
+      ? `<span class="mine-tag tag-brand" title="${escHtml(tip)}">✓ cited</span>`
+      : `<span class="mine-tag tag-zero" title="${escHtml(tip)}">not cited</span>`;
+  };
+  // Competitor domains link out to the page that ranks; the keyword links to the
+  // live Google results so you can eyeball the real SERP + AI Overview yourself.
+  const comps = r => (r.top_results || [])
+    .filter(t => t.domain && !t.domain.includes('whisperroom'))
+    .slice(0,3)
+    .map(t => `<a href="${escHtml(t.url || ('https://' + t.domain))}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(_serpDomainShort(t.domain))}</a> <span style="color:var(--muted)">#${t.rank}</span>`)
+    .join(' · ') || '<span style="color:var(--muted)">—</span>';
+  const googleUrl = kw => `https://www.google.com/search?q=${encodeURIComponent(kw)}`;
+  // Our rank cell: organic position prominent, with the absolute position (counts
+  // ads/AI-Overview/features above) shown muted when it differs.
+  const rankCell = r => {
+    if (r.our_rank == null) return '<span class="roas-na">not ranking</span>';
+    const link = r.our_url
+      ? `<a href="${escHtml(r.our_url)}" target="_blank" rel="noopener" style="color:var(--text)" title="Open our ranking page">#${r.our_rank}</a>`
+      : '#' + r.our_rank;
+    const abs = (r.our_rank_abs != null && r.our_rank_abs !== r.our_rank)
+      ? ` <span style="color:var(--muted);font-size:10px" title="Absolute position on the page — counts ads, AI Overview, and other SERP features stacked above the organic results. The gap from your organic rank = how much is pushing you down (and dragging CTR).">abs #${r.our_rank_abs}</span>`
+      : '';
+    return link + abs;
+  };
+
+  const table = `<div class="section">
+    <div class="section-head"><div class="section-title">Rank tracker<span class="tip-i" title="Your live organic position per commercial keyword (not ranking = not in the captured results), movement vs the previous sync, the top-3 competitors on that SERP, and the AI Overview status. Source: DataForSEO Google Organic SERP.">ⓘ</span></div><span class="section-meta">${tracked} keywords</span></div>
+    <table><thead><tr>
+      <th>Keyword</th><th class="num">Our rank<span class="tip-i" title="Your ORGANIC position (rank_group). 'abs #N' next to it = your ABSOLUTE position counting ads + AI Overview + featured snippets above the organic block. Pulled logged-out from a neutral US location, so it can read lower than your personalized, logged-in browser view — that neutral number is what a new customer sees.">ⓘ</span></th><th class="num">Move</th><th>Top competitors</th><th>AI Overview</th>
+    </tr></thead><tbody>
+      ${rows.map(r => `<tr>
+        <td><a href="${googleUrl(r.keyword)}" target="_blank" rel="noopener" title="Preview the live Google results for &quot;${escHtml(r.keyword)}&quot; (opens a new tab; right-click → open in incognito for a neutral, un-personalized view + the AI Overview)" style="color:var(--text)">${escHtml(r.keyword)}</a> <span style="color:var(--muted);font-size:10px">↗</span></td>
+        <td class="num">${rankCell(r)}</td>
+        <td class="num">${movement(r)}</td>
+        <td>${comps(r)}</td>
+        <td>${aiBadge(r)}</td>
+      </tr>`).join('')}
+    </tbody></table>
+  </div>`;
+
+  body.innerHTML = stats + compStrip + table;
 }
 
 // ── State (v1.46.10) ────────────────────────────────────────────────
@@ -1193,12 +1361,14 @@ function switchMarketingTab(name) {
   document.getElementById('tabAds').style.display    = name === 'ads' ? '' : 'none';
   document.getElementById('tabGsc').style.display    = name === 'gsc' ? '' : 'none';
   document.getElementById('tabGrowth').style.display = name === 'growth' ? '' : 'none';
+  document.getElementById('tabSeo').style.display    = name === 'seo' ? '' : 'none';
   document.querySelectorAll('.mtab').forEach(el => el.classList.toggle('active', el.dataset.tab === name));
   if (name === 'gsc') loadGscTab();
   else if (name === 'growth') loadGrowthTab();
+  else if (name === 'seo') loadSeoTab();
 }
 // Reload only the visible tab when the shared date range / model changes.
-function refreshActiveTab() { return currentTab === 'gsc' ? loadGscTab() : currentTab === 'growth' ? loadGrowthTab() : loadAllTables(); }
+function refreshActiveTab() { return currentTab === 'gsc' ? loadGscTab() : currentTab === 'growth' ? loadGrowthTab() : currentTab === 'seo' ? loadSeoTab() : loadAllTables(); }
 
 // v1.65.4 — Movers dimension (query | page). Drives ?dim= on gsc-movers.
 let gscMoversDim = 'query';

@@ -117,6 +117,7 @@
     <div class="tabs">
       <button class="tab-btn active" data-tab="models" onclick="switchTab('models')">Models</button>
       <button class="tab-btn" data-tab="audit" onclick="switchTab('audit')">Package Audit</button>
+      <button class="tab-btn" data-tab="sl" onclick="switchTab('sl')">Studio Lights</button>
     </div>
 
    <div id="view-models">
@@ -211,6 +212,45 @@
       </table>
     </div>
    </div><!-- /view-audit -->
+
+   <div id="view-sl" style="display:none">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Studio <span>Lights</span></div>
+        <div class="page-sub">Each booth ships one standard light per vent set. The SL upgrade swaps them for studio lights (SL 29 = 7 lb, SL 52 = 12 lb). "SL weight" is the summed weight of the studio lights a booth gets — the accurate upgrade weight — vs the price-book "SL …" SKU.</div>
+      </div>
+      <button class="filter-btn" onclick="loadSL(true)">↻ Re-run</button>
+    </div>
+
+    <div class="banner" id="slBanner">Open this tab to build the worksheet.</div>
+
+    <div class="cards" id="slCards"></div>
+
+    <div class="toolbar">
+      <button class="filter-btn" id="slMismatchBtn" onclick="toggleSlMismatch()">Mismatches only</button>
+      <input class="search-input" id="slSearch" placeholder="Search size…" oninput="renderSL()">
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="l" data-ssort="size">SL SKU <span class="arrow"></span></th>
+            <th data-ssort="ventSets" title="# of vent sets = # of standard lights the booth ships with">Vent sets <span class="arrow"></span></th>
+            <th class="l" data-ssort="slCount" title="Which studio lights this booth gets">Studio lights <span class="arrow"></span></th>
+            <th data-ssort="slWeight" title="Summed weight of the studio lights — the accurate SL upgrade weight">SL weight <span class="arrow"></span></th>
+            <th data-ssort="netUpgrade" title="SL weight minus the standard lights it replaces">Net vs std <span class="arrow"></span></th>
+            <th data-ssort="pbWeight" title="HubSpot price-book SL SKU weight">Price book <span class="arrow"></span></th>
+            <th data-ssort="delta">Δ (SL−PB) <span class="arrow"></span></th>
+            <th class="l" data-ssort="status">Status <span class="arrow"></span></th>
+          </tr>
+        </thead>
+        <tbody id="slBody">
+          <tr><td colspan="8" class="empty">Click ↻ Re-run to build the studio-light worksheet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+   </div><!-- /view-sl -->
   </div>
 
 <script>
@@ -400,7 +440,9 @@
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===t));
     document.getElementById('view-models').style.display = t==='models' ? '' : 'none';
     document.getElementById('view-audit').style.display = t==='audit' ? '' : 'none';
+    document.getElementById('view-sl').style.display = t==='sl' ? '' : 'none';
     if (t==='audit' && !auditLoaded) loadAudit();
+    if (t==='sl' && !slLoaded) loadSL();
   }
 
   async function loadAudit(force){
@@ -500,6 +542,104 @@
         '<td><strong>' + cell(r.actual) + '</strong></td>' +
         '<td>' + deltaCell + '</td>' +
         '<td class="l"><span class="schip s-' + esc(r.status) + '">' + esc(lbl) + '</span></td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  // ── Studio Lights tab ───────────────────────────────────────────────
+  let SL_ROWS = [];
+  let slLoaded = false;
+  let slMismatchOnly = false;
+  let slSortKey = 'size', slSortDir = 1;
+
+  async function loadSL(force){
+    if (slLoaded && !force) return;
+    document.getElementById('slBody').innerHTML = '<tr><td colspan="8" class="loading">Building the studio-light worksheet…</td></tr>';
+    document.getElementById('slBanner').textContent = 'Loading…';
+    try {
+      const r = await fetch('/api/weights-sl', { credentials:'same-origin' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      SL_ROWS = d.rows || [];
+      slLoaded = true;
+      renderSlBanner(d);
+      renderSlCards(d);
+      renderSL();
+    } catch(e){
+      document.getElementById('slBody').innerHTML = '<tr><td colspan="8" class="empty">Failed: ' + esc(e.message) + '</td></tr>';
+      document.getElementById('slBanner').textContent = 'Failed to load.';
+    }
+  }
+
+  function renderSlBanner(d){
+    const b = document.getElementById('slBanner');
+    const w = d.weights || {};
+    const parts = [
+      (d.counts && d.counts.sizes || 0) + ' booth sizes',
+      'standard light ' + w.std + ' lb · SL 29 = ' + w.sl29 + ' lb · SL 52 = ' + w.sl52 + ' lb',
+      'tolerance ±' + (d.okTol!=null?d.okTol:2) + ' lb',
+    ];
+    if (d.pbError){ b.className='banner warn'; parts.push('⚠ price book unavailable: ' + esc(d.pbError)); }
+    else b.className='banner';
+    b.innerHTML = parts.join(' &nbsp;·&nbsp; ');
+  }
+
+  function renderSlCards(d){
+    const c = d.counts || {};
+    const cards = [
+      { label:'Sizes', value:c.sizes||0 },
+      { label:'Reconciled', value:c.ok||0 },
+      { label:'Mismatch', value:c.mismatch||0, alert:(c.mismatch||0)>0 },
+      { label:'No PB weight', value:c.noPb||0 },
+    ];
+    document.getElementById('slCards').innerHTML = cards.map(x =>
+      '<div class="card"><div class="card-label">' + x.label + '</div>' +
+      '<div class="card-value' + (x.alert?' alert':'') + '">' + x.value + '</div></div>').join('');
+  }
+
+  function toggleSlMismatch(){ slMismatchOnly = !slMismatchOnly; document.getElementById('slMismatchBtn').classList.toggle('active', slMismatchOnly); renderSL(); }
+  document.querySelectorAll('thead th[data-ssort]').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const k = th.dataset.ssort;
+      if (slSortKey===k) slSortDir *= -1; else { slSortKey=k; slSortDir=1; }
+      document.querySelectorAll('thead th[data-ssort] .arrow').forEach(a=>a.textContent='');
+      th.querySelector('.arrow').textContent = slSortDir>0 ? '▲' : '▼';
+      renderSL();
+    });
+  });
+
+  function renderSL(){
+    const q = document.getElementById('slSearch').value.trim().toLowerCase();
+    let rows = SL_ROWS.filter(r=>{
+      if (slMismatchOnly && r.status!=='mismatch') return false;
+      if (q && !(String(r.pbName).toLowerCase().includes(q) || String(r.model).toLowerCase().includes(q))) return false;
+      return true;
+    });
+    rows.sort((a,b)=>{
+      let av=a[slSortKey], bv=b[slSortKey];
+      if (slSortKey==='size'||slSortKey==='status') return String(av||'').localeCompare(String(bv||''), undefined,{numeric:true}) * slSortDir;
+      av=(av==null)?-Infinity:av; bv=(bv==null)?-Infinity:bv;
+      return (av-bv)*slSortDir;
+    });
+    const tb = document.getElementById('slBody');
+    if (!rows.length){ tb.innerHTML='<tr><td colspan="8" class="empty">No sizes match.</td></tr>'; return; }
+    const cell = v => v==null ? '<span class="dash">—</span>' : fmt(v);
+    const SL_STATUS = { ok:'OK', mismatch:'Mismatch', 'no-pb':'No PB wt' };
+    tb.innerHTML = rows.map(r=>{
+      const d=r.delta;
+      const deltaCell = d==null ? '<span class="dash">—</span>'
+        : (Math.abs(d)<0.05 ? '<span class="delta-zero">0</span>'
+           : '<span class="' + (d>0?'delta-pos':'delta-neg') + '">' + (d>0?'+':'') + fmt(d) + '</span>');
+      return '<tr>' +
+        '<td class="l mdl-name">' + esc(r.pbName) + '</td>' +
+        '<td>' + r.ventSets + '</td>' +
+        '<td class="l">' + esc(r.desc) + '</td>' +
+        '<td><strong>' + cell(r.slWeight) + '</strong></td>' +
+        '<td class="muted">' + cell(r.netUpgrade) + '</td>' +
+        '<td>' + cell(r.pbWeight) + '</td>' +
+        '<td>' + deltaCell + '</td>' +
+        '<td class="l"><span class="schip s-' + esc(r.status) + '">' + esc(SL_STATUS[r.status]||r.status) + '</span></td>' +
       '</tr>';
     }).join('');
   }

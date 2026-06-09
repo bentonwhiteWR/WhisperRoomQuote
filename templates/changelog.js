@@ -51,6 +51,42 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.22', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Fixed bogus "price has changed" prompts when loading saved quotes.** The check now matches each line item to the current product by NAME instead of the record ID stored on the quote. A catalog re-import (CSV) can change HubSpot record IDs, which left saved quotes pointing at the wrong product and showing wildly wrong "current" prices. Names are stable, so the comparison is now accurate; a price that can\'t be resolved no longer triggers a prompt.'},
+      ]
+    },
+    {
+      v:'1.84.20', date:'June 9, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Top-Down Layout: bigger vent boxes + corrected seam seals.** Vent boxes now scale with the wall panel, so they\'re much larger on 46″-wall booths. The seam seals are redrawn to match the spec profiles — the mid-wall seal is a flat base with a centered raised tab (plinth), and the corner seal is a filled L-bracket with a chamfered outer corner — instead of the previous thin lines.'},
+      ]
+    },
+    {
+      v:'1.84.18', date:'June 9, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Studio Lights tab: first column now shows the SL SKU** (e.g. "SL 9696") instead of the booth model, so the table can be copied and VLOOKUP-ed straight against the price-book SKU names.'},
+      ]
+    },
+    {
+      v:'1.84.15', date:'June 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**New "Studio Lights" tab on the /weights tool.** Lists every booth size with its number of vent sets (= the number of standard lights it ships with), the studio-light swap it gets (e.g. "4× SL 52"), and the summed weight of those studio lights (SL 29 = 7 lb, SL 52 = 12 lb) — the accurate weight of the SL upgrade — plus the net change vs the standard lights it replaces and a check against the price-book "SL …" SKU.'},
+      ]
+    },
+    {
+      v:'1.84.14', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Package Weight Audit: WA UPG features now use the right host booth.** The audit was pairing every WA Door upgrade with the generic 7272 E because the "40"/"46" in the name is a wall size, not a model size. Each WA UPG is now checked against a booth that actually uses that wall in the matching shell — STD 40 → 6084 S, ENH 40 → 6084 E, STD 46 → 7296 S, ENH 46 → 7296 E — so the weight delta reflects the real door/wall component swap.'},
+      ]
+    },
+    {
+      v:'1.84.13', date:'June 9, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Shipping Labels page now has a favicon** (a 🏷️ tag icon) so the print tab is easy to spot among open tabs.'},
+      ]
+    },
+    {
       v:'1.84.12', date:'June 9, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Packing list now reflects the foam color set on the order.** If a quote has become an order, the foam color, hinge, and WA-type set in the Orders drawer now drive the packing list — previously the PL only read the original quote, so changing the foam on the order didn\'t update the PL. The order\'s value wins; if none is set, it falls back to the accepted quote value.'},

@@ -29,6 +29,7 @@ const https = require('https');
 const etl    = require('./google-ads-etl');
 const hsEtl  = require('./hubspot-etl');
 const gscEtl = require('./gsc-etl');
+const serpEtl = require('./serp-etl');
 
 // Empty array = open to everyone (allowlist disabled). Populate with
 // ownerIds to re-lock — e.g. ['36303670', '36320208'] for Benton + Gabe.
@@ -373,6 +374,10 @@ async function handle(req, res, ctx) {
       else if (report === 'keywords')         result = await etl.syncKeywords({    db: ctx.db, daysBack: gaDays });
       else if (report === 'search_terms')     result = await etl.syncSearchTerms({ db: ctx.db, daysBack: gaDays });
       else if (report === 'gsc')              result = await gscEtl.syncGsc({      db: ctx.db, daysBack: gaDays });
+      // SERP (DataForSEO) is an explicit, cost-metered pull — kept OUT of 'all'
+      // so a routine Sync All never silently spends DataForSEO credit. `force`
+      // bypasses the 7-day per-keyword cache.
+      else if (report === 'serp')             result = await serpEtl.syncSerp({    db: ctx.db, force: !!body.force });
       else if (report === 'hubspot_contacts') result = await hsEtl.syncHubSpotContacts({ db: ctx.db, daysBack: hsDays });
       else if (report === 'hubspot_deals')    result = await hsEtl.syncHubSpotDeals({    db: ctx.db, daysBack: hsDays });
       else if (report === 'hubspot_all') {
@@ -401,6 +406,45 @@ async function handle(req, res, ctx) {
     } catch(e) {
       ctx.json({ ok: false, error: e.message }, 500);
     }
+    return true;
+  }
+
+  // ── GET /api/marketing/serp-snapshots ─────────────────────────────
+  // Latest SERP snapshot per keyword (most recent checked_on) + the prior
+  // our_rank so the UI can show movement. Powers the SEO Intel tab. Also
+  // returns the 'serp' sync meta and whether DataForSEO creds are configured
+  // (so the tab can show setup guidance instead of an empty table).
+  if (pathname === '/api/marketing/serp-snapshots' && req.method === 'GET') {
+    try {
+      if (!ctx.db) { ctx.json({ rows: [], configured: serpEtl.envReady() }); return true; }
+      const rows = (await ctx.db.query(`
+        WITH latest AS (
+          SELECT DISTINCT ON (keyword) keyword, checked_on, our_rank, our_rank_abs, our_url,
+                 top_results, ai_overview, ai_overview_cited, ai_overview_refs, serp_features
+          FROM marketing_serp_snapshots
+          ORDER BY keyword, checked_on DESC
+        ),
+        prev AS (
+          SELECT DISTINCT ON (s.keyword) s.keyword, s.our_rank AS prev_rank
+          FROM marketing_serp_snapshots s
+          JOIN latest l ON l.keyword = s.keyword AND s.checked_on < l.checked_on
+          ORDER BY s.keyword, s.checked_on DESC
+        )
+        SELECT l.*, p.prev_rank
+        FROM latest l
+        LEFT JOIN prev p ON p.keyword = l.keyword
+        ORDER BY (l.our_rank IS NULL), l.our_rank ASC
+      `)).rows;
+      const sync = (await ctx.db.query(
+        `SELECT last_synced_at, rows_synced, error FROM marketing_syncs WHERE report_type = 'serp'`
+      )).rows[0] || null;
+      ctx.json({
+        rows, sync,
+        configured: serpEtl.envReady(),
+        missing: serpEtl.missingEnvVars(),
+        trackedCap: serpEtl.MAX_SERP_KEYWORDS,
+      });
+    } catch (e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
   }
 

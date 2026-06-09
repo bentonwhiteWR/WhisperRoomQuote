@@ -225,3 +225,30 @@ CREATE INDEX IF NOT EXISTS idx_mkt_hs_deals_contact  ON marketing_hubspot_deals(
 CREATE INDEX IF NOT EXISTS idx_mkt_hs_deals_pipeline ON marketing_hubspot_deals(pipeline);
 CREATE INDEX IF NOT EXISTS idx_mkt_hs_deals_created  ON marketing_hubspot_deals(created_at);
 CREATE INDEX IF NOT EXISTS idx_mkt_hs_deals_closed   ON marketing_hubspot_deals(closed_at) WHERE closed_at IS NOT NULL;
+
+-- ── DataForSEO SERP snapshots (SEO Intel tab, Phase 1) ──────────────────
+-- One row per (keyword, location, day) capturing the LIVE Google results page
+-- that GSC can't show: our organic rank + URL, the top-N competitors (JSONB),
+-- and AI Overview presence/citation. Populated by serp-etl.js on a weekly
+-- "Sync SERP". location_code 2840 = United States. Idempotent upsert on the
+-- composite PK so a same-day re-sync overwrites rather than duplicates.
+CREATE TABLE IF NOT EXISTS marketing_serp_snapshots (
+  keyword            TEXT NOT NULL,
+  location_code      INTEGER NOT NULL DEFAULT 2840,
+  checked_on         DATE NOT NULL,
+  our_rank           NUMERIC,        -- whisperroom.com best ORGANIC position (rank_group; NULL = not found)
+  our_rank_abs       NUMERIC,        -- our ABSOLUTE position (rank_absolute — counts ads/AIO/features above)
+  our_url            TEXT,
+  top_results        JSONB,          -- [{rank, rankAbs, domain, url, title}] top organic results
+  ai_overview        BOOLEAN DEFAULT FALSE,
+  ai_overview_cited  BOOLEAN DEFAULT FALSE,   -- is whisperroom.com a cited source in the AI Overview?
+  ai_overview_refs   JSONB,          -- [{domain, url, title}] sources the AI Overview cites
+  serp_features      JSONB,          -- {featured_snippet, shopping, people_also_ask, ...} present
+  fetched_at         TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (keyword, location_code, checked_on)
+);
+-- Added after the table first shipped — idempotent so the already-deployed
+-- staging table picks up the absolute-rank column on next boot.
+ALTER TABLE marketing_serp_snapshots ADD COLUMN IF NOT EXISTS our_rank_abs NUMERIC;
+CREATE INDEX IF NOT EXISTS idx_mkt_serp_keyword ON marketing_serp_snapshots(keyword);
+CREATE INDEX IF NOT EXISTS idx_mkt_serp_checked ON marketing_serp_snapshots(checked_on);

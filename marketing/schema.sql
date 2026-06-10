@@ -264,3 +264,23 @@ ALTER TABLE marketing_serp_snapshots ADD COLUMN IF NOT EXISTS keyword_difficulty
 ALTER TABLE marketing_serp_snapshots ADD COLUMN IF NOT EXISTS cpc NUMERIC;
 CREATE INDEX IF NOT EXISTS idx_mkt_serp_keyword ON marketing_serp_snapshots(keyword);
 CREATE INDEX IF NOT EXISTS idx_mkt_serp_checked ON marketing_serp_snapshots(checked_on);
+
+-- ── Marketing radar alerts (📡 Radar tab, v1.99.0) ──────────────────────
+-- Server-detected changes worth acting on (rank drops, brand-term competitor
+-- ads, uncited AI Overviews, lost snippets, budget-lost spikes, spend with no
+-- conversions, organic decay). Written by alerts.js daily scans; deduped on
+-- (type, key) — the key carries a date/week component where periodic re-fire
+-- is intended. status: new → seen (ack) → dismissed.
+CREATE TABLE IF NOT EXISTS marketing_alerts (
+  id         SERIAL PRIMARY KEY,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  type       TEXT NOT NULL,
+  key        TEXT NOT NULL,
+  severity   TEXT NOT NULL DEFAULT 'info',   -- high | med | info
+  title      TEXT NOT NULL,
+  detail     TEXT,
+  data       JSONB,
+  status     TEXT NOT NULL DEFAULT 'new'     -- new | seen | dismissed
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mkt_alerts_type_key ON marketing_alerts(type, key);
+CREATE INDEX IF NOT EXISTS idx_mkt_alerts_status ON marketing_alerts(status, created_at DESC);

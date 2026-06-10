@@ -44,10 +44,16 @@ MAP = {
     # variant shows the ramp foot at the door sill
     'Components_WADoorLeftNoRamp.png':     'door-wa-left.webp',
     'Components_WADoorLeftWithRamp.png':   'door-wa-ramp-left.webp',
-    # ADA ramp: top-down plan (Components.png is the newer export with the
-    # tread seams) + side profile. The ramp protrudes 3′ 9⅝″ (45.625″).
-    'Components.png':                      'ramp-top.webp',
+    # ADA ramp: top-down plan + side profile. Protrudes 3′ 9⅝″ (45.625″).
+    'Components_RampTopDown.png':          'ramp-top.webp',
     'Components_RampSideView.png':         'ramp-side.webp',
+    # ventilation upgrades: VSS (4 silencer ducts) and VSS+EFS combo —
+    # front view, top-down plan and both side profiles
+    'Components_46VntWallVSS.png':         'wall-46-vnt-vss.webp',
+    'Components_46VNTWallVSSandEFS.png':   'wall-46-vnt-vss-efs.webp',
+    'Components_VSSandEFS Top Down.png':   'vent-vss-efs-top.webp',
+    'Components_VSSandEFSLeftSide.png':    'vent-vss-efs-side-left.webp',
+    'Components_VSSandEFSRightSide.png':   'vent-vss-efs-side-right.webp',
 }
 # the ramp wedge is too thin for the stray-line filter — plain bbox crop
 RAW_BBOX = {'ramp-top.webp', 'ramp-side.webp'}

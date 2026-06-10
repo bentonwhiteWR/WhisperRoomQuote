@@ -108,6 +108,20 @@ function renderLayoutSvg(layout, assign) {
   const W = ext.w * PX, H = ext.h * PX, t = layout.wallThickness * PX;
   const VPROT = 5.5;        // a vent set protrudes 5.5″ beyond its wall (spec)
   const VOUT = VPROT * PX;  // drawn at TRUE scale so the "w/ vent" dim reads honestly
+  // Effective drawn width of a slot: normally the slot nominal, BUT the WA/ADA
+  // door swap replaces a module pair with 49″ + a 7/19/31/43″ companion — the
+  // pair conserves total width while the JOINT between them (and its seam
+  // seal) shifts 3″ (4646/4622) or 9″ (4040/4016). Drawing those two at their
+  // real placed widths moves the panel boundary + seam seal to the true spot.
+  // Everything else keeps its nominal (digitized slots run ~1.5–2″ over the
+  // real SKU, which the per-wall normalization already absorbs).
+  const effSize = slot => {
+    const ln = assign[slot.id]; if (!ln) return slot.size;
+    const w = panelInteriorWidth(ln.pack);
+    if (w == null) return slot.size;
+    if (w >= 49) return w;                       // WA/ADA frame: always true 49″
+    return (Math.abs(w - slot.size) >= 3 && [7, 19, 31, 43].indexOf(w) >= 0) ? w : slot.size;
+  };
   // Which walls currently hold a door / vent — computed from the LIVE placement
   // (not hard-coded to S/N), so a dragged door or vent draws its swing/ducts on
   // whatever wall it now sits on, and the margins expand to fit. The door is
@@ -120,14 +134,15 @@ function renderLayoutSvg(layout, assign) {
     const wallM = layout.walls[sd] || { slots: [] };
     const horizM = (sd === 'N' || sd === 'S');
     const spanM = horizM ? (W - 2 * t) : (H - 2 * t);
-    const nomM = wallM.slots.reduce((a, sl) => a + sl.size, 0) || 1;
+    const nomM = wallM.slots.reduce((a, sl) => a + effSize(sl), 0) || 1;
     for (const slot of wallM.slots) {
       const ln = assign[slot.id]; if (!ln) continue;
       const k = classifyWall(ln.pack);
       if (k === 'DRFRM') {
         sideHasDoor[sd] = true;
-        const lenM = slot.size * (spanM / nomM);
-        const swingM = (layout.door && layout.door.swing) || 30;
+        const lenM = effSize(slot) * (spanM / nomM);
+        // WA/ADA frame (49″) carries a 32″ leaf regardless of the model default
+        const swingM = (panelInteriorWidth(ln.pack) >= 49 ? 32 : (layout.door && layout.door.swing)) || 30;
         doorLeafPx = Math.max(doorLeafPx, Math.min(swingM * PX, lenM * 0.94));
       } else if (k === 'VNT' && layout.hasVent !== false) sideHasVent[sd] = true;
     }
@@ -148,8 +163,8 @@ function renderLayoutSvg(layout, assign) {
   // defs — gradients, shadow, carpet
   s += `<defs>`
     + `<linearGradient id="ldBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef0f3"/><stop offset="1" stop-color="#f8f9fa"/></linearGradient>`
-    + `<pattern id="ldCarpet" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="#6d6d6b"/><rect width="7" height="1" fill="#656563"/><rect width="1" height="7" fill="#757573"/></pattern>`
-    + `<pattern id="ldSeal" width="5" height="5" patternUnits="userSpaceOnUse"><rect width="5" height="5" fill="#54575f"/><circle cx="1.2" cy="1.8" r="0.8" fill="#33353b"/><circle cx="3.7" cy="3.7" r="0.8" fill="#7d818b"/><circle cx="3.6" cy="0.9" r="0.6" fill="#2a2c31"/><circle cx="0.8" cy="4.2" r="0.5" fill="#8a8e98"/></pattern>`
+    + `<pattern id="ldCarpet" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="#46464a"/><rect width="7" height="1" fill="#3f3f43"/><rect width="1" height="7" fill="#4e4e52"/></pattern>`
+    + `<pattern id="ldSeal" width="5" height="5" patternUnits="userSpaceOnUse"><rect width="5" height="5" fill="#26272b"/><circle cx="1.2" cy="1.8" r="0.8" fill="#15161a"/><circle cx="3.7" cy="3.7" r="0.8" fill="#43454d"/><circle cx="3.6" cy="0.9" r="0.6" fill="#0e0f12"/><circle cx="0.8" cy="4.2" r="0.5" fill="#50535c"/></pattern>`
     + `<filter id="ldShadow" x="-15%" y="-15%" width="130%" height="135%"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#5a5f66" flood-opacity="0.35"/></filter>`
     + `</defs>`;
 
@@ -226,15 +241,16 @@ function renderLayoutSvg(layout, assign) {
     g += foamComb(fx0, fy0, fx1, fy0, 0, 1) + foamComb(fx0, fy1, fx1, fy1, 0, -1)
        + foamComb(fx0, fy0, fx0, fy1, 1, 0) + foamComb(fx1, fy0, fx1, fy1, -1, 0);
     // panel-joint seals — one per adjacency on EACH wall, placed from that
-    // wall's own slot widths, mounted on the EXTERIOR face with the tab
-    // protruding outward (matches the spec-sheet top-down views).
+    // wall's own slot widths (EFFECTIVE widths, so the WA-door pair's joint
+    // sits 3″/9″ over where the module pair's joint was), mounted on the
+    // EXTERIOR face with the tab protruding outward (matches the spec sheets).
     for (const side of ['N', 'S', 'E', 'W']) {
       const wall = layout.walls[side]; if (!wall || wall.slots.length < 2) continue;
-      const nom = wall.slots.reduce((a, sl) => a + sl.size, 0) || 1;
+      const nom = wall.slots.reduce((a, sl) => a + effSize(sl), 0) || 1;
       const horiz = (side === 'N' || side === 'S');
       let o = 0;
       for (let i = 0; i < wall.slots.length - 1; i++) {
-        o += wall.slots[i].size;
+        o += effSize(wall.slots[i]);
         const f = o / nom;
         if (horiz) {
           const x = fx0 + f * spanW;
@@ -327,19 +343,21 @@ function renderLayoutSvg(layout, assign) {
     const ly = horiz ? (oy < 0 ? omy - DL : omy) : Math.min(hy, cY);
     const lw = horiz ? leafW : DL, lh = horiz ? DL : leafW;
     g += `<g transform="rotate(${rot} ${hx} ${hy})">`;
-    g += `<rect x="${lx}" y="${ly}" width="${lw}" height="${lh}" rx="1" fill="#e9eaee" stroke="#1b1c20" stroke-width="1"/>`;
+    // the leaf is the same black carpet as the walls (real product: door is
+    // carpet-covered too) — hardware drawn light so it reads on the dark leaf
+    g += `<rect x="${lx}" y="${ly}" width="${lw}" height="${lh}" rx="1" fill="url(#ldSeal)" stroke="#000" stroke-width="1"/>`;
     // hinge dot pairs near the hinge end, handle nub at the free end
     for (const f of [0.08, 0.22]) {
       const d1x = hx + ax * flip * leafW * f + ox * DL * 0.32, d1y = hy + ay * flip * leafW * f + oy * DL * 0.32;
       const d2x = hx + ax * flip * leafW * f + ox * DL * 0.68, d2y = hy + ay * flip * leafW * f + oy * DL * 0.68;
-      g += `<circle cx="${d1x}" cy="${d1y}" r="1.3" fill="#26272c"/><circle cx="${d2x}" cy="${d2y}" r="1.3" fill="#26272c"/>`;
+      g += `<circle cx="${d1x}" cy="${d1y}" r="1.3" fill="#c9ccd3"/><circle cx="${d2x}" cy="${d2y}" r="1.3" fill="#c9ccd3"/>`;
     }
     const hbx = cX - ax * flip * leafW * 0.06, hby = cY - ay * flip * leafW * 0.06;   // handle base on the leaf
-    g += `<line x1="${hbx + ox * DL * 0.5}" y1="${hby + oy * DL * 0.5}" x2="${hbx + ox * (DL + 5)}" y2="${hby + oy * (DL + 5)}" stroke="#26272c" stroke-width="2" stroke-linecap="round"/>`;
-    g += `<line x1="${hbx + ox * (DL + 5)}" y1="${hby + oy * (DL + 5)}" x2="${hbx + ox * (DL + 5) - ax * flip * 7}" y2="${hby + oy * (DL + 5) - ay * flip * 7}" stroke="#26272c" stroke-width="2" stroke-linecap="round"/>`;
+    g += `<line x1="${hbx + ox * DL * 0.5}" y1="${hby + oy * DL * 0.5}" x2="${hbx + ox * (DL + 5)}" y2="${hby + oy * (DL + 5)}" stroke="#9ba0a9" stroke-width="2" stroke-linecap="round"/>`;
+    g += `<line x1="${hbx + ox * (DL + 5)}" y1="${hby + oy * (DL + 5)}" x2="${hbx + ox * (DL + 5) - ax * flip * 7}" y2="${hby + oy * (DL + 5) - ay * flip * 7}" stroke="#9ba0a9" stroke-width="2" stroke-linecap="round"/>`;
     g += `</g>`;
     // hinge pin marker at the pivot
-    g += `<circle cx="${hx}" cy="${hy}" r="2" fill="#26272c"/>`;
+    g += `<circle cx="${hx}" cy="${hy}" r="2" fill="#c9ccd3"/>`;
     return g;
   }
 
@@ -351,14 +369,16 @@ function renderLayoutSvg(layout, assign) {
     const wall = layout.walls[side]; if (!wall) return '';
     const horiz = (side === 'N' || side === 'S');
     const span = horiz ? (W - 2 * t) : (H - 2 * t);
-    const nominal = wall.slots.reduce((a, sl) => a + sl.size, 0) || 1;
+    // effective widths: the WA-door pair draws at its real 49″ + companion
+    // sizes, shifting the panel boundary (and the seam seal on it) 3″/9″
+    const nominal = wall.slots.reduce((a, sl) => a + effSize(sl), 0) || 1;
     const scale = span / nominal;
     let off = 0, g = '';
     for (const slot of wall.slots) {
       const line = assign[slot.id];
       const kind = line ? classifyWall(line.pack) : 'EMPTY';
       const meta = KIND_META[kind] || KIND_META.EMPTY;
-      const len = slot.size * scale;
+      const len = effSize(slot) * scale;
       // panel rect geometry per side
       let px, py, pw, ph;
       if (side === 'N') { px = x0 + t + off; py = y0;             pw = len; ph = t; }
@@ -366,20 +386,23 @@ function renderLayoutSvg(layout, assign) {
       else if (side === 'W') { px = x0;          py = y0 + t + off; pw = t; ph = len; }
       else { px = x0 + W - t; py = y0 + t + off; pw = t; ph = len; }
       g += `<g class="ld-panel" data-slot="${esc(slot.id)}">`;
-      // invisible hit-pad: extends the grab target ~15px into the interior so
-      // the thin wall bands are easy to drag. Drawn first (under the visuals).
-      const HP = 15;
+      // invisible hit-pad: extends the grab target well past the thin wall
+      // band — 26px into the interior AND 14px outside the shell — so fingers
+      // and quick mouse drags land (team kept missing the 15px pad). Drawn
+      // first (under the visuals).
+      const HPI = 26, HPO = 14;
       let hx = px, hy = py, hw = pw, hh = ph;
-      if (side === 'N')      { hh = ph + HP; }
-      else if (side === 'S') { hy = py - HP; hh = ph + HP; }
-      else if (side === 'W') { hw = pw + HP; }
-      else                   { hx = px - HP; hw = pw + HP; }
+      if (side === 'N')      { hy = py - HPO; hh = ph + HPI + HPO; }
+      else if (side === 'S') { hy = py - HPI; hh = ph + HPI + HPO; }
+      else if (side === 'W') { hx = px - HPO; hw = pw + HPI + HPO; }
+      else                   { hx = px - HPI; hw = pw + HPI + HPO; }
       g += `<rect class="ld-hit" x="${hx}" y="${hy}" width="${hw}" height="${hh}" fill="#000" fill-opacity="0" style="pointer-events:all"/>`;
       // Wall panels are the SAME carpet as the seam seals (one material on
       // the real product — the spec-sheet top-downs draw them identically).
       g += `<rect class="ld-wall" x="${px}" y="${py}" width="${pw}" height="${ph}" fill="url(#ldSeal)" stroke="#15161a" stroke-width="0.8"/>`;
-      // interior bevel highlight
-      g += `<rect x="${px + 0.6}" y="${py + 0.6}" width="${pw - 1.2}" height="${ph - 1.2}" fill="none" stroke="#4a4c55" stroke-opacity="0.5" stroke-width="0.6"/>`;
+      // interior bevel highlight (brighter than the old slate — panel edges
+      // need it to read on the near-black carpet)
+      g += `<rect x="${px + 0.6}" y="${py + 0.6}" width="${pw - 1.2}" height="${ph - 1.2}" fill="none" stroke="#5e616c" stroke-opacity="0.6" stroke-width="0.6"/>`;
       // kind accent line on the interior edge
       if (meta.accent) {
         if (side === 'N') g += `<rect x="${px + 1}" y="${py + ph - 2}" width="${pw - 2}" height="1.6" fill="${meta.accent}" opacity="0.8"/>`;
@@ -395,7 +418,7 @@ function renderLayoutSvg(layout, assign) {
       g += `</g>`;
       // collect vent / door for later overlay — on WHATEVER wall they sit
       if (kind === 'VNT' && layout.hasVent !== false) vents.push({ side, px, py, pw, ph });
-      if (kind === 'DRFRM') door = { side, px, py, pw, ph, swing: (layout.door && layout.door.swing) || 30, pack: line.pack };
+      if (kind === 'DRFRM') door = { side, px, py, pw, ph, swing: (panelInteriorWidth(line.pack) >= 49 ? 32 : (layout.door && layout.door.swing)) || 30, pack: line.pack };
       // panel label (width + type + code) just inside the wall on the floor
       g += panelLabel(side, px, py, pw, ph, kind, line, slot);
       off += len;
@@ -549,7 +572,7 @@ function renderElevationSvg(layout, assign, facing) {
   // resolution is harmless, and standalone renders still work
   s += `<defs>`
     + `<linearGradient id="ldBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef0f3"/><stop offset="1" stop-color="#f8f9fa"/></linearGradient>`
-    + `<pattern id="ldSeal" width="5" height="5" patternUnits="userSpaceOnUse"><rect width="5" height="5" fill="#54575f"/><circle cx="1.2" cy="1.8" r="0.8" fill="#33353b"/><circle cx="3.7" cy="3.7" r="0.8" fill="#7d818b"/><circle cx="3.6" cy="0.9" r="0.6" fill="#2a2c31"/><circle cx="0.8" cy="4.2" r="0.5" fill="#8a8e98"/></pattern>`
+    + `<pattern id="ldSeal" width="5" height="5" patternUnits="userSpaceOnUse"><rect width="5" height="5" fill="#26272b"/><circle cx="1.2" cy="1.8" r="0.8" fill="#15161a"/><circle cx="3.7" cy="3.7" r="0.8" fill="#43454d"/><circle cx="3.6" cy="0.9" r="0.6" fill="#0e0f12"/><circle cx="0.8" cy="4.2" r="0.5" fill="#50535c"/></pattern>`
     + `</defs>`;
   s += `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="url(#ldBg)"/>`;
   // ground line + soft shadow
@@ -560,7 +583,17 @@ function renderElevationSvg(layout, assign, facing) {
   const slots = wall.slots.slice();
   const mirrored = (facing === 'N' || facing === 'E');
   if (mirrored) slots.reverse();
-  const nominal = slots.reduce((a, sl) => a + sl.size, 0) || 1;
+  // same effective-width rule as the top-down: the WA-door pair draws at its
+  // real 49″ + companion widths, so the batten (seam seal) between them
+  // shifts 3″/9″ to the true joint
+  const effSize = sl => {
+    const ln = assign[sl.id]; if (!ln) return sl.size;
+    const w = panelInteriorWidth(ln.pack);
+    if (w == null) return sl.size;
+    if (w >= 49) return w;                       // WA/ADA frame: always true 49″
+    return (Math.abs(w - sl.size) >= 3 && [7, 19, 31, 43].indexOf(w) >= 0) ? w : sl.size;
+  };
+  const nominal = slots.reduce((a, sl) => a + effSize(sl), 0) || 1;
   const scale = Wp / nominal;
 
   // per-panel features, drawn after all strips + battens
@@ -598,10 +631,11 @@ function renderElevationSvg(layout, assign, facing) {
       g += `<line x1="${cx2 - ww / 2 + 3}" y1="${iy(72) + wh * 0.8}" x2="${cx2 + ww / 2 - 3}" y2="${iy(72) + wh * 0.2}" stroke="#fff" stroke-opacity="0.55" stroke-width="2"/>`;
     } else if (kind === 'VNT' && layout.hasVent !== false) {
       // intake duct low, exhaust duct high, remote fan unit at the floor
+      // (a notch lighter than the carpet so they read on the dark walls)
       const dw = 8 * PX2, dh = 30 * PX2;
-      g += `<rect x="${sx + w * 0.26 - dw / 2}" y="${iy(34)}" width="${dw}" height="${dh}" rx="1.5" fill="#34363d" stroke="#1b1c20" stroke-width="0.9"/>`;
-      g += `<rect x="${sx + w * 0.72 - dw / 2}" y="${iy(76)}" width="${dw}" height="${dh}" rx="1.5" fill="#34363d" stroke="#1b1c20" stroke-width="0.9"/>`;
-      g += `<rect x="${sx + w * 0.72 - 3.5 * PX2}" y="${iy(10)}" width="${7 * PX2}" height="${10 * PX2 - 2}" rx="2" fill="#2c2e33" stroke="#1b1c20" stroke-width="0.9"/>`;
+      g += `<rect x="${sx + w * 0.26 - dw / 2}" y="${iy(34)}" width="${dw}" height="${dh}" rx="1.5" fill="#3e414a" stroke="#0d0e11" stroke-width="0.9"/>`;
+      g += `<rect x="${sx + w * 0.72 - dw / 2}" y="${iy(76)}" width="${dw}" height="${dh}" rx="1.5" fill="#3e414a" stroke="#0d0e11" stroke-width="0.9"/>`;
+      g += `<rect x="${sx + w * 0.72 - 3.5 * PX2}" y="${iy(10)}" width="${7 * PX2}" height="${10 * PX2 - 2}" rx="2" fill="#383b43" stroke="#0d0e11" stroke-width="0.9"/>`;
       g += `<circle cx="${sx + w * 0.72}" cy="${iy(5.2)}" r="${2.4 * PX2}" fill="#22242a" stroke="#54585f" stroke-width="0.8"/>`;
       g += `<circle cx="${sx + w * 0.72}" cy="${iy(5.2)}" r="${0.8 * PX2}" fill="#62666f"/>`;
     } else if (kind === 'CBL' && line) {
@@ -617,7 +651,7 @@ function renderElevationSvg(layout, assign, facing) {
 
   let off = 0, feats = '';
   for (const slot of slots) {
-    const w = slot.size * scale;
+    const w = effSize(slot) * scale;
     const line = assign[slot.id];
     const kind = line ? classifyWall(line.pack) : 'EMPTY';
     s += `<rect x="${x0 + off}" y="${y0}" width="${w}" height="${Hp}" fill="${line ? 'url(#ldSeal)' : '#e9e9ec'}" stroke="#15161a" stroke-width="0.8"/>`;
@@ -648,10 +682,11 @@ function renderElevationSvg(layout, assign, facing) {
   if (leftVent) s += ventSideProfile(true);
   if (rightVent) s += ventSideProfile(false);
   // seam-seal battens: full-height at every panel joint, wrapping both corners
+  // (effective widths — a WA-door joint sits 3″/9″ off the module midline)
   const SB = Math.max(4.5, 3 * PX2);
   off = 0;
   for (let i = 0; i < slots.length - 1; i++) {
-    off += slots[i].size * scale;
+    off += effSize(slots[i]) * scale;
     s += `<rect x="${x0 + off - SB / 2}" y="${y0}" width="${SB}" height="${Hp}" fill="url(#ldSeal)" stroke="#0d0e11" stroke-width="0.9"/>`;
   }
   s += `<rect x="${x0 - SB * 0.45}" y="${y0}" width="${SB}" height="${Hp}" rx="1" fill="url(#ldSeal)" stroke="#0d0e11" stroke-width="0.9"/>`;

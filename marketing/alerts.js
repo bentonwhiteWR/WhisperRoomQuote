@@ -205,7 +205,7 @@ async function _checkGscDecay(db) {
     )
     SELECT p.query, p.clicks AS prev_clicks, COALESCE(c.clicks, 0) AS cur_clicks
     FROM prev p LEFT JOIN cur c USING (query)
-    WHERE p.clicks >= $1 AND COALESCE(c.clicks, 0) <= p.clicks * (1 - $2)
+    WHERE p.clicks >= $1 AND COALESCE(c.clicks, 0) <= p.clicks * (1 - $2::float)
     ORDER BY p.clicks DESC LIMIT 25
   `, [DECAY_MIN_CLICKS, DECAY_DROP_PCT]);
   return r.rows

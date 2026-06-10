@@ -460,12 +460,13 @@ async function generatePLForQuote(quoteNumber, q = {}) {
 // Open-order demand: Σ generated-PL components across every UNSHIPPED order
 // (replaces the Excel Aggregate/NEEDED FOR ORDERS COUNTIF columns). Cached
 // 5 min — each entry is an in-memory generate() over the saved snapshot.
-let _invDemandCache = { at: 0, byCode: {}, orders: 0 };
+let _invDemandCache = { at: 0, byCode: {}, byOrder: {}, orders: 0 };
 async function openOrderDemand(force = false) {
   if (!db) return _invDemandCache;
   if (!force && Date.now() - _invDemandCache.at < 5 * 60 * 1000) return _invDemandCache;
   const r = await db.query(`SELECT quote_number, order_data FROM orders`);
   const byCode = {};
+  const byOrder = {}; // code -> [{quote, deal, qty}] — the dashboard's expand view shows WHICH orders need it
   let counted = 0;
   for (const row of r.rows) {
     const od = row.order_data || {};
@@ -475,10 +476,16 @@ async function openOrderDemand(force = false) {
       const gen = await generatePLForQuote(row.quote_number);
       if (!gen) continue;
       counted++;
-      for (const l of inventory.linesFromPl(gen.pl)) byCode[l.code] = (byCode[l.code] || 0) + l.qty;
+      // Planned ship date, when Jeromy has set one in the orders drawer
+      // (saved as shipmentDraft until Ship It actually fires). Often void.
+      const shipDate = od.shipmentDraft?.date || od.shipped?.date || null;
+      for (const l of inventory.linesFromPl(gen.pl)) {
+        byCode[l.code] = (byCode[l.code] || 0) + l.qty;
+        (byOrder[l.code] = byOrder[l.code] || []).push({ quote: row.quote_number, deal: gen.dealName || '', qty: l.qty, shipDate });
+      }
     } catch (e) { /* bad/legacy snapshot — skip from demand */ }
   }
-  _invDemandCache = { at: Date.now(), byCode, orders: counted };
+  _invDemandCache = { at: Date.now(), byCode, byOrder, orders: counted };
   return _invDemandCache;
 }
 
@@ -1672,7 +1679,8 @@ const server = http.createServer(async (req, res) => {
     // Booth Builder is customer-facing: the page, its layout geometry (all
     // published spec-sheet data), the shared renderer it loads, and the
     // quote-request lead endpoint. Reps send /booth-builder links to prospects.
-    || pathname === '/booth-builder' || pathname === '/api/booth-layouts' || pathname === '/api/booth-request' || pathname === '/assets/layout-render.js';
+    || pathname === '/booth-builder' || pathname === '/api/booth-layouts' || pathname === '/api/booth-request' || pathname === '/assets/layout-render.js'
+    || /^\/assets\/booth-art\/[A-Za-z0-9][A-Za-z0-9_-]*\.webp$/.test(pathname);
   if (isPublicRoute) {
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
     if (!checkRateLimit(ip, 30, 60000)) {
@@ -1752,6 +1760,25 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(404); res.end('layout-render.js missing');
     }
     return;
+  }
+
+  // ── Booth Builder component art (public, like the page that uses it) ──
+  // /assets/booth-art/<name>.webp — SketchUp face-on renders of the real
+  // components (walls / door / seam seals), composited by the elevation
+  // renderer. Name is whitelisted to a safe charset; long cache (the art
+  // changes by re-import, which also bumps the page version).
+  {
+    const m = pathname.match(/^\/assets\/booth-art\/([A-Za-z0-9][A-Za-z0-9_-]*\.webp)$/);
+    if (m && req.method === 'GET') {
+      try {
+        const buf = require('fs').readFileSync(require('path').join(__dirname, 'assets', 'booth-art', m[1]));
+        res.writeHead(200, { 'Content-Type': 'image/webp', 'Cache-Control': 'public, max-age=86400' });
+        res.end(buf);
+      } catch (e) {
+        res.writeHead(404); res.end('not found');
+      }
+      return;
+    }
   }
 
   if (pathname === '/assets/truckload-calc.js') {
@@ -10810,7 +10837,7 @@ ${q.accepted ? `
     try {
       const rows = await inventory.getGrid();
       const demand = await openOrderDemand(parsed.query.refresh === '1');
-      json({ rows, demand: demand.byCode, openOrders: demand.orders, demandAt: demand.at });
+      json({ rows, demand: demand.byCode, demandOrders: demand.byOrder || {}, openOrders: demand.orders, demandAt: demand.at });
     } catch (e) {
       writelog('error', 'inventory.api', `grid load failed: ${e.message}`, {});
       json({ error: e.message }, 500);
@@ -10978,8 +11005,9 @@ ${q.accepted ? `
         f: ['Gray', 'Orange', 'Blue', 'Purple', 'Burgundy'].includes(d.f) ? d.f : 'Gray',
         w: [30, 36, 42, 48].includes(+d.w) ? +d.w : 0,
         wd: d.wd ? 1 : 0, hx: d.hx ? 1 : 0, cs: d.cs ? 1 : 0,
-        // summary-only add-ons (VSS / studio light / jack panel / bass traps / desk)
-        vs: d.vs ? 1 : 0, sl: d.sl ? 1 : 0, jp: d.jp ? 1 : 0, bt: d.bt ? 1 : 0, dk: d.dk ? 1 : 0,
+        // ventilation upgrades (drawn) + summary-only add-ons
+        vs: d.vs ? 1 : 0, ef: d.ef ? 1 : 0, rv: d.rv ? 1 : 0,
+        sl: d.sl ? 1 : 0, jp: d.jp ? 1 : 0, bt: d.bt ? 1 : 0, dk: d.dk ? 1 : 0,
         fc: ['N', 'S', 'E', 'W'].includes(d.fc) ? d.fc : 'S',
         a: {},
       };

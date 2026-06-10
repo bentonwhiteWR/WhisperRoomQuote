@@ -90,6 +90,12 @@
   .cell-input.dirty { border-color: var(--amber); background: rgba(245,158,11,.1); }
   .cell-input.bp { width: 86px; text-align: right; }
   .neg { color: var(--red); font-weight: 700; }
+  td.oh-amber { background: rgba(245,158,11,.13); }
+  td.oh-red { background: rgba(239,68,68,.15); }
+  .arch-btn { padding: 2px 8px; font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border-radius: 10px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); cursor: pointer; font-family: inherit; margin-left: 8px; }
+  .arch-btn:hover { border-color: var(--red); color: var(--red); }
+  .arch-btn.restore:hover { border-color: var(--green); color: var(--green); }
+  tr.archived td { opacity: .55; }
   .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
   .p-low { background: rgba(245,158,11,.15); color: var(--amber); }
   .p-short { background: rgba(239,68,68,.15); color: var(--red); }
@@ -165,6 +171,7 @@
       <button class="filter-btn" data-f="SHORT">Not enough</button>
       <button class="filter-btn" data-f="NEG">Negative</button>
       <button class="filter-btn" data-f="DIRTY">Edited</button>
+      <button class="filter-btn" data-f="ARCHIVED">Archived</button>
     </div>
     <input class="search-input" id="search" placeholder="Search code / name…" oninput="render()">
     <div class="spacer"></div>
@@ -249,6 +256,7 @@ function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c
 
 let ROWS = [];           // server rows
 let DEMAND = {};         // code -> needed qty (open orders)
+let DEMAND_ORDERS = {};  // code -> [{quote, deal, qty}] — which open orders the Needed comes from
 let DIRTY = {};          // code -> { field: newValue }
 let FILTER = 'ALL';
 let EXPANDED = null;     // code with open txn detail
@@ -313,6 +321,7 @@ async function loadData(refresh) {
     if (d.error) throw new Error(d.error);
     ROWS = d.rows || [];
     DEMAND = d.demand || {};
+    DEMAND_ORDERS = d.demandOrders || {};
     document.getElementById('demandMeta').textContent =
       'Demand from ' + (d.openOrders || 0) + ' open order' + (d.openOrders === 1 ? '' : 's') +
       (d.demandAt ? ' · computed ' + new Date(d.demandAt).toLocaleTimeString() : '');
@@ -339,6 +348,9 @@ function effective(row) {
 }
 
 function matchesFilter(row) {
+  const archived = row.active === false;
+  if (FILTER === 'ARCHIVED') return archived;
+  if (archived) return false; // archived rows only show under the Archived chip
   const f = flags(row).map(x => x[1]);
   if (FILTER === 'LOW')   return f.includes('Low');
   if (FILTER === 'SHORT') return f.includes('Not enough');
@@ -352,15 +364,17 @@ function render() {
   const rows = ROWS.filter(r =>
     (!q || r.code.toUpperCase().includes(q) || String(r.name || '').toUpperCase().includes(q)) && matchesFilter(r));
 
-  // cards
-  const low = ROWS.filter(r => flags(r).some(x => x[1] === 'Low')).length;
-  const short = ROWS.filter(r => flags(r).some(x => x[1] === 'Not enough')).length;
-  const neg = ROWS.filter(r => (parseInt(effective(r).on_hand, 10) || 0) < 0).length;
+  // cards — archived rows don't count
+  const act = ROWS.filter(r => r.active !== false);
+  const low = act.filter(r => flags(r).some(x => x[1] === 'Low')).length;
+  const short = act.filter(r => flags(r).some(x => x[1] === 'Not enough')).length;
+  const neg = act.filter(r => (parseInt(effective(r).on_hand, 10) || 0) < 0).length;
   document.getElementById('cards').innerHTML =
-    card('Components', ROWS.length) +
+    card('Components', act.length) +
     card('Low stock', low, low ? 'warn' : '') +
     card('Not enough for orders', short, short ? 'alert' : '') +
     card('Negative on-hand', neg, neg ? 'alert' : '') +
+    card('Archived', ROWS.length - act.length) +
     card('Unsaved edits', Object.keys(DIRTY).length, Object.keys(DIRTY).length ? 'warn' : '');
 
   const tb = document.getElementById('tbody');
@@ -381,8 +395,14 @@ function render() {
     const needed = DEMAND[r.code] || 0;
     const onHand = parseInt(eff.on_hand, 10) || 0;
     const avail = onHand - needed;
-    const fl = flags(r).map(x => '<span class="pill ' + x[0] + '">' + x[1] + '</span>').join(' ');
-    html += '<tr data-code="' + escapeHtml(r.code) + '">' +
+    const isArch = r.active === false;
+    const flArr = flags(r);
+    const fl = flArr.map(x => '<span class="pill ' + x[0] + '">' + x[1] + '</span>').join(' ');
+    const fln = flArr.map(x => x[1]);
+    // On-hand cell shading mirrors the flags: red beats amber
+    const ohCls = (fln.includes('Negative') || fln.includes('Not enough')) ? 'oh-red'
+                : (fln.includes('Low') ? 'oh-amber' : '');
+    html += '<tr data-code="' + escapeHtml(r.code) + '"' + (isArch ? ' class="archived"' : '') + '>' +
       '<td class="l code-cell" onclick="toggleDetail(\'' + escapeHtml(r.code) + '\')"><span class="caret">' + (EXPANDED === r.code ? '▾' : '▸') + '</span>' + escapeHtml(r.code) + '</td>' +
       '<td class="l name-cell" title="' + escapeHtml(r.name || '') + '">' + escapeHtml(r.name || '') + '</td>' +
       EDIT_FIELDS.map(f => {
@@ -398,9 +418,13 @@ function render() {
           : (shown === ''
               ? '<span class="dash">—</span>'
               : (f.key === 'on_hand' && onHand < 0 ? '<span class="neg">' + escapeHtml(shown) + '</span>' : escapeHtml(shown)));
-        return '<td>' + cell + extra;
+        return '<td' + (f.key === 'on_hand' && ohCls ? ' class="' + ohCls + '"' : '') + '>' + cell + extra;
       }).join('</td>') + '</td>' +
-      '<td class="l">' + (fl || '<span class="dash">—</span>') + '</td>' +
+      '<td class="l">' + (fl || '<span class="dash">—</span>') +
+        (EDITING
+          ? '<button class="arch-btn' + (isArch ? ' restore' : '') + '" onclick="setArchived(\'' + escapeHtml(r.code) + '\',' + (isArch ? 'false' : 'true') + ')">' + (isArch ? '♻ Restore' : '🗄 Archive') + '</button>'
+          : '') +
+      '</td>' +
       '</tr>';
     if (EXPANDED === r.code) html += '<tr class="detail"><td colspan="8" id="detailCell">Loading history…</td></tr>';
   }
@@ -471,6 +495,21 @@ async function saveChanges() {
 
 function discardChanges() { DIRTY = {}; EDITING = false; updateAdjustBtn(); render(); }
 
+// Archive / restore saves immediately (not part of the DIRTY batch) so a
+// cleanup pass is one click per row. Stays in adjust mode.
+async function setArchived(code, archived) {
+  try {
+    const r = await fetch('/api/inventory/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ changes: [{ code, active: !archived }] }) });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    const row = ROWS.find(x => x.code === code);
+    if (row) row.active = !archived;
+    render();
+  } catch (e) {
+    alert((archived ? 'Archive' : 'Restore') + ' failed: ' + e.message);
+  }
+}
+
 function toggleDetail(code) {
   EXPANDED = (EXPANDED === code) ? null : code;
   render();
@@ -486,7 +525,8 @@ function txnTable(txns) {
     txns.map(t =>
       '<tr><td>' + new Date(t.created_at).toLocaleString() + '</td>' +
       '<td><b>' + escapeHtml(t.code) + '</b></td>' +
-      '<td class="' + (t.delta > 0 ? 'delta-pos' : 'delta-neg') + '">' + (t.delta > 0 ? '+' : '') + t.delta + '</td>' +
+      (t.delta === 0 ? '<td class="muted">—</td>'
+        : '<td class="' + (t.delta > 0 ? 'delta-pos' : 'delta-neg') + '">' + (t.delta > 0 ? '+' : '') + t.delta + '</td>') +
       '<td>' + (t.on_hand_after == null ? '—' : t.on_hand_after) + '</td>' +
       '<td>' + reasonPill(t.reason) + '</td>' +
       '<td>' + (t.quote_number ? '<a href="/pl/' + encodeURIComponent(t.quote_number) + '" target="_blank" style="color:var(--blue)">' + escapeHtml(t.quote_number) + '</a>' : '<span class="dash">—</span>') + '</td>' +
@@ -495,14 +535,42 @@ function txnTable(txns) {
     ).join('') + '</table>';
 }
 
+// "Needed for" breakdown — which open orders this code's demand comes from
+function fmtShipDate(d) {
+  if (!d) return '<span class="dash">—</span>';
+  const dt = new Date(String(d).length <= 10 ? d + 'T12:00:00' : d);
+  return isNaN(dt) ? escapeHtml(d) : dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function neededTable(code) {
+  // Dated orders first (soonest ship at top), undated after (biggest qty first)
+  const list = (DEMAND_ORDERS[code] || []).slice().sort((a, b) => {
+    if (a.shipDate && b.shipDate) return a.shipDate < b.shipDate ? -1 : a.shipDate > b.shipDate ? 1 : b.qty - a.qty;
+    if (a.shipDate || b.shipDate) return a.shipDate ? -1 : 1;
+    return b.qty - a.qty;
+  });
+  if (!list.length) return '';
+  const total = list.reduce((s, o) => s + o.qty, 0);
+  return '<div style="margin-bottom:14px">' +
+    '<div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--blue);margin-bottom:6px">' +
+      'Needed ' + total + ' — across ' + list.length + ' open order' + (list.length === 1 ? '' : 's') + '</div>' +
+    '<table class="txn-table"><tr><th>Order</th><th>Ship Date</th><th>Deal</th><th>Qty</th></tr>' +
+    list.map(o =>
+      '<tr><td><a href="/pl/' + encodeURIComponent(o.quote) + '" target="_blank" style="color:var(--blue);font-weight:700">' + escapeHtml(o.quote) + '</a></td>' +
+      '<td>' + fmtShipDate(o.shipDate) + '</td>' +
+      '<td>' + escapeHtml(o.deal || '—') + '</td>' +
+      '<td><b>' + o.qty + '</b></td></tr>'
+    ).join('') + '</table></div>';
+}
+
 async function loadDetail(code) {
   const cell = document.getElementById('detailCell');
   if (!cell) return;
   try {
     const r = await fetch('/api/inventory/transactions?code=' + encodeURIComponent(code) + '&limit=50');
     const d = await r.json();
-    cell.innerHTML = txnTable(d.txns || []);
-  } catch (e) { cell.innerHTML = '<span class="muted">Failed to load history.</span>'; }
+    cell.innerHTML = neededTable(code) + txnTable(d.txns || []);
+  } catch (e) { cell.innerHTML = neededTable(code) + '<span class="muted">Failed to load history.</span>'; }
 }
 
 async function showActivity() {

@@ -18,6 +18,7 @@ const el = () => ({
   innerHTML: '', value: '', href: '', textContent: '', style: {},
   classList: { add() {}, remove() {}, toggle() {} },
   appendChild() {}, remove() {}, setAttribute() {}, getAttribute() { return null; },
+  querySelector() { return null; }, querySelectorAll() { return []; },
 });
 const fetchCalls = [];
 const sandbox = {

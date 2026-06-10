@@ -691,10 +691,34 @@ const ELEV_ART = {
   // the corner seal draws over that overlap, like the real assembly.
   ventSide: { fileL: 'vent-side-left.webp', aspectL: 0.1388, fileR: 'vent-side-right.webp', aspectR: 0.1275, protIn: 5.5, compHIn: 80.7 },
 };
+// windows: full render set — 32-series sits in a 46″ wall, 26-series in a
+// 40″ wall. 43″/31″ host walls have no dedicated renders; per Benton the
+// 26-series art stands in (those panels are just slightly thinner than 43″).
+const WDO_ART = {
+  '3230': { file: 'wall-46-wdo3230.webp', compWIn: 46, aspect: 0.5687 },
+  '3236': { file: 'wall-46-wdo3236.webp', compWIn: 46, aspect: 0.5687 },
+  '3242': { file: 'wall-46-wdo3242.webp', compWIn: 46, aspect: 0.5687 },
+  '3248': { file: 'wall-46-wdo3248.webp', compWIn: 46, aspect: 0.5675 },
+  '2630': { file: 'wall-40-wdo2630.webp', compWIn: 40, aspect: 0.4950 },
+  '2636': { file: 'wall-40-wdo2636.webp', compWIn: 40, aspect: 0.4938 },
+  '2642': { file: 'wall-40-wdo2642.webp', compWIn: 40, aspect: 0.4938 },
+  '2648': { file: 'wall-40-wdo2648.webp', compWIn: 40, aspect: 0.4938 },
+};
 function elevArtFor(kind, line) {
+  if (!line) return null;
+  const pack = String(line.pack || '');
+  if (kind === 'WDO') {
+    const m = pack.match(/WDO\s*(\d{2})(\d{2})/i);
+    if (!m) return null;
+    const host = +((pack.match(/^(?:FR\s+)?STDWL(\d+)/i) || [])[1] || 46);
+    const series = host < 46 ? '26' : '32';
+    const want = +m[2];
+    const h = [30, 36, 42, 48].reduce((b, x) => Math.abs(x - want) < Math.abs(b - want) ? x : b, 30);
+    return WDO_ART[series + h] || null;
+  }
   const art = ELEV_ART[kind];
-  if (!art || !line) return null;
-  if (art.packOk && !art.packOk.test(String(line.pack || ''))) return null;
+  if (!art) return null;
+  if (art.packOk && !art.packOk.test(pack)) return null;
   return art;
 }
 
@@ -735,10 +759,11 @@ function renderElevationSvg(layout, assign, facing) {
   const roofPad = ROOF ? 9 * PX2 : 0;            // headroom for the on-roof ducts
   const M = 46;
   const totalW = Wp + M * 2 + (leftVent ? EOUT2 : 0) + (rightVent ? EOUT2 : 0);
-  const totalH = Hp + liftPx + 34 + 30 + ((leftVent || rightVent) ? 16 : 0) + roofPad;
+  const totalH = Hp + liftPx + 34 + 30 + 5 + ((leftVent || rightVent) ? 16 : 0) + roofPad;
   const x0 = M + (leftVent ? EOUT2 : 0), y0 = 24 + roofPad;
   const fb = y0 + Hp;                          // booth floor (bottom of the walls)
-  const gy = fb + liftPx;                      // ground line (= booth floor unless casters)
+  const FLOORH = 4.5;                          // floor platform peeking below the walls
+  const gy = fb + FLOORH + liftPx;             // ground line (floor strip, then casters)
   const iy = v => fb - v * PX2;                // inches above the BOOTH FLOOR → px
 
   let s = `<svg class="ld-elev-svg" viewBox="0 0 ${totalW} ${totalH}" preserveAspectRatio="xMidYMid meet" `
@@ -751,6 +776,7 @@ function renderElevationSvg(layout, assign, facing) {
     // seam seals sit PROUD of the wall plane — a soft cast shadow on both
     // sides gives the joint the depth Benton's assembly render shows (the
     // flat composites read "very plain together" without it)
+    + `<pattern id="ldCarpetArt" patternUnits="userSpaceOnUse" width="${46 * PX2}" height="${(46 / 0.5687) * PX2}"><image href="${ART_BASE}wall-46.webp" width="${46 * PX2}" height="${(46 / 0.5687) * PX2}" preserveAspectRatio="none"/></pattern>`
     + `<filter id="ldSealShadow" x="-150%" y="-8%" width="400%" height="116%">`
     +   `<feDropShadow dx="-2.4" dy="0" stdDeviation="2" flood-color="#000" flood-opacity="0.5"/>`
     +   `<feDropShadow dx="2.4" dy="1.5" stdDeviation="2" flood-color="#000" flood-opacity="0.45"/>`
@@ -886,8 +912,11 @@ function renderElevationSvg(layout, assign, facing) {
     if (!art || kind === 'VNT') feats += elevFeatures(kind, line, x0 + off, w, !!art);
     off += w;
   }
-  // roof cap
-  s += `<rect x="${x0 - 2.5}" y="${y0 - 3.5}" width="${Wp + 5}" height="4.5" rx="1.8" fill="url(#ldSeal)" stroke="#15161a" stroke-width="0.8"/>`;
+  // roof cap + floor platform — the SAME carpet as the wall renders (the old
+  // speckle pattern read as a different fabric). The floor peeks out just
+  // below the walls, mirroring the cap, like the real booth base.
+  s += `<rect x="${x0 - 2.5}" y="${y0 - 3.5}" width="${Wp + 5}" height="4.5" rx="1.8" fill="url(#ldCarpetArt)" stroke="#15161a" stroke-width="0.8"/>`;
+  s += `<rect x="${x0 - 2.5}" y="${fb - 1}" width="${Wp + 5}" height="${FLOORH + 1}" rx="1.8" fill="url(#ldCarpetArt)" stroke="#15161a" stroke-width="0.8"/>`;
   // roof-mounted vent set: the duct boxes ride ON the roof — visible from
   // every side, so they always draw when the booth is roof-vented
   if (ROOF) {
@@ -906,7 +935,7 @@ function renderElevationSvg(layout, assign, facing) {
   }
   // caster plate + wheels (booth raised ~5″ off the ground)
   if (lift > 0) {
-    s += `<rect x="${x0 - 1}" y="${fb}" width="${Wp + 2}" height="${liftPx * 0.38}" rx="1.5" fill="#26282d" stroke="#15161a" stroke-width="0.8"/>`;
+    s += `<rect x="${x0 - 1}" y="${fb + FLOORH}" width="${Wp + 2}" height="${liftPx * 0.38}" rx="1.5" fill="#26282d" stroke="#15161a" stroke-width="0.8"/>`;
     for (const f of [0.08, 0.36, 0.64, 0.92]) {
       const wx = x0 + Wp * f;
       s += `<circle cx="${wx}" cy="${gy - liftPx * 0.32}" r="${liftPx * 0.34}" fill="#1b1c20" stroke="#000" stroke-width="0.8"/>`;
@@ -916,14 +945,11 @@ function renderElevationSvg(layout, assign, facing) {
   // side profile of an adjacent wall's vent set — Benton's side-view renders
   // (vent-side-left/right), composited so the ducts protrude 5.5″ past the
   // booth edge and the wall-edge part of the image overlaps the booth face
-  // (the corner seal draws over that overlap, like the real assembly). The
-  // gray vector bands stay underneath as the loading fallback.
+  // (the corner seal draws over that overlap, like the real assembly).
+  // The old gray vector duct bands are GONE — they drew wider than the art
+  // and peeked out from behind it.
   function ventSideProfile(atLeft) {
-    const bx = atLeft ? x0 - VOUT2 : x0 + Wp;
     let g = '';
-    for (const band of [[34, 30], [76, 30]])
-      g += `<rect x="${bx}" y="${iy(band[0])}" width="${VOUT2}" height="${band[1] * PX2}" rx="1.5" fill="#2e3037" stroke="#1b1c20" stroke-width="0.9"/>`;
-    if (!EFS) g += `<rect x="${bx}" y="${iy(10)}" width="${VOUT2}" height="${10 * PX2 - 2}" rx="2" fill="#26282d" stroke="#1b1c20" stroke-width="0.9"/>`;
     const vs = ELEV_ART.ventSide;
     if (vs) {
       const wIn = vs.compHIn * (atLeft ? vs.aspectL : vs.aspectR);

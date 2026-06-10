@@ -340,7 +340,7 @@ function renderLayoutSvg(layout, assign) {
       const depthPx = vt.depthIn * PX, alongPx = (vt.depthIn / vt.aspect) * PX;
       const ang = { W: 0, N: 90, E: 180, S: 270 }[side];
       return `<g transform="rotate(${ang} ${omx} ${omy})">`
-        + `<image href="${ART_BASE + vt.file}" x="${omx - (vt.depthIn - vt.bandIn) * PX}" y="${omy - alongPx / 2}" width="${depthPx}" height="${alongPx}" preserveAspectRatio="none"/></g>`;
+        + `<image href="${artHref(vt.file)}" x="${omx - (vt.depthIn - vt.bandIn) * PX}" y="${omy - alongPx / 2}" width="${depthPx}" height="${alongPx}" preserveAspectRatio="none"/></g>`;
     }
     const panelLen = horiz ? pw : ph;
     // four boxes have to fit when VSS is on — shrink the per-box width
@@ -636,7 +636,7 @@ function renderLayoutSvg(layout, assign) {
     const hIn2 = rt.protIn + rt.sillIn, wIn2 = hIn2 * rt.aspect;
     const ang = { S: 0, N: 180, W: 90, E: -90 }[door.side];
     s += `<g transform="rotate(${ang} ${omx} ${omy})">`
-      + `<image href="${ART_BASE + rt.file}" x="${omx - wIn2 * PX / 2}" y="${omy - rt.sillIn * PX}" width="${wIn2 * PX}" height="${hIn2 * PX}" preserveAspectRatio="none"/></g>`;
+      + `<image href="${artHref(rt.file)}" x="${omx - wIn2 * PX / 2}" y="${omy - rt.sillIn * PX}" width="${wIn2 * PX}" height="${hIn2 * PX}" preserveAspectRatio="none"/></g>`;
   }
   if (door) s += doorSwing(door.side, door.px, door.py, door.pw, door.ph, door.swing, door.pack);
 
@@ -723,6 +723,12 @@ function renderLayoutSvg(layout, assign) {
 // on the wall sides bind into them on the real product.
 const ART_BASE = (typeof window !== 'undefined' && window.BB_ART_BASE)
   || (typeof global !== 'undefined' && global.BB_ART_BASE) || '/assets/booth-art/';
+// Cache-buster: the art is served with a long max-age and the FILENAMES stay
+// stable across re-imports, so browsers happily show stale renders for a day.
+// import-art.py auto-bumps this on every run; the query string flips every
+// cached URL at once. (Benton re-rendered VSS+EFS and saw the old art.)
+const ART_VERSION = 3;
+const artHref = f => ART_BASE + f + '?v=' + ART_VERSION;
 const ELEV_ART = {
   SOLID:  { file: 'wall-46.webp',         compWIn: 46, aspect: 0.5687 },
   VNT:    { file: 'wall-46-vnt.webp',     compWIn: 46, aspect: 0.5663, packOk: /\bVNT\b/i },
@@ -805,7 +811,7 @@ function preloadElevArt() {
     ['file', 'fileL', 'fileR'].forEach(f => { if (a[f]) files.add(a[f]); });
   }
   for (const k in WDO_ART) files.add(WDO_ART[k].file);
-  files.forEach(f => { const im = new Image(); im.src = ART_BASE + f; });
+  files.forEach(f => { const im = new Image(); im.src = artHref(f); });
 }
 
 // ── Elevation renderer: one wall viewed face-on from OUTSIDE ────────
@@ -873,7 +879,7 @@ function renderElevationSvg(layout, assign, facing) {
     // seam seals sit PROUD of the wall plane — a soft cast shadow on both
     // sides gives the joint the depth Benton's assembly render shows (the
     // flat composites read "very plain together" without it)
-    + `<pattern id="ldCarpetArt" patternUnits="userSpaceOnUse" width="${46 * PX2}" height="${(46 / 0.5687) * PX2}"><image href="${ART_BASE}wall-46.webp" width="${46 * PX2}" height="${(46 / 0.5687) * PX2}" preserveAspectRatio="none"/></pattern>`
+    + `<pattern id="ldCarpetArt" patternUnits="userSpaceOnUse" width="${46 * PX2}" height="${(46 / 0.5687) * PX2}"><image href="${artHref('wall-46.webp')}" width="${46 * PX2}" height="${(46 / 0.5687) * PX2}" preserveAspectRatio="none"/></pattern>`
     + `<filter id="ldSealShadow" x="-150%" y="-8%" width="400%" height="116%">`
     +   `<feDropShadow dx="-2.4" dy="0" stdDeviation="2" flood-color="#000" flood-opacity="0.5"/>`
     +   `<feDropShadow dx="2.4" dy="1.5" stdDeviation="2" flood-color="#000" flood-opacity="0.45"/>`
@@ -977,7 +983,7 @@ function renderElevationSvg(layout, assign, facing) {
   // narrower solid walls, which CROP the 46″ art horizontally so the carpet
   // texture stays at true scale instead of squishing.
   function artPanel(art, kind, line, sx, wPx, wIn) {
-    let href = ART_BASE + art.file;
+    let href = artHref(art.file);
     const artHIn = art.compWIn / art.aspect;
     if (kind === 'SOLID' && wIn < art.compWIn - 1) {
       const cx2 = (art.compWIn - wIn) / 2;
@@ -988,7 +994,7 @@ function renderElevationSvg(layout, assign, facing) {
       // hinge-specific art (the right variant keeps the logo readable)
       let hingeRight = /\sR\b/i.test(String(line.pack || ''));
       if (mirrored) hingeRight = !hingeRight;
-      if (hingeRight) href = ART_BASE + art.fileR;
+      if (hingeRight) href = artHref(art.fileR);
     }
     // the WA-with-ramp render is genuinely TALLER than a wall — the ramp
     // foot intentionally hangs below the frame bottom, so scale by the art's
@@ -1062,14 +1068,14 @@ function renderElevationSvg(layout, assign, facing) {
       const wIn2 = v2.compHIn * v2.aspect;
       const wPx2 = wIn2 * PX2;
       const vx2 = atLeft ? x0 - v2.protIn * PX2 : x0 + Wp + v2.protIn * PX2 - wPx2;
-      return `<image href="${ART_BASE + (atLeft ? v2.fileL : v2.fileR)}" x="${vx2}" y="${y0}" width="${wPx2}" height="${Hp}" preserveAspectRatio="none"/>`;
+      return `<image href="${artHref(atLeft ? v2.fileL : v2.fileR)}" x="${vx2}" y="${y0}" width="${wPx2}" height="${Hp}" preserveAspectRatio="none"/>`;
     }
     const vs = ELEV_ART.ventSide;
     if (vs) {
       const wIn = vs.compHIn * (atLeft ? vs.aspectL : vs.aspectR);
       const wPx = wIn * PX2;
       const vx = atLeft ? x0 - vs.protIn * PX2 : x0 + Wp + vs.protIn * PX2 - wPx;
-      g += `<image href="${ART_BASE + (atLeft ? vs.fileL : vs.fileR)}" x="${vx}" y="${y0}" width="${wPx}" height="${Hp}" preserveAspectRatio="none"/>`;
+      g += `<image href="${artHref(atLeft ? vs.fileL : vs.fileR)}" x="${vx}" y="${y0}" width="${wPx}" height="${Hp}" preserveAspectRatio="none"/>`;
     }
     if (EFS) {
       // EFS silencer box at the floor — protrudes a full 10″ past the edge
@@ -1088,7 +1094,7 @@ function renderElevationSvg(layout, assign, facing) {
     const wIn = rs.compHIn * rs.aspect;
     const wPx = wIn * PX2;
     const vx = atLeft ? x0 - rs.protIn * PX2 : x0 + Wp + rs.protIn * PX2 - wPx;
-    const img = `<image href="${ART_BASE + rs.file}" x="${vx}" y="${y0}" width="${wPx}" height="${Hp}" preserveAspectRatio="none"/>`;
+    const img = `<image href="${artHref(rs.file)}" x="${vx}" y="${y0}" width="${wPx}" height="${Hp}" preserveAspectRatio="none"/>`;
     // art has the wall at the right / wedge running left — mirror for the right side
     return atLeft ? img : `<g transform="translate(${2 * vx + wPx} 0) scale(-1 1)">${img}</g>`;
   }
@@ -1114,15 +1120,15 @@ function renderElevationSvg(layout, assign, facing) {
     off = 0;
     for (let i = 0; i < slots.length - 1; i++) {
       off += effSize(slots[i]) * scale;
-      s += `<image href="${ART_BASE + ms.file}" x="${x0 + off - mw / 2}" y="${y0}" width="${mw}" height="${Hp}" preserveAspectRatio="none" filter="url(#ldSealShadow)"/>`;
+      s += `<image href="${artHref(ms.file)}" x="${x0 + off - mw / 2}" y="${y0}" width="${mw}" height="${Hp}" preserveAspectRatio="none" filter="url(#ldSealShadow)"/>`;
     }
     // corner seals: proud of the booth edge (outset) so they break the
     // silhouette like the real part, with the same cast shadow for depth.
     // Both corners draw the SAME image, unmirrored — the negative-scale
     // transform broke the right one (filter + flip rendered nothing), and
     // per Benton the right corner should look just like the left anyway.
-    s += `<image href="${ART_BASE + cs.file}" x="${x0 - outset}" y="${y0}" width="${cw3}" height="${Hp}" preserveAspectRatio="none" filter="url(#ldSealShadow)"/>`;
-    s += `<image href="${ART_BASE + cs.file}" x="${x0 + Wp + outset - cw3}" y="${y0}" width="${cw3}" height="${Hp}" preserveAspectRatio="none" filter="url(#ldSealShadow)"/>`;
+    s += `<image href="${artHref(cs.file)}" x="${x0 - outset}" y="${y0}" width="${cw3}" height="${Hp}" preserveAspectRatio="none" filter="url(#ldSealShadow)"/>`;
+    s += `<image href="${artHref(cs.file)}" x="${x0 + Wp + outset - cw3}" y="${y0}" width="${cw3}" height="${Hp}" preserveAspectRatio="none" filter="url(#ldSealShadow)"/>`;
   }
   s += feats;
 

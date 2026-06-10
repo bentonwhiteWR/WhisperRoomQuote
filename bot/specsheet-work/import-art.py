@@ -107,3 +107,17 @@ for src, dst in MAP.items():
         flipped = im.transpose(Image.FLIP_LEFT_RIGHT)
         flipped.paste(patch, (im.width - x2, y1))
         save(flipped, rdst)
+
+# bump the renderer's art cache-buster so browsers drop the day-long cache of
+# the (stable) filenames and pick up the re-imported renders immediately
+import re
+rp = os.path.join(os.path.dirname(__file__), '..', '..', 'assets', 'layout-render.js')
+r = open(rp, encoding='utf8').read()
+m = re.search(r'const ART_VERSION = (\d+);', r)
+if m:
+    nv = int(m.group(1)) + 1
+    r = r.replace(m.group(0), 'const ART_VERSION = %d;' % nv)
+    open(rp, 'w', encoding='utf8', newline='').write(r)
+    print('ART_VERSION bumped to', nv)
+else:
+    print('WARNING: ART_VERSION not found in layout-render.js — bump it manually')

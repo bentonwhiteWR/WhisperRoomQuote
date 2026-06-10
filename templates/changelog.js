@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.85.1', date:'June 9, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Top-Down Layout: elevation view now sits BELOW the top-down** instead of beside it, slightly larger — the two views stack so each gets the full row width.'},
+      ]
+    },
+    {
       v:'1.85.0', date:'June 9, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**Top-Down Layout: rotatable elevation view (front/side skeleton).** Next to the top-down there is now an ELEVATION panel with ◀ ▶ rotate buttons cycling FRONT → RIGHT SIDE → BACK → LEFT SIDE. Each face renders the booth as seen from outside at correct proportions (6&apos;11&quot; standard / 7&apos;1&quot; enhanced): door with its window, hinges, handle and threshold; wall windows at their real WDO sizes; vent walls with the intake duct low and exhaust duct high plus the remote fan unit at the floor; cable passages; seam-seal battens at panel joints and corners. Back and right views are mirrored so left/right match what a viewer standing on that side sees. The view follows the live drag state — move the door in the top-down and the elevation updates. First cut of the booth-builder &quot;front/side view with rotate&quot;.'},

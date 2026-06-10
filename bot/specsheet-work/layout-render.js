@@ -490,7 +490,7 @@ function renderElevationSvg(layout, assign, facing) {
   const iy = v => gy - v * PX2;                // inches above the floor → px
 
   let s = `<svg class="ld-elev-svg" viewBox="0 0 ${totalW} ${totalH}" preserveAspectRatio="xMidYMid meet" `
-        + `style="width:100%;max-width:440px;display:block;margin:0 auto;font-family:'DM Sans',sans-serif">`;
+        + `style="width:100%;max-width:520px;display:block;margin:0 auto;font-family:'DM Sans',sans-serif">`;
   // same defs/ids as the top-down — identical content, so document-wide id
   // resolution is harmless, and standalone renders still work
   s += `<defs>`

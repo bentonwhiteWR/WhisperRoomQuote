@@ -106,10 +106,8 @@
   .ld-ghost.bad{border-color:#dc2626}
   .ld-ghost.bad::after{content:'✕ wrong size';color:#f87171;font-weight:600;margin-left:2px}
   .ld-ghost .c{color:#ee6216;font-family:ui-monospace,Menlo,monospace}
-  /* Two-view layout: top-down + rotatable elevation, side by side (wraps) */
-  .ld-views{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start;justify-content:center}
-  .ld-view-plan{flex:1 1 440px;min-width:320px}
-  .ld-view-elev{flex:0 1 360px;min-width:280px}
+  /* Stacked views: top-down first, rotatable elevation below it */
+  .ld-views{display:flex;flex-direction:column;gap:14px}
   .ld-view-cap{display:flex;align-items:center;justify-content:center;gap:10px;font-size:10px;font-weight:800;letter-spacing:.12em;color:#9097a0;margin:2px 0 4px;min-height:24px}
   .ld-rot{border:1px solid #d5d8dd;background:#fff;border-radius:6px;width:26px;height:22px;font-size:10px;color:#4a4f57;cursor:pointer;line-height:1;font-family:inherit}
   .ld-rot:hover{background:#fff4ee;border-color:#ee6216;color:#ee6216}
@@ -730,7 +728,7 @@
     const iy = v => gy - v * PX2;                // inches above the floor → px
   
     let s = `<svg class="ld-elev-svg" viewBox="0 0 ${totalW} ${totalH}" preserveAspectRatio="xMidYMid meet" `
-          + `style="width:100%;max-width:440px;display:block;margin:0 auto;font-family:'DM Sans',sans-serif">`;
+          + `style="width:100%;max-width:520px;display:block;margin:0 auto;font-family:'DM Sans',sans-serif">`;
     // same defs/ids as the top-down — identical content, so document-wide id
     // resolution is harmless, and standalone renders still work
     s += `<defs>`

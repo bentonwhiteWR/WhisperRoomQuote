@@ -49,6 +49,14 @@
   .pill2 button{padding:6px 13px;font-size:12px;font-weight:700;font-family:inherit;border:none;background:#fff;color:#888;cursor:pointer}
   .pill2 button.active{background:var(--orange);color:#fff}
 
+  .wadd{border:1.5px solid var(--orange);background:#fff;color:var(--orange);border-radius:8px;padding:6px 13px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;flex:none}
+  .wadd:hover{background:var(--orange);color:#fff}
+  .wadd:disabled{opacity:.4;cursor:default;pointer-events:none}
+  .winitem{display:flex;align-items:center;gap:8px;padding:7px 0 7px 14px;border-bottom:1px dashed var(--line);font-size:12.5px}
+  .winitem .wlab{flex:1;font-weight:600;color:#444;text-transform:capitalize}
+  .winitem select{width:auto;min-width:84px;padding:5px 7px;font-size:12px}
+  .wrm{border:1px solid #d5d8dd;background:#fff;color:#b8412a;border-radius:6px;width:25px;height:25px;cursor:pointer;font-size:11px;font-family:inherit;flex:none}
+  .wrm:hover{border-color:#b8412a;background:#fdf3f1}
   .swatches{display:flex;gap:9px;margin-top:4px}
   .sw{width:30px;height:30px;border-radius:50%;cursor:pointer;border:2.5px solid transparent;outline:1px solid rgba(0,0,0,.18)}
   .sw.active{border-color:#fff;outline:2.5px solid var(--orange)}
@@ -141,7 +149,6 @@ const state = {
   variant: 'S',          // S | E
   hinge: 'R',            // R | L
   foam: 'Gray',
-  windowH: 0,            // 0 = none, else 30/36/42/48
   wideDoor: false,
   heightExt: false,
   casters: false,
@@ -157,9 +164,10 @@ const state = {
 // re-encodes it into the link it hands the rep, so the notification opens
 // the customer's exact arrangement.
 function designPayload() {
+  // windows live per-slot in `a` (any number of them) — no top-level field
   const a = {};
   for (const id in state.assign) a[id] = state.assign[id].pack;
-  return { m: state.model, v: state.variant, h: state.hinge, f: state.foam, w: state.windowH,
+  return { m: state.model, v: state.variant, h: state.hinge, f: state.foam,
            wd: state.wideDoor ? 1 : 0, hx: state.heightExt ? 1 : 0, cs: state.casters ? 1 : 0,
            fc: state.facing, a };
 }
@@ -177,7 +185,7 @@ function restoreFromHash() {
     state.variant = d.v === 'E' ? 'E' : 'S';
     state.hinge = d.h === 'L' ? 'L' : 'R';
     state.foam = FOAMS.indexOf(d.f) >= 0 ? d.f : 'Gray';
-    state.windowH = [30, 36, 42, 48].indexOf(+d.w) >= 0 ? +d.w : 0;
+    // (legacy d.w ignored — the window packs ride in d.a, one per slot)
     state.wideDoor = !!d.wd; state.heightExt = !!d.hx; state.casters = !!d.cs;
     state.facing = ['N', 'S', 'E', 'W'].indexOf(d.fc) >= 0 ? d.fc : 'S';
     state.assign = {};
@@ -207,9 +215,9 @@ const ventPack   = slot => 'STDWL' + realSize(slot.size) + ' VNT';
 const doorPack   = slot => 'STDWL' + realSize(slot.size) + ' DRFRM ' + state.hinge;
 const waPack     = () => 'WA STDDRFRM ' + state.hinge;
 const shrinkPack = w => (w === 7 ? 'STDWL7 / WL16' : 'STDWL' + w);
-const windowPack = (layout, slot) => {
+const windowPack = (layout, slot, h) => {
   const ww = (layout.module === 40) ? 26 : 32;            // window width follows the wall series
-  return 'STDWL' + realSize(slot.size) + ' WDO' + ww + state.windowH;
+  return 'STDWL' + realSize(slot.size) + ' WDO' + ww + h;
 };
 
 function resolveLayout() {
@@ -257,16 +265,44 @@ function applyHinge(layout) {
   const id = doorSlotId(layout); if (!id) return;
   state.assign[id] = line(String(state.assign[id].pack).replace(/\s[RL]\b/, ' ' + state.hinge));
 }
-function applyWindow(layout) {
-  // remove any existing window first
-  eachSlot(layout, slot => { if (kindAt(slot.id) === 'WDO') state.assign[slot.id] = line(solidPack(slot)); });
-  if (!state.windowH) return;
-  // prefer a solid full-size wall NOT on the door's wall, so the window
+// ── windows: any number, managed per-slot via the ＋ Add list ────────
+// A window can sit on any full-size solid panel (window walls exist for every
+// series); each one keeps its own height. They live directly in state.assign,
+// so drags, the #d= link and the quote payload all carry them for free.
+function windowSeat(layout) {
+  // prefer a solid full-size wall NOT on the door's wall, so a new window
   // starts somewhere sensible — the customer can drag it anywhere valid
   const doorSide = (findSlot(layout, s => kindAt(s.id) === 'DRFRM') || {}).side;
-  const pick = findSlot(layout, (s, side) => s.size >= 36 && side !== doorSide && kindAt(s.id) === 'SOLID')
-            || findSlot(layout, s => s.size >= 36 && kindAt(s.id) === 'SOLID');
-  if (pick) state.assign[pick.slot.id] = line(windowPack(layout, pick.slot));
+  return findSlot(layout, (s, side) => s.size >= 36 && side !== doorSide && kindAt(s.id) === 'SOLID')
+      || findSlot(layout, s => s.size >= 36 && kindAt(s.id) === 'SOLID');
+}
+function listWindows(layout) {
+  const out = [];
+  eachSlot(layout, (slot, side) => {
+    if (kindAt(slot.id) !== 'WDO') return;
+    const m = String(state.assign[slot.id].pack).match(/WDO(\d{2})(\d{2})/i);
+    out.push({ slot, side, w: m ? +m[1] : 32, h: m ? +m[2] : 36 });
+  });
+  return out;
+}
+function addWindow() {
+  const layout = resolveLayout();
+  const pick = windowSeat(layout);
+  if (!pick) { toast('No free wall panel for another window — move or remove something first'); return; }
+  state.assign[pick.slot.id] = line(windowPack(layout, pick.slot, 36));
+  render();
+}
+function setWindowH(slotId, h) {
+  const layout = resolveLayout();
+  const s = slotById(layout, slotId); if (!s) return;
+  state.assign[slotId] = line(windowPack(layout, s, +h));
+  render();
+}
+function removeWindow(slotId) {
+  const layout = resolveLayout();
+  const s = slotById(layout, slotId); if (!s) return;
+  state.assign[slotId] = line(solidPack(s));
+  render();
 }
 // Wide-access door: the 49″ frame + its shrunken companion must replace an
 // adjacent width-conserving pair (4646/4622/4040/4016). Prefer the wall the
@@ -320,7 +356,6 @@ function slotById(layout, id) {
 function rebuild(resetArrangement) {
   const layout = resolveLayout();
   if (resetArrangement || !Object.keys(state.assign).length) state.assign = defaultAssign(layout);
-  applyWindow(layout);
   applyWideDoor(layout);
   applyHinge(layout);
   render();
@@ -472,11 +507,9 @@ function summaryText() {
   const vs = [];
   eachSlot(layout, (s, side) => { if (kindAt(s.id) === 'VNT' && vs.indexOf(FACE_WORD[side]) < 0) vs.push(FACE_WORD[side]); });
   if (vs.length) bits.push('Ventilation: ' + vs.join(' + '));
-  const wd = findSlot(layout, s => kindAt(s.id) === 'WDO');
-  if (wd) {
-    const m = String(state.assign[wd.slot.id].pack).match(/WDO(\d{2})(\d{2})/i);
-    bits.push('Wall window: ' + FACE_WORD[wd.side] + (m ? ' (' + m[1] + '″ × ' + m[2] + '″)' : ''));
-  }
+  const wins = listWindows(layout).map(w => FACE_WORD[w.side] + ' (' + w.w + '″ × ' + w.h + '″)');
+  if (wins.length === 1) bits.push('Wall window: ' + wins[0]);
+  else if (wins.length) bits.push('Wall windows ×' + wins.length + ': ' + wins.join(', '));
   bits.push('Foam color: ' + state.foam);
   if (state.heightExt) bits.push('10″ height extension');
   if (state.casters) bits.push('Caster plate (wheels, +5″)');
@@ -490,7 +523,7 @@ function render() {
   app.innerHTML = ''
     + '<div class="side">'
     +   '<div class="hero"><h1>Design <span>Your Booth</span></h1>'
-    +   '<p>Pick a size, then make it yours — drag the door, vents or window to any wall they fit, and watch the booth update.</p></div>'
+    +   '<p>Pick a size, then make it yours — drag the door, vents or windows to any wall they fit, and watch the booth update.</p></div>'
 
     +   '<div class="card"><div class="step"><span class="n">1</span>Choose your size</div>'
     +     '<select onchange="setModel(this.value)">' + sizeOptions() + '</select>'
@@ -505,10 +538,15 @@ function render() {
     +   '</div>'
 
     +   '<div class="card"><div class="step"><span class="n">3</span>Make it yours</div>'
-    +     '<div class="optrow"><label class="t">Wall window<small>See in and out — glass keeps the quiet in</small></label>'
-    +       '<select onchange="setWindow(this.value)">'
-    +         [0, 30, 36, 42, 48].map(h => '<option value="' + h + '"' + (state.windowH === h ? ' selected' : '') + '>' + (h ? h + '″ tall' : 'None') + '</option>').join('')
-    +       '</select></div>'
+    +     '<div class="optrow"><label class="t">Wall windows<small>See in and out — glass keeps the quiet in. Add as many as your walls allow.</small></label>'
+    +       '<button class="wadd"' + (windowSeat(layout) ? '' : ' disabled') + ' onclick="addWindow()">＋ Add</button></div>'
+    +     listWindows(layout).map(w =>
+            '<div class="winitem"><span class="wlab">' + esc(FACE_WORD[w.side]) + ' · ' + w.w + '″ wide</span>'
+          + '<select onchange="setWindowH(\'' + esc(w.slot.id) + '\', this.value)">'
+          +   [30, 36, 42, 48].map(h => '<option value="' + h + '"' + (w.h === h ? ' selected' : '') + '>' + h + '″ tall</option>').join('')
+          + '</select>'
+          + '<button class="wrm" title="Remove this window" onclick="removeWindow(\'' + esc(w.slot.id) + '\')">✕</button></div>'
+          ).join('')
     +     '<div class="optrow' + (waPossible ? '' : ' disabled') + '"><label class="t">Wide-access door<small>' + (waPossible ? '32″ opening — wheelchairs, gear, bulky items' : 'Needs a larger booth (5′ walls or more)') + '</small></label>'
     +       '<input type="checkbox"' + (state.wideDoor ? ' checked' : '') + ' onchange="setWide(this.checked)"></div>'
     +     '<div class="optrow"><label class="t">Door hinge<small>Which side the door swings from</small></label>'
@@ -538,7 +576,7 @@ function render() {
     +   '<div class="view-card">'
     +     '<div class="view-cap"><span>TOP-DOWN · BIRD’S-EYE VIEW</span></div>'
     +     renderLayoutSvg(layout, state.assign)
-    +     '<div class="drag-hint">↔ drag the door, vents or window onto another wall</div>'
+    +     '<div class="drag-hint">↔ drag the door, vents or windows onto another wall</div>'
     +   '</div>'
     +   '<div class="view-card">'
     +     '<div class="view-cap">'
@@ -612,7 +650,6 @@ function setModel(m)   { state.model = m; state.wideDoor = false; rebuild(true);
 function setVariant(v) { state.variant = v; rebuild(false); }
 function setHinge(h)   { state.hinge = h; rebuild(false); }
 function setFoam(c)    { state.foam = c; rebuild(false); }
-function setWindow(h)  { state.windowH = +h; rebuild(false); }
 function setWide(on)   { state.wideDoor = !!on; rebuild(false); }
 function setHX(on)     { state.heightExt = !!on; rebuild(false); }
 function setCasters(on){ state.casters = !!on; rebuild(false); }
@@ -622,7 +659,7 @@ function rotate(dir) {
   render();
 }
 function resetAll() {
-  state.hinge = 'R'; state.foam = 'Gray'; state.windowH = 0;
+  state.hinge = 'R'; state.foam = 'Gray';
   state.wideDoor = false; state.heightExt = false; state.casters = false; state.facing = 'S';
   rebuild(true);
 }

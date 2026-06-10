@@ -92,6 +92,14 @@ const KIND_META = {
   EMPTY: { label: '',            accent: null },
 };
 
+// Inches → feet-and-inches, the way the client proposal drawings dimension
+// (74 → 6′ 2″, 55.5 → 4′ 7.5″, 11 → 11″). Halves survive.
+function ftIn(n) {
+  n = Math.round(n * 2) / 2;
+  const f = Math.floor(n / 12), i = Math.round((n - f * 12) * 2) / 2;
+  return f ? (f + '′' + (i ? ' ' + i + '″' : '')) : (i + '″');
+}
+
 // ── The renderer ──────────────────────────────────────────────────
 function renderLayoutSvg(layout, assign) {
   const ext = layout.exterior;
@@ -100,19 +108,31 @@ function renderLayoutSvg(layout, assign) {
   const W = ext.w * PX, H = ext.h * PX, t = layout.wallThickness * PX;
   const VPROT = 5.5;        // a vent set protrudes 5.5″ beyond its wall (spec)
   const VOUT = VPROT * PX;  // drawn at TRUE scale so the "w/ vent" dim reads honestly
-  const DOORR = 92;         // max door-swing radius (px symbol)
   // Which walls currently hold a door / vent — computed from the LIVE placement
   // (not hard-coded to S/N), so a dragged door or vent draws its swing/ducts on
-  // whatever wall it now sits on, and the margins expand to fit.
+  // whatever wall it now sits on, and the margins expand to fit. The door is
+  // drawn OPEN at 90° (proposal-drawing style), so its margin is the full open
+  // leaf length — compute it here, at this wall's px scale.
   const sideHasDoor = { N: false, S: false, E: false, W: false };
   const sideHasVent = { N: false, S: false, E: false, W: false };
-  for (const sd of ['N', 'S', 'E', 'W']) for (const slot of ((layout.walls[sd] || { slots: [] }).slots)) {
-    const ln = assign[slot.id]; if (!ln) continue;
-    const k = classifyWall(ln.pack);
-    if (k === 'DRFRM') sideHasDoor[sd] = true;
-    else if (k === 'VNT' && layout.hasVent !== false) sideHasVent[sd] = true;
+  let doorLeafPx = 0;
+  for (const sd of ['N', 'S', 'E', 'W']) {
+    const wallM = layout.walls[sd] || { slots: [] };
+    const horizM = (sd === 'N' || sd === 'S');
+    const spanM = horizM ? (W - 2 * t) : (H - 2 * t);
+    const nomM = wallM.slots.reduce((a, sl) => a + sl.size, 0) || 1;
+    for (const slot of wallM.slots) {
+      const ln = assign[slot.id]; if (!ln) continue;
+      const k = classifyWall(ln.pack);
+      if (k === 'DRFRM') {
+        sideHasDoor[sd] = true;
+        const lenM = slot.size * (spanM / nomM);
+        const swingM = (layout.door && layout.door.swing) || 30;
+        doorLeafPx = Math.max(doorLeafPx, Math.min(swingM * PX, lenM * 0.94));
+      } else if (k === 'VNT' && layout.hasVent !== false) sideHasVent[sd] = true;
+    }
   }
-  const extra = sd => sideHasDoor[sd] ? DOORR + 10 : (sideHasVent[sd] ? VOUT + 18 : 0);
+  const extra = sd => sideHasDoor[sd] ? doorLeafPx + 14 : (sideHasVent[sd] ? VOUT + 18 : 0);
   const BASE = 50;
   // extra room for the "w/ vent" overall-dim line: left of the height dim for
   // a N/S vent, below the width dim for an E/W vent
@@ -274,38 +294,52 @@ function renderLayoutSvg(layout, assign) {
     return g;
   }
 
-  // ── door: closed light leaf on the OUTER face (hinge dots + handle, like
-  // the spec top-down) + a subtle dashed outward-swing arc ─────────
-  function doorSwing(side, px, py, pw, ph, swingIn) {
+  // ── door: OPEN leaf at 90° + dashed swing arc, matching the client proposal
+  // top-down drawings (door always opens outward). The doorway itself reads as
+  // a light threshold gap across the frame wall. Hinge side follows the pack
+  // (DRFRM R/L) so a left-hinge door pivots from the other end. ─────
+  function doorSwing(side, px, py, pw, ph, swingIn, pack) {
     const { omx, omy, ox, oy, ax, ay, horiz } = edgeGeom(side, px, py, pw, ph);
-    // leaf = the actual door width (swingIn inches, e.g. 30″ in a 46″ frame);
-    // the dashed arc sweeps only until it protrudes DOORR px (≈ the spec's
-    // partial-swing arc), so big doors don't blow out the margins.
+    // leaf = the actual door width (swingIn inches, e.g. 30″ in a 46″ frame)
     const leafW = Math.min(swingIn * PX, (horiz ? pw : ph) * 0.94);
-    const hx = omx - ax * leafW / 2, hy = omy - ay * leafW / 2;  // hinge end
-    const cX = omx + ax * leafW / 2, cY = omy + ay * leafW / 2;  // handle end
-    const th = Math.asin(Math.min(1, DOORR / leafW));            // shown swing angle
-    const eX = hx + leafW * (ax * Math.cos(th) + ox * Math.sin(th));
-    const eY = hy + leafW * (ay * Math.cos(th) + oy * Math.sin(th));
+    // hinge end: same booth-fixed convention as the elevation renderer —
+    // an R-hinge door pivots from the +axis end of its wall (east end on a
+    // front/back wall, south end on a side wall); L mirrors it.
+    const hingeR = !/\sL\b/i.test(String(pack || ''));
+    const flip = hingeR ? -1 : 1;
+    const hx = omx - ax * flip * leafW / 2, hy = omy - ay * flip * leafW / 2;   // hinge end
+    const cX = omx + ax * flip * leafW / 2, cY = omy + ay * flip * leafW / 2;   // closed-tip end
+    const eX = hx + ox * leafW, eY = hy + oy * leafW;                           // open tip (90° out)
     const sweep = ((cX - hx) * (eY - hy) - (cY - hy) * (eX - hx)) > 0 ? 1 : 0;
     const DL = Math.max(5, t * 0.4);                             // leaf thickness (px)
     let g = '';
-    // swing arc, dashed + subtle (door opens outward)
-    g += `<path d="M ${cX} ${cY} A ${leafW} ${leafW} 0 0 ${sweep} ${eX} ${eY}" fill="none" stroke="rgba(238,98,22,0.5)" stroke-width="1.2" stroke-dasharray="5,3"/>`;
-    // closed door leaf hugging the outer face
-    const lx = horiz ? omx - leafW / 2 : (ox < 0 ? omx - DL : omx);
-    const ly = horiz ? (oy < 0 ? omy - DL : omy) : omy - leafW / 2;
+    // doorway threshold: light gap across the wall band where the opening is
+    const thr = 1.2;
+    if (horiz) g += `<rect x="${Math.min(hx, cX) + 1}" y="${py + thr}" width="${leafW - 2}" height="${ph - 2 * thr}" fill="#e2e4e9" opacity="0.92"/>`;
+    else       g += `<rect x="${px + thr}" y="${Math.min(hy, cY) + 1}" width="${pw - 2 * thr}" height="${leafW - 2}" fill="#e2e4e9" opacity="0.92"/>`;
+    // swing arc: dashed quarter-circle from the closed position to the open
+    // leaf, plus a faint chord marking the closed position
+    g += `<path d="M ${cX} ${cY} A ${leafW} ${leafW} 0 0 ${sweep} ${eX} ${eY}" fill="none" stroke="rgba(238,98,22,0.55)" stroke-width="1.2" stroke-dasharray="5,3"/>`;
+    g += `<line x1="${hx}" y1="${hy}" x2="${cX}" y2="${cY}" stroke="rgba(238,98,22,0.25)" stroke-width="1" stroke-dasharray="2,3"/>`;
+    // the leaf, drawn closed then rotated 90° outward about the hinge pin
+    const rot = ((side === 'S' || side === 'W') ? 90 : -90) * flip;
+    const lx = horiz ? Math.min(hx, cX) : (ox < 0 ? omx - DL : omx);
+    const ly = horiz ? (oy < 0 ? omy - DL : omy) : Math.min(hy, cY);
     const lw = horiz ? leafW : DL, lh = horiz ? DL : leafW;
+    g += `<g transform="rotate(${rot} ${hx} ${hy})">`;
     g += `<rect x="${lx}" y="${ly}" width="${lw}" height="${lh}" rx="1" fill="#e9eaee" stroke="#1b1c20" stroke-width="1"/>`;
-    // hinge dot pairs near the hinge end, handle nub at the closing end
+    // hinge dot pairs near the hinge end, handle nub at the free end
     for (const f of [0.08, 0.22]) {
-      const d1x = hx + ax * leafW * f + ox * DL * 0.32, d1y = hy + ay * leafW * f + oy * DL * 0.32;
-      const d2x = hx + ax * leafW * f + ox * DL * 0.68, d2y = hy + ay * leafW * f + oy * DL * 0.68;
+      const d1x = hx + ax * flip * leafW * f + ox * DL * 0.32, d1y = hy + ay * flip * leafW * f + oy * DL * 0.32;
+      const d2x = hx + ax * flip * leafW * f + ox * DL * 0.68, d2y = hy + ay * flip * leafW * f + oy * DL * 0.68;
       g += `<circle cx="${d1x}" cy="${d1y}" r="1.3" fill="#26272c"/><circle cx="${d2x}" cy="${d2y}" r="1.3" fill="#26272c"/>`;
     }
-    const hbx = cX - ax * leafW * 0.06, hby = cY - ay * leafW * 0.06;   // handle base on the leaf
+    const hbx = cX - ax * flip * leafW * 0.06, hby = cY - ay * flip * leafW * 0.06;   // handle base on the leaf
     g += `<line x1="${hbx + ox * DL * 0.5}" y1="${hby + oy * DL * 0.5}" x2="${hbx + ox * (DL + 5)}" y2="${hby + oy * (DL + 5)}" stroke="#26272c" stroke-width="2" stroke-linecap="round"/>`;
-    g += `<line x1="${hbx + ox * (DL + 5)}" y1="${hby + oy * (DL + 5)}" x2="${hbx + ox * (DL + 5) - ax * 7}" y2="${hby + oy * (DL + 5) - ay * 7}" stroke="#26272c" stroke-width="2" stroke-linecap="round"/>`;
+    g += `<line x1="${hbx + ox * (DL + 5)}" y1="${hby + oy * (DL + 5)}" x2="${hbx + ox * (DL + 5) - ax * flip * 7}" y2="${hby + oy * (DL + 5) - ay * flip * 7}" stroke="#26272c" stroke-width="2" stroke-linecap="round"/>`;
+    g += `</g>`;
+    // hinge pin marker at the pivot
+    g += `<circle cx="${hx}" cy="${hy}" r="2" fill="#26272c"/>`;
     return g;
   }
 
@@ -361,7 +395,7 @@ function renderLayoutSvg(layout, assign) {
       g += `</g>`;
       // collect vent / door for later overlay — on WHATEVER wall they sit
       if (kind === 'VNT' && layout.hasVent !== false) vents.push({ side, px, py, pw, ph });
-      if (kind === 'DRFRM') door = { side, px, py, pw, ph, swing: (layout.door && layout.door.swing) || 30 };
+      if (kind === 'DRFRM') door = { side, px, py, pw, ph, swing: (layout.door && layout.door.swing) || 30, pack: line.pack };
       // panel label (width + type + code) just inside the wall on the floor
       g += panelLabel(side, px, py, pw, ph, kind, line, slot);
       off += len;
@@ -409,7 +443,7 @@ function renderLayoutSvg(layout, assign) {
 
   // vent ducts + door overlays (follow whatever wall currently holds them)
   vents.forEach(v => s += ventDuct(v.side, v.px, v.py, v.pw, v.ph));
-  if (door) s += doorSwing(door.side, door.px, door.py, door.pw, door.ph, door.swing);
+  if (door) s += doorSwing(door.side, door.px, door.py, door.pw, door.ph, door.swing, door.pack);
 
   // ── dimension lines (exterior) ──────────────────────────────────
   function tick(x, y, vert) {
@@ -419,13 +453,13 @@ function renderLayoutSvg(layout, assign) {
   const dimY = y0 + H + extra('S') + 24;
   s += `<line x1="${x0}" y1="${dimY}" x2="${x0 + W}" y2="${dimY}" stroke="#9097a0" stroke-width="1"/>`;
   s += tick(x0, dimY, false) + tick(x0 + W, dimY, false);
-  s += `<rect x="${x0 + W / 2 - 24}" y="${dimY - 9}" width="48" height="16" rx="3" fill="url(#ldBg)"/>`;
-  s += `<text x="${x0 + W / 2}" y="${dimY + 3}" text-anchor="middle" font-size="11" font-weight="700" fill="#4a4f57">${ext.w}″</text>`;
+  s += `<rect x="${x0 + W / 2 - 28}" y="${dimY - 9}" width="56" height="16" rx="3" fill="url(#ldBg)"/>`;
+  s += `<text x="${x0 + W / 2}" y="${dimY + 3}" text-anchor="middle" font-size="11" font-weight="700" fill="#4a4f57">${ftIn(ext.w)}</text>`;
   const dimX = x0 - extra('W') - 24;
   s += `<line x1="${dimX}" y1="${y0}" x2="${dimX}" y2="${y0 + H}" stroke="#9097a0" stroke-width="1"/>`;
   s += tick(dimX, y0, true) + tick(dimX, y0 + H, true);
-  s += `<rect x="${dimX - 8}" y="${y0 + H / 2 - 9}" width="16" height="18" fill="url(#ldBg)"/>`;
-  s += `<text x="${dimX}" y="${y0 + H / 2}" text-anchor="middle" font-size="11" font-weight="700" fill="#4a4f57" transform="rotate(-90 ${dimX} ${y0 + H / 2})">${ext.h}″</text>`;
+  s += `<rect x="${dimX - 8}" y="${y0 + H / 2 - 28}" width="16" height="56" fill="url(#ldBg)"/>`;
+  s += `<text x="${dimX}" y="${y0 + H / 2}" text-anchor="middle" font-size="11" font-weight="700" fill="#4a4f57" transform="rotate(-90 ${dimX} ${y0 + H / 2})">${ftIn(ext.h)}</text>`;
 
   // ── "w/ vent" overall dims ──────────────────────────────────────
   // A vent set adds 5.5″ to the axis it protrudes on: a 4872 with the vent on
@@ -433,7 +467,7 @@ function renderLayoutSvg(layout, assign) {
   // on axes that actually carry a vent, and follows a dragged vent to its new
   // wall. Spans wall face → duct outer face (the ducts are drawn at true scale).
   const VDIM = '#c9762e';
-  const fmtIn = v => String(Math.round(v * 2) / 2);
+  const fmtIn = v => ftIn(v);
   const vtick = (x, y, vert) =>
     vert ? `<line x1="${x - 4}" y1="${y}" x2="${x + 4}" y2="${y}" stroke="${VDIM}" stroke-width="1"/>`
          : `<line x1="${x}" y1="${y - 4}" x2="${x}" y2="${y + 4}" stroke="${VDIM}" stroke-width="1"/>`;
@@ -443,7 +477,7 @@ function renderLayoutSvg(layout, assign) {
     const vx = dimX - 22, vmy = (yA + yB) / 2;
     s += `<line x1="${vx}" y1="${yA}" x2="${vx}" y2="${yB}" stroke="${VDIM}" stroke-width="1"/>` + vtick(vx, yA, true) + vtick(vx, yB, true);
     s += `<rect x="${vx - 8}" y="${vmy - 40}" width="16" height="80" fill="url(#ldBg)"/>`;
-    s += `<text x="${vx}" y="${vmy + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VDIM}" transform="rotate(-90 ${vx} ${vmy})">${fmtIn(tot)}″ w/ vent</text>`;
+    s += `<text x="${vx}" y="${vmy + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VDIM}" transform="rotate(-90 ${vx} ${vmy})">${fmtIn(tot)} w/ vent</text>`;
   }
   if (sideHasVent.E || sideHasVent.W) {
     const xA = x0 - (sideHasVent.W ? VOUT : 0), xB = x0 + W + (sideHasVent.E ? VOUT : 0);
@@ -451,17 +485,18 @@ function renderLayoutSvg(layout, assign) {
     const vy = dimY + 34, vmx = (xA + xB) / 2;
     s += `<line x1="${xA}" y1="${vy}" x2="${xB}" y2="${vy}" stroke="${VDIM}" stroke-width="1"/>` + vtick(xA, vy, false) + vtick(xB, vy, false);
     s += `<rect x="${vmx - 40}" y="${vy - 8}" width="80" height="15" rx="3" fill="url(#ldBg)"/>`;
-    s += `<text x="${vmx}" y="${vy + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VDIM}">${fmtIn(tot)}″ w/ vent</text>`;
+    s += `<text x="${vmx}" y="${vy + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VDIM}">${fmtIn(tot)} w/ vent</text>`;
   }
 
-  // ── interior callout (centered pill) ────────────────────────────
-  const cw = 150, chh = 26;
+  // ── interior callout (centered pill, inches + proposal-style ft-in) ─
+  const cw = 150, chh = 36;
   const ccx = x0 + W / 2, ccy = y0 + H / 2;
-  s += `<rect x="${ccx - cw / 2}" y="${ccy - chh / 2}" width="${cw}" height="${chh}" rx="13" fill="rgba(255,255,255,0.92)" stroke="#cfd3da" stroke-width="1"/>`;
-  s += `<text x="${ccx}" y="${ccy - 1}" text-anchor="middle" font-size="9.5" font-weight="700" letter-spacing="0.08em" fill="#8a8f97">INTERIOR</text>`;
+  s += `<rect x="${ccx - cw / 2}" y="${ccy - chh / 2}" width="${cw}" height="${chh}" rx="14" fill="rgba(255,255,255,0.92)" stroke="#cfd3da" stroke-width="1"/>`;
+  s += `<text x="${ccx}" y="${ccy - 6}" text-anchor="middle" font-size="9.5" font-weight="700" letter-spacing="0.08em" fill="#8a8f97">INTERIOR</text>`;
   // short axis first — matches the spec sheets ("46″ x 70″") and the model
   // naming convention (4872 = 48″ × 72″)
-  s += `<text x="${ccx}" y="${ccy + 10}" text-anchor="middle" font-size="11" font-weight="800" fill="#2a2d33">${interior.h}″ × ${interior.w}″</text>`;
+  s += `<text x="${ccx}" y="${ccy + 5}" text-anchor="middle" font-size="11" font-weight="800" fill="#2a2d33">${interior.h}″ × ${interior.w}″</text>`;
+  s += `<text x="${ccx}" y="${ccy + 14.5}" text-anchor="middle" font-size="8" fill="#8a8f97">${ftIn(interior.h)} × ${ftIn(interior.w)}</text>`;
 
   // ── orientation captions (booth orientation is fixed; components can move) ─
   s += `<text x="${x0 + W / 2}" y="${y0 - extra('N') - 8}" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="0.12em" fill="#9097a0">BACK</text>`;
@@ -628,26 +663,26 @@ function renderElevationSvg(layout, assign, facing) {
   s += `<line x1="${x0}" y1="${dy2}" x2="${x0 + Wp}" y2="${dy2}" stroke="#9097a0" stroke-width="1"/>`
     + `<line x1="${x0}" y1="${dy2 - 4}" x2="${x0}" y2="${dy2 + 4}" stroke="#9097a0" stroke-width="1"/>`
     + `<line x1="${x0 + Wp}" y1="${dy2 - 4}" x2="${x0 + Wp}" y2="${dy2 + 4}" stroke="#9097a0" stroke-width="1"/>`;
-  s += `<rect x="${x0 + Wp / 2 - 22}" y="${dy2 - 8}" width="44" height="15" rx="3" fill="url(#ldBg)"/>`;
-  s += `<text x="${x0 + Wp / 2}" y="${dy2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="#4a4f57">${lenIn}″</text>`;
+  s += `<rect x="${x0 + Wp / 2 - 26}" y="${dy2 - 8}" width="52" height="15" rx="3" fill="url(#ldBg)"/>`;
+  s += `<text x="${x0 + Wp / 2}" y="${dy2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="#4a4f57">${ftIn(lenIn)}</text>`;
   const dx2 = x0 - (leftVent ? VOUT2 : 0) - 20;
   s += `<line x1="${dx2}" y1="${y0}" x2="${dx2}" y2="${fb}" stroke="#9097a0" stroke-width="1"/>`
     + `<line x1="${dx2 - 4}" y1="${y0}" x2="${dx2 + 4}" y2="${y0}" stroke="#9097a0" stroke-width="1"/>`
     + `<line x1="${dx2 - 4}" y1="${fb}" x2="${dx2 + 4}" y2="${fb}" stroke="#9097a0" stroke-width="1"/>`;
-  s += `<rect x="${dx2 - 8}" y="${y0 + Hp / 2 - 9}" width="16" height="18" fill="url(#ldBg)"/>`;
-  s += `<text x="${dx2}" y="${y0 + Hp / 2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="#4a4f57" transform="rotate(-90 ${dx2} ${y0 + Hp / 2})">${hIn}″</text>`;
+  s += `<rect x="${dx2 - 8}" y="${y0 + Hp / 2 - 26}" width="16" height="52" fill="url(#ldBg)"/>`;
+  s += `<text x="${dx2}" y="${y0 + Hp / 2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="#4a4f57" transform="rotate(-90 ${dx2} ${y0 + Hp / 2})">${ftIn(hIn)}</text>`;
 
   // overall width including adjacent-wall vent protrusion(s)
   if (leftVent || rightVent) {
     const VD = '#c9762e';
     const xA = x0 - (leftVent ? VOUT2 : 0), xB = x0 + Wp + (rightVent ? VOUT2 : 0);
-    const tot = String(Math.round((lenIn + (leftVent ? 5.5 : 0) + (rightVent ? 5.5 : 0)) * 2) / 2);
+    const tot = ftIn(lenIn + (leftVent ? 5.5 : 0) + (rightVent ? 5.5 : 0));
     const vy2 = dy2 + 16, vmx = (xA + xB) / 2;
     s += `<line x1="${xA}" y1="${vy2}" x2="${xB}" y2="${vy2}" stroke="${VD}" stroke-width="1"/>`
       + `<line x1="${xA}" y1="${vy2 - 4}" x2="${xA}" y2="${vy2 + 4}" stroke="${VD}" stroke-width="1"/>`
       + `<line x1="${xB}" y1="${vy2 - 4}" x2="${xB}" y2="${vy2 + 4}" stroke="${VD}" stroke-width="1"/>`;
     s += `<rect x="${vmx - 38}" y="${vy2 - 8}" width="76" height="15" rx="3" fill="url(#ldBg)"/>`;
-    s += `<text x="${vmx}" y="${vy2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VD}">${tot}″ w/ vent</text>`;
+    s += `<text x="${vmx}" y="${vy2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VD}">${tot} w/ vent</text>`;
   }
 
   s += `</svg>`;

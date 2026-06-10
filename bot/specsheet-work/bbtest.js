@@ -50,8 +50,8 @@ vm.runInContext(renderer, sandbox);
 for (const s of scripts) vm.runInContext(s, sandbox);
 // expose the page's lexical bindings to the test
 vm.runInContext(`__h = { state, designPayload, designToHash, restoreFromHash,
-  resolveLayout, doSwap, setModel, setWindow, setC, submitRequest, quoteCardHtml,
-  compatible, eachSlot }`, sandbox);
+  resolveLayout, doSwap, setModel, addWindow, setWindowH, removeWindow, listWindows,
+  setC, submitRequest, quoteCardHtml, compatible, eachSlot }`, sandbox);
 const H = sandbox.__h;
 
 let pass = 0, fail = 0;
@@ -97,15 +97,21 @@ const t = (name, ok) => { console.log((ok ? '  ✓ ' : '  ✗ ') + name); ok ? p
       JSON.stringify(H.designPayload().a) === moved);
   } else t('dragged door round-trips through the link', false);
 
-  // ── window option encodes ──
-  H.setWindow(36);
-  for (let i = 0; i < 3; i++) await new Promise(r => setImmediate(r));
-  const withWdo = H.designPayload();
-  const wdoSlot = Object.keys(withWdo.a).find(k => /WDO/.test(withWdo.a[k]));
-  t('window option lands in the payload', withWdo.w === 36 && !!wdoSlot);
+  // ── windows: ＋ Add, multiple, per-window height, ✕ remove ──
+  const wdoKeys = p => Object.keys(p.a).filter(k => /WDO/.test(p.a[k]));
+  H.addWindow();
+  t('＋ Add places a window', wdoKeys(H.designPayload()).length === 1);
+  H.addWindow();
+  const two = wdoKeys(H.designPayload());
+  t('a second ＋ Add places another window', two.length === 2);
   sandbox.location.hash = '#d=' + H.designToHash();
   H.restoreFromHash();
-  t('window survives restore on its slot', /WDO/.test(H.designPayload().a[wdoSlot] || ''));
+  t('both windows survive the link round-trip', wdoKeys(H.designPayload()).length === 2);
+  H.setWindowH(two[0], 48);
+  t('per-window height select re-sizes that window', /WDO\d{2}48/.test(H.designPayload().a[two[0]]));
+  t('windows are listed in the summary', H.listWindows(H.resolveLayout()).length === 2);
+  H.removeWindow(two[0]);
+  t('✕ removes one window and keeps the other', wdoKeys(H.designPayload()).length === 1);
 
   // ── quote request flow ──
   t('quote card renders the form', /Request my quote/.test(H.quoteCardHtml()));

@@ -1,6 +1,37 @@
 // Changelog page template — extracted from quote-server.js
 // Returns the fully rendered HTML for /changelog.
 
+// ── Conflict-free entries: templates/changelog.d/ ─────────────────────
+// Parallel pushes used to collide HERE — every version bump inserted at the
+// top of the same array, so two people pushing in the same hour always merge-
+// conflicted (in the one file that crash-loops Railway when merged wrong).
+// New entries now live one-per-file in templates/changelog.d/<version>.js
+// (module.exports = { v, date, tag, changes:[{t, d}] }) so parallel pushes
+// never touch the same file. Fragments render ABOVE the legacy inline array,
+// newest-first. A malformed fragment is skipped with a warning rather than
+// crashing startup; scripts/check-syntax.js validates staged fragments at
+// commit time so a bad one can't ship silently.
+const fs = require('fs');
+const path = require('path');
+function fragments() {
+  const dir = path.join(__dirname, 'changelog.d');
+  let names;
+  try { names = fs.readdirSync(dir).filter(f => f.endsWith('.js')); }
+  catch (e) { return []; }
+  const out = [];
+  for (const f of names) {
+    try {
+      const e = require(path.join(dir, f));
+      if (!e || !e.v || !Array.isArray(e.changes)) throw new Error('fragment must export { v, date, tag, changes:[…] }');
+      out.push(e);
+    } catch (err) {
+      console.warn(`[changelog] skipping bad fragment ${f}: ${err.message}`);
+    }
+  }
+  const num = v => String(v).split('.').map(n => parseInt(n, 10) || 0);
+  return out.sort((a, b) => { const A = num(a.v), B = num(b.v); return (B[0] - A[0]) || (B[1] - A[1]) || (B[2] - A[2]); });
+}
+
 module.exports = function renderChangelog() {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -49,7 +80,7 @@ module.exports = function renderChangelog() {
   <h1>Patch <span>Notes</span></h1>
   <div class="subtitle">Full history of changes to the WhisperRoom sales tool</div>
 
-  ${[
+  ${[...fragments(),
     {
       v:'1.87.0', date:'June 9, 2026', tag:'feature',
       changes:[

@@ -61,6 +61,16 @@ function smokeTest(file) {
       mod.init();
       mod.generate([]); // empty quote should just return {rooms:[], …} without throwing
     }
+    // changelog.d fragments: the server SKIPS a malformed one (won't crash),
+    // so this commit gate is what stops a bad entry shipping silently.
+    if (/^templates[\/\\]changelog\.d[\/\\].+\.js$/.test(file)) {
+      if (!mod || typeof mod.v !== 'string' || !/^\d+\.\d+\.\d+$/.test(mod.v) || !Array.isArray(mod.changes) || !mod.changes.length) {
+        return 'changelog fragment must export { v: "x.y.z", date, tag, changes:[{t, d}, …] }';
+      }
+      for (const c of mod.changes) {
+        if (!c || typeof c.t !== 'string' || typeof c.d !== 'string') return 'each change needs string fields t and d';
+      }
+    }
     return null;
   } catch (e) {
     return (e.stack || e.message);
@@ -102,7 +112,7 @@ for (const f of jsFiles) {
     continue;
   }
   // Targeted smoke tests — only for files where parse-OK doesn't prove load-OK.
-  if (f === 'templates/changelog.js' || f === 'lib/packing-list.js') {
+  if (f === 'templates/changelog.js' || f === 'lib/packing-list.js' || /^templates[\/\\]changelog\.d[\/\\].+\.js$/.test(f)) {
     const loadErr = smokeTest(f);
     if (loadErr) failures.push({ file: f, kind: 'smoke', err: loadErr });
   }

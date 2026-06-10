@@ -10,11 +10,12 @@
   :root{--orange:#ee6216;--ink:#1a1a1a;--muted:#777;--line:#e3e5e8;--card:#fff;--bg:#f4f5f7;}
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
-  .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:52px;background:#1a1a1a;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:100}
-  .topbar-logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8;text-decoration:none}
+  /* Brand bar only — deliberately NO navigation. This page goes to customers;
+     they shouldn't be able to wander into the internal dashboards (and a
+     plain wordmark keeps them focused on designing their booth). */
+  .topbar{display:flex;align-items:center;justify-content:center;padding:0 20px;height:52px;background:#1a1a1a;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:100}
+  .topbar-logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8}
   .topbar-logo span{color:#e8531a}
-  .topbar-nav{display:flex;gap:4px;align-items:center}
-  .topbar-right a{font-size:11px;font-weight:700;color:#999;text-decoration:none;padding:5px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;letter-spacing:.05em;text-transform:uppercase}
 
   .wrap{display:flex;gap:18px;max-width:1280px;margin:0 auto;padding:18px;align-items:flex-start}
   .side{flex:0 0 320px;display:flex;flex-direction:column;gap:12px;position:sticky;top:64px}
@@ -88,8 +89,12 @@
   .ld-svg .ld-panel{pointer-events:auto;cursor:grab}
   .ld-svg .ld-panel *{pointer-events:auto}
   .ld-panel:hover .ld-wall{filter:brightness(1.5)}
-  .ld-panel.ld-target .ld-wall{stroke:#ee6216;stroke-width:2.4}
-  .ld-panel.ld-bad .ld-wall{stroke:#dc2626;stroke-width:2.4;stroke-dasharray:4 3}
+  /* while dragging: EVERY valid landing spot glows green, invalid glows red,
+     so the team can see where a panel may land before they let go */
+  .ld-panel.ld-ok .ld-wall{stroke:#22c55e;stroke-width:2.2;filter:drop-shadow(0 0 5px rgba(34,197,94,.95)) brightness(1.3)}
+  .ld-panel.ld-no .ld-wall{stroke:#dc2626;stroke-width:1.8;opacity:.6;filter:drop-shadow(0 0 4px rgba(220,38,38,.65))}
+  .ld-panel.ld-target .ld-wall{stroke:#16a34a;stroke-width:3.4;filter:drop-shadow(0 0 9px rgba(34,197,94,1)) brightness(1.7)}
+  .ld-panel.ld-bad .ld-wall{stroke:#dc2626;stroke-width:3;stroke-dasharray:4 3;filter:drop-shadow(0 0 7px rgba(220,38,38,.95))}
   .ld-panel.ld-grabbing .ld-wall{filter:brightness(1.7);stroke:#ee6216;stroke-width:2}
   body.ld-dragging{cursor:grabbing;user-select:none;-webkit-user-select:none}
   .ld-ghost{position:fixed;z-index:9999;pointer-events:none;display:flex;align-items:center;gap:7px;padding:5px 10px;background:#1a1a1a;color:#fff;border:1px solid #555;border-radius:8px;font-size:11px;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.35)}
@@ -104,9 +109,7 @@
 </head>
 <body>
   <div class="topbar">
-    <a href="/deals" class="topbar-logo">Whisper<span>Room</span></a>
-    <div class="topbar-nav"></div>
-    <div class="topbar-right"><a href="/deals">← Deal Hub</a></div>
+    <span class="topbar-logo">Whisper<span>Room</span></span>
   </div>
 
   <div class="wrap" id="app">
@@ -114,7 +117,6 @@
   </div>
   <div class="toast" id="toast"></div>
 
-<script>window.BB_AUTHED=0;</script>
 <script src="/assets/layout-render.js"></script>
 <script>
 // ── Booth Builder — standalone "design your booth" sales tool ─────────
@@ -122,21 +124,9 @@
 // Packing List layout uses (/assets/layout-render.js). No quote required:
 // pick a size, pick single/double wall, drag the door/vent/window around,
 // toggle options — both views update live. PUBLIC page: prospects design a
-// booth and request a quote (POST /api/booth-request); logged-in reps also
-// get the navbar + the copy-summary workflow. The whole design round-trips
-// through the URL hash (#d=base64url JSON) so any design is a shareable link.
-
-// Server flips BB_AUTHED to 1 when the viewer has a session — reps get the
-// internal navbar; the public gets whisperroom.com branding links instead.
-if (window.BB_AUTHED) {
-  const s = document.createElement('script');
-  s.src = '/assets/nav.js'; s.defer = true;
-  document.head.appendChild(s);
-} else {
-  document.querySelector('.topbar-logo').href = 'https://www.whisperroom.com';
-  const ext = document.querySelector('.topbar-right a');
-  ext.textContent = 'whisperroom.com'; ext.href = 'https://www.whisperroom.com';
-}
+// booth and request a quote (POST /api/booth-request). The whole design
+// round-trips through the URL hash (#d=base64url JSON) so any design is a
+// shareable link. NO navigation on this page — customers stay here.
 
 let LAYOUTS = null;   // /api/booth-layouts → { layouts: { 'MDL 4872': {...} } }
 
@@ -152,6 +142,13 @@ const state = {
   wideDoor: false,
   heightExt: false,
   casters: false,
+  // add-ons that don't change the drawing — real catalog options (VSS, SL,
+  // MJP/jack panel, bass traps, office desk); they ride the summary + payload
+  vss: false,            // Ventilation Silencing System
+  studioLight: false,
+  jackPanel: false,
+  bassTraps: false,
+  desk: false,
   facing: 'S',
   assign: {},            // slotId → synthetic line { code:'', pack }
   contact: { name: '', email: '', phone: '', company: '', note: '' },
@@ -169,6 +166,8 @@ function designPayload() {
   for (const id in state.assign) a[id] = state.assign[id].pack;
   return { m: state.model, v: state.variant, h: state.hinge, f: state.foam,
            wd: state.wideDoor ? 1 : 0, hx: state.heightExt ? 1 : 0, cs: state.casters ? 1 : 0,
+           vs: state.vss ? 1 : 0, sl: state.studioLight ? 1 : 0, jp: state.jackPanel ? 1 : 0,
+           bt: state.bassTraps ? 1 : 0, dk: state.desk ? 1 : 0,
            fc: state.facing, a };
 }
 function designToHash() {
@@ -187,6 +186,8 @@ function restoreFromHash() {
     state.foam = FOAMS.indexOf(d.f) >= 0 ? d.f : 'Gray';
     // (legacy d.w ignored — the window packs ride in d.a, one per slot)
     state.wideDoor = !!d.wd; state.heightExt = !!d.hx; state.casters = !!d.cs;
+    state.vss = !!d.vs; state.studioLight = !!d.sl; state.jackPanel = !!d.jp;
+    state.bassTraps = !!d.bt; state.desk = !!d.dk;
     state.facing = ['N', 'S', 'E', 'W'].indexOf(d.fc) >= 0 ? d.fc : 'S';
     state.assign = {};
     const layout = resolveLayout();
@@ -447,12 +448,35 @@ function ghostMove(e) {
   _ghost.style.top = (pt.clientY + 12) + 'px';
 }
 function ghostHide() { if (_ghost) { _ghost.remove(); _ghost = null; } }
+// Which panel is the pointer over? Direct hit first; otherwise snap to the
+// nearest VALID (green) landing spot within ~48px — forgiving drop for fat
+// fingers and fast mouse releases (team kept missing the thin wall bands).
+function panelAt(x, y) {
+  const el = document.elementFromPoint(x, y);
+  const direct = el && el.closest && el.closest('.ld-panel');
+  if (direct) return direct;
+  let best = null, bd = 48;
+  document.querySelectorAll('.ld-panel.ld-ok').forEach(n => {
+    const r = n.getBoundingClientRect();
+    const dx = Math.max(r.left - x, 0, x - r.right), dy = Math.max(r.top - y, 0, y - r.bottom);
+    const d = Math.hypot(dx, dy);
+    if (d < bd) { bd = d; best = n; }
+  });
+  return best;
+}
 document.addEventListener('pointerdown', e => {
   const g = e.target.closest && e.target.closest('.ld-panel');
   if (!g) return;
   _drag = { from: g.getAttribute('data-slot'), g };
   g.classList.add('ld-grabbing');
   document.body.classList.add('ld-dragging');
+  // light up every landing spot up front: green = can go there, red = can't
+  const layout0 = resolveLayout();
+  document.querySelectorAll('.ld-panel').forEach(n => {
+    const id = n.getAttribute('data-slot');
+    if (id === _drag.from) return;
+    n.classList.add(compatible(layout0, _drag.from, id) ? 'ld-ok' : 'ld-no');
+  });
   ghostShow(state.assign[_drag.from] || null, e);
   e.preventDefault();
 });
@@ -460,11 +484,10 @@ document.addEventListener('pointermove', e => {
   if (!_drag) return;
   ghostMove(e);
   const pt = (e.touches && e.touches[0]) || e;
-  const el = document.elementFromPoint(pt.clientX, pt.clientY);
-  const tgt = el && el.closest && el.closest('.ld-panel');
+  const tgt = panelAt(pt.clientX, pt.clientY);
   document.querySelectorAll('.ld-panel.ld-target,.ld-panel.ld-bad').forEach(n => n.classList.remove('ld-target', 'ld-bad'));
   const onTarget = tgt && tgt !== _drag.g;
-  const fits = onTarget && compatible(resolveLayout(), _drag.from, tgt.getAttribute('data-slot'));
+  const fits = onTarget && tgt.classList.contains('ld-ok');
   if (onTarget) tgt.classList.add(fits ? 'ld-target' : 'ld-bad');
   if (_ghost) { _ghost.classList.toggle('ok', !!fits); _ghost.classList.toggle('bad', !!onTarget && !fits); }
   e.preventDefault();
@@ -472,14 +495,21 @@ document.addEventListener('pointermove', e => {
 document.addEventListener('pointerup', e => {
   if (!_drag) return;
   const pt = (e.changedTouches && e.changedTouches[0]) || e;
-  const el = document.elementFromPoint(pt.clientX, pt.clientY);
-  const tgt = el && el.closest && el.closest('.ld-panel');
+  const tgt = panelAt(pt.clientX, pt.clientY);
   const layout = resolveLayout();
   if (tgt && tgt !== _drag.g && compatible(layout, _drag.from, tgt.getAttribute('data-slot'))) {
     doSwap(layout, _drag.from, tgt.getAttribute('data-slot'));
     render();
   }
-  document.querySelectorAll('.ld-panel.ld-target,.ld-panel.ld-bad').forEach(n => n.classList.remove('ld-target', 'ld-bad'));
+  document.querySelectorAll('.ld-panel').forEach(n => n.classList.remove('ld-target', 'ld-bad', 'ld-ok', 'ld-no', 'ld-grabbing'));
+  document.body.classList.remove('ld-dragging');
+  ghostHide();
+  _drag = null;
+});
+// touch fell off the screen / browser stole the gesture — clean up like a drop-nowhere
+document.addEventListener('pointercancel', () => {
+  if (!_drag) return;
+  document.querySelectorAll('.ld-panel').forEach(n => n.classList.remove('ld-target', 'ld-bad', 'ld-ok', 'ld-no', 'ld-grabbing'));
   document.body.classList.remove('ld-dragging');
   ghostHide();
   _drag = null;
@@ -491,9 +521,10 @@ function sizeOptions() {
     .map(k => ({ k, L: LAYOUTS[k], area: LAYOUTS[k].exterior.w * LAYOUTS[k].exterior.h }))
     .sort((a, b) => a.area - b.area)
     .map(o => {
+      // lead with the model number, size after: "MDL 9696 — 8'×8'"
       const nice = String(o.L.label || '').replace(/^Sound Booth\s*·\s*/, '');
       return '<option value="' + esc(o.k) + '"' + (o.k === state.model ? ' selected' : '') + '>'
-        + esc(nice) + '  —  ' + esc(o.k.replace('MDL ', '#')) + '</option>';
+        + esc(o.k) + '  —  ' + esc(nice) + '</option>';
     }).join('');
 }
 
@@ -513,6 +544,11 @@ function summaryText() {
   bits.push('Foam color: ' + state.foam);
   if (state.heightExt) bits.push('10″ height extension');
   if (state.casters) bits.push('Caster plate (wheels, +5″)');
+  if (state.vss) bits.push('Ventilation Silencing System');
+  if (state.studioLight) bits.push('Studio light');
+  if (state.jackPanel) bits.push('Cable jack panel');
+  if (state.bassTraps) bits.push('Bass traps');
+  if (state.desk) bits.push('Office desk');
   return bits;
 }
 
@@ -555,6 +591,16 @@ function render() {
     +       '<input type="checkbox"' + (state.heightExt ? ' checked' : '') + ' onchange="setHX(this.checked)"></div>'
     +     '<div class="optrow"><label class="t">Wheels (caster plate)<small>Roll it around — raises the booth 5″</small></label>'
     +       '<input type="checkbox"' + (state.casters ? ' checked' : '') + ' onchange="setCasters(this.checked)"></div>'
+    +     '<div class="optrow"><label class="t">Quieter ventilation<small>Ventilation Silencing System — hushes airflow for critical recording</small></label>'
+    +       '<input type="checkbox"' + (state.vss ? ' checked' : '') + ' onchange="setOpt(\'vss\',this.checked)"></div>'
+    +     '<div class="optrow"><label class="t">Studio light<small>Interior light mounted inside the booth</small></label>'
+    +       '<input type="checkbox"' + (state.studioLight ? ' checked' : '') + ' onchange="setOpt(\'studioLight\',this.checked)"></div>'
+    +     '<div class="optrow"><label class="t">Cable jack panel<small>Pass mic, instrument &amp; monitor cables through the wall</small></label>'
+    +       '<input type="checkbox"' + (state.jackPanel ? ' checked' : '') + ' onchange="setOpt(\'jackPanel\',this.checked)"></div>'
+    +     '<div class="optrow"><label class="t">Bass traps<small>Corner absorbers that tighten up the low end</small></label>'
+    +       '<input type="checkbox"' + (state.bassTraps ? ' checked' : '') + ' onchange="setOpt(\'bassTraps\',this.checked)"></div>'
+    +     '<div class="optrow"><label class="t">Office desk<small>A work surface sized for your booth</small></label>'
+    +       '<input type="checkbox"' + (state.desk ? ' checked' : '') + ' onchange="setOpt(\'desk\',this.checked)"></div>'
     +   '</div>'
 
     +   '<div class="card"><div class="step"><span class="n">4</span>Foam color</div>'
@@ -576,7 +622,7 @@ function render() {
     +   '<div class="view-card">'
     +     '<div class="view-cap"><span>TOP-DOWN · BIRD’S-EYE VIEW</span></div>'
     +     renderLayoutSvg(layout, state.assign)
-    +     '<div class="drag-hint">↔ drag the door, vents or windows onto another wall</div>'
+    +     '<div class="drag-hint">↔ drag the door, vents or windows — spots that fit glow green</div>'
     +   '</div>'
     +   '<div class="view-card">'
     +     '<div class="view-cap">'
@@ -653,6 +699,7 @@ function setFoam(c)    { state.foam = c; rebuild(false); }
 function setWide(on)   { state.wideDoor = !!on; rebuild(false); }
 function setHX(on)     { state.heightExt = !!on; rebuild(false); }
 function setCasters(on){ state.casters = !!on; rebuild(false); }
+function setOpt(k, on) { state[k] = !!on; render(); }   // summary-only add-ons
 function rotate(dir) {
   const order = ['S', 'E', 'N', 'W'];
   state.facing = order[(order.indexOf(state.facing) + dir + 4) % 4];
@@ -661,6 +708,8 @@ function rotate(dir) {
 function resetAll() {
   state.hinge = 'R'; state.foam = 'Gray';
   state.wideDoor = false; state.heightExt = false; state.casters = false; state.facing = 'S';
+  state.vss = false; state.studioLight = false; state.jackPanel = false;
+  state.bassTraps = false; state.desk = false;
   rebuild(true);
 }
 function designLink() { return location.origin + '/booth-builder#d=' + designToHash(); }

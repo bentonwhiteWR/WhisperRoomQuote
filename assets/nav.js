@@ -16,7 +16,8 @@
     // Vendor Hub now also covers the Audimute (Suppliers) POs, shown as a
     // subtab on that page — so it stays highlighted on /suppliers too.
     { href:'/vendor-pos', label:'Vendor Hub', match:['/vendor-pos','/suppliers'] },
-    { href:'/booth-builder', label:'🏗 Booth Builder' },
+    // Booth Builder intentionally NOT in the nav (customer-facing tool —
+    // reps share the /booth-builder link directly; re-add here when wanted).
     { href:'/marketing',  label:'Marketing', id:'marketingNavLink' },
   ];
 

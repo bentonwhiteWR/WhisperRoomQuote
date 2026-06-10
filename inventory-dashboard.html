@@ -62,14 +62,25 @@
   .act-btn.primary:disabled { opacity: .4; cursor: default; }
   .act-btn.primary:not(:disabled):hover { filter: brightness(1.1); color: #fff; }
 
-  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  /* NOTE: no overflow:hidden here — it turns the sticky thead's containing block into the
+     wrap itself, permanently pinning the header 52px down INSIDE the table (covered row 1-2).
+     Corner rounding is done on the corner cells instead. */
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   thead th { text-align: right; padding: 10px 12px; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap; background: var(--surface2); position: sticky; top: 52px; z-index: 5; }
+  thead th:first-child { border-top-left-radius: 12px; }
+  thead th:last-child { border-top-right-radius: 12px; }
+  tbody tr:last-child td:first-child { border-bottom-left-radius: 12px; }
+  tbody tr:last-child td:last-child { border-bottom-right-radius: 12px; }
   thead th.l { text-align: left; }
   tbody td { padding: 6px 12px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; font-variant-numeric: tabular-nums; }
   tbody td.l { text-align: left; }
   tbody tr:hover { background: var(--row-hover); }
   tbody tr:last-child td { border-bottom: none; }
+  tr.cat-row td { background: var(--surface2); text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--orange); cursor: pointer; user-select: none; }
+  tr.cat-row:hover td { background: var(--orange-dim); }
+  tr.cat-row .caret { display: inline-block; width: 14px; color: var(--muted); font-size: 10px; }
+  tr.cat-row .cat-count { color: var(--muted); font-weight: 600; margin-left: 8px; font-size: 10px; }
   .code-cell { font-weight: 700; cursor: pointer; }
   .code-cell:hover { color: var(--orange); }
   .code-cell .caret { display: inline-block; width: 12px; color: var(--muted); font-size: 10px; }
@@ -137,6 +148,7 @@
       <div class="page-sub">On-hand per component code · ships auto-deduct, un-ships restore · every move audited. <span id="demandMeta" class="muted"></span></div>
     </div>
     <div style="display:flex;gap:8px">
+      <button class="act-btn" id="adjustBtn" onclick="toggleAdjust()">🔓 Adjust Inventory</button>
       <button class="act-btn" onclick="openModal('addModal')">＋ Add Code</button>
       <button class="act-btn" onclick="openModal('syncModal')">⇄ Sync from Excel</button>
       <button class="act-btn" onclick="showActivity()">🕘 Activity</button>
@@ -169,12 +181,10 @@
           <th title="On hand − needed">Available</th>
           <th>Build Point</th>
           <th>Build Qty</th>
-          <th>Finished</th>
-          <th>In Process</th>
           <th class="l">Flags</th>
         </tr>
       </thead>
-      <tbody id="tbody"><tr><td colspan="10" class="loading">Loading…</td></tr></tbody>
+      <tbody id="tbody"><tr><td colspan="8" class="loading">Loading…</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -242,14 +252,59 @@ let DEMAND = {};         // code -> needed qty (open orders)
 let DIRTY = {};          // code -> { field: newValue }
 let FILTER = 'ALL';
 let EXPANDED = null;     // code with open txn detail
+let EDITING = false;     // cells locked until "Adjust Inventory" is pressed
 
 const EDIT_FIELDS = [
   { key: 'on_hand',        cls: '' },
   { key: 'build_point',    cls: 'bp', text: true },
   { key: 'build_qty',      cls: '' },
-  { key: 'finished_qty',   cls: '' },
-  { key: 'in_process_qty', cls: '' },
 ];
+
+// Display order of the category sections. "Other" is the catch-all and stays last.
+const CATS = [
+  'Ceilings', 'Floors', 'Standard Walls', 'IEP Walls', 'Standard Windows', 'IEP Windows',
+  'Doors & Door Frames', 'Seam Seals', 'Height Extensions', 'Ventilation', 'Jacks & Electrical',
+  'Foam', 'Acoustic Treatment', 'Caster Plates', 'Lights', 'Support Beams',
+  'Ramps & Elevated Floor', 'Accessories', 'Other',
+];
+const CAT_CACHE = {}; // code -> category
+
+// Rule order matters: EXT / doors / windows are name-driven and beat the prefix rules,
+// so e.g. "IEP EXT 35.5/35.5" lands in Height Extensions, not IEP Walls.
+function categorize(r) {
+  if (CAT_CACHE[r.code]) return CAT_CACHE[r.code];
+  const name = ' ' + String(r.name || '').toUpperCase() + ' ';
+  const pre = (String(r.code || '').toUpperCase().match(/^[A-Z]+/) || [''])[0];
+  const iep = name.includes('IEP');
+  let cat;
+  if (/ EXT \d/.test(name))                                cat = 'Height Extensions';
+  else if (/RAMP|EFI/.test(name))                          cat = 'Ramps & Elevated Floor'; // before DOOR: "EFI PERIM DOOR STRIP"
+  else if (/DOOR|FRAME|JAMB|JMBAD|ADAPT/.test(name))       cat = 'Doors & Door Frames';
+  else if (name.includes('WDO'))                           cat = iep ? 'IEP Windows' : 'Standard Windows';
+  else if (name.includes(' WL '))                          cat = iep ? 'IEP Walls' : 'Standard Walls';
+  else if (pre === 'A' || pre === 'I')                     cat = 'Ceilings';        // standard (A) + IEP (I)
+  else if (pre === 'B' || pre === 'J')                     cat = 'Floors';          // standard (B) + IEP (J)
+  else if (pre === 'D' || pre === 'N' || pre === 'O')      cat = 'Seam Seals';      // STD + IEP cnr/mid + FL/CL
+  else if (pre === 'G')                                    cat = 'Caster Plates';
+  else if (pre === 'T')                                    cat = 'Lights';
+  else if (pre === 'U')                                    cat = 'Support Beams';
+  else if (pre === 'ATP' || name.includes('ATP') ||
+           name.includes('BASS TRAP') || name.includes('AUDIMUTE')) cat = 'Acoustic Treatment';
+  else if (name.includes('FOAM'))                          cat = 'Foam';
+  else if (/VENT|VSS|EFS|HEPA|RFU/.test(name))             cat = 'Ventilation';
+  else if (/JACK|XLR|MJP/.test(name))                      cat = 'Jacks & Electrical';
+  else if (pre === 'S')                                    cat = 'Accessories';     // desks, step
+  else                                                     cat = 'Other';
+  CAT_CACHE[r.code] = cat;
+  return cat;
+}
+
+let COLLAPSED = new Set(JSON.parse(localStorage.getItem('wr-inv-collapsed') || '[]'));
+function toggleCat(cat) {
+  if (COLLAPSED.has(cat)) COLLAPSED.delete(cat); else COLLAPSED.add(cat);
+  localStorage.setItem('wr-inv-collapsed', JSON.stringify([...COLLAPSED]));
+  render();
+}
 
 async function loadData(refresh) {
   try {
@@ -263,7 +318,7 @@ async function loadData(refresh) {
       (d.demandAt ? ' · computed ' + new Date(d.demandAt).toLocaleTimeString() : '');
     render();
   } catch (e) {
-    document.getElementById('tbody').innerHTML = '<tr><td colspan="10" class="empty">Failed to load: ' + escapeHtml(e.message) + '</td></tr>';
+    document.getElementById('tbody').innerHTML = '<tr><td colspan="8" class="empty">Failed to load: ' + escapeHtml(e.message) + '</td></tr>';
   }
 }
 
@@ -309,9 +364,19 @@ function render() {
     card('Unsaved edits', Object.keys(DIRTY).length, Object.keys(DIRTY).length ? 'warn' : '');
 
   const tb = document.getElementById('tbody');
-  if (!rows.length) { tb.innerHTML = '<tr><td colspan="10" class="empty">No components match.</td></tr>'; return; }
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">No components match.</td></tr>'; return; }
   let html = '';
-  for (const r of rows) {
+  // While searching or filtering, ignore collapse state — show every match.
+  const showAll = !!q || FILTER !== 'ALL';
+  for (const cat of CATS) {
+    const catRows = rows.filter(r => categorize(r) === cat);
+    if (!catRows.length) continue;
+    const collapsed = !showAll && COLLAPSED.has(cat);
+    html += '<tr class="cat-row" data-cat="' + escapeHtml(cat) + '" onclick="toggleCat(this.dataset.cat)"><td colspan="8">' +
+      '<span class="caret">' + (collapsed ? '▸' : '▾') + '</span>' + escapeHtml(cat) +
+      '<span class="cat-count">' + catRows.length + '</span></td></tr>';
+    if (collapsed) continue;
+  for (const r of catRows) {
     const eff = effective(r);
     const needed = DEMAND[r.code] || 0;
     const onHand = parseInt(eff.on_hand, 10) || 0;
@@ -328,11 +393,17 @@ function render() {
           ? '</td><td class="' + (needed ? '' : 'muted') + '">' + (needed || '<span class="dash">—</span>') +
             '</td><td class="' + (avail < 0 ? 'neg' : '') + '">' + avail
           : '';
-        return '<td><input class="cell-input ' + f.cls + (dirty ? ' dirty' : '') + '" data-code="' + escapeHtml(r.code) + '" data-field="' + f.key + '" value="' + escapeHtml(shown) + '" onchange="cellEdit(this)">' + extra;
+        const cell = EDITING
+          ? '<input class="cell-input ' + f.cls + (dirty ? ' dirty' : '') + '" data-code="' + escapeHtml(r.code) + '" data-field="' + f.key + '" value="' + escapeHtml(shown) + '" onchange="cellEdit(this)">'
+          : (shown === ''
+              ? '<span class="dash">—</span>'
+              : (f.key === 'on_hand' && onHand < 0 ? '<span class="neg">' + escapeHtml(shown) + '</span>' : escapeHtml(shown)));
+        return '<td>' + cell + extra;
       }).join('</td>') + '</td>' +
       '<td class="l">' + (fl || '<span class="dash">—</span>') + '</td>' +
       '</tr>';
-    if (EXPANDED === r.code) html += '<tr class="detail"><td colspan="10" id="detailCell">Loading history…</td></tr>';
+    if (EXPANDED === r.code) html += '<tr class="detail"><td colspan="8" id="detailCell">Loading history…</td></tr>';
+  }
   }
   tb.innerHTML = html;
   if (EXPANDED) loadDetail(EXPANDED);
@@ -341,6 +412,22 @@ function render() {
 
 function card(label, value, cls) {
   return '<div class="card"><div class="card-label">' + label + '</div><div class="card-value ' + (cls || '') + '">' + value + '</div></div>';
+}
+
+function toggleAdjust() {
+  if (EDITING && Object.keys(DIRTY).length) {
+    if (!confirm('Discard ' + Object.keys(DIRTY).length + ' unsaved change(s)?')) return;
+    DIRTY = {};
+  }
+  EDITING = !EDITING;
+  updateAdjustBtn();
+  render();
+}
+
+function updateAdjustBtn() {
+  const b = document.getElementById('adjustBtn');
+  b.textContent = EDITING ? '🔒 Done Adjusting' : '🔓 Adjust Inventory';
+  b.classList.toggle('primary', EDITING);
 }
 
 function cellEdit(inp) {
@@ -374,13 +461,15 @@ async function saveChanges() {
     const d = await r.json();
     if (d.error) throw new Error(d.error);
     DIRTY = {};
+    EDITING = false;
+    updateAdjustBtn();
     await loadData();
   } catch (e) {
     alert('Save failed: ' + e.message);
   } finally { btn.disabled = false; }
 }
 
-function discardChanges() { DIRTY = {}; render(); }
+function discardChanges() { DIRTY = {}; EDITING = false; updateAdjustBtn(); render(); }
 
 function toggleDetail(code) {
   EXPANDED = (EXPANDED === code) ? null : code;

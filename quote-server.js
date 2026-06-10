@@ -10915,12 +10915,12 @@ ${q.accepted ? `
   // Customer-friendly configurator over the shared layout renderer: pick a
   // model, drag panels, toggle options, then request a quote (lead capture).
   // Public so reps can send the link to prospects; the auth-gate rate limit
-  // applies. Logged-in reps get the internal navbar via the BB_AUTHED flag.
+  // applies. Deliberately NO navbar — customers shouldn't be able to wander
+  // off the page (and it's not in the internal nav either; reps share the
+  // link directly).
   if (pathname === '/booth-builder' && req.method === 'GET') {
-    let html = fs.readFileSync(path.join(__dirname, 'booth-builder.html'), 'utf8');
-    if (isAuth(req)) html = html.replace('window.BB_AUTHED=0', 'window.BB_AUTHED=1');
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(html);
+    res.end(fs.readFileSync(path.join(__dirname, 'booth-builder.html'), 'utf8'));
     return;
   }
 
@@ -10978,6 +10978,8 @@ ${q.accepted ? `
         f: ['Gray', 'Orange', 'Blue', 'Purple', 'Burgundy'].includes(d.f) ? d.f : 'Gray',
         w: [30, 36, 42, 48].includes(+d.w) ? +d.w : 0,
         wd: d.wd ? 1 : 0, hx: d.hx ? 1 : 0, cs: d.cs ? 1 : 0,
+        // summary-only add-ons (VSS / studio light / jack panel / bass traps / desk)
+        vs: d.vs ? 1 : 0, sl: d.sl ? 1 : 0, jp: d.jp ? 1 : 0, bt: d.bt ? 1 : 0, dk: d.dk ? 1 : 0,
         fc: ['N', 'S', 'E', 'W'].includes(d.fc) ? d.fc : 'S',
         a: {},
       };

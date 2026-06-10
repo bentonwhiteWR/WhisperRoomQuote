@@ -908,20 +908,61 @@
     const w = panelInteriorWidth(line.pack);
     return classifyWall(line.pack) === 'DRFRM' && w != null && w >= 49;
   }
+  // The WA Type names the wall PAIR the 49″ door displaces, and the pair's
+  // total width is conserved (Benton 2026-06-09):
+  //   4646: 46+46 → 49+43     4622: 46+22 → 49+19
+  //   4040: 40+40 → 49+31     4016: 40+16 → 49+7
+  // The shrunken companion always sits DIRECTLY ADJACENT to the door. So on a
+  // 102126, a 4016 door can only live on the 102″ side (40+16+40 — it replaces
+  // a 40 and the middle 16 becomes the 7), while 4040 forces the 126″ side
+  // (40+40+44 — the adjacent 40 becomes 31).
+  // Companion = the one shrunken WA wall, WHEREVER it currently sits (the
+  // greedy auto-place doesn't know the adjacency rule, so it may seat the
+  // 7″/31″ on any wall until the rep drags the door). Identified by width ∈
+  // {7,19,31,43} AND visibly narrower than its slot (a normal 43″ wall in a
+  // 44″ slot is NOT one).
+  function ldCompanion(ri) {
+    const st = LAYOUT_STATE[ri]; if (!st) return null;
+    for (const side of ['N', 'S', 'E', 'W']) {
+      const wall = st.layout.walls[side]; if (!wall) continue;
+      for (const s2 of wall.slots) {
+        const ln = st.assign[s2.id]; if (!ln) continue;
+        const w = panelInteriorWidth(ln.pack);
+        if (w != null && [7, 19, 31, 43].indexOf(w) >= 0 && Math.abs(w - s2.size) >= 3) return { slotId: s2.id, w: w };
+      }
+    }
+    return null;
+  }
+  // Slots adjacent to a drop target that can seat the companion: the pair
+  // must conserve width — |target + adjacent − (49 + companion)| ≤ 3.
+  function ldDoorSeats(ri, info, compW) {
+    const slots = info.wall.slots;
+    const i = slots.findIndex(s2 => s2.id === info.slot.id);
+    const out = [];
+    for (const j of [i - 1, i + 1]) {
+      if (j < 0 || j >= slots.length) continue;
+      if (Math.abs(info.slot.size + slots[j].size - (49 + compW)) <= 3) out.push(slots[j]);
+    }
+    return out;
+  }
   // A panel only fits a slot of (near-)equal width — you can't drop a 46" panel
   // where a 22" sits. ±3" covers module rounding (46/47/47.5) but blocks
-  // full↔narrow swaps. The 49″ WA/ADA doorframe adds a rule (Benton
-  // 2026-06-09): it overhangs its module slot, so the receiving wall must also
-  // seat the narrow shrink companion (19″/7″) beside it — i.e. only multi-slot
-  // walls qualify. No 49″ frame on a single-46″ wall (a 4848 side is 48″; the
-  // frame + companion need ≥ 60″ of wall run).
+  // full↔narrow swaps. The 49″ WA/ADA doorframe additionally needs a valid
+  // companion seat ADJACENT to the drop target (pair conservation above) — so
+  // a 4016 door is refused on a 40+40 pair and a 4040 door on a 40+16 pair.
   function ldCompatible(ri, a, b) {
     const A = ldSlotInfo(ri, a), B = ldSlotInfo(ri, b);
     if (!A || !B) return false;
     if (Math.abs(A.slot.size - B.slot.size) > 3) return false;
     const st = LAYOUT_STATE[ri]; if (!st) return false;
-    if (ldIsWideDoor(st.assign[a]) && B.wall.slots.length < 2) return false;
-    if (ldIsWideDoor(st.assign[b]) && A.wall.slots.length < 2) return false;
+    if (ldIsWideDoor(st.assign[a])) {
+      const comp = ldCompanion(ri);
+      if (comp ? ldDoorSeats(ri, B, comp.w).length === 0 : B.wall.slots.length < 2) return false;
+    }
+    if (ldIsWideDoor(st.assign[b])) {
+      const comp = ldCompanion(ri);
+      if (comp ? ldDoorSeats(ri, A, comp.w).length === 0 : A.wall.slots.length < 2) return false;
+    }
     return true;
   }
 
@@ -1039,36 +1080,28 @@
     const A = st.assign[a] || null, B = st.assign[b] || null;
     if (B == null) delete st.assign[a]; else st.assign[a] = B;
     if (A == null) delete st.assign[b]; else st.assign[b] = A;
-    // The 49″ WA/ADA door travels WITH its narrow shrink companion (the 19″ or
-    // 7″ wall) — they must sit adjacent on the same wall. When exactly one end
-    // of the swap is the wide door and it changed walls, pull the companion
-    // into the smallest other slot on the door's new wall.
+    // The 49″ WA/ADA door travels WITH its shrunken companion (43″/31″/19″/7″
+    // per WA Type) — they must end up directly adjacent. When exactly one end
+    // of the swap is the wide door, pull the companion into the conserving
+    // adjacent slot of the door's new position.
     const aWide = ldIsWideDoor(st.assign[a]), bWide = ldIsWideDoor(st.assign[b]);
-    if (aWide !== bWide) ldBringCompanion(ri, aWide ? b : a, aWide ? a : b);
+    if (aWide !== bWide) ldBringCompanion(ri, aWide ? a : b);
     const wrap = document.querySelector('[data-layout-room="' + ri + '"]');
     if (wrap) wrap.outerHTML = renderLayoutTab(st.rm, ri);
   }
-  // Move the WA shrink companion (19″/7″) from the door's old wall onto the
-  // door's new wall, swapping with whatever sits in the seat slot there.
-  function ldBringCompanion(ri, fromSlotId, doorSlotId) {
+  // Move the WA shrink companion (43″/31″/19″/7″ per WA Type) — wherever it
+  // sits — into the slot DIRECTLY ADJACENT to the door's new slot (pair
+  // conservation picks which adjacent), swapping with whatever sits there.
+  function ldBringCompanion(ri, doorSlotId) {
     const st = LAYOUT_STATE[ri]; if (!st) return;
-    const from = ldSlotInfo(ri, fromSlotId), to = ldSlotInfo(ri, doorSlotId);
-    if (!from || !to || from.side === to.side) return;   // same wall — already adjacent
-    let compSlotId = null;
-    for (const s2 of from.wall.slots) {
-      const ln = st.assign[s2.id];
-      const w = ln ? panelInteriorWidth(ln.pack) : null;
-      if (w === 19 || w === 7) { compSlotId = s2.id; break; }
-    }
-    if (!compSlotId) return;
-    let seat = null;
-    for (const s2 of to.wall.slots) {
-      if (s2.id === doorSlotId) continue;
-      if (!seat || s2.size < seat.size) seat = s2;
-    }
-    if (!seat || seat.id === compSlotId) return;
-    const X = st.assign[compSlotId] || null, Y = st.assign[seat.id] || null;
-    if (Y == null) delete st.assign[compSlotId]; else st.assign[compSlotId] = Y;
+    const to = ldSlotInfo(ri, doorSlotId); if (!to) return;
+    const comp = ldCompanion(ri); if (!comp) return;
+    const seats = ldDoorSeats(ri, to, comp.w);
+    if (!seats.length) return;
+    if (seats.some(s2 => s2.id === comp.slotId)) return;   // already adjacent
+    const seat = seats[0];
+    const X = st.assign[comp.slotId] || null, Y = st.assign[seat.id] || null;
+    if (Y == null) delete st.assign[comp.slotId]; else st.assign[comp.slotId] = Y;
     if (X == null) delete st.assign[seat.id]; else st.assign[seat.id] = X;
   }
   document.addEventListener('pointerdown', ldDown);

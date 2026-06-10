@@ -56,7 +56,7 @@ boothConfig: {
 
 - Slot ids are `booth-layouts.json` ids — configurator and PL share one source of truth.
 - Today `LAYOUT_STATE` (the drag state in the PL viewer) **resets on every render and is never persisted**. Persistence = serialize `assign` by slot→kind (+pack where it matters), save, and seed `LAYOUT_STATE` from `boothConfig` when present; greedy `placeBom()` stays as fallback + validator (every assigned panel must exist in the BOM pool).
-- **WA Type derivation**: door slot + which adjacent wall is narrow + wall module (46/40) → `4646/4622/4040/4016` directly. Rep panel shows: "Door: FRONT-left, hinge R, narrow on the door side → WA Type 4622" with one-click apply to `repWaType`.
+- **WA Type derivation — SOLVED (Benton 2026-06-09).** The WA Type names the wall pair the 49″ door displaces, conserving total width: `4646` = 46+46 → 49+43 · `4622` = 46+22 → 49+19 · `4040` = 40+40 → 49+31 · `4016` = 40+16 → 49+7. The shrunken companion always sits **directly adjacent** to the door, and the small filler is always the middle section of its wall. So a saved layout yields the WA Type mechanically: door slot nominal + adjacent companion-seat nominal. It also constrains *which wall* the door can occupy (102126: 4016 → the 102″ side only; 4040 → the 126″ side only). The PL drag rules enforce all of this as of v1.85.3; the rep panel just needs the readout + one-click apply to `repWaType`.
 
 ## 5. Constraint rules (the validity engine)
 

@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.85.3', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Top-Down Layout: WA-Type-aware door placement.** The WA Type names the wall pair the 49&Prime; door displaces, conserving total width — 4646: 46+46 → 49+43 · 4622: 46+22 → 49+19 · 4040: 40+40 → 49+31 · 4016: 40+16 → 49+7 — and the shrunken companion always sits directly adjacent to the door. Dragging the wide door now enforces this: a drop is only allowed where the target slot plus an adjacent slot conserve the pair (so on a 102126 a 4016 door only lands on the 102&Prime; side, where the middle 16 becomes the 7; a 4040 door only on the 126&Prime; side, where the adjacent 40 becomes the 31). The companion — 43&Prime;, 31&Prime;, 19&Prime; or 7&Prime;, found wherever the auto-placement left it — is pulled into the conserving adjacent slot when the door moves.'},
+      ]
+    },
+    {
       v:'1.85.2', date:'June 9, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Top-Down Layout: small wall sections belong in the MIDDLE.** Production rule: on walls built from two or more full-size sections plus a small filler wall (96 &amp; 102 series, 84102, 10284), the small section always sits between the full sections — never on the end. All 24 affected walls re-ordered in the layout data. The 102-series 102&Prime; walls now carry a <b>16&Prime;</b> slot (the C10 STDWL16 wall) instead of a nominal 20&Prime;, and the 96-series small is a 22&Prime; slot — so the real packs match exactly and the labels read the true wall size.'},

@@ -476,9 +476,12 @@ async function openOrderDemand(force = false) {
       const gen = await generatePLForQuote(row.quote_number);
       if (!gen) continue;
       counted++;
+      // Planned ship date, when Jeromy has set one in the orders drawer
+      // (saved as shipmentDraft until Ship It actually fires). Often void.
+      const shipDate = od.shipmentDraft?.date || od.shipped?.date || null;
       for (const l of inventory.linesFromPl(gen.pl)) {
         byCode[l.code] = (byCode[l.code] || 0) + l.qty;
-        (byOrder[l.code] = byOrder[l.code] || []).push({ quote: row.quote_number, deal: gen.dealName || '', qty: l.qty });
+        (byOrder[l.code] = byOrder[l.code] || []).push({ quote: row.quote_number, deal: gen.dealName || '', qty: l.qty, shipDate });
       }
     } catch (e) { /* bad/legacy snapshot — skip from demand */ }
   }

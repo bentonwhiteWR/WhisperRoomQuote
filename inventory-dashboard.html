@@ -536,16 +536,28 @@ function txnTable(txns) {
 }
 
 // "Needed for" breakdown — which open orders this code's demand comes from
+function fmtShipDate(d) {
+  if (!d) return '<span class="dash">—</span>';
+  const dt = new Date(String(d).length <= 10 ? d + 'T12:00:00' : d);
+  return isNaN(dt) ? escapeHtml(d) : dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 function neededTable(code) {
-  const list = (DEMAND_ORDERS[code] || []).slice().sort((a, b) => b.qty - a.qty);
+  // Dated orders first (soonest ship at top), undated after (biggest qty first)
+  const list = (DEMAND_ORDERS[code] || []).slice().sort((a, b) => {
+    if (a.shipDate && b.shipDate) return a.shipDate < b.shipDate ? -1 : a.shipDate > b.shipDate ? 1 : b.qty - a.qty;
+    if (a.shipDate || b.shipDate) return a.shipDate ? -1 : 1;
+    return b.qty - a.qty;
+  });
   if (!list.length) return '';
   const total = list.reduce((s, o) => s + o.qty, 0);
   return '<div style="margin-bottom:14px">' +
     '<div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--blue);margin-bottom:6px">' +
       'Needed ' + total + ' — across ' + list.length + ' open order' + (list.length === 1 ? '' : 's') + '</div>' +
-    '<table class="txn-table"><tr><th>Order</th><th>Deal</th><th>Qty</th></tr>' +
+    '<table class="txn-table"><tr><th>Order</th><th>Ship Date</th><th>Deal</th><th>Qty</th></tr>' +
     list.map(o =>
       '<tr><td><a href="/pl/' + encodeURIComponent(o.quote) + '" target="_blank" style="color:var(--blue);font-weight:700">' + escapeHtml(o.quote) + '</a></td>' +
+      '<td>' + fmtShipDate(o.shipDate) + '</td>' +
       '<td>' + escapeHtml(o.deal || '—') + '</td>' +
       '<td><b>' + o.qty + '</b></td></tr>'
     ).join('') + '</table></div>';

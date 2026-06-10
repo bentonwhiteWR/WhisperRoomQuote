@@ -50,8 +50,8 @@ MAP = {
     # ventilation upgrades: VSS (4 silencer ducts) and VSS+EFS combo —
     # front view, top-down plan and both side profiles
     'Components_46VntWallVSS.png':         'wall-46-vnt-vss.webp',
-    'Components_46VNTWallVSSandEFS.png':   'wall-46-vnt-vss-efs.webp',
-    'Components_VSSandEFS Top Down.png':   'vent-vss-efs-top.webp',
+    'Components_46vntVSS_EFS.png':         'wall-46-vnt-vss-efs.webp',
+    'Components_46vntVSS_EFS Top Down.png': 'vent-vss-efs-top.webp',
     'Components_VSSandEFSLeftSide.png':    'vent-vss-efs-side-left.webp',
     'Components_VSSandEFSRightSide.png':   'vent-vss-efs-side-right.webp',
 }

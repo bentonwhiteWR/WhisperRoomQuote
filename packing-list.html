@@ -106,6 +106,13 @@
   .ld-ghost.bad{border-color:#dc2626}
   .ld-ghost.bad::after{content:'✕ wrong size';color:#f87171;font-weight:600;margin-left:2px}
   .ld-ghost .c{color:#ee6216;font-family:ui-monospace,Menlo,monospace}
+  /* Two-view layout: top-down + rotatable elevation, side by side (wraps) */
+  .ld-views{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start;justify-content:center}
+  .ld-view-plan{flex:1 1 440px;min-width:320px}
+  .ld-view-elev{flex:0 1 360px;min-width:280px}
+  .ld-view-cap{display:flex;align-items:center;justify-content:center;gap:10px;font-size:10px;font-weight:800;letter-spacing:.12em;color:#9097a0;margin:2px 0 4px;min-height:24px}
+  .ld-rot{border:1px solid #d5d8dd;background:#fff;border-radius:6px;width:26px;height:22px;font-size:10px;color:#4a4f57;cursor:pointer;line-height:1;font-family:inherit}
+  .ld-rot:hover{background:#fff4ee;border-color:#ee6216;color:#ee6216}
   @media print{ .ld-hint{display:none} }
 
   /* Add-row footer (no-print) */
@@ -331,8 +338,9 @@
     const interior = layout.interior || { w: ext.w - 2 * layout.wallThickness, h: ext.h - 2 * layout.wallThickness };
     const PX = Math.max(3, Math.min(600 / ext.w, 470 / ext.h, 11));
     const W = ext.w * PX, H = ext.h * PX, t = layout.wallThickness * PX;
-    const VOUT = 52;        // vent protrusion estimate (px) for margin sizing (boxes scale with panel)
-    const DOORR = 92;       // max door-swing radius (px symbol)
+    const VPROT = 5.5;        // a vent set protrudes 5.5″ beyond its wall (spec)
+    const VOUT = VPROT * PX;  // drawn at TRUE scale so the "w/ vent" dim reads honestly
+    const DOORR = 92;         // max door-swing radius (px symbol)
     // Which walls currently hold a door / vent — computed from the LIVE placement
     // (not hard-coded to S/N), so a dragged door or vent draws its swing/ducts on
     // whatever wall it now sits on, and the margins expand to fit.
@@ -346,7 +354,11 @@
     }
     const extra = sd => sideHasDoor[sd] ? DOORR + 10 : (sideHasVent[sd] ? VOUT + 18 : 0);
     const BASE = 50;
-    const mTop = BASE + extra('N'), mBottom = BASE + extra('S'), mLeft = BASE + extra('W'), mRight = BASE + extra('E');
+    // extra room for the "w/ vent" overall-dim line: left of the height dim for
+    // a N/S vent, below the width dim for an E/W vent
+    const ventDimL = (sideHasVent.N || sideHasVent.S) ? 28 : 0;
+    const ventDimB = (sideHasVent.E || sideHasVent.W) ? 28 : 0;
+    const mTop = BASE + extra('N'), mBottom = BASE + extra('S') + ventDimB, mLeft = BASE + extra('W') + ventDimL, mRight = BASE + extra('E');
     const x0 = mLeft, y0 = mTop;
     const totalW = W + mLeft + mRight, totalH = H + mTop + mBottom;
   
@@ -467,12 +479,14 @@
       return            { omx: px + pw, omy: py + ph / 2, ox: 1, oy: 0, ax: 0, ay: 1, horiz: false };
     }
   
-    // ── vent assembly: TWO square boxes (one plain, one with a fan), spread
-    // along the wall, protruding OUTWARD from whatever wall holds the vent ──
+    // ── vent assembly: TWO boxes (one plain, one with a fan), spread along the
+    // wall, protruding OUTWARD from whatever wall holds the vent. The outward
+    // depth is exactly 5.5″ at scale (VOUT) so the drawn footprint matches the
+    // "w/ vent" dimension line. ──
     function ventDuct(side, px, py, pw, ph) {
       const { omx, omy, ox, oy, ax, ay, horiz } = edgeGeom(side, px, py, pw, ph);
       const panelLen = horiz ? pw : ph;
-      const B = Math.max(18, Math.min(panelLen * 0.30, 44));   // box scales with the wall panel (46" walls → big)
+      const B = Math.max(18, Math.min(panelLen * 0.30, 44));   // along-wall width scales with the panel
       const G = Math.max(7, B * 0.4), PL = 4;
       const off = B / 2 + G / 2;
       let g = '';
@@ -482,14 +496,16 @@
       else       g += `<rect x="${ox < 0 ? omx - PL : omx}" y="${omy - plate / 2}" width="${PL}" height="${plate}" rx="1.5" fill="#3a3b42"/>`;
       for (const k of [-1, 1]) {
         const ccx = omx + ax * k * off, ccy = omy + ay * k * off;
-        const rx = horiz ? (ccx - B / 2) : (ox < 0 ? omx - B : omx);
-        const ry = horiz ? (oy < 0 ? omy - B : omy) : (ccy - B / 2);
-        g += `<rect x="${rx}" y="${ry}" width="${B}" height="${B}" rx="2" fill="#34363d" stroke="#1b1c20" stroke-width="1"/>`;
+        const rx = horiz ? (ccx - B / 2) : (ox < 0 ? omx - VOUT : omx);
+        const ry = horiz ? (oy < 0 ? omy - VOUT : omy) : (ccy - B / 2);
+        const bw = horiz ? B : VOUT, bh = horiz ? VOUT : B;
+        g += `<rect x="${rx}" y="${ry}" width="${bw}" height="${bh}" rx="2" fill="#34363d" stroke="#1b1c20" stroke-width="1"/>`;
         if (k === 1) {   // fan box
-          g += `<circle cx="${rx + B / 2}" cy="${ry + B / 2}" r="${B * 0.32}" fill="#22242a" stroke="#54585f" stroke-width="0.9"/>`;
-          g += `<circle cx="${rx + B / 2}" cy="${ry + B / 2}" r="${B * 0.11}" fill="#62666f"/>`;
-        } else {         // plain box (no hole) — same square, just an inset panel line
-          g += `<rect x="${rx + B * 0.2}" y="${ry + B * 0.2}" width="${B * 0.6}" height="${B * 0.6}" rx="1" fill="none" stroke="#4a4d55" stroke-width="0.9"/>`;
+          const fr = Math.min(bw, bh);
+          g += `<circle cx="${rx + bw / 2}" cy="${ry + bh / 2}" r="${fr * 0.32}" fill="#22242a" stroke="#54585f" stroke-width="0.9"/>`;
+          g += `<circle cx="${rx + bw / 2}" cy="${ry + bh / 2}" r="${fr * 0.11}" fill="#62666f"/>`;
+        } else {         // plain box (no hole) — same box, just an inset panel line
+          g += `<rect x="${rx + bw * 0.2}" y="${ry + bh * 0.2}" width="${bw * 0.6}" height="${bh * 0.6}" rx="1" fill="none" stroke="#4a4d55" stroke-width="0.9"/>`;
         }
       }
       return g;
@@ -648,6 +664,33 @@
     s += `<rect x="${dimX - 8}" y="${y0 + H / 2 - 9}" width="16" height="18" fill="url(#ldBg)"/>`;
     s += `<text x="${dimX}" y="${y0 + H / 2}" text-anchor="middle" font-size="11" font-weight="700" fill="#4a4f57" transform="rotate(-90 ${dimX} ${y0 + H / 2})">${ext.h}″</text>`;
   
+    // ── "w/ vent" overall dims ──────────────────────────────────────
+    // A vent set adds 5.5″ to the axis it protrudes on: a 4872 with the vent on
+    // the 72″ wall has a 50″ exterior side that totals 55.5″ overall. Drawn only
+    // on axes that actually carry a vent, and follows a dragged vent to its new
+    // wall. Spans wall face → duct outer face (the ducts are drawn at true scale).
+    const VDIM = '#c9762e';
+    const fmtIn = v => String(Math.round(v * 2) / 2);
+    const vtick = (x, y, vert) =>
+      vert ? `<line x1="${x - 4}" y1="${y}" x2="${x + 4}" y2="${y}" stroke="${VDIM}" stroke-width="1"/>`
+           : `<line x1="${x}" y1="${y - 4}" x2="${x}" y2="${y + 4}" stroke="${VDIM}" stroke-width="1"/>`;
+    if (sideHasVent.N || sideHasVent.S) {
+      const yA = y0 - (sideHasVent.N ? VOUT : 0), yB = y0 + H + (sideHasVent.S ? VOUT : 0);
+      const tot = ext.h + (sideHasVent.N ? VPROT : 0) + (sideHasVent.S ? VPROT : 0);
+      const vx = dimX - 22, vmy = (yA + yB) / 2;
+      s += `<line x1="${vx}" y1="${yA}" x2="${vx}" y2="${yB}" stroke="${VDIM}" stroke-width="1"/>` + vtick(vx, yA, true) + vtick(vx, yB, true);
+      s += `<rect x="${vx - 8}" y="${vmy - 40}" width="16" height="80" fill="url(#ldBg)"/>`;
+      s += `<text x="${vx}" y="${vmy + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VDIM}" transform="rotate(-90 ${vx} ${vmy})">${fmtIn(tot)}″ w/ vent</text>`;
+    }
+    if (sideHasVent.E || sideHasVent.W) {
+      const xA = x0 - (sideHasVent.W ? VOUT : 0), xB = x0 + W + (sideHasVent.E ? VOUT : 0);
+      const tot = ext.w + (sideHasVent.W ? VPROT : 0) + (sideHasVent.E ? VPROT : 0);
+      const vy = dimY + 34, vmx = (xA + xB) / 2;
+      s += `<line x1="${xA}" y1="${vy}" x2="${xB}" y2="${vy}" stroke="${VDIM}" stroke-width="1"/>` + vtick(xA, vy, false) + vtick(xB, vy, false);
+      s += `<rect x="${vmx - 40}" y="${vy - 8}" width="80" height="15" rx="3" fill="url(#ldBg)"/>`;
+      s += `<text x="${vmx}" y="${vy + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VDIM}">${fmtIn(tot)}″ w/ vent</text>`;
+    }
+  
     // ── interior callout (centered pill) ────────────────────────────
     const cw = 150, chh = 26;
     const ccx = x0 + W / 2, ccy = y0 + H / 2;
@@ -660,6 +703,139 @@
     // ── orientation captions (booth orientation is fixed; components can move) ─
     s += `<text x="${x0 + W / 2}" y="${y0 - extra('N') - 8}" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="0.12em" fill="#9097a0">BACK</text>`;
     s += `<text x="${x0 + W / 2}" y="${dimY + 22}" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="0.12em" fill="#9097a0">FRONT</text>`;
+  
+    s += `</svg>`;
+    return s;
+  }
+  
+  // ── Elevation renderer: one wall viewed face-on from OUTSIDE ────────
+  // Skeleton of the booth-builder front/side view (plan Phase C): correct
+  // proportions and per-panel features — door with window/hinges/handle, wall
+  // windows at their real WDO sizes, vent ducts (intake low, exhaust high —
+  // "fresh air flows in at the floor and out at the ceiling"), cable passages.
+  // `facing` = which exterior wall you're looking at: S front, E right, N back,
+  // W left. N and E render mirrored so left/right match what a viewer standing
+  // OUTSIDE that wall actually sees. Heights: 83″ standard / 85″ enhanced.
+  function renderElevationSvg(layout, assign, facing) {
+    const ext = layout.exterior;
+    const wall = layout.walls[facing] || { slots: [] };
+    const lenIn = (facing === 'N' || facing === 'S') ? ext.w : ext.h;
+    const hIn = /^E/i.test(String(layout.variant || 'S')) ? 85 : 83;
+    const PX2 = Math.max(2.4, Math.min(340 / lenIn, 280 / hIn, 5.5));
+    const Wp = lenIn * PX2, Hp = hIn * PX2;
+    const M = 46;
+    const totalW = Wp + M * 2, totalH = Hp + 34 + 30;
+    const x0 = M, y0 = 24;
+    const gy = y0 + Hp;                          // ground line y
+    const iy = v => gy - v * PX2;                // inches above the floor → px
+  
+    let s = `<svg class="ld-elev-svg" viewBox="0 0 ${totalW} ${totalH}" preserveAspectRatio="xMidYMid meet" `
+          + `style="width:100%;max-width:440px;display:block;margin:0 auto;font-family:'DM Sans',sans-serif">`;
+    // same defs/ids as the top-down — identical content, so document-wide id
+    // resolution is harmless, and standalone renders still work
+    s += `<defs>`
+      + `<linearGradient id="ldBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef0f3"/><stop offset="1" stop-color="#f8f9fa"/></linearGradient>`
+      + `<pattern id="ldSeal" width="5" height="5" patternUnits="userSpaceOnUse"><rect width="5" height="5" fill="#54575f"/><circle cx="1.2" cy="1.8" r="0.8" fill="#33353b"/><circle cx="3.7" cy="3.7" r="0.8" fill="#7d818b"/><circle cx="3.6" cy="0.9" r="0.6" fill="#2a2c31"/><circle cx="0.8" cy="4.2" r="0.5" fill="#8a8e98"/></pattern>`
+      + `</defs>`;
+    s += `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="url(#ldBg)"/>`;
+    // ground line + soft shadow
+    s += `<ellipse cx="${x0 + Wp / 2}" cy="${gy + 5}" rx="${Wp * 0.55}" ry="5" fill="#5a5f66" opacity="0.16"/>`;
+    s += `<rect x="${x0 - 16}" y="${gy}" width="${Wp + 32}" height="1.2" fill="#c4c8ce"/>`;
+  
+    // slots left→right as seen from outside (N + E mirrored)
+    const slots = wall.slots.slice();
+    const mirrored = (facing === 'N' || facing === 'E');
+    if (mirrored) slots.reverse();
+    const nominal = slots.reduce((a, sl) => a + sl.size, 0) || 1;
+    const scale = Wp / nominal;
+  
+    // per-panel features, drawn after all strips + battens
+    function elevFeatures(kind, line, sx, w) {
+      const cx2 = sx + w / 2;
+      let g = '';
+      if (kind === 'DRFRM' && line) {
+        const frameW = panelInteriorWidth(line.pack) || 46;
+        const doorW = (frameW >= 49 ? 32 : Math.max(20, frameW - 16)) * PX2;  // 32″ WA/ADA, 30″ std
+        const doorH = 78 * PX2;
+        const dx = cx2 - doorW / 2, dy = gy - 2 - doorH;
+        let hingeRight = /\sR\b/i.test(line.pack || '');
+        if (mirrored) hingeRight = !hingeRight;
+        g += `<rect x="${dx}" y="${dy}" width="${doorW}" height="${doorH}" rx="1.5" fill="url(#ldSeal)" stroke="#0d0e11" stroke-width="1.3"/>`;
+        g += `<rect x="${dx + 2}" y="${dy + 2}" width="${doorW - 4}" height="${doorH - 4}" fill="none" stroke="#8a8e98" stroke-opacity="0.45" stroke-width="0.7"/>`;
+        // door window: WA/ADA 16×48; else 16×30 on 46-module, 12×30 on 40-module
+        const wdw = (frameW >= 49 ? 16 : (layout.module === 40 ? 12 : 16)) * PX2;
+        const wdh = (frameW >= 49 ? 48 : 30) * PX2;
+        g += `<rect x="${cx2 - wdw / 2 - 1.5}" y="${iy(70) - 1.5}" width="${wdw + 3}" height="${wdh + 3}" rx="1.5" fill="#1b1c20"/>`;
+        g += `<rect x="${cx2 - wdw / 2}" y="${iy(70)}" width="${wdw}" height="${wdh}" fill="#aecde8"/>`;
+        g += `<line x1="${cx2 - wdw / 2 + 2}" y1="${iy(70) + wdh * 0.75}" x2="${cx2 + wdw / 2 - 2}" y2="${iy(70) + wdh * 0.25}" stroke="#fff" stroke-opacity="0.55" stroke-width="1.5"/>`;
+        // handle on the latch side (~38″), hinges on the other
+        const latchX = hingeRight ? dx + 5 : dx + doorW - 5;
+        const hingeX = hingeRight ? dx + doorW : dx;
+        g += `<rect x="${latchX - 5}" y="${iy(38) - 1.6}" width="10" height="3.2" rx="1.6" fill="#caccd2" stroke="#6a6e76" stroke-width="0.6"/>`;
+        for (const hh of [14, 40, 66])
+          g += `<rect x="${hingeX - 1.6}" y="${iy(hh) - 4}" width="3.2" height="8" rx="1" fill="#caccd2" stroke="#6a6e76" stroke-width="0.5"/>`;
+        // threshold
+        g += `<rect x="${dx - 2}" y="${gy - 3}" width="${doorW + 4}" height="3" fill="#caccd2" stroke="#8a8e98" stroke-width="0.5"/>`;
+      } else if (kind === 'WDO' && line) {
+        const m2 = String(line.pack || '').match(/WDO\s*(\d{2})(\d{2})/i);
+        const ww = (m2 ? +m2[1] : 32) * PX2, wh = (m2 ? +m2[2] : 36) * PX2;
+        g += `<rect x="${cx2 - ww / 2 - 2.5}" y="${iy(72) - 2.5}" width="${ww + 5}" height="${wh + 5}" rx="2" fill="#1b1c20"/>`;
+        g += `<rect x="${cx2 - ww / 2}" y="${iy(72)}" width="${ww}" height="${wh}" fill="#aecde8"/>`;
+        g += `<line x1="${cx2 - ww / 2 + 3}" y1="${iy(72) + wh * 0.8}" x2="${cx2 + ww / 2 - 3}" y2="${iy(72) + wh * 0.2}" stroke="#fff" stroke-opacity="0.55" stroke-width="2"/>`;
+      } else if (kind === 'VNT' && layout.hasVent !== false) {
+        // intake duct low, exhaust duct high, remote fan unit at the floor
+        const dw = 8 * PX2, dh = 30 * PX2;
+        g += `<rect x="${sx + w * 0.26 - dw / 2}" y="${iy(34)}" width="${dw}" height="${dh}" rx="1.5" fill="#34363d" stroke="#1b1c20" stroke-width="0.9"/>`;
+        g += `<rect x="${sx + w * 0.72 - dw / 2}" y="${iy(76)}" width="${dw}" height="${dh}" rx="1.5" fill="#34363d" stroke="#1b1c20" stroke-width="0.9"/>`;
+        g += `<rect x="${sx + w * 0.72 - 3.5 * PX2}" y="${iy(10)}" width="${7 * PX2}" height="${10 * PX2 - 2}" rx="2" fill="#2c2e33" stroke="#1b1c20" stroke-width="0.9"/>`;
+        g += `<circle cx="${sx + w * 0.72}" cy="${iy(5.2)}" r="${2.4 * PX2}" fill="#22242a" stroke="#54585f" stroke-width="0.8"/>`;
+        g += `<circle cx="${sx + w * 0.72}" cy="${iy(5.2)}" r="${0.8 * PX2}" fill="#62666f"/>`;
+      } else if (kind === 'CBL' && line) {
+        for (const chh of [14, 64]) {
+          g += `<circle cx="${cx2}" cy="${iy(chh)}" r="${2.6 * PX2}" fill="#26282d" stroke="#0d0e11" stroke-width="0.8"/>`;
+          g += `<circle cx="${cx2}" cy="${iy(chh)}" r="${1.1 * PX2}" fill="#0d0e11"/>`;
+        }
+      } else if (!line) {
+        g += `<text x="${cx2}" y="${iy(40)}" text-anchor="middle" font-size="9" fill="#aab" font-style="italic">(empty)</text>`;
+      }
+      return g;
+    }
+  
+    let off = 0, feats = '';
+    for (const slot of slots) {
+      const w = slot.size * scale;
+      const line = assign[slot.id];
+      const kind = line ? classifyWall(line.pack) : 'EMPTY';
+      s += `<rect x="${x0 + off}" y="${y0}" width="${w}" height="${Hp}" fill="${line ? 'url(#ldSeal)' : '#e9e9ec'}" stroke="#15161a" stroke-width="0.8"/>`;
+      feats += elevFeatures(kind, line, x0 + off, w);
+      off += w;
+    }
+    // roof cap
+    s += `<rect x="${x0 - 2.5}" y="${y0 - 3.5}" width="${Wp + 5}" height="4.5" rx="1.8" fill="url(#ldSeal)" stroke="#15161a" stroke-width="0.8"/>`;
+    // seam-seal battens: full-height at every panel joint, wrapping both corners
+    const SB = Math.max(4.5, 3 * PX2);
+    off = 0;
+    for (let i = 0; i < slots.length - 1; i++) {
+      off += slots[i].size * scale;
+      s += `<rect x="${x0 + off - SB / 2}" y="${y0}" width="${SB}" height="${Hp}" fill="url(#ldSeal)" stroke="#0d0e11" stroke-width="0.9"/>`;
+    }
+    s += `<rect x="${x0 - SB * 0.45}" y="${y0}" width="${SB}" height="${Hp}" rx="1" fill="url(#ldSeal)" stroke="#0d0e11" stroke-width="0.9"/>`;
+    s += `<rect x="${x0 + Wp - SB * 0.55}" y="${y0}" width="${SB}" height="${Hp}" rx="1" fill="url(#ldSeal)" stroke="#0d0e11" stroke-width="0.9"/>`;
+    s += feats;
+  
+    // dims: width below the ground line, height on the left
+    const dy2 = gy + 18;
+    s += `<line x1="${x0}" y1="${dy2}" x2="${x0 + Wp}" y2="${dy2}" stroke="#9097a0" stroke-width="1"/>`
+      + `<line x1="${x0}" y1="${dy2 - 4}" x2="${x0}" y2="${dy2 + 4}" stroke="#9097a0" stroke-width="1"/>`
+      + `<line x1="${x0 + Wp}" y1="${dy2 - 4}" x2="${x0 + Wp}" y2="${dy2 + 4}" stroke="#9097a0" stroke-width="1"/>`;
+    s += `<rect x="${x0 + Wp / 2 - 22}" y="${dy2 - 8}" width="44" height="15" rx="3" fill="url(#ldBg)"/>`;
+    s += `<text x="${x0 + Wp / 2}" y="${dy2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="#4a4f57">${lenIn}″</text>`;
+    const dx2 = x0 - 20;
+    s += `<line x1="${dx2}" y1="${y0}" x2="${dx2}" y2="${gy}" stroke="#9097a0" stroke-width="1"/>`
+      + `<line x1="${dx2 - 4}" y1="${y0}" x2="${dx2 + 4}" y2="${y0}" stroke="#9097a0" stroke-width="1"/>`
+      + `<line x1="${dx2 - 4}" y1="${gy}" x2="${dx2 + 4}" y2="${gy}" stroke="#9097a0" stroke-width="1"/>`;
+    s += `<rect x="${dx2 - 8}" y="${y0 + Hp / 2 - 9}" width="16" height="18" fill="url(#ldBg)"/>`;
+    s += `<text x="${dx2}" y="${y0 + Hp / 2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="#4a4f57" transform="rotate(-90 ${dx2} ${y0 + Hp / 2})">${hIn}″</text>`;
   
     s += `</svg>`;
     return s;
@@ -728,10 +904,31 @@
     const layout = st.layout;
     const placedSet = new Set(Object.values(st.assign).filter(Boolean));
     const leftover = (rm.lines || []).filter(l => isWallPanel(l.pack) && !placedSet.has(l));
+    // Elevation facing defaults to whichever wall holds the door
+    if (!st.facing) st.facing = (function () {
+      for (const sd of ['S', 'E', 'N', 'W'])
+        for (const sl of ((layout.walls[sd] || { slots: [] }).slots)) {
+          const ln = st.assign[sl.id];
+          if (ln && classifyWall(ln.pack) === 'DRFRM') return sd;
+        }
+      return 'S';
+    })();
+    const FACE_LABEL = { S: 'FRONT', E: 'RIGHT SIDE', N: 'BACK', W: 'LEFT SIDE' };
     let html = '<div class="layout-wrap" data-layout-room="' + ri + '">'
       + '<div class="layout-title">' + esc(rm.boothName) + ' · ' + esc(layout.label || '')
       +   ' <span class="layout-sub">' + esc(layout.variant || 'S') + '</span></div>'
-      + renderLayoutSvg(layout, st.assign)
+      + '<div class="ld-views">'
+      +   '<div class="ld-view ld-view-plan"><div class="ld-view-cap"><span>TOP-DOWN</span></div>'
+      +     renderLayoutSvg(layout, st.assign) + '</div>'
+      +   '<div class="ld-view ld-view-elev">'
+      +     '<div class="ld-view-cap">'
+      +       '<button class="ld-rot" onclick="ldRotate(this,-1)" title="Rotate view left">◀</button>'
+      +       '<span>ELEVATION · ' + FACE_LABEL[st.facing] + '</span>'
+      +       '<button class="ld-rot" onclick="ldRotate(this,1)" title="Rotate view right">▶</button>'
+      +     '</div>'
+      +     renderElevationSvg(layout, st.assign, st.facing)
+      +   '</div>'
+      + '</div>'
       + renderLegend();
     if (leftover.length) {
       html += '<div class="layout-empty" style="margin-top:12px;text-align:left;color:#5a3a18;background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.4)">'
@@ -841,6 +1038,17 @@
   document.addEventListener('pointerdown', ldDown);
   document.addEventListener('pointermove', ldMove);
   document.addEventListener('pointerup', ldUp);
+
+  // Elevation rotate: cycle which wall the elevation faces (S → E → N → W).
+  // Facing persists on the room's LAYOUT_STATE, so drags re-render in place.
+  function ldRotate(btn, dir) {
+    const ri = ldRoomOf(btn); if (ri == null) return;
+    const st = LAYOUT_STATE[ri]; if (!st) return;
+    const order = ['S', 'E', 'N', 'W'];
+    st.facing = order[(order.indexOf(st.facing || 'S') + dir + 4) % 4];
+    const wrap = document.querySelector('[data-layout-room="' + ri + '"]');
+    if (wrap) wrap.outerHTML = renderLayoutTab(st.rm, ri);
+  }
 
 
   function switchTab(roomEl, tabName) {

@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.85.0', date:'June 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Top-Down Layout: rotatable elevation view (front/side skeleton).** Next to the top-down there is now an ELEVATION panel with ◀ ▶ rotate buttons cycling FRONT → RIGHT SIDE → BACK → LEFT SIDE. Each face renders the booth as seen from outside at correct proportions (6&apos;11&quot; standard / 7&apos;1&quot; enhanced): door with its window, hinges, handle and threshold; wall windows at their real WDO sizes; vent walls with the intake duct low and exhaust duct high plus the remote fan unit at the floor; cable passages; seam-seal battens at panel joints and corners. Back and right views are mirrored so left/right match what a viewer standing on that side sees. The view follows the live drag state — move the door in the top-down and the elevation updates. First cut of the booth-builder &quot;front/side view with rotate&quot;.'},
+        {t:'add', d:'**Vent-set footprint dimension.** A vent set protrudes 5.5&Prime; beyond the wall it sits on, so the layout now draws the ducts at true scale and adds a second dimension line on that axis — e.g. a 4872 with the vent on the 72&Prime; wall reads 50&Prime; exterior and <b>55.5&Prime; w/ vent</b>. The dimension follows the vent if it is dragged to another wall, and accounts for vents on opposite walls.'},
+      ]
+    },
+    {
       v:'1.84.33', date:'June 9, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Top-Down Layout: mid-wall seam seals are a true T-profile.** The seal&apos;s stem now sits IN the joint between the two wall panels — spanning the full wall thickness, with the panels butting into it — and the cap bar sits proud of the exterior face covering the joint. Previously the tab pointed outward away from the booth, which is not how the seal installs.'},

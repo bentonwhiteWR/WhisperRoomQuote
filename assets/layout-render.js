@@ -332,6 +332,16 @@ function renderLayoutSvg(layout, assign) {
   // "w/ vent" dimension line. ──
   function ventDuct(side, px, py, pw, ph) {
     const { omx, omy, ox, oy, ax, ay, horiz } = edgeGeom(side, px, py, pw, ph);
+    if (VSS && EFS && ELEV_ART.ventVssEfsTop) {
+      // Benton's plan render of the whole VSS+EFS assembly — canonical
+      // orientation is a WEST wall (band right, protrusion left), rotated to
+      // whatever wall holds the vent. Band overlaps the booth wall band.
+      const vt = ELEV_ART.ventVssEfsTop;
+      const depthPx = vt.depthIn * PX, alongPx = (vt.depthIn / vt.aspect) * PX;
+      const ang = { W: 0, N: 90, E: 180, S: 270 }[side];
+      return `<g transform="rotate(${ang} ${omx} ${omy})">`
+        + `<image href="${ART_BASE + vt.file}" x="${omx - (vt.depthIn - vt.bandIn) * PX}" y="${omy - alongPx / 2}" width="${depthPx}" height="${alongPx}" preserveAspectRatio="none"/></g>`;
+    }
     const panelLen = horiz ? pw : ph;
     // four boxes have to fit when VSS is on — shrink the per-box width
     const B = Math.max(14, Math.min(panelLen * (VSS ? 0.19 : 0.30), VSS ? 32 : 44));
@@ -715,7 +725,17 @@ const ART_BASE = (typeof window !== 'undefined' && window.BB_ART_BASE)
   || (typeof global !== 'undefined' && global.BB_ART_BASE) || '/assets/booth-art/';
 const ELEV_ART = {
   SOLID:  { file: 'wall-46.webp',         compWIn: 46, aspect: 0.5687 },
-  VNT:    { file: 'wall-46-vnt.webp',     compWIn: 46, aspect: 0.5625, packOk: /\bVNT\b/i },
+  VNT:    { file: 'wall-46-vnt.webp',     compWIn: 46, aspect: 0.5663, packOk: /\bVNT\b/i },
+  // ventilation upgrades, rendered: VSS = 4 silencer ducts + hoses; the
+  // VSS+EFS combo also shows the EFS box, which sits BESIDE the 46″ wall at
+  // the floor — wallFrac says how much of the art width is the wall itself,
+  // the rest spills over the neighboring panel like the real assembly.
+  VNT_VSS:     { file: 'wall-46-vnt-vss.webp',     compWIn: 46, aspect: 0.5637, vss: true },
+  VNT_VSS_EFS: { file: 'wall-46-vnt-vss-efs.webp', compWIn: 46, aspect: 0.8063, vss: true, efs: true, wallFrac: 0.702 },
+  // top-down plan + side profiles of the VSS+EFS assembly (band ~2.2″ over
+  // the wall + 10″ EFS protrusion; along-wall length derives from aspect)
+  ventVssEfsTop:  { file: 'vent-vss-efs-top.webp', aspect: 0.2281, depthIn: 12.2, bandIn: 2.2 },
+  ventVssEfsSide: { fileL: 'vent-vss-efs-side-left.webp', fileR: 'vent-vss-efs-side-right.webp', aspect: 0.15, compHIn: 80.7, protIn: 10 },
   WDO:    { file: 'wall-46-wdo3236.webp', compWIn: 46, aspect: 0.5700, packOk: /WDO\s*3236\b/i },
   // door: dedicated art per hinge — fileR is the mirrored render with the
   // logo plate re-pasted unmirrored (a blind flip would mirror the text)
@@ -755,6 +775,10 @@ function elevArtFor(kind, line, layout) {
   const pack = String(line.pack || '');
   if (kind === 'DRFRM' && /^WA\s+STDDRFRM/i.test(pack))
     return (layout && layout.ramp) ? ELEV_ART.DRFRM_WA_RAMP : ELEV_ART.DRFRM_WA;
+  if (kind === 'VNT' && layout && layout.vss && !layout.roofVent) {
+    if (!ELEV_ART.VNT.packOk.test(pack)) return null;
+    return layout.efs ? ELEV_ART.VNT_VSS_EFS : ELEV_ART.VNT_VSS;
+  }
   if (kind === 'WDO') {
     const m = pack.match(/WDO\s*(\d{2})(\d{2})/i);
     if (!m) return null;
@@ -879,7 +903,8 @@ function renderElevationSvg(layout, assign, facing) {
 
   // per-panel features, drawn after all strips + battens. hasArt = the slot
   // is covered by a component render — skip whatever the photo already shows.
-  function elevFeatures(kind, line, sx, w, hasArt) {
+  function elevFeatures(kind, line, sx, w, art) {
+    const hasArt = !!art;
     const cx2 = sx + w / 2;
     let g = '';
     if (kind === 'DRFRM' && line) {
@@ -920,14 +945,14 @@ function renderElevationSvg(layout, assign, facing) {
         g += ductAt(sx + w * 0.26, 34);
         g += ductAt(sx + w * 0.72, 76);
       }
-      if (VSS) {
+      if (VSS && !(art && art.vss)) {
         // VSS = a second silencer duct beside each, hose-connected (catalog)
         const ix2 = sx + w * 0.26 + dw + 3, ex2 = sx + w * 0.72 - dw - 3;
         g += ductAt(ix2, 34) + ductAt(ex2, 76);
         g += `<path d="M ${sx + w * 0.26 + dw / 2} ${iy(34) + 3} Q ${(sx + w * 0.26 + ix2) / 2 + dw / 2} ${iy(34) - 4} ${ix2 - dw / 2 + 1} ${iy(34) + 3}" fill="none" stroke="#0d0e11" stroke-width="2" stroke-linecap="round"/>`;
         g += `<path d="M ${sx + w * 0.72 - dw / 2} ${iy(76) + dh - 3} Q ${(sx + w * 0.72 + ex2) / 2 - dw / 2} ${iy(76) + dh + 4} ${ex2 + dw / 2 - 1} ${iy(76) + dh - 3}" fill="none" stroke="#0d0e11" stroke-width="2" stroke-linecap="round"/>`;
       }
-      if (EFS) {
+      if (EFS && !(art && art.efs)) {
         // EFS wraps the fan in a floor-level silencer box (10″ tall footprint)
         g += `<rect x="${sx + w * 0.72 - 8 * PX2}" y="${iy(13)}" width="${16 * PX2}" height="${13 * PX2 - 1}" rx="2.5" fill="#2c2d33" stroke="#0d0e11" stroke-width="1"/>`;
         g += `<rect x="${sx + w * 0.72 - 8 * PX2 + 2.5}" y="${iy(13) + 2.5}" width="${16 * PX2 - 5}" height="${13 * PX2 - 6}" rx="2" fill="none" stroke="#4a4d55" stroke-width="0.8"/>`;
@@ -965,11 +990,19 @@ function renderElevationSvg(layout, assign, facing) {
       if (mirrored) hingeRight = !hingeRight;
       if (hingeRight) href = ART_BASE + art.fileR;
     }
+    // the WA-with-ramp render is genuinely TALLER than a wall — the ramp
+    // foot intentionally hangs below the frame bottom, so scale by the art's
+    // real proportion instead of squeezing it into the wall height
+    const WALL_HIN = 80.7;
+    const hPx = (kind === 'DRFRM' && artHIn > WALL_HIN + 0.5) ? Hp * (artHIn / WALL_HIN) : Hp;
     // SketchUp exports glass as TRANSPARENT pixels — tint the slot behind the
     // art so windows read as glass instead of holes into the dark carpet
     const under = (kind === 'WDO' || kind === 'DRFRM')
       ? `<rect x="${sx}" y="${y0}" width="${wPx}" height="${Hp}" fill="#bdd9ef"/>` : '';
-    return under + `<image href="${href}" x="${sx}" y="${y0}" width="${wPx}" height="${Hp}" preserveAspectRatio="none"/>`;
+    // wallFrac < 1: the art is wider than the wall (the EFS box sits beside
+    // it on the floor) — left-anchor and let the extra spill over
+    const drawW = art.wallFrac ? wPx / art.wallFrac : wPx;
+    return under + `<image href="${href}" x="${sx}" y="${y0}" width="${drawW}" height="${hPx}" preserveAspectRatio="none"/>`;
   }
 
   let off = 0, feats = '';
@@ -982,7 +1015,7 @@ function renderElevationSvg(layout, assign, facing) {
     if (art) s += artPanel(art, kind, line, x0 + off, w, effSize(slot));
     // vector details: everything when there's no art; with VNT art the photo
     // already shows the ducts/hose/fan, so only the VSS/EFS extras draw
-    if (!art || kind === 'VNT') feats += elevFeatures(kind, line, x0 + off, w, !!art);
+    if (!art || kind === 'VNT') feats += elevFeatures(kind, line, x0 + off, w, art);
     off += w;
   }
   // roof cap + floor platform — the SAME carpet as the wall renders (the old
@@ -1023,6 +1056,14 @@ function renderElevationSvg(layout, assign, facing) {
   // and peeked out from behind it.
   function ventSideProfile(atLeft) {
     let g = '';
+    if (VSS && EFS && ELEV_ART.ventVssEfsSide) {
+      // the VSS+EFS side renders carry their own EFS box — one image does it
+      const v2 = ELEV_ART.ventVssEfsSide;
+      const wIn2 = v2.compHIn * v2.aspect;
+      const wPx2 = wIn2 * PX2;
+      const vx2 = atLeft ? x0 - v2.protIn * PX2 : x0 + Wp + v2.protIn * PX2 - wPx2;
+      return `<image href="${ART_BASE + (atLeft ? v2.fileL : v2.fileR)}" x="${vx2}" y="${y0}" width="${wPx2}" height="${Hp}" preserveAspectRatio="none"/>`;
+    }
     const vs = ELEV_ART.ventSide;
     if (vs) {
       const wIn = vs.compHIn * (atLeft ? vs.aspectL : vs.aspectR);

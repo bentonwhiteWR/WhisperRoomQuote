@@ -483,9 +483,22 @@ function renderElevationSvg(layout, assign, facing) {
   const hIn = /^E/i.test(String(layout.variant || 'S')) ? 85 : 83;
   const PX2 = Math.max(2.4, Math.min(340 / lenIn, 280 / hIn, 5.5));
   const Wp = lenIn * PX2, Hp = hIn * PX2;
+  // Vents on the walls ADJACENT to the facing wall protrude 5.5″ past the
+  // booth edge — from this view you see the SIDE of those duct boxes hanging
+  // off the left/right edge. Adjacency respects the viewer's left/right
+  // (standing outside the facing wall).
+  const ADJ = { S: { left: 'W', right: 'E' }, N: { left: 'E', right: 'W' }, E: { left: 'S', right: 'N' }, W: { left: 'N', right: 'S' } };
+  const hasVentOn = sd => {
+    if (layout.hasVent === false) return false;
+    const w2 = layout.walls[sd]; if (!w2) return false;
+    return w2.slots.some(sl => { const ln = assign[sl.id]; return ln && classifyWall(ln.pack) === 'VNT'; });
+  };
+  const leftVent = hasVentOn(ADJ[facing].left), rightVent = hasVentOn(ADJ[facing].right);
+  const VOUT2 = 5.5 * PX2;
   const M = 46;
-  const totalW = Wp + M * 2, totalH = Hp + 34 + 30;
-  const x0 = M, y0 = 24;
+  const totalW = Wp + M * 2 + (leftVent ? VOUT2 : 0) + (rightVent ? VOUT2 : 0);
+  const totalH = Hp + 34 + 30 + ((leftVent || rightVent) ? 16 : 0);
+  const x0 = M + (leftVent ? VOUT2 : 0), y0 = 24;
   const gy = y0 + Hp;                          // ground line y
   const iy = v => gy - v * PX2;                // inches above the floor → px
 
@@ -572,6 +585,18 @@ function renderElevationSvg(layout, assign, facing) {
   }
   // roof cap
   s += `<rect x="${x0 - 2.5}" y="${y0 - 3.5}" width="${Wp + 5}" height="4.5" rx="1.8" fill="url(#ldSeal)" stroke="#15161a" stroke-width="0.8"/>`;
+  // side profile of an adjacent wall's vent set: intake band low, exhaust
+  // band high, remote fan unit at the floor — protruding 5.5″ past the edge
+  function ventSideProfile(atLeft) {
+    const bx = atLeft ? x0 - VOUT2 : x0 + Wp;
+    let g = '';
+    for (const band of [[34, 30], [76, 30]])
+      g += `<rect x="${bx}" y="${iy(band[0])}" width="${VOUT2}" height="${band[1] * PX2}" rx="1.5" fill="#2e3037" stroke="#1b1c20" stroke-width="0.9"/>`;
+    g += `<rect x="${bx}" y="${iy(10)}" width="${VOUT2}" height="${10 * PX2 - 2}" rx="2" fill="#26282d" stroke="#1b1c20" stroke-width="0.9"/>`;
+    return g;
+  }
+  if (leftVent) s += ventSideProfile(true);
+  if (rightVent) s += ventSideProfile(false);
   // seam-seal battens: full-height at every panel joint, wrapping both corners
   const SB = Math.max(4.5, 3 * PX2);
   off = 0;
@@ -590,12 +615,25 @@ function renderElevationSvg(layout, assign, facing) {
     + `<line x1="${x0 + Wp}" y1="${dy2 - 4}" x2="${x0 + Wp}" y2="${dy2 + 4}" stroke="#9097a0" stroke-width="1"/>`;
   s += `<rect x="${x0 + Wp / 2 - 22}" y="${dy2 - 8}" width="44" height="15" rx="3" fill="url(#ldBg)"/>`;
   s += `<text x="${x0 + Wp / 2}" y="${dy2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="#4a4f57">${lenIn}″</text>`;
-  const dx2 = x0 - 20;
+  const dx2 = x0 - (leftVent ? VOUT2 : 0) - 20;
   s += `<line x1="${dx2}" y1="${y0}" x2="${dx2}" y2="${gy}" stroke="#9097a0" stroke-width="1"/>`
     + `<line x1="${dx2 - 4}" y1="${y0}" x2="${dx2 + 4}" y2="${y0}" stroke="#9097a0" stroke-width="1"/>`
     + `<line x1="${dx2 - 4}" y1="${gy}" x2="${dx2 + 4}" y2="${gy}" stroke="#9097a0" stroke-width="1"/>`;
   s += `<rect x="${dx2 - 8}" y="${y0 + Hp / 2 - 9}" width="16" height="18" fill="url(#ldBg)"/>`;
   s += `<text x="${dx2}" y="${y0 + Hp / 2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="#4a4f57" transform="rotate(-90 ${dx2} ${y0 + Hp / 2})">${hIn}″</text>`;
+
+  // overall width including adjacent-wall vent protrusion(s)
+  if (leftVent || rightVent) {
+    const VD = '#c9762e';
+    const xA = x0 - (leftVent ? VOUT2 : 0), xB = x0 + Wp + (rightVent ? VOUT2 : 0);
+    const tot = String(Math.round((lenIn + (leftVent ? 5.5 : 0) + (rightVent ? 5.5 : 0)) * 2) / 2);
+    const vy2 = dy2 + 16, vmx = (xA + xB) / 2;
+    s += `<line x1="${xA}" y1="${vy2}" x2="${xB}" y2="${vy2}" stroke="${VD}" stroke-width="1"/>`
+      + `<line x1="${xA}" y1="${vy2 - 4}" x2="${xA}" y2="${vy2 + 4}" stroke="${VD}" stroke-width="1"/>`
+      + `<line x1="${xB}" y1="${vy2 - 4}" x2="${xB}" y2="${vy2 + 4}" stroke="${VD}" stroke-width="1"/>`;
+    s += `<rect x="${vmx - 38}" y="${vy2 - 8}" width="76" height="15" rx="3" fill="url(#ldBg)"/>`;
+    s += `<text x="${vmx}" y="${vy2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VD}">${tot}″ w/ vent</text>`;
+  }
 
   s += `</svg>`;
   return s;

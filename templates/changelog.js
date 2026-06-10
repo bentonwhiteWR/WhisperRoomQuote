@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.85.2', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Top-Down Layout: small wall sections belong in the MIDDLE.** Production rule: on walls built from two or more full-size sections plus a small filler wall (96 &amp; 102 series, 84102, 10284), the small section always sits between the full sections — never on the end. All 24 affected walls re-ordered in the layout data. The 102-series 102&Prime; walls now carry a <b>16&Prime;</b> slot (the C10 STDWL16 wall) instead of a nominal 20&Prime;, and the 96-series small is a 22&Prime; slot — so the real packs match exactly and the labels read the true wall size.'},
+        {t:'add', d:'**Elevation: adjacent-wall vents show their side profile.** If a vent set sits on a wall next to the one you are viewing (say the vent is on the left wall and you are looking at the front), the elevation now draws the side of the duct boxes hanging 5.5&Prime; off that edge — intake band low, exhaust band high, fan unit at the floor — mirrored correctly per view, plus an orange &quot;w/ vent&quot; overall width under the standard dimension.'},
+      ]
+    },
+    {
       v:'1.85.1', date:'June 9, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Top-Down Layout: elevation view now sits BELOW the top-down** instead of beside it, slightly larger — the two views stack so each gets the full row width.'},

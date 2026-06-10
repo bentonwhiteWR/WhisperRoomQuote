@@ -761,6 +761,20 @@ function elevArtFor(kind, line, layout) {
   return art;
 }
 
+// Warm the browser cache for every component render — the art otherwise
+// loads lazily on first use and visibly pops in (Benton: "images are slow
+// to load"). Call once at boot; no-op outside the browser.
+function preloadElevArt() {
+  if (typeof Image === 'undefined') return;
+  const files = new Set();
+  for (const k in ELEV_ART) {
+    const a = ELEV_ART[k];
+    ['file', 'fileL', 'fileR'].forEach(f => { if (a[f]) files.add(a[f]); });
+  }
+  for (const k in WDO_ART) files.add(WDO_ART[k].file);
+  files.forEach(f => { const im = new Image(); im.src = ART_BASE + f; });
+}
+
 // ── Elevation renderer: one wall viewed face-on from OUTSIDE ────────
 // Skeleton of the booth-builder front/side view (plan Phase C): correct
 // proportions and per-panel features — door with window/hinges/handle, wall
@@ -1157,5 +1171,5 @@ function waSeatDoor(layout, assign) {
 // (served as /assets/layout-render.js for the Booth Builder) the top-level
 // function declarations are simply globals.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { renderLayoutSvg, renderElevationSvg, placeBom, waSeatDoor, classifyWall, panelInteriorWidth, isWallPanel, KIND_META };
+  module.exports = { renderLayoutSvg, renderElevationSvg, placeBom, waSeatDoor, classifyWall, panelInteriorWidth, isWallPanel, KIND_META, preloadElevArt };
 }

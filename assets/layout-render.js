@@ -916,14 +916,11 @@ function renderElevationSvg(layout, assign, facing) {
   // side profile of an adjacent wall's vent set — Benton's side-view renders
   // (vent-side-left/right), composited so the ducts protrude 5.5″ past the
   // booth edge and the wall-edge part of the image overlaps the booth face
-  // (the corner seal draws over that overlap, like the real assembly). The
-  // gray vector bands stay underneath as the loading fallback.
+  // (the corner seal draws over that overlap, like the real assembly).
+  // The old gray vector duct bands are GONE — they drew wider than the art
+  // and peeked out from behind it.
   function ventSideProfile(atLeft) {
-    const bx = atLeft ? x0 - VOUT2 : x0 + Wp;
     let g = '';
-    for (const band of [[34, 30], [76, 30]])
-      g += `<rect x="${bx}" y="${iy(band[0])}" width="${VOUT2}" height="${band[1] * PX2}" rx="1.5" fill="#2e3037" stroke="#1b1c20" stroke-width="0.9"/>`;
-    if (!EFS) g += `<rect x="${bx}" y="${iy(10)}" width="${VOUT2}" height="${10 * PX2 - 2}" rx="2" fill="#26282d" stroke="#1b1c20" stroke-width="0.9"/>`;
     const vs = ELEV_ART.ventSide;
     if (vs) {
       const wIn = vs.compHIn * (atLeft ? vs.aspectL : vs.aspectR);

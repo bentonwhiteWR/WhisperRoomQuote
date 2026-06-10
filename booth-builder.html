@@ -17,10 +17,22 @@
   .topbar-logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8}
   .topbar-logo span{color:#e8531a}
 
-  .wrap{display:flex;gap:18px;max-width:1280px;margin:0 auto;padding:18px;align-items:flex-start}
-  .side{flex:0 0 320px;display:flex;flex-direction:column;gap:12px;position:sticky;top:64px}
-  .stage{flex:1;min-width:380px}
-  @media (max-width:900px){ .wrap{flex-direction:column} .side{position:static;flex:1;width:100%} }
+  /* Two independent scroll columns: options (left) and the drawings (right)
+     each keep their own scroll position — scrolling the options doesn't move
+     the booth views and vice versa. Page itself doesn't scroll on desktop. */
+  body{overflow:hidden}
+  .wrap{display:flex;gap:18px;max-width:1280px;margin:0 auto;padding:0 18px;align-items:stretch;height:calc(100vh - 52px)}
+  .side{flex:0 0 330px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;padding:18px 6px 18px 0}
+  .stage{flex:1;min-width:380px;overflow-y:auto;padding:18px 0}
+  .side::-webkit-scrollbar,.stage::-webkit-scrollbar{width:8px}
+  .side::-webkit-scrollbar-thumb,.stage::-webkit-scrollbar-thumb{background:#cfd3da;border-radius:4px}
+  .side::-webkit-scrollbar-thumb:hover,.stage::-webkit-scrollbar-thumb:hover{background:#b6bbc4}
+  @media (max-width:900px){
+    body{overflow:auto}
+    .wrap{flex-direction:column;height:auto;padding:18px}
+    .side{position:static;flex:1;width:100%;overflow:visible;padding:0}
+    .stage{overflow:visible;padding:0}
+  }
 
   .hero{padding:4px 2px 0}
   .hero h1{font-family:'Syne',sans-serif;font-size:22px;font-weight:800}
@@ -578,6 +590,10 @@ function render() {
   const layout = resolveLayout();
   const waPossible = !!findWaPair(layout);
   const app = document.getElementById('app');
+  // the columns scroll independently — keep each one where the user left it
+  // across the full re-render an option click triggers
+  const sideEl = app.querySelector('.side'), stageEl = app.querySelector('.stage');
+  const sideScroll = sideEl ? sideEl.scrollTop : 0, stageScroll = stageEl ? stageEl.scrollTop : 0;
   app.innerHTML = ''
     + '<div class="side">'
     +   '<div class="hero"><h1>Design <span>Your Booth</span></h1>'
@@ -660,6 +676,9 @@ function render() {
     +     renderElevationSvg(layout, state.assign, state.facing)
     +   '</div>'
     + '</div>';
+  const ns = app.querySelector('.side'), nst = app.querySelector('.stage');
+  if (ns) ns.scrollTop = sideScroll;
+  if (nst) nst.scrollTop = stageScroll;
   // every design is a link — keep the URL current so copy/share/refresh all work
   history.replaceState(null, '', '#d=' + designToHash());
 }

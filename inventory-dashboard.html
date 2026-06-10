@@ -62,14 +62,25 @@
   .act-btn.primary:disabled { opacity: .4; cursor: default; }
   .act-btn.primary:not(:disabled):hover { filter: brightness(1.1); color: #fff; }
 
-  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  /* NOTE: no overflow:hidden here — it turns the sticky thead's containing block into the
+     wrap itself, permanently pinning the header 52px down INSIDE the table (covered row 1-2).
+     Corner rounding is done on the corner cells instead. */
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   thead th { text-align: right; padding: 10px 12px; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap; background: var(--surface2); position: sticky; top: 52px; z-index: 5; }
+  thead th:first-child { border-top-left-radius: 12px; }
+  thead th:last-child { border-top-right-radius: 12px; }
+  tbody tr:last-child td:first-child { border-bottom-left-radius: 12px; }
+  tbody tr:last-child td:last-child { border-bottom-right-radius: 12px; }
   thead th.l { text-align: left; }
   tbody td { padding: 6px 12px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; font-variant-numeric: tabular-nums; }
   tbody td.l { text-align: left; }
   tbody tr:hover { background: var(--row-hover); }
   tbody tr:last-child td { border-bottom: none; }
+  tr.cat-row td { background: var(--surface2); text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--orange); cursor: pointer; user-select: none; }
+  tr.cat-row:hover td { background: var(--orange-dim); }
+  tr.cat-row .caret { display: inline-block; width: 14px; color: var(--muted); font-size: 10px; }
+  tr.cat-row .cat-count { color: var(--muted); font-weight: 600; margin-left: 8px; font-size: 10px; }
   .code-cell { font-weight: 700; cursor: pointer; }
   .code-cell:hover { color: var(--orange); }
   .code-cell .caret { display: inline-block; width: 12px; color: var(--muted); font-size: 10px; }
@@ -249,6 +260,52 @@ const EDIT_FIELDS = [
   { key: 'build_qty',      cls: '' },
 ];
 
+// Display order of the category sections. "Other" is the catch-all and stays last.
+const CATS = [
+  'Ceilings', 'Floors', 'Standard Walls', 'IEP Walls', 'Standard Windows', 'IEP Windows',
+  'Doors & Door Frames', 'Seam Seals', 'Height Extensions', 'Ventilation', 'Jacks & Electrical',
+  'Foam', 'Acoustic Treatment', 'Caster Plates', 'Lights', 'Support Beams',
+  'Ramps & Elevated Floor', 'Accessories', 'Other',
+];
+const CAT_CACHE = {}; // code -> category
+
+// Rule order matters: EXT / doors / windows are name-driven and beat the prefix rules,
+// so e.g. "IEP EXT 35.5/35.5" lands in Height Extensions, not IEP Walls.
+function categorize(r) {
+  if (CAT_CACHE[r.code]) return CAT_CACHE[r.code];
+  const name = ' ' + String(r.name || '').toUpperCase() + ' ';
+  const pre = (String(r.code || '').toUpperCase().match(/^[A-Z]+/) || [''])[0];
+  const iep = name.includes('IEP');
+  let cat;
+  if (/ EXT \d/.test(name))                                cat = 'Height Extensions';
+  else if (/RAMP|EFI/.test(name))                          cat = 'Ramps & Elevated Floor'; // before DOOR: "EFI PERIM DOOR STRIP"
+  else if (/DOOR|FRAME|JAMB|JMBAD|ADAPT/.test(name))       cat = 'Doors & Door Frames';
+  else if (name.includes('WDO'))                           cat = iep ? 'IEP Windows' : 'Standard Windows';
+  else if (name.includes(' WL '))                          cat = iep ? 'IEP Walls' : 'Standard Walls';
+  else if (pre === 'A' || pre === 'I')                     cat = 'Ceilings';        // standard (A) + IEP (I)
+  else if (pre === 'B' || pre === 'J')                     cat = 'Floors';          // standard (B) + IEP (J)
+  else if (pre === 'D' || pre === 'N' || pre === 'O')      cat = 'Seam Seals';      // STD + IEP cnr/mid + FL/CL
+  else if (pre === 'G')                                    cat = 'Caster Plates';
+  else if (pre === 'T')                                    cat = 'Lights';
+  else if (pre === 'U')                                    cat = 'Support Beams';
+  else if (pre === 'ATP' || name.includes('ATP') ||
+           name.includes('BASS TRAP') || name.includes('AUDIMUTE')) cat = 'Acoustic Treatment';
+  else if (name.includes('FOAM'))                          cat = 'Foam';
+  else if (/VENT|VSS|EFS|HEPA|RFU/.test(name))             cat = 'Ventilation';
+  else if (/JACK|XLR|MJP/.test(name))                      cat = 'Jacks & Electrical';
+  else if (pre === 'S')                                    cat = 'Accessories';     // desks, step
+  else                                                     cat = 'Other';
+  CAT_CACHE[r.code] = cat;
+  return cat;
+}
+
+let COLLAPSED = new Set(JSON.parse(localStorage.getItem('wr-inv-collapsed') || '[]'));
+function toggleCat(cat) {
+  if (COLLAPSED.has(cat)) COLLAPSED.delete(cat); else COLLAPSED.add(cat);
+  localStorage.setItem('wr-inv-collapsed', JSON.stringify([...COLLAPSED]));
+  render();
+}
+
 async function loadData(refresh) {
   try {
     const r = await fetch('/api/inventory' + (refresh ? '?refresh=1' : ''));
@@ -309,7 +366,17 @@ function render() {
   const tb = document.getElementById('tbody');
   if (!rows.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">No components match.</td></tr>'; return; }
   let html = '';
-  for (const r of rows) {
+  // While searching or filtering, ignore collapse state — show every match.
+  const showAll = !!q || FILTER !== 'ALL';
+  for (const cat of CATS) {
+    const catRows = rows.filter(r => categorize(r) === cat);
+    if (!catRows.length) continue;
+    const collapsed = !showAll && COLLAPSED.has(cat);
+    html += '<tr class="cat-row" data-cat="' + escapeHtml(cat) + '" onclick="toggleCat(this.dataset.cat)"><td colspan="8">' +
+      '<span class="caret">' + (collapsed ? '▸' : '▾') + '</span>' + escapeHtml(cat) +
+      '<span class="cat-count">' + catRows.length + '</span></td></tr>';
+    if (collapsed) continue;
+  for (const r of catRows) {
     const eff = effective(r);
     const needed = DEMAND[r.code] || 0;
     const onHand = parseInt(eff.on_hand, 10) || 0;
@@ -336,6 +403,7 @@ function render() {
       '<td class="l">' + (fl || '<span class="dash">—</span>') + '</td>' +
       '</tr>';
     if (EXPANDED === r.code) html += '<tr class="detail"><td colspan="8" id="detailCell">Loading history…</td></tr>';
+  }
   }
   tb.innerHTML = html;
   if (EXPANDED) loadDetail(EXPANDED);

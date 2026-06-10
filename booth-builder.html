@@ -96,6 +96,11 @@
   .rot:hover{background:#fff4ee;border-color:var(--orange);color:var(--orange)}
   .drag-hint{text-align:center;font-size:11.5px;color:var(--orange);font-weight:600;margin-top:4px}
 
+  /* drag-handle badges: mark the parts you can pick up; hidden mid-drag */
+  @keyframes ldBadgePulse{0%,100%{opacity:.95}50%{opacity:.5}}
+  .ld-badge{animation:ldBadgePulse 2.4s ease-in-out infinite}
+  body.ld-dragging .ld-badge{display:none}
+
   /* drag interactions (same conventions as the PL layout) */
   .ld-svg *{pointer-events:none}
   .ld-svg .ld-panel{pointer-events:auto;cursor:grab}
@@ -602,25 +607,30 @@ function applyPackage(name) {
   if (p.win && p.win.length) render();
   toast(name + ' applied -- tweak anything below');
 }
-function pkgOptions() {
-  return '<option value=""' + (state.pkg ? '' : ' selected') + '>Custom build (pick a size below)</option>'
-    + Object.keys(PACKAGES).map(n =>
-        '<option value="' + esc(n) + '"' + (n === state.pkg ? ' selected' : '') + '>'
-        + esc(n) + '  --  ' + esc(PACKAGES[n].m + ' ' + PACKAGES[n].v) + '</option>').join('');
-}
-
-// ── UI ────────────────────────────────────────────────────────────────
-function sizeOptions() {
-  return Object.keys(LAYOUTS)
+// One picker for everything: ready-made packages up top, plain booth sizes
+// below — no more two-dropdown dance. Values are namespaced pkg:/mdl:.
+function pickerOptions() {
+  let h = '<optgroup label="Ready-made packages">';
+  h += Object.keys(PACKAGES).map(n =>
+    '<option value="pkg:' + esc(n) + '"' + (state.pkg === n ? ' selected' : '') + '>'
+    + esc(n) + '  —  ' + esc(PACKAGES[n].m + ' ' + PACKAGES[n].v) + '</option>').join('');
+  h += '</optgroup><optgroup label="Booth sizes — build your own">';
+  h += Object.keys(LAYOUTS)
     .map(k => ({ k, L: LAYOUTS[k], area: LAYOUTS[k].exterior.w * LAYOUTS[k].exterior.h }))
     .sort((a, b) => a.area - b.area)
     .map(o => {
-      // lead with the model number, size after: "MDL 9696 — 8'×8'"
       const nice = String(o.L.label || '').replace(/^Sound Booth\s*·\s*/, '');
-      return '<option value="' + esc(o.k) + '"' + (o.k === state.model ? ' selected' : '') + '>'
+      return '<option value="mdl:' + esc(o.k) + '"' + (!state.pkg && o.k === state.model ? ' selected' : '') + '>'
         + esc(o.k) + '  —  ' + esc(nice) + '</option>';
     }).join('');
+  return h + '</optgroup>';
 }
+function setPick(v) {
+  if (String(v).indexOf('pkg:') === 0) applyPackage(v.slice(4));
+  else setModel(v.slice(4));
+}
+
+// ── UI ────────────────────────────────────────────────────────────────
 
 function summaryText() {
   const layout = resolveLayout();
@@ -664,9 +674,8 @@ function render() {
     +   '<div class="hero"><h1>Design <span>Your Booth</span></h1>'
     +   '<p>Pick a size, then make it yours — drag the door, vents or windows to any wall they fit, and watch the booth update.</p></div>'
 
-    +   '<div class="card"><div class="step"><span class="n">1</span>Start with a package — or build your own</div>'
-    +     '<select onchange="applyPackage(this.value)" style="margin-bottom:8px">' + pkgOptions() + '</select>'
-    +     '<select onchange="setModel(this.value)">' + sizeOptions() + '</select>'
+    +   '<div class="card"><div class="step"><span class="n">1</span>Choose your booth</div>'
+    +     '<select onchange="setPick(this.value)">' + pickerOptions() + '</select>'
     +     '<div class="hint">Interior: <b>' + layout.interior.h + '″ × ' + layout.interior.w + '″</b> · Exterior: ' + layout.exterior.h + '″ × ' + layout.exterior.w + '″'
     +       (state.roofVent ? ' (vent on the roof — nothing sticks out)' : ' (plus ' + (state.efs ? '10″ for the EFS' : '5.5″ where a vent sits') + ')') + '</div>'
     +   '</div>'
@@ -735,7 +744,7 @@ function render() {
     +   '<div class="view-card">'
     +     '<div class="view-cap"><span>TOP-DOWN · BIRD’S-EYE VIEW</span></div>'
     +     renderLayoutSvg(layout, state.assign)
-    +     '<div class="drag-hint">↔ drag the door, vents or windows — spots that fit glow green</div>'
+    +     '<div class="drag-hint">the ✥ parts drag — spots that fit glow green</div>'
     +   '</div>'
     +   '<div class="view-card">'
     +     '<div class="view-cap">'

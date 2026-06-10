@@ -8,8 +8,7 @@
       "variants": "S (single-wall) and E (double-wall) each carry their own wallThickness + interior dims. SNV→S, ENV→E.",
       "door": "wall = which side holds the door (S = front). swing = door-leaf opening width in inches; the door opens OUTWARD.",
       "walls": "Keyed N(back/vent) S(front/door) E(right) W(left). Each slot: id, size(in, sums to that wall interior span), kind(SOLID/VNT/DRFRM/WDO), prefers(placement preference)."
-    },
-    "_small_walls": "Production rule (Benton 2026-06-09): on walls built from two or more module sections plus a small filler wall (96/102 series, 84102, 10284), the small section ALWAYS sits between the module sections — never on the end. On the 102-series 102-inch walls the small is the 16-inch wall (C10 STDWL16); on the 96-series it is the 22-inch wall."
+    }
   },
   "layouts": {
     "MDL 4230": {
@@ -726,9 +725,9 @@
             {
               "id": "E0",
               "size": 40,
-              "kind": "SOLID",
+              "kind": "VNT",
               "prefers": [
-                "SOLID"
+                "VNT"
               ]
             },
             {
@@ -954,9 +953,9 @@
             {
               "id": "E0",
               "size": 46,
-              "kind": "SOLID",
+              "kind": "VNT",
               "prefers": [
-                "SOLID"
+                "VNT"
               ]
             },
             {
@@ -1182,9 +1181,9 @@
             {
               "id": "E0",
               "size": 40,
-              "kind": "SOLID",
+              "kind": "VNT",
               "prefers": [
-                "SOLID"
+                "VNT"
               ]
             },
             {
@@ -1296,9 +1295,9 @@
             {
               "id": "E0",
               "size": 47,
-              "kind": "SOLID",
+              "kind": "VNT",
               "prefers": [
-                "SOLID"
+                "VNT"
               ]
             },
             {
@@ -1410,9 +1409,9 @@
             {
               "id": "E0",
               "size": 40,
-              "kind": "SOLID",
+              "kind": "VNT",
               "prefers": [
-                "SOLID"
+                "VNT"
               ]
             },
             {
@@ -1556,9 +1555,9 @@
             {
               "id": "E0",
               "size": 40,
-              "kind": "SOLID",
+              "kind": "VNT",
               "prefers": [
-                "SOLID"
+                "VNT"
               ]
             },
             {
@@ -1686,9 +1685,9 @@
             {
               "id": "E0",
               "size": 40,
-              "kind": "SOLID",
+              "kind": "VNT",
               "prefers": [
-                "SOLID"
+                "VNT"
               ]
             },
             {
@@ -1816,9 +1815,9 @@
             {
               "id": "E0",
               "size": 47,
-              "kind": "SOLID",
+              "kind": "VNT",
               "prefers": [
-                "SOLID"
+                "VNT"
               ]
             },
             {
@@ -1946,9 +1945,9 @@
             {
               "id": "E0",
               "size": 47,
-              "kind": "SOLID",
+              "kind": "VNT",
               "prefers": [
-                "SOLID"
+                "VNT"
               ]
             },
             {
@@ -2092,9 +2091,9 @@
             {
               "id": "E0",
               "size": 47,
-              "kind": "SOLID",
+              "kind": "VNT",
               "prefers": [
-                "SOLID"
+                "VNT"
               ]
             },
             {
@@ -2368,9 +2367,9 @@
             {
               "id": "E0",
               "size": 40,
-              "kind": "SOLID",
+              "kind": "VNT",
               "prefers": [
-                "SOLID"
+                "VNT"
               ]
             },
             {
@@ -2514,9 +2513,9 @@
             {
               "id": "E0",
               "size": 40,
-              "kind": "SOLID",
+              "kind": "VNT",
               "prefers": [
-                "SOLID"
+                "VNT"
               ]
             },
             {
@@ -2676,9 +2675,9 @@
             {
               "id": "E0",
               "size": 40,
-              "kind": "SOLID",
+              "kind": "VNT",
               "prefers": [
-                "SOLID"
+                "VNT"
               ]
             },
             {

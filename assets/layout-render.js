@@ -555,6 +555,15 @@ function renderLayoutSvg(layout, assign) {
           g += `<rect x="${px + 0.8}" y="${gy2}" width="${pw - 1.6}" height="${gh}" fill="none" stroke="#1b1c20" stroke-width="1" rx="1"/>`;
         }
       }
+      // drag-handle badge on the movable parts (door / vent / window /
+      // cable) — the team didn't realize panels can be dragged at all
+      if (kind === 'DRFRM' || kind === 'VNT' || kind === 'WDO' || kind === 'CBL') {
+        const bx2 = px + pw / 2, by2 = py + ph / 2;
+        g += `<g class="ld-badge" style="pointer-events:none">`
+          + `<circle cx="${bx2}" cy="${by2}" r="7.5" fill="#ee6216" fill-opacity="0.92" stroke="#fff" stroke-width="1.2"/>`
+          + `<path d="M ${bx2} ${by2 - 4.6} l -2 2.4 h 4 Z M ${bx2} ${by2 + 4.6} l -2 -2.4 h 4 Z M ${bx2 - 4.6} ${by2} l 2.4 -2 v 4 Z M ${bx2 + 4.6} ${by2} l 2.4 2 v -4 Z" fill="#fff"/>`
+          + `</g>`;
+      }
       g += `</g>`;
       // collect vent / door for later overlay — on WHATEVER wall they sit
       if (kind === 'VNT' && layout.hasVent !== false && !ROOF) vents.push({ side, px, py, pw, ph });

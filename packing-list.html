@@ -876,6 +876,62 @@
     s += `</svg>`;
     return s;
   }
+  
+  // ── WA-Type-aware initial seating ───────────────────────────────────
+  // Greedy placeBom seats the 49″ WA/ADA door by slot preference (front wall)
+  // and the shrunken companion by closest width — neither knows the WA Type.
+  // But the companion's width ENCODES the type (7→4016 · 31→4040 · 19→4622 ·
+  // 43→4646), and the rule is: door slot + directly-adjacent companion seat
+  // conserve the displaced pair (slot + seat ≈ 49 + companion). If the greedy
+  // result violates that, relocate door + companion to the first conserving
+  // pair — preferring the door's current wall, then S, E, N, W. So a 4016
+  // quote on a 102126 loads with the door already on the 102″ side, 7″ wall
+  // beside it; a 4040 loads with the door on the 126″ side, 31″ beside it.
+  function waSeatDoor(layout, assign) {
+    let doorSlot = null, doorSide = null, comp = null, compSide = null;
+    for (const side of ['N', 'S', 'E', 'W']) {
+      const wall = layout.walls[side]; if (!wall) continue;
+      for (const slot of wall.slots) {
+        const ln = assign[slot.id]; if (!ln) continue;
+        const w = panelInteriorWidth(ln.pack);
+        if (w == null) continue;
+        if (classifyWall(ln.pack) === 'DRFRM' && w >= 49) { doorSlot = slot; doorSide = side; }
+        else if ([7, 19, 31, 43].indexOf(w) >= 0 && Math.abs(w - slot.size) >= 3) { comp = { slot: slot, w: w }; compSide = side; }
+      }
+    }
+    if (!doorSlot || !comp) return;
+    const conserve = (a, b) => Math.abs(a.size + b.size - (49 + comp.w)) <= 3;
+    const adjacent = (side, slot) => {
+      const slots = layout.walls[side].slots;
+      const i = slots.findIndex(s2 => s2.id === slot.id);
+      return [slots[i - 1], slots[i + 1]].filter(Boolean);
+    };
+    // already valid? (companion directly adjacent + pair conserves)
+    if (doorSide === compSide && adjacent(doorSide, doorSlot).some(s2 => s2.id === comp.slot.id && conserve(doorSlot, s2))) return;
+    const swapIds = (x, y) => {
+      if (x === y) return;
+      const X = assign[x] || null, Y = assign[y] || null;
+      if (Y == null) delete assign[x]; else assign[x] = Y;
+      if (X == null) delete assign[y]; else assign[y] = X;
+    };
+    const order = [doorSide].concat(['S', 'E', 'N', 'W'].filter(s2 => s2 !== doorSide));
+    for (const side of order) {
+      const wall = layout.walls[side]; if (!wall) continue;
+      const slots = wall.slots;
+      for (let i = 0; i < slots.length; i++) {
+        const slot = slots[i];
+        if (Math.abs(slot.size - doorSlot.size) > 3) continue;   // door stays on its module size
+        if (slot.id === comp.slot.id) continue;                  // never seat the door ON the companion
+        for (const j of [i - 1, i + 1]) {
+          const seat = slots[j];
+          if (!seat || !conserve(slot, seat)) continue;
+          swapIds(doorSlot.id, slot.id);
+          swapIds(comp.slot.id, seat.id);
+          return;
+        }
+      }
+    }
+  }
 
   function renderLegend() {
     const sw = { DRFRM:'#ee6216', WDO:'#9ec4e6', VNT:'#54575f', SOLID:'#54575f' };
@@ -976,6 +1032,7 @@
           + '</div></div>';
       }
       const placed = placeBom(layout, rm.lines).placement;
+      waSeatDoor(layout, placed);   // WA/ADA door + companion onto their WA-Type wall pair
       st = LAYOUT_STATE[ri] = { rm, layout, assign: placed };
     }
     const layout = st.layout;

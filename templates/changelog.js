@@ -51,6 +51,12 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.85.4', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Top-Down Layout: WA Type wired into the INITIAL placement.** A WA/ADA quote now loads with the door already on its WA-Type wall pair instead of defaulting to the front: after auto-placement, the layout reads the companion&apos;s width (7&Prime;→4016 · 31&Prime;→4040 · 19&Prime;→4622 · 43&Prime;→4646) and relocates door + companion to the first width-conserving pair — preferring the door&apos;s current wall, so types that fit the front stay on the front. A 4016 on a 102126 opens with the door on the 102&Prime; side and the 7&Prime; wall directly beside it; a 4040 opens on the 126&Prime; side with the 31&Prime; adjacent. Booths without a wide door are untouched.'},
+      ]
+    },
+    {
       v:'1.85.3', date:'June 9, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Top-Down Layout: WA-Type-aware door placement.** The WA Type names the wall pair the 49&Prime; door displaces, conserving total width — 4646: 46+46 → 49+43 · 4622: 46+22 → 49+19 · 4040: 40+40 → 49+31 · 4016: 40+16 → 49+7 — and the shrunken companion always sits directly adjacent to the door. Dragging the wide door now enforces this: a drop is only allowed where the target slot plus an adjacent slot conserve the pair (so on a 102126 a 4016 door only lands on the 102&Prime; side, where the middle 16 becomes the 7; a 4040 door only on the 126&Prime; side, where the adjacent 40 becomes the 31). The companion — 43&Prime;, 31&Prime;, 19&Prime; or 7&Prime;, found wherever the auto-placement left it — is pulled into the conserving adjacent slot when the door moves.'},

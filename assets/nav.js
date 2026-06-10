@@ -10,6 +10,7 @@
     { href:'/quotes',     label:'Quotes' },
     { href:'/orders',     label:'Orders' },
     { href:'/shipping',   label:'Shipping' },
+    { href:'/inventory',  label:'Inventory' },
     { href:'/reports',    label:'Reports' },
     { href:'/accounting', label:'Accounting' },
     // Vendor Hub now also covers the Audimute (Suppliers) POs, shown as a

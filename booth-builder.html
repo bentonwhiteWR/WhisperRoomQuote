@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Design Your Booth — WhisperRoom</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-size='18'>🏗</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{--orange:#ee6216;--ink:#1a1a1a;--muted:#777;--line:#e3e5e8;--card:#fff;--bg:#f4f5f7;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:52px;background:#1a1a1a;border-bottom:1px solid rgba(255,255,255,.1);position:sticky;top:0;z-index:100}
+  .topbar-logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#f0ede8;text-decoration:none}
+  .topbar-logo span{color:#e8531a}
+  .topbar-nav{display:flex;gap:4px;align-items:center}
+  .topbar-right a{font-size:11px;font-weight:700;color:#999;text-decoration:none;padding:5px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;letter-spacing:.05em;text-transform:uppercase}
+
+  .wrap{display:flex;gap:18px;max-width:1280px;margin:0 auto;padding:18px;align-items:flex-start}
+  .side{flex:0 0 320px;display:flex;flex-direction:column;gap:12px;position:sticky;top:64px}
+  .stage{flex:1;min-width:380px}
+  @media (max-width:900px){ .wrap{flex-direction:column} .side{position:static;flex:1;width:100%} }
+
+  .hero{padding:4px 2px 0}
+  .hero h1{font-family:'Syne',sans-serif;font-size:22px;font-weight:800}
+  .hero h1 span{color:var(--orange)}
+  .hero p{font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.45}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .step{font-size:10px;font-weight:800;letter-spacing:.12em;color:var(--orange);text-transform:uppercase;margin-bottom:8px}
+  .step .n{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;background:var(--orange);color:#fff;font-size:10px;margin-right:6px}
+  .hint{font-size:11.5px;color:var(--muted);line-height:1.45;margin-top:7px}
+
+  select,.opt-select{width:100%;padding:9px 10px;font-size:13px;font-family:inherit;border:1px solid #d5d8dd;border-radius:8px;background:#fff;color:var(--ink)}
+  .seg{display:flex;gap:8px}
+  .seg-card{flex:1;border:1.5px solid #d5d8dd;border-radius:10px;padding:10px;cursor:pointer;background:#fff;text-align:left;font-family:inherit}
+  .seg-card.active{border-color:var(--orange);background:#fff6f1;box-shadow:0 0 0 1px var(--orange) inset}
+  .seg-card b{display:block;font-size:13px}
+  .seg-card small{display:block;font-size:10.5px;color:var(--muted);margin-top:3px;line-height:1.35}
+
+  .optrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line)}
+  .optrow:last-child{border-bottom:none}
+  .optrow label.t{font-size:13px;font-weight:600;cursor:pointer}
+  .optrow small{display:block;font-size:10.5px;color:var(--muted);font-weight:400;margin-top:1px;line-height:1.3}
+  .optrow input[type=checkbox]{width:17px;height:17px;accent-color:var(--orange);cursor:pointer;flex:none}
+  .optrow select{width:auto;min-width:110px;padding:6px 8px;font-size:12px}
+  .optrow.disabled{opacity:.45;pointer-events:none}
+  .pill2{display:inline-flex;border:1px solid #d5d8dd;border-radius:8px;overflow:hidden}
+  .pill2 button{padding:6px 13px;font-size:12px;font-weight:700;font-family:inherit;border:none;background:#fff;color:#888;cursor:pointer}
+  .pill2 button.active{background:var(--orange);color:#fff}
+
+  .wadd{border:1.5px solid var(--orange);background:#fff;color:var(--orange);border-radius:8px;padding:6px 13px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;flex:none}
+  .wadd:hover{background:var(--orange);color:#fff}
+  .wadd:disabled{opacity:.4;cursor:default;pointer-events:none}
+  .winitem{display:flex;align-items:center;gap:8px;padding:7px 0 7px 14px;border-bottom:1px dashed var(--line);font-size:12.5px}
+  .winitem .wlab{flex:1;font-weight:600;color:#444;text-transform:capitalize}
+  .winitem select{width:auto;min-width:84px;padding:5px 7px;font-size:12px}
+  .wrm{border:1px solid #d5d8dd;background:#fff;color:#b8412a;border-radius:6px;width:25px;height:25px;cursor:pointer;font-size:11px;font-family:inherit;flex:none}
+  .wrm:hover{border-color:#b8412a;background:#fdf3f1}
+  .swatches{display:flex;gap:9px;margin-top:4px}
+  .sw{width:30px;height:30px;border-radius:50%;cursor:pointer;border:2.5px solid transparent;outline:1px solid rgba(0,0,0,.18)}
+  .sw.active{border-color:#fff;outline:2.5px solid var(--orange)}
+  .sw[data-c=Gray]{background:#5e6166}.sw[data-c=Orange]{background:#d65613}.sw[data-c=Blue]{background:#2950c8}.sw[data-c=Purple]{background:#6d28d9}.sw[data-c=Burgundy]{background:#8c2738}
+
+  .summary{font-size:12.5px;line-height:1.6}
+  .summary .mdl{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--muted)}
+  .copy-btn{width:100%;margin-top:10px;padding:10px;background:var(--orange);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;letter-spacing:.02em}
+  .copy-btn:hover{background:#d65613}
+  .copy-btn:disabled{opacity:.6;cursor:default}
+  .linkbtn{width:100%;margin-top:8px;padding:8px;background:#fff;color:var(--ink);border:1px solid #d5d8dd;border-radius:8px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer}
+  .linkbtn:hover{border-color:var(--orange);color:var(--orange)}
+  .fi{width:100%;padding:9px 10px;font-size:13px;font-family:inherit;border:1px solid #d5d8dd;border-radius:8px;background:#fff;color:var(--ink);margin-top:8px}
+  .fi:focus{outline:none;border-color:var(--orange)}
+  textarea.fi{resize:vertical;min-height:54px}
+  .frow{display:flex;gap:8px}
+  .frow .fi{flex:1;min-width:0}
+  .hp{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0}
+  .reset{display:block;text-align:center;font-size:11px;color:var(--muted);margin-top:8px;cursor:pointer;text-decoration:underline;background:none;border:none;font-family:inherit;width:100%}
+
+  .view-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px 16px;margin-bottom:16px}
+  .view-cap{display:flex;align-items:center;justify-content:center;gap:10px;font-size:10px;font-weight:800;letter-spacing:.12em;color:#9097a0;margin:4px 0 2px;min-height:24px}
+  .rot{border:1px solid #d5d8dd;background:#fff;border-radius:6px;width:26px;height:22px;font-size:10px;color:#4a4f57;cursor:pointer;line-height:1;font-family:inherit}
+  .rot:hover{background:#fff4ee;border-color:var(--orange);color:var(--orange)}
+  .drag-hint{text-align:center;font-size:11.5px;color:var(--orange);font-weight:600;margin-top:4px}
+
+  /* drag interactions (same conventions as the PL layout) */
+  .ld-svg *{pointer-events:none}
+  .ld-svg .ld-panel{pointer-events:auto;cursor:grab}
+  .ld-svg .ld-panel *{pointer-events:auto}
+  .ld-panel:hover .ld-wall{filter:brightness(1.5)}
+  .ld-panel.ld-target .ld-wall{stroke:#ee6216;stroke-width:2.4}
+  .ld-panel.ld-bad .ld-wall{stroke:#dc2626;stroke-width:2.4;stroke-dasharray:4 3}
+  .ld-panel.ld-grabbing .ld-wall{filter:brightness(1.7);stroke:#ee6216;stroke-width:2}
+  body.ld-dragging{cursor:grabbing;user-select:none;-webkit-user-select:none}
+  .ld-ghost{position:fixed;z-index:9999;pointer-events:none;display:flex;align-items:center;gap:7px;padding:5px 10px;background:#1a1a1a;color:#fff;border:1px solid #555;border-radius:8px;font-size:11px;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.35)}
+  .ld-ghost.ok{border-color:#ee6216}
+  .ld-ghost.bad{border-color:#dc2626}
+  .ld-ghost.bad::after{content:'✕ can’t go there';color:#f87171;font-weight:600;margin-left:2px}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#1a1a1a;color:#fff;font-size:12.5px;font-weight:600;padding:10px 18px;border-radius:9px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:999}
+  .toast.show{opacity:1}
+  .loading{padding:80px 20px;text-align:center;color:#999;font-size:13px}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="/deals" class="topbar-logo">Whisper<span>Room</span></a>
+    <div class="topbar-nav"></div>
+    <div class="topbar-right"><a href="/deals">← Deal Hub</a></div>
+  </div>
+
+  <div class="wrap" id="app">
+    <div class="loading">Loading booth designer…</div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+<script>window.BB_AUTHED=0;</script>
+<script src="/assets/layout-render.js"></script>
+<script>
+// ── Booth Builder — standalone "design your booth" sales tool ─────────
+// Customer-friendly skin over the same renderer + placement rules the
+// Packing List layout uses (/assets/layout-render.js). No quote required:
+// pick a size, pick single/double wall, drag the door/vent/window around,
+// toggle options — both views update live. PUBLIC page: prospects design a
+// booth and request a quote (POST /api/booth-request); logged-in reps also
+// get the navbar + the copy-summary workflow. The whole design round-trips
+// through the URL hash (#d=base64url JSON) so any design is a shareable link.
+
+// Server flips BB_AUTHED to 1 when the viewer has a session — reps get the
+// internal navbar; the public gets whisperroom.com branding links instead.
+if (window.BB_AUTHED) {
+  const s = document.createElement('script');
+  s.src = '/assets/nav.js'; s.defer = true;
+  document.head.appendChild(s);
+} else {
+  document.querySelector('.topbar-logo').href = 'https://www.whisperroom.com';
+  const ext = document.querySelector('.topbar-right a');
+  ext.textContent = 'whisperroom.com'; ext.href = 'https://www.whisperroom.com';
+}
+
+let LAYOUTS = null;   // /api/booth-layouts → { layouts: { 'MDL 4872': {...} } }
+
+const FACE_WORD = { S: 'front', N: 'back', E: 'right side', W: 'left side' };
+const FACE_LABEL = { S: 'FRONT', E: 'RIGHT SIDE', N: 'BACK', W: 'LEFT SIDE' };
+const FOAMS = ['Gray', 'Orange', 'Blue', 'Purple', 'Burgundy'];
+
+const state = {
+  model: 'MDL 4872',
+  variant: 'S',          // S | E
+  hinge: 'R',            // R | L
+  foam: 'Gray',
+  wideDoor: false,
+  heightExt: false,
+  casters: false,
+  facing: 'S',
+  assign: {},            // slotId → synthetic line { code:'', pack }
+  contact: { name: '', email: '', phone: '', company: '', note: '' },
+  requested: false,      // quote request sent this visit
+  sending: false,
+};
+
+// ── shareable design links (#d=base64url JSON) ────────────────────────
+// The same compact payload is POSTed with a quote request; the server
+// re-encodes it into the link it hands the rep, so the notification opens
+// the customer's exact arrangement.
+function designPayload() {
+  // windows live per-slot in `a` (any number of them) — no top-level field
+  const a = {};
+  for (const id in state.assign) a[id] = state.assign[id].pack;
+  return { m: state.model, v: state.variant, h: state.hinge, f: state.foam,
+           wd: state.wideDoor ? 1 : 0, hx: state.heightExt ? 1 : 0, cs: state.casters ? 1 : 0,
+           fc: state.facing, a };
+}
+function designToHash() {
+  return btoa(unescape(encodeURIComponent(JSON.stringify(designPayload()))))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function restoreFromHash() {
+  const m = location.hash.match(/^#d=([A-Za-z0-9_-]+)$/);
+  if (!m) return false;
+  try {
+    const d = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/')))));
+    if (!LAYOUTS[d.m]) return false;
+    state.model = d.m;
+    state.variant = d.v === 'E' ? 'E' : 'S';
+    state.hinge = d.h === 'L' ? 'L' : 'R';
+    state.foam = FOAMS.indexOf(d.f) >= 0 ? d.f : 'Gray';
+    // (legacy d.w ignored — the window packs ride in d.a, one per slot)
+    state.wideDoor = !!d.wd; state.heightExt = !!d.hx; state.casters = !!d.cs;
+    state.facing = ['N', 'S', 'E', 'W'].indexOf(d.fc) >= 0 ? d.fc : 'S';
+    state.assign = {};
+    const layout = resolveLayout();
+    eachSlot(layout, slot => {
+      const pack = d.a && d.a[slot.id];
+      if (typeof pack === 'string' && pack.length <= 40 && /^[A-Za-z0-9 \/.-]*$/.test(pack)) state.assign[slot.id] = line(pack);
+    });
+    // any slot the hash missed falls back to its spec-sheet default
+    eachSlot(layout, slot => {
+      if (state.assign[slot.id]) return;
+      const k = slot.kind || (slot.prefers && slot.prefers[0]) || 'SOLID';
+      state.assign[slot.id] = line(k === 'VNT' ? ventPack(slot) : k === 'DRFRM' ? doorPack(slot) : solidPack(slot));
+    });
+    return true;
+  } catch (e) { return false; }
+}
+
+// ── synthetic panels (no BOM here — packs are built from the slot) ────
+// Slot nominals are digitized drawing sizes (24″, 47.5″…); the real wall
+// family is the nearest actual SKU width, so labels read true sizes
+// (a 24″-nominal narrow slot holds the real 22″ wall).
+const REAL_WALLS = [16, 22, 28, 40, 43, 46];
+const realSize = n => REAL_WALLS.reduce((b, w) => Math.abs(w - n) < Math.abs(b - n) ? w : b, REAL_WALLS[0]);
+const solidPack  = slot => 'STDWL' + realSize(slot.size);
+const ventPack   = slot => 'STDWL' + realSize(slot.size) + ' VNT';
+const doorPack   = slot => 'STDWL' + realSize(slot.size) + ' DRFRM ' + state.hinge;
+const waPack     = () => 'WA STDDRFRM ' + state.hinge;
+const shrinkPack = w => (w === 7 ? 'STDWL7 / WL16' : 'STDWL' + w);
+const windowPack = (layout, slot, h) => {
+  const ww = (layout.module === 40) ? 26 : 32;            // window width follows the wall series
+  return 'STDWL' + realSize(slot.size) + ' WDO' + ww + h;
+};
+
+function resolveLayout() {
+  const base = LAYOUTS[state.model];
+  const v = base.variants[state.variant] || base.variants.S;
+  return Object.assign({}, base, v, {
+    variant: state.variant,
+    foamColor: state.foam,
+    heightExt: state.heightExt,
+    casters: state.casters,
+  });
+}
+
+function eachSlot(layout, fn) {
+  for (const side of ['N', 'S', 'E', 'W']) {
+    const wall = layout.walls[side]; if (!wall) continue;
+    for (const slot of wall.slots) fn(slot, side);
+  }
+}
+function findSlot(layout, pred) {
+  let hit = null;
+  eachSlot(layout, (slot, side) => { if (!hit && pred(slot, side)) hit = { slot, side }; });
+  return hit;
+}
+const kindAt = id => { const l = state.assign[id]; return l ? classifyWall(l.pack) : 'EMPTY'; };
+const line = pack => ({ code: '', pack });   // empty code = no internal codes shown
+
+// Default arrangement straight from the digitized layout (slot.kind mirrors
+// the official spec-sheet configuration for each model).
+function defaultAssign(layout) {
+  const a = {};
+  eachSlot(layout, slot => {
+    const k = slot.kind || (slot.prefers && slot.prefers[0]) || 'SOLID';
+    a[slot.id] = line(k === 'VNT' ? ventPack(slot) : k === 'DRFRM' ? doorPack(slot) : solidPack(slot));
+  });
+  return a;
+}
+
+// ── option application (mutates assign surgically so drags survive) ───
+function doorSlotId(layout) {
+  const hit = findSlot(layout, s => kindAt(s.id) === 'DRFRM');
+  return hit ? hit.slot.id : null;
+}
+function applyHinge(layout) {
+  const id = doorSlotId(layout); if (!id) return;
+  state.assign[id] = line(String(state.assign[id].pack).replace(/\s[RL]\b/, ' ' + state.hinge));
+}
+// ── windows: any number, managed per-slot via the ＋ Add list ────────
+// A window can sit on any full-size solid panel (window walls exist for every
+// series); each one keeps its own height. They live directly in state.assign,
+// so drags, the #d= link and the quote payload all carry them for free.
+function windowSeat(layout) {
+  // prefer a solid full-size wall NOT on the door's wall, so a new window
+  // starts somewhere sensible — the customer can drag it anywhere valid
+  const doorSide = (findSlot(layout, s => kindAt(s.id) === 'DRFRM') || {}).side;
+  return findSlot(layout, (s, side) => s.size >= 36 && side !== doorSide && kindAt(s.id) === 'SOLID')
+      || findSlot(layout, s => s.size >= 36 && kindAt(s.id) === 'SOLID');
+}
+function listWindows(layout) {
+  const out = [];
+  eachSlot(layout, (slot, side) => {
+    if (kindAt(slot.id) !== 'WDO') return;
+    const m = String(state.assign[slot.id].pack).match(/WDO(\d{2})(\d{2})/i);
+    out.push({ slot, side, w: m ? +m[1] : 32, h: m ? +m[2] : 36 });
+  });
+  return out;
+}
+function addWindow() {
+  const layout = resolveLayout();
+  const pick = windowSeat(layout);
+  if (!pick) { toast('No free wall panel for another window — move or remove something first'); return; }
+  state.assign[pick.slot.id] = line(windowPack(layout, pick.slot, 36));
+  render();
+}
+function setWindowH(slotId, h) {
+  const layout = resolveLayout();
+  const s = slotById(layout, slotId); if (!s) return;
+  state.assign[slotId] = line(windowPack(layout, s, +h));
+  render();
+}
+function removeWindow(slotId) {
+  const layout = resolveLayout();
+  const s = slotById(layout, slotId); if (!s) return;
+  state.assign[slotId] = line(solidPack(s));
+  render();
+}
+// Wide-access door: the 49″ frame + its shrunken companion must replace an
+// adjacent width-conserving pair (4646/4622/4040/4016). Prefer the wall the
+// door is already on.
+function findWaPair(layout) {
+  const cur = findSlot(layout, s => kindAt(s.id) === 'DRFRM');
+  const sides = cur ? [cur.side] : [];
+  ['S', 'E', 'N', 'W'].forEach(s => { if (sides.indexOf(s) < 0) sides.push(s); });
+  // two passes: first avoid seating the companion on a window or vent panel,
+  // then allow anything if that's the only geometry that works
+  for (const protect of [true, false]) {
+    for (const side of sides) {
+      const slots = (layout.walls[side] || { slots: [] }).slots;
+      for (let i = 0; i < slots.length; i++) {
+        if (slots[i].size < 36) continue;
+        for (const j of [i - 1, i + 1]) {
+          const seat = slots[j]; if (!seat) continue;
+          if (protect && (kindAt(seat.id) === 'WDO' || kindAt(seat.id) === 'VNT')) continue;
+          let best = null;
+          for (const w of [7, 19, 31, 43]) if (Math.abs(slots[i].size + seat.size - (49 + w)) <= 3) best = w;
+          if (best != null) return { slot: slots[i], seat: seat, w: best };
+        }
+      }
+    }
+  }
+  return null;
+}
+function applyWideDoor(layout) {
+  const curId = doorSlotId(layout);
+  // restore any existing shrunken companion to a plain wall
+  eachSlot(layout, slot => {
+    const l = state.assign[slot.id]; if (!l) return;
+    const w = panelInteriorWidth(l.pack);
+    if (w != null && [7, 19, 31, 43].indexOf(w) >= 0 && Math.abs(w - slot.size) >= 3) state.assign[slot.id] = line(solidPack(slot));
+  });
+  if (!state.wideDoor) {
+    if (curId) { const s = slotById(layout, curId); state.assign[curId] = line(doorPack(s)); }
+    return;
+  }
+  const pair = findWaPair(layout);
+  if (!pair) { state.wideDoor = false; return; }
+  if (curId && curId !== pair.slot.id) { const s = slotById(layout, curId); state.assign[curId] = line(solidPack(s)); }
+  state.assign[pair.slot.id] = line(waPack());
+  state.assign[pair.seat.id] = line(shrinkPack(pair.w));
+}
+function slotById(layout, id) {
+  const hit = findSlot(layout, s => s.id === id);
+  return hit ? hit.slot : null;
+}
+
+function rebuild(resetArrangement) {
+  const layout = resolveLayout();
+  if (resetArrangement || !Object.keys(state.assign).length) state.assign = defaultAssign(layout);
+  applyWideDoor(layout);
+  applyHinge(layout);
+  render();
+}
+
+// ── drag-to-rearrange (same rules as the PL layout) ──────────────────
+function slotInfoOf(layout, id) {
+  let hit = null;
+  for (const side of ['N', 'S', 'E', 'W']) {
+    const wall = layout.walls[side]; if (!wall) continue;
+    for (const slot of wall.slots) if (slot.id === id) hit = { side: side, wall: wall, slot: slot };
+  }
+  return hit;
+}
+function isWideDoorLine(l) {
+  if (!l) return false;
+  const w = panelInteriorWidth(l.pack);
+  return classifyWall(l.pack) === 'DRFRM' && w != null && w >= 49;
+}
+function companionSlot(layout) {
+  let hit = null;
+  eachSlot(layout, slot => {
+    if (hit) return;
+    const l = state.assign[slot.id]; if (!l) return;
+    const w = panelInteriorWidth(l.pack);
+    if (w != null && [7, 19, 31, 43].indexOf(w) >= 0 && Math.abs(w - slot.size) >= 3) hit = { slotId: slot.id, w: w };
+  });
+  return hit;
+}
+function doorSeatsAt(layout, info, compW) {
+  const slots = info.wall.slots;
+  const i = slots.findIndex(s => s.id === info.slot.id);
+  const out = [];
+  for (const j of [i - 1, i + 1]) {
+    if (j < 0 || j >= slots.length) continue;
+    if (Math.abs(info.slot.size + slots[j].size - (49 + compW)) <= 3) out.push(slots[j]);
+  }
+  return out;
+}
+function compatible(layout, a, b) {
+  const A = slotInfoOf(layout, a), B = slotInfoOf(layout, b);
+  if (!A || !B) return false;
+  if (Math.abs(A.slot.size - B.slot.size) > 3) return false;
+  if (isWideDoorLine(state.assign[a])) {
+    const comp = companionSlot(layout);
+    if (comp ? doorSeatsAt(layout, B, comp.w).length === 0 : B.wall.slots.length < 2) return false;
+  }
+  if (isWideDoorLine(state.assign[b])) {
+    const comp = companionSlot(layout);
+    if (comp ? doorSeatsAt(layout, A, comp.w).length === 0 : A.wall.slots.length < 2) return false;
+  }
+  return true;
+}
+function doSwap(layout, a, b) {
+  if (a === b) return;
+  const A = state.assign[a] || null, B = state.assign[b] || null;
+  if (B == null) delete state.assign[a]; else state.assign[a] = B;
+  if (A == null) delete state.assign[b]; else state.assign[b] = A;
+  const aWide = isWideDoorLine(state.assign[a]), bWide = isWideDoorLine(state.assign[b]);
+  if (aWide !== bWide) {
+    const doorId = aWide ? a : b;
+    const to = slotInfoOf(layout, doorId);
+    const comp = companionSlot(layout);
+    if (to && comp) {
+      const seats = doorSeatsAt(layout, to, comp.w);
+      if (seats.length && !seats.some(s => s.id === comp.slotId)) {
+        const seat = seats[0];
+        const X = state.assign[comp.slotId] || null, Y = state.assign[seat.id] || null;
+        if (Y == null) delete state.assign[comp.slotId]; else state.assign[comp.slotId] = Y;
+        if (X == null) delete state.assign[seat.id]; else state.assign[seat.id] = X;
+      }
+    }
+  }
+}
+
+let _drag = null, _ghost = null;
+function ghostShow(l, e) {
+  const meta = KIND_META[l ? classifyWall(l.pack) : 'EMPTY'] || KIND_META.EMPTY;
+  _ghost = document.createElement('div');
+  _ghost.className = 'ld-ghost';
+  _ghost.innerHTML = '<span>' + esc(meta.label || 'Panel') + '</span>';
+  document.body.appendChild(_ghost);
+  ghostMove(e);
+}
+function ghostMove(e) {
+  if (!_ghost) return;
+  const pt = (e.touches && e.touches[0]) || e;
+  _ghost.style.left = (pt.clientX + 14) + 'px';
+  _ghost.style.top = (pt.clientY + 12) + 'px';
+}
+function ghostHide() { if (_ghost) { _ghost.remove(); _ghost = null; } }
+document.addEventListener('pointerdown', e => {
+  const g = e.target.closest && e.target.closest('.ld-panel');
+  if (!g) return;
+  _drag = { from: g.getAttribute('data-slot'), g };
+  g.classList.add('ld-grabbing');
+  document.body.classList.add('ld-dragging');
+  ghostShow(state.assign[_drag.from] || null, e);
+  e.preventDefault();
+});
+document.addEventListener('pointermove', e => {
+  if (!_drag) return;
+  ghostMove(e);
+  const pt = (e.touches && e.touches[0]) || e;
+  const el = document.elementFromPoint(pt.clientX, pt.clientY);
+  const tgt = el && el.closest && el.closest('.ld-panel');
+  document.querySelectorAll('.ld-panel.ld-target,.ld-panel.ld-bad').forEach(n => n.classList.remove('ld-target', 'ld-bad'));
+  const onTarget = tgt && tgt !== _drag.g;
+  const fits = onTarget && compatible(resolveLayout(), _drag.from, tgt.getAttribute('data-slot'));
+  if (onTarget) tgt.classList.add(fits ? 'ld-target' : 'ld-bad');
+  if (_ghost) { _ghost.classList.toggle('ok', !!fits); _ghost.classList.toggle('bad', !!onTarget && !fits); }
+  e.preventDefault();
+});
+document.addEventListener('pointerup', e => {
+  if (!_drag) return;
+  const pt = (e.changedTouches && e.changedTouches[0]) || e;
+  const el = document.elementFromPoint(pt.clientX, pt.clientY);
+  const tgt = el && el.closest && el.closest('.ld-panel');
+  const layout = resolveLayout();
+  if (tgt && tgt !== _drag.g && compatible(layout, _drag.from, tgt.getAttribute('data-slot'))) {
+    doSwap(layout, _drag.from, tgt.getAttribute('data-slot'));
+    render();
+  }
+  document.querySelectorAll('.ld-panel.ld-target,.ld-panel.ld-bad').forEach(n => n.classList.remove('ld-target', 'ld-bad'));
+  document.body.classList.remove('ld-dragging');
+  ghostHide();
+  _drag = null;
+});
+
+// ── UI ────────────────────────────────────────────────────────────────
+function sizeOptions() {
+  return Object.keys(LAYOUTS)
+    .map(k => ({ k, L: LAYOUTS[k], area: LAYOUTS[k].exterior.w * LAYOUTS[k].exterior.h }))
+    .sort((a, b) => a.area - b.area)
+    .map(o => {
+      const nice = String(o.L.label || '').replace(/^Sound Booth\s*·\s*/, '');
+      return '<option value="' + esc(o.k) + '"' + (o.k === state.model ? ' selected' : '') + '>'
+        + esc(nice) + '  —  ' + esc(o.k.replace('MDL ', '#')) + '</option>';
+    }).join('');
+}
+
+function summaryText() {
+  const layout = resolveLayout();
+  const bits = [];
+  const nice = String(layout.label || '').replace(/^Sound Booth\s*·\s*/, '');
+  bits.push(nice + ' ' + (state.variant === 'E' ? 'Double-Wall (Enhanced)' : 'Single-Wall (Standard)') + ' — ' + state.model + ' ' + state.variant);
+  const d = findSlot(layout, s => kindAt(s.id) === 'DRFRM');
+  if (d) bits.push('Door: ' + FACE_WORD[d.side] + ', hinge ' + (state.hinge === 'R' ? 'right' : 'left') + (state.wideDoor ? ' — WIDE-ACCESS (32″)' : ''));
+  const vs = [];
+  eachSlot(layout, (s, side) => { if (kindAt(s.id) === 'VNT' && vs.indexOf(FACE_WORD[side]) < 0) vs.push(FACE_WORD[side]); });
+  if (vs.length) bits.push('Ventilation: ' + vs.join(' + '));
+  const wins = listWindows(layout).map(w => FACE_WORD[w.side] + ' (' + w.w + '″ × ' + w.h + '″)');
+  if (wins.length === 1) bits.push('Wall window: ' + wins[0]);
+  else if (wins.length) bits.push('Wall windows ×' + wins.length + ': ' + wins.join(', '));
+  bits.push('Foam color: ' + state.foam);
+  if (state.heightExt) bits.push('10″ height extension');
+  if (state.casters) bits.push('Caster plate (wheels, +5″)');
+  return bits;
+}
+
+function render() {
+  const layout = resolveLayout();
+  const waPossible = !!findWaPair(layout);
+  const app = document.getElementById('app');
+  app.innerHTML = ''
+    + '<div class="side">'
+    +   '<div class="hero"><h1>Design <span>Your Booth</span></h1>'
+    +   '<p>Pick a size, then make it yours — drag the door, vents or windows to any wall they fit, and watch the booth update.</p></div>'
+
+    +   '<div class="card"><div class="step"><span class="n">1</span>Choose your size</div>'
+    +     '<select onchange="setModel(this.value)">' + sizeOptions() + '</select>'
+    +     '<div class="hint">Interior: <b>' + layout.interior.h + '″ × ' + layout.interior.w + '″</b> · Exterior: ' + layout.exterior.h + '″ × ' + layout.exterior.w + '″ (plus 5.5″ where a vent sits)</div>'
+    +   '</div>'
+
+    +   '<div class="card"><div class="step"><span class="n">2</span>How much quiet?</div>'
+    +     '<div class="seg">'
+    +       '<button class="seg-card' + (state.variant === 'S' ? ' active' : '') + '" onclick="setVariant(\'S\')"><b>Standard</b><small>Single-wall · voice-over, podcasts, offices</small></button>'
+    +       '<button class="seg-card' + (state.variant === 'E' ? ' active' : '') + '" onclick="setVariant(\'E\')"><b>Enhanced</b><small>Double-wall · drums, loud instruments, max isolation</small></button>'
+    +     '</div>'
+    +   '</div>'
+
+    +   '<div class="card"><div class="step"><span class="n">3</span>Make it yours</div>'
+    +     '<div class="optrow"><label class="t">Wall windows<small>See in and out — glass keeps the quiet in. Add as many as your walls allow.</small></label>'
+    +       '<button class="wadd"' + (windowSeat(layout) ? '' : ' disabled') + ' onclick="addWindow()">＋ Add</button></div>'
+    +     listWindows(layout).map(w =>
+            '<div class="winitem"><span class="wlab">' + esc(FACE_WORD[w.side]) + ' · ' + w.w + '″ wide</span>'
+          + '<select onchange="setWindowH(\'' + esc(w.slot.id) + '\', this.value)">'
+          +   [30, 36, 42, 48].map(h => '<option value="' + h + '"' + (w.h === h ? ' selected' : '') + '>' + h + '″ tall</option>').join('')
+          + '</select>'
+          + '<button class="wrm" title="Remove this window" onclick="removeWindow(\'' + esc(w.slot.id) + '\')">✕</button></div>'
+          ).join('')
+    +     '<div class="optrow' + (waPossible ? '' : ' disabled') + '"><label class="t">Wide-access door<small>' + (waPossible ? '32″ opening — wheelchairs, gear, bulky items' : 'Needs a larger booth (5′ walls or more)') + '</small></label>'
+    +       '<input type="checkbox"' + (state.wideDoor ? ' checked' : '') + ' onchange="setWide(this.checked)"></div>'
+    +     '<div class="optrow"><label class="t">Door hinge<small>Which side the door swings from</small></label>'
+    +       '<span class="pill2"><button class="' + (state.hinge === 'L' ? 'active' : '') + '" onclick="setHinge(\'L\')">Left</button><button class="' + (state.hinge === 'R' ? 'active' : '') + '" onclick="setHinge(\'R\')">Right</button></span></div>'
+    +     '<div class="optrow"><label class="t">Extra height (+10″)<small>For standing performers and tall gear</small></label>'
+    +       '<input type="checkbox"' + (state.heightExt ? ' checked' : '') + ' onchange="setHX(this.checked)"></div>'
+    +     '<div class="optrow"><label class="t">Wheels (caster plate)<small>Roll it around — raises the booth 5″</small></label>'
+    +       '<input type="checkbox"' + (state.casters ? ' checked' : '') + ' onchange="setCasters(this.checked)"></div>'
+    +   '</div>'
+
+    +   '<div class="card"><div class="step"><span class="n">4</span>Foam color</div>'
+    +     '<div class="swatches">' + FOAMS.map(c => '<div class="sw' + (state.foam === c ? ' active' : '') + '" data-c="' + c + '" title="' + c + '" onclick="setFoam(\'' + c + '\')"></div>').join('') + '</div>'
+    +     '<div class="hint">The acoustic foam inside your booth.</div>'
+    +   '</div>'
+
+    +   '<div class="card"><div class="step"><span class="n">✓</span>Your booth</div>'
+    +     '<div class="summary">' + summaryText().map(esc).join('<br>') + '</div>'
+    +     '<button class="copy-btn" onclick="copySummary()">📋 Copy booth summary</button>'
+    +     '<button class="linkbtn" onclick="copyLink()">🔗 Copy a link to this design</button>'
+    +     '<button class="reset" onclick="resetAll()">start over</button>'
+    +   '</div>'
+
+    +   '<div class="card">' + quoteCardHtml() + '</div>'
+    + '</div>'
+
+    + '<div class="stage">'
+    +   '<div class="view-card">'
+    +     '<div class="view-cap"><span>TOP-DOWN · BIRD’S-EYE VIEW</span></div>'
+    +     renderLayoutSvg(layout, state.assign)
+    +     '<div class="drag-hint">↔ drag the door, vents or windows onto another wall</div>'
+    +   '</div>'
+    +   '<div class="view-card">'
+    +     '<div class="view-cap">'
+    +       '<button class="rot" onclick="rotate(-1)" title="Rotate left">◀</button>'
+    +       '<span>WALK AROUND · ' + FACE_LABEL[state.facing] + '</span>'
+    +       '<button class="rot" onclick="rotate(1)" title="Rotate right">▶</button>'
+    +     '</div>'
+    +     renderElevationSvg(layout, state.assign, state.facing)
+    +   '</div>'
+    + '</div>';
+  // every design is a link — keep the URL current so copy/share/refresh all work
+  history.replaceState(null, '', '#d=' + designToHash());
+}
+
+// ── quote request (lead capture) ──────────────────────────────────────
+function quoteCardHtml() {
+  const c = state.contact;
+  if (state.requested) {
+    return '<div class="step"><span class="n">✓</span>Request sent</div>'
+      + '<div class="summary">Thanks' + (c.name ? ', ' + esc(c.name.split(' ')[0]) : '') + '! Your design is on its way to our team — '
+      + 'we’ll email your quote to <b>' + esc(c.email) + '</b>, usually within one business day.</div>'
+      + '<button class="reset" onclick="state.requested=false;render()">made changes? send an update</button>';
+  }
+  return '<div class="step"><span class="n">5</span>Get your quote</div>'
+    + '<div class="hint" style="margin-top:0">Happy with your design? Send it to our team and we’ll reply with pricing — your exact layout included.</div>'
+    + '<input class="fi" placeholder="Your name *" value="' + esc(c.name) + '" oninput="setC(\'name\',this.value)">'
+    + '<input class="fi" type="email" placeholder="Email *" value="' + esc(c.email) + '" oninput="setC(\'email\',this.value)">'
+    + '<div class="frow">'
+    +   '<input class="fi" type="tel" placeholder="Phone" value="' + esc(c.phone) + '" oninput="setC(\'phone\',this.value)">'
+    +   '<input class="fi" placeholder="Company" value="' + esc(c.company) + '" oninput="setC(\'company\',this.value)">'
+    + '</div>'
+    + '<textarea class="fi" placeholder="Anything we should know? (room size, timeline…)" oninput="setC(\'note\',this.value)">' + esc(c.note) + '</textarea>'
+    + '<input class="hp" id="qrHp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">'
+    + '<button class="copy-btn" onclick="submitRequest()"' + (state.sending ? ' disabled' : '') + '>'
+    + (state.sending ? 'Sending…' : 'Request my quote →') + '</button>';
+}
+function setC(k, v) { state.contact[k] = v; }
+async function submitRequest() {
+  const c = state.contact;
+  if (state.sending) return;
+  if (!c.name.trim()) { toast('Please enter your name'); return; }
+  if (!/^\S+@\S+\.\S+$/.test(c.email.trim())) { toast('Please enter a valid email address'); return; }
+  // read the honeypot BEFORE render() rebuilds the form (which would blank it)
+  const hp = document.getElementById('qrHp');
+  const hpVal = hp ? hp.value : '';
+  state.sending = true; render();
+  try {
+    const r = await fetch('/api/booth-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: c.name.trim(), email: c.email.trim(), phone: c.phone.trim(),
+        company: c.company.trim(), note: c.note.trim(),
+        website: hpVal,
+        design: designPayload(), summary: summaryText(),
+      }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    state.requested = true;
+    toast('Design sent — we’ll be in touch!');
+  } catch (e) {
+    toast(e.message || 'Something went wrong — please try again');
+  }
+  state.sending = false;
+  render();
+}
+
+// ── handlers ──────────────────────────────────────────────────────────
+function setModel(m)   { state.model = m; state.wideDoor = false; rebuild(true); }
+function setVariant(v) { state.variant = v; rebuild(false); }
+function setHinge(h)   { state.hinge = h; rebuild(false); }
+function setFoam(c)    { state.foam = c; rebuild(false); }
+function setWide(on)   { state.wideDoor = !!on; rebuild(false); }
+function setHX(on)     { state.heightExt = !!on; rebuild(false); }
+function setCasters(on){ state.casters = !!on; rebuild(false); }
+function rotate(dir) {
+  const order = ['S', 'E', 'N', 'W'];
+  state.facing = order[(order.indexOf(state.facing) + dir + 4) % 4];
+  render();
+}
+function resetAll() {
+  state.hinge = 'R'; state.foam = 'Gray';
+  state.wideDoor = false; state.heightExt = false; state.casters = false; state.facing = 'S';
+  rebuild(true);
+}
+function designLink() { return location.origin + '/booth-builder#d=' + designToHash(); }
+function copySummary() {
+  const txt = 'WhisperRoom booth design\n' + summaryText().map(s => '• ' + s).join('\n')
+    + '\nSee the design: ' + designLink();
+  (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(
+    () => toast('Summary copied — paste it into your quote or email'),
+    () => { window.prompt('Copy your booth summary:', txt); }
+  );
+}
+function copyLink() {
+  (navigator.clipboard ? navigator.clipboard.writeText(designLink()) : Promise.reject()).then(
+    () => toast('Link copied — it opens this exact design'),
+    () => { window.prompt('Copy your design link:', designLink()); }
+  );
+}
+let _toastT = null;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(_toastT); _toastT = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+// ── boot ──────────────────────────────────────────────────────────────
+(async function boot() {
+  try {
+    if (window.BB_LAYOUTS) { LAYOUTS = window.BB_LAYOUTS; }
+    else {
+      const r = await fetch('/api/booth-layouts', { credentials: 'include' });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      LAYOUTS = d.layouts;
+    }
+    if (!LAYOUTS || !LAYOUTS[state.model]) state.model = Object.keys(LAYOUTS)[0];
+    // a shared design link restores the exact arrangement; otherwise defaults
+    if (restoreFromHash()) render(); else rebuild(true);
+  } catch (e) {
+    document.getElementById('app').innerHTML = '<div class="loading">Failed to load: ' + esc(e.message) + '</div>';
+  }
+})();
+</script>
+</body>
+</html>

@@ -24,6 +24,8 @@ Last verified: 2026-05-08, against v1.7.33.
 | `reconcile_links`  | Confirmed HS deal ↔ QB invoice pairings       | `reconcile.html` actions     | reconcile page                   |
 | `reconcile_blocks` | Explicitly-rejected pairings                  | `reconcile.html` actions     | reconcile page                   |
 | `tracking_cache`   | Freight tracking results, polled ~every 30min | `lib/freight.js`             | shipping-dashboard, order pages  |
+| `components_inventory` | On-hand per component code (PL migration Phase 2) | `lib/inventory.js`   | inventory-dashboard (v1.88+)     |
+| `inventory_transactions` | Append-only audit of every stock move   | `lib/inventory.js`           | inventory-dashboard (audit views)|
 
 ---
 
@@ -276,6 +278,46 @@ Freight tracking results, polled by the tracking poller (`lib/freight.js`, start
 | `updated_at`      | TIMESTAMPTZ |                                                  |
 
 On startup, `delivered` rows with `delivered_at IS NULL` or `delivered_at = today` are wiped to avoid stale/bogus cache entries.
+
+---
+
+## components_inventory
+
+Component inventory (PL migration Phase 2) — replaces the Excel `Inventory` sheet + pCloud `Inventory.csv` round-trip. One row per component code; on-hand is a single scalar (no bins/lots, same model as the sheet). All writes go through `lib/inventory.js` (`applyChanges` / `deductForOrder` / `restoreForOrder`); on-hand never changes without a matching `inventory_transactions` row.
+
+| Column           | Type        | Notes                                                            |
+|------------------|-------------|------------------------------------------------------------------|
+| `code`           | TEXT PK     | Component code (`A01`, `Z30`, …) — joins to PL generator codes   |
+| `name`           | TEXT        | Short display name from the sheet (e.g. `4230 CL`)               |
+| `on_hand`        | INTEGER     | NOT NULL DEFAULT 0; may go negative (flagged, not blocked)       |
+| `build_point`    | TEXT        | Reorder threshold — a number, or the literal `as needed`         |
+| `build_qty`      | INTEGER     | Batch size when building                                         |
+| `finished_qty`   | INTEGER     |                                                                  |
+| `in_process_qty` | INTEGER     |                                                                  |
+| `active`         | BOOLEAN     | DEFAULT TRUE (soft retire, no delete)                            |
+| `updated_at`     | TIMESTAMPTZ |                                                                  |
+
+Seeded once at startup from `lib/pl-data/inventory-seed.json` (extracted from `PackingList.xlsm`) when the table is empty; re-aligned with Excel during the parallel run via the dashboard's paste-sync. Rows auto-create at 0 when a ship deduction hits an unknown code (the Excel macros silently skipped those).
+
+---
+
+## inventory_transactions
+
+Append-only audit of every stock move. Reasons: `ship` (auto-deduct on order shipped), `unship` (restore on un-ship), `adjust` (manual grid save), `sync` (Excel paste-sync), `seed` (startup import). Idempotency guard: a quote's ship deduction only applies when its net `ship`/`unship` delta is 0.
+
+| Column          | Type        | Notes                                          |
+|-----------------|-------------|-------------------------------------------------|
+| `id`            | SERIAL PK   |                                                 |
+| `code`          | TEXT        | Component code                                  |
+| `delta`         | INTEGER     | Signed stock change                             |
+| `on_hand_after` | INTEGER     | Resulting level (history reads without replay)  |
+| `reason`        | TEXT        | `ship` / `unship` / `adjust` / `sync` / `seed`  |
+| `quote_number`  | TEXT        | Set for ship/unship (links to the order's PL)   |
+| `rep`           | TEXT        | Who                                             |
+| `note`          | TEXT        |                                                 |
+| `created_at`    | TIMESTAMPTZ |                                                 |
+
+**Indexes:** `(code, created_at DESC)`, `quote_number`, `created_at DESC`.
 
 ---
 

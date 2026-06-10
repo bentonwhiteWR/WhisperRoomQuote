@@ -8,7 +8,8 @@
       "variants": "S (single-wall) and E (double-wall) each carry their own wallThickness + interior dims. SNV→S, ENV→E.",
       "door": "wall = which side holds the door (S = front). swing = door-leaf opening width in inches; the door opens OUTWARD.",
       "walls": "Keyed N(back/vent) S(front/door) E(right) W(left). Each slot: id, size(in, sums to that wall interior span), kind(SOLID/VNT/DRFRM/WDO), prefers(placement preference)."
-    }
+    },
+    "_small_walls": "Production rule (Benton 2026-06-09): on walls built from two or more module sections plus a small filler wall (96/102 series, 84102, 10284), the small section ALWAYS sits between the module sections — never on the end. On the 102-series 102-inch walls the small is the 16-inch wall (C10 STDWL16); on the 96-series it is the 22-inch wall."
   },
   "layouts": {
     "MDL 4230": {
@@ -1416,7 +1417,7 @@
             },
             {
               "id": "E1",
-              "size": 40,
+              "size": 16,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -1424,7 +1425,7 @@
             },
             {
               "id": "E2",
-              "size": 20,
+              "size": 40,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -1445,7 +1446,7 @@
             },
             {
               "id": "W1",
-              "size": 40,
+              "size": 16,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -1453,7 +1454,7 @@
             },
             {
               "id": "W2",
-              "size": 20,
+              "size": 40,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -1504,18 +1505,18 @@
             },
             {
               "id": "N1",
-              "size": 40,
-              "kind": "VNT",
+              "size": 16,
+              "kind": "SOLID",
               "prefers": [
-                "VNT"
+                "SOLID"
               ]
             },
             {
               "id": "N2",
-              "size": 20,
-              "kind": "SOLID",
+              "size": 40,
+              "kind": "VNT",
               "prefers": [
-                "SOLID"
+                "VNT"
               ]
             }
           ]
@@ -1533,18 +1534,18 @@
             },
             {
               "id": "S1",
-              "size": 40,
-              "kind": "DRFRM",
+              "size": 16,
+              "kind": "SOLID",
               "prefers": [
-                "DRFRM"
+                "SOLID"
               ]
             },
             {
               "id": "S2",
-              "size": 20,
-              "kind": "SOLID",
+              "size": 40,
+              "kind": "DRFRM",
               "prefers": [
-                "SOLID"
+                "DRFRM"
               ]
             }
           ]
@@ -1764,18 +1765,18 @@
             },
             {
               "id": "N1",
-              "size": 46,
-              "kind": "VNT",
+              "size": 22,
+              "kind": "SOLID",
               "prefers": [
-                "VNT"
+                "SOLID"
               ]
             },
             {
               "id": "N2",
-              "size": 26,
-              "kind": "SOLID",
+              "size": 46,
+              "kind": "VNT",
               "prefers": [
-                "SOLID"
+                "VNT"
               ]
             }
           ]
@@ -1793,7 +1794,7 @@
             },
             {
               "id": "S1",
-              "size": 46,
+              "size": 22,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -1801,7 +1802,7 @@
             },
             {
               "id": "S2",
-              "size": 26,
+              "size": 46,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2032,18 +2033,18 @@
             },
             {
               "id": "N2",
-              "size": 46,
-              "kind": "SOLID",
-              "prefers": [
-                "SOLID"
-              ]
-            },
-            {
-              "id": "N3",
               "size": 28,
               "kind": "VNT",
               "prefers": [
                 "VNT"
+              ]
+            },
+            {
+              "id": "N3",
+              "size": 46,
+              "kind": "SOLID",
+              "prefers": [
+                "SOLID"
               ]
             }
           ]
@@ -2069,7 +2070,7 @@
             },
             {
               "id": "S2",
-              "size": 46,
+              "size": 28,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2077,7 +2078,7 @@
             },
             {
               "id": "S3",
-              "size": 28,
+              "size": 46,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2316,18 +2317,18 @@
             },
             {
               "id": "N1",
-              "size": 40,
-              "kind": "VNT",
+              "size": 16,
+              "kind": "SOLID",
               "prefers": [
-                "VNT"
+                "SOLID"
               ]
             },
             {
               "id": "N2",
-              "size": 20,
-              "kind": "SOLID",
+              "size": 40,
+              "kind": "VNT",
               "prefers": [
-                "SOLID"
+                "VNT"
               ]
             }
           ]
@@ -2345,7 +2346,7 @@
             },
             {
               "id": "S1",
-              "size": 40,
+              "size": 16,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2353,7 +2354,7 @@
             },
             {
               "id": "S2",
-              "size": 20,
+              "size": 40,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2374,7 +2375,7 @@
             },
             {
               "id": "E1",
-              "size": 40,
+              "size": 16,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2382,7 +2383,7 @@
             },
             {
               "id": "E2",
-              "size": 20,
+              "size": 40,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2403,7 +2404,7 @@
             },
             {
               "id": "W1",
-              "size": 40,
+              "size": 16,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2411,7 +2412,7 @@
             },
             {
               "id": "W2",
-              "size": 20,
+              "size": 40,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2520,7 +2521,7 @@
             },
             {
               "id": "E1",
-              "size": 40,
+              "size": 16,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2528,7 +2529,7 @@
             },
             {
               "id": "E2",
-              "size": 20,
+              "size": 40,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2549,7 +2550,7 @@
             },
             {
               "id": "W1",
-              "size": 40,
+              "size": 16,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2557,7 +2558,7 @@
             },
             {
               "id": "W2",
-              "size": 20,
+              "size": 40,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2616,18 +2617,18 @@
             },
             {
               "id": "N2",
-              "size": 40,
-              "kind": "VNT",
-              "prefers": [
-                "VNT"
-              ]
-            },
-            {
-              "id": "N3",
               "size": 22,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
+              ]
+            },
+            {
+              "id": "N3",
+              "size": 40,
+              "kind": "VNT",
+              "prefers": [
+                "VNT"
               ]
             }
           ]
@@ -2653,7 +2654,7 @@
             },
             {
               "id": "S2",
-              "size": 40,
+              "size": 22,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2661,7 +2662,7 @@
             },
             {
               "id": "S3",
-              "size": 22,
+              "size": 40,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2682,7 +2683,7 @@
             },
             {
               "id": "E1",
-              "size": 40,
+              "size": 16,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2690,7 +2691,7 @@
             },
             {
               "id": "E2",
-              "size": 20,
+              "size": 40,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2711,7 +2712,7 @@
             },
             {
               "id": "W1",
-              "size": 40,
+              "size": 16,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2719,7 +2720,7 @@
             },
             {
               "id": "W2",
-              "size": 20,
+              "size": 40,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2844,7 +2845,7 @@
             },
             {
               "id": "E1",
-              "size": 40,
+              "size": 16,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2852,7 +2853,7 @@
             },
             {
               "id": "E2",
-              "size": 20,
+              "size": 40,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2873,7 +2874,7 @@
             },
             {
               "id": "W1",
-              "size": 40,
+              "size": 16,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2881,7 +2882,7 @@
             },
             {
               "id": "W2",
-              "size": 20,
+              "size": 40,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -2940,10 +2941,10 @@
             },
             {
               "id": "N2",
-              "size": 40,
-              "kind": "VNT",
+              "size": 24,
+              "kind": "SOLID",
               "prefers": [
-                "VNT"
+                "SOLID"
               ]
             },
             {
@@ -2956,10 +2957,10 @@
             },
             {
               "id": "N4",
-              "size": 24,
-              "kind": "SOLID",
+              "size": 40,
+              "kind": "VNT",
               "prefers": [
-                "SOLID"
+                "VNT"
               ]
             }
           ]
@@ -2985,7 +2986,7 @@
             },
             {
               "id": "S2",
-              "size": 40,
+              "size": 24,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -3001,7 +3002,7 @@
             },
             {
               "id": "S4",
-              "size": 24,
+              "size": 40,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -3022,7 +3023,7 @@
             },
             {
               "id": "E1",
-              "size": 40,
+              "size": 16,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -3030,7 +3031,7 @@
             },
             {
               "id": "E2",
-              "size": 20,
+              "size": 40,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -3051,7 +3052,7 @@
             },
             {
               "id": "W1",
-              "size": 40,
+              "size": 16,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"
@@ -3059,7 +3060,7 @@
             },
             {
               "id": "W2",
-              "size": 20,
+              "size": 40,
               "kind": "SOLID",
               "prefers": [
                 "SOLID"

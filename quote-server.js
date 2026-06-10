@@ -249,6 +249,10 @@ const assemblyManual = require('./lib/assembly-manual');
 const packingList = require('./lib/packing-list');
 packingList.init();
 
+// Inventory (PL migration Phase 2) — on-hand per component + audited stock
+// moves. init({ getDb, writelog }) below with the other db-dependent libs.
+const inventory = require('./lib/inventory');
+
 const stripeLib = require('./lib/stripe');
 // stripeLib.init(...) called below alongside the other httpsRequest-dependent libs
 
@@ -416,6 +420,68 @@ async function nextVendorPoNumber() {
   return prefix + String(last + 1).padStart(2, '0');
 }
 
+// ── Packing-list generation for a saved quote ──────────────────────
+// Shared by GET /api/packing-list AND the inventory ship hook / open-order
+// demand math, so the deducted BOM is byte-identical to the PL the crew
+// packs from. Hinge / foam / WA-type precedence: query override (test) →
+// the ORDER's live value (Orders drawer) → customer-accepted quote value →
+// rep preference → generator DEFAULTS. Returns null when the quote has no
+// snapshot (e.g. HS- pseudo orders from legacy HubSpot imports).
+const normalizePlHinge = s => {
+  const v = String(s || '').trim();
+  if (/^left/i.test(v))  return 'Left';
+  if (/^right/i.test(v)) return 'Right';
+  return undefined;
+};
+const normalizePlFoam = s => {
+  const v = String(s || '').trim();
+  return ['Gray','Blue','Purple','Orange','Burgundy'].includes(v) ? v : undefined;
+};
+const validPlWa = w => /^(4016|4040|4622|4646)$/.test(String(w || '').trim()) ? String(w).trim() : undefined;
+async function generatePLForQuote(quoteNumber, q = {}) {
+  if (!db) return null;
+  const r = await db.query(
+    'SELECT json_snapshot, deal_name, created_at FROM quotes WHERE quote_number = $1', [quoteNumber]);
+  const snap = r.rows[0]?.json_snapshot || null;
+  if (!snap) return null;
+  let orderData = {};
+  const o = await db.query('SELECT order_data FROM orders WHERE quote_number = $1', [quoteNumber]);
+  if (o.rows[0]) orderData = o.rows[0].order_data || {};
+  const queryHinge = q.hinge && /^(Left|Right)$/i.test(q.hinge) ? q.hinge : undefined;
+  const opts = {
+    hinge: queryHinge || normalizePlHinge(orderData.hingePreference) || normalizePlHinge(snap.acceptedHinge) || normalizePlHinge(snap.repHingePreference),
+    foam:  q.foam || normalizePlFoam(orderData.foamColor) || normalizePlFoam(snap.acceptedFoam) || normalizePlFoam(snap.repFoamColor),
+    adaWaType: validPlWa(q.wa) || validPlWa(orderData.waType) || validPlWa(snap.repWaType),
+  };
+  const pl = packingList.generate(snap.lineItems || [], opts);
+  return { snap, dealName: r.rows[0].deal_name, createdAt: r.rows[0].created_at, orderData, opts, pl };
+}
+
+// Open-order demand: Σ generated-PL components across every UNSHIPPED order
+// (replaces the Excel Aggregate/NEEDED FOR ORDERS COUNTIF columns). Cached
+// 5 min — each entry is an in-memory generate() over the saved snapshot.
+let _invDemandCache = { at: 0, byCode: {}, orders: 0 };
+async function openOrderDemand(force = false) {
+  if (!db) return _invDemandCache;
+  if (!force && Date.now() - _invDemandCache.at < 5 * 60 * 1000) return _invDemandCache;
+  const r = await db.query(`SELECT quote_number, order_data FROM orders`);
+  const byCode = {};
+  let counted = 0;
+  for (const row of r.rows) {
+    const od = row.order_data || {};
+    if (od.shipped?.tracking) continue;                  // shipped — no longer demand
+    if (String(row.quote_number).startsWith('HS-')) continue; // legacy import, no snapshot
+    try {
+      const gen = await generatePLForQuote(row.quote_number);
+      if (!gen) continue;
+      counted++;
+      for (const l of inventory.linesFromPl(gen.pl)) byCode[l.code] = (byCode[l.code] || 0) + l.qty;
+    } catch (e) { /* bad/legacy snapshot — skip from demand */ }
+  }
+  _invDemandCache = { at: Date.now(), byCode, orders: counted };
+  return _invDemandCache;
+}
+
 // Wire up HubSpot module now that httpsRequest is defined
 hubspot.init({ httpsRequest });
 gdrive.init({ httpsRequest, getDb: () => db, writelog });
@@ -424,12 +490,21 @@ taxjar.init({ httpsRequest, NEXUS_STATES, toStateAbbr, zipToState });
 notify.init({ getDb: () => db });
 freight.init({ httpsRequest, getDb: () => db, writelog, puppeteer, withBrowser: pdf.withBrowser });
 stripeLib.init({ httpsRequest, writelog, getDb: () => db });
+inventory.init({ getDb: () => db, writelog });
 db_mod.init({
   getDb: () => db,
   publicBaseUrl: PUBLIC_BASE_URL,
   onAfterInit: async () => {
     await initTrackingCache();
     startTrackingPoller();
+    // Inventory: one-time seed from the Excel extract when the table is
+    // empty (lib/pl-data/inventory-seed.json — PackingList.xlsm Inventory
+    // sheet). After that, the dashboard's paste-sync is the re-align tool
+    // during the Excel parallel run.
+    try {
+      const seed = JSON.parse(fs.readFileSync(path.join(__dirname, 'lib', 'pl-data', 'inventory-seed.json'), 'utf8'));
+      if (await inventory.seedIfEmpty(seed)) console.log(`[inventory] seeded ${seed.rows.length} components from Excel extract`);
+    } catch (e) { console.warn('[inventory] seed check failed:', e.message); }
     // First payments sync runs after a short delay so we don't hammer
     // HubSpot during startup. Then every 5 min thereafter (each poll is ~1
     // search call + an invoice→deal lookup per changed payment — cheap).
@@ -1593,7 +1668,11 @@ const server = http.createServer(async (req, res) => {
 
   // ── Auth gate ──
   // Public routes — no auth required but rate limited + token validated
-  const isPublicRoute = pathname.startsWith('/q/') || pathname.startsWith('/i/') || pathname.startsWith('/o/') || pathname.startsWith('/po/') || pathname.startsWith('/vpo/') || pathname.startsWith('/portal/') || pathname.startsWith('/api/portal/') || pathname === '/api/accept-quote' || pathname === '/api/update-specs' || pathname === '/api/stripe/webhook';
+  const isPublicRoute = pathname.startsWith('/q/') || pathname.startsWith('/i/') || pathname.startsWith('/o/') || pathname.startsWith('/po/') || pathname.startsWith('/vpo/') || pathname.startsWith('/portal/') || pathname.startsWith('/api/portal/') || pathname === '/api/accept-quote' || pathname === '/api/update-specs' || pathname === '/api/stripe/webhook'
+    // Booth Builder is customer-facing: the page, its layout geometry (all
+    // published spec-sheet data), the shared renderer it loads, and the
+    // quote-request lead endpoint. Reps send /booth-builder links to prospects.
+    || pathname === '/booth-builder' || pathname === '/api/booth-layouts' || pathname === '/api/booth-request' || pathname === '/assets/layout-render.js';
   if (isPublicRoute) {
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
     if (!checkRateLimit(ip, 30, 60000)) {
@@ -1664,6 +1743,17 @@ const server = http.createServer(async (req, res) => {
 
   // Shared Truckload calculator — included by orders-dashboard (subtab) and
   // quote-builder (popup). Served from disk; no re-deploy on UI tweaks.
+  if (pathname === '/assets/layout-render.js') {
+    try {
+      const buf = require('fs').readFileSync(require('path').join(__dirname, 'assets', 'layout-render.js'));
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(buf);
+    } catch(e) {
+      res.writeHead(404); res.end('layout-render.js missing');
+    }
+    return;
+  }
+
   if (pathname === '/assets/truckload-calc.js') {
     try {
       const buf = require('fs').readFileSync(require('path').join(__dirname, 'assets', 'truckload-calc.js'));
@@ -7961,9 +8051,33 @@ ${q.accepted ? `
       // Seed tracking cache immediately so shipping board shows status on next load
       fetchAndCacheTracking(tracking, carrier).catch(e => console.warn('[ship-deal] cache seed failed:', e.message));
 
+      // Inventory hook: same as ship-hubspot-deal — deduct the deal's saved
+      // quote PL if one exists, under the real quote number (idempotent).
+      if (db) {
+        try {
+          const q = await db.query(
+            `SELECT quote_number FROM quotes WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 1`,
+            [String(dealId)]);
+          const qn = q.rows[0]?.quote_number;
+          const gen = qn ? await generatePLForQuote(qn) : null;
+          if (gen) {
+            await inventory.deductForOrder(qn, inventory.linesFromPl(gen.pl), getRepFromReq(req) || null);
+            _invDemandCache.at = 0;
+          } else {
+            writelog('warn', 'inventory.ship.skip', `no quote found for HS deal ${dealId} — inventory NOT deducted`, { dealId: String(dealId) });
+          }
+        } catch (e) {
+          writelog('error', 'inventory.ship', `inventory deduct failed for HS deal ${dealId}: ${e.message}`, { dealId: String(dealId) });
+        }
+      }
+
       json({ success: true });
-    writelog('error','error.ship-deal',`ship-deal failed: ${e.message}`,{ rep: getRepFromReq(req) });
-    } catch(e) { json({ error: e.message }, 500); }
+    } catch(e) {
+      // (was a stray writelog above the catch referencing `e` out of scope —
+      // it threw on every SUCCESSFUL ship; moved here where it belongs)
+      writelog('error','error.ship-deal',`ship-deal failed: ${e.message}`,{ rep: getRepFromReq(req) });
+      json({ error: e.message }, 500);
+    }
     return;
   }
 
@@ -10679,12 +10793,225 @@ ${q.accepted ? `
     return;
   }
 
+  // ── /inventory — component inventory dashboard (PL migration Phase 2) ──
+  // Replaces the Excel Inventory sheet: on-hand grid + manual adjust/save,
+  // open-order demand, ship deductions (automatic, see the order PATCH hook),
+  // append-only audit, Excel paste-sync for the parallel run.
+  if (pathname === '/inventory' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(fs.readFileSync(path.join(__dirname, 'inventory-dashboard.html'), 'utf8'));
+    return;
+  }
+
+  // GET /api/inventory → grid rows + open-order demand (?refresh=1 busts the 5-min demand cache)
+  if (pathname === '/api/inventory' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const rows = await inventory.getGrid();
+      const demand = await openOrderDemand(parsed.query.refresh === '1');
+      json({ rows, demand: demand.byCode, openOrders: demand.orders, demandAt: demand.at });
+    } catch (e) {
+      writelog('error', 'inventory.api', `grid load failed: ${e.message}`, {});
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // POST /api/inventory/save — manual grid edits. Body: { changes: [{code,
+  // name?, on_hand?, build_point?, build_qty?, finished_qty?, in_process_qty?}] }
+  // — only CHANGED rows/fields, on_hand diffs written as audited 'adjust'
+  // transactions (the Excel "Save" button, minus the whole-sheet CSV clobber).
+  if (pathname === '/api/inventory/save' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const body = JSON.parse(await readBody(req));
+      const result = await inventory.applyChanges(body.changes || [], {
+        reason: 'adjust', rep: getRepFromReq(req, body) || body.repName || null,
+      });
+      _invDemandCache.at = 0;
+      json({ success: true, ...result });
+    } catch (e) {
+      writelog('error', 'inventory.api', `save failed: ${e.message}`, { rep: getRepFromReq(req) });
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // POST /api/inventory/sync — Excel paste-sync for the parallel run. Body:
+  // { tsv } = the Inventory sheet copied as columns B:K from row 8 down
+  // (B build qty | C name | D code | E build point | G finished | I in-process
+  // | K on-hand). Re-aligns on-hand to Excel as audited 'sync' transactions.
+  if (pathname === '/api/inventory/sync' && req.method === 'POST') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const body = JSON.parse(await readBody(req));
+      const lines = String(body.tsv || '').split(/\r?\n/);
+      // Same fixups as the seed extractor: the sheet reuses K08/K09/K113 for
+      // the EXT half-wall rows (true codes K11/K12/K121 per components
+      // master), and duplicate codes keep the FIRST row (matches the Excel
+      // macro behavior — Subtract only ever hit the first match).
+      const EXT_REMAP = { K08: 'K11', K09: 'K12', K113: 'K121' };
+      const seen = new Set();
+      const changes = [];
+      const skipped = [];
+      for (const ln of lines) {
+        const c = ln.split('\t');
+        if (c.length < 10) { if (ln.trim()) skipped.push(ln.slice(0, 40)); continue; }
+        let code = String(c[2] || '').trim();
+        const name = String(c[1] || '').trim();
+        if (!code) continue;
+        if (EXT_REMAP[code] && /EXT/i.test(name)) code = EXT_REMAP[code];
+        if (seen.has(code)) { skipped.push(`${code} (duplicate)`); continue; }
+        const onHand = parseInt(String(c[9]).trim(), 10);
+        if (Number.isNaN(onHand)) { skipped.push(`${code} (on-hand not a number: "${c[9]}")`); continue; }
+        seen.add(code);
+        const intOrNull = v => { const n = parseInt(String(v ?? '').trim(), 10); return Number.isNaN(n) ? null : n; };
+        const bp = String(c[3] || '').trim();
+        changes.push({
+          code, name, on_hand: onHand,
+          build_point: bp || null,
+          build_qty: intOrNull(c[0]),
+          finished_qty: intOrNull(c[5]),
+          in_process_qty: intOrNull(c[7]),
+        });
+      }
+      const rep = getRepFromReq(req, body) || body.repName || null;
+      const result = await inventory.applyChanges(changes, { reason: 'sync', rep, note: 'Excel paste-sync' });
+      _invDemandCache.at = 0;
+      writelog('info', 'inventory.sync', `Excel paste-sync: ${changes.length} rows parsed, ${result.adjusted} on-hand changes, ${result.created} new codes`, { rep, meta: { skipped: skipped.slice(0, 20) } });
+      json({ success: true, parsed: changes.length, skipped, ...result });
+    } catch (e) {
+      writelog('error', 'inventory.api', `sync failed: ${e.message}`, { rep: getRepFromReq(req) });
+      json({ error: e.message }, 500);
+    }
+    return;
+  }
+
+  // GET /api/inventory/transactions?code=&quote=&limit= — the audit trail
+  if (pathname === '/api/inventory/transactions' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const txns = await inventory.getTransactions({
+        code: parsed.query.code || undefined,
+        quoteNumber: parsed.query.quote || undefined,
+        limit: parsed.query.limit || 200,
+      });
+      json({ txns });
+    } catch (e) { json({ error: e.message }, 500); }
+    return;
+  }
+
   // ── /weights — hidden MDL weight reconciliation tool (auth-only, no nav link) ──
   // Reference + QB reconciliation: per-MDL net (from PL BOM) vs gross vs HubSpot price book.
   if (pathname === '/weights' && req.method === 'GET') {
     if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(fs.readFileSync(path.join(__dirname, 'weights-dashboard.html'), 'utf8'));
+    return;
+  }
+
+  // ── /booth-builder — standalone "Design Your Booth" tool (PUBLIC) ──
+  // Customer-friendly configurator over the shared layout renderer: pick a
+  // model, drag panels, toggle options, then request a quote (lead capture).
+  // Public so reps can send the link to prospects; the auth-gate rate limit
+  // applies. Logged-in reps get the internal navbar via the BB_AUTHED flag.
+  if (pathname === '/booth-builder' && req.method === 'GET') {
+    let html = fs.readFileSync(path.join(__dirname, 'booth-builder.html'), 'utf8');
+    if (isAuth(req)) html = html.replace('window.BB_AUTHED=0', 'window.BB_AUTHED=1');
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+    return;
+  }
+
+  // ── API: booth layout geometry for the Booth Builder (PUBLIC) ──
+  // GET /api/booth-layouts → { layouts } straight from lib/pl-data/booth-layouts.json.
+  // Geometry only — digitized from the published spec-sheet PDFs; no pricing,
+  // no SKUs beyond pack names that already appear on customer packing lists.
+  if (pathname === '/api/booth-layouts' && req.method === 'GET') {
+    try {
+      const raw = fs.readFileSync(path.join(__dirname, 'lib', 'pl-data', 'booth-layouts.json'), 'utf8');
+      json({ layouts: JSON.parse(raw).layouts });
+    } catch (e) {
+      json({ error: 'booth-layouts unavailable: ' + e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Booth Builder quote request — PUBLIC lead capture ──
+  // POST /api/booth-request { name, email, phone, company, note, design, summary, website }
+  // A prospect designed a booth on /booth-builder and wants pricing. Defenses
+  // on top of the public-route gate: a strict per-IP limit, a honeypot field
+  // ("website" — humans never see it), length caps + charset checks, and the
+  // share link is re-encoded server-side from the validated design (a client
+  // can't plant an arbitrary URL in the rep's notification). Lands as a bell
+  // notification + an admin-log row; no CRM write until a rep picks it up.
+  if (pathname === '/api/booth-request' && req.method === 'POST') {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+    if (!checkRateLimit('boothreq_' + ip, 5, 600000)) {
+      json({ error: 'Too many requests — please wait a few minutes and try again.' }, 429); return;
+    }
+    try {
+      const body = JSON.parse(await readBody(req));
+      if (String(body.website || '').trim()) {           // honeypot: drop silently
+        writelog('warn', 'booth-request.honeypot', `dropped bot submission from ${ip}`);
+        json({ success: true }); return;
+      }
+      const clean = (v, max) => String(v == null ? '' : v).replace(/[<>]/g, '').replace(/[\u0000-\u001f]+/g, ' ').trim().slice(0, max);
+      const name    = clean(body.name, 100);
+      const email   = clean(body.email, 200);
+      const phone   = clean(body.phone, 50);
+      const company = clean(body.company, 120);
+      const note    = clean(body.note, 600);
+      if (!name) { json({ error: 'Please tell us your name.' }, 400); return; }
+      if (!/^\S+@\S+\.\S+$/.test(email)) { json({ error: 'Please enter a valid email address.' }, 400); return; }
+
+      const layouts = JSON.parse(fs.readFileSync(path.join(__dirname, 'lib', 'pl-data', 'booth-layouts.json'), 'utf8')).layouts;
+      const d = body.design || {};
+      if (!layouts[d.m]) { json({ error: 'Unknown booth model.' }, 400); return; }
+      // Rebuild the design from validated fields only (shape = the page's
+      // #d= hash payload), then re-encode the share link ourselves.
+      const safe = {
+        m: d.m,
+        v: d.v === 'E' ? 'E' : 'S',
+        h: d.h === 'L' ? 'L' : 'R',
+        f: ['Gray', 'Orange', 'Blue', 'Purple', 'Burgundy'].includes(d.f) ? d.f : 'Gray',
+        w: [30, 36, 42, 48].includes(+d.w) ? +d.w : 0,
+        wd: d.wd ? 1 : 0, hx: d.hx ? 1 : 0, cs: d.cs ? 1 : 0,
+        fc: ['N', 'S', 'E', 'W'].includes(d.fc) ? d.fc : 'S',
+        a: {},
+      };
+      if (d.a && typeof d.a === 'object') {
+        for (const k of Object.keys(d.a).slice(0, 24)) {
+          const v = d.a[k];
+          if (/^[NSEW]\d{1,2}$/.test(k) && typeof v === 'string' && v.length <= 40 && /^[A-Za-z0-9 \/.-]*$/.test(v)) safe.a[k] = v;
+        }
+      }
+      const link = `${PUBLIC_BASE_URL}/booth-builder#d=${Buffer.from(JSON.stringify(safe)).toString('base64url')}`;
+
+      const summary = (Array.isArray(body.summary) ? body.summary : []).map(s => clean(s, 200)).filter(Boolean).slice(0, 12);
+      const mdl = `${safe.m} ${safe.v}`;
+      const noteBody = [
+        [email, phone, company].filter(Boolean).join(' · '),
+        '',
+        ...summary.map(s => '• ' + s),
+        note ? `\nNote: "${note}"` : '',
+        '',
+        `Open the design: ${link}`,
+      ].filter(s => s !== null).join('\n');
+
+      // Who gets the bell: Benton owns the Booth Builder initiative — widen
+      // to the sales team when this goes to prod.
+      const BOOTH_REQUEST_OWNERS = ['36303670'];
+      for (const ownerId of BOOTH_REQUEST_OWNERS) {
+        await createNotification(ownerId, 'booth-request', `🏗 Booth quote request — ${name}`, noteBody, {});
+      }
+      writelog('info', 'booth-request', `${name} <${email}>${company ? ' (' + company + ')' : ''} — ${mdl}`);
+      json({ success: true });
+    } catch (e) {
+      writelog('error', 'error.booth-request', e.message);
+      json({ error: 'Something went wrong on our end — please try again.' }, 500);
+    }
     return;
   }
 
@@ -10714,44 +11041,15 @@ ${q.accepted ? `
     try {
       const quoteNumber = decodeURIComponent(pathname.replace('/api/packing-list/', '').replace(/\/+$/, ''));
       if (!quoteNumber) { json({ error: 'Quote number required' }, 400); return; }
-      let snap = null, dealName = null, createdAt = null;
-      let orderData = {};
-      if (db) {
-        const r = await db.query(
-          'SELECT json_snapshot, deal_name, created_at FROM quotes WHERE quote_number = $1', [quoteNumber]);
-        if (r.rows[0]) { snap = r.rows[0].json_snapshot || null; dealName = r.rows[0].deal_name; createdAt = r.rows[0].created_at; }
-        // Once a quote becomes an order, its order_data holds the LIVE foam /
-        // hinge / WA-type the rep set in the Orders drawer (PATCH /api/orders/:q).
-        // Those are the current truth and win over the quote snapshot for the PL.
-        const o = await db.query('SELECT order_data FROM orders WHERE quote_number = $1', [quoteNumber]);
-        if (o.rows[0]) orderData = o.rows[0].order_data || {};
-      }
-      if (!snap) { json({ error: 'Quote not found: ' + quoteNumber }, 404); return; }
+      // Snapshot load + the hinge/foam/WA-type precedence chain + generate()
+      // all live in the shared generatePLForQuote() helper (also used by the
+      // inventory ship-deduction hook and the open-order demand math, so the
+      // deducted BOM always matches this page). ?hinge=/?foam=/?wa= stay
+      // supported as test overrides via the query passthrough.
+      const gen = await generatePLForQuote(quoteNumber, parsed.query);
+      if (!gen) { json({ error: 'Quote not found: ' + quoteNumber }, 404); return; }
+      const { snap, dealName, createdAt, orderData, pl } = gen;
       const lineItems = snap.lineItems || [];
-      // Hinge / foam / WA-type precedence: URL query (test override) → the
-      // ORDER's live value (Orders drawer) → the customer-accepted quote value →
-      // the rep preference → the DEFAULTS in lib/packing-list.js. Quote stores
-      // "Left Hand"/"Right Hand"/"Undecided"; the generator expects "Left"/"Right".
-      const normalizeHinge = s => {
-        const v = String(s || '').trim();
-        if (/^left/i.test(v))  return 'Left';
-        if (/^right/i.test(v)) return 'Right';
-        return undefined;
-      };
-      const normalizeFoam = s => {
-        const v = String(s || '').trim();
-        return ['Gray','Blue','Purple','Orange','Burgundy'].includes(v) ? v : undefined;
-      };
-      const queryHinge = parsed.query.hinge && /^(Left|Right)$/i.test(parsed.query.hinge) ? parsed.query.hinge : undefined;
-      // ADA WA Type comes from the quote's repWaType (4016/4040/4622/4646); picks
-      // the WA-Type variant for dual-option ADA booths. ?wa= is a test override.
-      const validWa = w => /^(4016|4040|4622|4646)$/.test(String(w || '').trim()) ? String(w).trim() : undefined;
-      const opts = {
-        hinge: queryHinge || normalizeHinge(orderData.hingePreference) || normalizeHinge(snap.acceptedHinge) || normalizeHinge(snap.repHingePreference),
-        foam:  parsed.query.foam || normalizeFoam(orderData.foamColor) || normalizeFoam(snap.acceptedFoam) || normalizeFoam(snap.repFoamColor),
-        adaWaType: validWa(parsed.query.wa) || validWa(orderData.waType) || validWa(snap.repWaType),
-      };
-      const pl = packingList.generate(lineItems, opts);
       const customer = snap.customer || {};
       // Pallet count for the label generator: Σ PALLETS_PER_MDL[booth] × room qty
       // (NV variants inherit their S/E count, same as the /weights tool).
@@ -10774,15 +11072,10 @@ ${q.accepted ? `
       // Serial numbers live on the order (order_data.serialNumber) — return them so
       // the PL viewer can seed per-booth S/N (booth ri ↔ line ri) and stay two-way
       // with the Orders drawer. Empty for a quote that isn't an order yet.
-      let serialNumber = '';
-      let jambSide = [];   // per-booth 4016 jamb-adapter side ('R' Z20 / 'L' Z21)
-      try {
-        const or = await db.query('SELECT order_data FROM orders WHERE quote_number = $1', [quoteNumber]);
-        if (or.rows[0] && or.rows[0].order_data) {
-          serialNumber = or.rows[0].order_data.serialNumber || '';
-          jambSide = Array.isArray(or.rows[0].order_data.jambSide) ? or.rows[0].order_data.jambSide : [];
-        }
-      } catch (e) { /* no order row yet */ }
+      // (orderData already loaded by generatePLForQuote — empty {} when the
+      // quote isn't an order yet.)
+      const serialNumber = orderData.serialNumber || '';
+      const jambSide = Array.isArray(orderData.jambSide) ? orderData.jambSide : [];   // per-booth 4016 jamb-adapter side ('R' Z20 / 'L' Z21)
       // Weight cross-check: the quote's total weight (catalog / price-book — an
       // INDEPENDENT source) vs the PL's GROSS (summed BOM net + pallets × 144).
       // They reconcile for the base models now; a gap points at an unmapped or
@@ -11260,6 +11553,27 @@ ${q.accepted ? `
               deal_id    = EXCLUDED.deal_id
           `, [pseudoQuoteNum, dealId, JSON.stringify(orderData)]);
         } catch(e) { console.warn('DB order create failed:', e.message); }
+
+        // Inventory hook: this path ships deals that never went through
+        // Process Order. If the deal has a saved quote, deduct that quote's
+        // generated PL — recorded under the REAL quote number so the
+        // per-quote idempotency guard also catches a later Ship It on the
+        // same quote. No quote → loud skip (visible in /admin-log).
+        try {
+          const q = await db.query(
+            `SELECT quote_number FROM quotes WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 1`,
+            [String(dealId)]);
+          const qn = q.rows[0]?.quote_number;
+          const gen = qn ? await generatePLForQuote(qn) : null;
+          if (gen) {
+            await inventory.deductForOrder(qn, inventory.linesFromPl(gen.pl), repName || null);
+            _invDemandCache.at = 0;
+          } else {
+            writelog('warn', 'inventory.ship.skip', `no quote found for HS deal ${dealId} (${dealName || '—'}) — inventory NOT deducted`, { dealId: String(dealId), rep: repName || null });
+          }
+        } catch (e) {
+          writelog('error', 'inventory.ship', `inventory deduct failed for HS deal ${dealId}: ${e.message}`, { dealId: String(dealId) });
+        }
       }
 
       // 3. Seed tracking cache immediately so shipping board shows status on next load
@@ -14468,6 +14782,30 @@ ${q.accepted ? `
         'UPDATE orders SET order_data = $1 WHERE quote_number = $2',
         [JSON.stringify(updatedOrderData), quoteNumber]
       );
+
+      // 3.5 Inventory hook (PL migration Phase 3 — the Excel UpdateOrder →
+      // Subtract/Add macros). Ship It deducts the generated PL from on-hand;
+      // un-shipping restores EXACTLY what was deducted (from the audit rows,
+      // not a re-generate). Idempotent per quote — a re-save of a shipped
+      // order can't double-deduct. Failures log loudly but never block the
+      // ship itself.
+      if (isNowShipped !== wasShipped) {
+        try {
+          if (isNowShipped) {
+            const gen = await generatePLForQuote(quoteNumber);
+            if (gen) {
+              await inventory.deductForOrder(quoteNumber, inventory.linesFromPl(gen.pl), repName || null);
+            } else {
+              writelog('warn', 'inventory.ship.skip', `no quote snapshot for ${quoteNumber} — inventory NOT deducted`, { quoteNum: quoteNumber, rep: repName || null });
+            }
+          } else {
+            await inventory.restoreForOrder(quoteNumber, repName || null);
+          }
+          _invDemandCache.at = 0; // open-order demand changed — drop the cache
+        } catch (e) {
+          writelog('error', 'inventory.ship', `inventory ${isNowShipped ? 'deduct' : 'restore'} failed for ${quoteNumber}: ${e.message}`, { quoteNum: quoteNumber, rep: repName || null });
+        }
+      }
 
       // 4. Update customer in quote snapshot
       if (customer) {

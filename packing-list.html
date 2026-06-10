@@ -106,6 +106,11 @@
   .ld-ghost.bad{border-color:#dc2626}
   .ld-ghost.bad::after{content:'✕ wrong size';color:#f87171;font-weight:600;margin-left:2px}
   .ld-ghost .c{color:#ee6216;font-family:ui-monospace,Menlo,monospace}
+  /* Stacked views: top-down first, rotatable elevation below it */
+  .ld-views{display:flex;flex-direction:column;gap:14px}
+  .ld-view-cap{display:flex;align-items:center;justify-content:center;gap:10px;font-size:10px;font-weight:800;letter-spacing:.12em;color:#9097a0;margin:2px 0 4px;min-height:24px}
+  .ld-rot{border:1px solid #d5d8dd;background:#fff;border-radius:6px;width:26px;height:22px;font-size:10px;color:#4a4f57;cursor:pointer;line-height:1;font-family:inherit}
+  .ld-rot:hover{background:#fff4ee;border-color:#ee6216;color:#ee6216}
   @media print{ .ld-hint{display:none} }
 
   /* Add-row footer (no-print) */
@@ -224,9 +229,9 @@
   // long side. Null means "unknown, fall back to slot nominal".
   function panelInteriorWidth(pack) {
     pack = String(pack || '');
-    if (/^WA\s+STDDRFRM/i.test(pack))    return 49;
+    if (/^(FR\s+)?(WA\s+|ADA\s+)?STDDRFRM/i.test(pack)) return 49;   // WA/ADA/FR doorframe walls
     if (/^STDWL\s*7\s*\/\s*WL?16/i.test(pack)) return 7;   // Z02 bundle in the 7" slot
-    const m = pack.match(/^STDWL(\d+)/i);
+    const m = pack.match(/^(?:FR\s+)?STDWL(\d+)/i);
     return m ? parseInt(m[1], 10) : null;
   }
   function effectiveSlotSize(slot, placedLine) {
@@ -246,9 +251,12 @@
   // hangs inside the doorframe slot, so we exclude it.
   function isWallPanel(pack) {
     pack = String(pack || '');
-    if (/STD\s+DOOR/i.test(pack))     return false;   // C113/C115/C14/C15/C16/C17 (the swinging panel)
-    if (/^WA\s+STDDOOR/i.test(pack))  return false;   // Z05/Z06 (WA swinging panel)
-    return /^STDWL\d+/i.test(pack) || /^WA\s+STDDRFRM/i.test(pack);
+    if (/STD\s*DOOR/i.test(pack))            return false;   // C113/C115/Z05/Z06/Z32-33 (the swinging panel)
+    if (/\bIN\s+(STD)?DRFRM/i.test(pack))    return false;   // inner-shell frames (IEP IN DRFRM / ADA IN STDDRFRM)
+    if (/DRFRM\s+ADAPT/i.test(pack))         return false;   // Z25/Z120/Z37/Z38 jamb adapters — hardware, not a wall
+    // exterior door-frame walls: STDWL46 DRFRM R, WA STDDRFRM R, ADA STDDRFRM L, FR variants
+    if (/^(FR\s+)?(WA\s+|ADA\s+)?STDDRFRM/i.test(pack)) return true;
+    return /^(FR\s+)?STDWL\d+/i.test(pack);
   }
 
   // Build a regex matching any of the slot's accepted family prefixes (e.g.
@@ -321,6 +329,14 @@
     WDO:   { label: 'Window',      accent: '#9ec4e6' },
     EMPTY: { label: '',            accent: null },
   };
+  
+  // Inches → feet-and-inches, the way the client proposal drawings dimension
+  // (74 → 6′ 2″, 55.5 → 4′ 7.5″, 11 → 11″). Halves survive.
+  function ftIn(n) {
+    n = Math.round(n * 2) / 2;
+    const f = Math.floor(n / 12), i = Math.round((n - f * 12) * 2) / 2;
+    return f ? (f + '′' + (i ? ' ' + i + '″' : '')) : (i + '″');
+  }
 
   // ── The renderer ──────────────────────────────────────────────────
   function renderLayoutSvg(layout, assign) {
@@ -328,22 +344,39 @@
     const interior = layout.interior || { w: ext.w - 2 * layout.wallThickness, h: ext.h - 2 * layout.wallThickness };
     const PX = Math.max(3, Math.min(600 / ext.w, 470 / ext.h, 11));
     const W = ext.w * PX, H = ext.h * PX, t = layout.wallThickness * PX;
-    const VOUT = 52;        // vent protrusion estimate (px) for margin sizing (boxes scale with panel)
-    const DOORR = 92;       // max door-swing radius (px symbol)
+    const VPROT = 5.5;        // a vent set protrudes 5.5″ beyond its wall (spec)
+    const VOUT = VPROT * PX;  // drawn at TRUE scale so the "w/ vent" dim reads honestly
     // Which walls currently hold a door / vent — computed from the LIVE placement
     // (not hard-coded to S/N), so a dragged door or vent draws its swing/ducts on
-    // whatever wall it now sits on, and the margins expand to fit.
+    // whatever wall it now sits on, and the margins expand to fit. The door is
+    // drawn OPEN at 90° (proposal-drawing style), so its margin is the full open
+    // leaf length — compute it here, at this wall's px scale.
     const sideHasDoor = { N: false, S: false, E: false, W: false };
     const sideHasVent = { N: false, S: false, E: false, W: false };
-    for (const sd of ['N', 'S', 'E', 'W']) for (const slot of ((layout.walls[sd] || { slots: [] }).slots)) {
-      const ln = assign[slot.id]; if (!ln) continue;
-      const k = classifyWall(ln.pack);
-      if (k === 'DRFRM') sideHasDoor[sd] = true;
-      else if (k === 'VNT' && layout.hasVent !== false) sideHasVent[sd] = true;
+    let doorLeafPx = 0;
+    for (const sd of ['N', 'S', 'E', 'W']) {
+      const wallM = layout.walls[sd] || { slots: [] };
+      const horizM = (sd === 'N' || sd === 'S');
+      const spanM = horizM ? (W - 2 * t) : (H - 2 * t);
+      const nomM = wallM.slots.reduce((a, sl) => a + sl.size, 0) || 1;
+      for (const slot of wallM.slots) {
+        const ln = assign[slot.id]; if (!ln) continue;
+        const k = classifyWall(ln.pack);
+        if (k === 'DRFRM') {
+          sideHasDoor[sd] = true;
+          const lenM = slot.size * (spanM / nomM);
+          const swingM = (layout.door && layout.door.swing) || 30;
+          doorLeafPx = Math.max(doorLeafPx, Math.min(swingM * PX, lenM * 0.94));
+        } else if (k === 'VNT' && layout.hasVent !== false) sideHasVent[sd] = true;
+      }
     }
-    const extra = sd => sideHasDoor[sd] ? DOORR + 10 : (sideHasVent[sd] ? VOUT + 18 : 0);
+    const extra = sd => sideHasDoor[sd] ? doorLeafPx + 14 : (sideHasVent[sd] ? VOUT + 18 : 0);
     const BASE = 50;
-    const mTop = BASE + extra('N'), mBottom = BASE + extra('S'), mLeft = BASE + extra('W'), mRight = BASE + extra('E');
+    // extra room for the "w/ vent" overall-dim line: left of the height dim for
+    // a N/S vent, below the width dim for an E/W vent
+    const ventDimL = (sideHasVent.N || sideHasVent.S) ? 28 : 0;
+    const ventDimB = (sideHasVent.E || sideHasVent.W) ? 28 : 0;
+    const mTop = BASE + extra('N'), mBottom = BASE + extra('S') + ventDimB, mLeft = BASE + extra('W') + ventDimL, mRight = BASE + extra('E');
     const x0 = mLeft, y0 = mTop;
     const totalW = W + mLeft + mRight, totalH = H + mTop + mBottom;
   
@@ -353,10 +386,8 @@
     // defs — gradients, shadow, carpet
     s += `<defs>`
       + `<linearGradient id="ldBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef0f3"/><stop offset="1" stop-color="#f8f9fa"/></linearGradient>`
-      + `<linearGradient id="ldWallH" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#23242a"/><stop offset="0.5" stop-color="#34353d"/><stop offset="1" stop-color="#23242a"/></linearGradient>`
-      + `<linearGradient id="ldWallV" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#23242a"/><stop offset="0.5" stop-color="#34353d"/><stop offset="1" stop-color="#23242a"/></linearGradient>`
       + `<pattern id="ldCarpet" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="#6d6d6b"/><rect width="7" height="1" fill="#656563"/><rect width="1" height="7" fill="#757573"/></pattern>`
-      + `<pattern id="ldSeal" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="4" height="4" fill="#484a52"/><circle cx="1" cy="1.5" r="0.6" fill="#32343a"/><circle cx="3" cy="3" r="0.6" fill="#5e616a"/><circle cx="3" cy="0.6" r="0.4" fill="#2c2e33"/></pattern>`
+      + `<pattern id="ldSeal" width="5" height="5" patternUnits="userSpaceOnUse"><rect width="5" height="5" fill="#54575f"/><circle cx="1.2" cy="1.8" r="0.8" fill="#33353b"/><circle cx="3.7" cy="3.7" r="0.8" fill="#7d818b"/><circle cx="3.6" cy="0.9" r="0.6" fill="#2a2c31"/><circle cx="0.8" cy="4.2" r="0.5" fill="#8a8e98"/></pattern>`
       + `<filter id="ldShadow" x="-15%" y="-15%" width="130%" height="135%"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#5a5f66" flood-opacity="0.35"/></filter>`
       + `</defs>`;
   
@@ -373,7 +404,10 @@
     //   • panel-joint seal: an I-beam — the seam line running wall-to-wall with a
     //     bar cap where it meets each wall (the "T" you see in the spec); and
     //   • corner seal: an L-bracket hugging each of the four interior corners.
-    const FOAM = '#2c2d33';
+    // Foam lining tint follows the chosen studiofoam color (booth-builder /
+    // quote preference); default reads as the standard gray foam.
+    const FOAM_COLORS = { Gray: '#2c2d33', Orange: '#a8430f', Blue: '#1e3a8a', Purple: '#5b21b6', Burgundy: '#6d1f2c' };
+    const FOAM = FOAM_COLORS[layout.foamColor] || FOAM_COLORS.Gray;
     const SEAL = '#0d0e11';
     function foamComb(ax, ay, bx, by, nx, ny) {
       const len = Math.hypot(bx - ax, by - ay); if (len < 4) return '';
@@ -389,58 +423,72 @@
       }
       return g;
     }
-    const SEAL_STROKE = '#23242a';
-    // mid-wall seam seal (plinth): a flat base bar along the wall at the joint
-    // (jx,jy on the interior face; nx,ny inward) with a centered tab protruding
-    // into the booth — the profile from the spec diagram (left).
+    const SEAL_STROKE = '#0d0e11';
+    const SEAL_HALO = 'rgba(238,239,242,0.85)';   // light halo so the dark speckle pops off the carpet
+    // glyph scale follows the wall-band thickness so seals stay legible on big booths
+    const SG = Math.max(10, Math.min(t, 20));
+    const sealPoly = pts => `<polygon points="${pts}" stroke="${SEAL_HALO}" stroke-width="4.5" stroke-linejoin="round" fill="none"/>`
+      + `<polygon points="${pts}" fill="url(#ldSeal)" stroke="${SEAL_STROKE}" stroke-width="1.2" stroke-linejoin="round"/>`;
+    // mid-wall seam seal: a T-profile at each panel joint — the STEM sits in
+    // the joint BETWEEN the two wall panels (the panels butt into it), spanning
+    // the full wall thickness; the CAP bar sits proud of the exterior face,
+    // covering the joint. (jx,jy = joint on the exterior face; nx,ny = outward
+    // normal.) Per Benton 2026-06-09: the old plinth pointed the tab outward —
+    // the real seal's tab runs through the wall, with the walls butting into it.
     function midSeal(jx, jy, nx, ny) {
       const tx = -ny, ty = nx;                 // tangent = along the wall
-      const baseHalf = 11, baseDepth = 5, tabHalf = 5, tabExtra = 10;
+      const capHalf = SG * 1.5, capDepth = SG * 0.45, stemHalf = SG * 0.22;
       const P = (a, n) => (jx + tx * a + nx * n) + ',' + (jy + ty * a + ny * n);
       const pts = [
-        P(-baseHalf, 0), P(-baseHalf, baseDepth), P(-tabHalf, baseDepth),
-        P(-tabHalf, baseDepth + tabExtra), P(tabHalf, baseDepth + tabExtra), P(tabHalf, baseDepth),
-        P(baseHalf, baseDepth), P(baseHalf, 0),
+        P(-capHalf, capDepth), P(capHalf, capDepth), P(capHalf, 0), P(stemHalf, 0),
+        P(stemHalf, -t), P(-stemHalf, -t), P(-stemHalf, 0), P(-capHalf, 0),
       ].join(' ');
-      return `<polygon points="${pts}" fill="url(#ldSeal)" stroke="${SEAL_STROKE}" stroke-width="0.8" stroke-linejoin="round"/>`;
+      return sealPoly(pts);
     }
     // corner seam seal: a filled L-bracket hugging an interior corner, with a
     // chamfered outer corner — the profile from the spec diagram (right).
     // (ax,ay)/(bx,by) = the two along-wall unit directions away from the corner.
     function cornerSeal(cx, cy, ax, ay, bx, by) {
-      const L = 16, Tk = 6, ch = 4;
+      const L = SG * 1.7, Tk = SG * 0.55, ch = Tk * 0.6;
       const P = (a, b) => (cx + a * ax + b * bx) + ',' + (cy + a * ay + b * by);
       const pts = [
         P(ch, 0), P(L, 0), P(L, Tk), P(Tk, Tk), P(Tk, L), P(0, L), P(0, ch),
       ].join(' ');   // chamfer = the implicit edge from (0,ch) back to (ch,0)
-      return `<polygon points="${pts}" fill="url(#ldSeal)" stroke="${SEAL_STROKE}" stroke-width="0.8" stroke-linejoin="round"/>`;
+      return sealPoly(pts);
     }
     function seamPieces() {
       const fx0 = x0 + t, fy0 = y0 + t, fx1 = x0 + W - t, fy1 = y0 + H - t;
       const spanW = W - 2 * t, spanH = H - 2 * t;
       let g = '';
-      // foam lining on the four interior faces
+      // foam lining on the four interior faces (the sawtooth in the spec views)
       g += foamComb(fx0, fy0, fx1, fy0, 0, 1) + foamComb(fx0, fy1, fx1, fy1, 0, -1)
          + foamComb(fx0, fy0, fx0, fy1, 1, 0) + foamComb(fx1, fy0, fx1, fy1, -1, 0);
-      // panel-joint seals — vertical seams (N boundaries) span N↔S; horizontal (W) span W↔E
-      const nN = layout.walls.N.slots, nomN = nN.reduce((a, sl) => a + sl.size, 0) || 1;
-      let o = 0;
-      for (let i = 0; i < nN.length - 1; i++) {
-        o += nN[i].size; const x = fx0 + (o / nomN) * spanW;
-        g += `<line x1="${x}" y1="${fy0}" x2="${x}" y2="${fy1}" stroke="${SEAL}" stroke-width="1.4" stroke-opacity="0.5"/>`;
-        g += midSeal(x, fy0, 0, 1) + midSeal(x, fy1, 0, -1);
+      // panel-joint seals — one per adjacency on EACH wall, placed from that
+      // wall's own slot widths, mounted on the EXTERIOR face with the tab
+      // protruding outward (matches the spec-sheet top-down views).
+      for (const side of ['N', 'S', 'E', 'W']) {
+        const wall = layout.walls[side]; if (!wall || wall.slots.length < 2) continue;
+        const nom = wall.slots.reduce((a, sl) => a + sl.size, 0) || 1;
+        const horiz = (side === 'N' || side === 'S');
+        let o = 0;
+        for (let i = 0; i < wall.slots.length - 1; i++) {
+          o += wall.slots[i].size;
+          const f = o / nom;
+          if (horiz) {
+            const x = fx0 + f * spanW;
+            g += midSeal(x, side === 'N' ? y0 : y0 + H, 0, side === 'N' ? -1 : 1);
+          } else {
+            const y = fy0 + f * spanH;
+            g += midSeal(side === 'W' ? x0 : x0 + W, y, side === 'W' ? -1 : 1, 0);
+          }
+        }
       }
-      const wW = layout.walls.W.slots, nomW = wW.reduce((a, sl) => a + sl.size, 0) || 1;
-      o = 0;
-      for (let i = 0; i < wW.length - 1; i++) {
-        o += wW[i].size; const y = fy0 + (o / nomW) * spanH;
-        g += `<line x1="${fx0}" y1="${y}" x2="${fx1}" y2="${y}" stroke="${SEAL}" stroke-width="1.4" stroke-opacity="0.5"/>`;
-        g += midSeal(fx0, y, 1, 0) + midSeal(fx1, y, -1, 0);
-      }
-      // corner seals (chamfered L-brackets) — drawn last so they sit on top.
-      // (ax,ay)/(bx,by) point away from each corner along its two walls.
-      g += cornerSeal(fx0, fy0, 1, 0, 0, 1) + cornerSeal(fx1, fy0, -1, 0, 0, 1)
-         + cornerSeal(fx0, fy1, 1, 0, 0, -1) + cornerSeal(fx1, fy1, -1, 0, 0, -1);
+      // corner seals — chamfered L-brackets WRAPPING each exterior corner (the
+      // spec view shows them proud of both outer faces). Anchor is the outer
+      // corner pushed outward by `o`; legs run inward along both walls.
+      const o2 = SG * 0.35;
+      g += cornerSeal(x0 - o2,     y0 - o2,     1, 0, 0, 1) + cornerSeal(x0 + W + o2, y0 - o2,     -1, 0, 0, 1)
+         + cornerSeal(x0 - o2,     y0 + H + o2, 1, 0, 0, -1) + cornerSeal(x0 + W + o2, y0 + H + o2, -1, 0, 0, -1);
       return g;
     }
   
@@ -452,12 +500,14 @@
       return            { omx: px + pw, omy: py + ph / 2, ox: 1, oy: 0, ax: 0, ay: 1, horiz: false };
     }
   
-    // ── vent assembly: TWO square boxes (one plain, one with a fan), spread
-    // along the wall, protruding OUTWARD from whatever wall holds the vent ──
+    // ── vent assembly: TWO boxes (one plain, one with a fan), spread along the
+    // wall, protruding OUTWARD from whatever wall holds the vent. The outward
+    // depth is exactly 5.5″ at scale (VOUT) so the drawn footprint matches the
+    // "w/ vent" dimension line. ──
     function ventDuct(side, px, py, pw, ph) {
       const { omx, omy, ox, oy, ax, ay, horiz } = edgeGeom(side, px, py, pw, ph);
       const panelLen = horiz ? pw : ph;
-      const B = Math.max(18, Math.min(panelLen * 0.30, 44));   // box scales with the wall panel (46" walls → big)
+      const B = Math.max(18, Math.min(panelLen * 0.30, 44));   // along-wall width scales with the panel
       const G = Math.max(7, B * 0.4), PL = 4;
       const off = B / 2 + G / 2;
       let g = '';
@@ -467,34 +517,67 @@
       else       g += `<rect x="${ox < 0 ? omx - PL : omx}" y="${omy - plate / 2}" width="${PL}" height="${plate}" rx="1.5" fill="#3a3b42"/>`;
       for (const k of [-1, 1]) {
         const ccx = omx + ax * k * off, ccy = omy + ay * k * off;
-        const rx = horiz ? (ccx - B / 2) : (ox < 0 ? omx - B : omx);
-        const ry = horiz ? (oy < 0 ? omy - B : omy) : (ccy - B / 2);
-        g += `<rect x="${rx}" y="${ry}" width="${B}" height="${B}" rx="2" fill="#34363d" stroke="#1b1c20" stroke-width="1"/>`;
+        const rx = horiz ? (ccx - B / 2) : (ox < 0 ? omx - VOUT : omx);
+        const ry = horiz ? (oy < 0 ? omy - VOUT : omy) : (ccy - B / 2);
+        const bw = horiz ? B : VOUT, bh = horiz ? VOUT : B;
+        g += `<rect x="${rx}" y="${ry}" width="${bw}" height="${bh}" rx="2" fill="#34363d" stroke="#1b1c20" stroke-width="1"/>`;
         if (k === 1) {   // fan box
-          g += `<circle cx="${rx + B / 2}" cy="${ry + B / 2}" r="${B * 0.32}" fill="#22242a" stroke="#54585f" stroke-width="0.9"/>`;
-          g += `<circle cx="${rx + B / 2}" cy="${ry + B / 2}" r="${B * 0.11}" fill="#62666f"/>`;
-        } else {         // plain box (no hole) — same square, just an inset panel line
-          g += `<rect x="${rx + B * 0.2}" y="${ry + B * 0.2}" width="${B * 0.6}" height="${B * 0.6}" rx="1" fill="none" stroke="#4a4d55" stroke-width="0.9"/>`;
+          const fr = Math.min(bw, bh);
+          g += `<circle cx="${rx + bw / 2}" cy="${ry + bh / 2}" r="${fr * 0.32}" fill="#22242a" stroke="#54585f" stroke-width="0.9"/>`;
+          g += `<circle cx="${rx + bw / 2}" cy="${ry + bh / 2}" r="${fr * 0.11}" fill="#62666f"/>`;
+        } else {         // plain box (no hole) — same box, just an inset panel line
+          g += `<rect x="${rx + bw * 0.2}" y="${ry + bh * 0.2}" width="${bw * 0.6}" height="${bh * 0.6}" rx="1" fill="none" stroke="#4a4d55" stroke-width="0.9"/>`;
         }
       }
       return g;
     }
   
-    // ── door: opening + outward swing on whatever wall holds it ─────
-    function doorSwing(side, px, py, pw, ph, swingIn) {
+    // ── door: OPEN leaf at 90° + dashed swing arc, matching the client proposal
+    // top-down drawings (door always opens outward). The doorway itself reads as
+    // a light threshold gap across the frame wall. Hinge side follows the pack
+    // (DRFRM R/L) so a left-hinge door pivots from the other end. ─────
+    function doorSwing(side, px, py, pw, ph, swingIn, pack) {
       const { omx, omy, ox, oy, ax, ay, horiz } = edgeGeom(side, px, py, pw, ph);
-      const r = Math.min(swingIn * PX, (horiz ? pw : ph) * 0.94, DOORR);
-      const hx = omx - ax * r / 2, hy = omy - ay * r / 2;          // hinge
-      const cX = omx + ax * r / 2, cY = omy + ay * r / 2;          // closed edge along wall
-      const oX = hx + ox * r, oY = hy + oy * r;                    // leaf swung open (outward)
-      const sweep = ((cX - hx) * (oY - hy) - (cY - hy) * (oX - hx)) > 0 ? 1 : 0;
+      // leaf = the actual door width (swingIn inches, e.g. 30″ in a 46″ frame)
+      const leafW = Math.min(swingIn * PX, (horiz ? pw : ph) * 0.94);
+      // hinge end: same booth-fixed convention as the elevation renderer —
+      // an R-hinge door pivots from the +axis end of its wall (east end on a
+      // front/back wall, south end on a side wall); L mirrors it.
+      const hingeR = !/\sL\b/i.test(String(pack || ''));
+      const flip = hingeR ? -1 : 1;
+      const hx = omx - ax * flip * leafW / 2, hy = omy - ay * flip * leafW / 2;   // hinge end
+      const cX = omx + ax * flip * leafW / 2, cY = omy + ay * flip * leafW / 2;   // closed-tip end
+      const eX = hx + ox * leafW, eY = hy + oy * leafW;                           // open tip (90° out)
+      const sweep = ((cX - hx) * (eY - hy) - (cY - hy) * (eX - hx)) > 0 ? 1 : 0;
+      const DL = Math.max(5, t * 0.4);                             // leaf thickness (px)
       let g = '';
-      // opening cut in the wall band
-      if (horiz) g += `<rect x="${omx - r / 2}" y="${py}" width="${r}" height="${ph}" fill="#15161a"/>`;
-      else       g += `<rect x="${px}" y="${omy - r / 2}" width="${pw}" height="${r}" fill="#15161a"/>`;
-      g += `<path d="M ${cX} ${cY} A ${r} ${r} 0 0 ${sweep} ${oX} ${oY}" fill="rgba(238,98,22,0.10)" stroke="rgba(238,98,22,0.55)" stroke-width="1.3" stroke-dasharray="5,3"/>`;
-      g += `<line x1="${hx}" y1="${hy}" x2="${oX}" y2="${oY}" stroke="#ee6216" stroke-width="3.5" stroke-linecap="round"/>`;
-      g += `<circle cx="${hx}" cy="${hy}" r="3" fill="#ee6216"/>`;
+      // doorway threshold: light gap across the wall band where the opening is
+      const thr = 1.2;
+      if (horiz) g += `<rect x="${Math.min(hx, cX) + 1}" y="${py + thr}" width="${leafW - 2}" height="${ph - 2 * thr}" fill="#e2e4e9" opacity="0.92"/>`;
+      else       g += `<rect x="${px + thr}" y="${Math.min(hy, cY) + 1}" width="${pw - 2 * thr}" height="${leafW - 2}" fill="#e2e4e9" opacity="0.92"/>`;
+      // swing arc: dashed quarter-circle from the closed position to the open
+      // leaf, plus a faint chord marking the closed position
+      g += `<path d="M ${cX} ${cY} A ${leafW} ${leafW} 0 0 ${sweep} ${eX} ${eY}" fill="none" stroke="rgba(238,98,22,0.55)" stroke-width="1.2" stroke-dasharray="5,3"/>`;
+      g += `<line x1="${hx}" y1="${hy}" x2="${cX}" y2="${cY}" stroke="rgba(238,98,22,0.25)" stroke-width="1" stroke-dasharray="2,3"/>`;
+      // the leaf, drawn closed then rotated 90° outward about the hinge pin
+      const rot = ((side === 'S' || side === 'W') ? 90 : -90) * flip;
+      const lx = horiz ? Math.min(hx, cX) : (ox < 0 ? omx - DL : omx);
+      const ly = horiz ? (oy < 0 ? omy - DL : omy) : Math.min(hy, cY);
+      const lw = horiz ? leafW : DL, lh = horiz ? DL : leafW;
+      g += `<g transform="rotate(${rot} ${hx} ${hy})">`;
+      g += `<rect x="${lx}" y="${ly}" width="${lw}" height="${lh}" rx="1" fill="#e9eaee" stroke="#1b1c20" stroke-width="1"/>`;
+      // hinge dot pairs near the hinge end, handle nub at the free end
+      for (const f of [0.08, 0.22]) {
+        const d1x = hx + ax * flip * leafW * f + ox * DL * 0.32, d1y = hy + ay * flip * leafW * f + oy * DL * 0.32;
+        const d2x = hx + ax * flip * leafW * f + ox * DL * 0.68, d2y = hy + ay * flip * leafW * f + oy * DL * 0.68;
+        g += `<circle cx="${d1x}" cy="${d1y}" r="1.3" fill="#26272c"/><circle cx="${d2x}" cy="${d2y}" r="1.3" fill="#26272c"/>`;
+      }
+      const hbx = cX - ax * flip * leafW * 0.06, hby = cY - ay * flip * leafW * 0.06;   // handle base on the leaf
+      g += `<line x1="${hbx + ox * DL * 0.5}" y1="${hby + oy * DL * 0.5}" x2="${hbx + ox * (DL + 5)}" y2="${hby + oy * (DL + 5)}" stroke="#26272c" stroke-width="2" stroke-linecap="round"/>`;
+      g += `<line x1="${hbx + ox * (DL + 5)}" y1="${hby + oy * (DL + 5)}" x2="${hbx + ox * (DL + 5) - ax * flip * 7}" y2="${hby + oy * (DL + 5) - ay * flip * 7}" stroke="#26272c" stroke-width="2" stroke-linecap="round"/>`;
+      g += `</g>`;
+      // hinge pin marker at the pivot
+      g += `<circle cx="${hx}" cy="${hy}" r="2" fill="#26272c"/>`;
       return g;
     }
   
@@ -520,7 +603,6 @@
         else if (side === 'S') { px = x0 + t + off; py = y0 + H - t; pw = len; ph = t; }
         else if (side === 'W') { px = x0;          py = y0 + t + off; pw = t; ph = len; }
         else { px = x0 + W - t; py = y0 + t + off; pw = t; ph = len; }
-        const grad = horiz ? 'url(#ldWallH)' : 'url(#ldWallV)';
         g += `<g class="ld-panel" data-slot="${esc(slot.id)}">`;
         // invisible hit-pad: extends the grab target ~15px into the interior so
         // the thin wall bands are easy to drag. Drawn first (under the visuals).
@@ -531,7 +613,9 @@
         else if (side === 'W') { hw = pw + HP; }
         else                   { hx = px - HP; hw = pw + HP; }
         g += `<rect class="ld-hit" x="${hx}" y="${hy}" width="${hw}" height="${hh}" fill="#000" fill-opacity="0" style="pointer-events:all"/>`;
-        g += `<rect class="ld-wall" x="${px}" y="${py}" width="${pw}" height="${ph}" fill="${grad}" stroke="#15161a" stroke-width="0.8"/>`;
+        // Wall panels are the SAME carpet as the seam seals (one material on
+        // the real product — the spec-sheet top-downs draw them identically).
+        g += `<rect class="ld-wall" x="${px}" y="${py}" width="${pw}" height="${ph}" fill="url(#ldSeal)" stroke="#15161a" stroke-width="0.8"/>`;
         // interior bevel highlight
         g += `<rect x="${px + 0.6}" y="${py + 0.6}" width="${pw - 1.2}" height="${ph - 1.2}" fill="none" stroke="#4a4c55" stroke-opacity="0.5" stroke-width="0.6"/>`;
         // kind accent line on the interior edge
@@ -549,15 +633,15 @@
         g += `</g>`;
         // collect vent / door for later overlay — on WHATEVER wall they sit
         if (kind === 'VNT' && layout.hasVent !== false) vents.push({ side, px, py, pw, ph });
-        if (kind === 'DRFRM') door = { side, px, py, pw, ph, swing: (layout.door && layout.door.swing) || 30 };
-        // panel label (type + code) just inside the wall on the floor
-        g += panelLabel(side, px, py, pw, ph, kind, line);
+        if (kind === 'DRFRM') door = { side, px, py, pw, ph, swing: (layout.door && layout.door.swing) || 30, pack: line.pack };
+        // panel label (width + type + code) just inside the wall on the floor
+        g += panelLabel(side, px, py, pw, ph, kind, line, slot);
         off += len;
       }
       return g;
     }
   
-    function panelLabel(side, px, py, pw, ph, kind, line) {
+    function panelLabel(side, px, py, pw, ph, kind, line, slot) {
       const meta = KIND_META[kind] || KIND_META.EMPTY;
       const horiz = (side === 'N' || side === 'S');
       const big = horiz ? pw : ph;
@@ -568,7 +652,10 @@
       else if (side === 'S') { lx = px + pw / 2; ly = py - 7; }
       else if (side === 'W') { lx = px + t + 7; ly = py + ph / 2; anchor = 'start'; rot = 0; }
       else { lx = px - 7; ly = py + ph / 2; anchor = 'end'; }
-      const typ = kind === 'EMPTY' ? '(empty)' : meta.label;
+      // Lead with the panel width, like the spec sheets' "46\" Wall Panel"
+      // callouts — the placed pack's real width when known, slot nominal else.
+      const wIn = line ? (panelInteriorWidth(line.pack) != null ? panelInteriorWidth(line.pack) : slot.size) : slot.size;
+      const typ = kind === 'EMPTY' ? '(empty)' : (wIn + '″ ' + meta.label);
       const col = kind === 'EMPTY' ? '#aab' : '#eef';
       let out = `<text x="${lx}" y="${ly}" text-anchor="${anchor}" font-size="9.5" font-weight="700" fill="${col}" opacity="0.92" style="pointer-events:none">${esc(typ)}</text>`;
       if (line && line.code) {
@@ -584,9 +671,9 @@
     s += drawWall('E');
     s += drawWall('W');
   
-    // corner posts (on top of wall ends)
+    // corner posts (on top of wall ends) — same seal carpet as the walls
     for (const [cx, cy] of [[x0, y0], [x0 + W - t, y0], [x0, y0 + H - t], [x0 + W - t, y0 + H - t]]) {
-      s += `<rect x="${cx}" y="${cy}" width="${t}" height="${t}" fill="#191a1e" stroke="#000" stroke-width="0.8"/>`;
+      s += `<rect x="${cx}" y="${cy}" width="${t}" height="${t}" fill="url(#ldSeal)" stroke="#000" stroke-width="0.8"/>`;
     }
   
     // seam seals: comb on each interior face + corner pieces + T pieces at joints
@@ -594,7 +681,7 @@
   
     // vent ducts + door overlays (follow whatever wall currently holds them)
     vents.forEach(v => s += ventDuct(v.side, v.px, v.py, v.pw, v.ph));
-    if (door) s += doorSwing(door.side, door.px, door.py, door.pw, door.ph, door.swing);
+    if (door) s += doorSwing(door.side, door.px, door.py, door.pw, door.ph, door.swing, door.pack);
   
     // ── dimension lines (exterior) ──────────────────────────────────
     function tick(x, y, vert) {
@@ -604,20 +691,50 @@
     const dimY = y0 + H + extra('S') + 24;
     s += `<line x1="${x0}" y1="${dimY}" x2="${x0 + W}" y2="${dimY}" stroke="#9097a0" stroke-width="1"/>`;
     s += tick(x0, dimY, false) + tick(x0 + W, dimY, false);
-    s += `<rect x="${x0 + W / 2 - 24}" y="${dimY - 9}" width="48" height="16" rx="3" fill="url(#ldBg)"/>`;
-    s += `<text x="${x0 + W / 2}" y="${dimY + 3}" text-anchor="middle" font-size="11" font-weight="700" fill="#4a4f57">${ext.w}″</text>`;
+    s += `<rect x="${x0 + W / 2 - 28}" y="${dimY - 9}" width="56" height="16" rx="3" fill="url(#ldBg)"/>`;
+    s += `<text x="${x0 + W / 2}" y="${dimY + 3}" text-anchor="middle" font-size="11" font-weight="700" fill="#4a4f57">${ftIn(ext.w)}</text>`;
     const dimX = x0 - extra('W') - 24;
     s += `<line x1="${dimX}" y1="${y0}" x2="${dimX}" y2="${y0 + H}" stroke="#9097a0" stroke-width="1"/>`;
     s += tick(dimX, y0, true) + tick(dimX, y0 + H, true);
-    s += `<rect x="${dimX - 8}" y="${y0 + H / 2 - 9}" width="16" height="18" fill="url(#ldBg)"/>`;
-    s += `<text x="${dimX}" y="${y0 + H / 2}" text-anchor="middle" font-size="11" font-weight="700" fill="#4a4f57" transform="rotate(-90 ${dimX} ${y0 + H / 2})">${ext.h}″</text>`;
+    s += `<rect x="${dimX - 8}" y="${y0 + H / 2 - 28}" width="16" height="56" fill="url(#ldBg)"/>`;
+    s += `<text x="${dimX}" y="${y0 + H / 2}" text-anchor="middle" font-size="11" font-weight="700" fill="#4a4f57" transform="rotate(-90 ${dimX} ${y0 + H / 2})">${ftIn(ext.h)}</text>`;
   
-    // ── interior callout (centered pill) ────────────────────────────
-    const cw = 150, chh = 26;
+    // ── "w/ vent" overall dims ──────────────────────────────────────
+    // A vent set adds 5.5″ to the axis it protrudes on: a 4872 with the vent on
+    // the 72″ wall has a 50″ exterior side that totals 55.5″ overall. Drawn only
+    // on axes that actually carry a vent, and follows a dragged vent to its new
+    // wall. Spans wall face → duct outer face (the ducts are drawn at true scale).
+    const VDIM = '#c9762e';
+    const fmtIn = v => ftIn(v);
+    const vtick = (x, y, vert) =>
+      vert ? `<line x1="${x - 4}" y1="${y}" x2="${x + 4}" y2="${y}" stroke="${VDIM}" stroke-width="1"/>`
+           : `<line x1="${x}" y1="${y - 4}" x2="${x}" y2="${y + 4}" stroke="${VDIM}" stroke-width="1"/>`;
+    if (sideHasVent.N || sideHasVent.S) {
+      const yA = y0 - (sideHasVent.N ? VOUT : 0), yB = y0 + H + (sideHasVent.S ? VOUT : 0);
+      const tot = ext.h + (sideHasVent.N ? VPROT : 0) + (sideHasVent.S ? VPROT : 0);
+      const vx = dimX - 22, vmy = (yA + yB) / 2;
+      s += `<line x1="${vx}" y1="${yA}" x2="${vx}" y2="${yB}" stroke="${VDIM}" stroke-width="1"/>` + vtick(vx, yA, true) + vtick(vx, yB, true);
+      s += `<rect x="${vx - 8}" y="${vmy - 40}" width="16" height="80" fill="url(#ldBg)"/>`;
+      s += `<text x="${vx}" y="${vmy + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VDIM}" transform="rotate(-90 ${vx} ${vmy})">${fmtIn(tot)} w/ vent</text>`;
+    }
+    if (sideHasVent.E || sideHasVent.W) {
+      const xA = x0 - (sideHasVent.W ? VOUT : 0), xB = x0 + W + (sideHasVent.E ? VOUT : 0);
+      const tot = ext.w + (sideHasVent.W ? VPROT : 0) + (sideHasVent.E ? VPROT : 0);
+      const vy = dimY + 34, vmx = (xA + xB) / 2;
+      s += `<line x1="${xA}" y1="${vy}" x2="${xB}" y2="${vy}" stroke="${VDIM}" stroke-width="1"/>` + vtick(xA, vy, false) + vtick(xB, vy, false);
+      s += `<rect x="${vmx - 40}" y="${vy - 8}" width="80" height="15" rx="3" fill="url(#ldBg)"/>`;
+      s += `<text x="${vmx}" y="${vy + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VDIM}">${fmtIn(tot)} w/ vent</text>`;
+    }
+  
+    // ── interior callout (centered pill, inches + proposal-style ft-in) ─
+    const cw = 150, chh = 36;
     const ccx = x0 + W / 2, ccy = y0 + H / 2;
-    s += `<rect x="${ccx - cw / 2}" y="${ccy - chh / 2}" width="${cw}" height="${chh}" rx="13" fill="rgba(255,255,255,0.92)" stroke="#cfd3da" stroke-width="1"/>`;
-    s += `<text x="${ccx}" y="${ccy - 1}" text-anchor="middle" font-size="9.5" font-weight="700" letter-spacing="0.08em" fill="#8a8f97">INTERIOR</text>`;
-    s += `<text x="${ccx}" y="${ccy + 10}" text-anchor="middle" font-size="11" font-weight="800" fill="#2a2d33">${interior.w}″ × ${interior.h}″</text>`;
+    s += `<rect x="${ccx - cw / 2}" y="${ccy - chh / 2}" width="${cw}" height="${chh}" rx="14" fill="rgba(255,255,255,0.92)" stroke="#cfd3da" stroke-width="1"/>`;
+    s += `<text x="${ccx}" y="${ccy - 6}" text-anchor="middle" font-size="9.5" font-weight="700" letter-spacing="0.08em" fill="#8a8f97">INTERIOR</text>`;
+    // short axis first — matches the spec sheets ("46″ x 70″") and the model
+    // naming convention (4872 = 48″ × 72″)
+    s += `<text x="${ccx}" y="${ccy + 5}" text-anchor="middle" font-size="11" font-weight="800" fill="#2a2d33">${interior.h}″ × ${interior.w}″</text>`;
+    s += `<text x="${ccx}" y="${ccy + 14.5}" text-anchor="middle" font-size="8" fill="#8a8f97">${ftIn(interior.h)} × ${ftIn(interior.w)}</text>`;
   
     // ── orientation captions (booth orientation is fixed; components can move) ─
     s += `<text x="${x0 + W / 2}" y="${y0 - extra('N') - 8}" text-anchor="middle" font-size="9" font-weight="700" letter-spacing="0.12em" fill="#9097a0">BACK</text>`;
@@ -626,9 +743,248 @@
     s += `</svg>`;
     return s;
   }
+  
+  // ── Elevation renderer: one wall viewed face-on from OUTSIDE ────────
+  // Skeleton of the booth-builder front/side view (plan Phase C): correct
+  // proportions and per-panel features — door with window/hinges/handle, wall
+  // windows at their real WDO sizes, vent ducts (intake low, exhaust high —
+  // "fresh air flows in at the floor and out at the ceiling"), cable passages.
+  // `facing` = which exterior wall you're looking at: S front, E right, N back,
+  // W left. N and E render mirrored so left/right match what a viewer standing
+  // OUTSIDE that wall actually sees. Heights: 83″ standard / 85″ enhanced.
+  function renderElevationSvg(layout, assign, facing) {
+    const ext = layout.exterior;
+    const wall = layout.walls[facing] || { slots: [] };
+    const lenIn = (facing === 'N' || facing === 'S') ? ext.w : ext.h;
+    // 6′11″ standard / 7′1″ enhanced, +10″ with the height extension
+    const hIn = (/^E/i.test(String(layout.variant || 'S')) ? 85 : 83) + (layout.heightExt ? 10 : 0);
+    const lift = layout.casters ? 5 : 0;          // caster plate raises the booth ~5″
+    const PX2 = Math.max(2.4, Math.min(340 / lenIn, 280 / (hIn + lift), 5.5));
+    const Wp = lenIn * PX2, Hp = hIn * PX2, liftPx = lift * PX2;
+    // Vents on the walls ADJACENT to the facing wall protrude 5.5″ past the
+    // booth edge — from this view you see the SIDE of those duct boxes hanging
+    // off the left/right edge. Adjacency respects the viewer's left/right
+    // (standing outside the facing wall).
+    const ADJ = { S: { left: 'W', right: 'E' }, N: { left: 'E', right: 'W' }, E: { left: 'S', right: 'N' }, W: { left: 'N', right: 'S' } };
+    const hasVentOn = sd => {
+      if (layout.hasVent === false) return false;
+      const w2 = layout.walls[sd]; if (!w2) return false;
+      return w2.slots.some(sl => { const ln = assign[sl.id]; return ln && classifyWall(ln.pack) === 'VNT'; });
+    };
+    const leftVent = hasVentOn(ADJ[facing].left), rightVent = hasVentOn(ADJ[facing].right);
+    const VOUT2 = 5.5 * PX2;
+    const M = 46;
+    const totalW = Wp + M * 2 + (leftVent ? VOUT2 : 0) + (rightVent ? VOUT2 : 0);
+    const totalH = Hp + liftPx + 34 + 30 + ((leftVent || rightVent) ? 16 : 0);
+    const x0 = M + (leftVent ? VOUT2 : 0), y0 = 24;
+    const fb = y0 + Hp;                          // booth floor (bottom of the walls)
+    const gy = fb + liftPx;                      // ground line (= booth floor unless casters)
+    const iy = v => fb - v * PX2;                // inches above the BOOTH FLOOR → px
+  
+    let s = `<svg class="ld-elev-svg" viewBox="0 0 ${totalW} ${totalH}" preserveAspectRatio="xMidYMid meet" `
+          + `style="width:100%;max-width:520px;display:block;margin:0 auto;font-family:'DM Sans',sans-serif">`;
+    // same defs/ids as the top-down — identical content, so document-wide id
+    // resolution is harmless, and standalone renders still work
+    s += `<defs>`
+      + `<linearGradient id="ldBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef0f3"/><stop offset="1" stop-color="#f8f9fa"/></linearGradient>`
+      + `<pattern id="ldSeal" width="5" height="5" patternUnits="userSpaceOnUse"><rect width="5" height="5" fill="#54575f"/><circle cx="1.2" cy="1.8" r="0.8" fill="#33353b"/><circle cx="3.7" cy="3.7" r="0.8" fill="#7d818b"/><circle cx="3.6" cy="0.9" r="0.6" fill="#2a2c31"/><circle cx="0.8" cy="4.2" r="0.5" fill="#8a8e98"/></pattern>`
+      + `</defs>`;
+    s += `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="url(#ldBg)"/>`;
+    // ground line + soft shadow
+    s += `<ellipse cx="${x0 + Wp / 2}" cy="${gy + 5}" rx="${Wp * 0.55}" ry="5" fill="#5a5f66" opacity="0.16"/>`;
+    s += `<rect x="${x0 - 16}" y="${gy}" width="${Wp + 32}" height="1.2" fill="#c4c8ce"/>`;
+  
+    // slots left→right as seen from outside (N + E mirrored)
+    const slots = wall.slots.slice();
+    const mirrored = (facing === 'N' || facing === 'E');
+    if (mirrored) slots.reverse();
+    const nominal = slots.reduce((a, sl) => a + sl.size, 0) || 1;
+    const scale = Wp / nominal;
+  
+    // per-panel features, drawn after all strips + battens
+    function elevFeatures(kind, line, sx, w) {
+      const cx2 = sx + w / 2;
+      let g = '';
+      if (kind === 'DRFRM' && line) {
+        const frameW = panelInteriorWidth(line.pack) || 46;
+        const doorW = (frameW >= 49 ? 32 : Math.max(20, frameW - 16)) * PX2;  // 32″ WA/ADA, 30″ std
+        const doorH = 78 * PX2;
+        const dx = cx2 - doorW / 2, dy = fb - 2 - doorH;
+        let hingeRight = /\sR\b/i.test(line.pack || '');
+        if (mirrored) hingeRight = !hingeRight;
+        g += `<rect x="${dx}" y="${dy}" width="${doorW}" height="${doorH}" rx="1.5" fill="url(#ldSeal)" stroke="#0d0e11" stroke-width="1.3"/>`;
+        g += `<rect x="${dx + 2}" y="${dy + 2}" width="${doorW - 4}" height="${doorH - 4}" fill="none" stroke="#8a8e98" stroke-opacity="0.45" stroke-width="0.7"/>`;
+        // door window: WA/ADA 16×48; else 16×30 on 46-module, 12×30 on 40-module
+        const wdw = (frameW >= 49 ? 16 : (layout.module === 40 ? 12 : 16)) * PX2;
+        const wdh = (frameW >= 49 ? 48 : 30) * PX2;
+        g += `<rect x="${cx2 - wdw / 2 - 1.5}" y="${iy(70) - 1.5}" width="${wdw + 3}" height="${wdh + 3}" rx="1.5" fill="#1b1c20"/>`;
+        g += `<rect x="${cx2 - wdw / 2}" y="${iy(70)}" width="${wdw}" height="${wdh}" fill="#aecde8"/>`;
+        g += `<line x1="${cx2 - wdw / 2 + 2}" y1="${iy(70) + wdh * 0.75}" x2="${cx2 + wdw / 2 - 2}" y2="${iy(70) + wdh * 0.25}" stroke="#fff" stroke-opacity="0.55" stroke-width="1.5"/>`;
+        // handle on the latch side (~38″), hinges on the other
+        const latchX = hingeRight ? dx + 5 : dx + doorW - 5;
+        const hingeX = hingeRight ? dx + doorW : dx;
+        g += `<rect x="${latchX - 5}" y="${iy(38) - 1.6}" width="10" height="3.2" rx="1.6" fill="#caccd2" stroke="#6a6e76" stroke-width="0.6"/>`;
+        for (const hh of [14, 40, 66])
+          g += `<rect x="${hingeX - 1.6}" y="${iy(hh) - 4}" width="3.2" height="8" rx="1" fill="#caccd2" stroke="#6a6e76" stroke-width="0.5"/>`;
+        // threshold
+        g += `<rect x="${dx - 2}" y="${fb - 3}" width="${doorW + 4}" height="3" fill="#caccd2" stroke="#8a8e98" stroke-width="0.5"/>`;
+      } else if (kind === 'WDO' && line) {
+        const m2 = String(line.pack || '').match(/WDO\s*(\d{2})(\d{2})/i);
+        const ww = (m2 ? +m2[1] : 32) * PX2, wh = (m2 ? +m2[2] : 36) * PX2;
+        g += `<rect x="${cx2 - ww / 2 - 2.5}" y="${iy(72) - 2.5}" width="${ww + 5}" height="${wh + 5}" rx="2" fill="#1b1c20"/>`;
+        g += `<rect x="${cx2 - ww / 2}" y="${iy(72)}" width="${ww}" height="${wh}" fill="#aecde8"/>`;
+        g += `<line x1="${cx2 - ww / 2 + 3}" y1="${iy(72) + wh * 0.8}" x2="${cx2 + ww / 2 - 3}" y2="${iy(72) + wh * 0.2}" stroke="#fff" stroke-opacity="0.55" stroke-width="2"/>`;
+      } else if (kind === 'VNT' && layout.hasVent !== false) {
+        // intake duct low, exhaust duct high, remote fan unit at the floor
+        const dw = 8 * PX2, dh = 30 * PX2;
+        g += `<rect x="${sx + w * 0.26 - dw / 2}" y="${iy(34)}" width="${dw}" height="${dh}" rx="1.5" fill="#34363d" stroke="#1b1c20" stroke-width="0.9"/>`;
+        g += `<rect x="${sx + w * 0.72 - dw / 2}" y="${iy(76)}" width="${dw}" height="${dh}" rx="1.5" fill="#34363d" stroke="#1b1c20" stroke-width="0.9"/>`;
+        g += `<rect x="${sx + w * 0.72 - 3.5 * PX2}" y="${iy(10)}" width="${7 * PX2}" height="${10 * PX2 - 2}" rx="2" fill="#2c2e33" stroke="#1b1c20" stroke-width="0.9"/>`;
+        g += `<circle cx="${sx + w * 0.72}" cy="${iy(5.2)}" r="${2.4 * PX2}" fill="#22242a" stroke="#54585f" stroke-width="0.8"/>`;
+        g += `<circle cx="${sx + w * 0.72}" cy="${iy(5.2)}" r="${0.8 * PX2}" fill="#62666f"/>`;
+      } else if (kind === 'CBL' && line) {
+        for (const chh of [14, 64]) {
+          g += `<circle cx="${cx2}" cy="${iy(chh)}" r="${2.6 * PX2}" fill="#26282d" stroke="#0d0e11" stroke-width="0.8"/>`;
+          g += `<circle cx="${cx2}" cy="${iy(chh)}" r="${1.1 * PX2}" fill="#0d0e11"/>`;
+        }
+      } else if (!line) {
+        g += `<text x="${cx2}" y="${iy(40)}" text-anchor="middle" font-size="9" fill="#aab" font-style="italic">(empty)</text>`;
+      }
+      return g;
+    }
+  
+    let off = 0, feats = '';
+    for (const slot of slots) {
+      const w = slot.size * scale;
+      const line = assign[slot.id];
+      const kind = line ? classifyWall(line.pack) : 'EMPTY';
+      s += `<rect x="${x0 + off}" y="${y0}" width="${w}" height="${Hp}" fill="${line ? 'url(#ldSeal)' : '#e9e9ec'}" stroke="#15161a" stroke-width="0.8"/>`;
+      feats += elevFeatures(kind, line, x0 + off, w);
+      off += w;
+    }
+    // roof cap
+    s += `<rect x="${x0 - 2.5}" y="${y0 - 3.5}" width="${Wp + 5}" height="4.5" rx="1.8" fill="url(#ldSeal)" stroke="#15161a" stroke-width="0.8"/>`;
+    // caster plate + wheels (booth raised ~5″ off the ground)
+    if (lift > 0) {
+      s += `<rect x="${x0 - 1}" y="${fb}" width="${Wp + 2}" height="${liftPx * 0.38}" rx="1.5" fill="#26282d" stroke="#15161a" stroke-width="0.8"/>`;
+      for (const f of [0.08, 0.36, 0.64, 0.92]) {
+        const wx = x0 + Wp * f;
+        s += `<circle cx="${wx}" cy="${gy - liftPx * 0.32}" r="${liftPx * 0.34}" fill="#1b1c20" stroke="#000" stroke-width="0.8"/>`;
+        s += `<circle cx="${wx}" cy="${gy - liftPx * 0.32}" r="${liftPx * 0.12}" fill="#54585f"/>`;
+      }
+    }
+    // side profile of an adjacent wall's vent set: intake band low, exhaust
+    // band high, remote fan unit at the floor — protruding 5.5″ past the edge
+    function ventSideProfile(atLeft) {
+      const bx = atLeft ? x0 - VOUT2 : x0 + Wp;
+      let g = '';
+      for (const band of [[34, 30], [76, 30]])
+        g += `<rect x="${bx}" y="${iy(band[0])}" width="${VOUT2}" height="${band[1] * PX2}" rx="1.5" fill="#2e3037" stroke="#1b1c20" stroke-width="0.9"/>`;
+      g += `<rect x="${bx}" y="${iy(10)}" width="${VOUT2}" height="${10 * PX2 - 2}" rx="2" fill="#26282d" stroke="#1b1c20" stroke-width="0.9"/>`;
+      return g;
+    }
+    if (leftVent) s += ventSideProfile(true);
+    if (rightVent) s += ventSideProfile(false);
+    // seam-seal battens: full-height at every panel joint, wrapping both corners
+    const SB = Math.max(4.5, 3 * PX2);
+    off = 0;
+    for (let i = 0; i < slots.length - 1; i++) {
+      off += slots[i].size * scale;
+      s += `<rect x="${x0 + off - SB / 2}" y="${y0}" width="${SB}" height="${Hp}" fill="url(#ldSeal)" stroke="#0d0e11" stroke-width="0.9"/>`;
+    }
+    s += `<rect x="${x0 - SB * 0.45}" y="${y0}" width="${SB}" height="${Hp}" rx="1" fill="url(#ldSeal)" stroke="#0d0e11" stroke-width="0.9"/>`;
+    s += `<rect x="${x0 + Wp - SB * 0.55}" y="${y0}" width="${SB}" height="${Hp}" rx="1" fill="url(#ldSeal)" stroke="#0d0e11" stroke-width="0.9"/>`;
+    s += feats;
+  
+    // dims: width below the ground line, height on the left
+    const dy2 = gy + 18;
+    s += `<line x1="${x0}" y1="${dy2}" x2="${x0 + Wp}" y2="${dy2}" stroke="#9097a0" stroke-width="1"/>`
+      + `<line x1="${x0}" y1="${dy2 - 4}" x2="${x0}" y2="${dy2 + 4}" stroke="#9097a0" stroke-width="1"/>`
+      + `<line x1="${x0 + Wp}" y1="${dy2 - 4}" x2="${x0 + Wp}" y2="${dy2 + 4}" stroke="#9097a0" stroke-width="1"/>`;
+    s += `<rect x="${x0 + Wp / 2 - 26}" y="${dy2 - 8}" width="52" height="15" rx="3" fill="url(#ldBg)"/>`;
+    s += `<text x="${x0 + Wp / 2}" y="${dy2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="#4a4f57">${ftIn(lenIn)}</text>`;
+    const dx2 = x0 - (leftVent ? VOUT2 : 0) - 20;
+    s += `<line x1="${dx2}" y1="${y0}" x2="${dx2}" y2="${fb}" stroke="#9097a0" stroke-width="1"/>`
+      + `<line x1="${dx2 - 4}" y1="${y0}" x2="${dx2 + 4}" y2="${y0}" stroke="#9097a0" stroke-width="1"/>`
+      + `<line x1="${dx2 - 4}" y1="${fb}" x2="${dx2 + 4}" y2="${fb}" stroke="#9097a0" stroke-width="1"/>`;
+    s += `<rect x="${dx2 - 8}" y="${y0 + Hp / 2 - 26}" width="16" height="52" fill="url(#ldBg)"/>`;
+    s += `<text x="${dx2}" y="${y0 + Hp / 2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="#4a4f57" transform="rotate(-90 ${dx2} ${y0 + Hp / 2})">${ftIn(hIn)}</text>`;
+  
+    // overall width including adjacent-wall vent protrusion(s)
+    if (leftVent || rightVent) {
+      const VD = '#c9762e';
+      const xA = x0 - (leftVent ? VOUT2 : 0), xB = x0 + Wp + (rightVent ? VOUT2 : 0);
+      const tot = ftIn(lenIn + (leftVent ? 5.5 : 0) + (rightVent ? 5.5 : 0));
+      const vy2 = dy2 + 16, vmx = (xA + xB) / 2;
+      s += `<line x1="${xA}" y1="${vy2}" x2="${xB}" y2="${vy2}" stroke="${VD}" stroke-width="1"/>`
+        + `<line x1="${xA}" y1="${vy2 - 4}" x2="${xA}" y2="${vy2 + 4}" stroke="${VD}" stroke-width="1"/>`
+        + `<line x1="${xB}" y1="${vy2 - 4}" x2="${xB}" y2="${vy2 + 4}" stroke="${VD}" stroke-width="1"/>`;
+      s += `<rect x="${vmx - 38}" y="${vy2 - 8}" width="76" height="15" rx="3" fill="url(#ldBg)"/>`;
+      s += `<text x="${vmx}" y="${vy2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VD}">${tot} w/ vent</text>`;
+    }
+  
+    s += `</svg>`;
+    return s;
+  }
+  
+  // ── WA-Type-aware initial seating ───────────────────────────────────
+  // Greedy placeBom seats the 49″ WA/ADA door by slot preference (front wall)
+  // and the shrunken companion by closest width — neither knows the WA Type.
+  // But the companion's width ENCODES the type (7→4016 · 31→4040 · 19→4622 ·
+  // 43→4646), and the rule is: door slot + directly-adjacent companion seat
+  // conserve the displaced pair (slot + seat ≈ 49 + companion). If the greedy
+  // result violates that, relocate door + companion to the first conserving
+  // pair — preferring the door's current wall, then S, E, N, W. So a 4016
+  // quote on a 102126 loads with the door already on the 102″ side, 7″ wall
+  // beside it; a 4040 loads with the door on the 126″ side, 31″ beside it.
+  function waSeatDoor(layout, assign) {
+    let doorSlot = null, doorSide = null, comp = null, compSide = null;
+    for (const side of ['N', 'S', 'E', 'W']) {
+      const wall = layout.walls[side]; if (!wall) continue;
+      for (const slot of wall.slots) {
+        const ln = assign[slot.id]; if (!ln) continue;
+        const w = panelInteriorWidth(ln.pack);
+        if (w == null) continue;
+        if (classifyWall(ln.pack) === 'DRFRM' && w >= 49) { doorSlot = slot; doorSide = side; }
+        else if ([7, 19, 31, 43].indexOf(w) >= 0 && Math.abs(w - slot.size) >= 3) { comp = { slot: slot, w: w }; compSide = side; }
+      }
+    }
+    if (!doorSlot || !comp) return;
+    const conserve = (a, b) => Math.abs(a.size + b.size - (49 + comp.w)) <= 3;
+    const adjacent = (side, slot) => {
+      const slots = layout.walls[side].slots;
+      const i = slots.findIndex(s2 => s2.id === slot.id);
+      return [slots[i - 1], slots[i + 1]].filter(Boolean);
+    };
+    // already valid? (companion directly adjacent + pair conserves)
+    if (doorSide === compSide && adjacent(doorSide, doorSlot).some(s2 => s2.id === comp.slot.id && conserve(doorSlot, s2))) return;
+    const swapIds = (x, y) => {
+      if (x === y) return;
+      const X = assign[x] || null, Y = assign[y] || null;
+      if (Y == null) delete assign[x]; else assign[x] = Y;
+      if (X == null) delete assign[y]; else assign[y] = X;
+    };
+    const order = [doorSide].concat(['S', 'E', 'N', 'W'].filter(s2 => s2 !== doorSide));
+    for (const side of order) {
+      const wall = layout.walls[side]; if (!wall) continue;
+      const slots = wall.slots;
+      for (let i = 0; i < slots.length; i++) {
+        const slot = slots[i];
+        if (Math.abs(slot.size - doorSlot.size) > 3) continue;   // door stays on its module size
+        if (slot.id === comp.slot.id) continue;                  // never seat the door ON the companion
+        for (const j of [i - 1, i + 1]) {
+          const seat = slots[j];
+          if (!seat || !conserve(slot, seat)) continue;
+          swapIds(doorSlot.id, slot.id);
+          swapIds(comp.slot.id, seat.id);
+          return;
+        }
+      }
+    }
+  }
 
   function renderLegend() {
-    const sw = { DRFRM:'#ee6216', WDO:'#9ec4e6', VNT:'#34353d', SOLID:'#34353d' };
+    const sw = { DRFRM:'#ee6216', WDO:'#9ec4e6', VNT:'#54575f', SOLID:'#54575f' };
     const items = ['SOLID','VNT','DRFRM','WDO'].map(k =>
       '<span><span class="ld-sw" style="background:' + sw[k] + '"></span>' + KIND_META[k].label + '</span>'
     ).join('');
@@ -642,20 +998,78 @@
   const LAYOUT_STATE = {};
   let _ldDrag = null;
   const ldRoomOf = el => { const w = el && el.closest && el.closest('[data-layout-room]'); return w ? +w.getAttribute('data-layout-room') : null; };
-  // Slot's nominal width (in) for the drag size constraint.
-  function ldSlotSize(ri, slotId) {
+  // Slot lookup (side + wall + slot) for the drag rules.
+  function ldSlotInfo(ri, slotId) {
     const st = LAYOUT_STATE[ri]; if (!st) return null;
-    for (const side of ['N', 'S', 'E', 'W'])
-      for (const slot of st.layout.walls[side].slots)
-        if (slot.id === slotId) return slot.size;
+    for (const side of ['N', 'S', 'E', 'W']) {
+      const wall = st.layout.walls[side]; if (!wall) continue;
+      for (const slot of wall.slots) if (slot.id === slotId) return { side: side, wall: wall, slot: slot };
+    }
     return null;
+  }
+  // Is this line the 49″ WA/ADA doorframe? (A standard doorframe pack reads
+  // STDWL46 DRFRM → 46″; the WA/ADA/FR frames read STDDRFRM → 49″.)
+  function ldIsWideDoor(line) {
+    if (!line) return false;
+    const w = panelInteriorWidth(line.pack);
+    return classifyWall(line.pack) === 'DRFRM' && w != null && w >= 49;
+  }
+  // The WA Type names the wall PAIR the 49″ door displaces, and the pair's
+  // total width is conserved (Benton 2026-06-09):
+  //   4646: 46+46 → 49+43     4622: 46+22 → 49+19
+  //   4040: 40+40 → 49+31     4016: 40+16 → 49+7
+  // The shrunken companion always sits DIRECTLY ADJACENT to the door. So on a
+  // 102126, a 4016 door can only live on the 102″ side (40+16+40 — it replaces
+  // a 40 and the middle 16 becomes the 7), while 4040 forces the 126″ side
+  // (40+40+44 — the adjacent 40 becomes 31).
+  // Companion = the one shrunken WA wall, WHEREVER it currently sits (the
+  // greedy auto-place doesn't know the adjacency rule, so it may seat the
+  // 7″/31″ on any wall until the rep drags the door). Identified by width ∈
+  // {7,19,31,43} AND visibly narrower than its slot (a normal 43″ wall in a
+  // 44″ slot is NOT one).
+  function ldCompanion(ri) {
+    const st = LAYOUT_STATE[ri]; if (!st) return null;
+    for (const side of ['N', 'S', 'E', 'W']) {
+      const wall = st.layout.walls[side]; if (!wall) continue;
+      for (const s2 of wall.slots) {
+        const ln = st.assign[s2.id]; if (!ln) continue;
+        const w = panelInteriorWidth(ln.pack);
+        if (w != null && [7, 19, 31, 43].indexOf(w) >= 0 && Math.abs(w - s2.size) >= 3) return { slotId: s2.id, w: w };
+      }
+    }
+    return null;
+  }
+  // Slots adjacent to a drop target that can seat the companion: the pair
+  // must conserve width — |target + adjacent − (49 + companion)| ≤ 3.
+  function ldDoorSeats(ri, info, compW) {
+    const slots = info.wall.slots;
+    const i = slots.findIndex(s2 => s2.id === info.slot.id);
+    const out = [];
+    for (const j of [i - 1, i + 1]) {
+      if (j < 0 || j >= slots.length) continue;
+      if (Math.abs(info.slot.size + slots[j].size - (49 + compW)) <= 3) out.push(slots[j]);
+    }
+    return out;
   }
   // A panel only fits a slot of (near-)equal width — you can't drop a 46" panel
   // where a 22" sits. ±3" covers module rounding (46/47/47.5) but blocks
-  // full↔narrow swaps.
+  // full↔narrow swaps. The 49″ WA/ADA doorframe additionally needs a valid
+  // companion seat ADJACENT to the drop target (pair conservation above) — so
+  // a 4016 door is refused on a 40+40 pair and a 4040 door on a 40+16 pair.
   function ldCompatible(ri, a, b) {
-    const sa = ldSlotSize(ri, a), sb = ldSlotSize(ri, b);
-    return sa != null && sb != null && Math.abs(sa - sb) <= 3;
+    const A = ldSlotInfo(ri, a), B = ldSlotInfo(ri, b);
+    if (!A || !B) return false;
+    if (Math.abs(A.slot.size - B.slot.size) > 3) return false;
+    const st = LAYOUT_STATE[ri]; if (!st) return false;
+    if (ldIsWideDoor(st.assign[a])) {
+      const comp = ldCompanion(ri);
+      if (comp ? ldDoorSeats(ri, B, comp.w).length === 0 : B.wall.slots.length < 2) return false;
+    }
+    if (ldIsWideDoor(st.assign[b])) {
+      const comp = ldCompanion(ri);
+      if (comp ? ldDoorSeats(ri, A, comp.w).length === 0 : A.wall.slots.length < 2) return false;
+    }
+    return true;
   }
 
   function renderLayoutTab(rm, ri) {
@@ -668,15 +1082,37 @@
           + '</div></div>';
       }
       const placed = placeBom(layout, rm.lines).placement;
+      waSeatDoor(layout, placed);   // WA/ADA door + companion onto their WA-Type wall pair
       st = LAYOUT_STATE[ri] = { rm, layout, assign: placed };
     }
     const layout = st.layout;
     const placedSet = new Set(Object.values(st.assign).filter(Boolean));
     const leftover = (rm.lines || []).filter(l => isWallPanel(l.pack) && !placedSet.has(l));
+    // Elevation facing defaults to whichever wall holds the door
+    if (!st.facing) st.facing = (function () {
+      for (const sd of ['S', 'E', 'N', 'W'])
+        for (const sl of ((layout.walls[sd] || { slots: [] }).slots)) {
+          const ln = st.assign[sl.id];
+          if (ln && classifyWall(ln.pack) === 'DRFRM') return sd;
+        }
+      return 'S';
+    })();
+    const FACE_LABEL = { S: 'FRONT', E: 'RIGHT SIDE', N: 'BACK', W: 'LEFT SIDE' };
     let html = '<div class="layout-wrap" data-layout-room="' + ri + '">'
       + '<div class="layout-title">' + esc(rm.boothName) + ' · ' + esc(layout.label || '')
       +   ' <span class="layout-sub">' + esc(layout.variant || 'S') + '</span></div>'
-      + renderLayoutSvg(layout, st.assign)
+      + '<div class="ld-views">'
+      +   '<div class="ld-view ld-view-plan"><div class="ld-view-cap"><span>TOP-DOWN</span></div>'
+      +     renderLayoutSvg(layout, st.assign) + '</div>'
+      +   '<div class="ld-view ld-view-elev">'
+      +     '<div class="ld-view-cap">'
+      +       '<button class="ld-rot" onclick="ldRotate(this,-1)" title="Rotate view left">◀</button>'
+      +       '<span>ELEVATION · ' + FACE_LABEL[st.facing] + '</span>'
+      +       '<button class="ld-rot" onclick="ldRotate(this,1)" title="Rotate view right">▶</button>'
+      +     '</div>'
+      +     renderElevationSvg(layout, st.assign, st.facing)
+      +   '</div>'
+      + '</div>'
       + renderLegend();
     if (leftover.length) {
       html += '<div class="layout-empty" style="margin-top:12px;text-align:left;color:#5a3a18;background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.4)">'
@@ -751,12 +1187,44 @@
     const A = st.assign[a] || null, B = st.assign[b] || null;
     if (B == null) delete st.assign[a]; else st.assign[a] = B;
     if (A == null) delete st.assign[b]; else st.assign[b] = A;
+    // The 49″ WA/ADA door travels WITH its shrunken companion (43″/31″/19″/7″
+    // per WA Type) — they must end up directly adjacent. When exactly one end
+    // of the swap is the wide door, pull the companion into the conserving
+    // adjacent slot of the door's new position.
+    const aWide = ldIsWideDoor(st.assign[a]), bWide = ldIsWideDoor(st.assign[b]);
+    if (aWide !== bWide) ldBringCompanion(ri, aWide ? a : b);
     const wrap = document.querySelector('[data-layout-room="' + ri + '"]');
     if (wrap) wrap.outerHTML = renderLayoutTab(st.rm, ri);
+  }
+  // Move the WA shrink companion (43″/31″/19″/7″ per WA Type) — wherever it
+  // sits — into the slot DIRECTLY ADJACENT to the door's new slot (pair
+  // conservation picks which adjacent), swapping with whatever sits there.
+  function ldBringCompanion(ri, doorSlotId) {
+    const st = LAYOUT_STATE[ri]; if (!st) return;
+    const to = ldSlotInfo(ri, doorSlotId); if (!to) return;
+    const comp = ldCompanion(ri); if (!comp) return;
+    const seats = ldDoorSeats(ri, to, comp.w);
+    if (!seats.length) return;
+    if (seats.some(s2 => s2.id === comp.slotId)) return;   // already adjacent
+    const seat = seats[0];
+    const X = st.assign[comp.slotId] || null, Y = st.assign[seat.id] || null;
+    if (Y == null) delete st.assign[comp.slotId]; else st.assign[comp.slotId] = Y;
+    if (X == null) delete st.assign[seat.id]; else st.assign[seat.id] = X;
   }
   document.addEventListener('pointerdown', ldDown);
   document.addEventListener('pointermove', ldMove);
   document.addEventListener('pointerup', ldUp);
+
+  // Elevation rotate: cycle which wall the elevation faces (S → E → N → W).
+  // Facing persists on the room's LAYOUT_STATE, so drags re-render in place.
+  function ldRotate(btn, dir) {
+    const ri = ldRoomOf(btn); if (ri == null) return;
+    const st = LAYOUT_STATE[ri]; if (!st) return;
+    const order = ['S', 'E', 'N', 'W'];
+    st.facing = order[(order.indexOf(st.facing || 'S') + dir + 4) % 4];
+    const wrap = document.querySelector('[data-layout-room="' + ri + '"]');
+    if (wrap) wrap.outerHTML = renderLayoutTab(st.rm, ri);
+  }
 
 
   function switchTab(roomEl, tabName) {

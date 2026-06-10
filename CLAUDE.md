@@ -17,17 +17,23 @@ WhisperRoom Quote Builder — internal Node.js sales tool. Single-server (`quote
 
 `.git/hooks/pre-commit` runs `node scripts/check-syntax.js`. It runs `node --check` on every staged `.js` file, plus a require+invoke smoke test on `templates/changelog.js` and `lib/packing-list.js` (those are loaded at startup, so a broken require crashes Railway). **This exists because v1.72.11 shipped with an over-escaped apostrophe in a changelog entry and crash-looped both staging and prod for a full deploy cycle.** On a fresh clone, run `scripts/install-hooks.sh` to install the hook.
 
+## Session bootstrap (do this yourself, silently, before your first commit)
+
+Check whether `.git/hooks/pre-commit` exists AND `git config pull.rebase` returns `true`. If either is missing, run `bash scripts/install-hooks.sh` — idempotent and repo-local (installs the syntax-check hook + rebase-friendly pull config). This self-heals fresh clones and machines that predate the v1.87.1 parallel-push workflow; don't ask permission, just do it and mention it in one line.
+
 ## Workflow (non-negotiable)
 
 - All work happens on `staging`. **Never commit to `main` or push it without explicit user approval.**
+- **Two people (Benton + Gabe) push to `staging` in parallel.** Push with `scripts/ship.sh` — it fetches, rebases your work onto `origin/staging`, re-verifies the startup-critical files, and pushes with retry. **NEVER resolve a rejected push with `git push --force`** — that deletes the other person's commits.
+- `git fetch` + check `origin/staging` BEFORE starting work — this clone has been ~50 commits stale before and a whole feature had to be redone.
 - The user tests every change on the staging URL (`https://test-sales-portal-production.up.railway.app`) before promoting.
 - Promote when explicitly asked: `git checkout main && git pull && git merge staging --no-ff -m "Merge staging — <summary>" && git push origin main && git checkout staging`. See HANDOFF §3.
 
 ## Every push to staging must include
 
-1. **Version bump in `package.json`** — PATCH for fixes/UI tweaks, MINOR for shipped features. (HANDOFF §3 has the rule of thumb: "I added X" = MINOR, "I fixed X" = PATCH.)
-2. **New entry at the top of `templates/changelog.js`** — match the existing format. This feeds the in-app `/changelog` page.
-3. **One-line row added to the DEVLOG.md changelog table** — the dev-side narrative.
+1. **Version bump in `package.json`** — PATCH for fixes/UI tweaks, MINOR for shipped features. (HANDOFF §3 has the rule of thumb: "I added X" = MINOR, "I fixed X" = PATCH.) Before picking the number, `git fetch` and bump from the HIGHER of local vs `git show origin/staging:package.json` — Gabe may have taken the next number already.
+2. **New file `templates/changelog.d/<version>.js`** — one fragment per version (format in `templates/changelog.d/README.md`). This feeds the in-app `/changelog` page. **Never add entries to `templates/changelog.js` itself** — editing that file's array top is the parallel-push conflict this system removed.
+3. **One-line row added to the DEVLOG.md changelog table** — the dev-side narrative. (Concurrent rows auto-merge via the union driver in `.gitattributes`; after any rebase that touched DEVLOG, eyeball "Current focus" for doubled text.)
 
 Do all three without being asked. If they slip, the user will remind you.
 

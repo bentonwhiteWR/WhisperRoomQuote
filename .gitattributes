@@ -1,0 +1,7 @@
+# DEVLOG.md: both devs add a changelog-table row at the same anchor on every
+# push — a guaranteed textual conflict with zero semantic conflict. The
+# built-in union driver keeps BOTH sides' lines instead of stopping the
+# rebase. Caveat: if two pushes rewrite the SAME paragraph (e.g. "Current
+# focus"), union concatenates both versions silently — eyeball that section
+# after a merge/rebase that touched DEVLOG.
+DEVLOG.md merge=union

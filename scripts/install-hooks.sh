@@ -23,3 +23,10 @@ for hook in "$SRC"/*; do
   chmod +x "$DST/$name"
   echo "installed: $DST/$name"
 done
+
+# Rebase-friendly defaults (repo-local) — two people push to staging in
+# parallel, so `git pull` must rebase (no merge knots) and must not refuse
+# over uncommitted work. Push via scripts/ship.sh, never `push --force`.
+git config pull.rebase true
+git config rebase.autoStash true
+echo "configured: pull.rebase=true, rebase.autoStash=true (repo-local)"

@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WhisperRoom — Inventory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a1a1a'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial Black,sans-serif' font-size='18' font-weight='900' fill='%23e8531a'>W</text></svg>">
+<style>
+  :root {
+    --bg: #0f0f0f; --surface: #1a1a1a; --surface2: #222; --border: #2a2a2a;
+    --orange: #ee6216; --orange-dim: rgba(238,98,22,.12);
+    --text: #e8e8e8; --muted: #888;
+    --green: #22c55e; --red: #ef4444; --blue: #3b82f6; --amber: #f59e0b; --purple: #a855f7;
+    --row-hover: rgba(255,255,255,.02);
+  }
+  :root.light {
+    --bg: #f5f5f5; --surface: #ffffff; --surface2: #f0f0f0; --border: #e0e0e0;
+    --orange: #d44f0c; --orange-dim: rgba(212,79,12,.1);
+    --text: #1a1a1a; --muted: #666;
+    --green: #16a34a; --red: #dc2626; --blue: #2563eb; --amber: #d97706; --purple: #7c3aed;
+    --row-hover: rgba(0,0,0,.02);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+
+  .topbar { background: #1a1a1a; border-bottom: 1px solid rgba(255,255,255,.07); padding: 0 20px; height: 52px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }
+  .topbar-logo { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; color: #f0ede8; flex-shrink: 0; text-decoration: none; }
+  .topbar-logo span { color: #e8531a; }
+  .topbar-nav { display: flex; gap: 6px; }
+  .nav-link { padding: 5px 10px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; border-radius: 6px; color: rgba(255,255,255,.5); text-decoration: none; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); transition: all .15s; }
+  .nav-link:hover { color: rgba(255,255,255,.9); background: rgba(255,255,255,.12); }
+  .nav-link.active { background: rgba(238,98,22,.2); color: #ee6216; border-color: rgba(238,98,22,.4); }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .theme-btn { padding: 5px 9px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); border-radius: 6px; color: #f0ede8; cursor: pointer; font-size: 14px; }
+
+  .main { max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
+  .page-header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 14px; gap: 12px; flex-wrap: wrap; }
+  .page-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; }
+  .page-title span { color: var(--orange); }
+  .page-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .card-label { font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+  .card-value { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; margin-top: 4px; }
+  .card-value.alert { color: var(--red); }
+  .card-value.warn { color: var(--amber); }
+
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .filters { display: flex; gap: 6px; flex-wrap: wrap; }
+  .filter-btn { padding: 4px 11px; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; font-family: inherit; }
+  .filter-btn:hover { border-color: var(--orange); color: var(--orange); }
+  .filter-btn.active { background: var(--orange-dim); border-color: var(--orange); color: var(--orange); }
+  .search-input { padding: 6px 12px; font-size: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; color: var(--text); font-family: inherit; outline: none; min-width: 200px; }
+  .search-input:focus { border-color: var(--orange); }
+  .spacer { flex: 1; }
+  .act-btn { padding: 6px 14px; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border-radius: 7px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-family: inherit; }
+  .act-btn:hover { border-color: var(--orange); color: var(--orange); }
+  .act-btn.primary { background: var(--orange); border-color: var(--orange); color: #fff; }
+  .act-btn.primary:disabled { opacity: .4; cursor: default; }
+  .act-btn.primary:not(:disabled):hover { filter: brightness(1.1); color: #fff; }
+
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { text-align: right; padding: 10px 12px; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap; background: var(--surface2); position: sticky; top: 52px; z-index: 5; }
+  thead th.l { text-align: left; }
+  tbody td { padding: 6px 12px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  tbody td.l { text-align: left; }
+  tbody tr:hover { background: var(--row-hover); }
+  tbody tr:last-child td { border-bottom: none; }
+  .code-cell { font-weight: 700; cursor: pointer; }
+  .code-cell:hover { color: var(--orange); }
+  .code-cell .caret { display: inline-block; width: 12px; color: var(--muted); font-size: 10px; }
+  .name-cell { color: var(--muted); max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+  .cell-input { width: 70px; padding: 4px 7px; font-size: 13px; text-align: right; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: inherit; font-variant-numeric: tabular-nums; outline: none; }
+  .cell-input:focus { border-color: var(--orange); }
+  .cell-input.dirty { border-color: var(--amber); background: rgba(245,158,11,.1); }
+  .cell-input.bp { width: 86px; text-align: right; }
+  .neg { color: var(--red); font-weight: 700; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .p-low { background: rgba(245,158,11,.15); color: var(--amber); }
+  .p-short { background: rgba(239,68,68,.15); color: var(--red); }
+  .p-neg { background: rgba(239,68,68,.25); color: var(--red); }
+  .muted { color: var(--muted); }
+  .dash { color: var(--muted); opacity: .5; }
+  tr.detail > td { background: var(--surface2); padding: 12px 18px; }
+  .txn-table { width: 100%; font-size: 12px; border-collapse: collapse; }
+  .txn-table td, .txn-table th { padding: 4px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  .txn-table tr:last-child td { border-bottom: none; }
+  .r-ship   { background: rgba(59,130,246,.13);  color: var(--blue); }
+  .r-unship { background: rgba(168,85,247,.15);  color: var(--purple); }
+  .r-adjust { background: rgba(245,158,11,.15);  color: var(--amber); }
+  .r-sync   { background: rgba(34,197,94,.13);   color: var(--green); }
+  .r-seed   { background: rgba(136,136,136,.16); color: var(--muted); }
+  .delta-pos { color: var(--green); font-weight: 700; }
+  .delta-neg { color: var(--red); font-weight: 700; }
+
+  .empty, .loading { padding: 40px; text-align: center; color: var(--muted); font-size: 13px; }
+
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 200; display: none; align-items: flex-start; justify-content: center; padding: 60px 20px; overflow: auto; }
+  .modal-bg.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px; width: 100%; max-width: 760px; }
+  .modal h3 { font-family: 'Syne', sans-serif; font-size: 17px; margin-bottom: 6px; }
+  .modal .hint { font-size: 12px; color: var(--muted); margin-bottom: 12px; line-height: 1.5; }
+  .modal textarea { width: 100%; min-height: 220px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: monospace; font-size: 11px; padding: 10px; outline: none; }
+  .modal textarea:focus { border-color: var(--orange); }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+  .modal .result { font-size: 12px; margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--surface2); border: 1px solid var(--border); white-space: pre-wrap; display: none; }
+  .modal input.fld { padding: 6px 10px; font-size: 13px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: inherit; outline: none; }
+  .modal input.fld:focus { border-color: var(--orange); }
+
+  .savebar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1px solid var(--amber); padding: 10px 24px; display: none; align-items: center; gap: 14px; z-index: 150; }
+  .savebar.open { display: flex; }
+  .savebar .msg { font-size: 12px; color: var(--amber); font-weight: 700; }
+</style>
+<script src="/assets/nav.js" defer></script>
+</head>
+<body>
+<nav class="topbar">
+  <a href="/deals" class="topbar-logo">Whisper<span>Room</span></a>
+  <div class="topbar-nav"></div>
+  <div class="topbar-right">
+    <span id="appVersion" style="font-size:9px;font-weight:700;color:rgba(255,255,255,.25);letter-spacing:.06em;padding:2px 6px;border:1px solid rgba(255,255,255,.08);border-radius:4px;font-family:monospace;flex-shrink:0"></span>
+    <div id="notifBellMount"></div>
+    <script src="/assets/notif-bell.js" defer></script>
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">◐</button>
+    <a href="/auth/logout" style="padding:5px 9px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.4);text-decoration:none">Sign Out</a>
+  </div>
+</nav>
+
+<div class="main">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Component <span>Inventory</span></div>
+      <div class="page-sub">On-hand per component code · ships auto-deduct, un-ships restore · every move audited. <span id="demandMeta" class="muted"></span></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="act-btn" onclick="openModal('addModal')">＋ Add Code</button>
+      <button class="act-btn" onclick="openModal('syncModal')">⇄ Sync from Excel</button>
+      <button class="act-btn" onclick="showActivity()">🕘 Activity</button>
+      <button class="act-btn" onclick="loadData(true)">↻ Refresh</button>
+    </div>
+  </div>
+
+  <div class="cards" id="cards"></div>
+
+  <div class="toolbar">
+    <div class="filters" id="filters">
+      <button class="filter-btn active" data-f="ALL">All</button>
+      <button class="filter-btn" data-f="LOW">Low stock</button>
+      <button class="filter-btn" data-f="SHORT">Not enough</button>
+      <button class="filter-btn" data-f="NEG">Negative</button>
+      <button class="filter-btn" data-f="DIRTY">Edited</button>
+    </div>
+    <input class="search-input" id="search" placeholder="Search code / name…" oninput="render()">
+    <div class="spacer"></div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="l">Code</th>
+          <th class="l">Name</th>
+          <th>On Hand</th>
+          <th title="Σ components across unshipped orders (generated PLs)">Needed</th>
+          <th title="On hand − needed">Available</th>
+          <th>Build Point</th>
+          <th>Build Qty</th>
+          <th>Finished</th>
+          <th>In Process</th>
+          <th class="l">Flags</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"><tr><td colspan="10" class="loading">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="savebar" id="savebar">
+  <span class="msg" id="saveMsg">Unsaved changes</span>
+  <button class="act-btn primary" id="saveBtn" onclick="saveChanges()">💾 Save</button>
+  <button class="act-btn" onclick="discardChanges()">Discard</button>
+</div>
+
+<!-- Sync from Excel -->
+<div class="modal-bg" id="syncModal">
+  <div class="modal">
+    <h3>Sync from Excel</h3>
+    <div class="hint">
+      In <b>PackingList.xlsm → Inventory</b> sheet: select <b>columns B through K, from row 8 down</b>
+      (Build Qty | Name | Code | Build Point | … | Finished | … | In Process | … | On Hand), copy (Ctrl+C),
+      and paste below. On-hand differences are applied as audited <b>sync</b> adjustments; new codes are created.
+      Use this to re-align with Excel during the parallel run.
+    </div>
+    <textarea id="syncText" placeholder="Paste the Inventory sheet rows here…"></textarea>
+    <div class="result" id="syncResult"></div>
+    <div class="modal-actions">
+      <button class="act-btn" onclick="closeModal('syncModal')">Close</button>
+      <button class="act-btn primary" id="syncBtn" onclick="runSync()">Apply Sync</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add a component code -->
+<div class="modal-bg" id="addModal">
+  <div class="modal" style="max-width:430px">
+    <h3>Add Component Code</h3>
+    <div class="hint">Creates a new inventory row (e.g. a code that's never shipped yet). On-hand starts at the value you give, recorded as an audited adjustment.</div>
+    <div style="display:grid;grid-template-columns:110px 1fr;gap:9px;align-items:center">
+      <label style="font-size:12px;color:var(--muted)">Code</label><input class="fld" id="addCode" placeholder="e.g. C101" style="text-transform:uppercase">
+      <label style="font-size:12px;color:var(--muted)">Name</label><input class="fld" id="addName" placeholder="e.g. STD WL 46">
+      <label style="font-size:12px;color:var(--muted)">On hand</label><input class="fld" id="addOnHand" type="number" value="0">
+      <label style="font-size:12px;color:var(--muted)">Build point</label><input class="fld" id="addBp" placeholder='number or "as needed"'>
+    </div>
+    <div class="result" id="addResult"></div>
+    <div class="modal-actions">
+      <button class="act-btn" onclick="closeModal('addModal')">Cancel</button>
+      <button class="act-btn primary" onclick="addCode()">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- Activity (audit log) -->
+<div class="modal-bg" id="actModal">
+  <div class="modal" style="max-width:900px">
+    <h3>Inventory Activity</h3>
+    <div class="hint">Append-only audit of every stock move — ship deductions, un-ship restores, manual adjustments, Excel syncs.</div>
+    <div id="actBody" class="loading">Loading…</div>
+    <div class="modal-actions"><button class="act-btn" onclick="closeModal('actModal')">Close</button></div>
+  </div>
+</div>
+
+<script>
+// NOTE: helpers are per-file by convention (no shared dashboard JS).
+function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+let ROWS = [];           // server rows
+let DEMAND = {};         // code -> needed qty (open orders)
+let DIRTY = {};          // code -> { field: newValue }
+let FILTER = 'ALL';
+let EXPANDED = null;     // code with open txn detail
+
+const EDIT_FIELDS = [
+  { key: 'on_hand',        cls: '' },
+  { key: 'build_point',    cls: 'bp', text: true },
+  { key: 'build_qty',      cls: '' },
+  { key: 'finished_qty',   cls: '' },
+  { key: 'in_process_qty', cls: '' },
+];
+
+async function loadData(refresh) {
+  try {
+    const r = await fetch('/api/inventory' + (refresh ? '?refresh=1' : ''));
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    ROWS = d.rows || [];
+    DEMAND = d.demand || {};
+    document.getElementById('demandMeta').textContent =
+      'Demand from ' + (d.openOrders || 0) + ' open order' + (d.openOrders === 1 ? '' : 's') +
+      (d.demandAt ? ' · computed ' + new Date(d.demandAt).toLocaleTimeString() : '');
+    render();
+  } catch (e) {
+    document.getElementById('tbody').innerHTML = '<tr><td colspan="10" class="empty">Failed to load: ' + escapeHtml(e.message) + '</td></tr>';
+  }
+}
+
+function flags(row) {
+  const out = [];
+  const eff = effective(row);
+  const onHand = parseInt(eff.on_hand, 10) || 0;
+  const needed = DEMAND[row.code] || 0;
+  if (onHand < 0) out.push(['p-neg', 'Negative']);
+  if (needed > onHand) out.push(['p-short', 'Not enough']);
+  const bp = parseInt(String(eff.build_point || '').trim(), 10);
+  if (!Number.isNaN(bp) && onHand <= bp) out.push(['p-low', 'Low']);
+  return out;
+}
+
+function effective(row) {
+  return Object.assign({}, row, DIRTY[row.code] || {});
+}
+
+function matchesFilter(row) {
+  const f = flags(row).map(x => x[1]);
+  if (FILTER === 'LOW')   return f.includes('Low');
+  if (FILTER === 'SHORT') return f.includes('Not enough');
+  if (FILTER === 'NEG')   return f.includes('Negative');
+  if (FILTER === 'DIRTY') return !!DIRTY[row.code];
+  return true;
+}
+
+function render() {
+  const q = (document.getElementById('search').value || '').trim().toUpperCase();
+  const rows = ROWS.filter(r =>
+    (!q || r.code.toUpperCase().includes(q) || String(r.name || '').toUpperCase().includes(q)) && matchesFilter(r));
+
+  // cards
+  const low = ROWS.filter(r => flags(r).some(x => x[1] === 'Low')).length;
+  const short = ROWS.filter(r => flags(r).some(x => x[1] === 'Not enough')).length;
+  const neg = ROWS.filter(r => (parseInt(effective(r).on_hand, 10) || 0) < 0).length;
+  document.getElementById('cards').innerHTML =
+    card('Components', ROWS.length) +
+    card('Low stock', low, low ? 'warn' : '') +
+    card('Not enough for orders', short, short ? 'alert' : '') +
+    card('Negative on-hand', neg, neg ? 'alert' : '') +
+    card('Unsaved edits', Object.keys(DIRTY).length, Object.keys(DIRTY).length ? 'warn' : '');
+
+  const tb = document.getElementById('tbody');
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="10" class="empty">No components match.</td></tr>'; return; }
+  let html = '';
+  for (const r of rows) {
+    const eff = effective(r);
+    const needed = DEMAND[r.code] || 0;
+    const onHand = parseInt(eff.on_hand, 10) || 0;
+    const avail = onHand - needed;
+    const fl = flags(r).map(x => '<span class="pill ' + x[0] + '">' + x[1] + '</span>').join(' ');
+    html += '<tr data-code="' + escapeHtml(r.code) + '">' +
+      '<td class="l code-cell" onclick="toggleDetail(\'' + escapeHtml(r.code) + '\')"><span class="caret">' + (EXPANDED === r.code ? '▾' : '▸') + '</span>' + escapeHtml(r.code) + '</td>' +
+      '<td class="l name-cell" title="' + escapeHtml(r.name || '') + '">' + escapeHtml(r.name || '') + '</td>' +
+      EDIT_FIELDS.map(f => {
+        const dirty = DIRTY[r.code] && DIRTY[r.code][f.key] !== undefined;
+        const val = eff[f.key];
+        const shown = (val === null || val === undefined) ? '' : val;
+        const extra = (f.key === 'on_hand')
+          ? '</td><td class="' + (needed ? '' : 'muted') + '">' + (needed || '<span class="dash">—</span>') +
+            '</td><td class="' + (avail < 0 ? 'neg' : '') + '">' + avail
+          : '';
+        return '<td><input class="cell-input ' + f.cls + (dirty ? ' dirty' : '') + '" data-code="' + escapeHtml(r.code) + '" data-field="' + f.key + '" value="' + escapeHtml(shown) + '" onchange="cellEdit(this)">' + extra;
+      }).join('</td>') + '</td>' +
+      '<td class="l">' + (fl || '<span class="dash">—</span>') + '</td>' +
+      '</tr>';
+    if (EXPANDED === r.code) html += '<tr class="detail"><td colspan="10" id="detailCell">Loading history…</td></tr>';
+  }
+  tb.innerHTML = html;
+  if (EXPANDED) loadDetail(EXPANDED);
+  updateSavebar();
+}
+
+function card(label, value, cls) {
+  return '<div class="card"><div class="card-label">' + label + '</div><div class="card-value ' + (cls || '') + '">' + value + '</div></div>';
+}
+
+function cellEdit(inp) {
+  const code = inp.dataset.code, field = inp.dataset.field;
+  const row = ROWS.find(r => r.code === code);
+  if (!row) return;
+  let v = inp.value.trim();
+  const orig = row[field] === null || row[field] === undefined ? '' : String(row[field]);
+  if (v === orig) {
+    if (DIRTY[code]) { delete DIRTY[code][field]; if (!Object.keys(DIRTY[code]).length) delete DIRTY[code]; }
+  } else {
+    DIRTY[code] = DIRTY[code] || {};
+    DIRTY[code][field] = v;
+  }
+  render();
+}
+
+function updateSavebar() {
+  const n = Object.keys(DIRTY).length;
+  document.getElementById('savebar').classList.toggle('open', n > 0);
+  document.getElementById('saveMsg').textContent = n + ' row' + (n === 1 ? '' : 's') + ' with unsaved changes';
+}
+
+async function saveChanges() {
+  const changes = Object.entries(DIRTY).map(([code, fields]) => Object.assign({ code }, fields));
+  if (!changes.length) return;
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/inventory/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ changes }) });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    DIRTY = {};
+    await loadData();
+  } catch (e) {
+    alert('Save failed: ' + e.message);
+  } finally { btn.disabled = false; }
+}
+
+function discardChanges() { DIRTY = {}; render(); }
+
+function toggleDetail(code) {
+  EXPANDED = (EXPANDED === code) ? null : code;
+  render();
+}
+
+function reasonPill(reason) {
+  return '<span class="pill r-' + escapeHtml(reason) + '">' + escapeHtml(reason) + '</span>';
+}
+
+function txnTable(txns) {
+  if (!txns.length) return '<span class="muted">No activity recorded.</span>';
+  return '<table class="txn-table"><tr><th>When</th><th>Code</th><th>Δ</th><th>After</th><th>Reason</th><th>Quote</th><th>Who</th><th>Note</th></tr>' +
+    txns.map(t =>
+      '<tr><td>' + new Date(t.created_at).toLocaleString() + '</td>' +
+      '<td><b>' + escapeHtml(t.code) + '</b></td>' +
+      '<td class="' + (t.delta > 0 ? 'delta-pos' : 'delta-neg') + '">' + (t.delta > 0 ? '+' : '') + t.delta + '</td>' +
+      '<td>' + (t.on_hand_after == null ? '—' : t.on_hand_after) + '</td>' +
+      '<td>' + reasonPill(t.reason) + '</td>' +
+      '<td>' + (t.quote_number ? '<a href="/pl/' + encodeURIComponent(t.quote_number) + '" target="_blank" style="color:var(--blue)">' + escapeHtml(t.quote_number) + '</a>' : '<span class="dash">—</span>') + '</td>' +
+      '<td>' + escapeHtml(t.rep || '—') + '</td>' +
+      '<td class="muted">' + escapeHtml(t.note || '') + '</td></tr>'
+    ).join('') + '</table>';
+}
+
+async function loadDetail(code) {
+  const cell = document.getElementById('detailCell');
+  if (!cell) return;
+  try {
+    const r = await fetch('/api/inventory/transactions?code=' + encodeURIComponent(code) + '&limit=50');
+    const d = await r.json();
+    cell.innerHTML = txnTable(d.txns || []);
+  } catch (e) { cell.innerHTML = '<span class="muted">Failed to load history.</span>'; }
+}
+
+async function showActivity() {
+  openModal('actModal');
+  const body = document.getElementById('actBody');
+  body.innerHTML = 'Loading…';
+  try {
+    const r = await fetch('/api/inventory/transactions?limit=300');
+    const d = await r.json();
+    body.innerHTML = txnTable(d.txns || []);
+  } catch (e) { body.innerHTML = '<span class="muted">Failed to load.</span>'; }
+}
+
+async function runSync() {
+  const tsv = document.getElementById('syncText').value;
+  const out = document.getElementById('syncResult');
+  if (!tsv.trim()) { out.style.display = 'block'; out.textContent = 'Nothing pasted.'; return; }
+  const btn = document.getElementById('syncBtn');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/inventory/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tsv }) });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    out.style.display = 'block';
+    out.textContent = 'Parsed ' + d.parsed + ' rows · ' + d.adjusted + ' on-hand changes · ' + d.created + ' new codes' +
+      (d.skipped && d.skipped.length ? '\nSkipped:\n' + d.skipped.join('\n') : '');
+    await loadData();
+  } catch (e) {
+    out.style.display = 'block';
+    out.textContent = 'Sync failed: ' + e.message;
+  } finally { btn.disabled = false; }
+}
+
+async function addCode() {
+  const code = document.getElementById('addCode').value.trim().toUpperCase();
+  const out = document.getElementById('addResult');
+  if (!code) { out.style.display = 'block'; out.textContent = 'Code is required.'; return; }
+  const change = {
+    code,
+    name: document.getElementById('addName').value.trim(),
+    on_hand: parseInt(document.getElementById('addOnHand').value, 10) || 0,
+    build_point: document.getElementById('addBp').value.trim() || null,
+  };
+  try {
+    const r = await fetch('/api/inventory/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ changes: [change] }) });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    closeModal('addModal');
+    await loadData();
+  } catch (e) { out.style.display = 'block'; out.textContent = 'Failed: ' + e.message; }
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-bg').forEach(m => m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); }));
+
+document.getElementById('filters').addEventListener('click', e => {
+  const b = e.target.closest('.filter-btn');
+  if (!b) return;
+  document.querySelectorAll('#filters .filter-btn').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  FILTER = b.dataset.f;
+  render();
+});
+
+// theme (same pattern as the other dashboards)
+function toggleTheme() {
+  const light = document.documentElement.classList.toggle('light');
+  localStorage.setItem('wr-theme', light ? 'light' : 'dark');
+}
+if (localStorage.getItem('wr-theme') === 'light') document.documentElement.classList.add('light');
+
+fetch('/api/version').then(r => r.json()).then(d => { const el = document.getElementById('appVersion'); if (el && d.version) el.textContent = 'v' + d.version; }).catch(() => {});
+loadData();
+</script>
+</body>
+</html>

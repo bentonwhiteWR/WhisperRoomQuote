@@ -278,6 +278,10 @@ td.drillable:hover{color:var(--orange)}
 /* v1.84.9 — hover-description marker (ⓘ) on section / table / panel titles */
 .tip-i{display:inline-block;margin-left:5px;font-size:10px;color:var(--muted);cursor:help;opacity:.5;font-weight:400;vertical-align:middle}
 .tip-i:hover{opacity:1;color:var(--orange)}
+/* v1.84.x — People-Also-Ask content roadmap grid (SEO Intel) */
+.paa-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px}
+.paa-q{display:block;font-size:11px;color:var(--text);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 9px;text-decoration:none;line-height:1.4}
+.paa-q:hover{border-color:var(--orange)}
 .mine-tag{display:inline-block;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:4px;white-space:nowrap}
 .tag-comp{background:rgba(239,68,68,.16);color:#ef4444}
 .tag-off{background:rgba(251,146,60,.16);color:#fb923c}
@@ -1013,6 +1017,7 @@ async function runSyncSerp(force) {
     alert('SERP sync started — the request dropped but may still be finishing. Refresh in a minute.');
   } finally {
     btn.disabled = false; btn.textContent = '↻ Sync SERP';
+    gscSerpMap = null;   // v1.84.30 — invalidate so the Growth/GSC engines re-pull fresh SERP signals
     await loadSeoTab();
   }
 }
@@ -1063,6 +1068,8 @@ function renderSeo(d) {
   const notRanking = rows.filter(r => r.our_rank == null).length;
   const aiCount = rows.filter(r => r.ai_overview).length;
   const aiCited = rows.filter(r => r.ai_overview && r.ai_overview_cited).length;
+  const fsPresent = rows.filter(r => r.featured_snippet).length;
+  const fsOwned = rows.filter(r => r.featured_snippet && (r.featured_snippet.domain || '').includes('whisperroom')).length;
 
   // Competitor leaderboard: domains that outrank us (or sit top-3 when we don't rank).
   const compCount = {};
@@ -1090,6 +1097,7 @@ function renderSeo(d) {
     ${chip('Buried', buried, 'Rank top-5 organically but pushed to absolute #6+ by ads / AI Overview / features above. Strong organic position being suppressed — defend-with-ads or get-cited candidates.')}
     ${chip('AI Overview', aiCount, 'Keywords where Google shows an AI Overview (which can suppress organic clicks).')}
     ${chip('Cited in AI', aiCited, 'Of those, how many cite whisperroom.com as a source.')}
+    ${chip('Featured snippet', `${fsOwned}/${fsPresent}`, 'Of the keywords showing a featured snippet (position zero), how many WhisperRoom owns. The rest are capture targets — answer the question better + add schema.')}
   </div>`;
 
   const compStrip = topComps.length
@@ -1152,14 +1160,23 @@ function renderSeo(d) {
     }).join(' · ');
     return `<span title="Advertisers running paid/shopping ads on this term (bold = a competitor that also outranks you organically).">${shown}${ads.length > 3 ? ` <span style="color:var(--muted)">+${ads.length-3}</span>` : ''}</span>`;
   };
+  const volCell = r => r.search_volume != null ? fmtInt(r.search_volume) : '<span style="color:var(--muted)">—</span>';
+  const kdCell = r => {
+    if (r.keyword_difficulty == null) return '<span style="color:var(--muted)">—</span>';
+    const kd = Math.round(r.keyword_difficulty);
+    const color = kd >= 60 ? 'var(--red)' : kd >= 30 ? 'var(--yellow)' : 'var(--green)';
+    return `<span style="color:${color}" title="Keyword difficulty 0-100 — lower is easier to rank. Source: DataForSEO Labs.">${kd}</span>`;
+  };
 
   const table = `<div class="section">
     <div class="section-head"><div class="section-title">Rank tracker<span class="tip-i" title="Your live organic position per commercial keyword (not ranking = not in the captured results), movement vs the previous sync, the top-3 competitors on that SERP, and the AI Overview status. Source: DataForSEO Google Organic SERP.">ⓘ</span></div><span class="section-meta">${tracked} keywords</span></div>
     <table><thead><tr>
-      <th>Keyword</th><th class="num">Organic<span class="tip-i" title="Your ORGANIC position (rank_group) — the real SEO rank. Pulled logged-out from a neutral US location, so it can read lower than your personalized, logged-in browser; that neutral number is what a new customer sees.">ⓘ</span></th><th class="num">Absolute<span class="tip-i" title="Your position among EVERYTHING on the page — ads + AI Overview + featured snippet + shopping + organic. The gap from Organic = how much is stacked above you (color: orange = 3+, red = 5+). That gap is the visibility/CTR drag and a defend-with-ads signal.">ⓘ</span></th><th class="num">Move</th><th>Top competitors</th><th>Ads above<span class="tip-i" title="Advertisers (text + shopping ads) running on this term, from the live SERP. Bold = a competitor that also outranks you organically. A competitor ad above your organic #1 is the textbook defend-with-ads case.">ⓘ</span></th><th>AI Overview</th>
+      <th>Keyword</th><th class="num">Vol<span class="tip-i" title="Estimated monthly Google search volume (US). Source: DataForSEO Keywords Data / Google Ads. The size of the prize.">ⓘ</span></th><th class="num">KD<span class="tip-i" title="Keyword difficulty 0-100 — how hard it is to rank (lower = easier). Green &lt;30, yellow 30-59, red 60+. Source: DataForSEO Labs. The winnability.">ⓘ</span></th><th class="num">Organic<span class="tip-i" title="Your ORGANIC position (rank_group) — the real SEO rank. Pulled logged-out from a neutral US location, so it can read lower than your personalized, logged-in browser; that neutral number is what a new customer sees.">ⓘ</span></th><th class="num">Absolute<span class="tip-i" title="Your position among EVERYTHING on the page — ads + AI Overview + featured snippet + shopping + organic. The gap from Organic = how much is stacked above you (color: orange = 3+, red = 5+). That gap is the visibility/CTR drag and a defend-with-ads signal.">ⓘ</span></th><th class="num">Move</th><th>Top competitors</th><th>Ads above<span class="tip-i" title="Advertisers (text + shopping ads) running on this term, from the live SERP. Bold = a competitor that also outranks you organically. A competitor ad above your organic #1 is the textbook defend-with-ads case.">ⓘ</span></th><th>AI Overview</th>
     </tr></thead><tbody>
       ${rows.map(r => `<tr>
         <td><a href="${googleUrl(r.keyword)}" target="_blank" rel="noopener" title="Open the de-personalized US Google results for &quot;${escHtml(r.keyword)}&quot; (pws=0&gl=us, new tab) — closest to what this tool sees. Right-click → incognito for the cleanest view + the AI Overview." style="color:var(--text)">${escHtml(r.keyword)}</a> <span style="color:var(--muted);font-size:10px">↗</span></td>
+        <td class="num">${volCell(r)}</td>
+        <td class="num">${kdCell(r)}</td>
         <td class="num">${orgCell(r)}</td>
         <td class="num">${absCell(r)}</td>
         <td class="num">${movement(r)}</td>
@@ -1219,7 +1236,17 @@ function renderSeo(d) {
       <tbody>${[...defends, ...pullbacks].map(recRow).join('')}</tbody></table>
   </div>` : '';
 
-  body.innerHTML = stats + compStrip + table + defense;
+  // ── Content roadmap: People-Also-Ask questions across all tracked terms ──
+  const paaCount = {};
+  rows.forEach(r => (r.paa_questions || []).forEach(q => { const k = String(q).trim(); if (k) paaCount[k] = (paaCount[k] || 0) + 1; }));
+  const paaTop = Object.entries(paaCount).sort((a, b) => b[1] - a[1]).slice(0, 30);
+  const paa = paaTop.length ? `<div class="section">
+    <div class="section-head"><div class="section-title">Content questions to answer (PAA)<span class="tip-i" title="The People-Also-Ask questions Google shows across your tracked terms. Answer these well (FAQ blocks, articles, schema) to win PAA boxes + featured snippets — and because they're literally what buyers are asking. Click a question to see its live results. Sorted by how many of your terms surface it.">ⓘ</span></div><span class="section-meta">${Object.keys(paaCount).length} unique</span></div>
+    <div style="font-size:11px;color:var(--muted);margin:-2px 0 10px;line-height:1.6">Real questions buyers ask, mined from the live SERPs. A content roadmap — answer them to capture PAA + featured-snippet real estate.</div>
+    <div class="paa-grid">${paaTop.map(([q, n]) => `<a href="${googleUrl(q)}" target="_blank" rel="noopener" class="paa-q">${escHtml(q)}${n > 1 ? ` <span style="color:var(--muted)">×${n}</span>` : ''}</a>`).join('')}</div>
+  </div>` : '';
+
+  body.innerHTML = stats + compStrip + table + defense + paa;
 }
 
 // ── State (v1.46.10) ────────────────────────────────────────────────
@@ -1452,6 +1479,7 @@ let gscMoversDim = 'query';
 // performance chart, KPI strip, paid×organic overlap, the three insight
 // tables (striking distance / CTR opportunity / movers), and raw queries/pages.
 async function loadGscTab() {
+  await gscLoadSerpMap();   // v1.84.30 — live-SERP signals for the Revenue/Action engines (cached)
   const q  = `?days=${currentDaysBack}`;
   const qm = `?days=${currentDaysBack}&model=${currentModel}`;
   const [sum, ov, qs, pg, ts, sd, mv, co, ro] = await Promise.all([
@@ -1784,6 +1812,27 @@ function gscPageIsAuthoritative(url) {   // true=strong / false=weak / null=unkn
   return c > 0 && c >= gscCommercialPageMedian;
 }
 
+// ── Phase 1.x — SERP intelligence feeding the engines (v1.84.30) ────────
+// The SEO Intel tab's DataForSEO snapshots (live competitor ranks, AI Overview
+// presence/citation, org-vs-abs "buried" gap, advertisers, volume, difficulty)
+// joined into the Revenue/Action/Growth engines client-side by normalized
+// query. Loaded once per session (the snapshots refresh weekly); every consumer
+// degrades gracefully to pre-SERP behavior when a query isn't tracked or the
+// fetch fails (gscSerpFor returns null).
+let gscSerpMap = null;
+async function gscLoadSerpMap() {
+  if (gscSerpMap) return gscSerpMap;
+  try {
+    const d = await fetch('/api/marketing/serp-snapshots', { credentials: 'include' }).then(r => r.json());
+    gscSerpMap = {};
+    (d.rows || []).forEach(s => { gscSerpMap[String(s.keyword || '').trim().toLowerCase()] = s; });
+  } catch (e) { gscSerpMap = {}; }
+  return gscSerpMap;
+}
+function gscSerpFor(query) {
+  return (gscSerpMap && gscSerpMap[String(query || '').trim().toLowerCase()]) || null;
+}
+
 function gscCommercialIntent(query, row) {
   const s = ' ' + String(query).toLowerCase() + ' ';
   const booth = GSC_BOOTH_CORE.test(s), strong = GSC_STRONG_PRODUCT.test(s);
@@ -1799,6 +1848,10 @@ function gscCommercialIntent(query, row) {
   if ((+row.p_clicks || 0) > 0) score += 12;                           // overlaps Google Ads search terms
   if ((+row.p_conv || 0) > 0 || row.has_paid_signal) score += 13;      // has paid conversion signal
   if (gscPageClass(row.actual_page) === 'commercial') score += 14;     // Google ranks a real commercial page for it
+  // v1.84.30 — advertisers run ads on this exact SERP (DataForSEO): someone is
+  // paying for this click, which is direct evidence of commercial demand.
+  const serp = gscSerpFor(query);
+  if (serp && (serp.paid_results || []).length) score += 8;
   score = Math.min(100, score);
   if (GSC_INFORMATIONAL.test(s) && !anchor) score = Math.min(score, 8); // clearly educational, no product anchor
   return Math.round(score);
@@ -1915,9 +1968,24 @@ function gscDiagnose(r, pages, maxRank) {
   const pos = +r.position || 0, impr = +r.impressions || 0, clicks = +r.clicks || 0, ctr = +r.ctr || 0;
   const cvrMult = +r.cvr_mult || 1, hasPaid = !!r.has_paid_signal;
   const commercial = hasPaid && cvrMult >= 1.3;
-  const impact = +r.revenue_opportunity || 0;
+  let impact = +r.revenue_opportunity || 0;
   const pctS = x => (x * 100).toFixed(1) + '%';
   const benchCtr = gscBenchmarkCtr(pos);             // WhisperRoom median CTR at this position
+
+  // v1.84.30 — live-SERP signals (DataForSEO, SEO Intel tab) for this query.
+  // aiUncited: an AI Overview answers this query and we are NOT a cited source —
+  //   it eats clicks above the organic results, so weak CTR is (partly) explained
+  //   and "extra clicks from reaching top 3" are worth less.
+  // absGap: ads/AIO/features stacked above our organic result (abs − organic).
+  // serpKd: keyword difficulty 0-100 (Labs) — how winnable a rank push is.
+  const serp = gscSerpFor(q);
+  const aiUncited = !!(serp && serp.ai_overview && !serp.ai_overview_cited);
+  const absGap = (serp && serp.our_rank != null && serp.our_rank_abs != null) ? (serp.our_rank_abs - serp.our_rank) : 0;
+  const serpKd = serp && serp.keyword_difficulty != null ? Math.round(serp.keyword_difficulty) : null;
+  // Honest revenue: discount modeled upside when the SERP suppresses clicks.
+  // (Visible in the reasoning below, not silent.)
+  if (aiUncited) impact *= 0.8;
+  if (absGap >= 3) impact *= 0.85;
 
   // Real ranking page (GSC query×page) + that pair's metrics.
   const actualPage = r.actual_page || null;
@@ -1950,7 +2018,16 @@ function gscDiagnose(r, pages, maxRank) {
       type = strong === true ? 'content' : strong === false ? 'authority' : 'ranking';
     }
   }
-  const bottleneckLabel = { ctr: 'CTR Opportunity', ranking: 'Ranking Opportunity', content: 'Content Opportunity', authority: 'Authority Opportunity', 'wrong-page': 'Landing Page Opportunity', 'missing-page': 'Missing Page Opportunity' }[type];
+  // v1.84.30 — AI Overview Compression: when the right page ranks well but an
+  // uncited AI Overview sits on top, the click is being intercepted ABOVE the
+  // organic results — that's the real bottleneck, not title/meta. Kept as
+  // dtype 'ctr' (so downstream switches/buckets are untouched) with its own
+  // label + action.
+  const aiCompression = aiUncited && (type === 'ctr' || (type === 'ranking' && pos <= 5));
+  if (aiCompression) type = 'ctr';
+  const bottleneckLabel = aiCompression
+    ? 'AI Overview Compression'
+    : { ctr: 'CTR Opportunity', ranking: 'Ranking Opportunity', content: 'Content Opportunity', authority: 'Authority Opportunity', 'wrong-page': 'Landing Page Opportunity', 'missing-page': 'Missing Page Opportunity' }[type];
 
   // The page to act on: ideal for wrong-page, nothing for missing, else the ranking page.
   const targetPage = type === 'missing-page' ? null : (type === 'wrong-page' ? idealPage : actualPage);
@@ -1969,6 +2046,11 @@ function gscDiagnose(r, pages, maxRank) {
   if (clicks < 5) conf -= 15;
   if (impr < 50) conf -= 10;
   if (type === 'content' || type === 'authority') conf -= 8;   // inferred from page-strength proxies
+  // v1.84.30 — winnability check: a "push the ranking" call against a hard
+  // keyword (KD ≥ 60) is less likely to pay off as written — lower confidence.
+  // A live SERP snapshot corroborating the data raises it slightly.
+  if (serpKd != null && serpKd >= 60 && (type === 'ranking' || type === 'authority' || type === 'content')) conf -= 12;
+  if (serp) conf += 4;
   conf = Math.max(15, Math.min(95, conf));
   const confLabel = conf >= 70 ? 'High' : conf >= 45 ? 'Medium' : 'Low';
 
@@ -1979,12 +2061,25 @@ function gscDiagnose(r, pages, maxRank) {
   const actRef = actualShort ? `<code>${escHtml(actualShort)}</code>` : 'the ranking page';
   const idlRef = idealShort ? `<code>${escHtml(idealShort)}</code>` : 'a commercial page';
 
+  // v1.84.30 — SERP context notes appended to the reasoning so the discounts +
+  // confidence changes above are explained, never silent.
+  const buriedNote = absGap >= 3
+    ? ` Live SERP: ${absGap} elements (ads / AI Overview / features) sit above your organic result here (organic #${serp.our_rank} → absolute #${serp.our_rank_abs}), suppressing its visibility — the modeled upside is discounted accordingly.`
+    : '';
+  const kdNote = serpKd != null && serpKd >= 60
+    ? ` Keyword difficulty is ${serpKd}/100 — a rank push here is a long campaign, not a quick win.`
+    : '';
+
   let reasoning, action;
-  if (type === 'ctr') {
-    reasoning = `The right page ranks — ${actRef} sits at #${pos.toFixed(0)} for “${Q}” — but its ${pctS(ctr)} click-through is well under your own booth-keyword median of ${pctS(benchCtr)} at that position. The constraint is the click, not the ranking.`;
+  if (aiCompression) {
+    const aiWho = ((serp && serp.ai_overview_refs) || []).slice(0, 3).map(x => _serpDomainShort(x.domain)).filter(Boolean).join(', ');
+    reasoning = `${actRef} ranks #${pos.toFixed(0)} for “${Q}”, but Google shows an AI Overview above the results and WhisperRoom is NOT among its cited sources${aiWho ? ` (it cites ${aiWho})` : ''}. The AI box answers the searcher before your listing gets seen — the constraint is the AI Overview, not your title or position.${buriedNote}`;
+    action = `Get cited in the AI Overview for “${Q}”: restructure ${tgtRef} to answer the question directly in the first paragraph, add FAQ/Product schema, and cover the question the AI answers better than the currently-cited sources. Title/meta tweaks alone won't move this.`;
+  } else if (type === 'ctr') {
+    reasoning = `The right page ranks — ${actRef} sits at #${pos.toFixed(0)} for “${Q}” — but its ${pctS(ctr)} click-through is well under your own booth-keyword median of ${pctS(benchCtr)} at that position. The constraint is the click, not the ranking.${buriedNote}`;
     action = `Rewrite the title tag + meta description on ${tgtRef} to match “${Q}” with a stronger hook, and add structured data (Product / Review / FAQ) for rich results.`;
   } else if (type === 'ranking') {
-    reasoning = `${actRef} ranks #${pos.toFixed(0)} for “${Q}” with a click-through in line with your benchmark (${pctS(benchCtr)}). The right page ranks and the click is fine — the constraint is the position.${commercialNote}`;
+    reasoning = `${actRef} ranks #${pos.toFixed(0)} for “${Q}” with a click-through in line with your benchmark (${pctS(benchCtr)}). The right page ranks and the click is fine — the constraint is the position.${commercialNote}${buriedNote}${kdNote}`;
     action = `Push ${tgtRef} into the top 3 for “${Q}”: tighten on-page targeting (title / H1 / body), add internal links from your strongest pages, and pursue a few relevant backlinks.`;
   } else if (type === 'content') {
     reasoning = `${actRef} ranks #${pos.toFixed(0)} for “${Q}” and is an authoritative page overall (above your median page traffic), yet it can’t crack the top — that pattern points to thin topical coverage of this query, not a links problem.`;
@@ -2005,7 +2100,8 @@ function gscDiagnose(r, pages, maxRank) {
 
   const upTxt = `<span class="exec-amt">~$${fmtInt(Math.round(impact))}</span> upside`;
   let execText;
-  if (type === 'ctr') execText = `<strong>“${Q}”</strong> ranks #${pos.toFixed(0)} on the right page but clicks below your booth benchmark. Rewrite its title + meta — ${upTxt}.`;
+  if (aiCompression) execText = `<strong>“${Q}”</strong> ranks #${pos.toFixed(0)} but an AI Overview answers the search above you and doesn't cite WhisperRoom. Get cited — ${upTxt}.`;
+  else if (type === 'ctr') execText = `<strong>“${Q}”</strong> ranks #${pos.toFixed(0)} on the right page but clicks below your booth benchmark. Rewrite its title + meta — ${upTxt}.`;
   else if (type === 'ranking') execText = `<strong>“${Q}”</strong> sits at #${pos.toFixed(0)} on the right page${commercial ? ' and converts above average' : ''}. Push it to the top 3 — ${upTxt}.`;
   else if (type === 'content') execText = `<strong>“${Q}”</strong> ranks on a strong page but stalls — it needs deeper coverage of the topic. Expand the page — ${upTxt}.`;
   else if (type === 'authority') execText = `<strong>“${Q}”</strong> ranks on-topic but the page is out-muscled. Build links/authority to it — ${upTxt}.`;
@@ -2017,7 +2113,9 @@ function gscDiagnose(r, pages, maxRank) {
     actualPage, actualPageShort: actualShort, actualPageClass: actualClass, pageMetrics,
     idealPage, idealPageShort: idealShort, idealSource, matchStatus, benchCtr,
     targetPage, targetPageShort: targetShort, pageShort: targetShort || actualShort,
-    pCvr: r.p_cvr == null ? null : +r.p_cvr, pConv: +r.p_conv || 0, cvrMult };
+    pCvr: r.p_cvr == null ? null : +r.p_cvr, pConv: +r.p_conv || 0, cvrMult,
+    aiCompression, searchVolume: serp && serp.search_volume != null ? serp.search_volume : null,
+    keywordDifficulty: serpKd, serpAbsGap: absGap };
 }
 
 // ── v1.67.x — Execution Assistant ──────────────────────────────────────
@@ -2254,6 +2352,7 @@ function renderActionEngine(roRows, pageRows, queryRows) {
 // unifies everything into one prioritized framework — Kanban, exec summary,
 // queue, target-page analysis, ads engine, budget reallocation. No new backend.
 async function loadGrowthTab() {
+  await gscLoadSerpMap();   // v1.84.30 — live-SERP signals for diagnosis (cached)
   const q  = `?days=${currentDaysBack}`;
   const qm = `?days=${currentDaysBack}&model=${currentModel}`;
   const [ro, pg, qs, camp, attr, kw, st, stAttr] = await Promise.all([
@@ -2313,11 +2412,16 @@ function gscToGrowthOpp(d, r) {
   const rootMap = { ctr: 'CTR Gap', ranking: 'Ranking Gap', content: 'Content Gap', authority: 'Authority Gap', 'wrong-page': 'Wrong Page Ranking', 'missing-page': 'Missing Landing Page' };
   let rootCause = rootMap[d.type];
   if (d.type === 'ctr') { const generic = gscExpectedCtr(d.position); if (d.benchCtr > 0 && d.benchCtr < generic * 0.5) rootCause = 'SERP Compression'; }
+  if (d.aiCompression) rootCause = 'AI Overview Compression';   // v1.84.30 — live-SERP root cause wins
   const hasPaid = !!r.has_paid_signal || (+r.p_clicks || 0) > 0;
+  // v1.84.30 — surface prize (volume) + winnability (KD) right in the perf string.
+  const volBit = d.searchVolume != null ? ` · ${fmtInt(d.searchVolume)} vol` : '';
+  const kdBit  = d.keywordDifficulty != null ? ` · KD ${d.keywordDifficulty}` : '';
   return { kind: 'seo', channel: hasPaid ? 'Both' : 'SEO', type: typeMap[d.type], rootCause, dtype: d.type,
     topic: d.query, query: d.query, revenueOpp: d.impact, confidence: d.confidence, commercialIntent: +r.commercial_intent || 0,
     provenValue: hasPaid, commercial: d.commercial, action: d.action, reasoning: d.reasoning,
-    currentPerf: `#${d.position.toFixed(1)} · ${(d.ctr * 100).toFixed(1)}% CTR · ${fmtInt(d.impressions)} impr`,
+    aiCompression: !!d.aiCompression, searchVolume: d.searchVolume, keywordDifficulty: d.keywordDifficulty, serpAbsGap: d.serpAbsGap,
+    currentPerf: `#${d.position.toFixed(1)} · ${(d.ctr * 100).toFixed(1)}% CTR · ${fmtInt(d.impressions)} impr${volBit}${kdBit}`,
     actualPage: d.actualPage, actualPageShort: d.actualPageShort, actualPageClass: d.actualPageClass,
     idealPage: d.idealPage, idealPageShort: d.idealPageShort, idealSource: d.idealSource, matchStatus: d.matchStatus };
 }

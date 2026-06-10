@@ -1,7 +1,7 @@
 ---
-description: Bump version + add changelog entry + add DEVLOG row in one shot
+description: Bump version + add changelog fragment + add DEVLOG row in one shot
 argument-hint: <patch|minor> "<one-line summary>" [tag: fix|feature|ui|log|security]
-allowed-tools: Read, Edit, Bash
+allowed-tools: Read, Edit, Write, Bash
 ---
 
 The user has invoked `/bump` to record a new version. Arguments: `$ARGUMENTS`.
@@ -17,22 +17,22 @@ If arguments are missing or unclear, ask the user to clarify before doing anythi
 ## Steps
 
 1. **Read current state** in parallel:
-   - `package.json` — current version
-   - `templates/changelog.js` — first ~30 lines, to confirm the entry format
+   - `package.json` — current LOCAL version
+   - `Bash: git fetch origin && git show origin/staging:package.json` — the REMOTE version. Two people (Benton + Gabe) push to staging in parallel; the next number may already be taken upstream.
    - `DEVLOG.md` — find the changelog table row to insert above
 
-2. **Compute new version** from the bump type. Confirm with the user in one sentence: "Bumping 1.7.33 → 1.7.34 with summary 'X'. Proceed?" Only proceed on yes.
+2. **Compute new version** from the bump type, **starting from the HIGHER of local vs origin/staging**. Confirm with the user in one sentence: "Bumping 1.7.33 → 1.7.34 with summary 'X'. Proceed?" Only proceed on yes.
 
 3. **Edit `package.json`** — update the `version` field.
 
-4. **Insert into `templates/changelog.js`** — add a new entry block immediately after the opening `${[` of the entries array (currently at line ~52). Format must match existing entries exactly:
+4. **Create `templates/changelog.d/<new version>.js`** — one fragment file per version. **NEVER add entries to `templates/changelog.js` itself** — its inline array is frozen legacy; inserting at its top is the parallel-push merge conflict the fragment system removed (and the file that crash-loops Railway when merged wrong). Format (see `templates/changelog.d/README.md`):
    ```js
-   {
-     v:'<new version>', date:'<Month D, YYYY>', tag:'<tag>',
-     changes:[
-       {t:'<change type>', d:'<summary>'},
-     ]
-   },
+   module.exports = {
+     v: '<new version>', date: '<Month D, YYYY>', tag: '<tag>',
+     changes: [
+       { t: '<change type>', d: '<summary>' },
+     ],
+   };
    ```
    - Date format: `May 8, 2026` (month name spelled out, no leading zero on day).
    - Use today's date — get it from `Bash: date "+%B %-d, %Y"` if unsure.
@@ -44,18 +44,18 @@ If arguments are missing or unclear, ask the user to clarify before doing anythi
    ```
 
 6. **Run the syntax check** before reporting back:
-   - `node scripts/check-syntax.js` — this is what `.git/hooks/pre-commit` runs.
-   - If it fails (especially on `templates/changelog.js`), it's almost always an over-escaped char in the summary string you just inserted. Fix the escape and re-run the check.
-   - **Why this matters:** `templates/changelog.js` is `require`'d at server startup. A SyntaxError here crash-loops the Railway deploy (this happened in v1.72.11; see DEVLOG row for v1.72.13). The pre-commit hook will catch it, but you should catch it earlier so you don't waste a `git commit` attempt.
+   - `node scripts/check-syntax.js` — this is what `.git/hooks/pre-commit` runs. It node-checks staged JS and validates the shape of staged changelog fragments.
+   - If it fails on your new fragment, it's almost always an over-escaped char in the `d:'…'` string. Fix the escape and re-run the check.
 
 7. **Stage all three files** and report back:
    - Show the diff of the three edits in summary form.
-   - Tell the user: "Bumped to v<X>. Three files staged, syntax check passed. Commit when ready, or run `git diff --staged` to review."
+   - Tell the user: "Bumped to v<X>. Three files staged, syntax check passed. Commit when ready, then push with `scripts/ship.sh`."
    - **Do NOT auto-commit.** The user wants to bundle this with the actual code change.
 
 ## Guardrails
 
+- Push with `scripts/ship.sh`, never a raw `git push` (and NEVER `--force`) — it rebases onto origin/staging, re-verifies startup-critical files, and retries races.
 - If the user is in the middle of unrelated changes (working tree has unstaged code edits), proceed but warn them in the final report.
 - If `package.json` version looks corrupted or doesn't match `\d+\.\d+\.\d+`, STOP and ask the user.
-- If the entry-array opening line in `templates/changelog.js` has moved, find it via Grep for `${[` near the top of the renderChangelog function before inserting.
-- **Watch the apostrophes.** Inside the single-quoted `d:'...'` string, write `booth\'s` (one backslash). Writing `\\'s` (two backslashes) is the bug that took down v1.72.11.
+- If ship.sh later reports a version collision (both sides bumped), keep the OTHER side's number and re-pick yours one higher: rename your fragment file (+ its `v:` field), fix your DEVLOG row, amend the commit message.
+- **Watch the apostrophes.** Inside the single-quoted `d:'...'` string, write `booth\'s` (one backslash) or use `&apos;`. Writing `\\'s` (two backslashes) is the bug that took down v1.72.11.

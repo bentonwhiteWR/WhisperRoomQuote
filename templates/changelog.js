@@ -1,6 +1,37 @@
 // Changelog page template — extracted from quote-server.js
 // Returns the fully rendered HTML for /changelog.
 
+// ── Conflict-free entries: templates/changelog.d/ ─────────────────────
+// Parallel pushes used to collide HERE — every version bump inserted at the
+// top of the same array, so two people pushing in the same hour always merge-
+// conflicted (in the one file that crash-loops Railway when merged wrong).
+// New entries now live one-per-file in templates/changelog.d/<version>.js
+// (module.exports = { v, date, tag, changes:[{t, d}] }) so parallel pushes
+// never touch the same file. Fragments render ABOVE the legacy inline array,
+// newest-first. A malformed fragment is skipped with a warning rather than
+// crashing startup; scripts/check-syntax.js validates staged fragments at
+// commit time so a bad one can't ship silently.
+const fs = require('fs');
+const path = require('path');
+function fragments() {
+  const dir = path.join(__dirname, 'changelog.d');
+  let names;
+  try { names = fs.readdirSync(dir).filter(f => f.endsWith('.js')); }
+  catch (e) { return []; }
+  const out = [];
+  for (const f of names) {
+    try {
+      const e = require(path.join(dir, f));
+      if (!e || !e.v || !Array.isArray(e.changes)) throw new Error('fragment must export { v, date, tag, changes:[…] }');
+      out.push(e);
+    } catch (err) {
+      console.warn(`[changelog] skipping bad fragment ${f}: ${err.message}`);
+    }
+  }
+  const num = v => String(v).split('.').map(n => parseInt(n, 10) || 0);
+  return out.sort((a, b) => { const A = num(a.v), B = num(b.v); return (B[0] - A[0]) || (B[1] - A[1]) || (B[2] - A[2]); });
+}
+
 module.exports = function renderChangelog() {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -49,7 +80,86 @@ module.exports = function renderChangelog() {
   <h1>Patch <span>Notes</span></h1>
   <div class="subtitle">Full history of changes to the WhisperRoom sales tool</div>
 
-  ${[
+  ${[...fragments(),
+    {
+      v:'1.87.0', date:'June 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Booth Builder goes customer-facing: quote requests + shareable design links.** /booth-builder is now PUBLIC — reps can send the link straight to a prospect. A new <b>Get your quote</b> step captures the lead: name, email, phone/company and a note, submitted with the complete design. The request lands as a bell notification (with a link that opens the customer&apos;s exact arrangement) plus an admin-log row — no CRM write until a rep picks it up. Defenses: per-IP rate limiting on top of the public-route gate, a honeypot field, server-side validation of every field and of the design itself (the share link in the notification is re-encoded server-side, never trusted from the client).'},
+        {t:'add', d:'**Every design is a link.** The whole arrangement — model, wall variant, panel positions, hinge, window, wide door, height extension, casters, foam color, even the facing of the walk-around view — now round-trips through the URL (#d=…). Refresh keeps your work, <b>🔗 Copy a link to this design</b> shares it, and opening someone else&apos;s link restores their booth exactly. The <b>Copy booth summary</b> text now includes the link too. Logged-in reps keep the internal navbar; visitors see whisperroom.com branding instead.'},
+      ]
+    },
+    {
+      v:'1.86.0', date:'June 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**NEW: 🏗 Booth Builder (/booth-builder).** A standalone &quot;Design Your Booth&quot; sales tool — no quote needed. Pick a size (all 25 digitized models), choose Standard or Enhanced in plain language, then make it yours: drag the door, vents or window onto any wall they fit (same placement rules as the packing-list layout, including the wide-door pairing), add a wall window (30–48&Prime; tall, width auto-matched to the wall series), toggle the wide-access door (auto-disabled with a friendly reason on booths under 5&Prime; walls), flip the hinge, add the 10&Prime; height extension or caster-plate wheels, and pick from the five foam colors. Both views — bird&apos;s-eye top-down and a walk-around elevation with rotate — update in real time, and a <b>Copy booth summary</b> button produces a plain-English spec (with the MDL code) to paste into a quote or email. Customer-friendly wording throughout: no pack codes, no internal lingo. In the navbar as 🏗 Booth Builder. First customer-facing step of the Build-Your-Own-Booth plan.'},
+        {t:'add', d:'**Renderer upgrades behind it:** studiofoam lining tints to the chosen foam color in the top-down; the elevation honors the 10&Prime; height extension (booth reads 93&Prime;/95&Prime;) and draws the caster plate + wheels with the booth raised 5&Prime; off the ground line. The shared renderer now ships as /assets/layout-render.js, used by both the Booth Builder and (spliced) the packing-list layout.'},
+      ]
+    },
+    {
+      v:'1.85.4', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Top-Down Layout: WA Type wired into the INITIAL placement.** A WA/ADA quote now loads with the door already on its WA-Type wall pair instead of defaulting to the front: after auto-placement, the layout reads the companion&apos;s width (7&Prime;→4016 · 31&Prime;→4040 · 19&Prime;→4622 · 43&Prime;→4646) and relocates door + companion to the first width-conserving pair — preferring the door&apos;s current wall, so types that fit the front stay on the front. A 4016 on a 102126 opens with the door on the 102&Prime; side and the 7&Prime; wall directly beside it; a 4040 opens on the 126&Prime; side with the 31&Prime; adjacent. Booths without a wide door are untouched.'},
+      ]
+    },
+    {
+      v:'1.85.3', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Top-Down Layout: WA-Type-aware door placement.** The WA Type names the wall pair the 49&Prime; door displaces, conserving total width — 4646: 46+46 → 49+43 · 4622: 46+22 → 49+19 · 4040: 40+40 → 49+31 · 4016: 40+16 → 49+7 — and the shrunken companion always sits directly adjacent to the door. Dragging the wide door now enforces this: a drop is only allowed where the target slot plus an adjacent slot conserve the pair (so on a 102126 a 4016 door only lands on the 102&Prime; side, where the middle 16 becomes the 7; a 4040 door only on the 126&Prime; side, where the adjacent 40 becomes the 31). The companion — 43&Prime;, 31&Prime;, 19&Prime; or 7&Prime;, found wherever the auto-placement left it — is pulled into the conserving adjacent slot when the door moves.'},
+      ]
+    },
+    {
+      v:'1.85.2', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Top-Down Layout: small wall sections belong in the MIDDLE.** Production rule: on walls built from two or more full-size sections plus a small filler wall (96 &amp; 102 series, 84102, 10284), the small section always sits between the full sections — never on the end. All 24 affected walls re-ordered in the layout data. The 102-series 102&Prime; walls now carry a <b>16&Prime;</b> slot (the C10 STDWL16 wall) instead of a nominal 20&Prime;, and the 96-series small is a 22&Prime; slot — so the real packs match exactly and the labels read the true wall size.'},
+        {t:'add', d:'**Elevation: adjacent-wall vents show their side profile.** If a vent set sits on a wall next to the one you are viewing (say the vent is on the left wall and you are looking at the front), the elevation now draws the side of the duct boxes hanging 5.5&Prime; off that edge — intake band low, exhaust band high, fan unit at the floor — mirrored correctly per view, plus an orange &quot;w/ vent&quot; overall width under the standard dimension.'},
+      ]
+    },
+    {
+      v:'1.85.1', date:'June 9, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Top-Down Layout: elevation view now sits BELOW the top-down** instead of beside it, slightly larger — the two views stack so each gets the full row width.'},
+      ]
+    },
+    {
+      v:'1.85.0', date:'June 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Top-Down Layout: rotatable elevation view (front/side skeleton).** Next to the top-down there is now an ELEVATION panel with ◀ ▶ rotate buttons cycling FRONT → RIGHT SIDE → BACK → LEFT SIDE. Each face renders the booth as seen from outside at correct proportions (6&apos;11&quot; standard / 7&apos;1&quot; enhanced): door with its window, hinges, handle and threshold; wall windows at their real WDO sizes; vent walls with the intake duct low and exhaust duct high plus the remote fan unit at the floor; cable passages; seam-seal battens at panel joints and corners. Back and right views are mirrored so left/right match what a viewer standing on that side sees. The view follows the live drag state — move the door in the top-down and the elevation updates. First cut of the booth-builder &quot;front/side view with rotate&quot;.'},
+        {t:'add', d:'**Vent-set footprint dimension.** A vent set protrudes 5.5&Prime; beyond the wall it sits on, so the layout now draws the ducts at true scale and adds a second dimension line on that axis — e.g. a 4872 with the vent on the 72&Prime; wall reads 50&Prime; exterior and <b>55.5&Prime; w/ vent</b>. The dimension follows the vent if it is dragged to another wall, and accounts for vents on opposite walls.'},
+      ]
+    },
+    {
+      v:'1.84.33', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Top-Down Layout: mid-wall seam seals are a true T-profile.** The seal&apos;s stem now sits IN the joint between the two wall panels — spanning the full wall thickness, with the panels butting into it — and the cap bar sits proud of the exterior face covering the joint. Previously the tab pointed outward away from the booth, which is not how the seal installs.'},
+        {t:'fix', d:'**Drag rule: the 49&Prime; wide-access door knows where it fits.** A WA/ADA doorframe overhangs its 46&Prime; slot, so it can only be dropped on a wall that also seats its narrow shrink companion — the receiving wall needs a second slot (no 49&Prime; frame on a single-46&Prime; wall like a 4848 side). When the door is dragged to a valid wall, the 19&Prime; (or 7&Prime; on 40&Prime; booths) companion panel automatically moves with it so the pair stays adjacent.'},
+      ]
+    },
+    {
+      v:'1.84.32', date:'June 9, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Top-Down Layout: walls are the same carpet as the seam seals.** The wall bands previously used a near-black gradient while the seam seals used the gray speckled-carpet texture — on the real booth (and the spec-sheet top-downs) every panel and seal is one material. Walls and corner posts now share the seal carpet, so the whole shell reads as one carpeted product and the seals read as the connectors they are. Legend swatches follow.'},
+        {t:'ui', d:'**Panel labels lead with their width.** Each panel now reads like the spec-sheet callouts — "46&Prime; Ventilation", "22&Prime; Wall", "46&Prime; Door" — using the placed pack&apos;s real width (a WA door shows 49&Prime;), so the wall composition is readable at a glance. Interior pill flips to short-axis-first ("46&Prime; × 70&Prime;"), matching the spec sheets and the model naming (4872 = 48&Prime; × 72&Prime;).'},
+      ]
+    },
+    {
+      v:'1.84.31', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Top-Down Layout: WA/ADA doors no longer vanish.** Quotes whose door upgrade swaps in an ADA-style door frame (ADA STDDRFRM, plus FR fire-rated wall variants) were not recognized as wall panels, so the layout drew the booth with no door at all. All exterior door-frame packs now classify and place into the door slot; inner-shell frames and jamb adapters are correctly excluded.'},
+        {t:'ui', d:'**Top-Down Layout matches the spec-sheet view.** Reviewed against the MDL spec-sheet page-3 top-down diagrams: seam seals now mount on the OUTSIDE of the walls — the plinth seal sits on the exterior face at each panel joint with its tab pointing outward, and the corner L-brackets wrap the four exterior corners. The door is drawn as the spec shows it: a closed light door leaf on the outer face at its real width (e.g. 30-inch leaf in a 46-inch frame) with hinge dots and a handle, plus a subtle dashed outward-swing arc.'},
+      ]
+    },
+    {
+      v:'1.84.29', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Build guard: pre-commit check now validates staged JSON files.** A version bump saved package.json with a UTF-8 byte-order mark, which the strict JSON parser inside the puppeteer installer rejects — Railway builds failed at npm install until a hotfix. The pre-commit syntax check now strict-parses every staged .json file and explicitly rejects a BOM, so this class of break cannot reach a deploy again.'},
+      ]
+    },
+    {
+      v:'1.84.28', date:'June 9, 2026', tag:'ui',
+      changes:[
+        {t:'ui', d:'**Top-Down Layout: seam seals are now clearly visible.** The mid-wall plinth seals (at every panel-to-panel joint) and the chamfered corner L-brackets were drawn too small and in a dark speckle that vanished against the carpet — they now scale with the wall thickness, match the spec-sheet profile proportions, and carry a light halo so they pop. Joints are also placed per-wall from each wall panel layout instead of mirroring the back wall onto the front, and the stray floor-spanning seam line is gone.'},
+      ]
+    },
     {
       v:'1.84.26', date:'June 9, 2026', tag:'feature',
       changes:[

@@ -10,14 +10,14 @@ const mod = fs.readFileSync(path.join(__dirname, 'layout-render.js'), 'utf8');
 // Extract verified pieces from the module (indented 2 spaces to match the page).
 const kmStart = mod.indexOf('// Friendly type names');
 const rsStart = mod.indexOf('// ── The renderer');
-const meStart = mod.indexOf('module.exports');
+const meStart = mod.indexOf('// ── exports');
 const indent = block => block.split('\n').map(l => l.length ? '  ' + l : l).join('\n');
 const kindMeta = indent(mod.slice(kmStart, rsStart).trim());
 const renderSvg = indent(mod.slice(rsStart, meStart).trim());
 
 const tail = `
   function renderLegend() {
-    const sw = { DRFRM:'#ee6216', WDO:'#9ec4e6', VNT:'#34353d', SOLID:'#34353d' };
+    const sw = { DRFRM:'#ee6216', WDO:'#9ec4e6', VNT:'#54575f', SOLID:'#54575f' };
     const items = ['SOLID','VNT','DRFRM','WDO'].map(k =>
       '<span><span class="ld-sw" style="background:' + sw[k] + '"></span>' + KIND_META[k].label + '</span>'
     ).join('');
@@ -119,3 +119,9 @@ if (i < 0 || j < 0 || j < i) { console.error('markers not found', i, j); process
 html = html.slice(0, i) + newBlock.trimStart() + '\n\n' + html.slice(j);
 fs.writeFileSync(file, html);
 console.log('re-spliced KIND_META+renderLayoutSvg: removed', j - i, 'chars, inserted', newBlock.length);
+
+// Also publish the module as a browser asset for the Booth Builder page
+// (served at /assets/layout-render.js; the exports guard makes it a plain
+// script that exposes the functions as globals).
+fs.copyFileSync(path.join(__dirname, 'layout-render.js'), path.join(root, 'assets', 'layout-render.js'));
+console.log('copied layout-render.js → assets/layout-render.js');

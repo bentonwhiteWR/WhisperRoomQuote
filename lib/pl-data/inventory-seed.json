@@ -1,0 +1,3273 @@
+{
+ "_meta": {
+  "source": "PackingList.xlsm Inventory sheet (cols B-K, rows 8+)",
+  "workbook_saved": "2026-06-10 08:51",
+  "extracted": "2026-06-10 09:06",
+  "rows": 361,
+  "conflicts": [
+   {
+    "code": "J06",
+    "name": "IEP 7248 FL",
+    "on_hand": 10,
+    "build_point": "5",
+    "build_qty": 10,
+    "finished_qty": null,
+    "in_process_qty": null
+   }
+  ]
+ },
+ "rows": [
+  {
+   "code": "A01",
+   "name": "4230 CL",
+   "on_hand": 5,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A02",
+   "name": "4242 CL",
+   "on_hand": 13,
+   "build_point": "15",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A03",
+   "name": "4260 CL",
+   "on_hand": 5,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A04",
+   "name": "4284 CL",
+   "on_hand": 4,
+   "build_point": "as needed",
+   "build_qty": 2,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A05",
+   "name": "4848 CL",
+   "on_hand": 2,
+   "build_point": "15",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A06",
+   "name": "4872 CL",
+   "on_hand": 3,
+   "build_point": "15",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A101",
+   "name": "4896 CL",
+   "on_hand": 6,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A07",
+   "name": "6042 CL SIDE R",
+   "on_hand": 13,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A08",
+   "name": "6042 CL SIDE L",
+   "on_hand": 12,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A09",
+   "name": "6042 CL CTR",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A10",
+   "name": "6018 CL SIDE R",
+   "on_hand": 0,
+   "build_point": "3",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A11",
+   "name": "6018 CL CTR",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A12",
+   "name": "7248 CL SIDE R",
+   "on_hand": 8,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A13",
+   "name": "7248 CL SIDE L",
+   "on_hand": 3,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A14",
+   "name": "7248 CL CTR",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A15",
+   "name": "7224 CL SIDE R",
+   "on_hand": 5,
+   "build_point": "13",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A16",
+   "name": "7224 CL CTR",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A17",
+   "name": "8442 CL SIDE",
+   "on_hand": 4,
+   "build_point": "4",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A18",
+   "name": "8442 CL CTR",
+   "on_hand": 4,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A19",
+   "name": "8418 CL SIDE",
+   "on_hand": 1,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A20",
+   "name": "8418 CL CTR",
+   "on_hand": 4,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A102",
+   "name": "9648 CL SIDE",
+   "on_hand": 6,
+   "build_point": "3",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A103",
+   "name": "9648 CL CTR",
+   "on_hand": 14,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A104",
+   "name": "9624 CL CTR",
+   "on_hand": 8,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A21",
+   "name": "10242 CL SIDE",
+   "on_hand": 8,
+   "build_point": "4",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A22",
+   "name": "10242 CL CTR",
+   "on_hand": 7,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A23",
+   "name": "10218 CL CTR",
+   "on_hand": 9,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A24",
+   "name": "LP CL",
+   "on_hand": 3,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A34",
+   "name": "STD4872CL VNT",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A35",
+   "name": "STD6042CL SIDE R VNT",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A36",
+   "name": "STD6042CL SIDE L VNT",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A37",
+   "name": "STD6042CL CTR VNT",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A38",
+   "name": "STD6018CL SIDE R VNT",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A39",
+   "name": "STD4896CL SIDE VNT",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A40",
+   "name": "STD9696CL SIDE VNT",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A44",
+   "name": "STD7248CL SIDE R VNT",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A45",
+   "name": "STD7248CL SIDE L VNT",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A47",
+   "name": "STD7224CL SIDE R VNT",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "A57",
+   "name": "STD96144CL SIDE VNT",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B01",
+   "name": "STD4230FL",
+   "on_hand": 5,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B02",
+   "name": "STD4242FL",
+   "on_hand": 13,
+   "build_point": "15",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B03",
+   "name": "STD4260FL",
+   "on_hand": 5,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B04",
+   "name": "STD4284FL",
+   "on_hand": 14,
+   "build_point": "as needed",
+   "build_qty": 2,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B05",
+   "name": "STD4848FL",
+   "on_hand": 2,
+   "build_point": "15",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B06",
+   "name": "STD4872FL",
+   "on_hand": 3,
+   "build_point": "15",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B101",
+   "name": "STD4896FL",
+   "on_hand": 7,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B07",
+   "name": "STD6042FL SIDE R",
+   "on_hand": 13,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B08",
+   "name": "STD6042FL SIDE L",
+   "on_hand": 12,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B09",
+   "name": "STD6042FL CTR",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B10",
+   "name": "STD6018FL SIDE R",
+   "on_hand": 0,
+   "build_point": "3",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B11",
+   "name": "STD6018FL CTR",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B12",
+   "name": "STD7248FL SIDE R",
+   "on_hand": 8,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B13",
+   "name": "STD7248FL SIDE L",
+   "on_hand": 3,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B14",
+   "name": "STD7248FL CTR",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B15",
+   "name": "STD7224FL SIDE R",
+   "on_hand": 5,
+   "build_point": "13",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B16",
+   "name": "STD7224FL CTR",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B17",
+   "name": "8442 FL SIDE",
+   "on_hand": 4,
+   "build_point": "4",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B18",
+   "name": "8442 FL CTR",
+   "on_hand": 4,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B19",
+   "name": "8418 FL SIDE",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B20",
+   "name": "8418 FL CTR",
+   "on_hand": 4,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B102",
+   "name": "9648 FL SIDE",
+   "on_hand": 6,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B103",
+   "name": "9648 FL CTR",
+   "on_hand": 5,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B104",
+   "name": "9624 FL CTR",
+   "on_hand": 8,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B21",
+   "name": "10242 FL SIDE",
+   "on_hand": 8,
+   "build_point": "4",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B22",
+   "name": "10242 FL CTR",
+   "on_hand": 7,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B23",
+   "name": "10218 FL CTR",
+   "on_hand": 9,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "B24",
+   "name": "LP FL",
+   "on_hand": 3,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C01",
+   "name": "WL 40",
+   "on_hand": 16,
+   "build_point": "33",
+   "build_qty": 66,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C19",
+   "name": "WL 40 CBL",
+   "on_hand": 23,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C06",
+   "name": "WL 40 VNT",
+   "on_hand": 26,
+   "build_point": "22",
+   "build_qty": 77,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C24",
+   "name": "WL 40 VNT NV",
+   "on_hand": 20,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z01",
+   "name": "WL 31",
+   "on_hand": 7,
+   "build_point": "4",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C09",
+   "name": "WL 28",
+   "on_hand": 13,
+   "build_point": "4",
+   "build_qty": 6,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C10",
+   "name": "WL 16 (2)",
+   "on_hand": 17,
+   "build_point": "15",
+   "build_qty": 30,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C18",
+   "name": "WL 16 VNT (2)",
+   "on_hand": 3,
+   "build_point": "5",
+   "build_qty": 17,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z02",
+   "name": "WL 7/16",
+   "on_hand": 4,
+   "build_point": "5",
+   "build_qty": 9,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C02",
+   "name": "WDO 30",
+   "on_hand": 3,
+   "build_point": "15",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C03",
+   "name": "WDO 36",
+   "on_hand": 4,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C04",
+   "name": "WDO 42",
+   "on_hand": 6,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C05",
+   "name": "WDO 48",
+   "on_hand": 6,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C20",
+   "name": "WDO 36 JACK",
+   "on_hand": 0,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C26",
+   "name": "JACK PANEL",
+   "on_hand": 41,
+   "build_point": "10",
+   "build_qty": 40,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "F09",
+   "name": "MJP",
+   "on_hand": 24,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "F04",
+   "name": "JACK PNL 10",
+   "on_hand": 1,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "F05",
+   "name": "JACK PNL 6",
+   "on_hand": 1,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "F06",
+   "name": "XLR PNL 8",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "F11",
+   "name": "HEPA Filter",
+   "on_hand": 60,
+   "build_point": "10",
+   "build_qty": 20,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "S02",
+   "name": "Office Desk S",
+   "on_hand": 41,
+   "build_point": "10",
+   "build_qty": 20,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "S03",
+   "name": "Office Desk L",
+   "on_hand": 10,
+   "build_point": "10",
+   "build_qty": 20,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C14",
+   "name": "STD DOOR R",
+   "on_hand": 21,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C07",
+   "name": "FRAME 24 RW",
+   "on_hand": 21,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C15",
+   "name": "STD DOOR L",
+   "on_hand": 17,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C08",
+   "name": "FRAME 24 LW",
+   "on_hand": 17,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z05",
+   "name": "WA DOOR R",
+   "on_hand": 0,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z03",
+   "name": "WA FRAME R",
+   "on_hand": 0,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z06",
+   "name": "WA DOOR L",
+   "on_hand": 0,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z04",
+   "name": "WA FRAME L",
+   "on_hand": 0,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z32",
+   "name": "ADA DOOR R",
+   "on_hand": 13,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z30",
+   "name": "ADA FRAME R",
+   "on_hand": 13,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z33",
+   "name": "ADA DOOR L",
+   "on_hand": 8,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z31",
+   "name": "ADA FRAME L",
+   "on_hand": 8,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z37",
+   "name": "ADA ADAPT-A",
+   "on_hand": 24,
+   "build_point": "20",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z38",
+   "name": "ADA ADAPT-B",
+   "on_hand": 2,
+   "build_point": "20",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K01",
+   "name": "IEP WL 35.5 (2)",
+   "on_hand": 22,
+   "build_point": "15",
+   "build_qty": 60,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K14",
+   "name": "IEP WL 35.5 (2) CBL",
+   "on_hand": 3,
+   "build_point": "2",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K07",
+   "name": "IEP WL 35.5 VNT (2)",
+   "on_hand": 17,
+   "build_point": "15",
+   "build_qty": 60,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K21",
+   "name": "IEP WL 35.5 VNT NV (2)",
+   "on_hand": 0,
+   "build_point": "2",
+   "build_qty": 8,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z15",
+   "name": "IEP WL 26.5 (2)",
+   "on_hand": 3,
+   "build_point": "2",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K08",
+   "name": "IEP WL 23.5 (2)",
+   "on_hand": 7,
+   "build_point": "as needed",
+   "build_qty": 2,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K09",
+   "name": "IEP WL 11.5 (2)",
+   "on_hand": 21,
+   "build_point": "6",
+   "build_qty": 50,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K13",
+   "name": "IEP WL 11.5 VNT",
+   "on_hand": 20,
+   "build_point": "4",
+   "build_qty": 8,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K02",
+   "name": "IEP WDO 30 (top & bot)",
+   "on_hand": 7,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K03",
+   "name": "IEP WDO 36 (top)",
+   "on_hand": 3,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K04",
+   "name": "IEP WDO 42 (top)",
+   "on_hand": 7,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K05",
+   "name": "IEP WDO 48 (top)",
+   "on_hand": 2,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K06",
+   "name": "IEP WDO BOTTOM",
+   "on_hand": 30,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K15",
+   "name": "IEP WDO 36 JACK (top)",
+   "on_hand": 0,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K16",
+   "name": "IEP WL 35.5 JACK (top & bot)",
+   "on_hand": 0,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "M01",
+   "name": "IEP DOOR 24 RW",
+   "on_hand": 9,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "M02",
+   "name": "IEP DOOR 24 LW",
+   "on_hand": 7,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "L01",
+   "name": "IEP JAMB 40",
+   "on_hand": 4,
+   "build_point": "15",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z10",
+   "name": "WA IEP DOOR RW",
+   "on_hand": 0,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z11",
+   "name": "WA IEP DOOR LW",
+   "on_hand": 0,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z09",
+   "name": "WA IEP JAMB",
+   "on_hand": 1,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z35",
+   "name": "ADA IEP DOOR RW",
+   "on_hand": 4,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z36",
+   "name": "ADA IEP DOOR LW",
+   "on_hand": 4,
+   "build_point": "12",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z34",
+   "name": "ADA IEP JAMB",
+   "on_hand": 6,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "J01",
+   "name": "IEP 4230 FL",
+   "on_hand": 3,
+   "build_point": "as needed",
+   "build_qty": 2,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "J02",
+   "name": "IEP 4242 FL",
+   "on_hand": 1,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "J03",
+   "name": "IEP 4260 / 6042 FL",
+   "on_hand": 2,
+   "build_point": "4",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "J04",
+   "name": "IEP 4284 / 8442 FL",
+   "on_hand": 11,
+   "build_point": "4",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "J05",
+   "name": "IEP 4848 FL",
+   "on_hand": -6,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "J06",
+   "name": "IEP 4872 FL",
+   "on_hand": 7,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "J24",
+   "name": "IEP 6018 FL",
+   "on_hand": 10,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "J26",
+   "name": "IEP 7224 FL",
+   "on_hand": 7,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "J14",
+   "name": "IEP 8418 FL",
+   "on_hand": 6,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "J30",
+   "name": "IEP 10218 FL",
+   "on_hand": 10,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "J31",
+   "name": "IEP 10242 FL",
+   "on_hand": 10,
+   "build_point": "4",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "J94",
+   "name": "IEP LP127 FL",
+   "on_hand": 10,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "J102",
+   "name": "IEP 9648 FL",
+   "on_hand": 4,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "J111",
+   "name": "IEP 9624 FL",
+   "on_hand": 10,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I01",
+   "name": "IEP 4230 CL",
+   "on_hand": 4,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I02",
+   "name": "IEP 4242 CL",
+   "on_hand": 13,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I03",
+   "name": "IEP 4260 CL",
+   "on_hand": 8,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I04",
+   "name": "IEP 4284 CL",
+   "on_hand": 3,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I05",
+   "name": "IEP 4848 CL",
+   "on_hand": 3,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I06",
+   "name": "IEP 4872 CL",
+   "on_hand": 9,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I101",
+   "name": "IEP 4896 CL",
+   "on_hand": 5,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I07",
+   "name": "IEP 6042 CL SIDE",
+   "on_hand": 2,
+   "build_point": "4",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I09",
+   "name": "IEP 6042 CL CTR",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I10",
+   "name": "IEP 6018 CL SIDE",
+   "on_hand": 8,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I11",
+   "name": "IEP 6018 CL CTR",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I12",
+   "name": "IEP 7248 CL SIDE",
+   "on_hand": 6,
+   "build_point": "20",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I14",
+   "name": "IEP 7248 CL CTR",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I15",
+   "name": "IEP 7224 CL SIDE",
+   "on_hand": 4,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I16",
+   "name": "IEP 7224 CL CTR",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I17",
+   "name": "IEP 8442 CL SIDE",
+   "on_hand": 10,
+   "build_point": "4",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I18",
+   "name": "IEP 8442 CL CTR",
+   "on_hand": 2,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I19",
+   "name": "IEP 8418 CL SIDE",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I20",
+   "name": "IEP 8418 CL CTR",
+   "on_hand": 8,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I102",
+   "name": "IEP 9648 CL SIDE",
+   "on_hand": 10,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I103",
+   "name": "IEP 9648 CL CTR",
+   "on_hand": 4,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I104",
+   "name": "IEP 9624 CL CTR",
+   "on_hand": 5,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I21",
+   "name": "IEP 10242 CL SIDE",
+   "on_hand": 16,
+   "build_point": "4",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I22",
+   "name": "IEP 10242 CL CTR",
+   "on_hand": 12,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I23",
+   "name": "IEP 10218 CL CTR",
+   "on_hand": 8,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I24",
+   "name": "IEP CL LP",
+   "on_hand": 2,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I30",
+   "name": "IEP4872 CL RM",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I35",
+   "name": "IEP4896 CL RM",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I36",
+   "name": "IEP9648 CL SIDE RM",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I37",
+   "name": "IEP9648 CL CTR RM",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I38",
+   "name": "IEP9624 CL CTR RM",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I40",
+   "name": "IEP7248 CL SIDE RM",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I41",
+   "name": "IEP7248 CL SIDE RM",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I42",
+   "name": "IEP7248 CL CTR RM",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I43",
+   "name": "IEP7224 CL SIDE RM",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "I44",
+   "name": "IEP7224 CL CTR RM",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G01",
+   "name": "CP 4230",
+   "on_hand": 3,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G02",
+   "name": "CP 4242",
+   "on_hand": 11,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G03",
+   "name": "CP 4260",
+   "on_hand": 11,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G04",
+   "name": "CP 4284",
+   "on_hand": 3,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G05",
+   "name": "CP 4848",
+   "on_hand": 7,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G06",
+   "name": "CP 4872",
+   "on_hand": 3,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G101",
+   "name": "CP 4896",
+   "on_hand": 6,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G07",
+   "name": "CP 6042 SIDE",
+   "on_hand": 13,
+   "build_point": "4",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G08",
+   "name": "CP 6042 CTR",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G09",
+   "name": "CP 6018 SIDE",
+   "on_hand": 11,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G10",
+   "name": "CP 6018 CTR",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G11",
+   "name": "CP 7248 SIDE",
+   "on_hand": 6,
+   "build_point": "3",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G12",
+   "name": "CP 7248 CTR",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G13",
+   "name": "CP 7224 SIDE",
+   "on_hand": 3,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G14",
+   "name": "CP 7224 CTR",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G15",
+   "name": "CP 8442 SIDE",
+   "on_hand": 8,
+   "build_point": "4",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G16",
+   "name": "CP 8442 CTR",
+   "on_hand": 2,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G17",
+   "name": "CP 8418 SIDE",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G18",
+   "name": "CP 8418 CTR",
+   "on_hand": 7,
+   "build_point": "as needed",
+   "build_qty": 1,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G102",
+   "name": "CP 9648 SIDE",
+   "on_hand": 3,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G103",
+   "name": "CP 9648 CTR",
+   "on_hand": 6,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G104",
+   "name": "CP 9624 CTR",
+   "on_hand": 9,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G19",
+   "name": "CP 10242 SIDE",
+   "on_hand": 16,
+   "build_point": "4",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G20",
+   "name": "CP 10242 CTR",
+   "on_hand": 9,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G21",
+   "name": "CP 10218 CTR",
+   "on_hand": 4,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "G22",
+   "name": "CP LP",
+   "on_hand": 4,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "D01",
+   "name": "STD CNR",
+   "on_hand": 26,
+   "build_point": "40",
+   "build_qty": 48,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "D05",
+   "name": "STD CNR T",
+   "on_hand": 7,
+   "build_point": "1",
+   "build_qty": 20,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "D13",
+   "name": "STD CNR LP",
+   "on_hand": 12,
+   "build_point": "4",
+   "build_qty": 20,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "D14",
+   "name": "STD CNR LP T",
+   "on_hand": 13,
+   "build_point": "as needed",
+   "build_qty": 4,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "D15",
+   "name": "STD CNR SINGLE",
+   "on_hand": 0,
+   "build_point": "4",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "D16",
+   "name": "STD CNR T SINGLE",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 4,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "D02",
+   "name": "STD MID",
+   "on_hand": 60,
+   "build_point": "14",
+   "build_qty": 40,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "D06",
+   "name": "STD MID T",
+   "on_hand": 13,
+   "build_point": "4",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "N01",
+   "name": "IEP CNR",
+   "on_hand": 22,
+   "build_point": "24",
+   "build_qty": 20,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "N03",
+   "name": "IEP CNR T",
+   "on_hand": 7,
+   "build_point": "2",
+   "build_qty": 8,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "N05",
+   "name": "IEP CNR LP",
+   "on_hand": 8,
+   "build_point": "4",
+   "build_qty": 8,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "N06",
+   "name": "IEP CNR LP T",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 4,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "N07",
+   "name": "IEP CNR SINGLE",
+   "on_hand": 1,
+   "build_point": "4",
+   "build_qty": 4,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "N08",
+   "name": "IEP CNR T SINGLE",
+   "on_hand": 0,
+   "build_point": "1",
+   "build_qty": 3,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "O01",
+   "name": "IEP MID",
+   "on_hand": 7,
+   "build_point": "6",
+   "build_qty": 20,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "O03",
+   "name": "IEP MID T",
+   "on_hand": 25,
+   "build_point": "4",
+   "build_qty": 8,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z19",
+   "name": "WAJMBAD / IEPSSMID",
+   "on_hand": 12,
+   "build_point": "as needed",
+   "build_qty": 4,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z20",
+   "name": "WAJMBADTR / IEPSSMIDT",
+   "on_hand": 5,
+   "build_point": "as needed",
+   "build_qty": 2,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z21",
+   "name": "WAJMBADTL / IEPSSMIDT",
+   "on_hand": 4,
+   "build_point": "as needed",
+   "build_qty": 2,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C101",
+   "name": "STD WL 46",
+   "on_hand": 32,
+   "build_point": "53",
+   "build_qty": 66,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C117",
+   "name": "STD WL 46 CBL",
+   "on_hand": 15,
+   "build_point": "as needed",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C102",
+   "name": "STD WL 46 VNT",
+   "on_hand": 24,
+   "build_point": "33",
+   "build_qty": 66,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C122",
+   "name": "STD WL 46 VNT NV",
+   "on_hand": 13,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C109",
+   "name": "STD WL 43",
+   "on_hand": 12,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C111",
+   "name": "STD WL 22",
+   "on_hand": 8,
+   "build_point": "16",
+   "build_qty": 30,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C112",
+   "name": "STD WL 19",
+   "on_hand": 20,
+   "build_point": "22",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C103",
+   "name": "STD WL 46 WDO3230",
+   "on_hand": 8,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C104",
+   "name": "STD WL 46 WDO3236",
+   "on_hand": 8,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C105",
+   "name": "STD WL 46 WDO3242",
+   "on_hand": 7,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C106",
+   "name": "STD WL 46 WDO3248",
+   "on_hand": 6,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C107",
+   "name": "STD WL 46 WDO3236 JACK",
+   "on_hand": 0,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C108",
+   "name": "STD WL 46 JACK",
+   "on_hand": 0,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C110",
+   "name": "STD WL 43 JACK",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 2,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C127",
+   "name": "STD WL 43 WDO2648",
+   "on_hand": 4,
+   "build_point": "as needed",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C113",
+   "name": "STD DOOR 30 RW",
+   "on_hand": 19,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C114",
+   "name": "STD FRAME 30 RW",
+   "on_hand": 19,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C115",
+   "name": "STD DOOR 30 LW",
+   "on_hand": 15,
+   "build_point": "14",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C116",
+   "name": "STD FRAME 30 LW",
+   "on_hand": 15,
+   "build_point": "14",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K101",
+   "name": "IEP WL 41.5",
+   "on_hand": 14,
+   "build_point": "15",
+   "build_qty": 60,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K117",
+   "name": "IEP WL 41.5 CBL",
+   "on_hand": 9,
+   "build_point": "as needed",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K102",
+   "name": "IEP WL 41.5 VNT",
+   "on_hand": 21,
+   "build_point": "15",
+   "build_qty": 60,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K122",
+   "name": "IEP WL 41.5 VNT NV",
+   "on_hand": 0,
+   "build_point": "2",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K110",
+   "name": "IEP WL 38.5",
+   "on_hand": 16,
+   "build_point": "2",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K112",
+   "name": "IEP WL 17.5",
+   "on_hand": 12,
+   "build_point": "6",
+   "build_qty": 50,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K113",
+   "name": "IEP WL 14.5",
+   "on_hand": 17,
+   "build_point": "as needed",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K103",
+   "name": "IEP WL 41.5 WDO 3230 (top & bottom)",
+   "on_hand": 20,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K104",
+   "name": "IEP WL 41.5 WDO 3236 (top)",
+   "on_hand": 8,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K105",
+   "name": "IEP WL 41.5 WDO 3242 (top)",
+   "on_hand": 4,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K106",
+   "name": "IEP WL 41.5 WDO 3248 (top)",
+   "on_hand": 4,
+   "build_point": "3",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K109",
+   "name": "IEP WL 41.5 WDO BOT",
+   "on_hand": 35,
+   "build_point": "5",
+   "build_qty": 20,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K107",
+   "name": "IEP WL 41.5 WDO 3236 JACK (top)",
+   "on_hand": 0,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K108",
+   "name": "IEP WL 41.5 JACK (top & bottom)",
+   "on_hand": 0,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K111",
+   "name": "IEP WL 38.5 JACK",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K114",
+   "name": "IEP DOOR 30 RW",
+   "on_hand": 13,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K115",
+   "name": "IEP DOOR 30 LW",
+   "on_hand": 7,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K116",
+   "name": "IEP JAMB 46",
+   "on_hand": 10,
+   "build_point": "15",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z112",
+   "name": "EXT 49/46",
+   "on_hand": 35,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C118",
+   "name": "EXT 46/46",
+   "on_hand": 42,
+   "build_point": "6",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z113",
+   "name": "EXT 43/46",
+   "on_hand": 22,
+   "build_point": "2",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C120",
+   "name": "EXT 22/22",
+   "on_hand": 8,
+   "build_point": "6",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z114",
+   "name": "EXT 19/22",
+   "on_hand": 7,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C119",
+   "name": "EXT 43/43",
+   "on_hand": 0,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C121",
+   "name": "EXT 19/19",
+   "on_hand": 10,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z116",
+   "name": "IEP EXT 44.5/41.5",
+   "on_hand": 6,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K118",
+   "name": "IEP EXT 41.5/41.5",
+   "on_hand": 19,
+   "build_point": "6",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z117",
+   "name": "IEP EXT 38.5/41.5",
+   "on_hand": 15,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K120",
+   "name": "IEP EXT 17.5/17.5",
+   "on_hand": 11,
+   "build_point": "6",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z118",
+   "name": "IEP EXT 14.5/17.5",
+   "on_hand": 3,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K119",
+   "name": "IEP EXT 38.5/38.5",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K121",
+   "name": "IEP EXT 14.5/14.5",
+   "on_hand": 3,
+   "build_point": "as needed",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null,
+   "_remapped_from": "K113"
+  },
+  {
+   "code": "T02",
+   "name": "STUDIO LIGHT - SL1",
+   "on_hand": 97,
+   "build_point": "5",
+   "build_qty": 20,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "T03",
+   "name": "STUDIO LIGHT - SL2",
+   "on_hand": 0,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "T04",
+   "name": "STUDIO LIGHT - SL3",
+   "on_hand": 0,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "T05",
+   "name": "STUDIO LIGHT - SL4",
+   "on_hand": 0,
+   "build_point": "5",
+   "build_qty": 20,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "T06",
+   "name": "STUDIO LIGHT - SL5",
+   "on_hand": 0,
+   "build_point": "5",
+   "build_qty": 20,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "T07",
+   "name": "29\" STUDIO LIGHT",
+   "on_hand": -22,
+   "build_point": "5",
+   "build_qty": 20,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "T08",
+   "name": "52\" STUDIO LIGHT",
+   "on_hand": 19,
+   "build_point": "5",
+   "build_qty": 20,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z12",
+   "name": "EXT 49/40",
+   "on_hand": 16,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C11",
+   "name": "EXT 40/40",
+   "on_hand": 37,
+   "build_point": "6",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z13",
+   "name": "EXT 31/40",
+   "on_hand": 8,
+   "build_point": "2",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C12",
+   "name": "EXT 28/28",
+   "on_hand": 11,
+   "build_point": "as needed",
+   "build_qty": 2,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "C13",
+   "name": "EXT 16/16",
+   "on_hand": 10,
+   "build_point": "2",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z14",
+   "name": "EXT 7/16",
+   "on_hand": 7,
+   "build_point": "as needed",
+   "build_qty": 5,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z16",
+   "name": "IEP EXT 44.5/35.5",
+   "on_hand": 5,
+   "build_point": "as needed",
+   "build_qty": 2,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K10",
+   "name": "IEP EXT 35.5/35.5",
+   "on_hand": 31,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z17",
+   "name": "IEP EXT 26.5/35.5",
+   "on_hand": 14,
+   "build_point": "as needed",
+   "build_qty": 2,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "K11",
+   "name": "IEP EXT 23.5/23.5",
+   "on_hand": 10,
+   "build_point": "as needed",
+   "build_qty": 2,
+   "finished_qty": null,
+   "in_process_qty": null,
+   "_remapped_from": "K08"
+  },
+  {
+   "code": "K12",
+   "name": "IEP EXT 11.5/11.5",
+   "on_hand": 15,
+   "build_point": "6",
+   "build_qty": 50,
+   "finished_qty": null,
+   "in_process_qty": null,
+   "_remapped_from": "K09"
+  },
+  {
+   "code": "D09",
+   "name": "FL / CL 5'",
+   "on_hand": 16,
+   "build_point": "5",
+   "build_qty": 14,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "D10",
+   "name": "FL / CL 6'",
+   "on_hand": 21,
+   "build_point": "5",
+   "build_qty": 14,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "D11",
+   "name": "FL / CL 7'",
+   "on_hand": 9,
+   "build_point": "5",
+   "build_qty": 14,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "D101",
+   "name": "FL / CL 8'",
+   "on_hand": 27,
+   "build_point": "5",
+   "build_qty": 14,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "D12",
+   "name": "FL / CL 8.5'",
+   "on_hand": 19,
+   "build_point": "6",
+   "build_qty": 21,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E18",
+   "name": "AUDIMUTE BL 2",
+   "on_hand": 2,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E19",
+   "name": "AUDIMUTE BL 3",
+   "on_hand": 3,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E20",
+   "name": "AUDIMUTE GR 2",
+   "on_hand": 1,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E21",
+   "name": "AUDIMUTE GR 3",
+   "on_hand": 3,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E01",
+   "name": "FOAM 2 GRAY",
+   "on_hand": 5,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E02",
+   "name": "FOAM 3 GRAY",
+   "on_hand": 6,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E03",
+   "name": "FOAM 4 GRAY",
+   "on_hand": 9,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E10",
+   "name": "FOAM 2 BURGUNDY",
+   "on_hand": 4,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E11",
+   "name": "FOAM 3 BURGUNDY",
+   "on_hand": 11,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E12",
+   "name": "FOAM 4 BURGUNDY",
+   "on_hand": 9,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E13",
+   "name": "FOAM 2 BLUE",
+   "on_hand": 10,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E14",
+   "name": "FOAM 3 BLUE",
+   "on_hand": 28,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E15",
+   "name": "FOAM 4 BLUE",
+   "on_hand": 39,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E04",
+   "name": "FOAM 2 PURPLE",
+   "on_hand": 10,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E05",
+   "name": "FOAM 3 PURPLE",
+   "on_hand": 11,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E06",
+   "name": "FOAM 4 PURPLE",
+   "on_hand": 17,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E07",
+   "name": "FOAM 2 ORANGE",
+   "on_hand": 2,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E08",
+   "name": "FOAM 3 ORANGE",
+   "on_hand": 13,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E09",
+   "name": "FOAM 4 ORANGE",
+   "on_hand": 3,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ZZ07",
+   "name": "FOAM GRAY",
+   "on_hand": 421,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ZZ08",
+   "name": "FOAM BURGUNDY",
+   "on_hand": 190,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ZZ09",
+   "name": "FOAM BLUE",
+   "on_hand": 42,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ZZ10",
+   "name": "FOAM PURPLE",
+   "on_hand": 126,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ZZ11",
+   "name": "FOAM ORANGE",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "E16",
+   "name": "BASS TRAPS 2",
+   "on_hand": 57,
+   "build_point": "44",
+   "build_qty": 6,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ATP13",
+   "name": "BASS TRAPS 1",
+   "on_hand": 0,
+   "build_point": "8",
+   "build_qty": 6,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "F14",
+   "name": "RFU",
+   "on_hand": 51,
+   "build_point": "100",
+   "build_qty": 100,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "F01",
+   "name": "VENT SET 110",
+   "on_hand": 48,
+   "build_point": "30",
+   "build_qty": 160,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "F15",
+   "name": "VENT SET 110 RM",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "F07",
+   "name": "VENT SET 220",
+   "on_hand": 0,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "F02",
+   "name": "VSS",
+   "on_hand": 8,
+   "build_point": "15",
+   "build_qty": 40,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "F03",
+   "name": "EFS",
+   "on_hand": -3,
+   "build_point": "50",
+   "build_qty": 20,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "F08",
+   "name": "TAA",
+   "on_hand": 11,
+   "build_point": "50",
+   "build_qty": 21,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "U01",
+   "name": "IEP BEAM 88\"",
+   "on_hand": 20,
+   "build_point": "5",
+   "build_qty": 20,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "U101",
+   "name": "IEP BEAM 82\"",
+   "on_hand": 2,
+   "build_point": "5",
+   "build_qty": 20,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "U02",
+   "name": "IEP BEAM 70\"",
+   "on_hand": 26,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "T01",
+   "name": "LED LIGHT",
+   "on_hand": 70,
+   "build_point": "30",
+   "build_qty": 96,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z07",
+   "name": "Ramp A",
+   "on_hand": 14,
+   "build_point": "10",
+   "build_qty": 25,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z08",
+   "name": "RAMP B",
+   "on_hand": 13,
+   "build_point": "10",
+   "build_qty": 25,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "Z39",
+   "name": "ADA RAMP",
+   "on_hand": 53,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "S01",
+   "name": "STEP",
+   "on_hand": 10,
+   "build_point": "5",
+   "build_qty": 10,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ATP05",
+   "name": "ATP HZ RAIL 18",
+   "on_hand": 0,
+   "build_point": "4",
+   "build_qty": 16,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ATP06",
+   "name": "ATP HZ RAIL 28 5/8",
+   "on_hand": 0,
+   "build_point": "4",
+   "build_qty": 16,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ATP07",
+   "name": "ATP HZ RAIL 42",
+   "on_hand": 18,
+   "build_point": "4",
+   "build_qty": 16,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ATP08",
+   "name": "ATP HZ RAIL 24",
+   "on_hand": 27,
+   "build_point": "4",
+   "build_qty": 16,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ATP09",
+   "name": "ATP HZ RAIL 34 5/8",
+   "on_hand": 2,
+   "build_point": "4",
+   "build_qty": 16,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ATP10",
+   "name": "ATP HZ RAIL 48",
+   "on_hand": 0,
+   "build_point": "4",
+   "build_qty": 16,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ATP12",
+   "name": "ATP VT STRIPS 4",
+   "on_hand": 0,
+   "build_point": "4",
+   "build_qty": 16,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ATP11",
+   "name": "ATP VT STRIPS 2",
+   "on_hand": 0,
+   "build_point": "4",
+   "build_qty": 16,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ZZ01",
+   "name": "ATP VT STRIPS TOTAL",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ATP01",
+   "name": "ATP DEFLECTORS 8",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ATP02",
+   "name": "ATP DEFLECTORS 4",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ATP03",
+   "name": "ATP DEFLECTORS 3",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ATP04",
+   "name": "ATP DEFLECTORS 2",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ZZ02",
+   "name": "ATP DEFLECTORS",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ATP15",
+   "name": "ATP CORNER RAIL STD",
+   "on_hand": 7,
+   "build_point": "4",
+   "build_qty": 11,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ATP16",
+   "name": "ATP CORNER RAIL IEP",
+   "on_hand": 29,
+   "build_point": "4",
+   "build_qty": 11,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ZZ03",
+   "name": "EFI CNR",
+   "on_hand": 29,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ZZ04",
+   "name": "EFI CTR",
+   "on_hand": 40,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ZZ06",
+   "name": "EFI SIDE",
+   "on_hand": 30,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ZZ12",
+   "name": "EFI PERIM STRIP 38 3/4\"",
+   "on_hand": 0,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ZZ13",
+   "name": "EFI PERIM STRIP 24\"",
+   "on_hand": 50,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ZZ14",
+   "name": "EFI PERIM STRIP 21\"",
+   "on_hand": 50,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ZZ15",
+   "name": "EFI PERIM CORNER (4 Corners each)",
+   "on_hand": 18,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  },
+  {
+   "code": "ZZ17",
+   "name": "EFI PERIM DOOR STRIP",
+   "on_hand": 18,
+   "build_point": "as needed",
+   "build_qty": 0,
+   "finished_qty": null,
+   "in_process_qty": null
+  }
+ ]
+}

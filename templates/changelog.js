@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.84.33', date:'June 9, 2026', tag:'fix',
+      changes:[
+        {t:'fix', d:'**Top-Down Layout: mid-wall seam seals are a true T-profile.** The seal&apos;s stem now sits IN the joint between the two wall panels — spanning the full wall thickness, with the panels butting into it — and the cap bar sits proud of the exterior face covering the joint. Previously the tab pointed outward away from the booth, which is not how the seal installs.'},
+        {t:'fix', d:'**Drag rule: the 49&Prime; wide-access door knows where it fits.** A WA/ADA doorframe overhangs its 46&Prime; slot, so it can only be dropped on a wall that also seats its narrow shrink companion — the receiving wall needs a second slot (no 49&Prime; frame on a single-46&Prime; wall like a 4848 side). When the door is dragged to a valid wall, the 19&Prime; (or 7&Prime; on 40&Prime; booths) companion panel automatically moves with it so the pair stays adjacent.'},
+      ]
+    },
+    {
       v:'1.84.32', date:'June 9, 2026', tag:'ui',
       changes:[
         {t:'ui', d:'**Top-Down Layout: walls are the same carpet as the seam seals.** The wall bands previously used a near-black gradient while the seam seals used the gray speckled-carpet texture — on the real booth (and the spec-sheet top-downs) every panel and seal is one material. Walls and corner posts now share the seal carpet, so the whole shell reads as one carpeted product and the seals read as the connectors they are. Legend swatches follow.'},

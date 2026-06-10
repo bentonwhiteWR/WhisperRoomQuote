@@ -163,18 +163,19 @@ function renderLayoutSvg(layout, assign) {
   const SG = Math.max(10, Math.min(t, 20));
   const sealPoly = pts => `<polygon points="${pts}" stroke="${SEAL_HALO}" stroke-width="4.5" stroke-linejoin="round" fill="none"/>`
     + `<polygon points="${pts}" fill="url(#ldSeal)" stroke="${SEAL_STROKE}" stroke-width="1.2" stroke-linejoin="round"/>`;
-  // mid-wall seam seal (plinth): a flat base bar along the wall at the joint
-  // (jx,jy on the interior face; nx,ny inward) with a centered tab protruding
-  // into the booth — the profile from the spec diagram (left). Base ≈ 4× the
-  // tab width, tab ≈ as deep as the base, matching the spec proportions.
+  // mid-wall seam seal: a T-profile at each panel joint — the STEM sits in
+  // the joint BETWEEN the two wall panels (the panels butt into it), spanning
+  // the full wall thickness; the CAP bar sits proud of the exterior face,
+  // covering the joint. (jx,jy = joint on the exterior face; nx,ny = outward
+  // normal.) Per Benton 2026-06-09: the old plinth pointed the tab outward —
+  // the real seal's tab runs through the wall, with the walls butting into it.
   function midSeal(jx, jy, nx, ny) {
     const tx = -ny, ty = nx;                 // tangent = along the wall
-    const baseHalf = SG * 1.5, baseDepth = SG * 0.45, tabHalf = SG * 0.38, tabExtra = SG * 0.5;
+    const capHalf = SG * 1.5, capDepth = SG * 0.45, stemHalf = SG * 0.22;
     const P = (a, n) => (jx + tx * a + nx * n) + ',' + (jy + ty * a + ny * n);
     const pts = [
-      P(-baseHalf, 0), P(-baseHalf, baseDepth), P(-tabHalf, baseDepth),
-      P(-tabHalf, baseDepth + tabExtra), P(tabHalf, baseDepth + tabExtra), P(tabHalf, baseDepth),
-      P(baseHalf, baseDepth), P(baseHalf, 0),
+      P(-capHalf, capDepth), P(capHalf, capDepth), P(capHalf, 0), P(stemHalf, 0),
+      P(stemHalf, -t), P(-stemHalf, -t), P(-stemHalf, 0), P(-capHalf, 0),
     ].join(' ');
     return sealPoly(pts);
   }

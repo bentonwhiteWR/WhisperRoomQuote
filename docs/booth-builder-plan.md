@@ -25,7 +25,7 @@ So "Build Your Own Booth" is mostly **recombination + persistence + a customer s
 
 A **"Design Your Booth" subtab on the customer-facing quote page**. The customer sees *their* booth (the model on their quote), arranges it, and saves:
 
-- **Top-down view** — the existing interactive layout (drag a panel onto another wall; invalid drops already refused by the size constraint). Add door hinge L/R toggle.
+- **Top-down view** — the existing interactive layout (drag a panel onto another wall; invalid drops already refused by the size constraint). Add door hinge L/R toggle. **All panel kinds are movable — door, window, vent, AND cable** (Benton confirmed 2026-06-09); vent placement is genuinely valuable to capture since the 5.5″ duct protrusion drives host-room fit.
 - **Elevation view** (front/side) with **rotate** (▲ N/E/S/W, 90° steps): flat SVG elevations from the same config — door + door window, wall windows, vent ducts, height extension, caster height. Foam color visible through the glass.
 - **Foam color picker** (the 5 shop colors; writes the same normalized value the PL already consumes).
 - **Save** → persists to the quote, notifies the rep, and the rep's view shows the customer's arrangement → **WA Type / hinge / window walls are derived from it** instead of from prose.
@@ -71,6 +71,8 @@ The drag size-constraint exists; layer the rest on as data:
 | Door swing 30″, opens outward → show sweep + clearance hint | spec sheets |
 | Vent wall protrudes 5.5″; 6″ host-room clearance | spec sheets |
 | Narrow slots: solid only (46″-family components can't shrink) | booth-layouts.json |
+| **49″ WA/ADA door: only on walls with a narrow companion slot** (frame + 19″/7″ shrink panel need ≥ 60″ of wall run on 46-module; no 49″ frame on a single-46″ wall like a 4848 side). Companion auto-follows the door. **Shipped in the PL viewer, v1.84.33** | Benton 2026-06-09 |
+| Vent + cable panels: freely movable like door/window (counts preserved by swap mechanics) | Benton 2026-06-09 |
 | Initial-order-only options flagged once ordered: WAD, wall windows, 10″ HX, ADA | catalog |
 
 Phase-3 nicety: "will it fit my room?" — host-room W×L×H in, booth + 6″ clearance + door sweep drawn inside it, collisions flagged. (Lead-gen gold; trivial on the same SVG.)
@@ -126,7 +128,7 @@ Invalid drops keep the current red-dash refusal, plus a one-line reason ("Window
 
 ## 9. Open questions for Benton
 
-1. Customer freedom: can customers move **vent/cable** walls too, or only door/window (vent fixed to back)? Spec sheets say all 46″ components are interchangeable; production reality may differ.
+1. ~~Can customers move vent/cable walls?~~ **Answered 2026-06-09: yes — all panel kinds movable.**
 2. Lock customer edits after order processing (config frozen at PO time)?
 3. SketchUp exports: one render per wall type per series (door/vent/window/solid × 40″/46″) would cover all elevations — feasible to produce?
 4. 127-LP pentagon: skip in the configurator (2 corner booths) or add its special-case layout first?

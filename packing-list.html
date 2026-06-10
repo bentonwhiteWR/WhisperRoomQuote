@@ -396,18 +396,19 @@
     const SG = Math.max(10, Math.min(t, 20));
     const sealPoly = pts => `<polygon points="${pts}" stroke="${SEAL_HALO}" stroke-width="4.5" stroke-linejoin="round" fill="none"/>`
       + `<polygon points="${pts}" fill="url(#ldSeal)" stroke="${SEAL_STROKE}" stroke-width="1.2" stroke-linejoin="round"/>`;
-    // mid-wall seam seal (plinth): a flat base bar along the wall at the joint
-    // (jx,jy on the interior face; nx,ny inward) with a centered tab protruding
-    // into the booth — the profile from the spec diagram (left). Base ≈ 4× the
-    // tab width, tab ≈ as deep as the base, matching the spec proportions.
+    // mid-wall seam seal: a T-profile at each panel joint — the STEM sits in
+    // the joint BETWEEN the two wall panels (the panels butt into it), spanning
+    // the full wall thickness; the CAP bar sits proud of the exterior face,
+    // covering the joint. (jx,jy = joint on the exterior face; nx,ny = outward
+    // normal.) Per Benton 2026-06-09: the old plinth pointed the tab outward —
+    // the real seal's tab runs through the wall, with the walls butting into it.
     function midSeal(jx, jy, nx, ny) {
       const tx = -ny, ty = nx;                 // tangent = along the wall
-      const baseHalf = SG * 1.5, baseDepth = SG * 0.45, tabHalf = SG * 0.38, tabExtra = SG * 0.5;
+      const capHalf = SG * 1.5, capDepth = SG * 0.45, stemHalf = SG * 0.22;
       const P = (a, n) => (jx + tx * a + nx * n) + ',' + (jy + ty * a + ny * n);
       const pts = [
-        P(-baseHalf, 0), P(-baseHalf, baseDepth), P(-tabHalf, baseDepth),
-        P(-tabHalf, baseDepth + tabExtra), P(tabHalf, baseDepth + tabExtra), P(tabHalf, baseDepth),
-        P(baseHalf, baseDepth), P(baseHalf, 0),
+        P(-capHalf, capDepth), P(capHalf, capDepth), P(capHalf, 0), P(stemHalf, 0),
+        P(stemHalf, -t), P(-stemHalf, -t), P(-stemHalf, 0), P(-capHalf, 0),
       ].join(' ');
       return sealPoly(pts);
     }
@@ -679,20 +680,37 @@
   const LAYOUT_STATE = {};
   let _ldDrag = null;
   const ldRoomOf = el => { const w = el && el.closest && el.closest('[data-layout-room]'); return w ? +w.getAttribute('data-layout-room') : null; };
-  // Slot's nominal width (in) for the drag size constraint.
-  function ldSlotSize(ri, slotId) {
+  // Slot lookup (side + wall + slot) for the drag rules.
+  function ldSlotInfo(ri, slotId) {
     const st = LAYOUT_STATE[ri]; if (!st) return null;
-    for (const side of ['N', 'S', 'E', 'W'])
-      for (const slot of st.layout.walls[side].slots)
-        if (slot.id === slotId) return slot.size;
+    for (const side of ['N', 'S', 'E', 'W']) {
+      const wall = st.layout.walls[side]; if (!wall) continue;
+      for (const slot of wall.slots) if (slot.id === slotId) return { side: side, wall: wall, slot: slot };
+    }
     return null;
+  }
+  // Is this line the 49″ WA/ADA doorframe? (A standard doorframe pack reads
+  // STDWL46 DRFRM → 46″; the WA/ADA/FR frames read STDDRFRM → 49″.)
+  function ldIsWideDoor(line) {
+    if (!line) return false;
+    const w = panelInteriorWidth(line.pack);
+    return classifyWall(line.pack) === 'DRFRM' && w != null && w >= 49;
   }
   // A panel only fits a slot of (near-)equal width — you can't drop a 46" panel
   // where a 22" sits. ±3" covers module rounding (46/47/47.5) but blocks
-  // full↔narrow swaps.
+  // full↔narrow swaps. The 49″ WA/ADA doorframe adds a rule (Benton
+  // 2026-06-09): it overhangs its module slot, so the receiving wall must also
+  // seat the narrow shrink companion (19″/7″) beside it — i.e. only multi-slot
+  // walls qualify. No 49″ frame on a single-46″ wall (a 4848 side is 48″; the
+  // frame + companion need ≥ 60″ of wall run).
   function ldCompatible(ri, a, b) {
-    const sa = ldSlotSize(ri, a), sb = ldSlotSize(ri, b);
-    return sa != null && sb != null && Math.abs(sa - sb) <= 3;
+    const A = ldSlotInfo(ri, a), B = ldSlotInfo(ri, b);
+    if (!A || !B) return false;
+    if (Math.abs(A.slot.size - B.slot.size) > 3) return false;
+    const st = LAYOUT_STATE[ri]; if (!st) return false;
+    if (ldIsWideDoor(st.assign[a]) && B.wall.slots.length < 2) return false;
+    if (ldIsWideDoor(st.assign[b]) && A.wall.slots.length < 2) return false;
+    return true;
   }
 
   function renderLayoutTab(rm, ri) {
@@ -788,8 +806,37 @@
     const A = st.assign[a] || null, B = st.assign[b] || null;
     if (B == null) delete st.assign[a]; else st.assign[a] = B;
     if (A == null) delete st.assign[b]; else st.assign[b] = A;
+    // The 49″ WA/ADA door travels WITH its narrow shrink companion (the 19″ or
+    // 7″ wall) — they must sit adjacent on the same wall. When exactly one end
+    // of the swap is the wide door and it changed walls, pull the companion
+    // into the smallest other slot on the door's new wall.
+    const aWide = ldIsWideDoor(st.assign[a]), bWide = ldIsWideDoor(st.assign[b]);
+    if (aWide !== bWide) ldBringCompanion(ri, aWide ? b : a, aWide ? a : b);
     const wrap = document.querySelector('[data-layout-room="' + ri + '"]');
     if (wrap) wrap.outerHTML = renderLayoutTab(st.rm, ri);
+  }
+  // Move the WA shrink companion (19″/7″) from the door's old wall onto the
+  // door's new wall, swapping with whatever sits in the seat slot there.
+  function ldBringCompanion(ri, fromSlotId, doorSlotId) {
+    const st = LAYOUT_STATE[ri]; if (!st) return;
+    const from = ldSlotInfo(ri, fromSlotId), to = ldSlotInfo(ri, doorSlotId);
+    if (!from || !to || from.side === to.side) return;   // same wall — already adjacent
+    let compSlotId = null;
+    for (const s2 of from.wall.slots) {
+      const ln = st.assign[s2.id];
+      const w = ln ? panelInteriorWidth(ln.pack) : null;
+      if (w === 19 || w === 7) { compSlotId = s2.id; break; }
+    }
+    if (!compSlotId) return;
+    let seat = null;
+    for (const s2 of to.wall.slots) {
+      if (s2.id === doorSlotId) continue;
+      if (!seat || s2.size < seat.size) seat = s2;
+    }
+    if (!seat || seat.id === compSlotId) return;
+    const X = st.assign[compSlotId] || null, Y = st.assign[seat.id] || null;
+    if (Y == null) delete st.assign[compSlotId]; else st.assign[compSlotId] = Y;
+    if (X == null) delete st.assign[seat.id]; else st.assign[seat.id] = X;
   }
   document.addEventListener('pointerdown', ldDown);
   document.addEventListener('pointermove', ldMove);

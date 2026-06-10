@@ -132,6 +132,8 @@ td.drillable:hover{color:var(--orange)}
 .mtab{background:none;border:none;color:var(--muted);font-size:12px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:10px 18px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
 .mtab:hover{color:var(--text)}
 .mtab.active{color:var(--orange);border-bottom-color:var(--orange)}
+/* v1.99.0 — 📡 Radar tab badge (NEW-alert count) */
+.mtab .nbadge{display:inline-block;margin-left:6px;min-width:16px;padding:1px 5px;border-radius:9px;background:var(--red);color:#fff;font-size:10px;font-weight:800;text-align:center;vertical-align:1px}
 .ov-tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;border:1px solid transparent}
 .ov-cannib{background:rgba(244,63,94,.14);color:#fb7185;border-color:rgba(244,63,94,.28)}
 .ov-gap{background:rgba(34,197,94,.13);color:#5fd98a;border-color:rgba(34,197,94,.28)}
@@ -448,6 +450,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <button class="mtab active" data-tab="ads" onclick="switchMarketingTab('ads')">Google Ad Spend</button>
     <button class="mtab"        data-tab="gsc" onclick="switchMarketingTab('gsc')">Google Search Console</button>
     <button class="mtab"        data-tab="seo" onclick="switchMarketingTab('seo')">🔎 SEO Intel</button>
+    <button class="mtab"        data-tab="radar" onclick="switchMarketingTab('radar')">📡 Radar<span class="nbadge" id="radarTabBadge" style="display:none">0</span></button>
   </div>
 
   <!-- ════════ Growth Engine tab (v1.69.x) — the decision dashboard ════════ -->
@@ -807,6 +810,25 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     </div>
     <div id="seoBody"><div class="empty">Loading…</div></div>
   </div><!-- /tabSeo -->
+
+  <!-- ════════ Radar tab (v1.99.0) — server-detected alert feed ════════ -->
+  <div id="tabRadar" class="tab-panel" style="display:none">
+    <div class="section-head" style="margin-bottom:8px">
+      <div>
+        <div class="section-title" style="font-size:15px">📡 Radar<span class="tip-i" title="Server-detected changes worth acting on — rank drops, competitor ads on your brand terms, uncited AI Overviews, lost featured snippets, budget-capped campaigns, spend with no conversions, organic decay. The server scans daily (pure SQL over already-synced data — no API spend) and sends one bell summary per scan with new findings.">ⓘ</span></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px" id="radarSubtitle">Rank drops · brand threats · AI Overviews · budget + decay</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <a onclick="radarAckAll()" style="font-size:10px;color:var(--muted);cursor:pointer;user-select:none" title="Mark every NEW alert as seen — keeps them in the feed, clears the tab badge.">mark all seen</a>
+        <button class="sync-btn" id="radarScanBtn" onclick="runRadarScan()">↻ Scan now</button>
+      </div>
+    </div>
+    <div class="gsc-dim-toggle" id="radarStatusToggle" style="margin-bottom:12px">
+      <button class="active" data-rstatus="active" onclick="setRadarStatus('active')">Active</button>
+      <button data-rstatus="dismissed" onclick="setRadarStatus('dismissed')">Dismissed</button>
+    </div>
+    <div id="radarBody"><div class="empty">Loading…</div></div>
+  </div><!-- /tabRadar -->
 </div>
 
 <!-- Drill-down modal (v1.59.2) — lists the actual HubSpot records behind a
@@ -1505,6 +1527,145 @@ function changeModel(model) {
   refreshActiveTab();
 }
 
+// ── v1.99.0 — 📡 Radar tab: server-detected alert feed ─────────────────
+// The server scans daily (marketing/alerts.js — rank drops, brand-term
+// competitor ads, uncited AI Overviews, lost snippets, budget-capped
+// campaigns, wasted spend, organic decay). This tab reads the feed, acks
+// (new → seen) and dismisses. The tab badge = NEW count, refreshed on page
+// load and after every radar action.
+let radarStatus = 'active';   // 'active' (new + seen) | 'dismissed'
+
+const RADAR_TYPE_LABEL = {
+  'serp-rank-drop':     'Rank drop',
+  'serp-brand-comp-ad': 'Brand threat',
+  'serp-aio-uncited':   'AI Overview',
+  'serp-snippet-lost':  'Snippet lost',
+  'ads-budget-lost':    'Budget capped',
+  'ads-spend-no-conv':  'Wasted spend',
+  'gsc-decay':          'Organic decay',
+};
+const RADAR_SEV = {
+  high: 'var(--red)',
+  med:  'var(--yellow)',
+  info: 'var(--blue)',
+};
+
+function setRadarStatus(s) {
+  if (s === radarStatus) return;
+  radarStatus = s;
+  document.querySelectorAll('#radarStatusToggle button').forEach(b => b.classList.toggle('active', b.dataset.rstatus === s));
+  loadRadarTab();
+}
+
+// Tab-button badge = count of NEW alerts. Called with counts when a feed
+// fetch already has them; fetches its own (cheap count query) on page load.
+async function radarBadgeRefresh(counts) {
+  try {
+    if (!counts) {
+      const d = await fetch('/api/marketing/alerts?status=active', { credentials: 'include' }).then(r => r.json());
+      counts = (d && d.counts) || {};
+    }
+    const b = document.getElementById('radarTabBadge');
+    if (!b) return;
+    const n = counts.new || 0;
+    b.textContent = n;
+    b.style.display = n > 0 ? '' : 'none';
+  } catch(e) {}
+}
+
+async function loadRadarTab() {
+  const body = document.getElementById('radarBody');
+  try {
+    const d = await fetch(`/api/marketing/alerts?status=${radarStatus}&days=60`, { credentials: 'include' }).then(r => r.json());
+    renderRadar(d || {});
+    radarBadgeRefresh((d && d.counts) || {});
+  } catch(e) {
+    body.innerHTML = `<div class="empty">Couldn't load alerts: ${escHtml(e.message || 'error')}</div>`;
+  }
+}
+
+function renderRadar(d) {
+  const body   = document.getElementById('radarBody');
+  const sub    = document.getElementById('radarSubtitle');
+  const rows   = d.rows || [];
+  const counts = d.counts || {};
+  const scanned = d.sync && d.sync.last_synced_at;
+  const auto = (d.serpAutoSyncDays || 0) > 0 ? ` · SERP auto-refresh every ${d.serpAutoSyncDays}d` : '';
+  sub.textContent = `${counts.new || 0} new · ${counts.seen || 0} seen · ${counts.dismissed || 0} dismissed (60d) · last scan ${agoText(scanned)}${auto}`;
+
+  if (!rows.length) {
+    body.innerHTML = `<div class="empty">${radarStatus === 'dismissed'
+      ? 'Nothing dismissed in the last 60 days.'
+      : (scanned ? 'All clear — no active alerts in the last 60 days. The radar re-scans daily.'
+                 : 'No scan has run yet. Press <strong>↻ Scan now</strong> — it reads already-synced data (free), so run it any time.')}</div>`;
+    return;
+  }
+  // Rows arrive severity-first then newest-first (server orders them).
+  body.innerHTML = rows.map(a => {
+    const sev = RADAR_SEV[a.severity] || RADAR_SEV.info;
+    const isNew = a.status === 'new';
+    return `<div class="section" style="border-left:3px solid ${sev};padding:12px 14px;margin-bottom:10px${isNew ? '' : ';opacity:.75'}">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;line-height:1.5">
+            ${isNew ? `<span class="mine-tag" style="background:rgba(239,68,68,.14);color:var(--red);margin-right:6px">NEW</span>` : ''}
+            <span class="mine-tag" style="background:var(--surface2);color:var(--muted);margin-right:6px">${escHtml(RADAR_TYPE_LABEL[a.type] || a.type)}</span>
+            ${escHtml(a.title)}
+          </div>
+          ${a.detail ? `<div style="font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.55">${escHtml(a.detail)}</div>` : ''}
+        </div>
+        <div style="flex-shrink:0;text-align:right">
+          <div style="font-size:10px;color:var(--muted)">${fmtDate(a.created_at)}</div>
+          ${radarStatus !== 'dismissed' ? `<a onclick="radarDismiss(${a.id})" style="font-size:10px;color:var(--muted);cursor:pointer;user-select:none" title="Dismiss — won't re-fire unless its underlying key rolls over (new snapshot / month / week).">dismiss ✕</a>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function radarDismiss(id) {
+  try {
+    await fetch('/api/marketing/alerts/dismiss', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+  } catch(e) {}
+  loadRadarTab();
+}
+
+async function radarAckAll() {
+  try {
+    await fetch('/api/marketing/alerts/ack', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ all: true }),
+    });
+  } catch(e) {}
+  loadRadarTab();
+}
+
+async function runRadarScan() {
+  const btn = document.getElementById('radarScanBtn');
+  btn.disabled = true; btn.textContent = 'Scanning…';
+  try {
+    const res = await fetch('/api/marketing/sync', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report: 'alerts' }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (d && d.error) alert('Scan finished with errors: ' + d.error);
+    else if (d && typeof d.fresh === 'number') alert(`Radar scan complete — ${d.fresh} new alert${d.fresh === 1 ? '' : 's'} (${d.matched} total matched).`);
+  } catch(e) {
+    alert('Scan request dropped — it may still be finishing. Refresh in a minute.');
+  } finally {
+    btn.disabled = false; btn.textContent = '↻ Scan now';
+    loadRadarTab();
+  }
+}
+radarBadgeRefresh();   // arm the tab badge on page load
+
 // ── v1.65.1 — sub-tab switching (Google Ad Spend | Google Search Console) ──
 let currentTab = 'ads';
 function switchMarketingTab(name) {
@@ -1513,13 +1674,15 @@ function switchMarketingTab(name) {
   document.getElementById('tabGsc').style.display    = name === 'gsc' ? '' : 'none';
   document.getElementById('tabGrowth').style.display = name === 'growth' ? '' : 'none';
   document.getElementById('tabSeo').style.display    = name === 'seo' ? '' : 'none';
+  document.getElementById('tabRadar').style.display  = name === 'radar' ? '' : 'none';
   document.querySelectorAll('.mtab').forEach(el => el.classList.toggle('active', el.dataset.tab === name));
   if (name === 'gsc') loadGscTab();
   else if (name === 'growth') loadGrowthTab();
   else if (name === 'seo') loadSeoTab();
+  else if (name === 'radar') loadRadarTab();
 }
 // Reload only the visible tab when the shared date range / model changes.
-function refreshActiveTab() { return currentTab === 'gsc' ? loadGscTab() : currentTab === 'growth' ? loadGrowthTab() : currentTab === 'seo' ? loadSeoTab() : loadAllTables(); }
+function refreshActiveTab() { return currentTab === 'gsc' ? loadGscTab() : currentTab === 'growth' ? loadGrowthTab() : currentTab === 'seo' ? loadSeoTab() : currentTab === 'radar' ? loadRadarTab() : loadAllTables(); }
 
 // v1.65.4 — Movers dimension (query | page). Drives ?dim= on gsc-movers.
 let gscMoversDim = 'query';

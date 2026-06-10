@@ -30,6 +30,7 @@ const etl    = require('./google-ads-etl');
 const hsEtl  = require('./hubspot-etl');
 const gscEtl = require('./gsc-etl');
 const serpEtl = require('./serp-etl');
+const alerts = require('./alerts');
 
 // Empty array = open to everyone (allowlist disabled). Populate with
 // ownerIds to re-lock — e.g. ['36303670', '36320208'] for Benton + Gabe.
@@ -287,6 +288,11 @@ async function handle(req, res, ctx) {
   }
 
   await _initSchema(ctx.db);
+  // v1.99.0 — arm the radar scheduler on the first marketing request (daily
+  // alert scans + optional weekly SERP auto-sync). Lives here so the marketing
+  // module needs zero quote-server.js changes; idempotent after the first call.
+  const _db = ctx.db;
+  alerts.ensureScheduler(() => _db, serpEtl);
 
   const sess = ctx.getSession(req);
   if (!isAllowed(sess)) {
@@ -378,6 +384,9 @@ async function handle(req, res, ctx) {
       // so a routine Sync All never silently spends DataForSEO credit. `force`
       // bypasses the 7-day per-keyword cache.
       else if (report === 'serp')             result = await serpEtl.syncSerp({    db: ctx.db, force: !!body.force });
+      // Radar alert scan — pure SQL over already-synced tables (no API spend),
+      // so safe to run any time. The scheduler runs it daily; this is "Scan now".
+      else if (report === 'alerts')           result = await alerts.runAlertScan({ db: ctx.db });
       else if (report === 'hubspot_contacts') result = await hsEtl.syncHubSpotContacts({ db: ctx.db, daysBack: hsDays });
       else if (report === 'hubspot_deals')    result = await hsEtl.syncHubSpotDeals({    db: ctx.db, daysBack: hsDays });
       else if (report === 'hubspot_all') {
@@ -406,6 +415,65 @@ async function handle(req, res, ctx) {
     } catch(e) {
       ctx.json({ ok: false, error: e.message }, 500);
     }
+    return true;
+  }
+
+  // ── GET /api/marketing/alerts ─────────────────────────────────────
+  // The 📡 Radar feed. ?status=new|seen|dismissed|active (default 'active' =
+  // new+seen), ?days=N window (default 60). Returns rows newest-first + counts
+  // + the 'alerts' sync meta (when the last scan ran).
+  if (pathname === '/api/marketing/alerts' && req.method === 'GET') {
+    try {
+      if (!ctx.db) { ctx.json({ rows: [], counts: {} }); return true; }
+      const url = new URL(req.url, 'http://localhost');
+      const status = url.searchParams.get('status') || 'active';
+      const dRaw = parseInt(url.searchParams.get('days'));
+      const days = Number.isFinite(dRaw) ? Math.min(Math.max(dRaw, 1), 365) : 60;  // radar default: 60d
+      const where = status === 'active' ? `status IN ('new','seen')` : `status = $2`;
+      const params = status === 'active' ? [days] : [days, status];
+      const rows = (await ctx.db.query(`
+        SELECT id, created_at, type, severity, title, detail, data, status
+        FROM marketing_alerts
+        WHERE created_at >= NOW() - INTERVAL '1 day' * $1 AND ${where}
+        ORDER BY CASE severity WHEN 'high' THEN 0 WHEN 'med' THEN 1 ELSE 2 END, created_at DESC
+        LIMIT 500
+      `, params)).rows;
+      const counts = (await ctx.db.query(`
+        SELECT status, COUNT(*)::int AS n FROM marketing_alerts
+        WHERE created_at >= NOW() - INTERVAL '1 day' * $1 GROUP BY status
+      `, [days])).rows.reduce((m, r) => (m[r.status] = r.n, m), {});
+      const sync = (await ctx.db.query(`SELECT * FROM marketing_syncs WHERE report_type = 'alerts'`)).rows[0] || null;
+      ctx.json({ rows, counts, sync, owners: alerts.ALERT_OWNERS, serpAutoSyncDays: parseInt(process.env.SERP_AUTO_SYNC_DAYS || '0') });
+    } catch(e) { ctx.json({ rows: [], counts: {}, error: e.message }, 500); }
+    return true;
+  }
+
+  // ── POST /api/marketing/alerts/ack ── body {ids:[..]} or {all:true} ──
+  // Marks 'new' alerts as 'seen'. POST /api/marketing/alerts/dismiss with
+  // {id} sets a single alert to 'dismissed' (it never re-fires — dedup is on
+  // type+key — unless the key's date component rolls over).
+  if ((pathname === '/api/marketing/alerts/ack' || pathname === '/api/marketing/alerts/dismiss') && req.method === 'POST') {
+    let body = {};
+    try {
+      const chunks = [];
+      await new Promise((resolve, reject) => { req.on('data', c => chunks.push(c)); req.on('end', resolve); req.on('error', reject); });
+      body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
+    } catch(e) {}
+    try {
+      if (!ctx.db) { ctx.json({ ok: false, error: 'no db' }, 500); return true; }
+      let n = 0;
+      if (pathname.endsWith('/dismiss')) {
+        const id = parseInt(body.id);
+        if (!Number.isFinite(id)) { ctx.json({ ok: false, error: 'id required' }, 400); return true; }
+        n = (await ctx.db.query(`UPDATE marketing_alerts SET status = 'dismissed' WHERE id = $1`, [id])).rowCount;
+      } else if (body.all) {
+        n = (await ctx.db.query(`UPDATE marketing_alerts SET status = 'seen' WHERE status = 'new'`)).rowCount;
+      } else {
+        const ids = (Array.isArray(body.ids) ? body.ids : []).map(x => parseInt(x)).filter(Number.isFinite);
+        if (ids.length) n = (await ctx.db.query(`UPDATE marketing_alerts SET status = 'seen' WHERE id = ANY($1) AND status = 'new'`, [ids])).rowCount;
+      }
+      ctx.json({ ok: true, updated: n });
+    } catch(e) { ctx.json({ ok: false, error: e.message }, 500); }
     return true;
   }
 

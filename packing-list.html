@@ -384,7 +384,10 @@
     //   • panel-joint seal: an I-beam — the seam line running wall-to-wall with a
     //     bar cap where it meets each wall (the "T" you see in the spec); and
     //   • corner seal: an L-bracket hugging each of the four interior corners.
-    const FOAM = '#2c2d33';
+    // Foam lining tint follows the chosen studiofoam color (booth-builder /
+    // quote preference); default reads as the standard gray foam.
+    const FOAM_COLORS = { Gray: '#2c2d33', Orange: '#a8430f', Blue: '#1e3a8a', Purple: '#5b21b6', Burgundy: '#6d1f2c' };
+    const FOAM = FOAM_COLORS[layout.foamColor] || FOAM_COLORS.Gray;
     const SEAL = '#0d0e11';
     function foamComb(ax, ay, bx, by, nx, ny) {
       const len = Math.hypot(bx - ax, by - ay); if (len < 4) return '';
@@ -718,9 +721,11 @@
     const ext = layout.exterior;
     const wall = layout.walls[facing] || { slots: [] };
     const lenIn = (facing === 'N' || facing === 'S') ? ext.w : ext.h;
-    const hIn = /^E/i.test(String(layout.variant || 'S')) ? 85 : 83;
-    const PX2 = Math.max(2.4, Math.min(340 / lenIn, 280 / hIn, 5.5));
-    const Wp = lenIn * PX2, Hp = hIn * PX2;
+    // 6′11″ standard / 7′1″ enhanced, +10″ with the height extension
+    const hIn = (/^E/i.test(String(layout.variant || 'S')) ? 85 : 83) + (layout.heightExt ? 10 : 0);
+    const lift = layout.casters ? 5 : 0;          // caster plate raises the booth ~5″
+    const PX2 = Math.max(2.4, Math.min(340 / lenIn, 280 / (hIn + lift), 5.5));
+    const Wp = lenIn * PX2, Hp = hIn * PX2, liftPx = lift * PX2;
     // Vents on the walls ADJACENT to the facing wall protrude 5.5″ past the
     // booth edge — from this view you see the SIDE of those duct boxes hanging
     // off the left/right edge. Adjacency respects the viewer's left/right
@@ -735,10 +740,11 @@
     const VOUT2 = 5.5 * PX2;
     const M = 46;
     const totalW = Wp + M * 2 + (leftVent ? VOUT2 : 0) + (rightVent ? VOUT2 : 0);
-    const totalH = Hp + 34 + 30 + ((leftVent || rightVent) ? 16 : 0);
+    const totalH = Hp + liftPx + 34 + 30 + ((leftVent || rightVent) ? 16 : 0);
     const x0 = M + (leftVent ? VOUT2 : 0), y0 = 24;
-    const gy = y0 + Hp;                          // ground line y
-    const iy = v => gy - v * PX2;                // inches above the floor → px
+    const fb = y0 + Hp;                          // booth floor (bottom of the walls)
+    const gy = fb + liftPx;                      // ground line (= booth floor unless casters)
+    const iy = v => fb - v * PX2;                // inches above the BOOTH FLOOR → px
   
     let s = `<svg class="ld-elev-svg" viewBox="0 0 ${totalW} ${totalH}" preserveAspectRatio="xMidYMid meet" `
           + `style="width:100%;max-width:520px;display:block;margin:0 auto;font-family:'DM Sans',sans-serif">`;
@@ -768,7 +774,7 @@
         const frameW = panelInteriorWidth(line.pack) || 46;
         const doorW = (frameW >= 49 ? 32 : Math.max(20, frameW - 16)) * PX2;  // 32″ WA/ADA, 30″ std
         const doorH = 78 * PX2;
-        const dx = cx2 - doorW / 2, dy = gy - 2 - doorH;
+        const dx = cx2 - doorW / 2, dy = fb - 2 - doorH;
         let hingeRight = /\sR\b/i.test(line.pack || '');
         if (mirrored) hingeRight = !hingeRight;
         g += `<rect x="${dx}" y="${dy}" width="${doorW}" height="${doorH}" rx="1.5" fill="url(#ldSeal)" stroke="#0d0e11" stroke-width="1.3"/>`;
@@ -786,7 +792,7 @@
         for (const hh of [14, 40, 66])
           g += `<rect x="${hingeX - 1.6}" y="${iy(hh) - 4}" width="3.2" height="8" rx="1" fill="#caccd2" stroke="#6a6e76" stroke-width="0.5"/>`;
         // threshold
-        g += `<rect x="${dx - 2}" y="${gy - 3}" width="${doorW + 4}" height="3" fill="#caccd2" stroke="#8a8e98" stroke-width="0.5"/>`;
+        g += `<rect x="${dx - 2}" y="${fb - 3}" width="${doorW + 4}" height="3" fill="#caccd2" stroke="#8a8e98" stroke-width="0.5"/>`;
       } else if (kind === 'WDO' && line) {
         const m2 = String(line.pack || '').match(/WDO\s*(\d{2})(\d{2})/i);
         const ww = (m2 ? +m2[1] : 32) * PX2, wh = (m2 ? +m2[2] : 36) * PX2;
@@ -823,6 +829,15 @@
     }
     // roof cap
     s += `<rect x="${x0 - 2.5}" y="${y0 - 3.5}" width="${Wp + 5}" height="4.5" rx="1.8" fill="url(#ldSeal)" stroke="#15161a" stroke-width="0.8"/>`;
+    // caster plate + wheels (booth raised ~5″ off the ground)
+    if (lift > 0) {
+      s += `<rect x="${x0 - 1}" y="${fb}" width="${Wp + 2}" height="${liftPx * 0.38}" rx="1.5" fill="#26282d" stroke="#15161a" stroke-width="0.8"/>`;
+      for (const f of [0.08, 0.36, 0.64, 0.92]) {
+        const wx = x0 + Wp * f;
+        s += `<circle cx="${wx}" cy="${gy - liftPx * 0.32}" r="${liftPx * 0.34}" fill="#1b1c20" stroke="#000" stroke-width="0.8"/>`;
+        s += `<circle cx="${wx}" cy="${gy - liftPx * 0.32}" r="${liftPx * 0.12}" fill="#54585f"/>`;
+      }
+    }
     // side profile of an adjacent wall's vent set: intake band low, exhaust
     // band high, remote fan unit at the floor — protruding 5.5″ past the edge
     function ventSideProfile(atLeft) {
@@ -854,9 +869,9 @@
     s += `<rect x="${x0 + Wp / 2 - 22}" y="${dy2 - 8}" width="44" height="15" rx="3" fill="url(#ldBg)"/>`;
     s += `<text x="${x0 + Wp / 2}" y="${dy2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="#4a4f57">${lenIn}″</text>`;
     const dx2 = x0 - (leftVent ? VOUT2 : 0) - 20;
-    s += `<line x1="${dx2}" y1="${y0}" x2="${dx2}" y2="${gy}" stroke="#9097a0" stroke-width="1"/>`
+    s += `<line x1="${dx2}" y1="${y0}" x2="${dx2}" y2="${fb}" stroke="#9097a0" stroke-width="1"/>`
       + `<line x1="${dx2 - 4}" y1="${y0}" x2="${dx2 + 4}" y2="${y0}" stroke="#9097a0" stroke-width="1"/>`
-      + `<line x1="${dx2 - 4}" y1="${gy}" x2="${dx2 + 4}" y2="${gy}" stroke="#9097a0" stroke-width="1"/>`;
+      + `<line x1="${dx2 - 4}" y1="${fb}" x2="${dx2 + 4}" y2="${fb}" stroke="#9097a0" stroke-width="1"/>`;
     s += `<rect x="${dx2 - 8}" y="${y0 + Hp / 2 - 9}" width="16" height="18" fill="url(#ldBg)"/>`;
     s += `<text x="${dx2}" y="${y0 + Hp / 2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="#4a4f57" transform="rotate(-90 ${dx2} ${y0 + Hp / 2})">${hIn}″</text>`;
   

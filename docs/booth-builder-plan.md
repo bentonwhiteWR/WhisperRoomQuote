@@ -79,6 +79,8 @@ Phase-3 nicety: "will it fit my room?" — host-room W×L×H in, booth + 6″ cl
 
 ## 6. Build phases
 
+> **Progress 2026-06-09:** the standalone **🏗 Booth Builder** shipped at `/booth-builder` (v1.86.0) — size picker, S/E choice, drag-arrange with the full constraint rules, window/WAD/hinge/HX/casters/foam options, live top-down + rotatable elevation, plain-English copy-summary. The renderer is now shared (`/assets/layout-render.js`). Remaining Phase A: quote-side `boothConfig` persistence + the WA Type readout/apply on the quote.
+
 **Phase A — persist + constrain + WA Type, rep-side. (~2–3 sessions)**
 1. `boothConfig` persistence (save/load on the quote snap; PL seeds from it).
 2. Constraint engine v1 (door/vent/window counts, narrow-slot rules) on top of the existing size check.

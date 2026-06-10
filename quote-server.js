@@ -1664,6 +1664,17 @@ const server = http.createServer(async (req, res) => {
 
   // Shared Truckload calculator — included by orders-dashboard (subtab) and
   // quote-builder (popup). Served from disk; no re-deploy on UI tweaks.
+  if (pathname === '/assets/layout-render.js') {
+    try {
+      const buf = require('fs').readFileSync(require('path').join(__dirname, 'assets', 'layout-render.js'));
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(buf);
+    } catch(e) {
+      res.writeHead(404); res.end('layout-render.js missing');
+    }
+    return;
+  }
+
   if (pathname === '/assets/truckload-calc.js') {
     try {
       const buf = require('fs').readFileSync(require('path').join(__dirname, 'assets', 'truckload-calc.js'));
@@ -10685,6 +10696,29 @@ ${q.accepted ? `
     if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(fs.readFileSync(path.join(__dirname, 'weights-dashboard.html'), 'utf8'));
+    return;
+  }
+
+  // ── /booth-builder — standalone "Design Your Booth" sales tool (auth-only) ──
+  // Customer-friendly configurator over the shared layout renderer: pick a
+  // model, drag panels, toggle options, copy a plain-English summary.
+  if (pathname === '/booth-builder' && req.method === 'GET') {
+    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(fs.readFileSync(path.join(__dirname, 'booth-builder.html'), 'utf8'));
+    return;
+  }
+
+  // ── API: booth layout geometry for the Booth Builder ──
+  // GET /api/booth-layouts → { layouts } straight from lib/pl-data/booth-layouts.json
+  if (pathname === '/api/booth-layouts' && req.method === 'GET') {
+    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
+    try {
+      const raw = fs.readFileSync(path.join(__dirname, 'lib', 'pl-data', 'booth-layouts.json'), 'utf8');
+      json({ layouts: JSON.parse(raw).layouts });
+    } catch (e) {
+      json({ error: 'booth-layouts unavailable: ' + e.message }, 500);
+    }
     return;
   }
 

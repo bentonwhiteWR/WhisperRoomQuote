@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.86.0', date:'June 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**NEW: 🏗 Booth Builder (/booth-builder).** A standalone &quot;Design Your Booth&quot; sales tool — no quote needed. Pick a size (all 25 digitized models), choose Standard or Enhanced in plain language, then make it yours: drag the door, vents or window onto any wall they fit (same placement rules as the packing-list layout, including the wide-door pairing), add a wall window (30–48&Prime; tall, width auto-matched to the wall series), toggle the wide-access door (auto-disabled with a friendly reason on booths under 5&Prime; walls), flip the hinge, add the 10&Prime; height extension or caster-plate wheels, and pick from the five foam colors. Both views — bird&apos;s-eye top-down and a walk-around elevation with rotate — update in real time, and a <b>Copy booth summary</b> button produces a plain-English spec (with the MDL code) to paste into a quote or email. Customer-friendly wording throughout: no pack codes, no internal lingo. In the navbar as 🏗 Booth Builder. First customer-facing step of the Build-Your-Own-Booth plan.'},
+        {t:'add', d:'**Renderer upgrades behind it:** studiofoam lining tints to the chosen foam color in the top-down; the elevation honors the 10&Prime; height extension (booth reads 93&Prime;/95&Prime;) and draws the caster plate + wheels with the booth raised 5&Prime; off the ground line. The shared renderer now ships as /assets/layout-render.js, used by both the Booth Builder and (spliced) the packing-list layout.'},
+      ]
+    },
+    {
       v:'1.85.4', date:'June 9, 2026', tag:'fix',
       changes:[
         {t:'fix', d:'**Top-Down Layout: WA Type wired into the INITIAL placement.** A WA/ADA quote now loads with the door already on its WA-Type wall pair instead of defaulting to the front: after auto-placement, the layout reads the companion&apos;s width (7&Prime;→4016 · 31&Prime;→4040 · 19&Prime;→4622 · 43&Prime;→4646) and relocates door + companion to the first width-conserving pair — preferring the door&apos;s current wall, so types that fit the front stay on the front. A 4016 on a 102126 opens with the door on the 102&Prime; side and the 7&Prime; wall directly beside it; a 4040 opens on the 126&Prime; side with the 31&Prime; adjacent. Booths without a wide door are untouched.'},

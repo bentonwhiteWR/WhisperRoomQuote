@@ -460,12 +460,13 @@ async function generatePLForQuote(quoteNumber, q = {}) {
 // Open-order demand: Σ generated-PL components across every UNSHIPPED order
 // (replaces the Excel Aggregate/NEEDED FOR ORDERS COUNTIF columns). Cached
 // 5 min — each entry is an in-memory generate() over the saved snapshot.
-let _invDemandCache = { at: 0, byCode: {}, orders: 0 };
+let _invDemandCache = { at: 0, byCode: {}, byOrder: {}, orders: 0 };
 async function openOrderDemand(force = false) {
   if (!db) return _invDemandCache;
   if (!force && Date.now() - _invDemandCache.at < 5 * 60 * 1000) return _invDemandCache;
   const r = await db.query(`SELECT quote_number, order_data FROM orders`);
   const byCode = {};
+  const byOrder = {}; // code -> [{quote, deal, qty}] — the dashboard's expand view shows WHICH orders need it
   let counted = 0;
   for (const row of r.rows) {
     const od = row.order_data || {};
@@ -475,10 +476,13 @@ async function openOrderDemand(force = false) {
       const gen = await generatePLForQuote(row.quote_number);
       if (!gen) continue;
       counted++;
-      for (const l of inventory.linesFromPl(gen.pl)) byCode[l.code] = (byCode[l.code] || 0) + l.qty;
+      for (const l of inventory.linesFromPl(gen.pl)) {
+        byCode[l.code] = (byCode[l.code] || 0) + l.qty;
+        (byOrder[l.code] = byOrder[l.code] || []).push({ quote: row.quote_number, deal: gen.dealName || '', qty: l.qty });
+      }
     } catch (e) { /* bad/legacy snapshot — skip from demand */ }
   }
-  _invDemandCache = { at: Date.now(), byCode, orders: counted };
+  _invDemandCache = { at: Date.now(), byCode, byOrder, orders: counted };
   return _invDemandCache;
 }
 
@@ -10810,7 +10814,7 @@ ${q.accepted ? `
     try {
       const rows = await inventory.getGrid();
       const demand = await openOrderDemand(parsed.query.refresh === '1');
-      json({ rows, demand: demand.byCode, openOrders: demand.orders, demandAt: demand.at });
+      json({ rows, demand: demand.byCode, demandOrders: demand.byOrder || {}, openOrders: demand.orders, demandAt: demand.at });
     } catch (e) {
       writelog('error', 'inventory.api', `grid load failed: ${e.message}`, {});
       json({ error: e.message }, 500);

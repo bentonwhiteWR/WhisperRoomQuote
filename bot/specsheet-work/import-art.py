@@ -20,12 +20,16 @@ import os
 SRC = r'Z:/Sketchup/BoothBuilderClaude/Components'
 DST = os.path.join(os.path.dirname(__file__), '..', '..', 'assets', 'booth-art')
 MAP = {
-    '46 Wall.png':            'wall-46.webp',
-    '46VntWall.png':          'wall-46-vnt.webp',
-    '3236 WDO.png':           'wall-46-wdo3236.webp',
-    '30DoorLeft.png':         'door-30-left.webp',
-    'Mid Wall Seam Seal.png': 'seal-mid.webp',
-    'Corner Seam Seal.png':   'seal-corner.webp',
+    'Components_46Wall.png':              'wall-46.webp',
+    'Components_46VentWall.png':          'wall-46-vnt.webp',
+    'Components_3236 WDO.png':            'wall-46-wdo3236.webp',
+    'Components_30DoorLEFT.png':          'door-30-left.webp',
+    'Components_Mid Wall Seam Seal.png':  'seal-mid.webp',
+    'Components_Corner Seam Seal.png':    'seal-corner.webp',
+    # side views of the vent wall (wall edge + ducts + fan) — composited at
+    # the booth edge when the vent sits on a wall ADJACENT to the facing one
+    'Components_VentilationLeftSide.png':  'vent-side-left.webp',
+    'Components_VentilationRightSide.png': 'vent-side-right.webp',
 }
 # The door logo plate ("WhisperRoom" below the window) in door-30-left at
 # 800px-tall scale — re-pasted unmirrored into the right-hinge variant so a
@@ -49,7 +53,7 @@ for src, dst in MAP.items():
     if im.height > 800:
         im = im.resize((round(im.width * 800 / im.height), 800), Image.LANCZOS)
     im = save(im, dst)
-    if dst == 'door-30-left.webp':
+    if dst == 'door-30-left.webp':  # logo box re-checked against the Components_ re-upload
         # right-hinge variant: mirror the whole door, then put the logo patch
         # back unmirrored at its mirrored location
         x1, y1, x2, y2 = DOOR_LOGO_BOX

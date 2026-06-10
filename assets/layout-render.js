@@ -677,14 +677,19 @@ function renderLayoutSvg(layout, assign) {
 const ART_BASE = (typeof window !== 'undefined' && window.BB_ART_BASE)
   || (typeof global !== 'undefined' && global.BB_ART_BASE) || '/assets/booth-art/';
 const ELEV_ART = {
-  SOLID:  { file: 'wall-46.webp',         compWIn: 46, aspect: 0.5700 },
+  SOLID:  { file: 'wall-46.webp',         compWIn: 46, aspect: 0.5687 },
   VNT:    { file: 'wall-46-vnt.webp',     compWIn: 46, aspect: 0.5625, packOk: /\bVNT\b/i },
   WDO:    { file: 'wall-46-wdo3236.webp', compWIn: 46, aspect: 0.5700, packOk: /WDO\s*3236\b/i },
   // door: dedicated art per hinge — fileR is the mirrored render with the
   // logo plate re-pasted unmirrored (a blind flip would mirror the text)
-  DRFRM:  { file: 'door-30-left.webp', fileR: 'door-30-right.webp', compWIn: 46, aspect: 0.5700, packOk: /^(FR\s+)?STDWL\d+\s+DRFRM/i },  // std frames — WA/ADA (49″) stays vector
+  DRFRM:  { file: 'door-30-left.webp', fileR: 'door-30-right.webp', compWIn: 46, aspect: 0.5675, packOk: /^(FR\s+)?STDWL\d+\s+DRFRM/i },  // std frames — WA/ADA (49″) stays vector
   midSeal:    { file: 'seal-mid.webp',    widthIn: 7.9 },
   cornerSeal: { file: 'seal-corner.webp', widthIn: 4.9 },
+  // side view of a vent wall (wall edge + protruding ducts + fan) — used when
+  // the vent sits on a wall ADJACENT to the facing one. The ducts reach 5.5″
+  // past the booth edge; the rest of the image overlaps the booth face and
+  // the corner seal draws over that overlap, like the real assembly.
+  ventSide: { fileL: 'vent-side-left.webp', aspectL: 0.1388, fileR: 'vent-side-right.webp', aspectR: 0.1275, protIn: 5.5, compHIn: 80.7 },
 };
 function elevArtFor(kind, line) {
   const art = ELEV_ART[kind];
@@ -908,20 +913,29 @@ function renderElevationSvg(layout, assign, facing) {
       s += `<circle cx="${wx}" cy="${gy - liftPx * 0.32}" r="${liftPx * 0.12}" fill="#54585f"/>`;
     }
   }
-  // side profile of an adjacent wall's vent set: intake band low, exhaust
-  // band high, remote fan unit at the floor — protruding 5.5″ past the edge
+  // side profile of an adjacent wall's vent set — Benton's side-view renders
+  // (vent-side-left/right), composited so the ducts protrude 5.5″ past the
+  // booth edge and the wall-edge part of the image overlaps the booth face
+  // (the corner seal draws over that overlap, like the real assembly). The
+  // gray vector bands stay underneath as the loading fallback.
   function ventSideProfile(atLeft) {
     const bx = atLeft ? x0 - VOUT2 : x0 + Wp;
     let g = '';
     for (const band of [[34, 30], [76, 30]])
       g += `<rect x="${bx}" y="${iy(band[0])}" width="${VOUT2}" height="${band[1] * PX2}" rx="1.5" fill="#2e3037" stroke="#1b1c20" stroke-width="0.9"/>`;
+    if (!EFS) g += `<rect x="${bx}" y="${iy(10)}" width="${VOUT2}" height="${10 * PX2 - 2}" rx="2" fill="#26282d" stroke="#1b1c20" stroke-width="0.9"/>`;
+    const vs = ELEV_ART.ventSide;
+    if (vs) {
+      const wIn = vs.compHIn * (atLeft ? vs.aspectL : vs.aspectR);
+      const wPx = wIn * PX2;
+      const vx = atLeft ? x0 - vs.protIn * PX2 : x0 + Wp + vs.protIn * PX2 - wPx;
+      g += `<image href="${ART_BASE + (atLeft ? vs.fileL : vs.fileR)}" x="${vx}" y="${y0}" width="${wPx}" height="${Hp}" preserveAspectRatio="none"/>`;
+    }
     if (EFS) {
       // EFS silencer box at the floor — protrudes a full 10″ past the edge
       const ebx = atLeft ? x0 - EOUT2 : x0 + Wp;
       g += `<rect x="${ebx}" y="${iy(13)}" width="${EOUT2}" height="${13 * PX2 - 1}" rx="2.5" fill="#2c2d33" stroke="#0d0e11" stroke-width="1"/>`;
       g += `<rect x="${ebx + 2}" y="${iy(13) + 2}" width="${EOUT2 - 4}" height="${13 * PX2 - 5}" rx="2" fill="none" stroke="#4a4d55" stroke-width="0.8"/>`;
-    } else {
-      g += `<rect x="${bx}" y="${iy(10)}" width="${VOUT2}" height="${10 * PX2 - 2}" rx="2" fill="#26282d" stroke="#1b1c20" stroke-width="0.9"/>`;
     }
     return g;
   }
@@ -950,10 +964,12 @@ function renderElevationSvg(layout, assign, facing) {
       s += `<image href="${ART_BASE + ms.file}" x="${x0 + off - mw / 2}" y="${y0}" width="${mw}" height="${Hp}" preserveAspectRatio="none" filter="url(#ldSealShadow)"/>`;
     }
     // corner seals: proud of the booth edge (outset) so they break the
-    // silhouette like the real part, with the same cast shadow for depth
+    // silhouette like the real part, with the same cast shadow for depth.
+    // Both corners draw the SAME image, unmirrored — the negative-scale
+    // transform broke the right one (filter + flip rendered nothing), and
+    // per Benton the right corner should look just like the left anyway.
     s += `<image href="${ART_BASE + cs.file}" x="${x0 - outset}" y="${y0}" width="${cw3}" height="${Hp}" preserveAspectRatio="none" filter="url(#ldSealShadow)"/>`;
-    // right corner mirrors so the leg faces back into the wall
-    s += `<g transform="translate(${2 * (x0 + Wp)} 0) scale(-1 1)"><image href="${ART_BASE + cs.file}" x="${x0 - outset}" y="${y0}" width="${cw3}" height="${Hp}" preserveAspectRatio="none" filter="url(#ldSealShadow)"/></g>`;
+    s += `<image href="${ART_BASE + cs.file}" x="${x0 + Wp + outset - cw3}" y="${y0}" width="${cw3}" height="${Hp}" preserveAspectRatio="none" filter="url(#ldSealShadow)"/>`;
   }
   s += feats;
 

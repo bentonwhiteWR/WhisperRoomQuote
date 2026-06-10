@@ -52,7 +52,10 @@
   .label.blank{background:transparent}
   .label .logo-space{height:1.05in;flex:0 0 auto}        /* clears the PRE-PRINTED WR logo on box stock (~1 line higher than 1.25) */
   .label .addr{flex:1 1 auto;font-size:11.5px;font-weight:600;line-height:1.3;white-space:pre-line;color:#111}
-  .label .count{flex:0 0 auto;align-self:flex-start;display:inline-block;font-size:11px;font-weight:800;letter-spacing:.03em;padding:1px 5px;margin-bottom:.12in;color:#111;border-radius:2px}   /* per-booth color highlights THIS row */
+  /* per-booth color highlights THIS row. print-color-adjust:exact opts the
+     highlight in to PRINTING — without it every browser silently strips
+     background colors at print time ("the color doesn't actually print"). */
+  .label .count{flex:0 0 auto;align-self:flex-start;display:inline-block;font-size:11px;font-weight:800;letter-spacing:.03em;padding:1px 5px;margin-bottom:.12in;color:#111;border-radius:2px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   /* Pallet half-sheets: no logo reserve, big address + count, centered both axes. */
   .sheet.pallet .label{padding:.4in .55in;justify-content:center;align-items:center;text-align:center}
   .sheet.pallet .label .logo-space{display:none}

@@ -137,6 +137,7 @@
       <div class="page-sub">On-hand per component code · ships auto-deduct, un-ships restore · every move audited. <span id="demandMeta" class="muted"></span></div>
     </div>
     <div style="display:flex;gap:8px">
+      <button class="act-btn" id="adjustBtn" onclick="toggleAdjust()">🔓 Adjust Inventory</button>
       <button class="act-btn" onclick="openModal('addModal')">＋ Add Code</button>
       <button class="act-btn" onclick="openModal('syncModal')">⇄ Sync from Excel</button>
       <button class="act-btn" onclick="showActivity()">🕘 Activity</button>
@@ -169,12 +170,10 @@
           <th title="On hand − needed">Available</th>
           <th>Build Point</th>
           <th>Build Qty</th>
-          <th>Finished</th>
-          <th>In Process</th>
           <th class="l">Flags</th>
         </tr>
       </thead>
-      <tbody id="tbody"><tr><td colspan="10" class="loading">Loading…</td></tr></tbody>
+      <tbody id="tbody"><tr><td colspan="8" class="loading">Loading…</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -242,13 +241,12 @@ let DEMAND = {};         // code -> needed qty (open orders)
 let DIRTY = {};          // code -> { field: newValue }
 let FILTER = 'ALL';
 let EXPANDED = null;     // code with open txn detail
+let EDITING = false;     // cells locked until "Adjust Inventory" is pressed
 
 const EDIT_FIELDS = [
   { key: 'on_hand',        cls: '' },
   { key: 'build_point',    cls: 'bp', text: true },
   { key: 'build_qty',      cls: '' },
-  { key: 'finished_qty',   cls: '' },
-  { key: 'in_process_qty', cls: '' },
 ];
 
 async function loadData(refresh) {
@@ -263,7 +261,7 @@ async function loadData(refresh) {
       (d.demandAt ? ' · computed ' + new Date(d.demandAt).toLocaleTimeString() : '');
     render();
   } catch (e) {
-    document.getElementById('tbody').innerHTML = '<tr><td colspan="10" class="empty">Failed to load: ' + escapeHtml(e.message) + '</td></tr>';
+    document.getElementById('tbody').innerHTML = '<tr><td colspan="8" class="empty">Failed to load: ' + escapeHtml(e.message) + '</td></tr>';
   }
 }
 
@@ -309,7 +307,7 @@ function render() {
     card('Unsaved edits', Object.keys(DIRTY).length, Object.keys(DIRTY).length ? 'warn' : '');
 
   const tb = document.getElementById('tbody');
-  if (!rows.length) { tb.innerHTML = '<tr><td colspan="10" class="empty">No components match.</td></tr>'; return; }
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">No components match.</td></tr>'; return; }
   let html = '';
   for (const r of rows) {
     const eff = effective(r);
@@ -328,11 +326,16 @@ function render() {
           ? '</td><td class="' + (needed ? '' : 'muted') + '">' + (needed || '<span class="dash">—</span>') +
             '</td><td class="' + (avail < 0 ? 'neg' : '') + '">' + avail
           : '';
-        return '<td><input class="cell-input ' + f.cls + (dirty ? ' dirty' : '') + '" data-code="' + escapeHtml(r.code) + '" data-field="' + f.key + '" value="' + escapeHtml(shown) + '" onchange="cellEdit(this)">' + extra;
+        const cell = EDITING
+          ? '<input class="cell-input ' + f.cls + (dirty ? ' dirty' : '') + '" data-code="' + escapeHtml(r.code) + '" data-field="' + f.key + '" value="' + escapeHtml(shown) + '" onchange="cellEdit(this)">'
+          : (shown === ''
+              ? '<span class="dash">—</span>'
+              : (f.key === 'on_hand' && onHand < 0 ? '<span class="neg">' + escapeHtml(shown) + '</span>' : escapeHtml(shown)));
+        return '<td>' + cell + extra;
       }).join('</td>') + '</td>' +
       '<td class="l">' + (fl || '<span class="dash">—</span>') + '</td>' +
       '</tr>';
-    if (EXPANDED === r.code) html += '<tr class="detail"><td colspan="10" id="detailCell">Loading history…</td></tr>';
+    if (EXPANDED === r.code) html += '<tr class="detail"><td colspan="8" id="detailCell">Loading history…</td></tr>';
   }
   tb.innerHTML = html;
   if (EXPANDED) loadDetail(EXPANDED);
@@ -341,6 +344,22 @@ function render() {
 
 function card(label, value, cls) {
   return '<div class="card"><div class="card-label">' + label + '</div><div class="card-value ' + (cls || '') + '">' + value + '</div></div>';
+}
+
+function toggleAdjust() {
+  if (EDITING && Object.keys(DIRTY).length) {
+    if (!confirm('Discard ' + Object.keys(DIRTY).length + ' unsaved change(s)?')) return;
+    DIRTY = {};
+  }
+  EDITING = !EDITING;
+  updateAdjustBtn();
+  render();
+}
+
+function updateAdjustBtn() {
+  const b = document.getElementById('adjustBtn');
+  b.textContent = EDITING ? '🔒 Done Adjusting' : '🔓 Adjust Inventory';
+  b.classList.toggle('primary', EDITING);
 }
 
 function cellEdit(inp) {
@@ -374,13 +393,15 @@ async function saveChanges() {
     const d = await r.json();
     if (d.error) throw new Error(d.error);
     DIRTY = {};
+    EDITING = false;
+    updateAdjustBtn();
     await loadData();
   } catch (e) {
     alert('Save failed: ' + e.message);
   } finally { btn.disabled = false; }
 }
 
-function discardChanges() { DIRTY = {}; render(); }
+function discardChanges() { DIRTY = {}; EDITING = false; updateAdjustBtn(); render(); }
 
 function toggleDetail(code) {
   EXPANDED = (EXPANDED === code) ? null : code;

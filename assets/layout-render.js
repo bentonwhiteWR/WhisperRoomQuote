@@ -680,7 +680,9 @@ const ELEV_ART = {
   SOLID:  { file: 'wall-46.webp',         compWIn: 46, aspect: 0.5700 },
   VNT:    { file: 'wall-46-vnt.webp',     compWIn: 46, aspect: 0.5625, packOk: /\bVNT\b/i },
   WDO:    { file: 'wall-46-wdo3236.webp', compWIn: 46, aspect: 0.5700, packOk: /WDO\s*3236\b/i },
-  DRFRM:  { file: 'door-30-left.webp',    compWIn: 46, aspect: 0.5700, packOk: /^(FR\s+)?STDWL\d+\s+DRFRM/i },  // std frames — WA/ADA (49″) stays vector
+  // door: dedicated art per hinge — fileR is the mirrored render with the
+  // logo plate re-pasted unmirrored (a blind flip would mirror the text)
+  DRFRM:  { file: 'door-30-left.webp', fileR: 'door-30-right.webp', compWIn: 46, aspect: 0.5700, packOk: /^(FR\s+)?STDWL\d+\s+DRFRM/i },  // std frames — WA/ADA (49″) stays vector
   midSeal:    { file: 'seal-mid.webp',    widthIn: 7.9 },
   cornerSeal: { file: 'seal-corner.webp', widthIn: 4.9 },
 };
@@ -741,6 +743,13 @@ function renderElevationSvg(layout, assign, facing) {
   s += `<defs>`
     + `<linearGradient id="ldBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#eef0f3"/><stop offset="1" stop-color="#f8f9fa"/></linearGradient>`
     + `<pattern id="ldSeal" width="5" height="5" patternUnits="userSpaceOnUse"><rect width="5" height="5" fill="#26272b"/><circle cx="1.2" cy="1.8" r="0.8" fill="#15161a"/><circle cx="3.7" cy="3.7" r="0.8" fill="#43454d"/><circle cx="3.6" cy="0.9" r="0.6" fill="#0e0f12"/><circle cx="0.8" cy="4.2" r="0.5" fill="#50535c"/></pattern>`
+    // seam seals sit PROUD of the wall plane — a soft cast shadow on both
+    // sides gives the joint the depth Benton's assembly render shows (the
+    // flat composites read "very plain together" without it)
+    + `<filter id="ldSealShadow" x="-150%" y="-8%" width="400%" height="116%">`
+    +   `<feDropShadow dx="-2.4" dy="0" stdDeviation="2" flood-color="#000" flood-opacity="0.5"/>`
+    +   `<feDropShadow dx="2.4" dy="1.5" stdDeviation="2" flood-color="#000" flood-opacity="0.45"/>`
+    + `</filter>`
     + `</defs>`;
   s += `<rect x="0" y="0" width="${totalW}" height="${totalH}" fill="url(#ldBg)"/>`;
   // ground line + soft shadow
@@ -839,25 +848,24 @@ function renderElevationSvg(layout, assign, facing) {
   // narrower solid walls, which CROP the 46″ art horizontally so the carpet
   // texture stays at true scale instead of squishing.
   function artPanel(art, kind, line, sx, wPx, wIn) {
-    const href = ART_BASE + art.file;
+    let href = ART_BASE + art.file;
     const artHIn = art.compWIn / art.aspect;
     if (kind === 'SOLID' && wIn < art.compWIn - 1) {
       const cx2 = (art.compWIn - wIn) / 2;
       return `<svg x="${sx}" y="${y0}" width="${wPx}" height="${Hp}" viewBox="${cx2} 0 ${wIn} ${artHIn}" preserveAspectRatio="none">`
         + `<image href="${href}" x="0" y="0" width="${art.compWIn}" height="${artHIn}" preserveAspectRatio="none"/></svg>`;
     }
+    if (kind === 'DRFRM' && art.fileR) {
+      // hinge-specific art (the right variant keeps the logo readable)
+      let hingeRight = /\sR\b/i.test(String(line.pack || ''));
+      if (mirrored) hingeRight = !hingeRight;
+      if (hingeRight) href = ART_BASE + art.fileR;
+    }
     // SketchUp exports glass as TRANSPARENT pixels — tint the slot behind the
     // art so windows read as glass instead of holes into the dark carpet
     const under = (kind === 'WDO' || kind === 'DRFRM')
       ? `<rect x="${sx}" y="${y0}" width="${wPx}" height="${Hp}" fill="#bdd9ef"/>` : '';
-    let img = `<image href="${href}" x="${sx}" y="${y0}" width="${wPx}" height="${Hp}" preserveAspectRatio="none"/>`;
-    if (kind === 'DRFRM') {
-      // the door art is LEFT-hinge — mirror it for a right-hinge display
-      let hingeRight = /\sR\b/i.test(String(line.pack || ''));
-      if (mirrored) hingeRight = !hingeRight;
-      if (hingeRight) img = `<g transform="translate(${2 * sx + wPx} 0) scale(-1 1)">${img}</g>`;
-    }
-    return under + img;
+    return under + `<image href="${href}" x="${sx}" y="${y0}" width="${wPx}" height="${Hp}" preserveAspectRatio="none"/>`;
   }
 
   let off = 0, feats = '';
@@ -935,15 +943,17 @@ function renderElevationSvg(layout, assign, facing) {
   // remain as the loading fallback.
   {
     const ms = ELEV_ART.midSeal, cs = ELEV_ART.cornerSeal;
-    const mw = ms.widthIn * PX2, cw3 = cs.widthIn * PX2, outset = 0.6 * PX2;
+    const mw = ms.widthIn * PX2, cw3 = cs.widthIn * PX2, outset = 1.2 * PX2;
     off = 0;
     for (let i = 0; i < slots.length - 1; i++) {
       off += effSize(slots[i]) * scale;
-      s += `<image href="${ART_BASE + ms.file}" x="${x0 + off - mw / 2}" y="${y0}" width="${mw}" height="${Hp}" preserveAspectRatio="none"/>`;
+      s += `<image href="${ART_BASE + ms.file}" x="${x0 + off - mw / 2}" y="${y0}" width="${mw}" height="${Hp}" preserveAspectRatio="none" filter="url(#ldSealShadow)"/>`;
     }
-    s += `<image href="${ART_BASE + cs.file}" x="${x0 - outset}" y="${y0}" width="${cw3}" height="${Hp}" preserveAspectRatio="none"/>`;
+    // corner seals: proud of the booth edge (outset) so they break the
+    // silhouette like the real part, with the same cast shadow for depth
+    s += `<image href="${ART_BASE + cs.file}" x="${x0 - outset}" y="${y0}" width="${cw3}" height="${Hp}" preserveAspectRatio="none" filter="url(#ldSealShadow)"/>`;
     // right corner mirrors so the leg faces back into the wall
-    s += `<g transform="translate(${2 * (x0 + Wp)} 0) scale(-1 1)"><image href="${ART_BASE + cs.file}" x="${x0 - outset}" y="${y0}" width="${cw3}" height="${Hp}" preserveAspectRatio="none"/></g>`;
+    s += `<g transform="translate(${2 * (x0 + Wp)} 0) scale(-1 1)"><image href="${ART_BASE + cs.file}" x="${x0 - outset}" y="${y0}" width="${cw3}" height="${Hp}" preserveAspectRatio="none" filter="url(#ldSealShadow)"/></g>`;
   }
   s += feats;
 

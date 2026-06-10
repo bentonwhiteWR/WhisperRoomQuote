@@ -731,10 +731,10 @@ const ELEV_ART = {
   // the floor — wallFrac says how much of the art width is the wall itself,
   // the rest spills over the neighboring panel like the real assembly.
   VNT_VSS:     { file: 'wall-46-vnt-vss.webp',     compWIn: 46, aspect: 0.5637, vss: true },
-  VNT_VSS_EFS: { file: 'wall-46-vnt-vss-efs.webp', compWIn: 46, aspect: 0.8063, vss: true, efs: true, wallFrac: 0.702 },
+  VNT_VSS_EFS: { file: 'wall-46-vnt-vss-efs.webp', compWIn: 46, aspect: 0.8075, vss: true, efs: true, wallFrac: 0.702 },
   // top-down plan + side profiles of the VSS+EFS assembly (band ~2.2″ over
   // the wall + 10″ EFS protrusion; along-wall length derives from aspect)
-  ventVssEfsTop:  { file: 'vent-vss-efs-top.webp', aspect: 0.2281, depthIn: 12.2, bandIn: 2.2 },
+  ventVssEfsTop:  { file: 'vent-vss-efs-top.webp', aspect: 0.2288, depthIn: 12.2, bandIn: 2.2 },
   ventVssEfsSide: { fileL: 'vent-vss-efs-side-left.webp', fileR: 'vent-vss-efs-side-right.webp', aspect: 0.15, compHIn: 80.7, protIn: 10 },
   WDO:    { file: 'wall-46-wdo3236.webp', compWIn: 46, aspect: 0.5700, packOk: /WDO\s*3236\b/i },
   // door: dedicated art per hinge — fileR is the mirrored render with the

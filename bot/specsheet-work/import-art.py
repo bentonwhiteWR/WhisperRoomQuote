@@ -40,16 +40,33 @@ MAP = {
     # the booth edge when the vent sits on a wall ADJACENT to the facing one
     'Components_ventilationLeftSide.png':  'vent-side-left.webp',
     'Components ventilationRightSide.png': 'vent-side-right.webp',
+    # WA (wide-access) door — 49″ frame, 32″ leaf, 16×48 window; with-ramp
+    # variant shows the ramp foot at the door sill
+    'Components_WADoorLeftNoRamp.png':     'door-wa-left.webp',
+    'Components_WADoorLeftWithRamp.png':   'door-wa-ramp-left.webp',
+    # ADA ramp: top-down plan (Components.png is the newer export with the
+    # tread seams) + side profile. The ramp protrudes 3′ 9⅝″ (45.625″).
+    'Components.png':                      'ramp-top.webp',
+    'Components_RampSideView.png':         'ramp-side.webp',
 }
-# The door logo plate ("WhisperRoom" below the window) in door-30-left at
-# 800px-tall scale — re-pasted unmirrored into the right-hinge variant so a
-# flipped door doesn't show mirror-image text.
-DOOR_LOGO_BOX = (195, 382, 266, 408)   # x1,y1,x2,y2 in the 456x800 art
+# the ramp wedge is too thin for the stray-line filter — plain bbox crop
+RAW_BBOX = {'ramp-top.webp', 'ramp-side.webp'}
+# Right-hinge door variants: mirror the left render, then re-paste the logo
+# plate ("WhisperRoom" below the window) unmirrored so the text stays
+# readable. Boxes are x1,y1,x2,y2 at the 800px-tall import scale.
+DOORS = {
+    'door-30-left.webp':      ('door-30-right.webp',      (195, 382, 266, 408)),
+    'door-wa-left.webp':      ('door-wa-right.webp',      (210, 558, 272, 586)),
+    'door-wa-ramp-left.webp': ('door-wa-ramp-right.webp', (208, 549, 268, 578)),
+}
 
-def load_cropped(name):
+def load_cropped(name, raw=False):
     im = Image.open(os.path.join(SRC, name)).convert('RGBA')
     a = np.array(im)
     mask = a[..., 3] > 8
+    if raw:
+        ys, xs = np.where(mask)
+        return im.crop((xs.min(), ys.min(), xs.max() + 1, ys.max() + 1))
     # crop to the LARGEST contiguous block of content — strays (a leftover
     # SketchUp edge floating beside the component) get dropped even when
     # they're full-height lines
@@ -73,15 +90,14 @@ def save(im, dst):
     return im
 
 for src, dst in MAP.items():
-    im = load_cropped(src)
+    im = load_cropped(src, dst in RAW_BBOX)
     if im.height > 800:
         im = im.resize((round(im.width * 800 / im.height), 800), Image.LANCZOS)
     im = save(im, dst)
-    if dst == 'door-30-left.webp':  # logo box re-checked against the Components_ re-upload
-        # right-hinge variant: mirror the whole door, then put the logo patch
-        # back unmirrored at its mirrored location
-        x1, y1, x2, y2 = DOOR_LOGO_BOX
-        patch = im.crop(DOOR_LOGO_BOX)
+    if dst in DOORS:
+        rdst, box = DOORS[dst]
+        x1, y1, x2, y2 = box
+        patch = im.crop(box)
         flipped = im.transpose(Image.FLIP_LEFT_RIGHT)
         flipped.paste(patch, (im.width - x2, y1))
-        save(flipped, 'door-30-right.webp')
+        save(flipped, rdst)

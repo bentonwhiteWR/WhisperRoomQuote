@@ -11004,13 +11004,15 @@ ${q.accepted ? `
         h: d.h === 'L' ? 'L' : 'R',
         f: ['Gray', 'Orange', 'Blue', 'Purple', 'Burgundy'].includes(d.f) ? d.f : 'Gray',
         w: [30, 36, 42, 48].includes(+d.w) ? +d.w : 0,
-        wd: d.wd ? 1 : 0, hx: d.hx ? 1 : 0, cs: d.cs ? 1 : 0,
+        wd: d.wd ? 1 : 0, rp: d.rp ? 1 : 0, hx: d.hx ? 1 : 0, cs: d.cs ? 1 : 0, ac: d.ac ? 1 : 0,
         // ventilation upgrades (drawn) + summary-only add-ons
         vs: d.vs ? 1 : 0, ef: d.ef ? 1 : 0, rv: d.rv ? 1 : 0,
         sl: d.sl ? 1 : 0, jp: d.jp ? 1 : 0, bt: d.bt ? 1 : 0, dk: d.dk ? 1 : 0,
         fc: ['N', 'S', 'E', 'W'].includes(d.fc) ? d.fc : 'S',
         a: {},
       };
+      // package name (preconfigured booth packages — must match the page's list)
+      if (typeof d.pk === 'string' && /^[A-Za-z0-9 +'-]{1,40}$/.test(d.pk)) safe.pk = d.pk;
       if (d.a && typeof d.a === 'object') {
         for (const k of Object.keys(d.a).slice(0, 24)) {
           const v = d.a[k];

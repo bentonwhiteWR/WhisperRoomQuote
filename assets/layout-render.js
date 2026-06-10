@@ -141,6 +141,11 @@ function renderLayoutSvg(layout, assign) {
   // leaf length — compute it here, at this wall's px scale.
   const sideHasDoor = { N: false, S: false, E: false, W: false };
   const sideHasVent = { N: false, S: false, E: false, W: false };
+  // ADA ramp: pairs with the WA door, protrudes 3′ 9⅝″ from the door wall —
+  // drawn AND dimensioned (the proposals always dim what sticks out)
+  const RAMP = !!layout.ramp;
+  const RAMP_PROT = 45.625;
+  let waDoorSide = null;
   let doorLeafPx = 0;
   for (const sd of ['N', 'S', 'E', 'W']) {
     const wallM = layout.walls[sd] || { slots: [] };
@@ -152,6 +157,7 @@ function renderLayoutSvg(layout, assign) {
       const k = classifyWall(ln.pack);
       if (k === 'DRFRM') {
         sideHasDoor[sd] = true;
+        if (panelInteriorWidth(ln.pack) >= 49) waDoorSide = sd;
         const lenM = effSize(slot) * (spanM / nomM);
         // WA/ADA frame (49″) carries a 32″ leaf regardless of the model default
         const swingM = (panelInteriorWidth(ln.pack) >= 49 ? 32 : (layout.door && layout.door.swing)) || 30;
@@ -159,12 +165,15 @@ function renderLayoutSvg(layout, assign) {
       } else if (k === 'VNT' && layout.hasVent !== false && !ROOF) sideHasVent[sd] = true;
     }
   }
-  const extra = sd => sideHasDoor[sd] ? doorLeafPx + 14 : (sideHasVent[sd] ? EOUT + 18 : 0);
+  const rampOn = sd => RAMP && waDoorSide === sd;
+  const extra = sd => sideHasDoor[sd]
+    ? Math.max(doorLeafPx, rampOn(sd) ? RAMP_PROT * PX : 0) + 14
+    : (sideHasVent[sd] ? EOUT + 18 : 0);
   const BASE = 50;
   // extra room for the "w/ vent" overall-dim line: left of the height dim for
   // a N/S vent, below the width dim for an E/W vent
-  const ventDimL = (sideHasVent.N || sideHasVent.S) ? 28 : 0;
-  const ventDimB = (sideHasVent.E || sideHasVent.W) ? 28 : 0;
+  const ventDimL = (sideHasVent.N || sideHasVent.S || rampOn('N') || rampOn('S')) ? 28 : 0;
+  const ventDimB = (sideHasVent.E || sideHasVent.W || rampOn('E') || rampOn('W')) ? 28 : 0;
   const mTop = BASE + extra('N'), mBottom = BASE + extra('S') + ventDimB, mLeft = BASE + extra('W') + ventDimL, mRight = BASE + extra('E');
   const x0 = mLeft, y0 = mTop;
   const totalW = W + mLeft + mRight, totalH = H + mTop + mBottom;
@@ -596,9 +605,20 @@ function renderLayoutSvg(layout, assign) {
   // seam seals: comb on each interior face + corner pieces + T pieces at joints
   s += seamPieces();
 
-  // vent ducts + roof-vent boxes + door overlays (follow their panels)
+  // vent ducts + roof-vent boxes + ramp + door overlays (follow their panels)
   vents.forEach(v => s += ventDuct(v.side, v.px, v.py, v.pw, v.ph));
   roofs.forEach(v => s += roofDuct(v.side, v.px, v.py, v.pw, v.ph));
+  if (RAMP && door && panelInteriorWidth(door.pack) >= 49) {
+    // ramp plan view, centered on the WA door, protruding 3′ 9⅝″ from the
+    // wall face (the sill strip at the image top overlaps the wall ~2″).
+    // Drawn before the door so the open leaf swings out OVER the ramp.
+    const rt = ELEV_ART.rampTop;
+    const { omx, omy } = edgeGeom(door.side, door.px, door.py, door.pw, door.ph);
+    const hIn2 = rt.protIn + rt.sillIn, wIn2 = hIn2 * rt.aspect;
+    const ang = { S: 0, N: 180, W: 90, E: -90 }[door.side];
+    s += `<g transform="rotate(${ang} ${omx} ${omy})">`
+      + `<image href="${ART_BASE + rt.file}" x="${omx - wIn2 * PX / 2}" y="${omy - rt.sillIn * PX}" width="${wIn2 * PX}" height="${hIn2 * PX}" preserveAspectRatio="none"/></g>`;
+  }
   if (door) s += doorSwing(door.side, door.px, door.py, door.pw, door.ph, door.swing, door.pack);
 
   // ── dimension lines (exterior) ──────────────────────────────────
@@ -627,22 +647,30 @@ function renderLayoutSvg(layout, assign) {
   const vtick = (x, y, vert) =>
     vert ? `<line x1="${x - 4}" y1="${y}" x2="${x + 4}" y2="${y}" stroke="${VDIM}" stroke-width="1"/>`
          : `<line x1="${x}" y1="${y - 4}" x2="${x}" y2="${y + 4}" stroke="${VDIM}" stroke-width="1"/>`;
-  const VLBL = EFS ? 'w/ EFS' : 'w/ vent';   // EFS reaches 10″ — dim it like the proposals do
-  if (sideHasVent.N || sideHasVent.S) {
-    const yA = y0 - (sideHasVent.N ? EOUT : 0), yB = y0 + H + (sideHasVent.S ? EOUT : 0);
-    const tot = ext.h + (sideHasVent.N ? EPROT : 0) + (sideHasVent.S ? EPROT : 0);
+  // per-side protrusion: vent set 5.5″ / EFS 10″ / ramp 45.625″ — whatever
+  // sticks out gets dimmed, labeled with what's doing the sticking
+  const protOf = sd => Math.max(sideHasVent[sd] ? EPROT : 0, rampOn(sd) ? RAMP_PROT : 0);
+  const axisLabel = (a, b) => {
+    const bits = [];
+    if (sideHasVent[a] || sideHasVent[b]) bits.push(EFS ? 'EFS' : 'vent');
+    if (rampOn(a) || rampOn(b)) bits.push('ramp');
+    return 'w/ ' + bits.join(' + ');
+  };
+  if (protOf('N') || protOf('S')) {
+    const yA = y0 - protOf('N') * PX, yB = y0 + H + protOf('S') * PX;
+    const tot = ext.h + protOf('N') + protOf('S');
     const vx = dimX - 22, vmy = (yA + yB) / 2;
     s += `<line x1="${vx}" y1="${yA}" x2="${vx}" y2="${yB}" stroke="${VDIM}" stroke-width="1"/>` + vtick(vx, yA, true) + vtick(vx, yB, true);
-    s += `<rect x="${vx - 8}" y="${vmy - 40}" width="16" height="80" fill="url(#ldBg)"/>`;
-    s += `<text x="${vx}" y="${vmy + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VDIM}" transform="rotate(-90 ${vx} ${vmy})">${fmtIn(tot)} ${VLBL}</text>`;
+    s += `<rect x="${vx - 8}" y="${vmy - 44}" width="16" height="88" fill="url(#ldBg)"/>`;
+    s += `<text x="${vx}" y="${vmy + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VDIM}" transform="rotate(-90 ${vx} ${vmy})">${fmtIn(tot)} ${axisLabel('N', 'S')}</text>`;
   }
-  if (sideHasVent.E || sideHasVent.W) {
-    const xA = x0 - (sideHasVent.W ? EOUT : 0), xB = x0 + W + (sideHasVent.E ? EOUT : 0);
-    const tot = ext.w + (sideHasVent.W ? EPROT : 0) + (sideHasVent.E ? EPROT : 0);
+  if (protOf('E') || protOf('W')) {
+    const xA = x0 - protOf('W') * PX, xB = x0 + W + protOf('E') * PX;
+    const tot = ext.w + protOf('W') + protOf('E');
     const vy = dimY + 34, vmx = (xA + xB) / 2;
     s += `<line x1="${xA}" y1="${vy}" x2="${xB}" y2="${vy}" stroke="${VDIM}" stroke-width="1"/>` + vtick(xA, vy, false) + vtick(xB, vy, false);
-    s += `<rect x="${vmx - 40}" y="${vy - 8}" width="80" height="15" rx="3" fill="url(#ldBg)"/>`;
-    s += `<text x="${vmx}" y="${vy + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VDIM}">${fmtIn(tot)} ${VLBL}</text>`;
+    s += `<rect x="${vmx - 44}" y="${vy - 8}" width="88" height="15" rx="3" fill="url(#ldBg)"/>`;
+    s += `<text x="${vmx}" y="${vy + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VDIM}">${fmtIn(tot)} ${axisLabel('E', 'W')}</text>`;
   }
 
   // ── interior callout (centered pill, inches + proposal-style ft-in) ─
@@ -683,6 +711,15 @@ const ELEV_ART = {
   // door: dedicated art per hinge — fileR is the mirrored render with the
   // logo plate re-pasted unmirrored (a blind flip would mirror the text)
   DRFRM:  { file: 'door-30-left.webp', fileR: 'door-30-right.webp', compWIn: 46, aspect: 0.5675, packOk: /^(FR\s+)?STDWL\d+\s+DRFRM/i },  // std frames — WA/ADA (49″) stays vector
+  // WA (wide-access) door — 49″ frame, 32″ leaf, 16×48 window; the with-ramp
+  // variants show the ramp foot at the sill. Right files have the logo fixed.
+  DRFRM_WA:      { file: 'door-wa-left.webp',      fileR: 'door-wa-right.webp',      compWIn: 49, aspect: 0.6050 },
+  DRFRM_WA_RAMP: { file: 'door-wa-ramp-left.webp', fileR: 'door-wa-ramp-right.webp', compWIn: 49, aspect: 0.5975 },
+  // ADA ramp — protrudes 3′ 9⅝″ (45.625″) from the door wall. rampTop is the
+  // plan view (sill strip at the top of the image overlaps the wall ~2″);
+  // rampSide is the floor wedge seen edge-on.
+  rampTop:  { file: 'ramp-top.webp',  aspect: 1.0012, protIn: 45.625, sillIn: 2 },
+  rampSide: { file: 'ramp-side.webp', aspect: 0.6175, protIn: 45.625, compHIn: 80.7 },
   midSeal:    { file: 'seal-mid.webp',    widthIn: 7.9 },
   cornerSeal: { file: 'seal-corner.webp', widthIn: 4.9 },
   // side view of a vent wall (wall edge + protruding ducts + fan) — used when
@@ -704,9 +741,11 @@ const WDO_ART = {
   '2642': { file: 'wall-40-wdo2642.webp', compWIn: 40, aspect: 0.4938 },
   '2648': { file: 'wall-40-wdo2648.webp', compWIn: 40, aspect: 0.4938 },
 };
-function elevArtFor(kind, line) {
+function elevArtFor(kind, line, layout) {
   if (!line) return null;
   const pack = String(line.pack || '');
+  if (kind === 'DRFRM' && /^WA\s+STDDRFRM/i.test(pack))
+    return (layout && layout.ramp) ? ELEV_ART.DRFRM_WA_RAMP : ELEV_ART.DRFRM_WA;
   if (kind === 'WDO') {
     const m = pack.match(/WDO\s*(\d{2})(\d{2})/i);
     if (!m) return null;
@@ -720,6 +759,20 @@ function elevArtFor(kind, line) {
   if (!art) return null;
   if (art.packOk && !art.packOk.test(pack)) return null;
   return art;
+}
+
+// Warm the browser cache for every component render — the art otherwise
+// loads lazily on first use and visibly pops in (Benton: "images are slow
+// to load"). Call once at boot; no-op outside the browser.
+function preloadElevArt() {
+  if (typeof Image === 'undefined') return;
+  const files = new Set();
+  for (const k in ELEV_ART) {
+    const a = ELEV_ART[k];
+    ['file', 'fileL', 'fileR'].forEach(f => { if (a[f]) files.add(a[f]); });
+  }
+  for (const k in WDO_ART) files.add(WDO_ART[k].file);
+  files.forEach(f => { const im = new Image(); im.src = ART_BASE + f; });
 }
 
 // ── Elevation renderer: one wall viewed face-on from OUTSIDE ────────
@@ -753,14 +806,25 @@ function renderElevationSvg(layout, assign, facing) {
     return w2.slots.some(sl => { const ln = assign[sl.id]; return ln && classifyWall(ln.pack) === 'VNT'; });
   };
   const leftVent = hasVentOn(ADJ[facing].left), rightVent = hasVentOn(ADJ[facing].right);
+  // ADA ramp on an adjacent wall: its wedge reaches 3′ 9⅝″ past the edge
+  const RAMP = !!layout.ramp;
+  const RAMP_PROT2 = 45.625;
+  const hasRampDoorOn = sd => {
+    if (!RAMP) return false;
+    const w2 = layout.walls[sd]; if (!w2) return false;
+    return w2.slots.some(sl => { const ln = assign[sl.id]; return ln && classifyWall(ln.pack) === 'DRFRM' && panelInteriorWidth(ln.pack) >= 49; });
+  };
+  const leftRamp = hasRampDoorOn(ADJ[facing].left), rightRamp = hasRampDoorOn(ADJ[facing].right);
   const VOUT2 = 5.5 * PX2;
   const EPROT2 = EFS ? 10 : 5.5;                 // EFS reaches 10″ past the edge
   const EOUT2 = EPROT2 * PX2;
+  const lProtIn = Math.max(leftVent ? EPROT2 : 0, leftRamp ? RAMP_PROT2 : 0);
+  const rProtIn = Math.max(rightVent ? EPROT2 : 0, rightRamp ? RAMP_PROT2 : 0);
   const roofPad = ROOF ? 9 * PX2 : 0;            // headroom for the on-roof ducts
   const M = 46;
-  const totalW = Wp + M * 2 + (leftVent ? EOUT2 : 0) + (rightVent ? EOUT2 : 0);
-  const totalH = Hp + liftPx + 34 + 30 + 5 + ((leftVent || rightVent) ? 16 : 0) + roofPad;
-  const x0 = M + (leftVent ? EOUT2 : 0), y0 = 24 + roofPad;
+  const totalW = Wp + M * 2 + (lProtIn + rProtIn) * PX2;
+  const totalH = Hp + liftPx + 34 + 30 + 5 + ((lProtIn || rProtIn) ? 16 : 0) + roofPad;
+  const x0 = M + lProtIn * PX2, y0 = 24 + roofPad;
   const fb = y0 + Hp;                          // booth floor (bottom of the walls)
   const FLOORH = 4.5;                          // floor platform peeking below the walls
   const gy = fb + FLOORH + liftPx;             // ground line (floor strip, then casters)
@@ -905,7 +969,7 @@ function renderElevationSvg(layout, assign, facing) {
     const line = assign[slot.id];
     const kind = line ? classifyWall(line.pack) : 'EMPTY';
     s += `<rect x="${x0 + off}" y="${y0}" width="${w}" height="${Hp}" fill="${line ? 'url(#ldSeal)' : '#e9e9ec'}" stroke="#15161a" stroke-width="0.8"/>`;
-    const art = elevArtFor(kind, line);
+    const art = elevArtFor(kind, line, layout);
     if (art) s += artPanel(art, kind, line, x0 + off, w, effSize(slot));
     // vector details: everything when there's no art; with VNT art the photo
     // already shows the ducts/hose/fan, so only the VSS/EFS extras draw
@@ -967,6 +1031,19 @@ function renderElevationSvg(layout, assign, facing) {
   }
   if (leftVent) s += ventSideProfile(true);
   if (rightVent) s += ventSideProfile(false);
+  // ramp wedge seen edge-on, reaching 3′ 9⅝″ past the booth edge at the
+  // floor (the art's wall-edge sliver tucks behind the corner seal)
+  function rampSideProfile(atLeft) {
+    const rs = ELEV_ART.rampSide;
+    const wIn = rs.compHIn * rs.aspect;
+    const wPx = wIn * PX2;
+    const vx = atLeft ? x0 - rs.protIn * PX2 : x0 + Wp + rs.protIn * PX2 - wPx;
+    const img = `<image href="${ART_BASE + rs.file}" x="${vx}" y="${y0}" width="${wPx}" height="${Hp}" preserveAspectRatio="none"/>`;
+    // art has the wall at the right / wedge running left — mirror for the right side
+    return atLeft ? img : `<g transform="translate(${2 * vx + wPx} 0) scale(-1 1)">${img}</g>`;
+  }
+  if (leftRamp) s += rampSideProfile(true);
+  if (rightRamp) s += rampSideProfile(false);
   // seam-seal battens: full-height at every panel joint, wrapping both corners
   // (effective widths — a WA-door joint sits 3″/9″ off the module midline)
   const SB = Math.max(4.5, 3 * PX2);
@@ -1006,24 +1083,27 @@ function renderElevationSvg(layout, assign, facing) {
     + `<line x1="${x0 + Wp}" y1="${dy2 - 4}" x2="${x0 + Wp}" y2="${dy2 + 4}" stroke="#9097a0" stroke-width="1"/>`;
   s += `<rect x="${x0 + Wp / 2 - 26}" y="${dy2 - 8}" width="52" height="15" rx="3" fill="url(#ldBg)"/>`;
   s += `<text x="${x0 + Wp / 2}" y="${dy2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="#4a4f57">${ftIn(lenIn)}</text>`;
-  const dx2 = x0 - (leftVent ? EOUT2 : 0) - 20;
+  const dx2 = x0 - lProtIn * PX2 - 20;
   s += `<line x1="${dx2}" y1="${y0}" x2="${dx2}" y2="${fb}" stroke="#9097a0" stroke-width="1"/>`
     + `<line x1="${dx2 - 4}" y1="${y0}" x2="${dx2 + 4}" y2="${y0}" stroke="#9097a0" stroke-width="1"/>`
     + `<line x1="${dx2 - 4}" y1="${fb}" x2="${dx2 + 4}" y2="${fb}" stroke="#9097a0" stroke-width="1"/>`;
   s += `<rect x="${dx2 - 8}" y="${y0 + Hp / 2 - 26}" width="16" height="52" fill="url(#ldBg)"/>`;
   s += `<text x="${dx2}" y="${y0 + Hp / 2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="#4a4f57" transform="rotate(-90 ${dx2} ${y0 + Hp / 2})">${ftIn(hIn)}</text>`;
 
-  // overall width including adjacent-wall vent/EFS protrusion(s)
-  if (leftVent || rightVent) {
+  // overall width including adjacent-wall vent / EFS / ramp protrusion(s)
+  if (lProtIn || rProtIn) {
     const VD = '#c9762e';
-    const xA = x0 - (leftVent ? EOUT2 : 0), xB = x0 + Wp + (rightVent ? EOUT2 : 0);
-    const tot = ftIn(lenIn + (leftVent ? EPROT2 : 0) + (rightVent ? EPROT2 : 0));
+    const xA = x0 - lProtIn * PX2, xB = x0 + Wp + rProtIn * PX2;
+    const tot = ftIn(lenIn + lProtIn + rProtIn);
+    const bits = [];
+    if (leftVent || rightVent) bits.push(EFS ? 'EFS' : 'vent');
+    if (leftRamp || rightRamp) bits.push('ramp');
     const vy2 = dy2 + 16, vmx = (xA + xB) / 2;
     s += `<line x1="${xA}" y1="${vy2}" x2="${xB}" y2="${vy2}" stroke="${VD}" stroke-width="1"/>`
       + `<line x1="${xA}" y1="${vy2 - 4}" x2="${xA}" y2="${vy2 + 4}" stroke="${VD}" stroke-width="1"/>`
       + `<line x1="${xB}" y1="${vy2 - 4}" x2="${xB}" y2="${vy2 + 4}" stroke="${VD}" stroke-width="1"/>`;
-    s += `<rect x="${vmx - 38}" y="${vy2 - 8}" width="76" height="15" rx="3" fill="url(#ldBg)"/>`;
-    s += `<text x="${vmx}" y="${vy2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VD}">${tot} ${EFS ? 'w/ EFS' : 'w/ vent'}</text>`;
+    s += `<rect x="${vmx - 44}" y="${vy2 - 8}" width="88" height="15" rx="3" fill="url(#ldBg)"/>`;
+    s += `<text x="${vmx}" y="${vy2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VD}">${tot} w/ ${bits.join(' + ')}</text>`;
   }
 
   s += `</svg>`;
@@ -1091,5 +1171,5 @@ function waSeatDoor(layout, assign) {
 // (served as /assets/layout-render.js for the Booth Builder) the top-level
 // function declarations are simply globals.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { renderLayoutSvg, renderElevationSvg, placeBom, waSeatDoor, classifyWall, panelInteriorWidth, isWallPanel, KIND_META };
+  module.exports = { renderLayoutSvg, renderElevationSvg, placeBom, waSeatDoor, classifyWall, panelInteriorWidth, isWallPanel, KIND_META, preloadElevArt };
 }

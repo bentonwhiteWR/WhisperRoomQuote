@@ -152,6 +152,7 @@ const state = {
   hinge: 'R',            // R | L
   foam: 'Gray',
   wideDoor: false,
+  ramp: false,           // ADA ramp — pairs with the wide-access door, +3′ 9⅝″ out
   heightExt: false,
   casters: false,
   // ventilation upgrades — these DRAW (catalog p.29 + proposal drawings):
@@ -164,6 +165,8 @@ const state = {
   jackPanel: false,
   bassTraps: false,
   desk: false,
+  ap: false,             // Audimute acoustic panel package
+  pkg: '',               // preconfigured package this design started from
   facing: 'S',
   assign: {},            // slotId → synthetic line { code:'', pack }
   contact: { name: '', email: '', phone: '', company: '', note: '' },
@@ -180,10 +183,11 @@ function designPayload() {
   const a = {};
   for (const id in state.assign) a[id] = state.assign[id].pack;
   return { m: state.model, v: state.variant, h: state.hinge, f: state.foam,
-           wd: state.wideDoor ? 1 : 0, hx: state.heightExt ? 1 : 0, cs: state.casters ? 1 : 0,
+           wd: state.wideDoor ? 1 : 0, rp: state.ramp ? 1 : 0, hx: state.heightExt ? 1 : 0, cs: state.casters ? 1 : 0,
            vs: state.vss ? 1 : 0, ef: state.efs ? 1 : 0, rv: state.roofVent ? 1 : 0,
            sl: state.studioLight ? 1 : 0, jp: state.jackPanel ? 1 : 0,
-           bt: state.bassTraps ? 1 : 0, dk: state.desk ? 1 : 0,
+           bt: state.bassTraps ? 1 : 0, dk: state.desk ? 1 : 0, ac: state.ap ? 1 : 0,
+           pk: state.pkg || undefined,
            fc: state.facing, a };
 }
 function designToHash() {
@@ -201,10 +205,11 @@ function restoreFromHash() {
     state.hinge = d.h === 'L' ? 'L' : 'R';
     state.foam = FOAMS.indexOf(d.f) >= 0 ? d.f : 'Gray';
     // (legacy d.w ignored — the window packs ride in d.a, one per slot)
-    state.wideDoor = !!d.wd; state.heightExt = !!d.hx; state.casters = !!d.cs;
+    state.wideDoor = !!d.wd; state.ramp = !!d.rp; state.heightExt = !!d.hx; state.casters = !!d.cs;
     state.vss = !!d.vs; state.efs = !!d.ef; state.roofVent = !!d.rv;
     state.studioLight = !!d.sl; state.jackPanel = !!d.jp;
-    state.bassTraps = !!d.bt; state.desk = !!d.dk;
+    state.bassTraps = !!d.bt; state.desk = !!d.dk; state.ap = !!d.ac;
+    state.pkg = (typeof d.pk === 'string' && PACKAGES[d.pk]) ? d.pk : '';
     state.facing = ['N', 'S', 'E', 'W'].indexOf(d.fc) >= 0 ? d.fc : 'S';
     state.assign = {};
     const layout = resolveLayout();
@@ -249,6 +254,8 @@ function resolveLayout() {
     vss: state.vss,
     efs: state.efs && !state.roofVent,   // roof mount carries its own EFS on the roof
     roofVent: state.roofVent,
+    ramp: state.ramp && state.wideDoor,  // ramp needs the wide-access door
+
   });
 }
 
@@ -547,6 +554,61 @@ document.addEventListener('pointercancel', () => {
   _drag = null;
 });
 
+// ── Preconfigured packages ────────────────────────────────────────────
+// Translated from the quote builder's BOOTH_PRESETS (the named packages the
+// reps sell): base model+variant, the options the package includes, and its
+// windows (heights; width follows the wall series automatically). Package
+// SKUs with no visual here (AP color, HEPA, EFP floor, jack extensions) ride
+// along via the package name in the summary, so the quote side knows.
+const PACKAGES = {
+  'Voice Over Basic':     { m: 'MDL 4848',  v: 'S', o: { studioLight: 1, vss: 1, efs: 1, desk: 1, bassTraps: 1, ap: 1 } },
+  'Voice Over Deluxe':    { m: 'MDL 4848',  v: 'E', o: { studioLight: 1, vss: 1, efs: 1, desk: 1, bassTraps: 1, ap: 1 } },
+  'Audiology Basic':      { m: 'MDL 4872',  v: 'S', o: { jackPanel: 1, vss: 1, efs: 1, desk: 1 }, win: [36] },
+  'Audiology Deluxe':     { m: 'MDL 7272',  v: 'S', o: { wideDoor: 1, vss: 1, efs: 1, desk: 1, jackPanel: 1 }, win: [36] },
+  'Office Booth':         { m: 'MDL 4242',  v: 'S', o: { casters: 1, desk: 1, studioLight: 1 }, win: [48] },
+  'Work From Home Booth': { m: 'MDL 4872',  v: 'S', o: { desk: 1, studioLight: 1 } },
+  'Drum Booth':           { m: 'MDL 9696',  v: 'E', o: { studioLight: 1, ap: 1, bassTraps: 1 } },
+  'Audiology Basic Plus': { m: 'MDL 4872',  v: 'S', o: { wideDoor: 1, ramp: 1, vss: 1, efs: 1, desk: 1, jackPanel: 1 }, win: [36] },
+  'Audiology Compact':    { m: 'MDL 4848',  v: 'S', o: { jackPanel: 1, desk: 1, efs: 1, vss: 1 }, win: [36] },
+  'Audiology Ultra':      { m: 'MDL 7272',  v: 'E', o: { wideDoor: 1, desk: 1, vss: 1, efs: 1, jackPanel: 1 }, win: [36] },
+  'Audiology Premium':    { m: 'MDL 7296',  v: 'S', o: { wideDoor: 1, desk: 1, efs: 1, vss: 1, jackPanel: 1 }, win: [36] },
+  'Creator Basic':        { m: 'MDL 7272',  v: 'S', o: { desk: 1, ap: 1, efs: 1, studioLight: 1, vss: 1, bassTraps: 1 } },
+  'Creator Deluxe':       { m: 'MDL 7272',  v: 'E', o: { desk: 1, ap: 1, efs: 1, studioLight: 1, vss: 1, bassTraps: 1 } },
+  'Practice Basic':       { m: 'MDL 7272',  v: 'S', o: { ap: 1, bassTraps: 1, studioLight: 1 } },
+  'Practice Deluxe':      { m: 'MDL 7272',  v: 'E', o: { ap: 1, bassTraps: 1, studioLight: 1 } },
+  'Recording Studio':     { m: 'MDL 96120', v: 'S', o: { ap: 1, bassTraps: 1, studioLight: 1, vss: 1, efs: 1 }, win: [36] },
+  'Drum Studio':          { m: 'MDL 96144', v: 'E', o: { ap: 1, bassTraps: 1, studioLight: 1, vss: 1, efs: 1 }, win: [36] },
+  'Meeting Booth':        { m: 'MDL 7296',  v: 'S', o: { desk: 1, studioLight: 1 }, win: [48] },
+  'Maker Space':          { m: 'MDL 9696',  v: 'S', o: { wideDoor: 1, desk: 1, studioLight: 1 }, win: [48, 48] },
+};
+function applyPackage(name) {
+  const p = PACKAGES[name];
+  state.pkg = p ? name : '';
+  if (!p) { render(); return; }
+  state.model = p.m; state.variant = p.v;
+  state.hinge = 'R'; state.facing = 'S';
+  state.wideDoor = false; state.ramp = false; state.heightExt = false; state.casters = false;
+  state.vss = false; state.efs = false; state.roofVent = false;
+  state.studioLight = false; state.jackPanel = false; state.bassTraps = false; state.desk = false; state.ap = false;
+  for (const k in p.o) state[k] = true;
+  state.assign = {};
+  rebuild(true);
+  // windows go in AFTER the WA pair landed, so they seat on free walls
+  (p.win || []).forEach(h => {
+    const layout = resolveLayout();
+    const pick = windowSeat(layout);
+    if (pick) state.assign[pick.slot.id] = line(windowPack(layout, pick.slot, h));
+  });
+  if (p.win && p.win.length) render();
+  toast(name + ' applied -- tweak anything below');
+}
+function pkgOptions() {
+  return '<option value=""' + (state.pkg ? '' : ' selected') + '>Custom build (pick a size below)</option>'
+    + Object.keys(PACKAGES).map(n =>
+        '<option value="' + esc(n) + '"' + (n === state.pkg ? ' selected' : '') + '>'
+        + esc(n) + '  --  ' + esc(PACKAGES[n].m + ' ' + PACKAGES[n].v) + '</option>').join('');
+}
+
 // ── UI ────────────────────────────────────────────────────────────────
 function sizeOptions() {
   return Object.keys(LAYOUTS)
@@ -565,8 +627,10 @@ function summaryText() {
   const bits = [];
   const nice = String(layout.label || '').replace(/^Sound Booth\s*·\s*/, '');
   bits.push(nice + ' ' + (state.variant === 'E' ? 'Double-Wall (Enhanced)' : 'Single-Wall (Standard)') + ' — ' + state.model + ' ' + state.variant);
+  if (state.pkg) bits.push('Package: ' + state.pkg);
   const d = findSlot(layout, s => kindAt(s.id) === 'DRFRM');
   if (d) bits.push('Door: ' + FACE_WORD[d.side] + ', hinge ' + (state.hinge === 'R' ? 'right' : 'left') + (state.wideDoor ? ' — WIDE-ACCESS (32″)' : ''));
+  if (state.ramp && state.wideDoor) bits.push('Access ramp (extends 3′ 9⅝″ from the door)');
   const vs = [];
   eachSlot(layout, (s, side) => { if (kindAt(s.id) === 'VNT' && vs.indexOf(FACE_WORD[side]) < 0) vs.push(FACE_WORD[side]); });
   if (vs.length) bits.push('Ventilation: ' + vs.join(' + '));
@@ -582,6 +646,7 @@ function summaryText() {
   if (state.studioLight) bits.push('Studio light');
   if (state.jackPanel) bits.push('Cable jack panel');
   if (state.bassTraps) bits.push('Bass traps');
+  if (state.ap) bits.push('Acoustic panel package');
   if (state.desk) bits.push('Office desk');
   return bits;
 }
@@ -599,7 +664,8 @@ function render() {
     +   '<div class="hero"><h1>Design <span>Your Booth</span></h1>'
     +   '<p>Pick a size, then make it yours — drag the door, vents or windows to any wall they fit, and watch the booth update.</p></div>'
 
-    +   '<div class="card"><div class="step"><span class="n">1</span>Choose your size</div>'
+    +   '<div class="card"><div class="step"><span class="n">1</span>Start with a package — or build your own</div>'
+    +     '<select onchange="applyPackage(this.value)" style="margin-bottom:8px">' + pkgOptions() + '</select>'
     +     '<select onchange="setModel(this.value)">' + sizeOptions() + '</select>'
     +     '<div class="hint">Interior: <b>' + layout.interior.h + '″ × ' + layout.interior.w + '″</b> · Exterior: ' + layout.exterior.h + '″ × ' + layout.exterior.w + '″'
     +       (state.roofVent ? ' (vent on the roof — nothing sticks out)' : ' (plus ' + (state.efs ? '10″ for the EFS' : '5.5″ where a vent sits') + ')') + '</div>'
@@ -624,6 +690,8 @@ function render() {
           ).join('')
     +     '<div class="optrow' + (waPossible ? '' : ' disabled') + '"><label class="t">Wide-access door<small>' + (waPossible ? '32″ opening — wheelchairs, gear, bulky items' : 'Needs a larger booth (5′ walls or more)') + '</small></label>'
     +       '<input type="checkbox"' + (state.wideDoor ? ' checked' : '') + ' onchange="setWide(this.checked)"></div>'
+    +     '<div class="optrow' + (state.wideDoor ? '' : ' disabled') + '"><label class="t">Access ramp<small>' + (state.wideDoor ? 'Wheelchair ramp at the door — extends 3′ 9⅝″ from the booth' : 'Pairs with the wide-access door') + '</small></label>'
+    +       '<input type="checkbox"' + (state.ramp && state.wideDoor ? ' checked' : '') + ' onchange="setOpt(\'ramp\',this.checked)"></div>'
     +     '<div class="optrow"><label class="t">Door hinge<small>Which side the door swings from</small></label>'
     +       '<span class="pill2"><button class="' + (state.hinge === 'L' ? 'active' : '') + '" onclick="setHinge(\'L\')">Left</button><button class="' + (state.hinge === 'R' ? 'active' : '') + '" onclick="setHinge(\'R\')">Right</button></span></div>'
     +     '<div class="optrow"><label class="t">Extra height (+10″)<small>For standing performers and tall gear</small></label>'
@@ -642,6 +710,8 @@ function render() {
     +       '<input type="checkbox"' + (state.jackPanel ? ' checked' : '') + ' onchange="setOpt(\'jackPanel\',this.checked)"></div>'
     +     '<div class="optrow"><label class="t">Bass traps<small>Corner absorbers that tighten up the low end</small></label>'
     +       '<input type="checkbox"' + (state.bassTraps ? ' checked' : '') + ' onchange="setOpt(\'bassTraps\',this.checked)"></div>'
+    +     '<div class="optrow"><label class="t">Acoustic panels<small>Audimute wall-panel package for a tighter interior sound</small></label>'
+    +       '<input type="checkbox"' + (state.ap ? ' checked' : '') + ' onchange="setOpt(\'ap\',this.checked)"></div>'
     +     '<div class="optrow"><label class="t">Office desk<small>A work surface sized for your booth</small></label>'
     +       '<input type="checkbox"' + (state.desk ? ' checked' : '') + ' onchange="setOpt(\'desk\',this.checked)"></div>'
     +   '</div>'
@@ -738,7 +808,7 @@ async function submitRequest() {
 }
 
 // ── handlers ──────────────────────────────────────────────────────────
-function setModel(m)   { state.model = m; state.wideDoor = false; rebuild(true); }
+function setModel(m)   { state.model = m; state.wideDoor = false; state.pkg = ''; rebuild(true); }
 function setVariant(v) { state.variant = v; rebuild(false); }
 function setHinge(h)   { state.hinge = h; rebuild(false); }
 function setFoam(c)    { state.foam = c; rebuild(false); }
@@ -754,10 +824,10 @@ function rotate(dir) {
 }
 function resetAll() {
   state.hinge = 'R'; state.foam = 'Gray';
-  state.wideDoor = false; state.heightExt = false; state.casters = false; state.facing = 'S';
+  state.wideDoor = false; state.ramp = false; state.heightExt = false; state.casters = false; state.facing = 'S';
   state.vss = false; state.efs = false; state.roofVent = false;
   state.studioLight = false; state.jackPanel = false;
-  state.bassTraps = false; state.desk = false;
+  state.bassTraps = false; state.desk = false; state.ap = false; state.pkg = '';
   rebuild(true);
 }
 function designLink() { return location.origin + '/booth-builder#d=' + designToHash(); }
@@ -793,6 +863,7 @@ function toast(msg) {
       LAYOUTS = d.layouts;
     }
     if (!LAYOUTS || !LAYOUTS[state.model]) state.model = Object.keys(LAYOUTS)[0];
+    if (typeof preloadElevArt === 'function') preloadElevArt();   // warm the component-render cache
     // a shared design link restores the exact arrangement; otherwise defaults
     if (restoreFromHash()) render(); else rebuild(true);
   } catch (e) {

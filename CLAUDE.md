@@ -17,6 +17,10 @@ WhisperRoom Quote Builder — internal Node.js sales tool. Single-server (`quote
 
 `.git/hooks/pre-commit` runs `node scripts/check-syntax.js`. It runs `node --check` on every staged `.js` file, plus a require+invoke smoke test on `templates/changelog.js` and `lib/packing-list.js` (those are loaded at startup, so a broken require crashes Railway). **This exists because v1.72.11 shipped with an over-escaped apostrophe in a changelog entry and crash-looped both staging and prod for a full deploy cycle.** On a fresh clone, run `scripts/install-hooks.sh` to install the hook.
 
+## Session bootstrap (do this yourself, silently, before your first commit)
+
+Check whether `.git/hooks/pre-commit` exists AND `git config pull.rebase` returns `true`. If either is missing, run `bash scripts/install-hooks.sh` — idempotent and repo-local (installs the syntax-check hook + rebase-friendly pull config). This self-heals fresh clones and machines that predate the v1.87.1 parallel-push workflow; don't ask permission, just do it and mention it in one line.
+
 ## Workflow (non-negotiable)
 
 - All work happens on `staging`. **Never commit to `main` or push it without explicit user approval.**

@@ -51,6 +51,13 @@ module.exports = function renderChangelog() {
 
   ${[
     {
+      v:'1.87.0', date:'June 9, 2026', tag:'feature',
+      changes:[
+        {t:'add', d:'**Booth Builder goes customer-facing: quote requests + shareable design links.** /booth-builder is now PUBLIC — reps can send the link straight to a prospect. A new <b>Get your quote</b> step captures the lead: name, email, phone/company and a note, submitted with the complete design. The request lands as a bell notification (with a link that opens the customer&apos;s exact arrangement) plus an admin-log row — no CRM write until a rep picks it up. Defenses: per-IP rate limiting on top of the public-route gate, a honeypot field, server-side validation of every field and of the design itself (the share link in the notification is re-encoded server-side, never trusted from the client).'},
+        {t:'add', d:'**Every design is a link.** The whole arrangement — model, wall variant, panel positions, hinge, window, wide door, height extension, casters, foam color, even the facing of the walk-around view — now round-trips through the URL (#d=…). Refresh keeps your work, <b>🔗 Copy a link to this design</b> shares it, and opening someone else&apos;s link restores their booth exactly. The <b>Copy booth summary</b> text now includes the link too. Logged-in reps keep the internal navbar; visitors see whisperroom.com branding instead.'},
+      ]
+    },
+    {
       v:'1.86.0', date:'June 9, 2026', tag:'feature',
       changes:[
         {t:'add', d:'**NEW: 🏗 Booth Builder (/booth-builder).** A standalone &quot;Design Your Booth&quot; sales tool — no quote needed. Pick a size (all 25 digitized models), choose Standard or Enhanced in plain language, then make it yours: drag the door, vents or window onto any wall they fit (same placement rules as the packing-list layout, including the wide-door pairing), add a wall window (30–48&Prime; tall, width auto-matched to the wall series), toggle the wide-access door (auto-disabled with a friendly reason on booths under 5&Prime; walls), flip the hinge, add the 10&Prime; height extension or caster-plate wheels, and pick from the five foam colors. Both views — bird&apos;s-eye top-down and a walk-around elevation with rotate — update in real time, and a <b>Copy booth summary</b> button produces a plain-English spec (with the MDL code) to paste into a quote or email. Customer-friendly wording throughout: no pack codes, no internal lingo. In the navbar as 🏗 Booth Builder. First customer-facing step of the Build-Your-Own-Booth plan.'},

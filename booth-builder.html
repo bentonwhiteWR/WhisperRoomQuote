@@ -58,6 +58,15 @@
   .summary .mdl{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--muted)}
   .copy-btn{width:100%;margin-top:10px;padding:10px;background:var(--orange);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;letter-spacing:.02em}
   .copy-btn:hover{background:#d65613}
+  .copy-btn:disabled{opacity:.6;cursor:default}
+  .linkbtn{width:100%;margin-top:8px;padding:8px;background:#fff;color:var(--ink);border:1px solid #d5d8dd;border-radius:8px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer}
+  .linkbtn:hover{border-color:var(--orange);color:var(--orange)}
+  .fi{width:100%;padding:9px 10px;font-size:13px;font-family:inherit;border:1px solid #d5d8dd;border-radius:8px;background:#fff;color:var(--ink);margin-top:8px}
+  .fi:focus{outline:none;border-color:var(--orange)}
+  textarea.fi{resize:vertical;min-height:54px}
+  .frow{display:flex;gap:8px}
+  .frow .fi{flex:1;min-width:0}
+  .hp{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0}
   .reset{display:block;text-align:center;font-size:11px;color:var(--muted);margin-top:8px;cursor:pointer;text-decoration:underline;background:none;border:none;font-family:inherit;width:100%}
 
   .view-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px 16px;margin-bottom:16px}
@@ -97,15 +106,29 @@
   </div>
   <div class="toast" id="toast"></div>
 
-<script src="/assets/nav.js" defer></script>
+<script>window.BB_AUTHED=0;</script>
 <script src="/assets/layout-render.js"></script>
 <script>
 // ── Booth Builder — standalone "design your booth" sales tool ─────────
 // Customer-friendly skin over the same renderer + placement rules the
 // Packing List layout uses (/assets/layout-render.js). No quote required:
 // pick a size, pick single/double wall, drag the door/vent/window around,
-// toggle options — both views update live. Output = a plain-English summary
-// the rep pastes into a quote. (Booth-builder plan Phase A.)
+// toggle options — both views update live. PUBLIC page: prospects design a
+// booth and request a quote (POST /api/booth-request); logged-in reps also
+// get the navbar + the copy-summary workflow. The whole design round-trips
+// through the URL hash (#d=base64url JSON) so any design is a shareable link.
+
+// Server flips BB_AUTHED to 1 when the viewer has a session — reps get the
+// internal navbar; the public gets whisperroom.com branding links instead.
+if (window.BB_AUTHED) {
+  const s = document.createElement('script');
+  s.src = '/assets/nav.js'; s.defer = true;
+  document.head.appendChild(s);
+} else {
+  document.querySelector('.topbar-logo').href = 'https://www.whisperroom.com';
+  const ext = document.querySelector('.topbar-right a');
+  ext.textContent = 'whisperroom.com'; ext.href = 'https://www.whisperroom.com';
+}
 
 let LAYOUTS = null;   // /api/booth-layouts → { layouts: { 'MDL 4872': {...} } }
 
@@ -124,7 +147,54 @@ const state = {
   casters: false,
   facing: 'S',
   assign: {},            // slotId → synthetic line { code:'', pack }
+  contact: { name: '', email: '', phone: '', company: '', note: '' },
+  requested: false,      // quote request sent this visit
+  sending: false,
 };
+
+// ── shareable design links (#d=base64url JSON) ────────────────────────
+// The same compact payload is POSTed with a quote request; the server
+// re-encodes it into the link it hands the rep, so the notification opens
+// the customer's exact arrangement.
+function designPayload() {
+  const a = {};
+  for (const id in state.assign) a[id] = state.assign[id].pack;
+  return { m: state.model, v: state.variant, h: state.hinge, f: state.foam, w: state.windowH,
+           wd: state.wideDoor ? 1 : 0, hx: state.heightExt ? 1 : 0, cs: state.casters ? 1 : 0,
+           fc: state.facing, a };
+}
+function designToHash() {
+  return btoa(unescape(encodeURIComponent(JSON.stringify(designPayload()))))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function restoreFromHash() {
+  const m = location.hash.match(/^#d=([A-Za-z0-9_-]+)$/);
+  if (!m) return false;
+  try {
+    const d = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/')))));
+    if (!LAYOUTS[d.m]) return false;
+    state.model = d.m;
+    state.variant = d.v === 'E' ? 'E' : 'S';
+    state.hinge = d.h === 'L' ? 'L' : 'R';
+    state.foam = FOAMS.indexOf(d.f) >= 0 ? d.f : 'Gray';
+    state.windowH = [30, 36, 42, 48].indexOf(+d.w) >= 0 ? +d.w : 0;
+    state.wideDoor = !!d.wd; state.heightExt = !!d.hx; state.casters = !!d.cs;
+    state.facing = ['N', 'S', 'E', 'W'].indexOf(d.fc) >= 0 ? d.fc : 'S';
+    state.assign = {};
+    const layout = resolveLayout();
+    eachSlot(layout, slot => {
+      const pack = d.a && d.a[slot.id];
+      if (typeof pack === 'string' && pack.length <= 40 && /^[A-Za-z0-9 \/.-]*$/.test(pack)) state.assign[slot.id] = line(pack);
+    });
+    // any slot the hash missed falls back to its spec-sheet default
+    eachSlot(layout, slot => {
+      if (state.assign[slot.id]) return;
+      const k = slot.kind || (slot.prefers && slot.prefers[0]) || 'SOLID';
+      state.assign[slot.id] = line(k === 'VNT' ? ventPack(slot) : k === 'DRFRM' ? doorPack(slot) : solidPack(slot));
+    });
+    return true;
+  } catch (e) { return false; }
+}
 
 // ── synthetic panels (no BOM here — packs are built from the slot) ────
 // Slot nominals are digitized drawing sizes (24″, 47.5″…); the real wall
@@ -457,8 +527,11 @@ function render() {
     +   '<div class="card"><div class="step"><span class="n">✓</span>Your booth</div>'
     +     '<div class="summary">' + summaryText().map(esc).join('<br>') + '</div>'
     +     '<button class="copy-btn" onclick="copySummary()">📋 Copy booth summary</button>'
+    +     '<button class="linkbtn" onclick="copyLink()">🔗 Copy a link to this design</button>'
     +     '<button class="reset" onclick="resetAll()">start over</button>'
     +   '</div>'
+
+    +   '<div class="card">' + quoteCardHtml() + '</div>'
     + '</div>'
 
     + '<div class="stage">'
@@ -476,6 +549,62 @@ function render() {
     +     renderElevationSvg(layout, state.assign, state.facing)
     +   '</div>'
     + '</div>';
+  // every design is a link — keep the URL current so copy/share/refresh all work
+  history.replaceState(null, '', '#d=' + designToHash());
+}
+
+// ── quote request (lead capture) ──────────────────────────────────────
+function quoteCardHtml() {
+  const c = state.contact;
+  if (state.requested) {
+    return '<div class="step"><span class="n">✓</span>Request sent</div>'
+      + '<div class="summary">Thanks' + (c.name ? ', ' + esc(c.name.split(' ')[0]) : '') + '! Your design is on its way to our team — '
+      + 'we’ll email your quote to <b>' + esc(c.email) + '</b>, usually within one business day.</div>'
+      + '<button class="reset" onclick="state.requested=false;render()">made changes? send an update</button>';
+  }
+  return '<div class="step"><span class="n">5</span>Get your quote</div>'
+    + '<div class="hint" style="margin-top:0">Happy with your design? Send it to our team and we’ll reply with pricing — your exact layout included.</div>'
+    + '<input class="fi" placeholder="Your name *" value="' + esc(c.name) + '" oninput="setC(\'name\',this.value)">'
+    + '<input class="fi" type="email" placeholder="Email *" value="' + esc(c.email) + '" oninput="setC(\'email\',this.value)">'
+    + '<div class="frow">'
+    +   '<input class="fi" type="tel" placeholder="Phone" value="' + esc(c.phone) + '" oninput="setC(\'phone\',this.value)">'
+    +   '<input class="fi" placeholder="Company" value="' + esc(c.company) + '" oninput="setC(\'company\',this.value)">'
+    + '</div>'
+    + '<textarea class="fi" placeholder="Anything we should know? (room size, timeline…)" oninput="setC(\'note\',this.value)">' + esc(c.note) + '</textarea>'
+    + '<input class="hp" id="qrHp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">'
+    + '<button class="copy-btn" onclick="submitRequest()"' + (state.sending ? ' disabled' : '') + '>'
+    + (state.sending ? 'Sending…' : 'Request my quote →') + '</button>';
+}
+function setC(k, v) { state.contact[k] = v; }
+async function submitRequest() {
+  const c = state.contact;
+  if (state.sending) return;
+  if (!c.name.trim()) { toast('Please enter your name'); return; }
+  if (!/^\S+@\S+\.\S+$/.test(c.email.trim())) { toast('Please enter a valid email address'); return; }
+  // read the honeypot BEFORE render() rebuilds the form (which would blank it)
+  const hp = document.getElementById('qrHp');
+  const hpVal = hp ? hp.value : '';
+  state.sending = true; render();
+  try {
+    const r = await fetch('/api/booth-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: c.name.trim(), email: c.email.trim(), phone: c.phone.trim(),
+        company: c.company.trim(), note: c.note.trim(),
+        website: hpVal,
+        design: designPayload(), summary: summaryText(),
+      }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    state.requested = true;
+    toast('Design sent — we’ll be in touch!');
+  } catch (e) {
+    toast(e.message || 'Something went wrong — please try again');
+  }
+  state.sending = false;
+  render();
 }
 
 // ── handlers ──────────────────────────────────────────────────────────
@@ -497,11 +626,19 @@ function resetAll() {
   state.wideDoor = false; state.heightExt = false; state.casters = false; state.facing = 'S';
   rebuild(true);
 }
+function designLink() { return location.origin + '/booth-builder#d=' + designToHash(); }
 function copySummary() {
-  const txt = 'WhisperRoom booth design\n' + summaryText().map(s => '• ' + s).join('\n');
+  const txt = 'WhisperRoom booth design\n' + summaryText().map(s => '• ' + s).join('\n')
+    + '\nSee the design: ' + designLink();
   (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(
     () => toast('Summary copied — paste it into your quote or email'),
     () => { window.prompt('Copy your booth summary:', txt); }
+  );
+}
+function copyLink() {
+  (navigator.clipboard ? navigator.clipboard.writeText(designLink()) : Promise.reject()).then(
+    () => toast('Link copied — it opens this exact design'),
+    () => { window.prompt('Copy your design link:', designLink()); }
   );
 }
 let _toastT = null;
@@ -522,7 +659,8 @@ function toast(msg) {
       LAYOUTS = d.layouts;
     }
     if (!LAYOUTS || !LAYOUTS[state.model]) state.model = Object.keys(LAYOUTS)[0];
-    rebuild(true);
+    // a shared design link restores the exact arrangement; otherwise defaults
+    if (restoreFromHash()) render(); else rebuild(true);
   } catch (e) {
     document.getElementById('app').innerHTML = '<div class="loading">Failed to load: ' + esc(e.message) + '</div>';
   }

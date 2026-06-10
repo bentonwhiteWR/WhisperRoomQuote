@@ -1593,7 +1593,11 @@ const server = http.createServer(async (req, res) => {
 
   // ── Auth gate ──
   // Public routes — no auth required but rate limited + token validated
-  const isPublicRoute = pathname.startsWith('/q/') || pathname.startsWith('/i/') || pathname.startsWith('/o/') || pathname.startsWith('/po/') || pathname.startsWith('/vpo/') || pathname.startsWith('/portal/') || pathname.startsWith('/api/portal/') || pathname === '/api/accept-quote' || pathname === '/api/update-specs' || pathname === '/api/stripe/webhook';
+  const isPublicRoute = pathname.startsWith('/q/') || pathname.startsWith('/i/') || pathname.startsWith('/o/') || pathname.startsWith('/po/') || pathname.startsWith('/vpo/') || pathname.startsWith('/portal/') || pathname.startsWith('/api/portal/') || pathname === '/api/accept-quote' || pathname === '/api/update-specs' || pathname === '/api/stripe/webhook'
+    // Booth Builder is customer-facing: the page, its layout geometry (all
+    // published spec-sheet data), the shared renderer it loads, and the
+    // quote-request lead endpoint. Reps send /booth-builder links to prospects.
+    || pathname === '/booth-builder' || pathname === '/api/booth-layouts' || pathname === '/api/booth-request' || pathname === '/assets/layout-render.js';
   if (isPublicRoute) {
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
     if (!checkRateLimit(ip, 30, 60000)) {
@@ -10699,25 +10703,106 @@ ${q.accepted ? `
     return;
   }
 
-  // ── /booth-builder — standalone "Design Your Booth" sales tool (auth-only) ──
+  // ── /booth-builder — standalone "Design Your Booth" tool (PUBLIC) ──
   // Customer-friendly configurator over the shared layout renderer: pick a
-  // model, drag panels, toggle options, copy a plain-English summary.
+  // model, drag panels, toggle options, then request a quote (lead capture).
+  // Public so reps can send the link to prospects; the auth-gate rate limit
+  // applies. Logged-in reps get the internal navbar via the BB_AUTHED flag.
   if (pathname === '/booth-builder' && req.method === 'GET') {
-    if (!isAuth(req)) { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    let html = fs.readFileSync(path.join(__dirname, 'booth-builder.html'), 'utf8');
+    if (isAuth(req)) html = html.replace('window.BB_AUTHED=0', 'window.BB_AUTHED=1');
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(fs.readFileSync(path.join(__dirname, 'booth-builder.html'), 'utf8'));
+    res.end(html);
     return;
   }
 
-  // ── API: booth layout geometry for the Booth Builder ──
-  // GET /api/booth-layouts → { layouts } straight from lib/pl-data/booth-layouts.json
+  // ── API: booth layout geometry for the Booth Builder (PUBLIC) ──
+  // GET /api/booth-layouts → { layouts } straight from lib/pl-data/booth-layouts.json.
+  // Geometry only — digitized from the published spec-sheet PDFs; no pricing,
+  // no SKUs beyond pack names that already appear on customer packing lists.
   if (pathname === '/api/booth-layouts' && req.method === 'GET') {
-    if (!isAuth(req)) { json({ error: 'Unauthorized' }, 401); return; }
     try {
       const raw = fs.readFileSync(path.join(__dirname, 'lib', 'pl-data', 'booth-layouts.json'), 'utf8');
       json({ layouts: JSON.parse(raw).layouts });
     } catch (e) {
       json({ error: 'booth-layouts unavailable: ' + e.message }, 500);
+    }
+    return;
+  }
+
+  // ── API: Booth Builder quote request — PUBLIC lead capture ──
+  // POST /api/booth-request { name, email, phone, company, note, design, summary, website }
+  // A prospect designed a booth on /booth-builder and wants pricing. Defenses
+  // on top of the public-route gate: a strict per-IP limit, a honeypot field
+  // ("website" — humans never see it), length caps + charset checks, and the
+  // share link is re-encoded server-side from the validated design (a client
+  // can't plant an arbitrary URL in the rep's notification). Lands as a bell
+  // notification + an admin-log row; no CRM write until a rep picks it up.
+  if (pathname === '/api/booth-request' && req.method === 'POST') {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+    if (!checkRateLimit('boothreq_' + ip, 5, 600000)) {
+      json({ error: 'Too many requests — please wait a few minutes and try again.' }, 429); return;
+    }
+    try {
+      const body = JSON.parse(await readBody(req));
+      if (String(body.website || '').trim()) {           // honeypot: drop silently
+        writelog('warn', 'booth-request.honeypot', `dropped bot submission from ${ip}`);
+        json({ success: true }); return;
+      }
+      const clean = (v, max) => String(v == null ? '' : v).replace(/[<>]/g, '').replace(/[\u0000-\u001f]+/g, ' ').trim().slice(0, max);
+      const name    = clean(body.name, 100);
+      const email   = clean(body.email, 200);
+      const phone   = clean(body.phone, 50);
+      const company = clean(body.company, 120);
+      const note    = clean(body.note, 600);
+      if (!name) { json({ error: 'Please tell us your name.' }, 400); return; }
+      if (!/^\S+@\S+\.\S+$/.test(email)) { json({ error: 'Please enter a valid email address.' }, 400); return; }
+
+      const layouts = JSON.parse(fs.readFileSync(path.join(__dirname, 'lib', 'pl-data', 'booth-layouts.json'), 'utf8')).layouts;
+      const d = body.design || {};
+      if (!layouts[d.m]) { json({ error: 'Unknown booth model.' }, 400); return; }
+      // Rebuild the design from validated fields only (shape = the page's
+      // #d= hash payload), then re-encode the share link ourselves.
+      const safe = {
+        m: d.m,
+        v: d.v === 'E' ? 'E' : 'S',
+        h: d.h === 'L' ? 'L' : 'R',
+        f: ['Gray', 'Orange', 'Blue', 'Purple', 'Burgundy'].includes(d.f) ? d.f : 'Gray',
+        w: [30, 36, 42, 48].includes(+d.w) ? +d.w : 0,
+        wd: d.wd ? 1 : 0, hx: d.hx ? 1 : 0, cs: d.cs ? 1 : 0,
+        fc: ['N', 'S', 'E', 'W'].includes(d.fc) ? d.fc : 'S',
+        a: {},
+      };
+      if (d.a && typeof d.a === 'object') {
+        for (const k of Object.keys(d.a).slice(0, 24)) {
+          const v = d.a[k];
+          if (/^[NSEW]\d{1,2}$/.test(k) && typeof v === 'string' && v.length <= 40 && /^[A-Za-z0-9 \/.-]*$/.test(v)) safe.a[k] = v;
+        }
+      }
+      const link = `${PUBLIC_BASE_URL}/booth-builder#d=${Buffer.from(JSON.stringify(safe)).toString('base64url')}`;
+
+      const summary = (Array.isArray(body.summary) ? body.summary : []).map(s => clean(s, 200)).filter(Boolean).slice(0, 12);
+      const mdl = `${safe.m} ${safe.v}`;
+      const noteBody = [
+        [email, phone, company].filter(Boolean).join(' · '),
+        '',
+        ...summary.map(s => '• ' + s),
+        note ? `\nNote: "${note}"` : '',
+        '',
+        `Open the design: ${link}`,
+      ].filter(s => s !== null).join('\n');
+
+      // Who gets the bell: Benton owns the Booth Builder initiative — widen
+      // to the sales team when this goes to prod.
+      const BOOTH_REQUEST_OWNERS = ['36303670'];
+      for (const ownerId of BOOTH_REQUEST_OWNERS) {
+        await createNotification(ownerId, 'booth-request', `🏗 Booth quote request — ${name}`, noteBody, {});
+      }
+      writelog('info', 'booth-request', `${name} <${email}>${company ? ' (' + company + ')' : ''} — ${mdl}`);
+      json({ success: true });
+    } catch (e) {
+      writelog('error', 'error.booth-request', e.message);
+      json({ error: 'Something went wrong on our end — please try again.' }, 500);
     }
     return;
   }

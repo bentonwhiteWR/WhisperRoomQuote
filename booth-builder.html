@@ -142,9 +142,12 @@ const state = {
   wideDoor: false,
   heightExt: false,
   casters: false,
-  // add-ons that don't change the drawing — real catalog options (VSS, SL,
+  // ventilation upgrades — these DRAW (catalog p.29 + proposal drawings):
+  vss: false,            // Ventilation Silencing System: two extra silencer ducts
+  efs: false,            // Exterior Fan Silencer: floor box, sticks out 10″
+  roofVent: false,       // roof-mounted vent set (RM): ducts on the roof, EFS included
+  // add-ons that don't change the drawing — real catalog options (SL,
   // MJP/jack panel, bass traps, office desk); they ride the summary + payload
-  vss: false,            // Ventilation Silencing System
   studioLight: false,
   jackPanel: false,
   bassTraps: false,
@@ -166,7 +169,8 @@ function designPayload() {
   for (const id in state.assign) a[id] = state.assign[id].pack;
   return { m: state.model, v: state.variant, h: state.hinge, f: state.foam,
            wd: state.wideDoor ? 1 : 0, hx: state.heightExt ? 1 : 0, cs: state.casters ? 1 : 0,
-           vs: state.vss ? 1 : 0, sl: state.studioLight ? 1 : 0, jp: state.jackPanel ? 1 : 0,
+           vs: state.vss ? 1 : 0, ef: state.efs ? 1 : 0, rv: state.roofVent ? 1 : 0,
+           sl: state.studioLight ? 1 : 0, jp: state.jackPanel ? 1 : 0,
            bt: state.bassTraps ? 1 : 0, dk: state.desk ? 1 : 0,
            fc: state.facing, a };
 }
@@ -186,7 +190,8 @@ function restoreFromHash() {
     state.foam = FOAMS.indexOf(d.f) >= 0 ? d.f : 'Gray';
     // (legacy d.w ignored — the window packs ride in d.a, one per slot)
     state.wideDoor = !!d.wd; state.heightExt = !!d.hx; state.casters = !!d.cs;
-    state.vss = !!d.vs; state.studioLight = !!d.sl; state.jackPanel = !!d.jp;
+    state.vss = !!d.vs; state.efs = !!d.ef; state.roofVent = !!d.rv;
+    state.studioLight = !!d.sl; state.jackPanel = !!d.jp;
     state.bassTraps = !!d.bt; state.desk = !!d.dk;
     state.facing = ['N', 'S', 'E', 'W'].indexOf(d.fc) >= 0 ? d.fc : 'S';
     state.assign = {};
@@ -229,6 +234,9 @@ function resolveLayout() {
     foamColor: state.foam,
     heightExt: state.heightExt,
     casters: state.casters,
+    vss: state.vss,
+    efs: state.efs && !state.roofVent,   // roof mount carries its own EFS on the roof
+    roofVent: state.roofVent,
   });
 }
 
@@ -354,10 +362,22 @@ function slotById(layout, id) {
   return hit ? hit.slot : null;
 }
 
+// Roof-mounted vent: same swap the production RM BOM does — every vent wall
+// becomes a cable wall (the ducts move to the roof), reversed when toggled off.
+function applyRoofVent(layout) {
+  eachSlot(layout, slot => {
+    const l = state.assign[slot.id]; if (!l) return;
+    const k = classifyWall(l.pack);
+    if (state.roofVent && k === 'VNT') state.assign[slot.id] = line(String(l.pack).replace(/\sVNT\b/i, ' CBL'));
+    else if (!state.roofVent && k === 'CBL') state.assign[slot.id] = line(String(l.pack).replace(/\sCBL\b/i, ' VNT'));
+  });
+}
+
 function rebuild(resetArrangement) {
   const layout = resolveLayout();
   if (resetArrangement || !Object.keys(state.assign).length) state.assign = defaultAssign(layout);
   applyWideDoor(layout);
+  applyRoofVent(layout);
   applyHinge(layout);
   render();
 }
@@ -545,6 +565,8 @@ function summaryText() {
   if (state.heightExt) bits.push('10″ height extension');
   if (state.casters) bits.push('Caster plate (wheels, +5″)');
   if (state.vss) bits.push('Ventilation Silencing System');
+  if (state.roofVent) bits.push('Roof-mounted ventilation (EFS included)');
+  else if (state.efs) bits.push('Exterior Fan Silencer (sticks out 10″ at the vent wall)');
   if (state.studioLight) bits.push('Studio light');
   if (state.jackPanel) bits.push('Cable jack panel');
   if (state.bassTraps) bits.push('Bass traps');
@@ -563,7 +585,8 @@ function render() {
 
     +   '<div class="card"><div class="step"><span class="n">1</span>Choose your size</div>'
     +     '<select onchange="setModel(this.value)">' + sizeOptions() + '</select>'
-    +     '<div class="hint">Interior: <b>' + layout.interior.h + '″ × ' + layout.interior.w + '″</b> · Exterior: ' + layout.exterior.h + '″ × ' + layout.exterior.w + '″ (plus 5.5″ where a vent sits)</div>'
+    +     '<div class="hint">Interior: <b>' + layout.interior.h + '″ × ' + layout.interior.w + '″</b> · Exterior: ' + layout.exterior.h + '″ × ' + layout.exterior.w + '″'
+    +       (state.roofVent ? ' (vent on the roof — nothing sticks out)' : ' (plus ' + (state.efs ? '10″ for the EFS' : '5.5″ where a vent sits') + ')') + '</div>'
     +   '</div>'
 
     +   '<div class="card"><div class="step"><span class="n">2</span>How much quiet?</div>'
@@ -591,8 +614,12 @@ function render() {
     +       '<input type="checkbox"' + (state.heightExt ? ' checked' : '') + ' onchange="setHX(this.checked)"></div>'
     +     '<div class="optrow"><label class="t">Wheels (caster plate)<small>Roll it around — raises the booth 5″</small></label>'
     +       '<input type="checkbox"' + (state.casters ? ' checked' : '') + ' onchange="setCasters(this.checked)"></div>'
-    +     '<div class="optrow"><label class="t">Quieter ventilation<small>Ventilation Silencing System — hushes airflow for critical recording</small></label>'
+    +     '<div class="optrow"><label class="t">Quieter ventilation (VSS)<small>Two extra silencer ducts hush the airflow — you&apos;ll see them appear on the vent wall</small></label>'
     +       '<input type="checkbox"' + (state.vss ? ' checked' : '') + ' onchange="setOpt(\'vss\',this.checked)"></div>'
+    +     '<div class="optrow' + (state.roofVent ? ' disabled' : '') + '"><label class="t">Exterior Fan Silencer<small>' + (state.roofVent ? 'Included with roof-mounted ventilation' : 'Wraps the fan in a silencer box — sticks out 10″ from the booth edge') + '</small></label>'
+    +       '<input type="checkbox"' + (state.efs ? ' checked' : '') + ' onchange="setOpt(\'efs\',this.checked)"></div>'
+    +     '<div class="optrow"><label class="t">Roof-mounted ventilation<small>The vent set moves onto the roof — frees the wall (it becomes a cable wall) and nothing sticks out</small></label>'
+    +       '<input type="checkbox"' + (state.roofVent ? ' checked' : '') + ' onchange="setRoof(this.checked)"></div>'
     +     '<div class="optrow"><label class="t">Studio light<small>Interior light mounted inside the booth</small></label>'
     +       '<input type="checkbox"' + (state.studioLight ? ' checked' : '') + ' onchange="setOpt(\'studioLight\',this.checked)"></div>'
     +     '<div class="optrow"><label class="t">Cable jack panel<small>Pass mic, instrument &amp; monitor cables through the wall</small></label>'
@@ -699,7 +726,8 @@ function setFoam(c)    { state.foam = c; rebuild(false); }
 function setWide(on)   { state.wideDoor = !!on; rebuild(false); }
 function setHX(on)     { state.heightExt = !!on; rebuild(false); }
 function setCasters(on){ state.casters = !!on; rebuild(false); }
-function setOpt(k, on) { state[k] = !!on; render(); }   // summary-only add-ons
+function setOpt(k, on) { state[k] = !!on; render(); }   // add-ons (renderer reads the flags live)
+function setRoof(on)   { state.roofVent = !!on; rebuild(false); }   // swaps VNT↔CBL walls
 function rotate(dir) {
   const order = ['S', 'E', 'N', 'W'];
   state.facing = order[(order.indexOf(state.facing) + dir + 4) % 4];
@@ -708,7 +736,8 @@ function rotate(dir) {
 function resetAll() {
   state.hinge = 'R'; state.foam = 'Gray';
   state.wideDoor = false; state.heightExt = false; state.casters = false; state.facing = 'S';
-  state.vss = false; state.studioLight = false; state.jackPanel = false;
+  state.vss = false; state.efs = false; state.roofVent = false;
+  state.studioLight = false; state.jackPanel = false;
   state.bassTraps = false; state.desk = false;
   rebuild(true);
 }

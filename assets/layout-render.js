@@ -108,6 +108,18 @@ function renderLayoutSvg(layout, assign) {
   const W = ext.w * PX, H = ext.h * PX, t = layout.wallThickness * PX;
   const VPROT = 5.5;        // a vent set protrudes 5.5″ beyond its wall (spec)
   const VOUT = VPROT * PX;  // drawn at TRUE scale so the "w/ vent" dim reads honestly
+  // Ventilation upgrades (catalog p.29 + proposal drawings):
+  //   VSS  — Ventilation Silencing System: TWO extra silencer ducts beside the
+  //          standard pair, hose-connected (same 5.5″ protrusion).
+  //   EFS  — Exterior Fan Silencer: a floor-level silencer box that wraps the
+  //          fan OUTSIDE the booth, sticking out 10″ from the wall face — the
+  //          proposals dim it, so the drawing and the "w/ EFS" line must too.
+  //   ROOF — roof-mounted vent set (RM): ducts ride on the roof, the vent wall
+  //          becomes a cable wall, no wall protrusion at all.
+  const VSS = !!layout.vss, EFS = !!layout.efs, ROOF = !!layout.roofVent;
+  const EPROT = EFS ? 10 : VPROT;       // how far the vent assembly reaches
+  const EOUT = EPROT * PX;
+  const DBL = /^E/i.test(String(layout.variant || 'S'));   // Enhanced double wall
   // Effective drawn width of a slot: normally the slot nominal, BUT the WA/ADA
   // door swap replaces a module pair with 49″ + a 7/19/31/43″ companion — the
   // pair conserves total width while the JOINT between them (and its seam
@@ -144,10 +156,10 @@ function renderLayoutSvg(layout, assign) {
         // WA/ADA frame (49″) carries a 32″ leaf regardless of the model default
         const swingM = (panelInteriorWidth(ln.pack) >= 49 ? 32 : (layout.door && layout.door.swing)) || 30;
         doorLeafPx = Math.max(doorLeafPx, Math.min(swingM * PX, lenM * 0.94));
-      } else if (k === 'VNT' && layout.hasVent !== false) sideHasVent[sd] = true;
+      } else if (k === 'VNT' && layout.hasVent !== false && !ROOF) sideHasVent[sd] = true;
     }
   }
-  const extra = sd => sideHasDoor[sd] ? doorLeafPx + 14 : (sideHasVent[sd] ? VOUT + 18 : 0);
+  const extra = sd => sideHasDoor[sd] ? doorLeafPx + 14 : (sideHasVent[sd] ? EOUT + 18 : 0);
   const BASE = 50;
   // extra room for the "w/ vent" overall-dim line: left of the height dim for
   // a N/S vent, below the width dim for an E/W vent
@@ -267,6 +279,33 @@ function renderLayoutSvg(layout, assign) {
     const o2 = SG * 0.35;
     g += cornerSeal(x0 - o2,     y0 - o2,     1, 0, 0, 1) + cornerSeal(x0 + W + o2, y0 - o2,     -1, 0, 0, 1)
        + cornerSeal(x0 - o2,     y0 + H + o2, 1, 0, 0, -1) + cornerSeal(x0 + W + o2, y0 + H + o2, -1, 0, 0, -1);
+    // Enhanced: the INNER wall set has its own seam seals — a tab at every
+    // inner-panel joint plus inner corner posts (E spec top-downs show both).
+    if (DBL) {
+      const tIn = t * 0.40;
+      const tw = SG * 0.5;
+      for (const side of ['N', 'S', 'E', 'W']) {
+        const wall = layout.walls[side]; if (!wall || wall.slots.length < 2) continue;
+        const nom = wall.slots.reduce((a, sl) => a + effSize(sl), 0) || 1;
+        const horiz = (side === 'N' || side === 'S');
+        let o = 0;
+        for (let i = 0; i < wall.slots.length - 1; i++) {
+          o += effSize(wall.slots[i]);
+          const f = o / nom;
+          if (horiz) {
+            const x = fx0 + f * spanW;
+            const yI = side === 'N' ? y0 + t - tIn : y0 + H - t;
+            g += `<rect x="${x - tw / 2}" y="${yI}" width="${tw}" height="${tIn}" fill="url(#ldSeal)" stroke="${SEAL_STROKE}" stroke-width="0.9"/>`;
+          } else {
+            const y = fy0 + f * spanH;
+            const xI = side === 'W' ? x0 + t - tIn : x0 + W - t;
+            g += `<rect x="${xI}" y="${y - tw / 2}" width="${tIn}" height="${tw}" fill="url(#ldSeal)" stroke="${SEAL_STROKE}" stroke-width="0.9"/>`;
+          }
+        }
+      }
+      for (const [icx, icy] of [[x0 + t - tIn, y0 + t - tIn], [x0 + W - t, y0 + t - tIn], [x0 + t - tIn, y0 + H - t], [x0 + W - t, y0 + H - t]])
+        g += `<rect x="${icx}" y="${icy}" width="${tIn}" height="${tIn}" fill="url(#ldSeal)" stroke="#0d0e11" stroke-width="0.8"/>`;
+    }
     return g;
   }
 
@@ -285,28 +324,90 @@ function renderLayoutSvg(layout, assign) {
   function ventDuct(side, px, py, pw, ph) {
     const { omx, omy, ox, oy, ax, ay, horiz } = edgeGeom(side, px, py, pw, ph);
     const panelLen = horiz ? pw : ph;
-    const B = Math.max(18, Math.min(panelLen * 0.30, 44));   // along-wall width scales with the panel
+    // four boxes have to fit when VSS is on — shrink the per-box width
+    const B = Math.max(14, Math.min(panelLen * (VSS ? 0.19 : 0.30), VSS ? 32 : 44));
     const G = Math.max(7, B * 0.4), PL = 4;
     const off = B / 2 + G / 2;
     let g = '';
-    // mounting plate hugging the wall edge under both boxes
-    const plate = G + 2 * B + 6;
+    // EFS: floor-level silencer box that wraps the fan OUTSIDE the booth —
+    // sticks out a full 10″ (EOUT) where the ducts only reach 5.5″. Drawn
+    // first so the duct boxes sit on top of it, like the proposal back views.
+    if (EFS) {
+      const L = Math.min(B * 1.9, panelLen * 0.55);
+      const fcx = omx + ax * off, fcy = omy + ay * off;     // fan box center
+      const rx = horiz ? fcx - L / 2 : (ox < 0 ? omx - EOUT : omx);
+      const ry = horiz ? (oy < 0 ? omy - EOUT : omy) : fcy - L / 2;
+      const bw = horiz ? L : EOUT, bh = horiz ? EOUT : L;
+      g += `<rect x="${rx}" y="${ry}" width="${bw}" height="${bh}" rx="3" fill="#2c2d33" stroke="#0d0e11" stroke-width="1.1"/>`;
+      g += `<rect x="${rx + 2.5}" y="${ry + 2.5}" width="${bw - 5}" height="${bh - 5}" rx="2" fill="none" stroke="#4a4d55" stroke-width="0.8"/>`;
+    }
+    // mounting plate hugging the wall edge under all the boxes
+    const plate = (VSS ? 4 * B + G + 14 : 2 * B + G) + 6;
     if (horiz) g += `<rect x="${omx - plate / 2}" y="${oy < 0 ? omy - PL : omy}" width="${plate}" height="${PL}" rx="1.5" fill="#3a3b42"/>`;
     else       g += `<rect x="${ox < 0 ? omx - PL : omx}" y="${omy - plate / 2}" width="${PL}" height="${plate}" rx="1.5" fill="#3a3b42"/>`;
-    for (const k of [-1, 1]) {
-      const ccx = omx + ax * k * off, ccy = omy + ay * k * off;
+    // standard pair at ±off; VSS adds a second silencer duct outboard of each,
+    // hose-connected to its neighbor (catalog: "two exhaust ducts" per system)
+    const seats = [{ k: -1, o: off, fan: false }, { k: 1, o: off, fan: true }];
+    if (VSS) seats.push({ k: -1, o: off + B + 5, vss: true }, { k: 1, o: off + B + 5, vss: true });
+    for (const s2 of seats) {
+      const ccx = omx + ax * s2.k * s2.o, ccy = omy + ay * s2.k * s2.o;
       const rx = horiz ? (ccx - B / 2) : (ox < 0 ? omx - VOUT : omx);
       const ry = horiz ? (oy < 0 ? omy - VOUT : omy) : (ccy - B / 2);
       const bw = horiz ? B : VOUT, bh = horiz ? VOUT : B;
       g += `<rect x="${rx}" y="${ry}" width="${bw}" height="${bh}" rx="2" fill="#34363d" stroke="#1b1c20" stroke-width="1"/>`;
-      if (k === 1) {   // fan box
+      if (s2.fan) {    // fan box
         const fr = Math.min(bw, bh);
         g += `<circle cx="${rx + bw / 2}" cy="${ry + bh / 2}" r="${fr * 0.32}" fill="#22242a" stroke="#54585f" stroke-width="0.9"/>`;
         g += `<circle cx="${rx + bw / 2}" cy="${ry + bh / 2}" r="${fr * 0.11}" fill="#62666f"/>`;
       } else {         // plain box (no hole) — same box, just an inset panel line
         g += `<rect x="${rx + bw * 0.2}" y="${ry + bh * 0.2}" width="${bw * 0.6}" height="${bh * 0.6}" rx="1" fill="none" stroke="#4a4d55" stroke-width="0.9"/>`;
       }
+      if (s2.vss) {    // hose from the VSS duct to its inboard neighbor
+        const d75 = VOUT * 0.55;
+        const hx1 = horiz ? ccx - s2.k * (B / 2 + 5) : omx + ox * d75;
+        const hy1 = horiz ? omy + oy * d75 : ccy - s2.k * (B / 2 + 5);
+        const hx2 = horiz ? ccx - s2.k * (B / 2) : hx1;
+        const hy2 = horiz ? hy1 : ccy - s2.k * (B / 2);
+        const bow = 4.5;
+        g += `<path d="M ${hx1} ${hy1} Q ${(hx1 + hx2) / 2 + (horiz ? 0 : ox * bow)} ${(hy1 + hy2) / 2 + (horiz ? oy * bow : 0)} ${hx2} ${hy2}" fill="none" stroke="#0d0e11" stroke-width="2.4" stroke-linecap="round"/>`;
+      }
     }
+    return g;
+  }
+
+  // ── roof-mounted vent set: duct pair ON the roof, just inside whatever
+  // wall holds the (now cable) vent panel — no wall protrusion. ──
+  function roofDuct(side, px, py, pw, ph) {
+    const horiz = (side === 'N' || side === 'S');
+    const inX = side === 'W' ? 1 : side === 'E' ? -1 : 0;   // inward normal
+    const inY = side === 'N' ? 1 : side === 'S' ? -1 : 0;
+    const bx = horiz ? px + pw / 2 : (inX > 0 ? px + pw : px);
+    const by = horiz ? (inY > 0 ? py + ph : py) : py + ph / 2;
+    const panelLen = horiz ? pw : ph;
+    const B2 = Math.max(16, Math.min(panelLen * 0.26, 36)), G2 = Math.max(6, B2 * 0.35);
+    const D2 = Math.min(10 * PX, 56);
+    let g = '';
+    for (const k of [-1, 1]) {
+      const ax2 = horiz ? 1 : 0, ay2 = horiz ? 0 : 1;
+      const ccx = bx + ax2 * k * (B2 / 2 + G2 / 2), ccy = by + ay2 * k * (B2 / 2 + G2 / 2);
+      const rx = horiz ? ccx - B2 / 2 : (inX > 0 ? bx + 3 : bx - D2 - 3);
+      const ry = horiz ? (inY > 0 ? by + 3 : by - D2 - 3) : ccy - B2 / 2;
+      const bw = horiz ? B2 : D2, bh = horiz ? D2 : B2;
+      // soft shadow so the boxes read as sitting ON the roof plane
+      g += `<rect x="${rx + 2}" y="${ry + 3}" width="${bw}" height="${bh}" rx="2.5" fill="#000" opacity="0.30"/>`;
+      g += `<rect x="${rx}" y="${ry}" width="${bw}" height="${bh}" rx="2.5" fill="url(#ldSeal)" stroke="#0d0e11" stroke-width="1"/>`;
+      if (k === 1) {
+        const fr = Math.min(bw, bh);
+        g += `<circle cx="${rx + bw / 2}" cy="${ry + bh / 2}" r="${fr * 0.30}" fill="#22242a" stroke="#54585f" stroke-width="0.9"/>`;
+        g += `<circle cx="${rx + bw / 2}" cy="${ry + bh / 2}" r="${fr * 0.10}" fill="#62666f"/>`;
+      } else {
+        g += `<rect x="${rx + bw * 0.22}" y="${ry + bh * 0.22}" width="${bw * 0.56}" height="${bh * 0.56}" rx="1" fill="none" stroke="#4a4d55" stroke-width="0.9"/>`;
+      }
+    }
+    // small caption so the on-roof boxes aren't mistaken for furniture
+    const lx2 = horiz ? bx : (inX > 0 ? bx + D2 / 2 + 3 : bx - D2 / 2 - 3);
+    const ly2 = horiz ? (inY > 0 ? by + D2 + 14 : by - D2 - 8) : by + B2 + G2 / 2 + 12;
+    g += `<text x="${lx2}" y="${ly2}" text-anchor="middle" font-size="8" font-weight="700" letter-spacing="0.08em" fill="#cfd3da" opacity="0.85" style="pointer-events:none">ROOF VENT</text>`;
     return g;
   }
 
@@ -363,6 +464,7 @@ function renderLayoutSvg(layout, assign) {
 
   // ── draw one wall side's panels ─────────────────────────────────
   const vents = [];   // {side,px,py,pw,ph} — drawn after walls
+  const roofs = [];   // roof-vent host panels (the former vent wall) under ROOF
   let door = null;    // {side,px,py,pw,ph,swing}
 
   function drawWall(side) {
@@ -399,10 +501,27 @@ function renderLayoutSvg(layout, assign) {
       g += `<rect class="ld-hit" x="${hx}" y="${hy}" width="${hw}" height="${hh}" fill="#000" fill-opacity="0" style="pointer-events:all"/>`;
       // Wall panels are the SAME carpet as the seam seals (one material on
       // the real product — the spec-sheet top-downs draw them identically).
-      g += `<rect class="ld-wall" x="${px}" y="${py}" width="${pw}" height="${ph}" fill="url(#ldSeal)" stroke="#15161a" stroke-width="0.8"/>`;
-      // interior bevel highlight (brighter than the old slate — panel edges
-      // need it to read on the near-black carpet)
-      g += `<rect x="${px + 0.6}" y="${py + 0.6}" width="${pw - 1.2}" height="${ph - 1.2}" fill="none" stroke="#5e616c" stroke-opacity="0.6" stroke-width="0.6"/>`;
+      if (DBL) {
+        // Enhanced = a complete SECOND wall set nested inside the standard
+        // one (E spec top-downs: outer wall · air gap · inner wall). Split
+        // the composite band — outer 42% · gap · inner 40% — with the gap
+        // near-black so the two shells read separately.
+        const tOut = t * 0.42, tIn = t * 0.40;
+        let ox2, oy2, ow2, oh2, ix2, iy2, iw2, ih2;
+        if (side === 'N')      { ox2 = px; oy2 = py;             ow2 = pw; oh2 = tOut; ix2 = px; iy2 = py + ph - tIn;  iw2 = pw;  ih2 = tIn; }
+        else if (side === 'S') { ox2 = px; oy2 = py + ph - tOut; ow2 = pw; oh2 = tOut; ix2 = px; iy2 = py;            iw2 = pw;  ih2 = tIn; }
+        else if (side === 'W') { ox2 = px; oy2 = py;             ow2 = tOut; oh2 = ph; ix2 = px + pw - tIn; iy2 = py; iw2 = tIn; ih2 = ph; }
+        else                   { ox2 = px + pw - tOut; oy2 = py; ow2 = tOut; oh2 = ph; ix2 = px; iy2 = py;            iw2 = tIn; ih2 = ph; }
+        g += `<rect x="${px}" y="${py}" width="${pw}" height="${ph}" fill="#101114"/>`;   // air gap between the shells
+        g += `<rect class="ld-wall" x="${ox2}" y="${oy2}" width="${ow2}" height="${oh2}" fill="url(#ldSeal)" stroke="#15161a" stroke-width="0.8"/>`;
+        g += `<rect class="ld-wall" x="${ix2}" y="${iy2}" width="${iw2}" height="${ih2}" fill="url(#ldSeal)" stroke="#15161a" stroke-width="0.8"/>`;
+        g += `<rect x="${ix2 + 0.6}" y="${iy2 + 0.6}" width="${iw2 - 1.2}" height="${ih2 - 1.2}" fill="none" stroke="#5e616c" stroke-opacity="0.6" stroke-width="0.6"/>`;
+      } else {
+        g += `<rect class="ld-wall" x="${px}" y="${py}" width="${pw}" height="${ph}" fill="url(#ldSeal)" stroke="#15161a" stroke-width="0.8"/>`;
+        // interior bevel highlight (brighter than the old slate — panel edges
+        // need it to read on the near-black carpet)
+        g += `<rect x="${px + 0.6}" y="${py + 0.6}" width="${pw - 1.2}" height="${ph - 1.2}" fill="none" stroke="#5e616c" stroke-opacity="0.6" stroke-width="0.6"/>`;
+      }
       // kind accent line on the interior edge
       if (meta.accent) {
         if (side === 'N') g += `<rect x="${px + 1}" y="${py + ph - 2}" width="${pw - 2}" height="1.6" fill="${meta.accent}" opacity="0.8"/>`;
@@ -410,14 +529,27 @@ function renderLayoutSvg(layout, assign) {
         else if (side === 'W') g += `<rect x="${px + pw - 2}" y="${py + 1}" width="1.6" height="${ph - 2}" fill="${meta.accent}" opacity="0.8"/>`;
         else g += `<rect x="${px + 0.4}" y="${py + 1}" width="1.6" height="${ph - 2}" fill="${meta.accent}" opacity="0.8"/>`;
       }
-      // window glass inset
+      // window: a bright glass band through the FULL wall thickness (both
+      // shells on Enhanced — the real window pierces both), framed + glinted,
+      // so it visibly reads as "you can see into the booth"
       if (kind === 'WDO') {
-        if (horiz) g += `<rect x="${px + pw * 0.2}" y="${py + ph * 0.28}" width="${pw * 0.6}" height="${ph * 0.44}" fill="#9ec4e6" opacity="0.8" rx="1"/>`;
-        else       g += `<rect x="${px + pw * 0.28}" y="${py + ph * 0.2}" width="${pw * 0.44}" height="${ph * 0.6}" fill="#9ec4e6" opacity="0.8" rx="1"/>`;
+        const GLF = 0.62;
+        if (horiz) {
+          const gx = px + pw * (1 - GLF) / 2, gw = pw * GLF;
+          g += `<rect x="${gx}" y="${py + 0.8}" width="${gw}" height="${ph - 1.6}" fill="#cfe7fa" opacity="0.96" rx="1"/>`;
+          g += `<line x1="${gx + 2.5}" y1="${py + ph - 2}" x2="${gx + gw - 2.5}" y2="${py + 2}" stroke="#fff" stroke-opacity="0.75" stroke-width="1.4"/>`;
+          g += `<rect x="${gx}" y="${py + 0.8}" width="${gw}" height="${ph - 1.6}" fill="none" stroke="#1b1c20" stroke-width="1" rx="1"/>`;
+        } else {
+          const gy2 = py + ph * (1 - GLF) / 2, gh = ph * GLF;
+          g += `<rect x="${px + 0.8}" y="${gy2}" width="${pw - 1.6}" height="${gh}" fill="#cfe7fa" opacity="0.96" rx="1"/>`;
+          g += `<line x1="${px + 2}" y1="${gy2 + gh - 2.5}" x2="${px + pw - 2}" y2="${gy2 + 2.5}" stroke="#fff" stroke-opacity="0.75" stroke-width="1.4"/>`;
+          g += `<rect x="${px + 0.8}" y="${gy2}" width="${pw - 1.6}" height="${gh}" fill="none" stroke="#1b1c20" stroke-width="1" rx="1"/>`;
+        }
       }
       g += `</g>`;
       // collect vent / door for later overlay — on WHATEVER wall they sit
-      if (kind === 'VNT' && layout.hasVent !== false) vents.push({ side, px, py, pw, ph });
+      if (kind === 'VNT' && layout.hasVent !== false && !ROOF) vents.push({ side, px, py, pw, ph });
+      if (ROOF && (kind === 'CBL' || kind === 'VNT')) roofs.push({ side, px, py, pw, ph });
       if (kind === 'DRFRM') door = { side, px, py, pw, ph, swing: (panelInteriorWidth(line.pack) >= 49 ? 32 : (layout.door && layout.door.swing)) || 30, pack: line.pack };
       // panel label (width + type + code) just inside the wall on the floor
       g += panelLabel(side, px, py, pw, ph, kind, line, slot);
@@ -464,8 +596,9 @@ function renderLayoutSvg(layout, assign) {
   // seam seals: comb on each interior face + corner pieces + T pieces at joints
   s += seamPieces();
 
-  // vent ducts + door overlays (follow whatever wall currently holds them)
+  // vent ducts + roof-vent boxes + door overlays (follow their panels)
   vents.forEach(v => s += ventDuct(v.side, v.px, v.py, v.pw, v.ph));
+  roofs.forEach(v => s += roofDuct(v.side, v.px, v.py, v.pw, v.ph));
   if (door) s += doorSwing(door.side, door.px, door.py, door.pw, door.ph, door.swing, door.pack);
 
   // ── dimension lines (exterior) ──────────────────────────────────
@@ -494,21 +627,22 @@ function renderLayoutSvg(layout, assign) {
   const vtick = (x, y, vert) =>
     vert ? `<line x1="${x - 4}" y1="${y}" x2="${x + 4}" y2="${y}" stroke="${VDIM}" stroke-width="1"/>`
          : `<line x1="${x}" y1="${y - 4}" x2="${x}" y2="${y + 4}" stroke="${VDIM}" stroke-width="1"/>`;
+  const VLBL = EFS ? 'w/ EFS' : 'w/ vent';   // EFS reaches 10″ — dim it like the proposals do
   if (sideHasVent.N || sideHasVent.S) {
-    const yA = y0 - (sideHasVent.N ? VOUT : 0), yB = y0 + H + (sideHasVent.S ? VOUT : 0);
-    const tot = ext.h + (sideHasVent.N ? VPROT : 0) + (sideHasVent.S ? VPROT : 0);
+    const yA = y0 - (sideHasVent.N ? EOUT : 0), yB = y0 + H + (sideHasVent.S ? EOUT : 0);
+    const tot = ext.h + (sideHasVent.N ? EPROT : 0) + (sideHasVent.S ? EPROT : 0);
     const vx = dimX - 22, vmy = (yA + yB) / 2;
     s += `<line x1="${vx}" y1="${yA}" x2="${vx}" y2="${yB}" stroke="${VDIM}" stroke-width="1"/>` + vtick(vx, yA, true) + vtick(vx, yB, true);
     s += `<rect x="${vx - 8}" y="${vmy - 40}" width="16" height="80" fill="url(#ldBg)"/>`;
-    s += `<text x="${vx}" y="${vmy + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VDIM}" transform="rotate(-90 ${vx} ${vmy})">${fmtIn(tot)} w/ vent</text>`;
+    s += `<text x="${vx}" y="${vmy + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VDIM}" transform="rotate(-90 ${vx} ${vmy})">${fmtIn(tot)} ${VLBL}</text>`;
   }
   if (sideHasVent.E || sideHasVent.W) {
-    const xA = x0 - (sideHasVent.W ? VOUT : 0), xB = x0 + W + (sideHasVent.E ? VOUT : 0);
-    const tot = ext.w + (sideHasVent.W ? VPROT : 0) + (sideHasVent.E ? VPROT : 0);
+    const xA = x0 - (sideHasVent.W ? EOUT : 0), xB = x0 + W + (sideHasVent.E ? EOUT : 0);
+    const tot = ext.w + (sideHasVent.W ? EPROT : 0) + (sideHasVent.E ? EPROT : 0);
     const vy = dimY + 34, vmx = (xA + xB) / 2;
     s += `<line x1="${xA}" y1="${vy}" x2="${xB}" y2="${vy}" stroke="${VDIM}" stroke-width="1"/>` + vtick(xA, vy, false) + vtick(xB, vy, false);
     s += `<rect x="${vmx - 40}" y="${vy - 8}" width="80" height="15" rx="3" fill="url(#ldBg)"/>`;
-    s += `<text x="${vmx}" y="${vy + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VDIM}">${fmtIn(tot)} w/ vent</text>`;
+    s += `<text x="${vmx}" y="${vy + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VDIM}">${fmtIn(tot)} ${VLBL}</text>`;
   }
 
   // ── interior callout (centered pill, inches + proposal-style ft-in) ─
@@ -551,17 +685,23 @@ function renderElevationSvg(layout, assign, facing) {
   // off the left/right edge. Adjacency respects the viewer's left/right
   // (standing outside the facing wall).
   const ADJ = { S: { left: 'W', right: 'E' }, N: { left: 'E', right: 'W' }, E: { left: 'S', right: 'N' }, W: { left: 'N', right: 'S' } };
+  // ventilation upgrades (mirror the top-down): VSS extra ducts, EFS 10″
+  // floor silencer, ROOF = ducts on the roof / no wall protrusion
+  const VSS = !!layout.vss, EFS = !!layout.efs, ROOF = !!layout.roofVent;
   const hasVentOn = sd => {
-    if (layout.hasVent === false) return false;
+    if (layout.hasVent === false || ROOF) return false;
     const w2 = layout.walls[sd]; if (!w2) return false;
     return w2.slots.some(sl => { const ln = assign[sl.id]; return ln && classifyWall(ln.pack) === 'VNT'; });
   };
   const leftVent = hasVentOn(ADJ[facing].left), rightVent = hasVentOn(ADJ[facing].right);
   const VOUT2 = 5.5 * PX2;
+  const EPROT2 = EFS ? 10 : 5.5;                 // EFS reaches 10″ past the edge
+  const EOUT2 = EPROT2 * PX2;
+  const roofPad = ROOF ? 9 * PX2 : 0;            // headroom for the on-roof ducts
   const M = 46;
-  const totalW = Wp + M * 2 + (leftVent ? VOUT2 : 0) + (rightVent ? VOUT2 : 0);
-  const totalH = Hp + liftPx + 34 + 30 + ((leftVent || rightVent) ? 16 : 0);
-  const x0 = M + (leftVent ? VOUT2 : 0), y0 = 24;
+  const totalW = Wp + M * 2 + (leftVent ? EOUT2 : 0) + (rightVent ? EOUT2 : 0);
+  const totalH = Hp + liftPx + 34 + 30 + ((leftVent || rightVent) ? 16 : 0) + roofPad;
+  const x0 = M + (leftVent ? EOUT2 : 0), y0 = 24 + roofPad;
   const fb = y0 + Hp;                          // booth floor (bottom of the walls)
   const gy = fb + liftPx;                      // ground line (= booth floor unless casters)
   const iy = v => fb - v * PX2;                // inches above the BOOTH FLOOR → px
@@ -629,15 +769,29 @@ function renderElevationSvg(layout, assign, facing) {
       g += `<rect x="${cx2 - ww / 2 - 2.5}" y="${iy(72) - 2.5}" width="${ww + 5}" height="${wh + 5}" rx="2" fill="#1b1c20"/>`;
       g += `<rect x="${cx2 - ww / 2}" y="${iy(72)}" width="${ww}" height="${wh}" fill="#aecde8"/>`;
       g += `<line x1="${cx2 - ww / 2 + 3}" y1="${iy(72) + wh * 0.8}" x2="${cx2 + ww / 2 - 3}" y2="${iy(72) + wh * 0.2}" stroke="#fff" stroke-opacity="0.55" stroke-width="2"/>`;
-    } else if (kind === 'VNT' && layout.hasVent !== false) {
+    } else if (kind === 'VNT' && layout.hasVent !== false && !ROOF) {
       // intake duct low, exhaust duct high, remote fan unit at the floor
       // (a notch lighter than the carpet so they read on the dark walls)
       const dw = 8 * PX2, dh = 30 * PX2;
-      g += `<rect x="${sx + w * 0.26 - dw / 2}" y="${iy(34)}" width="${dw}" height="${dh}" rx="1.5" fill="#3e414a" stroke="#0d0e11" stroke-width="0.9"/>`;
-      g += `<rect x="${sx + w * 0.72 - dw / 2}" y="${iy(76)}" width="${dw}" height="${dh}" rx="1.5" fill="#3e414a" stroke="#0d0e11" stroke-width="0.9"/>`;
-      g += `<rect x="${sx + w * 0.72 - 3.5 * PX2}" y="${iy(10)}" width="${7 * PX2}" height="${10 * PX2 - 2}" rx="2" fill="#383b43" stroke="#0d0e11" stroke-width="0.9"/>`;
-      g += `<circle cx="${sx + w * 0.72}" cy="${iy(5.2)}" r="${2.4 * PX2}" fill="#22242a" stroke="#54585f" stroke-width="0.8"/>`;
-      g += `<circle cx="${sx + w * 0.72}" cy="${iy(5.2)}" r="${0.8 * PX2}" fill="#62666f"/>`;
+      const ductAt = (fx, hIn2) => `<rect x="${fx - dw / 2}" y="${iy(hIn2)}" width="${dw}" height="${dh}" rx="1.5" fill="#3e414a" stroke="#0d0e11" stroke-width="0.9"/>`;
+      g += ductAt(sx + w * 0.26, 34);
+      g += ductAt(sx + w * 0.72, 76);
+      if (VSS) {
+        // VSS = a second silencer duct beside each, hose-connected (catalog)
+        const ix2 = sx + w * 0.26 + dw + 3, ex2 = sx + w * 0.72 - dw - 3;
+        g += ductAt(ix2, 34) + ductAt(ex2, 76);
+        g += `<path d="M ${sx + w * 0.26 + dw / 2} ${iy(34) + 3} Q ${(sx + w * 0.26 + ix2) / 2 + dw / 2} ${iy(34) - 4} ${ix2 - dw / 2 + 1} ${iy(34) + 3}" fill="none" stroke="#0d0e11" stroke-width="2" stroke-linecap="round"/>`;
+        g += `<path d="M ${sx + w * 0.72 - dw / 2} ${iy(76) + dh - 3} Q ${(sx + w * 0.72 + ex2) / 2 - dw / 2} ${iy(76) + dh + 4} ${ex2 + dw / 2 - 1} ${iy(76) + dh - 3}" fill="none" stroke="#0d0e11" stroke-width="2" stroke-linecap="round"/>`;
+      }
+      if (EFS) {
+        // EFS wraps the fan in a floor-level silencer box (10″ tall footprint)
+        g += `<rect x="${sx + w * 0.72 - 8 * PX2}" y="${iy(13)}" width="${16 * PX2}" height="${13 * PX2 - 1}" rx="2.5" fill="#2c2d33" stroke="#0d0e11" stroke-width="1"/>`;
+        g += `<rect x="${sx + w * 0.72 - 8 * PX2 + 2.5}" y="${iy(13) + 2.5}" width="${16 * PX2 - 5}" height="${13 * PX2 - 6}" rx="2" fill="none" stroke="#4a4d55" stroke-width="0.8"/>`;
+      } else {
+        g += `<rect x="${sx + w * 0.72 - 3.5 * PX2}" y="${iy(10)}" width="${7 * PX2}" height="${10 * PX2 - 2}" rx="2" fill="#383b43" stroke="#0d0e11" stroke-width="0.9"/>`;
+        g += `<circle cx="${sx + w * 0.72}" cy="${iy(5.2)}" r="${2.4 * PX2}" fill="#22242a" stroke="#54585f" stroke-width="0.8"/>`;
+        g += `<circle cx="${sx + w * 0.72}" cy="${iy(5.2)}" r="${0.8 * PX2}" fill="#62666f"/>`;
+      }
     } else if (kind === 'CBL' && line) {
       for (const chh of [14, 64]) {
         g += `<circle cx="${cx2}" cy="${iy(chh)}" r="${2.6 * PX2}" fill="#26282d" stroke="#0d0e11" stroke-width="0.8"/>`;
@@ -660,6 +814,22 @@ function renderElevationSvg(layout, assign, facing) {
   }
   // roof cap
   s += `<rect x="${x0 - 2.5}" y="${y0 - 3.5}" width="${Wp + 5}" height="4.5" rx="1.8" fill="url(#ldSeal)" stroke="#15161a" stroke-width="0.8"/>`;
+  // roof-mounted vent set: the duct boxes ride ON the roof — visible from
+  // every side, so they always draw when the booth is roof-vented
+  if (ROOF) {
+    const bw2 = Math.min(16 * PX2, Wp * 0.22), bh2 = 8 * PX2, gp2 = Math.max(5 * PX2, 8);
+    for (const k of [-1, 1]) {
+      const bx2 = x0 + Wp * 0.62 + k * (bw2 / 2 + gp2 / 2) - bw2 / 2;
+      const by2 = y0 - 3.5 - bh2;
+      s += `<rect x="${bx2}" y="${by2}" width="${bw2}" height="${bh2}" rx="2" fill="url(#ldSeal)" stroke="#0d0e11" stroke-width="0.9"/>`;
+      if (k === 1) {
+        s += `<circle cx="${bx2 + bw2 / 2}" cy="${by2 + bh2 / 2}" r="${Math.min(bw2, bh2) * 0.30}" fill="#22242a" stroke="#54585f" stroke-width="0.8"/>`;
+        s += `<circle cx="${bx2 + bw2 / 2}" cy="${by2 + bh2 / 2}" r="${Math.min(bw2, bh2) * 0.10}" fill="#62666f"/>`;
+      } else {
+        s += `<rect x="${bx2 + bw2 * 0.22}" y="${by2 + bh2 * 0.22}" width="${bw2 * 0.56}" height="${bh2 * 0.56}" rx="1" fill="none" stroke="#4a4d55" stroke-width="0.8"/>`;
+      }
+    }
+  }
   // caster plate + wheels (booth raised ~5″ off the ground)
   if (lift > 0) {
     s += `<rect x="${x0 - 1}" y="${fb}" width="${Wp + 2}" height="${liftPx * 0.38}" rx="1.5" fill="#26282d" stroke="#15161a" stroke-width="0.8"/>`;
@@ -676,7 +846,14 @@ function renderElevationSvg(layout, assign, facing) {
     let g = '';
     for (const band of [[34, 30], [76, 30]])
       g += `<rect x="${bx}" y="${iy(band[0])}" width="${VOUT2}" height="${band[1] * PX2}" rx="1.5" fill="#2e3037" stroke="#1b1c20" stroke-width="0.9"/>`;
-    g += `<rect x="${bx}" y="${iy(10)}" width="${VOUT2}" height="${10 * PX2 - 2}" rx="2" fill="#26282d" stroke="#1b1c20" stroke-width="0.9"/>`;
+    if (EFS) {
+      // EFS silencer box at the floor — protrudes a full 10″ past the edge
+      const ebx = atLeft ? x0 - EOUT2 : x0 + Wp;
+      g += `<rect x="${ebx}" y="${iy(13)}" width="${EOUT2}" height="${13 * PX2 - 1}" rx="2.5" fill="#2c2d33" stroke="#0d0e11" stroke-width="1"/>`;
+      g += `<rect x="${ebx + 2}" y="${iy(13) + 2}" width="${EOUT2 - 4}" height="${13 * PX2 - 5}" rx="2" fill="none" stroke="#4a4d55" stroke-width="0.8"/>`;
+    } else {
+      g += `<rect x="${bx}" y="${iy(10)}" width="${VOUT2}" height="${10 * PX2 - 2}" rx="2" fill="#26282d" stroke="#1b1c20" stroke-width="0.9"/>`;
+    }
     return g;
   }
   if (leftVent) s += ventSideProfile(true);
@@ -700,24 +877,24 @@ function renderElevationSvg(layout, assign, facing) {
     + `<line x1="${x0 + Wp}" y1="${dy2 - 4}" x2="${x0 + Wp}" y2="${dy2 + 4}" stroke="#9097a0" stroke-width="1"/>`;
   s += `<rect x="${x0 + Wp / 2 - 26}" y="${dy2 - 8}" width="52" height="15" rx="3" fill="url(#ldBg)"/>`;
   s += `<text x="${x0 + Wp / 2}" y="${dy2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="#4a4f57">${ftIn(lenIn)}</text>`;
-  const dx2 = x0 - (leftVent ? VOUT2 : 0) - 20;
+  const dx2 = x0 - (leftVent ? EOUT2 : 0) - 20;
   s += `<line x1="${dx2}" y1="${y0}" x2="${dx2}" y2="${fb}" stroke="#9097a0" stroke-width="1"/>`
     + `<line x1="${dx2 - 4}" y1="${y0}" x2="${dx2 + 4}" y2="${y0}" stroke="#9097a0" stroke-width="1"/>`
     + `<line x1="${dx2 - 4}" y1="${fb}" x2="${dx2 + 4}" y2="${fb}" stroke="#9097a0" stroke-width="1"/>`;
   s += `<rect x="${dx2 - 8}" y="${y0 + Hp / 2 - 26}" width="16" height="52" fill="url(#ldBg)"/>`;
   s += `<text x="${dx2}" y="${y0 + Hp / 2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="#4a4f57" transform="rotate(-90 ${dx2} ${y0 + Hp / 2})">${ftIn(hIn)}</text>`;
 
-  // overall width including adjacent-wall vent protrusion(s)
+  // overall width including adjacent-wall vent/EFS protrusion(s)
   if (leftVent || rightVent) {
     const VD = '#c9762e';
-    const xA = x0 - (leftVent ? VOUT2 : 0), xB = x0 + Wp + (rightVent ? VOUT2 : 0);
-    const tot = ftIn(lenIn + (leftVent ? 5.5 : 0) + (rightVent ? 5.5 : 0));
+    const xA = x0 - (leftVent ? EOUT2 : 0), xB = x0 + Wp + (rightVent ? EOUT2 : 0);
+    const tot = ftIn(lenIn + (leftVent ? EPROT2 : 0) + (rightVent ? EPROT2 : 0));
     const vy2 = dy2 + 16, vmx = (xA + xB) / 2;
     s += `<line x1="${xA}" y1="${vy2}" x2="${xB}" y2="${vy2}" stroke="${VD}" stroke-width="1"/>`
       + `<line x1="${xA}" y1="${vy2 - 4}" x2="${xA}" y2="${vy2 + 4}" stroke="${VD}" stroke-width="1"/>`
       + `<line x1="${xB}" y1="${vy2 - 4}" x2="${xB}" y2="${vy2 + 4}" stroke="${VD}" stroke-width="1"/>`;
     s += `<rect x="${vmx - 38}" y="${vy2 - 8}" width="76" height="15" rx="3" fill="url(#ldBg)"/>`;
-    s += `<text x="${vmx}" y="${vy2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VD}">${tot} w/ vent</text>`;
+    s += `<text x="${vmx}" y="${vy2 + 3}" text-anchor="middle" font-size="10" font-weight="700" fill="${VD}">${tot} ${EFS ? 'w/ EFS' : 'w/ vent'}</text>`;
   }
 
   s += `</svg>`;

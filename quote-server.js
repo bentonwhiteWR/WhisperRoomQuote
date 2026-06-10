@@ -10978,8 +10978,9 @@ ${q.accepted ? `
         f: ['Gray', 'Orange', 'Blue', 'Purple', 'Burgundy'].includes(d.f) ? d.f : 'Gray',
         w: [30, 36, 42, 48].includes(+d.w) ? +d.w : 0,
         wd: d.wd ? 1 : 0, hx: d.hx ? 1 : 0, cs: d.cs ? 1 : 0,
-        // summary-only add-ons (VSS / studio light / jack panel / bass traps / desk)
-        vs: d.vs ? 1 : 0, sl: d.sl ? 1 : 0, jp: d.jp ? 1 : 0, bt: d.bt ? 1 : 0, dk: d.dk ? 1 : 0,
+        // ventilation upgrades (drawn) + summary-only add-ons
+        vs: d.vs ? 1 : 0, ef: d.ef ? 1 : 0, rv: d.rv ? 1 : 0,
+        sl: d.sl ? 1 : 0, jp: d.jp ? 1 : 0, bt: d.bt ? 1 : 0, dk: d.dk ? 1 : 0,
         fc: ['N', 'S', 'E', 'W'].includes(d.fc) ? d.fc : 'S',
         a: {},
       };

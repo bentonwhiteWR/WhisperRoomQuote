@@ -520,7 +520,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <!-- Section 8: Budget Reallocation -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">⑤ Budget Reallocation<span class="tip-i" title="Data: Google Ads spend + HubSpot closed-won revenue (True ROAS) + Impression Share. Sorts campaigns into Increase / Test Pull-Back / Maintain / Reduce / Pause / Investigate. Branded high-ROAS campaigns get Test Pull-Back, not Increase (organic captures that demand free).">ⓘ</span></div>
+        <div class="section-title">⑤ Budget Reallocation<span class="tip-i" title="Data: Google Ads spend + HubSpot closed-won revenue (True ROAS) + Impression Share + the live SERP (SEO Intel). Sorts campaigns into Increase / Test Pull-Back / Maintain / Reduce / Pause / Investigate. Branded high-ROAS campaigns get Test Pull-Back, not Increase (organic captures that demand free) — UNLESS the live SERP shows a competitor advertising above you, a buried rank, or an uncited AI Overview on the campaign's own keywords, in which case it moves to Maintain with a defend reason. Pause/Reduce calls note when clean top-3 organic coverage makes cutting low-risk.">ⓘ</span></div>
         <span class="section-meta" id="growthBudgetMeta">—</span>
       </div>
       <div style="font-size:11px;color:var(--muted);margin:-2px 0 12px;line-height:1.6">
@@ -1025,8 +1025,20 @@ async function runSyncSerp(force) {
 async function loadSeoTab() {
   const body = document.getElementById('seoBody');
   try {
-    const d = await fetch('/api/marketing/serp-snapshots', { credentials: 'include' }).then(r => r.json());
-    renderSeo(d || {});
+    // v1.89.1 — also pull spend-side data so the Paid-Defense panel knows what
+    // we actually bid (search terms = real triggered spend, keywords = the
+    // campaign join, campaigns + attribution = True ROAS). Each fetch degrades
+    // to empty → the panel falls back to its SERP-only v1.84.25 behavior.
+    const q  = `?days=${currentDaysBack}`;
+    const qm = `?days=${currentDaysBack}&model=${currentModel}`;
+    const [d, st, kw, camp, attr] = await Promise.all([
+      fetch('/api/marketing/serp-snapshots', { credentials: 'include' }).then(r => r.json()),
+      fetch('/api/marketing/search-terms' + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+      fetch('/api/marketing/keywords' + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+      fetch('/api/marketing/campaigns' + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+      fetch('/api/marketing/campaign-attribution' + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+    ]);
+    renderSeo(d || {}, { stRows: (st && st.rows) || [], kwRows: (kw && kw.rows) || [], campRows: (camp && camp.rows) || [], attrRows: (attr && attr.rows) || [] });
   } catch(e) {
     body.innerHTML = `<div class="empty">Couldn't load SERP data: ${escHtml(e.message || 'error')}</div>`;
   }
@@ -1034,9 +1046,10 @@ async function loadSeoTab() {
 
 function _serpDomainShort(dom) { return (dom || '').replace(/^www\./, ''); }
 
-function renderSeo(d) {
+function renderSeo(d, paid) {
   const body = document.getElementById('seoBody');
   const sub  = document.getElementById('seoSubtitle');
+  paid = paid || {};
 
   // Not configured → setup guidance instead of an empty table.
   if (!d.configured) {
@@ -1187,53 +1200,89 @@ function renderSeo(d) {
     </tbody></table>
   </div>`;
 
-  // ── Paid Defense: Defend vs Pull-Back ────────────────────────────────
-  // Turns the SERP signals into a paid-strategy call. A domain counts as a
-  // "competitor" unless it's a marketplace / social / forum / reference / edu
-  // /gov site (those aren't booth sellers we compete with for the sale).
-  const NON_COMPETITOR = ['amazon','ebay','walmart','etsy','reddit','youtube','instagram','facebook','pinterest','twitter','x.com','tiktok','wikipedia','quora','medium','linkedin','yelp','google','github','kickstarter','indiegogo','vimeo','soundcloud','spotify','homedepot','lowes','target','aliexpress','alibaba'];
-  const isCompetitor = dom => {
-    const d = (dom || '').toLowerCase();
-    if (!d || d.includes('whisperroom')) return false;
-    if (/\.(edu|gov)(\/|$)/.test(d) || d.includes('lib.')) return false;
-    return !NON_COMPETITOR.some(n => d.includes(n));
+  // ── Paid Defense: Defend vs Pull-Back (ROAS-aware since v1.89.1) ─────
+  // SERP classification now lives in the shared gscSerpPaidCall (also feeds the
+  // Growth Engine budget board). New here: join actual spend per term (search
+  // terms = real triggered spend, keywords as fallback) + the owning campaign's
+  // True ROAS, so a "pull back" is a money call, not a SERP guess.
+  const camps = {};
+  (paid.campRows || []).forEach(r => {
+    if (!r.campaign_id) return;
+    const c = camps[r.campaign_id] || (camps[r.campaign_id] = { name: r.campaign_name, cost: 0 });
+    c.name = r.campaign_name || c.name; c.cost += +r.cost_usd || 0;
+  });
+  const attrByName = {};
+  (paid.attrRows || []).forEach(a => { attrByName[String(a.campaign_name || '').toLowerCase().trim()] = a; });
+  Object.values(camps).forEach(c => {
+    const at = attrByName[String(c.name || '').toLowerCase().trim()];
+    c.revenue = at ? +at.revenue_won || 0 : 0;
+    c.roas = c.cost > 0 ? c.revenue / c.cost : null;
+  });
+  const addSpend = (map, key, cost, conv, campId) => {
+    if (!key) return;
+    const s = map[key] || (map[key] = { cost: 0, conversions: 0, campCost: {} });
+    s.cost += cost; s.conversions += conv;
+    if (campId) s.campCost[campId] = (s.campCost[campId] || 0) + cost;
   };
-  const serpRec = r => {
-    if (r.our_rank == null) return null;  // not ranking = an SEO problem, not a paid-defense call
-    if (/\b(how to|diy|build|tips|guide|ideas|what is|review)\b/i.test(r.keyword) || /soundproof(ing)? a room/i.test(r.keyword)) return null; // informational
-    const compAds = (r.paid_results || []).filter(a => isCompetitor(a.domain));
-    const gap = r.our_rank_abs != null ? r.our_rank_abs - r.our_rank : 0;
-    const buried   = r.our_rank <= 5 && gap >= 3;
-    const aiThreat = r.ai_overview && !r.ai_overview_cited;
-    const strong   = r.our_rank <= 3;
-    if (compAds.length || buried || aiThreat) {
-      const why = [];
-      if (compAds.length) why.push(`${compAds.slice(0,2).map(a => _serpDomainShort(a.domain)).join(', ')} ${compAds.length > 1 ? 'are' : 'is'} advertising above you`);
-      if (buried)   why.push(`rank #${r.our_rank} organically but buried at abs #${r.our_rank_abs} (${gap} above)`);
-      if (aiThreat) why.push('AI Overview present and you are not cited');
-      return { kind: 'defend', r, why: why.join('; '), priority: compAds.length ? 3 : buried ? 2 : 1 };
-    }
-    if (strong && gap < 3) {
-      return { kind: 'pullback', r, why: `you rank #${r.our_rank} organically with a clean SERP (nothing stacked above) — paid clicks here are likely redundant`, priority: 0 };
-    }
-    return null;
+  const spendByTerm = {}, spendByKw = {};
+  (paid.stRows || []).forEach(r => addSpend(spendByTerm, gscSerpKwKey(r.search_term), +r.cost_usd || 0, +r.conversions || 0, r.campaign_id));
+  (paid.kwRows || []).forEach(r => addSpend(spendByKw, gscSerpKwKey(r.keyword_text), +r.cost_usd || 0, +r.conversions || 0, r.campaign_id));
+  const bidInfoFor = keyword => {
+    const k = gscSerpKwKey(keyword);
+    const s = spendByTerm[k] || spendByKw[k];      // prefer real triggered-term spend
+    if (!s || s.cost <= 0) return null;
+    const topId = Object.keys(s.campCost).sort((a, b) => s.campCost[b] - s.campCost[a])[0];
+    return { cost: s.cost, conversions: s.conversions, camp: (topId && camps[topId]) || null };
   };
-  const recs = rows.map(serpRec).filter(Boolean);
-  const defends   = recs.filter(x => x.kind === 'defend').sort((a, b) => b.priority - a.priority || a.r.our_rank - b.r.our_rank);
-  const pullbacks = recs.filter(x => x.kind === 'pullback').sort((a, b) => a.r.our_rank - b.r.our_rank);
+  const haveSpendData = (paid.stRows || []).length > 0 || (paid.kwRows || []).length > 0;
+  const recs = rows.map(r => { const call = gscSerpPaidCall(r); return call && Object.assign({ r, bid: bidInfoFor(r.keyword) }, call); }).filter(Boolean);
+  const defends = recs.filter(x => x.kind === 'defend').sort((a, b) => b.priority - a.priority || a.r.our_rank - b.r.our_rank);
+  // Pull-backs only make sense where money is actually going out. With spend
+  // data loaded, clean-SERP terms we don't bid drop to a footnote count; with
+  // no spend data (fetch failed / Ads not synced) keep the v1.84.25 behavior.
+  const pullAll   = recs.filter(x => x.kind === 'pullback');
+  const pullbacks = (haveSpendData ? pullAll.filter(x => x.bid) : pullAll).sort((a, b) => (b.bid ? b.bid.cost : 0) - (a.bid ? a.bid.cost : 0) || a.r.our_rank - b.r.our_rank);
+  const pullNoSpend = haveSpendData ? pullAll.length - pullbacks.length : 0;
   const recBadge = k => k === 'defend'
     ? '<span class="mine-tag" style="background:rgba(248,113,113,.16);color:#f87171">▲ Defend</span>'
     : '<span class="mine-tag" style="background:rgba(95,217,138,.16);color:#5fd98a">▽ Pull back</span>';
+  const roasTag = camp => {
+    if (!camp || camp.roas == null) return '';
+    const good = camp.roas >= 2 && camp.revenue > 0;
+    return ` · <span style="color:${good ? 'var(--green)' : 'var(--yellow)'}" title="The campaign's True ROAS — HubSpot closed-won revenue ÷ Google Ads spend, last ${currentDaysBack} days.">${camp.roas.toFixed(1)}× ROAS</span>`;
+  };
+  const spendCell = x => {
+    if (!haveSpendData) return '<span style="color:var(--muted)">—</span>';
+    if (!x.bid) return `<span style="color:var(--muted)" title="No Google Ads spend matched this exact term in the last ${currentDaysBack} days (search terms + bid keywords checked).">not bidding</span>`;
+    const campBit = x.bid.camp ? ` · <span title="${escHtml(x.bid.camp.name || '')}">${escHtml(String(x.bid.camp.name || '').length > 22 ? String(x.bid.camp.name).slice(0, 21) + '…' : x.bid.camp.name)}</span>` : '';
+    return `<span title="Actual spend on this term in the last ${currentDaysBack} days (search-term level, falls back to the bid keyword).">$${fmtInt(Math.round(x.bid.cost))}</span>${campBit}${roasTag(x.bid.camp)}`;
+  };
+  const recWhy = x => {
+    let why = x.why;
+    if (x.kind === 'pullback') {
+      why += ' — paid clicks here are likely redundant';
+      if (x.bid && x.bid.camp && x.bid.camp.roas != null) {
+        why += x.bid.camp.roas >= 2 && x.bid.camp.revenue > 0
+          ? `; the campaign's ${x.bid.camp.roas.toFixed(1)}× True ROAS partly re-buys this free demand — trim and watch total paid+organic revenue`
+          : `; and the campaign's True ROAS is ${x.bid.camp.roas.toFixed(1)}× — trim with confidence`;
+      }
+    } else if (haveSpendData && !x.bid) {
+      why += ' — and you have no paid coverage on it; consider adding';
+    }
+    return why;
+  };
   const recRow = x => `<tr>
     <td><a href="${googleUrl(x.r.keyword)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(x.r.keyword)}</a></td>
     <td class="num">#${x.r.our_rank}</td>
     <td>${recBadge(x.kind)}</td>
-    <td style="color:var(--muted);font-size:11px">${escHtml(x.why)}</td>
+    <td>${spendCell(x)}</td>
+    <td style="color:var(--muted);font-size:11px">${escHtml(recWhy(x))}</td>
   </tr>`;
-  const defense = (defends.length || pullbacks.length) ? `<div class="section">
-    <div class="section-head"><div class="section-title">Paid Defense — Defend vs Pull-Back<span class="tip-i" title="A paid-strategy call from the live SERP. DEFEND = your organic visibility is suppressed (a competitor is advertising above you, you're buried below ads/features, or an AI Overview doesn't cite you) on a commercial term — paid keeps you visible. PULL BACK = you rank top-3 with a clean SERP, so paid clicks are likely redundant with free organic. NOTE: this is the SERP side only — it doesn't yet know your actual ad spend or True ROAS (that's the Growth Engine / Phase 1.x), so 'pull back' assumes you're currently bidding the term.">ⓘ</span></div><span class="section-meta">${defends.length} defend · ${pullbacks.length} pull-back</span></div>
-    <table><thead><tr><th>Keyword</th><th class="num">Organic</th><th>Call</th><th>Why</th></tr></thead>
-      <tbody>${[...defends, ...pullbacks].map(recRow).join('')}</tbody></table>
+  const pullFoot = pullNoSpend > 0 ? `<div style="font-size:11px;color:var(--muted);margin-top:8px">+${pullNoSpend} more clean-SERP term${pullNoSpend > 1 ? 's' : ''} carry no paid spend in the window — nothing to pull back.</div>` : '';
+  const defense = (defends.length || pullbacks.length || pullNoSpend) ? `<div class="section">
+    <div class="section-head"><div class="section-title">Paid Defense — Defend vs Pull-Back<span class="tip-i" title="A paid-strategy call fusing the live SERP with your actual spend. DEFEND = your organic visibility is suppressed (a competitor is advertising above you, you're buried below ads/features, or an AI Overview doesn't cite you) on a commercial term — paid keeps you visible. PULL BACK = you rank top-3 with a clean SERP AND you're actually spending on the term, so paid clicks are likely redundant with free organic. Spend = Google Ads search-term spend (bid-keyword fallback) + the owning campaign's True ROAS (HubSpot closed-won ÷ spend). Clean-SERP terms with no spend are counted below the table, not listed.">ⓘ</span></div><span class="section-meta">${defends.length} defend · ${pullbacks.length} pull-back</span></div>
+    <table><thead><tr><th>Keyword</th><th class="num">Organic</th><th>Call</th><th>Your spend<span class="tip-i" title="What you actually spent on this exact term in the selected window (Google Ads search terms; falls back to the bid keyword), the campaign carrying it, and that campaign's True ROAS.">ⓘ</span></th><th>Why</th></tr></thead>
+      <tbody>${[...defends, ...pullbacks].map(recRow).join('')}</tbody></table>${pullFoot}
   </div>` : '';
 
   // ── Content roadmap: People-Also-Ask questions across all tracked terms ──
@@ -1831,6 +1880,60 @@ async function gscLoadSerpMap() {
 }
 function gscSerpFor(query) {
   return (gscSerpMap && gscSerpMap[String(query || '').trim().toLowerCase()]) || null;
+}
+
+// ── v1.89.1 — shared SERP paid-defense classification ──────────────────
+// One source of truth for "what does the live SERP say about paying for this
+// term", used by BOTH the SEO Intel Paid-Defense panel and the Growth Engine
+// budget board. A domain counts as a "competitor" unless it's a marketplace /
+// social / forum / reference / edu / gov site (those aren't booth sellers we
+// compete with for the sale).
+const SERP_NON_COMPETITOR = ['amazon','ebay','walmart','etsy','reddit','youtube','instagram','facebook','pinterest','twitter','x.com','tiktok','wikipedia','quora','medium','linkedin','yelp','google','github','kickstarter','indiegogo','vimeo','soundcloud','spotify','homedepot','lowes','target','aliexpress','alibaba'];
+function serpIsCompetitor(dom) {
+  const d = (dom || '').toLowerCase();
+  if (!d || d.includes('whisperroom')) return false;
+  if (/\.(edu|gov)(\/|$)/.test(d) || d.includes('lib.')) return false;
+  return !SERP_NON_COMPETITOR.some(n => d.includes(n));
+}
+// Classify one SERP snapshot row → {kind:'defend'|'pullback', why, priority,
+// compAds} or null (not ranking / informational / neutral). Extracted verbatim
+// from the v1.84.25 serpRec so the budget board reads the same signals.
+function gscSerpPaidCall(r) {
+  if (!r || r.our_rank == null) return null;  // not ranking = an SEO problem, not a paid-defense call
+  if (/\b(how to|diy|build|tips|guide|ideas|what is|review)\b/i.test(r.keyword) || /soundproof(ing)? a room/i.test(r.keyword)) return null; // informational
+  const compAds = (r.paid_results || []).filter(a => serpIsCompetitor(a.domain));
+  const gap = r.our_rank_abs != null ? r.our_rank_abs - r.our_rank : 0;
+  const buried   = r.our_rank <= 5 && gap >= 3;
+  const aiThreat = r.ai_overview && !r.ai_overview_cited;
+  const strong   = r.our_rank <= 3;
+  if (compAds.length || buried || aiThreat) {
+    const why = [];
+    if (compAds.length) why.push(`${compAds.slice(0,2).map(a => _serpDomainShort(a.domain)).join(', ')} ${compAds.length > 1 ? 'are' : 'is'} advertising above you`);
+    if (buried)   why.push(`rank #${r.our_rank} organically but buried at abs #${r.our_rank_abs} (${gap} above)`);
+    if (aiThreat) why.push('AI Overview present and you are not cited');
+    return { kind: 'defend', why: why.join('; '), priority: compAds.length ? 3 : buried ? 2 : 1, compAds };
+  }
+  if (strong && gap < 3) {
+    return { kind: 'pullback', why: `you rank #${r.our_rank} organically with a clean SERP (nothing stacked above)`, priority: 0, compAds };
+  }
+  return null;
+}
+// Normalize a Google Ads keyword_text / search term to the SERP snapshot key:
+// strip match-type decoration ([exact], "phrase", +broad), collapse whitespace.
+function gscSerpKwKey(t) { return String(t || '').toLowerCase().replace(/[\[\]"+]/g, ' ').replace(/\s+/g, ' ').trim(); }
+// Roll the SERP calls up over a campaign's bid keywords → defend/clean evidence.
+// Degrades to {checked:0} when none of the campaign's keywords are SERP-tracked.
+function gscCampaignSerpView(texts) {
+  const v = { defends: [], cleans: [], checked: 0 };
+  (texts ? Array.from(texts) : []).forEach(t => {
+    const r = gscSerpFor(t); if (!r) return;
+    const call = gscSerpPaidCall(r); if (!call) return;
+    v.checked++;
+    if (call.kind === 'defend') v.defends.push({ kw: r.keyword, why: call.why, priority: call.priority });
+    else v.cleans.push(r.keyword);
+  });
+  v.defends.sort((a, b) => b.priority - a.priority);
+  return v;
 }
 
 function gscCommercialIntent(query, row) {
@@ -2505,6 +2608,15 @@ function gscBuildPaidGrowth(campRows, attrRows, kwRows) {
     if (r.search_rank_lost_is != null) a._rankLost += (+r.search_rank_lost_is) * imp;
   });
   const kwByCamp = gscKwRollupByCampaign(kwRows);
+  // v1.89.1 — campaign → SERP-tracked keyword texts (the campaign→keyword join
+  // for the ROAS×SERP fusion). Exact match on normalized keyword text against
+  // the SEO Intel snapshots; campaigns whose keywords aren't tracked simply get
+  // an empty view and the pre-SERP behavior.
+  const serpKwByCamp = {};
+  (kwRows || []).forEach(r => {
+    const t = gscSerpKwKey(r.keyword_text); if (!t || !r.campaign_id) return;
+    (serpKwByCamp[r.campaign_id] || (serpKwByCamp[r.campaign_id] = new Set())).add(t);
+  });
   const attrByName = {};
   (attrRows || []).forEach(a => { attrByName[String(a.campaign_name || '').toLowerCase().trim()] = a; });
   const campaigns = Object.values(agg).map(c => {
@@ -2531,13 +2643,32 @@ function gscBuildPaidGrowth(campRows, attrRows, kwRows) {
     const budgetConstrained = c.budLost != null && c.budLost >= 0.10;   // losing ≥10% of impressions to budget
     const attrGap = gscIsAttributionGapCampaign(c.name);
     const roasTxt = c.roas === Infinity ? '∞' : c.roas.toFixed(1);
+    // v1.89.1 — what the live SERP says across this campaign's tracked keywords.
+    const serpView = gscCampaignSerpView(serpKwByCamp[c.id]);
+    // Clean top-3 organic coverage makes cutting low-risk — appended to the
+    // pause/reduce reasoning so the SERP corroboration is never silent.
+    const serpCover = serpView.cleans.length
+      ? ` Live SERP: organic already holds top-3 with a clean page on ${serpView.cleans.length} of its term${serpView.cleans.length > 1 ? 's' : ''} (${serpView.cleans.slice(0, 2).map(k => `“${k}”`).join(', ')}${serpView.cleans.length > 2 ? ', …' : ''}) — cutting is low-risk.`
+      : '';
 
     // ── Budget bucket — brand / cannibalization / impression-share aware ──
     // $0 CRM revenue with Google conversions (or an ecom/remarketing name) is an
     // ATTRIBUTION GAP, not a steady performer — conversions aren't tying back to
     // HubSpot. Only a $0-revenue campaign with no conversions at all is a pause.
-    if (c.branded && goodRoas) {
-      c.bud = `Branded campaign — the ${roasTxt}× ROAS mostly re-buys demand organic already wins for free. Test trimming bids/budget and watch total paid+organic revenue, not paid ROAS alone.`;
+    // v1.89.1 — the branded pull-back test is now SERP-aware: a competitor ad
+    // above our organic #1 / a Buried rank / an uncited AI Overview on the very
+    // terms this campaign bids means pulling back hands them the click — the
+    // campaign moves to Maintain with a defend reason. A verified-clean SERP
+    // strengthens the test instead. No SERP data → unchanged v1.72.3 behavior.
+    if (c.branded && goodRoas && serpView.defends.length) {
+      const top = serpView.defends[0];
+      c.serpDefended = true;
+      c.bud = `Branded ${roasTxt}× ROAS would normally be a pull-back test, but the live SERP says defend: ${top.why} on “${top.kw}”${serpView.defends.length > 1 ? ` (+${serpView.defends.length - 1} more defended term${serpView.defends.length > 2 ? 's' : ''})` : ''}. Hold the spend — pulling back hands that click to them. Re-test once the SERP cleans up.`;
+      budget.maintain.push(c);
+    } else if (c.branded && goodRoas) {
+      c.bud = serpView.cleans.length
+        ? `Branded campaign — the ${roasTxt}× ROAS mostly re-buys demand organic already wins for free, and the live SERP agrees: clean on ${serpView.cleans.length} tracked term${serpView.cleans.length > 1 ? 's' : ''} (top-3 organic, no competitor ads, no AI threat). Strong pull-back test — trim bids/budget and watch total paid+organic revenue, not paid ROAS alone.`
+        : `Branded campaign — the ${roasTxt}× ROAS mostly re-buys demand organic already wins for free. Test trimming bids/budget and watch total paid+organic revenue, not paid ROAS alone.`;
       budget.test.push(c);
     } else if (noCrmRev && (attrGap || hasGoogleConv)) {
       c.bud = attrGap
@@ -2545,10 +2676,10 @@ function gscBuildPaidGrowth(campRows, attrRows, kwRows) {
         : `$${fmtInt(Math.round(c.cost))} spent with ${fmtInt(Math.round(c.conversions))} Google conversion${c.conversions >= 2 ? 's' : ''} but $0 HubSpot revenue — conversions aren't tying back to CRM. Check attribution / lead quality before judging spend.`;
       budget.investigate.push(c);
     } else if (noCrmRev) {
-      c.bud = `$${fmtInt(Math.round(c.cost))} spent, no attributed revenue or conversions. Pause or restructure.`;
+      c.bud = `$${fmtInt(Math.round(c.cost))} spent, no attributed revenue or conversions. Pause or restructure.${serpCover}`;
       budget.pause.push(c);
     } else if (poorRoas) {
-      c.bud = `${roasTxt}× ROAS on $${fmtInt(Math.round(c.cost))} — below break-even. Cut or rework before scaling.`;
+      c.bud = `${roasTxt}× ROAS on $${fmtInt(Math.round(c.cost))} — below break-even. Cut or rework before scaling.${serpCover}`;
       budget.reduce.push(c);
     } else if (goodRoas && budgetConstrained) {
       c.bud = `Strong ${roasTxt}× ROAS and losing ${(c.budLost * 100).toFixed(0)}% of impressions to budget — genuinely constrained. Raise budget and watch ROAS hold.`;
@@ -2587,7 +2718,11 @@ function gscBuildPaidGrowth(campRows, attrRows, kwRows) {
     }
 
     // ── Budget-reallocation cards mirror the bucket logic above ──
-    if (c.branded && goodRoas) {
+    if (c.branded && goodRoas && c.serpDefended) {
+      // v1.89.1 — SERP says defend, so no savings claim: the card surfaces the
+      // changed call (hold branded spend), not a reallocation upside.
+      opps.push(gscPaidOpp(c, 'Paid Defense', 'SERP Defense', c.bud, 0, true, { serpDefense: true }));
+    } else if (c.branded && goodRoas) {
       opps.push(gscPaidOpp(c, 'Budget Reallocation Opportunity', 'Brand Cannibalization', c.bud, c.cost * 0.3, true, { savings: true, brandTest: true }));
     } else if (goodRoas && budgetConstrained) {
       opps.push(gscPaidOpp(c, 'Budget Reallocation Opportunity', 'Budget-Constrained', c.bud, c.revenue * 0.3, true, { budgetUp: true }));

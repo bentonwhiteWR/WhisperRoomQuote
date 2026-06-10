@@ -663,6 +663,34 @@ function renderLayoutSvg(layout, assign) {
   return s;
 }
 
+// ── Component art: SketchUp face-on renders of the REAL parts ──────
+// (Z:\Sketchup\BoothBuilderClaude\Components → assets/booth-art/*.webp,
+// alpha-cropped + exposure-normalized + WebP'd by the import pass.) The
+// elevation composites these at true scale; the vector drawing stays
+// underneath as a loading fallback, and parts with no art yet keep their
+// vector look. compWIn = the component's real width in inches; aspect =
+// image w/h — the renders are parallel-projection face-on, so the aspect IS
+// the real proportion and heights derive as compWIn/aspect (≈80.7″ wall).
+// Seal widths derive the same way (~7.9″ mid cap, ~4.9″ corner leg). The
+// seals deliberately OVERLAP the wall edges — that's where the bolt holes
+// on the wall sides bind into them on the real product.
+const ART_BASE = (typeof window !== 'undefined' && window.BB_ART_BASE)
+  || (typeof global !== 'undefined' && global.BB_ART_BASE) || '/assets/booth-art/';
+const ELEV_ART = {
+  SOLID:  { file: 'wall-46.webp',         compWIn: 46, aspect: 0.5700 },
+  VNT:    { file: 'wall-46-vnt.webp',     compWIn: 46, aspect: 0.5625, packOk: /\bVNT\b/i },
+  WDO:    { file: 'wall-46-wdo3236.webp', compWIn: 46, aspect: 0.5700, packOk: /WDO\s*3236\b/i },
+  DRFRM:  { file: 'door-30-left.webp',    compWIn: 46, aspect: 0.5700, packOk: /^(FR\s+)?STDWL\d+\s+DRFRM/i },  // std frames — WA/ADA (49″) stays vector
+  midSeal:    { file: 'seal-mid.webp',    widthIn: 7.9 },
+  cornerSeal: { file: 'seal-corner.webp', widthIn: 4.9 },
+};
+function elevArtFor(kind, line) {
+  const art = ELEV_ART[kind];
+  if (!art || !line) return null;
+  if (art.packOk && !art.packOk.test(String(line.pack || ''))) return null;
+  return art;
+}
+
 // ── Elevation renderer: one wall viewed face-on from OUTSIDE ────────
 // Skeleton of the booth-builder front/side view (plan Phase C): correct
 // proportions and per-panel features — door with window/hinges/handle, wall
@@ -736,8 +764,9 @@ function renderElevationSvg(layout, assign, facing) {
   const nominal = slots.reduce((a, sl) => a + effSize(sl), 0) || 1;
   const scale = Wp / nominal;
 
-  // per-panel features, drawn after all strips + battens
-  function elevFeatures(kind, line, sx, w) {
+  // per-panel features, drawn after all strips + battens. hasArt = the slot
+  // is covered by a component render — skip whatever the photo already shows.
+  function elevFeatures(kind, line, sx, w, hasArt) {
     const cx2 = sx + w / 2;
     let g = '';
     if (kind === 'DRFRM' && line) {
@@ -774,8 +803,10 @@ function renderElevationSvg(layout, assign, facing) {
       // (a notch lighter than the carpet so they read on the dark walls)
       const dw = 8 * PX2, dh = 30 * PX2;
       const ductAt = (fx, hIn2) => `<rect x="${fx - dw / 2}" y="${iy(hIn2)}" width="${dw}" height="${dh}" rx="1.5" fill="#3e414a" stroke="#0d0e11" stroke-width="0.9"/>`;
-      g += ductAt(sx + w * 0.26, 34);
-      g += ductAt(sx + w * 0.72, 76);
+      if (!hasArt) {
+        g += ductAt(sx + w * 0.26, 34);
+        g += ductAt(sx + w * 0.72, 76);
+      }
       if (VSS) {
         // VSS = a second silencer duct beside each, hose-connected (catalog)
         const ix2 = sx + w * 0.26 + dw + 3, ex2 = sx + w * 0.72 - dw - 3;
@@ -787,7 +818,7 @@ function renderElevationSvg(layout, assign, facing) {
         // EFS wraps the fan in a floor-level silencer box (10″ tall footprint)
         g += `<rect x="${sx + w * 0.72 - 8 * PX2}" y="${iy(13)}" width="${16 * PX2}" height="${13 * PX2 - 1}" rx="2.5" fill="#2c2d33" stroke="#0d0e11" stroke-width="1"/>`;
         g += `<rect x="${sx + w * 0.72 - 8 * PX2 + 2.5}" y="${iy(13) + 2.5}" width="${16 * PX2 - 5}" height="${13 * PX2 - 6}" rx="2" fill="none" stroke="#4a4d55" stroke-width="0.8"/>`;
-      } else {
+      } else if (!hasArt) {   // the vent art already shows the fan unit
         g += `<rect x="${sx + w * 0.72 - 3.5 * PX2}" y="${iy(10)}" width="${7 * PX2}" height="${10 * PX2 - 2}" rx="2" fill="#383b43" stroke="#0d0e11" stroke-width="0.9"/>`;
         g += `<circle cx="${sx + w * 0.72}" cy="${iy(5.2)}" r="${2.4 * PX2}" fill="#22242a" stroke="#54585f" stroke-width="0.8"/>`;
         g += `<circle cx="${sx + w * 0.72}" cy="${iy(5.2)}" r="${0.8 * PX2}" fill="#62666f"/>`;
@@ -803,13 +834,43 @@ function renderElevationSvg(layout, assign, facing) {
     return g;
   }
 
+  // composite a component render over its slot box. Full components stretch
+  // to the box (carpet tolerates it; HX just stretches taller) — EXCEPT
+  // narrower solid walls, which CROP the 46″ art horizontally so the carpet
+  // texture stays at true scale instead of squishing.
+  function artPanel(art, kind, line, sx, wPx, wIn) {
+    const href = ART_BASE + art.file;
+    const artHIn = art.compWIn / art.aspect;
+    if (kind === 'SOLID' && wIn < art.compWIn - 1) {
+      const cx2 = (art.compWIn - wIn) / 2;
+      return `<svg x="${sx}" y="${y0}" width="${wPx}" height="${Hp}" viewBox="${cx2} 0 ${wIn} ${artHIn}" preserveAspectRatio="none">`
+        + `<image href="${href}" x="0" y="0" width="${art.compWIn}" height="${artHIn}" preserveAspectRatio="none"/></svg>`;
+    }
+    // SketchUp exports glass as TRANSPARENT pixels — tint the slot behind the
+    // art so windows read as glass instead of holes into the dark carpet
+    const under = (kind === 'WDO' || kind === 'DRFRM')
+      ? `<rect x="${sx}" y="${y0}" width="${wPx}" height="${Hp}" fill="#bdd9ef"/>` : '';
+    let img = `<image href="${href}" x="${sx}" y="${y0}" width="${wPx}" height="${Hp}" preserveAspectRatio="none"/>`;
+    if (kind === 'DRFRM') {
+      // the door art is LEFT-hinge — mirror it for a right-hinge display
+      let hingeRight = /\sR\b/i.test(String(line.pack || ''));
+      if (mirrored) hingeRight = !hingeRight;
+      if (hingeRight) img = `<g transform="translate(${2 * sx + wPx} 0) scale(-1 1)">${img}</g>`;
+    }
+    return under + img;
+  }
+
   let off = 0, feats = '';
   for (const slot of slots) {
     const w = effSize(slot) * scale;
     const line = assign[slot.id];
     const kind = line ? classifyWall(line.pack) : 'EMPTY';
     s += `<rect x="${x0 + off}" y="${y0}" width="${w}" height="${Hp}" fill="${line ? 'url(#ldSeal)' : '#e9e9ec'}" stroke="#15161a" stroke-width="0.8"/>`;
-    feats += elevFeatures(kind, line, x0 + off, w);
+    const art = elevArtFor(kind, line);
+    if (art) s += artPanel(art, kind, line, x0 + off, w, effSize(slot));
+    // vector details: everything when there's no art; with VNT art the photo
+    // already shows the ducts/hose/fan, so only the VSS/EFS extras draw
+    if (!art || kind === 'VNT') feats += elevFeatures(kind, line, x0 + off, w, !!art);
     off += w;
   }
   // roof cap
@@ -868,6 +929,22 @@ function renderElevationSvg(layout, assign, facing) {
   }
   s += `<rect x="${x0 - SB * 0.45}" y="${y0}" width="${SB}" height="${Hp}" rx="1" fill="url(#ldSeal)" stroke="#0d0e11" stroke-width="0.9"/>`;
   s += `<rect x="${x0 + Wp - SB * 0.55}" y="${y0}" width="${SB}" height="${Hp}" rx="1" fill="url(#ldSeal)" stroke="#0d0e11" stroke-width="0.9"/>`;
+  // …then the REAL seal renders on top, at art-derived widths, overlapping
+  // the wall edges (that's where the walls' bolt holes bind into the seals —
+  // the seals are SUPPOSED to cover part of each panel). Vector battens above
+  // remain as the loading fallback.
+  {
+    const ms = ELEV_ART.midSeal, cs = ELEV_ART.cornerSeal;
+    const mw = ms.widthIn * PX2, cw3 = cs.widthIn * PX2, outset = 0.6 * PX2;
+    off = 0;
+    for (let i = 0; i < slots.length - 1; i++) {
+      off += effSize(slots[i]) * scale;
+      s += `<image href="${ART_BASE + ms.file}" x="${x0 + off - mw / 2}" y="${y0}" width="${mw}" height="${Hp}" preserveAspectRatio="none"/>`;
+    }
+    s += `<image href="${ART_BASE + cs.file}" x="${x0 - outset}" y="${y0}" width="${cw3}" height="${Hp}" preserveAspectRatio="none"/>`;
+    // right corner mirrors so the leg faces back into the wall
+    s += `<g transform="translate(${2 * (x0 + Wp)} 0) scale(-1 1)"><image href="${ART_BASE + cs.file}" x="${x0 - outset}" y="${y0}" width="${cw3}" height="${Hp}" preserveAspectRatio="none"/></g>`;
+  }
   s += feats;
 
   // dims: width below the ground line, height on the left

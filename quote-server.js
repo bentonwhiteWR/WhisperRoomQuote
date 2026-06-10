@@ -1676,7 +1676,8 @@ const server = http.createServer(async (req, res) => {
     // Booth Builder is customer-facing: the page, its layout geometry (all
     // published spec-sheet data), the shared renderer it loads, and the
     // quote-request lead endpoint. Reps send /booth-builder links to prospects.
-    || pathname === '/booth-builder' || pathname === '/api/booth-layouts' || pathname === '/api/booth-request' || pathname === '/assets/layout-render.js';
+    || pathname === '/booth-builder' || pathname === '/api/booth-layouts' || pathname === '/api/booth-request' || pathname === '/assets/layout-render.js'
+    || /^\/assets\/booth-art\/[A-Za-z0-9][A-Za-z0-9_-]*\.webp$/.test(pathname);
   if (isPublicRoute) {
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
     if (!checkRateLimit(ip, 30, 60000)) {
@@ -1756,6 +1757,25 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(404); res.end('layout-render.js missing');
     }
     return;
+  }
+
+  // ── Booth Builder component art (public, like the page that uses it) ──
+  // /assets/booth-art/<name>.webp — SketchUp face-on renders of the real
+  // components (walls / door / seam seals), composited by the elevation
+  // renderer. Name is whitelisted to a safe charset; long cache (the art
+  // changes by re-import, which also bumps the page version).
+  {
+    const m = pathname.match(/^\/assets\/booth-art\/([A-Za-z0-9][A-Za-z0-9_-]*\.webp)$/);
+    if (m && req.method === 'GET') {
+      try {
+        const buf = require('fs').readFileSync(require('path').join(__dirname, 'assets', 'booth-art', m[1]));
+        res.writeHead(200, { 'Content-Type': 'image/webp', 'Cache-Control': 'public, max-age=86400' });
+        res.end(buf);
+      } catch (e) {
+        res.writeHead(404); res.end('not found');
+      }
+      return;
+    }
   }
 
   if (pathname === '/assets/truckload-calc.js') {

@@ -139,9 +139,10 @@ const DIGEST_SCHEMA = {
   properties: {
     headline: { type: 'string', description: 'One sentence: the single most important thing this week.' },
     items: {
-      // Claude's structured-output schemas only accept minItems 0/1 — the
-      // "exactly 5" expectation lives in the system prompt instead.
-      type: 'array', minItems: 1, maxItems: 5,
+      // Claude's structured-output validator rejects array length constraints
+      // (minItems>1 AND maxItems) — the "exactly 5" expectation lives in the
+      // system prompt instead.
+      type: 'array',
       items: {
         type: 'object',
         properties: {

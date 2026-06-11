@@ -67,6 +67,7 @@ const CIT_SYSTEM = [
   '- Never use em dashes.',
   '- Short sentences, benefit-focused, factual. No hype.',
   'The answer_first_rewrite must directly answer the query in the first two sentences (extractable by an LLM), then support with specifics from the existing page. 120-200 words.',
+  'Produce at most 6 faq items and at most 8 heading_fixes.',
   'schema_jsonld must be valid JSON-LD a developer can paste as-is: FAQPage from your faq items, plus Product where the page sells a booth (use only facts present on the page; never invent prices or ratings).',
   'In competitor_takeaways, name what the cited page does structurally that ours does not.',
 ].join('\n');
@@ -77,9 +78,11 @@ const CIT_SCHEMA = {
     score:        { type: 'integer', description: 'Current citability 0-100.' },
     diagnosis:    { type: 'string', description: '2-4 sentences: why the AI cites the other page and not ours.' },
     answer_first_rewrite: { type: 'string' },
-    faq:          { type: 'array', maxItems: 6, items: { type: 'object', properties: { q: { type: 'string' }, a: { type: 'string' } }, required: ['q', 'a'], additionalProperties: false } },
+    // No array length constraints — Claude's structured-output validator
+    // rejects minItems>1/maxItems; counts are in the system prompt.
+    faq:          { type: 'array', items: { type: 'object', properties: { q: { type: 'string' }, a: { type: 'string' } }, required: ['q', 'a'], additionalProperties: false } },
     schema_jsonld: { type: 'string' },
-    heading_fixes: { type: 'array', maxItems: 8, items: { type: 'string' } },
+    heading_fixes: { type: 'array', items: { type: 'string' } },
     competitor_takeaways: { type: 'string' },
   },
   required: ['score', 'diagnosis', 'answer_first_rewrite', 'faq', 'schema_jsonld', 'heading_fixes', 'competitor_takeaways'],

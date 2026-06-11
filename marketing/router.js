@@ -568,9 +568,9 @@ async function handle(req, res, ctx) {
           type: 'object',
           properties: {
             plan: {
-              // Claude structured output: minItems above 1 is rejected — the
-              // 8-12-piece expectation is in the prompt.
-              type: 'array', minItems: 1, maxItems: 12,
+              // Claude structured output rejects array length constraints
+              // (minItems>1, maxItems) — the 8-12-piece expectation is in the prompt.
+              type: 'array',
               items: {
                 type: 'object',
                 properties: {
@@ -579,7 +579,7 @@ async function handle(req, res, ctx) {
                   target_keywords: { type: 'array', items: { type: 'string' } },
                   family:          { type: 'string' },
                   angle:           { type: 'string', description: 'Why WhisperRoom wins this query — the unique angle.' },
-                  outline:         { type: 'array', maxItems: 6, items: { type: 'string' } },
+                  outline:         { type: 'array', items: { type: 'string' }, description: 'At most 6 points.' },
                 },
                 required: ['title', 'format', 'target_keywords', 'family', 'angle', 'outline'],
                 additionalProperties: false,

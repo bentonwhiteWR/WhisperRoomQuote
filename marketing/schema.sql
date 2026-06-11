@@ -364,6 +364,19 @@ CREATE TABLE IF NOT EXISTS marketing_ignored_advertisers (
   note       TEXT
 );
 
+-- ── Paid Defense implementation plans (v1.103.1) ────────────────────────
+-- One row per (keyword, kind): the Claude-written Google Ads plan for a
+-- Defend / Pull-Back call, grounded in this account's real data. Regenerate
+-- overwrites.
+CREATE TABLE IF NOT EXISTS marketing_defense_fixes (
+  keyword    TEXT NOT NULL,
+  kind       TEXT NOT NULL,            -- defend | pullback
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  result     JSONB,
+  model      TEXT,
+  PRIMARY KEY (keyword, kind)
+);
+
 -- ── Small AI outputs keyed by kind (v1.102.0) ───────────────────────────
 -- Latest content plan etc. — one row per kind, regenerate overwrites.
 CREATE TABLE IF NOT EXISTS marketing_ai_outputs (

@@ -36,6 +36,7 @@ const citability = require('./citability');
 const gapEtl = require('./gap-etl');
 const claude = require('./claude');
 const actions = require('./actions');
+const defense = require('./defense');
 
 // Empty array = open to everyone (allowlist disabled). Populate with
 // ownerIds to re-lock — e.g. ['36303670', '36320208'] for Benton + Gabe.
@@ -561,6 +562,34 @@ async function handle(req, res, ctx) {
       if (body.alertId != null) await ctx.db.query(`UPDATE marketing_alerts SET status = 'dismissed' WHERE id = $1`, [parseInt(body.alertId)]);
       ctx.json({ ok: true, ignored: domains });
     } catch(e) { ctx.json({ ok: false, error: e.message }, 500); }
+    return true;
+  }
+
+  // ── Paid Defense "see fix" (v1.103.1) ─────────────────────────────
+  // POST {keyword, kind, context, force}: a truthful Google Ads implementation
+  // plan grounded in this account's real data (search-term spend, matching bid
+  // keywords + QS, campaign totals, live SERP, organic clicks). GET: cached.
+  if (pathname === '/api/marketing/defense-fix' && req.method === 'POST') {
+    try {
+      let body = {};
+      try {
+        const chunks = [];
+        await new Promise((res, rej) => { req.on('data', c => chunks.push(c)); req.on('end', res); req.on('error', rej); });
+        body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
+      } catch {}
+      const out = await defense.runDefenseFix({ db: ctx.db, keyword: body.keyword, kind: body.kind, context: body.context || {}, force: !!body.force });
+      ctx.json(out, out.ok ? 200 : (out.status || 500));
+    } catch(e) { ctx.json({ ok: false, error: e.message }, 500); }
+    return true;
+  }
+  if (pathname === '/api/marketing/defense-fixes' && req.method === 'GET') {
+    try {
+      if (!ctx.db) { ctx.json({ rows: [] }); return true; }
+      const rows = (await ctx.db.query(`
+        SELECT keyword, kind, created_at, result FROM marketing_defense_fixes
+        ORDER BY created_at DESC LIMIT 200`)).rows;
+      ctx.json({ rows, configured: !!claude.apiKey() });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
   }
 

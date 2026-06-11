@@ -1081,7 +1081,8 @@ async function loadSeoTab() {
       fetch('/api/marketing/citability', { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
       fetch('/api/marketing/content-gap', { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     ]);
-    seoLastData = { d: d || {}, paid: { stRows: (st && st.rows) || [], kwRows: (kw && kw.rows) || [], campRows: (camp && camp.rows) || [], attrRows: (attr && attr.rows) || [] }, cit: cit || {}, gap: gap || {} };
+    const dfx = await fetch('/api/marketing/defense-fixes', { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] }));
+    seoLastData = { d: d || {}, paid: { stRows: (st && st.rows) || [], kwRows: (kw && kw.rows) || [], campRows: (camp && camp.rows) || [], attrRows: (attr && attr.rows) || [] }, cit: cit || {}, gap: gap || {}, dfx: dfx || {} };
     renderSeo(seoLastData.d, seoLastData.paid);
   } catch(e) {
     body.innerHTML = `<div class="empty">Couldn't load SERP data: ${escHtml(e.message || 'error')}</div>`;
@@ -1345,14 +1346,46 @@ function renderSeo(d, paid) {
   };
   // ✓ logs to the action log: pull-backs with a known campaign track weekly
   // spend (the saving is the outcome); defends track the keyword's rank.
-  const recRow = x => `<tr>
+  // ✨ see fix (v1.103.1): a Claude-written Google Ads implementation plan
+  // grounded in the account's real data — cached server-side per (kw, kind).
+  const dfxMap = {};
+  ((seoLastData && seoLastData.dfx && seoLastData.dfx.rows) || []).forEach(f => { dfxMap[`${f.kind}:${f.keyword}`] = f; });
+  defRowData = {};
+  const defFixRow = x => {
+    const key = `${x.kind}:${x.r.keyword}`;
+    const f = dfxMap[key];
+    if (!seoDefOpen.has(key) || !f || !f.result) return '';
+    const res = f.result;
+    return `<tr><td colspan="6" style="background:var(--surface);padding:14px 16px">
+      <div style="font-size:11.5px;line-height:1.6;max-width:900px">
+        <div><strong>Verdict:</strong> ${escHtml(res.verdict || '')}</div>
+        ${(res.steps || []).map((s, i) => `<div style="margin-top:8px">
+          <div style="font-weight:700">${i + 1}. ${escHtml(s.what || '')}</div>
+          <div style="color:var(--orange);font-size:11px;margin-top:2px">${escHtml(s.where || '')}</div>
+          <div style="color:var(--muted);margin-top:2px">${escHtml(s.why || '')}</div>
+        </div>`).join('')}
+        ${(res.guardrails || []).length ? `<div style="margin-top:10px"><strong>Guardrails</strong><ul style="margin:4px 0 0 18px;padding:0;color:var(--muted)">${res.guardrails.map(g => `<li>${escHtml(g)}</li>`).join('')}</ul></div>` : ''}
+        ${res.expected_impact ? `<div style="margin-top:8px"><strong>Expected impact:</strong> <span style="color:var(--muted)">${escHtml(res.expected_impact)}</span></div>` : ''}
+        ${res.caveats ? `<div style="margin-top:8px;color:var(--yellow);font-size:11px"><strong>What this data doesn't show:</strong> ${escHtml(res.caveats)}</div>` : ''}
+        <div style="margin-top:10px"><a onclick="seoDefFix(this.dataset.kw, this.dataset.kind, true)" data-kw="${escHtml(x.r.keyword)}" data-kind="${x.kind}" style="color:var(--muted);cursor:pointer;font-size:10px">↻ regenerate</a></div>
+      </div>
+    </td></tr>`;
+  };
+  const recRow = x => {
+    const key = `${x.kind}:${x.r.keyword}`;
+    defRowData[key] = { why: x.why, roas: x.bid && x.bid.camp && x.bid.camp.roas != null ? +x.bid.camp.roas.toFixed(2) : null };
+    const fixLink = dfxMap[key]
+      ? `<a onclick="seoDefToggle(this.dataset.k)" data-k="${escHtml(key)}" style="color:var(--orange);cursor:pointer;font-size:11px;white-space:nowrap;display:block;font-weight:700">${seoDefOpen.has(key) ? '▾ hide fix' : '▸ see fix'}</a>`
+      : `<a onclick="seoDefFix(this.dataset.kw, this.dataset.kind)" data-kw="${escHtml(x.r.keyword)}" data-kind="${x.kind}" style="color:var(--orange);cursor:pointer;font-size:11px;white-space:nowrap;display:block" title="Write the Google Ads implementation plan for this call, grounded in your real account data: this term's search-term spend per campaign, the matching bid keywords with Quality Score, the campaign's budget-lost impression share, and the live SERP. One Claude call; cached after.">✨ see fix</a>`;
+    return `<tr>
     <td><a href="${googleUrl(x.r.keyword)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(x.r.keyword)}</a></td>
     <td class="num">#${x.r.our_rank}</td>
     <td>${recBadge(x.kind)}</td>
     <td>${spendCell(x)}</td>
     <td style="color:var(--muted);font-size:11px">${escHtml(recWhy(x))}</td>
-    <td><a onclick="defenseDone(this.dataset.kw, this.dataset.kind, this.dataset.camp)" data-kw="${escHtml(x.r.keyword)}" data-kind="${x.kind}" data-camp="${x.kind === 'pullback' && x.bid && x.bid.campId ? escHtml(x.bid.campId) : ''}" style="color:var(--green);cursor:pointer;font-size:11px;white-space:nowrap" title="Log to the action log (📋 Receipts on the Radar tab): snapshots ${x.kind === 'pullback' ? 'weekly spend' : 'the rank'} now, re-measures at 14/28 days.">✓ did it</a></td>
-  </tr>`;
+    <td>${fixLink}<a onclick="defenseDone(this.dataset.kw, this.dataset.kind, this.dataset.camp)" data-kw="${escHtml(x.r.keyword)}" data-kind="${x.kind}" data-camp="${x.kind === 'pullback' && x.bid && x.bid.campId ? escHtml(x.bid.campId) : ''}" style="color:var(--green);cursor:pointer;font-size:11px;white-space:nowrap" title="Log to the action log (📋 Receipts on the Radar tab): snapshots ${x.kind === 'pullback' ? 'weekly spend' : 'the rank'} now, re-measures at 14/28 days.">✓ did it</a></td>
+  </tr>` + defFixRow(x);
+  };
   const pullFoot = pullNoSpend > 0 ? `<div style="font-size:11px;color:var(--muted);margin-top:8px">+${pullNoSpend} more clean-SERP term${pullNoSpend > 1 ? 's' : ''} carry no paid spend in the window — nothing to pull back.</div>` : '';
   const defense = (defends.length || pullbacks.length || pullNoSpend) ? `<div class="section">
     <div class="section-head"><div class="section-title">Paid Defense — Defend vs Pull-Back<span class="tip-i" title="A paid-strategy call fusing the live SERP with your actual spend. DEFEND = your organic visibility is suppressed (a competitor is advertising above you, you're buried below ads/features, or an AI Overview doesn't cite you) on a commercial term — paid keeps you visible. PULL BACK = you rank top-3 with a clean SERP AND you're actually spending on the term, so paid clicks are likely redundant with free organic. Spend = Google Ads search-term spend (bid-keyword fallback) + the owning campaign's True ROAS (HubSpot closed-won ÷ spend). Clean-SERP terms with no spend are counted below the table, not listed.">ⓘ</span></div><span class="section-meta">${defends.length} defend · ${pullbacks.length} pull-back</span></div>
@@ -1510,6 +1543,35 @@ async function runSyncGap() {
   } catch(e) { alert('Gap sync request dropped — it may still be finishing. Refresh in a minute.'); }
   loadSeoTab();
 }
+// Paid Defense "see fix" (v1.103.1) — generate / toggle the per-call
+// implementation plan. defRowData carries the row's why/ROAS context so the
+// server's prompt sees the same reasoning the panel shows.
+let seoDefOpen = new Set();
+let defRowData = {};
+function seoDefToggle(key) {
+  if (seoDefOpen.has(key)) seoDefOpen.delete(key); else seoDefOpen.add(key);
+  if (seoLastData) renderSeo(seoLastData.d, seoLastData.paid);
+}
+async function seoDefFix(kw, kind, force) {
+  if (force && !confirm(`Regenerate the plan for "${kw}"? One Claude call (re-reads the account data).`)) return;
+  const links = document.querySelectorAll(`a[data-kw="${CSS.escape(kw)}"][data-kind="${CSS.escape(kind)}"]`);
+  links.forEach(a => { if (/see fix|regenerate/.test(a.textContent)) { a.textContent = '… writing plan'; a.style.pointerEvents = 'none'; } });
+  try {
+    const d = await fetch('/api/marketing/defense-fix', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyword: kw, kind, force: !!force, context: defRowData[`${kind}:${kw}`] || {} }),
+    }).then(r => r.json());
+    if (!d.ok) alert('Plan failed: ' + (d.error || 'unknown error'));
+    else {
+      if (!seoLastData.dfx) seoLastData.dfx = { rows: [] };
+      seoLastData.dfx.rows = (seoLastData.dfx.rows || []).filter(f => !(f.keyword === kw && f.kind === kind));
+      seoLastData.dfx.rows.unshift({ keyword: kw, kind, result: d.result, created_at: new Date().toISOString() });
+      seoDefOpen.add(`${kind}:${kw}`);
+    }
+  } catch(e) { alert('Plan request dropped: ' + e.message); }
+  if (seoLastData) renderSeo(seoLastData.d, seoLastData.paid);
+}
+
 // Action-log hooks for SEO Intel surfaces (v1.103.0).
 function defenseDone(kw, kind, campId) {
   const payload = kind === 'pullback' && campId
@@ -3367,21 +3429,52 @@ function gscBuildSearchTermMining(stRows, stAttrRows, kwRows, queries) {
     if (!prev || (pos != null && pos < (prev.pos == null ? Infinity : prev.pos))) orgByQuery[t] = { pos, clicks: +q.clicks || 0 };
   });
 
-  const negatives = terms
+  // v1.103.1 — ONE BRAIN: the mining queues now consult the same live-SERP
+  // defense classification as the Paid Defense panel (gscSerpPaidCall), so
+  // §⑥ can never tell you to negative a term the SERP says to DEFEND. It also
+  // knows WhisperRoom's slow-close segments (audiology/telehealth booths close
+  // months after the click) where the ads attribution window structurally
+  // shows $0 — expected lag, not proof of waste.
+  const SLOW_CLOSE_RX = /\b(audiolog\w*|audiometr\w*|hearing|telehealth|therap\w*|medical|clinic\w*)\b/i;
+  const serpDefend = term => {
+    try {
+      const s = (typeof gscSerpFor === 'function') ? gscSerpFor(term) : null;
+      const call = s && gscSerpPaidCall(s);
+      return (call && call.kind === 'defend') ? call : null;
+    } catch (e) { return null; }
+  };
+
+  const negativesAll = terms
     .filter(r => r.cost >= ST_MIN_SPEND && r.conversions === 0 && r.revWon === 0 && !r.branded)
-    .map(r => ({ term: r.term, spend: r.cost, clicks: r.clicks, reason: gscTermNegReason(r.term) }))
+    .map(r => {
+      const d = serpDefend(r.term);
+      const protectedWhy = d ? 'Paid Defense says DEFEND this term: ' + d.why
+        : SLOW_CLOSE_RX.test(r.term) ? 'Slow-close segment (audiology/medical): these deals close months after the click, so $0 attributed revenue is expected lag, not proof of waste'
+        : null;
+      return { term: r.term, spend: r.cost, clicks: r.clicks, reason: gscTermNegReason(r.term), protectedWhy };
+    })
     .sort((a, b) => b.spend - a.spend);
+  const negatives = negativesAll.filter(r => !r.protectedWhy);
+  const protectedTerms = negativesAll.filter(r => r.protectedWhy);
 
   const harvest = terms
     .filter(r => !r.branded && !kwSet.has(r.term) && (r.revWon > 0 || r.conversions >= ST_HARVEST_MIN))
     .map(r => ({ term: r.term, spend: r.cost, conversions: r.conversions, revWon: r.revWon, dealsWon: r.dealsWon, cpa: r.cpa }))
     .sort((a, b) => (b.revWon - a.revWon) || (b.conversions - a.conversions));
 
+  // Same brain here: a top-3 organic rank does NOT make paid redundant when
+  // the live SERP shows a defend signal (competitor ads above / buried / AI
+  // Overview uncited) — those rows get flagged instead of a clean pull-back.
   const cannibalization = terms
     .filter(r => r.cost >= ST_MIN_SPEND)
-    .map(r => { const o = orgByQuery[r.term]; return (o && o.pos != null && o.pos <= ST_CANN_MAXPOS) ? { term: r.term, spend: r.cost, revWon: r.revWon, orgPos: o.pos, branded: r.branded } : null; })
+    .map(r => {
+      const o = orgByQuery[r.term];
+      if (!(o && o.pos != null && o.pos <= ST_CANN_MAXPOS)) return null;
+      const d = serpDefend(r.term);
+      return { term: r.term, spend: r.cost, revWon: r.revWon, orgPos: o.pos, branded: r.branded, defendWhy: d ? d.why : null };
+    })
     .filter(Boolean)
-    .sort((a, b) => b.spend - a.spend);
+    .sort((a, b) => ((a.defendWhy ? 1 : 0) - (b.defendWhy ? 1 : 0)) || b.spend - a.spend);
 
   const matchType = Object.values(kwByText)
     .map(k => ({ text: k.text, label: gscMatchLabel(k.match), cost: k.cost, conversions: k.conversions, cpa: k.conversions ? k.cost / k.conversions : null }))
@@ -3389,7 +3482,7 @@ function gscBuildSearchTermMining(stRows, stAttrRows, kwRows, queries) {
     .sort((a, b) => b.cost - a.cost);
 
   return {
-    negatives, harvest, cannibalization, matchType,
+    negatives, protectedTerms, harvest, cannibalization, matchType,
     wasted: negatives.reduce((s, n) => s + n.spend, 0),
     cannSpend: cannibalization.reduce((s, c) => s + c.spend, 0),
     termCount: terms.length,
@@ -3621,14 +3714,20 @@ function renderGrowthMining(m) {
   const rc = i => i >= CAP ? ' class="mine-extra"' : '';
   const moreNote = n => n > CAP ? `<div class="mine-more" onclick="toggleMine(this)" data-n="${n}">+ ${fmtInt(n - CAP)} more — show all ${fmtInt(n)}</div>` : '';
 
-  const negPanel = `<div class="mine-panel"><div class="mine-head">🚫 Add as negatives${tipI('Search terms that spent $' + ST_MIN_SPEND + '+ with 0 conversions and $0 HubSpot revenue, and are not your brand. Candidates to add as negative keywords so you stop paying for them. Source: Google Ads search terms + HubSpot closed-won revenue.')}<span class="mine-sub">${fmtInt(m.negatives.length)} terms · ~$${fmtInt(Math.round(m.wasted))} spend with 0 conversions &amp; $0 revenue</span></div>` +
-    (m.negatives.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Spend</th><th class="num">Clicks</th><th>Why</th></tr></thead><tbody>${m.negatives.map((r, i) => `<tr${rc(i)}><td>${escHtml(r.term)}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">${fmtInt(r.clicks)}</td><td><span class="mine-tag ${r.reason === 'Competitor brand' ? 'tag-comp' : r.reason === 'Off-product / DIY / info' ? 'tag-off' : 'tag-zero'}">${escHtml(r.reason)}</span></td></tr>`).join('')}</tbody></table>${moreNote(m.negatives.length)}` : '<div class="kb-empty">none over the $' + ST_MIN_SPEND + ' spend threshold</div>') + '</div>';
+  const prot = m.protectedTerms || [];
+  const protBlock = prot.length ? `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--surface2);font-size:11px;line-height:1.6">
+      <strong>🛡 ${fmtInt(prot.length)} held back</strong> <span style="color:var(--muted)">(~$${fmtInt(Math.round(prot.reduce((s, p) => s + p.spend, 0)))} spend, zero attributed conversions — but the wider brain says don't negative these):</span>
+      ${prot.slice(0, 8).map(p => `<div style="margin-top:4px;color:var(--muted)">· <strong style="color:var(--text)">${escHtml(p.term)}</strong> (${fmtUSD(p.spend)}) — ${escHtml(p.protectedWhy)}</div>`).join('')}
+      ${prot.length > 8 ? `<div style="margin-top:4px;color:var(--muted)">…and ${fmtInt(prot.length - 8)} more, same reasons</div>` : ''}
+    </div>` : '';
+  const negPanel = `<div class="mine-panel"><div class="mine-head">🚫 Add as negatives${tipI('Search terms that spent $' + ST_MIN_SPEND + '+ with 0 conversions and $0 HubSpot revenue, and are not your brand. Cross-checked against the live-SERP Paid Defense logic and the slow-close segments (audiology/medical) — terms those protect are held back below, not listed as negatives. Source: Google Ads search terms + HubSpot revenue + DataForSEO SERP.')}<span class="mine-sub">${fmtInt(m.negatives.length)} terms · ~$${fmtInt(Math.round(m.wasted))} spend with 0 conversions &amp; $0 revenue</span></div>` +
+    (m.negatives.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Spend</th><th class="num">Clicks</th><th>Why</th></tr></thead><tbody>${m.negatives.map((r, i) => `<tr${rc(i)}><td>${escHtml(r.term)}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">${fmtInt(r.clicks)}</td><td><span class="mine-tag ${r.reason === 'Competitor brand' ? 'tag-comp' : r.reason === 'Off-product / DIY / info' ? 'tag-off' : 'tag-zero'}">${escHtml(r.reason)}</span></td></tr>`).join('')}</tbody></table>${moreNote(m.negatives.length)}` : '<div class="kb-empty">none over the $' + ST_MIN_SPEND + ' spend threshold</div>') + protBlock + '</div>';
 
   const harvPanel = `<div class="mine-panel"><div class="mine-head">🌱 Harvest as keywords${tipI('Search terms that converted or produced HubSpot revenue but are not yet one of your bid keywords. Candidates to add as keywords. Source: Google Ads search terms + HubSpot revenue, minus your current keyword list.')}<span class="mine-sub">${fmtInt(m.harvest.length)} converting terms you don't bid on yet</span></div>` +
     (m.harvest.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Spend</th><th class="num">Conv.</th><th class="num">Revenue</th></tr></thead><tbody>${m.harvest.map((r, i) => `<tr${rc(i)}><td>${escHtml(r.term)}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">${fmtNum(r.conversions)}</td><td class="num">${r.revWon > 0 ? fmtUSD(r.revWon) : '—'}</td></tr>`).join('')}</tbody></table>${moreNote(m.harvest.length)}` : '<div class="kb-empty">none — converting terms are already keywords</div>') + '</div>';
 
   const cannPanel = `<div class="mine-panel"><div class="mine-head">♺ Already win organically${tipI('Paid search terms where you already rank in the top ' + ST_CANN_MAXPOS + ' organically (free). Paid clicks here may be redundant with your organic listing. Source: Google Ads search terms + Google Search Console organic rankings.')}<span class="mine-sub">${fmtInt(m.cannibalization.length)} terms · ~$${fmtInt(Math.round(m.cannSpend))} paid spend where we rank top-3 free</span></div>` +
-    (m.cannibalization.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Paid spend</th><th class="num">Org. pos</th><th class="num">Rev.</th></tr></thead><tbody>${m.cannibalization.map((r, i) => `<tr${rc(i)}><td>${escHtml(r.term)}${r.branded ? ' <span class="mine-tag tag-brand">brand</span>' : ''}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">#${r.orgPos.toFixed(1)}</td><td class="num">${r.revWon > 0 ? fmtUSD(r.revWon) : '—'}</td></tr>`).join('')}</tbody></table>${moreNote(m.cannibalization.length)}` : '<div class="kb-empty">no paid terms with a top-3 organic rank (Sync GSC populates this)</div>') + '</div>';
+    (m.cannibalization.length ? `<table class="mine-tbl"><thead><tr><th>Search term</th><th class="num">Paid spend</th><th class="num">Org. pos</th><th class="num">Rev.</th></tr></thead><tbody>${m.cannibalization.map((r, i) => `<tr${rc(i)}><td>${escHtml(r.term)}${r.branded ? ' <span class="mine-tag tag-brand">brand</span>' : ''}${r.defendWhy ? ` <span class="mine-tag tag-comp" title="${escHtml('Pull back with care — the live SERP shows a defend signal on this term: ' + r.defendWhy + '. Top-3 organic does not make paid redundant when competitors sit above you.')}">⚠ defend</span>` : ''}</td><td class="num">${fmtUSD(r.spend)}</td><td class="num">#${r.orgPos.toFixed(1)}</td><td class="num">${r.revWon > 0 ? fmtUSD(r.revWon) : '—'}</td></tr>`).join('')}</tbody></table>${moreNote(m.cannibalization.length)}` : '<div class="kb-empty">no paid terms with a top-3 organic rank (Sync GSC populates this)</div>') + '</div>';
 
   const mtPanel = `<div class="mine-panel"><div class="mine-head">🎯 Tighten match types${tipI('Phrase/Broad-match keywords that spent $' + ST_MIN_SPEND + '+ with no conversions or a cost-per-sale over $' + ST_MT_CPA_MAX + '. Candidates to tighten toward exact match. Source: Google Ads keywords.')}<span class="mine-sub">${fmtInt(m.matchType.length)} Phrase/Broad keywords spending inefficiently</span></div>` +
     (m.matchType.length ? `<table class="mine-tbl"><thead><tr><th>Keyword</th><th>Match</th><th class="num">Spend</th><th class="num">CPA</th></tr></thead><tbody>${m.matchType.map((r, i) => `<tr${rc(i)}><td>${escHtml(r.text)}</td><td><span class="mine-tag ${r.label === 'Broad' ? 'tag-off' : 'tag-zero'}">${r.label}</span></td><td class="num">${fmtUSD(r.cost)}</td><td class="num">${r.cpa != null ? fmtUSD(r.cpa) : 'no conv'}</td></tr>`).join('')}</tbody></table>${moreNote(m.matchType.length)}` : '<div class="kb-empty">no loose match types over the $' + ST_MIN_SPEND + ' threshold</div>') + '</div>';

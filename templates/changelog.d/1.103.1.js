@@ -1,0 +1,7 @@
+module.exports = {
+  v: '1.103.1', date: 'June 11, 2026', tag: 'feature',
+  changes: [
+    { t: 'add', d: '**Marketing: Paid Defense &quot;see fix&quot; — implementation plans from your real account.** Every Defend / Pull-Back call now has a &quot;✨ see fix&quot; that writes the step-by-step Google Ads plan grounded in this account&apos;s actual data: the term&apos;s 90-day search-term spend per campaign, the matching bid keywords with Quality Score components, the campaign&apos;s budget-lost impression share, organic clicks, and the live SERP. Hard honesty rules: only real campaign/keyword names, real numbers quoted in every step, and an explicit &quot;what this data doesn&apos;t show&quot; section. Plans cache; each ends with guardrails and a revert condition.' },
+    { t: 'fix', d: '**Marketing: one brain — the mining queues can no longer contradict Paid Defense.** The &quot;Add as negatives&quot; list previously judged terms on spend and conversions alone, so it could tell you to negative a term the SERP says to DEFEND, or audiology/telehealth terms whose deals close months after the click. Negative candidates are now cross-checked against the same live-SERP defense logic and the slow-close segments: protected terms move to a &quot;held back&quot; list with the reason, and &quot;Already win organically&quot; rows carry a ⚠ defend flag when competitors sit above your top-3 ranking.' },
+  ],
+};

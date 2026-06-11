@@ -1044,6 +1044,21 @@ async function runSyncSerp(force) {
   }
 }
 
+// SEO Intel rank-tracker filter (v1.102.0) — set by clicking the stat cards or
+// an "Outranking you most" domain; null = show everything. seoLastData keeps
+// the latest fetch so a filter click re-renders without re-hitting the API.
+let seoFilter = { type: null, domain: null };
+let seoLastData = null;
+function seoSetFilter(kind, dom) {
+  if (kind === 'domain') {
+    const off = seoFilter.domain === dom;
+    seoFilter = { type: off ? null : 'domain', domain: off ? null : dom };
+  } else {
+    seoFilter = { type: (kind === 'all' || seoFilter.type === kind) ? null : kind, domain: null };
+  }
+  if (seoLastData) renderSeo(seoLastData.d, seoLastData.paid);
+}
+
 async function loadSeoTab() {
   const body = document.getElementById('seoBody');
   try {
@@ -1060,7 +1075,8 @@ async function loadSeoTab() {
       fetch('/api/marketing/campaigns' + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
       fetch('/api/marketing/campaign-attribution' + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     ]);
-    renderSeo(d || {}, { stRows: (st && st.rows) || [], kwRows: (kw && kw.rows) || [], campRows: (camp && camp.rows) || [], attrRows: (attr && attr.rows) || [] });
+    seoLastData = { d: d || {}, paid: { stRows: (st && st.rows) || [], kwRows: (kw && kw.rows) || [], campRows: (camp && camp.rows) || [], attrRows: (attr && attr.rows) || [] } };
+    renderSeo(seoLastData.d, seoLastData.paid);
   } catch(e) {
     body.innerHTML = `<div class="empty">Couldn't load SERP data: ${escHtml(e.message || 'error')}</div>`;
   }
@@ -1123,20 +1139,46 @@ function renderSeo(d, paid) {
   // Overview / features above — organic visibility being suppressed; the
   // defend-with-ads / get-cited candidates (org-vs-abs dispersement, actionable).
   const buried = rows.filter(r => r.our_rank != null && r.our_rank <= 5 && r.our_rank_abs != null && (r.our_rank_abs - r.our_rank) >= 3).length;
-  const chip = (label, val, tip) => `<div class="card" title="${escHtml(tip||'')}"><div class="card-label">${label}</div><div class="card-value">${val}</div></div>`;
+  // Cards are click-to-filter (v1.102.0): clicking narrows the rank tracker to
+  // that bucket, clicking again (or 'Keywords tracked') clears. Active card
+  // gets an orange inset ring (box-shadow, so the layout never shifts).
+  const chip = (label, val, tip, fkey) => {
+    const active = fkey && fkey !== 'all' && seoFilter.type === fkey;
+    const click = fkey ? ` onclick="seoSetFilter('${fkey}')" style="cursor:pointer${active ? ';box-shadow:inset 0 0 0 1px var(--orange)' : ''}"` : '';
+    return `<div class="card" title="${escHtml((tip || '') + (fkey && fkey !== 'all' ? ' Click to filter the rank tracker; click again to clear.' : ' Click to clear any filter.'))}"${click}><div class="card-label">${label}</div><div class="card-value">${val}</div></div>`;
+  };
   const stats = `<div class="cards" style="margin-bottom:14px">
-    ${chip('Keywords tracked', tracked, 'Commercial keywords with a live SERP snapshot.')}
-    ${chip('Top 3', top3, 'Keywords where whisperroom.com ranks in the top 3 organically.')}
-    ${chip('Top 10', top10, 'Keywords where we rank on page 1 (top 10).')}
-    ${chip('Not ranking', notRanking, 'Keywords where we are not in the captured results — biggest opportunities / threats.')}
-    ${chip('Buried', buried, 'Rank top-5 organically but pushed to absolute #6+ by ads / AI Overview / features above. Strong organic position being suppressed — defend-with-ads or get-cited candidates.')}
-    ${chip('AI Overview', aiCount, 'Keywords where Google shows an AI Overview (which can suppress organic clicks).')}
-    ${chip('Cited in AI', aiCited, 'Of those, how many cite whisperroom.com as a source.')}
-    ${chip('Featured snippet', `${fsOwned}/${fsPresent}`, 'Of the keywords showing a featured snippet (position zero), how many WhisperRoom owns. The rest are capture targets — answer the question better + add schema.')}
+    ${chip('Keywords tracked', tracked, 'Commercial keywords with a live SERP snapshot.', 'all')}
+    ${chip('Top 3', top3, 'Keywords where whisperroom.com ranks in the top 3 organically.', 'top3')}
+    ${chip('Top 10', top10, 'Keywords where we rank on page 1 (top 10).', 'top10')}
+    ${chip('Not ranking', notRanking, 'Keywords where we are not in the captured results — biggest opportunities / threats.', 'notrank')}
+    ${chip('Buried', buried, 'Rank top-5 organically but pushed to absolute #6+ by ads / AI Overview / features above. Strong organic position being suppressed — defend-with-ads or get-cited candidates.', 'buried')}
+    ${chip('AI Overview', aiCount, 'Keywords where Google shows an AI Overview (which can suppress organic clicks).', 'aio')}
+    ${chip('Cited in AI', aiCited, 'Of those, how many cite whisperroom.com as a source.', 'cited')}
+    ${chip('Featured snippet', `${fsOwned}/${fsPresent}`, 'Of the keywords showing a featured snippet (position zero), how many WhisperRoom owns. The rest are capture targets — answer the question better + add schema.', 'snippet')}
   </div>`;
 
   const compStrip = topComps.length
-    ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Outranking you most: ${topComps.map(([dom,n]) => `<strong style="color:var(--text)">${escHtml(_serpDomainShort(dom))}</strong> (${n})`).join(' · ')}</div>`
+    ? `<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Outranking you most: ${topComps.map(([dom,n]) => `<strong onclick="seoSetFilter('domain','${escHtml(dom)}')" style="color:${seoFilter.domain === dom ? 'var(--orange)' : 'var(--text)'};cursor:pointer" title="Show only the keywords where ${escHtml(_serpDomainShort(dom))} outranks you. Click again to clear.">${escHtml(_serpDomainShort(dom))}</strong> (${n})`).join(' · ')}</div>`
+    : '';
+
+  // Apply the active filter to the table rows (stat cards always show the full
+  // picture — only the rank tracker narrows). Predicates mirror the cards'
+  // definitions above; 'domain' mirrors the compCount outranking test.
+  const SEO_FILTER_FN = {
+    top3:    r => r.our_rank != null && r.our_rank <= 3,
+    top10:   r => r.our_rank != null && r.our_rank <= 10,
+    notrank: r => r.our_rank == null,
+    buried:  r => r.our_rank != null && r.our_rank <= 5 && r.our_rank_abs != null && (r.our_rank_abs - r.our_rank) >= 3,
+    aio:     r => !!r.ai_overview,
+    cited:   r => r.ai_overview && r.ai_overview_cited,
+    snippet: r => !!r.featured_snippet,
+    domain:  r => (r.top_results || []).some(t => t.domain === seoFilter.domain && (r.our_rank == null ? t.rank <= 3 : t.rank < r.our_rank)),
+  };
+  const SEO_FILTER_LABEL = { top3: 'Top 3', top10: 'Top 10', notrank: 'Not ranking', buried: 'Buried', aio: 'AI Overview present', cited: 'Cited in AI', snippet: 'Featured snippet present' };
+  const tableRows = seoFilter.type ? rows.filter(SEO_FILTER_FN[seoFilter.type] || (() => true)) : rows;
+  const filterBar = seoFilter.type
+    ? `<div style="font-size:11px;margin-bottom:8px">Filtered: <strong style="color:var(--orange)">${seoFilter.type === 'domain' ? escHtml(_serpDomainShort(seoFilter.domain)) + ' outranks you' : SEO_FILTER_LABEL[seoFilter.type]}</strong> · ${tableRows.length} of ${tracked} keywords <a onclick="seoSetFilter('all')" style="color:var(--muted);cursor:pointer;margin-left:6px">clear ✕</a></div>`
     : '';
 
   // Rank tracker table.
@@ -1204,11 +1246,12 @@ function renderSeo(d, paid) {
   };
 
   const table = `<div class="section">
-    <div class="section-head"><div class="section-title">Rank tracker<span class="tip-i" title="Your live organic position per commercial keyword (not ranking = not in the captured results), movement vs the previous sync, the top-3 competitors on that SERP, and the AI Overview status. Source: DataForSEO Google Organic SERP.">ⓘ</span></div><span class="section-meta">${tracked} keywords</span></div>
+    <div class="section-head"><div class="section-title">Rank tracker<span class="tip-i" title="Your live organic position per commercial keyword (not ranking = not in the captured results), movement vs the previous sync, the top-3 competitors on that SERP, and the AI Overview status. Click a stat card above (or a domain in the outranking strip) to filter. Source: DataForSEO Google Organic SERP.">ⓘ</span></div><span class="section-meta">${seoFilter.type ? `${tableRows.length} of ${tracked}` : tracked} keywords</span></div>
+    ${filterBar}
     <table><thead><tr>
       <th>Keyword</th><th class="num">Vol<span class="tip-i" title="Estimated monthly Google search volume (US). Source: DataForSEO Keywords Data / Google Ads. The size of the prize.">ⓘ</span></th><th class="num">KD<span class="tip-i" title="Keyword difficulty 0-100 — how hard it is to rank (lower = easier). Green &lt;30, yellow 30-59, red 60+. Source: DataForSEO Labs. The winnability.">ⓘ</span></th><th class="num">Organic<span class="tip-i" title="Your ORGANIC position (rank_group) — the real SEO rank. Pulled logged-out from a neutral US location, so it can read lower than your personalized, logged-in browser; that neutral number is what a new customer sees.">ⓘ</span></th><th class="num">Absolute<span class="tip-i" title="Your position among EVERYTHING on the page — ads + AI Overview + featured snippet + shopping + organic. The gap from Organic = how much is stacked above you (color: orange = 3+, red = 5+). That gap is the visibility/CTR drag and a defend-with-ads signal.">ⓘ</span></th><th class="num">Move</th><th>Top competitors</th><th>Ads above<span class="tip-i" title="Advertisers (text + shopping ads) running on this term, from the live SERP. Bold = a competitor that also outranks you organically. A competitor ad above your organic #1 is the textbook defend-with-ads case.">ⓘ</span></th><th>AI Overview</th>
     </tr></thead><tbody>
-      ${rows.map(r => `<tr>
+      ${tableRows.length ? tableRows.map(r => `<tr>
         <td><a href="${googleUrl(r.keyword)}" target="_blank" rel="noopener" title="Open the de-personalized US Google results for &quot;${escHtml(r.keyword)}&quot; (pws=0&gl=us, new tab) — closest to what this tool sees. Right-click → incognito for the cleanest view + the AI Overview." style="color:var(--text)">${escHtml(r.keyword)}</a> <span style="color:var(--muted);font-size:10px">↗</span></td>
         <td class="num">${volCell(r)}</td>
         <td class="num">${kdCell(r)}</td>
@@ -1218,7 +1261,7 @@ function renderSeo(d, paid) {
         <td>${comps(r)}</td>
         <td>${adsCell(r)}</td>
         <td>${aiBadge(r)}</td>
-      </tr>`).join('')}
+      </tr>`).join('') : `<tr><td colspan="9" style="color:var(--muted);text-align:center;padding:18px">No keywords match this filter.</td></tr>`}
     </tbody></table>
   </div>`;
 

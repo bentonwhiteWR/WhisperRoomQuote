@@ -302,22 +302,51 @@ async function _upsert(db, row) {
 // Search volume + CPC for a batch of keywords (Keywords Data: Google Ads).
 // One task per ≤1000 keywords (~$0.05/task). Returns { keyword: {volume, cpc} }.
 // Non-fatal: any failure just leaves those keywords without volume.
+//
+// Google Ads rejects the WHOLE task when ANY keyword breaks its rules (>80
+// chars, >10 words, special/UTF symbols) — and GSC-sourced queries routinely
+// do. That silently nulled every volume while KD (Labs, no such rules) kept
+// working. Defense in two layers: pre-filter keywords Google Ads would reject
+// (they keep null volume), and if a task still fails on a keyword complaint,
+// bisect the chunk so one bad keyword can't take down the rest.
+const ADS_KW_OK = /^[a-z0-9\s'.&-]+$/i;
+const _adsSafe = kw => kw.length <= 80 && kw.trim().split(/\s+/).length <= 10 && ADS_KW_OK.test(kw);
+
+async function _volumeTask(chunk, out) {
+  const resp = await _post('/v3/keywords_data/google_ads/search_volume/live',
+    JSON.stringify([{ keywords: chunk, location_code: LOCATION_CODE, language_code: LANGUAGE_CODE }]));
+  const t = (resp.tasks || [])[0];
+  if (!t || t.status_code !== 20000 || !t.result) {
+    const msg = t ? `${t.status_code}: ${t.status_message || 'no result'}` : 'no task returned';
+    if (chunk.length > 1 && /invalid|field|keyword/i.test(msg)) {
+      console.warn(`[serp-etl] volume task rejected (${msg}) — bisecting ${chunk.length} keywords`);
+      const mid = Math.floor(chunk.length / 2);
+      await _volumeTask(chunk.slice(0, mid), out);
+      await _volumeTask(chunk.slice(mid), out);
+      return;
+    }
+    console.warn(chunk.length === 1
+      ? `[serp-etl] volume: Google Ads rejected keyword ${JSON.stringify(chunk[0])} (${msg}) — add its pattern to ADS_KW_OK pre-filter`
+      : `[serp-etl] volume task failed for ${chunk.length} keyword(s): ${msg}`);
+    return;
+  }
+  (t.result || []).forEach(it => {
+    if (it && it.keyword) out[String(it.keyword).toLowerCase()] = {
+      volume: it.search_volume != null ? it.search_volume : null,
+      cpc:    it.cpc != null ? it.cpc : null,
+    };
+  });
+}
+
 async function _fetchVolumes(keywords) {
   const out = {};
-  for (let i = 0; i < keywords.length; i += 1000) {
-    const chunk = keywords.slice(i, i + 1000);
-    try {
-      const resp = await _post('/v3/keywords_data/google_ads/search_volume/live',
-        JSON.stringify([{ keywords: chunk, location_code: LOCATION_CODE, language_code: LANGUAGE_CODE }]));
-      const rows = (resp.tasks && resp.tasks[0] && resp.tasks[0].result) || [];
-      rows.forEach(it => {
-        if (it && it.keyword) out[String(it.keyword).toLowerCase()] = {
-          volume: it.search_volume != null ? it.search_volume : null,
-          cpc:    it.cpc != null ? it.cpc : null,
-        };
-      });
-    } catch (e) { /* non-fatal */ }
+  const safe = keywords.filter(_adsSafe);
+  const skipped = keywords.filter(k => !_adsSafe(k));
+  if (skipped.length) console.warn(`[serp-etl] volumes: skipping ${skipped.length} keyword(s) Google Ads would reject, e.g.: ${skipped.slice(0, 5).map(k => JSON.stringify(k)).join(', ')}`);
+  for (let i = 0; i < safe.length; i += 1000) {
+    try { await _volumeTask(safe.slice(i, i + 1000), out); } catch (e) { console.warn('[serp-etl] volume fetch failed:', e.message); }
   }
+  console.log(`[serp-etl] volumes: ${Object.keys(out).length}/${keywords.length} keywords returned`);
   return out;
 }
 
@@ -330,9 +359,11 @@ async function _fetchDifficulty(keywords) {
     try {
       const resp = await _post('/v3/dataforseo_labs/google/bulk_keyword_difficulty/live',
         JSON.stringify([{ keywords: chunk, location_code: LOCATION_CODE, language_code: LANGUAGE_CODE }]));
-      const items = (resp.tasks && resp.tasks[0] && resp.tasks[0].result && resp.tasks[0].result[0] && resp.tasks[0].result[0].items) || [];
+      const t = (resp.tasks || [])[0];
+      if (!t || t.status_code !== 20000) console.warn(`[serp-etl] KD task failed for ${chunk.length} keyword(s): ${t ? t.status_code + ': ' + (t.status_message || 'no result') : 'no task returned'}`);
+      const items = (t && t.result && t.result[0] && t.result[0].items) || [];
       items.forEach(it => { if (it && it.keyword) out[String(it.keyword).toLowerCase()] = it.keyword_difficulty != null ? it.keyword_difficulty : null; });
-    } catch (e) { /* non-fatal */ }
+    } catch (e) { console.warn('[serp-etl] KD fetch failed:', e.message); }
   }
   return out;
 }

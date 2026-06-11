@@ -212,6 +212,27 @@ function _parseResult(keyword, result) {
   });
   const paidResults = Array.from(paidMap.values()).slice(0, 10);
 
+  // Free "Popular products" shopping grid — captured SEPARATELY from
+  // paid_results (which mixes it with ads, dedupes by domain and caps at 10,
+  // so it can't answer "were WE in the grid?"). This is free Merchant Center
+  // real estate above the blue links; the radar's shopping-grid check fires
+  // on present-without-us for terms we rank top-10 on. null = no grid.
+  const ppEl = items.find(it => (it.type || '') === 'popular_products');
+  let popularProducts = null;
+  if (ppEl) {
+    const OURS_RX = /whisper\s*-?room/i;
+    const raw = ppEl.items || [];
+    popularProducts = {
+      present: true,
+      ours: raw.some(p => OURS_RX.test(p.domain || '') || OURS_RX.test(p.seller || '') || OURS_RX.test(p.url || '')),
+      items: raw.map(p => ({
+        domain: ((p.domain || _domain(p.url) || '')).toLowerCase(),
+        seller: p.seller || '',
+        title:  p.title || '',
+      })).slice(0, 12),
+    };
+  }
+
   // People-Also-Ask questions — a content roadmap (the questions buyers ask that
   // we can answer to win PAA boxes + featured snippets). Free: already in items.
   const paaEl = items.find(it => it.type === 'people_also_ask');
@@ -233,6 +254,7 @@ function _parseResult(keyword, result) {
     our_url:           ours ? ours.url : null,
     top_results:       organic.slice(0, 10),          // each carries rank + rankAbs
     paid_results:      paidResults,                    // advertisers running on this term
+    popular_products:  popularProducts,                // free shopping grid {present, ours, items} or null
     paa_questions:     paaQuestions,                   // People-Also-Ask questions (content roadmap)
     featured_snippet:  featuredSnippet,                // position-zero owner (capture target / defend)
     ai_overview:       !!aiEl,
@@ -246,15 +268,16 @@ async function _upsert(db, row) {
   await db.query(`
     INSERT INTO marketing_serp_snapshots
       (keyword, location_code, checked_on, our_rank, our_rank_abs, our_url, top_results,
-       paid_results, paa_questions, featured_snippet, search_volume, keyword_difficulty, cpc,
+       paid_results, popular_products, paa_questions, featured_snippet, search_volume, keyword_difficulty, cpc,
        ai_overview, ai_overview_cited, ai_overview_refs, serp_features, fetched_at)
-    VALUES ($1, $2, CURRENT_DATE, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, NOW())
+    VALUES ($1, $2, CURRENT_DATE, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12, $13, $14, $15, $16::jsonb, $17::jsonb, NOW())
     ON CONFLICT (keyword, location_code, checked_on) DO UPDATE SET
       our_rank           = EXCLUDED.our_rank,
       our_rank_abs       = EXCLUDED.our_rank_abs,
       our_url            = EXCLUDED.our_url,
       top_results        = EXCLUDED.top_results,
       paid_results       = EXCLUDED.paid_results,
+      popular_products   = EXCLUDED.popular_products,
       paa_questions      = EXCLUDED.paa_questions,
       featured_snippet   = EXCLUDED.featured_snippet,
       search_volume      = EXCLUDED.search_volume,
@@ -268,6 +291,7 @@ async function _upsert(db, row) {
   `, [
     row.keyword, LOCATION_CODE, row.our_rank, row.our_rank_abs, row.our_url,
     JSON.stringify(row.top_results), JSON.stringify(row.paid_results),
+    JSON.stringify(row.popular_products || null),
     JSON.stringify(row.paa_questions || []), JSON.stringify(row.featured_snippet || null),
     row.search_volume, row.keyword_difficulty, row.cpc,
     row.ai_overview, row.ai_overview_cited,

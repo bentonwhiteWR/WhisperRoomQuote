@@ -241,6 +241,7 @@ CREATE TABLE IF NOT EXISTS marketing_serp_snapshots (
   our_url            TEXT,
   top_results        JSONB,          -- [{rank, rankAbs, domain, url, title}] top organic results
   paid_results       JSONB,          -- [{domain, url, title, unit}] advertisers (text/shopping ads) on the term
+  popular_products   JSONB,          -- {present, ours, items:[{domain, seller, title}]} free shopping grid; null = no grid / pre-column snapshot
   paa_questions      JSONB,          -- ["question", ...] People-Also-Ask questions (content roadmap)
   featured_snippet   JSONB,          -- {domain, url, title} position-zero owner, or null
   search_volume      INTEGER,        -- monthly Google search volume (Keywords Data)
@@ -262,6 +263,7 @@ ALTER TABLE marketing_serp_snapshots ADD COLUMN IF NOT EXISTS featured_snippet J
 ALTER TABLE marketing_serp_snapshots ADD COLUMN IF NOT EXISTS search_volume INTEGER;
 ALTER TABLE marketing_serp_snapshots ADD COLUMN IF NOT EXISTS keyword_difficulty NUMERIC;
 ALTER TABLE marketing_serp_snapshots ADD COLUMN IF NOT EXISTS cpc NUMERIC;
+ALTER TABLE marketing_serp_snapshots ADD COLUMN IF NOT EXISTS popular_products JSONB;  -- {present, ours, items} free shopping grid (v1.101.0)
 CREATE INDEX IF NOT EXISTS idx_mkt_serp_keyword ON marketing_serp_snapshots(keyword);
 CREATE INDEX IF NOT EXISTS idx_mkt_serp_checked ON marketing_serp_snapshots(checked_on);
 

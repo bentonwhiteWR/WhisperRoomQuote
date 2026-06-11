@@ -13,6 +13,8 @@
 //   serp-aio-uncited    — an AI Overview appeared (or our citation was lost) on
 //                         a term we rank top-10 for
 //   serp-snippet-lost   — a featured snippet we owned is now someone else's
+//   serp-shopping-absent— the free "Popular products" grid is on a commercial
+//                         term we rank top-10 for, and WhisperRoom isn't in it
 //   ads-budget-lost     — campaign losing ≥20% of impressions to budget (7d,
 //                         impression-weighted) after a sub-10% baseline
 //   ads-spend-no-conv   — ≥$300 spend in 28d with zero Google conversions
@@ -67,7 +69,8 @@ async function _serpPairs(db) {
            cur.ai_overview    AS cur_aio,  prev.ai_overview    AS prev_aio,
            cur.ai_overview_cited AS cur_cited, prev.ai_overview_cited AS prev_cited,
            cur.ai_overview_refs  AS cur_refs,
-           cur.featured_snippet  AS cur_fs, prev.featured_snippet AS prev_fs
+           cur.featured_snippet  AS cur_fs, prev.featured_snippet AS prev_fs,
+           cur.popular_products  AS cur_pp, prev.popular_products AS prev_pp
     FROM ranked cur
     JOIN ranked prev ON prev.keyword = cur.keyword AND prev.location_code = cur.location_code AND prev.rn = 2
     WHERE cur.rn = 1 AND cur.checked_on > prev.checked_on
@@ -135,6 +138,26 @@ function _checkSerp(pairs) {
         title: `Featured snippet lost on “${p.keyword}” to ${p.cur_fs.domain}`,
         detail: 'Position zero changed hands — re-answer the question better than their page does.',
         data: { keyword: p.keyword, to: p.cur_fs.domain },
+      });
+    }
+
+    // Free Popular-products grid present WITHOUT us on a commercial term we
+    // rank top-10 for — competitors holding free Merchant Center real estate
+    // above our blue link. Transition-gated like the AIO check: prev had no
+    // grid / no data (pre-column snapshots) / had us → fires; steady-state
+    // absence doesn't re-fire on every snapshot.
+    const ppNowBad = p.cur_pp && p.cur_pp.present && !p.cur_pp.ours
+      && has && p.cur_rank <= 10 && !INFORMATIONAL_RX.test(p.keyword);
+    const ppWasOk = !p.prev_pp || !p.prev_pp.present || p.prev_pp.ours;
+    if (ppNowBad && ppWasOk) {
+      const sellers = (p.cur_pp.items || []).map(x => x.seller || x.domain).filter(Boolean).slice(0, 4);
+      alerts.push({
+        type: 'serp-shopping-absent', key: `shopgrid:${p.keyword}:${p.cur_on}`,
+        severity: (p.cur_rank <= 5 || (p.search_volume || 0) >= 100) ? 'high' : 'med',
+        title: `Shopping grid without you on “${p.keyword}” (you rank #${p.cur_rank})`,
+        detail: (sellers.length ? `The free Popular-products grid shows ${sellers.join(', ')} — not WhisperRoom. ` : '')
+          + 'This placement is free Merchant Center real estate above your link — audit the free-listings feed (product types, GTINs, availability).',
+        data: { keyword: p.keyword, sellers, gridSize: (p.cur_pp.items || []).length },
       });
     }
   }

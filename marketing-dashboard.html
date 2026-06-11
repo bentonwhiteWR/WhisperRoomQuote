@@ -816,7 +816,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <div class="section-head" style="margin-bottom:8px">
       <div>
         <div class="section-title" style="font-size:15px">📡 Radar<span class="tip-i" title="Server-detected changes worth acting on — rank drops, competitor ads on your brand terms, uncited AI Overviews, lost featured snippets, budget-capped campaigns, spend with no conversions, organic decay. The server scans daily (pure SQL over already-synced data — no API spend) and sends one bell summary per scan with new findings.">ⓘ</span></div>
-        <div style="font-size:11px;color:var(--muted);margin-top:3px" id="radarSubtitle">Rank drops · brand threats · AI Overviews · budget + decay</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px" id="radarSubtitle">Rank drops · brand threats · AI Overviews · shopping grid · budget + decay</div>
       </div>
       <div style="display:flex;align-items:center;gap:12px">
         <a onclick="radarAckAll()" style="font-size:10px;color:var(--muted);cursor:pointer;user-select:none" title="Mark every NEW alert as seen — keeps them in the feed, clears the tab badge.">mark all seen</a>
@@ -1540,6 +1540,7 @@ const RADAR_TYPE_LABEL = {
   'serp-brand-comp-ad': 'Brand threat',
   'serp-aio-uncited':   'AI Overview',
   'serp-snippet-lost':  'Snippet lost',
+  'serp-shopping-absent': 'Shopping grid',
   'ads-budget-lost':    'Budget capped',
   'ads-spend-no-conv':  'Wasted spend',
   'gsc-decay':          'Organic decay',

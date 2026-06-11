@@ -825,6 +825,8 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     </div>
     <!-- 🗞 This Week — the weekly digest briefing (v1.102.0) -->
     <div id="digestPanel"></div>
+    <!-- 📋 Receipts — the action log (v1.103.0) -->
+    <div id="actionsPanel"></div>
     <div class="gsc-dim-toggle" id="radarStatusToggle" style="margin-bottom:12px">
       <button class="active" data-rstatus="active" onclick="setRadarStatus('active')">Active</button>
       <button data-rstatus="dismissed" onclick="setRadarStatus('dismissed')">Dismissed</button>
@@ -1302,7 +1304,7 @@ function renderSeo(d, paid) {
     const s = spendByTerm[k] || spendByKw[k];      // prefer real triggered-term spend
     if (!s || s.cost <= 0) return null;
     const topId = Object.keys(s.campCost).sort((a, b) => s.campCost[b] - s.campCost[a])[0];
-    return { cost: s.cost, conversions: s.conversions, camp: (topId && camps[topId]) || null };
+    return { cost: s.cost, conversions: s.conversions, camp: (topId && camps[topId]) || null, campId: topId || null };
   };
   const haveSpendData = (paid.stRows || []).length > 0 || (paid.kwRows || []).length > 0;
   const recs = rows.map(r => { const call = gscSerpPaidCall(r); return call && Object.assign({ r, bid: bidInfoFor(r.keyword) }, call); }).filter(Boolean);
@@ -1341,17 +1343,20 @@ function renderSeo(d, paid) {
     }
     return why;
   };
+  // ✓ logs to the action log: pull-backs with a known campaign track weekly
+  // spend (the saving is the outcome); defends track the keyword's rank.
   const recRow = x => `<tr>
     <td><a href="${googleUrl(x.r.keyword)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(x.r.keyword)}</a></td>
     <td class="num">#${x.r.our_rank}</td>
     <td>${recBadge(x.kind)}</td>
     <td>${spendCell(x)}</td>
     <td style="color:var(--muted);font-size:11px">${escHtml(recWhy(x))}</td>
+    <td><a onclick="defenseDone(this.dataset.kw, this.dataset.kind, this.dataset.camp)" data-kw="${escHtml(x.r.keyword)}" data-kind="${x.kind}" data-camp="${x.kind === 'pullback' && x.bid && x.bid.campId ? escHtml(x.bid.campId) : ''}" style="color:var(--green);cursor:pointer;font-size:11px;white-space:nowrap" title="Log to the action log (📋 Receipts on the Radar tab): snapshots ${x.kind === 'pullback' ? 'weekly spend' : 'the rank'} now, re-measures at 14/28 days.">✓ did it</a></td>
   </tr>`;
   const pullFoot = pullNoSpend > 0 ? `<div style="font-size:11px;color:var(--muted);margin-top:8px">+${pullNoSpend} more clean-SERP term${pullNoSpend > 1 ? 's' : ''} carry no paid spend in the window — nothing to pull back.</div>` : '';
   const defense = (defends.length || pullbacks.length || pullNoSpend) ? `<div class="section">
     <div class="section-head"><div class="section-title">Paid Defense — Defend vs Pull-Back<span class="tip-i" title="A paid-strategy call fusing the live SERP with your actual spend. DEFEND = your organic visibility is suppressed (a competitor is advertising above you, you're buried below ads/features, or an AI Overview doesn't cite you) on a commercial term — paid keeps you visible. PULL BACK = you rank top-3 with a clean SERP AND you're actually spending on the term, so paid clicks are likely redundant with free organic. Spend = Google Ads search-term spend (bid-keyword fallback) + the owning campaign's True ROAS (HubSpot closed-won ÷ spend). Clean-SERP terms with no spend are counted below the table, not listed.">ⓘ</span></div><span class="section-meta">${defends.length} defend · ${pullbacks.length} pull-back</span></div>
-    <table><thead><tr><th>Keyword</th><th class="num">Organic</th><th>Call</th><th>Your spend<span class="tip-i" title="What you actually spent on this exact term in the selected window (Google Ads search terms; falls back to the bid keyword), the campaign carrying it, and that campaign's True ROAS.">ⓘ</span></th><th>Why</th></tr></thead>
+    <table><thead><tr><th>Keyword</th><th class="num">Organic</th><th>Call</th><th>Your spend<span class="tip-i" title="What you actually spent on this exact term in the selected window (Google Ads search terms; falls back to the bid keyword), the campaign carrying it, and that campaign's True ROAS.">ⓘ</span></th><th>Why</th><th></th></tr></thead>
       <tbody>${[...defends, ...pullbacks].map(recRow).join('')}</tbody></table>${pullFoot}
   </div>` : '';
 
@@ -1401,11 +1406,16 @@ function renderSeo(d, paid) {
         ${(res.faq || []).length ? `<div style="margin-top:10px"><strong>FAQ to add</strong>${res.faq.map(f => `<div style="margin-top:6px"><span style="color:var(--orange)">Q:</span> ${escHtml(f.q)}<br><span style="color:var(--green)">A:</span> ${escHtml(f.a)}</div>`).join('')}</div>` : ''}
         ${(res.heading_fixes || []).length ? `<div style="margin-top:10px"><strong>Heading fixes</strong><ul style="margin:5px 0 0 18px;padding:0">${res.heading_fixes.map(h => `<li>${escHtml(h)}</li>`).join('')}</ul></div>` : ''}
         ${res.schema_jsonld ? `<div style="margin-top:10px"><strong>JSON-LD</strong> <span style="color:var(--muted)">(paste into the page head)</span><textarea readonly rows="6" style="width:100%;margin-top:5px;background:var(--surface2);color:var(--text);border:1px solid var(--surface2);border-radius:6px;font-size:10.5px;font-family:monospace;padding:8px" onclick="this.select()">${escHtml(res.schema_jsonld)}</textarea></div>` : ''}
+        <div style="margin-top:10px"><a onclick="citDone(this.dataset.kw)" data-kw="${escHtml(r.keyword)}" style="color:var(--green);cursor:pointer;font-weight:700" title="Log to the action log (📋 Receipts): tracks whether the AI Overview starts citing WhisperRoom, measured at 14/28 days.">✓ I shipped this fix</a></div>
       </div>
     </td></tr>`;
   };
   const citability = citCands.length ? `<div class="section">
-    <div class="section-head"><div class="section-title">🤖 AI Citability — get cited by the AI Overview<span class="tip-i" title="Terms where Google shows an AI Overview that does NOT cite WhisperRoom while you rank top-10 — the AI is answering buyers with competitor sources above your link. Generate fix reads YOUR ranking page plus the page the AI actually cites, and produces the concrete fix: an answer-first rewrite of the opening, FAQ items, paste-ready JSON-LD schema, and heading restructure. Results are cached; viewing is free.">ⓘ</span></div><span class="section-meta">${citCands.length} uncited terms · ${Object.keys(citMap).length} fixes generated</span></div>
+    <div class="section-head"><div class="section-title">🤖 AI Citability — get cited by the AI Overview<span class="tip-i" title="Terms where Google shows an AI Overview that does NOT cite WhisperRoom while you rank top-10 — the AI is answering buyers with competitor sources above your link. Generate fix reads YOUR ranking page plus the page the AI actually cites, and produces the concrete fix: an answer-first rewrite of the opening, FAQ items, paste-ready JSON-LD schema, and heading restructure. Results are cached; viewing is free.">ⓘ</span></div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="section-meta">${citCands.length} uncited terms · ${Object.keys(citMap).length} fixes generated</span>
+        ${citAi ? `<a id="citBulkBtn" onclick="runCitBulk()" style="font-size:11px;color:var(--orange);cursor:pointer" title="Generate fixes for the top 10 uncited terms (by volume) that don't have one yet. Runs in the background — about a dollar or two of Claude, ready in a few minutes.">✨ Generate top 10</a>` : ''}
+      </div></div>
     ${citAi ? '' : `<div style="font-size:11px;color:var(--yellow);margin-bottom:8px">Needs ANTHROPIC_API_KEY in Railway to generate fixes.</div>`}
     <table><thead><tr><th>Keyword</th><th class="num">Organic</th><th class="num">Vol</th><th>AI cites instead</th><th>Fix</th></tr></thead>
     <tbody>${citCands.slice(0, seoCitShowAll ? citCands.length : 15).map(citRow).join('')}</tbody></table>
@@ -1500,6 +1510,32 @@ async function runSyncGap() {
   } catch(e) { alert('Gap sync request dropped — it may still be finishing. Refresh in a minute.'); }
   loadSeoTab();
 }
+// Action-log hooks for SEO Intel surfaces (v1.103.0).
+function defenseDone(kw, kind, campId) {
+  const payload = kind === 'pullback' && campId
+    ? { source: 'defense', sourceKey: `defense:${kind}:${kw}`, title: `Pulled back paid spend on "${kw}"`, metricKind: 'campaign-spend', metricKey: campId }
+    : { source: 'defense', sourceKey: `defense:${kind}:${kw}`, title: `${kind === 'defend' ? 'Defended' : 'Pulled back'} "${kw}"`, metricKind: 'serp-rank', metricKey: kw };
+  logMarketingAction(payload, () => alert('Logged ✓ — outcome lands in 📋 Receipts on the Radar tab (first check in 14 days).'));
+}
+function citDone(kw) {
+  logMarketingAction(
+    { source: 'citability', sourceKey: `cit:${kw}`, title: `Shipped the citability fix for "${kw}"`, metricKind: 'aio-cited', metricKey: kw },
+    () => alert('Logged ✓ — Receipts will track whether the AI Overview starts citing you (14/28-day checks).'));
+}
+async function runCitBulk() {
+  if (!confirm('Generate fixes for the top 10 uncited terms without one yet? Runs in the background (a dollar or two of Claude, ready in a few minutes).')) return;
+  const btn = document.getElementById('citBulkBtn');
+  if (btn) { btn.style.pointerEvents = 'none'; btn.textContent = '… queued'; }
+  try {
+    const d = await fetch('/api/marketing/citability-bulk', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    }).then(r => r.json());
+    if (!d.ok) alert('Bulk generate failed: ' + (d.error || 'unknown error'));
+    else alert(d.queued ? `Generating ${d.queued} fixes in the background — reload SEO Intel in a few minutes.` : (d.note || 'Nothing to generate.'));
+  } catch(e) { alert('Bulk request dropped: ' + e.message); }
+  loadSeoTab();
+}
+
 async function runContentPlan() {
   const btn = document.getElementById('gapPlanBtn');
   if (btn) { btn.style.pointerEvents = 'none'; btn.textContent = '… writing plan'; }
@@ -1767,7 +1803,8 @@ async function radarBadgeRefresh(counts) {
 
 async function loadRadarTab() {
   const body = document.getElementById('radarBody');
-  loadDigestPanel();   // 🗞 This Week — independent fetch, never blocks the feed
+  loadDigestPanel();    // 🗞 This Week — independent fetch, never blocks the feed
+  loadActionsPanel();   // 📋 Receipts — same
   try {
     const d = await fetch(`/api/marketing/alerts?status=${radarStatus}&days=60`, { credentials: 'include' }).then(r => r.json());
     renderRadar(d || {});
@@ -1782,6 +1819,12 @@ async function loadRadarTab() {
 // closed-won pulse) once a week and writes the 5 things that matter. Auto-runs
 // on the radar scheduler; "Generate now" runs one on demand.
 const DIGEST_AREA_ICON = { ads: '💸', seo: '🔎', 'ai-visibility': '🤖', shopping: '🛒', content: '✍️', revenue: '💰', site: '🌐' };
+let digestLast = null;
+function digestDone(i) {
+  const it = digestLast && (digestLast.items || [])[i];
+  if (!it) return;
+  logMarketingAction({ source: 'digest', sourceKey: `digest:${digestLast.id}:${i}`, title: it.title, action: it.action }, loadActionsPanel);
+}
 async function loadDigestPanel() {
   const el = document.getElementById('digestPanel');
   if (!el) return;
@@ -1805,6 +1848,7 @@ async function loadDigestPanel() {
       return;
     }
     const items = latest.items || [];
+    digestLast = latest;   // for the per-item ✓ handler
     el.innerHTML = `<div class="section" style="padding:14px 16px;margin-bottom:14px;border:1px solid var(--surface2)">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:4px">
         <div style="flex:1;min-width:0">
@@ -1821,13 +1865,103 @@ async function loadDigestPanel() {
             <div style="font-size:12.5px;font-weight:700;line-height:1.45">
               <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${RADAR_SEV[it.severity] || RADAR_SEV.info};margin-right:6px"></span>${i + 1}. ${escHtml(it.title)}</div>
             <div style="font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.55">${escHtml(it.why || '')}</div>
-            <div style="font-size:11.5px;margin-top:4px;line-height:1.5"><span style="color:var(--orange);font-weight:700">Do:</span> ${escHtml(it.action || '')}</div>
+            <div style="font-size:11.5px;margin-top:4px;line-height:1.5"><span style="color:var(--orange);font-weight:700">Do:</span> ${escHtml(it.action || '')}
+              <a onclick="digestDone(${i})" style="color:var(--green);cursor:pointer;margin-left:8px;font-weight:700" title="Log to the action log (📋 Receipts) as done.">✓ did it</a></div>
           </div>
         </div>`).join('')}
     </div>`;
   } catch(e) {
     el.innerHTML = '';
   }
+}
+
+// ── 📋 Receipts — the action log (v1.103.0, intel-roadmap layer 5) ──────
+// Every ✓ snapshots the metric at action time; the server re-measures at 14
+// and 28 days and writes the outcome. This panel is the proof.
+let radarRowData = {};
+const ACTION_SOURCE_ICON = { alert: '📡', digest: '🗞', defense: '🛡', citability: '🤖', manual: '✎' };
+let actionsShowAll = false;
+async function loadActionsPanel() {
+  const el = document.getElementById('actionsPanel');
+  if (!el) return;
+  try {
+    const d = await fetch('/api/marketing/actions', { credentials: 'include' }).then(r => r.json());
+    const rows = d.rows || [];
+    if (!rows.length) { el.innerHTML = ''; return; }
+    const measured = rows.filter(r => r.check14 || r.check28).length;
+    const wins = rows.filter(r => r.outcome && /🎉|improved|up \d|down \$|now in|now cites|now ranking/i.test(r.outcome)).length;
+    const line = r => {
+      const latest = r.check28 || r.check14;
+      const status = r.outcome
+        ? `<span style="color:var(--text)">${escHtml(r.outcome)}</span>${r.check28 ? ' <span style="color:var(--muted)">(28d)</span>' : ' <span style="color:var(--muted)">(14d)</span>'}`
+        : r.metric_kind
+          ? `<span style="color:var(--muted)">measuring — first check ${Math.max(0, 14 - Math.floor((Date.now() - new Date(r.created_at)) / 86400000))}d away</span>`
+          : `<span style="color:var(--muted)">logged (no auto-metric for this one)</span>`;
+      return `<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--surface2);font-size:11.5px;line-height:1.5">
+        <div style="flex-shrink:0;width:18px;text-align:center" title="${escHtml(r.source)}">${ACTION_SOURCE_ICON[r.source] || '•'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600">${escHtml(r.title)}${r.status === 'skipped' ? ' <span class="mine-tag" style="background:var(--surface2);color:var(--muted)">skipped</span>' : ''}</div>
+          <div style="margin-top:2px">${status}</div>
+        </div>
+        <div style="flex-shrink:0;text-align:right">
+          <div style="font-size:10px;color:var(--muted)">${fmtDate(r.created_at)}</div>
+          <a onclick="actionUndo(${r.id})" style="font-size:10px;color:var(--muted);cursor:pointer">undo ✕</a>
+        </div>
+      </div>`;
+    };
+    el.innerHTML = `<div class="section" style="padding:12px 16px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div class="section-title" style="font-size:13px">📋 Receipts<span class="tip-i" title="Your action log. Marking a recommendation '✓ did it' snapshots the metric at that moment (rank / clicks / spend / grid presence / AI citation); the server re-measures at 14 and 28 days and writes the outcome here — proof of what your actions earned.">ⓘ</span></div>
+        <span class="section-meta">${rows.length} action${rows.length === 1 ? '' : 's'} · ${measured} measured · ${wins} win${wins === 1 ? '' : 's'}</span>
+      </div>
+      ${rows.slice(0, actionsShowAll ? rows.length : 8).map(line).join('')}
+      ${rows.length > 8 ? `<div style="font-size:11px;margin-top:8px"><a onclick="actionsShowAll=!actionsShowAll;loadActionsPanel()" style="color:var(--orange);cursor:pointer">${actionsShowAll ? 'Show recent 8' : `Show all ${rows.length}`}</a></div>` : ''}
+    </div>`;
+  } catch(e) { el.innerHTML = ''; }
+}
+async function radarDidIt(id) {
+  try {
+    const d = await fetch('/api/marketing/actions', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alertId: id }),
+    }).then(r => r.json());
+    if (!d.ok) alert('Could not log the action: ' + (d.error || 'unknown error'));
+  } catch(e) {}
+  loadRadarTab();
+}
+async function radarNotComp(id) {
+  const a = radarRowData[id];
+  const domains = (a && a.data && a.data.domains) || [];
+  if (!domains.length) return;
+  if (!confirm(`Never alert on these advertisers again (on any brand term)?\n\n${domains.join('\n')}`)) return;
+  try {
+    const d = await fetch('/api/marketing/ignore-advertisers', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domains, alertId: id }),
+    }).then(r => r.json());
+    if (!d.ok) alert('Could not save: ' + (d.error || 'unknown error'));
+  } catch(e) {}
+  loadRadarTab();
+}
+async function actionUndo(id) {
+  try {
+    await fetch('/api/marketing/actions/delete', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+  } catch(e) {}
+  loadActionsPanel();
+}
+// Direct log from digest items / defense calls / citability fixes.
+async function logMarketingAction(payload, after) {
+  try {
+    const d = await fetch('/api/marketing/actions', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(r => r.json());
+    if (!d.ok) alert('Could not log the action: ' + (d.error || 'unknown error'));
+    else if (after) after();
+  } catch(e) {}
 }
 
 async function runDigestNow() {
@@ -1865,9 +1999,15 @@ function renderRadar(d) {
     return;
   }
   // Rows arrive severity-first then newest-first (server orders them).
+  radarRowData = {};   // id → alert (for the did-it / not-competitors handlers)
   body.innerHTML = rows.map(a => {
+    radarRowData[a.id] = a;
     const sev = RADAR_SEV[a.severity] || RADAR_SEV.info;
     const isNew = a.status === 'new';
+    const notComp = (a.type === 'serp-brand-comp-ad' && a.data && (a.data.domains || []).length && radarStatus !== 'dismissed')
+      ? `<a onclick="radarNotComp(${a.id})" style="font-size:10px;color:var(--muted);cursor:pointer;user-select:none;display:block" title="These advertisers aren't booth competitors (e.g. bookstores selling the novel) — never alert on them again, on any brand term.">✗ not competitors</a>` : '';
+    const didIt = radarStatus !== 'dismissed'
+      ? `<a onclick="radarDidIt(${a.id})" style="font-size:10px;color:var(--green);cursor:pointer;user-select:none;display:block" title="Log this to the action log: snapshots the metric now, re-measures at 14 and 28 days, and dismisses the alert.">✓ did it</a>` : '';
     return `<div class="section" style="border-left:3px solid ${sev};padding:12px 14px;margin-bottom:10px${isNew ? '' : ';opacity:.75'}">
       <div style="display:flex;align-items:flex-start;gap:10px">
         <div style="flex:1;min-width:0">
@@ -1880,6 +2020,7 @@ function renderRadar(d) {
         </div>
         <div style="flex-shrink:0;text-align:right">
           <div style="font-size:10px;color:var(--muted)">${fmtDate(a.created_at)}</div>
+          ${didIt}${notComp}
           ${radarStatus !== 'dismissed' ? `<a onclick="radarDismiss(${a.id})" style="font-size:10px;color:var(--muted);cursor:pointer;user-select:none" title="Dismiss — won't re-fire unless its underlying key rolls over (new snapshot / month / week).">dismiss ✕</a>` : ''}
         </div>
       </div>

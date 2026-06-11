@@ -80,7 +80,10 @@ async function _serpPairs(db) {
 
 // Each check returns [{type, key, severity, title, detail, data}]. Keys carry a
 // date-ish component where a re-fire later is wanted; dedup is on (type, key).
-function _checkSerp(pairs) {
+// `ignored` (Set of domains) = learned non-competitors from the feed's
+// "✗ not competitors" button (e.g. bookstores advertising the novel) —
+// filtered out of the brand-threat check only.
+function _checkSerp(pairs, ignored = new Set()) {
   const alerts = [];
   for (const p of pairs) {
     const vol = p.search_volume != null ? `${p.search_volume} vol` : null;
@@ -102,7 +105,8 @@ function _checkSerp(pairs) {
     // New competitor ad on a brand term.
     if (isBrandTerm(p.keyword)) {
       const prevDoms = new Set(((p.prev_ads || [])).map(a => (a.domain || '').toLowerCase()));
-      const fresh = (p.cur_ads || []).filter(a => isCompetitor(a.domain) && !prevDoms.has((a.domain || '').toLowerCase()));
+      const fresh = (p.cur_ads || []).filter(a => isCompetitor(a.domain) && !prevDoms.has((a.domain || '').toLowerCase())
+        && !ignored.has((a.domain || '').toLowerCase()));
       if (fresh.length) {
         alerts.push({
           type: 'serp-brand-comp-ad', key: `brand-ad:${p.keyword}:${fresh.map(a => a.domain).sort().join(',')}`,
@@ -252,7 +256,9 @@ async function runAlertScan({ db }) {
   if (!db) return { error: 'no db' };
   const found = [];
   const errors = [];
-  try { found.push(..._checkSerp(await _serpPairs(db))); } catch (e) { errors.push('serp: ' + e.message); }
+  let ignored = new Set();
+  try { ignored = new Set((await db.query(`SELECT domain FROM marketing_ignored_advertisers`)).rows.map(r => r.domain.toLowerCase())); } catch (e) { /* table may predate */ }
+  try { found.push(..._checkSerp(await _serpPairs(db), ignored)); } catch (e) { errors.push('serp: ' + e.message); }
   try { found.push(...await _checkAds(db)); } catch (e) { errors.push('ads: ' + e.message); }
   try { found.push(...await _checkGscDecay(db)); } catch (e) { errors.push('gsc: ' + e.message); }
 
@@ -321,6 +327,10 @@ function ensureScheduler(getDb, serpEtl) {
       // needs alert helpers.
       try { await require('./digest').maybeRunDigest(db); }
       catch (e) { console.warn('[marketing-digest] tick failed:', e.message); }
+      // v1.103.0 — re-measure logged actions due for their 14d/28d check
+      // (pure SQL, internally guarded to due rows only).
+      try { await require('./actions').measureActions(db); }
+      catch (e) { console.warn('[marketing-actions] tick failed:', e.message); }
     } catch (e) { console.warn('[marketing-alerts] tick failed:', e.message); }
   };
   setTimeout(tick, 90 * 1000);              // first pass shortly after boot

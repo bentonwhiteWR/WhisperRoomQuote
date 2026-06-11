@@ -331,6 +331,39 @@ CREATE TABLE IF NOT EXISTS marketing_content_gap (
 );
 CREATE INDEX IF NOT EXISTS idx_mkt_gap_score ON marketing_content_gap(score DESC);
 
+-- ── Action log (📋 Receipts, v1.103.0 — intel-roadmap layer 5) ──────────
+-- One row per recommendation Gabe acted on (or skipped). `baseline` is the
+-- metric snapshot at action time; the scheduler re-measures into check14 /
+-- check28 and writes a plain-English `outcome`. Dedup on (source, source_key)
+-- so a double click updates instead of duplicating.
+CREATE TABLE IF NOT EXISTS marketing_actions (
+  id          SERIAL PRIMARY KEY,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  source      TEXT NOT NULL,            -- alert | digest | defense | citability | manual
+  source_key  TEXT NOT NULL,            -- alert:<id> / digest:<id>:<i> / defense:<kind>:<kw> / cit:<kw>
+  title       TEXT NOT NULL,
+  action      TEXT,
+  status      TEXT NOT NULL DEFAULT 'done',   -- done | skipped
+  metric_kind TEXT,                     -- serp-rank | gsc-clicks | campaign-spend | grid-presence | aio-cited
+  metric_key  TEXT,
+  baseline    JSONB,
+  check14     JSONB,
+  check28     JSONB,
+  outcome     TEXT,
+  notes       TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mkt_actions_key ON marketing_actions(source, source_key);
+CREATE INDEX IF NOT EXISTS idx_mkt_actions_created ON marketing_actions(created_at DESC);
+
+-- ── Learned non-competitors (v1.103.0) ──────────────────────────────────
+-- Domains the brand-threat check should ignore (e.g. bookstores advertising
+-- the NOVEL "Whisper Room"). Fed by the alert feed's "✗ not competitors".
+CREATE TABLE IF NOT EXISTS marketing_ignored_advertisers (
+  domain     TEXT PRIMARY KEY,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  note       TEXT
+);
+
 -- ── Small AI outputs keyed by kind (v1.102.0) ───────────────────────────
 -- Latest content plan etc. — one row per kind, regenerate overwrites.
 CREATE TABLE IF NOT EXISTS marketing_ai_outputs (

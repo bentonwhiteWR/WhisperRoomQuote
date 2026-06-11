@@ -151,4 +151,49 @@ async function runCitability({ db, keyword, force = false }) {
   return { ok: true, cached: false, keyword, result };
 }
 
-module.exports = { runCitability };
+// ── bulk mode (v1.103.0) ─────────────────────────────────────────────────
+// Generates fixes for the top-N uncited candidates that DON'T have one yet
+// (by volume, then rank). Runs in the background — 10 fixes ≈ 3-5 minutes of
+// page fetches + Claude calls, far past a request timeout — so the endpoint
+// returns {queued} immediately and progress lands in the 'citability' sync row.
+let _bulkRunning = false;
+async function runCitabilityBulk({ db, limit = 10 }) {
+  if (!db) return { ok: false, error: 'no db' };
+  if (_bulkRunning) return { ok: false, status: 409, error: 'A bulk run is already in progress — give it a few minutes.' };
+  limit = Math.min(Math.max(parseInt(limit) || 10, 1), 25);
+  const cand = (await db.query(`
+    WITH latest AS (
+      SELECT DISTINCT ON (keyword) keyword, our_rank, our_url, ai_overview, ai_overview_cited, search_volume
+      FROM marketing_serp_snapshots ORDER BY keyword, checked_on DESC
+    )
+    SELECT l.keyword FROM latest l
+    LEFT JOIN marketing_citability c ON c.keyword = l.keyword
+    WHERE l.ai_overview AND NOT l.ai_overview_cited AND l.our_rank <= 10
+      AND l.our_url IS NOT NULL AND c.keyword IS NULL
+    ORDER BY l.search_volume DESC NULLS LAST, l.our_rank ASC
+    LIMIT $1`, [limit])).rows.map(r => r.keyword);
+  if (!cand.length) return { ok: true, queued: 0, note: 'Every candidate already has a generated fix.' };
+
+  _bulkRunning = true;
+  (async () => {
+    let done = 0, failed = 0;
+    for (const keyword of cand) {
+      try {
+        const r = await runCitability({ db, keyword });
+        if (r.ok) done++; else { failed++; console.warn(`[citability-bulk] ${keyword}: ${r.error}`); }
+      } catch (e) { failed++; console.warn(`[citability-bulk] ${keyword}: ${e.message}`); }
+    }
+    _bulkRunning = false;
+    try {
+      await db.query(
+        `INSERT INTO marketing_syncs (report_type, last_synced_at, rows_synced, error)
+         VALUES ('citability', NOW(), $1, $2)
+         ON CONFLICT (report_type) DO UPDATE SET last_synced_at = NOW(), rows_synced = $1, error = $2`,
+        [done, failed ? `${failed} of ${cand.length} failed — see logs` : null]);
+    } catch (e) { /* non-fatal */ }
+    console.log(`[citability-bulk] finished: ${done} generated, ${failed} failed`);
+  })();
+  return { ok: true, queued: cand.length };
+}
+
+module.exports = { runCitability, runCitabilityBulk };

@@ -35,6 +35,7 @@ const digest = require('./digest');
 const citability = require('./citability');
 const gapEtl = require('./gap-etl');
 const claude = require('./claude');
+const actions = require('./actions');
 
 // Empty array = open to everyone (allowlist disabled). Populate with
 // ownerIds to re-lock — e.g. ['36303670', '36320208'] for Benton + Gabe.
@@ -483,6 +484,99 @@ async function handle(req, res, ctx) {
         if (ids.length) n = (await ctx.db.query(`UPDATE marketing_alerts SET status = 'seen' WHERE id = ANY($1) AND status = 'new'`, [ids])).rowCount;
       }
       ctx.json({ ok: true, updated: n });
+    } catch(e) { ctx.json({ ok: false, error: e.message }, 500); }
+    return true;
+  }
+
+  // ── Action log (📋 Receipts, v1.103.0) ────────────────────────────
+  // POST /api/marketing/actions — log a done/skipped recommendation.
+  //   {alertId} → derive metric from the alert, log it, dismiss the alert.
+  //   {source, sourceKey, title, action, metricKind, metricKey, status} → direct.
+  // GET — the receipts feed. POST /actions/delete {id} — undo.
+  if (pathname === '/api/marketing/actions' && req.method === 'POST') {
+    try {
+      let body = {};
+      try {
+        const chunks = [];
+        await new Promise((res, rej) => { req.on('data', c => chunks.push(c)); req.on('end', res); req.on('error', rej); });
+        body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
+      } catch {}
+      const out = body.alertId != null
+        ? await actions.logAlertAction({ db: ctx.db, alertId: parseInt(body.alertId) })
+        : await actions.logAction({ db: ctx.db, source: body.source, sourceKey: body.sourceKey, title: body.title, action: body.action, status: body.status === 'skipped' ? 'skipped' : 'done', metricKind: body.metricKind, metricKey: body.metricKey });
+      ctx.json(out, out.ok ? 200 : (out.status || 500));
+    } catch(e) { ctx.json({ ok: false, error: e.message }, 500); }
+    return true;
+  }
+  if (pathname === '/api/marketing/actions' && req.method === 'GET') {
+    try {
+      if (!ctx.db) { ctx.json({ rows: [] }); return true; }
+      const rows = (await ctx.db.query(`
+        SELECT id, created_at, source, source_key, title, action, status,
+               metric_kind, metric_key, baseline, check14, check28, outcome
+        FROM marketing_actions ORDER BY created_at DESC LIMIT 200`)).rows;
+      ctx.json({ rows });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+  if (pathname === '/api/marketing/actions/delete' && req.method === 'POST') {
+    try {
+      let body = {};
+      try {
+        const chunks = [];
+        await new Promise((res, rej) => { req.on('data', c => chunks.push(c)); req.on('end', res); req.on('error', rej); });
+        body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
+      } catch {}
+      const id = parseInt(body.id);
+      if (!Number.isFinite(id)) { ctx.json({ ok: false, error: 'id required' }, 400); return true; }
+      const n = (await ctx.db.query(`DELETE FROM marketing_actions WHERE id = $1`, [id])).rowCount;
+      ctx.json({ ok: true, deleted: n });
+    } catch(e) { ctx.json({ ok: false, error: e.message }, 500); }
+    return true;
+  }
+  if (pathname === '/api/marketing/actions/measure' && req.method === 'POST') {
+    try { ctx.json(await actions.measureActions(ctx.db)); }
+    catch(e) { ctx.json({ ok: false, error: e.message }, 500); }
+    return true;
+  }
+
+  // ── POST /api/marketing/ignore-advertisers ────────────────────────
+  // {domains: [..], alertId?} — learn non-competitors (the novel's bookstores)
+  // so the brand-threat check skips them on every future scan; dismisses the
+  // source alert when given.
+  if (pathname === '/api/marketing/ignore-advertisers' && req.method === 'POST') {
+    try {
+      let body = {};
+      try {
+        const chunks = [];
+        await new Promise((res, rej) => { req.on('data', c => chunks.push(c)); req.on('end', res); req.on('error', rej); });
+        body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
+      } catch {}
+      const domains = (Array.isArray(body.domains) ? body.domains : []).map(d => String(d).toLowerCase().trim()).filter(Boolean).slice(0, 30);
+      if (!domains.length) { ctx.json({ ok: false, error: 'domains required' }, 400); return true; }
+      for (const d of domains) {
+        await ctx.db.query(`INSERT INTO marketing_ignored_advertisers (domain, note) VALUES ($1, $2) ON CONFLICT (domain) DO NOTHING`,
+          [d, body.note ? String(body.note).slice(0, 200) : 'marked not-a-competitor from the radar feed']);
+      }
+      if (body.alertId != null) await ctx.db.query(`UPDATE marketing_alerts SET status = 'dismissed' WHERE id = $1`, [parseInt(body.alertId)]);
+      ctx.json({ ok: true, ignored: domains });
+    } catch(e) { ctx.json({ ok: false, error: e.message }, 500); }
+    return true;
+  }
+
+  // ── POST /api/marketing/citability-bulk ───────────────────────────
+  // {limit} — background-generate fixes for the top uncited candidates that
+  // don't have one yet. Returns {queued} immediately.
+  if (pathname === '/api/marketing/citability-bulk' && req.method === 'POST') {
+    try {
+      let body = {};
+      try {
+        const chunks = [];
+        await new Promise((res, rej) => { req.on('data', c => chunks.push(c)); req.on('end', res); req.on('error', rej); });
+        body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
+      } catch {}
+      const out = await citability.runCitabilityBulk({ db: ctx.db, limit: body.limit });
+      ctx.json(out, out.ok ? 200 : (out.status || 500));
     } catch(e) { ctx.json({ ok: false, error: e.message }, 500); }
     return true;
   }

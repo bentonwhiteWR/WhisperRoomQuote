@@ -1255,7 +1255,7 @@ function renderSeo(d, paid) {
     <table><thead><tr>
       <th>Keyword</th><th class="num">Vol<span class="tip-i" title="Estimated monthly Google search volume (US). Source: DataForSEO Keywords Data / Google Ads. The size of the prize.">ⓘ</span></th><th class="num">KD<span class="tip-i" title="Keyword difficulty 0-100 — how hard it is to rank (lower = easier). Green &lt;30, yellow 30-59, red 60+. Source: DataForSEO Labs. The winnability.">ⓘ</span></th><th class="num">Organic<span class="tip-i" title="Your ORGANIC position (rank_group) — the real SEO rank. Pulled logged-out from a neutral US location, so it can read lower than your personalized, logged-in browser; that neutral number is what a new customer sees.">ⓘ</span></th><th class="num">Absolute<span class="tip-i" title="Your position among EVERYTHING on the page — ads + AI Overview + featured snippet + shopping + organic. The gap from Organic = how much is stacked above you (color: orange = 3+, red = 5+). That gap is the visibility/CTR drag and a defend-with-ads signal.">ⓘ</span></th><th class="num">Move</th><th>Top competitors</th><th>Ads above<span class="tip-i" title="Advertisers (text + shopping ads) running on this term, from the live SERP. Bold = a competitor that also outranks you organically. A competitor ad above your organic #1 is the textbook defend-with-ads case.">ⓘ</span></th><th>AI Overview</th>
     </tr></thead><tbody>
-      ${tableRows.length ? tableRows.map(r => `<tr>
+      ${tableRows.length ? tableRows.slice(0, seoRankShowAll ? tableRows.length : 100).map(r => `<tr>
         <td><a href="${googleUrl(r.keyword)}" target="_blank" rel="noopener" title="Open the de-personalized US Google results for &quot;${escHtml(r.keyword)}&quot; (pws=0&gl=us, new tab) — closest to what this tool sees. Right-click → incognito for the cleanest view + the AI Overview." style="color:var(--text)">${escHtml(r.keyword)}</a> <span style="color:var(--muted);font-size:10px">↗</span></td>
         <td class="num">${volCell(r)}</td>
         <td class="num">${kdCell(r)}</td>
@@ -1267,6 +1267,7 @@ function renderSeo(d, paid) {
         <td>${aiBadge(r)}</td>
       </tr>`).join('') : `<tr><td colspan="9" style="color:var(--muted);text-align:center;padding:18px">No keywords match this filter.</td></tr>`}
     </tbody></table>
+    ${tableRows.length > 100 ? `<div style="font-size:11px;margin-top:8px"><a onclick="seoRankShowAll=!seoRankShowAll;renderSeo(seoLastData.d,seoLastData.paid)" style="color:var(--orange);cursor:pointer">${seoRankShowAll ? 'Show top 100' : `Show all ${tableRows.length} keywords`}</a><span style="color:var(--muted)"> — AI Citability · Paid Defense · Content gap · PAA continue below</span></div>` : ''}
   </div>`;
 
   // ── Paid Defense: Defend vs Pull-Back (ROAS-aware since v1.89.1) ─────
@@ -1458,6 +1459,7 @@ function renderSeo(d, paid) {
 let seoCitOpen = new Set();     // keywords with the fix panel expanded
 let seoCitShowAll = false;
 let seoGapShowAll = false;
+let seoRankShowAll = false;     // rank tracker: top-100 cap so the sections below stay reachable
 function seoCitToggle(kw) {
   if (seoCitOpen.has(kw)) seoCitOpen.delete(kw); else seoCitOpen.add(kw);
   if (seoLastData) renderSeo(seoLastData.d, seoLastData.paid);

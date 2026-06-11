@@ -286,3 +286,56 @@ CREATE TABLE IF NOT EXISTS marketing_alerts (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mkt_alerts_type_key ON marketing_alerts(type, key);
 CREATE INDEX IF NOT EXISTS idx_mkt_alerts_status ON marketing_alerts(status, created_at DESC);
+
+-- ── Weekly digest (🗞 This Week panel, v1.102.0) ────────────────────────
+-- One row per generated briefing: Claude's "5 things that matter this week"
+-- over a data pack assembled from the already-synced tables. `data` keeps the
+-- exact pack the model saw (auditability: every number in the briefing should
+-- trace back to it).
+CREATE TABLE IF NOT EXISTS marketing_digests (
+  id           SERIAL PRIMARY KEY,
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  period_start DATE,
+  period_end   DATE,
+  headline     TEXT,
+  items        JSONB,   -- [{title, why, action, area, severity}]
+  data         JSONB,   -- the data pack fed to the model
+  model        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_mkt_digests_created ON marketing_digests(created_at DESC);
+
+-- ── AI citability results (SEO Intel section, v1.102.0) ────────────────
+-- One row per keyword: the generated fix (answer-first rewrite, FAQ, JSON-LD,
+-- heading restructure) for an uncited-AI-Overview term. Regenerate overwrites.
+CREATE TABLE IF NOT EXISTS marketing_citability (
+  keyword    TEXT PRIMARY KEY,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  our_url    TEXT,
+  result     JSONB,
+  model      TEXT
+);
+
+-- ── Competitor content gap (SEO Intel section, v1.102.0) ───────────────
+-- Keywords competitors rank top-20 for that WhisperRoom doesn't cover at all,
+-- scored by segment-family weight × intent × volume. Full refresh per Sync gap.
+CREATE TABLE IF NOT EXISTS marketing_content_gap (
+  keyword            TEXT PRIMARY KEY,
+  competitors        JSONB,    -- [{domain, rank, url}]
+  search_volume      INTEGER,
+  cpc                NUMERIC,
+  keyword_difficulty NUMERIC,
+  family             TEXT,
+  intent             TEXT,     -- buy | browse | info
+  score              NUMERIC,
+  fetched_at         TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_mkt_gap_score ON marketing_content_gap(score DESC);
+
+-- ── Small AI outputs keyed by kind (v1.102.0) ───────────────────────────
+-- Latest content plan etc. — one row per kind, regenerate overwrites.
+CREATE TABLE IF NOT EXISTS marketing_ai_outputs (
+  kind       TEXT PRIMARY KEY,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  result     JSONB,
+  model      TEXT
+);

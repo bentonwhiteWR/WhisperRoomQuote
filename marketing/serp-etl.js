@@ -465,4 +465,6 @@ async function _recordSync(db, reportType, rows, error) {
   } catch (e) { console.warn('[serp-etl] sync record failed:', e.message); }
 }
 
-module.exports = { envReady, missingEnvVars, syncSerp, SEED_KEYWORDS, MAX_SERP_KEYWORDS };
+// dfsPost / location constants exported for gap-etl.js (content gap shares the
+// same DataForSEO account + request plumbing).
+module.exports = { envReady, missingEnvVars, syncSerp, SEED_KEYWORDS, MAX_SERP_KEYWORDS, dfsPost: _post, LOCATION_CODE, LANGUAGE_CODE };

@@ -31,6 +31,10 @@ const hsEtl  = require('./hubspot-etl');
 const gscEtl = require('./gsc-etl');
 const serpEtl = require('./serp-etl');
 const alerts = require('./alerts');
+const digest = require('./digest');
+const citability = require('./citability');
+const gapEtl = require('./gap-etl');
+const claude = require('./claude');
 
 // Empty array = open to everyone (allowlist disabled). Populate with
 // ownerIds to re-lock — e.g. ['36303670', '36320208'] for Benton + Gabe.
@@ -387,6 +391,12 @@ async function handle(req, res, ctx) {
       // Radar alert scan — pure SQL over already-synced tables (no API spend),
       // so safe to run any time. The scheduler runs it daily; this is "Scan now".
       else if (report === 'alerts')           result = await alerts.runAlertScan({ db: ctx.db });
+      // Weekly digest — one Claude call over already-synced data. The radar
+      // scheduler runs it weekly; this is the dashboard's "Generate now".
+      else if (report === 'digest')           result = await digest.runDigest({ db: ctx.db });
+      // Content gap — DataForSEO Labs spend (~5 ranked_keywords calls), so
+      // explicit and OUT of 'all', same policy as 'serp'.
+      else if (report === 'gap')              result = await gapEtl.syncGap({ db: ctx.db });
       else if (report === 'hubspot_contacts') result = await hsEtl.syncHubSpotContacts({ db: ctx.db, daysBack: hsDays });
       else if (report === 'hubspot_deals')    result = await hsEtl.syncHubSpotDeals({    db: ctx.db, daysBack: hsDays });
       else if (report === 'hubspot_all') {
@@ -473,6 +483,118 @@ async function handle(req, res, ctx) {
         if (ids.length) n = (await ctx.db.query(`UPDATE marketing_alerts SET status = 'seen' WHERE id = ANY($1) AND status = 'new'`, [ids])).rowCount;
       }
       ctx.json({ ok: true, updated: n });
+    } catch(e) { ctx.json({ ok: false, error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/digest ─────────────────────────────────────
+  // The 🗞 This Week panel (Radar tab): latest digests newest-first + the
+  // 'digest' sync meta + whether the Claude key is configured.
+  if (pathname === '/api/marketing/digest' && req.method === 'GET') {
+    try {
+      if (!ctx.db) { ctx.json({ rows: [], configured: !!claude.apiKey() }); return true; }
+      const rows = (await ctx.db.query(`
+        SELECT id, created_at, period_start, period_end, headline, items, model
+        FROM marketing_digests ORDER BY created_at DESC LIMIT 6`)).rows;
+      const sync = (await ctx.db.query(`SELECT * FROM marketing_syncs WHERE report_type = 'digest'`)).rows[0] || null;
+      ctx.json({ rows, sync, configured: !!claude.apiKey(), auto: (process.env.MARKETING_DIGEST_AUTO || 'on') !== 'off' });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET/POST /api/marketing/citability ────────────────────────────
+  // GET: cached fixes (keyword → result). POST {keyword, force}: generate the
+  // fix for one uncited-AIO keyword (fetches our page + the cited page, one
+  // Claude call, cached in marketing_citability).
+  if (pathname === '/api/marketing/citability' && req.method === 'GET') {
+    try {
+      if (!ctx.db) { ctx.json({ rows: [], configured: !!claude.apiKey() }); return true; }
+      const rows = (await ctx.db.query(`
+        SELECT keyword, created_at, our_url, result FROM marketing_citability
+        ORDER BY created_at DESC LIMIT 200`)).rows;
+      ctx.json({ rows, configured: !!claude.apiKey() });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+  if (pathname === '/api/marketing/citability' && req.method === 'POST') {
+    try {
+      let body = {};
+      try {
+        const chunks = [];
+        await new Promise((res, rej) => { req.on('data', c => chunks.push(c)); req.on('end', res); req.on('error', rej); });
+        body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
+      } catch {}
+      const out = await citability.runCitability({ db: ctx.db, keyword: body.keyword, force: !!body.force });
+      ctx.json(out, out.ok ? 200 : (out.status || 500));
+    } catch(e) { ctx.json({ ok: false, error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/content-gap ────────────────────────────────
+  // Gap keywords scored by family×intent×volume + the latest content plan
+  // (marketing_ai_outputs kind='content-plan') + sync meta.
+  if (pathname === '/api/marketing/content-gap' && req.method === 'GET') {
+    try {
+      if (!ctx.db) { ctx.json({ rows: [], configured: serpEtl.envReady() }); return true; }
+      const rows = (await ctx.db.query(`
+        SELECT keyword, competitors, search_volume, cpc, keyword_difficulty, family, intent, score
+        FROM marketing_content_gap ORDER BY score DESC NULLS LAST LIMIT 500`)).rows;
+      const sync = (await ctx.db.query(`SELECT * FROM marketing_syncs WHERE report_type = 'gap'`)).rows[0] || null;
+      const plan = (await ctx.db.query(`SELECT created_at, result, model FROM marketing_ai_outputs WHERE kind = 'content-plan'`)).rows[0] || null;
+      ctx.json({ rows, sync, plan, configured: serpEtl.envReady(), aiConfigured: !!claude.apiKey(), competitors: gapEtl.GAP_COMPETITORS });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
+    return true;
+  }
+
+  // ── POST /api/marketing/content-plan ──────────────────────────────
+  // Turns the top-scored gap keywords into a sequenced content plan (one
+  // Claude call). Stored in marketing_ai_outputs so it survives reloads.
+  if (pathname === '/api/marketing/content-plan' && req.method === 'POST') {
+    try {
+      if (!ctx.db) { ctx.json({ ok: false, error: 'no db' }, 500); return true; }
+      const gaps = (await ctx.db.query(`
+        SELECT keyword, search_volume, keyword_difficulty, family, intent, score, competitors
+        FROM marketing_content_gap ORDER BY score DESC NULLS LAST LIMIT 25`)).rows;
+      if (!gaps.length) { ctx.json({ ok: false, error: 'No gap keywords synced yet — run Sync gap first.' }, 400); return true; }
+      const res = await claude.jsonCall({
+        system: [
+          'You are the content strategist for WhisperRoom, a US manufacturer of modular sound-isolation booths.',
+          'Turn the keyword gaps below (terms competitors rank for that WhisperRoom does not cover) into a sequenced content plan.',
+          'Rules: never use the word "soundproof" in titles or copy you write (say "sound isolation" / "sound-isolating"; the keyword itself may contain it — that is fine to target, not to copy). Never use em dashes. Titles must be specific and clickworthy, not generic.',
+          'Cluster related keywords into ONE piece where that is stronger than separate thin pages. Sequence by score and by what builds on what (hub before spokes).',
+        ].join('\n'),
+        user: 'Gap keywords (JSON, scored by business value):\n' + JSON.stringify(gaps) + '\n\nProduce the plan.',
+        schema: {
+          type: 'object',
+          properties: {
+            plan: {
+              type: 'array', minItems: 5, maxItems: 12,
+              items: {
+                type: 'object',
+                properties: {
+                  title:           { type: 'string' },
+                  format:          { type: 'string', enum: ['landing page', 'comparison', 'guide', 'faq page', 'case study', 'product page update'] },
+                  target_keywords: { type: 'array', items: { type: 'string' } },
+                  family:          { type: 'string' },
+                  angle:           { type: 'string', description: 'Why WhisperRoom wins this query — the unique angle.' },
+                  outline:         { type: 'array', maxItems: 6, items: { type: 'string' } },
+                },
+                required: ['title', 'format', 'target_keywords', 'family', 'angle', 'outline'],
+                additionalProperties: false,
+              },
+            },
+          },
+          required: ['plan'],
+          additionalProperties: false,
+        },
+        maxTokens: 4000,
+      });
+      if (!res.ok) { ctx.json({ ok: false, error: res.error }, res.status || 502); return true; }
+      await ctx.db.query(`
+        INSERT INTO marketing_ai_outputs (kind, result, model) VALUES ('content-plan', $1, $2)
+        ON CONFLICT (kind) DO UPDATE SET result = $1, model = $2, created_at = NOW()`,
+        [JSON.stringify(res.data), res.model]);
+      ctx.json({ ok: true, plan: res.data.plan || [] });
     } catch(e) { ctx.json({ ok: false, error: e.message }, 500); }
     return true;
   }

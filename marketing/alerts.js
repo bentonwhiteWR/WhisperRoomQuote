@@ -315,6 +315,12 @@ function ensureScheduler(getDb, serpEtl) {
       const a = await db.query(`SELECT last_synced_at FROM marketing_syncs WHERE report_type = 'alerts'`);
       const last = a.rows[0] && a.rows[0].last_synced_at;
       if (!last || (Date.now() - new Date(last).getTime()) > 20 * 3600000) await runAlertScan({ db });
+      // v1.102.0 — weekly digest rides the same tick (runs when the last digest
+      // is >6.5 days old; no-ops without ANTHROPIC_API_KEY or with
+      // MARKETING_DIGEST_AUTO=off). Lazy require avoids a cycle if digest ever
+      // needs alert helpers.
+      try { await require('./digest').maybeRunDigest(db); }
+      catch (e) { console.warn('[marketing-digest] tick failed:', e.message); }
     } catch (e) { console.warn('[marketing-alerts] tick failed:', e.message); }
   };
   setTimeout(tick, 90 * 1000);              // first pass shortly after boot

@@ -823,6 +823,8 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
         <button class="sync-btn" id="radarScanBtn" onclick="runRadarScan()">↻ Scan now</button>
       </div>
     </div>
+    <!-- 🗞 This Week — the weekly digest briefing (v1.102.0) -->
+    <div id="digestPanel"></div>
     <div class="gsc-dim-toggle" id="radarStatusToggle" style="margin-bottom:12px">
       <button class="active" data-rstatus="active" onclick="setRadarStatus('active')">Active</button>
       <button data-rstatus="dismissed" onclick="setRadarStatus('dismissed')">Dismissed</button>
@@ -1068,14 +1070,16 @@ async function loadSeoTab() {
     // to empty → the panel falls back to its SERP-only v1.84.25 behavior.
     const q  = `?days=${currentDaysBack}`;
     const qm = `?days=${currentDaysBack}&model=${currentModel}`;
-    const [d, st, kw, camp, attr] = await Promise.all([
+    const [d, st, kw, camp, attr, cit, gap] = await Promise.all([
       fetch('/api/marketing/serp-snapshots', { credentials: 'include' }).then(r => r.json()),
       fetch('/api/marketing/search-terms' + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
       fetch('/api/marketing/keywords' + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
       fetch('/api/marketing/campaigns' + q, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
       fetch('/api/marketing/campaign-attribution' + qm, { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+      fetch('/api/marketing/citability', { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
+      fetch('/api/marketing/content-gap', { credentials: 'include' }).then(r => r.json()).catch(() => ({ rows: [] })),
     ]);
-    seoLastData = { d: d || {}, paid: { stRows: (st && st.rows) || [], kwRows: (kw && kw.rows) || [], campRows: (camp && camp.rows) || [], attrRows: (attr && attr.rows) || [] } };
+    seoLastData = { d: d || {}, paid: { stRows: (st && st.rows) || [], kwRows: (kw && kw.rows) || [], campRows: (camp && camp.rows) || [], attrRows: (attr && attr.rows) || [] }, cit: cit || {}, gap: gap || {} };
     renderSeo(seoLastData.d, seoLastData.paid);
   } catch(e) {
     body.innerHTML = `<div class="empty">Couldn't load SERP data: ${escHtml(e.message || 'error')}</div>`;
@@ -1360,7 +1364,149 @@ function renderSeo(d, paid) {
     <div class="paa-grid">${paaTop.map(([q, n]) => `<a href="${googleUrl(q)}" target="_blank" rel="noopener" class="paa-q">${escHtml(q)}${n > 1 ? ` <span style="color:var(--muted)">×${n}</span>` : ''}</a>`).join('')}</div>
   </div>` : '';
 
-  body.innerHTML = stats + compStrip + table + defense + paa;
+  // ── 🤖 AI Citability (v1.102.0) — fixes for uncited AI Overviews ────────
+  // Candidates: AIO present, we're NOT cited, and we rank top-10 (the page is
+  // strong enough that getting cited is realistic). Generate fetches our page
+  // + the page the AI cites and produces the actual fix; results cache server-
+  // side so View is free.
+  const citMap = {};
+  ((seoLastData && seoLastData.cit && seoLastData.cit.rows) || []).forEach(r => { citMap[r.keyword] = r; });
+  const citCands = rows
+    .filter(r => r.ai_overview && !r.ai_overview_cited && r.our_rank != null && r.our_rank <= 10)
+    .sort((a, b) => (b.search_volume || 0) - (a.search_volume || 0) || a.our_rank - b.our_rank);
+  const citAi = !seoLastData || !seoLastData.cit || seoLastData.cit.configured !== false;  // missing key → false
+  const citRow = r => {
+    const c = citMap[r.keyword];
+    const open = seoCitOpen.has(r.keyword);
+    const cites = ((r.ai_overview_refs || []).map(x => _serpDomainShort(x.domain)).filter(Boolean).slice(0, 3).join(', ')) || '—';
+    const btn = c
+      ? `<a onclick="seoCitToggle(this.dataset.kw)" data-kw="${escHtml(r.keyword)}" style="color:var(--orange);cursor:pointer;font-weight:700">${open ? '▾ Hide fix' : '▸ View fix'}</a> <a onclick="seoCitGenerate(this.dataset.kw, true)" data-kw="${escHtml(r.keyword)}" style="color:var(--muted);cursor:pointer;font-size:10px" title="Regenerate (one Claude call — refetches both pages).">↻</a>`
+      : `<a onclick="seoCitGenerate(this.dataset.kw)" data-kw="${escHtml(r.keyword)}" style="color:var(--orange);cursor:pointer">✨ Generate fix</a>`;
+    const main = `<tr>
+      <td><a href="${googleUrl(r.keyword)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(r.keyword)}</a></td>
+      <td class="num">#${r.our_rank}</td>
+      <td class="num">${r.search_volume != null ? fmtInt(r.search_volume) : '—'}</td>
+      <td style="font-size:11px;color:var(--muted)">${escHtml(cites)}</td>
+      <td>${c ? `<span class="mine-tag tag-brand" title="Citability score from the audit (0-100).">${(c.result && c.result.score != null) ? c.result.score : '·'}</span>` : ''} ${btn}</td>
+    </tr>`;
+    if (!open || !c || !c.result) return main;
+    const res = c.result;
+    return main + `<tr><td colspan="5" style="background:var(--surface);padding:14px 16px">
+      <div style="font-size:11.5px;line-height:1.6;max-width:900px">
+        <div style="color:var(--muted)"><strong style="color:var(--text)">Diagnosis:</strong> ${escHtml(res.diagnosis || '')}</div>
+        ${res.competitor_takeaways ? `<div style="color:var(--muted);margin-top:6px"><strong style="color:var(--text)">What the cited page does:</strong> ${escHtml(res.competitor_takeaways)}${res.cited_competitor ? ` <a href="${escHtml(res.cited_competitor)}" target="_blank" rel="noopener" style="color:var(--orange)">↗</a>` : ''}</div>` : ''}
+        <div style="margin-top:10px"><strong>Answer-first rewrite</strong> <span style="color:var(--muted)">(replace the page opening on <a href="${escHtml(res.our_url || '#')}" target="_blank" rel="noopener" style="color:var(--orange)">${escHtml((res.our_url || '').replace(/^https?:\/\//, ''))}</a>)</span>
+          <div style="background:var(--surface2);border-radius:6px;padding:10px 12px;margin-top:5px;white-space:pre-wrap">${escHtml(res.answer_first_rewrite || '')}</div></div>
+        ${(res.faq || []).length ? `<div style="margin-top:10px"><strong>FAQ to add</strong>${res.faq.map(f => `<div style="margin-top:6px"><span style="color:var(--orange)">Q:</span> ${escHtml(f.q)}<br><span style="color:var(--green)">A:</span> ${escHtml(f.a)}</div>`).join('')}</div>` : ''}
+        ${(res.heading_fixes || []).length ? `<div style="margin-top:10px"><strong>Heading fixes</strong><ul style="margin:5px 0 0 18px;padding:0">${res.heading_fixes.map(h => `<li>${escHtml(h)}</li>`).join('')}</ul></div>` : ''}
+        ${res.schema_jsonld ? `<div style="margin-top:10px"><strong>JSON-LD</strong> <span style="color:var(--muted)">(paste into the page head)</span><textarea readonly rows="6" style="width:100%;margin-top:5px;background:var(--surface2);color:var(--text);border:1px solid var(--surface2);border-radius:6px;font-size:10.5px;font-family:monospace;padding:8px" onclick="this.select()">${escHtml(res.schema_jsonld)}</textarea></div>` : ''}
+      </div>
+    </td></tr>`;
+  };
+  const citability = citCands.length ? `<div class="section">
+    <div class="section-head"><div class="section-title">🤖 AI Citability — get cited by the AI Overview<span class="tip-i" title="Terms where Google shows an AI Overview that does NOT cite WhisperRoom while you rank top-10 — the AI is answering buyers with competitor sources above your link. Generate fix reads YOUR ranking page plus the page the AI actually cites, and produces the concrete fix: an answer-first rewrite of the opening, FAQ items, paste-ready JSON-LD schema, and heading restructure. Results are cached; viewing is free.">ⓘ</span></div><span class="section-meta">${citCands.length} uncited terms · ${Object.keys(citMap).length} fixes generated</span></div>
+    ${citAi ? '' : `<div style="font-size:11px;color:var(--yellow);margin-bottom:8px">Needs ANTHROPIC_API_KEY in Railway to generate fixes.</div>`}
+    <table><thead><tr><th>Keyword</th><th class="num">Organic</th><th class="num">Vol</th><th>AI cites instead</th><th>Fix</th></tr></thead>
+    <tbody>${citCands.slice(0, seoCitShowAll ? citCands.length : 15).map(citRow).join('')}</tbody></table>
+    ${citCands.length > 15 ? `<div style="font-size:11px;margin-top:8px"><a onclick="seoCitShowAll=!seoCitShowAll;renderSeo(seoLastData.d,seoLastData.paid)" style="color:var(--orange);cursor:pointer">${seoCitShowAll ? 'Show top 15' : `Show all ${citCands.length}`}</a></div>` : ''}
+  </div>` : '';
+
+  // ── ✍️ Content gap vs competitors (v1.102.0) ───────────────────────────
+  const gapD = (seoLastData && seoLastData.gap) || {};
+  const gapRows = gapD.rows || [];
+  const gapSynced = gapD.sync && gapD.sync.last_synced_at;
+  const famTag = f => `<span class="mine-tag" style="background:var(--surface2);color:var(--muted)">${escHtml(f || '')}</span>`;
+  const intentTag = i => i === 'buy' ? '<span class="mine-tag tag-brand">buy</span>' : i === 'info' ? '<span class="mine-tag" style="background:var(--surface2);color:var(--muted)">info</span>' : '<span class="mine-tag" style="background:var(--surface2);color:var(--muted)">browse</span>';
+  const gapRow = r => `<tr>
+    <td><a href="${googleUrl(r.keyword)}" target="_blank" rel="noopener" style="color:var(--text)">${escHtml(r.keyword)}</a></td>
+    <td>${famTag(r.family)}</td>
+    <td>${intentTag(r.intent)}</td>
+    <td class="num">${r.search_volume != null ? fmtInt(r.search_volume) : '—'}</td>
+    <td class="num">${r.keyword_difficulty != null ? Math.round(r.keyword_difficulty) : '—'}</td>
+    <td class="num" title="Business-value score = volume × segment weight (audiology/medical 3×, office 2×, …) × intent (buy 1.5×, info 0.4×).">${fmtInt(Math.round(r.score || 0))}</td>
+    <td style="font-size:11px;color:var(--muted)">${(r.competitors || []).slice(0, 3).map(c => `${escHtml(_serpDomainShort(c.domain))} <span style="color:var(--muted)">#${c.rank}</span>`).join(' · ')}</td>
+  </tr>`;
+  const plan = gapD.plan && gapD.plan.result && (gapD.plan.result.plan || []);
+  const planHtml = (plan && plan.length) ? `<div style="margin-top:14px;border-top:1px solid var(--surface2);padding-top:10px">
+    <div style="font-size:12px;font-weight:700;margin-bottom:6px">📋 Content plan <span style="font-weight:400;font-size:10px;color:var(--muted)">${fmtDate(gapD.plan.created_at)}</span></div>
+    ${plan.map((p, i) => `<div style="padding:8px 0;border-top:1px solid var(--surface2);font-size:11.5px;line-height:1.55">
+      <div style="font-weight:700">${i + 1}. ${escHtml(p.title)} <span class="mine-tag" style="background:var(--surface2);color:var(--muted)">${escHtml(p.format || '')}</span> ${famTag(p.family)}</div>
+      <div style="color:var(--muted);margin-top:3px">Targets: ${(p.target_keywords || []).map(escHtml).join(', ')}</div>
+      <div style="color:var(--muted);margin-top:3px"><strong style="color:var(--text)">Angle:</strong> ${escHtml(p.angle || '')}</div>
+      ${(p.outline || []).length ? `<div style="color:var(--muted);margin-top:3px">${p.outline.map(o => '· ' + escHtml(o)).join('<br>')}</div>` : ''}
+    </div>`).join('')}
+  </div>` : '';
+  const gapSection = `<div class="section">
+    <div class="section-head"><div class="section-title">✍️ Content gap vs competitors<span class="tip-i" title="Keywords ${escHtml((gapD.competitors || []).join(', ') || 'your competitors')} rank top-20 for that WhisperRoom doesn't cover at all (not in your SERP tracking, not ranking, no GSC clicks) — scored by business value: segment weight (audiology/medical 3×, office 2×, …) × buying intent × volume. Sync gap pulls from DataForSEO Labs (~5 calls, about a dollar). Content plan turns the top 25 into a sequenced writing plan.">ⓘ</span></div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="section-meta">${gapRows.length ? `${gapRows.length} gaps · synced ${gapSynced ? new Date(gapSynced).toLocaleDateString() : '—'}` : 'not synced yet'}</span>
+        ${gapRows.length && gapD.aiConfigured !== false ? `<a id="gapPlanBtn" onclick="runContentPlan()" style="font-size:11px;color:var(--orange);cursor:pointer" title="One Claude call: top 25 gaps → sequenced content plan (titles, angles, outlines).">✨ Content plan</a>` : ''}
+        <button class="sync-btn" id="gapSyncBtn" onclick="runSyncGap()" title="Pull each competitor's ranked keywords from DataForSEO Labs and diff against everything you cover. ~5 API calls, roughly a dollar.">↻ Sync gap</button>
+      </div></div>
+    ${gapRows.length
+      ? `<table><thead><tr><th>Keyword</th><th>Family</th><th>Intent</th><th class="num">Vol</th><th class="num">KD</th><th class="num">Score</th><th>Who ranks</th></tr></thead>
+         <tbody>${gapRows.slice(0, seoGapShowAll ? 200 : 25).map(gapRow).join('')}</tbody></table>
+         ${gapRows.length > 25 ? `<div style="font-size:11px;margin-top:8px"><a onclick="seoGapShowAll=!seoGapShowAll;renderSeo(seoLastData.d,seoLastData.paid)" style="color:var(--orange);cursor:pointer">${seoGapShowAll ? 'Show top 25' : `Show ${Math.min(gapRows.length, 200)} of ${gapRows.length}`}</a></div>` : ''}`
+      : `<div style="font-size:11.5px;color:var(--muted)">Press <strong>↻ Sync gap</strong> to pull what ${escHtml((gapD.competitors || []).join(', ') || 'competitors')} rank for that you don't — scored by business value, not raw volume.</div>`}
+    ${planHtml}
+  </div>`;
+
+  body.innerHTML = stats + compStrip + table + citability + defense + gapSection + paa;
+}
+
+// ── AI Citability + Content gap handlers (v1.102.0) ─────────────────────
+let seoCitOpen = new Set();     // keywords with the fix panel expanded
+let seoCitShowAll = false;
+let seoGapShowAll = false;
+function seoCitToggle(kw) {
+  if (seoCitOpen.has(kw)) seoCitOpen.delete(kw); else seoCitOpen.add(kw);
+  if (seoLastData) renderSeo(seoLastData.d, seoLastData.paid);
+}
+async function seoCitGenerate(kw, force) {
+  if (force && !confirm(`Regenerate the citability fix for "${kw}"? One Claude call.`)) return;
+  const links = document.querySelectorAll(`a[data-kw="${CSS.escape(kw)}"]`);
+  links.forEach(a => { a.textContent = '… writing'; a.style.pointerEvents = 'none'; });
+  try {
+    const res = await fetch('/api/marketing/citability', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyword: kw, force: !!force }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!d.ok) { alert('Citability fix failed: ' + (d.error || 'unknown error')); }
+    else {
+      if (!seoLastData.cit) seoLastData.cit = { rows: [] };
+      seoLastData.cit.rows = (seoLastData.cit.rows || []).filter(r => r.keyword !== kw);
+      seoLastData.cit.rows.unshift({ keyword: kw, result: d.result, created_at: new Date().toISOString() });
+      seoCitOpen.add(kw);
+    }
+  } catch(e) { alert('Citability request dropped: ' + e.message); }
+  if (seoLastData) renderSeo(seoLastData.d, seoLastData.paid);
+}
+async function runSyncGap() {
+  if (!confirm('Sync the content gap? Pulls ranked keywords for each competitor from DataForSEO Labs (~5 API calls, roughly a dollar).')) return;
+  const btn = document.getElementById('gapSyncBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
+  try {
+    const res = await fetch('/api/marketing/sync', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report: 'gap' }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (d && d.error) alert('Gap sync finished with errors: ' + d.error);
+  } catch(e) { alert('Gap sync request dropped — it may still be finishing. Refresh in a minute.'); }
+  loadSeoTab();
+}
+async function runContentPlan() {
+  const btn = document.getElementById('gapPlanBtn');
+  if (btn) { btn.style.pointerEvents = 'none'; btn.textContent = '… writing plan'; }
+  try {
+    const res = await fetch('/api/marketing/content-plan', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const d = await res.json().catch(() => ({}));
+    if (!d.ok) alert('Content plan failed: ' + (d.error || 'unknown error'));
+  } catch(e) { alert('Content plan request dropped: ' + e.message); }
+  loadSeoTab();
 }
 
 // ── State (v1.46.10) ────────────────────────────────────────────────
@@ -1619,12 +1765,84 @@ async function radarBadgeRefresh(counts) {
 
 async function loadRadarTab() {
   const body = document.getElementById('radarBody');
+  loadDigestPanel();   // 🗞 This Week — independent fetch, never blocks the feed
   try {
     const d = await fetch(`/api/marketing/alerts?status=${radarStatus}&days=60`, { credentials: 'include' }).then(r => r.json());
     renderRadar(d || {});
     radarBadgeRefresh((d && d.counts) || {});
   } catch(e) {
     body.innerHTML = `<div class="empty">Couldn't load alerts: ${escHtml(e.message || 'error')}</div>`;
+  }
+}
+
+// ── 🗞 This Week — the weekly digest briefing (v1.102.0) ────────────────
+// Claude reads everything already synced (alerts, rank moves, spend, GSC,
+// closed-won pulse) once a week and writes the 5 things that matter. Auto-runs
+// on the radar scheduler; "Generate now" runs one on demand.
+const DIGEST_AREA_ICON = { ads: '💸', seo: '🔎', 'ai-visibility': '🤖', shopping: '🛒', content: '✍️', revenue: '💰', site: '🌐' };
+async function loadDigestPanel() {
+  const el = document.getElementById('digestPanel');
+  if (!el) return;
+  try {
+    const d = await fetch('/api/marketing/digest', { credentials: 'include' }).then(r => r.json());
+    const latest = (d.rows || [])[0];
+    if (!d.configured) {
+      el.innerHTML = `<div class="section" style="padding:12px 14px;margin-bottom:14px"><div class="section-title" style="font-size:13px">🗞 This Week</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:6px">The weekly digest needs <code>ANTHROPIC_API_KEY</code> set in Railway (the ad-rewrite key works).</div></div>`;
+      return;
+    }
+    const genBtn = `<button class="sync-btn" id="digestGenBtn" onclick="runDigestNow()" title="Generate a fresh briefing now — one Claude call over already-synced data.">${latest ? '↻ Regenerate' : '✨ Generate now'}</button>`;
+    if (!latest) {
+      el.innerHTML = `<div class="section" style="padding:12px 14px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <div class="section-title" style="font-size:13px">🗞 This Week<span class="tip-i" title="A weekly Claude-written briefing: the 5 things that matter most, each grounded in your synced numbers, each with a concrete action. Auto-generates weekly on the radar scheduler; regenerate any time.">ⓘ</span></div>
+          ${genBtn}
+        </div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:6px">No digest yet — it auto-generates weekly, or press Generate now.</div>
+      </div>`;
+      return;
+    }
+    const items = latest.items || [];
+    el.innerHTML = `<div class="section" style="padding:14px 16px;margin-bottom:14px;border:1px solid var(--surface2)">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:4px">
+        <div style="flex:1;min-width:0">
+          <div class="section-title" style="font-size:13px">🗞 This Week<span class="tip-i" title="A weekly Claude-written briefing: the 5 things that matter most, each grounded in your synced numbers, each with a concrete action. Auto-generates weekly on the radar scheduler; regenerate any time.">ⓘ</span>
+            <span style="font-weight:400;font-size:10px;color:var(--muted);margin-left:8px">${fmtDate(latest.created_at)}</span></div>
+          <div style="font-size:12.5px;font-weight:700;margin-top:6px;line-height:1.5">${escHtml(latest.headline || '')}</div>
+        </div>
+        ${genBtn}
+      </div>
+      ${items.map((it, i) => `
+        <div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--surface2)">
+          <div style="flex-shrink:0;width:18px;text-align:center" title="${escHtml(it.area || '')}">${DIGEST_AREA_ICON[it.area] || '•'}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12.5px;font-weight:700;line-height:1.45">
+              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${RADAR_SEV[it.severity] || RADAR_SEV.info};margin-right:6px"></span>${i + 1}. ${escHtml(it.title)}</div>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.55">${escHtml(it.why || '')}</div>
+            <div style="font-size:11.5px;margin-top:4px;line-height:1.5"><span style="color:var(--orange);font-weight:700">Do:</span> ${escHtml(it.action || '')}</div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+  } catch(e) {
+    el.innerHTML = '';
+  }
+}
+
+async function runDigestNow() {
+  const btn = document.getElementById('digestGenBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Writing…'; }
+  try {
+    const res = await fetch('/api/marketing/sync', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report: 'digest' }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (d && d.error) alert('Digest failed: ' + d.error);
+  } catch(e) {
+    alert('Digest request dropped — it may still be finishing. Refresh in a minute.');
+  } finally {
+    loadDigestPanel();
   }
 }
 

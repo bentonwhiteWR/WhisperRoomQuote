@@ -1,0 +1,8 @@
+module.exports = {
+  v: '1.102.0', date: 'June 11, 2026', tag: 'feature',
+  changes: [
+    { t: 'add', d: '**Marketing: 🗞 Weekly digest — the dashboard now writes you a briefing.** Once a week (or on demand from the Radar tab), Claude reads everything already synced — radar alerts, rank moves, ad spend shifts, organic trends, closed-won pulse — and writes the 5 things that matter most, each with the numbers behind it and one concrete action. Lands at the top of 📡 Radar plus a notification-bell summary. Findings sharing one root cause (like 150 shopping-grid absences = one Merchant Center feed problem) arrive as ONE item, not 150.' },
+    { t: 'add', d: '**Marketing: 🤖 AI Citability — fixes, not advice, for uncited AI Overviews.** New SEO Intel section lists every term where Google\\u2019s AI Overview answers buyers WITHOUT citing WhisperRoom while you rank top-10. &quot;Generate fix&quot; reads your ranking page plus the page the AI cites instead, and produces the concrete repair: an answer-first rewrite of the opening, FAQ items, paste-ready JSON-LD schema, and heading restructure. Results cache, so viewing a generated fix is free.' },
+    { t: 'add', d: '**Marketing: ✍️ Content gap vs competitors, weighted by business value.** New SEO Intel section: keywords vocalbooth.com, Studiobricks, VocalBoothToGo, and Zenbooth rank top-20 for that WhisperRoom doesn\\u2019t cover at all — scored by segment value (audiology/medical 3x, office 2x) times buying intent times volume, so five-figure-deal terms outrank DIY noise. One click turns the top 25 into a sequenced content plan with titles, angles, and outlines.' },
+  ],
+};

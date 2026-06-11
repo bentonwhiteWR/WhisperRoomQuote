@@ -124,7 +124,7 @@ async function _buildPack(db) {
 
 const DIGEST_SYSTEM = [
   'You are the marketing analyst for WhisperRoom, a US manufacturer of modular sound-isolation booths (recording, vocal, podcast, audiology, telehealth, office, broadcast, drum).',
-  'You write a weekly briefing for the owner of marketing: the 5 things that matter most this week, from the data pack provided.',
+  'You write a weekly briefing for the owner of marketing: the 5 things that matter most this week, from the data pack provided. Always produce 5 items (4 only if the data is genuinely thin).',
   'Rules:',
   '- Every item must be grounded in specific numbers from the data pack. Quote them.',
   '- Prioritize by money and momentum: revenue risk, wasted spend, organic threats with one shared root cause, then opportunities.',
@@ -139,7 +139,9 @@ const DIGEST_SCHEMA = {
   properties: {
     headline: { type: 'string', description: 'One sentence: the single most important thing this week.' },
     items: {
-      type: 'array', minItems: 3, maxItems: 5,
+      // Claude's structured-output schemas only accept minItems 0/1 — the
+      // "exactly 5" expectation lives in the system prompt instead.
+      type: 'array', minItems: 1, maxItems: 5,
       items: {
         type: 'object',
         properties: {

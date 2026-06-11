@@ -561,14 +561,16 @@ async function handle(req, res, ctx) {
           'You are the content strategist for WhisperRoom, a US manufacturer of modular sound-isolation booths.',
           'Turn the keyword gaps below (terms competitors rank for that WhisperRoom does not cover) into a sequenced content plan.',
           'Rules: never use the word "soundproof" in titles or copy you write (say "sound isolation" / "sound-isolating"; the keyword itself may contain it — that is fine to target, not to copy). Never use em dashes. Titles must be specific and clickworthy, not generic.',
-          'Cluster related keywords into ONE piece where that is stronger than separate thin pages. Sequence by score and by what builds on what (hub before spokes).',
+          'Cluster related keywords into ONE piece where that is stronger than separate thin pages. Sequence by score and by what builds on what (hub before spokes). Produce 8-12 pieces.',
         ].join('\n'),
         user: 'Gap keywords (JSON, scored by business value):\n' + JSON.stringify(gaps) + '\n\nProduce the plan.',
         schema: {
           type: 'object',
           properties: {
             plan: {
-              type: 'array', minItems: 5, maxItems: 12,
+              // Claude structured output: minItems above 1 is rejected — the
+              // 8-12-piece expectation is in the prompt.
+              type: 'array', minItems: 1, maxItems: 12,
               items: {
                 type: 'object',
                 properties: {

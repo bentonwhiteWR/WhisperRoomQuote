@@ -7,14 +7,23 @@
 // engagement, and key events in between (landing-page conversion rates,
 // pacing denominators).
 //
-// Auth: the SAME OAuth client + refresh token as google-ads-etl.js /
-// gsc-etl.js (GOOGLE_ADS_CLIENT_ID / _CLIENT_SECRET / _REFRESH_TOKEN). The
-// refresh token must carry https://www.googleapis.com/auth/analytics.readonly
-// in addition to adwords + webmasters.readonly — re-mint with
-// whisperroom-os scripts/mint_google_token.py (2026-06, three scopes). The
-// Google Cloud project that owns the OAuth client must have the "Google
-// Analytics Data API" enabled, and the Google account behind the token
-// needs Viewer (or higher) on the GA4 property.
+// Auth (v1.107.1) — TWO supported paths, service account preferred:
+//
+//   1. GA4_SA_KEY — the full JSON key of a service account in the
+//      whisperroom-apis project (raw JSON or base64 of it). The SA's email
+//      must be granted Viewer on the GA4 property (GA4 Admin → Property
+//      access management). Chosen because re-minting the shared OAuth
+//      refresh token requires the whisperroomwr@gmail.com login whose 2FA
+//      lives on Benton's phone, and Google hard-blocked Gabe's personal
+//      account on the unverified-app consent ("This app is blocked",
+//      2026-06-12). A service account has no password/2FA and leaves the
+//      Ads+GSC refresh token completely untouched.
+//   2. Fallback: the SAME OAuth client + refresh token as google-ads-etl.js
+//      / gsc-etl.js — works IF the token is ever re-minted with the
+//      analytics.readonly scope (whisperroom-os scripts/mint_google_token.py).
+//
+// Either way the Cloud project must have the "Google Analytics Data API"
+// enabled.
 //
 // Property: GA4_PROPERTY_ID env — the NUMERIC id from GA4 Admin → Property
 // settings (not the "G-XXXXXXX" measurement id).
@@ -23,12 +32,36 @@
 // Idempotent: composite PKs + ON CONFLICT DO UPDATE; GA4 data for recent
 // days firms up over ~24-48h, so re-syncs overwrite with fresher numbers.
 
-const https = require('https');
+const https  = require('https');
+const crypto = require('crypto');
 
-const REQUIRED_ENV = ['GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET', 'GOOGLE_ADS_REFRESH_TOKEN', 'GA4_PROPERTY_ID'];
+const OAUTH_ENV = ['GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET', 'GOOGLE_ADS_REFRESH_TOKEN'];
 
-function envReady()       { return REQUIRED_ENV.every(k => !!process.env[k]); }
-function missingEnvVars() { return REQUIRED_ENV.filter(k => !process.env[k]); }
+// Parse GA4_SA_KEY — accepts the raw service-account JSON or base64 of it
+// (base64 sidesteps any env-var newline/quoting mangling). Returns null when
+// unset/unparseable so envReady can fall back to the OAuth path.
+function _saKey() {
+  const raw = process.env.GA4_SA_KEY || '';
+  if (!raw) return null;
+  for (const candidate of [raw, (() => { try { return Buffer.from(raw, 'base64').toString('utf8'); } catch { return ''; } })()]) {
+    try {
+      const j = JSON.parse(candidate);
+      if (j && j.client_email && j.private_key) return j;
+    } catch {}
+  }
+  return null;
+}
+
+function envReady() {
+  if (!process.env.GA4_PROPERTY_ID) return false;
+  return !!_saKey() || OAUTH_ENV.every(k => !!process.env[k]);
+}
+function missingEnvVars() {
+  const missing = [];
+  if (!process.env.GA4_PROPERTY_ID) missing.push('GA4_PROPERTY_ID');
+  if (!_saKey() && !OAUTH_ENV.every(k => !!process.env[k])) missing.push('GA4_SA_KEY (or analytics-scoped ' + OAUTH_ENV.filter(k => !process.env[k]).join('/') + ')');
+  return missing;
+}
 
 function _gDate(d)   { return d.toISOString().slice(0, 10); }
 function _daysAgo(n) { const d = new Date(); d.setDate(d.getDate() - n); return d; }
@@ -58,9 +91,11 @@ function _post(hostname, path, headers, bodyStr) {
   });
 }
 
-// Exchange the refresh token for a short-lived access token (same flow as
-// gsc-etl.js — one token, three APIs).
+// Get a short-lived access token — service account when GA4_SA_KEY is set,
+// otherwise the shared refresh token (same flow as gsc-etl.js).
 async function _accessToken() {
+  const sa = _saKey();
+  if (sa) return _saAccessToken(sa);
   const body = new URLSearchParams({
     grant_type:    'refresh_token',
     client_id:     process.env.GOOGLE_ADS_CLIENT_ID,
@@ -70,6 +105,30 @@ async function _accessToken() {
   const j = await _post('oauth2.googleapis.com', '/token',
     { 'Content-Type': 'application/x-www-form-urlencoded' }, body);
   if (!j.access_token) throw new Error('OAuth token refresh failed (no access_token returned)');
+  return j.access_token;
+}
+
+// Service-account JWT-bearer exchange (RFC 7523): self-sign a one-hour JWT
+// with the SA's private key, trade it for an access token. Node's crypto
+// handles RS256 — no SDK, matching the no-deps rule of the sibling ETLs.
+async function _saAccessToken(sa) {
+  const now = Math.floor(Date.now() / 1000);
+  const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const unsigned = b64({ alg: 'RS256', typ: 'JWT' }) + '.' + b64({
+    iss:   sa.client_email,
+    scope: 'https://www.googleapis.com/auth/analytics.readonly',
+    aud:   'https://oauth2.googleapis.com/token',
+    iat:   now,
+    exp:   now + 3600,
+  });
+  const signature = crypto.createSign('RSA-SHA256').update(unsigned).sign(sa.private_key, 'base64url');
+  const body = new URLSearchParams({
+    grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+    assertion:  `${unsigned}.${signature}`,
+  }).toString();
+  const j = await _post('oauth2.googleapis.com', '/token',
+    { 'Content-Type': 'application/x-www-form-urlencoded' }, body);
+  if (!j.access_token) throw new Error('GA4 service-account token exchange failed (no access_token returned)');
   return j.access_token;
 }
 

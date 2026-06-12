@@ -1280,7 +1280,12 @@ async function handle(req, res, ctx) {
                WHERE is_closed_won AND closed_at >= ${W2} AND closed_at < ${W} AND days_to_close IS NOT NULL)::float           AS median_close_prev,
             (SELECT COUNT(*) FROM marketing_hubspot_contacts WHERE first_conversion_date >= ${W})::int                         AS forms_cur,
             (SELECT COUNT(*) FROM marketing_hubspot_contacts
-               WHERE first_conversion_date >= ${W2} AND first_conversion_date < ${W})::int                                     AS forms_prev
+               WHERE first_conversion_date >= ${W2} AND first_conversion_date < ${W})::int                                     AS forms_prev,
+            -- v1.105.2 — backfill diagnostic: how many contacts (any date)
+            -- carry the new conversion fields at all. 0 = the HubSpot
+            -- contacts sync hasn't re-pulled on the new code yet; the form
+            -- sections use this to show "needs a sync" vs "no conversions".
+            (SELECT COUNT(*) FROM marketing_hubspot_contacts WHERE first_conversion_date IS NOT NULL)::int                     AS forms_backfilled
         `, [days]),
         // 10) Form conversions per week per form (v1.105.0). first_conversion
         //     basis — each contact's FIRST form submission (HubSpot's mirror

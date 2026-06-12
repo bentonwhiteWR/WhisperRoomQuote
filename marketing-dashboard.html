@@ -4921,7 +4921,7 @@ function renderPulseForms() {
   const legEl = document.getElementById('pulseFormsLegend'), chEl = document.getElementById('pulseFormsChart');
   if (!rows.length) {
     legEl.innerHTML = '';
-    chEl.innerHTML = '<div class="empty">No form conversions in this window. New fields need one <strong>↻ Sync All</strong> to backfill from HubSpot.</div>';
+    chEl.innerHTML = pulseFormsEmptyHtml();
     document.getElementById('pulseFormsMeta').textContent = '—';
     return;
   }
@@ -4996,6 +4996,35 @@ function renderPulseForms() {
     return `<div style="font-weight:700;margin-bottom:4px">Week of ${pulseWeekLabel(w)}</div>${parts || '<div>No conversions</div>'}<div style="margin-top:4px;border-top:1px solid var(--border);padding-top:4px">Total: <strong>${fmtInt(totals[idx])}</strong></div>`;
   }, 'pulseFormsGuide', 'pulseFormsTip', xMid);
 }
+// v1.105.2 — empty state that says WHY it's empty. forms_backfilled counts
+// contacts (any date) carrying the new conversion fields: 0 means the HubSpot
+// contacts sync hasn't re-pulled on the new code yet (the fields shipped in
+// v1.105.0, existing rows stay NULL until re-synced), so offer the targeted
+// contacts-only sync instead of the full Sync All.
+function pulseFormsEmptyHtml() {
+  const backfilled = (pulseData && pulseData.kpis && pulseData.kpis.forms_backfilled) || 0;
+  if (!backfilled) {
+    return `<div class="empty">Form-conversion fields haven't synced yet — 0 contacts carry them so far (they're new in v1.105.0; existing rows stay empty until HubSpot re-pulls).
+      <a class="pulse-hs-sync" onclick="runSyncHubspotPulse()" style="color:var(--orange);cursor:pointer;font-weight:700"> ⟳ Sync HubSpot contacts now</a> — faster than Sync All (skips Google Ads + GSC), takes a couple of minutes for ~11k contacts.</div>`;
+  }
+  return `<div class="empty">No form conversions in this window (${fmtInt(backfilled)} contacts carry conversion data overall — try a longer date range).</div>`;
+}
+// Targeted HubSpot-contacts-only sync from the form sections' empty state.
+async function runSyncHubspotPulse() {
+  document.querySelectorAll('.pulse-hs-sync').forEach(a => { a.textContent = ' Syncing HubSpot contacts… (refreshes when done)'; a.style.pointerEvents = 'none'; });
+  try {
+    const res = await fetch('/api/marketing/sync', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report: 'hubspot_contacts' }),
+    });
+    await _handleSyncResult(res, 'HubSpot contacts sync');
+  } catch {
+    alert('Sync started — the request dropped but it may still be running server-side. Refresh in a minute.');
+  }
+  loadPulseTab();
+}
+
 function togglePulseForm(i) {
   const f = pulseFormList[i]; if (!f) return;
   pulseFormOff[f.form] = !pulseFormOff[f.form];
@@ -5011,7 +5040,7 @@ function renderPulseFormSources(rows) {
   const el = document.getElementById('pulseFormSrc'), legEl = document.getElementById('pulseFormSrcLegend');
   if (!rows.length) {
     legEl.innerHTML = '';
-    el.innerHTML = '<div class="empty">No form conversions in this window. New fields need one <strong>↻ Sync All</strong> to backfill from HubSpot.</div>';
+    el.innerHTML = pulseFormsEmptyHtml();
     document.getElementById('pulseFormSrcMeta').textContent = '—';
     return;
   }

@@ -13,6 +13,7 @@
 //   GET  /api/marketing/campaign-attribution     → per-campaign leads/deals/revenue (v1.46.1)
 //   GET  /api/marketing/attribution-coverage     → % of contacts + deals + revenue attributable (v1.46.1)
 //   GET  /api/marketing/hubspot-pulse            → 📊 Pulse tab chart aggregates, one payload (v1.104.0)
+//   GET  /api/marketing/pulse-drill              → contacts/deals behind a clicked Pulse number (v1.105.0)
 //
 // HubSpot ingestion (v1.44.0) shares the same /api/marketing/sync POST
 // endpoint — pass `report: 'hubspot_contacts' | 'hubspot_deals' | 'hubspot_all'`
@@ -1192,7 +1193,7 @@ async function handle(req, res, ctx) {
       if (!ctx.db) { ctx.json({ error: 'no db' }, 500); return true; }
       const W  = `CURRENT_DATE - INTERVAL '1 day' * $1`;        // window start
       const W2 = `CURRENT_DATE - INTERVAL '1 day' * ($1 * 2)`;  // prior-period start
-      const [weekly, funnel, dealsWeekly, wonWeekly, srcRev, wonReasons, lostReasons, velocity, kpis] = await Promise.all([
+      const [weekly, funnel, dealsWeekly, wonWeekly, srcRev, wonReasons, lostReasons, velocity, kpis, formsWeekly, formsBySource] = await Promise.all([
         // 1) New contacts per week per first-touch source (stacked area).
         ctx.db.query(`
           SELECT to_char(date_trunc('week', created_at), 'YYYY-MM-DD') AS week,
@@ -1276,8 +1277,32 @@ async function handle(req, res, ctx) {
             (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY days_to_close) FROM marketing_hubspot_deals
                WHERE is_closed_won AND closed_at >= ${W} AND days_to_close IS NOT NULL)::float                                 AS median_close_cur,
             (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY days_to_close) FROM marketing_hubspot_deals
-               WHERE is_closed_won AND closed_at >= ${W2} AND closed_at < ${W} AND days_to_close IS NOT NULL)::float           AS median_close_prev
+               WHERE is_closed_won AND closed_at >= ${W2} AND closed_at < ${W} AND days_to_close IS NOT NULL)::float           AS median_close_prev,
+            (SELECT COUNT(*) FROM marketing_hubspot_contacts WHERE first_conversion_date >= ${W})::int                         AS forms_cur,
+            (SELECT COUNT(*) FROM marketing_hubspot_contacts
+               WHERE first_conversion_date >= ${W2} AND first_conversion_date < ${W})::int                                     AS forms_prev
         `, [days]),
+        // 10) Form conversions per week per form (v1.105.0). first_conversion
+        //     basis — each contact's FIRST form submission (HubSpot's mirror
+        //     keeps first+recent only, not full history). Window on the
+        //     conversion date, not createdate, so imported/older contacts who
+        //     converted in-window still count.
+        ctx.db.query(`
+          SELECT to_char(date_trunc('week', first_conversion_date), 'YYYY-MM-DD') AS week,
+                 COALESCE(NULLIF(first_conversion_event_name, ''), '(unnamed form)') AS form,
+                 COUNT(*)::int AS submissions
+          FROM marketing_hubspot_contacts
+          WHERE first_conversion_date >= ${W}
+          GROUP BY 1, 2 ORDER BY 1`, [days]),
+        // 11) Form × first-touch source matrix (v1.105.0) — which channels
+        //     feed which forms.
+        ctx.db.query(`
+          SELECT COALESCE(NULLIF(first_conversion_event_name, ''), '(unnamed form)') AS form,
+                 COALESCE(NULLIF(first_source, ''), 'UNKNOWN') AS source,
+                 COUNT(*)::int AS submissions
+          FROM marketing_hubspot_contacts
+          WHERE first_conversion_date >= ${W}
+          GROUP BY 1, 2`, [days]),
       ]);
       ctx.json({
         days,
@@ -1290,8 +1315,105 @@ async function handle(req, res, ctx) {
         lostReasons:    lostReasons.rows,
         velocity:       velocity.rows,
         kpis:           kpis.rows[0] || {},
+        formsWeekly:    formsWeekly.rows,
+        formsBySource:  formsBySource.rows,
       });
     } catch(e) { ctx.json({ error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/pulse-drill ────────────────────────────────
+  // v1.105.0 — backs the 📊 Pulse drill popups: the actual HubSpot contacts /
+  // deals behind a clicked KPI, funnel stage, donut slice, reason bar,
+  // velocity bucket, or form row. Same modal as /drill but its own endpoint —
+  // Pulse has no attribution-model param and its keys are Pulse-grouping
+  // values, not campaign/term names. Every keyed filter uses the IDENTICAL
+  // COALESCE(NULLIF(col,''),'<sentinel>') normalization as the hubspot-pulse
+  // aggregate it backs, so the popup row count always matches the number the
+  // user clicked. Capped at 500 rows (matches /drill's browser guard).
+  if (pathname === '/api/marketing/pulse-drill' && req.method === 'GET') {
+    try {
+      const days = _parseDays(req);
+      if (!ctx.db) { ctx.json({ rows: [] }); return true; }
+      const url  = new URL(req.url, 'http://localhost');
+      const type = (url.searchParams.get('type') || '').toLowerCase();
+      const key  = url.searchParams.get('key') || '';
+      const W = `CURRENT_DATE - INTERVAL '1 day' * $1`;
+      const CSEL = `SELECT contact_id, email, first_source, lifecycle_stage, created_at
+                    FROM marketing_hubspot_contacts`;
+      const DSEL = `SELECT d.deal_id, d.deal_name, d.dealstage, d.amount, d.created_at, d.closed_at, d.days_to_close
+                    FROM marketing_hubspot_deals d`;
+      // days_to_close ranges behind the velocity histogram buckets — must
+      // mirror the CASE buckets in /hubspot-pulse exactly.
+      const VEL_BUCKETS = { '0-7': [0, 7], '8-14': [8, 14], '15-30': [15, 30], '31-60': [31, 60], '61-90': [61, 90], '91-180': [91, 180], '180+': [181, null] };
+      let q = null, params = [days], kind = 'contact';
+      switch (type) {
+        case 'contacts':
+          q = `${CSEL} WHERE created_at >= ${W} ORDER BY created_at DESC LIMIT 500`; break;
+        case 'contacts-stage':
+          q = `${CSEL} WHERE created_at >= ${W} AND COALESCE(NULLIF(lifecycle_stage, ''), 'unknown') = $2
+               ORDER BY created_at DESC LIMIT 500`; params.push(key); break;
+        case 'contacts-channel':
+          q = `${CSEL} WHERE created_at >= ${W} AND COALESCE(NULLIF(first_source, ''), 'UNKNOWN') = $2
+               ORDER BY created_at DESC LIMIT 500`; params.push(key); break;
+        case 'contacts-converted':
+          q = `${CSEL} WHERE first_conversion_date >= ${W} ORDER BY first_conversion_date DESC LIMIT 500`; break;
+        case 'contacts-form':
+          q = `${CSEL} WHERE first_conversion_date >= ${W}
+               AND COALESCE(NULLIF(first_conversion_event_name, ''), '(unnamed form)') = $2
+               ORDER BY first_conversion_date DESC LIMIT 500`; params.push(key); break;
+        case 'deals-created':
+          kind = 'deal';
+          q = `${DSEL} WHERE d.created_at >= ${W} ORDER BY d.created_at DESC LIMIT 500`; break;
+        case 'deals-won':
+          kind = 'deal';
+          q = `${DSEL} WHERE d.is_closed_won AND d.closed_at >= ${W} ORDER BY d.amount DESC NULLS LAST LIMIT 500`; break;
+        case 'deals-won-source':
+          kind = 'deal';
+          q = `${DSEL} LEFT JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+               WHERE d.is_closed_won AND d.closed_at >= ${W}
+               AND COALESCE(NULLIF(c.first_source, ''), 'UNKNOWN') = $2
+               ORDER BY d.amount DESC NULLS LAST LIMIT 500`; params.push(key); break;
+        case 'deals-reason-won':
+          kind = 'deal';
+          q = `${DSEL} WHERE d.is_closed_won AND d.closed_at >= ${W} AND d.closed_won_reason = $2
+               ORDER BY d.amount DESC NULLS LAST LIMIT 500`; params.push(key); break;
+        case 'deals-reason-lost':
+          kind = 'deal';
+          q = `${DSEL} WHERE d.is_closed_lost AND d.closed_at >= ${W} AND d.closed_lost_reason = $2
+               ORDER BY d.amount DESC NULLS LAST LIMIT 500`; params.push(key); break;
+        case 'deals-velocity': {
+          kind = 'deal';
+          const range = VEL_BUCKETS[key];
+          if (!range) { ctx.json({ rows: [], error: 'unknown bucket' }, 400); return true; }
+          if (range[1] == null) {
+            q = `${DSEL} WHERE d.is_closed_won AND d.closed_at >= ${W} AND d.days_to_close >= $2
+                 ORDER BY d.days_to_close ASC LIMIT 500`; params.push(range[0]);
+          } else {
+            q = `${DSEL} WHERE d.is_closed_won AND d.closed_at >= ${W} AND d.days_to_close BETWEEN $2 AND $3
+                 ORDER BY d.days_to_close ASC LIMIT 500`; params.push(range[0], range[1]);
+          }
+          break;
+        }
+        default:
+          ctx.json({ rows: [], error: 'unknown type' }, 400); return true;
+      }
+      const r = await ctx.db.query(q, params);
+      const fmtD = d => { try { return new Date(d).toISOString().slice(0, 10); } catch { return ''; } };
+      const rows = r.rows.map(x => kind === 'contact' ? {
+        label:    x.email || '(no email)',
+        sublabel: [x.first_source || 'UNKNOWN', x.lifecycle_stage || 'unknown', x.created_at ? 'created ' + fmtD(x.created_at) : null].filter(Boolean).join(' · '),
+        url:      `https://app.hubspot.com/contacts/${HS_PORTAL_ID}/record/0-1/${x.contact_id}`,
+      } : {
+        label:    x.deal_name || ('Deal ' + x.deal_id),
+        sublabel: [STAGE_LABELS[x.dealstage] || x.dealstage,
+                   x.closed_at ? 'closed ' + fmtD(x.closed_at) : (x.created_at ? 'created ' + fmtD(x.created_at) : null),
+                   x.days_to_close != null ? x.days_to_close + 'd to close' : null].filter(Boolean).join(' · '),
+        amount:   x.amount,
+        url:      `https://app.hubspot.com/contacts/${HS_PORTAL_ID}/record/0-3/${x.deal_id}`,
+      });
+      ctx.json({ rows });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
   }
 

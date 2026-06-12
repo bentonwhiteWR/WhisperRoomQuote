@@ -50,6 +50,15 @@ const CONTACT_PROPS = [
   'hs_lead_status',
   'createdate',
   'lastmodifieddate',
+  // v1.105.0 — form-conversion fields for the 📊 Pulse form charts. HubSpot
+  // stores per-contact FIRST and MOST-RECENT form conversions (not the full
+  // submission history), so Pulse counts "new form conversions" on the
+  // first_conversion pair and says so in its tooltips.
+  'first_conversion_event_name',
+  'first_conversion_date',
+  'recent_conversion_event_name',
+  'recent_conversion_date',
+  'num_conversion_events',
 ];
 
 const DEAL_PROPS = [
@@ -263,8 +272,11 @@ async function _upsertContact(db, c) {
        first_source, first_source_data_1, first_source_data_2, first_converting_campaign,
        latest_source, latest_source_data_1, latest_source_data_2, latest_source_at,
        lifecycle_stage, lead_status,
-       created_at, last_modified_at, first_url, synced_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
+       created_at, last_modified_at, first_url,
+       first_conversion_event_name, first_conversion_date,
+       recent_conversion_event_name, recent_conversion_date, num_conversion_events,
+       synced_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, NOW())
     ON CONFLICT (contact_id) DO UPDATE SET
       email                     = EXCLUDED.email,
       gclid                     = EXCLUDED.gclid,
@@ -282,6 +294,11 @@ async function _upsertContact(db, c) {
       created_at                = EXCLUDED.created_at,
       last_modified_at          = EXCLUDED.last_modified_at,
       first_url                 = EXCLUDED.first_url,
+      first_conversion_event_name  = EXCLUDED.first_conversion_event_name,
+      first_conversion_date        = EXCLUDED.first_conversion_date,
+      recent_conversion_event_name = EXCLUDED.recent_conversion_event_name,
+      recent_conversion_date       = EXCLUDED.recent_conversion_date,
+      num_conversion_events        = EXCLUDED.num_conversion_events,
       synced_at                 = NOW()
   `, [
     parseInt(c.id),
@@ -301,6 +318,11 @@ async function _upsertContact(db, c) {
     _parseHsDate(p.createdate),
     _parseHsDate(p.lastmodifieddate),
     p.hs_analytics_first_url || null,
+    p.first_conversion_event_name  || null,
+    _parseHsDate(p.first_conversion_date),
+    p.recent_conversion_event_name || null,
+    _parseHsDate(p.recent_conversion_date),
+    p.num_conversion_events != null && p.num_conversion_events !== '' ? parseInt(p.num_conversion_events) : null,
   ]);
 }
 

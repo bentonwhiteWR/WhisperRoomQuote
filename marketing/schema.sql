@@ -190,6 +190,15 @@ CREATE INDEX IF NOT EXISTS idx_mkt_hs_contacts_created ON marketing_hubspot_cont
 -- first_url added after initial deploy — CREATE IF NOT EXISTS won't add a column
 -- to an already-created table, so ALTER it in idempotently.
 ALTER TABLE marketing_hubspot_contacts ADD COLUMN IF NOT EXISTS first_url TEXT;
+-- v1.105.0 — form-conversion fields (📊 Pulse form charts). HubSpot keeps a
+-- contact's FIRST + MOST-RECENT form conversion only, so submission counts
+-- built from these are "new form conversions", not full submission history.
+-- Existing rows stay NULL until the next HubSpot sync re-pulls them.
+ALTER TABLE marketing_hubspot_contacts ADD COLUMN IF NOT EXISTS first_conversion_event_name  TEXT;
+ALTER TABLE marketing_hubspot_contacts ADD COLUMN IF NOT EXISTS first_conversion_date        TIMESTAMPTZ;
+ALTER TABLE marketing_hubspot_contacts ADD COLUMN IF NOT EXISTS recent_conversion_event_name TEXT;
+ALTER TABLE marketing_hubspot_contacts ADD COLUMN IF NOT EXISTS recent_conversion_date       TIMESTAMPTZ;
+ALTER TABLE marketing_hubspot_contacts ADD COLUMN IF NOT EXISTS num_conversion_events        INTEGER;
 
 -- HubSpot deals mirror — Sales Pipeline only (pipeline ID = 'default';
 -- Test + Ecommerce pipelines are excluded so marketing reporting stays

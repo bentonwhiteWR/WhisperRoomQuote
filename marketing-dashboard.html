@@ -426,6 +426,22 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
 .pulse-reason-row .pr-n{font-family:var(--mono);min-width:90px;color:var(--muted)}
 .pulse-reason-head{font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;margin:14px 0 9px}
 .pulse-reason-head:first-child{margin-top:0}
+/* v1.105.0 — Pulse drill affordances + form charts */
+.pulse-kpi.drill{cursor:pointer;transition:border-color .15s}
+.pulse-kpi.drill:hover{border-color:var(--orange)}
+.pulse-funnel-stage.drill,.pulse-dl-row.drill,.pulse-reason-row.drill{cursor:pointer;border-radius:6px}
+.pulse-funnel-stage.drill:hover .pf-stage,.pulse-dl-row.drill:hover .dl-src,.pulse-reason-row.drill:hover .pr-label{color:var(--orange)}
+.pulse-leg .leg-drill{font-size:10px;color:var(--muted);margin-left:2px;padding:1px 4px;border-radius:4px}
+.pulse-leg .leg-drill:hover{color:var(--orange);background:var(--surface)}
+.pulse-leg{max-width:280px}
+.pulse-leg .leg-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px}
+.pulse-fs-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:11.5px}
+.pulse-fs-row .fs-label{flex:0 0 210px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right;color:var(--text);font-weight:600;cursor:pointer}
+.pulse-fs-row .fs-label:hover{color:var(--orange)}
+.pulse-fs-row .fs-track{flex:1;height:18px;border-radius:5px;background:rgba(255,255,255,.04);overflow:hidden;display:flex}
+:root.light .pulse-fs-row .fs-track{background:rgba(0,0,0,.05)}
+.pulse-fs-row .fs-seg{height:100%}
+.pulse-fs-row .fs-n{font-family:var(--mono);min-width:46px;color:var(--muted)}
 </style>
   <script src="/assets/nav.js" defer></script>
 </head>
@@ -904,6 +920,25 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
       </div>
       <div class="pulse-legend" id="pulseFlowLegend"></div>
       <div class="pulse-chart-wrap" id="pulseFlowChart"></div>
+    </div>
+
+    <!-- Form conversions (v1.105.0) — weekly by form + source mix -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">Form Conversions<span class="tip-i" title="New form conversions per week — each contact's FIRST form submission (first_conversion_event_name/date). HubSpot's contact record keeps first + most-recent conversions only, so this is the new-lead view, not total submission volume. Windowed on the conversion date. Needs one Sync All after the v1.105.0 deploy to backfill.">ⓘ</span></div>
+        <span class="section-meta" id="pulseFormsMeta">—</span>
+      </div>
+      <div class="pulse-legend" id="pulseFormsLegend"></div>
+      <div class="pulse-chart-wrap" id="pulseFormsChart"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">Form Conversions by Source<span class="tip-i" title="Which channels feed which forms: each form's conversions split by the contact's first-touch source. Same first-conversion basis as the chart above. Click a bar's form name to see the contacts.">ⓘ</span></div>
+        <span class="section-meta" id="pulseFormSrcMeta">—</span>
+      </div>
+      <div class="pulse-legend" id="pulseFormSrcLegend"></div>
+      <div id="pulseFormSrc"></div>
     </div>
 
     <!-- Funnel + revenue donut side by side -->
@@ -4691,6 +4726,49 @@ const pulseWeekLabel = w => { const m = +w.slice(5, 7), d = +w.slice(8, 10); ret
 let pulseData = null;          // last /hubspot-pulse payload
 let pulseFlowOff = {};         // lead-flow legend: channels toggled OFF
 let pulseFlowChannels = [];    // volume-ordered channel list behind the legend
+let pulseFormOff = {};         // form-chart legend: forms toggled OFF
+let pulseFormList = [];        // volume-ordered form list behind the legend
+let pulseKpiDefs = [];         // KPI defs behind the card onclick
+let pulseFunnelStages = [];    // [stageId, label, n] behind the funnel rows
+let pulseDonutSlices = [];     // slices behind the donut legend rows
+let pulseReasonList = [];      // {kind, reason} behind the reason rows
+let pulseFormSrcList = [];     // forms behind the by-source bar labels
+
+// v1.105.0 — Pulse drill: reuses the same modal as the attribution drills but
+// hits /pulse-drill (no attribution model; keys are Pulse grouping values).
+// Index-addressed callers pass DB-sourced keys through here, never through
+// inline handlers, so form names / reasons never need HTML-attr quoting.
+function openPulseDrill(type, title, key) {
+  const set = (id, html) => { document.getElementById(id).innerHTML = html; };
+  document.getElementById('drillOverlay').classList.add('open');
+  document.getElementById('drillTitle').textContent = title;
+  document.getElementById('drillMeta').textContent = `📊 Pulse · last ${currentDaysBack} days`;
+  set('drillBody', '<div class="drill-empty">Loading…</div>');
+  document.getElementById('drillFoot').textContent = '';
+  const qp = new URLSearchParams({ type, days: currentDaysBack });
+  if (key != null && key !== '') qp.set('key', key);
+  fetch(`/api/marketing/pulse-drill?${qp.toString()}`, { credentials: 'include' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { set('drillBody', `<div class="drill-empty">Couldn't load records: ${escHtml(d.error)}</div>`); return; }
+      const rows = d.rows || [];
+      if (!rows.length) { set('drillBody', '<div class="drill-empty">No records in this window.</div>'); return; }
+      set('drillBody', rows.map(r => `
+        <a class="drill-row" href="${escHtml(r.url)}" target="_blank" rel="noopener">
+          <div class="drill-row-main">
+            <div class="drill-row-label">${escHtml(r.label)}</div>
+            ${r.sublabel ? `<div class="drill-row-sub">${escHtml(r.sublabel)}</div>` : ''}
+          </div>
+          ${r.amount != null ? `<div class="drill-row-amt">${fmtUSD(r.amount)}</div>` : ''}
+          <span class="drill-row-link">HubSpot ↗</span>
+        </a>`).join(''));
+      const total = rows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+      document.getElementById('drillFoot').textContent =
+        (rows.length >= 500 ? 'Showing first 500 records (capped). ' : `${fmtInt(rows.length)} record${rows.length === 1 ? '' : 's'}`)
+        + (total ? ` · ${fmtUSD(total)} total` : '');
+    })
+    .catch(() => set('drillBody', '<div class="drill-empty">Couldn\'t load records.</div>'));
+}
 
 async function loadPulseTab() {
   try {
@@ -4704,6 +4782,8 @@ async function loadPulseTab() {
   }
   renderPulseKpis(pulseData.kpis || {});
   renderPulseFlow();
+  renderPulseForms();
+  renderPulseFormSources(pulseData.formsBySource || []);
   renderPulseFunnel(pulseData.funnel || []);
   renderPulseDonut(pulseData.sourceRevenue || []);
   renderPulseRhythm(pulseData.dealsWeekly || [], pulseData.wonWeekly || []);
@@ -4714,11 +4794,14 @@ async function loadPulseTab() {
 // ── KPI strip — current window vs the same-length window before it ──
 function renderPulseKpis(k) {
   // invert: a DROP is good (days to close). fmt: value formatter.
+  // drill: pulse-drill type behind the number (clickable card); derived
+  // metrics (win rate, median) have no single record list, so no drill.
   const defs = [
-    { label: 'New Contacts',  cur: k.contacts_cur, prev: k.contacts_prev, fmt: fmtInt },
-    { label: 'Deals Created', cur: k.deals_cur,    prev: k.deals_prev,    fmt: fmtInt },
-    { label: 'Deals Won',     cur: k.won_cur,      prev: k.won_prev,      fmt: fmtInt },
-    { label: 'Won Revenue',   cur: k.revenue_cur,  prev: k.revenue_prev,  fmt: pulseMoney },
+    { label: 'New Contacts',  cur: k.contacts_cur, prev: k.contacts_prev, fmt: fmtInt,    drill: 'contacts',          dtitle: 'New contacts' },
+    { label: 'Form Conversions', cur: k.forms_cur, prev: k.forms_prev,    fmt: fmtInt,    drill: 'contacts-converted', dtitle: 'Form conversions' },
+    { label: 'Deals Created', cur: k.deals_cur,    prev: k.deals_prev,    fmt: fmtInt,    drill: 'deals-created',     dtitle: 'Deals created' },
+    { label: 'Deals Won',     cur: k.won_cur,      prev: k.won_prev,      fmt: fmtInt,    drill: 'deals-won',         dtitle: 'Closed-won deals' },
+    { label: 'Won Revenue',   cur: k.revenue_cur,  prev: k.revenue_prev,  fmt: pulseMoney, drill: 'deals-won',        dtitle: 'Closed-won deals' },
     { label: 'Win Rate',      cur: pctOrNull(k.won_cur, k.won_cur + k.lost_cur),
                               prev: pctOrNull(k.won_prev, k.won_prev + k.lost_prev),
                               fmt: v => v == null ? '—' : v.toFixed(0) + '%' },
@@ -4726,7 +4809,8 @@ function renderPulseKpis(k) {
                               fmt: v => v == null ? '—' : Math.round(v) + 'd', invert: true },
   ];
   function pctOrNull(n, d) { return d > 0 ? (n / d) * 100 : null; }
-  document.getElementById('pulseKpis').innerHTML = defs.map(d => {
+  pulseKpiDefs = defs;   // index-addressed by the card onclick
+  document.getElementById('pulseKpis').innerHTML = defs.map((d, i) => {
     let chip = '';
     if (d.cur != null && d.prev != null && d.prev !== 0) {
       const pct = ((d.cur - d.prev) / Math.abs(d.prev)) * 100;
@@ -4737,8 +4821,13 @@ function renderPulseKpis(k) {
     } else if (d.cur != null && (d.prev == null || d.prev === 0)) {
       chip = `<span class="pk-delta flat">no prior period</span>`;
     }
-    return `<div class="pulse-kpi"><div class="pk-label">${d.label}</div><div class="pk-val">${d.fmt(d.cur)}</div><div>${chip}</div></div>`;
+    const drillable = d.drill && d.cur;
+    return `<div class="pulse-kpi${drillable ? ' drill' : ''}"${drillable ? ` onclick="pulseDrillKpi(${i})" title="Click to see the records"` : ''}><div class="pk-label">${d.label}</div><div class="pk-val">${d.fmt(d.cur)}</div><div>${chip}</div></div>`;
   }).join('');
+}
+function pulseDrillKpi(i) {
+  const d = pulseKpiDefs[i];
+  if (d && d.drill) openPulseDrill(d.drill, d.dtitle);
 }
 
 // ── Lead flow by source — stacked area with gradient fills ──────────
@@ -4758,8 +4847,9 @@ function renderPulseFlow() {
 
   pulseFlowChannels = channels;   // index-addressed by the legend onclick
   legEl.innerHTML = channels.map((c, i) => `
-    <div class="pulse-leg ${pulseFlowOff[c.src] ? 'off' : ''}" onclick="togglePulseFlow(${i})">
-      <span class="leg-dot" style="background:${c.color}"></span>${escHtml(c.label)}<span class="leg-n">${fmtInt(c.total)}</span>
+    <div class="pulse-leg ${pulseFlowOff[c.src] ? 'off' : ''}" onclick="togglePulseFlow(${i})" title="Click to show/hide">
+      <span class="leg-dot" style="background:${c.color}"></span><span class="leg-label">${escHtml(c.label)}</span><span class="leg-n">${fmtInt(c.total)}</span>
+      <span class="leg-drill" onclick="event.stopPropagation();pulseDrillChannel(${i})" title="See these contacts">↗</span>
     </div>`).join('');
   document.getElementById('pulseFlowMeta').textContent =
     `${fmtInt(channels.reduce((a, c) => a + c.total, 0))} contacts · ${weeks.length} weeks`;
@@ -4818,6 +4908,154 @@ function togglePulseFlow(i) {
   pulseFlowOff[c.src] = !pulseFlowOff[c.src];
   renderPulseFlow();
 }
+function pulseDrillChannel(i) {
+  const c = pulseFlowChannels[i]; if (!c) return;
+  openPulseDrill('contacts-channel', `Contacts · ${c.label}`, c.src);
+}
+
+// ── Form conversions — weekly stacked bars by form (v1.105.0) ───────
+function renderPulseForms() {
+  const rows = (pulseData && pulseData.formsWeekly) || [];
+  const legEl = document.getElementById('pulseFormsLegend'), chEl = document.getElementById('pulseFormsChart');
+  if (!rows.length) {
+    legEl.innerHTML = '';
+    chEl.innerHTML = '<div class="empty">No form conversions in this window. New fields need one <strong>↻ Sync All</strong> to backfill from HubSpot.</div>';
+    document.getElementById('pulseFormsMeta').textContent = '—';
+    return;
+  }
+  const weeks = [...new Set(rows.map(r => r.week))].sort();
+  const byForm = {};
+  rows.forEach(r => { (byForm[r.form] = byForm[r.form] || {})[r.week] = r.submissions; });
+  // Top forms by volume get their own series + color; the rest fold into
+  // "Other forms" so a long tail of one-off forms can't shred the legend.
+  const FORM_COLORS = ['#ee6216', '#3b82f6', '#22c55e', '#a855f7', '#f59e0b', '#ec4899', '#14b8a6'];
+  const ranked = Object.keys(byForm)
+    .map(f => ({ form: f, total: weeks.reduce((a, w) => a + (byForm[f][w] || 0), 0) }))
+    .sort((a, b) => b.total - a.total);
+  const top = ranked.slice(0, FORM_COLORS.length).map((f, i) => ({ ...f, color: FORM_COLORS[i] }));
+  const rest = ranked.slice(FORM_COLORS.length);
+  if (rest.length) {
+    const other = { form: '__other__', label: `Other forms (${rest.length})`, color: '#94a3b8', total: rest.reduce((a, f) => a + f.total, 0) };
+    const otherByWeek = {};
+    rest.forEach(f => weeks.forEach(w => { otherByWeek[w] = (otherByWeek[w] || 0) + (byForm[f.form][w] || 0); }));
+    byForm.__other__ = otherByWeek;
+    top.push(other);
+  }
+  const forms = top.map(f => ({ ...f, label: f.label || f.form }));
+  pulseFormList = forms;   // index-addressed by legend onclick
+
+  legEl.innerHTML = forms.map((f, i) => `
+    <div class="pulse-leg ${pulseFormOff[f.form] ? 'off' : ''}" onclick="togglePulseForm(${i})" title="${escHtml(f.label)} — click to show/hide">
+      <span class="leg-dot" style="background:${f.color}"></span><span class="leg-label">${escHtml(f.label)}</span><span class="leg-n">${fmtInt(f.total)}</span>
+      ${f.form === '__other__' ? '' : `<span class="leg-drill" onclick="event.stopPropagation();pulseDrillForm(${i})" title="See these contacts">↗</span>`}
+    </div>`).join('');
+  document.getElementById('pulseFormsMeta').textContent =
+    `${fmtInt(ranked.reduce((a, f) => a + f.total, 0))} conversions · ${ranked.length} form${ranked.length > 1 ? 's' : ''}`;
+
+  const active = forms.filter(f => !pulseFormOff[f.form]);
+  if (!active.length) { chEl.innerHTML = '<div class="empty">Select a form above.</div>'; return; }
+
+  // Stacked weekly bars (bars read better than area for form counts — weeks
+  // with zero submissions stay visibly empty instead of interpolating).
+  const n = weeks.length, W = 1000, H = 280, padL = 40, padR = 14, padT = 14, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB, TICKS = 4;
+  const slot = plotW / n, barW = Math.min(44, slot * 0.6);
+  const xMid = i => padL + slot * i + slot / 2;
+  const totals = weeks.map(w => active.reduce((a, f) => a + (byForm[f.form][w] || 0), 0));
+  const yMax = Math.max(1, ...totals);
+  const yAt = v => padT + (1 - v / yMax) * plotH;
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Form conversions per week">`;
+  for (let t = 0; t <= TICKS; t++) {
+    const y = (padT + (t / TICKS) * plotH).toFixed(1);
+    svg += `<line class="pulse-grid-line" x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}"/>`;
+    svg += `<text x="${padL - 8}" y="${(+y + 4).toFixed(1)}" text-anchor="end" fill="var(--muted)">${fmtInt(Math.round(yMax * (1 - t / TICKS)))}</text>`;
+  }
+  const step = Math.max(1, Math.ceil(n / 9));
+  for (let i = 0; i < n; i += step) {
+    svg += `<text x="${xMid(i).toFixed(1)}" y="${H - padB + 18}" text-anchor="middle" fill="var(--muted)">${pulseWeekLabel(weeks[i])}</text>`;
+  }
+  weeks.forEach((w, i) => {
+    let cum = 0;
+    active.forEach(f => {
+      const v = byForm[f.form][w] || 0; if (!v) return;
+      const y1 = yAt(cum + v), y0 = yAt(cum);
+      svg += `<rect x="${(xMid(i) - barW / 2).toFixed(1)}" y="${y1.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(1, y0 - y1).toFixed(1)}" fill="${f.color}" opacity="0.8"/>`;
+      cum += v;
+    });
+  });
+  svg += `<line id="pulseFormsGuide" x1="0" y1="${padT}" x2="0" y2="${padT + plotH}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" style="display:none" vector-effect="non-scaling-stroke"/>`;
+  svg += `<rect id="pulseFormsOverlay" x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="transparent" style="cursor:crosshair"/></svg>`;
+  chEl.innerHTML = svg + '<div class="pulse-tip" id="pulseFormsTip"></div>';
+
+  bindPulseHover(chEl, n, padL, plotW, idx => {
+    const w = weeks[idx];
+    const parts = active.map(f => (byForm[f.form][w] || 0) ? `<div><span style="color:${f.color}">●</span> ${escHtml(f.label)}: <strong>${fmtInt(byForm[f.form][w])}</strong></div>` : '').join('');
+    return `<div style="font-weight:700;margin-bottom:4px">Week of ${pulseWeekLabel(w)}</div>${parts || '<div>No conversions</div>'}<div style="margin-top:4px;border-top:1px solid var(--border);padding-top:4px">Total: <strong>${fmtInt(totals[idx])}</strong></div>`;
+  }, 'pulseFormsGuide', 'pulseFormsTip', xMid);
+}
+function togglePulseForm(i) {
+  const f = pulseFormList[i]; if (!f) return;
+  pulseFormOff[f.form] = !pulseFormOff[f.form];
+  renderPulseForms();
+}
+function pulseDrillForm(i) {
+  const f = pulseFormList[i]; if (!f || f.form === '__other__') return;
+  openPulseDrill('contacts-form', `Form conversions · ${f.label}`, f.form);
+}
+
+// ── Form conversions by source — stacked channel bars per form ───────
+function renderPulseFormSources(rows) {
+  const el = document.getElementById('pulseFormSrc'), legEl = document.getElementById('pulseFormSrcLegend');
+  if (!rows.length) {
+    legEl.innerHTML = '';
+    el.innerHTML = '<div class="empty">No form conversions in this window. New fields need one <strong>↻ Sync All</strong> to backfill from HubSpot.</div>';
+    document.getElementById('pulseFormSrcMeta').textContent = '—';
+    return;
+  }
+  // Pivot → forms ranked by volume (top 8 + fold), each with a channel mix.
+  const byForm = {};
+  rows.forEach(r => { (byForm[r.form] = byForm[r.form] || {})[r.source] = r.submissions; });
+  const ranked = Object.keys(byForm)
+    .map(f => ({ form: f, mix: byForm[f], total: Object.values(byForm[f]).reduce((a, v) => a + v, 0) }))
+    .sort((a, b) => b.total - a.total);
+  const TOP = 8;
+  const shown = ranked.slice(0, TOP);
+  const folded = ranked.slice(TOP);
+  if (folded.length) {
+    const mix = {};
+    folded.forEach(f => Object.entries(f.mix).forEach(([s, v]) => { mix[s] = (mix[s] || 0) + v; }));
+    shown.push({ form: '__other__', label: `Other forms (${folded.length})`, mix, total: folded.reduce((a, f) => a + f.total, 0) });
+  }
+  // Channel legend covers only sources that actually appear, volume-ordered.
+  const srcTotals = {};
+  rows.forEach(r => { srcTotals[r.source] = (srcTotals[r.source] || 0) + r.submissions; });
+  const channels = Object.keys(srcTotals).map(s => ({ src: s, ...pulseChannel(s), total: srcTotals[s] })).sort((a, b) => b.total - a.total);
+  legEl.innerHTML = channels.map(c => `
+    <div class="pulse-leg" style="cursor:default">
+      <span class="leg-dot" style="background:${c.color}"></span><span class="leg-label">${escHtml(c.label)}</span><span class="leg-n">${fmtInt(c.total)}</span>
+    </div>`).join('');
+  document.getElementById('pulseFormSrcMeta').textContent = `top ${Math.min(TOP, ranked.length)} of ${ranked.length} form${ranked.length > 1 ? 's' : ''}`;
+
+  const max = Math.max(...shown.map(f => f.total), 1);
+  pulseFormSrcList = shown;   // index-addressed by the form-name onclick
+  el.innerHTML = shown.map((f, i) => {
+    const segs = channels.map(c => {
+      const v = f.mix[c.src] || 0; if (!v) return '';
+      return `<div class="fs-seg" style="width:${(v / f.total) * 100}%;background:${c.color}" title="${escHtml(c.label)}: ${fmtInt(v)}"></div>`;
+    }).join('');
+    const drill = f.form === '__other__' ? '' : ` onclick="pulseDrillFormSrc(${i})" title="${escHtml(f.label || f.form)} — click to see the contacts"`;
+    return `<div class="pulse-fs-row">
+      <span class="fs-label"${drill}>${escHtml(f.label || f.form)}</span>
+      <div class="fs-track" style="width:${(f.total / max) * 100}%;flex:none;min-width:24px">${segs}</div>
+      <span class="fs-n">${fmtInt(f.total)}</span>
+    </div>`;
+  }).join('');
+}
+function pulseDrillFormSrc(i) {
+  const f = pulseFormSrcList[i]; if (!f || f.form === '__other__') return;
+  openPulseDrill('contacts-form', `Form conversions · ${f.label || f.form}`, f.form);
+}
 
 // Shared hover binder: maps cursor → nearest index via the SVG screen CTM,
 // moves the guide line, and fills/positions the tooltip from htmlFor(idx).
@@ -4855,14 +5093,19 @@ function renderPulseFunnel(rows) {
   const stages = [...known, ...extra];
   const max = Math.max(...stages.map(([id]) => byStage[id] || 0), 1);
   document.getElementById('pulseFunnelMeta').textContent = `${fmtInt(total)} contacts in cohort`;
+  pulseFunnelStages = stages;   // index-addressed by the row onclick
   el.innerHTML = stages.map(([id, label], i) => {
     const n = byStage[id] || 0, pct = total ? (n / total) * 100 : 0;
     const color = PULSE_FUNNEL_COLORS[Math.min(i, PULSE_FUNNEL_COLORS.length - 1)];
-    return `<div class="pulse-funnel-stage">
+    return `<div class="pulse-funnel-stage${n ? ' drill' : ''}"${n ? ` onclick="pulseDrillStage(${i})" title="Click to see these contacts"` : ''}>
       <div class="pulse-funnel-meta"><span class="pf-stage">${escHtml(label)}</span><span class="pf-pct">${pct.toFixed(1)}%</span></div>
       <div class="pulse-funnel-bar" style="width:${Math.max(2, (n / max) * 100 * 0.72)}%;background:linear-gradient(90deg, ${color}, ${color}88)"><span class="pf-n">${fmtInt(n)}</span></div>
     </div>`;
   }).join('');
+}
+function pulseDrillStage(i) {
+  const s = pulseFunnelStages[i]; if (!s) return;
+  openPulseDrill('contacts-stage', `Contacts · ${s[1]}`, s[0]);
 }
 
 // ── Revenue by source — donut with center total ─────────────────────
@@ -4893,11 +5136,16 @@ function renderPulseDonut(rows) {
   svg += `<text x="${cx}" y="${cy - 4}" text-anchor="middle" style="font-size:19px;font-weight:800" fill="var(--text)">${pulseMoney(total)}</text>`;
   svg += `<text x="${cx}" y="${cy + 15}" text-anchor="middle" style="font-size:10px;letter-spacing:.06em" fill="var(--muted)">WON REVENUE</text></svg>`;
   el.innerHTML = svg;
-  legEl.innerHTML = slices.map(s => `
-    <div class="pulse-dl-row"><span class="leg-dot" style="background:${s.color}"></span>
+  pulseDonutSlices = slices;   // index-addressed by the legend onclick
+  legEl.innerHTML = slices.map((s, i) => `
+    <div class="pulse-dl-row drill" onclick="pulseDrillDonut(${i})" title="Click to see these deals"><span class="leg-dot" style="background:${s.color}"></span>
       <span class="dl-src">${escHtml(s.label)}</span>
       <span class="dl-val">${pulseMoney(s.rev)} · ${fmtInt(s.won)} deal${s.won === 1 ? '' : 's'} · ${((s.rev / total) * 100).toFixed(1)}%</span>
     </div>`).join('');
+}
+function pulseDrillDonut(i) {
+  const s = pulseDonutSlices[i]; if (!s) return;
+  openPulseDrill('deals-won-source', `Closed-won deals · ${s.label}`, s.src);
 }
 
 // ── Pipeline rhythm — created bars (left axis) + won-revenue line (right) ──
@@ -4960,15 +5208,23 @@ function renderPulseReasons(wonR, lostR) {
     `${fmtInt(wonR.reduce((a, r) => a + r.n, 0))} won · ${fmtInt(lostR.reduce((a, r) => a + r.n, 0))} lost with reasons`;
   if (!wonR.length && !lostR.length) { el.innerHTML = '<div class="empty">No close reasons recorded in this window.</div>'; return; }
   const max = Math.max(...wonR.map(r => r.n), ...lostR.map(r => r.n), 1);
-  const rows = (list, color) => list.map(r => `
-    <div class="pulse-reason-row">
+  // Flat index list across both groups so the row onclick can pass an index
+  // instead of quoting the (free-text) reason into an inline handler.
+  pulseReasonList = [...wonR.map(r => ({ kind: 'deals-reason-won', reason: r.reason })),
+                     ...lostR.map(r => ({ kind: 'deals-reason-lost', reason: r.reason }))];
+  const rows = (list, color, idxBase) => list.map((r, j) => `
+    <div class="pulse-reason-row drill" onclick="pulseDrillReason(${idxBase + j})" title="Click to see these deals">
       <span class="pr-label" title="${escHtml(r.reason)}">${escHtml(r.reason)}</span>
       <div class="pr-track"><div class="pr-fill" style="width:${(r.n / max) * 100}%;background:${color}"></div></div>
       <span class="pr-n">${fmtInt(r.n)} · ${pulseMoney(r.amount)}</span>
     </div>`).join('');
   el.innerHTML =
-    (wonR.length  ? `<div class="pulse-reason-head" style="color:var(--green)">Why we win</div>`  + rows(wonR, 'var(--green)') : '') +
-    (lostR.length ? `<div class="pulse-reason-head" style="color:var(--red)">Why we lose</div>` + rows(lostR, 'var(--red)') : '');
+    (wonR.length  ? `<div class="pulse-reason-head" style="color:var(--green)">Why we win</div>`  + rows(wonR, 'var(--green)', 0) : '') +
+    (lostR.length ? `<div class="pulse-reason-head" style="color:var(--red)">Why we lose</div>` + rows(lostR, 'var(--red)', wonR.length) : '');
+}
+function pulseDrillReason(i) {
+  const r = pulseReasonList[i]; if (!r) return;
+  openPulseDrill(r.kind, `${r.kind === 'deals-reason-won' ? 'Won' : 'Lost'} · ${r.reason}`, r.reason);
 }
 
 // ── Sales velocity — days-to-close histogram, median highlighted ─────
@@ -4998,7 +5254,9 @@ function renderPulseVelocity(rows, kpis) {
   ORDER.forEach((b, i) => {
     const v = byB[b] || 0, x = padL + slot * i + (slot - barW) / 2, y = padT + (1 - v / maxV) * plotH;
     const isMed = b === medBucket;
-    svg += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${(padT + plotH - y).toFixed(1)}" rx="5" fill="${isMed ? '#ee6216' : '#3b82f6'}" opacity="${isMed ? 0.95 : 0.55}"><title>${b} days: ${v} deal${v === 1 ? '' : 's'}</title></rect>`;
+    // Bucket ids are fixed literals ('0-7' … '180+'), safe in an inline handler.
+    const drill = v ? ` onclick="openPulseDrill('deals-velocity', 'Won in ${b} days', '${b}')" style="cursor:pointer"` : '';
+    svg += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${(padT + plotH - y).toFixed(1)}" rx="5" fill="${isMed ? '#ee6216' : '#3b82f6'}" opacity="${isMed ? 0.95 : 0.55}"${drill}><title>${b} days: ${v} deal${v === 1 ? '' : 's'} — click to see them</title></rect>`;
     if (v) svg += `<text x="${(x + barW / 2).toFixed(1)}" y="${(y - 6).toFixed(1)}" text-anchor="middle" fill="var(--text)" style="font-weight:700">${v}</text>`;
     svg += `<text x="${(padL + slot * i + slot / 2).toFixed(1)}" y="${H - padB + 18}" text-anchor="middle" fill="${isMed ? '#ee6216' : 'var(--muted)'}">${b}d</text>`;
   });

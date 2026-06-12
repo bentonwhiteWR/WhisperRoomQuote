@@ -12,6 +12,7 @@
 //   GET  /api/marketing/search-terms             → all rows from marketing_search_terms
 //   GET  /api/marketing/campaign-attribution     → per-campaign leads/deals/revenue (v1.46.1)
 //   GET  /api/marketing/attribution-coverage     → % of contacts + deals + revenue attributable (v1.46.1)
+//   GET  /api/marketing/hubspot-pulse            → 📊 Pulse tab chart aggregates, one payload (v1.104.0)
 //
 // HubSpot ingestion (v1.44.0) shares the same /api/marketing/sync POST
 // endpoint — pass `report: 'hubspot_contacts' | 'hubspot_deals' | 'hubspot_all'`
@@ -1167,6 +1168,129 @@ async function handle(req, res, ctx) {
                AND (c.first_source = 'PAID_SEARCH' OR c.gclid IS NOT NULL))                                          AS revenue_any_touch
       `, [days, QUOTE_STAGES])).rows[0] : {};
       ctx.json({ ...(r || {}), model: am.model });
+    } catch(e) { ctx.json({ error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/hubspot-pulse ──────────────────────────────
+  // v1.104.0 — one-shot aggregate payload for the 📊 Pulse tab: the HubSpot
+  // marketing picture as charts (lead flow by source, lifecycle funnel,
+  // revenue by source, weekly pipeline rhythm, win/loss reasons, days-to-
+  // close distribution) plus a KPI strip with prior-period deltas. Pure
+  // reads over the already-synced HubSpot mirror tables — no API spend, no
+  // model param (source splits are first-touch by definition; the tab states
+  // that). All eight aggregates ship in ONE response so the tab paints in a
+  // single round trip. Window: ?days= (shared date-range selector).
+  //
+  // Deal-date semantics mirror attribution-coverage (v1.50.9): "created"
+  // series window on created_at (cohort questions), "won/lost" series and
+  // reasons window on closed_at (outcome questions) — so Pulse's Won Revenue
+  // agrees with the Ads tab's Closed Revenue basis.
+  if (pathname === '/api/marketing/hubspot-pulse' && req.method === 'GET') {
+    try {
+      const days = _parseDays(req);
+      if (!ctx.db) { ctx.json({ error: 'no db' }, 500); return true; }
+      const W  = `CURRENT_DATE - INTERVAL '1 day' * $1`;        // window start
+      const W2 = `CURRENT_DATE - INTERVAL '1 day' * ($1 * 2)`;  // prior-period start
+      const [weekly, funnel, dealsWeekly, wonWeekly, srcRev, wonReasons, lostReasons, velocity, kpis] = await Promise.all([
+        // 1) New contacts per week per first-touch source (stacked area).
+        ctx.db.query(`
+          SELECT to_char(date_trunc('week', created_at), 'YYYY-MM-DD') AS week,
+                 COALESCE(NULLIF(first_source, ''), 'UNKNOWN') AS source,
+                 COUNT(*)::int AS contacts
+          FROM marketing_hubspot_contacts
+          WHERE created_at >= ${W}
+          GROUP BY 1, 2 ORDER BY 1`, [days]),
+        // 2) Lifecycle funnel — stage distribution of the window's cohort.
+        ctx.db.query(`
+          SELECT COALESCE(NULLIF(lifecycle_stage, ''), 'unknown') AS stage, COUNT(*)::int AS n
+          FROM marketing_hubspot_contacts
+          WHERE created_at >= ${W}
+          GROUP BY 1`, [days]),
+        // 3) Deals created per week (count + pipeline $) — created_at basis.
+        ctx.db.query(`
+          SELECT to_char(date_trunc('week', created_at), 'YYYY-MM-DD') AS week,
+                 COUNT(*)::int AS created, COALESCE(SUM(amount), 0)::float AS pipeline_amount
+          FROM marketing_hubspot_deals
+          WHERE created_at >= ${W}
+          GROUP BY 1 ORDER BY 1`, [days]),
+        // 4) Closed-won per week (count + $) — closed_at basis.
+        ctx.db.query(`
+          SELECT to_char(date_trunc('week', closed_at), 'YYYY-MM-DD') AS week,
+                 COUNT(*)::int AS won, COALESCE(SUM(amount), 0)::float AS won_amount
+          FROM marketing_hubspot_deals
+          WHERE is_closed_won AND closed_at >= ${W}
+          GROUP BY 1 ORDER BY 1`, [days]),
+        // 5) Revenue + deal counts by the contact's first-touch source
+        //    (closed-won windowed on closed_at; all-deals on created_at).
+        ctx.db.query(`
+          SELECT COALESCE(NULLIF(c.first_source, ''), 'UNKNOWN') AS source,
+                 (COUNT(*) FILTER (WHERE d.created_at >= ${W}))::int AS deals,
+                 (COUNT(*) FILTER (WHERE d.is_closed_won AND d.closed_at >= ${W}))::int AS won_deals,
+                 COALESCE(SUM(d.amount) FILTER (WHERE d.is_closed_won AND d.closed_at >= ${W}), 0)::float AS won_revenue
+          FROM marketing_hubspot_deals d
+          LEFT JOIN marketing_hubspot_contacts c ON c.contact_id = d.primary_contact_id
+          WHERE d.created_at >= ${W} OR (d.is_closed_won AND d.closed_at >= ${W})
+          GROUP BY 1 ORDER BY won_revenue DESC, deals DESC`, [days]),
+        // 6 + 7) Win / loss reasons (closed in window, reason filled).
+        ctx.db.query(`
+          SELECT closed_won_reason AS reason, COUNT(*)::int AS n, COALESCE(SUM(amount), 0)::float AS amount
+          FROM marketing_hubspot_deals
+          WHERE is_closed_won AND closed_at >= ${W}
+            AND NULLIF(TRIM(closed_won_reason), '') IS NOT NULL
+          GROUP BY 1 ORDER BY n DESC LIMIT 8`, [days]),
+        ctx.db.query(`
+          SELECT closed_lost_reason AS reason, COUNT(*)::int AS n, COALESCE(SUM(amount), 0)::float AS amount
+          FROM marketing_hubspot_deals
+          WHERE is_closed_lost AND closed_at >= ${W}
+            AND NULLIF(TRIM(closed_lost_reason), '') IS NOT NULL
+          GROUP BY 1 ORDER BY n DESC LIMIT 8`, [days]),
+        // 8) Days-to-close distribution for closed-won (sales velocity).
+        ctx.db.query(`
+          SELECT CASE
+                   WHEN days_to_close <= 7   THEN '0-7'
+                   WHEN days_to_close <= 14  THEN '8-14'
+                   WHEN days_to_close <= 30  THEN '15-30'
+                   WHEN days_to_close <= 60  THEN '31-60'
+                   WHEN days_to_close <= 90  THEN '61-90'
+                   WHEN days_to_close <= 180 THEN '91-180'
+                   ELSE '180+'
+                 END AS bucket, COUNT(*)::int AS n
+          FROM marketing_hubspot_deals
+          WHERE is_closed_won AND closed_at >= ${W} AND days_to_close IS NOT NULL
+          GROUP BY 1`, [days]),
+        // 9) KPI strip — current window vs the same-length window before it.
+        ctx.db.query(`
+          SELECT
+            (SELECT COUNT(*) FROM marketing_hubspot_contacts WHERE created_at >= ${W})::int                                    AS contacts_cur,
+            (SELECT COUNT(*) FROM marketing_hubspot_contacts WHERE created_at >= ${W2} AND created_at < ${W})::int             AS contacts_prev,
+            (SELECT COUNT(*) FROM marketing_hubspot_deals WHERE created_at >= ${W})::int                                       AS deals_cur,
+            (SELECT COUNT(*) FROM marketing_hubspot_deals WHERE created_at >= ${W2} AND created_at < ${W})::int                AS deals_prev,
+            (SELECT COUNT(*) FROM marketing_hubspot_deals WHERE is_closed_won AND closed_at >= ${W})::int                      AS won_cur,
+            (SELECT COUNT(*) FROM marketing_hubspot_deals WHERE is_closed_won AND closed_at >= ${W2} AND closed_at < ${W})::int AS won_prev,
+            (SELECT COUNT(*) FROM marketing_hubspot_deals WHERE is_closed_lost AND closed_at >= ${W})::int                     AS lost_cur,
+            (SELECT COUNT(*) FROM marketing_hubspot_deals WHERE is_closed_lost AND closed_at >= ${W2} AND closed_at < ${W})::int AS lost_prev,
+            (SELECT COALESCE(SUM(amount), 0)::float FROM marketing_hubspot_deals WHERE is_closed_won AND closed_at >= ${W})    AS revenue_cur,
+            (SELECT COALESCE(SUM(amount), 0)::float FROM marketing_hubspot_deals
+               WHERE is_closed_won AND closed_at >= ${W2} AND closed_at < ${W})                                                AS revenue_prev,
+            (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY days_to_close) FROM marketing_hubspot_deals
+               WHERE is_closed_won AND closed_at >= ${W} AND days_to_close IS NOT NULL)::float                                 AS median_close_cur,
+            (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY days_to_close) FROM marketing_hubspot_deals
+               WHERE is_closed_won AND closed_at >= ${W2} AND closed_at < ${W} AND days_to_close IS NOT NULL)::float           AS median_close_prev
+        `, [days]),
+      ]);
+      ctx.json({
+        days,
+        contactsWeekly: weekly.rows,
+        funnel:         funnel.rows,
+        dealsWeekly:    dealsWeekly.rows,
+        wonWeekly:      wonWeekly.rows,
+        sourceRevenue:  srcRev.rows,
+        wonReasons:     wonReasons.rows,
+        lostReasons:    lostReasons.rows,
+        velocity:       velocity.rows,
+        kpis:           kpis.rows[0] || {},
+      });
     } catch(e) { ctx.json({ error: e.message }, 500); }
     return true;
   }

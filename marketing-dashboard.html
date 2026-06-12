@@ -381,6 +381,51 @@ tfoot .recon-row td.num{font-family:var(--mono);font-style:normal}
 tfoot .recon-row td.drillable{cursor:pointer}
 tfoot .recon-row td.drillable:hover{color:var(--orange)}
 .recon-sub{display:block;font-style:normal;font-size:10px;color:var(--muted);opacity:.85;margin-top:2px;letter-spacing:.02em}
+/* ── v1.104.0 — 📊 Pulse tab ─────────────────────────────────────────── */
+.pulse-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.pulse-kpi{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;position:relative;overflow:hidden}
+.pulse-kpi::before{content:'';position:absolute;inset:0 auto 0 0;width:3px;background:var(--orange);opacity:.85}
+.pulse-kpi .pk-label{font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.pulse-kpi .pk-val{font-size:22px;font-weight:800;font-family:var(--mono);margin-top:5px;line-height:1.1}
+.pulse-kpi .pk-delta{font-size:11px;font-weight:700;font-family:var(--mono);margin-top:5px;display:inline-block;padding:1px 7px;border-radius:9px}
+.pulse-kpi .pk-delta.up{color:var(--green);background:rgba(34,197,94,.12)}
+.pulse-kpi .pk-delta.down{color:var(--red);background:rgba(239,68,68,.12)}
+.pulse-kpi .pk-delta.flat{color:var(--muted);background:rgba(136,136,136,.12)}
+.pulse-kpi .pk-prev{font-size:10px;color:var(--muted);margin-left:6px}
+.pulse-grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+@media (max-width:980px){.pulse-grid2{grid-template-columns:1fr}}
+.pulse-legend{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.pulse-leg{display:flex;align-items:center;gap:7px;padding:5px 11px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);cursor:pointer;font-size:11.5px;font-weight:600;transition:border-color .15s;user-select:none}
+.pulse-leg.off{opacity:.4}
+.pulse-leg .leg-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.pulse-leg .leg-n{font-family:var(--mono);color:var(--muted);font-size:10.5px}
+.pulse-chart-wrap{position:relative;width:100%}
+.pulse-chart-wrap svg{width:100%;height:auto;display:block}
+.pulse-chart-wrap svg text{font-size:11px;font-family:var(--mono)}
+.pulse-grid-line{stroke:var(--border);stroke-width:1;opacity:.6}
+.pulse-tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:8px 11px;font-size:11px;box-shadow:0 8px 24px rgba(0,0,0,.45);z-index:5;display:none;white-space:nowrap}
+.pulse-funnel-stage{display:flex;align-items:center;gap:12px;margin-bottom:9px}
+.pulse-funnel-bar{height:34px;border-radius:7px;min-width:2px;position:relative;transition:width .5s ease;display:flex;align-items:center;overflow:visible}
+.pulse-funnel-bar .pf-n{font-family:var(--mono);font-weight:800;font-size:13px;color:#fff;padding-left:11px;white-space:nowrap}
+.pulse-funnel-meta{font-size:11px;min-width:150px}
+.pulse-funnel-meta .pf-stage{font-weight:700;text-transform:capitalize}
+.pulse-funnel-meta .pf-pct{font-family:var(--mono);color:var(--muted);margin-left:7px}
+.pulse-donut-row{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+#pulseDonut{flex-shrink:0}
+#pulseDonut svg{display:block}
+.pulse-donut-legend{flex:1;min-width:180px;display:flex;flex-direction:column;gap:7px}
+.pulse-dl-row{display:flex;align-items:center;gap:8px;font-size:11.5px}
+.pulse-dl-row .leg-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.pulse-dl-row .dl-src{font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pulse-dl-row .dl-val{font-family:var(--mono);color:var(--muted)}
+.pulse-reason-row{display:flex;align-items:center;gap:10px;margin-bottom:7px;font-size:11.5px}
+.pulse-reason-row .pr-label{flex:0 0 145px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right;color:var(--muted)}
+.pulse-reason-row .pr-track{flex:1;height:14px;border-radius:4px;background:rgba(255,255,255,.04);overflow:hidden}
+:root.light .pulse-reason-row .pr-track{background:rgba(0,0,0,.05)}
+.pulse-reason-row .pr-fill{height:100%;border-radius:4px;transition:width .5s ease}
+.pulse-reason-row .pr-n{font-family:var(--mono);min-width:90px;color:var(--muted)}
+.pulse-reason-head{font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;margin:14px 0 9px}
+.pulse-reason-head:first-child{margin-top:0}
 </style>
   <script src="/assets/nav.js" defer></script>
 </head>
@@ -451,6 +496,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <button class="mtab"        data-tab="gsc" onclick="switchMarketingTab('gsc')">Google Search Console</button>
     <button class="mtab"        data-tab="seo" onclick="switchMarketingTab('seo')">🔎 SEO Intel</button>
     <button class="mtab"        data-tab="radar" onclick="switchMarketingTab('radar')">📡 Radar<span class="nbadge" id="radarTabBadge" style="display:none">0</span></button>
+    <button class="mtab"        data-tab="pulse" onclick="switchMarketingTab('pulse')">📊 Pulse</button>
   </div>
 
   <!-- ════════ Growth Engine tab (v1.69.x) — the decision dashboard ════════ -->
@@ -833,6 +879,81 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     </div>
     <div id="radarBody"><div class="empty">Loading…</div></div>
   </div><!-- /tabRadar -->
+
+  <!-- ════════ 📊 Pulse tab (v1.104.0) — the HubSpot picture, as charts ════════
+       Visual companion to the HubSpot Marketing Dashboard: same underlying data
+       (the synced contacts + deals mirror), richer presentation. Read-only —
+       no recommendation queues here (those live in Growth Engine / Radar). -->
+  <div id="tabPulse" class="tab-panel" style="display:none">
+    <div class="status-bar" style="margin-bottom:16px">
+      <div class="status-text">
+        <div>📊 Pulse — your HubSpot marketing data, visualized</div>
+        <span class="muted">Lead flow, funnel, revenue by source, pipeline rhythm, win/loss reasons, and sales velocity from the synced HubSpot mirror. Source splits are first-touch. Press Sync All if data looks stale.</span>
+      </div>
+      <button class="sync-btn" onclick="runSync()">↻ Sync All</button>
+    </div>
+
+    <!-- KPI strip with prior-period deltas -->
+    <div class="pulse-kpis" id="pulseKpis"><div class="empty">Loading…</div></div>
+
+    <!-- Lead flow by source (stacked area) -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">Lead Flow by Source<span class="tip-i" title="New HubSpot contacts per week, stacked by first-touch source (hs_analytics_source). Same cohort basis as the HubSpot Contacts card on the Ads tab.">ⓘ</span></div>
+        <span class="section-meta" id="pulseFlowMeta">—</span>
+      </div>
+      <div class="pulse-legend" id="pulseFlowLegend"></div>
+      <div class="pulse-chart-wrap" id="pulseFlowChart"></div>
+    </div>
+
+    <!-- Funnel + revenue donut side by side -->
+    <div class="pulse-grid2">
+      <div class="section" style="margin-bottom:0">
+        <div class="section-head">
+          <div class="section-title">Lifecycle Funnel<span class="tip-i" title="Where the window's new contacts sit in the HubSpot lifecycle right now (lifecyclestage). Percentages are share of the full cohort — a snapshot of current stage, not a strict stage-to-stage conversion history.">ⓘ</span></div>
+          <span class="section-meta" id="pulseFunnelMeta">—</span>
+        </div>
+        <div id="pulseFunnel"></div>
+      </div>
+      <div class="section" style="margin-bottom:0">
+        <div class="section-head">
+          <div class="section-title">Revenue by Source<span class="tip-i" title="Closed-won revenue (closed in window) grouped by the deal's primary contact's first-touch source. Deals with no associated contact land in Unattributed.">ⓘ</span></div>
+          <span class="section-meta" id="pulseDonutMeta">—</span>
+        </div>
+        <div class="pulse-donut-row">
+          <div id="pulseDonut"></div>
+          <div class="pulse-donut-legend" id="pulseDonutLegend"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pipeline rhythm (deals created bars + won revenue line) -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">Pipeline Rhythm<span class="tip-i" title="Bars: deals created per week (created date). Line: closed-won revenue per week (close date). The lag between a bar and the revenue it becomes is your sales cycle, visible.">ⓘ</span></div>
+        <span class="section-meta" id="pulseRhythmMeta">—</span>
+      </div>
+      <div class="pulse-chart-wrap" id="pulseRhythmChart"></div>
+    </div>
+
+    <!-- Win/loss reasons + velocity side by side -->
+    <div class="pulse-grid2">
+      <div class="section" style="margin-bottom:0">
+        <div class="section-head">
+          <div class="section-title">Why We Win / Why We Lose<span class="tip-i" title="Closed-won and closed-lost reasons (where filled in HubSpot) for deals closed in the window. Bars sized by deal count; dollar value alongside.">ⓘ</span></div>
+          <span class="section-meta" id="pulseReasonsMeta">—</span>
+        </div>
+        <div id="pulseReasons"></div>
+      </div>
+      <div class="section" style="margin-bottom:0">
+        <div class="section-head">
+          <div class="section-title">Sales Velocity<span class="tip-i" title="Days from deal creation to closed-won, for deals closed in the window. The orange marker is the median.">ⓘ</span></div>
+          <span class="section-meta" id="pulseVelocityMeta">—</span>
+        </div>
+        <div id="pulseVelocity"></div>
+      </div>
+    </div>
+  </div><!-- /tabPulse -->
 </div>
 
 <!-- Drill-down modal (v1.59.2) — lists the actual HubSpot records behind a
@@ -2142,14 +2263,16 @@ function switchMarketingTab(name) {
   document.getElementById('tabGrowth').style.display = name === 'growth' ? '' : 'none';
   document.getElementById('tabSeo').style.display    = name === 'seo' ? '' : 'none';
   document.getElementById('tabRadar').style.display  = name === 'radar' ? '' : 'none';
+  document.getElementById('tabPulse').style.display  = name === 'pulse' ? '' : 'none';
   document.querySelectorAll('.mtab').forEach(el => el.classList.toggle('active', el.dataset.tab === name));
   if (name === 'gsc') loadGscTab();
   else if (name === 'growth') loadGrowthTab();
   else if (name === 'seo') loadSeoTab();
   else if (name === 'radar') loadRadarTab();
+  else if (name === 'pulse') loadPulseTab();
 }
 // Reload only the visible tab when the shared date range / model changes.
-function refreshActiveTab() { return currentTab === 'gsc' ? loadGscTab() : currentTab === 'growth' ? loadGrowthTab() : currentTab === 'seo' ? loadSeoTab() : currentTab === 'radar' ? loadRadarTab() : loadAllTables(); }
+function refreshActiveTab() { return currentTab === 'gsc' ? loadGscTab() : currentTab === 'growth' ? loadGrowthTab() : currentTab === 'seo' ? loadSeoTab() : currentTab === 'radar' ? loadRadarTab() : currentTab === 'pulse' ? loadPulseTab() : loadAllTables(); }
 
 // v1.65.4 — Movers dimension (query | page). Drives ?dim= on gsc-movers.
 let gscMoversDim = 'query';
@@ -4519,6 +4642,368 @@ function renderSearchTerms(rows, attrRows) {
         </tr>`).join('')}
       </tbody>${reconFoot}
     </table>`;
+}
+
+// ═════════ 📊 Pulse tab (v1.104.0) ═════════════════════════════════
+// The HubSpot picture as hand-drawn SVG charts. One fetch
+// (/api/marketing/hubspot-pulse) paints the whole tab; everything below
+// renders from that cached payload, so legend toggles never refetch.
+
+// HubSpot hs_analytics_source codes → display label + series color. PAID_SEARCH
+// gets the brand orange (it's the channel we actively manage); anything not
+// listed falls into Other. Order here is only a fallback — charts order
+// channels by volume in the live data.
+const PULSE_CHANNELS = {
+  PAID_SEARCH:     { label: 'Paid Search',  color: '#ee6216' },
+  ORGANIC_SEARCH:  { label: 'Organic',      color: '#22c55e' },
+  DIRECT_TRAFFIC:  { label: 'Direct',       color: '#3b82f6' },
+  REFERRALS:       { label: 'Referrals',    color: '#a855f7' },
+  SOCIAL_MEDIA:    { label: 'Social',       color: '#ec4899' },
+  PAID_SOCIAL:     { label: 'Paid Social',  color: '#f472b6' },
+  EMAIL_MARKETING: { label: 'Email',        color: '#f59e0b' },
+  OFFLINE:         { label: 'Offline',      color: '#14b8a6' },
+  OTHER_CAMPAIGNS: { label: 'Other Campaigns', color: '#94a3b8' },
+  UNKNOWN:         { label: 'Unknown',      color: '#777777' },
+};
+const pulseChannel = src => PULSE_CHANNELS[src] || { label: (src || 'Unknown').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase()), color: '#94a3b8' };
+
+// HubSpot lifecyclestage ids → label, in funnel order. Unlisted stages append
+// at the bottom with their raw id.
+const PULSE_STAGES = [
+  ['subscriber', 'Subscriber'], ['lead', 'Lead'], ['marketingqualifiedlead', 'MQL'],
+  ['salesqualifiedlead', 'SQL'], ['opportunity', 'Opportunity'], ['customer', 'Customer'],
+  ['evangelist', 'Evangelist'],
+];
+const PULSE_FUNNEL_COLORS = ['#3b82f6', '#6366f1', '#a855f7', '#ec4899', '#ee6216', '#22c55e', '#14b8a6', '#94a3b8'];
+
+// Compact money for chart labels — $12.4k / $1.2M reads better on an axis
+// than $12,400.00 (fmtUSD stays for tables).
+const pulseMoney = n => {
+  if (n == null) return '—';
+  const v = Number(n), a = Math.abs(v);
+  if (a >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M';
+  if (a >= 1e3) return '$' + (v / 1e3).toFixed(1) + 'k';
+  return '$' + Math.round(v);
+};
+// "Mon D" week label from YYYY-MM-DD (weeks are date_trunc Mondays).
+const pulseWeekLabel = w => { const m = +w.slice(5, 7), d = +w.slice(8, 10); return `${m}/${d}`; };
+
+let pulseData = null;          // last /hubspot-pulse payload
+let pulseFlowOff = {};         // lead-flow legend: channels toggled OFF
+let pulseFlowChannels = [];    // volume-ordered channel list behind the legend
+
+async function loadPulseTab() {
+  try {
+    const r = await fetch(`/api/marketing/hubspot-pulse?days=${currentDaysBack}`, { credentials: 'include' });
+    pulseData = await r.json();
+  } catch { pulseData = null; }
+  if (!pulseData || pulseData.error) {
+    document.getElementById('pulseKpis').innerHTML =
+      `<div class="empty">${pulseData && pulseData.error ? 'Error: ' + escHtml(pulseData.error) : 'Could not load Pulse data.'} Press <strong>↻ Sync All</strong> if HubSpot has never synced.</div>`;
+    return;
+  }
+  renderPulseKpis(pulseData.kpis || {});
+  renderPulseFlow();
+  renderPulseFunnel(pulseData.funnel || []);
+  renderPulseDonut(pulseData.sourceRevenue || []);
+  renderPulseRhythm(pulseData.dealsWeekly || [], pulseData.wonWeekly || []);
+  renderPulseReasons(pulseData.wonReasons || [], pulseData.lostReasons || []);
+  renderPulseVelocity(pulseData.velocity || [], pulseData.kpis || {});
+}
+
+// ── KPI strip — current window vs the same-length window before it ──
+function renderPulseKpis(k) {
+  // invert: a DROP is good (days to close). fmt: value formatter.
+  const defs = [
+    { label: 'New Contacts',  cur: k.contacts_cur, prev: k.contacts_prev, fmt: fmtInt },
+    { label: 'Deals Created', cur: k.deals_cur,    prev: k.deals_prev,    fmt: fmtInt },
+    { label: 'Deals Won',     cur: k.won_cur,      prev: k.won_prev,      fmt: fmtInt },
+    { label: 'Won Revenue',   cur: k.revenue_cur,  prev: k.revenue_prev,  fmt: pulseMoney },
+    { label: 'Win Rate',      cur: pctOrNull(k.won_cur, k.won_cur + k.lost_cur),
+                              prev: pctOrNull(k.won_prev, k.won_prev + k.lost_prev),
+                              fmt: v => v == null ? '—' : v.toFixed(0) + '%' },
+    { label: 'Median Days to Close', cur: k.median_close_cur, prev: k.median_close_prev,
+                              fmt: v => v == null ? '—' : Math.round(v) + 'd', invert: true },
+  ];
+  function pctOrNull(n, d) { return d > 0 ? (n / d) * 100 : null; }
+  document.getElementById('pulseKpis').innerHTML = defs.map(d => {
+    let chip = '';
+    if (d.cur != null && d.prev != null && d.prev !== 0) {
+      const pct = ((d.cur - d.prev) / Math.abs(d.prev)) * 100;
+      const good = d.invert ? pct < 0 : pct > 0;
+      const cls  = Math.abs(pct) < 0.5 ? 'flat' : good ? 'up' : 'down';
+      const sign = pct > 0 ? '▲' : pct < 0 ? '▼' : '•';
+      chip = `<span class="pk-delta ${cls}">${sign} ${Math.abs(pct).toFixed(0)}%</span><span class="pk-prev">prev ${d.fmt(d.prev)}</span>`;
+    } else if (d.cur != null && (d.prev == null || d.prev === 0)) {
+      chip = `<span class="pk-delta flat">no prior period</span>`;
+    }
+    return `<div class="pulse-kpi"><div class="pk-label">${d.label}</div><div class="pk-val">${d.fmt(d.cur)}</div><div>${chip}</div></div>`;
+  }).join('');
+}
+
+// ── Lead flow by source — stacked area with gradient fills ──────────
+function renderPulseFlow() {
+  const rows = (pulseData && pulseData.contactsWeekly) || [];
+  const legEl = document.getElementById('pulseFlowLegend'), chEl = document.getElementById('pulseFlowChart');
+  if (!rows.length) { legEl.innerHTML = ''; chEl.innerHTML = '<div class="empty">No HubSpot contacts in this window. Press <strong>↻ Sync All</strong>.</div>'; return; }
+
+  // Pivot rows → weeks × channels. Channel order = volume desc (biggest at
+  // the bottom of the stack, where the eye reads the baseline).
+  const weeks = [...new Set(rows.map(r => r.week))].sort();
+  const byChannel = {};
+  rows.forEach(r => { (byChannel[r.source] = byChannel[r.source] || {})[r.week] = r.contacts; });
+  const channels = Object.keys(byChannel)
+    .map(src => ({ src, ...pulseChannel(src), total: weeks.reduce((a, w) => a + (byChannel[src][w] || 0), 0) }))
+    .sort((a, b) => b.total - a.total);
+
+  pulseFlowChannels = channels;   // index-addressed by the legend onclick
+  legEl.innerHTML = channels.map((c, i) => `
+    <div class="pulse-leg ${pulseFlowOff[c.src] ? 'off' : ''}" onclick="togglePulseFlow(${i})">
+      <span class="leg-dot" style="background:${c.color}"></span>${escHtml(c.label)}<span class="leg-n">${fmtInt(c.total)}</span>
+    </div>`).join('');
+  document.getElementById('pulseFlowMeta').textContent =
+    `${fmtInt(channels.reduce((a, c) => a + c.total, 0))} contacts · ${weeks.length} weeks`;
+
+  const active = channels.filter(c => !pulseFlowOff[c.src]);
+  if (!active.length) { chEl.innerHTML = '<div class="empty">Select a source above.</div>'; return; }
+
+  const n = weeks.length, W = 1000, H = 300, padL = 46, padR = 16, padT = 14, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB, TICKS = 4;
+  const xAt = i => n === 1 ? padL + plotW / 2 : padL + (i / (n - 1)) * plotW;
+  // Stack: per week, cumulative totals bottom-up in channel order.
+  const stacks = weeks.map((w, i) => {
+    let cum = 0;
+    return active.map(c => { const v = byChannel[c.src][w] || 0; const lo = cum; cum += v; return { lo, hi: cum, v }; });
+  });
+  const yMax = Math.max(1, ...stacks.map(s => s.length ? s[s.length - 1].hi : 0));
+  const yAt = v => padT + (1 - v / yMax) * plotH;
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="New contacts by source over time"><defs>`;
+  active.forEach((c, ci) => {
+    svg += `<linearGradient id="pulseFlowG${ci}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${c.color}" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="${c.color}" stop-opacity="0.06"/></linearGradient>`;
+  });
+  svg += '</defs><g>';
+  for (let t = 0; t <= TICKS; t++) {
+    const y = (padT + (t / TICKS) * plotH).toFixed(1);
+    svg += `<line class="pulse-grid-line" x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}"/>`;
+    svg += `<text x="${padL - 8}" y="${(+y + 4).toFixed(1)}" text-anchor="end" fill="var(--muted)">${fmtInt(Math.round(yMax * (1 - t / TICKS)))}</text>`;
+  }
+  const step = Math.max(1, Math.ceil(n / 9));
+  for (let i = 0; i < n; i += step) {
+    svg += `<text x="${xAt(i).toFixed(1)}" y="${H - padB + 18}" text-anchor="middle" fill="var(--muted)">${pulseWeekLabel(weeks[i])}</text>`;
+  }
+  svg += '</g>';
+  // Area bands (drawn top-channel-last so strokes layer cleanly).
+  active.forEach((c, ci) => {
+    const top = weeks.map((_, i) => `${xAt(i).toFixed(1)},${yAt(stacks[i][ci].hi).toFixed(1)}`);
+    const bot = weeks.map((_, i) => `${xAt(i).toFixed(1)},${yAt(stacks[i][ci].lo).toFixed(1)}`).reverse();
+    svg += `<polygon points="${top.join(' ')} ${bot.join(' ')}" fill="url(#pulseFlowG${ci})"/>`;
+    svg += `<polyline points="${top.join(' ')}" fill="none" stroke="${c.color}" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+  });
+  // Hover chrome — guide line + capture rect (same pattern as the GSC chart).
+  svg += `<line id="pulseFlowGuide" x1="0" y1="${padT}" x2="0" y2="${padT + plotH}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" style="display:none" vector-effect="non-scaling-stroke"/>`;
+  svg += `<rect id="pulseFlowOverlay" x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="transparent" style="cursor:crosshair"/></svg>`;
+  chEl.innerHTML = svg + '<div class="pulse-tip" id="pulseFlowTip"></div>';
+
+  bindPulseHover(chEl, weeks.length, padL, plotW, idx => {
+    const wk = weeks[idx], parts = active.map((c, ci) => stacks[idx][ci].v ? `<div><span style="color:${c.color}">●</span> ${escHtml(c.label)}: <strong>${fmtInt(stacks[idx][ci].v)}</strong></div>` : '').join('');
+    const total = stacks[idx].length ? stacks[idx][stacks[idx].length - 1].hi : 0;
+    return `<div style="font-weight:700;margin-bottom:4px">Week of ${pulseWeekLabel(wk)}</div>${parts}<div style="margin-top:4px;border-top:1px solid var(--border);padding-top:4px">Total: <strong>${fmtInt(total)}</strong></div>`;
+  }, 'pulseFlowGuide', 'pulseFlowTip', xAt);
+}
+function togglePulseFlow(i) {
+  const c = pulseFlowChannels[i]; if (!c) return;
+  pulseFlowOff[c.src] = !pulseFlowOff[c.src];
+  renderPulseFlow();
+}
+
+// Shared hover binder: maps cursor → nearest index via the SVG screen CTM,
+// moves the guide line, and fills/positions the tooltip from htmlFor(idx).
+function bindPulseHover(wrapEl, n, padL, plotW, htmlFor, guideId, tipId, xAt) {
+  const svgEl = wrapEl.querySelector('svg'); if (!svgEl || !n) return;
+  const pt = svgEl.createSVGPoint();
+  const guide = wrapEl.querySelector('#' + guideId), tip = wrapEl.querySelector('#' + tipId);
+  const ov = wrapEl.querySelector('rect[id$="Overlay"]'); if (!ov) return;
+  ov.addEventListener('mousemove', e => {
+    const ctm = svgEl.getScreenCTM(); if (!ctm) return;
+    pt.x = e.clientX; pt.y = e.clientY;
+    const loc = pt.matrixTransform(ctm.inverse());
+    let idx = n === 1 ? 0 : Math.round((loc.x - padL) / (plotW || 1) * (n - 1));
+    idx = Math.max(0, Math.min(n - 1, idx));
+    const x = xAt(idx);
+    guide.style.display = ''; guide.setAttribute('x1', x); guide.setAttribute('x2', x);
+    tip.innerHTML = htmlFor(idx); tip.style.display = 'block';
+    const wr = wrapEl.getBoundingClientRect();
+    const px = (x / 1000) * wr.width;
+    tip.style.left = Math.min(px + 14, wr.width - tip.offsetWidth - 6) + 'px';
+    tip.style.top = '10px';
+  });
+  ov.addEventListener('mouseleave', () => { guide.style.display = 'none'; tip.style.display = 'none'; });
+}
+
+// ── Lifecycle funnel — where the window's cohort sits right now ──────
+function renderPulseFunnel(rows) {
+  const el = document.getElementById('pulseFunnel');
+  if (!rows.length) { el.innerHTML = '<div class="empty">No contacts in window.</div>'; return; }
+  const byStage = {}; rows.forEach(r => byStage[r.stage] = r.n);
+  const total = rows.reduce((a, r) => a + r.n, 0);
+  // Known stages in funnel order, then anything HubSpot sent that we don't know.
+  const known = PULSE_STAGES.filter(([id]) => byStage[id]);
+  const extra = rows.filter(r => !PULSE_STAGES.some(([id]) => id === r.stage)).map(r => [r.stage, r.stage]);
+  const stages = [...known, ...extra];
+  const max = Math.max(...stages.map(([id]) => byStage[id] || 0), 1);
+  document.getElementById('pulseFunnelMeta').textContent = `${fmtInt(total)} contacts in cohort`;
+  el.innerHTML = stages.map(([id, label], i) => {
+    const n = byStage[id] || 0, pct = total ? (n / total) * 100 : 0;
+    const color = PULSE_FUNNEL_COLORS[Math.min(i, PULSE_FUNNEL_COLORS.length - 1)];
+    return `<div class="pulse-funnel-stage">
+      <div class="pulse-funnel-meta"><span class="pf-stage">${escHtml(label)}</span><span class="pf-pct">${pct.toFixed(1)}%</span></div>
+      <div class="pulse-funnel-bar" style="width:${Math.max(2, (n / max) * 100 * 0.72)}%;background:linear-gradient(90deg, ${color}, ${color}88)"><span class="pf-n">${fmtInt(n)}</span></div>
+    </div>`;
+  }).join('');
+}
+
+// ── Revenue by source — donut with center total ─────────────────────
+function renderPulseDonut(rows) {
+  const el = document.getElementById('pulseDonut'), legEl = document.getElementById('pulseDonutLegend');
+  const slices = rows.filter(r => r.won_revenue > 0)
+    .map(r => ({ ...pulseChannel(r.source === 'UNKNOWN' ? 'UNKNOWN' : r.source), src: r.source, rev: r.won_revenue, won: r.won_deals }));
+  const total = slices.reduce((a, s) => a + s.rev, 0);
+  document.getElementById('pulseDonutMeta').textContent = slices.length ? `${slices.length} source${slices.length > 1 ? 's' : ''}` : '—';
+  if (!total) { el.innerHTML = ''; legEl.innerHTML = '<div class="empty">No closed-won revenue in window.</div>'; return; }
+
+  const S = 190, cx = S / 2, cy = S / 2, R = 82, r = 56;
+  let svg = `<svg viewBox="0 0 ${S} ${S}" width="${S}" height="${S}" role="img" aria-label="Won revenue by source">`;
+  let a0 = -Math.PI / 2;
+  slices.forEach(s => {
+    const frac = s.rev / total, a1 = a0 + frac * 2 * Math.PI;
+    if (frac > 0.9999) {
+      // Single-source edge case: a full-circle arc collapses; draw a ring.
+      svg += `<circle cx="${cx}" cy="${cy}" r="${(R + r) / 2}" fill="none" stroke="${s.color}" stroke-width="${R - r}"/>`;
+    } else {
+      const big = frac > 0.5 ? 1 : 0;
+      const x0 = cx + R * Math.cos(a0), y0 = cy + R * Math.sin(a0), x1 = cx + R * Math.cos(a1), y1 = cy + R * Math.sin(a1);
+      const xi = cx + r * Math.cos(a1), yi = cy + r * Math.sin(a1), xj = cx + r * Math.cos(a0), yj = cy + r * Math.sin(a0);
+      svg += `<path d="M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${R} ${R} 0 ${big} 1 ${x1.toFixed(2)} ${y1.toFixed(2)} L ${xi.toFixed(2)} ${yi.toFixed(2)} A ${r} ${r} 0 ${big} 0 ${xj.toFixed(2)} ${yj.toFixed(2)} Z" fill="${s.color}" stroke="var(--surface)" stroke-width="2"><title>${escHtml(s.label)}: ${pulseMoney(s.rev)} (${(frac * 100).toFixed(1)}%)</title></path>`;
+    }
+    a0 = a1;
+  });
+  svg += `<text x="${cx}" y="${cy - 4}" text-anchor="middle" style="font-size:19px;font-weight:800" fill="var(--text)">${pulseMoney(total)}</text>`;
+  svg += `<text x="${cx}" y="${cy + 15}" text-anchor="middle" style="font-size:10px;letter-spacing:.06em" fill="var(--muted)">WON REVENUE</text></svg>`;
+  el.innerHTML = svg;
+  legEl.innerHTML = slices.map(s => `
+    <div class="pulse-dl-row"><span class="leg-dot" style="background:${s.color}"></span>
+      <span class="dl-src">${escHtml(s.label)}</span>
+      <span class="dl-val">${pulseMoney(s.rev)} · ${fmtInt(s.won)} deal${s.won === 1 ? '' : 's'} · ${((s.rev / total) * 100).toFixed(1)}%</span>
+    </div>`).join('');
+}
+
+// ── Pipeline rhythm — created bars (left axis) + won-revenue line (right) ──
+function renderPulseRhythm(deals, won) {
+  const el = document.getElementById('pulseRhythmChart');
+  const weeks = [...new Set([...deals.map(d => d.week), ...won.map(w => w.week)])].sort();
+  if (!weeks.length) { el.innerHTML = '<div class="empty">No deals in window.</div>'; return; }
+  const created = {}, pipeAmt = {}, wonN = {}, wonAmt = {};
+  deals.forEach(d => { created[d.week] = d.created; pipeAmt[d.week] = d.pipeline_amount; });
+  won.forEach(w => { wonN[w.week] = w.won; wonAmt[w.week] = w.won_amount; });
+  document.getElementById('pulseRhythmMeta').textContent =
+    `${fmtInt(deals.reduce((a, d) => a + d.created, 0))} created · ${fmtInt(won.reduce((a, w) => a + w.won, 0))} won · ${pulseMoney(won.reduce((a, w) => a + w.won_amount, 0))}`;
+
+  const n = weeks.length, W = 1000, H = 300, padL = 40, padR = 60, padT = 14, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB, TICKS = 4;
+  const slot = plotW / n, barW = Math.min(38, slot * 0.55);
+  const xMid = i => padL + slot * i + slot / 2;
+  const maxN = Math.max(1, ...weeks.map(w => created[w] || 0));
+  const maxA = Math.max(1, ...weeks.map(w => wonAmt[w] || 0));
+  const yN = v => padT + (1 - v / maxN) * plotH;
+  const yA = v => padT + (1 - v / maxA) * plotH;
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Deals created and won revenue per week">`;
+  for (let t = 0; t <= TICKS; t++) {
+    const y = (padT + (t / TICKS) * plotH).toFixed(1), f = 1 - t / TICKS;
+    svg += `<line class="pulse-grid-line" x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}"/>`;
+    svg += `<text x="${padL - 8}" y="${(+y + 4).toFixed(1)}" text-anchor="end" fill="#ee6216">${Math.round(maxN * f)}</text>`;
+    svg += `<text x="${W - padR + 8}" y="${(+y + 4).toFixed(1)}" text-anchor="start" fill="#22c55e">${pulseMoney(maxA * f)}</text>`;
+  }
+  const step = Math.max(1, Math.ceil(n / 9));
+  for (let i = 0; i < n; i += step) {
+    svg += `<text x="${xMid(i).toFixed(1)}" y="${H - padB + 18}" text-anchor="middle" fill="var(--muted)">${pulseWeekLabel(weeks[i])}</text>`;
+  }
+  // Created-deals bars.
+  weeks.forEach((w, i) => {
+    const v = created[w] || 0; if (!v) return;
+    const y = yN(v);
+    svg += `<rect x="${(xMid(i) - barW / 2).toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${(padT + plotH - y).toFixed(1)}" rx="4" fill="#ee6216" opacity="0.55"/>`;
+  });
+  // Won-revenue line (skip zero weeks so the line shows real closes only).
+  const pts = weeks.map((w, i) => `${xMid(i).toFixed(1)},${yA(wonAmt[w] || 0).toFixed(1)}`).join(' ');
+  svg += `<polyline points="${pts}" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+  weeks.forEach((w, i) => { if (wonAmt[w]) svg += `<circle cx="${xMid(i).toFixed(1)}" cy="${yA(wonAmt[w]).toFixed(1)}" r="4" fill="#22c55e" stroke="var(--surface)" stroke-width="1.5"/>`; });
+  svg += `<line id="pulseRhythmGuide" x1="0" y1="${padT}" x2="0" y2="${padT + plotH}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" style="display:none" vector-effect="non-scaling-stroke"/>`;
+  svg += `<rect id="pulseRhythmOverlay" x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="transparent" style="cursor:crosshair"/></svg>`;
+  el.innerHTML = svg + '<div class="pulse-tip" id="pulseRhythmTip"></div>';
+
+  bindPulseHover(el, n, padL, plotW, idx => {
+    const w = weeks[idx];
+    return `<div style="font-weight:700;margin-bottom:4px">Week of ${pulseWeekLabel(w)}</div>
+      <div><span style="color:#ee6216">●</span> Created: <strong>${fmtInt(created[w] || 0)}</strong> (${pulseMoney(pipeAmt[w] || 0)} pipeline)</div>
+      <div><span style="color:#22c55e">●</span> Won: <strong>${fmtInt(wonN[w] || 0)}</strong> · ${pulseMoney(wonAmt[w] || 0)}</div>`;
+  }, 'pulseRhythmGuide', 'pulseRhythmTip', xMid);
+}
+
+// ── Win/loss reasons — mirrored horizontal bars ──────────────────────
+function renderPulseReasons(wonR, lostR) {
+  const el = document.getElementById('pulseReasons');
+  document.getElementById('pulseReasonsMeta').textContent =
+    `${fmtInt(wonR.reduce((a, r) => a + r.n, 0))} won · ${fmtInt(lostR.reduce((a, r) => a + r.n, 0))} lost with reasons`;
+  if (!wonR.length && !lostR.length) { el.innerHTML = '<div class="empty">No close reasons recorded in this window.</div>'; return; }
+  const max = Math.max(...wonR.map(r => r.n), ...lostR.map(r => r.n), 1);
+  const rows = (list, color) => list.map(r => `
+    <div class="pulse-reason-row">
+      <span class="pr-label" title="${escHtml(r.reason)}">${escHtml(r.reason)}</span>
+      <div class="pr-track"><div class="pr-fill" style="width:${(r.n / max) * 100}%;background:${color}"></div></div>
+      <span class="pr-n">${fmtInt(r.n)} · ${pulseMoney(r.amount)}</span>
+    </div>`).join('');
+  el.innerHTML =
+    (wonR.length  ? `<div class="pulse-reason-head" style="color:var(--green)">Why we win</div>`  + rows(wonR, 'var(--green)') : '') +
+    (lostR.length ? `<div class="pulse-reason-head" style="color:var(--red)">Why we lose</div>` + rows(lostR, 'var(--red)') : '');
+}
+
+// ── Sales velocity — days-to-close histogram, median highlighted ─────
+function renderPulseVelocity(rows, kpis) {
+  const el = document.getElementById('pulseVelocity');
+  const ORDER = ['0-7', '8-14', '15-30', '31-60', '61-90', '91-180', '180+'];
+  const byB = {}; rows.forEach(r => byB[r.bucket] = r.n);
+  const total = rows.reduce((a, r) => a + r.n, 0);
+  const median = kpis.median_close_cur;
+  document.getElementById('pulseVelocityMeta').textContent =
+    total ? `${fmtInt(total)} won deals · median ${median != null ? Math.round(median) + ' days' : '—'}` : '—';
+  if (!total) { el.innerHTML = '<div class="empty">No closed-won deals in window.</div>'; return; }
+  // Which bucket holds the median (gets the orange highlight).
+  const medBucket = median == null ? null :
+    median <= 7 ? '0-7' : median <= 14 ? '8-14' : median <= 30 ? '15-30' : median <= 60 ? '31-60' : median <= 90 ? '61-90' : median <= 180 ? '91-180' : '180+';
+
+  const n = ORDER.length, W = 1000, H = 240, padL = 40, padR = 14, padT = 16, padB = 32;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const slot = plotW / n, barW = slot * 0.62;
+  const maxV = Math.max(...ORDER.map(b => byB[b] || 0), 1);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Days to close distribution">`;
+  for (let t = 0; t <= 3; t++) {
+    const y = (padT + (t / 3) * plotH).toFixed(1);
+    svg += `<line class="pulse-grid-line" x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}"/>`;
+    svg += `<text x="${padL - 8}" y="${(+y + 4).toFixed(1)}" text-anchor="end" fill="var(--muted)">${Math.round(maxV * (1 - t / 3))}</text>`;
+  }
+  ORDER.forEach((b, i) => {
+    const v = byB[b] || 0, x = padL + slot * i + (slot - barW) / 2, y = padT + (1 - v / maxV) * plotH;
+    const isMed = b === medBucket;
+    svg += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${(padT + plotH - y).toFixed(1)}" rx="5" fill="${isMed ? '#ee6216' : '#3b82f6'}" opacity="${isMed ? 0.95 : 0.55}"><title>${b} days: ${v} deal${v === 1 ? '' : 's'}</title></rect>`;
+    if (v) svg += `<text x="${(x + barW / 2).toFixed(1)}" y="${(y - 6).toFixed(1)}" text-anchor="middle" fill="var(--text)" style="font-weight:700">${v}</text>`;
+    svg += `<text x="${(padL + slot * i + slot / 2).toFixed(1)}" y="${H - padB + 18}" text-anchor="middle" fill="${isMed ? '#ee6216' : 'var(--muted)'}">${b}d</text>`;
+  });
+  svg += '</svg>';
+  el.innerHTML = svg;
 }
 
 // ── Boot ────────────────────────────────────────────────────────────

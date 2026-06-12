@@ -1491,7 +1491,10 @@ async function handle(req, res, ctx) {
                  SUM(engaged_sessions)::float AS engaged,
                  SUM(key_events)::float AS key_events
           FROM marketing_ga4_pages
-          WHERE date >= CURRENT_DATE - $1 AND landing_page <> '(not set)'
+          -- $1::int — without the cast Postgres resolves CURRENT_DATE - $1 as
+          -- date-date (→ integer) and then 'date >= integer' explodes (same
+          -- inference trap as the v1.100.1 gsc-decay $2::float fix).
+          WHERE date >= CURRENT_DATE - $1::int AND landing_page <> '(not set)'
           GROUP BY 1
         ), hs AS (
           SELECT ${PATHNORM(`split_part(regexp_replace(first_url, '^https?://[^/]+', ''), '?', 1)`)} AS path,

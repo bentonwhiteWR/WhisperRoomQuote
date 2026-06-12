@@ -140,9 +140,14 @@ function _parseHsDate(v) {
 // count stays under 10k, and process them newest-first so the most
 // useful data lands even if the request times out partway through.
 //
-// Bucket size for DEALS = ~30 days. Deal volume (~14.8k/365d, evenly spread)
-// never approaches the 10k cap, so monthly buckets keep that sync fast.
-const BUCKET_DAYS = 30;
+// Bucket size for DEALS — WEEKLY since v1.109.2. The original monthly bucket
+// assumed deal volume (~14.8k/365d, evenly spread) never approaches the 10k
+// cap — disproven 2026-06-10 when a bulk update touched >10k deals'
+// hs_lastmodifieddate inside one 30-day window and that bucket silently
+// truncated for two days ("1 bucket(s) hit the 10k cap"). Weekly buckets
+// survive any single-week bulk edit short of ~10k deals/week; the trade is
+// ~52 deal queries per sync instead of ~13, same as contacts already pay.
+const BUCKET_DAYS = 7;
 
 // v1.50.8 — CONTACTS use a tighter WEEKLY bucket. WhisperRoom averages
 // ~2.2k contacts/month, but a viral month (2026-04) spiked a single 30-day

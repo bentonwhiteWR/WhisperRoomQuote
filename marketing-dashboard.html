@@ -1137,6 +1137,10 @@ async function loadStatus() {
     if (gscSync && gscSync.last_synced_at) {
       bits.push(`GSC: ${fmtInt(gscSync.rows_synced)} organic rows (${agoText(gscSync.last_synced_at)})${gscSync.error ? ' ⚠ ' + gscSync.error.slice(0, 80) : ''}`);
     }
+    const ga4Sync = findSync('ga4');
+    if (ga4Sync && ga4Sync.last_synced_at) {
+      bits.push(`GA4: ${fmtInt(ga4Sync.rows_synced)} traffic rows (${agoText(ga4Sync.last_synced_at)})${ga4Sync.error ? ' ⚠ ' + ga4Sync.error.slice(0, 80) : ''}`);
+    }
     bits.push('Press Sync All to refresh everything (Google Ads + HubSpot). Existing rows are upserted.');
     det.textContent = bits.join(' — ');
   } catch(e) {

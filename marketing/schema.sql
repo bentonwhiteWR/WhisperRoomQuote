@@ -235,6 +235,35 @@ CREATE INDEX IF NOT EXISTS idx_mkt_hs_deals_pipeline ON marketing_hubspot_deals(
 CREATE INDEX IF NOT EXISTS idx_mkt_hs_deals_created  ON marketing_hubspot_deals(created_at);
 CREATE INDEX IF NOT EXISTS idx_mkt_hs_deals_closed   ON marketing_hubspot_deals(closed_at) WHERE closed_at IS NOT NULL;
 
+-- ── GA4 mirrors (v1.107.0) ──────────────────────────────────────────────
+-- The post-click middle of the funnel: sessions/engagement/key events from
+-- the Google Analytics Data API (ga4-etl.js). marketing_ga4_daily is
+-- date × default channel group (site trend + channel mix — the pacing
+-- denominators); marketing_ga4_pages is date × landing page (joins against
+-- HubSpot form conversions for landing-page conversion rates). key_events
+-- is GA4's renamed "conversions" metric; NUMERIC because the API returns
+-- metric values as strings and some setups count fractional credit.
+CREATE TABLE IF NOT EXISTS marketing_ga4_daily (
+  date             DATE NOT NULL,
+  channel          TEXT NOT NULL,           -- sessionDefaultChannelGroup
+  sessions         INTEGER,
+  total_users      INTEGER,
+  engaged_sessions INTEGER,
+  key_events       NUMERIC(12,2),
+  synced_at        TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (date, channel)
+);
+CREATE TABLE IF NOT EXISTS marketing_ga4_pages (
+  date             DATE NOT NULL,
+  landing_page     TEXT NOT NULL,           -- landingPage (no query string)
+  sessions         INTEGER,
+  engaged_sessions INTEGER,
+  key_events       NUMERIC(12,2),
+  synced_at        TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (date, landing_page)
+);
+CREATE INDEX IF NOT EXISTS idx_mkt_ga4_pages_page ON marketing_ga4_pages(landing_page);
+
 -- ── DataForSEO SERP snapshots (SEO Intel tab, Phase 1) ──────────────────
 -- One row per (keyword, location, day) capturing the LIVE Google results page
 -- that GSC can't show: our organic rank + URL, the top-N competitors (JSONB),

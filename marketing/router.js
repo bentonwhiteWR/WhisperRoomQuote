@@ -32,6 +32,7 @@ const https = require('https');
 const etl    = require('./google-ads-etl');
 const hsEtl  = require('./hubspot-etl');
 const gscEtl = require('./gsc-etl');
+const ga4Etl = require('./ga4-etl');
 const serpEtl = require('./serp-etl');
 const alerts = require('./alerts');
 const digest = require('./digest');
@@ -369,6 +370,7 @@ async function handle(req, res, ctx) {
   // ── POST /api/marketing/sync ──────────────────────────────────────
   // Body: { report: 'campaigns' | 'keywords' | 'search_terms'
   //               | 'hubspot_contacts' | 'hubspot_deals' | 'hubspot_all'
+  //               | 'gsc' | 'ga4' | 'serp' | 'alerts' | 'digest' | 'gap'
   //               | 'all',
   //         daysBack: number (optional) }
   // Triggers the corresponding ETL function(s). Returns the result.
@@ -412,6 +414,9 @@ async function handle(req, res, ctx) {
       else if (report === 'keywords')         result = await etl.syncKeywords({    db: ctx.db, daysBack: gaDays });
       else if (report === 'search_terms')     result = await etl.syncSearchTerms({ db: ctx.db, daysBack: gaDays });
       else if (report === 'gsc')              result = await gscEtl.syncGsc({      db: ctx.db, daysBack: gaDays });
+      // GA4 (v1.107.0) — sessions/engagement/key events. Free API, included
+      // in 'all' below when configured; this is the standalone trigger.
+      else if (report === 'ga4')              result = await ga4Etl.syncGa4({      db: ctx.db, daysBack: gaDays });
       // SERP (DataForSEO) is an explicit, cost-metered pull — kept OUT of 'all'
       // so a routine Sync All never silently spends DataForSEO credit. `force`
       // bypasses the 7-day per-keyword cache.
@@ -443,7 +448,11 @@ async function handle(req, res, ctx) {
         const g = await gscEtl.syncGsc({          db: ctx.db, daysBack: Math.min(gaDays, 120) });
         const d = await hsEtl.syncHubSpotContacts({ db: ctx.db, daysBack: hsDays });
         const e = await hsEtl.syncHubSpotDeals({    db: ctx.db, daysBack: hsDays });
-        result = { ok: a.ok && b.ok && c.ok && g.ok && d.ok && e.ok, parts: [a, b, c, g, d, e] };
+        // GA4 (v1.107.0): free API + small tables, so it rides Sync All —
+        // but only when configured (skip silently pre-setup, never fail).
+        const f4 = ga4Etl.envReady() ? await ga4Etl.syncGa4({ db: ctx.db, daysBack: gaDays })
+                                     : { ok: true, report: 'ga4', skipped: 'not configured (GA4_PROPERTY_ID / analytics scope)' };
+        result = { ok: a.ok && b.ok && c.ok && g.ok && d.ok && e.ok && f4.ok, parts: [a, b, c, g, d, e, f4] };
       }
       else {
         ctx.json({ ok: false, error: `Unknown report type: ${report}` }, 400);

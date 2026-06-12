@@ -906,7 +906,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
         <div>📊 Pulse — your HubSpot marketing data, visualized</div>
         <span class="muted">Lead flow, funnel, revenue by source, pipeline rhythm, win/loss reasons, and sales velocity from the synced HubSpot mirror. Source splits are first-touch. Press Sync All if data looks stale.</span>
       </div>
-      <button class="sync-btn" onclick="runSync()">↻ Sync All</button>
+      <button class="sync-btn" id="pulseSyncBtn" onclick="runSync()">↻ Sync All</button>
     </div>
 
     <!-- KPI strip with prior-period deltas -->
@@ -1138,9 +1138,12 @@ async function _handleSyncResult(res, label) {
 }
 
 async function runSync() {
-  const btn = document.getElementById('syncBtn');
-  btn.disabled = true;
-  btn.textContent = 'Syncing…';
+  // v1.105.1 — three tabs carry a Sync All button (top bar, Growth Engine,
+  // Pulse) but the syncing feedback was wired to the top one only, so pressing
+  // the Pulse button animated a button two sections away. Drive ALL of them.
+  const btns = ['syncBtn', 'growthSyncBtn', 'pulseSyncBtn']
+    .map(id => document.getElementById(id)).filter(Boolean);
+  btns.forEach(b => { b.disabled = true; b.textContent = 'Syncing…'; });
   try {
     const res = await fetch('/api/marketing/sync', {
       method: 'POST', credentials: 'include',
@@ -1151,8 +1154,7 @@ async function runSync() {
   } catch(e) {
     alert(`Sync started — the request dropped (likely a long-running sync), but it may still be finishing in the background. Refresh in a minute.`);
   } finally {
-    btn.disabled = false;
-    btn.textContent = '↻ Sync All';
+    btns.forEach(b => { b.disabled = false; b.textContent = '↻ Sync All'; });
     await loadStatus();
     await refreshActiveTab();
   }

@@ -361,6 +361,10 @@ async function handle(req, res, ctx) {
         envReady:    etl.envReady(),
         missingEnv:  etl.missingEnvVars(),
         hubspot:     { envReady: hsEtl.envReady(), missingEnv: hsEtl.missingEnvVars() },
+        // v1.108.1 — GA4 readiness surfaced so a silent skip (unparseable
+        // GA4_SA_KEY, missing property id) is visible in the status line
+        // instead of looking like "the sync did nothing".
+        ga4:         { envReady: ga4Etl.envReady(), missingEnv: ga4Etl.missingEnvVars() },
         allowlist:   MARKETING_ALLOWLIST,
         syncs,
       });

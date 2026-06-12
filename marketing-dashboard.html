@@ -1155,9 +1155,16 @@ async function loadStatus() {
     if (gscSync && gscSync.last_synced_at) {
       bits.push(`GSC: ${fmtInt(gscSync.rows_synced)} organic rows (${agoText(gscSync.last_synced_at)})${gscSync.error ? ' ⚠ ' + gscSync.error.slice(0, 80) : ''}`);
     }
+    // GA4 (v1.108.1): three visible states — synced (with any error), ready-
+    // but-never-synced, or not configured (names the missing/unreadable env
+    // var) — so a silently-skipped GA4 sync is diagnosable from the header.
     const ga4Sync = findSync('ga4');
     if (ga4Sync && ga4Sync.last_synced_at) {
-      bits.push(`GA4: ${fmtInt(ga4Sync.rows_synced)} traffic rows (${agoText(ga4Sync.last_synced_at)})${ga4Sync.error ? ' ⚠ ' + ga4Sync.error.slice(0, 80) : ''}`);
+      bits.push(`GA4: ${fmtInt(ga4Sync.rows_synced)} traffic rows (${agoText(ga4Sync.last_synced_at)})${ga4Sync.error ? ' ⚠ ' + ga4Sync.error.slice(0, 120) : ''}`);
+    } else if (data.ga4 && !data.ga4.envReady) {
+      bits.push(`GA4: not configured — missing ${(data.ga4.missingEnv || []).join(', ') || 'env vars'}`);
+    } else if (data.ga4) {
+      bits.push('GA4: ready — next Sync All pulls it');
     }
     bits.push('Press Sync All to refresh everything (Google Ads + HubSpot). Existing rows are upserted.');
     det.textContent = bits.join(' — ');

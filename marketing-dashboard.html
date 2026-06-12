@@ -464,6 +464,15 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
 .pai-foot{font-size:10.5px;color:var(--muted);margin-top:8px}
 .pai-foot a{color:var(--muted);cursor:pointer;text-decoration:underline}
 .pai-foot a:hover{color:var(--orange)}
+/* v1.111.0 — 📖 Guide tab */
+.gd-cad{margin:12px 0 6px}
+.gd-cad:first-child{margin-top:0}
+.gd-chip{display:inline-block;padding:2px 10px;border-radius:10px;color:#fff;font-size:10px;font-weight:800;letter-spacing:.07em}
+.gd-list{margin:0 0 4px 18px;padding:0;font-size:12px;line-height:1.7}
+.gd-list li{margin-bottom:7px}
+.gd-list a,#tabGuide table a{color:var(--orange);cursor:pointer;font-weight:700}
+.gd-list a:hover,#tabGuide table a:hover{text-decoration:underline}
+#tabGuide table td{font-size:11.5px;line-height:1.55}
 </style>
   <script src="/assets/nav.js" defer></script>
 </head>
@@ -535,6 +544,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <button class="mtab"        data-tab="seo" onclick="switchMarketingTab('seo')">🔎 SEO Intel</button>
     <button class="mtab"        data-tab="radar" onclick="switchMarketingTab('radar')">📡 Radar<span class="nbadge" id="radarTabBadge" style="display:none">0</span></button>
     <button class="mtab"        data-tab="pulse" onclick="switchMarketingTab('pulse')">📊 Pulse</button>
+    <button class="mtab"        data-tab="guide" onclick="switchMarketingTab('guide')">📖 Guide</button>
   </div>
 
   <!-- ════════ Growth Engine tab (v1.69.x) — the decision dashboard ════════ -->
@@ -1042,6 +1052,112 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
       </div>
     </div>
   </div><!-- /tabPulse -->
+
+  <!-- ════════ 📖 Guide tab (v1.111.0) — how to run this dashboard ════════
+       Static reference — no fetches, no cost. Update when tabs/features ship. -->
+  <div id="tabGuide" class="tab-panel" style="display:none">
+
+    <div class="section">
+      <div class="section-head"><div class="section-title">How this all fits together</div></div>
+      <div style="font-size:12.5px;line-height:1.7;max-width:920px">
+        <p style="margin:0 0 8px"><strong>The mental model:</strong> data flows IN through <strong>↻ Sync All</strong> (Google Ads, Search Console, GA4, HubSpot — all free APIs) and lands in our own database. Every chart and table reads that local copy, so browsing is instant and free. Two things are different: <strong>SEO Intel</strong> syncs live Google results through a paid API (you trigger it deliberately), and <strong>📡 Radar</strong> runs by itself — it scans daily and rings the bell when something needs you.</p>
+        <p style="margin:0 0 8px"><strong>The funnel, end to end:</strong> impressions (Ads + Search Console) → clicks → sessions &amp; engagement (GA4) → form conversions &amp; contacts (HubSpot) → deals → closed revenue. Every tab is a window onto some slice of that chain.</p>
+        <p style="margin:0"><strong>If you only do two things:</strong> work the Radar bell when it rings, and read Growth Engine's "top 5 moves" once a week. Everything else is depth on demand.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-title">Your operating rhythm</div><span class="section-meta">daily · weekly · monthly · triggered</span></div>
+      <div class="pulse-grid2" style="margin-bottom:0">
+        <div>
+          <div class="gd-cad"><span class="gd-chip" style="background:var(--red)">DAILY · 2 min</span></div>
+          <ul class="gd-list">
+            <li><a onclick="switchMarketingTab('radar')">📡 Radar</a> — glance at new alerts (the bell pings you anyway). Work them: <strong>✓ did it</strong> (logs to Receipts and measures the outcome at 14/28 days), <strong>✗ not competitors</strong> (teaches the brand-threat check), or dismiss. The scan itself is automatic.</li>
+          </ul>
+          <div class="gd-cad"><span class="gd-chip" style="background:var(--yellow);color:#1a1a1a">WEEKLY · 20 min</span></div>
+          <ul class="gd-list">
+            <li><a onclick="switchMarketingTab('radar')">🗞 This Week digest</a> (top of Radar) — auto-generates weekly; your 5-things briefing.</li>
+            <li><a onclick="switchMarketingTab('growth')">⚡ Growth Engine</a> — read "Your top 5 moves", skim the Do-Now kanban column, and review the Search-Term Mining queues (negatives / harvest / cannibalization — respect the 🛡 held-back list, those are protected for a reason).</li>
+            <li><a onclick="switchMarketingTab('radar')">📋 Receipts</a> — check what your past actions actually did ("Rank improved #7 → #4").</li>
+          </ul>
+          <div class="gd-cad"><span class="gd-chip" style="background:var(--blue)">MONTHLY · 45 min</span></div>
+          <ul class="gd-list">
+            <li><a onclick="switchMarketingTab('pulse')">📊 Pulse</a> — Month Pacing tells you if you're on track; hit <strong>✨ How are things looking?</strong> for the narrated read. Good exec-readout material.</li>
+            <li><a onclick="switchMarketingTab('growth')">⑤ Budget Reallocation</a> (Growth Engine) — where the next $1,000 should go, ROAS + SERP aware.</li>
+            <li><a onclick="switchMarketingTab('seo')">🔎 SEO Intel</a> — press <strong>Sync SERP</strong> (paid, see costs below) to refresh the live rank tracker, then review Paid Defense and the AI Citability queue.</li>
+          </ul>
+        </div>
+        <div>
+          <div class="gd-cad"><span class="gd-chip" style="background:var(--green)">WHEN X HAPPENS, DO Y</span></div>
+          <ul class="gd-list">
+            <li><strong>Radar: AI Overview alert</strong> → SEO Intel → AI Citability → ✨ Generate fix → ship the anchored edits → "✓ I shipped this fix" so Receipts measures it.</li>
+            <li><strong>Radar: competitor on a brand term</strong> → SEO Intel → Paid Defense → ✨ see fix (a step-by-step Google Ads plan from your real account data).</li>
+            <li><strong>Radar: forms broken / traffic drop</strong> → test the forms end-to-end first, ask questions later. These alerts are the fire alarm.</li>
+            <li><strong>Before cutting or raising any campaign's spend</strong> → Budget Reallocation + Paid Defense together. If they disagree with your instinct, read the defend reason — the live SERP or a slow-close segment usually explains it.</li>
+            <li><strong>A page gets traffic but no leads</strong> → Search Console tab → 🎯 Landing Page Conversion → the Read column says whether it's the page or the Google snippet.</li>
+            <li><strong>Planning content</strong> → SEO Intel → Content gap (Sync gap ≈ $1) → ✨ Content plan; PAA questions are free material.</li>
+            <li><strong>"Why is this number weird?"</strong> → checklist at the bottom of this page.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-title">Tab legend</div><span class="section-meta">what each tab is for</span></div>
+      <table>
+        <thead><tr><th>Tab</th><th>The question it answers</th><th>Data behind it</th><th>Open it when</th></tr></thead>
+        <tbody>
+          <tr><td><a onclick="switchMarketingTab('growth')">⚡ Growth Engine</a></td><td>"What should I do this week to sell more booths?"</td><td>Ads + GSC + HubSpot fused and scored</td><td>Weekly planning. It's the decision tab — everything else is evidence.</td></tr>
+          <tr><td><a onclick="switchMarketingTab('ads')">Google Ad Spend</a></td><td>"What is my ad spend returning in closed revenue?"</td><td>Google Ads ↔ HubSpot closed-loop (True ROAS, attribution coverage)</td><td>Drilling into a campaign, search term, or the paid funnel.</td></tr>
+          <tr><td><a onclick="switchMarketingTab('gsc')">Google Search Console</a></td><td>"Where can organic win more, and do those pages convert?"</td><td>GSC queries/pages + GA4 landing-page conversion</td><td>SEO work sessions: striking distance, CTR gaps, page-vs-snippet reads.</td></tr>
+          <tr><td><a onclick="switchMarketingTab('seo')">🔎 SEO Intel</a></td><td>"What does the actual Google results page look like, and how do we win it?"</td><td>Live SERP snapshots (DataForSEO): ranks, Vol/KD, ads, AI Overviews, shopping grid</td><td>Monthly refresh + whenever Radar points here. Syncing costs money; reading is free.</td></tr>
+          <tr><td><a onclick="switchMarketingTab('radar')">📡 Radar</a></td><td>"What changed that needs me?"</td><td>Daily server scans over everything already synced + weekly digest + Receipts</td><td>Daily glance. The only tab that comes to you.</td></tr>
+          <tr><td><a onclick="switchMarketingTab('pulse')">📊 Pulse</a></td><td>"How is marketing → pipeline health trending?"</td><td>HubSpot mirror (contacts, deals, forms) + GA4 pacing</td><td>Monthly review. Click any number for the records behind it; ✨ for the narrated read.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pulse-grid2">
+      <div class="section" style="margin-bottom:0">
+        <div class="section-head"><div class="section-title">What costs money</div></div>
+        <table>
+          <thead><tr><th>Action</th><th class="num">Cost</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>↻ Sync All</td><td class="num" style="color:var(--green)">free</td><td>Google + HubSpot APIs. Full 365-day run ≈ 45 min; let it finish.</td></tr>
+            <tr><td>Browsing every tab, drills, charts</td><td class="num" style="color:var(--green)">free</td><td>Reads the local database. Click anything.</td></tr>
+            <tr><td>Radar scans + funnel alerts</td><td class="num" style="color:var(--green)">free</td><td>Pure SQL over synced data, runs itself daily.</td></tr>
+            <tr><td>Sync SERP (SEO Intel)</td><td class="num" style="color:var(--yellow)">~cents/keyword</td><td>DataForSEO. A 7-day per-keyword cache meters it; "force refresh" bypasses the cache.</td></tr>
+            <tr><td>Sync gap (Content gap)</td><td class="num" style="color:var(--yellow)">≈ $1</td><td>Competitor keyword pulls. Run when planning content, not weekly.</td></tr>
+            <tr><td>Any ✨ button</td><td class="num" style="color:var(--yellow)">~cents</td><td>One Claude call each (digest, citability, content plan, see fix, Pulse summaries, ad rewrites). Results cache — viewing again is free; ↻ regenerates.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="section" style="margin-bottom:0">
+        <div class="section-head"><div class="section-title">Key concepts</div></div>
+        <ul class="gd-list">
+          <li><strong>Attribution selector</strong> (top of page): <em>First interaction</em> = strict first touch, matches HubSpot's "first ad interaction" report. <em>Last click</em> / <em>All ad interactions</em> widen it. Pulse's source splits are always first-touch.</li>
+          <li><strong>Won revenue is close-date based</strong> everywhere — "Closed Revenue (90d)" means deals that <em>closed</em> in the window, matching HubSpot's basis.</li>
+          <li><strong>Month Pacing ignores the date-range picker</strong> — it's always calendar-month vs last month.</li>
+          <li><strong>One brain:</strong> recommendation panels cross-check each other (live SERP defense + slow-close segments). When a suggestion seems to contradict another panel, the reason is stated — read it before overriding.</li>
+          <li><strong>Form conversions</strong> count each contact's <em>first</em> form submission (HubSpot keeps first + latest only) — the new-lead view, not total submissions.</li>
+          <li><strong>Slow-close segments</strong> (audiology, telehealth, medical): deals close months after the click. $0 attributed revenue on those terms is usually lag, not waste — the mining queues hold them back for this reason.</li>
+          <li><strong>Data lag:</strong> GA4 ≈ 1 day, GSC ≈ 2-3 days, the trailing week in any weekly chart is partial. HubSpot is near-live after a sync.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><div class="section-title">When a number looks weird</div><span class="section-meta">run this checklist before worrying</span></div>
+      <ol class="gd-list" style="margin-left:18px">
+        <li><strong>Check the status line</strong> under the page title — a ⚠ next to any source means its last sync errored, and stale timestamps mean you're looking at old data. <strong>↻ Sync All</strong> fixes stale; report a ⚠ that survives a fresh sync.</li>
+        <li><strong>Hard refresh</strong> (Ctrl+Shift+R) — the dashboard caches aggressively after deploys.</li>
+        <li><strong>Date range vs calendar month</strong> — the KPI strip follows the date-range picker; Month Pacing doesn't. Comparing them directly will always look "off".</li>
+        <li><strong>Trailing week dip</strong> in a weekly chart is usually just a partial week, not a decline.</li>
+        <li><strong>Pulse vs HubSpot reports don't match?</strong> Three usual reasons: first-touch attribution here vs HubSpot's default views, Sales-Pipeline-only deals (Test + Ecommerce excluded), and close-date basis for revenue.</li>
+        <li><strong>Still weird?</strong> It might be real — that's what Radar's funnel alerts are for. Tell Gabe/Claude, including what the status line says.</li>
+      </ol>
+    </div>
+  </div><!-- /tabGuide -->
 </div>
 
 <!-- Drill-down modal (v1.59.2) — lists the actual HubSpot records behind a
@@ -2381,15 +2497,17 @@ function switchMarketingTab(name) {
   document.getElementById('tabSeo').style.display    = name === 'seo' ? '' : 'none';
   document.getElementById('tabRadar').style.display  = name === 'radar' ? '' : 'none';
   document.getElementById('tabPulse').style.display  = name === 'pulse' ? '' : 'none';
+  document.getElementById('tabGuide').style.display  = name === 'guide' ? '' : 'none';
   document.querySelectorAll('.mtab').forEach(el => el.classList.toggle('active', el.dataset.tab === name));
   if (name === 'gsc') loadGscTab();
   else if (name === 'growth') loadGrowthTab();
   else if (name === 'seo') loadSeoTab();
   else if (name === 'radar') loadRadarTab();
   else if (name === 'pulse') loadPulseTab();
+  // 'guide' is static — nothing to load.
 }
 // Reload only the visible tab when the shared date range / model changes.
-function refreshActiveTab() { return currentTab === 'gsc' ? loadGscTab() : currentTab === 'growth' ? loadGrowthTab() : currentTab === 'seo' ? loadSeoTab() : currentTab === 'radar' ? loadRadarTab() : currentTab === 'pulse' ? loadPulseTab() : loadAllTables(); }
+function refreshActiveTab() { return currentTab === 'gsc' ? loadGscTab() : currentTab === 'growth' ? loadGrowthTab() : currentTab === 'seo' ? loadSeoTab() : currentTab === 'radar' ? loadRadarTab() : currentTab === 'pulse' ? loadPulseTab() : currentTab === 'guide' ? null : loadAllTables(); }
 
 // v1.65.4 — Movers dimension (query | page). Drives ?dim= on gsc-movers.
 let gscMoversDim = 'query';

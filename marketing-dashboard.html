@@ -945,7 +945,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <!-- Form conversions (v1.105.0) — weekly by form + source mix -->
     <div class="section">
       <div class="section-head">
-        <div class="section-title">Form Conversions<span class="tip-i" title="New form conversions per week — each contact's FIRST form submission (first_conversion_event_name/date). HubSpot's contact record keeps first + most-recent conversions only, so this is the new-lead view, not total submission volume. Windowed on the conversion date. Needs one Sync All after the v1.105.0 deploy to backfill.">ⓘ</span></div>
+        <div class="section-title">Form Conversions<span class="tip-i" title="New form conversions per week — each contact's FIRST form submission (first_conversion_event_name/date). HubSpot's contact record keeps first + most-recent conversions only, so this is the new-lead view, not total submission volume. Windowed on the conversion date. HubSpot names events 'Page title: Form name', so the same form submitted from different pages (or a renamed page) is grouped under the form name proper.">ⓘ</span></div>
         <div style="display:flex;align-items:center;gap:10px"><span class="section-meta" id="pulseFormsMeta">—</span><button class="pulse-ai-btn" id="pulseAiBtn-forms" onclick="pulseAiTell('forms')">✨ Tell me more</button></div>
       </div>
       <div class="pulse-ai-panel" id="pulseAiPanel-forms" style="display:none"></div>
@@ -955,7 +955,7 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
 
     <div class="section">
       <div class="section-head">
-        <div class="section-title">Form Conversions by Source<span class="tip-i" title="Which channels feed which forms: each form's conversions split by the contact's first-touch source. Same first-conversion basis as the chart above. Click a bar's form name to see the contacts.">ⓘ</span></div>
+        <div class="section-title">Form Conversions by Source<span class="tip-i" title="Which channels feed which forms: each form's conversions split by the contact's first-touch source. Same first-conversion basis and same form grouping as the chart above (page prefixes dropped). Click a bar's form name to see the contacts.">ⓘ</span></div>
         <span class="section-meta" id="pulseFormSrcMeta">—</span>
       </div>
       <div class="pulse-legend" id="pulseFormSrcLegend"></div>

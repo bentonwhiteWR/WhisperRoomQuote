@@ -76,6 +76,28 @@ const HUBSPOT_CAMPAIGN_ALIASES = [
   { hsName: 'zoom booth - search remarketing',          gaName: '2025 WR Active User Remarketing' },
 ];
 
+// v1.106.1 — HubSpot conversion-event names are "Page title: Form name", so
+// the same form shreds into one entry per page it's embedded on, and a page
+// RENAME splits one form's history (Gabe's case: "Find Your WhisperRoom:
+// WhisperRoom Quiz – Pricing & Shipping" vs "WhisperRoom Quiz: <same form>" —
+// the quiz page was renamed ~May 26). Pulse groups by the form name proper:
+// everything after the LAST ': ' (page titles can contain colons, e.g.
+// "MDL 4242 S - … | WhisperRoom®: Quote Request Product Form (2025)").
+// SQL twin used by the contacts-form drill: regexp_replace(name, '^.*: ', '')
+// — POSIX greedy .* strips through the last occurrence, same as the JS.
+//
+// HUBSPOT_FORM_ALIASES is the escape hatch for forms that were THEMSELVES
+// renamed (page-prefix stripping can't merge those). Keys and values are
+// post-strip form names, exact match — campaign-alias style, add entries
+// when a rename leaves a visibly split row pair in the Form charts.
+const HUBSPOT_FORM_ALIASES = {
+  // '<old form name after strip>': '<current form name after strip>',
+};
+function _canonForm(name) {
+  const stripped = String(name || '').replace(/^.*: /, '');
+  return HUBSPOT_FORM_ALIASES[stripped] || stripped;
+}
+
 // v1.46.10 — parse ?days=N from the request URL. Used by every data
 // endpoint so the dashboard date-range selector can drive all six queries
 // from a single URL param. Bounded [1, 730] so a bad client can't ask
@@ -1321,6 +1343,20 @@ async function handle(req, res, ctx) {
           WHERE first_conversion_date >= ${W}
           GROUP BY 1, 2`, [days]),
       ]);
+      // v1.106.1 — re-aggregate the form tables onto canonical form names
+      // (page prefix stripped + aliases), merging per-page shreds and page
+      // renames into one row per actual form per (dim).
+      const mergeForms = (rows, dim) => {
+        const m = new Map();
+        rows.forEach(r => {
+          const form = _canonForm(r.form);
+          const k = `${r[dim]} ${form}`;
+          const cur = m.get(k) || { [dim]: r[dim], form, submissions: 0 };
+          cur.submissions += r.submissions;
+          m.set(k, cur);
+        });
+        return [...m.values()];
+      };
       return {
         days,
         contactsWeekly: weekly.rows,
@@ -1332,8 +1368,8 @@ async function handle(req, res, ctx) {
         lostReasons:    lostReasons.rows,
         velocity:       velocity.rows,
         kpis:           kpis.rows[0] || {},
-        formsWeekly:    formsWeekly.rows,
-        formsBySource:  formsBySource.rows,
+        formsWeekly:    mergeForms(formsWeekly.rows, 'week'),
+        formsBySource:  mergeForms(formsBySource.rows, 'source'),
       };
   }
 
@@ -1398,10 +1434,15 @@ async function handle(req, res, ctx) {
                ORDER BY created_at DESC LIMIT 500`; params.push(key); break;
         case 'contacts-converted':
           q = `${CSEL} WHERE first_conversion_date >= ${W} ORDER BY first_conversion_date DESC LIMIT 500`; break;
-        case 'contacts-form':
+        case 'contacts-form': {
+          // key = the CANONICAL form name (v1.106.1). Match any raw event
+          // name whose post-strip form name equals the key or any alias that
+          // maps to it — mirrors _canonForm so the popup count matches the bar.
+          const names = [key, ...Object.keys(HUBSPOT_FORM_ALIASES).filter(a => HUBSPOT_FORM_ALIASES[a] === key)];
           q = `${CSEL} WHERE first_conversion_date >= ${W}
-               AND COALESCE(NULLIF(first_conversion_event_name, ''), '(unnamed form)') = $2
-               ORDER BY first_conversion_date DESC LIMIT 500`; params.push(key); break;
+               AND regexp_replace(COALESCE(NULLIF(first_conversion_event_name, ''), '(unnamed form)'), '^.*: ', '') = ANY($2::text[])
+               ORDER BY first_conversion_date DESC LIMIT 500`; params.push(names); break;
+        }
         case 'deals-created':
           kind = 'deal';
           q = `${DSEL} WHERE d.created_at >= ${W} ORDER BY d.created_at DESC LIMIT 500`; break;

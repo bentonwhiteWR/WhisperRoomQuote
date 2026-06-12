@@ -14,6 +14,7 @@
 //   GET  /api/marketing/attribution-coverage     → % of contacts + deals + revenue attributable (v1.46.1)
 //   GET  /api/marketing/hubspot-pulse            → 📊 Pulse tab chart aggregates, one payload (v1.104.0)
 //   GET  /api/marketing/pulse-drill              → contacts/deals behind a clicked Pulse number (v1.105.0)
+//   POST /api/marketing/pulse-ai                 → ✨ grounded AI read of a Pulse section, cached (v1.106.0)
 //
 // HubSpot ingestion (v1.44.0) shares the same /api/marketing/sync POST
 // endpoint — pass `report: 'hubspot_contacts' | 'hubspot_deals' | 'hubspot_all'`
@@ -39,6 +40,7 @@ const gapEtl = require('./gap-etl');
 const claude = require('./claude');
 const actions = require('./actions');
 const defense = require('./defense');
+const pulseAi = require('./pulse-ai');
 
 // Empty array = open to everyone (allowlist disabled). Populate with
 // ownerIds to re-lock — e.g. ['36303670', '36320208'] for Benton + Gabe.
@@ -1191,6 +1193,16 @@ async function handle(req, res, ctx) {
     try {
       const days = _parseDays(req);
       if (!ctx.db) { ctx.json({ error: 'no db' }, 500); return true; }
+      ctx.json(await _pulseAggregates(days));
+    } catch(e) { ctx.json({ error: e.message }, 500); }
+    return true;
+  }
+
+  // v1.106.0 — the Pulse aggregate pack, hoisted out of the GET route so the
+  // ✨ pulse-ai summaries read the EXACT numbers the charts render (function
+  // declaration inside handle(), so ctx.db arrives via closure; queries are
+  // unchanged from v1.104.0/v1.105.x).
+  async function _pulseAggregates(days) {
       const W  = `CURRENT_DATE - INTERVAL '1 day' * $1`;        // window start
       const W2 = `CURRENT_DATE - INTERVAL '1 day' * ($1 * 2)`;  // prior-period start
       const [weekly, funnel, dealsWeekly, wonWeekly, srcRev, wonReasons, lostReasons, velocity, kpis, formsWeekly, formsBySource] = await Promise.all([
@@ -1309,7 +1321,7 @@ async function handle(req, res, ctx) {
           WHERE first_conversion_date >= ${W}
           GROUP BY 1, 2`, [days]),
       ]);
-      ctx.json({
+      return {
         days,
         contactsWeekly: weekly.rows,
         funnel:         funnel.rows,
@@ -1322,8 +1334,31 @@ async function handle(req, res, ctx) {
         kpis:           kpis.rows[0] || {},
         formsWeekly:    formsWeekly.rows,
         formsBySource:  formsBySource.rows,
+      };
+  }
+
+  // ── POST /api/marketing/pulse-ai ──────────────────────────────────
+  // v1.106.0 — ✨ "Tell me more": a grounded AI read of one Pulse section
+  // (or the whole tab). Body: { focus, days, force }. Returns the cached
+  // summary instantly when one exists for (focus, days); force=true
+  // regenerates. The model receives the same aggregate pack the charts
+  // render from — see marketing/pulse-ai.js for the honesty rules.
+  if (pathname === '/api/marketing/pulse-ai' && req.method === 'POST') {
+    try {
+      if (!ctx.db) { ctx.json({ ok: false, error: 'no db' }, 500); return true; }
+      let body = {};
+      try {
+        const chunks = [];
+        await new Promise((res, rej) => { req.on('data', c => chunks.push(c)); req.on('end', res); req.on('error', rej); });
+        body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
+      } catch {}
+      const days = Math.min(Math.max(parseInt(body.days) || 90, 1), 730);
+      const out = await pulseAi.summarize({
+        db: ctx.db, days, focus: String(body.focus || 'overview'), force: !!body.force,
+        getAggregates: () => _pulseAggregates(days),
       });
-    } catch(e) { ctx.json({ error: e.message }, 500); }
+      ctx.json(out, out.ok ? 200 : (out.status || 500));
+    } catch(e) { ctx.json({ ok: false, error: e.message }, 500); }
     return true;
   }
 

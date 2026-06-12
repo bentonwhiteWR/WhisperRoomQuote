@@ -442,6 +442,19 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
 :root.light .pulse-fs-row .fs-track{background:rgba(0,0,0,.05)}
 .pulse-fs-row .fs-seg{height:100%}
 .pulse-fs-row .fs-n{font-family:var(--mono);min-width:46px;color:var(--muted)}
+/* v1.106.0 — ✨ Pulse AI summaries */
+.pulse-ai-btn{background:none;border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .15s}
+.pulse-ai-btn:hover{border-color:var(--orange);color:var(--orange)}
+.pulse-ai-btn:disabled{opacity:.5;cursor:wait}
+.pulse-ai-panel{background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--orange);border-radius:9px;padding:13px 16px;margin-bottom:14px;font-size:12.5px;line-height:1.65}
+.pai-head{font-weight:800;font-size:13px;margin-bottom:7px}
+.pai-list{margin:0 0 4px;padding-left:18px}
+.pai-list li{margin-bottom:4px}
+.pai-sub{font-size:10.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--yellow);margin:8px 0 4px}
+.pai-caveats{font-size:11px;color:var(--muted);font-style:italic;margin-top:8px;border-top:1px solid var(--border);padding-top:7px}
+.pai-foot{font-size:10.5px;color:var(--muted);margin-top:8px}
+.pai-foot a{color:var(--muted);cursor:pointer;text-decoration:underline}
+.pai-foot a:hover{color:var(--orange)}
 </style>
   <script src="/assets/nav.js" defer></script>
 </head>
@@ -906,8 +919,14 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
         <div>📊 Pulse — your HubSpot marketing data, visualized</div>
         <span class="muted">Lead flow, funnel, revenue by source, pipeline rhythm, win/loss reasons, and sales velocity from the synced HubSpot mirror. Source splits are first-touch. Press Sync All if data looks stale.</span>
       </div>
-      <button class="sync-btn" id="pulseSyncBtn" onclick="runSync()">↻ Sync All</button>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button class="pulse-ai-btn" id="pulseAiBtn-overview" onclick="pulseAiTell('overview')">✨ How are things looking?</button>
+        <button class="sync-btn" id="pulseSyncBtn" onclick="runSync()">↻ Sync All</button>
+      </div>
     </div>
+
+    <!-- ✨ overview summary (v1.106.0) -->
+    <div class="pulse-ai-panel" id="pulseAiPanel-overview" style="display:none"></div>
 
     <!-- KPI strip with prior-period deltas -->
     <div class="pulse-kpis" id="pulseKpis"><div class="empty">Loading…</div></div>
@@ -916,8 +935,9 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <div class="section">
       <div class="section-head">
         <div class="section-title">Lead Flow by Source<span class="tip-i" title="New HubSpot contacts per week, stacked by first-touch source (hs_analytics_source). Same cohort basis as the HubSpot Contacts card on the Ads tab.">ⓘ</span></div>
-        <span class="section-meta" id="pulseFlowMeta">—</span>
+        <div style="display:flex;align-items:center;gap:10px"><span class="section-meta" id="pulseFlowMeta">—</span><button class="pulse-ai-btn" id="pulseAiBtn-leads" onclick="pulseAiTell('leads')">✨ Tell me more</button></div>
       </div>
+      <div class="pulse-ai-panel" id="pulseAiPanel-leads" style="display:none"></div>
       <div class="pulse-legend" id="pulseFlowLegend"></div>
       <div class="pulse-chart-wrap" id="pulseFlowChart"></div>
     </div>
@@ -926,8 +946,9 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <div class="section">
       <div class="section-head">
         <div class="section-title">Form Conversions<span class="tip-i" title="New form conversions per week — each contact's FIRST form submission (first_conversion_event_name/date). HubSpot's contact record keeps first + most-recent conversions only, so this is the new-lead view, not total submission volume. Windowed on the conversion date. Needs one Sync All after the v1.105.0 deploy to backfill.">ⓘ</span></div>
-        <span class="section-meta" id="pulseFormsMeta">—</span>
+        <div style="display:flex;align-items:center;gap:10px"><span class="section-meta" id="pulseFormsMeta">—</span><button class="pulse-ai-btn" id="pulseAiBtn-forms" onclick="pulseAiTell('forms')">✨ Tell me more</button></div>
       </div>
+      <div class="pulse-ai-panel" id="pulseAiPanel-forms" style="display:none"></div>
       <div class="pulse-legend" id="pulseFormsLegend"></div>
       <div class="pulse-chart-wrap" id="pulseFormsChart"></div>
     </div>
@@ -946,15 +967,17 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
       <div class="section" style="margin-bottom:0">
         <div class="section-head">
           <div class="section-title">Lifecycle Funnel<span class="tip-i" title="Where the window's new contacts sit in the HubSpot lifecycle right now (lifecyclestage). Percentages are share of the full cohort — a snapshot of current stage, not a strict stage-to-stage conversion history.">ⓘ</span></div>
-          <span class="section-meta" id="pulseFunnelMeta">—</span>
+          <div style="display:flex;align-items:center;gap:10px"><span class="section-meta" id="pulseFunnelMeta">—</span><button class="pulse-ai-btn" id="pulseAiBtn-funnel" onclick="pulseAiTell('funnel')">✨</button></div>
         </div>
+        <div class="pulse-ai-panel" id="pulseAiPanel-funnel" style="display:none"></div>
         <div id="pulseFunnel"></div>
       </div>
       <div class="section" style="margin-bottom:0">
         <div class="section-head">
           <div class="section-title">Revenue by Source<span class="tip-i" title="Closed-won revenue (closed in window) grouped by the deal's primary contact's first-touch source. Deals with no associated contact land in Unattributed.">ⓘ</span></div>
-          <span class="section-meta" id="pulseDonutMeta">—</span>
+          <div style="display:flex;align-items:center;gap:10px"><span class="section-meta" id="pulseDonutMeta">—</span><button class="pulse-ai-btn" id="pulseAiBtn-revenue" onclick="pulseAiTell('revenue')">✨</button></div>
         </div>
+        <div class="pulse-ai-panel" id="pulseAiPanel-revenue" style="display:none"></div>
         <div class="pulse-donut-row">
           <div id="pulseDonut"></div>
           <div class="pulse-donut-legend" id="pulseDonutLegend"></div>
@@ -966,8 +989,9 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
     <div class="section">
       <div class="section-head">
         <div class="section-title">Pipeline Rhythm<span class="tip-i" title="Bars: deals created per week (created date). Line: closed-won revenue per week (close date). The lag between a bar and the revenue it becomes is your sales cycle, visible.">ⓘ</span></div>
-        <span class="section-meta" id="pulseRhythmMeta">—</span>
+        <div style="display:flex;align-items:center;gap:10px"><span class="section-meta" id="pulseRhythmMeta">—</span><button class="pulse-ai-btn" id="pulseAiBtn-rhythm" onclick="pulseAiTell('rhythm')">✨ Tell me more</button></div>
       </div>
+      <div class="pulse-ai-panel" id="pulseAiPanel-rhythm" style="display:none"></div>
       <div class="pulse-chart-wrap" id="pulseRhythmChart"></div>
     </div>
 
@@ -976,15 +1000,17 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
       <div class="section" style="margin-bottom:0">
         <div class="section-head">
           <div class="section-title">Why We Win / Why We Lose<span class="tip-i" title="Closed-won and closed-lost reasons (where filled in HubSpot) for deals closed in the window. Bars sized by deal count; dollar value alongside.">ⓘ</span></div>
-          <span class="section-meta" id="pulseReasonsMeta">—</span>
+          <div style="display:flex;align-items:center;gap:10px"><span class="section-meta" id="pulseReasonsMeta">—</span><button class="pulse-ai-btn" id="pulseAiBtn-reasons" onclick="pulseAiTell('reasons')">✨</button></div>
         </div>
+        <div class="pulse-ai-panel" id="pulseAiPanel-reasons" style="display:none"></div>
         <div id="pulseReasons"></div>
       </div>
       <div class="section" style="margin-bottom:0">
         <div class="section-head">
           <div class="section-title">Sales Velocity<span class="tip-i" title="Days from deal creation to closed-won, for deals closed in the window. The orange marker is the median.">ⓘ</span></div>
-          <span class="section-meta" id="pulseVelocityMeta">—</span>
+          <div style="display:flex;align-items:center;gap:10px"><span class="section-meta" id="pulseVelocityMeta">—</span><button class="pulse-ai-btn" id="pulseAiBtn-velocity" onclick="pulseAiTell('velocity')">✨</button></div>
         </div>
+        <div class="pulse-ai-panel" id="pulseAiPanel-velocity" style="display:none"></div>
         <div id="pulseVelocity"></div>
       </div>
     </div>
@@ -4773,6 +4799,9 @@ function openPulseDrill(type, title, key) {
 }
 
 async function loadPulseTab() {
+  // ✨ panels are keyed to (focus, days) server-side — hide any open ones on
+  // reload so a date-range change can't leave a stale window's read on screen.
+  document.querySelectorAll('.pulse-ai-panel').forEach(p => { p.style.display = 'none'; delete p.dataset.loaded; });
   try {
     const r = await fetch(`/api/marketing/hubspot-pulse?days=${currentDaysBack}`, { credentials: 'include' });
     pulseData = await r.json();
@@ -4791,6 +4820,43 @@ async function loadPulseTab() {
   renderPulseRhythm(pulseData.dealsWeekly || [], pulseData.wonWeekly || []);
   renderPulseReasons(pulseData.wonReasons || [], pulseData.lostReasons || []);
   renderPulseVelocity(pulseData.velocity || [], pulseData.kpis || {});
+}
+
+// ── ✨ AI summaries (v1.106.0) — "tell me more" per section ──────────
+// One POST per (focus, days); the server returns its cached summary
+// instantly when one exists, so reopening a panel is free. Clicking the
+// button again closes the panel; ↻ in the footer forces a regenerate.
+// Focus ids are fixed literals from our own buttons — safe inline.
+async function pulseAiTell(focus, force) {
+  const btn   = document.getElementById('pulseAiBtn-' + focus);
+  const panel = document.getElementById('pulseAiPanel-' + focus);
+  if (!panel) return;
+  if (!force && panel.style.display !== 'none' && panel.dataset.loaded) { panel.style.display = 'none'; return; }
+  panel.style.display = '';
+  panel.innerHTML = '<div style="color:var(--muted)">✨ Reading the data…</div>';
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch('/api/marketing/pulse-ai', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ focus, days: currentDaysBack, force: !!force }),
+    });
+    const d = await res.json();
+    if (!d.ok) { panel.innerHTML = `<div style="color:var(--muted)">Couldn't generate: ${escHtml(d.error || 'unknown error')}</div>`; return; }
+    panel.dataset.loaded = '1';
+    const s = d.summary || {};
+    const li = arr => (arr || []).map(x => `<li>${escHtml(x)}</li>`).join('');
+    panel.innerHTML = `
+      <div class="pai-head">${escHtml(s.headline || '')}</div>
+      ${(s.observations || []).length ? `<ul class="pai-list">${li(s.observations)}</ul>` : ''}
+      ${(s.watch || []).length ? `<div class="pai-sub">Worth watching</div><ul class="pai-list">${li(s.watch)}</ul>` : ''}
+      ${(s.caveats || []).length ? `<div class="pai-caveats">${(s.caveats || []).map(c => escHtml(c)).join(' · ')}</div>` : ''}
+      <div class="pai-foot">Generated ${escHtml(d.created_at ? agoText(d.created_at) : 'just now')}${d.cached ? ' (cached)' : ''} · last ${d.days}d · first-touch basis
+        · <a onclick="pulseAiTell('${focus}', true)">↻ regenerate</a>
+        · <a onclick="document.getElementById('pulseAiPanel-${focus}').style.display='none'">close</a></div>`;
+  } catch (e) {
+    panel.innerHTML = `<div style="color:var(--muted)">Couldn't generate: ${escHtml(e.message)}</div>`;
+  } finally { if (btn) btn.disabled = false; }
 }
 
 // ── KPI strip — current window vs the same-length window before it ──

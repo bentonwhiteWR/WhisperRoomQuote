@@ -385,13 +385,22 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
 .pulse-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
 .pulse-kpi{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;position:relative;overflow:hidden}
 .pulse-kpi::before{content:'';position:absolute;inset:0 auto 0 0;width:3px;background:var(--orange);opacity:.85}
-.pulse-kpi .pk-label{font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-.pulse-kpi .pk-val{font-size:22px;font-weight:800;font-family:var(--mono);margin-top:5px;line-height:1.1}
-.pulse-kpi .pk-delta{font-size:11px;font-weight:700;font-family:var(--mono);margin-top:5px;display:inline-block;padding:1px 7px;border-radius:9px}
-.pulse-kpi .pk-delta.up{color:var(--green);background:rgba(34,197,94,.12)}
-.pulse-kpi .pk-delta.down{color:var(--red);background:rgba(239,68,68,.12)}
-.pulse-kpi .pk-delta.flat{color:var(--muted);background:rgba(136,136,136,.12)}
-.pulse-kpi .pk-prev{font-size:10px;color:var(--muted);margin-left:6px}
+.pulse-kpi .pk-label,.pace-card .pk-label{font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.pulse-kpi .pk-val,.pace-card .pk-val{font-size:22px;font-weight:800;font-family:var(--mono);margin-top:5px;line-height:1.1}
+.pulse-kpi .pk-delta,.pace-card .pk-delta{font-size:11px;font-weight:700;font-family:var(--mono);margin-top:5px;display:inline-block;padding:1px 7px;border-radius:9px}
+.pulse-kpi .pk-delta.up,.pace-card .pk-delta.up{color:var(--green);background:rgba(34,197,94,.12)}
+.pulse-kpi .pk-delta.down,.pace-card .pk-delta.down{color:var(--red);background:rgba(239,68,68,.12)}
+.pulse-kpi .pk-delta.flat,.pace-card .pk-delta.flat{color:var(--muted);background:rgba(136,136,136,.12)}
+.pulse-kpi .pk-prev,.pace-card .pk-prev{font-size:10px;color:var(--muted);margin-left:6px}
+/* v1.108.0 — 📅 month pacing strip */
+.pulse-pace-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px}
+.pace-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:13px 15px}
+.pace-bar{height:5px;background:rgba(255,255,255,.06);border-radius:3px;margin:9px 0 6px;overflow:hidden}
+:root.light .pace-bar{background:rgba(0,0,0,.07)}
+.pace-fill{height:100%;border-radius:3px;background:var(--orange);transition:width .5s ease}
+.pace-fill.over{background:var(--green)}
+.pace-sub{font-size:10.5px;color:var(--muted);line-height:1.5}
+.pace-proj{font-size:11px;margin-top:6px;font-weight:600}
 .pulse-grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
 @media (max-width:980px){.pulse-grid2{grid-template-columns:1fr}}
 .pulse-legend{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
@@ -927,6 +936,15 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
 
     <!-- ✨ overview summary (v1.106.0) -->
     <div class="pulse-ai-panel" id="pulseAiPanel-overview" style="display:none"></div>
+
+    <!-- 📅 Month pacing (v1.108.0) — the forward-looking strip -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">📅 Month Pacing<span class="tip-i" title="Calendar-month view — independent of the date-range selector below. Each card: month-to-date vs the SAME day-of-month last month (the ▲▼ chip), the bar fills against last month's full total, and 'on pace for' projects the run rate (MTD ÷ days elapsed × days in month). Won revenue paces on close date; ad spend is Google Ads cost; sessions come from GA4.">ⓘ</span></div>
+        <span class="section-meta" id="pulsePacingMeta">—</span>
+      </div>
+      <div class="pulse-pace-grid" id="pulsePacing"><div class="empty">Loading…</div></div>
+    </div>
 
     <!-- KPI strip with prior-period deltas -->
     <div class="pulse-kpis" id="pulseKpis"><div class="empty">Loading…</div></div>
@@ -4806,6 +4824,11 @@ async function loadPulseTab() {
   // ✨ panels are keyed to (focus, days) server-side — hide any open ones on
   // reload so a date-range change can't leave a stale window's read on screen.
   document.querySelectorAll('.pulse-ai-panel').forEach(p => { p.style.display = 'none'; delete p.dataset.loaded; });
+  // Pacing is calendar-month based (no days param) and must not block or be
+  // blocked by the main payload — fetched in parallel, rendered on its own.
+  fetch('/api/marketing/pulse-pacing', { credentials: 'include' })
+    .then(r => r.json()).then(renderPulsePacing)
+    .catch(() => renderPulsePacing(null));
   try {
     const r = await fetch(`/api/marketing/hubspot-pulse?days=${currentDaysBack}`, { credentials: 'include' });
     pulseData = await r.json();
@@ -4861,6 +4884,49 @@ async function pulseAiTell(focus, force) {
   } catch (e) {
     panel.innerHTML = `<div style="color:var(--muted)">Couldn't generate: ${escHtml(e.message)}</div>`;
   } finally { if (btn) btn.disabled = false; }
+}
+
+// ── 📅 Month pacing (v1.108.0) — MTD vs last month, with run rate ────
+function renderPulsePacing(p) {
+  const el = document.getElementById('pulsePacing');
+  if (!p || p.error) {
+    el.innerHTML = `<div class="empty">Pacing unavailable${p && p.error ? ': ' + escHtml(p.error) : ''}.</div>`;
+    return;
+  }
+  const day = p.day_of_month, dim = p.days_in_month;
+  document.getElementById('pulsePacingMeta').textContent = `day ${day} of ${dim}`;
+  const defs = [
+    { label: 'New Contacts',     mtd: p.contacts_mtd, pt: p.contacts_prior_pt, all: p.contacts_prior_all, fmt: fmtInt },
+    { label: 'Form Conversions', mtd: p.forms_mtd,    pt: p.forms_prior_pt,    all: p.forms_prior_all,    fmt: fmtInt },
+    { label: 'Deals Created',    mtd: p.deals_mtd,    pt: p.deals_prior_pt,    all: p.deals_prior_all,    fmt: fmtInt },
+    { label: 'Won Revenue',      mtd: p.revenue_mtd,  pt: p.revenue_prior_pt,  all: p.revenue_prior_all,  fmt: pulseMoney },
+    // Spend up/down is a budget fact, not a win/loss — neutral chip.
+    { label: 'Ad Spend',         mtd: p.spend_mtd,    pt: p.spend_prior_pt,    all: p.spend_prior_all,    fmt: pulseMoney, neutral: true, gate: p.has_spend, gateMsg: 'No Google Ads data yet' },
+    { label: 'GA4 Sessions',     mtd: p.sessions_mtd, pt: p.sessions_prior_pt, all: p.sessions_prior_all, fmt: fmtInt,     gate: p.has_ga4,  gateMsg: 'Press ↻ Sync All to pull GA4' },
+  ];
+  el.innerHTML = defs.map(d => {
+    if (d.gate === false) {
+      return `<div class="pace-card"><div class="pk-label">${d.label}</div><div class="pk-val">—</div><div class="pace-sub" style="margin-top:8px">${d.gateMsg}</div></div>`;
+    }
+    const proj = day > 0 ? (d.mtd / day) * dim : 0;
+    const pctOfAll = d.all > 0 ? (d.mtd / d.all) * 100 : null;
+    let chip = '';
+    if (d.pt > 0) {
+      const pct = ((d.mtd - d.pt) / d.pt) * 100;
+      const cls = d.neutral || Math.abs(pct) < 0.5 ? 'flat' : pct > 0 ? 'up' : 'down';
+      chip = `<span class="pk-delta ${cls}">${pct > 0 ? '▲' : pct < 0 ? '▼' : '•'} ${Math.abs(pct).toFixed(0)}%</span><span class="pk-prev">vs day ${day} last mo</span>`;
+    } else if (d.mtd > 0) {
+      chip = `<span class="pk-delta up">new</span><span class="pk-prev">0 at this point last mo</span>`;
+    }
+    return `<div class="pace-card">
+      <div class="pk-label">${d.label}</div>
+      <div class="pk-val">${d.fmt(d.mtd)}</div>
+      <div class="pace-bar"><div class="pace-fill${pctOfAll != null && pctOfAll >= 100 ? ' over' : ''}" style="width:${pctOfAll == null ? 0 : Math.min(100, pctOfAll)}%"></div></div>
+      <div class="pace-sub">${pctOfAll == null ? 'no prior month' : pctOfAll.toFixed(0) + '% of last month (' + d.fmt(d.all) + ')'}</div>
+      <div>${chip}</div>
+      <div class="pace-proj">on pace for ${d.fmt(proj)}</div>
+    </div>`;
+  }).join('');
 }
 
 // ── KPI strip — current window vs the same-length window before it ──

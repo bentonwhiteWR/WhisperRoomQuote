@@ -15,6 +15,7 @@
 //   GET  /api/marketing/hubspot-pulse            → 📊 Pulse tab chart aggregates, one payload (v1.104.0)
 //   GET  /api/marketing/pulse-drill              → contacts/deals behind a clicked Pulse number (v1.105.0)
 //   POST /api/marketing/pulse-ai                 → ✨ grounded AI read of a Pulse section, cached (v1.106.0)
+//   GET  /api/marketing/pulse-pacing             → 📅 month-to-date pacing vs last month (v1.108.0)
 //
 // HubSpot ingestion (v1.44.0) shares the same /api/marketing/sync POST
 // endpoint — pass `report: 'hubspot_contacts' | 'hubspot_deals' | 'hubspot_all'`
@@ -1404,6 +1405,58 @@ async function handle(req, res, ctx) {
       });
       ctx.json(out, out.ok ? 200 : (out.status || 500));
     } catch(e) { ctx.json({ ok: false, error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/pulse-pacing ───────────────────────────────
+  // v1.108.0 — the forward-looking strip: month-to-date vs the SAME POINT
+  // last month (through the same day-of-month) and vs last month's total,
+  // for contacts / form conversions / deals created / won revenue / ad
+  // spend / GA4 sessions. Calendar-month basis, deliberately independent of
+  // the date-range selector — "are we on track THIS month" is a different
+  // question from "what happened in the last N days". Pure reads; run-rate
+  // projection is computed client-side from day_of_month/days_in_month.
+  // Won revenue paces on closed_at (v1.50.9 basis); when the prior month is
+  // shorter than today's day-of-month the prior point window naturally caps
+  // at that month's end.
+  if (pathname === '/api/marketing/pulse-pacing' && req.method === 'GET') {
+    try {
+      if (!ctx.db) { ctx.json({ error: 'no db' }, 500); return true; }
+      // Window fragments over a column: month-to-date (today inclusive),
+      // prior month through the same day-of-month, prior month total.
+      const MTD   = c => `${c} >= date_trunc('month', CURRENT_DATE) AND ${c} < CURRENT_DATE + INTERVAL '1 day'`;
+      const PPT   = c => `${c} >= date_trunc('month', CURRENT_DATE) - INTERVAL '1 month'
+                      AND ${c} < date_trunc('month', CURRENT_DATE) - INTERVAL '1 month'
+                              + (CURRENT_DATE - date_trunc('month', CURRENT_DATE)) + INTERVAL '1 day'`;
+      const PALL  = c => `${c} >= date_trunc('month', CURRENT_DATE) - INTERVAL '1 month' AND ${c} < date_trunc('month', CURRENT_DATE)`;
+      const r = (await ctx.db.query(`
+        SELECT
+          EXTRACT(DAY FROM CURRENT_DATE)::int                                                       AS day_of_month,
+          EXTRACT(DAY FROM (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month - 1 day'))::int   AS days_in_month,
+          to_char(CURRENT_DATE, 'YYYY-MM-DD')                                                       AS today,
+          (SELECT COUNT(*) FROM marketing_hubspot_contacts WHERE ${MTD('created_at')})::int          AS contacts_mtd,
+          (SELECT COUNT(*) FROM marketing_hubspot_contacts WHERE ${PPT('created_at')})::int          AS contacts_prior_pt,
+          (SELECT COUNT(*) FROM marketing_hubspot_contacts WHERE ${PALL('created_at')})::int         AS contacts_prior_all,
+          (SELECT COUNT(*) FROM marketing_hubspot_contacts WHERE ${MTD('first_conversion_date')})::int  AS forms_mtd,
+          (SELECT COUNT(*) FROM marketing_hubspot_contacts WHERE ${PPT('first_conversion_date')})::int  AS forms_prior_pt,
+          (SELECT COUNT(*) FROM marketing_hubspot_contacts WHERE ${PALL('first_conversion_date')})::int AS forms_prior_all,
+          (SELECT COUNT(*) FROM marketing_hubspot_deals WHERE ${MTD('created_at')})::int             AS deals_mtd,
+          (SELECT COUNT(*) FROM marketing_hubspot_deals WHERE ${PPT('created_at')})::int             AS deals_prior_pt,
+          (SELECT COUNT(*) FROM marketing_hubspot_deals WHERE ${PALL('created_at')})::int            AS deals_prior_all,
+          (SELECT COALESCE(SUM(amount), 0)::float FROM marketing_hubspot_deals WHERE is_closed_won AND ${MTD('closed_at')})  AS revenue_mtd,
+          (SELECT COALESCE(SUM(amount), 0)::float FROM marketing_hubspot_deals WHERE is_closed_won AND ${PPT('closed_at')})  AS revenue_prior_pt,
+          (SELECT COALESCE(SUM(amount), 0)::float FROM marketing_hubspot_deals WHERE is_closed_won AND ${PALL('closed_at')}) AS revenue_prior_all,
+          (SELECT COALESCE(SUM(cost_micros), 0)::float / 1e6 FROM marketing_campaigns WHERE ${MTD('date')})  AS spend_mtd,
+          (SELECT COALESCE(SUM(cost_micros), 0)::float / 1e6 FROM marketing_campaigns WHERE ${PPT('date')})  AS spend_prior_pt,
+          (SELECT COALESCE(SUM(cost_micros), 0)::float / 1e6 FROM marketing_campaigns WHERE ${PALL('date')}) AS spend_prior_all,
+          (SELECT EXISTS (SELECT 1 FROM marketing_campaigns))                                        AS has_spend,
+          (SELECT COALESCE(SUM(sessions), 0)::int FROM marketing_ga4_daily WHERE ${MTD('date')})     AS sessions_mtd,
+          (SELECT COALESCE(SUM(sessions), 0)::int FROM marketing_ga4_daily WHERE ${PPT('date')})     AS sessions_prior_pt,
+          (SELECT COALESCE(SUM(sessions), 0)::int FROM marketing_ga4_daily WHERE ${PALL('date')})    AS sessions_prior_all,
+          (SELECT EXISTS (SELECT 1 FROM marketing_ga4_daily))                                        AS has_ga4
+      `)).rows[0];
+      ctx.json(r);
+    } catch(e) { ctx.json({ error: e.message }, 500); }
     return true;
   }
 

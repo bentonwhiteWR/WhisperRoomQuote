@@ -16,6 +16,7 @@
 //   GET  /api/marketing/pulse-drill              → contacts/deals behind a clicked Pulse number (v1.105.0)
 //   POST /api/marketing/pulse-ai                 → ✨ grounded AI read of a Pulse section, cached (v1.106.0)
 //   GET  /api/marketing/pulse-pacing             → 📅 month-to-date pacing vs last month (v1.108.0)
+//   GET  /api/marketing/ga4-page-cvr             → 🎯 landing-page conversion rates, GA4 × HubSpot (v1.109.0)
 //
 // HubSpot ingestion (v1.44.0) shares the same /api/marketing/sync POST
 // endpoint — pass `report: 'hubspot_contacts' | 'hubspot_deals' | 'hubspot_all'`
@@ -1461,6 +1462,71 @@ async function handle(req, res, ctx) {
       `)).rows[0];
       ctx.json(r);
     } catch(e) { ctx.json({ error: e.message }, 500); }
+    return true;
+  }
+
+  // ── GET /api/marketing/ga4-page-cvr ───────────────────────────────
+  // v1.109.0 — landing-page conversion rates: GA4 sessions/engagement/key
+  // events per landing page LEFT JOINed with HubSpot contacts whose FIRST
+  // page seen (hs_analytics_first_url) was that page — both normalized to a
+  // lowercase path with no query string or trailing slash, so the GA4
+  // landingPage dimension and HubSpot's full first_url meet in the middle.
+  // CVR = key_events/sessions (on-site conversion measure); lead_rate =
+  // contacts/sessions (the CRM-grade measure). ?minSessions= (default 25)
+  // trims pages too small to read. Window capped at 120d — that's all
+  // marketing_ga4_pages retains (Sync All policy). Medians computed over the
+  // qualifying rows so the frontend can classify against the site norm.
+  if (pathname === '/api/marketing/ga4-page-cvr' && req.method === 'GET') {
+    try {
+      if (!ctx.db) { ctx.json({ rows: [] }); return true; }
+      const days = Math.min(_parseDays(req), 120);
+      const url  = new URL(req.url, 'http://localhost');
+      const minSessions = Math.max(1, parseInt(url.searchParams.get('minSessions')) || 25);
+      const PATHNORM = col => `CASE WHEN regexp_replace(lower(${col}), '/+$', '') = '' THEN '/'
+                                    ELSE regexp_replace(lower(${col}), '/+$', '') END`;
+      const r = await ctx.db.query(`
+        WITH ga AS (
+          SELECT ${PATHNORM('landing_page')} AS path,
+                 SUM(sessions)::float AS sessions,
+                 SUM(engaged_sessions)::float AS engaged,
+                 SUM(key_events)::float AS key_events
+          FROM marketing_ga4_pages
+          WHERE date >= CURRENT_DATE - $1 AND landing_page <> '(not set)'
+          GROUP BY 1
+        ), hs AS (
+          SELECT ${PATHNORM(`split_part(regexp_replace(first_url, '^https?://[^/]+', ''), '?', 1)`)} AS path,
+                 COUNT(*)::int AS leads
+          FROM marketing_hubspot_contacts
+          WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * $1
+            AND NULLIF(first_url, '') IS NOT NULL
+          GROUP BY 1
+        )
+        SELECT g.path, g.sessions, g.engaged, g.key_events, COALESCE(h.leads, 0) AS leads
+        FROM ga g LEFT JOIN hs h USING (path)
+        WHERE g.sessions >= $2
+        ORDER BY g.sessions DESC
+        LIMIT 200
+      `, [days, minSessions]);
+      const rows = r.rows.map(x => ({
+        path: x.path,
+        sessions: Math.round(x.sessions),
+        engaged_rate: x.sessions > 0 ? x.engaged / x.sessions : 0,
+        key_events: Math.round(x.key_events * 10) / 10,
+        cvr: x.sessions > 0 ? x.key_events / x.sessions : 0,
+        leads: x.leads,
+        lead_rate: x.sessions > 0 ? x.leads / x.sessions : 0,
+      }));
+      const median = arr => { const s = [...arr].sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : null; };
+      ctx.json({
+        days, minSessions, rows,
+        medians: {
+          cvr:         median(rows.map(x => x.cvr)),
+          engagedRate: median(rows.map(x => x.engaged_rate)),
+          leadRate:    median(rows.map(x => x.lead_rate)),
+          sessions:    median(rows.map(x => x.sessions)),
+        },
+      });
+    } catch(e) { ctx.json({ rows: [], error: e.message }, 500); }
     return true;
   }
 

@@ -19,6 +19,14 @@
 //                         impression-weighted) after a sub-10% baseline
 //   ads-spend-no-conv   — ≥$300 spend in 28d with zero Google conversions
 //   gsc-decay           — commercial query clicks down ≥40% (14d vs prior 14d)
+//   funnel-forms-stopped— form conversions hit 0 (or ≤25% of normal) for a
+//                         week; GA4 sessions holding steady upgrades it to
+//                         "near-certain breakage" in the detail (v1.109.0)
+//   funnel-leadflow-drop— new HubSpot contacts ≤ half the prior-4-week
+//                         weekly average (v1.109.0)
+//   funnel-traffic-drop — a GA4 channel's weekly sessions down ≥40% vs its
+//                         prior-4-week average (v1.109.0; silent until GA4
+//                         has synced)
 //
 // Scheduler: ensureScheduler() is armed on the first marketing request (called
 // from router.handle — no quote-server.js changes). Every 12h tick it scans if
@@ -54,6 +62,14 @@ const BUDGET_LOST_MINCOST = 100;  // 7d spend floor for the budget-lost alert
 const SPEND_NO_CONV_MIN  = 300;   // 28d spend with zero conversions
 const DECAY_DROP_PCT     = 0.40;  // 14d-vs-prior-14d click drop to alert
 const DECAY_MIN_CLICKS   = 10;    // prior-period click floor
+// Funnel-breakage thresholds (v1.109.0)
+const FORMS_DEAD_MINAVG     = 3;    // weekly form avg needed before 0-in-7d fires
+const FORMS_COLLAPSE_MINAVG = 5;    // weekly form avg needed for the ≤25% check
+const FORMS_COLLAPSE_PCT    = 0.25; // trailing week ≤ this × weekly avg
+const LEADFLOW_MINAVG       = 10;   // weekly new-contact avg floor
+const LEADFLOW_DROP_PCT     = 0.50; // trailing week ≤ this × weekly avg
+const GA4_DROP_MINAVG       = 100;  // weekly sessions floor per channel
+const GA4_DROP_PCT          = 0.60; // trailing week ≤ this × weekly avg (= 40% drop)
 
 // ── per-keyword latest + previous SERP snapshot pairs ────────────────────
 async function _serpPairs(db) {
@@ -251,6 +267,100 @@ function _isoWeek() {
   return `${d.getFullYear()}w${Math.ceil((((d - onejan) / 86400000) + onejan.getDay() + 1) / 7)}`;
 }
 
+// ── funnel breakage (v1.109.0) — the protective layer ────────────────────
+// A broken quote form or a traffic collapse is silent revenue loss none of
+// the SERP/ads checks can see. Three checks, pure SQL over synced mirrors;
+// weekly keys re-fire while the condition persists. GA4 windows end at
+// CURRENT_DATE - 1 because GA4 data lags ~a day.
+async function _checkFunnel(db) {
+  const alerts = [];
+  const wk = _isoWeek();
+
+  // 1) Form conversions stopped/collapsed: trailing 7d vs prior-28d weekly
+  //    average. GA4 sessions discriminate breakage (traffic held, forms died)
+  //    from a genuinely slow week (both moved together).
+  const f = (await db.query(`
+    SELECT
+      (SELECT COUNT(*) FROM marketing_hubspot_contacts
+        WHERE first_conversion_date >= CURRENT_DATE - 7)::int                  AS cur,
+      (SELECT COUNT(*)::float / 4 FROM marketing_hubspot_contacts
+        WHERE first_conversion_date < CURRENT_DATE - 7
+          AND first_conversion_date >= CURRENT_DATE - 35)                      AS avg_wk,
+      (SELECT COALESCE(SUM(sessions), 0)::float FROM marketing_ga4_daily
+        WHERE date >= CURRENT_DATE - 8 AND date < CURRENT_DATE - 1)            AS sess_cur,
+      (SELECT COALESCE(SUM(sessions), 0)::float / 4 FROM marketing_ga4_daily
+        WHERE date >= CURRENT_DATE - 36 AND date < CURRENT_DATE - 8)           AS sess_avg
+  `)).rows[0];
+  const formsDead      = f.cur === 0 && f.avg_wk >= FORMS_DEAD_MINAVG;
+  const formsCollapsed = !formsDead && f.avg_wk >= FORMS_COLLAPSE_MINAVG && f.cur <= f.avg_wk * FORMS_COLLAPSE_PCT;
+  if (formsDead || formsCollapsed) {
+    const sessionsHeld = f.sess_avg > 0 && f.sess_cur >= f.sess_avg * 0.6;
+    alerts.push({
+      type: 'funnel-forms-stopped', key: `formstop:${wk}`,
+      severity: 'high',
+      title: formsDead
+        ? `Form conversions STOPPED — 0 in 7 days (normal ≈ ${Math.round(f.avg_wk)}/week)`
+        : `Form conversions collapsed — ${f.cur} in 7 days vs ≈ ${Math.round(f.avg_wk)}/week normal`,
+      detail: (sessionsHeld
+          ? `GA4 sessions held (${Math.round(f.sess_cur)} this week vs ≈ ${Math.round(f.sess_avg)}/week) while forms died — near-certain breakage, not a slow week. `
+          : (f.sess_avg > 0 ? `GA4 sessions also moved (${Math.round(f.sess_cur)} vs ≈ ${Math.round(f.sess_avg)}/week), so traffic may be the cause. ` : ''))
+        + 'Test the quote + contact forms end-to-end NOW (submit one, confirm the contact appears in HubSpot), then check the HubSpot tracking script against any recent site changes.',
+      data: { cur: f.cur, avgWk: Math.round(f.avg_wk * 10) / 10, sessCur: Math.round(f.sess_cur), sessAvg: Math.round(f.sess_avg) },
+    });
+  }
+
+  // 2) Lead-flow drop: new contacts trailing 7d ≤ half the prior-4-week avg.
+  const l = (await db.query(`
+    SELECT
+      (SELECT COUNT(*) FROM marketing_hubspot_contacts
+        WHERE created_at >= CURRENT_DATE - 7)::int                             AS cur,
+      (SELECT COUNT(*)::float / 4 FROM marketing_hubspot_contacts
+        WHERE created_at < CURRENT_DATE - 7 AND created_at >= CURRENT_DATE - 35) AS avg_wk
+  `)).rows[0];
+  if (l.avg_wk >= LEADFLOW_MINAVG && l.cur <= l.avg_wk * LEADFLOW_DROP_PCT) {
+    const drop = Math.round((1 - l.cur / l.avg_wk) * 100);
+    alerts.push({
+      type: 'funnel-leadflow-drop', key: `leadflow:${wk}`,
+      severity: drop >= 60 ? 'high' : 'med',
+      title: `New contacts down ${drop}% — ${l.cur} this week vs ≈ ${Math.round(l.avg_wk)}/week normal`,
+      detail: 'Read this with the GA4 traffic alerts from the same scan: traffic down too = acquisition problem; traffic fine = capture problem (forms/tracking).',
+      data: { cur: l.cur, avgWk: Math.round(l.avg_wk * 10) / 10 },
+    });
+  }
+
+  // 3) GA4 channel traffic drop: per default-channel-group, trailing full
+  //    week vs prior-4-week weekly average. Volume floor trims noise
+  //    channels; the query returns nothing until GA4 has synced.
+  const t = await db.query(`
+    WITH cur AS (
+      SELECT channel, SUM(sessions)::float AS s FROM marketing_ga4_daily
+      WHERE date >= CURRENT_DATE - 8 AND date < CURRENT_DATE - 1 GROUP BY channel
+    ), base AS (
+      SELECT channel, SUM(sessions)::float / 4 AS s FROM marketing_ga4_daily
+      WHERE date >= CURRENT_DATE - 36 AND date < CURRENT_DATE - 8 GROUP BY channel
+    )
+    SELECT b.channel, b.s AS avg_wk, COALESCE(c.s, 0) AS cur
+    FROM base b LEFT JOIN cur c USING (channel)
+    WHERE b.s >= $1 AND COALESCE(c.s, 0) <= b.s * $2
+  `, [GA4_DROP_MINAVG, GA4_DROP_PCT]);
+  for (const r of t.rows) {
+    const drop = Math.round((1 - r.cur / r.avg_wk) * 100);
+    const major = /organic search|paid search/i.test(r.channel);
+    alerts.push({
+      type: 'funnel-traffic-drop', key: `ga4drop:${r.channel}:${wk}`,
+      severity: major || drop >= 60 ? 'high' : 'med',
+      title: `${r.channel} sessions down ${drop}% — ${Math.round(r.cur)} this week vs ≈ ${Math.round(r.avg_wk)}/week`,
+      detail: /organic/i.test(r.channel)
+        ? 'Cross-check the rank-drop and organic-decay alerts. If rankings held, suspect the GA4 tag or indexing, not demand.'
+        : /paid/i.test(r.channel)
+          ? 'Check Google Ads first — a paused campaign, billing hiccup, or disapproved ads all look exactly like this.'
+          : 'One channel collapsing while the others hold usually means a source-side change, not a site problem.',
+      data: { channel: r.channel, cur: Math.round(r.cur), avgWk: Math.round(r.avg_wk) },
+    });
+  }
+  return alerts;
+}
+
 // ── the scan ─────────────────────────────────────────────────────────────
 async function runAlertScan({ db }) {
   if (!db) return { error: 'no db' };
@@ -261,6 +371,7 @@ async function runAlertScan({ db }) {
   try { found.push(..._checkSerp(await _serpPairs(db), ignored)); } catch (e) { errors.push('serp: ' + e.message); }
   try { found.push(...await _checkAds(db)); } catch (e) { errors.push('ads: ' + e.message); }
   try { found.push(...await _checkGscDecay(db)); } catch (e) { errors.push('gsc: ' + e.message); }
+  try { found.push(...await _checkFunnel(db)); } catch (e) { errors.push('funnel: ' + e.message); }
 
   // Dedup on (type, key) and insert only the new ones.
   const fresh = [];
@@ -338,4 +449,5 @@ function ensureScheduler(getDb, serpEtl) {
   console.log('[marketing-alerts] scheduler armed (daily scan; SERP auto-sync ' + (parseInt(process.env.SERP_AUTO_SYNC_DAYS || '0') > 0 ? 'ON, ' + process.env.SERP_AUTO_SYNC_DAYS + 'd' : 'off') + ')');
 }
 
-module.exports = { runAlertScan, ensureScheduler, ALERT_OWNERS };
+// _checkFunnel exported for logic tests (stub db) — not used by the router.
+module.exports = { runAlertScan, ensureScheduler, ALERT_OWNERS, _checkFunnel };

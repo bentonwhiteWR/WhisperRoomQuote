@@ -878,6 +878,15 @@ tfoot .recon-row td.drillable:hover{color:var(--orange)}
       <label class="gsc-toolbar"><input type="checkbox" onchange="toggleHideBlog(this.checked)"> Hide <code>/blog</code> pages (non-blog snapshot)</label>
       <div id="gscPagesBody"><div class="empty">No data yet.</div></div>
     </div>
+
+    <!-- 🎯 Landing-page conversion (v1.109.0) — GA4 × HubSpot -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">🎯 Landing Page Conversion<span class="tip-i" title="GA4 sessions, engagement, and key events per landing page (≤120 days), joined with HubSpot contacts whose FIRST page seen was that page. CVR = GA4 key events ÷ sessions; Lead rate = new contacts ÷ sessions. The Read column compares each page to the site median and cross-references its Google Search Console CTR to split PAGE problems (traffic engages but doesn't convert) from SNIPPET problems (page converts but the listing doesn't pull clicks) — the two look identical without GA4. Needs a GA4 sync.">ⓘ</span></div>
+        <span class="section-meta" id="gscCvrMeta">—</span>
+      </div>
+      <div id="gscCvrBody"><div class="empty">Needs GA4 data — press Sync All once GA4 is configured.</div></div>
+    </div>
   </div><!-- /tabGsc -->
 
   <!-- ════════ SEO Intel tab (v1.84.16) — DataForSEO live SERP intelligence ════════ -->
@@ -2046,6 +2055,9 @@ const RADAR_TYPE_LABEL = {
   'ads-budget-lost':    'Budget capped',
   'ads-spend-no-conv':  'Wasted spend',
   'gsc-decay':          'Organic decay',
+  'funnel-forms-stopped': 'Forms broken?',
+  'funnel-leadflow-drop': 'Lead flow',
+  'funnel-traffic-drop':  'Traffic drop',
 };
 const RADAR_SEV = {
   high: 'var(--red)',
@@ -2399,6 +2411,7 @@ async function loadGscTab() {
   // use our own baselines, not a generic curve.
   gscBuildCtrBenchmark(gscQueriesCache);
   gscBuildPageStats(gscPagesCache);
+  loadGscCvr();   // 🎯 v1.109.0 — independent fetch; renders its own section
   gscRevEnriched  = gscEnrichRev((ro && ro.rows) || [], gscPagesCache);
   applyGscRevMode();
   renderGscOverlap((ov && ov.rows) || []);
@@ -4734,6 +4747,72 @@ function renderSearchTerms(rows, attrRows) {
         </tr>`).join('')}
       </tbody>${reconFoot}
     </table>`;
+}
+
+// ── 🎯 Landing Page Conversion (v1.109.0) — GA4 × HubSpot × GSC ──────
+// Sessions/CVR/lead-rate per landing page from /ga4-page-cvr, classified
+// against the site medians, with the page's GSC CTR cross-referenced from
+// gscPagesCache (already loaded by loadGscTab) so a PAGE problem (traffic
+// engages, doesn't convert) reads differently from a SNIPPET problem (page
+// converts, listing doesn't pull clicks). Read-only diagnostics — the
+// actionable queues stay in Growth Engine.
+async function loadGscCvr() {
+  const el = document.getElementById('gscCvrBody'), meta = document.getElementById('gscCvrMeta');
+  let d = null;
+  try {
+    d = await fetch(`/api/marketing/ga4-page-cvr?days=${Math.min(currentDaysBack, 120)}`, { credentials: 'include' }).then(r => r.json());
+  } catch {}
+  if (!d || d.error || !(d.rows || []).length) {
+    meta.textContent = '—';
+    el.innerHTML = `<div class="empty">${d && d.error ? 'Error: ' + escHtml(d.error) : 'No GA4 page data yet — once GA4 is configured, Sync All fills this in.'}</div>`;
+    return;
+  }
+  const med = d.medians || {};
+  meta.textContent = `${fmtInt(d.rows.length)} pages · ≥${d.minSessions} sessions · last ${d.days}d · median CVR ${(100 * (med.cvr || 0)).toFixed(1)}%`;
+
+  // GSC CTR per path from the cached Organic Pages rows (full URLs → path).
+  const ctrByPath = {}; const ctrVals = [];
+  (gscPagesCache || []).forEach(p => {
+    try {
+      const u = new URL(p.page);
+      const path = (u.pathname.replace(/\/+$/, '') || '/').toLowerCase();
+      ctrByPath[path] = +p.ctr || 0;
+      ctrVals.push(+p.ctr || 0);
+    } catch {}
+  });
+  ctrVals.sort((a, b) => a - b);
+  const ctrMed = ctrVals.length ? ctrVals[Math.floor(ctrVals.length / 2)] : null;
+
+  const readOf = r => {
+    const ctr = ctrByPath[r.path];
+    if (med.cvr > 0 && r.cvr >= med.cvr * 2 && med.sessions != null && r.sessions < med.sessions)
+      return ['🚀', 'Hidden converter — converts 2× the site norm on little traffic; more visits to this page would pay'];
+    if (ctr != null && ctrMed > 0 && ctr <= ctrMed * 0.5 && med.cvr > 0 && r.cvr >= med.cvr)
+      return ['✏️', 'Snippet problem — the page converts fine, but its Google listing pulls half the normal CTR; rewrite title/meta'];
+    if (med.cvr > 0 && r.cvr <= med.cvr * 0.5 && med.engagedRate > 0 && r.engaged_rate >= med.engagedRate * 0.8)
+      return ['🔧', 'Page problem — visitors engage but don\'t convert; the page itself (offer/form/CTA) is the bottleneck'];
+    if (med.engagedRate > 0 && r.engaged_rate <= med.engagedRate * 0.5)
+      return ['⚠', 'Engagement problem — visitors leave fast; check load speed, intent match, above-the-fold content'];
+    return ['', ''];
+  };
+  const pct = v => (100 * (v || 0)).toFixed(1) + '%';
+  el.innerHTML = `<table>
+    <thead><tr><th>Landing page</th><th class="num">Sessions</th><th class="num">Engaged</th><th class="num">GA4 conv</th><th class="num">CVR</th><th class="num">Leads</th><th class="num">Lead rate</th><th>Read</th></tr></thead>
+    <tbody>${d.rows.map(r => {
+      const [icon, read] = readOf(r);
+      const below = med.cvr > 0 && r.cvr <= med.cvr * 0.5, above = med.cvr > 0 && r.cvr >= med.cvr * 2;
+      return `<tr>
+        <td><a href="https://www.whisperroom.com${escHtml(r.path)}" target="_blank" rel="noopener">${escHtml(r.path)}</a></td>
+        <td class="num">${fmtInt(r.sessions)}</td>
+        <td class="num">${pct(r.engaged_rate)}</td>
+        <td class="num">${fmtNum(r.key_events)}</td>
+        <td class="num" style="${above ? 'color:var(--green);font-weight:700' : below ? 'color:var(--red)' : ''}">${pct(r.cvr)}</td>
+        <td class="num">${fmtInt(r.leads)}</td>
+        <td class="num">${pct(r.lead_rate)}</td>
+        <td style="font-size:11px;max-width:330px">${icon} ${escHtml(read)}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
 }
 
 // ═════════ 📊 Pulse tab (v1.104.0) ═════════════════════════════════

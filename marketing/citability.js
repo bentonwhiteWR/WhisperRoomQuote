@@ -40,14 +40,31 @@ function _decodeEntities(s) {
           .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, ' ');
 }
 
-// HTML → { title, headings, jsonld, text } — crude but plenty for an audit.
+// HTML → { title, meta, headings, sections, opening, jsonld, text }.
+// v1.110.0 — upgraded from a flat text blob to a structural read so the
+// model can make ANCHORED edits: `sections` pairs each heading with the
+// first ~350 chars of copy under it (the model references real locations),
+// and `opening` is the verbatim current page opening (the exact text an
+// answer-first rewrite replaces).
+function _stripTags(s) {
+  return _decodeEntities(s.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+}
 function _pageDigest(html, textCap) {
   const title = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '';
+  const meta  = (html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([\s\S]*?)["']/i) || [])[1] || '';
   const jsonld = [...html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)]
     .map(m => m[1].trim().slice(0, 2000)).slice(0, 4);
-  const headings = [...html.matchAll(/<(h[1-3])[^>]*>([\s\S]*?)<\/\1>/gi)]
-    .map(m => `${m[1].toUpperCase()}: ${_decodeEntities(m[2].replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim()}`)
-    .filter(h => h.length > 4).slice(0, 30);
+  // Section map: each h1-h3 with the copy that follows it (up to the next heading).
+  const hMatches = [...html.matchAll(/<(h[1-3])[^>]*>([\s\S]*?)<\/\1>/gi)];
+  const sections = hMatches.map((m, i) => {
+    const tag = m[1].toUpperCase();
+    const headingText = _stripTags(m[2]);
+    const bodyStart = m.index + m[0].length;
+    const bodyEnd = i + 1 < hMatches.length ? hMatches[i + 1].index : Math.min(html.length, bodyStart + 6000);
+    const excerpt = _stripTags(html.slice(bodyStart, bodyEnd)).slice(0, 350);
+    return { h: `${tag}: ${headingText}`, excerpt };
+  }).filter(s => s.h.length > 5).slice(0, 40);
+  const headings = sections.map(s => s.h).slice(0, 30);
   const text = _decodeEntities(
     html
       .replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -56,36 +73,63 @@ function _pageDigest(html, textCap) {
       .replace(/<(\/?)(p|div|li|h[1-6]|br|tr|section|article)[^>]*>/gi, '\n')
       .replace(/<[^>]+>/g, ' ')
   ).replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim().slice(0, textCap);
-  return { title: _decodeEntities(title).trim(), headings, jsonld, text };
+  const opening = text.slice(0, 1200);
+  return { title: _decodeEntities(title).trim(), meta: _decodeEntities(meta).trim(), headings, sections, opening, jsonld, text };
 }
 
 const CIT_SYSTEM = [
-  'You are a senior SEO/GEO editor for WhisperRoom, a US manufacturer of modular sound-isolation booths. Your job: make WhisperRoom pages the source AI Overviews and LLMs cite.',
-  'You will get: a keyword, WhisperRoom\'s ranking page (digested), and the page the AI Overview currently cites instead. Produce the concrete fix.',
+  'You are a senior SEO/GEO EDITOR for WhisperRoom, a US manufacturer of modular sound-isolation booths. Your job: make WhisperRoom pages the source AI Overviews and LLMs cite.',
+  'You will get: a keyword, WhisperRoom\'s ranking page (title, meta, section map with the copy under each heading, the verbatim current opening, full body text), and the page the AI Overview currently cites instead.',
+  '',
+  'YOU ARE EDITING AN EXISTING PAGE, NOT WRITING A NEW ONE. This page already ranks top-10 — the current content earned that. Propose the SMALLEST set of changes that makes the answer extractable by an LLM. Preserve the page\'s voice, structure, and substance. A fix that throws away working content is a bad fix.',
+  '',
+  'GROUNDING (hard rule): every factual claim in your copy (price, size, lead time, spec, material, certification, count) must appear in OUR PAGE\'s provided text. If a fix genuinely needs a fact the page does not state, write "[VERIFY: what to confirm]" in its place AND list it in `verify`. Never transplant facts from the competitor page into our copy. Never invent.',
+  'REUSE (hard rule): build the answer-first rewrite out of the page\'s OWN sentences wherever possible — reorder, tighten, and join what is already there before writing anything new. In `answer_first_rewrite.reused`, name which existing sentences/facts you reused.',
+  'ANCHORING (hard rule): every change names its exact location. `answer_first_rewrite.replaces` = the VERBATIM current opening text being replaced (quote it from the provided opening). Each heading fix\'s `current` = a VERBATIM heading from the section map, or \'INSERT AFTER: "<verbatim heading>"\' for additions. No floating advice.',
+  'ANTI-STUFFING (hard rule): use the keyword only where it naturally answers the query — never repeat it for density, never bolt on sections that exist solely to chant the term. LLMs cite pages that answer cleanly; stuffing reads as spam to them too. If the page already answers a sub-question well, point to it in `keep` instead of duplicating it.',
+  '',
+  'In `keep`, list 2-5 things the page already does well that nobody should "fix" while implementing your changes.',
+  'Each FAQ item carries `basis`: the page sentence or section that supports the answer, or "[VERIFY: ...]" if it needs confirmation. An FAQ answer with no basis and no verify flag is not allowed.',
+  '',
   'Hard rules for any copy you write:',
   '- Never use the word "soundproof" — say "sound isolation" or "sound-isolating". (Quoting the keyword itself verbatim is fine.)',
   '- Never use em dashes.',
   '- Short sentences, benefit-focused, factual. No hype.',
-  'The answer_first_rewrite must directly answer the query in the first two sentences (extractable by an LLM), then support with specifics from the existing page. 120-200 words.',
-  'Produce at most 6 faq items and at most 8 heading_fixes.',
+  'The answer_first_rewrite.text must directly answer the query in the first two sentences (extractable by an LLM), then support with specifics from the existing page. 120-200 words.',
+  'Produce 3-6 faq items and 3-8 heading_fixes.',
   'schema_jsonld must be valid JSON-LD a developer can paste as-is: FAQPage from your faq items, plus Product where the page sells a booth (use only facts present on the page; never invent prices or ratings).',
-  'In competitor_takeaways, name what the cited page does structurally that ours does not.',
+  'In competitor_takeaways, name what the cited page does STRUCTURALLY that ours does not — structure is what you may borrow; their facts are not.',
 ].join('\n');
 
+// v1.110.0 — anchored-edit schema. The old shape was free strings, which is
+// exactly what let fixes float ("add an H2 about prices") instead of editing
+// the real page. Every fix now carries its anchor: the verbatim text it
+// replaces or follows, the basis sentence behind an FAQ answer, and a
+// `verify` list for anything the page doesn't actually state.
+// No array length constraints — Claude's structured-output validator
+// rejects minItems>1/maxItems; counts live in the system prompt.
 const CIT_SCHEMA = {
   type: 'object',
   properties: {
     score:        { type: 'integer', description: 'Current citability 0-100.' },
     diagnosis:    { type: 'string', description: '2-4 sentences: why the AI cites the other page and not ours.' },
-    answer_first_rewrite: { type: 'string' },
-    // No array length constraints — Claude's structured-output validator
-    // rejects minItems>1/maxItems; counts are in the system prompt.
-    faq:          { type: 'array', items: { type: 'object', properties: { q: { type: 'string' }, a: { type: 'string' } }, required: ['q', 'a'], additionalProperties: false } },
+    keep:         { type: 'array', items: { type: 'string' }, description: 'What the page already does well — implementers must not break these.' },
+    answer_first_rewrite: {
+      type: 'object',
+      properties: {
+        replaces: { type: 'string', description: 'VERBATIM quote of the existing opening text this replaces.' },
+        text:     { type: 'string', description: 'The replacement opening, 120-200 words.' },
+        reused:   { type: 'string', description: 'Which existing page sentences/facts were reused in the rewrite.' },
+      },
+      required: ['replaces', 'text', 'reused'], additionalProperties: false,
+    },
+    faq:          { type: 'array', items: { type: 'object', properties: { q: { type: 'string' }, a: { type: 'string' }, basis: { type: 'string', description: 'The page sentence/section supporting this answer, or [VERIFY: ...].' } }, required: ['q', 'a', 'basis'], additionalProperties: false } },
+    heading_fixes: { type: 'array', items: { type: 'object', properties: { current: { type: 'string', description: 'VERBATIM existing heading, or INSERT AFTER: "<verbatim heading>".' }, proposed: { type: 'string' }, why: { type: 'string' } }, required: ['current', 'proposed', 'why'], additionalProperties: false } },
     schema_jsonld: { type: 'string' },
-    heading_fixes: { type: 'array', items: { type: 'string' } },
+    verify:       { type: 'array', items: { type: 'string' }, description: 'Facts used that must be confirmed before publishing.' },
     competitor_takeaways: { type: 'string' },
   },
-  required: ['score', 'diagnosis', 'answer_first_rewrite', 'faq', 'schema_jsonld', 'heading_fixes', 'competitor_takeaways'],
+  required: ['score', 'diagnosis', 'keep', 'answer_first_rewrite', 'faq', 'schema_jsonld', 'heading_fixes', 'verify', 'competitor_takeaways'],
   additionalProperties: false,
 };
 
@@ -110,7 +154,9 @@ async function runCitability({ db, keyword, force = false }) {
 
   const ours = await _get(snap.our_url);
   if (!ours.ok) return { ok: false, status: 502, error: `Could not fetch our page (${ours.error}).` };
-  const ourDigest = _pageDigest(ours.html, 12000);
+  // 24k chars (~6k tokens) — long product pages were getting half-read at 12k,
+  // which is where generic, ungrounded fixes came from (v1.110.0).
+  const ourDigest = _pageDigest(ours.html, 24000);
 
   // The first cited ref with a fetchable URL that isn't us — what "winning" looks like.
   let compDigest = null, compRef = null;
@@ -127,16 +173,18 @@ async function runCitability({ db, keyword, force = false }) {
     '',
     `=== OUR PAGE (${snap.our_url}) ===`,
     `Title: ${ourDigest.title}`,
-    `Headings:\n${ourDigest.headings.join('\n')}`,
+    ourDigest.meta ? `Meta description: ${ourDigest.meta}` : 'Meta description: none.',
+    `CURRENT PAGE OPENING (verbatim — answer_first_rewrite.replaces quotes from here):\n${ourDigest.opening}`,
+    `SECTION MAP (each heading + the copy under it — anchor heading_fixes to these verbatim):\n${ourDigest.sections.map(s => `${s.h}\n  ${s.excerpt}`).join('\n')}`,
     ourDigest.jsonld.length ? `Existing JSON-LD (truncated):\n${ourDigest.jsonld.join('\n---\n')}` : 'Existing JSON-LD: none found.',
-    `Body text (truncated):\n${ourDigest.text}`,
+    `FULL BODY TEXT (truncated at 24k chars — the grounding source for every fact):\n${ourDigest.text}`,
     '',
     compDigest
       ? `=== THE PAGE THE AI CITES (${compRef.url}) ===\nTitle: ${compDigest.title}\nHeadings:\n${compDigest.headings.join('\n')}\nBody text (truncated):\n${compDigest.text}`
       : '=== No cited competitor page could be fetched — audit ours on its own merits. ===',
   ].filter(Boolean).join('\n');
 
-  const res = await jsonCall({ system: CIT_SYSTEM, user, schema: CIT_SCHEMA, maxTokens: 4000 });
+  const res = await jsonCall({ system: CIT_SYSTEM, user, schema: CIT_SCHEMA, maxTokens: 5000 });
   if (!res.ok) return res;
 
   const result = Object.assign({}, res.data, {

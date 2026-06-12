@@ -1652,21 +1652,34 @@ function renderSeo(d, paid) {
     </tr>`;
     if (!open || !c || !c.result) return main;
     const res = c.result;
+    // v1.110.0 — anchored-fix format (objects) with fallback for fixes cached
+    // under the old free-string format. ↻ regenerate upgrades a cached fix.
+    const afr = res.answer_first_rewrite;
+    const afrHtml = typeof afr === 'object' && afr
+      ? `${afr.replaces ? `<div style="color:var(--muted);font-size:10.5px;margin-top:5px">Replaces this existing opening: <em>“${escHtml(afr.replaces)}”</em></div>` : ''}
+         <div style="background:var(--surface2);border-radius:6px;padding:10px 12px;margin-top:5px;white-space:pre-wrap">${escHtml(afr.text || '')}</div>
+         ${afr.reused ? `<div style="color:var(--muted);font-size:10.5px;margin-top:4px">♻ Reuses from the current page: ${escHtml(afr.reused)}</div>` : ''}`
+      : `<div style="background:var(--surface2);border-radius:6px;padding:10px 12px;margin-top:5px;white-space:pre-wrap">${escHtml(afr || '')}</div>`;
+    const hfLi = h => typeof h === 'object' && h
+      ? `<li>${/^insert/i.test(h.current || '') ? `<span style="color:var(--green)">${escHtml(h.current)}</span>` : `<span style="color:var(--muted)">“${escHtml(h.current || '')}”</span> →`} <strong>“${escHtml(h.proposed || '')}”</strong>${h.why ? ` <span style="color:var(--muted)">· ${escHtml(h.why)}</span>` : ''}</li>`
+      : `<li>${escHtml(h)}</li>`;
     return main + `<tr><td colspan="5" style="background:var(--surface);padding:14px 16px">
       <div style="font-size:11.5px;line-height:1.6;max-width:900px">
         <div style="color:var(--muted)"><strong style="color:var(--text)">Diagnosis:</strong> ${escHtml(res.diagnosis || '')}</div>
         ${res.competitor_takeaways ? `<div style="color:var(--muted);margin-top:6px"><strong style="color:var(--text)">What the cited page does:</strong> ${escHtml(res.competitor_takeaways)}${res.cited_competitor ? ` <a href="${escHtml(res.cited_competitor)}" target="_blank" rel="noopener" style="color:var(--orange)">↗</a>` : ''}</div>` : ''}
-        <div style="margin-top:10px"><strong>Answer-first rewrite</strong> <span style="color:var(--muted)">(replace the page opening on <a href="${escHtml(res.our_url || '#')}" target="_blank" rel="noopener" style="color:var(--orange)">${escHtml((res.our_url || '').replace(/^https?:\/\//, ''))}</a>)</span>
-          <div style="background:var(--surface2);border-radius:6px;padding:10px 12px;margin-top:5px;white-space:pre-wrap">${escHtml(res.answer_first_rewrite || '')}</div></div>
-        ${(res.faq || []).length ? `<div style="margin-top:10px"><strong>FAQ to add</strong>${res.faq.map(f => `<div style="margin-top:6px"><span style="color:var(--orange)">Q:</span> ${escHtml(f.q)}<br><span style="color:var(--green)">A:</span> ${escHtml(f.a)}</div>`).join('')}</div>` : ''}
-        ${(res.heading_fixes || []).length ? `<div style="margin-top:10px"><strong>Heading fixes</strong><ul style="margin:5px 0 0 18px;padding:0">${res.heading_fixes.map(h => `<li>${escHtml(h)}</li>`).join('')}</ul></div>` : ''}
+        ${(res.keep || []).length ? `<div style="margin-top:8px;border-left:3px solid var(--green);padding:6px 10px;background:rgba(34,197,94,.06);border-radius:0 6px 6px 0"><strong style="color:var(--green)">Already working — don't touch:</strong><ul style="margin:4px 0 0 18px;padding:0">${res.keep.map(k => `<li>${escHtml(k)}</li>`).join('')}</ul></div>` : ''}
+        <div style="margin-top:10px"><strong>Answer-first rewrite</strong> <span style="color:var(--muted)">(page opening on <a href="${escHtml(res.our_url || '#')}" target="_blank" rel="noopener" style="color:var(--orange)">${escHtml((res.our_url || '').replace(/^https?:\/\//, ''))}</a>)</span>
+          ${afrHtml}</div>
+        ${(res.faq || []).length ? `<div style="margin-top:10px"><strong>FAQ to add</strong>${res.faq.map(f => `<div style="margin-top:6px"><span style="color:var(--orange)">Q:</span> ${escHtml(f.q)}<br><span style="color:var(--green)">A:</span> ${escHtml(f.a)}${f.basis ? `<br><span style="color:var(--muted);font-size:10.5px">↳ basis: ${escHtml(f.basis)}</span>` : ''}</div>`).join('')}</div>` : ''}
+        ${(res.heading_fixes || []).length ? `<div style="margin-top:10px"><strong>Heading fixes</strong> <span style="color:var(--muted);font-size:10.5px">(anchored to the page's current headings)</span><ul style="margin:5px 0 0 18px;padding:0">${res.heading_fixes.map(hfLi).join('')}</ul></div>` : ''}
+        ${(res.verify || []).length ? `<div style="margin-top:10px;border-left:3px solid var(--yellow);padding:6px 10px;background:rgba(245,158,11,.07);border-radius:0 6px 6px 0"><strong style="color:var(--yellow)">⚠ Verify before publishing:</strong><ul style="margin:4px 0 0 18px;padding:0">${res.verify.map(v => `<li>${escHtml(v)}</li>`).join('')}</ul></div>` : ''}
         ${res.schema_jsonld ? `<div style="margin-top:10px"><strong>JSON-LD</strong> <span style="color:var(--muted)">(paste into the page head)</span><textarea readonly rows="6" style="width:100%;margin-top:5px;background:var(--surface2);color:var(--text);border:1px solid var(--surface2);border-radius:6px;font-size:10.5px;font-family:monospace;padding:8px" onclick="this.select()">${escHtml(res.schema_jsonld)}</textarea></div>` : ''}
         <div style="margin-top:10px"><a onclick="citDone(this.dataset.kw)" data-kw="${escHtml(r.keyword)}" style="color:var(--green);cursor:pointer;font-weight:700" title="Log to the action log (📋 Receipts): tracks whether the AI Overview starts citing WhisperRoom, measured at 14/28 days.">✓ I shipped this fix</a></div>
       </div>
     </td></tr>`;
   };
   const citability = citCands.length ? `<div class="section">
-    <div class="section-head"><div class="section-title">🤖 AI Citability — get cited by the AI Overview<span class="tip-i" title="Terms where Google shows an AI Overview that does NOT cite WhisperRoom while you rank top-10 — the AI is answering buyers with competitor sources above your link. Generate fix reads YOUR ranking page plus the page the AI actually cites, and produces the concrete fix: an answer-first rewrite of the opening, FAQ items, paste-ready JSON-LD schema, and heading restructure. Results are cached; viewing is free.">ⓘ</span></div>
+    <div class="section-head"><div class="section-title">🤖 AI Citability — get cited by the AI Overview<span class="tip-i" title="Terms where Google shows an AI Overview that does NOT cite WhisperRoom while you rank top-10 — the AI is answering buyers with competitor sources above your link. Generate fix reads YOUR full ranking page (section by section) plus the page the AI actually cites, and produces ANCHORED edits: every change quotes the existing text it replaces, reuses the page's own sentences, lists what already works (don't touch), and flags any fact needing verification — surgical edits that keep your content intact, never keyword stuffing. Results are cached; ↻ regenerates a fix under the current logic.">ⓘ</span></div>
       <div style="display:flex;align-items:center;gap:10px">
         <span class="section-meta">${citCands.length} uncited terms · ${Object.keys(citMap).length} fixes generated</span>
         ${citAi ? `<a id="citBulkBtn" onclick="runCitBulk()" style="font-size:11px;color:var(--orange);cursor:pointer" title="Generate fixes for the top 10 uncited terms (by volume) that don't have one yet. Runs in the background — about a dollar or two of Claude, ready in a few minutes.">✨ Generate top 10</a>` : ''}
